@@ -4,6 +4,8 @@ using System.Buffers;
 using System.Text;
 using System.Text.Json;
 
+namespace Kimigayo.Lsp;
+
 internal static class LspServer
 {
     private static readonly Stream Input = Console.OpenStandardInput();

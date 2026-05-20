@@ -1,15 +1,13 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System;
-using System.Diagnostics;
-using System.Threading.Tasks;
 using Arc;
 using Arc.Threading;
 using Arc.Unit;
+using Kimigayo.Lsp;
 using Microsoft.Extensions.DependencyInjection;
 using SimpleCommandLine;
 
-namespace StandardConsole;
+namespace Kimigayo;
 
 public class Program
 {

@@ -1,11 +1,10 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Diagnostics;
 using Arc.Unit;
+using Kimigayo.Lsp;
 using SimpleCommandLine;
-using static SimpleCommandLine.SimpleParser;
 
-namespace StandardConsole;
+namespace Kimigayo;
 
 public class ConsoleUnit : UnitBase, IUnitPreparable, IUnitExecutable
 {
@@ -123,18 +122,22 @@ public class ConsoleUnit : UnitBase, IUnitPreparable, IUnitExecutable
 
     async Task IUnitExecutable.Terminate(UnitContext unitContext, CancellationToken cancellationToken)
     {
-        this.logger.GetWriter()?.Write("Exit");
+        // this.logger.GetWriter()?.Write("Exit");
     }
 
     [SimpleCommand("Default", Default = true)]
     public class DefaultCommand : ISimpleCommand
     {
-        public DefaultCommand()
+        private readonly UnitContext unitContext;
+
+        public DefaultCommand(UnitContext unitContext)
         {
+            this.unitContext = unitContext;
         }
 
         public async Task Execute(string[] args, CancellationToken cancellationToken)
         {
+            Console.WriteLine($"Kimigayo ({Arc.VersionHelper.VersionString}) by archi-Doc");
         }
     }
 }

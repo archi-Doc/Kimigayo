@@ -1,16 +1,16 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
-using Arc.Threading;
 using Arc.Unit;
 using SimpleCommandLine;
 
-namespace StandardConsole;
+namespace Kimigayo.Lsp;
 
 [SimpleCommand(LspCommand.Name)]
 public class LspCommand : ISimpleCommand<LspCommand.Options>
 {
     public const string Name = "lsp";
+    private const int DebuggerWaitSeconds = 20;
 
     public class Options
     {
@@ -31,9 +31,14 @@ public class LspCommand : ISimpleCommand<LspCommand.Options>
         {
             try
             {
+                var time = DateTime.UtcNow;
                 while (!Debugger.IsAttached)
                 {
                     await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+                    if (DateTime.UtcNow - time > TimeSpan.FromSeconds(DebuggerWaitSeconds))
+                    {
+                        break;
+                    }
                 }
             }
             catch (OperationCanceledException)
