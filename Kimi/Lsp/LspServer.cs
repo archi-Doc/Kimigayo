@@ -1,31 +1,125 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
+using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using Arc.IO;
+using Kimi.Lsp;
+using Tinyhand.IO;
+using Tinyhand.Tree;
 
 namespace Kimigayo.Lsp;
 
 internal static class LspServer
 {
-    private static readonly Stream Input = Console.OpenStandardInput();
-    private static readonly Stream Output = Console.OpenStandardOutput();
-    private static readonly SemaphoreSlim WriteLock = new(1, 1);
+    private const byte Cr = (byte)'\r';
+    private const byte Lf = (byte)'\n';
+
+    private static readonly Stream Input;
+    private static readonly Stream Output;
+    private static readonly SemaphoreSlim WriteLock;
+    private static readonly byte[] ContentHeader;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = false,
+    };
 
     private static readonly Dictionary<string, TomlDocumentState> Documents = new(StringComparer.Ordinal);
     private static bool shutdownRequested;
 
+    static LspServer()
+    {
+        Input = Console.OpenStandardInput();
+        Output = Console.OpenStandardOutput();
+        WriteLock = new(1, 1);
+        ContentHeader = Encoding.UTF8.GetBytes("content-length: ");
+    }
+
     public static async Task Run(CancellationToken cancellationToken)
     {
+        var header = new byte[32];
         while (!cancellationToken.IsCancellationRequested)
         {
+            // Read 'Content-Length'
+            var read = await Input.ReadAsync(header.AsMemory(0, ContentHeader.Length), cancellationToken);
+            if (read < ContentHeader.Length)
+            {
+                break;
+            }
+
+            for (var i = 0; i < header.Length; i++)
+            {// To lower
+                if ((uint)(header[i] - 'A') <= 'Z' - 'A')
+                {
+                    header[i] += 0x20;
+                }
+            }
+
+            if (!header.AsSpan(0, ContentHeader.Length).SequenceEqual(ContentHeader))
+            {// Not 'Content-Length'
+                break;
+            }
+
+            read = 0;
+            var firstLine = true;
+            int contentLength = 0;
+            while (true)
+            {
+                var b = (byte)Input.ReadByte();
+                if (b == Cr ||
+                    b == Lf)
+                {
+                    if (b == Cr)
+                    {
+                        Input.ReadByte(); // Lf
+                    }
+
+                    if (firstLine)
+                    {
+                        firstLine = false;
+                        Utf8Parser.TryParse(header.AsSpan(0, read), out contentLength, out _);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                else
+                {
+                    if (firstLine && read < header.Length)
+                    {
+                        header[read++] = b;
+                    }
+                }
+            }
+
+            var buffer = ArrayPool<byte>.Shared.Rent(contentLength);
+            try
+            {
+                await Input.ReadExactlyAsync(buffer.AsMemory(0, contentLength), cancellationToken).ConfigureAwait(false);
+
+                var message = JsonSerializer.Deserialize<LspMessage>(buffer.AsSpan(0, contentLength), JsonOptions);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+
+            /*var read = await Input.ReadAsync(buffer, cancellationToken);
+            var ros = new ReadOnlySequence<byte>();
+            var st = Encoding.UTF8.GetString(buffer, 0, read);
+
             var message = await ReadMessage(Input).ConfigureAwait(false);
             if (message is null)
             {
                 return;
-            }
+            }*/
 
-            await HandleMessage(message).ConfigureAwait(false);
+            // await HandleMessage(message).ConfigureAwait(false);
         }
     }
 
@@ -365,7 +459,6 @@ internal static class LspServer
             }
 
             const string contentLengthPrefix = "Content-Length:";
-
             if (line.StartsWith(contentLengthPrefix, StringComparison.OrdinalIgnoreCase))
             {
                 var value = line[contentLengthPrefix.Length..].Trim();
