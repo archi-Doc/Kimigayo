@@ -5,10 +5,6 @@ using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Arc.IO;
-using Kimi.Lsp;
-using Tinyhand.IO;
-using Tinyhand.Tree;
 
 namespace Kimigayo.Lsp;
 
@@ -102,7 +98,22 @@ internal static class LspServer
             {
                 await Input.ReadExactlyAsync(buffer.AsMemory(0, contentLength), cancellationToken).ConfigureAwait(false);
 
+                {
+                    if (contentLength + 1 < buffer.Length)
+                    {
+                        buffer[contentLength++] = Lf;
+                    }
+
+                    File.AppendAllBytes("C:\\App\\lsp.txt", buffer.AsSpan(0, contentLength));
+                }
+
                 var message = JsonSerializer.Deserialize<LspMessage>(buffer.AsSpan(0, contentLength), JsonOptions);
+                if (message is null)
+                {
+                    break;
+                }
+
+                await HandleMessage(message).ConfigureAwait(false);
             }
             finally
             {
@@ -118,31 +129,15 @@ internal static class LspServer
             {
                 return;
             }*/
-
-            // await HandleMessage(message).ConfigureAwait(false);
         }
     }
 
-    private static async Task HandleMessage(string json)
+    private static async Task HandleMessage(LspMessage message)
     {
-        using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-
-        if (!root.TryGetProperty("method", out var methodElement))
-        {
-            return;
-        }
-
-        var method = methodElement.GetString();
-
-        JsonElement? id = root.TryGetProperty("id", out var idElement)
-            ? idElement.Clone()
-            : null;
-
-        switch (method)
+        switch (message.Method)
         {
             case "initialize":
-                await HandleInitializeAsync(id).ConfigureAwait(false);
+                await HandleInitializeAsync(message.Id).ConfigureAwait(false);
                 break;
 
             case "initialized":
@@ -150,10 +145,7 @@ internal static class LspServer
 
             case "shutdown":
                 shutdownRequested = true;
-                await SendResponseAsync(id, writer =>
-                {
-                    writer.WriteNull("result");
-                }).ConfigureAwait(false);
+                await SendResponseAsync(message.Id, null).ConfigureAwait(false);
                 break;
 
             case "exit":
@@ -161,21 +153,24 @@ internal static class LspServer
                 break;
 
             case "textDocument/didOpen":
-                await HandleDidOpenAsync(root).ConfigureAwait(false);
+                await HandleDidOpenAsync(message.Params).ConfigureAwait(false);
                 break;
 
             case "textDocument/didChange":
-                await HandleDidChangeAsync(root).ConfigureAwait(false);
+                await HandleDidChangeAsync(message.Params).ConfigureAwait(false);
                 break;
 
             case "textDocument/didClose":
-                await HandleDidCloseAsync(root).ConfigureAwait(false);
+                await HandleDidCloseAsync(message.Params).ConfigureAwait(false);
                 break;
 
             default:
-                if (id is not null)
+                if (message.Id is not null)
                 {
-                    await SendMethodNotFoundAsync(id.Value, method ?? string.Empty).ConfigureAwait(false);
+                    await SendErrorAsync(
+                        message.Id,
+                        -32601,
+                        $"Method not found: {message.Method}").ConfigureAwait(false);
                 }
 
                 break;
@@ -184,113 +179,107 @@ internal static class LspServer
 
     private static async Task HandleInitializeAsync(JsonElement? id)
     {
-        await SendResponseAsync(id, writer =>
+        var response = new InitializeResult
         {
-            writer.WritePropertyName("result");
-            writer.WriteStartObject();
+            Capabilities = new ServerCapabilities
+            {
+                TextDocumentSync = new TextDocumentSyncOptions
+                {
+                    OpenClose = true,
 
-            writer.WritePropertyName("capabilities");
-            writer.WriteStartObject();
+                    // 2 = Incremental
+                    Change = 2,
+                },
+            },
+            ServerInfo = new ServerInfo
+            {
+                Name = "Simple TOML Language Server",
+                Version = "0.0.1",
+            },
+        };
 
-            writer.WritePropertyName("textDocumentSync");
-            writer.WriteStartObject();
-            writer.WriteBoolean("openClose", true);
-
-            // 2 = TextDocumentSyncKind.Incremental
-            writer.WriteNumber("change", 2);
-
-            writer.WriteEndObject();
-
-            writer.WriteEndObject();
-
-            writer.WritePropertyName("serverInfo");
-            writer.WriteStartObject();
-            writer.WriteString("name", "Simple TOML Language Server");
-            writer.WriteString("version", "0.0.1");
-            writer.WriteEndObject();
-
-            writer.WriteEndObject();
-        }).ConfigureAwait(false);
+        await SendResponseAsync(id, response).ConfigureAwait(false);
     }
 
-    private static async Task HandleDidOpenAsync(JsonElement root)
+    private static async Task HandleDidOpenAsync(JsonElement? parametersElement)
     {
-        var textDocument = root.GetProperty("params").GetProperty("textDocument");
-
-        var uri = textDocument.GetProperty("uri").GetString();
-        var version = textDocument.TryGetProperty("version", out var versionElement)
-            ? versionElement.GetInt32()
-            : 0;
-        var text = textDocument.GetProperty("text").GetString() ?? string.Empty;
-
-        if (uri is null)
+        if (parametersElement is null)
         {
             return;
         }
 
-        var state = new TomlDocumentState(uri);
-        state.Open(text, version);
-        Documents[uri] = state;
+        var parameters = parametersElement.Value.Deserialize<DidOpenTextDocumentParams>(JsonOptions);
+        if (parameters?.TextDocument is null)
+        {
+            return;
+        }
+
+        var doc = parameters.TextDocument;
+
+        var state = new TomlDocumentState(doc.Uri);
+        state.Open(doc.Text ?? string.Empty, doc.Version);
+
+        Documents[doc.Uri] = state;
 
         await PublishDiagnosticsAsync(state).ConfigureAwait(false);
     }
 
-    private static async Task HandleDidChangeAsync(JsonElement root)
+    private static async Task HandleDidChangeAsync(JsonElement? parametersElement)
     {
-        var parameters = root.GetProperty("params");
-        var textDocument = parameters.GetProperty("textDocument");
-
-        var uri = textDocument.GetProperty("uri").GetString();
-        var version = textDocument.TryGetProperty("version", out var versionElement)
-            ? versionElement.GetInt32()
-            : 0;
-
-        if (uri is null || !Documents.TryGetValue(uri, out var state))
+        if (parametersElement is null)
         {
             return;
         }
 
-        var contentChanges = parameters.GetProperty("contentChanges");
-
-        foreach (var change in contentChanges.EnumerateArray())
+        var parameters = parametersElement.Value.Deserialize<DidChangeTextDocumentParams>(JsonOptions);
+        if (parameters?.TextDocument is null)
         {
-            if (change.TryGetProperty("range", out var range))
-            {
-                var start = range.GetProperty("start");
-                var end = range.GetProperty("end");
-
-                var textChange = new TextChange(
-                    start.GetProperty("line").GetInt32(),
-                    start.GetProperty("character").GetInt32(),
-                    end.GetProperty("line").GetInt32(),
-                    end.GetProperty("character").GetInt32(),
-                    change.GetProperty("text").GetString() ?? string.Empty);
-
-                state.ApplyChange(textChange, version);
-            }
-            else
-            {
-                // Fallback for full synchronization.
-                var text = change.GetProperty("text").GetString() ?? string.Empty;
-                state.Open(text, version);
-            }
+            return;
         }
 
-        // This sample re-lints the full document after applying incremental edits.
-        // The important point is that the server stays alive and keeps document state.
-        // You can replace this with range-based analysis later.
+        var uri = parameters.TextDocument.Uri;
+        var version = parameters.TextDocument.Version;
+
+        if (!Documents.TryGetValue(uri, out var state))
+        {
+            return;
+        }
+
+        foreach (var change in parameters.ContentChanges)
+        {
+            if (change.Range is null)
+            {
+                state.Open(change.Text ?? string.Empty, version);
+                continue;
+            }
+
+            var textChange = new TextChange(
+                change.Range.Start.Line,
+                change.Range.Start.Character,
+                change.Range.End.Line,
+                change.Range.End.Character,
+                change.Text ?? string.Empty);
+
+            state.ApplyChange(textChange, version);
+        }
+
         await PublishDiagnosticsAsync(state).ConfigureAwait(false);
     }
 
-    private static async Task HandleDidCloseAsync(JsonElement root)
+    private static async Task HandleDidCloseAsync(JsonElement? parametersElement)
     {
-        var textDocument = root.GetProperty("params").GetProperty("textDocument");
-        var uri = textDocument.GetProperty("uri").GetString();
-
-        if (uri is null)
+        if (parametersElement is null)
         {
             return;
         }
+
+        var parameters = parametersElement.Value.Deserialize<DidCloseTextDocumentParams>(JsonOptions);
+        if (parameters?.TextDocument is null)
+        {
+            return;
+        }
+
+        var uri = parameters.TextDocument.Uri;
 
         Documents.Remove(uri);
 
@@ -308,53 +297,39 @@ internal static class LspServer
         int? version,
         IReadOnlyList<TomlDiagnostic> diagnostics)
     {
-        await SendNotificationAsync("textDocument/publishDiagnostics", writer =>
+        var lspDiagnostics = new List<Diagnostic>(diagnostics.Count);
+
+        foreach (var diagnostic in diagnostics)
         {
-            writer.WritePropertyName("params");
-            writer.WriteStartObject();
-
-            writer.WriteString("uri", uri);
-
-            if (version is not null)
+            lspDiagnostics.Add(new Diagnostic
             {
-                writer.WriteNumber("version", version.Value);
-            }
+                Range = new Range
+                {
+                    Start = new Position
+                    {
+                        Line = diagnostic.Line,
+                        Character = diagnostic.Character,
+                    },
+                    End = new Position
+                    {
+                        Line = diagnostic.Line,
+                        Character = diagnostic.Character + Math.Max(1, diagnostic.Length),
+                    },
+                },
+                Severity = ToLspSeverity(diagnostic.Severity),
+                Source = "simple-toml-lsp",
+                Message = diagnostic.Message,
+            });
+        }
 
-            writer.WritePropertyName("diagnostics");
-            writer.WriteStartArray();
+        var parameters = new PublishDiagnosticsParams
+        {
+            Uri = uri,
+            Version = version,
+            Diagnostics = lspDiagnostics,
+        };
 
-            foreach (var diagnostic in diagnostics)
-            {
-                writer.WriteStartObject();
-
-                writer.WritePropertyName("range");
-                writer.WriteStartObject();
-
-                writer.WritePropertyName("start");
-                writer.WriteStartObject();
-                writer.WriteNumber("line", diagnostic.Line);
-                writer.WriteNumber("character", diagnostic.Character);
-                writer.WriteEndObject();
-
-                writer.WritePropertyName("end");
-                writer.WriteStartObject();
-                writer.WriteNumber("line", diagnostic.Line);
-                writer.WriteNumber("character", diagnostic.Character + Math.Max(1, diagnostic.Length));
-                writer.WriteEndObject();
-
-                writer.WriteEndObject();
-
-                writer.WriteNumber("severity", ToLspSeverity(diagnostic.Severity));
-                writer.WriteString("source", "simple-toml-lsp");
-                writer.WriteString("message", diagnostic.Message);
-
-                writer.WriteEndObject();
-            }
-
-            writer.WriteEndArray();
-
-            writer.WriteEndObject();
-        }).ConfigureAwait(false);
+        await SendNotificationAsync("textDocument/publishDiagnostics", parameters).ConfigureAwait(false);
     }
 
     private static int ToLspSeverity(string severity)
@@ -367,70 +342,53 @@ internal static class LspServer
             _ => 1,
         };
 
-    private static async Task SendMethodNotFoundAsync(JsonElement id, string method)
+    private static async Task SendResponseAsync(JsonElement? id, object? result)
     {
-        await SendRawAsync(writer =>
+        var response = new JsonRpcResponse
         {
-            writer.WriteString("jsonrpc", "2.0");
-            writer.WritePropertyName("id");
-            id.WriteTo(writer);
+            Id = id,
+            Result = result,
+        };
 
-            writer.WritePropertyName("error");
-            writer.WriteStartObject();
-            writer.WriteNumber("code", -32601);
-            writer.WriteString("message", $"Method not found: {method}");
-            writer.WriteEndObject();
-        }).ConfigureAwait(false);
+        await SendJsonAsync(response).ConfigureAwait(false);
     }
 
-    private static async Task SendResponseAsync(JsonElement? id, Action<Utf8JsonWriter> writeBody)
+    private static async Task SendNotificationAsync(string method, object? parameters)
     {
-        await SendRawAsync(writer =>
+        var notification = new JsonRpcNotification
         {
-            writer.WriteString("jsonrpc", "2.0");
+            Method = method,
+            Params = parameters,
+        };
 
-            if (id is null)
+        await SendJsonAsync(notification).ConfigureAwait(false);
+    }
+
+    private static async Task SendErrorAsync(JsonElement? id, int code, string message)
+    {
+        var response = new JsonRpcResponse
+        {
+            Id = id,
+            Error = new JsonRpcError
             {
-                writer.WriteNull("id");
-            }
-            else
-            {
-                writer.WritePropertyName("id");
-                id.Value.WriteTo(writer);
-            }
+                Code = code,
+                Message = message,
+            },
+        };
 
-            writeBody(writer);
-        }).ConfigureAwait(false);
+        await SendJsonAsync(response).ConfigureAwait(false);
     }
 
-    private static async Task SendNotificationAsync(string method, Action<Utf8JsonWriter> writeBody)
+    private static async Task SendJsonAsync<T>(T value)
     {
-        await SendRawAsync(writer =>
-        {
-            writer.WriteString("jsonrpc", "2.0");
-            writer.WriteString("method", method);
-            writeBody(writer);
-        }).ConfigureAwait(false);
-    }
-
-    private static async Task SendRawAsync(Action<Utf8JsonWriter> writeObjectBody)
-    {
-        var buffer = new ArrayBufferWriter<byte>();
-
-        using (var writer = new Utf8JsonWriter(buffer))
-        {
-            writer.WriteStartObject();
-            writeObjectBody(writer);
-            writer.WriteEndObject();
-        }
-
-        var jsonBytes = buffer.WrittenSpan.ToArray();
-        var header = Encoding.ASCII.GetBytes($"Content-Length: {jsonBytes.Length}\r\n\r\n");
+        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions);
+        var headerBytes = Encoding.ASCII.GetBytes($"Content-Length: {jsonBytes.Length}\r\n\r\n");
 
         await WriteLock.WaitAsync().ConfigureAwait(false);
+
         try
         {
-            await Output.WriteAsync(header).ConfigureAwait(false);
+            await Output.WriteAsync(headerBytes).ConfigureAwait(false);
             await Output.WriteAsync(jsonBytes).ConfigureAwait(false);
             await Output.FlushAsync().ConfigureAwait(false);
         }
@@ -438,6 +396,56 @@ internal static class LspServer
         {
             WriteLock.Release();
         }
+    }
+
+    private static async Task<string?> ReadMessageAsync(Stream input)
+    {
+        var contentLength = -1;
+
+        while (true)
+        {
+            var line = await ReadAsciiLineAsync(input).ConfigureAwait(false);
+
+            if (line is null)
+            {
+                return null;
+            }
+
+            if (line.Length == 0)
+            {
+                break;
+            }
+
+            const string contentLengthPrefix = "Content-Length:";
+
+            if (line.StartsWith(contentLengthPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var value = line[contentLengthPrefix.Length..].Trim();
+                contentLength = int.Parse(value);
+            }
+        }
+
+        if (contentLength < 0)
+        {
+            return null;
+        }
+
+        var buffer = new byte[contentLength];
+        var read = 0;
+
+        while (read < contentLength)
+        {
+            var n = await input.ReadAsync(buffer.AsMemory(read, contentLength - read)).ConfigureAwait(false);
+
+            if (n == 0)
+            {
+                return null;
+            }
+
+            read += n;
+        }
+
+        return Encoding.UTF8.GetString(buffer);
     }
 
     private static async Task<string?> ReadMessage(Stream input)

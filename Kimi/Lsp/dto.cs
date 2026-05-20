@@ -2,7 +2,7 @@
 
 using System.Text.Json;
 
-namespace Kimi.Lsp;
+namespace Kimigayo.Lsp;
 
 public sealed class LspMessage
 {
