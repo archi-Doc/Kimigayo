@@ -15,21 +15,21 @@ internal static class LspServer
     private static readonly Dictionary<string, TomlDocumentState> Documents = new(StringComparer.Ordinal);
     private static bool shutdownRequested;
 
-    public static async Task RunAsync()
+    public static async Task Run(CancellationToken cancellationToken)
     {
-        while (true)
+        while (!cancellationToken.IsCancellationRequested)
         {
-            var message = await ReadMessageAsync(Input).ConfigureAwait(false);
+            var message = await ReadMessage(Input).ConfigureAwait(false);
             if (message is null)
             {
                 return;
             }
 
-            await HandleMessageAsync(message).ConfigureAwait(false);
+            await HandleMessage(message).ConfigureAwait(false);
         }
     }
 
-    private static async Task HandleMessageAsync(string json)
+    private static async Task HandleMessage(string json)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -346,7 +346,7 @@ internal static class LspServer
         }
     }
 
-    private static async Task<string?> ReadMessageAsync(Stream input)
+    private static async Task<string?> ReadMessage(Stream input)
     {
         var contentLength = -1;
 
@@ -438,7 +438,7 @@ internal static class LspServer
     }
 }
 
-public sealed class TomlDocumentState
+internal sealed class TomlDocumentState
 {
     private readonly List<string> lines = new();
 
@@ -512,21 +512,11 @@ public sealed class TomlDocumentState
         => Math.Min(Math.Max(value, min), max);
 }
 
-public sealed record TextChange(
-    int StartLine,
-    int StartCharacter,
-    int EndLine,
-    int EndCharacter,
-    string Text);
+internal sealed record TextChange(int StartLine, int StartCharacter, int EndLine, int EndCharacter, string Text);
 
-public sealed record TomlDiagnostic(
-    int Line,
-    int Character,
-    int Length,
-    string Severity,
-    string Message);
+internal sealed record TomlDiagnostic(int Line, int Character, int Length, string Severity, string Message);
 
-public static class SimpleTomlLinter
+internal static class SimpleTomlLinter
 {
     public static List<TomlDiagnostic> Lint(IReadOnlyList<string> lines)
     {

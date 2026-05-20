@@ -47,6 +47,6 @@ public class LspCommand : ISimpleCommand<LspCommand.Options>
             }
         }
 
-        await LspServer.RunAsync().ConfigureAwait(false);
+        await LspServer.Run(cancellationToken).ConfigureAwait(false);
     }
 }
