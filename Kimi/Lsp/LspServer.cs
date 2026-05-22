@@ -2,41 +2,282 @@
 
 using System.Buffers;
 using System.Buffers.Text;
-using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Kimigayo.Lsp;
 
-internal static class LspServer
+internal class LspServer
 {
     private const byte Cr = (byte)'\r';
     private const byte Lf = (byte)'\n';
 
-    private static readonly Stream Input;
-    private static readonly Stream Output;
-    private static readonly SemaphoreSlim WriteLock;
-    private static readonly byte[] ContentHeader;
-    private static readonly JsonSerializerOptions JsonOptions = new()
+    private readonly Stream input;
+    private readonly Stream output;
+    private readonly SemaphoreSlim writeLock;
+    private readonly byte[] contentHeader;
+    private readonly JsonSerializerOptions jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         WriteIndented = false,
     };
 
-    private static readonly Dictionary<string, TomlDocumentState> Documents = new(StringComparer.Ordinal);
-    private static bool shutdownRequested;
+    private readonly Dictionary<string, TomlDocumentState> documents = new(StringComparer.Ordinal);
+    private byte[] buffer = new byte[1024];
+    private int start;
+    private int end;
+    private bool shutdownRequested;
 
-    static LspServer()
+    public LspServer()
     {
-        Input = Console.OpenStandardInput();
-        Output = Console.OpenStandardOutput();
-        WriteLock = new(1, 1);
-        ContentHeader = Encoding.UTF8.GetBytes("content-length: ");
+        this.input = Console.OpenStandardInput();
+        this.output = Console.OpenStandardOutput();
+        this.writeLock = new(1, 1);
+        this.contentHeader = Encoding.UTF8.GetBytes("content-length: ");
     }
 
-    public static async Task Run2(CancellationToken cancellationToken)
+    public async Task Run3(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            this.EnsureWritableSpace();
+
+            int read = await this.input.ReadAsync(this.buffer.AsMemory(this.end, this.buffer.Length - this.end), cancellationToken).ConfigureAwait(false);
+
+            if (read == 0)
+            {
+                return;
+            }
+
+            this.end += read;
+
+            this.ProcessBufferedMessages();
+        }
+    }
+
+    protected abstract void OnPayload(ReadOnlySpan<byte> payload);
+
+    private void ProcessBufferedMessages()
+    {
+        while (true)
+        {
+            ReadOnlySpan<byte> available = this.buffer.AsSpan(this.start, this.end - this.start);
+
+            if (!this.TryParseHeaders(available, out int headerLength, out int contentLength))
+            {
+                if (available.Length > MaxHeaderSize)
+                {
+                    throw new InvalidDataException("LSP header is too large.");
+                }
+
+                return;
+            }
+
+            if (contentLength < 0)
+            {
+                throw new InvalidDataException("Content-Length header was not found.");
+            }
+
+            int messageLength = headerLength + contentLength;
+
+            if (available.Length < messageLength)
+            {
+                return;
+            }
+
+            ReadOnlySpan<byte> payload = available.Slice(headerLength, contentLength);
+
+            // The payload span is valid only during this call.
+            this.OnPayload(payload);
+
+            this.start += messageLength;
+
+            if (this.start == this.end)
+            {
+                this.start = 0;
+                this.end = 0;
+                return;
+            }
+        }
+    }
+
+    private bool TryParseHeaders(        ReadOnlySpan<byte> data,        out int headerLength,        out int contentLength)
+    {
+        headerLength = 0;
+        contentLength = -1;
+
+        int lineStart = 0;
+
+        for (int i = 0; i < data.Length; i++)
+        {
+            if (data[i] != (byte)'\n')
+            {
+                continue;
+            }
+
+            int lineEnd = i;
+
+            if (lineEnd > lineStart && data[lineEnd - 1] == (byte)'\r')
+            {
+                lineEnd--;
+            }
+
+            int lineLength = lineEnd - lineStart;
+
+            // Empty line: end of headers.
+            if (lineLength == 0)
+            {
+                headerLength = i + 1;
+                return true;
+            }
+
+            ReadOnlySpan<byte> line = data.Slice(lineStart, lineLength);
+
+            if (this.TryParseContentLength(line, out int parsedLength))
+            {
+                contentLength = parsedLength;
+            }
+
+            // Content-Type and unknown headers are ignored.
+            lineStart = i + 1;
+        }
+
+        return false;
+    }
+
+    private bool TryParseContentLength(ReadOnlySpan<byte> line, out int contentLength)
+    {
+        contentLength = 0;
+
+        ReadOnlySpan<byte> name = "Content-Length:"u8;
+
+        if (line.Length < name.Length)
+        {
+            return false;
+        }
+
+        if (!this.AsciiEqualsIgnoreCase(line.Slice(0, name.Length), name))
+        {
+            return false;
+        }
+
+        int i = name.Length;
+
+        while (i < line.Length && (line[i] == (byte)' ' || line[i] == (byte)'\t'))
+        {
+            i++;
+        }
+
+        if (i >= line.Length || line[i] < (byte)'0' || line[i] > (byte)'9')
+        {
+            throw new InvalidDataException("Invalid Content-Length header.");
+        }
+
+        int value = 0;
+
+        while (i < line.Length)
+        {
+            byte b = line[i];
+
+            if (b < (byte)'0' || b > (byte)'9')
+            {
+                break;
+            }
+
+            int digit = b - (byte)'0';
+
+            if (value > (int.MaxValue - digit) / 10)
+            {
+                throw new InvalidDataException("Content-Length is too large.");
+            }
+
+            value = value * 10 + digit;
+            i++;
+        }
+
+        while (i < line.Length)
+        {
+            byte b = line[i];
+
+            if (b != (byte)' ' && b != (byte)'\t')
+            {
+                throw new InvalidDataException("Invalid trailing characters in Content-Length header.");
+            }
+
+            i++;
+        }
+
+        contentLength = value;
+        return true;
+    }
+
+    private bool AsciiEqualsIgnoreCase(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
+    {
+        if (x.Length != y.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < x.Length; i++)
+        {
+            byte a = x[i];
+            byte b = y[i];
+
+            if ((uint)(a - 'A') <= 'Z' - 'A')
+            {
+                a = (byte)(a + 0x20);
+            }
+
+            if ((uint)(b - 'A') <= 'Z' - 'A')
+            {
+                b = (byte)(b + 0x20);
+            }
+
+            if (a != b)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void EnsureWritableSpace()
+    {
+        if (this.end < this.buffer.Length)
+        {
+            return;
+        }
+
+        int remaining = this.end - this.start;
+
+        if (this.start > 0)
+        {
+            Buffer.BlockCopy(this.buffer, this.start, this.buffer, 0, remaining);
+            this.start = 0;
+            this.end = remaining;
+
+            if (this.end < this.buffer.Length)
+            {
+                return;
+            }
+        }
+
+        int newSize = checked(this.buffer.Length * 2);
+        byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newSize);
+
+        Buffer.BlockCopy(this.buffer, this.start, newBuffer, 0, remaining);
+
+        ArrayPool<byte>.Shared.Return(this.buffer);
+
+        this.buffer = newBuffer;
+        this.start = 0;
+        this.end = remaining;
+    }
+
+    public async Task Run2(CancellationToken cancellationToken)
     {
         var buffer = new byte[1024];
         var start = 0;
@@ -44,7 +285,7 @@ internal static class LspServer
 
         while (!cancellationToken.IsCancellationRequested)
         {
-            var read = await Input.ReadAsync(buffer.AsMemory(end), cancellationToken);
+            var read = await this.input.ReadAsync(buffer.AsMemory(end), cancellationToken);
             if (read == 0)
             {
                 break;
@@ -52,12 +293,12 @@ internal static class LspServer
 
             end += read;
             var length = end - start;
-            if (length < ContentHeader.Length)
+            if (length < this.contentHeader.Length)
             {
                 continue;
             }
 
-            for (var i = start; i < start + ContentHeader.Length; i++)
+            for (var i = start; i < start + this.contentHeader.Length; i++)
             {// To lower
                 if ((uint)(buffer[i] - 'A') <= 'Z' - 'A')
                 {
@@ -65,24 +306,24 @@ internal static class LspServer
                 }
             }
 
-            if (!buffer.AsSpan(start, ContentHeader.Length).SequenceEqual(ContentHeader))
+            if (!buffer.AsSpan(start, this.contentHeader.Length).SequenceEqual(this.contentHeader))
             {// Not 'Content-Length: '
                 break;
             }
 
-            start += ContentHeader.Length;
+            start += this.contentHeader.Length;
             buffer.AsSpan(start, end - start).IndexOf(Lf);
         }
     }
 
-    public static async Task Run(CancellationToken cancellationToken)
+    public async Task Run(CancellationToken cancellationToken)
     {
         var header = new byte[32];
         while (!cancellationToken.IsCancellationRequested)
         {
             // Read 'Content-Length'
-            var read = await Input.ReadAsync(header.AsMemory(0, ContentHeader.Length), cancellationToken);
-            if (read < ContentHeader.Length)
+            var read = await this.input.ReadAsync(header.AsMemory(0, this.contentHeader.Length), cancellationToken);
+            if (read < this.contentHeader.Length)
             {
                 break;
             }
@@ -95,7 +336,7 @@ internal static class LspServer
                 }
             }
 
-            if (!header.AsSpan(0, ContentHeader.Length).SequenceEqual(ContentHeader))
+            if (!header.AsSpan(0, this.contentHeader.Length).SequenceEqual(this.contentHeader))
             {// Not 'Content-Length'
                 break;
             }
@@ -105,13 +346,13 @@ internal static class LspServer
             int contentLength = 0;
             while (true)
             {
-                var b = (byte)Input.ReadByte();
+                var b = (byte)this.input.ReadByte();
                 if (b == Cr ||
                     b == Lf)
                 {
                     if (b == Cr)
                     {
-                        Input.ReadByte(); // Lf
+                        this.input.ReadByte(); // Lf
                     }
 
                     if (firstLine)
@@ -136,7 +377,7 @@ internal static class LspServer
             var buffer = ArrayPool<byte>.Shared.Rent(contentLength);
             try
             {
-                await Input.ReadExactlyAsync(buffer.AsMemory(0, contentLength), cancellationToken).ConfigureAwait(false);
+                await this.input.ReadExactlyAsync(buffer.AsMemory(0, contentLength), cancellationToken).ConfigureAwait(false);
 
                 {
                     if (contentLength + 1 < buffer.Length)
@@ -147,13 +388,13 @@ internal static class LspServer
                     File.AppendAllBytes("C:\\App\\lsp.txt", buffer.AsSpan(0, contentLength));
                 }
 
-                var message = JsonSerializer.Deserialize<LspMessage>(buffer.AsSpan(0, contentLength), JsonOptions);
+                var message = JsonSerializer.Deserialize<LspMessage>(buffer.AsSpan(0, contentLength), this.jsonOptions);
                 if (message is null)
                 {
                     break;
                 }
 
-                await HandleMessage(message).ConfigureAwait(false);
+                await this.HandleMessage(message).ConfigureAwait(false);
             }
             finally
             {
@@ -172,42 +413,42 @@ internal static class LspServer
         }
     }
 
-    private static async Task HandleMessage(LspMessage message)
+    private async Task HandleMessage(LspMessage message)
     {
         switch (message.Method)
         {
             case "initialize":
-                await HandleInitializeAsync(message.Id).ConfigureAwait(false);
+                await this.HandleInitializeAsync(message.Id).ConfigureAwait(false);
                 break;
 
             case "initialized":
                 break;
 
             case "shutdown":
-                shutdownRequested = true;
-                await SendResponseAsync(message.Id, null).ConfigureAwait(false);
+                this.shutdownRequested = true;
+                await this.SendResponseAsync(message.Id, null).ConfigureAwait(false);
                 break;
 
             case "exit":
-                Environment.Exit(shutdownRequested ? 0 : 1);
+                Environment.Exit(this.shutdownRequested ? 0 : 1);
                 break;
 
             case "textDocument/didOpen":
-                await HandleDidOpenAsync(message.Params).ConfigureAwait(false);
+                await this.HandleDidOpenAsync(message.Params).ConfigureAwait(false);
                 break;
 
             case "textDocument/didChange":
-                await HandleDidChangeAsync(message.Params).ConfigureAwait(false);
+                await this.HandleDidChangeAsync(message.Params).ConfigureAwait(false);
                 break;
 
             case "textDocument/didClose":
-                await HandleDidCloseAsync(message.Params).ConfigureAwait(false);
+                await this.HandleDidCloseAsync(message.Params).ConfigureAwait(false);
                 break;
 
             default:
                 if (message.Id is not null)
                 {
-                    await SendErrorAsync(
+                    await this.SendErrorAsync(
                         message.Id,
                         -32601,
                         $"Method not found: {message.Method}").ConfigureAwait(false);
@@ -217,7 +458,7 @@ internal static class LspServer
         }
     }
 
-    private static async Task HandleInitializeAsync(JsonElement? id)
+    private async Task HandleInitializeAsync(JsonElement? id)
     {
         var response = new InitializeResult
         {
@@ -238,17 +479,17 @@ internal static class LspServer
             },
         };
 
-        await SendResponseAsync(id, response).ConfigureAwait(false);
+        await this.SendResponseAsync(id, response).ConfigureAwait(false);
     }
 
-    private static async Task HandleDidOpenAsync(JsonElement? parametersElement)
+    private async Task HandleDidOpenAsync(JsonElement? parametersElement)
     {
         if (parametersElement is null)
         {
             return;
         }
 
-        var parameters = parametersElement.Value.Deserialize<DidOpenTextDocumentParams>(JsonOptions);
+        var parameters = parametersElement.Value.Deserialize<DidOpenTextDocumentParams>(this.jsonOptions);
         if (parameters?.TextDocument is null)
         {
             return;
@@ -259,19 +500,19 @@ internal static class LspServer
         var state = new TomlDocumentState(doc.Uri);
         state.Open(doc.Text ?? string.Empty, doc.Version);
 
-        Documents[doc.Uri] = state;
+        this.documents[doc.Uri] = state;
 
-        await PublishDiagnosticsAsync(state).ConfigureAwait(false);
+        await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
     }
 
-    private static async Task HandleDidChangeAsync(JsonElement? parametersElement)
+    private async Task HandleDidChangeAsync(JsonElement? parametersElement)
     {
         if (parametersElement is null)
         {
             return;
         }
 
-        var parameters = parametersElement.Value.Deserialize<DidChangeTextDocumentParams>(JsonOptions);
+        var parameters = parametersElement.Value.Deserialize<DidChangeTextDocumentParams>(this.jsonOptions);
         if (parameters?.TextDocument is null)
         {
             return;
@@ -280,7 +521,7 @@ internal static class LspServer
         var uri = parameters.TextDocument.Uri;
         var version = parameters.TextDocument.Version;
 
-        if (!Documents.TryGetValue(uri, out var state))
+        if (!this.documents.TryGetValue(uri, out var state))
         {
             return;
         }
@@ -303,17 +544,17 @@ internal static class LspServer
             state.ApplyChange(textChange, version);
         }
 
-        await PublishDiagnosticsAsync(state).ConfigureAwait(false);
+        await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
     }
 
-    private static async Task HandleDidCloseAsync(JsonElement? parametersElement)
+    private async Task HandleDidCloseAsync(JsonElement? parametersElement)
     {
         if (parametersElement is null)
         {
             return;
         }
 
-        var parameters = parametersElement.Value.Deserialize<DidCloseTextDocumentParams>(JsonOptions);
+        var parameters = parametersElement.Value.Deserialize<DidCloseTextDocumentParams>(this.jsonOptions);
         if (parameters?.TextDocument is null)
         {
             return;
@@ -321,18 +562,18 @@ internal static class LspServer
 
         var uri = parameters.TextDocument.Uri;
 
-        Documents.Remove(uri);
+        this.documents.Remove(uri);
 
-        await PublishDiagnosticsAsync(uri, null, []).ConfigureAwait(false);
+        await this.PublishDiagnosticsAsync(uri, null, []).ConfigureAwait(false);
     }
 
-    private static async Task PublishDiagnosticsAsync(TomlDocumentState state)
+    private async Task PublishDiagnosticsAsync(TomlDocumentState state)
     {
         var diagnostics = SimpleTomlLinter.Lint(state.Lines);
-        await PublishDiagnosticsAsync(state.Uri, state.Version, diagnostics).ConfigureAwait(false);
+        await this.PublishDiagnosticsAsync(state.Uri, state.Version, diagnostics).ConfigureAwait(false);
     }
 
-    private static async Task PublishDiagnosticsAsync(
+    private async Task PublishDiagnosticsAsync(
         string uri,
         int? version,
         IReadOnlyList<TomlDiagnostic> diagnostics)
@@ -369,7 +610,7 @@ internal static class LspServer
             Diagnostics = lspDiagnostics,
         };
 
-        await SendNotificationAsync("textDocument/publishDiagnostics", parameters).ConfigureAwait(false);
+        await this.SendNotificationAsync("textDocument/publishDiagnostics", parameters).ConfigureAwait(false);
     }
 
     private static int ToLspSeverity(string severity)
@@ -382,7 +623,7 @@ internal static class LspServer
             _ => 1,
         };
 
-    private static async Task SendResponseAsync(JsonElement? id, object? result)
+    private async Task SendResponseAsync(JsonElement? id, object? result)
     {
         var response = new JsonRpcResponse
         {
@@ -390,10 +631,10 @@ internal static class LspServer
             Result = result,
         };
 
-        await SendJsonAsync(response).ConfigureAwait(false);
+        await this.SendJsonAsync(response).ConfigureAwait(false);
     }
 
-    private static async Task SendNotificationAsync(string method, object? parameters)
+    private async Task SendNotificationAsync(string method, object? parameters)
     {
         var notification = new JsonRpcNotification
         {
@@ -401,10 +642,10 @@ internal static class LspServer
             Params = parameters,
         };
 
-        await SendJsonAsync(notification).ConfigureAwait(false);
+        await this.SendJsonAsync(notification).ConfigureAwait(false);
     }
 
-    private static async Task SendErrorAsync(JsonElement? id, int code, string message)
+    private async Task SendErrorAsync(JsonElement? id, int code, string message)
     {
         var response = new JsonRpcResponse
         {
@@ -416,29 +657,29 @@ internal static class LspServer
             },
         };
 
-        await SendJsonAsync(response).ConfigureAwait(false);
+        await this.SendJsonAsync(response).ConfigureAwait(false);
     }
 
-    private static async Task SendJsonAsync<T>(T value)
+    private async Task SendJsonAsync<T>(T value)
     {
-        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(value, JsonOptions);
+        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(value, this.jsonOptions);
         var headerBytes = Encoding.ASCII.GetBytes($"Content-Length: {jsonBytes.Length}\r\n\r\n");
 
-        await WriteLock.WaitAsync().ConfigureAwait(false);
+        await this.writeLock.WaitAsync().ConfigureAwait(false);
 
         try
         {
-            await Output.WriteAsync(headerBytes).ConfigureAwait(false);
-            await Output.WriteAsync(jsonBytes).ConfigureAwait(false);
-            await Output.FlushAsync().ConfigureAwait(false);
+            await this.output.WriteAsync(headerBytes).ConfigureAwait(false);
+            await this.output.WriteAsync(jsonBytes).ConfigureAwait(false);
+            await this.output.FlushAsync().ConfigureAwait(false);
         }
         finally
         {
-            WriteLock.Release();
+            this.writeLock.Release();
         }
     }
 
-    private static async Task<string?> ReadMessageAsync(Stream input)
+    private async Task<string?> ReadMessageAsync(Stream input)
     {
         var contentLength = -1;
 
