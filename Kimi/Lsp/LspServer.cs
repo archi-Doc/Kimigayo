@@ -2,6 +2,7 @@
 
 using System.Buffers;
 using System.Buffers.Text;
+using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -33,6 +34,45 @@ internal static class LspServer
         Output = Console.OpenStandardOutput();
         WriteLock = new(1, 1);
         ContentHeader = Encoding.UTF8.GetBytes("content-length: ");
+    }
+
+    public static async Task Run2(CancellationToken cancellationToken)
+    {
+        var buffer = new byte[1024];
+        var start = 0;
+        var end = 0;
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var read = await Input.ReadAsync(buffer.AsMemory(end), cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+
+            end += read;
+            var length = end - start;
+            if (length < ContentHeader.Length)
+            {
+                continue;
+            }
+
+            for (var i = start; i < start + ContentHeader.Length; i++)
+            {// To lower
+                if ((uint)(buffer[i] - 'A') <= 'Z' - 'A')
+                {
+                    buffer[i] += 0x20;
+                }
+            }
+
+            if (!buffer.AsSpan(start, ContentHeader.Length).SequenceEqual(ContentHeader))
+            {// Not 'Content-Length: '
+                break;
+            }
+
+            start += ContentHeader.Length;
+            buffer.AsSpan(start, end - start).IndexOf(Lf);
+        }
     }
 
     public static async Task Run(CancellationToken cancellationToken)
