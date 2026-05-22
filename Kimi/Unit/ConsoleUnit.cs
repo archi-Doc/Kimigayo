@@ -21,6 +21,7 @@ public class ConsoleUnit : UnitBase, IUnitPreparable, IUnitExecutable
             {
                 context.AddSingleton<ConsoleUnit>();
                 context.RegisterDefaultInstantiableType<ConsoleUnit>();
+                context.AddSingleton<LspServer>();
 
                 // Command
                 context.AddCommand(typeof(DefaultCommand));

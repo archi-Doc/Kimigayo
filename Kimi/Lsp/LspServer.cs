@@ -5,14 +5,16 @@ using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Arc.Unit;
 
 namespace Kimigayo.Lsp;
 
-internal class LspServer
+public class LspServer
 {
     private const byte Cr = (byte)'\r';
     private const byte Lf = (byte)'\n';
 
+    private readonly ILogger logger;
     private readonly Stream input;
     private readonly Stream output;
     private readonly SemaphoreSlim writeLock;
@@ -30,289 +32,47 @@ internal class LspServer
     private int end;
     private bool shutdownRequested;
 
-    public LspServer()
+    public LspServer(ILogger<LspServer> logger)
     {
+        this.logger = logger;
         this.input = Console.OpenStandardInput();
         this.output = Console.OpenStandardOutput();
         this.writeLock = new(1, 1);
         this.contentHeader = Encoding.UTF8.GetBytes("content-length: ");
     }
 
-    public async Task Run3(CancellationToken cancellationToken)
+    public async Task Run2(CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            this.EnsureWritableSpace();
-
-            int read = await this.input.ReadAsync(this.buffer.AsMemory(this.end, this.buffer.Length - this.end), cancellationToken).ConfigureAwait(false);
-
+            var read = await this.input.ReadAsync(this.buffer.AsMemory(this.end), cancellationToken);
             if (read == 0)
             {
-                return;
+                break;
             }
 
             this.end += read;
-
-            this.ProcessBufferedMessages();
-        }
-    }
-
-    protected abstract void OnPayload(ReadOnlySpan<byte> payload);
-
-    private void ProcessBufferedMessages()
-    {
-        while (true)
-        {
-            ReadOnlySpan<byte> available = this.buffer.AsSpan(this.start, this.end - this.start);
-
-            if (!this.TryParseHeaders(available, out int headerLength, out int contentLength))
-            {
-                if (available.Length > MaxHeaderSize)
-                {
-                    throw new InvalidDataException("LSP header is too large.");
-                }
-
-                return;
-            }
-
-            if (contentLength < 0)
-            {
-                throw new InvalidDataException("Content-Length header was not found.");
-            }
-
-            int messageLength = headerLength + contentLength;
-
-            if (available.Length < messageLength)
-            {
-                return;
-            }
-
-            ReadOnlySpan<byte> payload = available.Slice(headerLength, contentLength);
-
-            // The payload span is valid only during this call.
-            this.OnPayload(payload);
-
-            this.start += messageLength;
-
-            if (this.start == this.end)
-            {
-                this.start = 0;
-                this.end = 0;
-                return;
-            }
-        }
-    }
-
-    private bool TryParseHeaders(        ReadOnlySpan<byte> data,        out int headerLength,        out int contentLength)
-    {
-        headerLength = 0;
-        contentLength = -1;
-
-        int lineStart = 0;
-
-        for (int i = 0; i < data.Length; i++)
-        {
-            if (data[i] != (byte)'\n')
-            {
-                continue;
-            }
-
-            int lineEnd = i;
-
-            if (lineEnd > lineStart && data[lineEnd - 1] == (byte)'\r')
-            {
-                lineEnd--;
-            }
-
-            int lineLength = lineEnd - lineStart;
-
-            // Empty line: end of headers.
-            if (lineLength == 0)
-            {
-                headerLength = i + 1;
-                return true;
-            }
-
-            ReadOnlySpan<byte> line = data.Slice(lineStart, lineLength);
-
-            if (this.TryParseContentLength(line, out int parsedLength))
-            {
-                contentLength = parsedLength;
-            }
-
-            // Content-Type and unknown headers are ignored.
-            lineStart = i + 1;
-        }
-
-        return false;
-    }
-
-    private bool TryParseContentLength(ReadOnlySpan<byte> line, out int contentLength)
-    {
-        contentLength = 0;
-
-        ReadOnlySpan<byte> name = "Content-Length:"u8;
-
-        if (line.Length < name.Length)
-        {
-            return false;
-        }
-
-        if (!this.AsciiEqualsIgnoreCase(line.Slice(0, name.Length), name))
-        {
-            return false;
-        }
-
-        int i = name.Length;
-
-        while (i < line.Length && (line[i] == (byte)' ' || line[i] == (byte)'\t'))
-        {
-            i++;
-        }
-
-        if (i >= line.Length || line[i] < (byte)'0' || line[i] > (byte)'9')
-        {
-            throw new InvalidDataException("Invalid Content-Length header.");
-        }
-
-        int value = 0;
-
-        while (i < line.Length)
-        {
-            byte b = line[i];
-
-            if (b < (byte)'0' || b > (byte)'9')
-            {
-                break;
-            }
-
-            int digit = b - (byte)'0';
-
-            if (value > (int.MaxValue - digit) / 10)
-            {
-                throw new InvalidDataException("Content-Length is too large.");
-            }
-
-            value = value * 10 + digit;
-            i++;
-        }
-
-        while (i < line.Length)
-        {
-            byte b = line[i];
-
-            if (b != (byte)' ' && b != (byte)'\t')
-            {
-                throw new InvalidDataException("Invalid trailing characters in Content-Length header.");
-            }
-
-            i++;
-        }
-
-        contentLength = value;
-        return true;
-    }
-
-    private bool AsciiEqualsIgnoreCase(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
-    {
-        if (x.Length != y.Length)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < x.Length; i++)
-        {
-            byte a = x[i];
-            byte b = y[i];
-
-            if ((uint)(a - 'A') <= 'Z' - 'A')
-            {
-                a = (byte)(a + 0x20);
-            }
-
-            if ((uint)(b - 'A') <= 'Z' - 'A')
-            {
-                b = (byte)(b + 0x20);
-            }
-
-            if (a != b)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private void EnsureWritableSpace()
-    {
-        if (this.end < this.buffer.Length)
-        {
-            return;
-        }
-
-        int remaining = this.end - this.start;
-
-        if (this.start > 0)
-        {
-            Buffer.BlockCopy(this.buffer, this.start, this.buffer, 0, remaining);
-            this.start = 0;
-            this.end = remaining;
-
-            if (this.end < this.buffer.Length)
-            {
-                return;
-            }
-        }
-
-        int newSize = checked(this.buffer.Length * 2);
-        byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newSize);
-
-        Buffer.BlockCopy(this.buffer, this.start, newBuffer, 0, remaining);
-
-        ArrayPool<byte>.Shared.Return(this.buffer);
-
-        this.buffer = newBuffer;
-        this.start = 0;
-        this.end = remaining;
-    }
-
-    public async Task Run2(CancellationToken cancellationToken)
-    {
-        var buffer = new byte[1024];
-        var start = 0;
-        var end = 0;
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            var read = await this.input.ReadAsync(buffer.AsMemory(end), cancellationToken);
-            if (read == 0)
-            {
-                break;
-            }
-
-            end += read;
-            var length = end - start;
+            var length = this.end - this.start;
             if (length < this.contentHeader.Length)
             {
                 continue;
             }
 
-            for (var i = start; i < start + this.contentHeader.Length; i++)
+            for (var i = this.start; i < this.start + this.contentHeader.Length; i++)
             {// To lower
-                if ((uint)(buffer[i] - 'A') <= 'Z' - 'A')
+                if ((uint)(this.buffer[i] - 'A') <= 'Z' - 'A')
                 {
-                    buffer[i] += 0x20;
+                    this.buffer[i] += 0x20;
                 }
             }
 
-            if (!buffer.AsSpan(start, this.contentHeader.Length).SequenceEqual(this.contentHeader))
+            if (!this.buffer.AsSpan(this.start, this.contentHeader.Length).SequenceEqual(this.contentHeader))
             {// Not 'Content-Length: '
                 break;
             }
 
-            start += this.contentHeader.Length;
-            buffer.AsSpan(start, end - start).IndexOf(Lf);
+            this.start += this.contentHeader.Length;
+            this.buffer.AsSpan(this.start, this.end - this.start).IndexOf(Lf);
         }
     }
 

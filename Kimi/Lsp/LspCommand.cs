@@ -18,11 +18,11 @@ public class LspCommand : ISimpleCommand<LspCommand.Options>
         public bool DebugWait { get; set; } = false;
     }
 
-    private readonly ILogger logger;
+    private readonly LspServer lspServer;
 
-    public LspCommand(ILogger<LspCommand> logger)
+    public LspCommand(LspServer lspServer)
     {
-        this.logger = logger;
+        this.lspServer = lspServer;
     }
 
     public async Task Execute(LspCommand.Options option, string[] args, CancellationToken cancellationToken)
