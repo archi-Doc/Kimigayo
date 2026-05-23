@@ -28,7 +28,7 @@ internal sealed class Line : IDisposable
 
     public void Set(ReadOnlySpan<char> value)
     {
-        this.EnsureCapacity(value.Length);
+        this.EnsureCapacityWithoutCopy(value.Length);
 
         value.CopyTo(this.buffer);
 
@@ -38,8 +38,7 @@ internal sealed class Line : IDisposable
     public void Set(ReadOnlySpan<char> first, ReadOnlySpan<char> second)
     {
         var newLength = first.Length + second.Length;
-
-        this.EnsureCapacity(newLength);
+        this.EnsureCapacityWithoutCopy(newLength);
 
         var span = this.buffer.AsSpan(0, newLength);
 
@@ -52,8 +51,7 @@ internal sealed class Line : IDisposable
     public void Set(ReadOnlySpan<char> first, ReadOnlySpan<char> second, ReadOnlySpan<char> third)
     {
         var newLength = first.Length + second.Length + third.Length;
-
-        this.EnsureCapacity(newLength);
+        this.EnsureCapacityWithoutCopy(newLength);
 
         var span = this.buffer.AsSpan(0, newLength);
 
@@ -77,7 +75,22 @@ internal sealed class Line : IDisposable
         }
     }
 
-    private void EnsureCapacity(int requiredLength)
+    private void EnsureCapacityWithoutCopy(int requiredLength)
+    {
+        if (requiredLength <= this.buffer.Length)
+        {
+            return;
+        }
+
+        if (this.buffer.Length != 0)
+        {
+            ArrayPool<char>.Shared.Return(this.buffer);
+        }
+
+        this.buffer = ArrayPool<char>.Shared.Rent(requiredLength);
+    }
+
+    /*private void EnsureCapacity(int requiredLength)
     {
         if (requiredLength <= this.buffer.Length)
         {
@@ -98,5 +111,5 @@ internal sealed class Line : IDisposable
         {
             ArrayPool<char>.Shared.Return(oldBuffer);
         }
-    }
+    }*/
 }
