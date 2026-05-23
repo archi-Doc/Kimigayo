@@ -15,7 +15,6 @@ public class LspServer
     private readonly Stream input;
     private readonly Stream output;
     private readonly SemaphoreSlim writeLock;
-    private readonly byte[] contentHeader;
     private readonly JsonSerializerOptions jsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -33,7 +32,6 @@ public class LspServer
         this.input = Console.OpenStandardInput();
         this.output = Console.OpenStandardOutput();
         this.writeLock = new(1, 1);
-        this.contentHeader = Encoding.UTF8.GetBytes("content-length: ");
     }
 
     public async Task Run(CancellationToken cancellationToken)
@@ -44,38 +42,42 @@ public class LspServer
         {
             // 'Content-Length: '
             var r = await ReadLine().ConfigureAwait(false);
-            if (r.TextLength < this.contentHeader.Length)
+            if (r.TextLength < LspHelper.ContentHeader.Length)
             {
                 break;
             }
 
-            if (!LspHelper.StartsWithIgnoreAsciiCase(buffer.AsSpan(0, r.TextLength), this.contentHeader))
+            if (!LspHelper.StartsWithIgnoreAsciiCase(buffer.AsSpan(0, r.TextLength), LspHelper.ContentHeader))
             {// Not 'Content-Length'
                 break;
             }
 
             if (!Utf8Parser.TryParse(
-        buffer.AsSpan(this.contentHeader.Length, r.TextLength - this.contentHeader.Length),
+        buffer.AsSpan(LspHelper.ContentHeader.Length, r.TextLength - LspHelper.ContentHeader.Length),
         out int contentLength,
         out var consumed) ||
-        consumed != r.TextLength - this.contentHeader.Length ||
+        consumed != r.TextLength - LspHelper.ContentHeader.Length ||
         contentLength < 0)
             {
                 break;
             }
 
-            do
-            {// Skip remaining headers.
+            while (true)
+            {
                 MoveBuffer(r.LineLength);
                 r = await ReadLine().ConfigureAwait(false);
+
+                if (r.TextLength == 0)
+                {
+                    MoveBuffer(r.LineLength);
+                    break;
+                }
             }
-            while (r.TextLength > 0);
 
             var payload = ArrayPool<byte>.Shared.Rent(contentLength);
             var remaining = contentLength;
             try
             {
-                MoveBuffer(r.LineLength);
                 if (length > 0)
                 {
                     var size = Math.Min(length, remaining);

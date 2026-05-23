@@ -11,6 +11,8 @@ internal class LspHelper
     public const byte Cr = (byte)'\r';
     public const byte Lf = (byte)'\n';
 
+    public static readonly byte[] ContentHeader = "content-length: "u8.ToArray();
+
     public static int ToLspSeverity(string severity)
         => severity switch
         {
