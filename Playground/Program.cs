@@ -26,6 +26,7 @@ internal class Program
         // var tree = CodeTree.Parse("");
 
         var project = Project.NewTestProject();
+        project.Build();
 
         var file = new ProjectFile();
         file.Targets = ["Windows", "Linux"];

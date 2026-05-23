@@ -20,7 +20,7 @@ public partial class Project
     #endregion
 
     public Project()
-    {
+    {// Console, Log
         this.ConsoleService = SimpleConsole.Instance;
     }
 
