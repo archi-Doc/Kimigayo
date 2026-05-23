@@ -22,7 +22,7 @@ public class LspServer
         WriteIndented = false,
     };
 
-    private readonly Dictionary<string, Document> documents = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, TextDocument> documents = new(StringComparer.Ordinal);
     private bool shutdownRequested;
 
     #endregion
@@ -242,7 +242,7 @@ public class LspServer
 
         var doc = parameters.TextDocument;
 
-        var state = new Document(doc.Uri);
+        var state = new TextDocument(doc.Uri);
         state.Open(doc.Text ?? string.Empty, doc.Version);
 
         this.documents[doc.Uri] = state;
@@ -265,7 +265,7 @@ public class LspServer
 
         var uri = parameters.TextDocument.Uri;
         var version = parameters.TextDocument.Version;
-        if (!this.documents.TryGetValue(uri, out var state))
+        if (!this.documents.TryGetValue(uri, out var document))
         {
             return;
         }
@@ -274,11 +274,11 @@ public class LspServer
         {
             if (change.Range is null)
             {
-                state.Open(change.Text ?? string.Empty, version);
+                document.Open(change.Text ?? string.Empty, version);
                 continue;
             }
 
-            state.ApplyChange(
+            document.ApplyChange(
                 change.Range.Start.Line,
                 change.Range.Start.Character,
                 change.Range.End.Line,

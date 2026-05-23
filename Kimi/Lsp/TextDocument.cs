@@ -9,23 +9,23 @@ namespace Kimigayo.Lsp;
 /// Represents an LSP text document as pooled text lines.
 /// This type is not thread-safe.
 /// </summary>
-internal sealed class Document : IDisposable
+internal sealed class TextDocument : IDisposable
 {
     #region FieldAndProperty
 
-    private readonly List<Line> lines = new();
-    private readonly List<Line> workLines = new();
+    private readonly List<TextLine> lines = new();
+    private readonly List<TextLine> workLines = new();
     private bool disposed;
 
     public string Uri { get; }
 
     public int Version { get; private set; }
 
-    public IReadOnlyList<Line> Lines => this.lines;
+    public IReadOnlyList<TextLine> Lines => this.lines;
 
     #endregion
 
-    public Document(string uri)
+    public TextDocument(string uri)
     {
         this.Uri = uri ?? throw new ArgumentNullException(nameof(uri));
     }
@@ -46,7 +46,7 @@ internal sealed class Document : IDisposable
 
         if (this.lines.Count == 0)
         {
-            this.lines.Add(new Line());
+            this.lines.Add(new TextLine());
         }
 
         startLine = Math.Clamp(startLine, 0, this.lines.Count - 1);
@@ -79,13 +79,13 @@ internal sealed class Document : IDisposable
         {
             if (firstBreak < 0)
             {
-                var line = new Line();
+                var line = new TextLine();
                 line.Set(prefix, replacement, suffix);
                 newLines.Add(line);
             }
             else
             {
-                var firstLine = new Line();
+                var firstLine = new TextLine();
                 firstLine.Set(prefix, replacement[..firstBreak]);
                 newLines.Add(firstLine);
 
@@ -98,13 +98,13 @@ internal sealed class Document : IDisposable
 
                     if (nextBreak < 0)
                     {
-                        var lastLine = new Line();
+                        var lastLine = new TextLine();
                         lastLine.Set(rest, suffix);
                         newLines.Add(lastLine);
                         break;
                     }
 
-                    var line = new Line();
+                    var line = new TextLine();
                     line.Set(rest[..nextBreak]);
                     newLines.Add(line);
 
@@ -137,7 +137,7 @@ internal sealed class Document : IDisposable
         this.workLines.Clear();
     }
 
-    private static void DisposeLines(List<Line> lines)
+    private static void DisposeLines(List<TextLine> lines)
     {
         foreach (var line in lines)
         {
@@ -145,7 +145,7 @@ internal sealed class Document : IDisposable
         }
     }
 
-    private static void AddLines(List<Line> lines, ReadOnlySpan<char> text)
+    private static void AddLines(List<TextLine> lines, ReadOnlySpan<char> text)
     {
         var start = 0;
 
@@ -160,7 +160,7 @@ internal sealed class Document : IDisposable
 
             var lineEnd = i + next;
 
-            var line = new Line();
+            var line = new TextLine();
             line.Set(text[start..lineEnd]);
             lines.Add(line);
 
@@ -170,7 +170,7 @@ internal sealed class Document : IDisposable
             start = i;
         }
 
-        var lastLine = new Line();
+        var lastLine = new TextLine();
         lastLine.Set(text[start..]);
         lines.Add(lastLine);
     }
@@ -191,7 +191,7 @@ internal sealed class Document : IDisposable
         return index;
     }
 
-    private void ReplaceLines(int index, int count, List<Line> newLines)
+    private void ReplaceLines(int index, int count, List<TextLine> newLines)
     {
         Debug.Assert(index >= 0);
         Debug.Assert(count >= 0);

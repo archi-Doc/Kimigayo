@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 /// Represents one text line backed by a pooled char buffer.
 /// This type is not thread-safe.
 /// </summary>
-internal sealed class Line : IDisposable
+internal sealed class TextLine : IDisposable
 {
     private char[] buffer = [];
     private int length;
@@ -134,8 +134,7 @@ internal sealed class Line : IDisposable
 
             oldBuffer.AsSpan(0, prefixLength).CopyTo(destination);
             replacement.CopyTo(destination[prefixLength..]);
-            oldBuffer.AsSpan(suffixStart, suffixLength)
-                .CopyTo(destination[(prefixLength + replacement.Length)..]);
+            oldBuffer.AsSpan(suffixStart, suffixLength).CopyTo(destination[(prefixLength + replacement.Length)..]);
 
             this.buffer = newBuffer;
             this.length = newLength;
@@ -144,13 +143,11 @@ internal sealed class Line : IDisposable
             return;
         }
 
-        var span = oldBuffer.AsSpan();
-
         // Move suffix first. CopyTo handles overlapping ranges.
-        span.Slice(suffixStart, suffixLength)
-            .CopyTo(span.Slice(prefixLength + replacement.Length));
-
+        var span = oldBuffer.AsSpan();
+        span.Slice(suffixStart, suffixLength).CopyTo(span.Slice(prefixLength + replacement.Length));
         replacement.CopyTo(span[prefixLength..]);
+
         this.length = newLength;
     }
 
