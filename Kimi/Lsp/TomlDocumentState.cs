@@ -35,11 +35,11 @@ internal sealed class TomlDocumentState
             this.lines.Add(string.Empty);
         }
 
-        var startLine = Clamp(change.StartLine, 0, this.lines.Count - 1);
-        var endLine = Clamp(change.EndLine, 0, this.lines.Count - 1);
+        var startLine = Math.Min(change.StartLine, this.lines.Count - 1);
+        var endLine = Math.Min(change.EndLine, this.lines.Count - 1);
 
-        var startCharacter = Clamp(change.StartCharacter, 0, this.lines[startLine].Length);
-        var endCharacter = Clamp(change.EndCharacter, 0, this.lines[endLine].Length);
+        var startCharacter = Math.Min(change.StartCharacter, this.lines[startLine].Length);
+        var endCharacter = Math.Min(change.EndCharacter, this.lines[endLine].Length);
 
         var prefix = this.lines[startLine][..startCharacter];
         var suffix = this.lines[endLine][endCharacter..];
@@ -75,7 +75,4 @@ internal sealed class TomlDocumentState
 
     private static string[] SplitLines(string text)
         => text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
-
-    private static int Clamp(int value, int min, int max)
-        => Math.Min(Math.Max(value, min), max);
 }
