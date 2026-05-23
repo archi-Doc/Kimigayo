@@ -9,19 +9,24 @@ public partial class Project
 {
     #region FieldAndProperty
 
+    private HashSet<string> targets = new();
+    private HashSet<string> globalUse = new();
+    private List<string> additionalSource = [];
+
     public IConsoleService ConsoleService { get; set; }
 
     public ProjectFile ProjectFile { get; private set; } = new();
-
-    public string[] Targets => this.ProjectFile.Targets;
-
-    public string[] GlobalUse => this.ProjectFile.Use;
 
     #endregion
 
     public Project(IConsoleService consoleService)
     {// Console, Log
         this.ConsoleService = SimpleConsole.Instance;
+    }
+
+    public void AddSource(string source)
+    {
+        this.additionalSource.Add(source);
     }
 
     public bool TryReadFile(string file)
@@ -42,6 +47,23 @@ public partial class Project
 
     public async Task<bool> Build()
     {
+        this.Prepare();
+
+        foreach (var x in this.additionalSource)
+        {
+            this.Build(x);
+        }
+
         return true;
+    }
+
+    private void Build(ReadOnlySpan<char> source)
+    {
+    }
+
+    private void Prepare()
+    {
+        this.targets = this.ProjectFile.Targets.ToHashSet();
+        this.globalUse = this.ProjectFile.Use.ToHashSet();
     }
 }

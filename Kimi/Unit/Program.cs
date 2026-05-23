@@ -5,7 +5,7 @@
 global using Arc;
 global using Arc.Threading;
 global using Arc.Unit;
-global using Kimi;
+global using Kimigayo;
 global using Microsoft.Extensions.DependencyInjection;
 global using Tinyhand;
 using Kimigayo.Lsp;

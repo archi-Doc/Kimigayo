@@ -1,8 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimigayo.Lsp;
-using Kimigayo.Project;
-using Kimigayo.Solution;
 using SimpleCommandLine;
 
 namespace Kimigayo;

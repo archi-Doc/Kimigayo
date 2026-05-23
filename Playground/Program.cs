@@ -1,21 +1,13 @@
 ﻿namespace Playground;
 
 using Arc.Unit;
-using Kimigayo.Project;
-using Kimigayo.Solution;
+using Kimigayo;
 using SimplePrompt;
 using Tinyhand;
 
-public class KimiParser
-{
-    public KimiParser()
-    {
-    }
-}
-
 internal class Program
 {
-    static void Main(string[] args)
+    static async Task Main(string[] args)
     {
         Console.WriteLine("Hello, World!");
 
@@ -25,7 +17,12 @@ internal class Program
         // var tree = CodeTree.Parse("");
 
         var project = Project.NewTestProject();
-        project.Build();
+        project.AddSource("""
+            #Namespace(Test.Program) // Comment
+            method void Main()
+              return;
+            """);
+        var result = await project.Build();
 
         var file = new ProjectFile();
         file.Targets = ["Windows", "Linux"];
