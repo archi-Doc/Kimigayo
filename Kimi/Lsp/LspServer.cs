@@ -12,11 +12,8 @@ namespace Kimigayo.Lsp;
 
 public class LspServer
 {
-    private const byte Cr = (byte)'\r';
-    private const byte Lf = (byte)'\n';
+    #region FieldAndProperty
 
-    private readonly UnitContext unitContext;
-    private readonly ILogger logger;
     private readonly Stream input;
     private readonly Stream output;
     private readonly SemaphoreSlim writeLock;
@@ -31,10 +28,10 @@ public class LspServer
     private readonly Dictionary<string, TomlDocumentState> documents = new(StringComparer.Ordinal);
     private bool shutdownRequested;
 
-    public LspServer(UnitContext unitContext, ILogger<LspServer> logger)
+    #endregion
+
+    public LspServer()
     {
-        this.unitContext = unitContext;
-        this.logger = logger;
         this.input = Console.OpenStandardInput();
         this.output = Console.OpenStandardOutput();
         this.writeLock = new(1, 1);
@@ -47,7 +44,8 @@ public class LspServer
         int length = 0;
         while (!cancellationToken.IsCancellationRequested)
         {
-            var r = await ReadLine().ConfigureAwait(false); // 'Content-Length: '
+            // 'Content-Length: '
+            var r = await ReadLine().ConfigureAwait(false);
             if (r.TextLength < this.contentHeader.Length)
             {
                 break;
@@ -91,10 +89,7 @@ public class LspServer
                 await this.input.ReadExactlyAsync(payload.AsMemory(contentLength - remaining, remaining), cancellationToken).ConfigureAwait(false);
 
                 var span = payload.AsSpan(0, contentLength);
-                this.logger.GetWriter()?.Write(Encoding.UTF8.GetString(span));
-                File.AppendAllBytes("C:\\App\\lsp.txt", span);
-                File.AppendAllText("C:\\App\\lsp2.txt", this.unitContext.Options.DataDirectory);
-                File.AppendAllText("C:\\App\\lsp2.txt", Directory.GetCurrentDirectory());
+                File.AppendAllBytes("C:\\App\\lsp.txt", span);//
 
                 var message = JsonSerializer.Deserialize<LspMessage>(span, this.jsonOptions);
                 if (message is null)
@@ -125,13 +120,13 @@ public class LspServer
             while (true)
             {
                 var span = buffer.AsSpan(0, length);
-                var idx = span.IndexOf(Lf);
+                var idx = span.IndexOf(LspHelper.Lf);
                 if (idx >= 0)
                 {
                     int textLength;
                     int lineLength;
 
-                    if (idx > 0 && span[idx - 1] == Cr)
+                    if (idx > 0 && span[idx - 1] == LspHelper.Cr)
                     {// CrLf
                         textLength = idx - 1;
                         lineLength = idx + 1;
@@ -224,7 +219,7 @@ public class LspServer
             },
             ServerInfo = new ServerInfo
             {
-                Name = "Simple TOML Language Server",
+                Name = "Kimi Language Server",
                 Version = "0.0.1",
             },
         };
@@ -406,7 +401,6 @@ public class LspServer
         var headerBytes = Encoding.ASCII.GetBytes($"Content-Length: {jsonBytes.Length}\r\n\r\n");
 
         await this.writeLock.WaitAsync().ConfigureAwait(false);
-
         try
         {
             await this.output.WriteAsync(headerBytes).ConfigureAwait(false);
@@ -417,479 +411,5 @@ public class LspServer
         {
             this.writeLock.Release();
         }
-    }
-}
-
-internal sealed class TomlDocumentState
-{
-    private readonly List<string> lines = new();
-
-    public TomlDocumentState(string uri)
-    {
-        this.Uri = uri;
-    }
-
-    public string Uri { get; }
-
-    public int Version { get; private set; }
-
-    public IReadOnlyList<string> Lines => this.lines;
-
-    public void Open(string text, int version)
-    {
-        this.lines.Clear();
-        this.lines.AddRange(SplitLines(text));
-        this.Version = version;
-    }
-
-    public void ApplyChange(TextChange change, int version)
-    {
-        if (this.lines.Count == 0)
-        {
-            this.lines.Add(string.Empty);
-        }
-
-        var startLine = Clamp(change.StartLine, 0, this.lines.Count - 1);
-        var endLine = Clamp(change.EndLine, 0, this.lines.Count - 1);
-
-        var startCharacter = Clamp(change.StartCharacter, 0, this.lines[startLine].Length);
-        var endCharacter = Clamp(change.EndCharacter, 0, this.lines[endLine].Length);
-
-        var prefix = this.lines[startLine][..startCharacter];
-        var suffix = this.lines[endLine][endCharacter..];
-
-        var replacementLines = SplitLines(change.Text);
-
-        if (replacementLines.Length == 1)
-        {
-            this.lines[startLine] = prefix + replacementLines[0] + suffix;
-
-            if (endLine > startLine)
-            {
-                this.lines.RemoveRange(startLine + 1, endLine - startLine);
-            }
-        }
-        else
-        {
-            replacementLines[0] = prefix + replacementLines[0];
-            replacementLines[^1] += suffix;
-
-            this.lines[startLine] = replacementLines[0];
-
-            if (endLine > startLine)
-            {
-                this.lines.RemoveRange(startLine + 1, endLine - startLine);
-            }
-
-            this.lines.InsertRange(startLine + 1, replacementLines.AsSpan(1).ToArray());
-        }
-
-        this.Version = version;
-    }
-
-    private static string[] SplitLines(string text)
-        => text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
-
-    private static int Clamp(int value, int min, int max)
-        => Math.Min(Math.Max(value, min), max);
-}
-
-internal sealed record TextChange(int StartLine, int StartCharacter, int EndLine, int EndCharacter, string Text);
-
-internal sealed record TomlDiagnostic(int Line, int Character, int Length, string Severity, string Message);
-
-internal static class SimpleTomlLinter
-{
-    public static List<TomlDiagnostic> Lint(IReadOnlyList<string> lines)
-    {
-        var diagnostics = new List<TomlDiagnostic>();
-        var keysBySection = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-
-        var section = string.Empty;
-        keysBySection[section] = new HashSet<string>(StringComparer.Ordinal);
-
-        for (var i = 0; i < lines.Count; i++)
-        {
-            var line = lines[i];
-            var trimmed = line.Trim();
-
-            if (trimmed.Length == 0 || trimmed.StartsWith('#'))
-            {
-                continue;
-            }
-
-            if (trimmed.StartsWith('['))
-            {
-                if (!TryParseTableHeader(trimmed, out var tableName, out var isArrayTable))
-                {
-                    diagnostics.Add(new TomlDiagnostic(
-                        i,
-                        FirstNonWhiteSpace(line),
-                        Math.Max(1, line.Length - FirstNonWhiteSpace(line)),
-                        "error",
-                        "Invalid table header syntax."));
-
-                    continue;
-                }
-
-                section = tableName;
-
-                if (isArrayTable)
-                {
-                    keysBySection[section] = new HashSet<string>(StringComparer.Ordinal);
-                    continue;
-                }
-
-                if (!keysBySection.TryAdd(section, new HashSet<string>(StringComparer.Ordinal)))
-                {
-                    diagnostics.Add(new TomlDiagnostic(
-                        i,
-                        Math.Max(0, line.IndexOf('[', StringComparison.Ordinal)),
-                        Math.Max(1, line.Length),
-                        "warning",
-                        $"Table '{section}' is already defined."));
-                }
-
-                continue;
-            }
-
-            var equalIndex = IndexOfUnquotedEqual(line);
-            if (equalIndex < 0)
-            {
-                diagnostics.Add(new TomlDiagnostic(
-                    i,
-                    FirstNonWhiteSpace(line),
-                    Math.Max(1, line.Length - FirstNonWhiteSpace(line)),
-                    "error",
-                    "Expected a key-value pair. TOML entries must use 'key = value'."));
-
-                continue;
-            }
-
-            var keyPart = line[..equalIndex].Trim();
-
-            if (keyPart.Length == 0)
-            {
-                diagnostics.Add(new TomlDiagnostic(
-                    i,
-                    equalIndex,
-                    1,
-                    "error",
-                    "Missing key before '='."));
-
-                continue;
-            }
-
-            if (!IsValidBareOrDottedKey(keyPart))
-            {
-                diagnostics.Add(new TomlDiagnostic(
-                    i,
-                    FirstNonWhiteSpace(line),
-                    keyPart.Length,
-                    "error",
-                    $"Invalid key '{keyPart}'. This simple linter supports bare keys and dotted keys."));
-            }
-
-            var valuePart = RemoveComment(line[(equalIndex + 1)..]).Trim();
-
-            if (valuePart.Length == 0)
-            {
-                diagnostics.Add(new TomlDiagnostic(
-                    i,
-                    equalIndex,
-                    1,
-                    "error",
-                    "Missing value after '='."));
-
-                continue;
-            }
-
-            if (!HasBalancedQuotes(valuePart))
-            {
-                diagnostics.Add(new TomlDiagnostic(
-                    i,
-                    equalIndex + 1,
-                    Math.Max(1, line.Length - equalIndex - 1),
-                    "error",
-                    "String literal is not closed."));
-            }
-
-            if (!HasBalancedBrackets(valuePart))
-            {
-                diagnostics.Add(new TomlDiagnostic(
-                    i,
-                    equalIndex + 1,
-                    Math.Max(1, line.Length - equalIndex - 1),
-                    "error",
-                    "Array or inline table brackets are not balanced."));
-            }
-
-            if (!keysBySection.TryGetValue(section, out var keys))
-            {
-                keys = new HashSet<string>(StringComparer.Ordinal);
-                keysBySection[section] = keys;
-            }
-
-            if (!keys.Add(keyPart))
-            {
-                diagnostics.Add(new TomlDiagnostic(
-                    i,
-                    Math.Max(0, line.IndexOf(keyPart, StringComparison.Ordinal)),
-                    Math.Max(1, keyPart.Length),
-                    "error",
-                    $"Duplicate key '{keyPart}' in the current table."));
-            }
-        }
-
-        return diagnostics;
-    }
-
-    private static bool TryParseTableHeader(string trimmed, out string name, out bool isArrayTable)
-    {
-        name = string.Empty;
-        isArrayTable = false;
-
-        var body = trimmed;
-
-        var commentIndex = IndexOfUnquotedHash(body);
-        if (commentIndex >= 0)
-        {
-            body = body[..commentIndex].TrimEnd();
-        }
-
-        if (body.StartsWith("[[", StringComparison.Ordinal) &&
-            body.EndsWith("]]", StringComparison.Ordinal))
-        {
-            isArrayTable = true;
-            name = body[2..^2].Trim();
-            return IsValidBareOrDottedKey(name);
-        }
-
-        if (body.StartsWith('[') && body.EndsWith(']'))
-        {
-            name = body[1..^1].Trim();
-            return IsValidBareOrDottedKey(name);
-        }
-
-        return false;
-    }
-
-    private static bool IsValidBareOrDottedKey(string key)
-    {
-        var parts = key.Split('.', StringSplitOptions.TrimEntries);
-
-        if (parts.Length == 0)
-        {
-            return false;
-        }
-
-        foreach (var part in parts)
-        {
-            if (!IsBareKey(part))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static bool IsBareKey(string key)
-    {
-        if (key.Length == 0)
-        {
-            return false;
-        }
-
-        foreach (var c in key)
-        {
-            if (!(char.IsAsciiLetterOrDigit(c) || c is '_' or '-'))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static int IndexOfUnquotedEqual(string line)
-    {
-        var inString = false;
-        var escaped = false;
-
-        for (var i = 0; i < line.Length; i++)
-        {
-            var c = line[i];
-
-            if (escaped)
-            {
-                escaped = false;
-                continue;
-            }
-
-            if (c == '\\' && inString)
-            {
-                escaped = true;
-                continue;
-            }
-
-            if (c == '"')
-            {
-                inString = !inString;
-                continue;
-            }
-
-            if (c == '#' && !inString)
-            {
-                return -1;
-            }
-
-            if (c == '=' && !inString)
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    private static int IndexOfUnquotedHash(string line)
-    {
-        var inString = false;
-        var escaped = false;
-
-        for (var i = 0; i < line.Length; i++)
-        {
-            var c = line[i];
-
-            if (escaped)
-            {
-                escaped = false;
-                continue;
-            }
-
-            if (c == '\\' && inString)
-            {
-                escaped = true;
-                continue;
-            }
-
-            if (c == '"')
-            {
-                inString = !inString;
-                continue;
-            }
-
-            if (c == '#' && !inString)
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    private static string RemoveComment(string value)
-    {
-        var index = IndexOfUnquotedHash(value);
-        return index < 0 ? value : value[..index];
-    }
-
-    private static bool HasBalancedQuotes(string value)
-    {
-        var inString = false;
-        var escaped = false;
-
-        foreach (var c in value)
-        {
-            if (escaped)
-            {
-                escaped = false;
-                continue;
-            }
-
-            if (c == '\\' && inString)
-            {
-                escaped = true;
-                continue;
-            }
-
-            if (c == '"')
-            {
-                inString = !inString;
-            }
-        }
-
-        return !inString;
-    }
-
-    private static bool HasBalancedBrackets(string value)
-    {
-        var square = 0;
-        var curly = 0;
-        var inString = false;
-        var escaped = false;
-
-        foreach (var c in value)
-        {
-            if (escaped)
-            {
-                escaped = false;
-                continue;
-            }
-
-            if (c == '\\' && inString)
-            {
-                escaped = true;
-                continue;
-            }
-
-            if (c == '"')
-            {
-                inString = !inString;
-                continue;
-            }
-
-            if (inString)
-            {
-                continue;
-            }
-
-            switch (c)
-            {
-                case '[':
-                    square++;
-                    break;
-                case ']':
-                    square--;
-                    break;
-                case '{':
-                    curly++;
-                    break;
-                case '}':
-                    curly--;
-                    break;
-            }
-
-            if (square < 0 || curly < 0)
-            {
-                return false;
-            }
-        }
-
-        return square == 0 && curly == 0;
-    }
-
-    private static int FirstNonWhiteSpace(string line)
-    {
-        for (var i = 0; i < line.Length; i++)
-        {
-            if (!char.IsWhiteSpace(line[i]))
-            {
-                return i;
-            }
-        }
-
-        return 0;
     }
 }

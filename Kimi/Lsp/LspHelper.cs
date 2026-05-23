@@ -8,6 +8,9 @@ namespace Kimigayo.Lsp;
 
 internal class LspHelper
 {
+    public const byte Cr = (byte)'\r';
+    public const byte Lf = (byte)'\n';
+
     public static int ToLspSeverity(string severity)
         => severity switch
         {
