@@ -1,10 +1,14 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Arc;
-using Arc.Threading;
-using Arc.Unit;
+#pragma warning disable SA1210 // Using directives should be ordered alphabetically by namespace
+
+global using Arc;
+global using Arc.Threading;
+global using Arc.Unit;
+global using Kimi;
+global using Microsoft.Extensions.DependencyInjection;
+global using Tinyhand;
 using Kimigayo.Lsp;
-using Microsoft.Extensions.DependencyInjection;
 using SimpleCommandLine;
 
 namespace Kimigayo;

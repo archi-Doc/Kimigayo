@@ -1,0 +1,5 @@
+// identifier="string" /* null: Use the default value. */
+
+Builder=
+  NotFound="File '{0}' not found"
+

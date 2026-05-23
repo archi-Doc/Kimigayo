@@ -16,7 +16,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Misc\Language\strings-en.tinyhand" />
+    <None Remove="Misc\Language\strings-ja.tinyhand" />
+  </ItemGroup>
+
+  <ItemGroup>
     <AdditionalFiles Include="..\stylecop.json" Link="stylecop.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Misc\Language\strings-en.tinyhand" />
+    <EmbeddedResource Include="Misc\Language\strings-ja.tinyhand" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,10 +39,6 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Builder\" />
   </ItemGroup>
 
 </Project>
