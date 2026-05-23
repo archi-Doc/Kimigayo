@@ -1,7 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
-using Arc.Unit;
 using SimpleCommandLine;
 
 namespace Kimigayo.Lsp;
@@ -47,7 +46,6 @@ public class LspCommand : ISimpleCommand<LspCommand.Options>
             }
         }
 
-        var server = new LspServer();
-        await server.Run(cancellationToken).ConfigureAwait(false);
+        await this.lspServer.Run(cancellationToken).ConfigureAwait(false);
     }
 }

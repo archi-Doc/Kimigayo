@@ -15,6 +15,7 @@ public class LspServer
     private const byte Cr = (byte)'\r';
     private const byte Lf = (byte)'\n';
 
+    private readonly UnitContext unitContext;
     private readonly ILogger logger;
     private readonly Stream input;
     private readonly Stream output;
@@ -30,8 +31,9 @@ public class LspServer
     private readonly Dictionary<string, TomlDocumentState> documents = new(StringComparer.Ordinal);
     private bool shutdownRequested;
 
-    public LspServer(ILogger<LspServer> logger)
+    public LspServer(UnitContext unitContext, ILogger<LspServer> logger)
     {
+        this.unitContext = unitContext;
         this.logger = logger;
         this.input = Console.OpenStandardInput();
         this.output = Console.OpenStandardOutput();
@@ -39,7 +41,7 @@ public class LspServer
         this.contentHeader = Encoding.UTF8.GetBytes("content-length: ");
     }
 
-    public async Task Run3(CancellationToken cancellationToken)
+    public async Task Run(CancellationToken cancellationToken)
     {
         var buffer = new byte[32];
         int length = 0;
@@ -64,7 +66,7 @@ public class LspServer
                 break;
             }
 
-            Utf8Parser.TryParse(buffer.AsSpan(this.contentHeader.Length, r.LineLength - this.contentHeader.Length), out int contentLength, out _);
+            Utf8Parser.TryParse(buffer.AsSpan(this.contentHeader.Length, r.TextLength - this.contentHeader.Length), out int contentLength, out _);
 
             do
             {// Skip 'Content-Type: '
@@ -88,11 +90,13 @@ public class LspServer
 
                 await this.input.ReadExactlyAsync(payload.AsMemory(contentLength - remaining, remaining), cancellationToken).ConfigureAwait(false);
 
-                {
-                    File.AppendAllBytes("C:\\App\\lsp.txt", buffer.AsSpan(0, contentLength));
-                }
+                var span = payload.AsSpan(0, contentLength);
+                this.logger.GetWriter()?.Write(Encoding.UTF8.GetString(span));
+                File.AppendAllBytes("C:\\App\\lsp.txt", span);
+                File.AppendAllText("C:\\App\\lsp2.txt", this.unitContext.Options.DataDirectory);
+                File.AppendAllText("C:\\App\\lsp2.txt", Directory.GetCurrentDirectory());
 
-                var message = JsonSerializer.Deserialize<LspMessage>(buffer.AsSpan(0, contentLength), this.jsonOptions);
+                var message = JsonSerializer.Deserialize<LspMessage>(span, this.jsonOptions);
                 if (message is null)
                 {
                     break;
@@ -111,8 +115,9 @@ public class LspServer
             if (length > nextPosition)
             {
                 buffer.AsSpan(nextPosition, length - nextPosition).CopyTo(buffer);
-                length -= nextPosition;
             }
+
+            length -= nextPosition;
         }
 
         async Task<(int TextLength, int LineLength)> ReadLine()
@@ -155,103 +160,6 @@ public class LspServer
                     length += read;
                 }
             }
-        }
-    }
-
-    public async Task Run(CancellationToken cancellationToken)
-    {
-        var header = new byte[32];
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            // Read 'Content-Length'
-            var read = await this.input.ReadAsync(header.AsMemory(0, this.contentHeader.Length), cancellationToken);
-            if (read < this.contentHeader.Length)
-            {
-                break;
-            }
-
-            for (var i = 0; i < header.Length; i++)
-            {// To lower
-                if ((uint)(header[i] - 'A') <= 'Z' - 'A')
-                {
-                    header[i] += 0x20;
-                }
-            }
-
-            if (!header.AsSpan(0, this.contentHeader.Length).SequenceEqual(this.contentHeader))
-            {// Not 'Content-Length'
-                break;
-            }
-
-            read = 0;
-            var firstLine = true;
-            int contentLength = 0;
-            while (true)
-            {
-                var b = (byte)this.input.ReadByte();
-                if (b == Cr ||
-                    b == Lf)
-                {
-                    if (b == Cr)
-                    {
-                        this.input.ReadByte(); // Lf
-                    }
-
-                    if (firstLine)
-                    {
-                        firstLine = false;
-                        Utf8Parser.TryParse(header.AsSpan(0, read), out contentLength, out _);
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                else
-                {
-                    if (firstLine && read < header.Length)
-                    {
-                        header[read++] = b;
-                    }
-                }
-            }
-
-            var buffer = ArrayPool<byte>.Shared.Rent(contentLength);
-            try
-            {
-                await this.input.ReadExactlyAsync(buffer.AsMemory(0, contentLength), cancellationToken).ConfigureAwait(false);
-
-                {
-                    if (contentLength + 1 < buffer.Length)
-                    {
-                        buffer[contentLength++] = Lf;
-                    }
-
-                    File.AppendAllBytes("C:\\App\\lsp.txt", buffer.AsSpan(0, contentLength));
-                }
-
-                var message = JsonSerializer.Deserialize<LspMessage>(buffer.AsSpan(0, contentLength), this.jsonOptions);
-                if (message is null)
-                {
-                    break;
-                }
-
-                await this.HandleMessage(message).ConfigureAwait(false);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
-
-            /*var read = await Input.ReadAsync(buffer, cancellationToken);
-            var ros = new ReadOnlySequence<byte>();
-            var st = Encoding.UTF8.GetString(buffer, 0, read);
-
-            var message = await ReadMessage(Input).ConfigureAwait(false);
-            if (message is null)
-            {
-                return;
-            }*/
         }
     }
 
@@ -439,7 +347,7 @@ public class LspServer
                         Character = diagnostic.Character + Math.Max(1, diagnostic.Length),
                     },
                 },
-                Severity = ToLspSeverity(diagnostic.Severity),
+                Severity = LspHelper.ToLspSeverity(diagnostic.Severity),
                 Source = "simple-toml-lsp",
                 Message = diagnostic.Message,
             });
@@ -454,16 +362,6 @@ public class LspServer
 
         await this.SendNotificationAsync("textDocument/publishDiagnostics", parameters).ConfigureAwait(false);
     }
-
-    private static int ToLspSeverity(string severity)
-        => severity switch
-        {
-            "error" => 1,
-            "warning" => 2,
-            "info" => 3,
-            "hint" => 4,
-            _ => 1,
-        };
 
     private async Task SendResponseAsync(JsonElement? id, object? result)
     {
@@ -519,98 +417,6 @@ public class LspServer
         {
             this.writeLock.Release();
         }
-    }
-
-    private async Task<string?> ReadMessageAsync(Stream input)
-    {
-        var contentLength = -1;
-
-        while (true)
-        {
-            var line = await ReadAsciiLineAsync(input).ConfigureAwait(false);
-
-            if (line is null)
-            {
-                return null;
-            }
-
-            if (line.Length == 0)
-            {
-                break;
-            }
-
-            const string contentLengthPrefix = "Content-Length:";
-
-            if (line.StartsWith(contentLengthPrefix, StringComparison.OrdinalIgnoreCase))
-            {
-                var value = line[contentLengthPrefix.Length..].Trim();
-                contentLength = int.Parse(value);
-            }
-        }
-
-        if (contentLength < 0)
-        {
-            return null;
-        }
-
-        var buffer = new byte[contentLength];
-        var read = 0;
-
-        while (read < contentLength)
-        {
-            var n = await input.ReadAsync(buffer.AsMemory(read, contentLength - read)).ConfigureAwait(false);
-
-            if (n == 0)
-            {
-                return null;
-            }
-
-            read += n;
-        }
-
-        return Encoding.UTF8.GetString(buffer);
-    }
-
-    private static async Task<string?> ReadAsciiLineAsync(Stream input)
-    {
-        var bytes = new List<byte>(64);
-
-        while (true)
-        {
-            var value = input.ReadByte();
-
-            if (value < 0)
-            {
-                return bytes.Count == 0 ? null : Encoding.ASCII.GetString(bytes.ToArray());
-            }
-
-            if (value == '\r')
-            {
-                var next = input.ReadByte();
-                if (next == '\n')
-                {
-                    break;
-                }
-
-                if (next >= 0)
-                {
-                    bytes.Add((byte)value);
-                    bytes.Add((byte)next);
-                }
-
-                continue;
-            }
-
-            if (value == '\n')
-            {
-                break;
-            }
-
-            bytes.Add((byte)value);
-        }
-
-        await Task.CompletedTask.ConfigureAwait(false);
-        return Encoding.ASCII.GetString(bytes.ToArray());
     }
 }
 

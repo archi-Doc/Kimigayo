@@ -131,9 +131,10 @@ public class ConsoleUnit : UnitBase, IUnitPreparable, IUnitExecutable
     {
         private readonly UnitContext unitContext;
 
-        public DefaultCommand(UnitContext unitContext)
+        public DefaultCommand(UnitContext unitContext, ILogger<DefaultCommand> logger)
         {
             this.unitContext = unitContext;
+            // logger.GetWriter()?.Write("Default command");
         }
 
         public async Task Execute(string[] args, CancellationToken cancellationToken)
