@@ -5,9 +5,19 @@ namespace Kimigayo.Project;
 using Arc.Unit;
 using SimplePrompt;
 
-public class Project
+public partial class Project
 {
+    #region FieldAndProperty
+
     public IConsoleService ConsoleService { get; set; }
+
+    public ProjectFile ProjectFile { get; private set; } = new();
+
+    public string[] Targets => this.ProjectFile.Targets;
+
+    public string[] GlobalUse => this.ProjectFile.Use;
+
+    #endregion
 
     public Project()
     {
