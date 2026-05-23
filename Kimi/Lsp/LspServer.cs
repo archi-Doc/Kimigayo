@@ -26,7 +26,7 @@ public class LspServer
     private readonly Dictionary<string, TextDocument> documents = new(StringComparer.Ordinal);
     private bool shutdownRequested;
 
-    private DelayedAsyncExecutor dump;
+    private DelayedTaskExecutor dump;//
 
     #endregion
 
