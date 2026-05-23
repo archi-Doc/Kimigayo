@@ -1,5 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
+
 namespace Kimigayo.Lsp;
 
 internal sealed record TextChange(int StartLine, int StartCharacter, int EndLine, int EndCharacter, string Text);
@@ -30,6 +32,7 @@ internal sealed class TomlDocumentState
 
     public void ApplyChange(TextChange change, int version)
     {
+        var aa = ArrayPool<char>.Shared.Rent();
         if (this.lines.Count == 0)
         {
             this.lines.Add(string.Empty);
