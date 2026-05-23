@@ -5,6 +5,7 @@ using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Arc.Threading;
 
 namespace Kimigayo.Lsp;
 
@@ -25,6 +26,8 @@ public class LspServer
     private readonly Dictionary<string, TextDocument> documents = new(StringComparer.Ordinal);
     private bool shutdownRequested;
 
+    private DelayedAsyncExecutor dump;
+
     #endregion
 
     public LspServer()
@@ -32,6 +35,20 @@ public class LspServer
         this.input = Console.OpenStandardInput();
         this.output = Console.OpenStandardOutput();
         this.writeLock = new(1, 1);
+
+        this.dump = new(
+        async cancellationToken =>
+        {
+            var sb = new StringBuilder();
+            foreach (var x in this.documents)
+            {
+                sb.AppendLine(x.Key);
+                sb.AppendLine(x.Value.ToString());
+            }
+
+            File.AppendAllText("C:\\App\\lsp2.txt", sb.ToString());
+        },
+        TimeSpan.FromSeconds(3));
     }
 
     public async Task Run(CancellationToken cancellationToken)
@@ -286,6 +303,8 @@ public class LspServer
                 change.Text ?? string.Empty,
                 version);
         }
+
+        this.dump.Request();
 
         // await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
     }

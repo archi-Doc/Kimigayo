@@ -123,6 +123,44 @@ internal sealed class TextDocument : IDisposable
         }
     }
 
+    public override string ToString()
+    {
+        ObjectDisposedException.ThrowIf(this.disposed, this);
+
+        var count = this.lines.Count;
+        if (count == 0)
+        {
+            return string.Empty;
+        }
+
+        var length = count - 1; // '\n' between lines
+        for (var i = 0; i < count; i++)
+        {
+            length += this.lines[i].Length;
+        }
+
+        if (length == 0)
+        {
+            return string.Empty;
+        }
+
+        return string.Create(length, this.lines, static (destination, lines) =>
+        {
+            var position = 0;
+            for (var i = 0; i < lines.Count; i++)
+            {
+                if (i != 0)
+                {
+                    destination[position++] = '\n';
+                }
+
+                var line = lines[i].AsSpan();
+                line.CopyTo(destination[position..]);
+                position += line.Length;
+            }
+        });
+    }
+
     public void Dispose()
     {
         if (this.disposed)
