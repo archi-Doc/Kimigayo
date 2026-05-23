@@ -13,7 +13,7 @@ public partial class Project
         var project = new Project();
 
         var file = new ProjectFile();
-        file.Targets = ["Windows"];
+        file.Targets = ["x86_64-pc-windows-msvc"];
         file.Use = ["Kimi.Base",];
 
         project.ProjectFile = file;
