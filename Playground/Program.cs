@@ -1,7 +1,6 @@
 ﻿namespace Playground;
 
 using Arc.Unit;
-using Kimigayo;
 using Kimigayo.Project;
 using Kimigayo.Solution;
 using SimplePrompt;

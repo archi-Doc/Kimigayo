@@ -2,7 +2,7 @@
 
 using SimplePrompt;
 
-namespace Kimigayo.Solution;
+namespace Kimigayo;
 
 public class Solution
 {

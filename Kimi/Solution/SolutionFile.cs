@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo.Solution;
+namespace Kimigayo;
 
 [TinyhandObject(ImplicitMemberNameAsKey = true)]
 public partial record class SolutionFile

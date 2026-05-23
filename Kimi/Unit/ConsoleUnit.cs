@@ -1,6 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimigayo.Lsp;
+using Kimigayo.Project;
+using Kimigayo.Solution;
 using SimpleCommandLine;
 
 namespace Kimigayo;
@@ -25,6 +27,9 @@ public class ConsoleUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 context.AddSingleton<ConsoleUnit>();
                 context.RegisterDefaultInstantiableType<ConsoleUnit>();
                 context.AddSingleton<LspServer>();
+
+                context.AddTransient<Solution>();
+                context.AddTransient<Project>();
 
                 // Command
                 context.AddCommand(typeof(DefaultCommand));

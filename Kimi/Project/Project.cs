@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo.Project;
+namespace Kimigayo;
 
 using Arc.Unit;
 using SimplePrompt;
@@ -19,7 +19,7 @@ public partial class Project
 
     #endregion
 
-    public Project()
+    public Project(IConsoleService consoleService)
     {// Console, Log
         this.ConsoleService = SimpleConsole.Instance;
     }

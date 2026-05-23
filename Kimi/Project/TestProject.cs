@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace Kimigayo.Project;
+namespace Kimigayo;
 
 public partial class Project
 {
