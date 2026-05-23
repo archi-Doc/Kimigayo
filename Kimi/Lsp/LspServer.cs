@@ -2,11 +2,9 @@
 
 using System.Buffers;
 using System.Buffers.Text;
-using System.Linq.Expressions;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Arc.Unit;
 
 namespace Kimigayo.Lsp;
 
@@ -40,7 +38,7 @@ public class LspServer
 
     public async Task Run(CancellationToken cancellationToken)
     {
-        var buffer = new byte[32];
+        var buffer = new byte[256];
         int length = 0;
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -51,23 +49,23 @@ public class LspServer
                 break;
             }
 
-            for (var i = 0; i < r.TextLength; i++)
-            {// To lower
-                if ((uint)(buffer[i] - 'A') <= 'Z' - 'A')
-                {
-                    buffer[i] += 0x20;
-                }
-            }
-
-            if (!buffer.AsSpan(0, this.contentHeader.Length).SequenceEqual(this.contentHeader))
+            if (!LspHelper.StartsWithIgnoreAsciiCase(buffer.AsSpan(0, r.TextLength), this.contentHeader))
             {// Not 'Content-Length'
                 break;
             }
 
-            Utf8Parser.TryParse(buffer.AsSpan(this.contentHeader.Length, r.TextLength - this.contentHeader.Length), out int contentLength, out _);
+            if (!Utf8Parser.TryParse(
+        buffer.AsSpan(this.contentHeader.Length, r.TextLength - this.contentHeader.Length),
+        out int contentLength,
+        out var consumed) ||
+        consumed != r.TextLength - this.contentHeader.Length ||
+        contentLength < 0)
+            {
+                break;
+            }
 
             do
-            {// Skip 'Content-Type: '
+            {// Skip remaining headers.
                 MoveBuffer(r.LineLength);
                 r = await ReadLine().ConfigureAwait(false);
             }
@@ -89,7 +87,7 @@ public class LspServer
                 await this.input.ReadExactlyAsync(payload.AsMemory(contentLength - remaining, remaining), cancellationToken).ConfigureAwait(false);
 
                 var span = payload.AsSpan(0, contentLength);
-                File.AppendAllBytes("C:\\App\\lsp.txt", span);//
+                //File.AppendAllBytes("C:\\App\\lsp.txt", span);
 
                 var message = JsonSerializer.Deserialize<LspMessage>(span, this.jsonOptions);
                 if (message is null)
@@ -101,7 +99,7 @@ public class LspServer
             }
             finally
             {
-                ArrayPool<byte>.Shared.Return(buffer);
+                ArrayPool<byte>.Shared.Return(payload);
             }
         }
 
@@ -146,7 +144,7 @@ public class LspServer
                 }
                 else
                 {
-                    var read = await this.input.ReadAsync(buffer.AsMemory(length, buffer.Length - length)).ConfigureAwait(false);
+                    var read = await this.input.ReadAsync(buffer.AsMemory(length, buffer.Length - length), cancellationToken).ConfigureAwait(false);
                     if (read == 0)
                     {
                         return default;
@@ -247,7 +245,7 @@ public class LspServer
 
         this.documents[doc.Uri] = state;
 
-        await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
+        // await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
     }
 
     private async Task HandleDidChangeAsync(JsonElement? parametersElement)
@@ -265,7 +263,6 @@ public class LspServer
 
         var uri = parameters.TextDocument.Uri;
         var version = parameters.TextDocument.Version;
-
         if (!this.documents.TryGetValue(uri, out var state))
         {
             return;
@@ -289,7 +286,7 @@ public class LspServer
             state.ApplyChange(textChange, version);
         }
 
-        await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
+        // await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
     }
 
     private async Task HandleDidCloseAsync(JsonElement? parametersElement)
@@ -309,50 +306,16 @@ public class LspServer
 
         this.documents.Remove(uri);
 
-        await this.PublishDiagnosticsAsync(uri, null, []).ConfigureAwait(false);
+        await this.PublishEmptyDiagnosticsAsync(uri).ConfigureAwait(false);
     }
 
-    private async Task PublishDiagnosticsAsync(TomlDocumentState state)
+    private async Task PublishEmptyDiagnosticsAsync(string uri)
     {
-        var diagnostics = SimpleTomlLinter.Lint(state.Lines);
-        await this.PublishDiagnosticsAsync(state.Uri, state.Version, diagnostics).ConfigureAwait(false);
-    }
-
-    private async Task PublishDiagnosticsAsync(
-        string uri,
-        int? version,
-        IReadOnlyList<TomlDiagnostic> diagnostics)
-    {
-        var lspDiagnostics = new List<Diagnostic>(diagnostics.Count);
-
-        foreach (var diagnostic in diagnostics)
-        {
-            lspDiagnostics.Add(new Diagnostic
-            {
-                Range = new Range
-                {
-                    Start = new Position
-                    {
-                        Line = diagnostic.Line,
-                        Character = diagnostic.Character,
-                    },
-                    End = new Position
-                    {
-                        Line = diagnostic.Line,
-                        Character = diagnostic.Character + Math.Max(1, diagnostic.Length),
-                    },
-                },
-                Severity = LspHelper.ToLspSeverity(diagnostic.Severity),
-                Source = "simple-toml-lsp",
-                Message = diagnostic.Message,
-            });
-        }
-
         var parameters = new PublishDiagnosticsParams
         {
             Uri = uri,
-            Version = version,
-            Diagnostics = lspDiagnostics,
+            Version = null,
+            Diagnostics = [],
         };
 
         await this.SendNotificationAsync("textDocument/publishDiagnostics", parameters).ConfigureAwait(false);
