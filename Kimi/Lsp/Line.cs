@@ -6,8 +6,12 @@ namespace Kimigayo.Lsp;
 
 internal sealed class Line : IDisposable
 {
+    #region FieldAndProperty
+
     private char[] buffer;
     private int length;
+
+    #endregion
 
     public Line()
     {

@@ -10,18 +10,22 @@ internal sealed record TomlDiagnostic(int Line, int Character, int Length, strin
 
 internal sealed class TomlDocumentState : IDisposable
 {
-    private readonly List<Line> lines = new();
+    #region FieldAndProperty
 
-    public TomlDocumentState(string uri)
-    {
-        this.Uri = uri;
-    }
+    private readonly List<Line> lines = new();
 
     public string Uri { get; }
 
     public int Version { get; private set; }
 
     public IReadOnlyList<Line> Lines => this.lines;
+
+    #endregion
+
+    public TomlDocumentState(string uri)
+    {
+        this.Uri = uri;
+    }
 
     public void Open(string text, int version)
     {
