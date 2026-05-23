@@ -1,18 +1,13 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Buffers;
-
 namespace Kimigayo.Lsp;
 
-internal sealed record TextChange(int StartLine, int StartCharacter, int EndLine, int EndCharacter, string Text);
-
-internal sealed record TomlDiagnostic(int Line, int Character, int Length, string Severity, string Message);
-
-internal sealed class TomlDocumentState : IDisposable
+internal sealed class Document : IDisposable
 {
     #region FieldAndProperty
 
     private readonly List<Line> lines = new();
+    private bool disposed;
 
     public string Uri { get; }
 
@@ -22,13 +17,15 @@ internal sealed class TomlDocumentState : IDisposable
 
     #endregion
 
-    public TomlDocumentState(string uri)
+    public Document(string uri)
     {
         this.Uri = uri;
     }
 
     public void Open(string text, int version)
     {
+        ObjectDisposedException.ThrowIf(this.disposed, this);
+
         this.ClearLines();
 
         AddLines(this.lines, text.AsSpan());
@@ -36,31 +33,33 @@ internal sealed class TomlDocumentState : IDisposable
         this.Version = version;
     }
 
-    public void ApplyChange(TextChange change, int version)
+    public void ApplyChange(int startLine, int startCharacter, int endLine, int endCharacter, string text, int version)
     {
+        ObjectDisposedException.ThrowIf(this.disposed, this);
+
         if (this.lines.Count == 0)
         {
             this.lines.Add(new Line());
         }
 
-        var startLine = Math.Clamp(change.StartLine, 0, this.lines.Count - 1);
-        var endLine = Math.Clamp(change.EndLine, startLine, this.lines.Count - 1);
+        startLine = Math.Clamp(startLine, 0, this.lines.Count - 1);
+        endLine = Math.Clamp(endLine, startLine, this.lines.Count - 1);
 
         var start = this.lines[startLine];
         var end = this.lines[endLine];
 
-        var startCharacter = Math.Clamp(change.StartCharacter, 0, start.Length);
-        var endCharacter = Math.Clamp(change.EndCharacter, 0, end.Length);
+        startCharacter = Math.Clamp(startCharacter, 0, start.Length);
+        endCharacter = Math.Clamp(endCharacter, 0, end.Length);
 
         var prefix = start.AsSpan()[..startCharacter];
         var suffix = end.AsSpan()[endCharacter..];
-        var replacement = change.Text.AsSpan();
+        var replacement = text.AsSpan();
 
         var firstBreak = IndexOfLineBreak(replacement, out var firstBreakLength);
 
         if (firstBreak < 0)
         {
-            start.Set(prefix, replacement, suffix);
+            start.Replace(startCharacter, endCharacter, replacement);
 
             if (endLine > startLine)
             {
@@ -109,27 +108,13 @@ internal sealed class TomlDocumentState : IDisposable
 
     public void Dispose()
     {
+        if (this.disposed)
+        {
+            return;
+        }
+
+        this.disposed = true;
         this.ClearLines();
-    }
-
-    private void ClearLines()
-    {
-        foreach (var line in this.lines)
-        {
-            line.Dispose();
-        }
-
-        this.lines.Clear();
-    }
-
-    private void RemoveLines(int index, int count)
-    {
-        for (var i = index; i < index + count; i++)
-        {
-            this.lines[i].Dispose();
-        }
-
-        this.lines.RemoveRange(index, count);
     }
 
     private static void AddLines(List<Line> lines, ReadOnlySpan<char> text)
@@ -193,5 +178,25 @@ internal sealed class TomlDocumentState : IDisposable
 
         lineBreakLength = 0;
         return -1;
+    }
+
+    private void ClearLines()
+    {
+        foreach (var line in this.lines)
+        {
+            line.Dispose();
+        }
+
+        this.lines.Clear();
+    }
+
+    private void RemoveLines(int index, int count)
+    {
+        for (var i = index; i < index + count; i++)
+        {
+            this.lines[i].Dispose();
+        }
+
+        this.lines.RemoveRange(index, count);
     }
 }

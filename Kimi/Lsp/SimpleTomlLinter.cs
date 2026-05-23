@@ -2,6 +2,8 @@
 
 namespace Kimigayo.Lsp;
 
+internal sealed record TomlDiagnostic(int Line, int Character, int Length, string Severity, string Message);
+
 internal static class SimpleTomlLinter
 {
     public static List<TomlDiagnostic> Lint(IReadOnlyList<string> lines)

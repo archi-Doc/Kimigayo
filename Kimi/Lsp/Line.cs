@@ -10,6 +10,7 @@ internal sealed class Line : IDisposable
 
     private char[] buffer;
     private int length;
+    private bool disposed;
 
     #endregion
 
@@ -30,19 +31,35 @@ internal sealed class Line : IDisposable
         return this.length == 0 ? string.Empty : new string(this.buffer, 0, this.length);
     }
 
-    public void Set(ReadOnlySpan<char> value)
+    public void Set(ReadOnlySpan<char> first)
     {
-        this.EnsureCapacityWithoutCopy(value.Length);
+        var newLength = first.Length;
 
-        value.CopyTo(this.buffer);
+        char[]? oldBuffer = default;
+        if (newLength > this.buffer.Length)
+        {
+            oldBuffer = this.buffer;
+            this.buffer = ArrayPool<char>.Shared.Rent(newLength);
+        }
 
-        this.length = value.Length;
+        first.CopyTo(this.buffer);
+        this.length = first.Length;
+
+        if (oldBuffer?.Length > 0)
+        {
+            ArrayPool<char>.Shared.Return(oldBuffer);
+        }
     }
 
     public void Set(ReadOnlySpan<char> first, ReadOnlySpan<char> second)
     {
         var newLength = first.Length + second.Length;
-        this.EnsureCapacityWithoutCopy(newLength);
+        char[]? oldBuffer = default;
+        if (newLength > this.buffer.Length)
+        {
+            oldBuffer = this.buffer;
+            this.buffer = ArrayPool<char>.Shared.Rent(newLength);
+        }
 
         var span = this.buffer.AsSpan(0, newLength);
 
@@ -50,70 +67,74 @@ internal sealed class Line : IDisposable
         second.CopyTo(span[first.Length..]);
 
         this.length = newLength;
+
+        if (oldBuffer?.Length > 0)
+        {
+            ArrayPool<char>.Shared.Return(oldBuffer);
+        }
     }
 
-    public void Set(ReadOnlySpan<char> first, ReadOnlySpan<char> second, ReadOnlySpan<char> third)
+    public void Replace(int start, int end, ReadOnlySpan<char> replacement)
     {
-        var newLength = first.Length + second.Length + third.Length;
-        this.EnsureCapacityWithoutCopy(newLength);
+        ObjectDisposedException.ThrowIf(this.disposed, this);
 
-        var span = this.buffer.AsSpan(0, newLength);
+        start = Math.Clamp(start, 0, this.length);
+        end = Math.Clamp(end, start, this.length);
 
-        first.CopyTo(span);
-        second.CopyTo(span[first.Length..]);
-        third.CopyTo(span[(first.Length + second.Length)..]);
+        var prefixLength = start;
+        var suffixStart = end;
+        var suffixLength = this.length - end;
+        var newLength = prefixLength + replacement.Length + suffixLength;
+
+        var oldBuffer = this.buffer;
+
+        if (newLength > oldBuffer.Length)
+        {
+            var newBuffer = ArrayPool<char>.Shared.Rent(newLength);
+            var destination = newBuffer.AsSpan(0, newLength);
+
+            oldBuffer.AsSpan(0, prefixLength).CopyTo(destination);
+            replacement.CopyTo(destination[prefixLength..]);
+            oldBuffer.AsSpan(suffixStart, suffixLength)
+                .CopyTo(destination[(prefixLength + replacement.Length)..]);
+
+            this.buffer = newBuffer;
+            this.length = newLength;
+
+            if (oldBuffer.Length != 0)
+            {
+                ArrayPool<char>.Shared.Return(oldBuffer);
+            }
+
+            return;
+        }
+
+        var bufferSpan = oldBuffer.AsSpan();
+
+        // Move suffix first. Span.CopyTo handles overlapping ranges.
+        bufferSpan.Slice(suffixStart, suffixLength)
+            .CopyTo(bufferSpan.Slice(prefixLength + replacement.Length));
+
+        replacement.CopyTo(bufferSpan.Slice(prefixLength));
 
         this.length = newLength;
     }
 
     public void Dispose()
     {
-        var array = this.buffer;
-
-        this.buffer = [];
-        this.length = 0;
-
-        if (array.Length != 0)
-        {
-            ArrayPool<char>.Shared.Return(array);
-        }
-    }
-
-    private void EnsureCapacityWithoutCopy(int requiredLength)
-    {
-        if (requiredLength <= this.buffer.Length)
+        if (this.disposed)
         {
             return;
         }
+
+        this.disposed = true;
 
         if (this.buffer.Length != 0)
         {
             ArrayPool<char>.Shared.Return(this.buffer);
+            this.buffer = [];
         }
 
-        this.buffer = ArrayPool<char>.Shared.Rent(requiredLength);
+        this.length = 0;
     }
-
-    /*private void EnsureCapacity(int requiredLength)
-    {
-        if (requiredLength <= this.buffer.Length)
-        {
-            return;
-        }
-
-        var newBuffer = ArrayPool<char>.Shared.Rent(requiredLength);
-
-        if (this.length > 0)
-        {
-            this.buffer.AsSpan(0, this.length).CopyTo(newBuffer);
-        }
-
-        var oldBuffer = this.buffer;
-        this.buffer = newBuffer;
-
-        if (oldBuffer.Length != 0)
-        {
-            ArrayPool<char>.Shared.Return(oldBuffer);
-        }
-    }*/
 }

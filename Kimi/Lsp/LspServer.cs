@@ -22,7 +22,7 @@ public class LspServer
         WriteIndented = false,
     };
 
-    private readonly Dictionary<string, TomlDocumentState> documents = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Document> documents = new(StringComparer.Ordinal);
     private bool shutdownRequested;
 
     #endregion
@@ -242,7 +242,7 @@ public class LspServer
 
         var doc = parameters.TextDocument;
 
-        var state = new TomlDocumentState(doc.Uri);
+        var state = new Document(doc.Uri);
         state.Open(doc.Text ?? string.Empty, doc.Version);
 
         this.documents[doc.Uri] = state;
@@ -278,14 +278,13 @@ public class LspServer
                 continue;
             }
 
-            var textChange = new TextChange(
+            state.ApplyChange(
                 change.Range.Start.Line,
                 change.Range.Start.Character,
                 change.Range.End.Line,
                 change.Range.End.Character,
-                change.Text ?? string.Empty);
-
-            state.ApplyChange(textChange, version);
+                change.Text ?? string.Empty,
+                version);
         }
 
         // await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
