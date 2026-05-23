@@ -1,12 +1,20 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+
 namespace Kimigayo.Lsp;
 
+/// <summary>
+/// Represents an LSP text document as pooled text lines.
+/// This type is not thread-safe.
+/// </summary>
 internal sealed class Document : IDisposable
 {
     #region FieldAndProperty
 
     private readonly List<Line> lines = new();
+    private readonly List<Line> workLines = new();
     private bool disposed;
 
     public string Uri { get; }
@@ -19,7 +27,7 @@ internal sealed class Document : IDisposable
 
     public Document(string uri)
     {
-        this.Uri = uri;
+        this.Uri = uri ?? throw new ArgumentNullException(nameof(uri));
     }
 
     public void Open(string text, int version)
@@ -27,7 +35,6 @@ internal sealed class Document : IDisposable
         ObjectDisposedException.ThrowIf(this.disposed, this);
 
         this.ClearLines();
-
         AddLines(this.lines, text.AsSpan());
 
         this.Version = version;
@@ -51,59 +58,69 @@ internal sealed class Document : IDisposable
         startCharacter = Math.Clamp(startCharacter, 0, start.Length);
         endCharacter = Math.Clamp(endCharacter, 0, end.Length);
 
-        var prefix = start.AsSpan()[..startCharacter];
-        var suffix = end.AsSpan()[endCharacter..];
         var replacement = text.AsSpan();
-
         var firstBreak = IndexOfLineBreak(replacement, out var firstBreakLength);
 
-        if (firstBreak < 0)
+        // Fast path: same-line replacement without line breaks.
+        if (firstBreak < 0 && startLine == endLine)
         {
             start.Replace(startCharacter, endCharacter, replacement);
-
-            if (endLine > startLine)
-            {
-                this.RemoveLines(startLine + 1, endLine - startLine);
-            }
-
             this.Version = version;
             return;
         }
 
-        // First replacement line.
-        start.Set(prefix, replacement[..firstBreak]);
+        var prefix = start.AsSpan()[..startCharacter];
+        var suffix = end.AsSpan()[endCharacter..];
 
-        if (endLine > startLine)
+        var newLines = this.workLines;
+        newLines.Clear();
+
+        try
         {
-            this.RemoveLines(startLine + 1, endLine - startLine);
-        }
-
-        var insertIndex = startLine + 1;
-        var position = firstBreak + firstBreakLength;
-
-        while (true)
-        {
-            var rest = replacement[position..];
-            var nextBreak = IndexOfLineBreak(rest, out var nextBreakLength);
-
-            if (nextBreak < 0)
+            if (firstBreak < 0)
             {
                 var line = new Line();
-                line.Set(rest, suffix);
-                this.lines.Insert(insertIndex, line);
-                break;
+                line.Set(prefix, replacement, suffix);
+                newLines.Add(line);
             }
-
+            else
             {
-                var line = new Line();
-                line.Set(rest[..nextBreak]);
-                this.lines.Insert(insertIndex++, line);
+                var firstLine = new Line();
+                firstLine.Set(prefix, replacement[..firstBreak]);
+                newLines.Add(firstLine);
+
+                var position = firstBreak + firstBreakLength;
+
+                while (true)
+                {
+                    var rest = replacement[position..];
+                    var nextBreak = IndexOfLineBreak(rest, out var nextBreakLength);
+
+                    if (nextBreak < 0)
+                    {
+                        var lastLine = new Line();
+                        lastLine.Set(rest, suffix);
+                        newLines.Add(lastLine);
+                        break;
+                    }
+
+                    var line = new Line();
+                    line.Set(rest[..nextBreak]);
+                    newLines.Add(line);
+
+                    position += nextBreak + nextBreakLength;
+                }
             }
 
-            position += nextBreak + nextBreakLength;
+            this.ReplaceLines(startLine, endLine - startLine + 1, newLines);
+            this.Version = version;
         }
-
-        this.Version = version;
+        catch
+        {
+            DisposeLines(newLines);
+            newLines.Clear();
+            throw;
+        }
     }
 
     public void Dispose()
@@ -114,89 +131,103 @@ internal sealed class Document : IDisposable
         }
 
         this.disposed = true;
+
         this.ClearLines();
+        DisposeLines(this.workLines);
+        this.workLines.Clear();
+    }
+
+    private static void DisposeLines(List<Line> lines)
+    {
+        foreach (var line in lines)
+        {
+            line.Dispose();
+        }
     }
 
     private static void AddLines(List<Line> lines, ReadOnlySpan<char> text)
     {
         var start = 0;
-        var index = 0;
 
-        while (index < text.Length)
+        for (var i = 0; i < text.Length;)
         {
-            var c = text[index];
+            var next = text[i..].IndexOfAny('\r', '\n');
 
-            if (c == '\r' || c == '\n')
+            if (next < 0)
             {
-                var line = new Line();
-                line.Set(text[start..index]);
-                lines.Add(line);
-
-                if (c == '\r' &&
-                    index + 1 < text.Length &&
-                    text[index + 1] == '\n')
-                {
-                    index += 2;
-                }
-                else
-                {
-                    index++;
-                }
-
-                start = index;
-                continue;
+                break;
             }
 
-            index++;
+            var lineEnd = i + next;
+
+            var line = new Line();
+            line.Set(text[start..lineEnd]);
+            lines.Add(line);
+
+            i = lineEnd;
+            i += text[i] == '\r' && i + 1 < text.Length && text[i + 1] == '\n' ? 2 : 1;
+
+            start = i;
         }
 
-        // Keep the last line, including the final empty line.
-        {
-            var line = new Line();
-            line.Set(text[start..]);
-            lines.Add(line);
-        }
+        var lastLine = new Line();
+        lastLine.Set(text[start..]);
+        lines.Add(lastLine);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int IndexOfLineBreak(ReadOnlySpan<char> text, out int lineBreakLength)
     {
-        for (var i = 0; i < text.Length; i++)
-        {
-            var c = text[i];
-            if (c == '\n')
-            {
-                lineBreakLength = 1;
-                return i;
-            }
+        var index = text.IndexOfAny('\r', '\n');
 
-            if (c == '\r')
-            {
-                lineBreakLength = i + 1 < text.Length && text[i + 1] == '\n' ? 2 : 1;
-                return i;
-            }
+        if (index < 0)
+        {
+            lineBreakLength = 0;
+            return -1;
         }
 
-        lineBreakLength = 0;
-        return -1;
+        lineBreakLength = (text[index] == '\r' && index + 1 < text.Length && text[index + 1] == '\n') ? 2 : 1;
+
+        return index;
     }
 
-    private void ClearLines()
+    private void ReplaceLines(int index, int count, List<Line> newLines)
     {
-        foreach (var line in this.lines)
+        Debug.Assert(index >= 0);
+        Debug.Assert(count >= 0);
+        Debug.Assert(index + count <= this.lines.Count);
+
+        var newCount = newLines.Count;
+
+        if (newCount == count)
         {
-            line.Dispose();
+            for (var i = 0; i < count; i++)
+            {
+                this.lines[index + i].Dispose();
+                this.lines[index + i] = newLines[i];
+            }
+
+            newLines.Clear();
+            return;
         }
 
-        this.lines.Clear();
-    }
+        this.lines.EnsureCapacity(this.lines.Count - count + newCount);
 
-    private void RemoveLines(int index, int count)
-    {
         for (var i = index; i < index + count; i++)
         {
             this.lines[i].Dispose();
         }
 
         this.lines.RemoveRange(index, count);
+        this.lines.InsertRange(index, newLines);
+
+        // Ownership has moved to this.lines.
+        newLines.Clear();
+    }
+
+    private void ClearLines()
+    {
+        DisposeLines(this.lines);
+        this.lines.Clear();
     }
 }

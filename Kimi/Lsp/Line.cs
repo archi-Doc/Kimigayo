@@ -1,80 +1,114 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Buffers;
-
 namespace Kimigayo.Lsp;
 
+using System.Buffers;
+using System.Runtime.CompilerServices;
+
+/// <summary>
+/// Represents one text line backed by a pooled char buffer.
+/// This type is not thread-safe.
+/// </summary>
 internal sealed class Line : IDisposable
 {
-    #region FieldAndProperty
-
-    private char[] buffer;
+    private char[] buffer = [];
     private int length;
     private bool disposed;
-
-    #endregion
-
-    public Line()
-    {
-        this.buffer = [];
-    }
 
     public int Length => this.length;
 
     public ReadOnlySpan<char> AsSpan()
     {
+        ObjectDisposedException.ThrowIf(this.disposed, this);
         return this.buffer.AsSpan(0, this.length);
     }
 
     public override string ToString()
     {
+        ObjectDisposedException.ThrowIf(this.disposed, this);
         return this.length == 0 ? string.Empty : new string(this.buffer, 0, this.length);
     }
 
-    public void Set(ReadOnlySpan<char> first)
+    public void Dispose()
     {
-        var newLength = first.Length;
-
-        char[]? oldBuffer = default;
-        if (newLength > this.buffer.Length)
+        if (this.disposed)
         {
-            oldBuffer = this.buffer;
-            this.buffer = ArrayPool<char>.Shared.Rent(newLength);
+            return;
         }
 
-        first.CopyTo(this.buffer);
-        this.length = first.Length;
+        this.disposed = true;
+        this.ReturnAndClear();
+    }
 
-        if (oldBuffer?.Length > 0)
+    public void Set(ReadOnlySpan<char> value)
+    {
+        ObjectDisposedException.ThrowIf(this.disposed, this);
+
+        if (value.Length == 0)
         {
-            ArrayPool<char>.Shared.Return(oldBuffer);
+            this.ReturnAndClear();
+            return;
         }
+
+        this.EnsureCapacity(value.Length);
+        value.CopyTo(this.buffer);
+        this.length = value.Length;
     }
 
     public void Set(ReadOnlySpan<char> first, ReadOnlySpan<char> second)
     {
+        ObjectDisposedException.ThrowIf(this.disposed, this);
+
         var newLength = first.Length + second.Length;
-        char[]? oldBuffer = default;
-        if (newLength > this.buffer.Length)
+        if (newLength == 0)
         {
-            oldBuffer = this.buffer;
-            this.buffer = ArrayPool<char>.Shared.Rent(newLength);
+            this.ReturnAndClear();
+            return;
         }
 
-        var span = this.buffer.AsSpan(0, newLength);
+        // Always build into a fresh buffer.
+        // This keeps the method safe even if the source spans refer to an existing Line buffer.
+        var oldBuffer = this.buffer;
+        var newBuffer = ArrayPool<char>.Shared.Rent(newLength);
+        var destination = newBuffer.AsSpan(0, newLength);
 
-        first.CopyTo(span);
-        second.CopyTo(span[first.Length..]);
+        first.CopyTo(destination);
+        second.CopyTo(destination[first.Length..]);
 
+        this.buffer = newBuffer;
         this.length = newLength;
 
-        if (oldBuffer?.Length > 0)
-        {
-            ArrayPool<char>.Shared.Return(oldBuffer);
-        }
+        Return(oldBuffer);
     }
 
-    public void Replace(int start, int end, ReadOnlySpan<char> replacement)
+    public void Set(ReadOnlySpan<char> first, ReadOnlySpan<char> second, ReadOnlySpan<char> third)
+    {
+        ObjectDisposedException.ThrowIf(this.disposed, this);
+
+        var newLength = first.Length + second.Length + third.Length;
+        if (newLength == 0)
+        {
+            this.ReturnAndClear();
+            return;
+        }
+
+        // Always build into a fresh buffer.
+        // This avoids self-buffer overwrite bugs with prefix/suffix spans.
+        var oldBuffer = this.buffer;
+        var newBuffer = ArrayPool<char>.Shared.Rent(newLength);
+        var destination = newBuffer.AsSpan(0, newLength);
+
+        first.CopyTo(destination);
+        second.CopyTo(destination[first.Length..]);
+        third.CopyTo(destination[(first.Length + second.Length)..]);
+
+        this.buffer = newBuffer;
+        this.length = newLength;
+
+        Return(oldBuffer);
+    }
+
+    internal void Replace(int start, int end, ReadOnlySpan<char> replacement)
     {
         ObjectDisposedException.ThrowIf(this.disposed, this);
 
@@ -85,6 +119,11 @@ internal sealed class Line : IDisposable
         var suffixStart = end;
         var suffixLength = this.length - end;
         var newLength = prefixLength + replacement.Length + suffixLength;
+        if (newLength == 0)
+        {
+            this.ReturnAndClear();
+            return;
+        }
 
         var oldBuffer = this.buffer;
 
@@ -101,40 +140,50 @@ internal sealed class Line : IDisposable
             this.buffer = newBuffer;
             this.length = newLength;
 
-            if (oldBuffer.Length != 0)
-            {
-                ArrayPool<char>.Shared.Return(oldBuffer);
-            }
-
+            Return(oldBuffer);
             return;
         }
 
-        var bufferSpan = oldBuffer.AsSpan();
+        var span = oldBuffer.AsSpan();
 
-        // Move suffix first. Span.CopyTo handles overlapping ranges.
-        bufferSpan.Slice(suffixStart, suffixLength)
-            .CopyTo(bufferSpan.Slice(prefixLength + replacement.Length));
+        // Move suffix first. CopyTo handles overlapping ranges.
+        span.Slice(suffixStart, suffixLength)
+            .CopyTo(span.Slice(prefixLength + replacement.Length));
 
-        replacement.CopyTo(bufferSpan.Slice(prefixLength));
-
+        replacement.CopyTo(span[prefixLength..]);
         this.length = newLength;
     }
 
-    public void Dispose()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Return(char[] buffer)
     {
-        if (this.disposed)
+        if (buffer.Length != 0)
+        {
+            ArrayPool<char>.Shared.Return(buffer);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void EnsureCapacity(int requiredLength)
+    {
+        if (requiredLength <= this.buffer.Length)
         {
             return;
         }
 
-        this.disposed = true;
+        Return(this.buffer);
+        this.buffer = ArrayPool<char>.Shared.Rent(requiredLength);
+    }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ReturnAndClear()
+    {
         if (this.buffer.Length != 0)
         {
             ArrayPool<char>.Shared.Return(this.buffer);
-            this.buffer = [];
         }
 
+        this.buffer = [];
         this.length = 0;
     }
 }
