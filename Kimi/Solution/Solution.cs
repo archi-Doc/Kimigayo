@@ -1,19 +1,14 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System;
-using System.Collections.Generic;
-using System.Text;
-using Arc.Unit;
 using SimplePrompt;
-using Tinyhand;
 
-namespace Kimigayo.Builder;
+namespace Kimigayo.Solution;
 
-public class Builder
+public class Solution
 {
     public IConsoleService ConsoleService { get; set; }
 
-    public Builder()
+    public Solution()
     {
         this.ConsoleService = SimpleConsole.Instance;
     }
@@ -27,7 +22,7 @@ public class Builder
         }
         catch
         {
-            this.ConsoleService.WriteLine(Hashed.Builder.NotFound, file);
+            this.ConsoleService.WriteLine(Hashed.Solution.NotFound, file);
             return false;
         }
 

@@ -2,7 +2,8 @@
 
 using Arc.Unit;
 using Kimigayo;
-using Kimigayo.Builder;
+using Kimigayo.Project;
+using Kimigayo.Solution;
 using SimplePrompt;
 using Tinyhand;
 
@@ -19,12 +20,9 @@ internal class Program
     {
         Console.WriteLine("Hello, World!");
 
-        var builder = new Builder();
+        var builder = new Solution();
         builder.TryReadFile("aaa");
         builder.Build();
         // var tree = CodeTree.Parse("");
-
-        var file = new BuilderFile();
-        var st = TinyhandSerializer.SerializeToString(file);
     }
 }

@@ -1,21 +1,16 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System;
-using System.Collections.Generic;
-using System.Text;
-using Tinyhand;
-
-namespace Kimigayo.Builder;
+namespace Kimigayo.Solution;
 
 [TinyhandObject(ImplicitMemberNameAsKey = true)]
-public partial record class BuilderFile
+public partial record class SolutionFile
 {
     [TinyhandObject(ImplicitMemberNameAsKey = true)]
     public partial record class DefaultClass
     {
-        public double LangVersion { get; init; } = 0.1d;
+        public string LangVersion { get; init; } = "0.0.1";
 
-        public double Version { get; init; } = 0.1d;
+        public string Version { get; init; } = "0.0.1";
     }
 
     public string[] Projects { get; init; } = [];
