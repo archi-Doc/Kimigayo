@@ -121,14 +121,18 @@ public sealed class PublishDiagnosticsParams
 
     public int? Version { get; set; }
 
-    public List<Diagnostic> Diagnostics { get; set; } = new();
+    public Diagnostic[] Diagnostics { get; set; } = [];
 }
 
 public sealed class Diagnostic
 {
     public Range Range { get; set; } = new();
 
-    public int Severity { get; set; }
+    public DiagnosticSeverity Severity { get; set; }
+
+    public string? Code { get; set; }
+
+    // public string? CodeDescription { get; set; }
 
     public string? Source { get; set; }
 
@@ -147,4 +151,12 @@ public sealed class Position
     public int Line { get; set; }
 
     public int Character { get; set; }
+}
+
+public enum DiagnosticSeverity : byte
+{
+    Error = 1,
+    Warning = 2,
+    Information = 3,
+    Hint = 4,
 }

@@ -1,10 +1,14 @@
 ﻿namespace Playground;
 
+using System.Text;
+using System.Text.Json;
 using Arc.Unit;
 using Kimigayo;
 using Microsoft.Extensions.DependencyInjection;
 using SimplePrompt;
 using Tinyhand;
+
+
 
 internal class Program
 {
@@ -14,7 +18,6 @@ internal class Program
 
         var unit = new KimiUnit.Builder().Build();
         var serviceProvider = unit.Context.ServiceProvider;
-
 
         var solution = serviceProvider.GetRequiredService<Solution>();
         solution.TryReadFile("aaa");

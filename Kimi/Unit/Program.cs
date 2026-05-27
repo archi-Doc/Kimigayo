@@ -8,6 +8,7 @@ global using Arc.Unit;
 global using Kimigayo;
 global using Microsoft.Extensions.DependencyInjection;
 global using Tinyhand;
+global using ValueLink;
 using Kimigayo.Lsp;
 using SimpleCommandLine;
 
