@@ -1,16 +1,15 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using SimplePrompt;
-
 namespace Kimigayo;
 
 public class Solution
 {
-    public IConsoleService ConsoleService { get; set; }
+    // public IConsoleService ConsoleService { get; set; }
+    private readonly IConsoleService consoleService;
 
-    public Solution()
+    public Solution(IConsoleService consoleService)
     {
-        this.ConsoleService = SimpleConsole.Instance;
+        this.consoleService = consoleService;
     }
 
     public bool TryReadFile(string file)
@@ -22,7 +21,7 @@ public class Solution
         }
         catch
         {
-            this.ConsoleService.WriteLine(Hashed.Solution.NotFound, file);
+            this.consoleService.WriteLine(Hashed.Solution.NotFound, file);
             return false;
         }
 

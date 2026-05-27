@@ -35,7 +35,7 @@ public class Program
 
         var args = SimpleParserHelper.GetCommandLineArguments();
         SuppressConsoleOutput = args.StartsWith($"{LspCommand.Name}", StringComparison.OrdinalIgnoreCase);
-        var builder = new ConsoleUnit.Builder();
+        var builder = new CommandUnit.Builder();
         var unit = builder.Build();
         root = unit.Context.Root;
 

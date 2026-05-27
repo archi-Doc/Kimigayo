@@ -5,10 +5,17 @@ using SimpleCommandLine;
 
 namespace Kimigayo;
 
-public class ConsoleUnit : UnitBase, IUnitPreparable, IUnitExecutable
+public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
 {
-    private ILogger<ConsoleUnit> logger;
+    private ILogger<CommandUnit> logger;
     private UnitOptions options;
+
+    private static void ConfigureBase(IUnitConfigurationContext context)
+    {
+        context.AddScoped<IConsoleService, ConsoleService>();
+        context.AddTransient<Solution>();
+        context.AddTransient<Project>();
+    }
 
     public class Builder : UnitBuilder<Product>
     {// Builder class for customizing dependencies.
@@ -22,12 +29,11 @@ public class ConsoleUnit : UnitBase, IUnitPreparable, IUnitExecutable
             // Configuration for Unit.
             this.Configure(context =>
             {
-                context.AddSingleton<ConsoleUnit>();
-                context.RegisterDefaultInstantiableType<ConsoleUnit>();
-                context.AddSingleton<LspServer>();
+                ConfigureBase(context);
 
-                context.AddTransient<Solution>();
-                context.AddTransient<Project>();
+                context.AddSingleton<CommandUnit>();
+                context.RegisterDefaultInstantiableType<CommandUnit>();
+                context.AddSingleton<LspServer>();
 
                 // Command
                 context.AddCommand(typeof(DefaultCommand));
@@ -103,7 +109,7 @@ public class ConsoleUnit : UnitBase, IUnitPreparable, IUnitExecutable
         }
     }
 
-    public ConsoleUnit(UnitContext context, ILogger<ConsoleUnit> logger, UnitOptions options)
+    public CommandUnit(UnitContext context, ILogger<CommandUnit> logger, UnitOptions options)
         : base(context)
     {
         this.logger = logger;

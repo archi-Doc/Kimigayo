@@ -2,6 +2,7 @@
 
 using Arc.Unit;
 using Kimigayo;
+using Microsoft.Extensions.DependencyInjection;
 using SimplePrompt;
 using Tinyhand;
 
@@ -11,12 +12,16 @@ internal class Program
     {
         Console.WriteLine("Hello, World!");
 
-        var builder = new Solution();
-        builder.TryReadFile("aaa");
-        builder.Build();
+        var unit = new KimigayoUnit.Builder().Build();
+        var serviceProvider = unit.Context.ServiceProvider;
+
+
+        var solution = serviceProvider.GetRequiredService<Solution>();
+        solution.TryReadFile("aaa");
         // var tree = CodeTree.Parse("");
 
-        var project = Project.NewTestProject();
+        var project = serviceProvider.GetRequiredService<Project>();
+
         project.AddSource("""
             #Namespace(Test.Program) // Comment
             method void Main()

@@ -7,21 +7,32 @@ using SimplePrompt;
 
 public partial class Project
 {
+    public static readonly ProjectFile DefaultProjectFile;
+
+    static Project()
+    {
+        var projectFile = new ProjectFile();
+        projectFile.Targets = ["x86_64-pc-windows-msvc"];
+        projectFile.Use = ["Kimi.Base",];
+
+        DefaultProjectFile = projectFile;
+    }
+
     #region FieldAndProperty
 
+    private readonly IConsoleService consoleService;
     private HashSet<string> targets = new();
     private HashSet<string> globalUse = new();
     private List<string> additionalSource = [];
-
-    public IConsoleService ConsoleService { get; set; }
 
     public ProjectFile ProjectFile { get; private set; } = new();
 
     #endregion
 
     public Project(IConsoleService consoleService)
-    {// Console, Log
-        this.ConsoleService = SimpleConsole.Instance;
+    {
+        this.consoleService = consoleService;
+        this.ProjectFile = DefaultProjectFile;
     }
 
     public void AddSource(string source)
@@ -38,7 +49,7 @@ public partial class Project
         }
         catch
         {
-            this.ConsoleService.WriteLine(Hashed.Project.NotFound, file);
+            this.consoleService.WriteLine(Hashed.Project.NotFound, file);
             return false;
         }
 
