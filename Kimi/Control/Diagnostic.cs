@@ -24,6 +24,7 @@ public sealed partial record class Diagnostic
     [JsonIgnore]
     public Position StartPosition => this.Range.Start;
 
+    [JsonIgnore]
     public partial GoshujinClass? Goshujin { get; set; }
 
     public Diagnostic(Range range, DiagnosticSeverity severity, string message)
