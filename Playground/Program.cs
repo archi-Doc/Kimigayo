@@ -25,6 +25,8 @@ internal class Program
 
         var project = serviceProvider.GetRequiredService<Project>();
 
+        project.TryReadFile("aaa");
+
         project.AddSource("""
             #Namespace(Test.Program) // Comment
             method void Main()

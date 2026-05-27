@@ -2,7 +2,10 @@
 
 namespace Kimigayo;
 
+using System.Text;
+using System.Text.Json;
 using Arc.Unit;
+using Kimigayo.Diagnostics;
 using SimplePrompt;
 
 public partial class Project
@@ -49,8 +52,12 @@ public partial class Project
         }
         catch
         {
-            this.kimiControl.GlobalDiagnostic.AddDiagnostic()
+            this.kimiControl.GlobalDiagnostic.Add(Range.FromString(file), Hashed.Project.NotFound);
             this.kimiControl.WriteLine(Hashed.Project.NotFound, file);
+
+            var d = this.kimiControl.GlobalDiagnostic.GetArray();
+            var bin = JsonSerializer.SerializeToUtf8Bytes(d);
+            var st = Encoding.UTF8.GetString(bin);
             return false;
         }
 

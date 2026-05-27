@@ -13,20 +13,25 @@ public record class FileDiagnostic
         this.Url = url;
     }
 
-    public void AddDiagnostic(Diagnostic diagnostic)
+    public void Add(Range range, ulong diagnosticHash)
     {
         using (this.diagnostics.LockObject.EnterScope())
         {
-            if (this.diagnostics.StartPositionChain.ContainsKey(diagnostic.StartPosition))
+            if (this.diagnostics.StartPositionChain.ContainsKey(range.Start))
             {
                 return;
             }
 
-            diagnostic.Goshujin = this.diagnostics;
+            if (DiagnosticCode.TryGet(diagnosticHash, out var code, out var severity))
+            {
+                var message = HashedString.Get(diagnosticHash);
+                var diagnostic = new Diagnostic(range, severity, message);
+                diagnostic.Goshujin = this.diagnostics;
+            }
         }
     }
 
-    public bool RemoveDiagnostic(Position startPosition)
+    public bool Remove(Position startPosition)
     {
         using (this.diagnostics.LockObject.EnterScope())
         {
@@ -42,7 +47,7 @@ public record class FileDiagnostic
         }
     }
 
-    public Diagnostic[] GetDiagnostics()
+    public Diagnostic[] GetArray()
     {
         using (this.diagnostics.LockObject.EnterScope())
         {

@@ -1,5 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.Json.Serialization;
+using Arc.Crypto;
+
 namespace Kimigayo.Diagnostics;
 
 [ValueLinkObject(Isolation = IsolationLevel.Serializable)]
@@ -18,7 +21,17 @@ public sealed partial record class Diagnostic
     public string Message { get; init; } = string.Empty;
 
     [Link(Primary = true, Unique = true, Type = ChainType.Ordered)]
+    [JsonIgnore]
     public Position StartPosition => this.Range.Start;
+
+    public partial GoshujinClass? Goshujin { get; set; }
+
+    public Diagnostic(Range range, DiagnosticSeverity severity, string message)
+    {
+        this.Range = range;
+        this.Severity = severity;
+        this.Message = message;
+    }
 }
 
 public readonly record struct Range : IComparable<Range>
@@ -26,6 +39,13 @@ public readonly record struct Range : IComparable<Range>
     public Position Start { get; }
 
     public Position End { get; }
+
+    public static Range FromString(string str)
+    {
+        var hash = (int)FarmHash.Hash64(str);
+        var position = new Position(hash, 0);
+        return new(position, position);
+    }
 
     public Range(Position start, Position end)
     {
