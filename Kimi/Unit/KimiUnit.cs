@@ -2,11 +2,12 @@
 
 namespace Kimigayo;
 
-public class KimigayoUnit : UnitBase
+public class KimiUnit : UnitBase
 {
     public static void ConfigureBase(IUnitConfigurationContext context)
     {
         context.AddScoped<IConsoleService, ConsoleService>();
+        context.AddSingleton<KimiControl>();
         context.AddTransient<Solution>();
         context.AddTransient<Project>();
     }
@@ -62,7 +63,7 @@ public class KimigayoUnit : UnitBase
         }
     }
 
-    public KimigayoUnit(UnitContext context)
+    public KimiUnit(UnitContext context)
         : base(context)
     {
     }

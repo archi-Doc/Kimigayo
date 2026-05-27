@@ -20,7 +20,7 @@ public partial class Project
 
     #region FieldAndProperty
 
-    private readonly IConsoleService consoleService;
+    private readonly KimiControl kimiControl;
     private HashSet<string> targets = new();
     private HashSet<string> globalUse = new();
     private List<string> additionalSource = [];
@@ -29,9 +29,9 @@ public partial class Project
 
     #endregion
 
-    public Project(IConsoleService consoleService)
+    public Project(KimiControl kimiControl)
     {
-        this.consoleService = consoleService;
+        this.kimiControl = kimiControl;
         this.ProjectFile = DefaultProjectFile;
     }
 
@@ -49,7 +49,7 @@ public partial class Project
         }
         catch
         {
-            this.consoleService.WriteLine(Hashed.Project.NotFound, file);
+            this.kimiControl.WriteLine(Hashed.Project.NotFound, file);
             return false;
         }
 

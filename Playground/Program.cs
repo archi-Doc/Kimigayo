@@ -12,7 +12,7 @@ internal class Program
     {
         Console.WriteLine("Hello, World!");
 
-        var unit = new KimigayoUnit.Builder().Build();
+        var unit = new KimiUnit.Builder().Build();
         var serviceProvider = unit.Context.ServiceProvider;
 
 

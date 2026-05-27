@@ -4,12 +4,11 @@ namespace Kimigayo;
 
 public class Solution
 {
-    // public IConsoleService ConsoleService { get; set; }
-    private readonly IConsoleService consoleService;
+    private readonly KimiControl kimiControl;
 
-    public Solution(IConsoleService consoleService)
+    public Solution(KimiControl kimiControl)
     {
-        this.consoleService = consoleService;
+        this.kimiControl = kimiControl;
     }
 
     public bool TryReadFile(string file)
@@ -21,7 +20,7 @@ public class Solution
         }
         catch
         {
-            this.consoleService.WriteLine(Hashed.Solution.NotFound, file);
+            this.kimiControl.WriteLine(Hashed.Solution.NotFound, file);
             return false;
         }
 
