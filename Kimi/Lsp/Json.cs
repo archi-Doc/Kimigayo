@@ -1,8 +1,9 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json;
+using Kimigayo.Diagnostics;
 
-namespace Kimigayo.Lsp;
+namespace Kimigayo.Diagnostics;
 
 public sealed class LspMessage
 {
@@ -108,7 +109,7 @@ public sealed class VersionedTextDocumentIdentifier : TextDocumentIdentifier
 
 public sealed class TextDocumentContentChangeEvent
 {
-    public Range? Range { get; set; }
+    public Range Range { get; set; }
 
     public int? RangeLength { get; set; }
 
@@ -122,41 +123,4 @@ public sealed class PublishDiagnosticsParams
     public int? Version { get; set; }
 
     public Diagnostic[] Diagnostics { get; set; } = [];
-}
-
-public sealed class Diagnostic
-{
-    public Range Range { get; set; } = new();
-
-    public DiagnosticSeverity Severity { get; set; }
-
-    public string? Code { get; set; }
-
-    // public string? CodeDescription { get; set; }
-
-    public string? Source { get; set; }
-
-    public string Message { get; set; } = string.Empty;
-}
-
-public sealed class Range
-{
-    public Position Start { get; set; } = new();
-
-    public Position End { get; set; } = new();
-}
-
-public sealed class Position
-{
-    public int Line { get; set; }
-
-    public int Character { get; set; }
-}
-
-public enum DiagnosticSeverity : byte
-{
-    Error = 1,
-    Warning = 2,
-    Information = 3,
-    Hint = 4,
 }

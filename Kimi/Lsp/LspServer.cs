@@ -5,7 +5,7 @@ using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Arc.Threading;
+using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Lsp;
 
@@ -289,11 +289,11 @@ public class LspServer
 
         foreach (var change in parameters.ContentChanges)
         {
-            if (change.Range is null)
+            /*if (change.Range is null)
             {
                 document.Open(change.Text ?? string.Empty, version);
                 continue;
-            }
+            }*/
 
             document.ApplyChange(
                 change.Range.Start.Line,

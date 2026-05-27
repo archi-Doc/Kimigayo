@@ -1,62 +1,29 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimigayo.Lsp;
-
 namespace Kimigayo;
+
+using System.Collections.Concurrent;
+using Kimigayo.Diagnostics;
 
 public class KimiControl
 {
     private readonly IConsoleService consoleService;
-    private readonly Diagnostic.GoshujinClass diagnostics = new();
+    private readonly ConcurrentDictionary<string, FileDiagnostic> fileDiagnostics;
+
+    public FileDiagnostic GlobalDiagnostic { get; }
 
     public KimiControl(IConsoleService consoleService)
     {
         this.consoleService = consoleService;
+
+        this.fileDiagnostics = new();
+        this.GlobalDiagnostic = new(string.Empty);
+        this.fileDiagnostics.TryAdd(this.GlobalDiagnostic.Url, this.GlobalDiagnostic);
     }
 
-    public void AddDiagnostic(Diagnostic diagnostic)
+    public FileDiagnostic GetOrAddFileDiagnostic(string url)
     {
-        using (this.diagnostics.LockObject.EnterScope())
-        {
-            if (this.diagnostics.StartPositionChain.ContainsKey(diagnostic.StartPosition))
-            {
-                return;
-            }
-
-            diagnostic.Goshujin = this.diagnostics;
-        }
-    }
-
-    public bool RemoveDiagnostic(Position startPosition)
-    {
-        using (this.diagnostics.LockObject.EnterScope())
-        {
-            if (this.diagnostics.StartPositionChain.TryGetValue(startPosition, out var diagnostic))
-            {
-                diagnostic.Goshujin = default;
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-    }
-
-    public Diagnostic[] GetDiagnostics()
-    {
-        using (this.diagnostics.LockObject.EnterScope())
-        {
-            return this.diagnostics.ToArray();
-        }
-    }
-
-    public void ClearDiagnostic()
-    {
-        using (this.diagnostics.LockObject.EnterScope())
-        {
-            this.diagnostics.ClearAll();
-        }
+        return this.fileDiagnostics.GetOrAdd(url, x => new(x));
     }
 
     public Task<InputResult> ReadLine(CancellationToken cancellationToken = default)

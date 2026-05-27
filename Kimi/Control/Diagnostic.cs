@@ -1,13 +1,13 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo;
+namespace Kimigayo.Diagnostics;
 
 [ValueLinkObject(Isolation = IsolationLevel.Serializable)]
 public sealed partial record class Diagnostic
 {
     public Range Range { get; init; }
 
-    public Kimigayo.Lsp.DiagnosticSeverity Severity { get; init; }
+    public DiagnosticSeverity Severity { get; init; }
 
     public string? Code { get; init; }
 
@@ -79,4 +79,12 @@ public readonly record struct Position : IComparable<Position>
 
         return 0;
     }
+}
+
+public enum DiagnosticSeverity : byte
+{
+    Error = 1,
+    Warning = 2,
+    Information = 3,
+    Hint = 4,
 }

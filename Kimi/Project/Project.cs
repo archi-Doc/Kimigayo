@@ -49,6 +49,7 @@ public partial class Project
         }
         catch
         {
+            this.kimiControl.GlobalDiagnostic.AddDiagnostic()
             this.kimiControl.WriteLine(Hashed.Project.NotFound, file);
             return false;
         }
