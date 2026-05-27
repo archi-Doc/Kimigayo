@@ -13,7 +13,7 @@ public record class FileDiagnostic
         this.Url = url;
     }
 
-    public void Add(Range range, ulong diagnosticHash)
+    public void Add(Range range, ulong diagnosticHash, object? obj = null)
     {
         using (this.diagnostics.LockObject.EnterScope())
         {
@@ -24,7 +24,16 @@ public record class FileDiagnostic
 
             if (DiagnosticCode.TryGet(diagnosticHash, out var code, out var severity))
             {
-                var message = HashedString.Get(diagnosticHash);
+                string message;
+                if (obj is null)
+                {
+                    message = HashedString.Get(diagnosticHash);
+                }
+                else
+                {
+                    message = HashedString.Get(diagnosticHash, obj);
+                }
+
                 var diagnostic = new Diagnostic(range, severity, message);
                 diagnostic.Goshujin = this.diagnostics;
             }

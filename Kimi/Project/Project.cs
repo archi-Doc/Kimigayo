@@ -52,12 +52,8 @@ public partial class Project
         }
         catch
         {
-            this.kimiControl.GlobalDiagnostic.Add(Range.FromString(file), Hashed.Project.NotFound);
-            this.kimiControl.WriteLine(Hashed.Project.NotFound, file);
-
-            var d = this.kimiControl.GlobalDiagnostic.GetArray();
-            var bin = JsonSerializer.SerializeToUtf8Bytes(d);
-            var st = Encoding.UTF8.GetString(bin);
+            this.kimiControl.GlobalDiagnostic.Add(Range.FromString(file), Hashed.Project.NotFound, file);
+            this.kimiControl.WriteLine(Hashed.Project.NotFound, file);//
             return false;
         }
 
