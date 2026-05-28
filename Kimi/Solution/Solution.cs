@@ -20,7 +20,7 @@ public class Solution
         }
         catch
         {
-            this.kimiControl.WriteLine(Hashed.Solution.NotFound, file);
+            // this.kimiControl.WriteLine(Hashed.Solution.NotFound, file);
             return false;
         }
 

@@ -53,7 +53,7 @@ public partial class Project
         catch
         {
             this.kimiControl.GlobalDiagnostic.Add(Range.FromString(file), Hashed.Project.NotFound, file);
-            this.kimiControl.WriteLine(Hashed.Project.NotFound, file);//
+            // this.kimiControl.WriteLine(Hashed.Project.NotFound, file);//
             return false;
         }
 
