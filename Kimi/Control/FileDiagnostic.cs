@@ -4,12 +4,16 @@ namespace Kimigayo.Diagnostics;
 
 public record class FileDiagnostic
 {
-    public string Url { get; init; } = string.Empty;
-
+    private readonly KimiControl kimiControl;
     private readonly Diagnostic.GoshujinClass diagnostics = new();
 
-    public FileDiagnostic(string url)
+    public string Url { get; init; } = string.Empty;
+
+    public bool IsGlobal => this.Url == string.Empty || this.Url == KimiControl.GlobalName;
+
+    internal FileDiagnostic(KimiControl kimiControl, string url)
     {
+        this.kimiControl = kimiControl;
         this.Url = url;
     }
 
@@ -36,6 +40,8 @@ public record class FileDiagnostic
 
                 var diagnostic = new Diagnostic(range, severity, message);
                 diagnostic.Goshujin = this.diagnostics;
+
+                this.kimiControl.ReportDiagnostic(this.Url, diagnostic);
             }
         }
     }

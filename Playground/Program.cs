@@ -57,7 +57,7 @@ internal class Program
               "Kimi.Base"
             """);
 
-        kimiControl.DumpToConsole();
+        // kimiControl.DumpToConsole();
 
     }
 }

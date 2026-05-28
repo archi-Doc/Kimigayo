@@ -33,6 +33,24 @@ public sealed partial record class Diagnostic
         this.Severity = severity;
         this.Message = message;
     }
+
+    public override string ToString()
+    {
+        return this.ToString(string.Empty);
+    }
+
+    public string ToString(string url)
+    {
+        if (string.IsNullOrEmpty(url))
+        {
+            return $"{this.Severity.ToString()} {url}{this.Range.ToString()} {this.Message}";
+
+        }
+        else
+        {
+            return $"{this.Severity.ToString()} {this.Message}";
+        }
+    }
 }
 
 public readonly record struct Range : IComparable<Range>
@@ -64,6 +82,11 @@ public readonly record struct Range : IComparable<Range>
 
         cmp = this.End.CompareTo(other.End);
         return cmp;
+    }
+
+    public override string ToString()
+    {
+        return $"({this.Start.Line},{this.Start.Character},{this.End.Line},{this.End.Character})";
     }
 }
 
@@ -99,6 +122,11 @@ public readonly record struct Position : IComparable<Position>
         }
 
         return 0;
+    }
+
+    public override string ToString()
+    {
+        return $"({this.Line},{this.Character})";
     }
 }
 
