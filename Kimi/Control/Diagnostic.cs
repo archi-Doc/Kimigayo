@@ -43,12 +43,12 @@ public sealed partial record class Diagnostic
     {
         if (string.IsNullOrEmpty(url))
         {
-            return $"{this.Severity.ToString()} {url}{this.Range.ToString()} {this.Message}";
+            return $"[{this.Severity.ToString()}] {url}{this.Range.ToString()} {this.Message}";
 
         }
         else
         {
-            return $"{this.Severity.ToString()} {this.Message}";
+            return $"[{this.Severity.ToString()}] {this.Message}";
         }
     }
 }
