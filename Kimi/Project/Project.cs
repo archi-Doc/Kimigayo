@@ -72,8 +72,10 @@ public partial class Project
         return true;
     }
 
-    private void Build(ReadOnlySpan<char> source)
+    private void Build(string text)
     {
+        var reader = new Reader(this.kimiControl, text);
+        reader.Read(out var token, out var span);
     }
 
     private void Prepare()

@@ -29,9 +29,9 @@ internal class Program
         project.TryReadFile("aaa");
 
         project.AddSource("""
-            #Namespace(Test.Program) // Comment
-            method void Main()
-              return;
+            namespace Test.Program // Comment
+            public void Main()
+                return;
             """);
         var result = await project.Build();
 
