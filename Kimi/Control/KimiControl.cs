@@ -9,6 +9,7 @@ using Kimigayo.Diagnostics;
 public class KimiControl
 {
     internal const string GlobalName = "Global";
+    internal const string ErrorPrefix = "KimiError";
     private readonly IConsoleService consoleService;
     private readonly ConcurrentDictionary<string, FileDiagnostic> fileDiagnostics;
 

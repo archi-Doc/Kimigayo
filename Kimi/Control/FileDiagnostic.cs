@@ -26,23 +26,22 @@ public record class FileDiagnostic
                 return;
             }
 
-            if (DiagnosticCode.TryGet(diagnosticHash, out var code, out var severity))
+            DiagnosticCode.GetSeverity(diagnosticHash, out var code, out var severity);
+
+            string message;
+            if (obj is null)
             {
-                string message;
-                if (obj is null)
-                {
-                    message = HashedString.Get(diagnosticHash);
-                }
-                else
-                {
-                    message = HashedString.Get(diagnosticHash, obj);
-                }
-
-                var diagnostic = new Diagnostic(range, severity, message);
-                diagnostic.Goshujin = this.diagnostics;
-
-                this.kimiControl.ReportDiagnostic(this.Url, diagnostic);
+                message = HashedString.Get(diagnosticHash);
             }
+            else
+            {
+                message = HashedString.Get(diagnosticHash, obj);
+            }
+
+            var diagnostic = new Diagnostic(range, severity, message);
+            diagnostic.Goshujin = this.diagnostics;
+
+            this.kimiControl.ReportDiagnostic(this.Url, diagnostic);
         }
     }
 

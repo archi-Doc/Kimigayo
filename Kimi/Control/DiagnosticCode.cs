@@ -24,34 +24,30 @@ public static class DiagnosticCode
 
     static DiagnosticCode()
     {
-        AddCode(typeof(Hashed), default);
+        AddCode(typeof(Hashed), KimiControl.ErrorPrefix);
 
-        Add(Hashed.Project.NotFound, DiagnosticSeverity.Error);
+        Hashed.SetDiagnosticSeverity(SetSeverity);
     }
 
-    public static void Add(ulong diagnosticHash, DiagnosticSeverity severity)
+    public static void SetSeverity(ulong diagnosticHash, DiagnosticSeverity severity)
     {
-        if (!HashToCode.TryGetValue(diagnosticHash, out var code))
+        if (HashToCode.TryGetValue(diagnosticHash, out var code))
         {
-            code = "Code";
+            HashToCodeAndSeverity[diagnosticHash] = new(code, severity);
         }
-
-        HashToCodeAndSeverity[diagnosticHash] = new(code, severity);
     }
 
-    public static bool TryGet(ulong diagnosticHash, out string code, out DiagnosticSeverity severity)
+    public static void GetSeverity(ulong diagnosticHash, out string code, out DiagnosticSeverity severity)
     {
         if (HashToCodeAndSeverity.TryGetValue(diagnosticHash, out var v))
         {
             code = v.Code;
             severity = v.Severity;
-            return true;
         }
         else
         {
             code = string.Empty;
-            severity = default;
-            return false;
+            severity = DiagnosticSeverity.Error;
         }
     }
 
