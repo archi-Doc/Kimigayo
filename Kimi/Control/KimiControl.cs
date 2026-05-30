@@ -17,6 +17,8 @@ public class KimiControl
 
     public FileDiagnostic GlobalDiagnostic { get; }
 
+    public int PointerSize { get; private set; }
+
     public KimiControl(IConsoleService consoleService)
     {
         this.consoleService = consoleService;
@@ -25,6 +27,7 @@ public class KimiControl
         this.fileDiagnostics = new();
         this.GlobalDiagnostic = new(this, GlobalName);
         this.fileDiagnostics.TryAdd(this.GlobalDiagnostic.Url, this.GlobalDiagnostic);
+        this.PointerSize = IntPtr.Size;
     }
 
     public void ReportDiagnostic(string url, Diagnostic diagnostic)
