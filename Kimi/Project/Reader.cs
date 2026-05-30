@@ -2,25 +2,46 @@
 
 namespace Kimigayo;
 
-internal enum ReaderMode : byte
+internal readonly ref struct ReaderToken
 {
-    Global,
+    public readonly ReaderTokenKind Kind;
+
+    public readonly ReadOnlySpan<char> Span;
+
+    public readonly int NumberOfIndents;
+
+    public ReaderToken(ReaderTokenKind kind, ReadOnlySpan<char> span, int numberOfIndents = 0)
+    {
+        this.Kind = kind;
+        this.Span = span;
+        this.NumberOfIndents = numberOfIndents;
+    }
 }
 
-internal enum ReaderToken : byte
+internal enum ReaderMode : byte
 {
-    Keyword,
-    Identifier,
-    Indent,
-    Trivia,
-    Eof,
+    StartOfLine,
 }
+
+internal enum ReaderTokenKind : byte
+{
+    Eof,
+    Indent,
+    Keyword,
+    Attribute,
+    Identifier,
+    Trivia,
+    Assignment,
+    Reference,
+}
+
+
 
 internal static class ReaderHelper
 {
     public static bool IsLineContext(this ReaderMode readerContext) => readerContext switch
     {
-        ReaderMode.Global => true,
+        ReaderMode.StartOfLine => true,
         _ => false,
     };
 }
@@ -40,24 +61,49 @@ internal ref struct Reader
         this.span = text;
     }
 
-    public void Read(out ReaderToken token, out ReadOnlySpan<char> text)
+    public bool Read(out ReaderTokenKind token)
     {
-        var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(this.span);
-        if (numberOfSpaces > 0)
-        {// Space
-            if (this.CurrentMode.IsLineContext())
-            {
+        token = default;
 
-
-            }
-            else
-            {
-                this.span = this.span.Slice(numberOfSpaces);
-            }
+        if (this.CurrentMode == ReaderMode.StartOfLine)
+        {
 
         }
+        else
+        {
+            while (this.span.Length > 0 && this.span[0] == ' ')
+            {
+                this.span = this.span.Slice(1);
+            }
 
-        token = ReaderToken.Keyword;
+            this.span = this.span.Slice(numberOfSpaces);
+        }
+
+        token = ReaderTokenKind.Keyword;
         text = default;
+    }
+
+    private bool Read_StartOfLine(out ReaderTokenKind token)
+    {
+        var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(this.span);
+        this.span = this.span.Slice(numberOfSpaces);
+
+        if (numberOfSpaces > 0)
+        {// Spaces
+            var remainingSpaces = numberOfSpaces % Constants.IndentationSpaces;
+            if (remainingSpaces > 0)
+            {// Invalid indentation
+                numberOfSpaces += Constants.IndentationSpaces - remainingSpaces;
+            }
+
+            var numberOfIndents = numberOfSpaces / Constants.IndentationSpaces;
+            token = ReaderTokenKind.Indent;
+            token = new(ReaderTokenKind.Indent, )
+            return true;
+        }
+        else
+        {// Keyword: namespace, public
+            var idx = this.span.IndexOf(Constants.SpaceChar);
+        }
     }
 }
