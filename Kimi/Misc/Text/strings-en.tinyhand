@@ -1,0 +1,7 @@
+// identifier="string" /* null: Use the default value. */
+
+Solution=
+  NotFound="Solution file '{0}' not found"
+
+Project=
+  NotFound="Project file '{0}' not found"

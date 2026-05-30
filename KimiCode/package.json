@@ -1,0 +1,44 @@
+{
+  "name": "kimi-code",
+  "displayName": "KimiCode",
+  "description": "Kimigayo",
+  "version": "0.0.1",
+  "publisher": "archi-Doc",
+  "engines": {
+    "vscode": "^1.120.0"
+  },
+  "categories": [
+    "Linters"
+  ],
+  "activationEvents": [
+    "onLanguage:kimi"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "kimi",
+        "aliases": [
+          "Kimi",
+          "kimi"
+        ],
+        "extensions": [
+          ".kimi"
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "build-server": "dotnet build ../Kimi/Kimi.csproj -c Debug",
+    "build": "npm run build-server"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.0"
+  },
+  "private": true
+}
