@@ -5,5 +5,8 @@ namespace Kimigayo;
 public static class Constants
 {
     public const int IndentationSpaces = 4;
+
+    public const char LfChar = '\n';
+    public const char CrChar = '\r';
     public const char SpaceChar = ' ';
 }

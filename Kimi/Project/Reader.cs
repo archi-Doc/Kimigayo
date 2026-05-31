@@ -15,11 +15,6 @@ internal readonly struct Token
     }
 }
 
-internal enum ReaderMode : byte
-{
-    StartOfLine,
-}
-
 internal enum TokenKind : byte
 {
     Eof,
@@ -32,30 +27,64 @@ internal enum TokenKind : byte
     Reference,
 }
 
+internal enum LineFeedKind : byte
+{
+    Scope, // Indent
+    Parenthesis, // (,)
+}
+
 internal static class ReaderHelper
 {
-    public static bool IsLineContext(this ReaderMode readerContext) => readerContext switch
-    {
-        ReaderMode.StartOfLine => true,
-        _ => false,
-    };
 }
 
 internal class Reader
 {
     #region FieldAndProperty
 
-    public ReaderMode CurrentMode { get; private set; }
+    private Stack<LineFeedKind> lineFeedStack = new();
+    private List<Token> tokenList = new();
+    private int numberOfTokens;
 
     #endregion
 
-    public Reader(KimiControl kimiControl, ReadOnlySpan<char> text)
+    public Reader(KimiControl kimiControl)
     {
-        this.span = text;
     }
 
-    public bool Read(out TokenKind token)
+    public List<Token> Read(ref ReadOnlySpan<char> span)
     {
+Entry:
+        this.tokenList.Clear();
+
+        // Skip spaces
+        var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
+        span = span.Slice(numberOfSpaces);
+        if (span.Length == 0)
+        {
+            return [];
+        }
+        else if (span[0] == Constants.LfChar)
+        {// Empty sentence (\n)
+            goto Entry;
+        }
+        else if (span.Length >= 2 &&
+            span[0] == Constants.CrChar &&
+            span[1] == Constants.LfChar)
+        {// Empty sentence (\r\n)
+            goto Entry;
+        }
+
+        var remainingSpaces = numberOfSpaces % Constants.IndentationSpaces;
+        if (remainingSpaces > 0)
+        {// Invalid indentation
+            numberOfSpaces += Constants.IndentationSpaces - remainingSpaces;
+        }
+
+        var numberOfIndents = numberOfSpaces / Constants.IndentationSpaces;
+
+        var previousIndents = this.tokenList.Count;
+
+        this.tokenList[1] = default;
         token = default;
 
         if (this.CurrentMode == ReaderMode.StartOfLine)
@@ -74,6 +103,16 @@ internal class Reader
 
         token = TokenKind.Keyword;
         text = default;
+    }
+
+    private void AddToken(Token token)
+    {
+        if (this.numberOfTokens >= this.tokenList.Count)
+        {
+            this.tokenList.EnsureCapacity(this.numberOfTokens + 1);
+        }
+
+        this.tokenList[this.numberOfTokens++] = token;
     }
 
     private bool Read_StartOfLine(out TokenKind token)

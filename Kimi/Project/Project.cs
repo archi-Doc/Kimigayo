@@ -74,8 +74,12 @@ public partial class Project
 
     private void Build(string text)
     {
-        var reader = new Reader(this.kimiControl, text);
-        reader.Read(out var token, out var span);
+        var span = text.AsSpan();
+        var reader = new Reader(this.kimiControl);
+        while (span.Length > 0)
+        {
+            var sentence = reader.Read(ref span);
+        }
     }
 
     private void Prepare()
