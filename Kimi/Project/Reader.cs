@@ -35,8 +35,6 @@ internal enum ReaderTokenKind : byte
     Reference,
 }
 
-
-
 internal static class ReaderHelper
 {
     public static bool IsLineContext(this ReaderMode readerContext) => readerContext switch
