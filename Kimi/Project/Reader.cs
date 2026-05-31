@@ -2,19 +2,16 @@
 
 namespace Kimigayo;
 
-internal readonly ref struct ReaderToken
+internal readonly struct Token
 {
-    public readonly ReaderTokenKind Kind;
+    public readonly TokenKind Kind;
 
-    public readonly ReadOnlySpan<char> Span;
+    public readonly Memory<char> Text;
 
-    public readonly int NumberOfIndents;
-
-    public ReaderToken(ReaderTokenKind kind, ReadOnlySpan<char> span, int numberOfIndents = 0)
+    public Token(TokenKind kind, Memory<char> span)
     {
         this.Kind = kind;
-        this.Span = span;
-        this.NumberOfIndents = numberOfIndents;
+        this.Text = span;
     }
 }
 
@@ -23,14 +20,14 @@ internal enum ReaderMode : byte
     StartOfLine,
 }
 
-internal enum ReaderTokenKind : byte
+internal enum TokenKind : byte
 {
     Eof,
+    Trivia,
     Indent,
     Keyword,
     Attribute,
     Identifier,
-    Trivia,
     Assignment,
     Reference,
 }
@@ -44,11 +41,9 @@ internal static class ReaderHelper
     };
 }
 
-internal ref struct Reader
+internal class Reader
 {
     #region FieldAndProperty
-
-    private ReadOnlySpan<char> span;
 
     public ReaderMode CurrentMode { get; private set; }
 
@@ -59,7 +54,7 @@ internal ref struct Reader
         this.span = text;
     }
 
-    public bool Read(out ReaderTokenKind token)
+    public bool Read(out TokenKind token)
     {
         token = default;
 
@@ -77,11 +72,11 @@ internal ref struct Reader
             this.span = this.span.Slice(numberOfSpaces);
         }
 
-        token = ReaderTokenKind.Keyword;
+        token = TokenKind.Keyword;
         text = default;
     }
 
-    private bool Read_StartOfLine(out ReaderTokenKind token)
+    private bool Read_StartOfLine(out TokenKind token)
     {
         var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(this.span);
         this.span = this.span.Slice(numberOfSpaces);
@@ -95,8 +90,8 @@ internal ref struct Reader
             }
 
             var numberOfIndents = numberOfSpaces / Constants.IndentationSpaces;
-            token = ReaderTokenKind.Indent;
-            token = new(ReaderTokenKind.Indent, )
+            token = TokenKind.Indent;
+            token = new(TokenKind.Indent, )
             return true;
         }
         else
