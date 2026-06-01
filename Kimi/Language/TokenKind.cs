@@ -37,12 +37,23 @@ public enum TokenKind : byte
     Protected_or_internal,
     Protected_and_internal,
 
-    Function,
-    Identifier,
+    Switch, // switch
+    Case, // case
+    Break, // break
+    Return, // return
+
+    // Not keyword
+    Identifier = 128,
     Assignment, // =
     Move, // <=
     Map, // =>
     Reference, // &
+
+    OpenParentheses, // (
+    CloseParentheses, // )
+
+    Literal, // "text"
+    RawLiteral, // """text"""
 
     SingleLineComment,
     MultiLineComment,

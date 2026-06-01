@@ -17,6 +17,11 @@ public static class LanguageHelper
         _keywordToKeywordKind = new();
         foreach (var x in Enum.GetValues<TokenKind>())
         {
+            if (x == TokenKind.Identifier)
+            {// Anything after the identifier is not a keyword.
+                break;
+            }
+
             var keyword = x.ToString().ToLower();
             _keywordKindToKeyword[x] = keyword;
             _keywordToKeywordKind[keyword] = x;
