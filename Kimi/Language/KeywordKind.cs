@@ -4,13 +4,17 @@ namespace Kimigayo.Language;
 
 public enum KeywordKind : byte
 {
-    Namespace,
+    // Primitive types
+    Namespace = 32,
     Use,
     Group,
     Struct,
     Enum,
     Public,
+    Protected,
     Private,
     Internal,
+    Protected_or_internal,
+    Protected_and_internal,
     Reference,
 }
