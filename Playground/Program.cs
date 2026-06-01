@@ -28,7 +28,7 @@ internal class Program
 
         project.TryReadFile("aaa");
 
-        project.AddSource("""
+        project.AddSource("test", """
             namespace Test.Program // Comment
             public void Main()
                 return;

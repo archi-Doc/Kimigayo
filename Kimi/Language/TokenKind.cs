@@ -24,7 +24,6 @@ public enum TokenKind : byte
     // Other
     Namespace = 32, // namespace Kimi.Base
     Use, // use Kimi.Base
-    Attribute, // #Attribute
     Group, // group
     Struct, // struct
     Enum, // enum
@@ -43,7 +42,8 @@ public enum TokenKind : byte
     Return, // return
 
     // Not keyword
-    Identifier = 128,
+    Attribute = 128, // #Attribute
+    Identifier,
     Assignment, // =
     Move, // <=
     Map, // =>

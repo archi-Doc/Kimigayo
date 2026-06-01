@@ -66,27 +66,36 @@ internal class Reader
     public (List<Token> List, int Count) Read()
     {
 Entry:
+        this.numberOfTokens = 0;
         var span = this.text.Slice(this.position).Span;
         if (span.Length == 0)
         {// Eof
-            this.ClearToken();
-            return ([], 0);
+            return (this.tokenList, this.numberOfTokens);
         }
 
         if (this.previousIndents >= 0)
-        {// The indentation has already been processed in the previous loop.
+        {// The spaces/indentation has already been processed in the previous loop.
             if (span[0] == Constants.AttributeChar)
-            {// Attribute
-                this.ReadAttribute
+            {// #Attribute()
             }
+            else if (span[0] == '/')
+            {// "//" "/*" "/", "/="
+            }
+        }
+
+        // Separator Space, (, ), Cr, Lf, =, <, >, +, -, %, &, |, ','
+        span.IndexOfAny("ABC");
+
+        if (span.Length == 0)
+        {// Eof
+            return (this.tokenList, this.numberOfTokens);
         }
 
         // Skip spaces
         var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
         Slice(ref span, numberOfSpaces);
 
-
-        else if (span[0] == Constants.LfChar)
+        if (span[0] == Constants.LfChar)
         {// Empty line (\n)
             Slice(ref span, 1);
             this.line++;
@@ -122,9 +131,6 @@ Entry:
         }
 
         this.previousIndents = numberOfIndents;
-
-        token = TokenKind.Keyword;
-        text = default;
 
         void Slice(ref ReadOnlySpan<char> span, int start)
         {

@@ -77,13 +77,16 @@ public partial class Project
     private void Build(UrlAndtext urlAndtext)
     {
         var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
-        var position = 0;
         var reader = new Reader(this.kimiControl, diagnostic);
         reader.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
 
-        while (span.Length > 0)
+        while (true)
         {
-            var sentence = reader.Read(span, ref position);
+            var r = reader.Read();
+            if (r.Count == 0)
+            {
+                break;
+            }
         }
     }
 
