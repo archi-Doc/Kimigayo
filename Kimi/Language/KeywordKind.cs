@@ -30,7 +30,7 @@ public enum KeywordKind : byte
     Const,
     Public,
     Protected,
-    // Private,
+    Private,
     Internal,
     Protected_or_internal,
     Protected_and_internal,

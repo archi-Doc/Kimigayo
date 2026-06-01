@@ -8,6 +8,8 @@ using Arc.Unit;
 using Kimigayo.Diagnostics;
 using SimplePrompt;
 
+public readonly record struct UrlAndtext(string Url, string Text);
+
 public partial class Project
 {
     public static readonly ProjectFile DefaultProjectFile;
@@ -26,7 +28,7 @@ public partial class Project
     private readonly KimiControl kimiControl;
     private HashSet<string> targets = new();
     private HashSet<string> globalUse = new();
-    private List<string> additionalSource = [];
+    private List<UrlAndtext> additionalSource = [];
 
     public ProjectFile ProjectFile { get; private set; } = new();
 
@@ -38,9 +40,9 @@ public partial class Project
         this.ProjectFile = DefaultProjectFile;
     }
 
-    public void AddSource(string source)
+    public void AddSource(string url, string text)
     {
-        this.additionalSource.Add(source);
+        this.additionalSource.Add(new(url, text));
     }
 
     public bool TryReadFile(string file)
@@ -72,13 +74,16 @@ public partial class Project
         return true;
     }
 
-    private void Build(string text)
+    private void Build(UrlAndtext urlAndtext)
     {
-        var span = text.AsSpan();
-        var reader = new Reader(this.kimiControl);
+        var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
+        var position = 0;
+        var reader = new Reader(this.kimiControl, diagnostic);
+        reader.Setup(urlAndtext.Text.AsMemory(), 0, 0);
+
         while (span.Length > 0)
         {
-            var sentence = reader.Read(ref span);
+            var sentence = reader.Read(span, ref position);
         }
     }
 

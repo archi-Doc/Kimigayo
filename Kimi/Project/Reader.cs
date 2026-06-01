@@ -1,14 +1,16 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimigayo.Diagnostics;
+
 namespace Kimigayo;
 
 internal readonly struct Token
 {
     public readonly TokenKind Kind;
 
-    public readonly Memory<char> Text;
+    public readonly ReadOnlyMemory<char> Text;
 
-    public Token(TokenKind kind, Memory<char> span)
+    public Token(TokenKind kind, ReadOnlyMemory<char> span)
     {
         this.Kind = kind;
         this.Text = span;
@@ -41,43 +43,66 @@ internal class Reader
 {
     #region FieldAndProperty
 
-    private Stack<LineFeedKind> lineFeedStack = new();
+    private readonly KimiControl kimiControl;
+    private readonly FileDiagnostic fileDiagnostic;
+
+    private ReadOnlyMemory<char> text;
+    private int line;
+    private int character;
+
+    // private Stack<LineFeedKind> lineFeedStack = new();
     private List<Token> tokenList = new();
     private int numberOfTokens;
 
     #endregion
 
-    public Reader(KimiControl kimiControl)
+    public Reader(KimiControl kimiControl, FileDiagnostic fileDiagnostic)
     {
+        this.kimiControl = kimiControl;
+        this.fileDiagnostic = fileDiagnostic;
     }
 
-    public List<Token> Read(ref ReadOnlySpan<char> span)
+    public void Setup(ReadOnlyMemory<char> text, int line, int character)
     {
+        this.text = text;
+        this.line = line;
+        this.character = character;
+    }
+
+    public ReadOnlySpan<Token> Read()
+    {
+        int currentIndents;
+        bool requiresIndent;
+
 Entry:
+        var span = text.Slice(position);
         this.tokenList.Clear();
 
         // Skip spaces
         var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
         span = span.Slice(numberOfSpaces);
         if (span.Length == 0)
-        {
+        {// Eof
             return [];
         }
         else if (span[0] == Constants.LfChar)
-        {// Empty sentence (\n)
+        {// Empty line (\n)
+            this.line++;
             goto Entry;
         }
         else if (span.Length >= 2 &&
             span[0] == Constants.CrChar &&
             span[1] == Constants.LfChar)
-        {// Empty sentence (\r\n)
+        {// Empty line (\r\n)
+            this.line++;
             goto Entry;
         }
 
-        var remainingSpaces = numberOfSpaces % Constants.IndentationSpaces;
-        if (remainingSpaces > 0)
+        var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
+        if (unnecessarySpaces > 0)
         {// Invalid indentation
-            numberOfSpaces += Constants.IndentationSpaces - remainingSpaces;
+            numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
+            this.fileDiagnostic.Add(new(), Hashed.Reader.InvalidIndent);
         }
 
         var numberOfIndents = numberOfSpaces / Constants.IndentationSpaces;

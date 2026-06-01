@@ -5,3 +5,6 @@ Solution=
 
 Project=
   NotFound="Project file '{0}' not found"
+
+Reader=
+  InvalidIndent=""
