@@ -4,7 +4,7 @@ namespace Kimigayo.Language;
 
 public enum TokenKind : byte
 {
-    // Primitive types
+    // Keywords (Primitive types)
     Bool,
     Isize,
     Usize,
@@ -21,7 +21,7 @@ public enum TokenKind : byte
     F32,
     F64,
 
-    // Other
+    // Keywords (Other)
     Namespace = 32, // namespace Kimi.Base
     Use, // use Kimi.Base
     Group, // group
@@ -36,26 +36,43 @@ public enum TokenKind : byte
     Protected_or_internal,
     Protected_and_internal,
 
+    If, // if
+    ElseIf, // else if
+    Else, // else
     Switch, // switch
     Case, // case
     Break, // break
     Return, // return
+    Continue, // continue
 
     // Not keyword
     Attribute = 128, // #Attribute
     Identifier,
+    Dot, // .
+    Comma, // ,
     Assignment, // =
     Move, // <=
     Map, // =>
     Reference, // &
 
-    OpenParentheses, // (
-    CloseParentheses, // )
+    OpenBracket, // (
+    CloseBracket, // )
 
     Literal, // "text"
     RawLiteral, // """text"""
 
-    SingleLineComment,
-    MultiLineComment,
-    LineFeed,
+    AmpersandAmpersandToken,
+    AmpersandEqualsToken,
+    AmpersandToken,
+    AsteriskEquals,
+    Asterisk,
+    BarBarToken,
+    BarEqualsToken,
+    BarToken,
+    SlashEquals, // /=
+    Slash, // /
+
+    SingleLineComment, // // comment
+    MultiLineComment, // /* comment */
+    LineFeed, // \n or \r\n
 }

@@ -23,7 +23,16 @@ public static class LanguageHelper
                 break;
             }
 
-            var keyword = x.ToString().ToLower();
+            string keyword;
+            if (x == TokenKind.ElseIf)
+            {
+                keyword = "else if";
+            }
+            else
+            {
+                keyword = x.ToString().ToLower();
+            }
+
             _keywordKindToKeyword[x] = keyword;
             KeywordToKeywordKind.TryAdd(keyword, x);
         }
