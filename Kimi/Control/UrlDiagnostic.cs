@@ -2,7 +2,7 @@
 
 namespace Kimigayo.Diagnostics;
 
-public record class FileDiagnostic
+public record class UrlDiagnostic
 {
     private readonly KimiControl kimiControl;
     private readonly Diagnostic.GoshujinClass diagnostics = new();
@@ -11,7 +11,7 @@ public record class FileDiagnostic
 
     public bool IsGlobal => this.Url == string.Empty || this.Url == KimiControl.GlobalName;
 
-    internal FileDiagnostic(KimiControl kimiControl, string url)
+    internal UrlDiagnostic(KimiControl kimiControl, string url)
     {
         this.kimiControl = kimiControl;
         this.Url = url;

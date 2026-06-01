@@ -11,11 +11,11 @@ public class KimiControl
     internal const string GlobalName = "Global";
     internal const string ErrorPrefix = "KimiError";
     private readonly IConsoleService consoleService;
-    private readonly ConcurrentDictionary<string, FileDiagnostic> fileDiagnostics;
+    private readonly ConcurrentDictionary<string, UrlDiagnostic> fileDiagnostics;
 
     public KimiSettings Settings { get; }
 
-    public FileDiagnostic GlobalDiagnostic { get; }
+    public UrlDiagnostic GlobalDiagnostic { get; }
 
     public int PointerSize { get; private set; }
 
@@ -35,7 +35,7 @@ public class KimiControl
         this.WriteLine(diagnostic.Severity, diagnostic.ToString(url));
     }
 
-    public FileDiagnostic GetOrAddFileDiagnostic(string url)
+    public UrlDiagnostic GetOrAddFileDiagnostic(string url)
     {
         return this.fileDiagnostics.GetOrAdd(url, x => new(this, x));
     }

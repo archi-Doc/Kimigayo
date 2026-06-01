@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using Kimigayo.Diagnostics;
 
 namespace Kimigayo;
@@ -44,9 +45,10 @@ internal class Reader
     #region FieldAndProperty
 
     private readonly KimiControl kimiControl;
-    private readonly FileDiagnostic fileDiagnostic;
+    private readonly UrlDiagnostic urlDiagnostic;
 
     private ReadOnlyMemory<char> text;
+    private int position;
     private int line;
     private int character;
 
@@ -56,15 +58,16 @@ internal class Reader
 
     #endregion
 
-    public Reader(KimiControl kimiControl, FileDiagnostic fileDiagnostic)
+    public Reader(KimiControl kimiControl, UrlDiagnostic urlDiagnostic)
     {
         this.kimiControl = kimiControl;
-        this.fileDiagnostic = fileDiagnostic;
+        this.urlDiagnostic = urlDiagnostic;
     }
 
     public void Setup(ReadOnlyMemory<char> text, int line, int character)
     {
         this.text = text;
+        this.position = 0;
         this.line = line;
         this.character = character;
     }
@@ -75,18 +78,19 @@ internal class Reader
         bool requiresIndent;
 
 Entry:
-        var span = text.Slice(position);
+        var span = this.text.Slice(this.position).Span;
         this.tokenList.Clear();
 
         // Skip spaces
         var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
-        span = span.Slice(numberOfSpaces);
+        Slice(ref span, numberOfSpaces);
         if (span.Length == 0)
         {// Eof
             return [];
         }
         else if (span[0] == Constants.LfChar)
         {// Empty line (\n)
+            Slice(ref span, 1);
             this.line++;
             goto Entry;
         }
@@ -94,6 +98,7 @@ Entry:
             span[0] == Constants.CrChar &&
             span[1] == Constants.LfChar)
         {// Empty line (\r\n)
+            Slice(ref span, 2);
             this.line++;
             goto Entry;
         }
@@ -102,7 +107,7 @@ Entry:
         if (unnecessarySpaces > 0)
         {// Invalid indentation
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
-            this.fileDiagnostic.Add(new(), Hashed.Reader.InvalidIndent);
+            this.urlDiagnostic.Add(new(), Hashed.Reader.InvalidIndent);
         }
 
         var numberOfIndents = numberOfSpaces / Constants.IndentationSpaces;
@@ -110,24 +115,17 @@ Entry:
         var previousIndents = this.tokenList.Count;
 
         this.tokenList[1] = default;
-        token = default;
 
-        if (this.CurrentMode == ReaderMode.StartOfLine)
-        {
-
-        }
-        else
-        {
-            while (this.span.Length > 0 && this.span[0] == ' ')
-            {
-                this.span = this.span.Slice(1);
-            }
-
-            this.span = this.span.Slice(numberOfSpaces);
-        }
 
         token = TokenKind.Keyword;
         text = default;
+
+        void Slice(ref ReadOnlySpan<char> span, int start)
+        {
+            span = span.Slice(start);
+            this.position += start;
+            this.character += start;
+        }
     }
 
     private void AddToken(Token token)
@@ -162,5 +160,12 @@ Entry:
         {// Keyword: namespace, public
             var idx = this.span.IndexOf(Constants.SpaceChar);
         }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void NextLine()
+    {
+        this.line++;
+        this.character = 0;
     }
 }
