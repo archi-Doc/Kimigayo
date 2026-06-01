@@ -75,6 +75,10 @@ Entry:
 
         if (this.previousIndents >= 0)
         {// The spaces/indentation has already been processed in the previous loop.
+            while (span.Length > 0)
+            {
+            }
+
             if (span[0] == Constants.AttributeChar)
             {// #Attribute()
             }
@@ -93,20 +97,20 @@ Entry:
 
         // Skip spaces
         var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
-        Slice(ref span, numberOfSpaces);
+        this.Slice(ref span, numberOfSpaces);
 
         if (span[0] == Constants.LfChar)
         {// Empty line (\n)
-            Slice(ref span, 1);
-            this.line++;
+            this.Slice(ref span, 1);
+            this.NextLine();
             goto Entry;
         }
         else if (span.Length >= 2 &&
             span[0] == Constants.CrChar &&
             span[1] == Constants.LfChar)
         {// Empty line (\r\n)
-            Slice(ref span, 2);
-            this.line++;
+            this.Slice(ref span, 2);
+            this.NextLine();
             goto Entry;
         }
 
@@ -131,15 +135,17 @@ Entry:
         }
 
         this.previousIndents = numberOfIndents;
-
-        void Slice(ref ReadOnlySpan<char> span, int start)
-        {
-            span = span.Slice(start);
-            this.position += start;
-            this.character += start;
-        }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void Slice(ref ReadOnlySpan<char> span, int start)
+    {
+        span = span.Slice(start);
+        this.position += start;
+        this.character += start;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AddToken(Token token)
     {
         if (this.numberOfTokens >= this.tokenList.Count)
