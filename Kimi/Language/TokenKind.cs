@@ -2,7 +2,7 @@
 
 namespace Kimigayo.Language;
 
-public enum KeywordKind : byte
+public enum TokenKind : byte
 {
     // Primitive types
     Bool,
@@ -22,17 +22,29 @@ public enum KeywordKind : byte
     F64,
 
     // Other
-    Namespace = 32,
-    Use,
-    Group,
-    Struct,
-    Enum,
-    Const,
+    Namespace = 32, // namespace Kimi.Base
+    Use, // use Kimi.Base
+    Attribute, // #Attribute
+    Group, // group
+    Struct, // struct
+    Enum, // enum
+    Const, // const
+    Static, // static
     Public,
     Protected,
     Private,
     Internal,
     Protected_or_internal,
     Protected_and_internal,
-    Reference,
+
+    Function,
+    Identifier,
+    Assignment, // =
+    Move, // <=
+    Map, // =>
+    Reference, // &
+
+    SingleLineComment,
+    MultiLineComment,
+    LineFeed,
 }

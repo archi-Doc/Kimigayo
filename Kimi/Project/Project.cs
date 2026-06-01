@@ -79,7 +79,7 @@ public partial class Project
         var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
         var position = 0;
         var reader = new Reader(this.kimiControl, diagnostic);
-        reader.Setup(urlAndtext.Text.AsMemory(), 0, 0);
+        reader.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
 
         while (span.Length > 0)
         {

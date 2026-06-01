@@ -9,7 +9,7 @@ public static class Constants
     public const char LfChar = '\n';
     public const char CrChar = '\r';
     public const char SpaceChar = ' ';
-
+    public const char AttributeChar = '#';
     public const char AssignmentChar = '=';
 
     public static ReadOnlySpan<char> Move => "<=";

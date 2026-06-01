@@ -4,18 +4,18 @@ namespace Kimigayo.Language;
 
 public static class LanguageHelper
 {
-    public static IReadOnlyDictionary<KeywordKind, string> KeywordKindToKeyword => _keywordKindToKeyword;
+    public static IReadOnlyDictionary<TokenKind, string> KeywordKindToKeyword => _keywordKindToKeyword;
 
-    public static IReadOnlyDictionary<string, KeywordKind> KeywordToKeywordKind => _keywordToKeywordKind;
+    public static IReadOnlyDictionary<string, TokenKind> KeywordToKeywordKind => _keywordToKeywordKind;
 
-    private static readonly Dictionary<KeywordKind, string> _keywordKindToKeyword;
-    private static readonly Dictionary<string, KeywordKind> _keywordToKeywordKind;
+    private static readonly Dictionary<TokenKind, string> _keywordKindToKeyword;
+    private static readonly Dictionary<string, TokenKind> _keywordToKeywordKind;
 
     static LanguageHelper()
     {
         _keywordKindToKeyword = new();
         _keywordToKeywordKind = new();
-        foreach (var x in Enum.GetValues<KeywordKind>())
+        foreach (var x in Enum.GetValues<TokenKind>())
         {
             var keyword = x.ToString().ToLower();
             _keywordKindToKeyword[x] = keyword;

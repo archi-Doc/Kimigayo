@@ -2,6 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using Kimigayo.Diagnostics;
+using Kimigayo.Language;
 
 namespace Kimigayo;
 
@@ -18,27 +19,11 @@ internal readonly struct Token
     }
 }
 
-internal enum TokenKind : byte
-{
-    Eof,
-    Trivia,
-    Indent,
-    Keyword,
-    Attribute,
-    Identifier,
-    Assignment,
-    Reference,
-}
-
-internal enum LineFeedKind : byte
+/*internal enum LineFeedKind : byte
 {
     Scope, // Indent
     Parenthesis, // (,)
-}
-
-internal static class ReaderHelper
-{
-}
+}*/
 
 internal class Reader
 {
@@ -52,6 +37,9 @@ internal class Reader
     private int line;
     private int character;
 
+    private int previousIndents;
+    private bool requiresIndent;
+
     // private Stack<LineFeedKind> lineFeedStack = new();
     private List<Token> tokenList = new();
     private int numberOfTokens;
@@ -64,30 +52,40 @@ internal class Reader
         this.urlDiagnostic = urlDiagnostic;
     }
 
-    public void Setup(ReadOnlyMemory<char> text, int line, int character)
+    public void Initialize(ReadOnlyMemory<char> text, int line, int character)
     {
         this.text = text;
         this.position = 0;
         this.line = line;
         this.character = character;
+
+        this.previousIndents = -1;
+        this.requiresIndent = false;
     }
 
-    public ReadOnlySpan<Token> Read()
+    public (List<Token> List, int Count) Read()
     {
-        int currentIndents;
-        bool requiresIndent;
-
 Entry:
         var span = this.text.Slice(this.position).Span;
-        this.tokenList.Clear();
+        if (span.Length == 0)
+        {// Eof
+            this.ClearToken();
+            return ([], 0);
+        }
+
+        if (this.previousIndents >= 0)
+        {// The indentation has already been processed in the previous loop.
+            if (span[0] == Constants.AttributeChar)
+            {// Attribute
+                this.ReadAttribute
+            }
+        }
 
         // Skip spaces
         var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
         Slice(ref span, numberOfSpaces);
-        if (span.Length == 0)
-        {// Eof
-            return [];
-        }
+
+
         else if (span[0] == Constants.LfChar)
         {// Empty line (\n)
             Slice(ref span, 1);
@@ -107,15 +105,23 @@ Entry:
         if (unnecessarySpaces > 0)
         {// Invalid indentation
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
-            this.urlDiagnostic.Add(new(), Hashed.Reader.InvalidIndent);
+            this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Reader.InvalidIndent);
         }
 
         var numberOfIndents = numberOfSpaces / Constants.IndentationSpaces;
 
-        var previousIndents = this.tokenList.Count;
+        if (numberOfIndents == this.previousIndents ||
+            this.previousIndents < 0)
+        {// Same indent or initial state
+        }
+        else if (numberOfIndents < this.previousIndents)
+        {// -Indent
+        }
+        else
+        {// +Indent
+        }
 
-        this.tokenList[1] = default;
-
+        this.previousIndents = numberOfIndents;
 
         token = TokenKind.Keyword;
         text = default;
@@ -138,7 +144,13 @@ Entry:
         this.tokenList[this.numberOfTokens++] = token;
     }
 
-    private bool Read_StartOfLine(out TokenKind token)
+    private void ClearToken()
+    {
+        this.numberOfTokens = 0;
+        this.tokenList.Clear();
+    }
+
+    /*private bool Read_StartOfLine(out TokenKind token)
     {
         var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(this.span);
         this.span = this.span.Slice(numberOfSpaces);
@@ -160,7 +172,7 @@ Entry:
         {// Keyword: namespace, public
             var idx = this.span.IndexOf(Constants.SpaceChar);
         }
-    }
+    }*/
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void NextLine()
