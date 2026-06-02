@@ -2,11 +2,8 @@
 
 namespace Kimigayo;
 
-using System.Text;
-using System.Text.Json;
-using Arc.Unit;
 using Kimigayo.Diagnostics;
-using SimplePrompt;
+using Kimigayo.Language;
 
 public readonly record struct UrlAndtext(string Url, string Text);
 
@@ -77,7 +74,7 @@ public partial class Project
     private void Build(UrlAndtext urlAndtext)
     {
         var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
-        var reader = new Reader(this.kimiControl, diagnostic);
+        var reader = new Tokenizer(this.kimiControl, diagnostic);
         reader.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
 
         while (true)

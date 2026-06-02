@@ -197,6 +197,8 @@ public static class LanguageHelper
             '=' => TokenKind.Equals,
             '[' => TokenKind.OpenBracket,
             ']' => TokenKind.CloseBracket,
+            '{' => TokenKind.OpenBrace,
+            '}' => TokenKind.CloseBrace,
             '|' => TokenKind.Bar,
             ':' => TokenKind.Colon,
             ';' => TokenKind.Semicolon,

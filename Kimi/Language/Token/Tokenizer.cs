@@ -82,6 +82,11 @@ Entry:
                         this.AddToken(new(TokenKind.CloseBracket, this.text.Slice(this.position, 1)));
                         this.Slice(ref span, 1);
                     }
+                    else if (span[0] == Constants.CloseBraceChar)
+                    {// }
+                        this.AddToken(new(TokenKind.CloseBrace, this.text.Slice(this.position, 1)));
+                        this.Slice(ref span, 1);
+                    }
                     else if (span[0] == Constants.LfChar)
                     {// \n
                         this.Slice(ref span, 1);
@@ -106,33 +111,31 @@ Entry:
                     this.NextLine();
                     break;
                 }
+                else if (LanguageHelper.GetSingleCharTokenKind(span[0]) is TokenKind tokenKind &&
+                    tokenKind != TokenKind.None)
+                {
+                    this.AddTokenAndSlice(tokenKind, ref span, 1);
+                }
                 else if (span[0] == '/')
                 {// // /* /= /
                     if (span[1] == '/')
                     {// "//"
                         this.ReadSingleLineComment(ref span);
+                        this.NextLine();
                         break; // NextLine
                     }
                     else if (span[1] == '*')
                     {// "/*"
-                        if (this.ReadMultiLineComment(ref span))
-                        {// Multi line
-                            break; // NextLine
-                        }
-                        else
-                        {// Single line
-                            continue;
-                        }
+                        var lineFeeds = this.ReadMultiLineComment(ref span);
+                        this.NextLine(lineFeeds);
                     }
                     else if (span[1] == '=')
                     {// "/="
                         this.AddTokenAndSlice(TokenKind.SlashEquals, ref span, 2);
-                        continue;
                     }
                     else
                     {// /
                         this.AddTokenAndSlice(TokenKind.Slash, ref span, 1);
-                        continue;
                     }
                 }
                 else if (span[0] == '*')
@@ -148,7 +151,7 @@ Entry:
                 }
                 else if (LanguageHelper.IsDecimalNumberStart(span))
                 {// Numeric literal
-                    // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
+                 // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
                     var length = LanguageHelper.ScanDecimalNumber(span);
                     this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, length);
                 }
@@ -158,7 +161,25 @@ Entry:
                 }
                 else
                 {// Keyword or Identifier
-                    var idx = LanguageHelper.IndexOfSeparator(span);
+                    var length = LanguageHelper.IndexOfSeparator(span);
+                    if (length < 0)
+                    {
+                        length = span.Length;
+                    }
+
+                    if (LanguageHelper.KeywordToKeywordKind.TryGetValue(span.Slice(0, length), out var tokenKind2))
+                    {// Keyword
+                        if (tokenKind2 == TokenKind.Group)
+                        {
+                            this.requiresIndent = true;
+                        }
+
+                        this.AddTokenAndSlice(tokenKind2, ref span, length);
+                    }
+                    else
+                    {// Identifier
+                        this.AddTokenAndSlice(TokenKind.Identifier, ref span, length);
+                    }
                 }
             }
         }
@@ -210,10 +231,9 @@ Entry:
         this.previousIndents = numberOfIndents;
     }
 
-    private bool ReadMultiLineComment(ref ReadOnlySpan<char> span)
+    private int ReadMultiLineComment(ref ReadOnlySpan<char> span)
     {// "/* Comment */"
         var idx = span.IndexOf("*/", StringComparison.Ordinal);
-        var multiLine = false;
         if (idx < 0)
         {
             idx = span.Length;
@@ -221,12 +241,12 @@ Entry:
         }
         else
         {
-            multiLine = false; // span.Slice(0, idx).IndexOf(Constants.LfChar) >= 0;
             idx += 2;
         }
 
+        var lineFeeds = span.Slice(0, idx).Count(Constants.LfChar);
         this.AddTokenAndSlice(TokenKind.MultiLineComment, ref span, idx);
-        return multiLine;
+        return lineFeeds;
     }
 
     private void ReadSingleLineComment(ref ReadOnlySpan<char> span)
@@ -306,9 +326,9 @@ Entry:
     }*/
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void NextLine()
+    private void NextLine(int lineFeeds = 1)
     {
-        this.line++;
+        this.line += lineFeeds;
         this.character = 0;
     }
 }

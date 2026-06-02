@@ -53,8 +53,8 @@ public enum TokenKind : byte
     // Not keyword
     Identifier = 128,
     Attribute, // #Attribute
-    Literal, // "text"
     NumericLiteral, // 1.23d
+    Literal, // "text"
     RawLiteral, // """text"""
     SingleLineComment, // // comment
     MultiLineComment, // /* comment */
@@ -71,6 +71,8 @@ public enum TokenKind : byte
     CloseBracket, // ]
     OpenParenthesis, // (
     CloseParenthesis, // )
+    OpenBrace, // {
+    CloseBrace, // }
     Colon, // :
     Semicolon, // ;
     Dollar, // $

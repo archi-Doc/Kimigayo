@@ -12,13 +12,15 @@ public static class Constants
     public const char AttributeChar = '#';
     public const char CommaChar = ',';
     public const char ColonChar = ':';
+    public const char CloseBraceChar = '}';
     public const char CloseBracketChar = ']';
     public const char CloseParenthesisChar = ')';
     public const char DollarChar = '$';
     public const char DotChar = '.';
     public const char EqualsChar = '=';
-    public const char OpenParenthesisChar = '(';
+    public const char OpenBraceChar = '{';
     public const char OpenBracketChar = '[';
+    public const char OpenParenthesisChar = '(';
     public const char SemicolonChar = ';';
     public const char SpaceChar = ' ';
     public const char TildeChar = '~';
