@@ -106,7 +106,7 @@ Entry:
                     if (span[1] == '/')
                     {// "//"
                         this.ReadSingleLineComment(ref span);
-                        continue;
+                        break; // NextLine
                     }
                     else if (span[1] == '*')
                     {// "/*"
