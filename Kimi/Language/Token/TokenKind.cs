@@ -26,9 +26,6 @@ public enum TokenKind : byte
     // Keywords (Other)
     Namespace = 32, // namespace Kimi.Base
     Use, // use Kimi.Base
-    Group, // group
-    Struct, // struct
-    Enum, // enum
     Const, // const
     Static, // static
     Public,
@@ -41,6 +38,10 @@ public enum TokenKind : byte
     True,
     False,
 
+    // Block keyword (requires implicit indentation)
+    Group, // group
+    Struct, // struct
+    Enum, // enum
     If, // if
     ElseIf, // else if
     Else, // else
@@ -48,6 +49,7 @@ public enum TokenKind : byte
     Loop, // loop
     Switch, // switch
     Case, // case
+
     Break, // break
     Return, // return
     Continue, // continue

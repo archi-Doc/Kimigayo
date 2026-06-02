@@ -213,6 +213,9 @@ public static class LanguageHelper
         };
     }
 
+    public static bool RequiresImplicitIndentation(TokenKind tokenKind)
+        => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Case;
+
     public static bool TryGetSingleCharTokenKind(char c, out TokenKind tokenKind, out int groupingDepth)
     {
         (tokenKind, groupingDepth) = c switch

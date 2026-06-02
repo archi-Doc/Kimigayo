@@ -5,7 +5,7 @@ using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
 
-internal class Tokenizer
+internal sealed class Tokenizer
 {
     #region FieldAndProperty
 
@@ -18,6 +18,7 @@ internal class Tokenizer
     private int character;
 
     private int previousIndents;
+    private int groupingDepth;
     private bool requiresIndent;
 
     // private Stack<LineFeedKind> lineFeedStack = new();
@@ -40,12 +41,12 @@ internal class Tokenizer
         this.character = character;
 
         this.previousIndents = -1;
+        this.groupingDepth = 0;
         this.requiresIndent = false;
     }
 
     public (List<Token> List, int Count) Read()
     {
-        var groupingDepth = 0;
         this.numberOfTokens = 0;
 Loop:
         var span = this.text.Slice(this.position).Span;
@@ -76,17 +77,17 @@ Loop:
                     if (span[0] == Constants.CloseParenthesisChar)
                     {// )
                         this.AddTokenAndSlice(TokenKind.CloseParenthesis, ref span, 1);
-                        groupingDepth--;
+                        this.groupingDepth--;
                     }
                     else if (span[0] == Constants.CloseBracketChar)
                     {// ]
                         this.AddTokenAndSlice(TokenKind.CloseBracket, ref span, 1);
-                        groupingDepth--;
+                        this.groupingDepth--;
                     }
                     else if (span[0] == Constants.CloseBraceChar)
                     {// }
                         this.AddTokenAndSlice(TokenKind.CloseBrace, ref span, 1);
-                        groupingDepth--;
+                        this.groupingDepth--;
                     }
                     else if (span[0] == Constants.LfChar)
                     {// \n
@@ -109,16 +110,24 @@ Loop:
                             break;
                         }
 
-                    case Constants.CrChar://
+                    case Constants.CrChar:
                         if (span[1] == Constants.LfChar)
                         {// \r\n
                             this.Slice(ref span, 2);
                             this.NextLine();
+                            if (this.groupingDepth == 0)
+                            {
+                                return (this.tokenList, this.numberOfTokens);
+                            }
                         }
                         else
                         {// \r
                             this.Slice(ref span, 1);
                             this.NextLine();
+                            if (this.groupingDepth == 0)
+                            {
+                                return (this.tokenList, this.numberOfTokens);
+                            }
                         }
 
                         break;
@@ -313,7 +322,7 @@ Loop:
                             if (LanguageHelper.TryGetSingleCharTokenKind(span[0], out var tokenKind, out var depth))
                             {// Single char token
                                 this.AddTokenAndSlice(tokenKind, ref span, 1);
-                                groupingDepth += depth;
+                                this.groupingDepth += depth;
                             }
                             else if (LanguageHelper.IsDecimalNumberStart(span))
                             {// Numeric literal
@@ -335,11 +344,7 @@ Loop:
 
                                 if (LanguageHelper.KeywordToKeywordKind.TryGetValue(span.Slice(0, length), out var tokenKind2))
                                 {// Keyword
-                                    if (tokenKind2 == TokenKind.Group)
-                                    {
-                                        this.requiresIndent = true;
-                                    }
-
+                                    this.requiresIndent = LanguageHelper.RequiresImplicitIndentation(tokenKind2);
                                     this.AddTokenAndSlice(tokenKind2, ref span, length);
                                 }
                                 else
@@ -352,52 +357,71 @@ Loop:
                         }
                 }
             }
+        }
 
-            if (span.Length == 0)
-            {// Eof
-                return (this.tokenList, this.numberOfTokens);
-            }
+        if (span.Length == 0)
+        {// Eof
+            return (this.tokenList, this.numberOfTokens);
+        }
 
-            // Skip spaces
-            var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
-            this.Slice(ref span, numberOfSpaces);
+        // Skip spaces
+        var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
+        this.Slice(ref span, numberOfSpaces);
 
-            if (span[0] == Constants.LfChar)
-            {// Empty line (\n)
-                this.Slice(ref span, 1);
-                this.NextLine();
-                goto Entry;
-            }
-            else if (span.Length >= 2 &&
-                span[0] == Constants.CrChar &&
-                span[1] == Constants.LfChar)
-            {// Empty line (\r\n)
-                this.Slice(ref span, 2);
-                this.NextLine();
-                goto Entry;
-            }
+        if (span[0] == Constants.LfChar)
+        {// Empty line (\n)
+            this.Slice(ref span, 1);
+            this.NextLine();
+            goto Loop;
+        }
+        else if (span.Length >= 2 &&
+            span[0] == Constants.CrChar &&
+            span[1] == Constants.LfChar)
+        {// Empty line (\r\n)
+            this.Slice(ref span, 2);
+            this.NextLine();
+            goto Loop;
+        }
 
-            var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
-            if (unnecessarySpaces > 0)
-            {// Invalid indentation
-                numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
-                this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Parser.InvalidIndentation, Constants.IndentationSpaces);
-            }
+        var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
+        if (unnecessarySpaces > 0)
+        {// Invalid indentation
+            numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
+            this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Parser.InvalidIndentation, Constants.IndentationSpaces);
+        }
 
-            var numberOfIndents = numberOfSpaces / Constants.IndentationSpaces;
+        var currentIndents = numberOfSpaces / Constants.IndentationSpaces;
 
-            if (numberOfIndents == this.previousIndents ||
-                this.previousIndents < 0)
-            {// Same indent or initial state
-            }
-            else if (numberOfIndents < this.previousIndents)
-            {// -Indent
+        if (this.groupingDepth > 0)
+        {// currentIndents = previousIndents + groupingDepth
+            if (currentIndents == (this.previousIndents + this.groupingDepth))
+            {
+                goto Loop;
             }
             else
-            {// +Indent
+            {// Indentation error
+                this.groupingDepth = 0;
+                this.previousIndents = currentIndents;
+                return (this.tokenList, this.numberOfTokens);
             }
+        }
+        else
+        {
+            if (this.previousIndents >= 0)
+            {
+                if (currentIndents != (this.previousIndents + (this.requiresIndent ? 1 : 0)))
+                {// Indentation error
+                }
 
-            this.previousIndents = numberOfIndents;
+                this.previousIndents = currentIndents;
+                this.requiresIndent = false;
+                return (this.tokenList, this.numberOfTokens);
+            }
+            else
+            {
+                this.previousIndents = currentIndents;
+                goto Loop;
+            }
         }
     }
 
