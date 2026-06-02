@@ -31,6 +31,13 @@ internal class Program
         project.AddSource("test", """
             namespace Test.Program // Comment
             public Main()
+                var x = 1.23
+                var list = [
+                    1,
+                    2,]
+                var list2 = [
+                    1,
+                ]
                 return
             """);
         var result = await project.Build();
