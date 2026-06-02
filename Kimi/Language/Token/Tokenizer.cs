@@ -102,178 +102,188 @@ Entry:
                 }
 
                 // span.Length >= 2
-                if (span[0] == Constants.AttributeChar)
-                {// #Attribute()
-                }
-                else if (span[0] == Constants.CrChar && span[1] == Constants.LfChar)
-                {// \r\n
-                    this.Slice(ref span, 2);
-                    this.NextLine();
-                    break;
-                }
-                else if (LanguageHelper.GetSingleCharTokenKind(span[0]) is TokenKind tokenKind &&
-                    tokenKind != TokenKind.None)
+                switch (span[0])
                 {
-                    this.AddTokenAndSlice(tokenKind, ref span, 1);
-                }
-                else if (span[0] == Constants.AmpersandChar)
-                {// && &= &
-                    if (span[1] == Constants.AmpersandChar)
-                    {// &&
-                        this.AddTokenAndSlice(TokenKind.AmpersandAmpersand, ref span, 2);
-                    }
-                    else if (span[1] == Constants.EqualsChar)
-                    {// &=
-                        this.AddTokenAndSlice(TokenKind.AmpersandEquals, ref span, 2);
-                    }
-                    else
-                    {// &
-                        this.AddTokenAndSlice(TokenKind.Ampersand, ref span, 1);
-                    }
-                }
-                else if (span[0] == Constants.AsteriskChar)
-                {// * *=
-                    if (span[1] == Constants.EqualsChar)
-                    {// *=
-                        this.AddTokenAndSlice(TokenKind.AsteriskEquals, ref span, 2);
-                    }
-                    else
-                    {// *
-                        this.AddTokenAndSlice(TokenKind.Asterisk, ref span, 1);
-                    }
-                }
-                else if (span[0] == Constants.BarChar)
-                {// | || |=
-                    if (span[1] == Constants.BarChar)
-                    {// ||
-                        this.AddTokenAndSlice(TokenKind.BarBar, ref span, 2);
-                    }
-                    else if (span[1] == Constants.EqualsChar)
-                    {// |=
-                        this.AddTokenAndSlice(TokenKind.BarEquals, ref span, 2);
-                    }
-                    else
-                    {// |
-                        this.AddTokenAndSlice(TokenKind.Bar, ref span, 1);
-                    }
-                }
-                else if (span[0] == Constants.SlashChar)
-                {// // /* /= /
-                    if (span[1] == Constants.SlashChar)
-                    {// "//"
-                        this.ReadSingleLineComment(ref span);
-                        this.NextLine();
-                        break; // NextLine
-                    }
-                    else if (span[1] == '*')
-                    {// "/*"
-                        var lineFeeds = this.ReadMultiLineComment(ref span);
-                        this.NextLine(lineFeeds);
-                    }
-                    else if (span[1] == '=')
-                    {// "/="
-                        this.AddTokenAndSlice(TokenKind.SlashEquals, ref span, 2);
-                    }
-                    else
-                    {// /
-                        this.AddTokenAndSlice(TokenKind.Slash, ref span, 1);
-                    }
-                }
-                else if (span[0] == '*')
-                {// * *=
-                    if (span[1] == Constants.EqualsChar)
-                    {// *=
-                        this.AddTokenAndSlice(TokenKind.AsteriskEquals, ref span, 2);
-                    }
-                    else
-                    {// *
-                        this.AddTokenAndSlice(TokenKind.Asterisk, ref span, 1);
-                    }
-                }
-                else if (LanguageHelper.IsDecimalNumberStart(span))
-                {// Numeric literal
-                 // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
-                    var length = LanguageHelper.ScanDecimalNumber(span);
-                    this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, length);
-                }
-                else if (LanguageHelper.TryGetStringLiteralLength(span, out var literalLength))
-                {// String literal
-                    this.AddTokenAndSlice(TokenKind.Literal, ref span, literalLength);
-                }
-                else
-                {// Keyword or Identifier
-                    var length = LanguageHelper.IndexOfSeparator(span);
-                    if (length < 0)
-                    {
-                        length = span.Length;
-                    }
-
-                    if (LanguageHelper.KeywordToKeywordKind.TryGetValue(span.Slice(0, length), out var tokenKind2))
-                    {// Keyword
-                        if (tokenKind2 == TokenKind.Group)
-                        {
-                            this.requiresIndent = true;
+                    case Constants.AttributeChar:
+                        {// #Attribute()
+                            break;
                         }
 
-                        this.AddTokenAndSlice(tokenKind2, ref span, length);
-                    }
-                    else
-                    {// Identifier
-                        this.AddTokenAndSlice(TokenKind.Identifier, ref span, length);
-                    }
+                    case Constants.CrChar://
+                        if (span[1] == Constants.LfChar)
+                        {// \r\n
+                            this.Slice(ref span, 2);
+                            this.NextLine();
+                        }
+                        else
+                        {// \r
+                            this.Slice(ref span, 1);
+                            this.NextLine();
+                        }
+
+                        break;
+
+                    case Constants.AmpersandChar: // && &= &
+                        if (span[1] == Constants.AmpersandChar)
+                        {// &&
+                            this.AddTokenAndSlice(TokenKind.AmpersandAmpersand, ref span, 2);
+                        }
+                        else if (span[1] == Constants.EqualsChar)
+                        {// &=
+                            this.AddTokenAndSlice(TokenKind.AmpersandEquals, ref span, 2);
+                        }
+                        else
+                        {// &
+                            this.AddTokenAndSlice(TokenKind.Ampersand, ref span, 1);
+                        }
+
+                        break;
+
+                    case Constants.AsteriskChar: // * *=
+                        if (span[1] == Constants.EqualsChar)
+                        {// *=
+                            this.AddTokenAndSlice(TokenKind.AsteriskEquals, ref span, 2);
+                        }
+                        else
+                        {// *
+                            this.AddTokenAndSlice(TokenKind.Asterisk, ref span, 1);
+                        }
+
+                        break;
+
+                    case Constants.BarChar: // | || |=
+                        if (span[1] == Constants.BarChar)
+                        {// ||
+                            this.AddTokenAndSlice(TokenKind.BarBar, ref span, 2);
+                        }
+                        else if (span[1] == Constants.EqualsChar)
+                        {// |=
+                            this.AddTokenAndSlice(TokenKind.BarEquals, ref span, 2);
+                        }
+                        else
+                        {// |
+                            this.AddTokenAndSlice(TokenKind.Bar, ref span, 1);
+                        }
+
+                        break;
+
+                    case Constants.SlashChar: // // /* /= /
+                        if (span[1] == Constants.SlashChar)
+                        {// //
+                            this.ReadSingleLineComment(ref span);
+                            this.NextLine();
+                            break;
+                        }
+                        else if (span[1] == Constants.AsteriskChar)
+                        {// /*
+                            var lineFeeds = this.ReadMultiLineComment(ref span);
+                            this.NextLine(lineFeeds);
+                        }
+                        else if (span[1] == Constants.EqualsChar)
+                        {// /=
+                            this.AddTokenAndSlice(TokenKind.SlashEquals, ref span, 2);
+                        }
+                        else
+                        {// /
+                            this.AddTokenAndSlice(TokenKind.Slash, ref span, 1);
+                        }
+
+                        break;
+
+                    default:
+                        {
+                            if (LanguageHelper.GetSingleCharTokenKind(span[0]) is TokenKind tokenKind &&
+                                tokenKind != TokenKind.None)
+                            {// Single char token
+                                this.AddTokenAndSlice(tokenKind, ref span, 1);
+                            }
+                            else if (LanguageHelper.IsDecimalNumberStart(span))
+                            {// Numeric literal
+                                // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
+                                var length = LanguageHelper.ScanDecimalNumber(span);
+                                this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, length);
+                            }
+                            else if (LanguageHelper.TryGetStringLiteralLength(span, out var literalLength))
+                            {// String literal
+                                this.AddTokenAndSlice(TokenKind.Literal, ref span, literalLength);
+                            }
+                            else
+                            {// Keyword or Identifier
+                                var length = LanguageHelper.IndexOfSeparator(span);
+                                if (length < 0)
+                                {
+                                    length = span.Length;
+                                }
+
+                                if (LanguageHelper.KeywordToKeywordKind.TryGetValue(span.Slice(0, length), out var tokenKind2))
+                                {// Keyword
+                                    if (tokenKind2 == TokenKind.Group)
+                                    {
+                                        this.requiresIndent = true;
+                                    }
+
+                                    this.AddTokenAndSlice(tokenKind2, ref span, length);
+                                }
+                                else
+                                {// Identifier
+                                    this.AddTokenAndSlice(TokenKind.Identifier, ref span, length);
+                                }
+                            }
+
+                            break;
+                        }
                 }
             }
-        }
 
-        if (span.Length == 0)
-        {// Eof
-            return (this.tokenList, this.numberOfTokens);
-        }
+            if (span.Length == 0)
+            {// Eof
+                return (this.tokenList, this.numberOfTokens);
+            }
 
-        // Skip spaces
-        var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
-        this.Slice(ref span, numberOfSpaces);
+            // Skip spaces
+            var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
+            this.Slice(ref span, numberOfSpaces);
 
-        if (span[0] == Constants.LfChar)
-        {// Empty line (\n)
-            this.Slice(ref span, 1);
-            this.NextLine();
-            goto Entry;
-        }
-        else if (span.Length >= 2 &&
-            span[0] == Constants.CrChar &&
-            span[1] == Constants.LfChar)
-        {// Empty line (\r\n)
-            this.Slice(ref span, 2);
-            this.NextLine();
-            goto Entry;
-        }
+            if (span[0] == Constants.LfChar)
+            {// Empty line (\n)
+                this.Slice(ref span, 1);
+                this.NextLine();
+                goto Entry;
+            }
+            else if (span.Length >= 2 &&
+                span[0] == Constants.CrChar &&
+                span[1] == Constants.LfChar)
+            {// Empty line (\r\n)
+                this.Slice(ref span, 2);
+                this.NextLine();
+                goto Entry;
+            }
 
-        var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
-        if (unnecessarySpaces > 0)
-        {// Invalid indentation
-            numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
-            this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Parser.InvalidIndentation, Constants.IndentationSpaces);
-        }
+            var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
+            if (unnecessarySpaces > 0)
+            {// Invalid indentation
+                numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
+                this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Parser.InvalidIndentation, Constants.IndentationSpaces);
+            }
 
-        var numberOfIndents = numberOfSpaces / Constants.IndentationSpaces;
+            var numberOfIndents = numberOfSpaces / Constants.IndentationSpaces;
 
-        if (numberOfIndents == this.previousIndents ||
-            this.previousIndents < 0)
-        {// Same indent or initial state
-        }
-        else if (numberOfIndents < this.previousIndents)
-        {// -Indent
-        }
-        else
-        {// +Indent
-        }
+            if (numberOfIndents == this.previousIndents ||
+                this.previousIndents < 0)
+            {// Same indent or initial state
+            }
+            else if (numberOfIndents < this.previousIndents)
+            {// -Indent
+            }
+            else
+            {// +Indent
+            }
 
-        this.previousIndents = numberOfIndents;
-    }
+            this.previousIndents = numberOfIndents;
+        }
 
     private int ReadMultiLineComment(ref ReadOnlySpan<char> span)
-    {// "/* Comment */"
+    {// /* Comment */
         var idx = span.IndexOf("*/", StringComparison.Ordinal);
         if (idx < 0)
         {
@@ -291,7 +301,7 @@ Entry:
     }
 
     private void ReadSingleLineComment(ref ReadOnlySpan<char> span)
-    {// "// Comment\n"
+    {// // Comment\n
         var idx = Arc.BaseHelper.IndexOfLfOrCrLf(span, out var newLineLength);
         if (idx < 0)
         {
