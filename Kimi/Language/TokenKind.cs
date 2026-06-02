@@ -4,6 +4,8 @@ namespace Kimigayo.Language;
 
 public enum TokenKind : byte
 {
+    None,
+
     // Keywords (Primitive types)
     Bool,
     Isize,
@@ -35,10 +37,13 @@ public enum TokenKind : byte
     Internal,
     Protected_or_internal,
     Protected_and_internal,
+    Var, // var
 
     If, // if
     ElseIf, // else if
     Else, // else
+    For, // for
+    Loop, // loop
     Switch, // switch
     Case, // case
     Break, // break
@@ -50,27 +55,52 @@ public enum TokenKind : byte
     Identifier,
     Dot, // .
     Comma, // ,
-    Assignment, // =
+    Caret, // ^
     Move, // <=
     Map, // =>
     Reference, // &
 
-    OpenBracket, // (
-    CloseBracket, // )
+    OpenBracket, // [
+    CloseBracket, // ]
+    OpenParenthesis, // (
+    CloseParenthesis, // )
 
     Literal, // "text"
     RawLiteral, // """text"""
 
-    AmpersandAmpersandToken,
-    AmpersandEqualsToken,
-    AmpersandToken,
-    AsteriskEquals,
-    Asterisk,
-    BarBarToken,
-    BarEqualsToken,
-    BarToken,
+    AmpersandAmpersand, // &&
+    AmpersandEquals, // &=
+    Ampersand, // &
+    AsteriskEquals, // *=
+    Asterisk, // *
+    BarBar, // ||
+    BarEquals, // |=
+    Bar, // |
+    Colon, // :
+    Dollar, // $
+    Equals, // =
+    EqualsEquals, // ==
+    EqualsGreaterThan, // =>
+    Exclamation, // !
+    ExclamationEquals, // !=
+    GreaterThan, // >
+    GreaterThanEquals, // >=
+    GreaterThanGreaterThanEquals, // >>=
+    LessThanEquals, // <=
+    LessThanLessThanEquals, // <<=
+    LessThan, // <
+    Minus,
+    MinusEquals,
+    MinusMinus,
+    Percent,
+    PercentEquals,
+    PlusEquals,
+    PlusPlus,
+    Plus,
+    Semicolon, // ;
     SlashEquals, // /=
     Slash, // /
+    Tilde, // ~
 
     SingleLineComment, // // comment
     MultiLineComment, // /* comment */

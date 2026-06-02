@@ -18,7 +18,11 @@ public static class LanguageHelper
         KeywordToKeywordKind = new();
         foreach (var x in Enum.GetValues<TokenKind>())
         {
-            if (x == TokenKind.Attribute)
+            if (x == TokenKind.None)
+            {
+                continue;
+            }
+            else if (x == TokenKind.Attribute)
             {// Anything after the attribute is not a keyword.
                 break;
             }
@@ -36,5 +40,36 @@ public static class LanguageHelper
             _keywordKindToKeyword[x] = keyword;
             KeywordToKeywordKind.TryAdd(keyword, x);
         }
+    }
+
+    public static TokenKind GetSingleCharTokenKind(char c)
+    {
+        return c switch
+        {
+            '~' => TokenKind.Tilde,
+            '!' => TokenKind.Exclamation,
+            '$' => TokenKind.Dollar,
+            '%' => TokenKind.Percent,
+            '^' => TokenKind.Caret,
+            '&' => TokenKind.Ampersand,
+            '*' => TokenKind.Asterisk,
+            '(' => TokenKind.OpenParenthesis,
+            ')' => TokenKind.CloseParenthesis,
+            '-' => TokenKind.Minus,
+            '+' => TokenKind.Plus,
+            '=' => TokenKind.Equals,
+            '[' => TokenKind.OpenBracket,
+            ']' => TokenKind.CloseBracket,
+            '|' => TokenKind.Bar,
+            ':' => TokenKind.Colon,
+            ';' => TokenKind.Semicolon,
+            '<' => TokenKind.LessThan,
+            ',' => TokenKind.Comma,
+            '>' => TokenKind.GreaterThan,
+            '.' => TokenKind.Dot,
+            '/' => TokenKind.Slash,
+
+            _ => TokenKind.None,
+        };
     }
 }

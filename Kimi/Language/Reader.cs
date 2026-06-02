@@ -2,22 +2,8 @@
 
 using System.Runtime.CompilerServices;
 using Kimigayo.Diagnostics;
-using Kimigayo.Language;
 
-namespace Kimigayo;
-
-internal readonly struct Token
-{
-    public readonly TokenKind Kind;
-
-    public readonly ReadOnlyMemory<char> Text;
-
-    public Token(TokenKind kind, ReadOnlyMemory<char> span)
-    {
-        this.Kind = kind;
-        this.Text = span;
-    }
-}
+namespace Kimigayo.Language;
 
 /*internal enum LineFeedKind : byte
 {
@@ -77,13 +63,60 @@ Entry:
         {// The spaces/indentation has already been processed in the previous loop.
             while (span.Length > 0)
             {
-            }
+                while (span[0] == Constants.SpaceChar)
+                {// Skip spaces
+                    span = span.Slice(1);
+                    if (span.Length == 0)
+                    {// Eof
+                        break;
+                    }
+                }
 
-            if (span[0] == Constants.AttributeChar)
-            {// #Attribute()
-            }
-            else if (span[0] == '/')
-            {// "//" "/*" "/", "/="
+                if (span.Length == 0)
+                {// Eof
+                    break;
+                }
+                else if (span.Length == 1)
+                {// Single character
+                    var token = LanguageHelper.GetSingleCharTokenKind(span[0]);
+                    if (token != TokenKind.None)
+                    {
+                    }
+                    else
+                    {
+                    }
+
+                    this.AddToken(new(token, this.text.Slice(this.position, 1)));
+                    this.Slice(ref span, 1);
+                    break;
+                }
+
+                // span.Length >= 2
+                if (span[0] == Constants.AttributeChar)
+                {// #Attribute()
+                }
+                else if (span[0] == '/')
+                {// "//" "/*" "/", "/="
+                    if (span[1] == '/')
+                    {// "//"
+                        this.ReadSingleLineComment(ref span);
+                        continue;
+                    }
+                    else if (span[1] == '*')
+                    {// "/*"
+                        this.ReadMultiLineComment(ref span);
+                        continue;
+                    }
+                    else if (span[1] == '=')
+                    {// "/="
+                        this.AddTokenAndSlice(TokenKind.SlashEquals, ref span, 2);
+                        continue;
+                    }
+                }
+                else if (span[0] == '*')
+                {
+
+                }
             }
         }
 
@@ -118,7 +151,7 @@ Entry:
         if (unnecessarySpaces > 0)
         {// Invalid indentation
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
-            this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Reader.InvalidIndent);
+            this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Parser.InvalidIndentation, Constants.IndentationSpaces);
         }
 
         var numberOfIndents = numberOfSpaces / Constants.IndentationSpaces;
@@ -137,12 +170,42 @@ Entry:
         this.previousIndents = numberOfIndents;
     }
 
+    private void ReadMultiLineComment(ref ReadOnlySpan<char> span)
+    {// "/* Comment */"
+        var idx = span.IndexOf("*/", StringComparison.Ordinal);
+        if (idx < 0)
+        {
+            idx = span.Length;
+            this.urlDiagnostic.Add(new(new(this.line, this.position), new(this.line, this.position + 2)), Hashed.Parser.MissingBlockCommentEnd);
+        }
+        else
+        {
+            idx += 2;
+        }
+
+        this.AddTokenAndSlice(TokenKind.MultiLineComment, ref span, idx);
+    }
+
+    private void ReadSingleLineComment(ref ReadOnlySpan<char> span)
+    {// "// Comment\n"
+        var idx = Arc.BaseHelper.IndexOfLfOrCrLf(span, out var newLineLength);
+        if (idx < 0)
+        {
+            this.AddTokenAndSlice(TokenKind.SingleLineComment, ref span, span.Length);
+        }
+        else
+        {
+            this.AddTokenAndSlice(TokenKind.SingleLineComment, ref span, idx);
+            this.Slice(ref span, newLineLength);
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void Slice(ref ReadOnlySpan<char> span, int start)
+    private void Slice(ref ReadOnlySpan<char> span, int length)
     {
-        span = span.Slice(start);
-        this.position += start;
-        this.character += start;
+        span = span.Slice(length);
+        this.position += length;
+        this.character += length;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -154,6 +217,21 @@ Entry:
         }
 
         this.tokenList[this.numberOfTokens++] = token;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void AddTokenAndSlice(TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
+    {
+        if (this.numberOfTokens >= this.tokenList.Count)
+        {
+            this.tokenList.EnsureCapacity(this.numberOfTokens + 1);
+        }
+
+        this.tokenList[this.numberOfTokens++] = new(tokenKind, this.text.Slice(this.position, length));
+
+        span = span.Slice(length);
+        this.position += length;
+        this.character += length;
     }
 
     private void ClearToken()
