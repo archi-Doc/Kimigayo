@@ -54,6 +54,7 @@ public enum TokenKind : byte
     Identifier = 128,
     Attribute, // #Attribute
     Literal, // "text"
+    NumericLiteral, // 1.23d
     RawLiteral, // """text"""
     SingleLineComment, // // comment
     MultiLineComment, // /* comment */

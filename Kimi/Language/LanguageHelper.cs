@@ -2,7 +2,8 @@
 
 namespace Kimigayo.Language;
 
-using System.Drawing;
+using System.Buffers;
+using System.Runtime.CompilerServices;
 using Arc.Collections;
 
 public static class LanguageHelper
@@ -12,6 +13,16 @@ public static class LanguageHelper
     public static readonly Utf16Hashtable<TokenKind> KeywordToKeywordKind;
 
     private static readonly Dictionary<TokenKind, string> _keywordKindToKeyword;
+
+    private static readonly SearchValues<char> Separators = SearchValues.Create(
+    [// Separator Space, (, ), Cr, Lf, =, <, >, +, -, %, &, |, ','
+        ' ', '\t', '\r', '\n',
+        '(', ')', '{', '}', '[', ']',
+        '.', ',', ';', ':', '?',
+        '+', '-', '*', '/', '%',
+        '&', '|', '^', '!', '~',
+        '=', '<', '>',
+    ]);
 
     static LanguageHelper()
     {
@@ -42,6 +53,99 @@ public static class LanguageHelper
             KeywordToKeywordKind.TryAdd(keyword, x);
         }
     }
+
+    public static bool IsDecimalNumberStart(ReadOnlySpan<char> text)
+    {
+        if (text.Length == 0)
+        {
+            return false;
+        }
+
+        var c = text[0];
+        if (IsDigit(c))
+        {
+            return true;
+        }
+
+        // Handles floating-point literals such as .3, .3d, .3f, and .3m.
+        return c == '.' && text.Length >= 2 && IsDigit(text[1]);
+    }
+
+    public static int ScanDecimalNumber(ReadOnlySpan<char> text)
+    {
+        var i = 0;
+
+        // Integer part.
+        if (i < text.Length && IsDigit(text[i]))
+        {
+            i++;
+            while (i < text.Length && IsDigitOrSeparator(text[i]))
+            {
+                i++;
+            }
+        }
+
+        // Fractional part.
+        if (i < text.Length && text[i] == '.')
+        {
+            // Handles forms such as 1., 1.23, and .3.
+            i++;
+            while (i < text.Length && IsDigitOrSeparator(text[i]))
+            {
+                i++;
+            }
+        }
+
+        // Exponent part: e+10, e-10, or E10.
+        if (i < text.Length && (text[i] == 'e' || text[i] == 'E'))
+        {
+            var exponentStart = i;
+            i++;
+            if (i < text.Length && (text[i] == '+' || text[i] == '-'))
+            {
+                i++;
+            }
+
+            var digitStart = i;
+            while (i < text.Length && IsDigitOrSeparator(text[i]))
+            {
+                i++;
+            }
+
+            // If no digits follow 'e' or 'E', treat it as not being an exponent.
+            if (digitStart == i)
+            {
+                i = exponentStart;
+            }
+        }
+
+        // Type suffix: f/F, d/D, or m/M.
+        if (i < text.Length)
+        {
+            var suffix = text[i];
+            if (suffix is 'f' or 'F' or 'd' or 'D' or 'm' or 'M')
+            {
+                i++;
+            }
+        }
+
+        return i;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsDigit(char c)
+    {
+        return (uint)(c - '0') <= 9;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsDigitOrSeparator(char c)
+    {
+        return IsDigit(c) || c == '_';
+    }
+
+    public static int IndexOfSeparator(ReadOnlySpan<char> text)
+        => text.IndexOfAny(Separators);
 
     public static TokenKind CharToSingleToken(char c) => c switch
     {

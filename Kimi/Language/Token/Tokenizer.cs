@@ -82,6 +82,11 @@ Entry:
                         this.AddToken(new(TokenKind.CloseBracket, this.text.Slice(this.position, 1)));
                         this.Slice(ref span, 1);
                     }
+                    else if (span[0] == Constants.LfChar)
+                    {// \n
+                        this.Slice(ref span, 1);
+                        break;
+                    }
                     else
                     {// Invalid token
                         this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.InvalidCharacterAtEndOfFile);
@@ -95,8 +100,14 @@ Entry:
                 if (span[0] == Constants.AttributeChar)
                 {// #Attribute()
                 }
+                else if (span[0] == Constants.CrChar && span[1] == Constants.LfChar)
+                {// \r\n
+                    this.Slice(ref span, 2);
+                    this.NextLine();
+                    break;
+                }
                 else if (span[0] == '/')
-                {// "//" "/*" "/", "/="
+                {// // /* /= /
                     if (span[1] == '/')
                     {// "//"
                         this.ReadSingleLineComment(ref span);
@@ -106,7 +117,7 @@ Entry:
                     {// "/*"
                         if (this.ReadMultiLineComment(ref span))
                         {// Multi line
-                            break;
+                            break; // NextLine
                         }
                         else
                         {// Single line
@@ -116,6 +127,11 @@ Entry:
                     else if (span[1] == '=')
                     {// "/="
                         this.AddTokenAndSlice(TokenKind.SlashEquals, ref span, 2);
+                        continue;
+                    }
+                    else
+                    {// /
+                        this.AddTokenAndSlice(TokenKind.Slash, ref span, 1);
                         continue;
                     }
                 }
@@ -130,11 +146,17 @@ Entry:
                         this.AddTokenAndSlice(TokenKind.Asterisk, ref span, 1);
                     }
                 }
+                else if (LanguageHelper.IsDecimalNumberStart(span))
+                {// If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
+                    var length = LanguageHelper.ScanDecimalNumber(span);
+                    this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, length);
+                }
+                else
+                {// Keyword or Identifier
+                    var idx = LanguageHelper.IndexOfSeparator(span);
+                }
             }
         }
-
-        // Separator Space, (, ), Cr, Lf, =, <, >, +, -, %, &, |, ','
-        span.IndexOfAny("ABC");
 
         if (span.Length == 0)
         {// Eof
@@ -194,7 +216,7 @@ Entry:
         }
         else
         {
-            multiLine = span.Slice(0, idx).IndexOf(Constants.LfChar) >= 0;
+            multiLine = false; // span.Slice(0, idx).IndexOf(Constants.LfChar) >= 0;
             idx += 2;
         }
 
@@ -233,23 +255,15 @@ Entry:
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AddToken(Token token)
     {
-        if (this.numberOfTokens >= this.tokenList.Count)
-        {
-            this.tokenList.EnsureCapacity(this.numberOfTokens + 1);
-        }
-
-        this.tokenList[this.numberOfTokens++] = token;
+        this.tokenList.Add(token);
+        this.numberOfTokens++;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AddTokenAndSlice(TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
     {
-        if (this.numberOfTokens >= this.tokenList.Count)
-        {
-            this.tokenList.EnsureCapacity(this.numberOfTokens + 1);
-        }
-
-        this.tokenList[this.numberOfTokens++] = new(tokenKind, this.text.Slice(this.position, length));
+        this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length)));
+        this.numberOfTokens++;
 
         span = span.Slice(length);
         this.position += length;
