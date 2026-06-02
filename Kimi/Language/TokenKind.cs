@@ -51,22 +51,29 @@ public enum TokenKind : byte
     Continue, // continue
 
     // Not keyword
-    Attribute = 128, // #Attribute
-    Identifier,
-    Dot, // .
-    Comma, // ,
-    Caret, // ^
+    Identifier = 128,
+    Attribute, // #Attribute
+    Literal, // "text"
+    RawLiteral, // """text"""
+    SingleLineComment, // // comment
+    MultiLineComment, // /* comment */
+    LineFeed, // \n or \r\n
+
     Move, // <=
     Map, // =>
     Reference, // &
 
+    // Single token
+    Dot, // .
+    Comma, // ,
     OpenBracket, // [
     CloseBracket, // ]
     OpenParenthesis, // (
     CloseParenthesis, // )
-
-    Literal, // "text"
-    RawLiteral, // """text"""
+    Colon, // :
+    Semicolon, // ;
+    Dollar, // $
+    Tilde, // ~
 
     AmpersandAmpersand, // &&
     AmpersandEquals, // &=
@@ -76,8 +83,8 @@ public enum TokenKind : byte
     BarBar, // ||
     BarEquals, // |=
     Bar, // |
-    Colon, // :
-    Dollar, // $
+    Caret, // ^
+    CaretEquals, // ^=
     Equals, // =
     EqualsEquals, // ==
     EqualsGreaterThan, // =>
@@ -89,20 +96,14 @@ public enum TokenKind : byte
     LessThanEquals, // <=
     LessThanLessThanEquals, // <<=
     LessThan, // <
-    Minus,
-    MinusEquals,
-    MinusMinus,
-    Percent,
-    PercentEquals,
-    PlusEquals,
-    PlusPlus,
-    Plus,
-    Semicolon, // ;
-    SlashEquals, // /=
+    Minus, // -
+    MinusEquals, // -=
+    MinusMinus, // --
+    Percent, // %
+    PercentEquals, // %=
+    Plus, // +
+    PlusEquals, // +=
+    PlusPlus, // ++
     Slash, // /
-    Tilde, // ~
-
-    SingleLineComment, // // comment
-    MultiLineComment, // /* comment */
-    LineFeed, // \n or \r\n
+    SlashEquals, // /=
 }

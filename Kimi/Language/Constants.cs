@@ -11,6 +11,10 @@ public static class Constants
     public const char SpaceChar = ' ';
     public const char AttributeChar = '#';
     public const char AssignmentChar = '=';
+    public const char OpenParenthesisChar = '(';
+    public const char CloseParenthesisChar = ')';
+    public const char OpenBracketChar = '[';
+    public const char CloseBracketChar = ']';
 
     public static ReadOnlySpan<char> Move => "<=";
 

@@ -22,8 +22,8 @@ public static class LanguageHelper
             {
                 continue;
             }
-            else if (x == TokenKind.Attribute)
-            {// Anything after the attribute is not a keyword.
+            else if (x == TokenKind.Identifier)
+            {// Anything after TokenKind.Identifier is not a keyword.
                 break;
             }
 

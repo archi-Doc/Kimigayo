@@ -78,16 +78,22 @@ Entry:
                 }
                 else if (span.Length == 1)
                 {// Single character
-                    var token = LanguageHelper.GetSingleCharTokenKind(span[0]);
-                    if (token != TokenKind.None)
-                    {
+                    if (span[0] == Constants.CloseParenthesisChar)
+                    {// )
+                        this.AddToken(new(TokenKind.CloseParenthesis, this.text.Slice(this.position, 1)));
+                        this.Slice(ref span, 1);
+                    }
+                    else if (span[0] == Constants.CloseBracketChar)
+                    {// ]
+                        this.AddToken(new(TokenKind.CloseBracket, this.text.Slice(this.position, 1)));
+                        this.Slice(ref span, 1);
                     }
                     else
-                    {
+                    {// Invalid token
+                        this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.InvalidCharacterAtEndOfFile);
+                        this.Slice(ref span, 1);
                     }
 
-                    this.AddToken(new(token, this.text.Slice(this.position, 1)));
-                    this.Slice(ref span, 1);
                     break;
                 }
 
@@ -115,7 +121,6 @@ Entry:
                 }
                 else if (span[0] == '*')
                 {
-
                 }
             }
         }
@@ -198,6 +203,12 @@ Entry:
             this.AddTokenAndSlice(TokenKind.SingleLineComment, ref span, idx);
             this.Slice(ref span, newLineLength);
         }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Diagnostics.Range NewRange(int length)
+    {
+        return new(new(this.line, this.position), new(this.line, this.position + length));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

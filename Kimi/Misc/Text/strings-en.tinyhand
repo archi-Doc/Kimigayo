@@ -9,3 +9,4 @@ Project=
 Parser=
   InvalidIndentation="Invalid indentation. Insert {0} spaces for each indentation level"
   MissingBlockCommentEnd="Reached end-of-file. Missing '*/'"
+  InvalidCharacterAtEndOfFile="Invalid character at end of file"
