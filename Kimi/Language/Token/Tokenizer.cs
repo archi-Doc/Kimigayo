@@ -47,6 +47,7 @@ internal sealed class Tokenizer
 
     public (List<Token> List, int Count) Read()
     {
+        this.tokenList.Clear();
         this.numberOfTokens = 0;
 Loop:
         var span = this.text.Slice(this.position).Span;
@@ -119,6 +120,10 @@ Loop:
                             {
                                 return (this.tokenList, this.numberOfTokens);
                             }
+                            else
+                            {
+                                goto NextLine;
+                            }
                         }
                         else
                         {// \r
@@ -128,9 +133,23 @@ Loop:
                             {
                                 return (this.tokenList, this.numberOfTokens);
                             }
+                            else
+                            {
+                                goto NextLine;
+                            }
                         }
 
-                        break;
+                    case Constants.LfChar: // \n
+                        this.Slice(ref span, 1);
+                        this.NextLine();
+                        if (this.groupingDepth == 0)
+                        {
+                            return (this.tokenList, this.numberOfTokens);
+                        }
+                        else
+                        {
+                            goto NextLine;
+                        }
 
                     case Constants.AmpersandChar: // && &= &
                         if (span[1] == Constants.AmpersandChar)
@@ -299,7 +318,7 @@ Loop:
                         {// //
                             this.ReadSingleLineComment(ref span);
                             this.NextLine();
-                            break;
+                            goto NextLine;
                         }
                         else if (span[1] == Constants.AsteriskChar)
                         {// /*
@@ -359,6 +378,7 @@ Loop:
             }
         }
 
+NextLine:
         if (span.Length == 0)
         {// Eof
             return (this.tokenList, this.numberOfTokens);
@@ -409,8 +429,24 @@ Loop:
         {
             if (this.previousIndents >= 0)
             {
-                if (currentIndents != (this.previousIndents + (this.requiresIndent ? 1 : 0)))
-                {// Indentation error
+                // var dif = currentIndents - (this.previousIndents + (this.requiresIndent ? 1 : 0));
+
+                var dif = currentIndents - this.previousIndents;
+                if (dif > 0)
+                {
+                    do
+                    {
+                        this.AddToken(new(TokenKind.StartBlock, default));
+                    }
+                    while (--dif > 0);
+                }
+                else if (dif < 0)
+                {
+                    do
+                    {
+                        this.AddToken(new(TokenKind.EndBlock, default));
+                    }
+                    while (++dif < 0);
                 }
 
                 this.previousIndents = currentIndents;

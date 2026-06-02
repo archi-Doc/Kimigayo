@@ -30,8 +30,8 @@ internal class Program
 
         project.AddSource("test", """
             namespace Test.Program // Comment
-            public void Main()
-                return;
+            public Main()
+                return
             """);
         var result = await project.Build();
 

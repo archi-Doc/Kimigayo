@@ -13,4 +13,9 @@ internal readonly struct Token
         this.Kind = kind;
         this.Text = span;
     }
+
+    public override string ToString()
+    {
+        return $"Kind:{this.Kind.ToString()} '{this.Text}'";
+    }
 }

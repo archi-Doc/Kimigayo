@@ -57,6 +57,8 @@ public enum TokenKind : byte
     // Not keyword
     Identifier = 128,
     Attribute, // #Attribute
+    StartBlock,
+    EndBlock,
     NumericLiteral, // 1.23d
     Literal, // "text"
     RawLiteral, // """text"""
