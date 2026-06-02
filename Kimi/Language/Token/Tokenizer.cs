@@ -45,7 +45,9 @@ internal class Tokenizer
 
     public (List<Token> List, int Count) Read()
     {
+        var groupingDepth = 0;
         this.numberOfTokens = 0;
+Loop:
         var span = this.text.Slice(this.position).Span;
         if (span.Length == 0)
         {// End-of-file
@@ -74,14 +76,17 @@ internal class Tokenizer
                     if (span[0] == Constants.CloseParenthesisChar)
                     {// )
                         this.AddTokenAndSlice(TokenKind.CloseParenthesis, ref span, 1);
+                        groupingDepth--;
                     }
                     else if (span[0] == Constants.CloseBracketChar)
                     {// ]
                         this.AddTokenAndSlice(TokenKind.CloseBracket, ref span, 1);
+                        groupingDepth--;
                     }
                     else if (span[0] == Constants.CloseBraceChar)
                     {// }
                         this.AddTokenAndSlice(TokenKind.CloseBrace, ref span, 1);
+                        groupingDepth--;
                     }
                     else if (span[0] == Constants.LfChar)
                     {// \n
@@ -305,10 +310,10 @@ internal class Tokenizer
 
                     default:
                         {
-                            if (LanguageHelper.GetSingleCharTokenKind(span[0]) is TokenKind tokenKind &&
-                                tokenKind != TokenKind.None)
+                            if (LanguageHelper.TryGetSingleCharTokenKind(span[0], out var tokenKind, out var depth))
                             {// Single char token
                                 this.AddTokenAndSlice(tokenKind, ref span, 1);
+                                groupingDepth += depth;
                             }
                             else if (LanguageHelper.IsDecimalNumberStart(span))
                             {// Numeric literal
@@ -394,6 +399,7 @@ internal class Tokenizer
 
             this.previousIndents = numberOfIndents;
         }
+    }
 
     private int ReadMultiLineComment(ref ReadOnlySpan<char> span)
     {// /* Comment */

@@ -3,6 +3,7 @@
 namespace Kimigayo.Language;
 
 using System.Buffers;
+using System.Drawing;
 using System.Runtime.CompilerServices;
 using Arc.Collections;
 
@@ -210,6 +211,40 @@ public static class LanguageHelper
 
             _ => TokenKind.None,
         };
+    }
+
+    public static bool TryGetSingleCharTokenKind(char c, out TokenKind tokenKind, out int groupingDepth)
+    {
+        (tokenKind, groupingDepth) = c switch
+        {
+            Constants.DotChar => (TokenKind.Dot, 0),
+            Constants.CommaChar => (TokenKind.Comma, 0),
+            Constants.OpenBracketChar => (TokenKind.OpenBracket, +1),
+            Constants.CloseBracketChar => (TokenKind.CloseBracket, -1),
+            Constants.OpenParenthesisChar => (TokenKind.OpenParenthesis, +1),
+            Constants.CloseParenthesisChar => (TokenKind.CloseParenthesis, -1),
+            Constants.OpenBraceChar => (TokenKind.OpenBrace, +1),
+            Constants.CloseBraceChar => (TokenKind.CloseBrace, -1),
+            Constants.ColonChar => (TokenKind.Colon, 0),
+            Constants.SemicolonChar => (TokenKind.Semicolon, 0),
+            Constants.DollarChar => (TokenKind.Dollar, 0),
+            Constants.TildeChar => (TokenKind.Tilde, 0),
+            Constants.AmpersandChar => (TokenKind.Ampersand, 0),
+            Constants.AsteriskChar => (TokenKind.Asterisk, 0),
+            Constants.BarChar => (TokenKind.Bar, 0),
+            Constants.CaretChar => (TokenKind.Caret, 0),
+            Constants.EqualsChar => (TokenKind.Equals, 0),
+            Constants.ExclamationChar => (TokenKind.Exclamation, 0),
+            Constants.GreaterThanChar => (TokenKind.GreaterThan, -1),
+            Constants.LessThanChar => (TokenKind.LessThan, +1),
+            Constants.MinusChar => (TokenKind.Minus, 0),
+            Constants.PercentChar => (TokenKind.Percent, 0),
+            Constants.PlusChar => (TokenKind.Plus, 0),
+            Constants.SlashChar => (TokenKind.Slash, 0),
+            _ => (TokenKind.None, 0),
+        };
+
+        return tokenKind != TokenKind.None;
     }
 
     private static bool TryGetRegularStringLiteralLength(ReadOnlySpan<char> text, out int length)
