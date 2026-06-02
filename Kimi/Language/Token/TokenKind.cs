@@ -38,6 +38,8 @@ public enum TokenKind : byte
     Protected_or_internal,
     Protected_and_internal,
     Var, // var
+    True,
+    False,
 
     If, // if
     ElseIf, // else if
@@ -78,9 +80,9 @@ public enum TokenKind : byte
     Dollar, // $
     Tilde, // ~
 
+    Ampersand, // &
     AmpersandAmpersand, // &&
     AmpersandEquals, // &=
-    Ampersand, // &
     Asterisk, // *
     AsteriskEquals, // *=
     Bar, // |

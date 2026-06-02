@@ -9,7 +9,18 @@ public static class Constants
     public const char LfChar = '\n';
     public const char CrChar = '\r';
 
+    public const char AmpersandChar = '&';
+    public const char AsteriskChar = '*';
     public const char AttributeChar = '#';
+    public const char BarChar = '|';
+    public const char CaretChar = '^';
+    public const char GreaterThanChar = '>';
+    public const char ExclamationChar = '!';
+    public const char LessThanChar = '<';
+    public const char MinusChar = '-';
+    public const char PercentChar = '%';
+    public const char PlusChar = '+';
+    public const char SlashChar = '/';
     public const char CommaChar = ',';
     public const char ColonChar = ':';
     public const char CloseBraceChar = '}';

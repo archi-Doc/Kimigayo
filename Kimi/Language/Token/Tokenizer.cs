@@ -116,9 +116,50 @@ Entry:
                 {
                     this.AddTokenAndSlice(tokenKind, ref span, 1);
                 }
-                else if (span[0] == '/')
+                else if (span[0] == Constants.AmpersandChar)
+                {// && &= &
+                    if (span[1] == Constants.AmpersandChar)
+                    {// &&
+                        this.AddTokenAndSlice(TokenKind.AmpersandAmpersand, ref span, 2);
+                    }
+                    else if (span[1] == Constants.EqualsChar)
+                    {// &=
+                        this.AddTokenAndSlice(TokenKind.AmpersandEquals, ref span, 2);
+                    }
+                    else
+                    {// &
+                        this.AddTokenAndSlice(TokenKind.Ampersand, ref span, 1);
+                    }
+                }
+                else if (span[0] == Constants.AsteriskChar)
+                {// * *=
+                    if (span[1] == Constants.EqualsChar)
+                    {// *=
+                        this.AddTokenAndSlice(TokenKind.AsteriskEquals, ref span, 2);
+                    }
+                    else
+                    {// *
+                        this.AddTokenAndSlice(TokenKind.Asterisk, ref span, 1);
+                    }
+                }
+                else if (span[0] == Constants.BarChar)
+                {// | || |=
+                    if (span[1] == Constants.BarChar)
+                    {// ||
+                        this.AddTokenAndSlice(TokenKind.BarBar, ref span, 2);
+                    }
+                    else if (span[1] == Constants.EqualsChar)
+                    {// |=
+                        this.AddTokenAndSlice(TokenKind.BarEquals, ref span, 2);
+                    }
+                    else
+                    {// |
+                        this.AddTokenAndSlice(TokenKind.Bar, ref span, 1);
+                    }
+                }
+                else if (span[0] == Constants.SlashChar)
                 {// // /* /= /
-                    if (span[1] == '/')
+                    if (span[1] == Constants.SlashChar)
                     {// "//"
                         this.ReadSingleLineComment(ref span);
                         this.NextLine();
