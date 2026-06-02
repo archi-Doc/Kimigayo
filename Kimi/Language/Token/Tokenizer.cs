@@ -5,13 +5,7 @@ using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
 
-/*internal enum LineFeedKind : byte
-{
-    Scope, // Indent
-    Parenthesis, // (,)
-}*/
-
-internal class Reader
+internal class Tokenizer
 {
     #region FieldAndProperty
 
@@ -32,7 +26,7 @@ internal class Reader
 
     #endregion
 
-    public Reader(KimiControl kimiControl, UrlDiagnostic urlDiagnostic)
+    public Tokenizer(KimiControl kimiControl, UrlDiagnostic urlDiagnostic)
     {
         this.kimiControl = kimiControl;
         this.urlDiagnostic = urlDiagnostic;
@@ -110,8 +104,14 @@ Entry:
                     }
                     else if (span[1] == '*')
                     {// "/*"
-                        this.ReadMultiLineComment(ref span);
-                        continue;
+                        if (this.ReadMultiLineComment(ref span))
+                        {// Multi line
+                            break;
+                        }
+                        else
+                        {// Single line
+                            continue;
+                        }
                     }
                     else if (span[1] == '=')
                     {// "/="
@@ -120,7 +120,15 @@ Entry:
                     }
                 }
                 else if (span[0] == '*')
-                {
+                {// * *=
+                    if (span[1] == Constants.EqualsChar)
+                    {// *=
+                        this.AddTokenAndSlice(TokenKind.AsteriskEquals, ref span, 2);
+                    }
+                    else
+                    {// *
+                        this.AddTokenAndSlice(TokenKind.Asterisk, ref span, 1);
+                    }
                 }
             }
         }
@@ -175,9 +183,10 @@ Entry:
         this.previousIndents = numberOfIndents;
     }
 
-    private void ReadMultiLineComment(ref ReadOnlySpan<char> span)
+    private bool ReadMultiLineComment(ref ReadOnlySpan<char> span)
     {// "/* Comment */"
         var idx = span.IndexOf("*/", StringComparison.Ordinal);
+        var multiLine = false;
         if (idx < 0)
         {
             idx = span.Length;
@@ -185,10 +194,12 @@ Entry:
         }
         else
         {
+            multiLine = span.Slice(0, idx).IndexOf(Constants.LfChar) >= 0;
             idx += 2;
         }
 
         this.AddTokenAndSlice(TokenKind.MultiLineComment, ref span, idx);
+        return multiLine;
     }
 
     private void ReadSingleLineComment(ref ReadOnlySpan<char> span)

@@ -59,9 +59,9 @@ public enum TokenKind : byte
     MultiLineComment, // /* comment */
     LineFeed, // \n or \r\n
 
-    Move, // <=
-    Map, // =>
-    Reference, // &
+    // Move, // <=
+    // Map, // =>
+    // Reference, // &
 
     // Single token
     Dot, // .
@@ -78,11 +78,11 @@ public enum TokenKind : byte
     AmpersandAmpersand, // &&
     AmpersandEquals, // &=
     Ampersand, // &
-    AsteriskEquals, // *=
     Asterisk, // *
+    AsteriskEquals, // *=
+    Bar, // |
     BarBar, // ||
     BarEquals, // |=
-    Bar, // |
     Caret, // ^
     CaretEquals, // ^=
     Equals, // =
@@ -93,9 +93,9 @@ public enum TokenKind : byte
     GreaterThan, // >
     GreaterThanEquals, // >=
     GreaterThanGreaterThanEquals, // >>=
+    LessThan, // <
     LessThanEquals, // <=
     LessThanLessThanEquals, // <<=
-    LessThan, // <
     Minus, // -
     MinusEquals, // -=
     MinusMinus, // --

@@ -2,6 +2,7 @@
 
 namespace Kimigayo.Language;
 
+using System.Drawing;
 using Arc.Collections;
 
 public static class LanguageHelper
@@ -41,6 +42,21 @@ public static class LanguageHelper
             KeywordToKeywordKind.TryAdd(keyword, x);
         }
     }
+
+    public static TokenKind CharToSingleToken(char c) => c switch
+    {
+        Constants.DotChar => TokenKind.Dot, // .
+        Constants.CommaChar => TokenKind.Comma, // ,
+        Constants.OpenBracketChar => TokenKind.OpenBracket, // [
+        Constants.CloseBracketChar => TokenKind.CloseBracket, // ]
+        Constants.OpenParenthesisChar => TokenKind.OpenParenthesis, // (
+        Constants.CloseParenthesisChar => TokenKind.CloseParenthesis, // )
+        Constants.ColonChar => TokenKind.Colon, // :
+        Constants.SemicolonChar => TokenKind.Semicolon, // ;
+        Constants.DollarChar => TokenKind.Dollar, // $
+        Constants.TildeChar => TokenKind.Tilde, // ~
+        _ => TokenKind.None,
+    };
 
     public static TokenKind GetSingleCharTokenKind(char c)
     {
