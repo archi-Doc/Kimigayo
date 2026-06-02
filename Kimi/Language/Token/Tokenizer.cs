@@ -45,11 +45,10 @@ internal class Tokenizer
 
     public (List<Token> List, int Count) Read()
     {
-Entry:
         this.numberOfTokens = 0;
         var span = this.text.Slice(this.position).Span;
         if (span.Length == 0)
-        {// Eof
+        {// End-of-file
             return (this.tokenList, this.numberOfTokens);
         }
 
@@ -59,7 +58,7 @@ Entry:
             {
                 while (span[0] == Constants.SpaceChar)
                 {// Skip spaces
-                    span = span.Slice(1);
+                    this.Slice(ref span, 1);
                     if (span.Length == 0)
                     {// Eof
                         break;
@@ -74,23 +73,19 @@ Entry:
                 {// Single character
                     if (span[0] == Constants.CloseParenthesisChar)
                     {// )
-                        this.AddToken(new(TokenKind.CloseParenthesis, this.text.Slice(this.position, 1)));
-                        this.Slice(ref span, 1);
+                        this.AddTokenAndSlice(TokenKind.CloseParenthesis, ref span, 1);
                     }
                     else if (span[0] == Constants.CloseBracketChar)
                     {// ]
-                        this.AddToken(new(TokenKind.CloseBracket, this.text.Slice(this.position, 1)));
-                        this.Slice(ref span, 1);
+                        this.AddTokenAndSlice(TokenKind.CloseBracket, ref span, 1);
                     }
                     else if (span[0] == Constants.CloseBraceChar)
                     {// }
-                        this.AddToken(new(TokenKind.CloseBrace, this.text.Slice(this.position, 1)));
-                        this.Slice(ref span, 1);
+                        this.AddTokenAndSlice(TokenKind.CloseBrace, ref span, 1);
                     }
                     else if (span[0] == Constants.LfChar)
                     {// \n
                         this.Slice(ref span, 1);
-                        break;
                     }
                     else
                     {// Invalid token
@@ -163,6 +158,124 @@ Entry:
                         else
                         {// |
                             this.AddTokenAndSlice(TokenKind.Bar, ref span, 1);
+                        }
+
+                        break;
+
+                    case Constants.CaretChar: // ^ ^=
+                        if (span[1] == Constants.EqualsChar)
+                        {// ^=
+                            this.AddTokenAndSlice(TokenKind.CaretEquals, ref span, 2);
+                        }
+                        else
+                        {// ^
+                            this.AddTokenAndSlice(TokenKind.Caret, ref span, 1);
+                        }
+
+                        break;
+
+                    case Constants.EqualsChar: // = == =>
+                        if (span[1] == Constants.EqualsChar)
+                        {// ==
+                            this.AddTokenAndSlice(TokenKind.EqualsEquals, ref span, 2);
+                        }
+                        else if (span[1] == Constants.GreaterThanChar)
+                        {// =>
+                            this.AddTokenAndSlice(TokenKind.EqualsGreaterThan, ref span, 2);
+                        }
+                        else
+                        {// =
+                            this.AddTokenAndSlice(TokenKind.Equals, ref span, 1);
+                        }
+
+                        break;
+
+                    case Constants.ExclamationChar: // ! !=
+                        if (span[1] == Constants.EqualsChar)
+                        {// !=
+                            this.AddTokenAndSlice(TokenKind.ExclamationEquals, ref span, 2);
+                        }
+                        else
+                        {// !
+                            this.AddTokenAndSlice(TokenKind.Exclamation, ref span, 1);
+                        }
+
+                        break;
+
+                    case Constants.GreaterThanChar: // > >= >>=
+                        if (span[1] == Constants.EqualsChar)
+                        {// >=
+                            this.AddTokenAndSlice(TokenKind.GreaterThanEquals, ref span, 2);
+                        }
+                        else if (span[1] == Constants.GreaterThanChar &&
+                            span.Length >= 3 && span[2] == Constants.EqualsChar)
+                        {// >>=
+                            this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThanEquals, ref span, 3);
+                        }
+                        else
+                        {// >
+                            this.AddTokenAndSlice(TokenKind.GreaterThan, ref span, 1);
+                        }
+
+                        break;
+
+                    case Constants.LessThanChar: // < <= <<=
+                        if (span[1] == Constants.EqualsChar)
+                        {// <=
+                            this.AddTokenAndSlice(TokenKind.LessThanEquals, ref span, 2);
+                        }
+                        else if (span[1] == Constants.LessThanChar &&
+                            span.Length >= 3 && span[2] == Constants.EqualsChar)
+                        {// <<=
+                            this.AddTokenAndSlice(TokenKind.LessThanLessThanEquals, ref span, 3);
+                        }
+                        else
+                        {// <
+                            this.AddTokenAndSlice(TokenKind.LessThan, ref span, 1);
+                        }
+
+                        break;
+
+                    case Constants.MinusChar: // -- -= -
+                        if (span[1] == Constants.MinusChar)
+                        {// --
+                            this.AddTokenAndSlice(TokenKind.MinusMinus, ref span, 2);
+                        }
+                        else if (span[1] == Constants.EqualsChar)
+                        {// -=
+                            this.AddTokenAndSlice(TokenKind.MinusEquals, ref span, 2);
+                        }
+                        else
+                        {// -
+                            this.AddTokenAndSlice(TokenKind.Minus, ref span, 1);
+                        }
+
+                        break;
+
+                    case Constants.PercentChar: // % %=
+                        if (span[1] == Constants.EqualsChar)
+                        {// %=
+                            this.AddTokenAndSlice(TokenKind.PercentEquals, ref span, 2);
+                        }
+                        else
+                        {// %
+                            this.AddTokenAndSlice(TokenKind.Percent, ref span, 1);
+                        }
+
+                        break;
+
+                    case Constants.PlusChar: // ++ += +
+                        if (span[1] == Constants.PlusChar)
+                        {// ++
+                            this.AddTokenAndSlice(TokenKind.PlusPlus, ref span, 2);
+                        }
+                        else if (span[1] == Constants.EqualsChar)
+                        {// +=
+                            this.AddTokenAndSlice(TokenKind.PlusEquals, ref span, 2);
+                        }
+                        else
+                        {// +
+                            this.AddTokenAndSlice(TokenKind.Plus, ref span, 1);
                         }
 
                         break;

@@ -60,7 +60,7 @@ public enum TokenKind : byte
     RawLiteral, // """text"""
     SingleLineComment, // // comment
     MultiLineComment, // /* comment */
-    LineFeed, // \n or \r\n
+    // LineFeed, // \n or \r\n
 
     // Move, // <=
     // Map, // =>
