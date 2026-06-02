@@ -147,9 +147,14 @@ Entry:
                     }
                 }
                 else if (LanguageHelper.IsDecimalNumberStart(span))
-                {// If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
+                {// Numeric literal
+                    // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
                     var length = LanguageHelper.ScanDecimalNumber(span);
                     this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, length);
+                }
+                else if (LanguageHelper.TryGetStringLiteralLength(span, out var literalLength))
+                {// String literal
+                    this.AddTokenAndSlice(TokenKind.Literal, ref span, literalLength);
                 }
                 else
                 {// Keyword or Identifier

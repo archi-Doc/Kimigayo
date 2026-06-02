@@ -132,6 +132,23 @@ public static class LanguageHelper
         return i;
     }
 
+    public static bool TryGetStringLiteralLength(ReadOnlySpan<char> text, out int length)
+    {
+        length = 0;
+        if (text.IsEmpty || text[0] != '"')
+        {
+            return false;
+        }
+
+        var quoteCount = CountQuotesAt(text, 0);
+        if (quoteCount >= 3)
+        {
+            return TryGetRawStringLiteralLength(text, quoteCount, out length);
+        }
+
+        return TryGetRegularStringLiteralLength(text, out length);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsDigit(char c)
     {
@@ -191,5 +208,89 @@ public static class LanguageHelper
 
             _ => TokenKind.None,
         };
+    }
+
+    private static bool TryGetRegularStringLiteralLength(ReadOnlySpan<char> text, out int length)
+    {
+        length = 0;
+
+        // The caller has already verified that the first character is '"'.
+        var i = 1;
+        while (i < text.Length)
+        {
+            var c = text[i];
+
+            // A regular string literal cannot contain a physical line break.
+            if (c == '\r' || c == '\n')
+            {
+                return false;
+            }
+
+            // Skip escaped character, such as \" or \\.
+            if (c == '\\')
+            {
+                i++;
+                if (i >= text.Length)
+                {
+                    return false;
+                }
+
+                i++;
+                continue;
+            }
+
+            // Closing quote.
+            if (c == '"')
+            {
+                length = i + 1;
+                return true;
+            }
+
+            i++;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetRawStringLiteralLength(ReadOnlySpan<char> text, int delimiterQuoteCount, out int length)
+    {
+        length = 0;
+
+        // Raw string literals use at least three quotes as the delimiter.
+        var i = delimiterQuoteCount;
+        while (i < text.Length)
+        {
+            if (text[i] != '"')
+            {
+                i++;
+                continue;
+            }
+
+            var quoteCount = CountQuotesAt(text, i);
+
+            // The closing delimiter must have at least the same number of quotes
+            // as the opening delimiter.
+            if (quoteCount >= delimiterQuoteCount)
+            {
+                length = i + delimiterQuoteCount;
+                return true;
+            }
+
+            i += quoteCount;
+        }
+
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int CountQuotesAt(ReadOnlySpan<char> text, int start)
+    {
+        var i = start;
+        while (i < text.Length && text[i] == '"')
+        {
+            i++;
+        }
+
+        return i - start;
     }
 }
