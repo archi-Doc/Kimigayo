@@ -1,0 +1,118 @@
+#Namespace(Test::Program) // KimiError.NamespaceMustBeFirst
+
+#Condition(Os=="Linux") // Attribute-next rule.
+#Use(Kimi::Base::Linux)
+
+#Use(Kimi.Crypto)
+
+// ()内の処理。
+
+// *.kimisln
+Projects=
+  "./Test.kimiproj"
+Default=
+  Version=0.1
+  LangVersion=11
+
+// *.kimiproj
+Package=
+  Name="Test"
+  Version=0.1
+Targets=
+  "x86_64-pc-windows-msvc"
+  "x86_64-pc-linux-gnu"
+Use=
+  Kimi.Base
+Packages=
+  Tinyhand
+
+$WriteLine("Kimigayo")
+
+// Comment
+/* Comment2 */
+
+#Test
+method Test1() -> bool
+
+#Test
+method Main()
+    var i = 8
+    var j = i++
+    var st = i.ToString()
+    return
+
+public composition Example : ExampleImpl1
+    public method Main() -> Task
+        $Console.WriteLine("Hello world!")
+        context.Console.WriteLine("Hello world!")
+        Example::Example.Test()
+        $Panic("")
+        self.Method2(32)
+        new Class() -> var x
+        var x = new Class()
+        var y = &x
+        var z = !x
+        var a < new Class()
+        &Class b < &x
+        !Class c <- !x
+classA.x = classB.x
+classA.y <= classB.y
+        return
+
+    private static method Test()
+
+    private static method Test() Task
+        if (context.CancellationToken.IsCancelRequested)
+            return
+
+        _ = Task.Run(async () =>
+            var i = 0
+            i++
+        );
+
+
+
+public group Helper
+    #LibraryImport("kernel32.dll")
+    public static method HeapAlloc(isize hHeap, uint32 dwFlags, usize dwBytes) -> isize
+
+    public method Method1(int x) int
+        return x + 4
+
+    #Condition(Architecture=="x64")
+    public method ReadTsc() -> i64
+        let low: u32;
+        let high: u32;
+        #Assembler(
+            "rdtsc",
+            out("eax") low,
+            out("edx") high,
+            options(nomem, nostack, preserves_flags)
+            )
+        return ((high as u64) << 32) | low as u64
+
+impl ExampleImpl1
+    int x
+
+    method Metho2(int x) int
+        return x + 1
+
+var record = new Record()
+    A = 3
+    B = "D"
+
+chainMethod().Do().IsTrue()
+
+chainMethod()
+    .Do()
+    .IsTrue()
+
+complexMethod(
+    A,
+    B,
+    C)
+
+// ; がないと繋げられない。。。元々好きな書き方ではないが。
+// Indentableを検出して、次の行を見て処理するか（NextLine.NoIndent, Indentable, IndentRequired）。
+// とゆーか、()があったらIndentableかな。
+
