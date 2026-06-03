@@ -16,13 +16,13 @@ public static class LanguageHelper
     private static readonly Dictionary<TokenKind, string> _keywordKindToKeyword;
 
     private static readonly SearchValues<char> Separators = SearchValues.Create(
-    [// Separator Space, (, ), Cr, Lf, =, <, >, +, -, %, &, |, ','
+    [// Separator Space, (, ), Cr, Lf, =, <, >, +, -, %, &, |, ',', #
         ' ', '\t', '\r', '\n',
         '(', ')', '{', '}', '[', ']',
         '.', ',', ';', ':', '?',
         '+', '-', '*', '/', '%',
         '&', '|', '^', '!', '~',
-        '=', '<', '>',
+        '=', '<', '>', '#',
     ]);
 
     static LanguageHelper()
@@ -227,6 +227,7 @@ public static class LanguageHelper
         {
             // Constants.DotChar => (TokenKind.Dot, 0),
             Constants.CommaChar => (TokenKind.Comma, 0),
+            Constants.SharpChar => (TokenKind.Sharp, 0),
             Constants.OpenBracketChar => (TokenKind.OpenBracket, +1),
             Constants.CloseBracketChar => (TokenKind.CloseBracket, -1),
             Constants.OpenParenthesisChar => (TokenKind.OpenParenthesis, +1),

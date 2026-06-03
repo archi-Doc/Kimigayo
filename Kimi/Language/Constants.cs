@@ -14,7 +14,6 @@ public static class Constants
 
     public const char AmpersandChar = '&';
     public const char AsteriskChar = '*';
-    public const char AttributeChar = '#';
     public const char BarChar = '|';
     public const char CaretChar = '^';
     public const char GreaterThanChar = '>';
@@ -36,6 +35,7 @@ public static class Constants
     public const char OpenBracketChar = '[';
     public const char OpenParenthesisChar = '(';
     public const char SemicolonChar = ';';
+    public const char SharpChar = '#';
     public const char SpaceChar = ' ';
     public const char TildeChar = '~';
 

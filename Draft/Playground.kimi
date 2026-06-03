@@ -1,18 +1,19 @@
 // Kimigayo by archi-Doc
 
-namespace Playground
 use Kimi.Base
+
+namespace Playground
 
 public const string Name = "Test"
 
-public group Helper /* Comment
-    public const i32 Id = 123 */
-    public Method1() => int32 // use PackageName, Helper
+public group Helper /* group is a stateless collection of values and functions.
+*/
+    public const i32 Id = 123
+    public Method1() => int32
         return 1
 
 #TinyhandObject
-public struct TestStruct // module + field
-
+public struct TestStruct // struct can have state and contains values and functions.
     #Key(1)
     i32 id
 
@@ -23,16 +24,20 @@ public struct TestStruct // module + field
         return self.id
 
     public GetText(&, i32 id) => string
+        id++
+
         return id switch
             1 => "Test",
             2 => 
 
-TestMethod()
-    var st = TestStruct.New()
+TestMethod() => TestStruct
+    var ts = TestStruct.New()
     
+    return ts
 
 public enum TestEnum
     Success
     Failureb
 
 $WriteLine("Kimigayo")
+q

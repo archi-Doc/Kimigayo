@@ -56,7 +56,6 @@ public enum TokenKind : byte
 
     // Not keyword
     Identifier = 128,
-    Attribute, // #Attribute
     StartBlock,
     EndBlock,
     NumericLiteral, // 1.23d
@@ -71,6 +70,7 @@ public enum TokenKind : byte
     // Reference, // &
 
     // Single token
+    Sharp, // #
     Comma, // ,
     OpenBracket, // [
     CloseBracket, // ]

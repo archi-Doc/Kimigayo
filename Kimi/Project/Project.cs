@@ -119,7 +119,6 @@ public partial class Project
             foreach (var x in r.List.Slice(0, r.Count))
             {
                 sb.Append(x.ToString());
-                sb.Append(" ");
             }
 
             sb.AppendLine();

@@ -17,7 +17,6 @@ internal readonly struct Token
     public override string ToString()
     {
         if (this.Kind == TokenKind.Identifier ||
-            this.Kind == TokenKind.Attribute ||
             this.Kind == TokenKind.NumericLiteral ||
             this.Kind == TokenKind.Literal ||
             this.Kind == TokenKind.RawLiteral ||

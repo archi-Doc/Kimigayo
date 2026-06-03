@@ -126,11 +126,6 @@ Loop:
             // span.Length >= 1
             switch (span[0])
             {
-                case Constants.AttributeChar:
-                    {// #Attribute()
-                        break;
-                    }
-
                 case Constants.CrChar:
                     if (span.Length > 1 && span[1] == Constants.LfChar)
                     {// \r\n
