@@ -5,32 +5,26 @@ using SimpleCommandLine;
 namespace Kimigayo.Command;
 
 [SimpleCommand("build")]
-public class BuildCommand : ISimpleCommand<BuildCommand.Options>
+public class BuildCommand : ISimpleCommand<SolutionOptions>
 {
-    public class Options
-    {
-        [SimpleOption("DumpToken")]
-        public bool DumpToken { get; set; } = false;
-    }
-
     private readonly UnitContext unitContext;
     private readonly ILogger logger;
+    private readonly KimiControl kimiControl;
+    private readonly Solution solution;
 
-    public BuildCommand(UnitContext unitContext, ILogger<BuildCommand> logger)
+    public BuildCommand(UnitContext unitContext, ILogger<BuildCommand> logger, KimiControl kimiControl, Solution solution)
     {
         this.unitContext = unitContext;
         this.logger = logger;
-        // logger.GetWriter()?.Write("Default command");
+        this.kimiControl = kimiControl;
+        this.solution = solution;
     }
 
-    public async Task Execute(Options options, string[] args, CancellationToken cancellationToken)
+    public async Task Execute(SolutionOptions options, string[] args, CancellationToken cancellationToken)
     {
+        this.solution.Load(this.logger, options, args);
         foreach (var x in args)
         {
         }
-
-        //var kimiControl = serviceProvider.GetRequiredService<KimiControl>();
-        //var solution = serviceProvider.GetRequiredService<Solution>();
-        // solution.TryReadFile("aaa");
     }
 }

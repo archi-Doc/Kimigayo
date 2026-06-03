@@ -6,6 +6,8 @@ public class Solution
 {
     private readonly KimiControl kimiControl;
 
+    public SolutionOptions Options { get; private set; } = new();
+
     public Solution(KimiControl kimiControl)
     {
         this.kimiControl = kimiControl;
@@ -30,5 +32,64 @@ public class Solution
     public async Task<bool> Build()
     {
         return true;
+    }
+
+    public void Load(ILogger logger, SolutionOptions options, string[] args)
+    {
+        var projectList = new List<string>();
+        this.Options = options;
+
+        if (args.Length == 0)
+        {// If not specified, the current directory is used.
+            args = [Directory.GetCurrentDirectory(),];
+        }
+
+        // Tries to load solution file
+        foreach (var x in args)
+        {
+            if (x.EndsWith(Constants.KimiSolutionExtension, StringComparison.InvariantCultureIgnoreCase))
+            {// *.kimisln
+                if (this.TryReadFile(x))
+                {
+                    this.kimiControl.GlobalDiagnostic.Add(default, Hashed.Solution.Loaded, x);
+                    goto SolutionLoaed;
+                }
+            }
+        }
+
+        // Tries to load solution file in directory
+        foreach (var x in args)
+        {
+            if (Directory.Exists(x))
+            {
+                foreach (var y in Directory.EnumerateFiles(x, Constants.KimiSolutionExtension, SearchOption.TopDirectoryOnly))
+                {
+                    if (this.TryReadFile(y))
+                    {
+                        this.kimiControl.GlobalDiagnostic.Add(default, Hashed.Solution.Loaded, x);
+                        goto SolutionLoaed;
+                    }
+                }
+
+                // Load project file in directory
+                foreach (var y in Directory.EnumerateFiles(x, Constants.KimiProjectExtension, SearchOption.TopDirectoryOnly))
+                {
+                    projectList.Add(y);
+                }
+            }
+        }
+
+        // Load project file
+        foreach (var x in args)
+        {
+            if (x.EndsWith(Constants.KimiProjectExtension, StringComparison.InvariantCultureIgnoreCase))
+            {// *.kimiproj
+                projectList.Add(x);
+            }
+        }
+
+SolutionLoaed:
+
+        return;
     }
 }

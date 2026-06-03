@@ -2,6 +2,7 @@
 
 Solution=
   NotFound="Solution file '{0}' not found"
+  Loaded="Solution file '{0}' loaded"
 
 Project=
   NotFound="Project file '{0}' not found"

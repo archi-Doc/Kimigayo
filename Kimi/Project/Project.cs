@@ -98,7 +98,6 @@ public partial class Project
 
         File.AppendAllText("C:\\App\\lsp.txt", sb.ToString());
 
-
     }
 
     private void Prepare()

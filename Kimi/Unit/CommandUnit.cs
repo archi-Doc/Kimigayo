@@ -1,7 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimigayo.Lsp;
 using Kimigayo.Command;
+using Kimigayo.Lsp;
 using SimpleCommandLine;
 
 namespace Kimigayo;
@@ -10,13 +10,6 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
 {
     private ILogger<CommandUnit> logger;
     private UnitOptions options;
-
-    private static void ConfigureBase(IUnitConfigurationContext context)
-    {
-        context.AddScoped<IConsoleService, ConsoleService>();
-        context.AddTransient<Solution>();
-        context.AddTransient<Project>();
-    }
 
     public class Builder : UnitBuilder<Product>
     {// Builder class for customizing dependencies.
@@ -30,7 +23,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
             // Configuration for Unit.
             this.Configure(context =>
             {
-                ConfigureBase(context);
+                KimiUnit.ConfigureBase(context);
 
                 context.AddSingleton<CommandUnit>();
                 context.RegisterDefaultInstantiableType<CommandUnit>();
