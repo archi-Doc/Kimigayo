@@ -2,6 +2,7 @@
 
 namespace Kimigayo;
 
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
@@ -21,12 +22,39 @@ public partial class Project
         DefaultProjectFile = projectFile;
     }
 
+    public static bool TryCreate(KimiControl kimiControl, ILogger logger, string path, [MaybeNullWhen(false)] out Project project)
+    {
+        project = default;
+        try
+        {
+            var utf8 = File.ReadAllBytes(path);
+            var file = TinyhandSerializer.DeserializeFromUtf8<ProjectFile>(utf8);
+            if (file is null)
+            {
+                logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
+                return false;
+            }
+
+            project = new(kimiControl);
+            project.ProjectFile = file;
+        }
+        catch
+        {
+            logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
+            return false;
+        }
+
+        return true;
+    }
+
     #region FieldAndProperty
 
     private readonly KimiControl kimiControl;
     private HashSet<string> targets = new();
     private HashSet<string> globalUse = new();
     private List<UrlAndtext> additionalSource = [];
+
+    public string ProjectPath { get; private set; } = string.Empty;
 
     public ProjectFile ProjectFile { get; private set; } = new();
 

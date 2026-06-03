@@ -23,8 +23,6 @@ public class BuildCommand : ISimpleCommand<SolutionOptions>
     public async Task Execute(SolutionOptions options, string[] args, CancellationToken cancellationToken)
     {
         this.solution.Load(this.logger, options, args);
-        foreach (var x in args)
-        {
-        }
+        this.solution.PrepareProject(this.logger);
     }
 }

@@ -9,6 +9,7 @@ Solution=
 
 Project=
   NotFound="Project file '{0}' not found"
+  NotLoaded="Failed to load the project file '{0}'"
 
 Parser=
   InvalidIndentation="Invalid indentation. Insert {0} spaces for each indentation level"

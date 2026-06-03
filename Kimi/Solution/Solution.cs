@@ -12,6 +12,8 @@ public class Solution
 
     public SolutionOptions Options { get; private set; } = new();
 
+    public Dictionary<string, Project> Projects { get; private set; } = new();
+
     public Solution(KimiControl kimiControl)
     {
         this.kimiControl = kimiControl;
@@ -148,5 +150,19 @@ SolutionLoaed:
         logger.GetWriter()?.Write(sb.ToString());
 
         return;
+    }
+
+    public void PrepareProject(ILogger logger)
+    {
+        foreach (var x in this.SolutionFile.Projects)
+        {
+            if (!this.Projects.ContainsKey(x))
+            {
+                if (Project.TryCreate(this.kimiControl, logger, x, out var project))
+                {
+                    this.Projects[x] = project;
+                }
+            }
+        }
     }
 }
