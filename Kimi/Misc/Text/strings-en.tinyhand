@@ -9,7 +9,8 @@ Solution=
   NoRunTarget="No project or file to run was found"
 
 Project=
-  NotFound="Project file '{0}' not found"
+  NoProjectFile="Project file '{0}' not found"
+  NoKimiFile="Kimi file '{0}' not found"
   NotLoaded="Failed to load the project file '{0}'"
 
 Parser=

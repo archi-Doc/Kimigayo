@@ -24,5 +24,6 @@ public class RunCommand : ISimpleCommand<SolutionOptions>
     {
         this.solution.LoadForRun(this.logger, options, args);
         this.solution.PrepareProject(this.logger);
+        await this.solution.Build();
     }
 }

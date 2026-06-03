@@ -81,6 +81,18 @@ public partial class Project
     {
         this.Prepare();
 
+        foreach (var x in this.kimiFiles)
+        {
+            try
+            {
+                var st = File.ReadAllText(x);
+                this.Build(new(x, st));
+            }
+            catch
+            {
+            }
+        }
+
         foreach (var x in this.additionalSource)
         {
             this.Build(x);

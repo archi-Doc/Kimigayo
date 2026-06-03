@@ -61,6 +61,11 @@ public class Solution
 
     public async Task<bool> Build()
     {
+        foreach (var x in this.Projects.Values)
+        {
+            await x.Build();
+        }
+
         return true;
     }
 
@@ -245,8 +250,16 @@ SolutionLoaed:
         if (this.Projects.Count == 0 &&
             !string.IsNullOrEmpty(this.KimiFile))
         {
-            var project = new Project(this.kimiControl);
-            project.AddKimiFile(this.KimiFile);
+            if (File.Exists(this.KimiFile))
+            {
+                var project = new Project(this.kimiControl);
+                project.AddKimiFile(this.KimiFile);
+                this.Projects[this.KimiFile] = project;
+            }
+            else
+            {
+                logger.GetWriter(LogLevel.Error)?.Write(Hashed.Project.NoKimiFile, this.KimiFile);
+            }
         }
     }
 }
