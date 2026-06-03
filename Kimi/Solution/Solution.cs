@@ -26,7 +26,6 @@ public class Solution
         byte[] utf8;
         try
         {
-
             utf8 = File.ReadAllBytes(path);
             var file = TinyhandSerializer.DeserializeFromUtf8<SolutionFile>(utf8);
             if (file is null)
