@@ -47,7 +47,7 @@ public enum TokenKind : byte
     Else, // else
     For, // for
     Loop, // loop
-    Switch, // switch
+    Match, // match
     Case, // case
 
     Break, // break

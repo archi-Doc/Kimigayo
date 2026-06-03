@@ -26,7 +26,7 @@ public struct TestStruct // struct can have state and contains values and functi
     public GetText(&, i32 id) => string
         id++
 
-        return id switch
+        return id match
             1 => "Test",
             2 => 
 
@@ -37,7 +37,6 @@ TestMethod() => TestStruct
 
 public enum TestEnum
     Success
-    Failureb
+    Failure
 
 $WriteLine("Kimigayo")
-q
