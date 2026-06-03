@@ -43,7 +43,6 @@ public enum TokenKind : byte
     Struct, // struct
     Enum, // enum
     If, // if
-    ElseIf, // else if
     Else, // else
     For, // for
     Loop, // loop

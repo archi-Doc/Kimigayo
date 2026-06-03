@@ -1,6 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
+using Arc.Collections;
 using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
@@ -40,12 +42,12 @@ internal sealed class Tokenizer
 
         this.numberOfBlocks = -1;
         this.numberOfBrackets = 0;
+        this.ClearToken();
     }
 
     public (List<Token> List, int Count) Read()
     {
-        this.tokenList.Clear();
-        this.numberOfTokens = 0;
+        this.ClearToken();
 Loop:
         var span = this.text.Slice(this.position).Span;
         if (span.Length == 0)
@@ -63,13 +65,31 @@ Loop:
             this.NextLine();
             goto Loop;
         }
-        else if (span.Length >= 2 &&
-            span[0] == Constants.CrChar &&
-            span[1] == Constants.LfChar)
-        {// Empty line (\r\n)
-            this.Slice(ref span, 2);
-            this.NextLine();
-            goto Loop;
+        else if (span.Length >= 2)
+        {
+            if (span[0] == Constants.CrChar && span[1] == Constants.LfChar)
+            {// Empty line (\r\n)
+                this.Slice(ref span, 2);
+                this.NextLine();
+                goto Loop;
+            }
+            else if (span[0] == Constants.SlashChar)
+            {// /
+                if (span[1] == Constants.SlashChar)
+                {// //
+                    if (this.ReadSingleLineComment(ref span))
+                    {
+                        this.NextLine();
+                    }
+
+                    goto NextLine;
+                }
+                else if (span[1] == Constants.AsteriskChar)
+                {// /*
+                    var lineFeeds = this.ReadMultiLineComment(ref span);
+                    this.NextLine(lineFeeds);
+                }
+            }
         }
 
         var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
@@ -386,8 +406,11 @@ Loop:
                     }
                     else if (span[1] == Constants.SlashChar)
                     {// //
-                        this.ReadSingleLineComment(ref span);
-                        this.NextLine();
+                        if (this.ReadSingleLineComment(ref span))
+                        {
+                            this.NextLine();
+                        }
+
                         goto NextLine;
                     }
                     else if (span[1] == Constants.AsteriskChar)
@@ -412,6 +435,12 @@ Loop:
                         {// Single char token
                             this.AddTokenAndSlice(tokenKind, ref span, 1);
                             this.numberOfBrackets += depth;
+                            if (this.numberOfBrackets < 0)
+                            {
+                                this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedClosingBracket);
+
+                                this.numberOfBrackets = 0;
+                            }
                         }
                         else if (LanguageHelper.IsDecimalNumberStart(span))
                         {// Numeric literal
@@ -476,7 +505,7 @@ EndOfFile:
         if (idx < 0)
         {
             idx = span.Length;
-            this.urlDiagnostic.Add(new(new(this.line, this.position), new(this.line, this.position + 2)), Hashed.Parser.MissingBlockCommentEnd);
+            this.urlDiagnostic.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), Hashed.Parser.MissingBlockCommentEnd);
         }
         else
         {
@@ -488,24 +517,26 @@ EndOfFile:
         return lineFeeds;
     }
 
-    private void ReadSingleLineComment(ref ReadOnlySpan<char> span)
+    private bool ReadSingleLineComment(ref ReadOnlySpan<char> span)
     {// // Comment\n
         var idx = Arc.BaseHelper.IndexOfLfOrCrLf(span, out var newLineLength);
         if (idx < 0)
         {
             this.AddTokenAndSlice(TokenKind.SingleLineComment, ref span, span.Length);
+            return false;
         }
         else
         {
             this.AddTokenAndSlice(TokenKind.SingleLineComment, ref span, idx);
             this.Slice(ref span, newLineLength);
+            return true;
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private Diagnostics.Range NewRange(int length)
     {
-        return new(new(this.line, this.position), new(this.line, this.position + length));
+        return new(new(this.line, this.character), new(this.line, this.character + length));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -569,5 +600,330 @@ EndOfFile:
     {
         this.line += lineFeeds;
         this.character = 0;
+    }
+}
+
+public static class LanguageHelper
+{
+    public static IReadOnlyDictionary<TokenKind, string> KeywordKindToKeyword => _keywordKindToKeyword;
+
+    public static readonly Utf16Hashtable<TokenKind> KeywordToKeywordKind;
+
+    private static readonly Dictionary<TokenKind, string> _keywordKindToKeyword;
+
+    private static readonly SearchValues<char> Separators = SearchValues.Create(
+    [// Separator Space, (, ), Cr, Lf, =, <, >, +, -, %, &, |, ',', #
+        ' ', '\t', '\r', '\n',
+        '(', ')', '{', '}', '[', ']',
+        '.', ',', ';', ':', '?',
+        '+', '-', '*', '/', '%',
+        '&', '|', '^', '!', '~',
+        '=', '<', '>', '#',
+    ]);
+
+    static LanguageHelper()
+    {
+        _keywordKindToKeyword = new();
+        KeywordToKeywordKind = new();
+        foreach (var x in Enum.GetValues<TokenKind>())
+        {
+            if (x == TokenKind.None)
+            {
+                continue;
+            }
+            else if (x == TokenKind.Identifier)
+            {// Anything after TokenKind.Identifier is not a keyword.
+                break;
+            }
+
+            var keyword = x.ToString().ToLower();
+            _keywordKindToKeyword[x] = keyword;
+            KeywordToKeywordKind.TryAdd(keyword, x);
+        }
+    }
+
+    public static bool IsDecimalNumberStart(ReadOnlySpan<char> text)
+    {
+        if (text.Length == 0)
+        {
+            return false;
+        }
+
+        var c = text[0];
+        if (IsDigit(c))
+        {
+            return true;
+        }
+
+        // Handles floating-point literals such as .3, .3d, .3f, and .3m.
+        return c == '.' && text.Length >= 2 && IsDigit(text[1]);
+    }
+
+    public static int ScanDecimalNumber(ReadOnlySpan<char> text)
+    {
+        var i = 0;
+
+        // Integer part.
+        if (i < text.Length && IsDigit(text[i]))
+        {
+            i++;
+            while (i < text.Length && IsDigitOrSeparator(text[i]))
+            {
+                i++;
+            }
+        }
+
+        // Fractional part.
+        if (i < text.Length && text[i] == '.')
+        {
+            if (i + 1 < text.Length && text[i + 1] == '.')
+            {// 1..
+                return i;
+            }
+
+            // Handles forms such as 1., 1.23, and .3.
+            i++;
+            while (i < text.Length && IsDigitOrSeparator(text[i]))
+            {
+                i++;
+            }
+        }
+
+        // Exponent part: e+10, e-10, or E10.
+        if (i < text.Length && (text[i] == 'e' || text[i] == 'E'))
+        {
+            var exponentStart = i;
+            i++;
+            if (i < text.Length && (text[i] == '+' || text[i] == '-'))
+            {
+                i++;
+            }
+
+            var digitStart = i;
+            while (i < text.Length && IsDigitOrSeparator(text[i]))
+            {
+                i++;
+            }
+
+            // If no digits follow 'e' or 'E', treat it as not being an exponent.
+            if (digitStart == i)
+            {
+                i = exponentStart;
+            }
+        }
+
+        // Type suffix: f/F, d/D, or m/M.
+        if (i < text.Length)
+        {
+            var suffix = text[i];
+            if (suffix is 'f' or 'F' or 'd' or 'D' or 'm' or 'M')
+            {
+                i++;
+            }
+        }
+
+        return i;
+    }
+
+    public static bool TryGetStringLiteralLength(ReadOnlySpan<char> text, out int length)
+    {
+        length = 0;
+        if (text.IsEmpty || text[0] != '"')
+        {
+            return false;
+        }
+
+        var quoteCount = CountQuotesAt(text, 0);
+        if (quoteCount >= 3)
+        {
+            return TryGetRawStringLiteralLength(text, quoteCount, out length);
+        }
+
+        return TryGetRegularStringLiteralLength(text, out length);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsDigit(char c)
+    {
+        return (uint)(c - '0') <= 9;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsDigitOrSeparator(char c)
+    {
+        return IsDigit(c) || c == '_';
+    }
+
+    public static int IndexOfSeparator(ReadOnlySpan<char> text)
+        => text.IndexOfAny(Separators);
+
+    public static TokenKind CharToSingleToken(char c) => c switch
+    {
+        Constants.DotChar => TokenKind.Dot, // .
+        Constants.CommaChar => TokenKind.Comma, // ,
+        Constants.OpenBracketChar => TokenKind.OpenBracket, // [
+        Constants.CloseBracketChar => TokenKind.CloseBracket, // ]
+        Constants.OpenParenthesisChar => TokenKind.OpenParenthesis, // (
+        Constants.CloseParenthesisChar => TokenKind.CloseParenthesis, // )
+        Constants.ColonChar => TokenKind.Colon, // :
+        Constants.SemicolonChar => TokenKind.Semicolon, // ;
+        Constants.DollarChar => TokenKind.Dollar, // $
+        Constants.TildeChar => TokenKind.Tilde, // ~
+        _ => TokenKind.None,
+    };
+
+    public static TokenKind GetSingleCharTokenKind(char c)
+    {
+        return c switch
+        {
+            '~' => TokenKind.Tilde,
+            '!' => TokenKind.Exclamation,
+            '$' => TokenKind.Dollar,
+            '%' => TokenKind.Percent,
+            '^' => TokenKind.Caret,
+            '&' => TokenKind.Ampersand,
+            '*' => TokenKind.Asterisk,
+            '(' => TokenKind.OpenParenthesis,
+            ')' => TokenKind.CloseParenthesis,
+            '-' => TokenKind.Minus,
+            '+' => TokenKind.Plus,
+            '=' => TokenKind.Equals,
+            '[' => TokenKind.OpenBracket,
+            ']' => TokenKind.CloseBracket,
+            '{' => TokenKind.OpenBrace,
+            '}' => TokenKind.CloseBrace,
+            '|' => TokenKind.Bar,
+            ':' => TokenKind.Colon,
+            ';' => TokenKind.Semicolon,
+            '<' => TokenKind.LessThan,
+            ',' => TokenKind.Comma,
+            '>' => TokenKind.GreaterThan,
+            '.' => TokenKind.Dot,
+            '/' => TokenKind.Slash,
+
+            _ => TokenKind.None,
+        };
+    }
+
+    public static bool RequiresImplicitIndentation(TokenKind tokenKind)
+        => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Case;
+
+    public static bool TryGetSingleCharTokenKind(char c, out TokenKind tokenKind, out int groupingDepth)
+    {
+        (tokenKind, groupingDepth) = c switch
+        {
+            // Constants.DotChar => (TokenKind.Dot, 0),
+            Constants.CommaChar => (TokenKind.Comma, 0),
+            Constants.SharpChar => (TokenKind.Sharp, 0),
+            Constants.OpenBracketChar => (TokenKind.OpenBracket, +1),
+            Constants.CloseBracketChar => (TokenKind.CloseBracket, -1),
+            Constants.OpenParenthesisChar => (TokenKind.OpenParenthesis, +1),
+            Constants.CloseParenthesisChar => (TokenKind.CloseParenthesis, -1),
+            Constants.OpenBraceChar => (TokenKind.OpenBrace, +1),
+            Constants.CloseBraceChar => (TokenKind.CloseBrace, -1),
+            Constants.ColonChar => (TokenKind.Colon, 0),
+            Constants.SemicolonChar => (TokenKind.Semicolon, 0),
+            Constants.DollarChar => (TokenKind.Dollar, 0),
+            Constants.TildeChar => (TokenKind.Tilde, 0),
+            Constants.AmpersandChar => (TokenKind.Ampersand, 0),
+            Constants.AsteriskChar => (TokenKind.Asterisk, 0),
+            Constants.BarChar => (TokenKind.Bar, 0),
+            Constants.CaretChar => (TokenKind.Caret, 0),
+            Constants.EqualsChar => (TokenKind.Equals, 0),
+            Constants.ExclamationChar => (TokenKind.Exclamation, 0),
+            Constants.GreaterThanChar => (TokenKind.GreaterThan, 0),
+            Constants.LessThanChar => (TokenKind.LessThan, 0),
+            Constants.MinusChar => (TokenKind.Minus, 0),
+            Constants.PercentChar => (TokenKind.Percent, 0),
+            Constants.PlusChar => (TokenKind.Plus, 0),
+            Constants.SlashChar => (TokenKind.Slash, 0),
+            _ => (TokenKind.None, 0),
+        };
+
+        return tokenKind != TokenKind.None;
+    }
+
+    private static bool TryGetRegularStringLiteralLength(ReadOnlySpan<char> text, out int length)
+    {
+        length = 0;
+
+        // The caller has already verified that the first character is '"'.
+        var i = 1;
+        while (i < text.Length)
+        {
+            var c = text[i];
+
+            // A regular string literal cannot contain a physical line break.
+            if (c == '\r' || c == '\n')
+            {
+                return false;
+            }
+
+            // Skip escaped character, such as \" or \\.
+            if (c == '\\')
+            {
+                i++;
+                if (i >= text.Length)
+                {
+                    return false;
+                }
+
+                i++;
+                continue;
+            }
+
+            // Closing quote.
+            if (c == '"')
+            {
+                length = i + 1;
+                return true;
+            }
+
+            i++;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetRawStringLiteralLength(ReadOnlySpan<char> text, int delimiterQuoteCount, out int length)
+    {
+        length = 0;
+
+        // Raw string literals use at least three quotes as the delimiter.
+        var i = delimiterQuoteCount;
+        while (i < text.Length)
+        {
+            if (text[i] != '"')
+            {
+                i++;
+                continue;
+            }
+
+            var quoteCount = CountQuotesAt(text, i);
+
+            // The closing delimiter must have at least the same number of quotes
+            // as the opening delimiter.
+            if (quoteCount >= delimiterQuoteCount)
+            {
+                length = i + delimiterQuoteCount;
+                return true;
+            }
+
+            i += quoteCount;
+        }
+
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int CountQuotesAt(ReadOnlySpan<char> text, int start)
+    {
+        var i = start;
+        while (i < text.Length && text[i] == '"')
+        {
+            i++;
+        }
+
+        return i - start;
     }
 }

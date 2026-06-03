@@ -32,7 +32,9 @@ public struct TestStruct // struct can have state and contains values and functi
 
 TestMethod() => TestStruct
     var ts = TestStruct.New()
-    
+        // EmptyA
+    /* EmptyB
+ */
     return ts
 
 public enum TestEnum
@@ -40,3 +42,4 @@ public enum TestEnum
     Failure
 
 $WriteLine("Kimigayo")
+// Comment
