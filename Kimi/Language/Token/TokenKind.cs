@@ -102,9 +102,11 @@ public enum TokenKind : byte
     ExclamationEquals, // !=
     GreaterThan, // >
     GreaterThanEquals, // >=
+    GreaterThanGreaterThan, // >>
     GreaterThanGreaterThanEquals, // >>=
     LessThan, // <
     LessThanEquals, // <=
+    LessThanLessThan, // <<
     LessThanLessThanEquals, // <<=
     Minus, // -
     MinusEquals, // -=

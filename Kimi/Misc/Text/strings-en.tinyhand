@@ -18,3 +18,4 @@ Parser=
   MissingBlockCommentEnd="Reached end-of-file. Missing '*/'"
   InvalidCharacterAtEndOfFile="Invalid character at end of file"
   UnmatchedClosingBracket="Unmatched closing bracket"
+  InvalidCharacter="Unexpected character '{0}'"

@@ -314,10 +314,16 @@ Loop:
                     {// >=
                         this.AddTokenAndSlice(TokenKind.GreaterThanEquals, ref span, 2);
                     }
-                    else if (span[1] == Constants.GreaterThanChar &&
-                        span.Length >= 3 && span[2] == Constants.EqualsChar)
-                    {// >>=
-                        this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThanEquals, ref span, 3);
+                    else if (span[1] == Constants.GreaterThanChar)
+                    {// >>
+                        if (span.Length >= 3 && span[2] == Constants.EqualsChar)
+                        {// >>=
+                            this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThanEquals, ref span, 3);
+                        }
+                        else
+                        {// >>
+                            this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThan, ref span, 2);
+                        }
                     }
                     else
                     {// >
@@ -335,10 +341,16 @@ Loop:
                     {// <=
                         this.AddTokenAndSlice(TokenKind.LessThanEquals, ref span, 2);
                     }
-                    else if (span[1] == Constants.LessThanChar &&
-                        span.Length >= 3 && span[2] == Constants.EqualsChar)
-                    {// <<=
-                        this.AddTokenAndSlice(TokenKind.LessThanLessThanEquals, ref span, 3);
+                    else if (span[1] == Constants.LessThanChar)
+                    {// <<
+                        if (span.Length >= 3 && span[2] == Constants.EqualsChar)
+                        {// <<=
+                            this.AddTokenAndSlice(TokenKind.LessThanLessThanEquals, ref span, 3);
+                        }
+                        else
+                        {// <<
+                            this.AddTokenAndSlice(TokenKind.LessThanLessThan, ref span, 2);
+                        }
                     }
                     else
                     {// <
@@ -458,6 +470,12 @@ Loop:
                             if (length < 0)
                             {
                                 length = span.Length;
+                            }
+                            else if (length == 0)
+                            {
+                                this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.InvalidCharacter, span[0]);
+                                this.AddTokenAndSlice(TokenKind.None, ref span, 1);
+                                break;
                             }
 
                             if (LanguageHelper.KeywordToKeywordKind.TryGetValue(span.Slice(0, length), out var tokenKind2))
