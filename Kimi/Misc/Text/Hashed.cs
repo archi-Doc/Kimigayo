@@ -9,6 +9,15 @@ public static partial class Hashed
 {
     public static void SetDiagnosticSeverity(Action<ulong, DiagnosticSeverity> setSeverity)
     {
-        // setSeverity(Hashed.Project.NotFound, DiagnosticSeverity.Error);
+        setSeverity(Hashed.Solution.NoProject, DiagnosticSeverity.Warning);
     }
+
+    public static void Write(this LogWriter writer, ulong hash)
+        => writer.Write(HashedString.Get(hash));
+
+    public static void Write(this LogWriter writer, ulong hash, object obj1)
+        => writer.Write(HashedString.Get(hash, obj1));
+
+    public static void Write(this LogWriter writer, ulong hash, object obj1, object obj2)
+        => writer.Write(HashedString.Get(hash, obj1, obj2));
 }

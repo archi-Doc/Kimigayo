@@ -3,6 +3,9 @@
 Solution=
   NotFound="Solution file '{0}' not found"
   Loaded="Solution file '{0}' loaded"
+  NoProject="No build target project was found"
+  NotLoaded="Failed to load the solution file '{0}'"
+  TargetProjects="Target Projects: "
 
 Project=
   NotFound="Project file '{0}' not found"

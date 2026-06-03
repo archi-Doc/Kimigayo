@@ -8,12 +8,12 @@ public partial record class SolutionFile
     [TinyhandObject(ImplicitMemberNameAsKey = true)]
     public partial record class DefaultClass
     {
-        public string LangVersion { get; init; } = "0.0.1";
+        public string LangVersion { get; set; } = "0.0.1";
 
-        public string Version { get; init; } = "0.0.1";
+        public string Version { get; set; } = "0.0.1";
     }
 
-    public string[] Projects { get; init; } = [];
+    public List<string> Projects { get; init; } = [];
 
     public DefaultClass Default { get; init; } = new();
 }
