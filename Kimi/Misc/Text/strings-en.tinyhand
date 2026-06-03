@@ -6,6 +6,7 @@ Solution=
   NoProject="No build target project was found"
   NotLoaded="Failed to load the solution file '{0}'"
   TargetProjects="Target Projects: "
+  NoRunTarget="No project or file to run was found"
 
 Project=
   NotFound="Project file '{0}' not found"

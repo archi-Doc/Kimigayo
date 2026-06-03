@@ -53,6 +53,7 @@ public partial class Project
     private HashSet<string> targets = new();
     private HashSet<string> globalUse = new();
     private List<UrlAndtext> additionalSource = [];
+    private HashSet<string> kimiFiles = new();
 
     public string ProjectPath { get; private set; } = string.Empty;
 
@@ -71,21 +72,9 @@ public partial class Project
         this.additionalSource.Add(new(url, text));
     }
 
-    public bool TryReadFile(string file)
+    public void AddKimiFile(string path)
     {
-        byte[] utf8;
-        try
-        {
-            utf8 = File.ReadAllBytes(file);
-        }
-        catch
-        {
-            this.kimiControl.GlobalDiagnostic.Add(Range.FromString(file), Hashed.Project.NotFound, file);
-            // this.kimiControl.WriteLine(Hashed.Project.NotFound, file);//
-            return false;
-        }
-
-        return true;
+        this.kimiFiles.Add(path);
     }
 
     public async Task<bool> Build()
@@ -103,13 +92,13 @@ public partial class Project
     private void Build(UrlAndtext urlAndtext)
     {
         var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
-        var reader = new Tokenizer(this.kimiControl, diagnostic);
-        reader.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
+        var tokenizer = new Tokenizer(this.kimiControl, diagnostic);
+        tokenizer.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
 
         var sb = new StringBuilder();
         while (true)
         {
-            var r = reader.Read();
+            var r = tokenizer.Read();
             if (r.Count == 0)
             {
                 break;
@@ -124,7 +113,7 @@ public partial class Project
             sb.AppendLine();
         }
 
-        File.AppendAllText("C:\\App\\lsp.txt", sb.ToString());
+        File.WriteAllText("C:\\App\\lsp.txt", sb.ToString());
 
     }
 

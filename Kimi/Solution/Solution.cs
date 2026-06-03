@@ -10,6 +10,8 @@ public class Solution
 
     public SolutionFile SolutionFile { get; private set; } = new();
 
+    public string KimiFile { get; private set; } = string.Empty;
+
     public SolutionOptions Options { get; private set; } = new();
 
     public Dictionary<string, Project> Projects { get; private set; } = new();
@@ -63,7 +65,7 @@ public class Solution
         return true;
     }
 
-    public void Load(ILogger logger, SolutionOptions options, string[] args)
+    public void LoadForBuild(ILogger logger, SolutionOptions options, string[] args)
     {
         var projectList = new List<string>();
         this.Options = options;
@@ -152,6 +154,82 @@ SolutionLoaed:
         return;
     }
 
+    public void LoadForRun(ILogger logger, SolutionOptions options, string[] args)
+    {
+        string kimiFile = string.Empty;
+        this.Options = options;
+
+        var currentDirectory = Directory.GetCurrentDirectory();
+        if (args.Length == 0)
+        {// If not specified, the current directory is used.
+            args = [currentDirectory,];
+        }
+
+        // Load project or kimi file
+        foreach (var x in args)
+        {
+            if (x.EndsWith(Constants.KimiProjectExtension, StringComparison.InvariantCultureIgnoreCase))
+            {// *.kimiproj
+                if (Path.IsPathFullyQualified(x))
+                {
+                    this.SolutionFile.Projects.Add(x);
+                }
+                else
+                {
+                    this.SolutionFile.Projects.Add(Path.GetFullPath(x, currentDirectory));
+                }
+
+                break;
+            }
+            else if (string.IsNullOrEmpty(kimiFile) &&
+                x.EndsWith(Constants.KimiExtension, StringComparison.InvariantCultureIgnoreCase))
+            {// *.kimi
+                if (Path.IsPathFullyQualified(x))
+                {
+                    kimiFile = x;
+                }
+                else
+                {
+                    kimiFile = Path.GetFullPath(x, currentDirectory);
+                }
+            }
+        }
+
+        if (this.SolutionFile.Projects.Count == 0)
+        {
+            // Tries to load project file in directory
+            foreach (var x in args)
+            {
+                if (Directory.Exists(x))
+                {
+                    // Load project file in directory
+                    foreach (var y in Directory.EnumerateFiles(x, $"*{Constants.KimiProjectExtension}", SearchOption.TopDirectoryOnly))
+                    {
+                        this.SolutionFile.Projects.Add(y);
+                        break;
+                    }
+
+                    if (string.IsNullOrEmpty(kimiFile))
+                    {
+                        foreach (var y in Directory.EnumerateFiles(x, $"*{Constants.KimiExtension}", SearchOption.TopDirectoryOnly))
+                        {
+                            kimiFile = y;
+                        }
+                    }
+                }
+            }
+        }
+
+        this.KimiFile = kimiFile;
+        if (this.SolutionFile.Projects.Count == 0 &&
+            string.IsNullOrEmpty(this.KimiFile))
+        {
+            logger.GetWriter(LogLevel.Warning)?.Write(Hashed.Solution.NoRunTarget);
+        }
+
+        return;
+    }
+
     public void PrepareProject(ILogger logger)
     {
         foreach (var x in this.SolutionFile.Projects)
@@ -163,6 +241,13 @@ SolutionLoaed:
                     this.Projects[x] = project;
                 }
             }
+        }
+
+        if (this.Projects.Count == 0 &&
+            !string.IsNullOrEmpty(this.KimiFile))
+        {
+            var project = new Project(this.kimiControl);
+            project.AddKimiFile(this.KimiFile);
         }
     }
 }

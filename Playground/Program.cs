@@ -26,8 +26,6 @@ internal class Program
 
         var project = serviceProvider.GetRequiredService<Project>();
 
-        project.TryReadFile("aaa");
-
         /*project.AddSource("test", """
             namespace Test.Program // Comment
             public Main()

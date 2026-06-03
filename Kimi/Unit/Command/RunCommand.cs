@@ -4,15 +4,15 @@ using SimpleCommandLine;
 
 namespace Kimigayo.Command;
 
-[SimpleCommand("build")]
-public class BuildCommand : ISimpleCommand<SolutionOptions>
+[SimpleCommand("run")]
+public class RunCommand : ISimpleCommand<SolutionOptions>
 {
     private readonly UnitContext unitContext;
     private readonly ILogger logger;
     private readonly KimiControl kimiControl;
     private readonly Solution solution;
 
-    public BuildCommand(UnitContext unitContext, ILogger<BuildCommand> logger, KimiControl kimiControl, Solution solution)
+    public RunCommand(UnitContext unitContext, ILogger<RunCommand> logger, KimiControl kimiControl, Solution solution)
     {
         this.unitContext = unitContext;
         this.logger = logger;
@@ -22,7 +22,7 @@ public class BuildCommand : ISimpleCommand<SolutionOptions>
 
     public async Task Execute(SolutionOptions options, string[] args, CancellationToken cancellationToken)
     {
-        this.solution.LoadForBuild(this.logger, options, args);
+        this.solution.LoadForRun(this.logger, options, args);
         this.solution.PrepareProject(this.logger);
     }
 }

@@ -33,6 +33,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 context.AddCommand(typeof(DefaultCommand));
                 context.AddCommand(typeof(LspCommand));
                 context.AddCommand(typeof(BuildCommand));
+                context.AddCommand(typeof(RunCommand));
 
                 // Logger
                 context.ClearLoggerResolver();
