@@ -16,6 +16,19 @@ internal readonly struct Token
 
     public override string ToString()
     {
-        return $"Kind:{this.Kind.ToString()} '{this.Text}'";
+        if (this.Kind == TokenKind.Identifier ||
+            this.Kind == TokenKind.Attribute ||
+            this.Kind == TokenKind.NumericLiteral ||
+            this.Kind == TokenKind.Literal ||
+            this.Kind == TokenKind.RawLiteral ||
+            this.Kind == TokenKind.SingleLineComment ||
+            this.Kind == TokenKind.MultiLineComment)
+        {
+            return $"({this.Kind.ToString()}:'{this.Text}')";
+        }
+        else
+        {
+            return $"({this.Kind.ToString()})";
+        }
     }
 }
