@@ -2,6 +2,7 @@
 
 namespace Kimigayo;
 
+using System.Text;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
@@ -77,6 +78,7 @@ public partial class Project
         var reader = new Tokenizer(this.kimiControl, diagnostic);
         reader.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
 
+        var sb = new StringBuilder();
         while (true)
         {
             var r = reader.Read();
@@ -84,7 +86,19 @@ public partial class Project
             {
                 break;
             }
+
+            foreach (var x in r.List.Slice(0, r.Count))
+            {
+                sb.Append(x.ToString());
+                sb.Append(", ");
+            }
+
+            sb.AppendLine();
         }
+
+        File.AppendAllText("C:\\App\\lsp.txt", sb.ToString());
+
+
     }
 
     private void Prepare()

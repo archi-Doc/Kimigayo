@@ -28,7 +28,7 @@ internal class Program
 
         project.TryReadFile("aaa");
 
-        project.AddSource("test", """
+        /*project.AddSource("test", """
             namespace Test.Program // Comment
             public Main()
                 var x = 1.23
@@ -39,6 +39,23 @@ internal class Program
                     1,
                 ]
                 return
+            """);*/
+        project.AddSource("test", """
+            /* Multi-line comment
+            Kimigayo by archi-Doc.
+            */
+            namespace Playground // Single-line comment
+            use Kimi.Crypto 
+
+            Condition(Os=="Linux") // Attribute-next rule.
+            use Kimi.Base.Linux
+
+            public const string Name = "Test Program"
+
+            public group Helper // namespace - use
+                public const i32 Id = 123
+                public Method1() => int32 // use PackageName, Helper
+                    return 1
             """);
         var result = await project.Build();
 
