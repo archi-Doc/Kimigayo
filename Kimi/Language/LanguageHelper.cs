@@ -3,7 +3,6 @@
 namespace Kimigayo.Language;
 
 using System.Buffers;
-using System.Drawing;
 using System.Runtime.CompilerServices;
 using Arc.Collections;
 
