@@ -89,6 +89,11 @@ public static class LanguageHelper
         // Fractional part.
         if (i < text.Length && text[i] == '.')
         {
+            if (i + 1 < text.Length && text[i + 1] == '.')
+            {// 1..
+                return i;
+            }
+
             // Handles forms such as 1., 1.23, and .3.
             i++;
             while (i < text.Length && IsDigitOrSeparator(text[i]))
@@ -220,7 +225,7 @@ public static class LanguageHelper
     {
         (tokenKind, groupingDepth) = c switch
         {
-            Constants.DotChar => (TokenKind.Dot, 0),
+            // Constants.DotChar => (TokenKind.Dot, 0),
             Constants.CommaChar => (TokenKind.Comma, 0),
             Constants.OpenBracketChar => (TokenKind.OpenBracket, +1),
             Constants.CloseBracketChar => (TokenKind.CloseBracket, -1),

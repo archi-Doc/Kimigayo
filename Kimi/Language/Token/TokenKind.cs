@@ -64,14 +64,13 @@ public enum TokenKind : byte
     RawLiteral, // """text"""
     SingleLineComment, // // comment
     MultiLineComment, // /* comment */
-    // LineFeed, // \n or \r\n
+                      // LineFeed, // \n or \r\n
 
     // Move, // <=
     // Map, // =>
     // Reference, // &
 
     // Single token
-    Dot, // .
     Comma, // ,
     OpenBracket, // [
     CloseBracket, // ]
@@ -94,6 +93,9 @@ public enum TokenKind : byte
     BarEquals, // |=
     Caret, // ^
     CaretEquals, // ^=
+    Dot, // .
+    DotDot, // ..
+    DotDotEquals, // ..=
     Equals, // =
     EqualsEquals, // ==
     EqualsGreaterThan, // =>

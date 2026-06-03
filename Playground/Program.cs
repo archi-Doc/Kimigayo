@@ -53,6 +53,8 @@ internal class Program
             public group Helper // namespace - use
                 public const i32 Id = 123
                 public Method1() => int32 // use PackageName, Helper
+                    var i = [1..]
+                    var j = [..=4]
                     return 1
             """);
         var result = await project.Build();

@@ -122,37 +122,8 @@ Loop:
             {// End-of-file
                 goto EndOfFile;
             }
-            else if (span.Length == 1)
-            {// Single character
-                if (span[0] == Constants.CloseParenthesisChar)
-                {// )
-                    this.AddTokenAndSlice(TokenKind.CloseParenthesis, ref span, 1);
-                    this.numberOfBrackets--;
-                }
-                else if (span[0] == Constants.CloseBracketChar)
-                {// ]
-                    this.AddTokenAndSlice(TokenKind.CloseBracket, ref span, 1);
-                    this.numberOfBrackets--;
-                }
-                else if (span[0] == Constants.CloseBraceChar)
-                {// }
-                    this.AddTokenAndSlice(TokenKind.CloseBrace, ref span, 1);
-                    this.numberOfBrackets--;
-                }
-                else if (span[0] == Constants.LfChar)
-                {// \n
-                    this.Slice(ref span, 1);
-                }
-                else
-                {// Invalid token
-                    this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.InvalidCharacterAtEndOfFile);
-                    this.Slice(ref span, 1);
-                }
 
-                break;
-            }
-
-            // span.Length >= 2
+            // span.Length >= 1
             switch (span[0])
             {
                 case Constants.AttributeChar:
@@ -161,7 +132,7 @@ Loop:
                     }
 
                 case Constants.CrChar:
-                    if (span[1] == Constants.LfChar)
+                    if (span.Length > 1 && span[1] == Constants.LfChar)
                     {// \r\n
                         this.Slice(ref span, 2);
                         this.NextLine();
@@ -201,7 +172,11 @@ Loop:
                     }
 
                 case Constants.AmpersandChar: // && &= &
-                    if (span[1] == Constants.AmpersandChar)
+                    if (span.Length == 1)
+                    {// &
+                        this.AddTokenAndSlice(TokenKind.Ampersand, ref span, 1);
+                    }
+                    else if (span[1] == Constants.AmpersandChar)
                     {// &&
                         this.AddTokenAndSlice(TokenKind.AmpersandAmpersand, ref span, 2);
                     }
@@ -217,7 +192,7 @@ Loop:
                     break;
 
                 case Constants.AsteriskChar: // * *=
-                    if (span[1] == Constants.EqualsChar)
+                    if (span.Length > 1 && span[1] == Constants.EqualsChar)
                     {// *=
                         this.AddTokenAndSlice(TokenKind.AsteriskEquals, ref span, 2);
                     }
@@ -229,7 +204,11 @@ Loop:
                     break;
 
                 case Constants.BarChar: // | || |=
-                    if (span[1] == Constants.BarChar)
+                    if (span.Length == 1)
+                    {// |
+                        this.AddTokenAndSlice(TokenKind.Bar, ref span, 1);
+                    }
+                    else if (span[1] == Constants.BarChar)
                     {// ||
                         this.AddTokenAndSlice(TokenKind.BarBar, ref span, 2);
                     }
@@ -245,7 +224,7 @@ Loop:
                     break;
 
                 case Constants.CaretChar: // ^ ^=
-                    if (span[1] == Constants.EqualsChar)
+                    if (span.Length > 1 && span[1] == Constants.EqualsChar)
                     {// ^=
                         this.AddTokenAndSlice(TokenKind.CaretEquals, ref span, 2);
                     }
@@ -256,8 +235,35 @@ Loop:
 
                     break;
 
+                case Constants.DotChar: // . .. ..=
+                    if (span.Length == 1)
+                    {// .
+                        this.AddTokenAndSlice(TokenKind.Dot, ref span, 1);
+                    }
+                    else if (span[1] == Constants.DotChar)
+                    {// ..
+                        if (span.Length >= 3 && span[2] == Constants.EqualsChar)
+                        {// ..=
+                            this.AddTokenAndSlice(TokenKind.DotDotEquals, ref span, 3);
+                        }
+                        else
+                        {// ..
+                            this.AddTokenAndSlice(TokenKind.DotDot, ref span, 2);
+                        }
+                    }
+                    else
+                    {// .
+                        this.AddTokenAndSlice(TokenKind.Dot, ref span, 1);
+                    }
+
+                    break;
+
                 case Constants.EqualsChar: // = == =>
-                    if (span[1] == Constants.EqualsChar)
+                    if (span.Length == 1)
+                    {// =
+                        this.AddTokenAndSlice(TokenKind.Equals, ref span, 1);
+                    }
+                    else if (span[1] == Constants.EqualsChar)
                     {// ==
                         this.AddTokenAndSlice(TokenKind.EqualsEquals, ref span, 2);
                     }
@@ -273,7 +279,7 @@ Loop:
                     break;
 
                 case Constants.ExclamationChar: // ! !=
-                    if (span[1] == Constants.EqualsChar)
+                    if (span.Length > 1 && span[1] == Constants.EqualsChar)
                     {// !=
                         this.AddTokenAndSlice(TokenKind.ExclamationEquals, ref span, 2);
                     }
@@ -285,7 +291,11 @@ Loop:
                     break;
 
                 case Constants.GreaterThanChar: // > >= >>=
-                    if (span[1] == Constants.EqualsChar)
+                    if (span.Length == 1)
+                    {// >
+                        this.AddTokenAndSlice(TokenKind.GreaterThan, ref span, 1);
+                    }
+                    else if (span[1] == Constants.EqualsChar)
                     {// >=
                         this.AddTokenAndSlice(TokenKind.GreaterThanEquals, ref span, 2);
                     }
@@ -302,7 +312,11 @@ Loop:
                     break;
 
                 case Constants.LessThanChar: // < <= <<=
-                    if (span[1] == Constants.EqualsChar)
+                    if (span.Length == 1)
+                    {// <
+                        this.AddTokenAndSlice(TokenKind.LessThan, ref span, 1);
+                    }
+                    else if (span[1] == Constants.EqualsChar)
                     {// <=
                         this.AddTokenAndSlice(TokenKind.LessThanEquals, ref span, 2);
                     }
@@ -319,7 +333,11 @@ Loop:
                     break;
 
                 case Constants.MinusChar: // -- -= -
-                    if (span[1] == Constants.MinusChar)
+                    if (span.Length == 1)
+                    {// -
+                        this.AddTokenAndSlice(TokenKind.Minus, ref span, 1);
+                    }
+                    else if (span[1] == Constants.MinusChar)
                     {// --
                         this.AddTokenAndSlice(TokenKind.MinusMinus, ref span, 2);
                     }
@@ -335,7 +353,7 @@ Loop:
                     break;
 
                 case Constants.PercentChar: // % %=
-                    if (span[1] == Constants.EqualsChar)
+                    if (span.Length > 1 && span[1] == Constants.EqualsChar)
                     {// %=
                         this.AddTokenAndSlice(TokenKind.PercentEquals, ref span, 2);
                     }
@@ -347,7 +365,11 @@ Loop:
                     break;
 
                 case Constants.PlusChar: // ++ += +
-                    if (span[1] == Constants.PlusChar)
+                    if (span.Length == 1)
+                    {// +
+                        this.AddTokenAndSlice(TokenKind.Plus, ref span, 1);
+                    }
+                    else if (span[1] == Constants.PlusChar)
                     {// ++
                         this.AddTokenAndSlice(TokenKind.PlusPlus, ref span, 2);
                     }
@@ -363,7 +385,11 @@ Loop:
                     break;
 
                 case Constants.SlashChar: // // /* /= /
-                    if (span[1] == Constants.SlashChar)
+                    if (span.Length == 1)
+                    {// /
+                        this.AddTokenAndSlice(TokenKind.Slash, ref span, 1);
+                    }
+                    else if (span[1] == Constants.SlashChar)
                     {// //
                         this.ReadSingleLineComment(ref span);
                         this.NextLine();
