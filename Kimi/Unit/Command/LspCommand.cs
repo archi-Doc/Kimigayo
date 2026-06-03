@@ -1,9 +1,10 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
+using Kimigayo.Lsp;
 using SimpleCommandLine;
 
-namespace Kimigayo.Lsp;
+namespace Kimigayo.Command;
 
 [SimpleCommand(LspCommand.Name)]
 public class LspCommand : ISimpleCommand<LspCommand.Options>

@@ -5,6 +5,9 @@ namespace Kimigayo;
 public static class Constants
 {
     public const int IndentationSpaces = 4;
+    public const string KimiExtension = ".kimi";
+    public const string KimiSolutionExtension = ".kimisln";
+    public const string KimiProjectExtension = ".kimiproj";
 
     public const char LfChar = '\n';
     public const char CrChar = '\r';

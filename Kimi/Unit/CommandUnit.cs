@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimigayo.Lsp;
+using Kimigayo.Command;
 using SimpleCommandLine;
 
 namespace Kimigayo;
@@ -38,6 +39,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 // Command
                 context.AddCommand(typeof(DefaultCommand));
                 context.AddCommand(typeof(LspCommand));
+                context.AddCommand(typeof(BuildCommand));
 
                 // Logger
                 context.ClearLoggerResolver();
@@ -136,22 +138,5 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
     async Task IUnitExecutable.Terminate(UnitContext unitContext, CancellationToken cancellationToken)
     {
         // this.logger.GetWriter()?.Write("Exit");
-    }
-
-    [SimpleCommand("Default", Default = true)]
-    public class DefaultCommand : ISimpleCommand
-    {
-        private readonly UnitContext unitContext;
-
-        public DefaultCommand(UnitContext unitContext, ILogger<DefaultCommand> logger)
-        {
-            this.unitContext = unitContext;
-            // logger.GetWriter()?.Write("Default command");
-        }
-
-        public async Task Execute(string[] args, CancellationToken cancellationToken)
-        {
-            Console.WriteLine($"Kimigayo ({Arc.VersionHelper.VersionString}) by archi-Doc");
-        }
     }
 }
