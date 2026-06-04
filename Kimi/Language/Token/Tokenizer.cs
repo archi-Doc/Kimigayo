@@ -464,9 +464,19 @@ Loop:
                             var length = LanguageHelper.ScanDecimalNumber(span);
                             this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, length);
                         }
-                        else if (LanguageHelper.TryGetStringLiteralLength(span, out var literalLength))
+                        else if (LanguageHelper.TryGetStringLiteralLength(span, out var literalLength, out var quoteCount))
                         {// String literal
-                            this.AddTokenAndSlice(TokenKind.Literal, ref span, literalLength);
+                            if (literalLength < 0)
+                            {// Invalid literal
+                                this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.MissingStringLiteralEnd);
+                                this.AddTokenAndSlice(TokenKind.Invalid, ref span, 1);
+                            }
+                            else
+                            {
+                                this.Slice(ref span, quoteCount);
+                                this.AddTokenAndSlice(TokenKind.Literal, ref span, literalLength - quoteCount - quoteCount);
+                                this.Slice(ref span, quoteCount);
+                            }
                         }
                         else
                         {// Keyword or Identifier
@@ -747,21 +757,26 @@ public static class LanguageHelper
         return i;
     }
 
-    public static bool TryGetStringLiteralLength(ReadOnlySpan<char> text, out int length)
+    public static bool TryGetStringLiteralLength(ReadOnlySpan<char> text, out int length, out int quoteCount)
     {
         length = 0;
+        quoteCount = 0;
         if (text.IsEmpty || text[0] != '"')
         {
             return false;
         }
 
-        var quoteCount = CountQuotesAt(text, 0);
+        quoteCount = CountQuotesAt(text, 0);
         if (quoteCount >= 3)
         {
-            return TryGetRawStringLiteralLength(text, quoteCount, out length);
+            TryGetRawStringLiteralLength(text, quoteCount, out length);
+        }
+        else
+        {
+            TryGetRegularStringLiteralLength(text, out length);
         }
 
-        return TryGetRegularStringLiteralLength(text, out length);
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -866,7 +881,7 @@ public static class LanguageHelper
         return tokenKind != TokenKind.Invalid;
     }
 
-    private static bool TryGetRegularStringLiteralLength(ReadOnlySpan<char> text, out int length)
+    private static void TryGetRegularStringLiteralLength(ReadOnlySpan<char> text, out int length)
     {
         length = 0;
 
@@ -879,7 +894,8 @@ public static class LanguageHelper
             // A regular string literal cannot contain a physical line break.
             if (c == '\r' || c == '\n')
             {
-                return false;
+                length = -1;
+                return;
             }
 
             // Skip escaped character, such as \" or \\.
@@ -888,7 +904,8 @@ public static class LanguageHelper
                 i++;
                 if (i >= text.Length)
                 {
-                    return false;
+                    length = -1;
+                    return;
                 }
 
                 i++;
@@ -899,16 +916,16 @@ public static class LanguageHelper
             if (c == '"')
             {
                 length = i + 1;
-                return true;
+                return;
             }
 
             i++;
         }
 
-        return false;
+        length = -1;
     }
 
-    private static bool TryGetRawStringLiteralLength(ReadOnlySpan<char> text, int delimiterQuoteCount, out int length)
+    private static void TryGetRawStringLiteralLength(ReadOnlySpan<char> text, int delimiterQuoteCount, out int length)
     {
         length = 0;
 
@@ -928,14 +945,16 @@ public static class LanguageHelper
             // as the opening delimiter.
             if (quoteCount >= delimiterQuoteCount)
             {
+                // length = i + delimiterQuoteCount;
                 length = i + delimiterQuoteCount;
-                return true;
+                return;
             }
 
             i += quoteCount;
         }
 
-        return false;
+        length = -1;
+        return;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

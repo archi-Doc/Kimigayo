@@ -19,3 +19,4 @@ Parser=
   InvalidCharacterAtEndOfFile="Invalid character at end of file"
   UnmatchedClosingBracket="Unmatched closing bracket"
   InvalidCharacter="Unexpected character '{0}'"
+  MissingStringLiteralEnd="String literal is not terminated. Expected closing \""

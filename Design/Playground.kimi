@@ -4,7 +4,9 @@ use Kimi.Base
 
 namespace Playground
 
-public const string? Name = "Test"
+public const string Name = "Test"
+public const string? Description = """Test
+Program"""
 
 public group Helper /* group is a stateless collection of values and functions.
 */
