@@ -103,6 +103,7 @@ public partial class Project
 
     private void Build(UrlAndtext urlAndtext)
     {
+        Console.WriteLine("Build->");
         var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
         var tokenizer = new Tokenizer(this.kimiControl, diagnostic);
         tokenizer.Initialize(urlAndtext.Text.AsMemory(), 0, 0);

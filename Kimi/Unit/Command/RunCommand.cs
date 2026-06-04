@@ -22,6 +22,7 @@ public class RunCommand : ISimpleCommand<SolutionOptions>
 
     public async Task Execute(SolutionOptions options, string[] args, CancellationToken cancellationToken)
     {
+        Console.WriteLine("Run");
         this.solution.LoadForRun(this.logger, options, args);
         this.solution.PrepareProject(this.logger);
         await this.solution.Build();

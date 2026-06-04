@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
+using System.ComponentModel.Design;
 using System.Runtime.CompilerServices;
 using Arc.Collections;
 using Kimigayo.Diagnostics;
@@ -531,41 +532,30 @@ EndOfFile:
 
     private int ReadMultiLineComment(ref ReadOnlySpan<char> text)
     {// /* Comment */
-        var span = text.Slice(2);
-        var lineFeeds = 0;
-        while (span.Length > 0)
-        {d
-            var idx = span.IndexOfAny(Constants.AsteriskChar, Constants.SlashChar); // * or \n
-            if (span[idx] == Constants.LfChar)
-            {// \n
-                span = span.Slice(idx + 1);
-                lineFeeds++;
-            }
-            else if (span[idx] == Constants.AsteriskChar &&
-                (idx + 1) < span.Length &&
-                span[idx + 1] == Constants.SlashChar)
-            {// */
-                this.line += lineFeeds;
-                this.character = idx + 1;
-
-                var length = text.Length - span.Length + idx + 2;
-                text = text.Slice(length);
-                this.position += length;
-
-                this.AddToken(new(TokenKind.MultiLineComment, this.text.Slice(this.position, length)));
-
-                return lineFeeds;
-            }
-            else
-            {
-                break;
-            }
+        var length = text.IndexOf("*/");
+        if (length < 0)
+        {
+            this.urlDiagnostic.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), Hashed.Parser.MissingBlockCommentEnd);
+            this.Slice(ref text, 2);
+            return 0;
         }
 
-        this.urlDiagnostic.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), Hashed.Parser.MissingBlockCommentEnd);
-        this.Slice(ref text, 2);
-
-        return 0;
+        length += 2;
+        var span = text.Slice(0, length);
+        var idx = span.LastIndexOf(Constants.LfChar);
+        if (idx < 0)
+        {// Single-line comment
+            this.AddTokenAndSlice(TokenKind.MultiLineComment, ref text, length);
+            return 0;
+        }
+        else
+        {// Multi-line comment
+            var lineFeeds = span.Count(Constants.LfChar);
+            this.AddTokenAndSlice(TokenKind.MultiLineComment, ref text, length);
+            this.line += lineFeeds;
+            this.character = length - idx;
+            return lineFeeds;
+        }
     }
 
     private bool ReadSingleLineComment(ref ReadOnlySpan<char> span)
@@ -621,30 +611,6 @@ EndOfFile:
         this.numberOfTokens = 0;
         this.tokenList.Clear();
     }
-
-    /*private bool Read_StartOfLine(out TokenKind token)
-    {
-        var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(this.span);
-        this.span = this.span.Slice(numberOfSpaces);
-
-        if (numberOfSpaces > 0)
-        {// Spaces
-            var remainingSpaces = numberOfSpaces % Constants.IndentationSpaces;
-            if (remainingSpaces > 0)
-            {// Invalid indentation
-                numberOfSpaces += Constants.IndentationSpaces - remainingSpaces;
-            }
-
-            var numberOfIndents = numberOfSpaces / Constants.IndentationSpaces;
-            token = TokenKind.Indent;
-            token = new(TokenKind.Indent, )
-            return true;
-        }
-        else
-        {// Keyword: namespace, public
-            var idx = this.span.IndexOf(Constants.SpaceChar);
-        }
-    }*/
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void NextLine(int lineFeeds = 1)
