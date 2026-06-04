@@ -4,7 +4,7 @@ namespace Kimigayo;
 
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
-using Kimigayo.Token;
+using Kimigayo.Language;
 
 public readonly record struct UrlAndtext(string Url, string Text);
 
@@ -107,6 +107,7 @@ public partial class Project
         var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
         var tokenizer = new Tokenizer(this.kimiControl, diagnostic);
         tokenizer.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
+        var rootCode = new RootCode(this);
 
         var dumpToken = this.SolutionOptions.DumpToken ? new StringBuilder() : null;
         while (true)
@@ -130,6 +131,7 @@ public partial class Project
             }
 
             // Token to Code
+            rootCode.Read(r.List, r.Count);
         }
 
         if (dumpToken is not null &&

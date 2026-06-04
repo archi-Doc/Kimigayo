@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 using Arc.Collections;
 using Kimigayo.Diagnostics;
 
-namespace Kimigayo.Token;
+namespace Kimigayo.Language;
 
 public static class TokenHelper
 {

@@ -2,6 +2,6 @@
 
 namespace Kimigayo.Language;
 
-public class RegionCode
+public class GroupCode : Code
 {
 }

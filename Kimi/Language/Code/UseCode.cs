@@ -2,6 +2,6 @@
 
 namespace Kimigayo.Language;
 
-using System.Buffers;
-using System.Runtime.CompilerServices;
-using Arc.Collections;
+public class UseCode : Code
+{
+}

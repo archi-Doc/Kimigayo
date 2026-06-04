@@ -1,8 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo.Token;
+namespace Kimigayo.Language;
 
-internal readonly struct Token
+public readonly struct Token
 {
     public readonly TokenKind Kind;
 

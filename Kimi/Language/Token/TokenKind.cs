@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo.Token;
+namespace Kimigayo.Language;
 
 public enum TokenKind : byte
 {
