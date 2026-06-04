@@ -467,14 +467,29 @@ Loop:
                         {// String literal
                             if (literalLength < 0)
                             {// Invalid literal
+                                var invalidLength = BaseHelper.IndexOfLfOrCrLf(span, out _);
+                                if (invalidLength < 0)
+                                {
+                                    invalidLength = span.Length;
+                                }
+
                                 this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.MissingStringLiteralEnd);
-                                this.AddTokenAndSlice(TokenKind.Invalid, ref span, 1);
+                                this.AddTokenAndSlice(TokenKind.Invalid, ref span, invalidLength);
                             }
                             else
                             {
-                                this.Slice(ref span, quoteCount);
-                                this.AddTokenAndSlice(TokenKind.Literal, ref span, literalLength - quoteCount - quoteCount);
-                                this.Slice(ref span, quoteCount);
+                                if (quoteCount > 1)
+                                {
+                                    this.AddTokenAndSliceWithLineTracking(TokenKind.Literal, ref span, literalLength);
+                                }
+                                else
+                                {
+                                    this.AddTokenAndSlice(TokenKind.Literal, ref span, literalLength);
+                                }
+
+                                // this.Slice(ref span, quoteCount);
+                                // this.AddTokenAndSlice(TokenKind.Literal, ref span, literalLength - quoteCount - quoteCount);
+                                // this.Slice(ref span, quoteCount);
                             }
                         }
                         else
@@ -531,31 +546,17 @@ EndOfFile:
     }
 
     private int ReadMultiLineComment(ref ReadOnlySpan<char> text)
-    {// /* Comment */
+    {
         var length = text.IndexOf("*/");
         if (length < 0)
         {
             this.urlDiagnostic.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), Hashed.Parser.MissingBlockCommentEnd);
-            this.Slice(ref text, 2);
-            return 0;
+
+            return this.AddTokenAndSliceWithLineTracking(TokenKind.Invalid, ref text, text.Length);
         }
 
         length += 2;
-        var span = text.Slice(0, length);
-        var idx = span.LastIndexOf(Constants.LfChar);
-        if (idx < 0)
-        {// Single-line comment
-            this.AddTokenAndSlice(TokenKind.MultiLineComment, ref text, length);
-            return 0;
-        }
-        else
-        {// Multi-line comment
-            var lineFeeds = span.Count(Constants.LfChar);
-            this.AddTokenAndSlice(TokenKind.MultiLineComment, ref text, length);
-            this.line += lineFeeds;
-            this.character = length - idx;
-            return lineFeeds;
-        }
+        return this.AddTokenAndSliceWithLineTracking(TokenKind.MultiLineComment, ref text, length);
     }
 
     private bool ReadSingleLineComment(ref ReadOnlySpan<char> span)
@@ -604,6 +605,30 @@ EndOfFile:
         span = span.Slice(length);
         this.position += length;
         this.character += length;
+    }
+
+    private int AddTokenAndSliceWithLineTracking(TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
+    {
+        this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length)));
+        this.numberOfTokens++;
+
+        var consumed = span.Slice(0, length);
+        var lastLf = consumed.LastIndexOf(Constants.LfChar);
+        var lineFeeds = 0;
+        if (lastLf >= 0)
+        {
+            lineFeeds = consumed.Count(Constants.LfChar);
+            this.line += lineFeeds;
+            this.character = consumed.Length - lastLf - 1;
+        }
+        else
+        {
+            this.character += length;
+        }
+
+        this.position += length;
+        span = span.Slice(length);
+        return lineFeeds;
     }
 
     private void ClearToken()
