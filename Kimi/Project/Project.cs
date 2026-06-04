@@ -112,12 +112,14 @@ public partial class Project
         var dumpToken = this.SolutionOptions.DumpToken ? new StringBuilder() : null;
         while (true)
         {
+            // Read token
             var r = tokenizer.Read();
             if (r.Count == 0)
             {
                 break;
             }
 
+            // Dump token
             if (dumpToken is not null)
             {
                 foreach (var x in r.List.Slice(0, r.Count))
@@ -127,6 +129,8 @@ public partial class Project
 
                 dumpToken.AppendLine();
             }
+
+            // Token to Code
         }
 
         if (dumpToken is not null &&
