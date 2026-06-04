@@ -38,6 +38,7 @@ public static class Constants
     public const char SharpChar = '#';
     public const char SpaceChar = ' ';
     public const char TildeChar = '~';
+    public const char QuestionChar = '?';
 
     public static ReadOnlySpan<char> Move => "<=";
 

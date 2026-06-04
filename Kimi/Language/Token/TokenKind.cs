@@ -4,7 +4,7 @@ namespace Kimigayo.Language;
 
 public enum TokenKind : byte
 {
-    None,
+    Invalid,
 
     // Keywords (Primitive types)
     Bool,
@@ -62,7 +62,7 @@ public enum TokenKind : byte
     RawLiteral, // """text"""
     SingleLineComment, // // comment
     MultiLineComment, // /* comment */
-                      // LineFeed, // \n or \r\n
+    // LineFeed, // \n or \r\n
 
     // Move, // <=
     // Map, // =>
@@ -81,6 +81,7 @@ public enum TokenKind : byte
     Semicolon, // ;
     Dollar, // $
     Tilde, // ~
+    Question, // ?
 
     Ampersand, // &
     AmpersandAmpersand, // &&

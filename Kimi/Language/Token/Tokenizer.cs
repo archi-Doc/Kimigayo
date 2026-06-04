@@ -88,6 +88,10 @@ Loop:
                 {// /*
                     var lineFeeds = this.ReadMultiLineComment(ref span);
                     this.NextLine(lineFeeds);
+                    if (lineFeeds > 0)
+                    {
+                        numberOfSpaces = 0;
+                    }
                 }
             }
         }
@@ -445,14 +449,14 @@ Loop:
                     {
                         if (LanguageHelper.TryGetSingleCharTokenKind(span[0], out var tokenKind, out var depth))
                         {// Single char token
-                            this.AddTokenAndSlice(tokenKind, ref span, 1);
                             this.numberOfBrackets += depth;
                             if (this.numberOfBrackets < 0)
                             {
-                                this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedClosingBracket);
-
                                 this.numberOfBrackets = 0;
+                                this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedClosingBracket);
                             }
+
+                            this.AddTokenAndSlice(tokenKind, ref span, 1);
                         }
                         else if (LanguageHelper.IsDecimalNumberStart(span))
                         {// Numeric literal
@@ -474,7 +478,7 @@ Loop:
                             else if (length == 0)
                             {
                                 this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.InvalidCharacter, span[0]);
-                                this.AddTokenAndSlice(TokenKind.None, ref span, 1);
+                                this.AddTokenAndSlice(TokenKind.Invalid, ref span, 1);
                                 break;
                             }
 
@@ -645,7 +649,7 @@ public static class LanguageHelper
         KeywordToKeywordKind = new();
         foreach (var x in Enum.GetValues<TokenKind>())
         {
-            if (x == TokenKind.None)
+            if (x == TokenKind.Invalid)
             {
                 continue;
             }
@@ -787,7 +791,7 @@ public static class LanguageHelper
         Constants.SemicolonChar => TokenKind.Semicolon, // ;
         Constants.DollarChar => TokenKind.Dollar, // $
         Constants.TildeChar => TokenKind.Tilde, // ~
-        _ => TokenKind.None,
+        _ => TokenKind.Invalid,
     };
 
     public static TokenKind GetSingleCharTokenKind(char c)
@@ -819,7 +823,7 @@ public static class LanguageHelper
             '.' => TokenKind.Dot,
             '/' => TokenKind.Slash,
 
-            _ => TokenKind.None,
+            _ => TokenKind.Invalid,
         };
     }
 
@@ -855,10 +859,11 @@ public static class LanguageHelper
             Constants.PercentChar => (TokenKind.Percent, 0),
             Constants.PlusChar => (TokenKind.Plus, 0),
             Constants.SlashChar => (TokenKind.Slash, 0),
-            _ => (TokenKind.None, 0),
+            Constants.QuestionChar => (TokenKind.Question, 0),
+            _ => (TokenKind.Invalid, 0),
         };
 
-        return tokenKind != TokenKind.None;
+        return tokenKind != TokenKind.Invalid;
     }
 
     private static bool TryGetRegularStringLiteralLength(ReadOnlySpan<char> text, out int length)

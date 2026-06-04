@@ -28,13 +28,13 @@ public struct TestStruct // struct can have state and contains values and functi
 
         return id match
             1 => "Test",
-            2 => 
+            2 =>
 
 TestMethod() => TestStruct
     var ts = TestStruct.New()
         // EmptyA
     /* EmptyB
- */
+ */  
     return ts
 
 public enum TestEnum
