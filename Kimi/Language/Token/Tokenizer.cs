@@ -1,7 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
-using System.ComponentModel.Design;
 using System.Runtime.CompilerServices;
 using Arc.Collections;
 using Kimigayo.Diagnostics;
@@ -431,7 +430,7 @@ Loop:
                     }
                     else if (span[1] == Constants.AsteriskChar)
                     {// /*
-                        var lineFeeds = this.ReadMultiLineComment(ref span);
+                        this.ReadMultiLineComment(ref span);
                     }
                     else if (span[1] == Constants.EqualsChar)
                     {// /=
@@ -463,7 +462,7 @@ Loop:
                             var length = LanguageHelper.ScanDecimalNumber(span);
                             this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, length);
                         }
-                        else if (LanguageHelper.TryGetStringLiteralLength(span, out var literalLength, out var quoteCount))
+                        else if (LanguageHelper.ScanStringLiteral(span, out var literalLength, out var quoteCount))
                         {// String literal
                             if (literalLength < 0)
                             {// Invalid literal
@@ -767,7 +766,7 @@ public static class LanguageHelper
         return i;
     }
 
-    public static bool TryGetStringLiteralLength(ReadOnlySpan<char> text, out int length, out int quoteCount)
+    public static bool ScanStringLiteral(ReadOnlySpan<char> text, out int length, out int quoteCount)
     {
         length = 0;
         quoteCount = 0;
