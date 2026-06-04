@@ -87,7 +87,6 @@ Loop:
                 else if (span[1] == Constants.AsteriskChar)
                 {// /*
                     var lineFeeds = this.ReadMultiLineComment(ref span);
-                    this.NextLine(lineFeeds);
                     if (lineFeeds > 0)
                     {
                         numberOfSpaces = 0;
@@ -432,7 +431,6 @@ Loop:
                     else if (span[1] == Constants.AsteriskChar)
                     {// /*
                         var lineFeeds = this.ReadMultiLineComment(ref span);
-                        this.NextLine(lineFeeds);
                     }
                     else if (span[1] == Constants.EqualsChar)
                     {// /=
@@ -531,22 +529,43 @@ EndOfFile:
         return (this.tokenList, this.numberOfTokens);
     }
 
-    private int ReadMultiLineComment(ref ReadOnlySpan<char> span)
+    private int ReadMultiLineComment(ref ReadOnlySpan<char> text)
     {// /* Comment */
-        var idx = span.IndexOf("*/", StringComparison.Ordinal);
-        if (idx < 0)
-        {
-            idx = span.Length;
-            this.urlDiagnostic.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), Hashed.Parser.MissingBlockCommentEnd);
-        }
-        else
-        {
-            idx += 2;
+        var span = text.Slice(2);
+        var lineFeeds = 0;
+        while (span.Length > 0)
+        {d
+            var idx = span.IndexOfAny(Constants.AsteriskChar, Constants.SlashChar); // * or \n
+            if (span[idx] == Constants.LfChar)
+            {// \n
+                span = span.Slice(idx + 1);
+                lineFeeds++;
+            }
+            else if (span[idx] == Constants.AsteriskChar &&
+                (idx + 1) < span.Length &&
+                span[idx + 1] == Constants.SlashChar)
+            {// */
+                this.line += lineFeeds;
+                this.character = idx + 1;
+
+                var length = text.Length - span.Length + idx + 2;
+                text = text.Slice(length);
+                this.position += length;
+
+                this.AddToken(new(TokenKind.MultiLineComment, this.text.Slice(this.position, length)));
+
+                return lineFeeds;
+            }
+            else
+            {
+                break;
+            }
         }
 
-        var lineFeeds = span.Slice(0, idx).Count(Constants.LfChar);
-        this.AddTokenAndSlice(TokenKind.MultiLineComment, ref span, idx);
-        return lineFeeds;
+        this.urlDiagnostic.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), Hashed.Parser.MissingBlockCommentEnd);
+        this.Slice(ref text, 2);
+
+        return 0;
     }
 
     private bool ReadSingleLineComment(ref ReadOnlySpan<char> span)
