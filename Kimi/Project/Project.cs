@@ -4,8 +4,7 @@ namespace Kimigayo;
 
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
-using Kimigayo.Diagnostics;
-using Kimigayo.Language;
+using Kimigayo.Token;
 
 public readonly record struct UrlAndtext(string Url, string Text);
 
