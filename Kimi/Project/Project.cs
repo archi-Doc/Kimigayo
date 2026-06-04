@@ -55,6 +55,8 @@ public partial class Project
     private List<UrlAndtext> additionalSource = [];
     private HashSet<string> kimiFiles = new();
 
+    public SolutionOptions SolutionOptions { get; set; } = new();
+
     public string ProjectPath { get; private set; } = string.Empty;
 
     public ProjectFile ProjectFile { get; private set; } = new();
@@ -103,12 +105,11 @@ public partial class Project
 
     private void Build(UrlAndtext urlAndtext)
     {
-        Console.WriteLine("Build->");
         var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
         var tokenizer = new Tokenizer(this.kimiControl, diagnostic);
         tokenizer.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
 
-        var sb = new StringBuilder();
+        var dumpToken = this.SolutionOptions.DumpToken ? new StringBuilder() : null;
         while (true)
         {
             var r = tokenizer.Read();
@@ -117,16 +118,28 @@ public partial class Project
                 break;
             }
 
-            foreach (var x in r.List.Slice(0, r.Count))
+            if (dumpToken is not null)
             {
-                sb.Append(x.ToString());
-            }
+                foreach (var x in r.List.Slice(0, r.Count))
+                {
+                    dumpToken.Append(x.ToString());
+                }
 
-            sb.AppendLine();
+                dumpToken.AppendLine();
+            }
         }
 
-        File.WriteAllText("C:\\App\\lsp.txt", sb.ToString());
-
+        if (dumpToken is not null &&
+            Path.ChangeExtension(urlAndtext.Url, Constants.TokenExtension) is { } tokenPath)
+        {
+            try
+            {
+                File.WriteAllText(tokenPath, dumpToken.ToString());
+            }
+            catch
+            {
+            }
+        }
     }
 
     private void Prepare()

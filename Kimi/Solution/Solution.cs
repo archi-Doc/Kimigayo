@@ -12,7 +12,7 @@ public class Solution
 
     public string KimiFile { get; private set; } = string.Empty;
 
-    public SolutionOptions Options { get; private set; } = new();
+    public SolutionOptions SolutionOptions { get; private set; } = new();
 
     public Dictionary<string, Project> Projects { get; private set; } = new();
 
@@ -63,6 +63,7 @@ public class Solution
     {
         foreach (var x in this.Projects.Values)
         {
+            x.SolutionOptions = this.SolutionOptions;
             await x.Build();
         }
 
@@ -72,7 +73,7 @@ public class Solution
     public void LoadForBuild(ILogger logger, SolutionOptions options, string[] args)
     {
         var projectList = new List<string>();
-        this.Options = options;
+        this.SolutionOptions = options;
 
         var currentDirectory = Directory.GetCurrentDirectory();
         if (args.Length == 0)
@@ -161,7 +162,7 @@ SolutionLoaed:
     public void LoadForRun(ILogger logger, SolutionOptions options, string[] args)
     {
         string kimiFile = string.Empty;
-        this.Options = options;
+        this.SolutionOptions = options;
 
         var currentDirectory = Directory.GetCurrentDirectory();
         if (args.Length == 0)
