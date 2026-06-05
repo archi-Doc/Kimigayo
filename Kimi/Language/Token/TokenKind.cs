@@ -25,7 +25,7 @@ public enum TokenKind : byte
 
     // Keywords (Other)
     Namespace = 32, // namespace Kimi.Base
-    Use, // use Kimi.Base
+    Alias, // alias Kimi.Base
     Const, // const
     Static, // static
     Public,
