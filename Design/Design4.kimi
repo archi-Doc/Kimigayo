@@ -1,4 +1,5 @@
-namespace Program // namespace = module without identation. KimiError.NamespaceMustBeFirst, KimiError.CannotDefineGlobalNamespace
+namespace Program // namespace = module without identation.
+// KimiError.NamespaceMustBeFirst, KimiError.CannotDefineGlobalNamespace
 
 use Kimi.Crypto
 
@@ -6,6 +7,10 @@ use Kimi.Crypto
 use Kimi.Base.Linux
 
 public const string Name = "Test Program"
+
+// {}: Attribute
+// []: Array
+// (): Group
 
 // Group: namespace, group, struct
 // Map: method:return, switch:yield, if:yield, loop:break
