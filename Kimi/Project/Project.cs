@@ -113,8 +113,8 @@ public partial class Project
         while (true)
         {
             // Read token
-            var r = tokenizer.Read();
-            if (r.Count == 0)
+            var list = tokenizer.Read();
+            if (list.Count == 0)
             {
                 break;
             }
@@ -122,7 +122,7 @@ public partial class Project
             // Dump token
             if (dumpToken is not null)
             {
-                foreach (var x in r.List.Slice(0, r.Count))
+                foreach (var x in list.Slice(0, list.Count))
                 {
                     dumpToken.Append(x.ToString());
                 }
@@ -131,7 +131,7 @@ public partial class Project
             }
 
             // Token to Code
-            rootCode.Read(r.List, r.Count);
+            rootCode.Read(list, list.Count);
         }
 
         if (dumpToken is not null &&

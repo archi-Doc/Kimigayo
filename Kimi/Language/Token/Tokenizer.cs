@@ -564,7 +564,6 @@ internal sealed class Tokenizer
     private int numberOfBrackets;
 
     private List<Token> tokenList = new();
-    private int numberOfTokens;
 
     #endregion
 
@@ -586,7 +585,7 @@ internal sealed class Tokenizer
         this.ClearToken();
     }
 
-    public (List<Token> List, int Count) Read()
+    public List<Token> Read()
     {
         this.ClearToken();
 Loop:
@@ -697,7 +696,7 @@ Loop:
                         this.NextLine();
                         if (this.numberOfBrackets == 0)
                         {
-                            return (this.tokenList, this.numberOfTokens);
+                            return this.tokenList;
                         }
                         else
                         {
@@ -710,7 +709,7 @@ Loop:
                         this.NextLine();
                         if (this.numberOfBrackets == 0)
                         {
-                            return (this.tokenList, this.numberOfTokens);
+                            return this.tokenList;
                         }
                         else
                         {
@@ -723,7 +722,7 @@ Loop:
                     this.NextLine();
                     if (this.numberOfBrackets == 0)
                     {
-                        return (this.tokenList, this.numberOfTokens);
+                        return this.tokenList;
                     }
                     else
                     {
@@ -1069,7 +1068,7 @@ NextLine:
 
         if (this.numberOfBrackets == 0)
         {
-            return (this.tokenList, this.numberOfTokens);
+            return this.tokenList;
         }
 
         goto Loop;
@@ -1081,7 +1080,7 @@ EndOfFile:
             this.AddToken(new(TokenKind.EndBlock, default));
         }
 
-        return (this.tokenList, this.numberOfTokens);
+        return this.tokenList;
     }
 
     private int ReadMultiLineComment(ref ReadOnlySpan<char> text)
@@ -1132,14 +1131,12 @@ EndOfFile:
     private void AddToken(Token token)
     {
         this.tokenList.Add(token);
-        this.numberOfTokens++;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AddTokenAndSlice(TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
     {
         this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length)));
-        this.numberOfTokens++;
 
         span = span.Slice(length);
         this.position += length;
@@ -1149,7 +1146,6 @@ EndOfFile:
     private int AddTokenAndSliceWithLineTracking(TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
     {
         this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length)));
-        this.numberOfTokens++;
 
         var consumed = span.Slice(0, length);
         var lastLf = consumed.LastIndexOf(Constants.LfChar);
@@ -1172,7 +1168,6 @@ EndOfFile:
 
     private void ClearToken()
     {
-        this.numberOfTokens = 0;
         this.tokenList.Clear();
     }
 
