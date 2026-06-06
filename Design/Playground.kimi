@@ -1,6 +1,6 @@
 // Kimigayo by archi-Doc
 
-use Kimi.Base
+alias Kimi.Base
 
 namespace Playground
 
@@ -33,7 +33,12 @@ public struct TestStruct // struct can have state and contains values and functi
             2 =>
 
 TestMethod() => TestStruct
-    var ts = TestStruct.New()
+    var ts = TestStruct
+        .New()
+        .Terminate()
+    var x = 1 +
+        2 + 
+        3
         // EmptyA
     /* EmptyB
  */  
