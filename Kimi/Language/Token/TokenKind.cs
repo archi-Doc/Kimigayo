@@ -23,20 +23,23 @@ public enum TokenKind : byte
     F32,
     F64,
 
-    // Keywords (Other)
-    Namespace = 32, // namespace Kimi.Base
-    Alias, // alias Kimi.Base
-    Const, // const
-    Static, // static
+    // Keywords (Root)
+    // Alias = 32, // alias Kimi.Base
+    // Namespace, // namespace Kimi.Base
+
+    // Keywords (Group)
+    Const = 32,
+    Static,
     Public,
     Protected,
     Private,
     Internal,
     Protected_or_internal,
     Protected_and_internal,
-    Var, // var
+    Var,
     True,
     False,
+    String,
 
     // Block keyword (requires implicit indentation)
     Group, // group

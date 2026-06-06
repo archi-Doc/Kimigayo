@@ -2,10 +2,6 @@
 
 namespace Kimigayo.Language;
 
-using System.Buffers;
-using System.Runtime.CompilerServices;
-using Arc.Collections;
-
 public static class CodeHelper
 {
 
@@ -18,5 +14,5 @@ public static class CodeHelper
         };
 
         return code;
-}
+    }
 }

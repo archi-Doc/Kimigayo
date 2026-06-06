@@ -3,6 +3,7 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using Arc.Collections;
+using Kimi.Language;
 using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
@@ -45,6 +46,15 @@ public static class TokenHelper
             KeywordToKeywordKind.TryAdd(keyword, x);
         }
     }
+
+    public static bool IsGroup(this StatementContext statementContext) => statementContext switch
+    {
+        StatementContext.Namespace => true,
+        StatementContext.Group => true,
+        StatementContext.Struct => true,
+        StatementContext.Enum => true,
+        _ => false,
+    };
 
     public static bool IsDecimalNumberStart(ReadOnlySpan<char> text)
     {
