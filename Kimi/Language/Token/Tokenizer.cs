@@ -224,8 +224,8 @@ public static class TokenHelper
         };
     }
 
-    public static bool RequiresImplicitIndentation(TokenKind tokenKind)
-        => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Case;
+    public static bool IsBlockToken(TokenKind tokenKind)
+        => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Match;
 
     public static bool TryGetSingleCharTokenKind(char c, out TokenKind tokenKind, out int groupingDepth)
     {

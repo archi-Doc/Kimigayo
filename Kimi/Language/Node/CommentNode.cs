@@ -2,11 +2,11 @@
 
 namespace Kimigayo.Language;
 
-public class CommentCode : Code
+public class CommentNode : Node
 {
     public ReadOnlyMemory<char> Comment { get; }
 
-    public CommentCode(Token token)
+    public CommentNode(Token token)
     {
         this.Comment = token.Text;
     }

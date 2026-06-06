@@ -2,6 +2,6 @@
 
 namespace Kimigayo.Language;
 
-public abstract class Code
+public abstract class Node
 {
 }

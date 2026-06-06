@@ -107,7 +107,7 @@ public partial class Project
         var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
         var tokenizer = new Tokenizer(this.kimiControl, diagnostic);
         tokenizer.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
-        var rootCode = new RootCode(this);
+        var rootCode = new RootNode(this);
 
         var dumpToken = this.SolutionOptions.DumpToken ? new StringBuilder() : null;
         while (true)

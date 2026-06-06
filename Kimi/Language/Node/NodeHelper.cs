@@ -2,14 +2,13 @@
 
 namespace Kimigayo.Language;
 
-public static class CodeHelper
+public static class NodeHelper
 {
-
-    public static Code FromToken(Token token)
+    public static Node FromToken(Token token)
     {
         var code = token.Kind switch
         {
-            TokenKind.SingleLineComment => new CommentCode(token),
+            TokenKind.SingleLineComment => new CommentNode(token),
             _ => default!,
         };
 

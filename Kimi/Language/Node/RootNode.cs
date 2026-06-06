@@ -2,13 +2,13 @@
 
 using Kimigayo.Language;
 
-public sealed class RootCode : GroupCode
+public sealed class RootNode : GroupNode
 {
-    public Code Current { get; private set; }
+    public Node Current { get; private set; }
 
-    private List<Code> list = new();
+    private List<Node> list = new();
 
-    public RootCode(Project project)
+    public RootNode(Project project)
     {
         this.Current = this;
     }
@@ -17,7 +17,7 @@ public sealed class RootCode : GroupCode
     {
         foreach (var x in list)
         {
-            var code = CodeHelper.FromToken(x);
+            var code = NodeHelper.FromToken(x);
         }
     }
 }

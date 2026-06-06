@@ -41,7 +41,7 @@ public enum TokenKind : byte
     False,
     String,
 
-    // Block keyword (requires implicit indentation)
+    // Block keyword (requires indentation)
     Group, // group
     Struct, // struct
     Enum, // enum
@@ -50,10 +50,10 @@ public enum TokenKind : byte
     For, // for
     Loop, // loop
     Match, // match
-    Case, // case
 
-    Break, // break
-    Return, // return
+    // Non-block keyword
+    Return, // method/return
+    Break, // loop/break
     Continue, // continue
 
     // Not keyword

@@ -2,6 +2,6 @@
 
 namespace Kimigayo.Language;
 
-public class UseCode : Code
+public class GroupNode : Node
 {
 }

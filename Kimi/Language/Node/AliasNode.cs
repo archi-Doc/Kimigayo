@@ -2,6 +2,6 @@
 
 namespace Kimigayo.Language;
 
-public class GroupCode : Code
+public class AliasNode : Node
 {
 }
