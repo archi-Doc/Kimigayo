@@ -41,7 +41,7 @@ public enum TokenKind : byte
     False,
     String,
 
-    // Block keyword (requires indentation)
+    // Block keyword
     Group, // group
     Struct, // struct
     Enum, // enum

@@ -56,87 +56,284 @@ public static class TokenHelper
         _ => false,
     };
 
-    public static bool IsDecimalNumberStart(ReadOnlySpan<char> text)
+    public static bool ScanNumberLiteral(ReadOnlySpan<char> text, out int length)
     {
-        if (text.Length == 0)
+        length = 0;
+        if ((uint)text.Length == 0 || !IsDecDigit(text[0]))
         {
             return false;
         }
 
-        var c = text[0];
-        if (IsDigit(c))
-        {
-            return true;
+        var i = 0;
+        if (text.Length >= 2 && text[0] == '0')
+        {// 0b..., 0o..., 0x...
+            var p = text[1];
+            if ((p | 0x20) == 'b')
+            {
+                return ScanBasedInteger(text, 2, 2, out length);
+            }
+
+            if ((p | 0x20) == 'o')
+            {
+                return ScanBasedInteger(text, 2, 8, out length);
+            }
+
+            if ((p | 0x20) == 'x')
+            {
+                return ScanBasedInteger(text, 2, 16, out length);
+            }
         }
 
-        // Handles floating-point literals such as .3, .3d, .3f, and .3m.
-        return c == '.' && text.Length >= 2 && IsDigit(text[1]);
+        // Decimal integer part.
+        i = ScanDecDigitsOrUnderscores(text, 0);
+        var isFloat = false;
+
+        // Fraction part.
+        // 1.0  => float
+        // 1.   => float
+        // 1..2 => integer literal "1"
+        // 1.foo => integer literal "1"
+        if ((uint)i < (uint)text.Length && text[i] == '.')
+        {
+            char next = (i + 1 < text.Length) ? text[i + 1] : '\0';
+
+            if (next != '.' && next != '_' && !IsIdentifierStart(next))
+            {
+                isFloat = true;
+                i++;
+                i = ScanDecDigitsOrUnderscores(text, i);
+            }
+        }
+
+        // Exponent part.
+        if ((uint)i < (uint)text.Length)
+        {
+            var c = text[i];
+            if ((c | 0x20) == 'e')
+            {
+                i++;
+                if ((uint)i < (uint)text.Length)
+                {
+                    c = text[i];
+                    if (c == '+' || c == '-')
+                    {
+                        i++;
+                    }
+                }
+
+                var hasDigit = false;
+                while ((uint)i < (uint)text.Length)
+                {
+                    c = text[i];
+
+                    if (IsDecDigit(c))
+                    {
+                        hasDigit = true;
+                        i++;
+                        continue;
+                    }
+
+                    if (c == '_')
+                    {
+                        i++;
+                        continue;
+                    }
+
+                    break;
+                }
+
+                if (!hasDigit)
+                {
+                    length = 0;
+                    return false;
+                }
+
+                isFloat = true;
+            }
+        }
+
+        int suffixLength = ScanSuffix(text.Slice(i), isFloat);
+        if (suffixLength < 0)
+        {
+            length = 0;
+            return false;
+        }
+
+        i += suffixLength;
+
+        if ((uint)i < (uint)text.Length && IsIdentifierContinue(text[i]))
+        {
+            length = 0;
+            return false;
+        }
+
+        length = i;
+        return true;
     }
 
-    public static int ScanDecimalNumber(ReadOnlySpan<char> text)
+    private static bool ScanBasedInteger(ReadOnlySpan<char> text, int start, int numberBase, out int length)
     {
-        var i = 0;
-
-        // Integer part.
-        if (i < text.Length && IsDigit(text[i]))
+        var i = start;
+        var hasDigit = false;
+        while ((uint)i < (uint)text.Length)
         {
-            i++;
-            while (i < text.Length && IsDigitOrSeparator(text[i]))
+            var c = text[i];
+            if (c == '_')
             {
                 i++;
+                continue;
             }
+
+            if (numberBase == 2)
+            {
+                if (c != '0' && c != '1')
+                {
+                    break;
+                }
+            }
+            else if (numberBase == 8)
+            {
+                if ((uint)(c - '0') > 7)
+                {
+                    break;
+                }
+            }
+            else
+            {// Hex
+                if ((uint)(c - '0') > 9 && (uint)((c | 0x20) - 'a') > 5)
+                {
+                    break;
+                }
+            }
+
+            hasDigit = true;
+            i++;
         }
 
-        // Fractional part.
-        if (i < text.Length && text[i] == '.')
+        if (!hasDigit)
         {
-            if (i + 1 < text.Length && text[i + 1] == '.')
-            {// 1..
-                return i;
-            }
-
-            // Handles forms such as 1., 1.23, and .3.
-            i++;
-            while (i < text.Length && IsDigitOrSeparator(text[i]))
-            {
-                i++;
-            }
+            length = 0;
+            return false;
         }
 
-        // Exponent part: e+10, e-10, or E10.
-        if (i < text.Length && (text[i] == 'e' || text[i] == 'E'))
+        int suffixLength = ScanSuffix(text.Slice(i), isFloat: false);
+        if (suffixLength < 0)
         {
-            var exponentStart = i;
-            i++;
-            if (i < text.Length && (text[i] == '+' || text[i] == '-'))
-            {
-                i++;
-            }
-
-            var digitStart = i;
-            while (i < text.Length && IsDigitOrSeparator(text[i]))
-            {
-                i++;
-            }
-
-            // If no digits follow 'e' or 'E', treat it as not being an exponent.
-            if (digitStart == i)
-            {
-                i = exponentStart;
-            }
+            length = 0;
+            return false;
         }
 
-        // Type suffix: f/F, d/D, or m/M.
-        if (i < text.Length)
+        i += suffixLength;
+        if ((uint)i < (uint)text.Length && IsIdentifierContinue(text[i]))
         {
-            var suffix = text[i];
-            if (suffix is 'f' or 'F' or 'd' or 'D' or 'm' or 'M')
+            length = 0;
+            return false;
+        }
+
+        length = i;
+        return true;
+    }
+
+    private static int ScanDecDigitsOrUnderscores(ReadOnlySpan<char> text, int i)
+    {
+        while ((uint)i < (uint)text.Length)
+        {
+            char c = text[i];
+
+            if (IsDecDigit(c) || c == '_')
             {
                 i++;
+                continue;
             }
+
+            break;
         }
 
         return i;
+    }
+
+    private static int ScanSuffix(ReadOnlySpan<char> text, bool isFloat)
+    {
+        if (text.IsEmpty)
+        {
+            return 0;
+        }
+
+        char c0 = text[0];
+
+        if (isFloat)
+        {
+            if (text.Length >= 3 &&
+                c0 == 'f' &&
+                ((text[1] == '3' && text[2] == '2') ||
+                (text[1] == '6' && text[2] == '4')))
+            {
+                return 3; // f32 / f64
+            }
+
+            return IsIdentifierStart(c0) ? -1 : 0;
+        }
+
+        if (text.Length >= 2 &&
+            (c0 == 'u' || c0 == 'i') &&
+            text[1] == '8')
+        {// u8 / i8
+            return 2;
+        }
+
+        if (text.Length >= 3 &&
+            (c0 == 'u' || c0 == 'i'))
+        {// u16 / i16 / u32 / i32 / u64 / i64
+            var c1 = text[1];
+            var c2 = text[2];
+            if ((c1 == '1' && c2 == '6') ||
+                (c1 == '3' && c2 == '2') ||
+                (c1 == '6' && c2 == '4'))
+            {
+                return 3;
+            }
+        }
+
+        // u128 / i128
+        if (text.Length >= 4 &&
+            (c0 == 'u' || c0 == 'i') &&
+            text[1] == '1' &&
+            text[2] == '2' &&
+            text[3] == '8')
+        {
+            return 4;
+        }
+
+        // usize / isize
+        if (text.Length >= 5 &&
+            (c0 == 'u' || c0 == 'i') &&
+            text[1] == 's' &&
+            text[2] == 'i' &&
+            text[3] == 'z' &&
+            text[4] == 'e')
+        {
+            return 5;
+        }
+
+        return IsIdentifierStart(c0) ? -1 : 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsDecDigit(char c)
+    {
+        return (uint)(c - '0') <= 9;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsIdentifierStart(char c)
+    {
+        return c == '_' || (uint)(c - 'A') <= 25 || (uint)(c - 'a') <= 25 || c >= 0x80;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsIdentifierContinue(char c)
+    {
+        return IsIdentifierStart(c) || IsDecDigit(c);
     }
 
     public static bool ScanStringLiteral(ReadOnlySpan<char> text, out int length, out int quoteCount)
@@ -801,11 +998,10 @@ Loop:
 
                             this.AddTokenAndSlice(tokenKind, ref span, 1);
                         }
-                        else if (TokenHelper.IsDecimalNumberStart(span))
+                        else if (TokenHelper.ScanNumberLiteral(span, out var numberLiteralLength))
                         {// Numeric literal
                          // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
-                            var length = TokenHelper.ScanDecimalNumber(span);
-                            this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, length);
+                            this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, numberLiteralLength);
                         }
                         else if (TokenHelper.ScanStringLiteral(span, out var literalLength, out var quoteCount))
                         {// String literal
