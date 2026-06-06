@@ -3,7 +3,6 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using Arc.Collections;
-using Kimi.Language;
 using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
@@ -169,171 +168,6 @@ public static class TokenHelper
 
         length = i;
         return true;
-    }
-
-    private static bool ScanBasedInteger(ReadOnlySpan<char> text, int start, int numberBase, out int length)
-    {
-        var i = start;
-        var hasDigit = false;
-        while ((uint)i < (uint)text.Length)
-        {
-            var c = text[i];
-            if (c == '_')
-            {
-                i++;
-                continue;
-            }
-
-            if (numberBase == 2)
-            {
-                if (c != '0' && c != '1')
-                {
-                    break;
-                }
-            }
-            else if (numberBase == 8)
-            {
-                if ((uint)(c - '0') > 7)
-                {
-                    break;
-                }
-            }
-            else
-            {// Hex
-                if ((uint)(c - '0') > 9 && (uint)((c | 0x20) - 'a') > 5)
-                {
-                    break;
-                }
-            }
-
-            hasDigit = true;
-            i++;
-        }
-
-        if (!hasDigit)
-        {
-            length = 0;
-            return false;
-        }
-
-        int suffixLength = ScanSuffix(text.Slice(i), isFloat: false);
-        if (suffixLength < 0)
-        {
-            length = 0;
-            return false;
-        }
-
-        i += suffixLength;
-        if ((uint)i < (uint)text.Length && IsIdentifierContinue(text[i]))
-        {
-            length = 0;
-            return false;
-        }
-
-        length = i;
-        return true;
-    }
-
-    private static int ScanDecDigitsOrUnderscores(ReadOnlySpan<char> text, int i)
-    {
-        while ((uint)i < (uint)text.Length)
-        {
-            char c = text[i];
-
-            if (IsDecDigit(c) || c == '_')
-            {
-                i++;
-                continue;
-            }
-
-            break;
-        }
-
-        return i;
-    }
-
-    private static int ScanSuffix(ReadOnlySpan<char> text, bool isFloat)
-    {
-        if (text.IsEmpty)
-        {
-            return 0;
-        }
-
-        char c0 = text[0];
-
-        if (isFloat)
-        {
-            if (text.Length >= 3 &&
-                c0 == 'f' &&
-                ((text[1] == '3' && text[2] == '2') ||
-                (text[1] == '6' && text[2] == '4')))
-            {
-                return 3; // f32 / f64
-            }
-
-            return IsIdentifierStart(c0) ? -1 : 0;
-        }
-
-        if (text.Length >= 2 &&
-            (c0 == 'u' || c0 == 'i') &&
-            text[1] == '8')
-        {// u8 / i8
-            return 2;
-        }
-
-        if (text.Length >= 3 &&
-            (c0 == 'u' || c0 == 'i'))
-        {// u16 / i16 / u32 / i32 / u64 / i64
-            var c1 = text[1];
-            var c2 = text[2];
-            if ((c1 == '1' && c2 == '6') ||
-                (c1 == '3' && c2 == '2') ||
-                (c1 == '6' && c2 == '4'))
-            {
-                return 3;
-            }
-        }
-
-        // u128 / i128
-        if (text.Length >= 4 &&
-            (c0 == 'u' || c0 == 'i') &&
-            text[1] == '1' &&
-            text[2] == '2' &&
-            text[3] == '8')
-        {
-            return 4;
-        }
-
-        // usize / isize
-        if (text.Length >= 5 &&
-            (c0 == 'u' || c0 == 'i') &&
-            text[1] == 's' &&
-            text[2] == 'i' &&
-            text[3] == 'z' &&
-            text[4] == 'e')
-        {
-            return 5;
-        }
-
-        return IsIdentifierStart(c0) ? -1 : 0;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsDecDigit(char c)
-    {
-        return (uint)(c - '0') <= 9;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsIdentifierStart(char c)
-    {
-        return c == '_' || (uint)(c - 'A') <= 25 || (uint)(c - 'a') <= 25 || c >= 0x80;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsIdentifierContinue(char c)
-    {
-        return IsIdentifierStart(c) || IsDecDigit(c);
     }
 
     public static bool ScanStringLiteral(ReadOnlySpan<char> text, out int length, out int quoteCount)
@@ -546,6 +380,171 @@ public static class TokenHelper
         }
 
         return i - start;
+    }
+
+    private static bool ScanBasedInteger(ReadOnlySpan<char> text, int start, int numberBase, out int length)
+    {
+        var i = start;
+        var hasDigit = false;
+        while ((uint)i < (uint)text.Length)
+        {
+            var c = text[i];
+            if (c == '_')
+            {
+                i++;
+                continue;
+            }
+
+            if (numberBase == 2)
+            {
+                if (c != '0' && c != '1')
+                {
+                    break;
+                }
+            }
+            else if (numberBase == 8)
+            {
+                if ((uint)(c - '0') > 7)
+                {
+                    break;
+                }
+            }
+            else
+            {// Hex
+                if ((uint)(c - '0') > 9 && (uint)((c | 0x20) - 'a') > 5)
+                {
+                    break;
+                }
+            }
+
+            hasDigit = true;
+            i++;
+        }
+
+        if (!hasDigit)
+        {
+            length = 0;
+            return false;
+        }
+
+        int suffixLength = ScanSuffix(text.Slice(i), isFloat: false);
+        if (suffixLength < 0)
+        {
+            length = 0;
+            return false;
+        }
+
+        i += suffixLength;
+        if ((uint)i < (uint)text.Length && IsIdentifierContinue(text[i]))
+        {
+            length = 0;
+            return false;
+        }
+
+        length = i;
+        return true;
+    }
+
+    private static int ScanDecDigitsOrUnderscores(ReadOnlySpan<char> text, int i)
+    {
+        while ((uint)i < (uint)text.Length)
+        {
+            char c = text[i];
+
+            if (IsDecDigit(c) || c == '_')
+            {
+                i++;
+                continue;
+            }
+
+            break;
+        }
+
+        return i;
+    }
+
+    private static int ScanSuffix(ReadOnlySpan<char> text, bool isFloat)
+    {
+        if (text.IsEmpty)
+        {
+            return 0;
+        }
+
+        char c0 = text[0];
+
+        if (isFloat)
+        {
+            if (text.Length >= 3 &&
+                c0 == 'f' &&
+                ((text[1] == '3' && text[2] == '2') ||
+                (text[1] == '6' && text[2] == '4')))
+            {
+                return 3; // f32 / f64
+            }
+
+            return IsIdentifierStart(c0) ? -1 : 0;
+        }
+
+        if (text.Length >= 2 &&
+            (c0 == 'u' || c0 == 'i') &&
+            text[1] == '8')
+        {// u8 / i8
+            return 2;
+        }
+
+        if (text.Length >= 3 &&
+            (c0 == 'u' || c0 == 'i'))
+        {// u16 / i16 / u32 / i32 / u64 / i64
+            var c1 = text[1];
+            var c2 = text[2];
+            if ((c1 == '1' && c2 == '6') ||
+                (c1 == '3' && c2 == '2') ||
+                (c1 == '6' && c2 == '4'))
+            {
+                return 3;
+            }
+        }
+
+        // u128 / i128
+        if (text.Length >= 4 &&
+            (c0 == 'u' || c0 == 'i') &&
+            text[1] == '1' &&
+            text[2] == '2' &&
+            text[3] == '8')
+        {
+            return 4;
+        }
+
+        // usize / isize
+        if (text.Length >= 5 &&
+            (c0 == 'u' || c0 == 'i') &&
+            text[1] == 's' &&
+            text[2] == 'i' &&
+            text[3] == 'z' &&
+            text[4] == 'e')
+        {
+            return 5;
+        }
+
+        return IsIdentifierStart(c0) ? -1 : 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsDecDigit(char c)
+    {
+        return (uint)(c - '0') <= 9;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsIdentifierStart(char c)
+    {
+        return c == '_' || (uint)(c - 'A') <= 25 || (uint)(c - 'a') <= 25 || c >= 0x80;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsIdentifierContinue(char c)
+    {
+        return IsIdentifierStart(c) || IsDecDigit(c);
     }
 }
 
