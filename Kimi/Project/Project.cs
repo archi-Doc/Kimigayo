@@ -108,13 +108,13 @@ public partial class Project
         var tokenizer = new Tokenizer(diagnostic);
         tokenizer.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
         var rootCode = new RootNode(this);
-        var previousIndents = 0;
+        var currentIndentLevel = -1;
 
         var dumpToken = this.SolutionOptions.DumpToken ? new StringBuilder() : null;
         while (true)
         {
             // Read token
-            var list = tokenizer.Read(ref previousIndents);
+            var list = tokenizer.Read(ref currentIndentLevel);
             if (list.Count == 0)
             {
                 break;

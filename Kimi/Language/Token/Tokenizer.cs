@@ -553,7 +553,7 @@ internal sealed class Tokenizer
     public enum LineContinuation : byte
     {
         Block,
-        AngleBracket,
+        AngleBracket, // <>: Not supported yet because distinguishing generics from comparison operators is difficult.
         Brace,
         Bracket,
         Parenthesis,
@@ -593,7 +593,7 @@ internal sealed class Tokenizer
         this.ClearState();
     }
 
-    public List<Token> Read(ref int previousIndents)
+    public List<Token> Read(ref int currentIndentLevel)
     {
         this.ClearState();
 
@@ -604,79 +604,10 @@ Loop:
             goto EndOfFile;
         }
 
-        // Skip spaces
-        var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
-        this.Slice(ref span, numberOfSpaces);
-
-        if (span[0] == Constants.LfChar)
-        {// Empty line (\n)
-            this.Slice(ref span, 1);
-            this.NextLine();
-            goto Loop;
-        }
-        else if (span.Length >= 2)
-        {
-            if (span[0] == Constants.CrChar && span[1] == Constants.LfChar)
-            {// Empty line (\r\n)
-                this.Slice(ref span, 2);
-                this.NextLine();
-                goto Loop;
-            }
-            else if (span[0] == Constants.SlashChar)
-            {// /
-                if (span[1] == Constants.SlashChar)
-                {// //
-                    if (this.ReadSingleLineComment(ref span))
-                    {
-                        this.NextLine();
-                    }
-
-                    goto NextLine;
-                }
-                else if (span[1] == Constants.AsteriskChar)
-                {// /*
-                    var lineFeeds = this.ReadMultiLineComment(ref span);
-                    if (lineFeeds > 0)
-                    {
-                        numberOfSpaces = 0;
-                    }
-                }
-            }
-        }
-
-        var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
-        if (unnecessarySpaces > 0)
-        {// Invalid indentation
-            numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
-            this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Parser.InvalidIndentation, Constants.IndentationSpaces);
-        }
-
-        var currentIndents = numberOfSpaces / Constants.IndentationSpaces;
-        if (this.numberOfBlocks < 0)
-        {
-            this.numberOfBlocks = currentIndents - this.numberOfBrackets;
-        }
-        else if (this.numberOfBrackets == 0)
-        {
-            var dif = currentIndents - this.numberOfBlocks + this.numberOfBrackets;
-            if (dif > 0)
-            {
-                do
-                {
-                    this.numberOfBlocks++;
-                    this.AddToken(new(TokenKind.StartBlock, default));
-                }
-                while (--dif > 0);
-            }
-            else if (dif < 0)
-            {
-                do
-                {
-                    this.numberOfBlocks--;
-                    this.AddToken(new(TokenKind.EndBlock, default));
-                }
-                while (++dif < 0);
-            }
+        var blockToken = false;
+        if (span[0] == Constants.SpaceChar)
+        {// If whitespace is present, process it first.
+            goto NextLine;
         }
 
         while (span.Length > 0)
@@ -1075,6 +1006,99 @@ NextLine:
             goto EndOfFile;
         }
 
+        // Skip spaces
+        var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
+        this.Slice(ref span, numberOfSpaces);
+
+        if (span[0] == Constants.LfChar)
+        {// Empty line (\n)
+            this.Slice(ref span, 1);
+            this.NextLine();
+            goto Loop;
+        }
+        else if (span.Length >= 2)
+        {
+            if (span[0] == Constants.CrChar && span[1] == Constants.LfChar)
+            {// Empty line (\r\n)
+                this.Slice(ref span, 2);
+                this.NextLine();
+                goto Loop;
+            }
+            else if (span[0] == Constants.SlashChar)
+            {// /
+                if (span[1] == Constants.SlashChar)
+                {// //
+                    if (this.ReadSingleLineComment(ref span))
+                    {
+                        this.NextLine();
+                    }
+
+                    goto NextLine;
+                }
+                else if (span[1] == Constants.AsteriskChar)
+                {// /*
+                    var lineFeeds = this.ReadMultiLineComment(ref span);
+                    if (lineFeeds > 0)
+                    {
+                        numberOfSpaces = 0;
+                    }
+                }
+            }
+        }
+
+        var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
+        if (unnecessarySpaces > 0)
+        {// Invalid indentation
+            numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
+            this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Parser.InvalidIndentation, Constants.IndentationSpaces);
+        }
+
+        var currentIndents = numberOfSpaces / Constants.IndentationSpaces;
+        if (blockToken)
+        {
+            this.AddToken(new(TokenKind.StartBlock, default));
+            this.lineContinuationStack.Push(LineContinuation.Block);
+            for (var i = currentIndents; i <= currentIndentLevel; i++)
+            {
+                this.AddToken(new(TokenKind.EndBlock, default));
+                this.lineContinuationStack.Pop();//
+            }
+        }
+        else
+        {
+            for (var i = 0; i <= currentIndentLevel; i++)
+            {
+                this.lineContinuationStack.Pop();//
+            }
+        }
+
+        if (this.numberOfBlocks < 0)
+        {
+            this.numberOfBlocks = currentIndents - this.numberOfBrackets;
+        }
+        else if (this.numberOfBrackets == 0)
+        {
+            var dif = currentIndents - this.numberOfBlocks + this.numberOfBrackets;
+            if (dif > 0)
+            {
+                do
+                {
+                    this.numberOfBlocks++;
+                    this.AddToken(new(TokenKind.StartBlock, default));
+                }
+                while (--dif > 0);
+            }
+            else if (dif < 0)
+            {
+                do
+                {
+                    this.numberOfBlocks--;
+                    this.AddToken(new(TokenKind.EndBlock, default));
+                }
+                while (++dif < 0);
+            }
+        }
+
         if (this.numberOfBrackets == 0)
         {
             return this.tokenList;
@@ -1221,7 +1245,6 @@ EndOfFile:
 
                 case LineContinuation.AngleBracket: // <>
                     this.AddToken(new(TokenKind.GreaterThan, default));
-                    this.urlDiagnostic.Add()
                     break;
 
                 case LineContinuation.Brace: // {}
