@@ -1219,20 +1219,20 @@ EndOfFile:
                     this.AddToken(new(TokenKind.EndBlock, default));
                     break;
 
-                case LineContinuation.AngleBracket:
+                case LineContinuation.AngleBracket: // <>
                     this.AddToken(new(TokenKind.GreaterThan, default));
                     this.urlDiagnostic.Add()
                     break;
 
-                case LineContinuation.Brace:
+                case LineContinuation.Brace: // {}
                     this.AddToken(new(TokenKind.CloseBrace, default));
                     break;
 
-                case LineContinuation.Bracket:
+                case LineContinuation.Bracket: // []
                     this.AddToken(new(TokenKind.CloseBracket, default));
                     break;
 
-                case LineContinuation.Parenthesis:
+                case LineContinuation.Parenthesis: // ()
                     this.AddToken(new(TokenKind.CloseParenthesis, default));
                     break;
 
