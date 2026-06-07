@@ -550,6 +550,15 @@ public static class TokenHelper
 
 internal sealed class Tokenizer
 {
+    public enum LineContinuation
+    {
+        Block,
+        AngleBracket,
+        Brace,
+        Bracket,
+        Parenthesis,
+    }
+
     #region FieldAndProperty
 
     private readonly KimiControl kimiControl;
@@ -564,6 +573,7 @@ internal sealed class Tokenizer
     private int numberOfBrackets;
 
     private List<Token> tokenList = new();
+    private Stack<LineContinuation> lineContinuationStack = new();
 
     #endregion
 
@@ -582,12 +592,13 @@ internal sealed class Tokenizer
 
         this.numberOfBlocks = -1;
         this.numberOfBrackets = 0;
-        this.ClearToken();
+        this.ClearState();
     }
 
     public List<Token> Read()
     {
-        this.ClearToken();
+        this.ClearState();
+
 Loop:
         var span = this.text.Slice(this.position).Span;
         if (span.Length == 0)
@@ -1166,9 +1177,10 @@ EndOfFile:
         return lineFeeds;
     }
 
-    private void ClearToken()
+    private void ClearState()
     {
         this.tokenList.Clear();
+        this.lineContinuationStack.Clear();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

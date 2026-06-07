@@ -3,14 +3,17 @@ alias Kimi.Crypto
 #Condition(Os=="Linux") // Attribute-next rule.
 alias Kimi.Base.Linux
 
-namespace Program // namespace = module without identation.
-// KimiError.NamespaceMustBeFirst, KimiError.CannotDefineGlobalNamespace
+namespace Program // Represents a group that specifies an identifier by its absolute position.
+// Kimi.CannotDefineGlobalNamespace
 
-#Key(1) public const string Name = "Test Program"
+#Key(0) public const string Name = "Test Program"
+#Key(1)
+public const string Name = "Test Program"
 
 // (): Group
 // []: Array
 // <>: Generics
+// {}: Not used
 
 // Group: namespace, group, struct
 // Map: method:return, switch:yield, if:yield, loop:break
@@ -33,7 +36,7 @@ public group Helper // namespace - alias
             yield 2
         var i3 = if (
             var z = Func()
-            yield z > 0) 1 else 0
+            yield (z > 0)) 1 else 0
         var j = match x
             true => 1
             false => 0
@@ -44,9 +47,9 @@ public group Helper // namespace - alias
                 0
         return
 
-{TinyhandObject}
+#TinyhandObject
 public struct TestStruct // module + field
-    {Key(1)}
+    #Key(1)
     i32 id
 
     public New() => Self
