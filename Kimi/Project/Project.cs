@@ -105,7 +105,7 @@ public partial class Project
     private void Build(UrlAndtext urlAndtext)
     {
         var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
-        var tokenizer = new Tokenizer(this.kimiControl, diagnostic);
+        var tokenizer = new Tokenizer(diagnostic);
         tokenizer.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
         var rootCode = new RootNode(this);
         var previousIndents = 0;

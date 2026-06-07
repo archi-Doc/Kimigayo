@@ -550,7 +550,7 @@ public static class TokenHelper
 
 internal sealed class Tokenizer
 {
-    public enum LineContinuation
+    public enum LineContinuation : byte
     {
         Block,
         AngleBracket,
@@ -561,7 +561,6 @@ internal sealed class Tokenizer
 
     #region FieldAndProperty
 
-    private readonly KimiControl kimiControl;
     private readonly UrlDiagnostic urlDiagnostic;
 
     private ReadOnlyMemory<char> text;
@@ -577,9 +576,8 @@ internal sealed class Tokenizer
 
     #endregion
 
-    public Tokenizer(KimiControl kimiControl, UrlDiagnostic urlDiagnostic)
+    public Tokenizer(UrlDiagnostic urlDiagnostic)
     {
-        this.kimiControl = kimiControl;
         this.urlDiagnostic = urlDiagnostic;
     }
 
@@ -1175,6 +1173,73 @@ EndOfFile:
         this.position += length;
         span = span.Slice(length);
         return lineFeeds;
+    }
+
+    private void PushLineContinuation(TokenKind tokenKind)
+    {
+        this.AddToken(new(tokenKind, default));
+        switch (tokenKind)
+        {
+            case TokenKind.StartBlock:
+                this.lineContinuationStack.Push(LineContinuation.Block);
+                break;
+
+            case TokenKind.LessThan:
+                this.lineContinuationStack.Push(LineContinuation.AngleBracket);
+                break;
+
+            case TokenKind.OpenBrace:
+                this.lineContinuationStack.Push(LineContinuation.Brace);
+                break;
+
+            case TokenKind.OpenBracket:
+                this.lineContinuationStack.Push(LineContinuation.Bracket);
+                break;
+
+            case TokenKind.OpenParenthesis:
+                this.lineContinuationStack.Push(LineContinuation.Parenthesis);
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    private void TryPopLineContinuation()
+    {
+    }
+
+    private void ClearLineContinuation()
+    {
+        while (this.lineContinuationStack.TryPop(out var lineContinuation))
+        {
+            switch (lineContinuation)
+            {
+                case LineContinuation.Block:
+                    this.AddToken(new(TokenKind.EndBlock, default));
+                    break;
+
+                case LineContinuation.AngleBracket:
+                    this.AddToken(new(TokenKind.GreaterThan, default));
+                    this.urlDiagnostic.Add()
+                    break;
+
+                case LineContinuation.Brace:
+                    this.AddToken(new(TokenKind.CloseBrace, default));
+                    break;
+
+                case LineContinuation.Bracket:
+                    this.AddToken(new(TokenKind.CloseBracket, default));
+                    break;
+
+                case LineContinuation.Parenthesis:
+                    this.AddToken(new(TokenKind.CloseParenthesis, default));
+                    break;
+
+                default:
+                    break;
+            }
+        }
     }
 
     private void ClearState()

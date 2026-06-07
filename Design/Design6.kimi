@@ -47,6 +47,18 @@ public group Helper // namespace - alias
                 0
         return
 
+public struct SomeObject
+    #Inject
+    IConsoleService& ConsoleService { get; }
+
+    public New() => Self
+        var self = Self
+        // self.ConsoleService = $Inject<IConsoleService>() // GetService
+        return self
+
+struct $ : IServiceProvider // Compose Context
+    public T Inject<T>()
+
 #TinyhandObject
 public struct TestStruct // module + field
     #Key(1)
