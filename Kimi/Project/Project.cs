@@ -108,12 +108,13 @@ public partial class Project
         var tokenizer = new Tokenizer(this.kimiControl, diagnostic);
         tokenizer.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
         var rootCode = new RootNode(this);
+        var previousIndents = 0;
 
         var dumpToken = this.SolutionOptions.DumpToken ? new StringBuilder() : null;
         while (true)
         {
             // Read token
-            var list = tokenizer.Read();
+            var list = tokenizer.Read(ref previousIndents);
             if (list.Count == 0)
             {
                 break;

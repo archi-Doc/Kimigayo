@@ -595,7 +595,7 @@ internal sealed class Tokenizer
         this.ClearState();
     }
 
-    public List<Token> Read()
+    public List<Token> Read(ref int previousIndents)
     {
         this.ClearState();
 
