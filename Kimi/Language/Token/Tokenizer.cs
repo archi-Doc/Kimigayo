@@ -554,9 +554,9 @@ internal sealed class Tokenizer
     {
         Block,
         AngleBracket, // <>: Not supported yet because distinguishing generics from comparison operators is difficult.
-        Brace,
-        Bracket,
-        Parenthesis,
+        Brace, // {}
+        Bracket, // []
+        Parenthesis, // ()
     }
 
     #region FieldAndProperty
@@ -567,9 +567,6 @@ internal sealed class Tokenizer
     private int position;
     private int line;
     private int character;
-
-    private int numberOfBlocks;
-    private int numberOfBrackets;
 
     private List<Token> tokenList = new();
     private Stack<LineContinuation> lineContinuationStack = new();
@@ -588,8 +585,6 @@ internal sealed class Tokenizer
         this.line = line;
         this.character = character;
 
-        this.numberOfBlocks = -1;
-        this.numberOfBrackets = 0;
         this.ClearState();
     }
 
@@ -634,7 +629,7 @@ Loop:
                     {// \r\n
                         this.Slice(ref span, 2);
                         this.NextLine();
-                        if (this.numberOfBrackets == 0)
+                        if (this.lineContinuationStack.Count == 0)
                         {
                             return this.tokenList;
                         }
@@ -647,7 +642,7 @@ Loop:
                     {// \r
                         this.Slice(ref span, 1);
                         this.NextLine();
-                        if (this.numberOfBrackets == 0)
+                        if (this.lineContinuationStack.Count == 0)
                         {
                             return this.tokenList;
                         }
@@ -660,7 +655,7 @@ Loop:
                 case Constants.LfChar: // \n
                     this.Slice(ref span, 1);
                     this.NextLine();
-                    if (this.numberOfBrackets == 0)
+                    if (this.lineContinuationStack.Count == 0)
                     {
                         return this.tokenList;
                     }
@@ -927,11 +922,13 @@ Loop:
                     {
                         if (TokenHelper.TryGetSingleCharTokenKind(span[0], out var tokenKind, out var depth))
                         {// Single char token
-                            this.numberOfBrackets += depth;
-                            if (this.numberOfBrackets < 0)
+                            if (depth > 0)
                             {
-                                this.numberOfBrackets = 0;
-                                this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedClosingBracket);
+                                this.PushLineContinuation(tokenKind);
+                            }
+                            else if (depth < 0)
+                            {
+                                this.PopLineContinuation(tokenKind);
                             }
 
                             this.AddTokenAndSlice(tokenKind, ref span, 1);
@@ -1014,7 +1011,7 @@ NextLine:
         {// Empty line (\n)
             this.Slice(ref span, 1);
             this.NextLine();
-            goto Loop;
+            goto NextLine;
         }
         else if (span.Length >= 2)
         {
@@ -1022,12 +1019,12 @@ NextLine:
             {// Empty line (\r\n)
                 this.Slice(ref span, 2);
                 this.NextLine();
-                goto Loop;
+                goto NextLine;
             }
             else if (span[0] == Constants.SlashChar)
             {// /
                 if (span[1] == Constants.SlashChar)
-                {// //
+                {// // Single line comment
                     if (this.ReadSingleLineComment(ref span))
                     {
                         this.NextLine();
@@ -1036,12 +1033,9 @@ NextLine:
                     goto NextLine;
                 }
                 else if (span[1] == Constants.AsteriskChar)
-                {// /*
+                {// /* Multi line comment */
                     var lineFeeds = this.ReadMultiLineComment(ref span);
-                    if (lineFeeds > 0)
-                    {
-                        numberOfSpaces = 0;
-                    }
+                    goto NextLine;
                 }
             }
         }
@@ -1053,65 +1047,56 @@ NextLine:
             this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Parser.InvalidIndentation, Constants.IndentationSpaces);
         }
 
-        var currentIndents = numberOfSpaces / Constants.IndentationSpaces;
+        var indentLevel = numberOfSpaces / Constants.IndentationSpaces;
         if (blockToken)
         {
+            blockToken = false;
+
             this.AddToken(new(TokenKind.StartBlock, default));
+            currentIndentLevel++;
             this.lineContinuationStack.Push(LineContinuation.Block);
-            for (var i = currentIndents; i <= currentIndentLevel; i++)
+            for (var i = indentLevel; i < currentIndentLevel; i++)
             {
                 this.AddToken(new(TokenKind.EndBlock, default));
-                this.lineContinuationStack.Pop();//
+                currentIndentLevel--;
+                this.PopLineContinuation(TokenKind.EndBlock);
             }
         }
         else
         {
-            for (var i = 0; i <= currentIndentLevel; i++)
+            var dif = indentLevel - currentIndentLevel;
+            if (dif >= 1)
             {
-                this.lineContinuationStack.Pop();//
-            }
-        }
-
-        if (this.numberOfBlocks < 0)
-        {
-            this.numberOfBlocks = currentIndents - this.numberOfBrackets;
-        }
-        else if (this.numberOfBrackets == 0)
-        {
-            var dif = currentIndents - this.numberOfBlocks + this.numberOfBrackets;
-            if (dif > 0)
-            {
-                do
+                currentIndentLevel = indentLevel;
+                if (dif == 1 && this.lineContinuationStack.Count > 0)
                 {
-                    this.numberOfBlocks++;
-                    this.AddToken(new(TokenKind.StartBlock, default));
                 }
-                while (--dif > 0);
+                else
+                {// Error
+                }
+
+                goto Loop;
             }
-            else if (dif < 0)
+            else
             {
-                do
+                for (var i = dif; i < 0; i++)
                 {
-                    this.numberOfBlocks--;
                     this.AddToken(new(TokenKind.EndBlock, default));
+                    currentIndentLevel--;
                 }
-                while (++dif < 0);
-            }
-        }
 
-        if (this.numberOfBrackets == 0)
-        {
-            return this.tokenList;
+                if (this.lineContinuationStack.Count > 0)
+                {// Error
+                }
+
+                return this.tokenList;
+            }
         }
 
         goto Loop;
 
 EndOfFile:
-        while (this.numberOfBlocks > 0)
-        {
-            this.numberOfBlocks--;
-            this.AddToken(new(TokenKind.EndBlock, default));
-        }
+        this.ClearLineContinuation();
 
         return this.tokenList;
     }
@@ -1229,8 +1214,60 @@ EndOfFile:
         }
     }
 
-    private void TryPopLineContinuation()
+    private void PopLineContinuation(TokenKind expected)
     {
+        if (!this.lineContinuationStack.TryPop(out var lineContinuation))
+        {
+            return;
+        }
+
+        if (expected == TokenKind.EndBlock)
+        {
+            if (lineContinuation == LineContinuation.Block)
+            {
+                return;
+            }
+
+            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedEndBlock);
+        }
+        else if (expected == TokenKind.GreaterThan)
+        {
+            if (lineContinuation == LineContinuation.AngleBracket)
+            {
+                return;
+            }
+
+            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedAngleBracket);
+        }
+        else if (expected == TokenKind.CloseBrace)
+        {
+            if (lineContinuation == LineContinuation.Brace)
+            {
+                return;
+            }
+
+            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedBrace);
+        }
+        else if (expected == TokenKind.CloseBracket)
+        {
+            if (lineContinuation == LineContinuation.Bracket)
+            {
+                return;
+            }
+
+            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedBracket);
+        }
+        else if (expected == TokenKind.CloseParenthesis)
+        {
+            if (lineContinuation == LineContinuation.Parenthesis)
+            {
+                return;
+            }
+
+            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedParenthesis);
+        }
+
+        this.lineContinuationStack.Clear();
     }
 
     private void ClearLineContinuation()
