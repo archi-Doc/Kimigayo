@@ -207,3 +207,7 @@ complexMethod(
     B,
     C)
 
+if (Condition)
+    return 1
+else
+    return 9
