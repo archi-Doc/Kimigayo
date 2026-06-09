@@ -552,7 +552,7 @@ internal sealed class Tokenizer
 {
     private enum IndentSource : byte
     {
-        // Block,
+        Block,
         Parenthesis, // ()
         Bracket, // []
         AngleBracket, // <>: Not supported yet because distinguishing generics from comparison operators is difficult.
@@ -1038,6 +1038,7 @@ NextLine:
         {
             if (span.Length > 0 && span[0] == Constants.DotChar)
             {// Method chain
+                this.PushBlockIndent();
                 goto Loop;
             }
             else if (span.Length > 1 && span[0] == Constants.EqualsChar && span[1] == Constants.GreaterThanChar)
@@ -1051,7 +1052,8 @@ NextLine:
             for (var i = 0; i < dif; i++)
             {
                 this.AddToken(new(TokenKind.StartBlock, default));
-                currentIndentLevel++;
+                this.PushBlockIndent();
+                // currentIndentLevel++;
             }
 
             /*{// Unexpected indent
@@ -1063,7 +1065,8 @@ NextLine:
             for (var i = dif; i < 0; i++)
             {
                 this.AddToken(new(TokenKind.EndBlock, default));
-                currentIndentLevel--;
+                this.PopIndentSource(TokenKind.EndBlock);
+                // currentIndentLevel--;
             }
 
             /*if (this.lineContinuationStack.Count > 0)
@@ -1072,76 +1075,18 @@ NextLine:
             }*/
         }
 
-        if (this.indentStack.Count > 0)
+        var blockCount = this.indentStack.Count(a => a == IndentSource.Block);
+        var count = this.indentStack.Count - blockCount;
+        // if (this.indentStack.Count > 0)
+        if (count > 0)
         {
             goto Loop;
         }
         else
         {
+            currentIndentLevel += blockCount;
             return this.tokenList;
         }
-
-        /*if (blockToken)
-        {// Block token
-            blockToken = false;
-
-            this.AddToken(new(TokenKind.StartBlock, default));
-
-            if (currentIndentLevel < 0)
-            {
-                currentIndentLevel = indentLevel;
-            }
-            else
-            {
-                currentIndentLevel++;
-            }
-
-            this.lineContinuationStack.Push(LineContinuation.Block);
-            for (var i = indentLevel; i < currentIndentLevel; i++)
-            {
-                this.AddToken(new(TokenKind.EndBlock, default));
-                currentIndentLevel--;
-                this.PopLineContinuation(TokenKind.EndBlock);
-            }
-        }
-        else
-        {// Non-block token
-            if (currentIndentLevel < 0)
-            {
-                currentIndentLevel = indentLevel;
-            }
-
-            var dif = indentLevel - currentIndentLevel;
-            if (dif >= 1)
-            {
-                currentIndentLevel = indentLevel;
-                if (dif == 1 && this.lineContinuationStack.Count > 0)
-                {
-                }
-                else
-                {// Unexpected indent
-                    this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Kimi.UnexpectedIndent);
-                }
-
-                goto Loop;
-            }
-            else
-            {
-                for (var i = dif; i < 0; i++)
-                {
-                    this.AddToken(new(TokenKind.EndBlock, default));
-                    currentIndentLevel--;
-                }
-
-                if (this.lineContinuationStack.Count > 0)
-                {// Error
-                }
-
-                return this.tokenList;
-            }
-        }*/
-
-        goto Loop;
 
 EndOfFile:
         this.ClearIndentStack();
@@ -1232,20 +1177,18 @@ EndOfFile:
         return lineFeeds;
     }
 
-    /*private void PushLineContinuationBlock(ref int indentLevel)
+    private void PushBlockIndent()
     {
-        indentLevel++;
         this.indentStack.Push(IndentSource.Block);
-    }*/
+    }
 
     private void PushIndentSource(TokenKind tokenKind)
     {
         switch (tokenKind)
         {
-            /*case TokenKind.StartBlock:
-                indentLevel++;
-                this.lineContinuationStack.Push(IndentSource.Block);
-                break;*/
+            case TokenKind.StartBlock:
+                this.indentStack.Push(IndentSource.Block);
+                break;
 
             case TokenKind.OpenParenthesis:
                 this.indentStack.Push(IndentSource.Parenthesis);
@@ -1272,15 +1215,11 @@ EndOfFile:
     {
         if (!this.indentStack.TryPop(out var indentSource))
         {
+            // this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedEndBlock);
             return;
         }
 
-        /*if (indentSource == IndentSource.Block)
-        {
-            indentLevel--;
-        }*/
-
-        /*if (expected == TokenKind.EndBlock)
+        if (expected == TokenKind.EndBlock)
         {
             if (indentSource == IndentSource.Block)
             {
@@ -1289,7 +1228,15 @@ EndOfFile:
 
             this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedEndBlock);
         }
-        else */
+
+        while (indentSource == IndentSource.Block)
+        {
+            if (!this.indentStack.TryPop(out indentSource))
+            {
+                return;
+            }
+        }
+
         if (expected == TokenKind.CloseParenthesis)
         {
             if (indentSource == IndentSource.Parenthesis)

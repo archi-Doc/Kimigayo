@@ -1,5 +1,13 @@
 // Kimigayo by archi-Doc
 
+var ts = TestStruct // Block
+    .New(() => // Block, Concat
+            var x = 1
+            return x
+        ,() => 3
+        ,4) // ---
+    .Terminate() // ->Concat1
+
 alias Kimi.Base
 
 namespace Playground
