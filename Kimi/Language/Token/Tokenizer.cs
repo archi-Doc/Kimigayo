@@ -255,8 +255,9 @@ public static class TokenHelper
         };
     }
 
-    public static bool IsBlockToken(TokenKind tokenKind)
-        => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Match;
+    public static bool IsBlockToken(this TokenKind tokenKind)
+        => tokenKind == TokenKind.EqualsGreaterThan ||
+        (tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Match);
 
     public static bool TryGetSingleCharTokenKind(char c, out TokenKind tokenKind, out int groupingDepth)
     {
@@ -550,13 +551,13 @@ public static class TokenHelper
 
 internal sealed class Tokenizer
 {
-    public enum LineContinuation : byte
+    private enum LineContinuation : byte
     {
         Block,
+        Parenthesis, // ()
+        Bracket, // []
         AngleBracket, // <>: Not supported yet because distinguishing generics from comparison operators is difficult.
         Brace, // {}
-        Bracket, // []
-        Parenthesis, // ()
     }
 
     #region FieldAndProperty
@@ -740,6 +741,7 @@ Loop:
                     }
                     else if (span[1] == Constants.GreaterThanChar)
                     {// =>
+                        this.PushLineContinuationBlock(ref currentIndentLevel);
                         this.AddTokenAndSlice(TokenKind.EqualsGreaterThan, ref span, 2);
                     }
                     else
@@ -902,11 +904,11 @@ Loop:
                         {// Single char token
                             if (depth > 0)
                             {
-                                this.PushLineContinuation(tokenKind);
+                                this.PushLineContinuation(tokenKind, ref currentIndentLevel);
                             }
                             else if (depth < 0)
                             {
-                                this.PopLineContinuation(tokenKind);
+                                this.PopLineContinuation(tokenKind, ref currentIndentLevel);
                             }
 
                             this.AddTokenAndSlice(tokenKind, ref span, 1);
@@ -961,7 +963,11 @@ Loop:
 
                             if (TokenHelper.KeywordToKeywordKind.TryGetValue(span.Slice(0, length), out var tokenKind2))
                             {// Keyword
-                             // this.requiresIndent = LanguageHelper.RequiresImplicitIndentation(tokenKind2);
+                                if (tokenKind2.IsBlockToken())
+                                {
+                                    this.PushLineContinuationBlock(ref currentIndentLevel);
+                                }
+
                                 this.AddTokenAndSlice(tokenKind2, ref span, length);
                             }
                             else
@@ -1035,7 +1041,6 @@ NextLine:
             lineContinuation == LineContinuation.Block)
         {// Block token
             this.AddToken(new(TokenKind.StartBlock, default));
-            currentIndentLevel++;
             this.lineContinuationStack.Pop();
         }
 
@@ -1050,7 +1055,7 @@ NextLine:
         else if (dif > 0)
         {
             currentIndentLevel = indentLevel;
-            if (dif == 1 && this.lineContinuationStack.Count > 0)
+            if (dif == 1/* && this.lineContinuationStack.Count > 0*/)
             {
             }
             else
@@ -1227,12 +1232,27 @@ EndOfFile:
         return lineFeeds;
     }
 
-    private void PushLineContinuation(TokenKind tokenKind)
+    private void PushLineContinuationBlock(ref int indentLevel)
+    {
+        indentLevel++;
+        this.lineContinuationStack.Push(LineContinuation.Block);
+    }
+
+    private void PushLineContinuation(TokenKind tokenKind, ref int indentLevel)
     {
         switch (tokenKind)
         {
             case TokenKind.StartBlock:
+                indentLevel++;
                 this.lineContinuationStack.Push(LineContinuation.Block);
+                break;
+
+            case TokenKind.OpenParenthesis:
+                this.lineContinuationStack.Push(LineContinuation.Parenthesis);
+                break;
+
+            case TokenKind.OpenBracket:
+                this.lineContinuationStack.Push(LineContinuation.Bracket);
                 break;
 
             case TokenKind.LessThan:
@@ -1243,24 +1263,21 @@ EndOfFile:
                 this.lineContinuationStack.Push(LineContinuation.Brace);
                 break;
 
-            case TokenKind.OpenBracket:
-                this.lineContinuationStack.Push(LineContinuation.Bracket);
-                break;
-
-            case TokenKind.OpenParenthesis:
-                this.lineContinuationStack.Push(LineContinuation.Parenthesis);
-                break;
-
             default:
                 break;
         }
     }
 
-    private void PopLineContinuation(TokenKind expected)
+    private void PopLineContinuation(TokenKind expected, ref int indentLevel)
     {
         if (!this.lineContinuationStack.TryPop(out var lineContinuation))
         {
             return;
+        }
+
+        if (lineContinuation == LineContinuation.Block)
+        {
+            indentLevel--;
         }
 
         if (expected == TokenKind.EndBlock)
@@ -1271,6 +1288,24 @@ EndOfFile:
             }
 
             this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedEndBlock);
+        }
+        else if (expected == TokenKind.CloseParenthesis)
+        {
+            if (lineContinuation == LineContinuation.Parenthesis)
+            {
+                return;
+            }
+
+            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedParenthesis);
+        }
+        else if (expected == TokenKind.CloseBracket)
+        {
+            if (lineContinuation == LineContinuation.Bracket)
+            {
+                return;
+            }
+
+            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedBracket);
         }
         else if (expected == TokenKind.GreaterThan)
         {
@@ -1290,24 +1325,6 @@ EndOfFile:
 
             this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedBrace);
         }
-        else if (expected == TokenKind.CloseBracket)
-        {
-            if (lineContinuation == LineContinuation.Bracket)
-            {
-                return;
-            }
-
-            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedBracket);
-        }
-        else if (expected == TokenKind.CloseParenthesis)
-        {
-            if (lineContinuation == LineContinuation.Parenthesis)
-            {
-                return;
-            }
-
-            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedParenthesis);
-        }
 
         this.lineContinuationStack.Clear();
     }
@@ -1322,20 +1339,20 @@ EndOfFile:
                     this.AddToken(new(TokenKind.EndBlock, default));
                     break;
 
-                case LineContinuation.AngleBracket: // <>
-                    this.AddToken(new(TokenKind.GreaterThan, default));
-                    break;
-
-                case LineContinuation.Brace: // {}
-                    this.AddToken(new(TokenKind.CloseBrace, default));
+                case LineContinuation.Parenthesis: // ()
+                    this.AddToken(new(TokenKind.CloseParenthesis, default));
                     break;
 
                 case LineContinuation.Bracket: // []
                     this.AddToken(new(TokenKind.CloseBracket, default));
                     break;
 
-                case LineContinuation.Parenthesis: // ()
-                    this.AddToken(new(TokenKind.CloseParenthesis, default));
+                case LineContinuation.AngleBracket: // <>
+                    this.AddToken(new(TokenKind.GreaterThan, default));
+                    break;
+
+                case LineContinuation.Brace: // {}
+                    this.AddToken(new(TokenKind.CloseBrace, default));
                     break;
 
                 default:
