@@ -7,6 +7,12 @@ namespace Playground
 public TestMethod1() => (
     i32, 
     i32)
+    var func = () => 1
+    var func2 = 
+        () => 2
+    var func3 = () =>
+        return 3
+    var c = if (true) 1 else 2
 
     return (1, 2)
 
@@ -31,20 +37,38 @@ public struct TestStruct // struct can have state and contains values and functi
     public GetId(&) => i32 // &, &owner, &rc, &arc
         return self.id
 
-    public GetText(&, i32 id) => string
-        id++
+    public GetText2(&, i32 id) => "ya"
+    public GetText3(&, i32 id)
+        => "ya"
 
-        return id match
-            1 => "Test",
+    public GetText(&, i32 id) => string // Block
+        id++ // Block, Block
+        return id match // Block, Block
+            1 => "Test" 
             2 =>
+                var x = "2"
+                yield x
+
+[BL]public GetText(&, i32 id) => string // Block
+[BL][BL]id++ // Block, Block
+[BL][BL]return id match // Block, Block
+            1 => "Test" 
+            2 =>
+                var x = "2"
+                yield x
 
 TestMethod() => TestStruct
-    var ts = TestStruct
-        .New()
-        .Terminate()
-    var x = 1 +
-        2 + 
-        3
+[BL]var ts = TestStruct // Block
+[BL][CT].New(() => // Block, Concat
+[BL][CT][PA][BL]var x = 1
+[BL][CT][PA][BL]return x
+[BL][CT][PA],
+[BL][CT][PA]4) // ---
+        .Terminate() // ->Concat1
+[BL]var x = 1 +
+[BL][CT]2 + 
+[BL][CT]3
+[BL]var y = 3
         // EmptyA
     /* EmptyB
  */  

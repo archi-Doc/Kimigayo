@@ -256,8 +256,7 @@ public static class TokenHelper
     }
 
     public static bool IsBlockToken(this TokenKind tokenKind)
-        => tokenKind == TokenKind.EqualsGreaterThan ||
-        (tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Match);
+        => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Match;
 
     public static bool TryGetSingleCharTokenKind(char c, out TokenKind tokenKind, out int groupingDepth)
     {
@@ -551,13 +550,20 @@ public static class TokenHelper
 
 internal sealed class Tokenizer
 {
-    private enum LineContinuation : byte
+    private enum IndentSource : byte
     {
         Block,
         Parenthesis, // ()
         Bracket, // []
         AngleBracket, // <>: Not supported yet because distinguishing generics from comparison operators is difficult.
         Brace, // {}
+    }
+
+    private enum RequireBlock : byte
+    {
+        None,
+        Function,
+        IfElse,
     }
 
     #region FieldAndProperty
@@ -605,6 +611,7 @@ Loop:
             goto NextLine;
         }
 
+        RequireBlock requireBlock = default;
         while (span.Length > 0)
         {
             while (span[0] == Constants.SpaceChar)
@@ -741,8 +748,7 @@ Loop:
                     }
                     else if (span[1] == Constants.GreaterThanChar)
                     {// =>
-                        this.PushLineContinuationBlock(ref currentIndentLevel);
-                        this.AddTokenAndSlice(TokenKind.EqualsGreaterThan, ref span, 2);
+                        requireBlock = RequireBlock.Function;
                     }
                     else
                     {// =
@@ -900,12 +906,6 @@ Loop:
 
                 default:
                     {
-                        if (this.lineContinuationStack.TryPeek(out var lineContinuation2) &&
-                            lineContinuation2 == LineContinuation.Block)
-                        {
-                            this.PopLineContinuationBlock(ref currentIndentLevel);
-                        }
-
                         if (TokenHelper.TryGetSingleCharTokenKind(span[0], out var tokenKind, out var depth))
                         {// Single char token
                             if (depth > 0)
@@ -918,8 +918,10 @@ Loop:
                             }
 
                             this.AddTokenAndSlice(tokenKind, ref span, 1);
+                            continue;
                         }
-                        else if (TokenHelper.ScanNumberLiteral(span, out var numberLiteralLength))
+
+                        if (TokenHelper.ScanNumberLiteral(span, out var numberLiteralLength))
                         {// Numeric literal
                          // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
                             this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, numberLiteralLength);
@@ -972,6 +974,10 @@ Loop:
                                 if (tokenKind2.IsBlockToken())
                                 {
                                     this.PushLineContinuationBlock(ref currentIndentLevel);
+                                }
+                                else if (tokenKind2 == TokenKind.If || tokenKind2 == TokenKind.Else)
+                                {
+                                    requireBlock = RequireBlock.IfElse;
                                 }
 
                                 this.AddTokenAndSlice(tokenKind2, ref span, length);

@@ -45,11 +45,14 @@ public enum TokenKind : byte
     Group, // group
     Struct, // struct
     Enum, // enum
-    If, // if
-    Else, // else
     For, // for
     Loop, // loop
     Match, // match
+
+    // Block or expression keyword
+    If, // if
+    Else, // else
+    // EqualsGreaterThan, // =>
 
     // Non-block keyword
     Return, // method/return
