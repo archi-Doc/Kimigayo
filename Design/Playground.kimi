@@ -10,8 +10,12 @@ public TestMethod1() => (
     var func = () => 1
     var func2 = 
         () => 2
-    var func3 = () =>
+    var func3 = () => int
         return 3
+    Method() => int
+        return 1
+    var a = (() => 3, () => 4, () =>
+            return 5) // ExpressionBlock
     var c = if (true) 1 else 2
 
     return (1, 2)
@@ -57,13 +61,15 @@ public struct TestStruct // struct can have state and contains values and functi
                 var x = "2"
                 yield x
 
-TestMethod() => TestStruct
+TestMethod() => "test" // No [BL] : Value
+
+TestMethod() => TestStruct // [BL] : Type
 [BL]var ts = TestStruct // Block
 [BL][CT].New(() => // Block, Concat
 [BL][CT][PA][BL]var x = 1
 [BL][CT][PA][BL]return x
-[BL][CT][PA],
-[BL][CT][PA]4) // ---
+[BL][CT][PA],() => 3
+[BL][CT][PA],4) // ---
         .Terminate() // ->Concat1
 [BL]var x = 1 +
 [BL][CT]2 + 
@@ -78,5 +84,6 @@ public enum TestEnum
     Success
     Failure
 
-$WriteLine("Kimigayo")
+$WriteLine(
+    "Kimigayo")
 // Comment
