@@ -900,6 +900,12 @@ Loop:
 
                 default:
                     {
+                        if (this.lineContinuationStack.TryPeek(out var lineContinuation2) &&
+                            lineContinuation2 == LineContinuation.Block)
+                        {
+                            this.PopLineContinuationBlock(ref currentIndentLevel);
+                        }
+
                         if (TokenHelper.TryGetSingleCharTokenKind(span[0], out var tokenKind, out var depth))
                         {// Single char token
                             if (depth > 0)
@@ -1266,6 +1272,12 @@ EndOfFile:
             default:
                 break;
         }
+    }
+
+    private void PopLineContinuationBlock(ref int indentLevel)
+    {
+        this.lineContinuationStack.Pop();
+        indentLevel--;
     }
 
     private void PopLineContinuation(TokenKind expected, ref int indentLevel)
