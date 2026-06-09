@@ -599,7 +599,6 @@ Loop:
             goto EndOfFile;
         }
 
-        var blockToken = false;
         if (span[0] == Constants.SpaceChar)
         {// If whitespace is present, process it first.
             goto NextLine;
@@ -629,40 +628,19 @@ Loop:
                     {// \r\n
                         this.Slice(ref span, 2);
                         this.NextLine();
-                        if (this.lineContinuationStack.Count == 0)
-                        {
-                            return this.tokenList;
-                        }
-                        else
-                        {
-                            goto NextLine;
-                        }
+                        goto NextLine;
                     }
                     else
                     {// \r
                         this.Slice(ref span, 1);
                         this.NextLine();
-                        if (this.lineContinuationStack.Count == 0)
-                        {
-                            return this.tokenList;
-                        }
-                        else
-                        {
-                            goto NextLine;
-                        }
+                        goto NextLine;
                     }
 
                 case Constants.LfChar: // \n
                     this.Slice(ref span, 1);
                     this.NextLine();
-                    if (this.lineContinuationStack.Count == 0)
-                    {
-                        return this.tokenList;
-                    }
-                    else
-                    {
-                        goto NextLine;
-                    }
+                    goto NextLine;
 
                 case Constants.AmpersandChar: // && &= &
                     if (span.Length == 1)
@@ -948,7 +926,7 @@ Loop:
                                     invalidLength = span.Length;
                                 }
 
-                                this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.MissingStringLiteralEnd);
+                                this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.MissingStringLiteralEnd);
                                 this.AddTokenAndSlice(TokenKind.Invalid, ref span, invalidLength);
                             }
                             else
@@ -976,7 +954,7 @@ Loop:
                             }
                             else if (length == 0)
                             {
-                                this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.InvalidCharacter, span[0]);
+                                this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.InvalidCharacter, span[0]);
                                 this.AddTokenAndSlice(TokenKind.Invalid, ref span, 1);
                                 break;
                             }
@@ -1044,16 +1022,75 @@ NextLine:
         if (unnecessarySpaces > 0)
         {// Invalid indentation
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
-            this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Parser.InvalidIndentation, Constants.IndentationSpaces);
+            this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Kimi.InvalidIndentation, Constants.IndentationSpaces);
         }
 
         var indentLevel = numberOfSpaces / Constants.IndentationSpaces;
-        if (blockToken)
+        if (currentIndentLevel < 0)
         {
+            currentIndentLevel = indentLevel;
+        }
+
+        if (this.lineContinuationStack.TryPeek(out var lineContinuation) &&
+            lineContinuation == LineContinuation.Block)
+        {// Block token
+            this.AddToken(new(TokenKind.StartBlock, default));
+            currentIndentLevel++;
+            this.lineContinuationStack.Pop();
+        }
+
+        var dif = indentLevel - currentIndentLevel;
+        if (dif == 0)
+        {
+            if (this.lineContinuationStack.Count == 0)
+            {
+                return this.tokenList;
+            }
+        }
+        else if (dif > 0)
+        {
+            currentIndentLevel = indentLevel;
+            if (dif == 1 && this.lineContinuationStack.Count > 0)
+            {
+            }
+            else
+            {// Unexpected indent
+                this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Kimi.UnexpectedIndent);
+            }
+
+            goto Loop;
+        }
+        else
+        {// dif < 0
+            for (var i = dif; i < 0; i++)
+            {
+                this.AddToken(new(TokenKind.EndBlock, default));
+                currentIndentLevel--;
+            }
+
+            if (this.lineContinuationStack.Count > 0)
+            {// Unexpected indent
+                this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Kimi.UnexpectedIndent);
+            }
+
+            return this.tokenList;
+        }
+
+        /*if (blockToken)
+        {// Block token
             blockToken = false;
 
             this.AddToken(new(TokenKind.StartBlock, default));
-            currentIndentLevel++;
+
+            if (currentIndentLevel < 0)
+            {
+                currentIndentLevel = indentLevel;
+            }
+            else
+            {
+                currentIndentLevel++;
+            }
+
             this.lineContinuationStack.Push(LineContinuation.Block);
             for (var i = indentLevel; i < currentIndentLevel; i++)
             {
@@ -1063,7 +1100,12 @@ NextLine:
             }
         }
         else
-        {
+        {// Non-block token
+            if (currentIndentLevel < 0)
+            {
+                currentIndentLevel = indentLevel;
+            }
+
             var dif = indentLevel - currentIndentLevel;
             if (dif >= 1)
             {
@@ -1072,7 +1114,8 @@ NextLine:
                 {
                 }
                 else
-                {// Error
+                {// Unexpected indent
+                    this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Kimi.UnexpectedIndent);
                 }
 
                 goto Loop;
@@ -1091,7 +1134,7 @@ NextLine:
 
                 return this.tokenList;
             }
-        }
+        }*/
 
         goto Loop;
 
@@ -1106,7 +1149,7 @@ EndOfFile:
         var length = text.IndexOf("*/");
         if (length < 0)
         {
-            this.urlDiagnostic.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), Hashed.Parser.MissingBlockCommentEnd);
+            this.urlDiagnostic.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), Hashed.Kimi.MissingBlockCommentEnd);
 
             return this.AddTokenAndSliceWithLineTracking(TokenKind.Invalid, ref text, text.Length);
         }
@@ -1186,7 +1229,6 @@ EndOfFile:
 
     private void PushLineContinuation(TokenKind tokenKind)
     {
-        this.AddToken(new(tokenKind, default));
         switch (tokenKind)
         {
             case TokenKind.StartBlock:
@@ -1228,7 +1270,7 @@ EndOfFile:
                 return;
             }
 
-            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedEndBlock);
+            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedEndBlock);
         }
         else if (expected == TokenKind.GreaterThan)
         {
@@ -1237,7 +1279,7 @@ EndOfFile:
                 return;
             }
 
-            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedAngleBracket);
+            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedAngleBracket);
         }
         else if (expected == TokenKind.CloseBrace)
         {
@@ -1246,7 +1288,7 @@ EndOfFile:
                 return;
             }
 
-            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedBrace);
+            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedBrace);
         }
         else if (expected == TokenKind.CloseBracket)
         {
@@ -1255,7 +1297,7 @@ EndOfFile:
                 return;
             }
 
-            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedBracket);
+            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedBracket);
         }
         else if (expected == TokenKind.CloseParenthesis)
         {
@@ -1264,7 +1306,7 @@ EndOfFile:
                 return;
             }
 
-            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Parser.UnmatchedParenthesis);
+            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedParenthesis);
         }
 
         this.lineContinuationStack.Clear();

@@ -4,49 +4,12 @@ alias Kimi.Base
 
 namespace Playground
 
+public TestMethod1() => (
+    i32, 
+    i32)
+
+    return (1, 2)
+
 public const string Name = "Test"
 public const string? Description = """Test
 Program"""
-/*a*/
-public group Helper /* group is a stateless collection of values and functions.
-  */
-    public const i32 Id = -123
-    public Method1() => int32
-        return 1
-
-#TinyhandObject
-public struct TestStruct // struct can have state and contains values and functions.
-    #Key(1)
-    i32 id
-
-    public New() => Self
-        self.id = 11
-
-    public GetId(&) => i32 // &, &owner, &rc, &arc
-        return self.id
-
-    public GetText(&, i32 id) => string
-        id++
-
-        return id match
-            1 => "Test",
-            2 =>
-
-TestMethod() => TestStruct
-    var ts = TestStruct
-        .New()
-        .Terminate()
-    var x = 1 +
-        2 + 
-        3
-        // EmptyA
-    /* EmptyB
- */  
-    return ts
-
-public enum TestEnum
-    Success
-    Failure
-
-$WriteLine("Kimigayo")
-// Comment

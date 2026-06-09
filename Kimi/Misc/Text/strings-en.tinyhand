@@ -13,7 +13,7 @@ Project=
   NoKimiFile="Kimi file '{0}' not found"
   NotLoaded="Failed to load the project file '{0}'"
 
-Parser=
+Kimi=
   InvalidIndentation="Invalid indentation. Insert {0} spaces for each indentation level"
   MissingBlockCommentEnd="Reached end-of-file. Missing '*/'"
   InvalidCharacterAtEndOfFile="Invalid character at end of file"
@@ -24,3 +24,4 @@ Parser=
   UnmatchedParenthesis="Unmatched parenthesis"
   InvalidCharacter="Unexpected character '{0}'"
   MissingStringLiteralEnd="String literal is not terminated. Expected closing \""
+  UnexpectedIndent="Unexpected indentation"
