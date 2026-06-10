@@ -1066,17 +1066,25 @@ NextLine:
         {// dif < 0
             for (var i = dif; i < 0; i++)
             {
-                this.AddToken(new(TokenKind.EndBlock, default));
-                if (this.PopIndentSource(IndentSource.Block))
+                if (this.indentStack.TryPop(out var indentSource))
                 {
-                    numberOfBlocks--;
+                    if (indentSource == IndentSource.Block)
+                    {
+                        this.AddToken(new(TokenKind.EndBlock, default));
+                        numberOfBlocks--;
+                    }
+                    else if (indentSource == IndentSource.LineContinuation)
+                    {
+                    }
+                    else
+                    {
+                    }
+                }
+                else if (currentIndentLevel > 0)
+                {
+                    currentIndentLevel--;
                 }
             }
-
-            /*if (this.lineContinuationStack.Count > 0)
-            {// Unexpected indent
-                this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Kimi.UnexpectedIndent);
-            }*/
         }
 
         if (this.indentStack.Count > numberOfBlocks)
