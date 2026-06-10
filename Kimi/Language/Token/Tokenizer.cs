@@ -557,6 +557,7 @@ internal sealed class Tokenizer
         Bracket, // []
         AngleBracket, // <>: Not supported yet because distinguishing generics from comparison operators is difficult.
         Brace, // {}
+        LineContinuation,
     }
 
     #region FieldAndProperty
@@ -590,6 +591,7 @@ internal sealed class Tokenizer
 
     public List<Token> Read(ref int currentIndentLevel)
     {
+        var numberOfBlocks = 0;
         this.ClearState();
 
 Loop:
@@ -1038,7 +1040,7 @@ NextLine:
         {
             if (span.Length > 0 && span[0] == Constants.DotChar)
             {// Method chain
-                this.PushBlockIndent();
+                this.PushIndentSource(IndentSource.LineContinuation);
                 goto Loop;
             }
             else if (span.Length > 1 && span[0] == Constants.EqualsChar && span[1] == Constants.GreaterThanChar)
@@ -1052,8 +1054,8 @@ NextLine:
             for (var i = 0; i < dif; i++)
             {
                 this.AddToken(new(TokenKind.StartBlock, default));
-                this.PushBlockIndent();
-                // currentIndentLevel++;
+                this.PushIndentSource(IndentSource.Block);
+                numberOfBlocks++;
             }
 
             /*{// Unexpected indent
@@ -1065,8 +1067,10 @@ NextLine:
             for (var i = dif; i < 0; i++)
             {
                 this.AddToken(new(TokenKind.EndBlock, default));
-                this.PopIndentSource(TokenKind.EndBlock);
-                currentIndentLevel--;
+                if (this.PopIndentSource(IndentSource.Block))
+                {
+                    numberOfBlocks--;
+                }
             }
 
             /*if (this.lineContinuationStack.Count > 0)
@@ -1075,16 +1079,13 @@ NextLine:
             }*/
         }
 
-        var blockCount = this.indentStack.Count(a => a == IndentSource.Block);
-        var count = this.indentStack.Count - blockCount;
-        // if (this.indentStack.Count > 0)
-        if (count > 0)
+        if (this.indentStack.Count > numberOfBlocks)
         {
             goto Loop;
         }
         else
         {
-            currentIndentLevel += blockCount;
+            currentIndentLevel += numberOfBlocks;
             return this.tokenList;
         }
 
@@ -1181,9 +1182,21 @@ EndOfFile:
         return lineFeeds;
     }
 
-    private void PushBlockIndent()
+    private void PushIndentSource(IndentSource indentSource)
     {
-        this.indentStack.Push(IndentSource.Block);
+        this.indentStack.Push(indentSource);
+    }
+
+    private bool PopIndentSource(IndentSource expected)
+    {
+        if (this.indentStack.TryPop(out var indentSource) &&
+            indentSource == expected)
+        {
+            return true;
+        }
+
+        this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedBracket);//
+        return false;
     }
 
     private void PushIndentSource(TokenKind tokenKind)
