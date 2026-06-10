@@ -1066,7 +1066,7 @@ NextLine:
             {
                 this.AddToken(new(TokenKind.EndBlock, default));
                 this.PopIndentSource(TokenKind.EndBlock);
-                // currentIndentLevel--;
+                currentIndentLevel--;
             }
 
             /*if (this.lineContinuationStack.Count > 0)
@@ -1090,6 +1090,10 @@ NextLine:
 
 EndOfFile:
         this.ClearIndentStack();
+        while (currentIndentLevel-- > 0)
+        {
+            this.AddToken(new(TokenKind.EndBlock, default));
+        }
 
         return this.tokenList;
     }
@@ -1283,9 +1287,9 @@ EndOfFile:
         {
             switch (lineContinuation)
             {
-                /*case IndentSource.Block:
+                case IndentSource.Block:
                     this.AddToken(new(TokenKind.EndBlock, default));
-                    break;*/
+                    break;
 
                 case IndentSource.Parenthesis: // ()
                     this.AddToken(new(TokenKind.CloseParenthesis, default));
