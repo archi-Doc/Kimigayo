@@ -909,7 +909,7 @@ Loop:
                             }
                             else if (depth < 0)
                             {
-                                this.PopIndentSource(tokenKind);
+                                this.PopIndentSource(tokenKind, ref numberOfBlocks);
                             }
 
                             this.AddTokenAndSlice(tokenKind, ref span, 1);
@@ -1082,6 +1082,7 @@ NextLine:
                 }
                 else if (currentIndentLevel > 0)
                 {
+                    this.AddToken(new(TokenKind.EndBlock, default));
                     currentIndentLevel--;
                 }
             }
@@ -1089,6 +1090,11 @@ NextLine:
 
         if (this.indentStack.Count > numberOfBlocks)
         {
+            if (dif == 0 && this.indentStack.Peek() == IndentSource.Block)
+            {
+                this.AddToken(new(TokenKind.Separator, default));
+            }
+
             goto Loop;
         }
         else
@@ -1236,7 +1242,7 @@ EndOfFile:
         }
     }
 
-    private void PopIndentSource(TokenKind expected)
+    private void PopIndentSource(TokenKind expected, ref int numberOfBlocks)
     {
         if (!this.indentStack.TryPop(out var indentSource))
         {
@@ -1255,7 +1261,9 @@ EndOfFile:
         }
 
         while (indentSource == IndentSource.Block)
-        {
+        {//
+            this.AddToken(new(TokenKind.EndBlock, default));
+            numberOfBlocks--;
             if (!this.indentStack.TryPop(out indentSource))
             {
                 return;

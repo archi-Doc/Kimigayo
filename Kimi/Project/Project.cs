@@ -108,7 +108,7 @@ public partial class Project
         var tokenizer = new Tokenizer(diagnostic);
         tokenizer.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
         var rootCode = new RootNode(this);
-        var currentIndentLevel = -1;
+        var currentIndentLevel = 0;
 
         var dumpToken = this.SolutionOptions.DumpToken ? new StringBuilder() : null;
         while (true)

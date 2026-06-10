@@ -63,6 +63,7 @@ public enum TokenKind : byte
     Identifier = 128,
     StartBlock,
     EndBlock,
+    Separator,
     NumericLiteral, // 1.23d
     Literal, // "text"
     RawLiteral, // """text"""
