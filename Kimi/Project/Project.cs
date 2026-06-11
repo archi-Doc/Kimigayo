@@ -4,6 +4,7 @@ namespace Kimigayo;
 
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
+using Kimi;
 using Kimigayo.Language;
 
 public readonly record struct UrlAndtext(string Url, string Text);
@@ -128,7 +129,7 @@ public partial class Project
                     dumpToken.Append(x.ToString());
                 }
 
-                dumpToken.AppendLine();
+                dumpToken.AppendLf();
             }
 
             // Token to Code

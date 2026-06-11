@@ -89,14 +89,12 @@ public static class TokenHelper
 
         // Fraction part.
         // 1.0  => float
-        // 1.   => float
+        // 1.   => integer + dot
         // 1..2 => integer literal "1"
         // 1.foo => integer literal "1"
         if ((uint)i < (uint)text.Length && text[i] == '.')
         {
-            char next = (i + 1 < text.Length) ? text[i + 1] : '\0';
-
-            if (next != '.' && next != '_' && !IsIdentifierStart(next))
+            if (i + 1 < text.Length && IsDecDigit(text[i + 1]))
             {
                 isFloat = true;
                 i++;
@@ -170,7 +168,7 @@ public static class TokenHelper
         return true;
     }
 
-    public static bool ScanStringLiteral(ReadOnlySpan<char> text, out int length, out int quoteCount)
+    public static bool StartsWithStringLiteral(ReadOnlySpan<char> text, out int length, out int quoteCount)
     {
         length = 0;
         quoteCount = 0;
@@ -921,7 +919,7 @@ Loop:
                          // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
                             this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, numberLiteralLength);
                         }
-                        else if (TokenHelper.ScanStringLiteral(span, out var literalLength, out var quoteCount))
+                        else if (TokenHelper.StartsWithStringLiteral(span, out var literalLength, out var quoteCount))
                         {// String literal
                             if (literalLength < 0)
                             {// Invalid literal
