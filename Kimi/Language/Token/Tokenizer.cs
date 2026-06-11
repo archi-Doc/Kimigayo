@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Arc.Collections;
 using Kimigayo.Diagnostics;
@@ -40,7 +41,7 @@ public static class TokenHelper
                 break;
             }
 
-            var keyword = x.ToString().ToLower();
+            var keyword = x.ToString().ToLowerInvariant();
             _keywordKindToKeyword[x] = keyword;
             KeywordToKeywordKind.TryAdd(keyword, x);
         }
@@ -570,7 +571,7 @@ internal sealed class Tokenizer
     private List<Token> tokenList = new();
     private Stack<IndentSource> indentStack = new();
     private int blockDepth;
-    private int temporaryDepth;
+    private int nonBlockDepth;
 
     #endregion
 
@@ -1034,22 +1035,22 @@ NextLine:
             currentIndentLevel = indentLevel;
         }
 
-        var dif = indentLevel - currentIndentLevel - this.indentStack.Count;
-        if (dif == 1)
-        {
-            if (span.Length > 0 && span[0] == Constants.DotChar)
-            {// Method chain
-                this.PushIndentSource(IndentSource.LineContinuation);
-                goto Loop;
-            }
-            else if (span.Length > 1 && span[0] == Constants.EqualsChar && span[1] == Constants.GreaterThanChar)
-            {// =>
-                goto Loop;
-            }
-        }
-
+        var dif = indentLevel - currentIndentLevel - this.blockDepth - this.nonBlockDepth;
         if (dif > 0)
         {
+            if (dif == 1)
+            {
+                if (span.Length > 0 && span[0] == Constants.DotChar)
+                {// Method chain
+                    this.PushIndentSource(IndentSource.LineContinuation);
+                    goto Loop;
+                }
+                else if (span.Length > 1 && span[0] == Constants.EqualsChar && span[1] == Constants.GreaterThanChar)
+                {// =>
+                    goto Loop;
+                }
+            }
+
             for (var i = 0; i < dif; i++)
             {
                 this.AddToken(new(TokenKind.StartBlock, default));
@@ -1073,10 +1074,12 @@ NextLine:
                     }
                     else
                     {
-                        this.temporaryDepth--;
+                        this.nonBlockDepth--;
                         if (indentSource == IndentSource.LineContinuation)
                         {
-
+                        }
+                        else
+                        {
                         }
                     }
                 }
@@ -1088,7 +1091,7 @@ NextLine:
             }
         }
 
-        if (this.indentStack.Count > this.blockDepth)
+        if (this.nonBlockDepth > 0)
         {
             if (dif == 0 && this.indentStack.Peek() == IndentSource.Block)
             {
@@ -1100,6 +1103,8 @@ NextLine:
         else
         {
             currentIndentLevel += this.blockDepth;
+            this.blockDepth = 0;
+
             return this.tokenList;
         }
 
@@ -1109,6 +1114,9 @@ EndOfFile:
         {
             this.AddToken(new(TokenKind.EndBlock, default));
         }
+
+        Debug.Assert(this.blockDepth == 0);
+        Debug.Assert(this.nonBlockDepth == 0);
 
         return this.tokenList;
     }
@@ -1205,7 +1213,7 @@ EndOfFile:
         }
         else
         {
-            this.temporaryDepth++;
+            this.nonBlockDepth++;
         }
     }
 
@@ -1232,134 +1240,105 @@ EndOfFile:
 
             case TokenKind.OpenParenthesis:
                 this.indentStack.Push(IndentSource.Parenthesis);
-                this.temporaryDepth++;
+                this.nonBlockDepth++;
                 break;
 
             case TokenKind.OpenBracket:
                 this.indentStack.Push(IndentSource.Bracket);
-                this.temporaryDepth++;
+                this.nonBlockDepth++;
                 break;
 
             case TokenKind.LessThan:
                 this.indentStack.Push(IndentSource.AngleBracket);
-                this.temporaryDepth++;
+                this.nonBlockDepth++;
                 break;
 
             case TokenKind.OpenBrace:
                 this.indentStack.Push(IndentSource.Brace);
-                this.temporaryDepth++;
+                this.nonBlockDepth++;
                 break;
 
             default:
+                this.nonBlockDepth++;
                 break;
         }
     }
 
     private void PopIndentSource(TokenKind expected)
     {
-        if (!this.indentStack.TryPop(out var indentSource))
-        {
-            // this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedEndBlock);
-            return;
-        }
-
-        if (indentSource == IndentSource.Block)
-        {
-            this.AddToken(new(TokenKind.EndBlock, default));
-            this.blockDepth--;
-        }
-        else
-        {
-            this.temporaryDepth--;
-        }
-
-        if (expected == TokenKind.EndBlock)
+        while (this.indentStack.TryPeek(out var indentSource))
         {
             if (indentSource == IndentSource.Block)
             {
-                return;
+                this.indentStack.Pop();
+                this.AddToken(new(TokenKind.EndBlock, default));
+                this.blockDepth--;
+                continue;
             }
-
-            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedEndBlock);
-        }
-
-        while (indentSource == IndentSource.Block)
-        {//
-            this.AddToken(new(TokenKind.EndBlock, default));
-            this.blockDepth--;
-            if (!this.indentStack.TryPop(out indentSource))
+            else if (indentSource == IndentSource.LineContinuation)
             {
-                return;
+                this.indentStack.Pop();
+                this.nonBlockDepth--;
             }
-        }
 
-        if (expected == TokenKind.CloseParenthesis)
-        {
-            if (indentSource == IndentSource.Parenthesis)
+            var tokenKind = indentSource switch
             {
-                return;
-            }
+                IndentSource.Parenthesis => TokenKind.CloseParenthesis,
+                IndentSource.Bracket => TokenKind.CloseBracket,
+                IndentSource.AngleBracket => TokenKind.GreaterThan,
+                IndentSource.Brace => TokenKind.CloseBrace,
+                _ => default,
+            };
 
-            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedParenthesis);
-        }
-        else if (expected == TokenKind.CloseBracket)
-        {
-            if (indentSource == IndentSource.Bracket)
+            if (tokenKind == expected)
             {
+                this.indentStack.Pop();
+                this.nonBlockDepth--;
                 return;
             }
-
-            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedBracket);
-        }
-        else if (expected == TokenKind.GreaterThan)
-        {
-            if (indentSource == IndentSource.AngleBracket)
+            else
             {
-                return;
+                goto Error;
             }
-
-            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedAngleBracket);
-        }
-        else if (expected == TokenKind.CloseBrace)
-        {
-            if (indentSource == IndentSource.Brace)
-            {
-                return;
-            }
-
-            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedBrace);
         }
 
-        this.indentStack.Clear();
+Error:
+        this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedBracket);
     }
 
     private void ClearIndentStack()
     {
-        while (this.indentStack.TryPop(out var lineContinuation))
+        while (this.indentStack.TryPop(out var indentSource))
         {
-            switch (lineContinuation)
+            switch (indentSource)
             {
                 case IndentSource.Block:
                     this.AddToken(new(TokenKind.EndBlock, default));
+                    this.blockDepth--;
                     break;
 
                 case IndentSource.Parenthesis: // ()
                     this.AddToken(new(TokenKind.CloseParenthesis, default));
+                    this.nonBlockDepth--;
                     break;
 
                 case IndentSource.Bracket: // []
                     this.AddToken(new(TokenKind.CloseBracket, default));
+                    this.nonBlockDepth--;
                     break;
 
                 case IndentSource.AngleBracket: // <>
                     this.AddToken(new(TokenKind.GreaterThan, default));
+                    this.nonBlockDepth--;
                     break;
 
                 case IndentSource.Brace: // {}
                     this.AddToken(new(TokenKind.CloseBrace, default));
+                    this.nonBlockDepth--;
                     break;
 
                 default:
+                    this.nonBlockDepth--;
                     break;
             }
         }
@@ -1370,7 +1349,7 @@ EndOfFile:
         this.tokenList.Clear();
         this.indentStack.Clear();
         this.blockDepth = 0;
-        this.temporaryDepth = 0;
+        this.nonBlockDepth = 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
