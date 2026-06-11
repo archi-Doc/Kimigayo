@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Arc.Unit;
 using Kimigayo;
+using Kimigayo.Language;
 using Microsoft.Extensions.DependencyInjection;
 using SimplePrompt;
 using Tinyhand;

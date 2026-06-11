@@ -971,7 +971,7 @@ NextLine:
                 }
                 else if (span[1] == Constants.AsteriskChar)
                 {// /* Multi line comment */
-                    var lineFeeds = this.ReadMultiLineComment(ref span);
+                    _ = this.ReadMultiLineComment(ref span);
                     goto NextLine;
                 }
             }
@@ -990,6 +990,9 @@ NextLine:
             currentIndentLevel = indentLevel;
         }
 
+        // Indentation remains significant even inside grouping constructs.
+        // Therefore, both block depth and non-block depth are subtracted when
+        // calculating the indentation difference.
         var dif = indentLevel - currentIndentLevel - this.blockDepth - this.nonBlockDepth;
         if (dif > 0)
         {
@@ -1172,18 +1175,6 @@ EndOfFile:
         }
     }
 
-    /*private bool PopIndentSource(IndentSource expected)
-    {
-        if (this.indentStack.TryPop(out var indentSource) &&
-            indentSource == expected)
-        {
-            return true;
-        }
-
-        this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedBracket);
-        return false;
-    }*/
-
     private void PushIndentSource(TokenKind tokenKind)
     {
         switch (tokenKind)
@@ -1255,7 +1246,16 @@ EndOfFile:
             break;
         }
 
-        this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedBracket);
+        var diagnostic = expected switch
+        {
+            TokenKind.CloseParenthesis => Hashed.Kimi.UnmatchedParenthesis,
+            TokenKind.CloseBracket => Hashed.Kimi.UnmatchedBracket,
+            TokenKind.CloseBrace => Hashed.Kimi.UnmatchedBrace,
+            TokenKind.GreaterThan => Hashed.Kimi.UnmatchedAngleBracket,
+            _ => Hashed.Kimi.UnmatchedBracket,
+        };
+
+        this.urlDiagnostic.Add(this.NewRange(1), diagnostic);
     }
 
     private void ClearIndentStack()
@@ -1265,27 +1265,27 @@ EndOfFile:
             switch (indentSource)
             {
                 case IndentSource.Block:
-                    this.AddToken(new(TokenKind.EndBlock, default));
+                    this.AddToken(new(TokenKind.EndBlock, default, true));
                     this.blockDepth--;
                     break;
 
                 case IndentSource.Parenthesis: // ()
-                    this.AddToken(new(TokenKind.CloseParenthesis, default));
+                    this.AddToken(new(TokenKind.CloseParenthesis, default, true));
                     this.nonBlockDepth--;
                     break;
 
                 case IndentSource.Bracket: // []
-                    this.AddToken(new(TokenKind.CloseBracket, default));
+                    this.AddToken(new(TokenKind.CloseBracket, default, true));
                     this.nonBlockDepth--;
                     break;
 
                 case IndentSource.AngleBracket: // <>
-                    this.AddToken(new(TokenKind.GreaterThan, default));
+                    this.AddToken(new(TokenKind.GreaterThan, default, true));
                     this.nonBlockDepth--;
                     break;
 
                 case IndentSource.Brace: // {}
-                    this.AddToken(new(TokenKind.CloseBrace, default));
+                    this.AddToken(new(TokenKind.CloseBrace, default, true));
                     this.nonBlockDepth--;
                     break;
 
@@ -1305,9 +1305,9 @@ EndOfFile:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void NextLine(int lineFeeds = 1)
+    private void NextLine()
     {
-        this.line += lineFeeds;
+        this.line += 1;
         this.character = 0;
     }
 }

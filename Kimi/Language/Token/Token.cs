@@ -6,12 +6,15 @@ public readonly struct Token
 {
     public readonly TokenKind Kind;
 
+    public readonly bool IsMissing;
+
     public readonly ReadOnlyMemory<char> Text;
 
-    public Token(TokenKind kind, ReadOnlyMemory<char> span)
+    public Token(TokenKind kind, ReadOnlyMemory<char> span, bool isMissing = false)
     {
         this.Kind = kind;
         this.Text = span;
+        this.IsMissing = isMissing;
     }
 
     public override string ToString()
