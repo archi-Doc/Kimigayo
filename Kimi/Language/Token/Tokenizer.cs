@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
+using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Arc.Collections;
@@ -14,7 +15,7 @@ public static class TokenHelper
 
     public static readonly Utf16Hashtable<TokenKind> KeywordToKeywordKind;
 
-    private static readonly Dictionary<TokenKind, string> _keywordKindToKeyword;
+    private static readonly FrozenDictionary<TokenKind, string> _keywordKindToKeyword;
 
     private static readonly SearchValues<char> Separators = SearchValues.Create(
     [// Separator Space, (, ), Cr, Lf, =, <, >, +, -, %, &, |, ',', #
@@ -28,7 +29,7 @@ public static class TokenHelper
 
     static TokenHelper()
     {
-        _keywordKindToKeyword = new();
+        var dic = new Dictionary<TokenKind, string>();
         KeywordToKeywordKind = new();
         foreach (var x in Enum.GetValues<TokenKind>())
         {
@@ -42,9 +43,11 @@ public static class TokenHelper
             }
 
             var keyword = x.ToString().ToLowerInvariant();
-            _keywordKindToKeyword[x] = keyword;
+            dic[x] = keyword;
             KeywordToKeywordKind.TryAdd(keyword, x);
         }
+
+        _keywordKindToKeyword = dic.ToFrozenDictionary();
     }
 
     public static bool IsGroup(this StatementContext statementContext) => statementContext switch
@@ -220,39 +223,6 @@ public static class TokenHelper
         Constants.TildeChar => TokenKind.Tilde, // ~
         _ => TokenKind.Invalid,
     };
-
-    public static TokenKind GetSingleCharTokenKind(char c)
-    {
-        return c switch
-        {
-            '~' => TokenKind.Tilde,
-            '!' => TokenKind.Exclamation,
-            '$' => TokenKind.Dollar,
-            '%' => TokenKind.Percent,
-            '^' => TokenKind.Caret,
-            '&' => TokenKind.Ampersand,
-            '*' => TokenKind.Asterisk,
-            '(' => TokenKind.OpenParenthesis,
-            ')' => TokenKind.CloseParenthesis,
-            '-' => TokenKind.Minus,
-            '+' => TokenKind.Plus,
-            '=' => TokenKind.Equals,
-            '[' => TokenKind.OpenBracket,
-            ']' => TokenKind.CloseBracket,
-            '{' => TokenKind.OpenBrace,
-            '}' => TokenKind.CloseBrace,
-            '|' => TokenKind.Bar,
-            ':' => TokenKind.Colon,
-            ';' => TokenKind.Semicolon,
-            '<' => TokenKind.LessThan,
-            ',' => TokenKind.Comma,
-            '>' => TokenKind.GreaterThan,
-            '.' => TokenKind.Dot,
-            '/' => TokenKind.Slash,
-
-            _ => TokenKind.Invalid,
-        };
-    }
 
     public static bool IsBlockToken(this TokenKind tokenKind)
         => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Match;
@@ -562,14 +532,14 @@ internal sealed class Tokenizer
     #region FieldAndProperty
 
     private readonly UrlDiagnostic urlDiagnostic;
+    private readonly List<Token> tokenList = new();
+    private readonly Stack<IndentSource> indentStack = new();
 
     private ReadOnlyMemory<char> text;
     private int position;
     private int line;
     private int character;
 
-    private List<Token> tokenList = new();
-    private Stack<IndentSource> indentStack = new();
     private int blockDepth;
     private int nonBlockDepth;
 
@@ -636,8 +606,7 @@ Loop:
                     else
                     {// \r
                         this.Slice(ref span, 1);
-                        this.NextLine();
-                        goto NextLine;
+                        break;
                     }
 
                 case Constants.LfChar: // \n
