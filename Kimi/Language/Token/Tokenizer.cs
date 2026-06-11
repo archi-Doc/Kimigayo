@@ -209,21 +209,6 @@ public static class TokenHelper
     public static int IndexOfSeparator(ReadOnlySpan<char> text)
         => text.IndexOfAny(Separators);
 
-    public static TokenKind CharToSingleToken(char c) => c switch
-    {
-        Constants.DotChar => TokenKind.Dot, // .
-        Constants.CommaChar => TokenKind.Comma, // ,
-        Constants.OpenBracketChar => TokenKind.OpenBracket, // [
-        Constants.CloseBracketChar => TokenKind.CloseBracket, // ]
-        Constants.OpenParenthesisChar => TokenKind.OpenParenthesis, // (
-        Constants.CloseParenthesisChar => TokenKind.CloseParenthesis, // )
-        Constants.ColonChar => TokenKind.Colon, // :
-        Constants.SemicolonChar => TokenKind.Semicolon, // ;
-        Constants.DollarChar => TokenKind.Dollar, // $
-        Constants.TildeChar => TokenKind.Tilde, // ~
-        _ => TokenKind.Invalid,
-    };
-
     public static bool IsBlockToken(this TokenKind tokenKind)
         => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Match;
 
@@ -231,7 +216,7 @@ public static class TokenHelper
     {
         (tokenKind, groupingDepth) = c switch
         {
-            // Constants.DotChar => (TokenKind.Dot, 0),
+            Constants.DotChar => (TokenKind.Dot, 0),
             Constants.CommaChar => (TokenKind.Comma, 0),
             Constants.SharpChar => (TokenKind.Sharp, 0),
             Constants.OpenBracketChar => (TokenKind.OpenBracket, +1),
@@ -604,9 +589,10 @@ Loop:
                         goto NextLine;
                     }
                     else
-                    {// \r
+                    {
                         this.Slice(ref span, 1);
-                        break;
+                        this.NextLine();
+                        goto NextLine;
                     }
 
                 case Constants.LfChar: // \n
@@ -1228,8 +1214,7 @@ EndOfFile:
                 break;
 
             default:
-                this.nonBlockDepth++;
-                break;
+                throw new InvalidOperationException();
         }
     }
 
@@ -1248,6 +1233,7 @@ EndOfFile:
             {
                 this.indentStack.Pop();
                 this.nonBlockDepth--;
+                continue;
             }
 
             var tokenKind = indentSource switch
@@ -1256,7 +1242,7 @@ EndOfFile:
                 IndentSource.Bracket => TokenKind.CloseBracket,
                 IndentSource.AngleBracket => TokenKind.GreaterThan,
                 IndentSource.Brace => TokenKind.CloseBrace,
-                _ => default,
+                _ => TokenKind.Invalid,
             };
 
             if (tokenKind == expected)
@@ -1265,13 +1251,10 @@ EndOfFile:
                 this.nonBlockDepth--;
                 return;
             }
-            else
-            {
-                goto Error;
-            }
+
+            break;
         }
 
-Error:
         this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.UnmatchedBracket);
     }
 
