@@ -1146,7 +1146,11 @@ LineContent:
                     }
                     else
                     {// Parenthesis/Bracket/Brace/AngleBracket/LineContinuation
-                        this.nonBlockDepth--;
+                        // this.nonBlockDepth--;
+
+                        this.indentStack.Push(indentSource);
+                        this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.IndentationLevelMismatch);
+                        break;
                     }
                 }
                 else if (currentIndentLevel > 0)

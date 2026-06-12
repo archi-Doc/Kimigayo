@@ -41,7 +41,7 @@ public sealed partial record class Diagnostic
 
     public string ToString(string url)
     {
-        if (string.IsNullOrEmpty(url))
+        if (!string.IsNullOrEmpty(url))
         {
             return $"[{this.Severity.ToString()}] {url}{this.Range.ToString()} {this.Message}";
         }

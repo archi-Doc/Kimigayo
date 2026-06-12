@@ -10,6 +10,7 @@ public static partial class Hashed
     public static void SetDiagnosticSeverity(Action<ulong, DiagnosticSeverity> setSeverity)
     {
         setSeverity(Hashed.Solution.NoProject, DiagnosticSeverity.Warning);
+        setSeverity(Hashed.Kimi.IndentationLevelMismatch, DiagnosticSeverity.Warning);
     }
 
     public static void Write(this LogWriter writer, ulong hash)

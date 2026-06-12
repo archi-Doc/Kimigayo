@@ -52,12 +52,14 @@ public enum TokenKind : byte
     // Block or expression keyword
     If, // if
     Else, // else
+    Block, // block
     // EqualsGreaterThan, // =>
 
     // Non-block keyword
     Return, // method/return
     Break, // loop/break
     Continue, // continue
+    Yield, // yield
 
     // Not keyword
     Identifier = 128,
