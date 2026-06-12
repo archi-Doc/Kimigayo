@@ -85,7 +85,7 @@ public readonly record struct Range : IComparable<Range>
 
     public override string ToString()
     {
-        return $"({this.Start.Line},{this.Start.Character},{this.End.Line},{this.End.Character})";
+        return $"({this.Start.Line + 1},{this.Start.Character + 1},{this.End.Line + 1},{this.End.Character + 1})";
     }
 }
 

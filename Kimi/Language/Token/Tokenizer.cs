@@ -1146,11 +1146,32 @@ LineContent:
                     }
                     else
                     {// Parenthesis/Bracket/Brace/AngleBracket/LineContinuation
-                        // this.nonBlockDepth--;
-
-                        this.indentStack.Push(indentSource);
-                        this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.IndentationLevelMismatch);
-                        break;
+                        if (indentSource == IndentSource.Parenthesis && span[0] == Constants.CloseParenthesisChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.CloseParenthesis, ref span, 1);
+                            this.nonBlockDepth--;
+                        }
+                        else if (indentSource == IndentSource.Bracket && span[0] == Constants.CloseBracketChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.CloseBracket, ref span, 1);
+                            this.nonBlockDepth--;
+                        }
+                        else if (indentSource == IndentSource.AngleBracket && span[0] == Constants.GreaterThanChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.GreaterThan, ref span, 1);
+                            this.nonBlockDepth--;
+                        }
+                        else if (indentSource == IndentSource.Brace && span[0] == Constants.CloseBraceChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.CloseBrace, ref span, 1);
+                            this.nonBlockDepth--;
+                        }
+                        else
+                        {
+                            this.indentStack.Push(indentSource);
+                            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.IndentationLevelMismatch);
+                            break;
+                        }
                     }
                 }
                 else if (currentIndentLevel > 0)
