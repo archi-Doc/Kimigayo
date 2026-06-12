@@ -24,7 +24,7 @@ public enum TokenKind : byte
     F64,
 
     // Keywords (Root)
-    // Alias = 32, // alias Kimi.Base
+    // Alias, // alias Kimi.Base
     // Namespace, // namespace Kimi.Base
 
     // Keywords (Group)
