@@ -9,10 +9,19 @@ using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
 
+/// <summary>
+/// Provides token-related helper methods used by the Kimigayo tokenizer.
+/// </summary>
 public static class TokenHelper
 {
+    /// <summary>
+    /// Gets a read-only mapping from keyword token kinds to their keyword spellings.
+    /// </summary>
     public static IReadOnlyDictionary<TokenKind, string> KeywordKindToKeyword => _keywordKindToKeyword;
 
+    /// <summary>
+    /// Maps UTF-16 keyword spellings to their corresponding keyword token kinds.
+    /// </summary>
     public static readonly Utf16Hashtable<TokenKind> KeywordToKeywordKind;
 
     private static readonly FrozenDictionary<TokenKind, string> _keywordKindToKeyword;
@@ -29,6 +38,12 @@ public static class TokenHelper
 
     static TokenHelper()
     {
+        // NOTE: This relies on the layout of TokenKind:
+        //   - TokenKind.Invalid comes first.
+        //   - All keyword kinds are placed between Invalid and Identifier.
+        //   - The enum member name, lower-cased, is the keyword spelling.
+        // If TokenKind is reordered, this initializer silently breaks, so keep the
+        // contract documented on the TokenKind declaration as well.
         var dic = new Dictionary<TokenKind, string>();
         KeywordToKeywordKind = new();
         foreach (var x in Enum.GetValues<TokenKind>())
@@ -47,9 +62,15 @@ public static class TokenHelper
             KeywordToKeywordKind.TryAdd(keyword, x);
         }
 
+        Debug.Assert(dic.Count > 0, "No keywords were generated. Check the layout of TokenKind.");
         _keywordKindToKeyword = dic.ToFrozenDictionary();
     }
 
+    /// <summary>
+    /// Determines whether the specified statement context represents a group-like declaration.
+    /// </summary>
+    /// <param name="statementContext">The statement context to inspect.</param>
+    /// <returns><see langword="true"/> if the context represents a namespace, group, struct, or enum; otherwise, <see langword="false"/>.</returns>
     public static bool IsGroup(this StatementContext statementContext) => statementContext switch
     {
         StatementContext.Namespace => true,
@@ -59,36 +80,46 @@ public static class TokenHelper
         _ => false,
     };
 
+    /// <summary>
+    /// Scans a numeric literal at the start of <paramref name="text"/>.<br/>
+    /// Returns <see langword="true"/> when a valid literal was found; <paramref name="length"/> is its length.<br/>
+    /// Returns <see langword="false"/> with <paramref name="length"/> == 0 when the text does not start with a digit.<br/>
+    /// Returns <see langword="false"/> with <paramref name="length"/> &gt; 0 when the text starts with a digit but does not
+    /// form a valid literal (e.g. "0x", "1e+", "1.0u8", "123abc"); <paramref name="length"/> then covers the malformed
+    /// literal so that the caller can emit a single Invalid token with a diagnostic.
+    /// </summary>
+    /// <param name="text">The text to scan.</param>
+    /// <param name="length">When this method returns, contains the number of characters consumed by the literal or malformed literal.</param>
+    /// <returns><see langword="true"/> if a valid numeric literal was found; otherwise, <see langword="false"/>.</returns>
     public static bool ScanNumberLiteral(ReadOnlySpan<char> text, out int length)
     {
         length = 0;
-        if ((uint)text.Length == 0 || !IsDecDigit(text[0]))
+        if (text.IsEmpty || !IsDigit(text[0]))
         {
             return false;
         }
 
-        var i = 0;
         if (text.Length >= 2 && text[0] == '0')
         {// 0b..., 0o..., 0x...
-            var p = text[1];
-            if ((p | 0x20) == 'b')
+            var p = (char)(text[1] | 0x20);
+            if (p == 'b')
             {
                 return ScanBasedInteger(text, 2, 2, out length);
             }
 
-            if ((p | 0x20) == 'o')
+            if (p == 'o')
             {
                 return ScanBasedInteger(text, 2, 8, out length);
             }
 
-            if ((p | 0x20) == 'x')
+            if (p == 'x')
             {
                 return ScanBasedInteger(text, 2, 16, out length);
             }
         }
 
         // Decimal integer part.
-        i = ScanDecDigitsOrUnderscores(text, 0);
+        var i = ScanDecDigitsOrUnderscores(text, 0);
         var isFloat = false;
 
         // Fraction part.
@@ -98,7 +129,7 @@ public static class TokenHelper
         // 1.foo => integer literal "1"
         if ((uint)i < (uint)text.Length && text[i] == '.')
         {
-            if (i + 1 < text.Length && IsDecDigit(text[i + 1]))
+            if (i + 1 < text.Length && IsDigit(text[i + 1]))
             {
                 isFloat = true;
                 i++;
@@ -127,7 +158,7 @@ public static class TokenHelper
                 {
                     c = text[i];
 
-                    if (IsDecDigit(c))
+                    if (IsDigit(c))
                     {
                         hasDigit = true;
                         i++;
@@ -144,8 +175,8 @@ public static class TokenHelper
                 }
 
                 if (!hasDigit)
-                {
-                    length = 0;
+                {// e.g. "1e", "1e+", "1ex"
+                    length = ExtendWithIdentifierContinue(text, i);
                     return false;
                 }
 
@@ -153,18 +184,18 @@ public static class TokenHelper
             }
         }
 
-        int suffixLength = ScanSuffix(text.Slice(i), isFloat);
+        var suffixLength = ScanSuffix(text.Slice(i), isFloat);
         if (suffixLength < 0)
-        {
-            length = 0;
+        {// e.g. "1.0u8", "1f16"
+            length = ExtendWithIdentifierContinue(text, i);
             return false;
         }
 
         i += suffixLength;
 
         if ((uint)i < (uint)text.Length && IsIdentifierContinue(text[i]))
-        {
-            length = 0;
+        {// e.g. "1u8x", "123abc"
+            length = ExtendWithIdentifierContinue(text, i);
             return false;
         }
 
@@ -172,6 +203,18 @@ public static class TokenHelper
         return true;
     }
 
+    /// <summary>
+    /// Returns <see langword="true"/> when <paramref name="text"/> starts with '"'.<br/>
+    /// <paramref name="length"/> is the total literal length (including the delimiters) when the literal is
+    /// well-formed, or -1 when the literal is unterminated/invalid; in that case the caller is responsible for
+    /// consuming the rest of the line (or the rest of the text) as an Invalid token.<br/>
+    /// <paramref name="quoteCount"/> is the number of consecutive leading quotes (&gt;= 3 means a raw string literal,
+    /// which may span multiple lines).
+    /// </summary>
+    /// <param name="text">The text to inspect.</param>
+    /// <param name="length">When this method returns, contains the literal length, or -1 if the literal is unterminated or invalid.</param>
+    /// <param name="quoteCount">When this method returns, contains the number of consecutive leading quote characters.</param>
+    /// <returns><see langword="true"/> if <paramref name="text"/> starts with a string literal delimiter; otherwise, <see langword="false"/>.</returns>
     public static bool StartsWithStringLiteral(ReadOnlySpan<char> text, out int length, out int quoteCount)
     {
         length = 0;
@@ -194,24 +237,52 @@ public static class TokenHelper
         return true;
     }
 
+    /// <summary>
+    /// Determines whether the specified character is an ASCII decimal digit.
+    /// </summary>
+    /// <param name="c">The character to inspect.</param>
+    /// <returns><see langword="true"/> if <paramref name="c"/> is in the range '0' through '9'; otherwise, <see langword="false"/>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsDigit(char c)
     {
         return (uint)(c - '0') <= 9;
     }
 
+    /// <summary>
+    /// Determines whether the specified character is an ASCII decimal digit or an underscore separator.
+    /// </summary>
+    /// <param name="c">The character to inspect.</param>
+    /// <returns><see langword="true"/> if <paramref name="c"/> is a digit or '_'; otherwise, <see langword="false"/>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsDigitOrSeparator(char c)
     {
         return IsDigit(c) || c == '_';
     }
 
+    /// <summary>
+    /// Finds the first tokenizer separator in the specified text.
+    /// </summary>
+    /// <param name="text">The text to search.</param>
+    /// <returns>The zero-based index of the first separator, or -1 if no separator is found.</returns>
     public static int IndexOfSeparator(ReadOnlySpan<char> text)
         => text.IndexOfAny(Separators);
 
+    /// <summary>
+    /// NOTE: Relies on TokenKind.Group..TokenKind.Match being a contiguous range.
+    /// Keep this in sync with the TokenKind declaration.
+    /// </summary>
+    /// <param name="tokenKind">The token kind to inspect.</param>
+    /// <returns><see langword="true"/> if <paramref name="tokenKind"/> is a block-starting token; otherwise, <see langword="false"/>.</returns>
     public static bool IsBlockToken(this TokenKind tokenKind)
         => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Match;
 
+    /// <summary>
+    /// Tries to classify a single-character token and reports its grouping-depth effect.
+    /// </summary>
+    /// <param name="c">The character to classify.</param>
+    /// <param name="tokenKind">When this method returns, contains the token kind for <paramref name="c"/>, or <see cref="TokenKind.Invalid"/>.</param>
+    /// <param name="groupingDepth">When this method returns, contains +1 for an opening grouping token, -1 for a closing grouping token, or 0 for a neutral token.</param>
+    /// <returns><see langword="true"/> if <paramref name="c"/> is a recognized single-character token; otherwise, <see langword="false"/>.</returns>
     public static bool TryGetSingleCharTokenKind(char c, out TokenKind tokenKind, out int groupingDepth)
     {
         (tokenKind, groupingDepth) = c switch
@@ -250,8 +321,6 @@ public static class TokenHelper
 
     private static void TryGetRegularStringLiteralLength(ReadOnlySpan<char> text, out int length)
     {
-        length = 0;
-
         // The caller has already verified that the first character is '"'.
         var i = 1;
         while (i < text.Length)
@@ -294,8 +363,6 @@ public static class TokenHelper
 
     private static void TryGetRawStringLiteralLength(ReadOnlySpan<char> text, int delimiterQuoteCount, out int length)
     {
-        length = 0;
-
         // Raw string literals use at least three quotes as the delimiter.
         var i = delimiterQuoteCount;
         while (i < text.Length)
@@ -309,11 +376,13 @@ public static class TokenHelper
             var quoteCount = CountQuotesAt(text, i);
 
             // The closing delimiter must have at least the same number of quotes
-            // as the opening delimiter.
+            // as the opening delimiter. When the run is longer than the delimiter,
+            // the entire run is consumed: the last delimiterQuoteCount quotes close
+            // the literal and the preceding quotes belong to the content.
+            // e.g. """abc""""  => content is [abc"], with no stray '"' left behind.
             if (quoteCount >= delimiterQuoteCount)
             {
-                // length = i + delimiterQuoteCount;
-                length = i + delimiterQuoteCount;
+                length = i + quoteCount;
                 return;
             }
 
@@ -321,7 +390,6 @@ public static class TokenHelper
         }
 
         length = -1;
-        return;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -376,22 +444,22 @@ public static class TokenHelper
         }
 
         if (!hasDigit)
-        {
-            length = 0;
+        {// e.g. "0x", "0b2"
+            length = ExtendWithIdentifierContinue(text, i);
             return false;
         }
 
-        int suffixLength = ScanSuffix(text.Slice(i), isFloat: false);
+        var suffixLength = ScanSuffix(text.Slice(i), isFloat: false);
         if (suffixLength < 0)
         {
-            length = 0;
+            length = ExtendWithIdentifierContinue(text, i);
             return false;
         }
 
         i += suffixLength;
         if ((uint)i < (uint)text.Length && IsIdentifierContinue(text[i]))
-        {
-            length = 0;
+        {// e.g. "0x1g", "0b01u8x"
+            length = ExtendWithIdentifierContinue(text, i);
             return false;
         }
 
@@ -403,15 +471,32 @@ public static class TokenHelper
     {
         while ((uint)i < (uint)text.Length)
         {
-            char c = text[i];
+            var c = text[i];
 
-            if (IsDecDigit(c) || c == '_')
+            if (IsDigit(c) || c == '_')
             {
                 i++;
                 continue;
             }
 
             break;
+        }
+
+        return i;
+    }
+
+    /// <summary>
+    /// Extends <paramref name="i"/> over any trailing identifier-continue characters so that a malformed
+    /// numeric literal is reported as a single token (e.g. "1.0u8" instead of "1" + "." + "0u8").
+    /// </summary>
+    /// <param name="text">The text that contains the malformed numeric literal.</param>
+    /// <param name="i">The first character position to test for identifier continuation.</param>
+    /// <returns>The first index after the trailing identifier-continue sequence.</returns>
+    private static int ExtendWithIdentifierContinue(ReadOnlySpan<char> text, int i)
+    {
+        while ((uint)i < (uint)text.Length && IsIdentifierContinue(text[i]))
+        {
+            i++;
         }
 
         return i;
@@ -424,7 +509,7 @@ public static class TokenHelper
             return 0;
         }
 
-        char c0 = text[0];
+        var c0 = text[0];
 
         if (isFloat)
         {
@@ -484,12 +569,6 @@ public static class TokenHelper
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsDecDigit(char c)
-    {
-        return (uint)(c - '0') <= 9;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsIdentifierStart(char c)
     {
         return c == '_' || (uint)(c - 'A') <= 25 || (uint)(c - 'a') <= 25 || c >= 0x80;
@@ -498,10 +577,13 @@ public static class TokenHelper
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsIdentifierContinue(char c)
     {
-        return IsIdentifierStart(c) || IsDecDigit(c);
+        return IsIdentifierStart(c) || IsDigit(c);
     }
 }
 
+/// <summary>
+/// Converts Kimigayo source text into a sequence of lexical tokens and indentation tokens.
+/// </summary>
 internal sealed class Tokenizer
 {
     private enum IndentSource : byte
@@ -530,11 +612,21 @@ internal sealed class Tokenizer
 
     #endregion
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Tokenizer"/> class.
+    /// </summary>
+    /// <param name="urlDiagnostic">The diagnostic sink used to report lexical errors.</param>
     public Tokenizer(UrlDiagnostic urlDiagnostic)
     {
         this.urlDiagnostic = urlDiagnostic;
     }
 
+    /// <summary>
+    /// Resets the tokenizer to read from the specified text and source position.
+    /// </summary>
+    /// <param name="text">The source text to tokenize.</param>
+    /// <param name="line">The initial zero-based line number.</param>
+    /// <param name="character">The initial zero-based character position.</param>
     public void Initialize(ReadOnlyMemory<char> text, int line, int character)
     {
         this.text = text;
@@ -545,6 +637,14 @@ internal sealed class Tokenizer
         this.ClearState();
     }
 
+    /// <summary>
+    /// Reads the next logical line and returns its tokens.<br/>
+    /// NOTE: The returned list is an internal buffer that is cleared and reused by the next call to
+    /// <see cref="Read"/> or <see cref="Initialize"/>. Callers must consume (or copy) the tokens before
+    /// invoking this tokenizer again.
+    /// </summary>
+    /// <param name="currentIndentLevel">The current logical indentation level. The value is updated as blocks are opened or closed.</param>
+    /// <returns>The internal token buffer containing the tokens read for the next logical line.</returns>
     public List<Token> Read(ref int currentIndentLevel)
     {
         this.ClearState();
@@ -561,7 +661,6 @@ Loop:
             goto NextLine;
         }
 
-        // RequireBlock requireBlock = default;
         while (span.Length > 0)
         {
             while (span[0] == Constants.SpaceChar)
@@ -571,11 +670,6 @@ Loop:
                 {// End-of-file
                     goto EndOfFile;
                 }
-            }
-
-            if (span.Length == 0)
-            {// End-of-file
-                goto EndOfFile;
             }
 
             // span.Length >= 1
@@ -719,7 +813,7 @@ Loop:
 
                     break;
 
-                case Constants.GreaterThanChar: // > >= >>=
+                case Constants.GreaterThanChar: // > >= >> >>=
                     if (span.Length == 1)
                     {// >
                         this.AddTokenAndSlice(TokenKind.GreaterThan, ref span, 1);
@@ -746,7 +840,7 @@ Loop:
 
                     break;
 
-                case Constants.LessThanChar: // < <= <<=
+                case Constants.LessThanChar: // < <= << <<=
                     if (span.Length == 1)
                     {// <
                         this.AddTokenAndSlice(TokenKind.LessThan, ref span, 1);
@@ -876,33 +970,42 @@ Loop:
                          // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
                             this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, numberLiteralLength);
                         }
+                        else if (numberLiteralLength > 0)
+                        {// Starts with a digit but is not a valid numeric literal (e.g. "0x", "1e+", "1.0u8", "123abc").
+                         // Emit a single Invalid token with a diagnostic instead of silently falling back
+                         // to the identifier path, which would produce bogus Identifier tokens.
+                         // NOTE: Hashed.Kimi.InvalidNumericLiteral must be defined in the diagnostics table.
+                            this.urlDiagnostic.Add(this.NewRange(numberLiteralLength), Hashed.Kimi.InvalidNumericLiteral);
+                            this.AddTokenAndSlice(TokenKind.Invalid, ref span, numberLiteralLength);
+                        }
                         else if (TokenHelper.StartsWithStringLiteral(span, out var literalLength, out var quoteCount))
                         {// String literal
                             if (literalLength < 0)
                             {// Invalid literal
-                                var invalidLength = BaseHelper.IndexOfLfOrCrLf(span, out _);
+                                var invalidLength = Arc.BaseHelper.IndexOfLfOrCrLf(span, out _);
                                 if (invalidLength < 0)
                                 {
                                     invalidLength = span.Length;
                                 }
 
                                 this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.MissingStringLiteralEnd);
-                                this.AddTokenAndSlice(TokenKind.Invalid, ref span, invalidLength);
-                            }
-                            else
-                            {
-                                if (quoteCount > 1)
-                                {
-                                    this.AddTokenAndSliceWithLineTracking(TokenKind.Literal, ref span, literalLength);
+
+                                if (quoteCount >= 3)
+                                {// An unterminated raw string literal may contain line breaks.
+                                    this.AddTokenAndSliceWithLineTracking(TokenKind.Invalid, ref span, invalidLength);
                                 }
                                 else
                                 {
-                                    this.AddTokenAndSlice(TokenKind.Literal, ref span, literalLength);
+                                    this.AddTokenAndSlice(TokenKind.Invalid, ref span, invalidLength);
                                 }
-
-                                // this.Slice(ref span, quoteCount);
-                                // this.AddTokenAndSlice(TokenKind.Literal, ref span, literalLength - quoteCount - quoteCount);
-                                // this.Slice(ref span, quoteCount);
+                            }
+                            else if (quoteCount >= 3)
+                            {// Raw string literal: may span multiple lines, so track line breaks.
+                                this.AddTokenAndSliceWithLineTracking(TokenKind.Literal, ref span, literalLength);
+                            }
+                            else
+                            {// Regular string literal (quoteCount is 1 or 2; "" is an empty literal).
+                                this.AddTokenAndSlice(TokenKind.Literal, ref span, literalLength);
                             }
                         }
                         else
@@ -940,9 +1043,16 @@ NextLine:
             goto EndOfFile;
         }
 
-        // Skip spaces
+        // Indentation is measured once, at the physical line start.
+        // Comments that follow do not change it.
         var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
         this.Slice(ref span, numberOfSpaces);
+
+LineContent:
+        if (span.Length == 0)
+        {// End-of-file
+            goto EndOfFile;
+        }
 
         if (span[0] == Constants.LfChar)
         {// Empty line (\n)
@@ -950,38 +1060,42 @@ NextLine:
             this.NextLine();
             goto NextLine;
         }
-        else if (span.Length >= 2)
-        {
-            if (span[0] == Constants.CrChar && span[1] == Constants.LfChar)
-            {// Empty line (\r\n)
-                this.Slice(ref span, 2);
-                this.NextLine();
+        else if (span[0] == Constants.CrChar)
+        {// Empty line (\r\n or \r)
+            this.Slice(ref span, span.Length > 1 && span[1] == Constants.LfChar ? 2 : 1);
+            this.NextLine();
+            goto NextLine;
+        }
+        else if (span.Length >= 2 && span[0] == Constants.SlashChar)
+        {// /
+            if (span[1] == Constants.SlashChar)
+            {// // Single line comment
+                if (this.ReadSingleLineComment(ref span))
+                {
+                    this.NextLine();
+                }
+
                 goto NextLine;
             }
-            else if (span[0] == Constants.SlashChar)
-            {// /
-                if (span[1] == Constants.SlashChar)
-                {// // Single line comment
-                    if (this.ReadSingleLineComment(ref span))
-                    {
-                        this.NextLine();
-                    }
+            else if (span[1] == Constants.AsteriskChar)
+            {// /* Multi line comment */
+                _ = this.ReadMultiLineComment(ref span);
 
-                    goto NextLine;
-                }
-                else if (span[1] == Constants.AsteriskChar)
-                {// /* Multi line comment */
-                    _ = this.ReadMultiLineComment(ref span);
-                    goto NextLine;
-                }
+                // Skip spaces after the comment WITHOUT counting them as indentation;
+                // the indentation of this line was already measured at the line start
+                // (this prevents a bogus InvalidIndentation diagnostic for "/* c */ foo").
+                // If the comment spanned multiple physical lines, code following the
+                // closing "*/" inherits the indentation of the line that opened it.
+                this.Slice(ref span, Arc.BaseHelper.CountLeadingSpaces(span));
+                goto LineContent;
             }
         }
 
         var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
         if (unnecessarySpaces > 0)
         {// Invalid indentation
+            this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.InvalidIndentation, Constants.IndentationSpaces);
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
-            this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Kimi.InvalidIndentation, Constants.IndentationSpaces);
         }
 
         var indentLevel = numberOfSpaces / Constants.IndentationSpaces;
@@ -1009,18 +1123,15 @@ NextLine:
                 }
             }
 
+            // TODO: Consider reporting Hashed.Kimi.UnexpectedIndent when dif > 1.
             for (var i = 0; i < dif; i++)
             {
                 this.AddToken(new(TokenKind.StartBlock, default));
                 this.PushIndentSource(IndentSource.Block);
             }
-
-            /*{// Unexpected indent
-                this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, this.character)), Hashed.Kimi.UnexpectedIndent);
-            }*/
         }
         else if (dif < 0)
-        {// dif < 0
+        {
             for (var i = dif; i < 0; i++)
             {
                 if (this.indentStack.TryPop(out var indentSource))
@@ -1031,18 +1142,12 @@ NextLine:
                         this.blockDepth--;
                     }
                     else
-                    {
+                    {// Parenthesis/Bracket/Brace/AngleBracket/LineContinuation
                         this.nonBlockDepth--;
-                        if (indentSource == IndentSource.LineContinuation)
-                        {
-                        }
-                        else
-                        {
-                        }
                     }
                 }
                 else if (currentIndentLevel > 0)
-                {
+                {// Blocks opened by previous Read calls are closed via currentIndentLevel.
                     this.AddToken(new(TokenKind.EndBlock, default));
                     currentIndentLevel--;
                 }
@@ -1139,18 +1244,45 @@ EndOfFile:
         this.character += length;
     }
 
+    /// <summary>
+    /// Adds a token that may contain line breaks (\r\n, \n, or a lone \r) and updates
+    /// <see cref="line"/>/<see cref="character"/> accordingly. Returns the number of line breaks consumed.
+    /// </summary>
+    /// <param name="tokenKind">The token kind to add.</param>
+    /// <param name="span">The remaining text span. The span is advanced by <paramref name="length"/> characters.</param>
+    /// <param name="length">The number of characters to consume.</param>
+    /// <returns>The number of line breaks consumed.</returns>
     private int AddTokenAndSliceWithLineTracking(TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
     {
         this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length)));
 
         var consumed = span.Slice(0, length);
-        var lastLf = consumed.LastIndexOf(Constants.LfChar);
-        var lineFeeds = 0;
-        if (lastLf >= 0)
+        var newLines = 0;
+        var lastNewLineEnd = 0;
+        for (var j = 0; j < consumed.Length; j++)
         {
-            lineFeeds = consumed.Count(Constants.LfChar);
-            this.line += lineFeeds;
-            this.character = consumed.Length - lastLf - 1;
+            var c = consumed[j];
+            if (c == Constants.LfChar)
+            {// \n
+                newLines++;
+                lastNewLineEnd = j + 1;
+            }
+            else if (c == Constants.CrChar)
+            {// \r\n or \r
+                if (j + 1 < consumed.Length && consumed[j + 1] == Constants.LfChar)
+                {
+                    j++;
+                }
+
+                newLines++;
+                lastNewLineEnd = j + 1;
+            }
+        }
+
+        if (newLines > 0)
+        {
+            this.line += newLines;
+            this.character = consumed.Length - lastNewLineEnd;
         }
         else
         {
@@ -1159,7 +1291,7 @@ EndOfFile:
 
         this.position += length;
         span = span.Slice(length);
-        return lineFeeds;
+        return newLines;
     }
 
     private void PushIndentSource(IndentSource indentSource)
@@ -1195,6 +1327,8 @@ EndOfFile:
                 break;
 
             case TokenKind.LessThan:
+                // Currently unreachable from the main loop ('<' is handled as an operator);
+                // kept for when angle-bracket grouping is supported.
                 this.indentStack.Push(IndentSource.AngleBracket);
                 this.nonBlockDepth++;
                 break;
@@ -1246,6 +1380,9 @@ EndOfFile:
             break;
         }
 
+        // Error recovery policy: the mismatched closer is treated as spurious and the
+        // stack is left intact, so the still-open grouping can be matched (or reported)
+        // later. e.g. "(]" reports an unmatched ']' and keeps '(' open.
         var diagnostic = expected switch
         {
             TokenKind.CloseParenthesis => Hashed.Kimi.UnmatchedParenthesis,
@@ -1289,6 +1426,7 @@ EndOfFile:
                     this.nonBlockDepth--;
                     break;
 
+                case IndentSource.LineContinuation:
                 default:
                     this.nonBlockDepth--;
                     break;
