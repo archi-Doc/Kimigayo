@@ -3,6 +3,10 @@ alias Kimi.Crypto
 #Condition(Os=="Linux") // Attribute-next rule.
 alias Kimi.Base.Linux
 
+// Single-line comment
+/* Multi-line
+   comment */
+
 namespace Program // Represents a group that specifies an identifier by its absolute position.
 // Kimi.CannotDefineGlobalNamespace
 
@@ -10,9 +14,9 @@ namespace Program // Represents a group that specifies an identifier by its abso
 #Key(1)
 public const string Name = "Test Program"
 
-// (): Group
-// []: Array
-// <>: Generics
+// (): Group (collection of values of any type)
+// []: Array (collection of values of the same type)
+// <>: Generics (collection of types)
 // {}: Not used
 
 // Group: namespace, group, struct
@@ -60,7 +64,7 @@ struct $ : IServiceProvider // Compose Context
     public T Inject<T>()
 
 #TinyhandObject
-public struct TestStruct // module + field
+public struct TestStruct // group + field
     #Key(1)
     i32 id
 
@@ -85,13 +89,6 @@ public enum TestEnum
 
 $WriteLine("Kimigayo")
 
-// Comment
-/* Comment2 */
-
-{Test}
-method Test1() -> bool
-
-{Test}
 method Main()
     Array<i32> array = 
     [
@@ -197,10 +194,6 @@ var func = () =>
     return
 
 chainMethod().Do().IsTrue()
-
-(chainMethod()
-    .Do()
-    .IsTrue())
 
 complexMethod(
     A,
