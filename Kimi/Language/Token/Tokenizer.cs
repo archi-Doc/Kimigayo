@@ -27,7 +27,7 @@ public static class TokenHelper
     private static readonly FrozenDictionary<TokenKind, string> _keywordKindToKeyword;
 
     private static readonly SearchValues<char> Separators = SearchValues.Create(
-    [// Separator Space, (, ), Cr, Lf, =, <, >, +, -, %, &, |, ',', #
+    [// Characters that terminate an identifier/keyword scan.
         ' ', '\t', '\r', '\n',
         '(', ')', '{', '}', '[', ']',
         '.', ',', ';', ':', '?',
@@ -254,7 +254,7 @@ public static class TokenHelper
     /// <param name="c">The character to inspect.</param>
     /// <returns><see langword="true"/> if <paramref name="c"/> is a digit or '_'; otherwise, <see langword="false"/>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsDigitOrSeparator(char c)
+    public static bool IsDigitOrNumericSeparator(char c)
     {
         return IsDigit(c) || c == '_';
     }
@@ -593,7 +593,7 @@ internal sealed class Tokenizer
         Bracket, // []
         AngleBracket, // <>: Not supported yet because distinguishing generics from comparison operators is difficult.
         Brace, // {}
-        LineContinuation,
+        LineContinuation, // Implicit continuation, such as a method chain line starting with ".".
     }
 
     #region FieldAndProperty
@@ -1112,6 +1112,9 @@ LineContent:
         {
             if (dif == 1)
             {
+                // A line that starts with "." is treated as a continuation of the previous
+                // expression. It contributes one required indentation level, like grouping
+                // constructs, but does not require an explicit closing token.
                 if (span.Length > 0 && span[0] == Constants.DotChar)
                 {// Method chain
                     this.PushIndentSource(IndentSource.LineContinuation);
