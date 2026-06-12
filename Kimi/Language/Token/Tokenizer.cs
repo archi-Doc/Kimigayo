@@ -974,7 +974,6 @@ Loop:
                         {// Starts with a digit but is not a valid numeric literal (e.g. "0x", "1e+", "1.0u8", "123abc").
                          // Emit a single Invalid token with a diagnostic instead of silently falling back
                          // to the identifier path, which would produce bogus Identifier tokens.
-                         // NOTE: Hashed.Kimi.InvalidNumericLiteral must be defined in the diagnostics table.
                             this.urlDiagnostic.Add(this.NewRange(numberLiteralLength), Hashed.Kimi.InvalidNumericLiteral);
                             this.AddTokenAndSlice(TokenKind.Invalid, ref span, numberLiteralLength);
                         }
@@ -1133,6 +1132,11 @@ LineContent:
                 this.PushIndentSource(IndentSource.Block);
             }
         }
+
+        // When indentation decreases inside a grouping construct, the current token
+        // may be the matching closing delimiter placed at the outer indentation level.
+        // In that case, consume the closing token and close the grouping context.
+        // Otherwise, keep the grouping context open and report an indentation mismatch.
         else if (dif < 0)
         {
             for (var i = dif; i < 0; i++)
@@ -1144,40 +1148,31 @@ LineContent:
                         this.AddToken(new(TokenKind.EndBlock, default));
                         this.blockDepth--;
                     }
+                    else if (indentSource == IndentSource.LineContinuation)
+                    {
+                        this.nonBlockDepth--;
+                        continue;
+                    }
+                    else if (this.TryCloseIndentSourceByCurrentToken(indentSource, ref span))
+                    {
+                        continue;
+                    }
                     else
-                    {// Parenthesis/Bracket/Brace/AngleBracket/LineContinuation
-                        if (indentSource == IndentSource.Parenthesis && span[0] == Constants.CloseParenthesisChar)
-                        {
-                            this.AddTokenAndSlice(TokenKind.CloseParenthesis, ref span, 1);
-                            this.nonBlockDepth--;
-                        }
-                        else if (indentSource == IndentSource.Bracket && span[0] == Constants.CloseBracketChar)
-                        {
-                            this.AddTokenAndSlice(TokenKind.CloseBracket, ref span, 1);
-                            this.nonBlockDepth--;
-                        }
-                        else if (indentSource == IndentSource.AngleBracket && span[0] == Constants.GreaterThanChar)
-                        {
-                            this.AddTokenAndSlice(TokenKind.GreaterThan, ref span, 1);
-                            this.nonBlockDepth--;
-                        }
-                        else if (indentSource == IndentSource.Brace && span[0] == Constants.CloseBraceChar)
-                        {
-                            this.AddTokenAndSlice(TokenKind.CloseBrace, ref span, 1);
-                            this.nonBlockDepth--;
-                        }
-                        else
-                        {
-                            this.indentStack.Push(indentSource);
-                            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.IndentationLevelMismatch);
-                            break;
-                        }
+                    {
+                        this.indentStack.Push(indentSource);
+                        this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.IndentationLevelMismatch);
+                        break;
                     }
                 }
                 else if (currentIndentLevel > 0)
-                {// Blocks opened by previous Read calls are closed via currentIndentLevel.
+                {
                     this.AddToken(new(TokenKind.EndBlock, default));
                     currentIndentLevel--;
+                }
+                else
+                {
+                    this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.IndentationLevelMismatch);
+                    break;
                 }
             }
         }
@@ -1460,6 +1455,32 @@ EndOfFile:
                     break;
             }
         }
+    }
+
+    private bool TryCloseIndentSourceByCurrentToken(IndentSource indentSource, ref ReadOnlySpan<char> span)
+    {
+        if (span.IsEmpty)
+        {
+            return false;
+        }
+
+        var tokenKind = indentSource switch
+        {
+            IndentSource.Parenthesis when span[0] == Constants.CloseParenthesisChar => TokenKind.CloseParenthesis,
+            IndentSource.Bracket when span[0] == Constants.CloseBracketChar => TokenKind.CloseBracket,
+            IndentSource.AngleBracket when span[0] == Constants.GreaterThanChar => TokenKind.GreaterThan,
+            IndentSource.Brace when span[0] == Constants.CloseBraceChar => TokenKind.CloseBrace,
+            _ => TokenKind.Invalid,
+        };
+
+        if (tokenKind == TokenKind.Invalid)
+        {
+            return false;
+        }
+
+        this.AddTokenAndSlice(tokenKind, ref span, 1);
+        this.nonBlockDepth--;
+        return true;
     }
 
     private void ClearState()
