@@ -1159,6 +1159,21 @@ LineContent:
                     }
                     else if (this.TryCloseIndentSourceByCurrentToken(indentSource, ref span))
                     {
+                        // Treat only an immediate member access after an outer-indented closing
+                        // delimiter as part of the same logical line.
+                        //
+                        // Example:
+                        //     foo(
+                        //         a
+                        //     ).bar
+                        //
+                        // Other cases, such as ") + 1" or a "." on the next physical line, are not
+                        // continued here.
+                        if (!span.IsEmpty && span[0] == Constants.DotChar)
+                        {
+                            goto Loop;
+                        }
+
                         continue;
                     }
                     else
