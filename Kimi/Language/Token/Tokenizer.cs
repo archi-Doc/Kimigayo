@@ -1041,6 +1041,10 @@ NextLine:
         {// End-of-file
             goto EndOfFile;
         }
+        else if (this.tokenList.Count == 0)
+        {// If text remains but no token was found, such as on a blank line, retry processing.
+            goto Loop;
+        }
 
         // Indentation is measured once, at the physical line start.
         // Comments that follow do not change it.
@@ -1450,9 +1454,11 @@ EndOfFile:
                     break;
 
                 case IndentSource.LineContinuation:
-                default:
                     this.nonBlockDepth--;
                     break;
+
+                default:
+                    throw new UnreachableException();
             }
         }
     }

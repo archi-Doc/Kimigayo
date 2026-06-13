@@ -1,9 +1,22 @@
-Method1(
-    1,
-    2)
+Method1()
+    .Method2()
 
-Method2(
-    1,
-    2,
-    3,
-    4)
+foo(
+    a
+    ).next
+
+foo(
+    a)
+    .next
+
+foo(
+    a
+)
+
+foo(
+    a
+).bar
+
+foo(
+    a
+    ) + 1
