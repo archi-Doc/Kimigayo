@@ -12,12 +12,4 @@ public sealed class RootNode : GroupNode
     {
         this.Current = this;
     }
-
-    public void Read(List<Token> list, int count)
-    {
-        foreach (var x in list)
-        {
-            var code = NodeHelper.FromToken(x);
-        }
-    }
 }

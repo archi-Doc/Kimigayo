@@ -658,7 +658,7 @@ Loop:
 
         if (span[0] == Constants.SpaceChar)
         {// If whitespace is present, process it first.
-            goto NextLine;
+            goto MeasureIndentation;
         }
 
         while (span.Length > 0)
@@ -1046,8 +1046,9 @@ NextLine:
             goto Loop;
         }
 
-        // Indentation is measured once, at the physical line start.
-        // Comments that follow do not change it.
+MeasureIndentation:
+// Indentation is measured once, at the physical line start.
+// Comments that follow do not change it.
         var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(span);
         this.Slice(ref span, numberOfSpaces);
 
