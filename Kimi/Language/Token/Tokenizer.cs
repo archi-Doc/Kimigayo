@@ -1283,7 +1283,7 @@ EndOfFile:
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AddTokenAndSlice(TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
     {
-        this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length)));
+        this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length), this.line, this.character));
 
         span = span.Slice(length);
         this.position += length;

@@ -1,5 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimigayo.Language;
+
 namespace Kimigayo.Diagnostics;
 
 public record class UrlDiagnostic
@@ -15,6 +17,35 @@ public record class UrlDiagnostic
     {
         this.kimiControl = kimiControl;
         this.Url = url;
+    }
+
+    public void AddToken(Token token, ulong diagnosticHash, object? obj = null)
+    {
+        var position = new Position(token.Line, token.Character);
+        using (this.diagnostics.LockObject.EnterScope())
+        {
+            if (this.diagnostics.StartPositionChain.ContainsKey(position))
+            {
+                return;
+            }
+
+            DiagnosticCode.GetSeverity(diagnosticHash, out var code, out var severity);
+
+            string message;
+            if (obj is null)
+            {
+                message = HashedString.Get(diagnosticHash);
+            }
+            else
+            {
+                message = HashedString.Get(diagnosticHash, obj);
+            }
+
+            var diagnostic = new Diagnostic(new(position, new(token.Line, token.Character + token.Length)), severity, message);
+            diagnostic.Goshujin = this.diagnostics;
+
+            this.kimiControl.ReportDiagnostic(this.Url, diagnostic);
+        }
     }
 
     public void Add(Range range, ulong diagnosticHash, object? obj = null)

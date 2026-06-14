@@ -37,7 +37,7 @@ public static class NodeHelper
                 }
                 else
                 {
-                    diagnostic.Add(default, Hashed.Kimi.InvalidIdentifier, tokens[i].Text);
+                    diagnostic.AddToken(tokens[i], Hashed.Kimi.InvalidIdentifier, tokens[i].Text);
                 }
             }
             else
