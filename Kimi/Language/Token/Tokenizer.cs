@@ -66,6 +66,9 @@ public static class TokenHelper
         _keywordKindToKeyword = dic.ToFrozenDictionary();
     }
 
+    public static bool IsIdentifierToken(this Token token, ReadOnlySpan<char> identifier)
+        => token.Kind == TokenKind.Identifier && token.Text.Span.SequenceEqual(identifier);
+
     /// <summary>
     /// Determines whether the specified statement context represents a group-like declaration.
     /// </summary>

@@ -7,7 +7,7 @@ namespace Kimigayo.Language;
 /// </summary>
 public class GroupNode : Node
 {
-    public void Read(IEnumerable<Token> tokens)
+    public virtual void Read(IReadOnlyList<Token> tokens)
     {
         foreach (var x in tokens)
         {

@@ -44,4 +44,8 @@ public static class Constants
     public static ReadOnlySpan<char> Move => "<=";
 
     public static ReadOnlySpan<char> Map => "=>";
+
+    public static ReadOnlySpan<char> AliasKeyword => "alias";
+
+    public static ReadOnlySpan<char> NamespaceKeyword => "namespace";
 }

@@ -1,1 +1,5 @@
-    foo
+alias Kimi.Base
+
+namespace 1Playground
+
+public const string Name = "Test"

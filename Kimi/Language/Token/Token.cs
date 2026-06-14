@@ -10,6 +10,8 @@ public readonly struct Token
 
     public readonly ReadOnlyMemory<char> Text;
 
+    public ReadOnlySpan<char> Span => this.Text.Span;
+
     public Token(TokenKind kind, ReadOnlyMemory<char> span, bool isMissing = false)
     {
         this.Kind = kind;
