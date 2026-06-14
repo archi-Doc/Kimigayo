@@ -3,3 +3,5 @@ alias Kimi.Base
 namespace 1Playground
 
 public const string Name = "Test"
+
+$WriteLine(Name)

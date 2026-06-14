@@ -1,4 +1,5 @@
 alias Kimi.Crypto
+alias Kimi.LowInterface
 
 #Condition(Os=="Linux") // Attribute-next rule.
 alias Kimi.Base.Linux
@@ -38,6 +39,7 @@ public group Helper // namespace - alias
             1
         else
             yield 2
+        goto Initialize
         var i3 = if (
             var z = Func()
             yield (z > 0)) 1 else 0
