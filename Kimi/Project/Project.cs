@@ -5,6 +5,7 @@ namespace Kimigayo;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Kimi;
+using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
 public readonly record struct UrlAndtext(string Url, string Text);
@@ -108,7 +109,7 @@ public partial class Project
         var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
         var tokenizer = new Tokenizer(diagnostic);
         tokenizer.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
-        var rootNode = new RootNode(this);
+        var rootNode = new RootNode(diagnostic);
         var currentIndentLevel = 0;
 
         var dumpToken = this.SolutionOptions.DumpToken ? new StringBuilder() : null;

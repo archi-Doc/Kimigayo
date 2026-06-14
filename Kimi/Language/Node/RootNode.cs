@@ -1,17 +1,21 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
 public sealed class RootNode : GroupNode
 {
+    public UrlDiagnostic Diagnostic { get; }
+
     public string Namespace { get; private set; } = "Playground";
 
     public Node Current { get; private set; }
 
     private readonly HashSet<string> alias = new();
 
-    public RootNode(Project project)
+    public RootNode(UrlDiagnostic diagnostic)
     {
+        this.Diagnostic = diagnostic;
         this.Current = this;
     }
 
@@ -21,13 +25,13 @@ public sealed class RootNode : GroupNode
         {
             if (tokens[0].IsIdentifierToken(Constants.AliasKeyword))
             {// alias
-                var value = NodeHelper.ValidateAndGetNamespace(tokens, 1);
+                var value = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, tokens, 1);
                 this.alias.Add(value);
                 return;
             }
             else if (tokens[0].IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
-                var value = NodeHelper.ValidateAndGetNamespace(tokens, 1);
+                var value = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, tokens, 1);
                 this.Namespace = value;
                 return;
             }

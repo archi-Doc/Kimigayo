@@ -27,3 +27,5 @@ Kimi=
   UnmatchedBrace="Unmatched brace"
   UnmatchedBracket="Unmatched bracket"
   UnmatchedParenthesis="Unmatched parenthesis"
+  
+  InvalidIdentifier="'{0}' is not a valid identifier."

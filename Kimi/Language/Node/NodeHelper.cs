@@ -2,6 +2,7 @@
 
 using System.Globalization;
 using System.Text;
+using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
 
@@ -18,7 +19,7 @@ public static class NodeHelper
         return code;
     }
 
-    public static string ValidateAndGetNamespace(IReadOnlyList<Token> tokens, int start)
+    public static string ValidateAndGetNamespace(UrlDiagnostic diagnostic, IReadOnlyList<Token> tokens, int start)
     {
         if (tokens.Count <= start)
         {
@@ -36,6 +37,7 @@ public static class NodeHelper
                 }
                 else
                 {
+                    diagnostic.Add(default, Hashed.Kimi.InvalidIdentifier, tokens[i].Text);
                 }
             }
             else
