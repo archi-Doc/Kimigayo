@@ -7,7 +7,7 @@ public sealed class RootNode : GroupNode
 {
     public UrlDiagnostic Diagnostic { get; }
 
-    public string Namespace { get; private set; } = "Playground";
+    public string Namespace { get; private set; } = Constants.DefaultNamespace;
 
     public Node Current { get; private set; }
 

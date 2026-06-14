@@ -9,6 +9,7 @@ public static class Constants
     public const string KimiSolutionExtension = ".kimisln";
     public const string KimiProjectExtension = ".kimiproj";
     public const string TokenExtension = ".token";
+    public const string DefaultNamespace = "Playground";
 
     public const char LfChar = '\n';
     public const char CrChar = '\r';
