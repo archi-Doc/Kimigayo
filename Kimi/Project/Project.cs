@@ -5,6 +5,7 @@ namespace Kimigayo;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Kimi;
+using Kimi.Language;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
@@ -134,7 +135,8 @@ public partial class Project
             }
 
             // Token to Node
-            rootNode.Read(list);
+            var tokenReader = new TokenReader(list);
+            rootNode.Read(tokenReader);
         }
 
         if (dumpToken is not null &&

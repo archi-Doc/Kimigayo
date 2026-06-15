@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Language;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
@@ -19,24 +20,26 @@ public sealed class RootNode : GroupNode
         this.Current = this;
     }
 
-    public override void Read(IReadOnlyList<Token> tokens)
+    public override void Read(TokenReader reader)
     {
-        if (tokens.Count > 0)
+        if (reader.TryPeek(out var token))
         {
-            if (tokens[0].IsIdentifierToken(Constants.AliasKeyword))
+            if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
-                var value = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, tokens, 1);
+                reader.Next();
+                var value = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, reader);
                 this.alias.Add(value);
                 return;
             }
-            else if (tokens[0].IsIdentifierToken(Constants.NamespaceKeyword))
+            else if (token.IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
-                var value = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, tokens, 1);
+                reader.Next();
+                var value = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, reader);
                 this.Namespace = value;
                 return;
             }
         }
 
-        base.Read(tokens);
+        base.Read(reader);
     }
 }

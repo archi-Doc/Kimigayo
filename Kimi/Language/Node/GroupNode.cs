@@ -1,5 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Language;
+
 namespace Kimigayo.Language;
 
 /// <summary>
@@ -7,11 +9,11 @@ namespace Kimigayo.Language;
 /// </summary>
 public class GroupNode : Node
 {
-    public virtual void Read(IReadOnlyList<Token> tokens)
+    public virtual void Read(TokenReader reader)
     {
-        foreach (var x in tokens)
+        /*foreach (var x in tokens)
         {
             var code = NodeHelper.FromToken(x);
-        }
+        }*/
     }
 }

@@ -2,6 +2,7 @@
 
 using System.Globalization;
 using System.Text;
+using Kimi.Language;
 using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
@@ -19,36 +20,39 @@ public static class NodeHelper
         return code;
     }
 
-    public static string ValidateAndGetNamespace(UrlDiagnostic diagnostic, IReadOnlyList<Token> tokens, int start)
+    public static string ValidateAndGetNamespace(UrlDiagnostic diagnostic, TokenReader reader)
     {
-        if (tokens.Count <= start)
+        if (reader.IsEmpty)
         {
             return string.Empty;
         }
 
         var sb = new StringBuilder();
-        for (var i = start; i < tokens.Count; i++)
+        var flag = true;
+        while (reader.TryRead(out var token))
         {
-            if (i % 2 != 0)
+            if (flag)
             {// Identifier
-                if (IsValidIdentifier(tokens[i].Span))
+                flag = false;
+                if (IsValidIdentifier(token.Span))
                 {
-                    sb.Append(tokens[i].Span);
+                    sb.Append(token.Span);
                 }
                 else
                 {
-                    diagnostic.AddToken(tokens[i], Hashed.Kimi.InvalidIdentifier, tokens[i].Text);
+                    diagnostic.AddToken(token, Hashed.Kimi.InvalidIdentifier, token.Text);
                 }
             }
             else
             {// Dot
-                if (tokens[i].Kind == TokenKind.Dot)
+                flag = true;
+                if (token.Kind == TokenKind.Dot)
                 {
                     sb.Append(Constants.DotChar);
                 }
                 else
                 {
-                    diagnostic.AddToken(tokens[i], Hashed.Kimi.UnexpectedToken, tokens[i]);
+                    diagnostic.AddToken(token, Hashed.Kimi.UnexpectedToken, token);
                 }
             }
         }
