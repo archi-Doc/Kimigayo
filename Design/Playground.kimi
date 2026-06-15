@@ -1,5 +1,6 @@
 alias Kimi.Base
 
+#Condition()
 namespace Playground.A // a
 
 public const string Name = "Test"

@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Arc.Collections;
 using Kimi.Language;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
@@ -10,9 +11,10 @@ public sealed class RootNode : GroupNode
 
     public string Namespace { get; private set; } = Constants.DefaultNamespace;
 
-    public Node Current { get; private set; }
+    public GroupNode Current { get; private set; }
 
     private readonly HashSet<string> alias = new();
+    private readonly Utf16Hashtable<GroupNode> namespaceToGroupNode = new();
 
     public RootNode(UrlDiagnostic diagnostic)
     {

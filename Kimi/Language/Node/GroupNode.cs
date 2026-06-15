@@ -11,6 +11,13 @@ public class GroupNode : Node
 {
     public virtual void Read(ref TokenReader reader)
     {
+        while (reader.TryRead(out var token))
+        {
+            if (token.Kind == TokenKind.Sharp)
+            {// #Attribute
+
+            }
+        }
         /*foreach (var x in tokens)
         {
             var code = NodeHelper.FromToken(x);
