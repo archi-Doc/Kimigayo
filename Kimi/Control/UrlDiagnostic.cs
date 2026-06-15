@@ -21,10 +21,9 @@ public record class UrlDiagnostic
 
     public void AddToken(Token token, ulong diagnosticHash, object? obj = null)
     {
-        var position = new Position(token.Line, token.Character);
         using (this.diagnostics.LockObject.EnterScope())
         {
-            if (this.diagnostics.StartPositionChain.ContainsKey(position))
+            if (this.diagnostics.StartPositionChain.ContainsKey(token.Position))
             {
                 return;
             }
@@ -41,7 +40,7 @@ public record class UrlDiagnostic
                 message = HashedString.Get(diagnosticHash, obj);
             }
 
-            var diagnostic = new Diagnostic(new(position, new(token.Line, token.Character + token.Length)), severity, message);
+            var diagnostic = new Diagnostic(token.Range, severity, message);
             diagnostic.Goshujin = this.diagnostics;
 
             this.kimiControl.ReportDiagnostic(this.Url, diagnostic);

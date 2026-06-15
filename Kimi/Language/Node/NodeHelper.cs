@@ -48,6 +48,7 @@ public static class NodeHelper
                 }
                 else
                 {
+                    diagnostic.AddToken(tokens[i], Hashed.Kimi.UnexpectedToken, tokens[i]);
                 }
             }
         }

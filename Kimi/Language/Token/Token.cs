@@ -1,5 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimigayo.Diagnostics;
+
 namespace Kimigayo.Language;
 
 public readonly struct Token
@@ -17,6 +19,10 @@ public readonly struct Token
     public ReadOnlySpan<char> Span => this.Text.Span;
 
     public int Length => this.Text.Length;
+
+    public Position Position => new(this.Line, this.Character);
+
+    public Diagnostics.Range Range => new(new(this.Line, this.Character), new(this.Line, this.Character + this.Length));
 
     public Token(TokenKind kind, ReadOnlyMemory<char> span, bool isMissing = false)
     {
