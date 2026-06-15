@@ -14,6 +14,7 @@ Project=
   NotLoaded="Failed to load the project file '{0}'"
 
 Kimi=
+  IdentifierExpected="Identifier expected"
   IndentationLevelMismatch="The indentation level does not match the expected level"
   InvalidCharacter="Unexpected character '{0}'"
   InvalidCharacterAtEndOfFile="Invalid character at end of file"

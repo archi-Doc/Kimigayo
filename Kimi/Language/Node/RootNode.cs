@@ -20,26 +20,26 @@ public sealed class RootNode : GroupNode
         this.Current = this;
     }
 
-    public override void Read(TokenReader reader)
+    public override void Read(ref TokenReader reader)
     {
         if (reader.TryPeek(out var token))
         {
             if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
-                reader.Next();
+                reader.MoveNext();
                 var value = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, reader);
                 this.alias.Add(value);
                 return;
             }
             else if (token.IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
-                reader.Next();
+                reader.MoveNext();
                 var value = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, reader);
                 this.Namespace = value;
                 return;
             }
         }
 
-        base.Read(reader);
+        base.Read(ref reader);
     }
 }

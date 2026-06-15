@@ -1,6 +1,6 @@
 alias Kimi.Base
 
-namespace Playground // a
+namespace Playground.A // a
 
 public const string Name = "Test"
 

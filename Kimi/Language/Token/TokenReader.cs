@@ -61,7 +61,7 @@ public ref struct TokenReader
         return false;
     }
 
-    public bool Next()
+    public bool MoveNext()
     {
         while (this.Position < this.Count)
         {
@@ -77,5 +77,22 @@ public ref struct TokenReader
         }
 
         return false;
+    }
+
+    public Kimigayo.Diagnostics.Range CurrentRange()
+    {
+        if (this.Position < this.Count)
+        {
+            return this.list[this.Position].Range;
+        }
+        else if (this.Position > 0)
+        {
+            var range = this.list[this.Position - 1].Range;
+            return new(range.End, range.End);
+        }
+        else
+        {
+            return default;
+        }
     }
 }

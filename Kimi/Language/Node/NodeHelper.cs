@@ -57,6 +57,11 @@ public static class NodeHelper
             }
         }
 
+        if (flag)
+        {
+            diagnostic.Add(reader.CurrentRange(), Hashed.Kimi.IdentifierExpected);
+        }
+
         return sb.ToString();
     }
 

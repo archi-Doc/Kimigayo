@@ -9,7 +9,7 @@ namespace Kimigayo.Language;
 /// </summary>
 public class GroupNode : Node
 {
-    public virtual void Read(TokenReader reader)
+    public virtual void Read(ref TokenReader reader)
     {
         /*foreach (var x in tokens)
         {

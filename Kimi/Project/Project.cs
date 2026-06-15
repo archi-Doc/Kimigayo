@@ -136,7 +136,7 @@ public partial class Project
 
             // Token to Node
             var tokenReader = new TokenReader(list);
-            rootNode.Read(tokenReader);
+            rootNode.Read(ref tokenReader);
         }
 
         if (dumpToken is not null &&
