@@ -9,11 +9,8 @@ namespace Kimi.Language;
 public enum NodeKind
 {
     // Group
-    Root,
     Namespace,
     Group,
     Struct,
     Enum,
-
-    //
 }

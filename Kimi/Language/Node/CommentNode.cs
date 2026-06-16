@@ -6,7 +6,8 @@ public class CommentNode : Node
 {
     public ReadOnlyMemory<char> Comment { get; }
 
-    public CommentNode(Token token)
+    public CommentNode(RootNode rootNode, Token token)
+        : base(rootNode)
     {
         this.Comment = token.Text;
     }

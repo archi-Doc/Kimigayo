@@ -7,11 +7,10 @@ using Kimigayo.Language;
 
 public sealed class NamespaceNode : GroupNode
 {
-    public UrlDiagnostic Diagnostic { get; }
-
     private readonly Utf16Hashtable<GroupNode> namespaceToGroupNode = new();
 
-    public NamespaceNode()
+    public NamespaceNode(RootNode rootNode)
+        : base(rootNode)
     {
     }
 
@@ -22,14 +21,14 @@ public sealed class NamespaceNode : GroupNode
             if (token.IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
                 reader.MoveNext();
-                var multiIdentifier = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, reader);
-                var @namespace = this.GetOrAddGroup(multiIdentifier);
-                this.namespaceToGroupNode.TryAdd(multiIdentifier, @namespace);
+                var qualifiedName = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, reader);
+                // var @namespace = this.GetOrAddGroup(qualifiedName);
+                // this.namespaceToGroupNode.TryAdd(qualifiedName, @namespace);
 
-                this.CurrentGroup = @namespace;
+                this.RootNode.SetNamespace(qualifiedName);
             }
         }
 
-
+        base.Read(ref reader);
     }
 }

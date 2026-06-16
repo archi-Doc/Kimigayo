@@ -3,8 +3,6 @@ alias Kimi.Base
 #Condition()
 namespace Playground.A // a
 
-alias Kimi.Base2
-
 public const string Name = "Test"
 
 $WriteLine(Name)

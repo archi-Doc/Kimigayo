@@ -16,15 +16,20 @@ public class GroupNode : Node
 
     #endregion
 
+    public GroupNode(RootNode rootNode)
+        : base(rootNode)
+    {
+    }
+
     public override void Read(ref TokenReader reader)
     {
         while (reader.TryRead(out var token))
         {
             if (token.Kind == TokenKind.Sharp)
             {// #Attribute
-
             }
         }
+
         /*foreach (var x in tokens)
         {
             var code = NodeHelper.FromToken(x);
@@ -40,11 +45,11 @@ public class GroupNode : Node
             var index = text.IndexOf(Constants.DotChar);
             if (index < 0)
             {
-                return group.identifierToGroupNode.GetOrAdd(text, x => new GroupNode());
+                return group.identifierToGroupNode.GetOrAdd(text, x => new GroupNode(this.RootNode));
             }
 
             var segment = text[..index];
-            group = group.identifierToGroupNode.GetOrAdd(segment, x => new GroupNode());
+            group = group.identifierToGroupNode.GetOrAdd(segment, x => new GroupNode(this.RootNode));
             text = text[(index + 1)..];
         }
     }
