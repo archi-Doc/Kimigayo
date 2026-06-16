@@ -9,17 +9,16 @@ public sealed class RootNode : GroupNode
 {
     public UrlDiagnostic Diagnostic { get; }
 
-    public string Namespace { get; private set; } = Constants.DefaultNamespace;
-
-    public GroupNode Current { get; private set; }
+    public GroupNode CurrentGroup { get; private set; }
 
     private readonly HashSet<string> alias = new();
     private readonly Utf16Hashtable<GroupNode> namespaceToGroupNode = new();
+    private bool allowTopLevelKeyword = true;
 
     public RootNode(UrlDiagnostic diagnostic)
     {
         this.Diagnostic = diagnostic;
-        this.Current = this;
+        this.CurrentGroup = this.GetOrAddGroup(Constants.DefaultNamespace);
     }
 
     public override void Read(ref TokenReader reader)
@@ -28,20 +27,22 @@ public sealed class RootNode : GroupNode
         {
             if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
+                if (!this.allowTopLevelKeyword)
+                {
+                    goto UnexpectedTopLevelKeyword;
+                }
+
                 reader.MoveNext();
                 var value = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, reader);
                 this.alias.Add(value);
-                return;
-            }
-            else if (token.IsIdentifierToken(Constants.NamespaceKeyword))
-            {// namespace
-                reader.MoveNext();
-                var value = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, reader);
-                this.Namespace = value;
-                return;
             }
         }
 
-        base.Read(ref reader);
+        this.allowTopLevelKeyword = false;
+        this.CurrentGroup.Read(ref reader);
+        return;
+
+UnexpectedTopLevelKeyword:
+        this.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);
     }
 }
