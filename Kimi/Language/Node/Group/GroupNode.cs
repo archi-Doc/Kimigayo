@@ -31,9 +31,9 @@ public class GroupNode : Node
         }*/
     }
 
-    public GroupNode GetOrAddGroup(ReadOnlySpan<char> multiIdentifier)
+    public GroupNode GetOrAddGroup(ReadOnlySpan<char> qualifiedName)
     {
-        var text = multiIdentifier;
+        var text = qualifiedName;
         var group = this;
         while (true)
         {
@@ -44,7 +44,7 @@ public class GroupNode : Node
             }
 
             var segment = text[..index];
-            group.identifierToGroupNode.GetOrAdd(segment, x => new GroupNode());
+            group = group.identifierToGroupNode.GetOrAdd(segment, x => new GroupNode());
             text = text[(index + 1)..];
         }
     }

@@ -33,8 +33,8 @@ public sealed class RootNode : GroupNode
                 }
 
                 reader.MoveNext();
-                var value = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, reader);
-                this.alias.Add(value);
+                var qualifiedName = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, reader);
+                this.alias.Add(qualifiedName);
             }
         }
 
