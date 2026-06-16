@@ -4,12 +4,18 @@ using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
 
-public readonly struct Token
+[TinyhandObject]
+public readonly partial struct Token
 {
+    public static readonly Token Invalid = default;
+
+    [Key(0)]
     public readonly TokenKind Kind;
 
+    [Key(1)]
     public readonly bool IsMissing;
 
+    [Key(2)]
     public readonly ReadOnlyMemory<char> Text;
 
     public readonly int Line;

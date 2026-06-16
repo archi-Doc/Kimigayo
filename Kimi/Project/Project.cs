@@ -113,7 +113,7 @@ public partial class Project
         var rootNode = new RootNode(diagnostic);
         var currentIndentLevel = 0;
 
-        var dumpToken = this.SolutionOptions.DumpToken ? new StringBuilder() : null;
+        var dumpToken = this.SolutionOptions.DumpToken ? new List<Token>() : null;
         while (true)
         {
             // Read token
@@ -126,12 +126,8 @@ public partial class Project
             // Dump token
             if (dumpToken is not null)
             {
-                foreach (var x in list.Slice(0, list.Count))
-                {
-                    dumpToken.Append(x.ToString());
-                }
-
-                dumpToken.AppendLf();
+                dumpToken.AddRange(list);
+                dumpToken.Add(Token.Invalid);
             }
 
             // Token to Node
@@ -142,9 +138,25 @@ public partial class Project
         if (dumpToken is not null &&
             Path.ChangeExtension(urlAndtext.Url, Constants.TokenExtension) is { } tokenPath)
         {
+            var sb = new StringBuilder();
+            foreach (var x in dumpToken)
+            {
+                if (x.Kind == TokenKind.Invalid)
+                {
+                    sb.AppendLf();
+                }
+                else
+                {
+                    sb.Append(x.ToString());
+                }
+            }
+
             try
             {
-                File.WriteAllText(tokenPath, dumpToken.ToString());
+                File.WriteAllText(tokenPath, sb.ToString());
+
+                // var b = TinyhandSerializer.Serialize(dumpToken);
+                // var t = TinyhandSerializer.Deserialize<List<Token>>(b);
             }
             catch
             {
