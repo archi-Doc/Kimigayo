@@ -2,7 +2,6 @@
 
 using Arc.Collections;
 using Kimi.Language;
-using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
 public sealed class NamespaceNode : GroupNode

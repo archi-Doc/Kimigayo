@@ -1300,7 +1300,7 @@ EndOfFile:
     /// <returns>The number of line breaks consumed.</returns>
     private int AddTokenAndSliceWithLineTracking(TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
     {
-        this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length)));
+        this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length), 0, 0));//
 
         var consumed = span.Slice(0, length);
         var newLines = 0;
@@ -1448,27 +1448,27 @@ EndOfFile:
             switch (indentSource)
             {
                 case IndentSource.Block:
-                    this.AddToken(new(TokenKind.EndBlock, default, true));
+                    this.AddToken(new(TokenKind.EndBlock, true));
                     this.blockDepth--;
                     break;
 
                 case IndentSource.Parenthesis: // ()
-                    this.AddToken(new(TokenKind.CloseParenthesis, default, true));
+                    this.AddToken(new(TokenKind.CloseParenthesis, true));
                     this.nonBlockDepth--;
                     break;
 
                 case IndentSource.Bracket: // []
-                    this.AddToken(new(TokenKind.CloseBracket, default, true));
+                    this.AddToken(new(TokenKind.CloseBracket, true));
                     this.nonBlockDepth--;
                     break;
 
                 case IndentSource.AngleBracket: // <>
-                    this.AddToken(new(TokenKind.GreaterThan, default, true));
+                    this.AddToken(new(TokenKind.GreaterThan, true));
                     this.nonBlockDepth--;
                     break;
 
                 case IndentSource.Brace: // {}
-                    this.AddToken(new(TokenKind.CloseBrace, default, true));
+                    this.AddToken(new(TokenKind.CloseBrace, true));
                     this.nonBlockDepth--;
                     break;
 

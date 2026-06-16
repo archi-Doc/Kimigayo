@@ -30,19 +30,18 @@ public readonly partial struct Token
 
     public Diagnostics.Range Range => new(new(this.Line, this.Character), new(this.Line, this.Character + this.Length));
 
-    public Token(TokenKind kind, ReadOnlyMemory<char> span, bool isMissing = false)
-    {
-        this.Kind = kind;
-        this.Text = span;
-        this.IsMissing = isMissing;
-    }
-
     public Token(TokenKind kind, ReadOnlyMemory<char> span, int line, int character)
     {
         this.Kind = kind;
         this.Text = span;
         this.Line = line;
         this.Character = character;
+    }
+
+    public Token(TokenKind kind, bool isMissing = false)
+    {
+        this.Kind = kind;
+        this.IsMissing = isMissing;
     }
 
     public override string ToString()
