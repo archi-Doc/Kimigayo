@@ -46,7 +46,7 @@ public class LspServer
                     sb.AppendLine(x.Value.ToString());
                 }
 
-                File.AppendAllText("C:\\App\\lsp2.txt", sb.ToString());
+                // File.AppendAllText("C:\\App\\lsp2.txt", sb.ToString());
             },
             TimeSpan.FromSeconds(3));
     }
@@ -304,6 +304,52 @@ public class LspServer
 
         // await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
     }
+
+    /*private static async Task PublishDiagnosticsAsync(string uri, int? version, IReadOnlyList<TomlDiagnostic> diagnostics)
+    {
+        var lspDiagnostics = new List<Diagnostic>(diagnostics.Count);
+        foreach (var diagnostic in diagnostics)
+        {
+            lspDiagnostics.Add(new Diagnostic
+            {
+                Range = new Diagnostics.Range
+                {
+                    Start = new Position
+                    {
+                        Line = diagnostic.Line,
+                        Character = diagnostic.Character,
+                    },
+                    End = new Position
+                    {
+                        Line = diagnostic.Line,
+                        Character = diagnostic.Character + Math.Max(1, diagnostic.Length),
+                    },
+                },
+                Severity = ToLspSeverity(diagnostic.Severity),
+                Source = "kimi-lsp",
+                Message = diagnostic.Message,
+            });
+        }
+
+        var parameters = new PublishDiagnosticsParams
+        {
+            Uri = uri,
+            Version = version,
+            Diagnostics = lspDiagnostics,
+        };
+
+        await SendNotificationAsync("textDocument/publishDiagnostics", parameters).ConfigureAwait(false);
+    }
+
+    private static int ToLspSeverity(string severity)
+        => severity switch
+        {
+            "error" => 1,
+            "warning" => 2,
+            "info" => 3,
+            "hint" => 4,
+            _ => 1,
+        };*/
 
     private async Task HandleDidCloseAsync(JsonElement? parametersElement)
     {
