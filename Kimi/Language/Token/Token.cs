@@ -18,24 +18,24 @@ public readonly partial struct Token
     [Key(2)]
     public readonly ReadOnlyMemory<char> Text;
 
-    public readonly int Line;
-
-    public readonly int Character;
+    public readonly Diagnostics.Range Range;
 
     public ReadOnlySpan<char> Span => this.Text.Span;
 
     public int Length => this.Text.Length;
 
-    public Position Position => new(this.Line, this.Character);
-
-    public Diagnostics.Range Range => new(new(this.Line, this.Character), new(this.Line, this.Character + this.Length));
+    public Token(TokenKind kind, ReadOnlyMemory<char> span, Diagnostics.Range range)
+    {
+        this.Kind = kind;
+        this.Text = span;
+        this.Range = range;
+    }
 
     public Token(TokenKind kind, ReadOnlyMemory<char> span, int line, int character)
     {
         this.Kind = kind;
         this.Text = span;
-        this.Line = line;
-        this.Character = character;
+        this.Range = new(new(line, character), new(line, character + span.Length));
     }
 
     public Token(TokenKind kind, bool isMissing = false)

@@ -90,6 +90,5 @@ internal class Program
 
     private static unsafe void Test1()
     {
-        var size = Unsafe.SizeOf<Token>();
     }
 }

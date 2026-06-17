@@ -1301,7 +1301,6 @@ EndOfFile:
     private int AddTokenAndSliceWithLineTracking(TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
     {
         Position start = new(this.line, this.character);
-        this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length), 0, 0));//
 
         var consumed = span.Slice(0, length);
         var newLines = 0;
@@ -1335,6 +1334,8 @@ EndOfFile:
         {
             this.character += length;
         }
+
+        this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length), new Diagnostics.Range(start, new(this.line, this.character))));
 
         this.position += length;
         span = span.Slice(length);

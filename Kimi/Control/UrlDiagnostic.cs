@@ -23,7 +23,7 @@ public record class UrlDiagnostic
     {
         using (this.diagnostics.LockObject.EnterScope())
         {
-            if (this.diagnostics.StartPositionChain.ContainsKey(token.Position))
+            if (this.diagnostics.StartPositionChain.ContainsKey(token.Range.Start))
             {
                 return;
             }
