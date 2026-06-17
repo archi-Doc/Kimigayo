@@ -47,7 +47,7 @@ public record class UrlDiagnostic
         }
     }
 
-    public void Add(Range range, ulong diagnosticHash, object? obj = null)
+    public void Add(SourceRange range, ulong diagnosticHash, object? obj = null)
     {
         using (this.diagnostics.LockObject.EnterScope())
         {
@@ -75,7 +75,7 @@ public record class UrlDiagnostic
         }
     }
 
-    public bool Remove(Position startPosition)
+    public bool Remove(SourcePosition startPosition)
     {
         using (this.diagnostics.LockObject.EnterScope())
         {

@@ -18,13 +18,13 @@ public readonly partial struct Token
     [Key(2)]
     public readonly ReadOnlyMemory<char> Text;
 
-    public readonly Diagnostics.Range Range;
+    public readonly Diagnostics.SourceRange Range;
 
     public ReadOnlySpan<char> Span => this.Text.Span;
 
     public int Length => this.Text.Length;
 
-    public Token(TokenKind kind, ReadOnlyMemory<char> span, Diagnostics.Range range)
+    public Token(TokenKind kind, ReadOnlyMemory<char> span, Diagnostics.SourceRange range)
     {
         this.Kind = kind;
         this.Text = span;

@@ -79,7 +79,7 @@ public ref struct TokenReader
         return false;
     }
 
-    public Kimigayo.Diagnostics.Range CurrentRange()
+    public Kimigayo.Diagnostics.SourceRange CurrentRange()
     {
         if (this.Position < this.Count)
         {

@@ -1261,7 +1261,7 @@ EndOfFile:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private Diagnostics.Range NewRange(int length)
+    private Diagnostics.SourceRange NewRange(int length)
     {
         return new(new(this.line, this.character), new(this.line, this.character + length));
     }
@@ -1300,7 +1300,7 @@ EndOfFile:
     /// <returns>The number of line breaks consumed.</returns>
     private int AddTokenAndSliceWithLineTracking(TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
     {
-        Position start = new(this.line, this.character);
+        SourcePosition start = new(this.line, this.character);
 
         var consumed = span.Slice(0, length);
         var newLines = 0;
@@ -1335,7 +1335,7 @@ EndOfFile:
             this.character += length;
         }
 
-        this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length), new Diagnostics.Range(start, new(this.line, this.character))));
+        this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length), new Diagnostics.SourceRange(start, new(this.line, this.character))));
 
         this.position += length;
         span = span.Slice(length);

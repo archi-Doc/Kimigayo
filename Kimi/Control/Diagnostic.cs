@@ -1,14 +1,13 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json.Serialization;
-using Arc.Crypto;
 
 namespace Kimigayo.Diagnostics;
 
 [ValueLinkObject(Isolation = IsolationLevel.Serializable)]
 public sealed partial record class Diagnostic
 {
-    public Range Range { get; init; }
+    public SourceRange Range { get; init; }
 
     public DiagnosticSeverity Severity { get; init; }
 
@@ -22,12 +21,12 @@ public sealed partial record class Diagnostic
 
     [Link(Primary = true, Unique = true, Type = ChainType.Ordered)]
     [JsonIgnore]
-    public Position StartPosition => this.Range.Start;
+    public SourcePosition StartPosition => this.Range.Start;
 
     [JsonIgnore]
     public partial GoshujinClass? Goshujin { get; set; }
 
-    public Diagnostic(Range range, DiagnosticSeverity severity, string message)
+    public Diagnostic(SourceRange range, DiagnosticSeverity severity, string message)
     {
         this.Range = range;
         this.Severity = severity;
@@ -50,89 +49,4 @@ public sealed partial record class Diagnostic
             return $"[{this.Severity.ToString()}] {this.Message}";
         }
     }
-}
-
-public readonly record struct Range : IComparable<Range>
-{
-    public Position Start { get; }
-
-    public Position End { get; }
-
-    public static Range FromString(string str)
-    {
-        var hash = (int)FarmHash.Hash64(str);
-        var position = new Position(hash, 0);
-        return new(position, position);
-    }
-
-    public Range(Position start, Position end)
-    {
-        this.Start = start;
-        this.End = end;
-    }
-
-    public int CompareTo(Range other)
-    {
-        var cmp = this.Start.CompareTo(other.Start);
-        if (cmp != 0)
-        {
-            return cmp;
-        }
-
-        cmp = this.End.CompareTo(other.End);
-        return cmp;
-    }
-
-    public override string ToString()
-    {
-        return $"({this.Start.Line + 1},{this.Start.Character + 1},{this.End.Line + 1},{this.End.Character + 1})";
-    }
-}
-
-public readonly record struct Position : IComparable<Position>
-{
-    public int Line { get; }
-
-    public int Character { get; }
-
-    public Position(int line, int character)
-    {
-        this.Line = line;
-        this.Character = character;
-    }
-
-    public int CompareTo(Position other)
-    {
-        if (this.Line < other.Line)
-        {
-            return -1;
-        }
-        else if (this.Line > other.Line)
-        {
-            return 1;
-        }
-        else if (this.Character < other.Character)
-        {
-            return -1;
-        }
-        else if (this.Character > other.Character)
-        {
-            return 1;
-        }
-
-        return 0;
-    }
-
-    public override string ToString()
-    {
-        return $"({this.Line},{this.Character})";
-    }
-}
-
-public enum DiagnosticSeverity : byte
-{
-    Error = 1,
-    Warning = 2,
-    Information = 3,
-    Hint = 4,
 }
