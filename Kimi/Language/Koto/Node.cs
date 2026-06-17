@@ -7,13 +7,13 @@ namespace Kimigayo.Language;
 
 public abstract class Node
 {
-    public RootNode RootNode { get; protected set; }
+    public FileRoot RootNode { get; protected set; }
 
     public StatementContext StatementContext { get; }
 
-    public UrlDiagnostic Diagnostic => this.RootNode.Diagnostic;
+    public DiagnosticCollection Diagnostic => this.RootNode.Diagnostic;
 
-    public Node(RootNode rootNode)
+    public Node(FileRoot rootNode)
     {
         this.RootNode = rootNode;
     }

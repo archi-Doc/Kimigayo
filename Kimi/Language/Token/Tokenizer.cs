@@ -601,7 +601,7 @@ internal sealed class Tokenizer
 
     #region FieldAndProperty
 
-    private readonly UrlDiagnostic urlDiagnostic;
+    private readonly DiagnosticCollection urlDiagnostic;
     private readonly List<Token> tokenList = new();
     private readonly Stack<IndentSource> indentStack = new();
 
@@ -619,7 +619,7 @@ internal sealed class Tokenizer
     /// Initializes a new instance of the <see cref="Tokenizer"/> class.
     /// </summary>
     /// <param name="urlDiagnostic">The diagnostic sink used to report lexical errors.</param>
-    public Tokenizer(UrlDiagnostic urlDiagnostic)
+    public Tokenizer(DiagnosticCollection urlDiagnostic)
     {
         this.urlDiagnostic = urlDiagnostic;
     }

@@ -16,7 +16,7 @@ public class GroupNode : Node
 
     #endregion
 
-    public GroupNode(RootNode rootNode)
+    public GroupNode(FileRoot rootNode)
         : base(rootNode)
     {
     }

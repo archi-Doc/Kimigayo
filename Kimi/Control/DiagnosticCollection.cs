@@ -4,7 +4,7 @@ using Kimigayo.Language;
 
 namespace Kimigayo.Diagnostics;
 
-public record class UrlDiagnostic
+public record class DiagnosticCollection
 {
     private readonly KimiControl kimiControl;
     private readonly Diagnostic.GoshujinClass diagnostics = new();
@@ -13,7 +13,7 @@ public record class UrlDiagnostic
 
     public bool IsGlobal => this.Url == string.Empty || this.Url == KimiControl.GlobalName;
 
-    internal UrlDiagnostic(KimiControl kimiControl, string url)
+    internal DiagnosticCollection(KimiControl kimiControl, string url)
     {
         this.kimiControl = kimiControl;
         this.Url = url;

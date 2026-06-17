@@ -110,7 +110,7 @@ public partial class Project
         var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
         var tokenizer = new Tokenizer(diagnostic);
         tokenizer.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
-        var rootNode = new RootNode(diagnostic);
+        var fileRoot = new FileRoot(diagnostic);
         var currentIndentLevel = 0;
 
         var dumpToken = this.SolutionOptions.DumpToken ? new List<Token>() : null;
@@ -132,7 +132,7 @@ public partial class Project
 
             // Token to Node
             var tokenReader = new TokenReader(list);
-            rootNode.Read(ref tokenReader);
+            fileRoot.Read(ref tokenReader);
         }
 
         if (dumpToken is not null &&

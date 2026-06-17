@@ -8,7 +8,7 @@ public sealed class NamespaceNode : GroupNode
 {
     private readonly Utf16Hashtable<GroupNode> namespaceToGroupNode = new();
 
-    public NamespaceNode(RootNode rootNode)
+    public NamespaceNode(FileRoot rootNode)
         : base(rootNode)
     {
     }

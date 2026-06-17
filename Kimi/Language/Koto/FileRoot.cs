@@ -5,9 +5,9 @@ using Kimi.Language;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
-public sealed class RootNode
+public sealed class FileRoot
 {
-    public UrlDiagnostic Diagnostic { get; }
+    public DiagnosticCollection Diagnostic { get; }
 
     public GroupNode CurrentGroup { get; private set; }
 
@@ -16,7 +16,7 @@ public sealed class RootNode
     private readonly Utf16Hashtable<GroupNode> namespaceToGroupNode = new();
     private bool allowTopLevelKeyword = true;
 
-    public RootNode(UrlDiagnostic diagnostic)
+    public FileRoot(DiagnosticCollection diagnostic)
     {
         this.rootGroup = new(this);
         this.Diagnostic = diagnostic;
@@ -33,6 +33,9 @@ public sealed class RootNode
     {
         if (reader.TryPeek(out var token))
         {
+            if (token.Kind == TokenKind.Sharp)
+            {// #Condition
+            }
             if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
                 if (!this.allowTopLevelKeyword)

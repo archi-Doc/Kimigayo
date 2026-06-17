@@ -9,7 +9,7 @@ namespace Kimigayo.Language;
 
 public static class NodeHelper
 {
-    public static string ValidateAndGetNamespace(UrlDiagnostic diagnostic, TokenReader reader)
+    public static string ValidateAndGetNamespace(DiagnosticCollection diagnostic, TokenReader reader)
     {
         if (reader.IsEmpty)
         {
