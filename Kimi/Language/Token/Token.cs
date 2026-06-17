@@ -6,7 +6,7 @@ namespace Kimigayo.Language;
 
 [TinyhandObject]
 public readonly partial struct Token
-{
+{// 1+1+16+4+4
     public static readonly Token Invalid = default;
 
     [Key(0)]

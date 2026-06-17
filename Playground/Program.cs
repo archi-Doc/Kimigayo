@@ -1,5 +1,6 @@
 ﻿namespace Playground;
 
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Arc.Unit;
@@ -26,6 +27,7 @@ internal class Program
         // var tree = CodeTree.Parse("");
 
         var project = serviceProvider.GetRequiredService<Project>();
+        Test1();
 
         /*project.AddSource("test", """
             namespace Test.Program // Comment
@@ -84,5 +86,10 @@ internal class Program
 
         // kimiControl.DumpToConsole();
 
+    }
+
+    private static unsafe void Test1()
+    {
+        var size = Unsafe.SizeOf<Token>();
     }
 }
