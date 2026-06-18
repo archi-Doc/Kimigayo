@@ -56,7 +56,7 @@ public class Compilation
             }
 
             // Token to Koto
-            var tokenReader = new TokenReader(list);
+            var tokenReader = new TokenReader(diagnostic, list);
             fileRoot.Parse(ref tokenReader);
         }
 

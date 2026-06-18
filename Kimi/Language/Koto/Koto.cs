@@ -5,15 +5,12 @@ using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
 
-public abstract class Node
+public abstract class Koto
 {
+    [IgnoreMember]
     public FileRoot RootNode { get; protected set; }
 
-    public StatementContext StatementContext { get; }
-
-    public DiagnosticCollection Diagnostic => this.RootNode.Diagnostic;
-
-    public Node(FileRoot rootNode)
+    public Koto(FileRoot rootNode)
     {
         this.RootNode = rootNode;
     }

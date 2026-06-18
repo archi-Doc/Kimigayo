@@ -8,15 +8,15 @@ namespace Kimigayo.Language;
 /// <summary>
 /// group, struct, enum.
 /// </summary>
-public class GroupNode : Node
+public class GroupKoto : Koto
 {
     #region FieldAndProperty
 
-    private readonly Utf16Hashtable<GroupNode> identifierToGroupNode = new();
+    private readonly Utf16Hashtable<GroupKoto> identifierToGroupNode = new();
 
     #endregion
 
-    public GroupNode(FileRoot rootNode)
+    public GroupKoto(FileRoot rootNode)
         : base(rootNode)
     {
     }
@@ -36,7 +36,7 @@ public class GroupNode : Node
         }*/
     }
 
-    public GroupNode GetOrAddGroup(ReadOnlySpan<char> qualifiedName)
+    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName)
     {
         var text = qualifiedName;
         var group = this;
@@ -45,11 +45,11 @@ public class GroupNode : Node
             var index = text.IndexOf(Constants.DotChar);
             if (index < 0)
             {
-                return group.identifierToGroupNode.GetOrAdd(text, x => new GroupNode(this.RootNode));
+                return group.identifierToGroupNode.GetOrAdd(text, x => new GroupKoto(this.RootNode));
             }
 
             var segment = text[..index];
-            group = group.identifierToGroupNode.GetOrAdd(segment, x => new GroupNode(this.RootNode));
+            group = group.identifierToGroupNode.GetOrAdd(segment, x => new GroupKoto(this.RootNode));
             text = text[(index + 1)..];
         }
     }

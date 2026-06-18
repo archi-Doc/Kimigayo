@@ -10,11 +10,11 @@ public sealed class FileRoot
 {
     public DiagnosticCollection Diagnostic { get; }
 
-    public GroupNode CurrentGroup { get; private set; }
+    public GroupKoto CurrentGroup { get; private set; }
 
-    private readonly GroupNode rootGroup;
+    private readonly GroupKoto rootGroup;
     private readonly HashSet<string> alias = new();
-    private readonly Utf16Hashtable<GroupNode> namespaceToGroupNode = new();
+    private readonly Utf16Hashtable<GroupKoto> namespaceToGroupNode = new();
     private bool allowTopLevelKeyword = true;
 
     public FileRoot(DiagnosticCollection diagnostic)
@@ -24,7 +24,7 @@ public sealed class FileRoot
         this.CurrentGroup = this.SetNamespace(Constants.DefaultNamespace);
     }
 
-    public GroupNode SetNamespace(ReadOnlySpan<char> qualifiedName)
+    public GroupKoto SetNamespace(ReadOnlySpan<char> qualifiedName)
     {
         var group = this.rootGroup.GetOrAddGroup(qualifiedName);
         return group;

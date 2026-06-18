@@ -10,6 +10,8 @@ public ref struct TokenReader
 {
     #region FieldAndProperty
 
+    public readonly DiagnosticCollection Diagnostic;
+
     private readonly IReadOnlyList<Token> list;
 
     public int Position { get; private set; }
@@ -22,8 +24,9 @@ public ref struct TokenReader
 
     #endregion
 
-    public TokenReader(IReadOnlyList<Token> tokens)
+    public TokenReader(DiagnosticCollection diagnostic, IReadOnlyList<Token> tokens)
     {
+        this.Diagnostic = diagnostic;
         this.list = tokens;
     }
 

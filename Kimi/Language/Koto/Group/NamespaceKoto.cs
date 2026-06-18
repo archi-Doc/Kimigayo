@@ -4,11 +4,11 @@ using Arc.Collections;
 using Kimi.Language;
 using Kimigayo.Language;
 
-public sealed class NamespaceNode : GroupNode
+public sealed class NamespaceKoto : GroupKoto
 {
-    private readonly Utf16Hashtable<GroupNode> namespaceToGroupNode = new();
+    private readonly Utf16Hashtable<GroupKoto> namespaceToGroupNode = new();
 
-    public NamespaceNode(FileRoot rootNode)
+    public NamespaceKoto(FileRoot rootNode)
         : base(rootNode)
     {
     }
@@ -20,7 +20,7 @@ public sealed class NamespaceNode : GroupNode
             if (token.IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
                 reader.MoveNext();
-                var qualifiedName = KotoHelper.ValidateAndGetNamespace(this.Diagnostic, ref reader);
+                var qualifiedName = KotoHelper.ValidateAndGetNamespace(reader.Diagnostic, ref reader);
                 // var @namespace = this.GetOrAddGroup(qualifiedName);
                 // this.namespaceToGroupNode.TryAdd(qualifiedName, @namespace);
 
