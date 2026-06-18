@@ -1,4 +1,7 @@
-﻿using System.Runtime.CompilerServices;
+﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Kimi.Language;
+using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
 
@@ -27,119 +30,108 @@ internal enum ConditionUnaryOperator
 
 internal readonly struct ConditionParseResult
 {
-    public ConditionParseResult(bool success, ConditionNode? node, int nextIndex)
+    public ConditionParseResult(bool success, ConditionNode? node)
     {
         this.Success = success;
         this.Node = node;
-        this.NextIndex = nextIndex;
     }
 
     public bool Success { get; }
 
     public ConditionNode? Node { get; }
-
-    public int NextIndex { get; }
 }
 
-internal ref struct ConditionParser
+internal ref struct AttributeParser
 {
-    private readonly ReadOnlySpan<Token> tokens;
-    private int index;
+    private readonly DiagnosticCollection diagnostic;
 
-    public ConditionParser(ReadOnlySpan<Token> tokens)
+    public AttributeParser(DiagnosticCollection diagnostic)
     {
-        this.tokens = tokens;
-        this.index = 0;
+        this.diagnostic = diagnostic;
     }
 
-    public ConditionParseResult ParseConditionDirective()
+    public ConditionParseResult ParseConditionDirective(ref TokenReader reader)
     {
         // #Condition(...)
-        if (!this.TryConsume(TokenKind.Sharp))
+        if (!reader.TryConsume(TokenKind.Sharp))
         {
             return default;
         }
 
-        if (!this.TryConsumeIdentifier("Condition"))
+        if (!reader.TryConsumeIdentifier(Constants.ConditionKeyword))
         {
             return default;
         }
 
-        if (!this.TryConsume(TokenKind.OpenParenthesis))
+        if (!reader.TryConsume(TokenKind.OpenParenthesis))
         {
             return default;
         }
 
-        var expression = this.ParseExpression();
+        var expression = this.ParseExpression(ref reader);
         if (expression is null)
         {
             return default;
         }
 
-        if (!this.TryConsume(TokenKind.CloseParenthesis))
+        if (!reader.TryConsume(TokenKind.CloseParenthesis))
         {
             return default;
         }
 
-        return new(true, expression, this.index);
+        return new(true, expression);
     }
 
-    private ConditionNode? ParseExpression()
-        => this.ParseOr();
+    private ConditionNode? ParseExpression(ref TokenReader reader)
+        => this.ParseOr(ref reader);
 
-    private ConditionNode? ParseOr()
+    private ConditionNode? ParseOr(ref TokenReader reader)
     {
-        var left = this.ParseAnd();
+        var left = this.ParseAnd(ref reader);
         if (left is null)
         {
             return null;
         }
 
-        while (this.TryConsume(TokenKind.BarBar))
+        while (reader.TryConsume(TokenKind.BarBar))
         {
-            var right = this.ParseAnd();
+            var right = this.ParseAnd(ref reader);
             if (right is null)
             {
                 return null;
             }
 
-            left = new ConditionBinaryNode(
-                ConditionBinaryOperator.Or,
-                left,
-                right);
+            left = new ConditionBinaryNode(ConditionBinaryOperator.Or, left, right);
         }
 
         return left;
     }
 
-    private ConditionNode? ParseAnd()
+    private ConditionNode? ParseAnd(ref TokenReader reader)
     {
-        var left = this.ParseEquality();
+        var left = this.ParseEquality(ref reader);
         if (left is null)
         {
             return null;
         }
 
-        while (this.TryConsume(TokenKind.AmpersandAmpersand))
+        while (reader.TryConsume(TokenKind.AmpersandAmpersand))
         {
-            var right = this.ParseEquality();
+            var right = this.ParseEquality(ref reader);
             if (right is null)
             {
                 return null;
             }
 
-            left = new ConditionBinaryNode(
-                ConditionBinaryOperator.And,
-                left,
-                right);
+            left = new ConditionBinaryNode(ConditionBinaryOperator.And, left, right);
         }
 
         return left;
     }
 
-    private ConditionNode? ParseEquality()
+    private ConditionNode? ParseEquality(ref TokenReader reader)
     {
-        var left = this.ParseUnary();
+        var left = this.ParseUnary(ref reader);
         if (left is null)
         {
             return null;
@@ -147,34 +139,28 @@ internal ref struct ConditionParser
 
         while (true)
         {
-            if (this.TryConsume(TokenKind.EqualsEquals))
+            if (reader.TryConsume(TokenKind.EqualsEquals))
             {
-                var right = this.ParseUnary();
+                var right = this.ParseUnary(ref reader);
                 if (right is null)
                 {
                     return null;
                 }
 
-                left = new ConditionBinaryNode(
-                    ConditionBinaryOperator.Equals,
-                    left,
-                    right);
+                left = new ConditionBinaryNode(ConditionBinaryOperator.Equals, left, right);
 
                 continue;
             }
 
-            if (this.TryConsume(TokenKind.ExclamationEquals))
+            if (reader.TryConsume(TokenKind.ExclamationEquals))
             {
-                var right = this.ParseUnary();
+                var right = this.ParseUnary(ref reader);
                 if (right is null)
                 {
                     return null;
                 }
 
-                left = new ConditionBinaryNode(
-                    ConditionBinaryOperator.NotEquals,
-                    left,
-                    right);
+                left = new ConditionBinaryNode(ConditionBinaryOperator.NotEquals, left, right);
 
                 continue;
             }
@@ -183,35 +169,33 @@ internal ref struct ConditionParser
         }
     }
 
-    private ConditionNode? ParseUnary()
+    private ConditionNode? ParseUnary(ref TokenReader reader)
     {
-        if (this.TryConsume(TokenKind.Exclamation))
+        if (reader.TryConsume(TokenKind.Exclamation))
         {
-            var operand = this.ParseUnary();
+            var operand = this.ParseUnary(ref reader);
             if (operand is null)
             {
                 return null;
             }
 
-            return new ConditionUnaryNode(
-                ConditionUnaryOperator.Not,
-                operand);
+            return new ConditionUnaryNode(ConditionUnaryOperator.Not, operand);
         }
 
-        return this.ParsePrimary();
+        return this.ParsePrimary(ref reader);
     }
 
-    private ConditionNode? ParsePrimary()
+    private ConditionNode? ParsePrimary(ref TokenReader reader)
     {
-        if (this.TryConsume(TokenKind.OpenParenthesis))
+        if (reader.TryConsume(TokenKind.OpenParenthesis))
         {
-            var expression = this.ParseExpression();
+            var expression = this.ParseExpression(ref reader);
             if (expression is null)
             {
                 return null;
             }
 
-            if (!this.TryConsume(TokenKind.CloseParenthesis))
+            if (!reader.TryConsume(TokenKind.CloseParenthesis))
             {
                 return null;
             }
@@ -219,83 +203,21 @@ internal ref struct ConditionParser
             return expression;
         }
 
-        if (this.TryPeek(out var token))
+        if (reader.TryPeek(out var token))
         {
             if (token.Kind == TokenKind.Identifier)
             {
-                this.index++;
+                reader.MoveNext();
                 return new ConditionIdentifierNode(token.Text);
             }
 
             if (token.Kind == TokenKind.Literal)
             {
-                this.index++;
-                return new ConditionStringNode(UnquoteStringLiteral(token.Text));
+                reader.MoveNext();
+                return new ConditionStringNode(token.Text);
             }
         }
 
         return null;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool TryPeek(out Token token)
-    {
-        if ((uint)this.index < (uint)this.tokens.Length)
-        {
-            token = this.tokens[this.index];
-            return true;
-        }
-
-        token = default;
-        return false;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool TryConsume(TokenKind kind)
-    {
-        if ((uint)this.index < (uint)this.tokens.Length &&
-            this.tokens[this.index].Kind == kind)
-        {
-            this.index++;
-            return true;
-        }
-
-        return false;
-    }
-
-    private bool TryConsumeIdentifier(ReadOnlySpan<char> name)
-    {
-        if ((uint)this.index >= (uint)this.tokens.Length)
-        {
-            return false;
-        }
-
-        var token = this.tokens[this.index];
-        if (token.Kind != TokenKind.Identifier)
-        {
-            return false;
-        }
-
-        if (!token.Text.Span.Equals(name, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        this.index++;
-        return true;
-    }
-
-    private static ReadOnlyMemory<char> UnquoteStringLiteral(ReadOnlyMemory<char> text)
-    {
-        var span = text.Span;
-
-        if (span.Length >= 2 &&
-            span[0] == '"' &&
-            span[^1] == '"')
-        {
-            return text.Slice(1, text.Length - 2);
-        }
-
-        return text;
     }
 }

@@ -34,13 +34,12 @@ public sealed class FileRoot
     {
         if (reader.TryPeek(out var token))
         {
-            var parser = new ConditionParser(token)
             if (token.Kind == TokenKind.Sharp)
             {// #Condition
-                KotoHelper.ParseAttribute(ref reader);
-                if (reader.TryPeek())
+                var parser = new AttributeParser(this.Diagnostic);
+                var koto = parser.ParseConditionDirective(ref reader);
             }
-            if (token.IsIdentifierToken(Constants.AliasKeyword))
+            else if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
                 if (!this.allowTopLevelKeyword)
                 {
@@ -48,7 +47,7 @@ public sealed class FileRoot
                 }
 
                 reader.MoveNext();
-                var qualifiedName = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, reader);
+                var qualifiedName = KotoHelper.ValidateAndGetNamespace(this.Diagnostic, ref reader);
                 this.alias.Add(qualifiedName);
             }
         }

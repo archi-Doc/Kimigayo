@@ -7,9 +7,9 @@ using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
 
-public static class NodeHelper
+public static class KotoHelper
 {
-    public static string ValidateAndGetNamespace(DiagnosticCollection diagnostic, TokenReader reader)
+    public static string ValidateAndGetNamespace(DiagnosticCollection diagnostic, ref TokenReader reader)
     {
         if (reader.IsEmpty)
         {

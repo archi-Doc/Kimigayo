@@ -1,5 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
+using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
 namespace Kimi.Language;
@@ -14,7 +16,9 @@ public ref struct TokenReader
 
     public int Count => this.list.Count;
 
-    public bool IsEmpty => this.list.Count == 0;
+    public int Remaining => this.list.Count - this.Position;
+
+    public bool IsEmpty => this.Position >= this.list.Count;
 
     #endregion
 
@@ -23,17 +27,36 @@ public ref struct TokenReader
         this.list = tokens;
     }
 
-    public bool TryRead(out Token token)
+    /// <summary>
+    /// Skips comment tokens and returns whether a non-comment token remains.
+    /// </summary>
+    /// <returns>
+    /// <see langword="true"/> if a non-comment token remains after skipping comments;
+    /// otherwise, <see langword="false"/> if the end of the token list was reached.
+    /// </returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool SkipCommentsAndHasMore()
     {
         while (this.Position < this.Count)
         {
-            if (this.list[this.Position].Kind == TokenKind.SingleLineComment ||
-                this.list[this.Position].Kind == TokenKind.MultiLineComment)
+            var kind = this.list[this.Position].Kind;
+            if (kind == TokenKind.SingleLineComment ||
+                kind == TokenKind.MultiLineComment)
             {
                 this.Position++;
                 continue;
             }
 
+            return true;
+        }
+
+        return false;
+    }
+
+    public bool TryRead(out Token token)
+    {
+        if (this.SkipCommentsAndHasMore())
+        {
             token = this.list[this.Position++];
             return true;
         }
@@ -44,20 +67,46 @@ public ref struct TokenReader
 
     public bool TryPeek(out Token token)
     {
-        while (this.Position < this.Count)
+        if (this.SkipCommentsAndHasMore())
         {
-            if (this.list[this.Position].Kind == TokenKind.SingleLineComment ||
-                this.list[this.Position].Kind == TokenKind.MultiLineComment)
-            {
-                this.Position++;
-                continue;
-            }
-
             token = this.list[this.Position];
             return true;
         }
 
         token = default;
+        return false;
+    }
+
+    public bool TryConsume(TokenKind targetKind)
+    {
+        if (this.SkipCommentsAndHasMore())
+        {
+            if (this.list[this.Position].Kind == targetKind)
+            {
+                this.Position++;
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    public bool TryConsumeIdentifier(ReadOnlySpan<char> name)
+    {
+        if (this.SkipCommentsAndHasMore())
+        {
+            if (this.list[this.Position].Kind == TokenKind.Identifier &&
+                this.list[this.Position].Text.Span.Equals(name, StringComparison.Ordinal))
+            {
+                this.Position++;
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -79,7 +128,7 @@ public ref struct TokenReader
         return false;
     }
 
-    public Kimigayo.Diagnostics.SourceRange CurrentRange()
+    public SourceRange CurrentRange()
     {
         if (this.Position < this.Count)
         {

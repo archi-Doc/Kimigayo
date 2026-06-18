@@ -20,7 +20,7 @@ public sealed class NamespaceNode : GroupNode
             if (token.IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
                 reader.MoveNext();
-                var qualifiedName = NodeHelper.ValidateAndGetNamespace(this.Diagnostic, reader);
+                var qualifiedName = KotoHelper.ValidateAndGetNamespace(this.Diagnostic, ref reader);
                 // var @namespace = this.GetOrAddGroup(qualifiedName);
                 // this.namespaceToGroupNode.TryAdd(qualifiedName, @namespace);
 
