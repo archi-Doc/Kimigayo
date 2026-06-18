@@ -7,12 +7,8 @@ namespace Kimigayo.Language;
 
 public abstract class Koto
 {
-    [IgnoreMember]
-    public FileRoot RootNode { get; protected set; }
-
-    public Koto(FileRoot rootNode)
+    public Koto()
     {
-        this.RootNode = rootNode;
     }
 
     public virtual void Read(ref TokenReader reader)
