@@ -21,14 +21,8 @@ public class Compilation
         this.kimiControl = kimiControl;
         this.Project = project;
         this.Target = target;
-        if (TargetTripleParser.TryParse(this.Target, out var targetTriple))
-        {
-            this.TargetTriple = targetTriple;
-        }
-        else
-        {
-            this.TargetTriple = new(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
-        }
+        TargetTripleParser.TryParse(this.Target, out var targetTriple);
+        this.TargetTriple = targetTriple;
     }
 
     public bool Prepare()
@@ -61,9 +55,9 @@ public class Compilation
                 dumpToken.Add(Token.Invalid);
             }
 
-            // Token to Node
+            // Token to Koto
             var tokenReader = new TokenReader(list);
-            fileRoot.Read(ref tokenReader);
+            fileRoot.Parse(ref tokenReader);
         }
 
         if (dumpToken is not null &&

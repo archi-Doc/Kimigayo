@@ -4,6 +4,9 @@ namespace Kimi.Compilation;
 
 public record class TargetTriple(string Architecture, string Vendor, string OperatingSystem, string Environment, string Abi)
 {
+    // x86_64-pc-windows-msvc
+    public static readonly TargetTriple Empty = new(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+
     public override string ToString()
     {
         if (this.Abi.Length > 0)
@@ -24,7 +27,7 @@ public static class TargetTripleParser
 {
     public static bool TryParse(ReadOnlySpan<char> text, out TargetTriple triple)
     {
-        triple = default;
+        triple = TargetTriple.Empty;
         if (text.IsEmpty)
         {
             return false;
@@ -40,7 +43,6 @@ public static class TargetTripleParser
         var architecture = text[parts[0]].ToString();
         var vendor = text[parts[1]].ToString();
         var operatingSystem = text[parts[2]].ToString();
-
         var environment = string.Empty;
         var abi = string.Empty;
 
@@ -71,7 +73,6 @@ public static class TargetTripleParser
     {
         var count = 0;
         var start = 0;
-
         for (var i = 0; i < text.Length; i++)
         {
             if (text[i] != '-')

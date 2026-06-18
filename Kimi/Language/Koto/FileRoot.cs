@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Linq.Expressions;
 using Arc.Collections;
 using Kimi.Language;
 using Kimigayo.Diagnostics;
@@ -29,12 +30,15 @@ public sealed class FileRoot
         return group;
     }
 
-    public void Read(ref TokenReader reader)
+    public void Parse(ref TokenReader reader)
     {
         if (reader.TryPeek(out var token))
         {
+            var parser = new ConditionParser(token)
             if (token.Kind == TokenKind.Sharp)
             {// #Condition
+                KotoHelper.ParseAttribute(ref reader);
+                if (reader.TryPeek())
             }
             if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias

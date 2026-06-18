@@ -29,7 +29,7 @@ public enum TokenKind : byte
 
     // Keywords (Group)
     Const = 32,
-    Static,
+    Shared,
     Public,
     Protected,
     Private,
