@@ -56,6 +56,8 @@ public enum TokenKind : byte
     // EqualsGreaterThan, // =>
     Is, // is
     Not, // not
+    And, // and
+    Or, // Or
 
     // Non-block keyword
     Return, // method/return
