@@ -19,7 +19,7 @@ public sealed class FileRoot
 
     public FileRoot(DiagnosticCollection diagnostic)
     {
-        this.rootGroup = new(this);
+        this.rootGroup = new();
         this.Diagnostic = diagnostic;
         this.CurrentGroup = this.SetNamespace(Constants.DefaultNamespace);
     }

@@ -9,7 +9,7 @@ public partial class CommentKoto : Koto
     public string Comment { get; private set; }
 
     public CommentKoto(FileRoot rootNode, Token token)
-        : base(rootNode)
+        : base()
     {
         this.Comment = token.Text.ToString();
     }

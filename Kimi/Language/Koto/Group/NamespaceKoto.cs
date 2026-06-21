@@ -8,8 +8,8 @@ public sealed class NamespaceKoto : GroupKoto
 {
     private readonly Utf16Hashtable<GroupKoto> namespaceToGroupNode = new();
 
-    public NamespaceKoto(FileRoot rootNode)
-        : base(rootNode)
+    public NamespaceKoto()
+        : base()
     {
     }
 
@@ -24,7 +24,7 @@ public sealed class NamespaceKoto : GroupKoto
                 // var @namespace = this.GetOrAddGroup(qualifiedName);
                 // this.namespaceToGroupNode.TryAdd(qualifiedName, @namespace);
 
-                this.RootNode.SetNamespace(qualifiedName);
+                //this.RootNode.SetNamespace(qualifiedName);
             }
         }
 

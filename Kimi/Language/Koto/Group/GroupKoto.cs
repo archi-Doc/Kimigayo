@@ -16,8 +16,8 @@ public class GroupKoto : Koto
 
     #endregion
 
-    public GroupKoto(FileRoot rootNode)
-        : base(rootNode)
+    public GroupKoto()
+        : base()
     {
     }
 
@@ -45,11 +45,11 @@ public class GroupKoto : Koto
             var index = text.IndexOf(Constants.DotChar);
             if (index < 0)
             {
-                return group.identifierToGroupNode.GetOrAdd(text, x => new GroupKoto(this.RootNode));
+                return group.identifierToGroupNode.GetOrAdd(text, x => new GroupKoto());
             }
 
             var segment = text[..index];
-            group = group.identifierToGroupNode.GetOrAdd(segment, x => new GroupKoto(this.RootNode));
+            group = group.identifierToGroupNode.GetOrAdd(segment, x => new GroupKoto());
             text = text[(index + 1)..];
         }
     }
