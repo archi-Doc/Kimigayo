@@ -3,13 +3,13 @@
 namespace Kimigayo.Language;
 
 [TinyhandObject]
-public sealed partial class ConditionNegateKoto : ConditionKoto
+public sealed partial class ConditionNegateKoto : Koto
 {
     [Key(0)]
-    public ConditionKoto ConditionKoto { get; private set; }
+    public Koto Koto { get; private set; }
 
-    public ConditionNegateKoto(ConditionKoto conditionKoto)
+    public ConditionNegateKoto(Koto conditionKoto)
     {
-        this.ConditionKoto = conditionKoto;
+        this.Koto = conditionKoto;
     }
 }

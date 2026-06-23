@@ -12,4 +12,7 @@ public partial class CommentKoto : Koto
     {
         this.Comment = token.Text.ToString();
     }
+
+    public override string ToString()
+        => $"/*{this.Comment}*/";
 }

@@ -3,15 +3,15 @@
 namespace Kimigayo.Language;
 
 [TinyhandObject]
-public sealed partial class ConditionNotEqualsKoto : ConditionKoto
+public sealed partial class ConditionNotEqualsKoto : Koto
 {
     [Key(0)]
-    public ConditionKoto Left { get; private set; }
+    public Koto Left { get; private set; }
 
     [Key(1)]
-    public ConditionKoto Right { get; private set; }
+    public Koto Right { get; private set; }
 
-    public ConditionNotEqualsKoto(ConditionKoto left, ConditionKoto right)
+    public ConditionNotEqualsKoto(Koto left, Koto right)
     {
         this.Left = left;
         this.Right = right;

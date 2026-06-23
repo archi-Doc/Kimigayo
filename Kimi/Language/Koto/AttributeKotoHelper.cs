@@ -7,7 +7,7 @@ namespace Kimigayo.Language;
 
 internal static class AttributeKotoHelper
 {
-    public static ConditionKoto? Parse(ref TokenReader reader)
+    public static Koto? Parse(ref TokenReader reader)
     {// #Attribute(...)
         if (!reader.TryConsume(TokenKind.Sharp))
         {
@@ -39,10 +39,10 @@ internal static class AttributeKotoHelper
         return expression;
     }
 
-    private static ConditionKoto? ParseExpression(ref TokenReader reader)
+    private static Koto? ParseExpression(ref TokenReader reader)
         => ParseOr(ref reader);
 
-    private static ConditionKoto? ParseOr(ref TokenReader reader)
+    private static Koto? ParseOr(ref TokenReader reader)
     {
         var left = ParseAnd(ref reader);
         if (left is null)
@@ -64,7 +64,7 @@ internal static class AttributeKotoHelper
         return left;
     }
 
-    private static ConditionKoto? ParseAnd(ref TokenReader reader)
+    private static Koto? ParseAnd(ref TokenReader reader)
     {
         var left = ParseEquality(ref reader);
         if (left is null)
@@ -86,7 +86,7 @@ internal static class AttributeKotoHelper
         return left;
     }
 
-    private static ConditionKoto? ParseEquality(ref TokenReader reader)
+    private static Koto? ParseEquality(ref TokenReader reader)
     {
         var left = ParseUnary(ref reader);
         if (left is null)
@@ -126,7 +126,7 @@ internal static class AttributeKotoHelper
         }
     }
 
-    private static ConditionKoto? ParseUnary(ref TokenReader reader)
+    private static Koto? ParseUnary(ref TokenReader reader)
     {
         if (reader.TryConsume(TokenKind.Not, false))
         {
@@ -142,7 +142,7 @@ internal static class AttributeKotoHelper
         return ParsePrimary(ref reader);
     }
 
-    private static ConditionKoto? ParsePrimary(ref TokenReader reader)
+    private static Koto? ParsePrimary(ref TokenReader reader)
     {
         if (reader.TryConsume(TokenKind.OpenParenthesis, false))
         {
@@ -165,13 +165,13 @@ internal static class AttributeKotoHelper
             if (token.Kind == TokenKind.Identifier)
             {
                 reader.MoveNext();
-                return new ConditionUnresolvedKoto(token);
+                return new UnresolvedKoto(token);
             }
 
             if (token.Kind == TokenKind.Literal)
             {
                 reader.MoveNext();
-                return new ConditionLiteralKoto(token);
+                return new LiteralKoto(token);
             }
         }
 
