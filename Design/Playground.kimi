@@ -8,6 +8,7 @@ var list = List<i32>.New() { 1, 2, 3, }
 
 #Condition(Os == "Windows")
 namespace Playground.A // a
+namespace Playground.B
 
 public const string Name = "Test"
 
