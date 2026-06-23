@@ -14,7 +14,7 @@ public sealed partial class NamespaceKoto : GroupKoto
     {
     }
 
-    public override void Read(ref TokenReader reader)
+    public override void Parse(ref TokenReader reader)
     {
         if (reader.TryPeek(out var token))
         {
@@ -29,6 +29,6 @@ public sealed partial class NamespaceKoto : GroupKoto
             }
         }
 
-        base.Read(ref reader);
+        base.Parse(ref reader);
     }
 }

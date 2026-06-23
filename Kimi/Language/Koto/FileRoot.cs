@@ -35,7 +35,7 @@ public sealed class FileRoot
         if (reader.TryPeek(out var token))
         {
             if (token.Kind == TokenKind.Sharp)
-            {// #Condition
+            {// #Attribute
                 var parser = new AttributeParser(this.Diagnostic);
                 var koto = parser.ParseConditionDirective(ref reader);
             }
@@ -53,7 +53,7 @@ public sealed class FileRoot
         }
 
         this.allowTopLevelKeyword = false;
-        this.CurrentGroup.Read(ref reader);
+        this.CurrentGroup.Parse(ref reader);
         return;
 
 UnexpectedTopLevelKeyword:

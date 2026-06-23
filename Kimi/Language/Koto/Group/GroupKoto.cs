@@ -8,20 +8,26 @@ namespace Kimigayo.Language;
 /// <summary>
 /// group, struct, enum.
 /// </summary>
-public class GroupKoto : Koto
+[TinyhandObject]
+public partial class GroupKoto : Koto
 {
     #region FieldAndProperty
 
-    private readonly Utf16Hashtable<GroupKoto> identifierToGroupNode = new();
+    [Key(0)]
+    public string Name { get; protected set; } = string.Empty;
+
+    private readonly Utf16Hashtable<Koto> identifierToGroupKoto = new();
 
     #endregion
 
     public GroupKoto()
-        : base()
     {
     }
 
-    public override void Read(ref TokenReader reader)
+    public override string ToString()
+        => $"Group: {this.Name}";
+
+    public override void Parse(ref TokenReader reader)
     {
         while (reader.TryRead(out var token))
         {
@@ -45,12 +51,22 @@ public class GroupKoto : Koto
             var index = text.IndexOf(Constants.DotChar);
             if (index < 0)
             {
-                return group.identifierToGroupNode.GetOrAdd(text, x => new GroupKoto());
+                group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(text, x => new GroupKoto());
+                group.TrySetName(text);
             }
 
             var segment = text[..index];
-            group = group.identifierToGroupNode.GetOrAdd(segment, x => new GroupKoto());
+            group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(segment, x => new GroupKoto());
+            group.TrySetName(text);
             text = text[(index + 1)..];
+        }
+    }
+
+    private void TrySetName(ReadOnlySpan<char> text)
+    {
+        if (string.IsNullOrEmpty(this.Name))
+        {
+            this.Name = text.ToString();
         }
     }
 }

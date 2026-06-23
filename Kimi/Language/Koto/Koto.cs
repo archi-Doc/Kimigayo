@@ -14,6 +14,7 @@ public enum KotoKind : byte
 }
 
 [TinyhandUnion((int)KotoKind.Namespace, typeof(NamespaceKoto))]
+[TinyhandUnion((int)KotoKind.Group, typeof(GroupKoto))]
 [TinyhandUnion((int)KotoKind.Comment, typeof(CommentKoto))]
 public abstract partial class Koto
 {
@@ -21,7 +22,7 @@ public abstract partial class Koto
     {
     }
 
-    public virtual void Read(ref TokenReader reader)
+    public virtual void Parse(ref TokenReader reader)
     {
     }
 }
