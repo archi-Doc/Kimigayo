@@ -53,6 +53,7 @@ public partial class GroupKoto : Koto
             if (index < 0)
             {
                 GetOrAddGroup(ref group, text);
+                return group;
             }
 
             var segment = text[..index];

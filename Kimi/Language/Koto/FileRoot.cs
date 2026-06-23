@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using Arc.Collections;
 using Kimi.Language;
@@ -21,13 +22,13 @@ public sealed class FileRoot
     {
         this.rootGroup = new();
         this.Diagnostic = diagnostic;
-        this.CurrentGroup = this.SetNamespace(Constants.DefaultNamespace);
+        this.SetNamespace(Constants.DefaultNamespace);
     }
 
-    public GroupKoto SetNamespace(ReadOnlySpan<char> qualifiedName)
+    [MemberNotNull(nameof(CurrentGroup))]
+    public void SetNamespace(ReadOnlySpan<char> qualifiedName)
     {
-        var group = this.rootGroup.GetOrAddGroup(qualifiedName);
-        return group;
+        this.CurrentGroup = this.rootGroup.GetOrAddGroup(qualifiedName);
     }
 
     public void Parse(ref TokenReader reader)
@@ -36,8 +37,7 @@ public sealed class FileRoot
         {
             if (token.Kind == TokenKind.Sharp)
             {// #Attribute
-                var parser = new AttributeParser(this.Diagnostic);
-                var koto = parser.ParseConditionDirective(ref reader);
+                var koto = AttributeKotoHelper.Parse(ref reader);
             }
             else if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
@@ -47,7 +47,7 @@ public sealed class FileRoot
                 }
 
                 reader.MoveNext();
-                var qualifiedName = KotoHelper.ValidateAndGetNamespace(this.Diagnostic, ref reader);
+                var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
                 this.alias.Add(qualifiedName);
             }
         }

@@ -21,7 +21,7 @@ public sealed partial class NamespaceKoto : GroupKoto
             if (token.IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
                 reader.MoveNext();
-                var qualifiedName = KotoHelper.ValidateAndGetNamespace(reader.Diagnostic, ref reader);
+                var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
                 // var @namespace = this.GetOrAddGroup(qualifiedName);
                 // this.namespaceToGroupNode.TryAdd(qualifiedName, @namespace);
 

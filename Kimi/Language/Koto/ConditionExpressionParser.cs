@@ -41,24 +41,17 @@ internal readonly struct ConditionParseResult
     public ConditionNode? Node { get; }
 }
 
-internal ref struct AttributeParser
+internal static class AttributeKotoHelper
 {
-    private readonly DiagnosticCollection diagnostic;
-
-    public AttributeParser(DiagnosticCollection diagnostic)
-    {
-        this.diagnostic = diagnostic;
-    }
-
-    public ConditionParseResult ParseConditionDirective(ref TokenReader reader)
-    {
-        // #Condition(...)
+    public static ConditionParseResult Parse(ref TokenReader reader)
+    {// #Attribute(...)
         if (!reader.TryConsume(TokenKind.Sharp))
         {
             return default;
         }
 
-        if (!reader.TryConsumeIdentifier(Constants.ConditionKeyword))
+        var identifier = reader.ReadIdentifier();
+        if (identifier.Length == 0)
         {
             return default;
         }
@@ -68,7 +61,7 @@ internal ref struct AttributeParser
             return default;
         }
 
-        var expression = this.ParseExpression(ref reader);
+        var expression = ParseExpression(ref reader);
         if (expression is null)
         {
             return default;
@@ -76,18 +69,19 @@ internal ref struct AttributeParser
 
         if (!reader.TryConsume(TokenKind.CloseParenthesis))
         {
+            reader.AddDiagnostic();
             return default;
         }
 
         return new(true, expression);
     }
 
-    private ConditionNode? ParseExpression(ref TokenReader reader)
-        => this.ParseOr(ref reader);
+    private static ConditionNode? ParseExpression(ref TokenReader reader)
+        => ParseOr(ref reader);
 
-    private ConditionNode? ParseOr(ref TokenReader reader)
+    private static ConditionNode? ParseOr(ref TokenReader reader)
     {
-        var left = this.ParseAnd(ref reader);
+        var left = ParseAnd(ref reader);
         if (left is null)
         {
             return null;
@@ -95,7 +89,7 @@ internal ref struct AttributeParser
 
         while (reader.TryConsume(TokenKind.BarBar))
         {
-            var right = this.ParseAnd(ref reader);
+            var right = ParseAnd(ref reader);
             if (right is null)
             {
                 return null;
@@ -107,9 +101,9 @@ internal ref struct AttributeParser
         return left;
     }
 
-    private ConditionNode? ParseAnd(ref TokenReader reader)
+    private static ConditionNode? ParseAnd(ref TokenReader reader)
     {
-        var left = this.ParseEquality(ref reader);
+        var left = ParseEquality(ref reader);
         if (left is null)
         {
             return null;
@@ -117,7 +111,7 @@ internal ref struct AttributeParser
 
         while (reader.TryConsume(TokenKind.AmpersandAmpersand))
         {
-            var right = this.ParseEquality(ref reader);
+            var right = ParseEquality(ref reader);
             if (right is null)
             {
                 return null;
@@ -129,9 +123,9 @@ internal ref struct AttributeParser
         return left;
     }
 
-    private ConditionNode? ParseEquality(ref TokenReader reader)
+    private static ConditionNode? ParseEquality(ref TokenReader reader)
     {
-        var left = this.ParseUnary(ref reader);
+        var left = ParseUnary(ref reader);
         if (left is null)
         {
             return null;
@@ -141,7 +135,7 @@ internal ref struct AttributeParser
         {
             if (reader.TryConsume(TokenKind.EqualsEquals))
             {
-                var right = this.ParseUnary(ref reader);
+                var right = ParseUnary(ref reader);
                 if (right is null)
                 {
                     return null;
@@ -154,7 +148,7 @@ internal ref struct AttributeParser
 
             if (reader.TryConsume(TokenKind.ExclamationEquals))
             {
-                var right = this.ParseUnary(ref reader);
+                var right = ParseUnary(ref reader);
                 if (right is null)
                 {
                     return null;
@@ -169,11 +163,11 @@ internal ref struct AttributeParser
         }
     }
 
-    private ConditionNode? ParseUnary(ref TokenReader reader)
+    private static ConditionNode? ParseUnary(ref TokenReader reader)
     {
         if (reader.TryConsume(TokenKind.Exclamation))
         {
-            var operand = this.ParseUnary(ref reader);
+            var operand = ParseUnary(ref reader);
             if (operand is null)
             {
                 return null;
@@ -182,14 +176,14 @@ internal ref struct AttributeParser
             return new ConditionUnaryNode(ConditionUnaryOperator.Not, operand);
         }
 
-        return this.ParsePrimary(ref reader);
+        return ParsePrimary(ref reader);
     }
 
-    private ConditionNode? ParsePrimary(ref TokenReader reader)
+    private static ConditionNode? ParsePrimary(ref TokenReader reader)
     {
         if (reader.TryConsume(TokenKind.OpenParenthesis))
         {
-            var expression = this.ParseExpression(ref reader);
+            var expression = ParseExpression(ref reader);
             if (expression is null)
             {
                 return null;

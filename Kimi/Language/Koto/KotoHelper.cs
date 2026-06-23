@@ -9,7 +9,7 @@ namespace Kimigayo.Language;
 
 public static class KotoHelper
 {
-    public static string ValidateAndGetNamespace(DiagnosticCollection diagnostic, ref TokenReader reader)
+    public static string ValidateAndGetNamespace(ref TokenReader reader)
     {
         if (reader.IsEmpty)
         {
@@ -29,7 +29,7 @@ public static class KotoHelper
                 }
                 else
                 {
-                    diagnostic.AddToken(token, Hashed.Kimi.InvalidIdentifier, token.Text);
+                    reader.Diagnostic.AddToken(token, Hashed.Kimi.InvalidIdentifier, token.Text);
                 }
             }
             else
@@ -41,14 +41,14 @@ public static class KotoHelper
                 }
                 else
                 {
-                    diagnostic.AddToken(token, Hashed.Kimi.UnexpectedToken, token);
+                    reader.Diagnostic.AddToken(token, Hashed.Kimi.UnexpectedToken, token);
                 }
             }
         }
 
         if (flag)
         {
-            diagnostic.Add(reader.CurrentRange(), Hashed.Kimi.IdentifierExpected);
+            reader.Diagnostic.Add(reader.CurrentRange(), Hashed.Kimi.IdentifierExpected);
         }
 
         return sb.ToString();

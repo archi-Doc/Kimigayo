@@ -98,6 +98,19 @@ public ref struct TokenReader
         return false;
     }
 
+    public ReadOnlySpan<char> ReadIdentifier()
+    {
+        if (this.SkipCommentsAndHasMore() &&
+            this.list[this.Position].Kind == TokenKind.Identifier)
+        {
+            var identifier = this.list[this.Position].Text.Span;
+            this.Position++;
+            return identifier;
+        }
+
+        return [];
+    }
+
     public bool TryConsumeIdentifier(ReadOnlySpan<char> name)
     {
         if (this.SkipCommentsAndHasMore())
