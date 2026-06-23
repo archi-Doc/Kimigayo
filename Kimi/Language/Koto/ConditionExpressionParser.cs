@@ -69,7 +69,6 @@ internal static class AttributeKotoHelper
 
         if (!reader.TryConsume(TokenKind.CloseParenthesis))
         {
-            reader.AddDiagnostic();
             return default;
         }
 

@@ -80,7 +80,7 @@ public ref struct TokenReader
         return false;
     }
 
-    public bool TryConsume(TokenKind targetKind)
+    public bool TryConsume(TokenKind targetKind, bool addDiagnostic = true)
     {
         if (this.SkipCommentsAndHasMore())
         {
@@ -91,8 +91,18 @@ public ref struct TokenReader
             }
             else
             {
+                if (addDiagnostic)
+                {
+                    this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToString());
+                }
+
                 return false;
             }
+        }
+
+        if (addDiagnostic)
+        {
+            this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToString());
         }
 
         return false;
