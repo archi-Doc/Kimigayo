@@ -4,7 +4,8 @@ using Arc.Collections;
 using Kimi.Language;
 using Kimigayo.Language;
 
-public sealed class NamespaceKoto : GroupKoto
+[TinyhandObject]
+public sealed partial class NamespaceKoto : GroupKoto
 {
     private readonly Utf16Hashtable<GroupKoto> namespaceToGroupNode = new();
 

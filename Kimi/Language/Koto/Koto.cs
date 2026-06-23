@@ -4,7 +4,18 @@ using Kimi.Language;
 
 namespace Kimigayo.Language;
 
-public abstract class Koto
+public enum KotoKind : byte
+{
+    Namespace,
+    Group,
+    Struct,
+    Contract,
+    Comment,
+}
+
+[TinyhandUnion((int)KotoKind.Namespace, typeof(NamespaceKoto))]
+[TinyhandUnion((int)KotoKind.Comment, typeof(CommentKoto))]
+public abstract partial class Koto
 {
     public Koto()
     {

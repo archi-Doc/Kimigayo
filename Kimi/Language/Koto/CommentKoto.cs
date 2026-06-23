@@ -8,8 +8,7 @@ public partial class CommentKoto : Koto
     [Key(0)]
     public string Comment { get; private set; }
 
-    public CommentKoto(FileRoot rootNode, Token token)
-        : base()
+    public CommentKoto(Token token)
     {
         this.Comment = token.Text.ToString();
     }
