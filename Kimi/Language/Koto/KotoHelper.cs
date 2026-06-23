@@ -80,7 +80,7 @@ public static class KotoHelper
             }
         }
 
-        if (TokenHelper.KeywordToKeywordKind.TryGetValue(text, out _))
+        if (TokenHelper.KeywordToTokenKind.TryGetValue(text, out _))
         {
             return false;
         }
