@@ -50,7 +50,7 @@ internal static class AttributeKotoHelper
             return null;
         }
 
-        while (reader.TryConsume(TokenKind.BarBar))
+        while (reader.TryConsume(TokenKind.Or, false))
         {
             var right = ParseAnd(ref reader);
             if (right is null)
@@ -72,7 +72,7 @@ internal static class AttributeKotoHelper
             return null;
         }
 
-        while (reader.TryConsume(TokenKind.AmpersandAmpersand))
+        while (reader.TryConsume(TokenKind.And, false))
         {
             var right = ParseEquality(ref reader);
             if (right is null)
@@ -96,7 +96,7 @@ internal static class AttributeKotoHelper
 
         while (true)
         {
-            if (reader.TryConsume(TokenKind.EqualsEquals))
+            if (reader.TryConsume(TokenKind.EqualsEquals, false))
             {
                 var right = ParseUnary(ref reader);
                 if (right is null)
@@ -109,7 +109,7 @@ internal static class AttributeKotoHelper
                 continue;
             }
 
-            if (reader.TryConsume(TokenKind.ExclamationEquals))
+            if (reader.TryConsume(TokenKind.ExclamationEquals, false))
             {
                 var right = ParseUnary(ref reader);
                 if (right is null)
@@ -144,7 +144,7 @@ internal static class AttributeKotoHelper
 
     private static ConditionKoto? ParsePrimary(ref TokenReader reader)
     {
-        if (reader.TryConsume(TokenKind.OpenParenthesis))
+        if (reader.TryConsume(TokenKind.OpenParenthesis, false))
         {
             var expression = ParseExpression(ref reader);
             if (expression is null)
@@ -165,13 +165,13 @@ internal static class AttributeKotoHelper
             if (token.Kind == TokenKind.Identifier)
             {
                 reader.MoveNext();
-                return new UnresolvedKoto(token);
+                return new ConditionUnresolvedKoto(token);
             }
 
             if (token.Kind == TokenKind.Literal)
             {
                 reader.MoveNext();
-                return new ConditionStringNode(token.Text);
+                return new ConditionLiteralKoto(token);
             }
         }
 

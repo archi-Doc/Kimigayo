@@ -16,4 +16,7 @@ public sealed partial class ConditionNotEqualsKoto : ConditionKoto
         this.Left = left;
         this.Right = right;
     }
+
+    public override string ToString()
+        => $"({this.Left} != {this.Right})";
 }

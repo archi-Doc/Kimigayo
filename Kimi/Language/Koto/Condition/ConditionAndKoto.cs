@@ -16,4 +16,7 @@ public sealed partial class ConditionAndKoto : ConditionKoto
         this.Left = left;
         this.Right = right;
     }
+
+    public override string ToString()
+        => $"({this.Left} and {this.Right})";
 }
