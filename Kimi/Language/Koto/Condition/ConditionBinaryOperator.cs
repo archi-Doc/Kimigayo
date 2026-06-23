@@ -2,10 +2,10 @@
 
 namespace Kimigayo.Language;
 
-public enum ConditionBinaryOperator
+/*public enum ConditionBinaryOperator
 {
     Equals,
     NotEquals,
     And,
     Or,
-}
+}*/

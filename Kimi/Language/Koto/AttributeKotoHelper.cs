@@ -5,37 +5,9 @@ using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
 
-internal abstract record ConditionNode;
-
-internal sealed record ConditionBinaryNode(ConditionBinaryOperator Operator, ConditionNode Left, ConditionNode Right) : ConditionNode;
-
-internal sealed record ConditionUnaryNode(ConditionUnaryOperator Operator, ConditionNode Operand) : ConditionNode;
-
-internal sealed record ConditionIdentifierNode(ReadOnlyMemory<char> Name) : ConditionNode;
-
-internal sealed record ConditionStringNode(ReadOnlyMemory<char> Value) : ConditionNode;
-
-internal enum ConditionUnaryOperator
-{
-    Not,
-}
-
-internal readonly struct ConditionParseResult
-{
-    public ConditionParseResult(bool success, ConditionNode? node)
-    {
-        this.Success = success;
-        this.Node = node;
-    }
-
-    public bool Success { get; }
-
-    public ConditionNode? Node { get; }
-}
-
 internal static class AttributeKotoHelper
 {
-    public static ConditionParseResult Parse(ref TokenReader reader)
+    public static ConditionKoto? Parse(ref TokenReader reader)
     {// #Attribute(...)
         if (!reader.TryConsume(TokenKind.Sharp))
         {
@@ -64,13 +36,13 @@ internal static class AttributeKotoHelper
             return default;
         }
 
-        return new(true, expression);
+        return expression;
     }
 
-    private static ConditionNode? ParseExpression(ref TokenReader reader)
+    private static ConditionKoto? ParseExpression(ref TokenReader reader)
         => ParseOr(ref reader);
 
-    private static ConditionNode? ParseOr(ref TokenReader reader)
+    private static ConditionKoto? ParseOr(ref TokenReader reader)
     {
         var left = ParseAnd(ref reader);
         if (left is null)
@@ -86,13 +58,13 @@ internal static class AttributeKotoHelper
                 return null;
             }
 
-            left = new ConditionBinaryNode(ConditionBinaryOperator.Or, left, right);
+            left = new ConditionOrKoto(left, right);
         }
 
         return left;
     }
 
-    private static ConditionNode? ParseAnd(ref TokenReader reader)
+    private static ConditionKoto? ParseAnd(ref TokenReader reader)
     {
         var left = ParseEquality(ref reader);
         if (left is null)
@@ -108,13 +80,13 @@ internal static class AttributeKotoHelper
                 return null;
             }
 
-            left = new ConditionBinaryNode(ConditionBinaryOperator.And, left, right);
+            left = new ConditionAndKoto(left, right);
         }
 
         return left;
     }
 
-    private static ConditionNode? ParseEquality(ref TokenReader reader)
+    private static ConditionKoto? ParseEquality(ref TokenReader reader)
     {
         var left = ParseUnary(ref reader);
         if (left is null)
@@ -132,7 +104,7 @@ internal static class AttributeKotoHelper
                     return null;
                 }
 
-                left = new ConditionBinaryNode(ConditionBinaryOperator.Equals, left, right);
+                left = new ConditionEqualsKoto(left, right);
 
                 continue;
             }
@@ -145,7 +117,7 @@ internal static class AttributeKotoHelper
                     return null;
                 }
 
-                left = new ConditionBinaryNode(ConditionBinaryOperator.NotEquals, left, right);
+                left = new ConditionNotEqualsKoto(left, right);
 
                 continue;
             }
@@ -154,7 +126,7 @@ internal static class AttributeKotoHelper
         }
     }
 
-    private static ConditionNode? ParseUnary(ref TokenReader reader)
+    private static ConditionKoto? ParseUnary(ref TokenReader reader)
     {
         if (reader.TryConsume(TokenKind.Not, false))
         {
@@ -164,13 +136,13 @@ internal static class AttributeKotoHelper
                 return null;
             }
 
-            return new ConditionUnaryNode(ConditionUnaryOperator.Not, operand);
+            return new ConditionNegateKoto(operand);
         }
 
         return ParsePrimary(ref reader);
     }
 
-    private static ConditionNode? ParsePrimary(ref TokenReader reader)
+    private static ConditionKoto? ParsePrimary(ref TokenReader reader)
     {
         if (reader.TryConsume(TokenKind.OpenParenthesis))
         {
@@ -193,7 +165,7 @@ internal static class AttributeKotoHelper
             if (token.Kind == TokenKind.Identifier)
             {
                 reader.MoveNext();
-                return new ConditionIdentifierNode(token.Text);
+                return new UnresolvedKoto(token);
             }
 
             if (token.Kind == TokenKind.Literal)

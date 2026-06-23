@@ -6,6 +6,8 @@ namespace Kimigayo.Language;
 
 public enum KotoKind : byte
 {
+    Unresolved,
+
     Namespace,
     Group,
     Struct,
@@ -20,6 +22,7 @@ public enum KotoKind : byte
     ConditionOr,
 }
 
+[TinyhandUnion((int)KotoKind.Unresolved, typeof(UnresolvedKoto))]
 [TinyhandUnion((int)KotoKind.Namespace, typeof(NamespaceKoto))]
 [TinyhandUnion((int)KotoKind.Group, typeof(GroupKoto))]
 [TinyhandUnion((int)KotoKind.Comment, typeof(CommentKoto))]
