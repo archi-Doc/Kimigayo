@@ -2,6 +2,7 @@
 
 using Arc.Collections;
 using Kimi.Language;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace Kimigayo.Language;
 
@@ -51,22 +52,21 @@ public partial class GroupKoto : Koto
             var index = text.IndexOf(Constants.DotChar);
             if (index < 0)
             {
-                group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(text, x => new GroupKoto());
-                group.TrySetName(text);
+                GetOrAddGroup(ref group, text);
             }
 
             var segment = text[..index];
-            group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(segment, x => new GroupKoto());
-            group.TrySetName(text);
+            GetOrAddGroup(ref group, segment);
             text = text[(index + 1)..];
         }
     }
 
-    private void TrySetName(ReadOnlySpan<char> text)
+    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text)
     {
-        if (string.IsNullOrEmpty(this.Name))
+        group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(text, x => new GroupKoto());
+        if (string.IsNullOrEmpty(group.Name))
         {
-            this.Name = text.ToString();
+            group.Name = text.ToString();
         }
     }
 }
