@@ -11,6 +11,9 @@ public enum KotoKind : byte
     Struct,
     Contract,
     Comment,
+
+    // Condition
+    ConditionNot,
 }
 
 [TinyhandUnion((int)KotoKind.Namespace, typeof(NamespaceKoto))]

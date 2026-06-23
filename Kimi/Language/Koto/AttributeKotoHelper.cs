@@ -15,14 +15,6 @@ internal sealed record ConditionIdentifierNode(ReadOnlyMemory<char> Name) : Cond
 
 internal sealed record ConditionStringNode(ReadOnlyMemory<char> Value) : ConditionNode;
 
-internal enum ConditionBinaryOperator
-{
-    Equals,
-    NotEquals,
-    And,
-    Or,
-}
-
 internal enum ConditionUnaryOperator
 {
     Not,
