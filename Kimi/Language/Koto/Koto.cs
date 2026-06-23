@@ -13,7 +13,11 @@ public enum KotoKind : byte
     Comment,
 
     // Condition
-    ConditionNot,
+    ConditionNegate,
+    ConditionEquals,
+    ConditionNotEquals,
+    ConditionAnd,
+    ConditionOr,
 }
 
 [TinyhandUnion((int)KotoKind.Namespace, typeof(NamespaceKoto))]
