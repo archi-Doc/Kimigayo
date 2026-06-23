@@ -2,21 +2,18 @@
 
 namespace Kimigayo.Language;
 
-/*[TinyhandObject]
-public sealed partial class ConditionBinaryKoto : ConditionKoto
+[TinyhandObject]
+public sealed partial class ConditionNotEqualsKoto : ConditionKoto
 {
     [Key(0)]
-    public KotoKind Operator { get; private set; }
-
-    [Key(1)]
     public ConditionKoto Left { get; private set; }
 
-    [Key(2)]
+    [Key(1)]
     public ConditionKoto Right { get; private set; }
 
-    public ConditionBinaryKoto(ConditionKoto left, ConditionKoto right)
+    public ConditionNotEqualsKoto(ConditionKoto left, ConditionKoto right)
     {
         this.Left = left;
         this.Right = right;
     }
-}*/
+}
