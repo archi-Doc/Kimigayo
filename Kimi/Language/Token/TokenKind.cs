@@ -2,6 +2,10 @@
 
 namespace Kimigayo.Language;
 
+/// <summary>
+/// Represents the lexical token kinds produced by the lexer.<br/>
+///  When adding a new TokenKind, remember to also add the corresponding descriptor to TokenHelper.TokenDescriptors.
+/// </summary>
 public enum TokenKind : byte
 {
     Invalid,

@@ -164,7 +164,7 @@ internal static class AttributeKotoHelper
 
     private static ConditionNode? ParseUnary(ref TokenReader reader)
     {
-        if (reader.TryConsume(TokenKind.Exclamation))
+        if (reader.TryConsume(TokenKind.Not, false))
         {
             var operand = ParseUnary(ref reader);
             if (operand is null)

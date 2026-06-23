@@ -102,7 +102,7 @@ public ref struct TokenReader
 
         if (addDiagnostic)
         {
-            this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToString());
+            this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToText());
         }
 
         return false;
