@@ -15,5 +15,5 @@ public partial record class SolutionFile
 
     public List<string> Projects { get; init; } = [];
 
-    public DefaultClass Default { get; init; } = new();
+    public DefaultClass ProjectDefault { get; init; } = new();
 }

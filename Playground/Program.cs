@@ -64,7 +64,7 @@ internal class Program
 
         var file = new ProjectFile();
         file.Targets = ["Windows", "Linux"];
-        file.Use = ["Kimi.Base"];
+        file.Alias = ["Kimi.Base"];
         var package = new ProjectFile.PackageClass() with
         {
             Name = "tinyhand",

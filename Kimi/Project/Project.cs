@@ -20,7 +20,7 @@ public partial class Project
     {
         var projectFile = new ProjectFile();
         projectFile.Targets = ["x86_64-pc-windows-msvc"];
-        projectFile.Use = ["Kimi.Base",];
+        projectFile.Alias = ["Kimi.Base",];
 
         DefaultProjectFile = projectFile;
     }
@@ -114,6 +114,6 @@ public partial class Project
     private void Prepare()
     {
         this.targets = this.ProjectFile.Targets.ToHashSet();
-        this.globalUse = this.ProjectFile.Use.ToHashSet();
+        this.globalUse = this.ProjectFile.Alias.ToHashSet();
     }
 }

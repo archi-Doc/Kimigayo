@@ -17,5 +17,5 @@ public partial record class ProjectFile
 
     public PackageClass[] Packages { get; set; } = [];
 
-    public string[] Use { get; set; } = [];
+    public string[] Alias { get; set; } = [];
 }
