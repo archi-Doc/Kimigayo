@@ -19,4 +19,11 @@ public sealed partial class ConditionNotEqualsKoto : Koto
 
     public override string ToString()
         => $"({this.Left} != {this.Right})";
+
+    [TinyhandOnDeserialized]
+    private void OnDeserialized()
+    {
+        this.Left.Parent = this;
+        this.Right.Parent = this;
+    }
 }

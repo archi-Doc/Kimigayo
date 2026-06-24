@@ -12,4 +12,10 @@ public sealed partial class ConditionNegateKoto : Koto
     {
         this.Koto = conditionKoto;
     }
+
+    [TinyhandOnDeserialized]
+    private void OnDeserialized()
+    {
+        this.Koto.Parent = this;
+    }
 }

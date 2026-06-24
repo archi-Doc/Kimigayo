@@ -1,7 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
-using System.Linq.Expressions;
 using Arc.Collections;
 using Kimi.Language;
 using Kimigayo.Diagnostics;

@@ -2,7 +2,6 @@
 
 using Arc.Collections;
 using Kimi.Language;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace Kimigayo.Language;
 
@@ -76,5 +75,10 @@ public partial class GroupKoto : Koto
         {
             group.Name = text.ToString();
         }
+    }
+
+    [TinyhandOnDeserialized]
+    private void OnDeserialized()
+    {
     }
 }

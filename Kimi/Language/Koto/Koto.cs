@@ -1,7 +1,10 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Language;
 using Kimigayo.Diagnostics;
+
+#pragma warning disable SA1401 // Fields should be private
 
 namespace Kimigayo.Language;
 
@@ -43,10 +46,13 @@ public enum KotoKind : byte
 public abstract partial class Koto
 {
     [IgnoreMember]
-    private DiagnosticSource? diagnosticSource;
+    public DiagnosticSource? DiagnosticSource { get; internal set; }
 
     [IgnoreMember]
-    private Koto? parent;
+    public Koto? Parent { get; internal set; }
+
+    [MemberNotNullWhen(false, nameof(Parent))]
+    public bool IsRoot => this.Parent is null;
 
     public Koto()
     {
@@ -63,14 +69,14 @@ public abstract partial class Koto
 
     public void InitializeDiagnostic(DiagnosticCollection diagnosticCollection, Token token)
     {
-        this.diagnosticSource = new(diagnosticCollection, token.Range);
+        this.DiagnosticSource = new(diagnosticCollection, token.Range);
     }
 
     public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
     {
-        if (this.diagnosticSource is not null)
+        if (this.DiagnosticSource is not null)
         {
-            this.diagnosticSource.DiagnosticCollection.Add(this.diagnosticSource.Range, diagnosticHash, obj);
+            this.DiagnosticSource.DiagnosticCollection.Add(this.DiagnosticSource.Range, diagnosticHash, obj);
         }
     }
 }

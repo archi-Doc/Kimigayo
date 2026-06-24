@@ -19,4 +19,11 @@ public sealed partial class ConditionAndKoto : Koto
 
     public override string ToString()
         => $"({this.Left} and {this.Right})";
+
+    [TinyhandOnDeserialized]
+    private void OnDeserialized()
+    {
+        this.Left.Parent = this;
+        this.Right.Parent = this;
+    }
 }
