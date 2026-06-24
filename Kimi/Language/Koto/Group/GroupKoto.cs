@@ -43,7 +43,7 @@ public partial class GroupKoto : Koto
         }*/
     }
 
-    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName)
+    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, KotoKind groupKind)
     {
         var text = qualifiedName;
         var group = this;
@@ -52,19 +52,26 @@ public partial class GroupKoto : Koto
             var index = text.IndexOf(Constants.DotChar);
             if (index < 0)
             {
-                GetOrAddGroup(ref group, text);
+                GetOrAddGroup(ref group, text, groupKind);
                 return group;
             }
 
             var segment = text[..index];
-            GetOrAddGroup(ref group, segment);
+            GetOrAddGroup(ref group, segment, groupKind);
             text = text[(index + 1)..];
         }
     }
 
-    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text)
+    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, KotoKind groupKind)
     {
-        group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(text, x => new GroupKoto());
+        Func<string, Koto> factory = groupKind switch
+        {
+            KotoKind.Group => static x => new GroupKoto(),
+            KotoKind.Namespace => static x => new NamespaceKoto(),
+            _ => throw new InvalidOperationException(),
+        };
+
+        group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(text, factory);
         if (string.IsNullOrEmpty(group.Name))
         {
             group.Name = text.ToString();

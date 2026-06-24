@@ -18,7 +18,7 @@ public readonly partial struct Token
     [Key(2)]
     public readonly ReadOnlyMemory<char> Text;
 
-    public readonly Diagnostics.SourceRange Range;
+    public readonly SourceRange Range;
 
     public ReadOnlySpan<char> Span => this.Text.Span;
 

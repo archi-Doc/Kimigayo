@@ -28,7 +28,7 @@ public sealed class FileRoot
     [MemberNotNull(nameof(CurrentGroup))]
     public void SetNamespace(ReadOnlySpan<char> qualifiedName)
     {
-        this.CurrentGroup = this.rootGroup.GetOrAddGroup(qualifiedName);
+        this.CurrentGroup = this.rootGroup.GetOrAddGroup(qualifiedName, KotoKind.Namespace);
     }
 
     public void Parse(ref TokenReader reader)

@@ -10,9 +10,11 @@ public sealed partial class NamespaceKoto : GroupKoto
     private readonly Utf16Hashtable<GroupKoto> namespaceToGroupNode = new();
 
     public NamespaceKoto()
-        : base()
     {
     }
+
+    public override string ToString()
+        => $"Namespace: {this.Name}";
 
     public override void Parse(ref TokenReader reader)
     {
