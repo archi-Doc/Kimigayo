@@ -45,12 +45,20 @@ public abstract partial class Koto
     [IgnoreMember]
     private DiagnosticSource? diagnosticSource;
 
+    [IgnoreMember]
+    private Koto? parent;
+
     public Koto()
     {
     }
 
     public virtual void Parse(ref TokenReader reader)
     {
+    }
+
+    public virtual Koto? ResolveIdentifier(ReadOnlySpan<char> identifier)
+    {
+        return default;
     }
 
     public void InitializeDiagnostic(DiagnosticCollection diagnosticCollection, Token token)
