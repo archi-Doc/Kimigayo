@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using Arc.Collections;
 using Kimi.Language;
 
@@ -71,6 +72,7 @@ public partial class GroupKoto : Koto
         };
 
         group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(text, factory);
+        group.Initialize(group, )
         if (string.IsNullOrEmpty(group.Name))
         {
             group.Name = text.ToString();
