@@ -16,16 +16,10 @@ public sealed partial class Kotonoha
     public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
 
     [Key(3)]
-    public KimiInformation[] KimiInformation { get; private set; } = new();
-
-    private UnorderedMultiMap<string, Koto> map = new();
+    public KimiInformation[] KimiInformation { get; private set; } = [];
 
     public Kotonoha()
     {
-        map.Add("test", default!);
-        map.FindFirstNode("test");
-
-        //map.TryGetValue
     }
 
     public override string ToString()

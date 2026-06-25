@@ -3,8 +3,7 @@
 namespace Kimigayo;
 
 using System.Diagnostics.CodeAnalysis;
-using System.Text;
-using Kimigayo;
+using Kimigayo.Language;
 
 public readonly record struct UrlAndtext(string Url, string Text);
 
@@ -84,7 +83,7 @@ public partial class Project
 
         foreach (var x in this.targets)
         {
-            var compilation = new Compilation(this.kimiControl, this, x);
+            var compilation = new Compilation(this.kimiControl, this.SolutionOptions, x);
             compilation.Prepare();
             foreach (var y in this.kimiFiles)
             {

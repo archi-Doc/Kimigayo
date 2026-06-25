@@ -1,25 +1,27 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
-using Kimigayo.Language;
+using Arc.Collections;
 using Kimigayo.Language;
 
-namespace Kimigayo.Compilation;
+namespace Kimigayo.Language;
 
 public class Compilation
 {
     private readonly KimiControl kimiControl;
 
-    public Project Project { get; }
+    public SolutionOptions SolutionOptions { get; }
 
     public string Target { get; }
 
     public TargetTriple TargetTriple { get; private set; }
 
-    public Compilation(KimiControl kimiControl, Project project, string target)
+    private Utf16Hashtable<Koto[]> namespaceToKoto = new();
+
+    public Compilation(KimiControl kimiControl, SolutionOptions solutionOptions, string target)
     {
         this.kimiControl = kimiControl;
-        this.Project = project;
+        this.SolutionOptions = solutionOptions;
         this.Target = target;
         TargetTripleParser.TryParse(this.Target, out var targetTriple);
         this.TargetTriple = targetTriple;
@@ -38,7 +40,7 @@ public class Compilation
         var fileRoot = new FileRoot(diagnostic);
         var currentIndentLevel = 0;
 
-        var dumpToken = this.Project.SolutionOptions.DumpToken ? new List<Token>() : null;
+        var dumpToken = this.SolutionOptions.DumpToken ? new List<Token>() : null;
         while (true)
         {
             // Read token

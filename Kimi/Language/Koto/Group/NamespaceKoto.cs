@@ -2,7 +2,6 @@
 
 using Arc.Collections;
 using Kimigayo.Language;
-using Kimigayo.Language;
 
 [TinyhandObject]
 public sealed partial class NamespaceKoto : GroupKoto

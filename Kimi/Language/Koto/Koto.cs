@@ -1,7 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
-using Kimigayo.Language;
 using Kimigayo.Diagnostics;
 
 #pragma warning disable SA1401 // Fields should be private

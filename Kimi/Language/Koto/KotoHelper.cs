@@ -2,8 +2,6 @@
 
 using System.Globalization;
 using System.Text;
-using Kimigayo.Language;
-using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
 
