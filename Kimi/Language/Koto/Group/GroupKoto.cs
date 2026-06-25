@@ -72,7 +72,7 @@ public partial class GroupKoto : Koto
         };
 
         group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(text, factory);
-        group.Initialize(group, )
+        //group.Initialize(group, )
         if (string.IsNullOrEmpty(group.Name))
         {
             group.Name = text.ToString();
