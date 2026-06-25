@@ -1,7 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Arc.Collections;
-using Kimi.Language;
+using Kimigayo.Language;
 using Kimigayo.Language;
 
 [TinyhandObject]

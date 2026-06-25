@@ -2,7 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using Arc.Collections;
-using Kimi.Language;
+using Kimigayo.Language;
 
 namespace Kimigayo.Language;
 

@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
-namespace Kimi.Language;
+namespace Kimigayo.Language;
 
 public ref struct TokenReader
 {

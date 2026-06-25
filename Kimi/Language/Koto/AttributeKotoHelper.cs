@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Language;
+using Kimigayo.Language;
 using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;

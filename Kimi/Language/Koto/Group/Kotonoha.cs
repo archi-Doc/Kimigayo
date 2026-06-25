@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Arc.Collections;
+using Kimigayo.Language;
 
 [TinyhandObject]
 public sealed partial class Kotonoha
@@ -17,8 +18,12 @@ public sealed partial class Kotonoha
     [Key(3)]
     public KimiInformation[] KimiInformation { get; private set; } = new();
 
+    private UnorderedMultiMap<string, Koto> map = new();
+
     public Kotonoha()
     {
+        map.Add("test", default!);
+        //map.TryGetValue
     }
 
     public override string ToString()

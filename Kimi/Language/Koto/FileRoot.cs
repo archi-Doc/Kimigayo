@@ -2,7 +2,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Arc.Collections;
-using Kimi.Language;
+using Kimigayo.Language;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 

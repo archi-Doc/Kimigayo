@@ -1,10 +1,10 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
-using Kimi.Language;
+using Kimigayo.Language;
 using Kimigayo.Language;
 
-namespace Kimi.Compilation;
+namespace Kimigayo.Compilation;
 
 public class Compilation
 {
