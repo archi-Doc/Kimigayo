@@ -23,6 +23,8 @@ public sealed partial class Kotonoha
     public Kotonoha()
     {
         map.Add("test", default!);
+        map.FindFirstNode("test");
+
         //map.TryGetValue
     }
 
