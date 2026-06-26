@@ -1,7 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Arc.Collections;
-using Kimigayo.Language;
+
+namespace Kimigayo.Language;
 
 [TinyhandObject]
 public sealed partial class Kotonoha
@@ -16,10 +17,12 @@ public sealed partial class Kotonoha
     public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
 
     [Key(3)]
-    public KimiInformation[] KimiInformation { get; private set; } = [];
+    public List<KimiFile> KimiList { get; private set; } = [];
 
-    public Kotonoha()
+    public Kotonoha(string name, string url)
     {
+        this.Name = name;
+        this.Url = url;
     }
 
     public override string ToString()

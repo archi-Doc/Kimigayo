@@ -4,7 +4,7 @@ using SimpleCommandLine;
 
 namespace Kimigayo;
 
-public class SolutionOptions
+public class KimiOptions
 {
     [SimpleOption("Target")]
     public string Target { get; set; } = string.Empty;

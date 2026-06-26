@@ -10,9 +10,9 @@ public class Solution
 
     public SolutionFile SolutionFile { get; private set; } = new();
 
-    public string KimiFile { get; private set; } = string.Empty;
+    public KimiOptions KimiOptions { get; private set; } = new();
 
-    public SolutionOptions SolutionOptions { get; private set; } = new();
+    public string SingleFile { get; private set; } = string.Empty;
 
     public Dictionary<string, Project> Projects { get; private set; } = new();
 
@@ -63,17 +63,17 @@ public class Solution
     {
         foreach (var x in this.Projects.Values)
         {
-            x.SolutionOptions = this.SolutionOptions;
+            x.KimiOptions = this.KimiOptions;
             await x.Build();
         }
 
         return true;
     }
 
-    public void LoadForBuild(ILogger logger, SolutionOptions options, string[] args)
+    public void LoadForBuild(ILogger logger, KimiOptions options, string[] args)
     {
         var projectList = new List<string>();
-        this.SolutionOptions = options;
+        this.KimiOptions = options;
 
         var currentDirectory = Directory.GetCurrentDirectory();
         if (args.Length == 0)
@@ -159,10 +159,10 @@ SolutionLoaed:
         return;
     }
 
-    public void LoadForRun(ILogger logger, SolutionOptions options, string[] args)
+    public void LoadForRun(ILogger logger, KimiOptions options, string[] args)
     {
         string kimiFile = string.Empty;
-        this.SolutionOptions = options;
+        this.KimiOptions = options;
 
         var currentDirectory = Directory.GetCurrentDirectory();
         if (args.Length == 0)
@@ -225,9 +225,9 @@ SolutionLoaed:
             }
         }
 
-        this.KimiFile = kimiFile;
+        this.SingleFile = kimiFile;
         if (this.SolutionFile.Projects.Count == 0 &&
-            string.IsNullOrEmpty(this.KimiFile))
+            string.IsNullOrEmpty(this.SingleFile))
         {
             logger.GetWriter(LogLevel.Warning)?.Write(Hashed.Solution.NoRunTarget);
         }
@@ -249,17 +249,17 @@ SolutionLoaed:
         }
 
         if (this.Projects.Count == 0 &&
-            !string.IsNullOrEmpty(this.KimiFile))
+            !string.IsNullOrEmpty(this.SingleFile))
         {
-            if (File.Exists(this.KimiFile))
+            if (File.Exists(this.SingleFile))
             {
                 var project = new Project(this.kimiControl);
-                project.AddKimiFile(this.KimiFile);
-                this.Projects[this.KimiFile] = project;
+                project.AddKimiFile(this.SingleFile);
+                this.Projects[this.SingleFile] = project;
             }
             else
             {
-                logger.GetWriter(LogLevel.Error)?.Write(Hashed.Project.NoKimiFile, this.KimiFile);
+                logger.GetWriter(LogLevel.Error)?.Write(Hashed.Project.NoKimiFile, this.SingleFile);
             }
         }
     }

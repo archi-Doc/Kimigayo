@@ -48,14 +48,10 @@ public partial class Project
     #region FieldAndProperty
 
     private readonly KimiControl kimiControl;
-    private HashSet<string> targets = new();
-    private HashSet<string> globalUse = new();
     private List<UrlAndtext> additionalSource = [];
     private HashSet<string> kimiFiles = new();
 
-    public SolutionOptions SolutionOptions { get; set; } = new();
-
-    public string ProjectPath { get; private set; } = string.Empty;
+    public KimiOptions KimiOptions { get; set; } = new();
 
     public ProjectFile ProjectFile { get; private set; } = new();
 
@@ -79,11 +75,10 @@ public partial class Project
 
     public async Task<bool> Build()
     {
-        this.Prepare();
-
-        foreach (var x in this.targets)
+        var targets = this.ProjectFile.Targets.ToArray();
+        foreach (var x in targets)
         {
-            var compilation = new Compilation(this.kimiControl, this.SolutionOptions, x);
+            var compilation = new Compilation(this.kimiControl, this.KimiOptions, x);
             compilation.Prepare();
             foreach (var y in this.kimiFiles)
             {
@@ -104,11 +99,5 @@ public partial class Project
         }
 
         return true;
-    }
-
-    private void Prepare()
-    {
-        this.targets = this.ProjectFile.Targets.ToHashSet();
-        this.globalUse = this.ProjectFile.Alias.ToHashSet();
     }
 }

@@ -5,7 +5,7 @@ using SimpleCommandLine;
 namespace Kimigayo.Command;
 
 [SimpleCommand("build")]
-public class BuildCommand : ISimpleCommand<SolutionOptions>
+public class BuildCommand : ISimpleCommand<KimiOptions>
 {
     private readonly UnitContext unitContext;
     private readonly ILogger logger;
@@ -20,7 +20,7 @@ public class BuildCommand : ISimpleCommand<SolutionOptions>
         this.solution = solution;
     }
 
-    public async Task Execute(SolutionOptions options, string[] args, CancellationToken cancellationToken)
+    public async Task Execute(KimiOptions options, string[] args, CancellationToken cancellationToken)
     {
         this.solution.LoadForBuild(this.logger, options, args);
         this.solution.PrepareProject(this.logger);

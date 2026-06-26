@@ -10,7 +10,7 @@ public class Compilation
 {
     private readonly KimiControl kimiControl;
 
-    public SolutionOptions SolutionOptions { get; }
+    public KimiOptions KimiOptions { get; }
 
     public string Target { get; }
 
@@ -18,10 +18,10 @@ public class Compilation
 
     private Utf16Hashtable<Koto[]> namespaceToKoto = new();
 
-    public Compilation(KimiControl kimiControl, SolutionOptions solutionOptions, string target)
+    public Compilation(KimiControl kimiControl, KimiOptions kimiOptions, string target)
     {
         this.kimiControl = kimiControl;
-        this.SolutionOptions = solutionOptions;
+        this.KimiOptions = kimiOptions;
         this.Target = target;
         TargetTripleParser.TryParse(this.Target, out var targetTriple);
         this.TargetTriple = targetTriple;
@@ -40,7 +40,7 @@ public class Compilation
         var fileRoot = new FileRoot(diagnostic);
         var currentIndentLevel = 0;
 
-        var dumpToken = this.SolutionOptions.DumpToken ? new List<Token>() : null;
+        var dumpToken = this.KimiOptions.DumpToken ? new List<Token>() : null;
         while (true)
         {
             // Read token
