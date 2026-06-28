@@ -78,14 +78,14 @@ public partial class Project
         var targets = this.ProjectFile.Targets.ToArray();
         foreach (var x in targets)
         {
-            var compilation = new Compilation(this.kimiControl, this.KimiOptions, x);
-            compilation.Prepare();
+            var compilation = new Compilation(this.kimiControl, this.KimiOptions, this.ProjectFile);
+            compilation.Prepare(x);
             foreach (var y in this.kimiFiles)
             {
                 try
                 {
                     var st = File.ReadAllText(y);
-                    compilation.Build(new(y, st));
+                    compilation.Parse(new(y, st));
                 }
                 catch
                 {
@@ -94,7 +94,7 @@ public partial class Project
 
             foreach (var y in this.additionalSource)
             {
-                compilation.Build(y);
+                compilation.Parse(y);
             }
         }
 

@@ -2,37 +2,55 @@
 
 using System.Text;
 using Arc.Collections;
-using Kimigayo.Language;
 
 namespace Kimigayo.Language;
 
 public class Compilation
 {
+    #region FieldAndProperty
+
     private readonly KimiControl kimiControl;
 
-    public KimiOptions KimiOptions { get; }
+    private readonly ProjectFile projectFile;
 
-    public string Target { get; }
+    public KimiOptions KimiOptions { get; private set; }
 
-    public TargetTriple TargetTriple { get; private set; }
+    public string Target { get; private set; } = string.Empty;
+
+    public TargetTriple TargetTriple { get; private set; } = TargetTriple.Empty;
+
+    public KotonohaIdentifier[] KotonohaArray { get; private set; } = []
+
+
+
 
     private Utf16Hashtable<Koto[]> namespaceToKoto = new();
 
-    public Compilation(KimiControl kimiControl, KimiOptions kimiOptions, string target)
+    #endregion
+
+    public Compilation(KimiControl kimiControl, KimiOptions kimiOptions, ProjectFile projectFile)
     {
         this.kimiControl = kimiControl;
         this.KimiOptions = kimiOptions;
-        this.Target = target;
-        TargetTripleParser.TryParse(this.Target, out var targetTriple);
-        this.TargetTriple = targetTriple;
+        this.projectFile = projectFile;
     }
 
-    public bool Prepare()
+    public bool Prepare(string target)
     {
+        if (!TargetTripleParser.TryParse(target, out var targetTriple))
+        {
+            return false;
+        }
+
+        this.Target = target;
+        this.TargetTriple = targetTriple;
+
+        // Prepare Kotonoha
+
         return true;
     }
 
-    public void Build(UrlAndtext urlAndtext)
+    public void Parse(UrlAndtext urlAndtext)
     {
         var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
         var tokenizer = new Tokenizer(diagnostic);
