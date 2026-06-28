@@ -524,63 +524,88 @@ public static class TokenHelper
     {
         var i = start;
         var hasDigit = false;
+
         while ((uint)i < (uint)text.Length)
         {
             var c = text[i];
+
             if (c == '_')
             {
                 i++;
                 continue;
             }
 
-            if (numberBase == 2)
+            if (IsBasedDigit(c, numberBase))
             {
-                if (c != '0' && c != '1')
-                {
-                    break;
-                }
-            }
-            else if (numberBase == 8)
-            {
-                if ((uint)(c - '0') > 7)
-                {
-                    break;
-                }
-            }
-            else
-            {// Hex
-                if ((uint)(c - '0') > 9 && (uint)((c | 0x20) - 'a') > 5)
-                {
-                    break;
-                }
+                hasDigit = true;
+                i++;
+                continue;
             }
 
-            hasDigit = true;
-            i++;
+            break;
         }
 
         if (!hasDigit)
-        {// e.g. "0x", "0b2"
-            length = ExtendWithIdentifierContinue(text, i);
+        {
+            // e.g. "0x", "0b2", "0o8", "0xg"
+            length = ExtendInvalidBasedInteger(text, i);
             return false;
         }
 
         var suffixLength = ScanSuffix(text.Slice(i), isFloat: false);
         if (suffixLength < 0)
         {
+            // e.g. "0x1f32x", "0b1010abc"
             length = ExtendWithIdentifierContinue(text, i);
             return false;
         }
 
         i += suffixLength;
+
         if ((uint)i < (uint)text.Length && IsIdentifierContinue(text[i]))
-        {// e.g. "0x1g", "0b01u8x"
+        {
+            // e.g. "0x1g", "0b01u8x"
             length = ExtendWithIdentifierContinue(text, i);
             return false;
         }
 
         length = i;
         return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsBasedDigit(char c, int numberBase)
+    {
+        if (numberBase == 2)
+        {
+            return c == '0' || c == '1';
+        }
+
+        if (numberBase == 8)
+        {
+            return (uint)(c - '0') <= 7;
+        }
+
+        // Hex
+        return (uint)(c - '0') <= 9 || (uint)((c | 0x20) - 'a') <= 5;
+    }
+
+    private static int ExtendInvalidBasedInteger(ReadOnlySpan<char> text, int i)
+    {
+        while ((uint)i < (uint)text.Length)
+        {
+            var c = text[i];
+
+            if (IsIdentifierContinue(c) || c == '_')
+            {
+                i++;
+                continue;
+            }
+
+            break;
+        }
+
+        return i;
     }
 
     private static int ScanDecDigitsOrUnderscores(ReadOnlySpan<char> text, int i)
