@@ -2,4 +2,4 @@
 
 namespace Kimigayo.Diagnostics;
 
-public sealed record class DiagnosticSource(DiagnosticCollection DiagnosticCollection, SourceRange Range);
+public sealed record class DiagnosticSource(DiagnosticCollection DiagnosticCollection, SourceRange Range, Kotonoha kotonoha, uint SourceId);
