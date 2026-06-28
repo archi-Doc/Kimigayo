@@ -18,7 +18,7 @@ public sealed partial class Kotonoha
     public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
 
     [Key(3)]
-    public List<KimiFile> KimiList { get; private set; } = [];
+    public List<KimiSource> SourceList { get; private set; } = [];
 
     public Kotonoha(string name, string url)
     {
@@ -36,6 +36,10 @@ public sealed partial class Kotonoha
         tokenizer.Initialize(pathAndSource.Source.AsMemory(), 0, 0);
         var fileRoot = new FileRoot(diagnostic);
         var currentIndentLevel = 0;
+
+        var kimiId = this.SourceList.Count;
+        var kimiFile = new KimiSource(pathAndSource.Path, [], default);
+        this.SourceList.Add(kimiFile);
 
         var dumpToken = compilation.KimiOptions.DumpToken ? new List<Token>() : null;
         while (true)
