@@ -21,9 +21,6 @@ public class Compilation
 
     public KotonohaIdentifier[] KotonohaArray { get; private set; } = []
 
-
-
-
     private Utf16Hashtable<Koto[]> namespaceToKoto = new();
 
     #endregion
