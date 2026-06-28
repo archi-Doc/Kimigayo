@@ -25,8 +25,6 @@ public class Compilation
 
     private Kotonoha? projectKotonoha;
 
-    private Utf16Hashtable<Koto[]> namespaceToKoto = new();
-
     #endregion
 
     public Compilation(KimiControl kimiControl, KimiOptions kimiOptions, ProjectFile projectFile, string projectName)

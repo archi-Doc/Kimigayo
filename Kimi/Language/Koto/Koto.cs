@@ -45,7 +45,7 @@ public enum KotoKind : byte
 public abstract partial class Koto
 {
     [IgnoreMember]
-    public DiagnosticSource? DiagnosticSource { get; internal set; }
+    public KotoSource? Source { get; internal set; }
 
     [IgnoreMember]
     public Koto? Parent { get; internal set; }
@@ -57,6 +57,12 @@ public abstract partial class Koto
     {
     }
 
+    public Koto(ref TokenReader reader, Koto parent, SourceRange range)
+    {
+        this.Parent = parent;
+        this.Source = new(reader.Diagnostic, reader.Kotonoha, reader.SourceId, range);
+    }
+
     public virtual void Parse(ref TokenReader reader)
     {
     }
@@ -66,16 +72,11 @@ public abstract partial class Koto
         return default;
     }
 
-    public void InitializeDiagnostic(DiagnosticCollection diagnosticCollection, Token token)
-    {
-        this.DiagnosticSource = new(diagnosticCollection, token.Range);
-    }
-
     public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
     {
-        if (this.DiagnosticSource is not null)
+        if (this.Source is not null)
         {
-            this.DiagnosticSource.DiagnosticCollection.Add(this.DiagnosticSource.Range, diagnosticHash, obj);
+            this.Source.DiagnosticCollection.Add(this.Source.Range, diagnosticHash, obj);
         }
     }
 }
