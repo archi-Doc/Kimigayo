@@ -19,7 +19,7 @@ public class Compilation
 
     public TargetTriple TargetTriple { get; private set; } = TargetTriple.Empty;
 
-    public KotonohaIdentifier[] KotonohaArray { get; private set; } = []
+    public KotonohaIdentifier[] KotonohaArray { get; private set; } = [];
 
     private Utf16Hashtable<Koto[]> namespaceToKoto = new();
 

@@ -65,12 +65,13 @@ internal class Program
         var file = new ProjectFile();
         file.Targets = ["Windows", "Linux"];
         file.Alias = ["Kimi.Base"];
-        var package = new ProjectFile.PackageClass() with
+        var kotonoha = new KotonohaIdentifier() with
         {
             Name = "tinyhand",
             Version = "1.2",
         };
-        file.Packages = [package];
+
+        file.KotonohaArray = [kotonoha];
         var st = TinyhandSerializer.SerializeToString(file);
 
         var file2 = TinyhandSerializer.DeserializeFromString<ProjectFile>("""
