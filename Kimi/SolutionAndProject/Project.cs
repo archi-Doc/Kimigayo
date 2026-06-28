@@ -5,7 +5,7 @@ namespace Kimigayo;
 using System.Diagnostics.CodeAnalysis;
 using Kimigayo.Language;
 
-public readonly record struct UrlAndtext(string Url, string Text);
+public readonly record struct PathAndSource(string Path, string Source);
 
 public partial class Project
 {
@@ -35,6 +35,7 @@ public partial class Project
 
             project = new(kimiControl);
             project.ProjectFile = file;
+            project.ProjectName = Path.GetFileNameWithoutExtension(path);
         }
         catch
         {
@@ -48,10 +49,12 @@ public partial class Project
     #region FieldAndProperty
 
     private readonly KimiControl kimiControl;
-    private List<UrlAndtext> additionalSource = [];
+    private List<PathAndSource> additionalSource = [];
     private HashSet<string> kimiFiles = new();
 
     public KimiOptions KimiOptions { get; set; } = new();
+
+    public string ProjectName { get; set; } = string.Empty;
 
     public ProjectFile ProjectFile { get; private set; } = new();
 
@@ -78,7 +81,7 @@ public partial class Project
         var targets = this.ProjectFile.Targets.ToArray();
         foreach (var x in targets)
         {
-            var compilation = new Compilation(this.kimiControl, this.KimiOptions, this.ProjectFile);
+            var compilation = new Compilation(this.kimiControl, this.KimiOptions, this.ProjectFile, this.ProjectName);
             compilation.Prepare(x);
             foreach (var y in this.kimiFiles)
             {

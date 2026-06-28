@@ -254,6 +254,7 @@ SolutionLoaed:
             if (File.Exists(this.SingleFile))
             {
                 var project = new Project(this.kimiControl);
+                project.ProjectName = Path.GetFileNameWithoutExtension(this.SingleFile);
                 project.AddKimiFile(this.SingleFile);
                 this.Projects[this.SingleFile] = project;
             }

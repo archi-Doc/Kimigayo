@@ -9,11 +9,13 @@ public class Compilation
 {
     #region FieldAndProperty
 
-    private readonly KimiControl kimiControl;
-
-    private readonly ProjectFile projectFile;
+    public KimiControl KimiControl { get; }
 
     public KimiOptions KimiOptions { get; private set; }
+
+    public ProjectFile ProjectFile { get; }
+
+    public string ProjectName { get; }
 
     public string Target { get; private set; } = string.Empty;
 
@@ -21,15 +23,18 @@ public class Compilation
 
     public KotonohaIdentifier[] KotonohaArray { get; private set; } = [];
 
+    private Kotonoha? projectKotonoha;
+
     private Utf16Hashtable<Koto[]> namespaceToKoto = new();
 
     #endregion
 
-    public Compilation(KimiControl kimiControl, KimiOptions kimiOptions, ProjectFile projectFile)
+    public Compilation(KimiControl kimiControl, KimiOptions kimiOptions, ProjectFile projectFile, string projectName)
     {
-        this.kimiControl = kimiControl;
+        this.KimiControl = kimiControl;
         this.KimiOptions = kimiOptions;
-        this.projectFile = projectFile;
+        this.ProjectFile = projectFile;
+        this.ProjectName = projectName;
     }
 
     public bool Prepare(string target)
@@ -44,65 +49,18 @@ public class Compilation
 
         // Prepare Kotonoha
 
+        this.projectKotonoha = new(this.ProjectName, string.Empty);
+
         return true;
     }
 
-    public void Parse(UrlAndtext urlAndtext)
+    public void Parse(PathAndSource pathAndSource)
     {
-        var diagnostic = this.kimiControl.GetOrAddFileDiagnostic(urlAndtext.Url);
-        var tokenizer = new Tokenizer(diagnostic);
-        tokenizer.Initialize(urlAndtext.Text.AsMemory(), 0, 0);
-        var fileRoot = new FileRoot(diagnostic);
-        var currentIndentLevel = 0;
-
-        var dumpToken = this.KimiOptions.DumpToken ? new List<Token>() : null;
-        while (true)
+        if (this.projectKotonoha is null)
         {
-            // Read token
-            var list = tokenizer.Read(ref currentIndentLevel);
-            if (list.Count == 0)
-            {
-                break;
-            }
-
-            // Dump token
-            if (dumpToken is not null)
-            {
-                dumpToken.AddRange(list);
-                dumpToken.Add(Token.Invalid);
-            }
-
-            // Token to Koto
-            var tokenReader = new TokenReader(diagnostic, list);
-            fileRoot.Parse(ref tokenReader);
+            return;
         }
 
-        if (dumpToken is not null &&
-            Path.ChangeExtension(urlAndtext.Url, Constants.TokenExtension) is { } tokenPath)
-        {
-            var sb = new StringBuilder();
-            foreach (var x in dumpToken)
-            {
-                if (x.Kind == TokenKind.Invalid)
-                {
-                    sb.AppendLf();
-                }
-                else
-                {
-                    sb.Append(x.ToString());
-                }
-            }
-
-            try
-            {
-                File.WriteAllText(tokenPath, sb.ToString());
-
-                // var b = TinyhandSerializer.Serialize(dumpToken);
-                // var t = TinyhandSerializer.Deserialize<List<Token>>(b);
-            }
-            catch
-            {
-            }
-        }
+        this.projectKotonoha.AddSource(this, pathAndSource);
     }
 }

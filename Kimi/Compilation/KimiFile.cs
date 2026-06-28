@@ -3,4 +3,4 @@
 namespace Kimigayo.Language;
 
 [TinyhandObject]
-public partial record class KimiFile([property: Key(0)] string File, [property: Key(1)] string[] AliasArray);
+public partial record class KimiFile([property: Key(0)] string File, [property: Key(1)] string[] AliasArray, [property: Key(2)] RootKoto? RootKoto);
