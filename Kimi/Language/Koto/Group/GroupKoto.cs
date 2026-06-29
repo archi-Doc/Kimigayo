@@ -45,7 +45,7 @@ public partial class GroupKoto : Koto
         }*/
     }
 
-    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, KotoKind groupKind)
+    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, KotoKind groupKind, SourceRange range)
     {
         var text = qualifiedName;
         var group = this;
@@ -64,11 +64,11 @@ public partial class GroupKoto : Koto
         }
     }
 
-    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, KotoKind groupKind)
+    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, KotoKind groupKind, SourceRange range)
     {
         Func<string, Koto> factory = groupKind switch
         {
-            KotoKind.Group => static x => new GroupKoto(),
+            KotoKind.Group => static x => new GroupKoto(ref ReaderWriterLock, range),
             KotoKind.Namespace => static x => new NamespaceKoto(),
             _ => throw new InvalidOperationException(),
         };

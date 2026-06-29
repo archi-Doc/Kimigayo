@@ -41,6 +41,9 @@ public sealed partial class Kotonoha
         var kimiFile = new KimiSource(pathAndSource.Path, [], default);
         this.SourceList.Add(kimiFile);
 
+        var codeContext = compilation.CreateCodeContext();
+
+        // Tokenize
         var dumpToken = compilation.KimiOptions.DumpToken ? new List<Token>() : null;
         while (true)
         {
