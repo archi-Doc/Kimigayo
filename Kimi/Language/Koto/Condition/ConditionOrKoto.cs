@@ -5,10 +5,10 @@ namespace Kimigayo.Language;
 [TinyhandObject]
 public sealed partial class ConditionOrKoto : Koto
 {
-    [Key(0)]
+    [Key(1)]
     public Koto Left { get; private set; }
 
-    [Key(1)]
+    [Key(2)]
     public Koto Right { get; private set; }
 
     public ConditionOrKoto(Koto left, Koto right)

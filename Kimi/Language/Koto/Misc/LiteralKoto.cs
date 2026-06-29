@@ -5,7 +5,7 @@ namespace Kimigayo.Language;
 [TinyhandObject]
 public sealed partial class LiteralKoto : Koto
 {
-    [Key(0)]
+    [Key(1)]
     public string Literal { get; private set; }
 
     public LiteralKoto(Token token)

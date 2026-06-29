@@ -5,7 +5,7 @@ namespace Kimigayo.Language;
 [TinyhandObject]
 public partial class UnresolvedKoto : Koto
 {
-    [Key(0)]
+    [Key(1)]
     public string Unresolved { get; private set; }
 
     public UnresolvedKoto(Token token)

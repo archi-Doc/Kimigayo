@@ -29,6 +29,7 @@ public enum KotoKind : byte
     ConditionOr,
 }
 
+[TinyhandObject(ReservedKeyCount = 1)]
 [TinyhandUnion((int)KotoKind.Unresolved, typeof(UnresolvedKoto))]
 
 [TinyhandUnion((int)KotoKind.Namespace, typeof(NamespaceKoto))]
@@ -45,10 +46,14 @@ public enum KotoKind : byte
 public abstract partial class Koto
 {
     [IgnoreMember]
-    public KotoSource? Source { get; internal set; }
+    public KotoTrivia? Trivia { get; internal set; }
 
     [IgnoreMember]
     public Koto? Parent { get; internal set; }
+
+    [Key(0)]
+    public ulong KotoId { get; internal set; }
+    // public string? Description { get; private set; }
 
     [MemberNotNullWhen(false, nameof(Parent))]
     public bool IsRoot => this.Parent is null;
@@ -60,7 +65,7 @@ public abstract partial class Koto
     public Koto(ref TokenReader reader, Koto parent, SourceRange range)
     {
         this.Parent = parent;
-        this.Source = new(reader.Diagnostic, reader.Kotonoha, reader.SourceId, range);
+        this.Trivia = new(reader.Diagnostic, reader.Kotonoha, reader.SourceId, range);
     }
 
     public virtual void Parse(ref TokenReader reader)
@@ -74,9 +79,9 @@ public abstract partial class Koto
 
     public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
     {
-        if (this.Source is not null)
+        if (this.Trivia is not null)
         {
-            this.Source.DiagnosticCollection.Add(this.Source.Range, diagnosticHash, obj);
+            this.Trivia.DiagnosticCollection.Add(this.Trivia.Range, diagnosticHash, obj);
         }
     }
 }

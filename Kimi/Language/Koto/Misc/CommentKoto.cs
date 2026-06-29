@@ -5,7 +5,7 @@ namespace Kimigayo.Language;
 [TinyhandObject]
 public partial class CommentKoto : Koto
 {
-    [Key(0)]
+    [Key(1)]
     public string Comment { get; private set; }
 
     public CommentKoto(Token token)

@@ -14,7 +14,7 @@ public partial class GroupKoto : Koto
 {
     #region FieldAndProperty
 
-    [Key(0)]
+    [Key(1)]
     public string Name { get; protected set; } = string.Empty;
 
     private readonly Utf16Hashtable<Koto> identifierToGroupKoto = new();

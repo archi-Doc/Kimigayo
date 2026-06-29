@@ -5,7 +5,7 @@ namespace Kimigayo.Language;
 [TinyhandObject]
 public sealed partial class ConditionNegateKoto : Koto
 {
-    [Key(0)]
+    [Key(1)]
     public Koto Koto { get; private set; }
 
     public ConditionNegateKoto(Koto conditionKoto)
