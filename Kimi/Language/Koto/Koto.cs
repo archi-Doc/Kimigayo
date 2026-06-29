@@ -46,7 +46,7 @@ public enum KotoKind : byte
 public abstract partial class Koto
 {
     [IgnoreMember]
-    public KotoTrivia? Trivia { get; internal set; }
+    public CompilationMetadata? CompilationMetadata { get; internal set; }
 
     [IgnoreMember]
     public Koto? Parent { get; internal set; }
@@ -65,7 +65,7 @@ public abstract partial class Koto
     public Koto(ref TokenReader reader, Koto parent, SourceRange range)
     {
         this.Parent = parent;
-        this.Trivia = new(reader.Diagnostic, reader.Kotonoha, reader.SourceId, range);
+        this.CompilationMetadata = new(reader.Diagnostic, range, reader.Kotonoha, reader.SourceId);
     }
 
     public virtual void Parse(ref TokenReader reader)
@@ -79,9 +79,9 @@ public abstract partial class Koto
 
     public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
     {
-        if (this.Trivia is not null)
+        if (this.CompilationMetadata is not null)
         {
-            this.Trivia.DiagnosticCollection.Add(this.Trivia.Range, diagnosticHash, obj);
+            this.CompilationMetadata.DiagnosticCollection.Add(this.CompilationMetadata.Range, diagnosticHash, obj);
         }
     }
 }
