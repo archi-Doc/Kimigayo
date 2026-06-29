@@ -62,7 +62,7 @@ public abstract partial class Koto
     {
     }
 
-    public Koto(ref TokenReader reader, Koto parent, SourceRange range)
+    public Koto(Koto parent, ref TokenReader reader, SourceRange range)
     {
         this.Parent = parent;
         this.CompilationMetadata = new(reader.Diagnostic, range, reader.Kotonoha, reader.SourceId);
