@@ -4,7 +4,7 @@ namespace Kimigayo.Language;
 
 internal static class AttributeKotoHelper
 {
-    public static Koto? Parse(Koto parent, ref TokenReader reader)
+    public static Koto? Parse(ref TokenReader reader, Koto parent)
     {// #Attribute(...)
         if (!reader.TryConsume(TokenKind.Sharp))
         {
@@ -29,6 +29,8 @@ internal static class AttributeKotoHelper
         {
             return default;
         }
+
+        expression.Parent = parent;
 
         if (!reader.TryConsume(TokenKind.CloseParenthesis))
         {
@@ -57,7 +59,7 @@ internal static class AttributeKotoHelper
                 return null;
             }
 
-            left = new ConditionOrKoto(left, right);
+            left = new ConditionOrKoto(ref reader, left, right);
         }
 
         return left;
@@ -103,7 +105,7 @@ internal static class AttributeKotoHelper
                     return null;
                 }
 
-                left = new ConditionEqualsKoto(left, right);
+                left = new ConditionEqualsKoto(ref reader, left, right);
 
                 continue;
             }
@@ -116,7 +118,7 @@ internal static class AttributeKotoHelper
                     return null;
                 }
 
-                left = new ConditionNotEqualsKoto(left, right);
+                left = new ConditionNotEqualsKoto(ref reader, left, right);
 
                 continue;
             }
@@ -135,7 +137,7 @@ internal static class AttributeKotoHelper
                 return null;
             }
 
-            return new ConditionNegateKoto(operand);
+            return new ConditionNegateKoto(ref reader, default, operand);
         }
 
         return ParsePrimary(ref reader);

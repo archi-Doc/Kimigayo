@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Arc.Collections;
+using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
 [TinyhandObject]
@@ -8,7 +9,8 @@ public sealed partial class RootKoto : GroupKoto
 {
     private readonly Utf16Hashtable<GroupKoto> namespaceToGroupNode = new();
 
-    public RootKoto()
+    public RootKoto(ref TokenReader reader, SourceRange range)
+        : base(ref reader,  range)
     {
     }
 

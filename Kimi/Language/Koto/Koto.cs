@@ -58,14 +58,10 @@ public abstract partial class Koto
     [MemberNotNullWhen(false, nameof(Parent))]
     public bool IsRoot => this.Parent is null;
 
-    public Koto()
-    {
-    }
-
-    public Koto(ref TokenReader reader, Koto parent, SourceRange range)
+    public Koto(ref TokenReader reader, SourceRange range)
     {
         this.CompilationMetadata = new(reader.Diagnostic, range, reader.Kotonoha, reader.SourceId);
-        this.Parent = parent;
+        // this.Parent = parent;
     }
 
     public virtual void Parse(ref TokenReader reader)

@@ -2,6 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using Arc.Collections;
+using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
 namespace Kimigayo.Language;
@@ -21,7 +22,8 @@ public partial class GroupKoto : Koto
 
     #endregion
 
-    public GroupKoto()
+    public GroupKoto(ref TokenReader reader, SourceRange range)
+        : base(ref reader, range)
     {
     }
 

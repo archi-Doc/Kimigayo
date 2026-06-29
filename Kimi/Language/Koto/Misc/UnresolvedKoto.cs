@@ -8,7 +8,8 @@ public partial class UnresolvedKoto : Koto
     [Key(1)]
     public string Unresolved { get; private set; }
 
-    public UnresolvedKoto(Token token)
+    public UnresolvedKoto(ref TokenReader reader, Token token)
+        : base(ref reader, token.Range)
     {
         this.Unresolved = token.Text.ToString();
     }
