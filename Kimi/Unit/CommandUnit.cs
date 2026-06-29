@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimigayo.Command;
 using Kimigayo.Lsp;
 using SimpleCommandLine;
 
@@ -9,13 +10,6 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
 {
     private ILogger<CommandUnit> logger;
     private UnitOptions options;
-
-    private static void ConfigureBase(IUnitConfigurationContext context)
-    {
-        context.AddScoped<IConsoleService, ConsoleService>();
-        context.AddTransient<Solution>();
-        context.AddTransient<Project>();
-    }
 
     public class Builder : UnitBuilder<Product>
     {// Builder class for customizing dependencies.
@@ -29,7 +23,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
             // Configuration for Unit.
             this.Configure(context =>
             {
-                ConfigureBase(context);
+                KimiUnit.ConfigureBase(context);
 
                 context.AddSingleton<CommandUnit>();
                 context.RegisterDefaultInstantiableType<CommandUnit>();
@@ -38,6 +32,8 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 // Command
                 context.AddCommand(typeof(DefaultCommand));
                 context.AddCommand(typeof(LspCommand));
+                context.AddCommand(typeof(BuildCommand));
+                context.AddCommand(typeof(RunCommand));
 
                 // Logger
                 context.ClearLoggerResolver();
@@ -136,22 +132,5 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
     async Task IUnitExecutable.Terminate(UnitContext unitContext, CancellationToken cancellationToken)
     {
         // this.logger.GetWriter()?.Write("Exit");
-    }
-
-    [SimpleCommand("Default", Default = true)]
-    public class DefaultCommand : ISimpleCommand
-    {
-        private readonly UnitContext unitContext;
-
-        public DefaultCommand(UnitContext unitContext, ILogger<DefaultCommand> logger)
-        {
-            this.unitContext = unitContext;
-            // logger.GetWriter()?.Write("Default command");
-        }
-
-        public async Task Execute(string[] args, CancellationToken cancellationToken)
-        {
-            Console.WriteLine($"Kimigayo ({Arc.VersionHelper.VersionString}) by archi-Doc");
-        }
     }
 }

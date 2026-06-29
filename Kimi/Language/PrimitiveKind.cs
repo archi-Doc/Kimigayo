@@ -3,7 +3,7 @@
 namespace Kimigayo.Language;
 
 public enum PrimitiveKind : byte
-{
+{// 15
     Bool,
     Isize,
     Usize,

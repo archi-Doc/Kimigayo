@@ -26,7 +26,7 @@ public class LspServer
     private readonly Dictionary<string, TextDocument> documents = new(StringComparer.Ordinal);
     private bool shutdownRequested;
 
-    private DelayedTaskExecutor dump;//
+    private DelayedTaskExecutor dump;
 
     #endregion
 
@@ -37,18 +37,18 @@ public class LspServer
         this.writeLock = new(1, 1);
 
         this.dump = new(
-        async cancellationToken =>
-        {
-            var sb = new StringBuilder();
-            foreach (var x in this.documents)
+            async cancellationToken =>
             {
-                sb.AppendLine(x.Key);
-                sb.AppendLine(x.Value.ToString());
-            }
+                var sb = new StringBuilder();
+                foreach (var x in this.documents)
+                {
+                    sb.AppendLine(x.Key);
+                    sb.AppendLine(x.Value.ToString());
+                }
 
-            File.AppendAllText("C:\\App\\lsp2.txt", sb.ToString());
-        },
-        TimeSpan.FromSeconds(3));
+                // File.AppendAllText("C:\\App\\lsp2.txt", sb.ToString());
+            },
+            TimeSpan.FromSeconds(3));
     }
 
     public async Task Run(CancellationToken cancellationToken)
@@ -69,12 +69,9 @@ public class LspServer
                 break;
             }
 
-            if (!Utf8Parser.TryParse(
-        buffer.AsSpan(LspHelper.ContentHeader.Length, r.TextLength - LspHelper.ContentHeader.Length),
-        out int contentLength,
-        out var consumed) ||
-        consumed != r.TextLength - LspHelper.ContentHeader.Length ||
-        contentLength < 0)
+            if (!Utf8Parser.TryParse(buffer.AsSpan(LspHelper.ContentHeader.Length, r.TextLength - LspHelper.ContentHeader.Length), out int contentLength, out var consumed) ||
+                consumed != r.TextLength - LspHelper.ContentHeader.Length ||
+                contentLength < 0)
             {
                 break;
             }
@@ -106,7 +103,6 @@ public class LspServer
                 await this.input.ReadExactlyAsync(payload.AsMemory(contentLength - remaining, remaining), cancellationToken).ConfigureAwait(false);
 
                 var span = payload.AsSpan(0, contentLength);
-                //File.AppendAllBytes("C:\\App\\lsp.txt", span);
 
                 var message = JsonSerializer.Deserialize<LspMessage>(span, this.jsonOptions);
                 if (message is null)
@@ -304,10 +300,56 @@ public class LspServer
                 version);
         }
 
-        this.dump.Request();
+        // this.dump.Request();
 
         // await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
     }
+
+    /*private static async Task PublishDiagnosticsAsync(string uri, int? version, IReadOnlyList<TomlDiagnostic> diagnostics)
+    {
+        var lspDiagnostics = new List<Diagnostic>(diagnostics.Count);
+        foreach (var diagnostic in diagnostics)
+        {
+            lspDiagnostics.Add(new Diagnostic
+            {
+                Range = new Diagnostics.Range
+                {
+                    Start = new Position
+                    {
+                        Line = diagnostic.Line,
+                        Character = diagnostic.Character,
+                    },
+                    End = new Position
+                    {
+                        Line = diagnostic.Line,
+                        Character = diagnostic.Character + Math.Max(1, diagnostic.Length),
+                    },
+                },
+                Severity = ToLspSeverity(diagnostic.Severity),
+                Source = "kimi-lsp",
+                Message = diagnostic.Message,
+            });
+        }
+
+        var parameters = new PublishDiagnosticsParams
+        {
+            Uri = uri,
+            Version = version,
+            Diagnostics = lspDiagnostics,
+        };
+
+        await SendNotificationAsync("textDocument/publishDiagnostics", parameters).ConfigureAwait(false);
+    }
+
+    private static int ToLspSeverity(string severity)
+        => severity switch
+        {
+            "error" => 1,
+            "warning" => 2,
+            "info" => 3,
+            "hint" => 4,
+            _ => 1,
+        };*/
 
     private async Task HandleDidCloseAsync(JsonElement? parametersElement)
     {

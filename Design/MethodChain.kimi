@@ -1,0 +1,22 @@
+Method1()
+    .Method2()
+
+foo(
+    a
+    ).next
+
+foo(
+    a)
+    .next
+
+foo(
+    a
+)
+
+foo(
+    a
+).bar
+
+foo(
+    a
+    ) + 1

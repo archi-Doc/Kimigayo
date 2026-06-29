@@ -1,9 +1,11 @@
 ﻿namespace Playground;
 
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Arc.Unit;
 using Kimigayo;
+using Kimigayo.Language;
 using Microsoft.Extensions.DependencyInjection;
 using SimplePrompt;
 using Tinyhand;
@@ -25,25 +27,51 @@ internal class Program
         // var tree = CodeTree.Parse("");
 
         var project = serviceProvider.GetRequiredService<Project>();
+        Test1();
 
-        project.TryReadFile("aaa");
-
-        project.AddSource("""
+        /*project.AddSource("test", """
             namespace Test.Program // Comment
-            public void Main()
-                return;
+            public Main()
+                var x = 1.23
+                var list = [
+                    1,
+                    2,]
+                var list2 = [
+                    1,
+                ]
+                return
+            """);*/
+        project.AddSource("test", """
+            /* Multi-line comment
+            Kimigayo by archi-Doc.
+            */
+            namespace Playground // Single-line comment
+            use Kimi.Crypto 
+
+            Condition(Os=="Linux") // Attribute-next rule.
+            use Kimi.Base.Linux
+
+            public const string Name = "Test Program"
+
+            public group Helper // namespace - use
+                public const i32 Id = 123
+                public Method1() => int32 // use PackageName, Helper
+                    var i = [1..]
+                    var j = [..=4]
+                    return 1
             """);
         var result = await project.Build();
 
         var file = new ProjectFile();
         file.Targets = ["Windows", "Linux"];
-        file.Use = ["Kimi.Base"];
-        var package = new ProjectFile.PackageClass() with
+        file.Alias = ["Kimi.Base"];
+        var kotonoha = new KotonohaIdentifier() with
         {
             Name = "tinyhand",
             Version = "1.2",
         };
-        file.Packages = [package];
+
+        file.KotonohaArray = [kotonoha];
         var st = TinyhandSerializer.SerializeToString(file);
 
         var file2 = TinyhandSerializer.DeserializeFromString<ProjectFile>("""
@@ -59,5 +87,9 @@ internal class Program
 
         // kimiControl.DumpToConsole();
 
+    }
+
+    private static unsafe void Test1()
+    {
     }
 }

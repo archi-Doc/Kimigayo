@@ -4,4 +4,5 @@
   </Folder>
   <Project Path="Kimi/Kimi.csproj" />
   <Project Path="Playground/Playground.csproj" Id="478f6ffe-ea83-4cf0-8984-61012eb2f5ba" />
+  <Project Path="xUnitTest/xUnitTest.csproj" Id="07333e97-3071-4faa-adc2-6f2ff1712381" />
 </Solution>

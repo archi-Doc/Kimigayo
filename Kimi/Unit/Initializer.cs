@@ -12,8 +12,8 @@ internal static class Initializer
         var asm = System.Reflection.Assembly.GetExecutingAssembly();
         try
         {
-            HashedString.LoadAssembly(null, asm, "Misc.Language.strings-en.tinyhand");
-            HashedString.LoadAssembly("ja", asm, "Misc.Language.strings-ja.tinyhand");
+            HashedString.LoadAssembly(null, asm, "Misc.Text.strings-en.tinyhand");
+            HashedString.LoadAssembly("ja", asm, "Misc.Text.strings-ja.tinyhand");
         }
         catch
         {

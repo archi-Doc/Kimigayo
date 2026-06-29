@@ -9,7 +9,7 @@ global using Kimigayo;
 global using Microsoft.Extensions.DependencyInjection;
 global using Tinyhand;
 global using ValueLink;
-using Kimigayo.Lsp;
+using Kimigayo.Command;
 using SimpleCommandLine;
 
 namespace Kimigayo;
