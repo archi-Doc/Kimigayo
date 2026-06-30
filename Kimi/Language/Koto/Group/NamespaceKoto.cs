@@ -9,6 +9,10 @@ public sealed partial class NamespaceKoto : GroupKoto
 {
     private readonly Utf16Hashtable<GroupKoto> namespaceToGroupNode = new();
 
+    public NamespaceKoto()
+    {
+    }
+
     public NamespaceKoto(ref TokenReader reader, SourceRange range)
         : base(ref reader,  range)
     {

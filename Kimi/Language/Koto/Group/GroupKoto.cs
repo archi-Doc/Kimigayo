@@ -22,6 +22,10 @@ public partial class GroupKoto : Koto
 
     #endregion
 
+    public GroupKoto()
+    {
+    }
+
     public GroupKoto(ref TokenReader reader, SourceRange range)
         : base(ref reader, range)
     {
