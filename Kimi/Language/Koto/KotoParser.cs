@@ -12,7 +12,7 @@ public static class KotoParser
 
         while (true)
         {
-            if (TryParsePostfixExpression(ref left))
+            if (TryParsePostfixExpression(ref reader, ref left))
             {
                 continue;
             }
@@ -55,8 +55,16 @@ public static class KotoParser
         {
             case TokenKind.Dot:
                 {// Class.Member
-                    reader.TryRead(out var token);
-                    left = new MemberAccessKoto(ref reader, token, left);
+                    reader.TryRead(out var token); // .
+
+                    if (!reader.TryRead(out var token2) ||
+                        token2.Kind != TokenKind.Identifier)
+                    {
+                        break;
+                    }
+
+                    var koto = new UnresolvedKoto(ref reader, token2);
+                    left = new MemberAccessKoto(ref reader, new(token.Range.Start, token2.Range.End), left, koto);
                     return true;
                 }
 
@@ -76,7 +84,7 @@ public static class KotoParser
                     var index = ParseExpression(ref reader);
                     reader.TryConsume(TokenKind.CloseBracket, out var range, true); // ]
 
-                    left = new IndexKoto(ref reader, left, index);
+                    left = new IndexKoto(ref reader, new(token.Range.Start, range.End), left, index);
                     return true;
                 }
 

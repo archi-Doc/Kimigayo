@@ -1,5 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimigayo.Diagnostics;
+
 namespace Kimigayo.Language;
 
 [TinyhandObject]
@@ -11,8 +13,8 @@ public partial class IndexKoto : Koto
     [Key(2)]
     public Koto Index { get; private set; }
 
-    public IndexKoto(ref TokenReader reader, Token token, Koto left, Koto index)
-        : base(ref reader, token.Range)
+    public IndexKoto(ref TokenReader reader, SourceRange range, Koto left, Koto index)
+        : base(ref reader, range)
     {
         this.Left = left;
         this.Index = index;
