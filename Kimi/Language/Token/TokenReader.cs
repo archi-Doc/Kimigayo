@@ -29,7 +29,7 @@ public ref struct TokenReader
 
     public bool IsEmpty => this.Position >= this.list.Count;
 
-    public TokenKind NextToken => this.Position < this.list.Count ? this.list[this.Position].Kind : TokenKind.Invalid;
+    public TokenKind CurrentTokenKind => this.Position < this.list.Count ? this.list[this.Position].Kind : TokenKind.Invalid;
 
     #endregion
 

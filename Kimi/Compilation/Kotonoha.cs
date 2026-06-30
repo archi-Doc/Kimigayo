@@ -1,7 +1,10 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Arc.Collections;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Kimigayo.Language;
 
@@ -9,25 +12,47 @@ namespace Kimigayo.Language;
 public sealed partial class Kotonoha
 {
     [Key(0)]
-    public string Name { get; private set; } = string.Empty;
+    public uint Id { get; private set; }
 
     [Key(1)]
-    public string Url { get; private set; } = string.Empty;
+    public string Name { get; private set; } = string.Empty;
 
     [Key(2)]
-    public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
+    public string Url { get; private set; } = string.Empty;
 
     [Key(3)]
+    public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
+
+    [Key(4)]
     public List<KimiSource> SourceList { get; private set; } = [];
+
+    [IgnoreMember]
+    private Koto[] kotoArray = [];
 
     public Kotonoha(string name, string url)
     {
         this.Name = name;
+        this.Id = (uint)XxHash3Slim.Hash64(name);
         this.Url = url;
     }
 
     public override string ToString()
         => $"Kotonoha: {this.Name}";
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryGetKoto(ulong id, [MaybeNullWhen(false)] out Koto koto)
+    {
+        var kotoId = (uint)id;
+        if (this.Id != (uint)(id >> 32) ||
+            kotoId >= this.kotoArray.Length)
+        {
+            koto = default;
+            return false;
+        }
+
+        koto = this.kotoArray[kotoId];
+        return true;
+    }
 
     public void AddSource(Compilation compilation, PathAndSource pathAndSource)
     {
