@@ -2,6 +2,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Arc.Collections;
+using Kimi.Language;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
@@ -35,7 +36,7 @@ public sealed class FileRoot
         {
             if (token.Kind == TokenKind.Sharp)
             {// #Attribute
-                var koto = AttributeKotoHelper.Parse(ref reader, this.CurrentGroup);
+                var koto = KotoParser.ParseAttribute(ref reader, this.CurrentGroup);
                 // var bin = TinyhandSerializer.Serialize(koto);
             }
             else if (token.IsIdentifierToken(Constants.AliasKeyword))

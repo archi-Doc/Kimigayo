@@ -4,7 +4,7 @@ namespace Kimigayo.Language;
 
 internal static class AttributeKotoHelper
 {
-    public static Koto? Parse(ref TokenReader reader, Koto parent)
+    public static Koto? ParseObsolete(ref TokenReader reader, Koto parent)
     {// #Attribute(...)
         if (!reader.TryConsume(TokenKind.Sharp, out var range))
         {
