@@ -16,6 +16,7 @@ public partial class PrefixUnaryKoto : Koto
     {
         this.Kind = token.Kind;
         this.Operand = operand;
+        operand.Parent = this;
     }
 
     public override string ToString()

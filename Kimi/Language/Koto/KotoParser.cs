@@ -6,82 +6,77 @@ namespace Kimi.Language;
 
 public static class KotoParser
 {
-    public static Koto ParseExpression(ref TokenReader reader, Koto parent, int minBindingPower = 0)
+    public static Koto ParseExpression(ref TokenReader reader, int minBindingPower = 0)
     {
-        var left = ParsePrefixExpression(ref reader, parent);
+        var left = ParsePrefixExpression(ref reader);
 
         while (true)
         {
-            // Postfix / call / member access
             if (TryParsePostfixExpression(ref left))
             {
                 continue;
             }
 
-            var op = this.Current.Kind;
-            var bp = GetInfixBindingPower(op);
+            var tokenKind = reader.CurrentTokenKind;
+            var bp = GetInfixBindingPower(tokenKind);
 
-            if (bp is null || bp.Value.Left < minBindingPower)
+            if (bp == default || bp.Left < minBindingPower)
             {
                 break;
             }
 
-            reader.MoveNext();
-
-            var right = this.ParseExpression(bp.Value.Right);
-            left = new BinaryExpressionSyntax(left, op, right);
+            reader.TryRead(out var token);
+            var right = ParseExpression(ref reader, bp.Right);
+            left = new BinaryKoto(ref reader, token, left, right);
         }
 
         return left;
     }
 
-    private static Koto ParsePrefixExpression(ref TokenReader reader, Koto parent)
+    private static Koto ParsePrefixExpression(ref TokenReader reader)
     {
         var tokenKind = reader.CurrentTokenKind;
-
         var bindingPower = GetPrefixBindingPower(tokenKind);
         if (bindingPower > 0)
         {
             reader.TryRead(out var token);
-            var operand = ParseExpression(ref reader, parent, bindingPower);
+            var operand = ParseExpression(ref reader, bindingPower);
             var koto = new PrefixUnaryKoto(ref reader, token, operand);
-            koto.Parent = parent;
             return koto;
         }
 
-        return ParsePrimaryExpression();
+        return ParsePrimaryExpression(ref reader);
     }
 
     private static bool TryParsePostfixExpression(ref TokenReader reader, ref Koto left)
     {
-        switch (this.Current.Kind)
+        var tokenKind = reader.CurrentTokenKind;
+        switch (tokenKind)
         {
             case TokenKind.Dot:
                 {
-                    .NextToken();
-
-                    var name = ExpectIdentifier();
-                    left = new MemberAccessExpressionSyntax(left, name);
+                    reader.TryRead(out var token);
+                    left = new MemberAccessKoto(ref reader, token, left);
                     return true;
                 }
 
-            case TokenKind.OpenParen:
+            case TokenKind.OpenParenthesis:
                 {
-                    reader.MoveNext();
+                    reader.TryRead(out var token);
 
-                    var arguments = this.ParseArgumentList();
+                    var arguments = ParseArgumentList();
 
                     this.Expect(TokenKind.CloseParen);
 
-                    left = new InvocationExpressionSyntax(left, arguments);
+                    left = new InvocationKoto(left, arguments);
                     return true;
                 }
 
             case TokenKind.OpenBracket:
                 {
-                    reader.MoveNext();
+                    reader.TryRead(out var token);
 
-                    var index = this.ParseExpression();
+                    var index = ParseExpression(ref reader);
 
                     this.Expect(TokenKind.CloseBracket);
 
@@ -94,44 +89,41 @@ public static class KotoParser
         }
     }
 
-    private static Koto ParsePrimaryExpression(ref TokenReader reader, Koto parent)
+    private static Koto ParsePrimaryExpression(ref TokenReader reader)
     {
-        switch (this.Current.Kind)
+        var tokenKind = reader.CurrentTokenKind;
+        switch (tokenKind)
         {
             case TokenKind.Identifier:
                 {
-                    var token = this.Current;
-                    reader.MoveNext();
-                    return new IdentifierExpressionSyntax(token);
+                    reader.TryRead(out var token);
+                    return new UnresolvedKoto(ref reader, token);
                 }
 
-            case TokenKind.NumberLiteral:
+            case TokenKind.NumericLiteral:
                 {
-                    var token = this.Current;
-                    reader.MoveNext();
+                    reader.TryRead(out var token);
                     return new LiteralExpressionSyntax(token);
                 }
 
-            case TokenKind.StringLiteral:
+            case TokenKind.Literal:
                 {
-                    var token = this.Current;
-                    reader.MoveNext();
-                    return new LiteralExpressionSyntax(token);
+                    reader.TryRead(out var token);
+                    return new LiteralKoto(ref reader, token);
                 }
 
             case TokenKind.True:
             case TokenKind.False:
                 {
-                    var token = this.Current;
-                    reader.MoveNext();
+                    reader.TryRead(out var token);
                     return new LiteralExpressionSyntax(token);
                 }
 
-            case TokenKind.OpenParen:
+            case TokenKind.OpenParenthesis:
                 {
-                    reader.MoveNext();
+                    reader.TryRead(out var token);
 
-                    var expression = this.ParseExpression();
+                    var expression = ParseExpression();
 
                     this.Expect(TokenKind.CloseParen);
 
@@ -140,10 +132,8 @@ public static class KotoParser
 
             default:
                 {
-                    var token = this.Current;
+                    reader.TryRead(out var token);
                     this.ReportUnexpectedToken(token);
-
-                    reader.MoveNext();
 
                     return new ErrorExpressionSyntax(token);
                 }
@@ -164,7 +154,7 @@ public static class KotoParser
             _ => 0,
         };
 
-    private static (int Left, int Right)? GetInfixBindingPower(TokenKind kind)
+    private static (int Left, int Right) GetInfixBindingPower(TokenKind kind)
         => kind switch
         {
             TokenKind.Asterisk => (80, 81),
@@ -189,6 +179,6 @@ public static class KotoParser
             TokenKind.AmpersandAmpersand => (20, 21),
             TokenKind.BarBar => (10, 11),
 
-            _ => null,
+            _ => default,
         };
 }

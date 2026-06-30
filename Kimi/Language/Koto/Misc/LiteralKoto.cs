@@ -17,5 +17,5 @@ public sealed partial class LiteralKoto : Koto
     }
 
     public override string ToString()
-        => $"'{this.Literal}'";
+        => $"\"{this.Literal}\"";
 }
