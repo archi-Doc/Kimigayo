@@ -23,14 +23,6 @@ public enum KotoKind : byte
     StringLiteral,
     BoolLiteral,
     I8Literal,
-
-    // Condition
-    ConditionUnresolved,
-    ConditionNegate,
-    ConditionEquals,
-    ConditionNotEquals,
-    ConditionAnd,
-    ConditionOr,
 }
 
 [TinyhandObject(ReservedKeyCount = 1)]
@@ -43,12 +35,6 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.NumericLiteral, typeof(NumericLiteralKoto))]
 [TinyhandUnion((int)KotoKind.BoolLiteral, typeof(BoolLiteralKoto))]
-
-[TinyhandUnion((int)KotoKind.ConditionNegate, typeof(ConditionNegateKoto))]
-[TinyhandUnion((int)KotoKind.ConditionEquals, typeof(ConditionEqualsKoto))]
-[TinyhandUnion((int)KotoKind.ConditionNotEquals, typeof(ConditionNotEqualsKoto))]
-[TinyhandUnion((int)KotoKind.ConditionAnd, typeof(ConditionAndKoto))]
-[TinyhandUnion((int)KotoKind.ConditionOr, typeof(ConditionOrKoto))]
 public abstract partial class Koto
 {
     [IgnoreMember]
