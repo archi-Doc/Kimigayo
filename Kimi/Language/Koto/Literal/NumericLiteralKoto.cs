@@ -1,0 +1,19 @@
+﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+namespace Kimigayo.Language;
+
+[TinyhandObject]
+public sealed partial class NumericLiteralKoto : Koto
+{
+    [Key(1)]
+    public string Literal { get; private set; }
+
+    public NumericLiteralKoto(ref TokenReader reader, Token token)
+        : base(ref reader, token.Range)
+    {
+        this.Literal = token.Text.ToString();
+    }
+
+    public override string ToString()
+        => $"{this.Literal}";
+}

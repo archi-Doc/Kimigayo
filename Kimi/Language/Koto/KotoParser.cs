@@ -103,29 +103,29 @@ public static class KotoParser
             case TokenKind.NumericLiteral:
                 {
                     reader.TryRead(out var token);
-                    return new LiteralExpressionSyntax(token);
+                    return new NumericLiteralKoto(ref reader, token);
                 }
 
             case TokenKind.StringLiteral:
                 {
                     reader.TryRead(out var token);
-                    return new LiteralKoto(ref reader, token);
+                    return new StringLiteralKoto(ref reader, token);
                 }
 
             case TokenKind.True:
             case TokenKind.False:
                 {
                     reader.TryRead(out var token);
-                    return new LiteralExpressionSyntax(token);
+                    return new BoolLiteralKoto(ref reader, token);
                 }
 
             case TokenKind.OpenParenthesis:
                 {
                     reader.TryRead(out var token);
 
-                    var expression = ParseExpression();
+                    var expression = ParseExpression(ref reader);
 
-                    this.Expect(TokenKind.CloseParen);
+                    this.Expect(TokenKind.CloseParenthesis);
 
                     return new ParenthesizedExpressionSyntax(expression);
                 }
