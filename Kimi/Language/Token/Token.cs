@@ -48,8 +48,8 @@ public readonly partial struct Token
     {
         if (this.Kind == TokenKind.Identifier ||
             this.Kind == TokenKind.NumericLiteral ||
-            this.Kind == TokenKind.Literal ||
-            this.Kind == TokenKind.RawLiteral ||
+            this.Kind == TokenKind.StringLiteral ||
+            this.Kind == TokenKind.RawStringLiteral ||
             this.Kind == TokenKind.SingleLineComment ||
             this.Kind == TokenKind.MultiLineComment)
         {

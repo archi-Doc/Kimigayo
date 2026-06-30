@@ -72,8 +72,8 @@ public enum TokenKind : byte
     Separator,
     NumericLiteral, // 1.23d
     CharLiteral, // 'a'
-    Literal, // "text"
-    RawLiteral, // """text"""
+    StringLiteral, // "text"
+    RawStringLiteral, // """text"""
     SingleLineComment, // // comment
     MultiLineComment, // /* comment */
     // LineFeed, // \n or \r\n

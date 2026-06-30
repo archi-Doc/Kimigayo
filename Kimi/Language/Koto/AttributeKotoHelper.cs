@@ -169,7 +169,7 @@ internal static class AttributeKotoHelper
                 return new UnresolvedKoto(ref reader, token);
             }
 
-            if (token.Kind == TokenKind.Literal)
+            if (token.Kind == TokenKind.StringLiteral)
             {
                 reader.MoveNext();
                 return new LiteralKoto(ref reader, token);

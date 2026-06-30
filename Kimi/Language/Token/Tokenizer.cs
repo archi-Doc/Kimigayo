@@ -101,8 +101,8 @@ public static class TokenHelper
         Set(TokenKind.EndBlock, false, string.Empty);
         Set(TokenKind.Separator, false, string.Empty);
         Set(TokenKind.NumericLiteral, false, string.Empty);
-        Set(TokenKind.Literal, false, string.Empty);
-        Set(TokenKind.RawLiteral, false, string.Empty);
+        Set(TokenKind.StringLiteral, false, string.Empty);
+        Set(TokenKind.RawStringLiteral, false, string.Empty);
         Set(TokenKind.SingleLineComment, false, string.Empty);
         Set(TokenKind.MultiLineComment, false, string.Empty);
 
@@ -1141,11 +1141,11 @@ Loop:
                             }
                             else if (quoteCount >= 3)
                             {// Raw string literal: may span multiple lines, so track line breaks.
-                                this.AddTokenAndSliceWithLineTracking(TokenKind.Literal, ref span, literalLength);
+                                this.AddTokenAndSliceWithLineTracking(TokenKind.StringLiteral, ref span, literalLength);
                             }
                             else
                             {// Regular string literal (quoteCount is 1 or 2; "" is an empty literal).
-                                this.AddTokenAndSlice(TokenKind.Literal, ref span, literalLength);
+                                this.AddTokenAndSlice(TokenKind.StringLiteral, ref span, literalLength);
                             }
                         }
                         else

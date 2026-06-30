@@ -4,7 +4,7 @@ namespace Kimigayo.Language;
 
 [TinyhandObject]
 public partial class PrefixUnaryKoto : Koto
-{
+{// + - not ~ ++ -- * &
     [Key(1)]
     public TokenKind Kind { get; private set; }
 

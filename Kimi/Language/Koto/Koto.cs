@@ -17,8 +17,12 @@ public enum KotoKind : byte
     Struct,
     Contract,
 
+    // Literal
     Comment,
-    Literal,
+    NumericLiteral,
+    StringLiteral,
+    BoolLiteral,
+    I8Literal,
 
     // Condition
     ConditionUnresolved,
@@ -36,7 +40,9 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Group, typeof(GroupKoto))]
 
 [TinyhandUnion((int)KotoKind.Comment, typeof(CommentKoto))]
-[TinyhandUnion((int)KotoKind.Literal, typeof(LiteralKoto))]
+[TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
+[TinyhandUnion((int)KotoKind.NumericLiteral, typeof(NumericLiteralKoto))]
+[TinyhandUnion((int)KotoKind.BoolLiteral, typeof(BoolLiteralKoto))]
 
 [TinyhandUnion((int)KotoKind.ConditionNegate, typeof(ConditionNegateKoto))]
 [TinyhandUnion((int)KotoKind.ConditionEquals, typeof(ConditionEqualsKoto))]

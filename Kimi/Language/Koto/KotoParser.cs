@@ -106,7 +106,7 @@ public static class KotoParser
                     return new LiteralExpressionSyntax(token);
                 }
 
-            case TokenKind.Literal:
+            case TokenKind.StringLiteral:
                 {
                     reader.TryRead(out var token);
                     return new LiteralKoto(ref reader, token);
