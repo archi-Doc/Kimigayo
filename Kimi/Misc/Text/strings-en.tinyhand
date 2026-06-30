@@ -32,3 +32,4 @@ Kimi=
   UnmatchedBrace="Unmatched brace"
   UnmatchedBracket="Unmatched bracket"
   UnmatchedParenthesis="Unmatched parenthesis"
+  UnmatchedToken="Unmatched token {0}"

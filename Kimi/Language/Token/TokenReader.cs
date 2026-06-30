@@ -200,7 +200,12 @@ public ref struct TokenReader
         }
     }
 
-    public bool Expect(TokenKind tokenKind)
+    public void ReportUnexpectedToken(Token token)
+    {
+        this.Diagnostic.AddToken(token, Hashed.Kimi.UnmatchedToken, token.Kind.ToText());
+    }
+
+    /*public bool Expect(TokenKind tokenKind)
     {
         if (this.TryRead(out var token))
         {
@@ -210,6 +215,7 @@ public ref struct TokenReader
             }
         }
 
+        this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToText());
         return false;
-    }
+    }*/
 }

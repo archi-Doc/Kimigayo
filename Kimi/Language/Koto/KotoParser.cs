@@ -54,33 +54,29 @@ public static class KotoParser
         switch (tokenKind)
         {
             case TokenKind.Dot:
-                {
+                {// Class.Member
                     reader.TryRead(out var token);
                     left = new MemberAccessKoto(ref reader, token, left);
                     return true;
                 }
 
             case TokenKind.OpenParenthesis:
-                {
-                    reader.TryRead(out var token);
-
+                {// Method(A, B)
+                    reader.TryRead(out var token); // (
                     var arguments = ParseArgumentList();
-
-                    this.Expect(TokenKind.CloseParen);
+                    reader.TryConsume(TokenKind.CloseParenthesis, out var range, true); // )
 
                     left = new InvocationKoto(left, arguments);
                     return true;
                 }
 
             case TokenKind.OpenBracket:
-                {
-                    reader.TryRead(out var token);
-
+                {// Array[index]
+                    reader.TryRead(out var token); // [
                     var index = ParseExpression(ref reader);
+                    reader.TryConsume(TokenKind.CloseBracket, out var range, true); // ]
 
-                    this.Expect(TokenKind.CloseBracket);
-
-                    left = new IndexExpressionSyntax(left, index);
+                    left = new IndexKoto(ref reader, left, index);
                     return true;
                 }
 
@@ -124,9 +120,9 @@ public static class KotoParser
                     reader.TryRead(out var token);
 
                     var expression = ParseExpression(ref reader);
-                    reader.Expect(TokenKind.CloseParenthesis);
+                    reader.TryConsume(TokenKind.CloseParenthesis, out var range, true);
 
-                    return new ParenthesizedKoto(ref reader, token, expression);
+                    return new ParenthesizedKoto(ref reader, new(token.Range.Start, range.End), expression);
                 }
 
             default:
@@ -134,7 +130,7 @@ public static class KotoParser
                     reader.TryRead(out var token);
                     reader.ReportUnexpectedToken(token);
 
-                    return new ErrorExpressionSyntax(token);
+                    return new ErrorKoto(ref reader, token);
                 }
         }
     }
