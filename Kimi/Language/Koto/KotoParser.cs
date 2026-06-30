@@ -7,6 +7,42 @@ namespace Kimi.Language;
 
 public static class KotoParser
 {
+    public static Koto? ParseAttribute(ref TokenReader reader, Koto parent)
+    {// #Attribute(...)
+        if (!reader.TryConsume(TokenKind.Sharp, out var range))
+        {
+            return default;
+        }
+
+        var identifier = reader.ReadIdentifier();
+        if (identifier.Length == 0)
+        {
+            return default;
+        }
+
+        // var attributeKoto = new AttributeKoto(parent, ref reader);
+
+        if (!reader.TryConsume(TokenKind.OpenParenthesis, out range))
+        {
+            return default;
+        }
+
+        var expression = ParseExpression(ref reader);
+        if (expression is null)
+        {
+            return default;
+        }
+
+        expression.Parent = parent;
+
+        if (!reader.TryConsume(TokenKind.CloseParenthesis, out range))
+        {
+            return default;
+        }
+
+        return expression;
+    }
+
     public static Koto ParseExpression(ref TokenReader reader, int minBindingPower = 0)
     {
         var left = ParsePrefixExpression(ref reader);
