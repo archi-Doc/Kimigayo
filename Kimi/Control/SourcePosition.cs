@@ -3,7 +3,7 @@
 namespace Kimigayo.Diagnostics;
 
 public readonly record struct SourcePosition : IComparable<SourcePosition>
-{
+{// 4 + 4 = 8
     public int Line { get; }
 
     public int Character { get; }

@@ -85,12 +85,13 @@ public ref struct TokenReader
         return false;
     }
 
-    public bool TryConsume(TokenKind targetKind, bool addDiagnostic = true)
+    public bool TryConsume(TokenKind targetKind, out SourceRange range, bool addDiagnostic = true)
     {
         if (this.SkipCommentsAndHasMore())
         {
             if (this.list[this.Position].Kind == targetKind)
             {
+                range = this.list[this.Position].Range;
                 this.Position++;
                 return true;
             }
@@ -101,6 +102,7 @@ public ref struct TokenReader
                     this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToText());
                 }
 
+                range = default;
                 return false;
             }
         }
@@ -110,6 +112,7 @@ public ref struct TokenReader
             this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToText());
         }
 
+        range = default;
         return false;
     }
 

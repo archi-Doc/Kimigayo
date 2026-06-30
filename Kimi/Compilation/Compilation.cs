@@ -35,7 +35,7 @@ public class Compilation
         this.ProjectName = projectName;
     }
 
-    public CodeContext CreateCodeContext(string[] aliases = [])
+    public CodeContext CreateCodeContext(string[]? aliases = default)
     {
         return new(this);
     }

@@ -6,7 +6,7 @@ internal static class AttributeKotoHelper
 {
     public static Koto? Parse(ref TokenReader reader, Koto parent)
     {// #Attribute(...)
-        if (!reader.TryConsume(TokenKind.Sharp))
+        if (!reader.TryConsume(TokenKind.Sharp, out var range))
         {
             return default;
         }
@@ -19,7 +19,7 @@ internal static class AttributeKotoHelper
 
         // var attributeKoto = new AttributeKoto(parent, ref reader);
 
-        if (!reader.TryConsume(TokenKind.OpenParenthesis))
+        if (!reader.TryConsume(TokenKind.OpenParenthesis, out range))
         {
             return default;
         }
@@ -32,7 +32,7 @@ internal static class AttributeKotoHelper
 
         expression.Parent = parent;
 
-        if (!reader.TryConsume(TokenKind.CloseParenthesis))
+        if (!reader.TryConsume(TokenKind.CloseParenthesis, out range))
         {
             return default;
         }
@@ -51,7 +51,7 @@ internal static class AttributeKotoHelper
             return null;
         }
 
-        while (reader.TryConsume(TokenKind.Or, false))
+        while (reader.TryConsume(TokenKind.Or, out var range, false))
         {
             var right = ParseAnd(ref reader);
             if (right is null)
@@ -59,7 +59,7 @@ internal static class AttributeKotoHelper
                 return null;
             }
 
-            left = new ConditionOrKoto(ref reader, left, right);
+            left = new ConditionOrKoto(ref reader, range, left, right);
         }
 
         return left;
@@ -73,7 +73,7 @@ internal static class AttributeKotoHelper
             return null;
         }
 
-        while (reader.TryConsume(TokenKind.And, false))
+        while (reader.TryConsume(TokenKind.And, out var range, false))
         {
             var right = ParseEquality(ref reader);
             if (right is null)
@@ -81,7 +81,7 @@ internal static class AttributeKotoHelper
                 return null;
             }
 
-            left = new ConditionAndKoto(left, right);
+            left = new ConditionAndKoto(ref reader, range, left, right);
         }
 
         return left;
@@ -97,7 +97,7 @@ internal static class AttributeKotoHelper
 
         while (true)
         {
-            if (reader.TryConsume(TokenKind.EqualsEquals, false))
+            if (reader.TryConsume(TokenKind.EqualsEquals, out var range, false))
             {
                 var right = ParseUnary(ref reader);
                 if (right is null)
@@ -105,12 +105,12 @@ internal static class AttributeKotoHelper
                     return null;
                 }
 
-                left = new ConditionEqualsKoto(ref reader, left, right);
+                left = new ConditionEqualsKoto(ref reader, range, left, right);
 
                 continue;
             }
 
-            if (reader.TryConsume(TokenKind.ExclamationEquals, false))
+            if (reader.TryConsume(TokenKind.ExclamationEquals, out range, false))
             {
                 var right = ParseUnary(ref reader);
                 if (right is null)
@@ -118,7 +118,7 @@ internal static class AttributeKotoHelper
                     return null;
                 }
 
-                left = new ConditionNotEqualsKoto(ref reader, left, right);
+                left = new ConditionNotEqualsKoto(ref reader, range, left, right);
 
                 continue;
             }
@@ -129,7 +129,7 @@ internal static class AttributeKotoHelper
 
     private static Koto? ParseUnary(ref TokenReader reader)
     {
-        if (reader.TryConsume(TokenKind.Not, false))
+        if (reader.TryConsume(TokenKind.Not, out var range, false))
         {
             var operand = ParseUnary(ref reader);
             if (operand is null)
@@ -137,7 +137,7 @@ internal static class AttributeKotoHelper
                 return null;
             }
 
-            return new ConditionNegateKoto(ref reader, default, operand);
+            return new ConditionNegateKoto(ref reader, range, operand);
         }
 
         return ParsePrimary(ref reader);
@@ -145,7 +145,7 @@ internal static class AttributeKotoHelper
 
     private static Koto? ParsePrimary(ref TokenReader reader)
     {
-        if (reader.TryConsume(TokenKind.OpenParenthesis, false))
+        if (reader.TryConsume(TokenKind.OpenParenthesis, out var range, false))
         {
             var expression = ParseExpression(ref reader);
             if (expression is null)
@@ -153,7 +153,7 @@ internal static class AttributeKotoHelper
                 return null;
             }
 
-            if (!reader.TryConsume(TokenKind.CloseParenthesis))
+            if (!reader.TryConsume(TokenKind.CloseParenthesis, out range))
             {
                 return null;
             }
