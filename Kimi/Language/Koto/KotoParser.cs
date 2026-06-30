@@ -6,7 +6,7 @@ namespace Kimi.Language;
 
 public static class KotoParser
 {
-    public static Koto? ParseExpression(ref TokenReader reader, Koto parent, int minBindingPower = 0)
+    public static Koto ParseExpression(ref TokenReader reader, Koto parent, int minBindingPower = 0)
     {
         var left = ParsePrefixExpression(ref reader, parent);
 
@@ -42,10 +42,11 @@ public static class KotoParser
         var bindingPower = GetPrefixBindingPower(tokenKind);
         if (bindingPower > 0)
         {
-            reader.MoveNext();
-
+            reader.TryRead(out var token);
             var operand = ParseExpression(ref reader, parent, bindingPower);
-            return new PrefixUnaryKoto(tokenKind, operand);
+            var koto = new PrefixUnaryKoto(ref reader, token, operand);
+            koto.Parent = parent;
+            return koto;
         }
 
         return ParsePrimaryExpression();
@@ -91,22 +92,6 @@ public static class KotoParser
             default:
                 return false;
         }
-    }
-
-    private static Koto ParsePrefixExpression(ref TokenReader reader, Koto parent)
-    {
-        var kind = this.Current.Kind;
-
-        var bp = GetPrefixBindingPower(kind);
-        if (bp is not null)
-        {
-            reader.MoveNext();
-
-            var operand = this.ParseExpression(bp.Value);
-            return new PrefixUnaryExpressionSyntax(kind, operand);
-        }
-
-        return ParsePrimaryExpression();
     }
 
     private static Koto ParsePrimaryExpression(ref TokenReader reader, Koto parent)
