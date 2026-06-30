@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
@@ -8,6 +9,8 @@ namespace Kimigayo.Language;
 
 public ref struct TokenReader
 {
+    public const int MaxDepth = 10;
+
     #region FieldAndProperty
 
     public readonly DiagnosticCollection Diagnostic;
@@ -17,6 +20,8 @@ public ref struct TokenReader
     private readonly IReadOnlyList<Token> list;
 
     public int Position { get; private set; }
+
+    public int Depth { get; private set; }
 
     public int Count => this.list.Count;
 
@@ -59,6 +64,22 @@ public ref struct TokenReader
         }
 
         return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void IncrementDepth()
+    {
+        if (this.Depth++ > MaxDepth)
+        {
+            throw new InvalidOperationException("The token depth has reached the maximum limit");
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecrementDepth()
+    {
+        this.Depth--;
+        Debug.Assert(this.Depth >= 0);
     }
 
     public bool TryRead(out Token token)
