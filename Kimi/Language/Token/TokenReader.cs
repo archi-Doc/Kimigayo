@@ -199,4 +199,17 @@ public ref struct TokenReader
             return default;
         }
     }
+
+    public bool Expect(TokenKind tokenKind)
+    {
+        if (this.TryRead(out var token))
+        {
+            if (token.Kind == tokenKind)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }

@@ -124,16 +124,15 @@ public static class KotoParser
                     reader.TryRead(out var token);
 
                     var expression = ParseExpression(ref reader);
+                    reader.Expect(TokenKind.CloseParenthesis);
 
-                    this.Expect(TokenKind.CloseParenthesis);
-
-                    return new ParenthesizedExpressionSyntax(expression);
+                    return new ParenthesizedKoto(ref reader, token, expression);
                 }
 
             default:
                 {
                     reader.TryRead(out var token);
-                    this.ReportUnexpectedToken(token);
+                    reader.ReportUnexpectedToken(token);
 
                     return new ErrorExpressionSyntax(token);
                 }
