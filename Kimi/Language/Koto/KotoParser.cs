@@ -74,7 +74,7 @@ public static class KotoParser
                     var arguments = ParseArgumentList();
                     reader.TryConsume(TokenKind.CloseParenthesis, out var range, true); // )
 
-                    left = new InvocationKoto(left, arguments);
+                    left = new InvocationKoto(ref reader, left, arguments);
                     return true;
                 }
 
