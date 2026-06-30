@@ -10,6 +10,8 @@ namespace Kimigayo.Language;
 public enum KotoKind : byte
 {
     Unresolved,
+    Attribute,
+    Alias,
 
     // Group
     Namespace,
@@ -27,6 +29,8 @@ public enum KotoKind : byte
 
 [TinyhandObject(ReservedKeyCount = 1)]
 [TinyhandUnion((int)KotoKind.Unresolved, typeof(UnresolvedKoto))]
+[TinyhandUnion((int)KotoKind.Alias, typeof(AliasKoto))]
+[TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
 
 [TinyhandUnion((int)KotoKind.Namespace, typeof(NamespaceKoto))]
 [TinyhandUnion((int)KotoKind.Group, typeof(GroupKoto))]

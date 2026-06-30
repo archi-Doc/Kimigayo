@@ -16,4 +16,18 @@ public partial class UnresolvedKoto : Koto
 
     public override string ToString()
         => $"?{this.Unresolved}?";
+
+    internal static Koto FromReader(ref TokenReader reader)
+    {
+        var list = new List<string>();
+        while (true)
+        {
+            if (!reader.TryRead(out var token))
+            {
+                break;
+            }
+        }
+
+        return new UnresolvedKoto(ref reader, token);
+    }
 }

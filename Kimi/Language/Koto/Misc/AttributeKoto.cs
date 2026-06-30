@@ -5,21 +5,21 @@ using System.Text;
 namespace Kimigayo.Language;
 
 [TinyhandObject]
-public partial class InvocationKoto : Koto
-{
+public partial class AttributeKoto : Koto
+{// #Attribute(KotoList)
     [Key(1)]
-    public Koto Method { get; private set; }
+    public Koto Attribute { get; private set; }
 
     [Key(2)]
     public List<Koto> Arguments { get; private set; }
 
-    public InvocationKoto(ref TokenReader reader, Koto method, List<Koto> arguments)
+    public AttributeKoto(ref TokenReader reader, Koto attribute, List<Koto> arguments)
         : base(ref reader, default)
     {
-        this.Method = method;
+        this.Attribute = attribute;
         this.Arguments = arguments;
 
-        method.Parent = this;
+        attribute.Parent = this;
         foreach (var x in arguments)
         {
             x.Parent = this;
@@ -30,7 +30,8 @@ public partial class InvocationKoto : Koto
     {
         var sb = new StringBuilder();
 
-        sb.Append(this.Method.ToString());
+        sb.Append(Constants.SharpChar);
+        sb.Append(this.Attribute.ToString());
         sb.Append(Constants.OpenParenthesisChar);
         for (var i = 0; i < this.Arguments.Count; i++)
         {

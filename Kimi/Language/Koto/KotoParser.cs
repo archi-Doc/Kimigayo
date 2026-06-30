@@ -7,25 +7,27 @@ namespace Kimi.Language;
 
 public static class KotoParser
 {
-    public static Koto? ParseAttribute(ref TokenReader reader, Koto parent)
+    public static AttributeKoto? ParseAttribute(ref TokenReader reader, Koto parent)
     {// #Attribute(...)
         if (!reader.TryConsume(TokenKind.Sharp, out var range))
         {
             return default;
         }
 
-        var identifier = reader.ReadIdentifier();
-        if (identifier.Length == 0)
+        var expression = ParseExpression(ref reader);
+        if (expression is null)
         {
             return default;
         }
 
-        // var attributeKoto = new AttributeKoto(parent, ref reader);
+        var attributeKoto = new AttributeKoto(ref reader, parent, ref reader);
 
         if (!reader.TryConsume(TokenKind.OpenParenthesis, out range))
         {
             return default;
         }
+
+        ParseArgumentList(ref reader);
 
         var expression = ParseExpression(ref reader);
         if (expression is null)
@@ -190,8 +192,7 @@ public static class KotoParser
         {
             case TokenKind.Identifier:
                 {
-                    reader.TryRead(out var token);
-                    return new UnresolvedKoto(ref reader, token);
+                    return UnresolvedKoto.FromReader(ref reader);
                 }
 
             case TokenKind.NumericLiteral:
