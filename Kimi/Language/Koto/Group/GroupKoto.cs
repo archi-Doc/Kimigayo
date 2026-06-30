@@ -27,6 +27,11 @@ public partial class GroupKoto : Koto
     {
     }
 
+    internal GroupKoto(CompilationMetadata compilationMetadata)
+        : base(compilationMetadata)
+    {
+    }
+
     public override string ToString()
         => $"Group: {this.Name}";
 
@@ -45,7 +50,7 @@ public partial class GroupKoto : Koto
         }*/
     }
 
-    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, KotoKind groupKind, SourceRange range)
+    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, KotoKind groupKind)
     {
         var text = qualifiedName;
         var group = this;
@@ -64,12 +69,12 @@ public partial class GroupKoto : Koto
         }
     }
 
-    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, KotoKind groupKind, SourceRange range)
+    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, KotoKind groupKind)
     {
         Func<string, Koto> factory = groupKind switch
         {
-            KotoKind.Group => static x => new GroupKoto(ref ReaderWriterLock, range),
-            KotoKind.Namespace => static x => new NamespaceKoto(),
+            KotoKind.Group => static x => new GroupKoto(new CompilationMetadata(default!, default, default!)),
+            KotoKind.Namespace => static x => new NamespaceKoto(new CompilationMetadata(default!, default, default!)),
             _ => throw new InvalidOperationException(),
         };
 

@@ -14,6 +14,11 @@ public sealed partial class NamespaceKoto : GroupKoto
     {
     }
 
+    internal NamespaceKoto(CompilationMetadata compilationMetadata)
+        : base(compilationMetadata)
+    {
+    }
+
     public override string ToString()
         => $"Namespace: {this.Name}";
 

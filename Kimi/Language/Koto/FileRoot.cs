@@ -18,7 +18,7 @@ public sealed class FileRoot
 
     public FileRoot(DiagnosticCollection diagnostic)
     {
-        this.rootGroup = new();
+        this.rootGroup = new(new CompilationMetadata(default!, default, default!));
         this.Diagnostic = diagnostic;
         this.SetNamespace(Constants.DefaultNamespace);
     }
