@@ -166,13 +166,13 @@ internal static class AttributeKotoHelper
             if (token.Kind == TokenKind.Identifier)
             {
                 reader.MoveNext();
-                return new UnresolvedKoto(token);
+                return new UnresolvedKoto(ref reader, token);
             }
 
             if (token.Kind == TokenKind.Literal)
             {
                 reader.MoveNext();
-                return new LiteralKoto(token);
+                return new LiteralKoto(ref reader, token);
             }
         }
 
