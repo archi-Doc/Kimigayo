@@ -11,9 +11,9 @@ public partial class InvocationKoto : Koto
     public Koto Method { get; private set; }
 
     [Key(2)]
-    public Koto[] Arguments { get; private set; }
+    public List<Koto> Arguments { get; private set; }
 
-    public InvocationKoto(ref TokenReader reader, Koto method, Koto[] arguments)
+    public InvocationKoto(ref TokenReader reader, Koto method, List<Koto> arguments)
         : base(ref reader, default)
     {
         this.Method = method;
@@ -33,10 +33,10 @@ public partial class InvocationKoto : Koto
         sb.Append(this.Method.ToString());
         sb.Append(Constants.DotChar);
         sb.Append(Constants.OpenParenthesisChar);
-        for (var i = 0; i < this.Arguments.Length; i++)
+        for (var i = 0; i < this.Arguments.Count; i++)
         {
             sb.Append(this.Arguments[i].ToString());
-            if (i < (this.Arguments.Length - 1))
+            if (i < (this.Arguments.Count - 1))
             {
                 sb.Append(Constants.CommaChar);
                 sb.Append(Constants.SpaceChar);

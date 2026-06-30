@@ -172,7 +172,7 @@ internal static class AttributeKotoHelper
             if (token.Kind == TokenKind.StringLiteral)
             {
                 reader.MoveNext();
-                return new LiteralKoto(ref reader, token);
+                return new StringLiteralKoto(ref reader, token);
             }
         }
 

@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
 namespace Kimi.Language;
@@ -71,7 +72,7 @@ public static class KotoParser
             case TokenKind.OpenParenthesis:
                 {// Method(A, B)
                     reader.TryRead(out var token); // (
-                    var arguments = ParseArgumentList();
+                    var arguments = ParseArgumentList(ref reader);
                     reader.TryConsume(TokenKind.CloseParenthesis, out var range, true); // )
 
                     left = new InvocationKoto(ref reader, left, arguments);
@@ -88,9 +89,62 @@ public static class KotoParser
                     return true;
                 }
 
-            default:
-                return false;
+            case TokenKind.PlusPlus:
+            case TokenKind.MinusMinus:
+                {
+                    reader.TryRead(out var token); // '++'
+                    left = new PostfixUnaryKoto(ref reader, token, left);
+                    return true;
+                }
         }
+
+        return false;
+    }
+
+    private static List<Koto> ParseArgumentList(ref TokenReader reader)
+    {
+        SourceRange range;
+        var tokenKind = reader.CurrentTokenKind;
+        var arguments = new List<Koto>();
+        if (tokenKind == TokenKind.CloseParenthesis)
+        {
+            reader.MoveNext();
+            return arguments;
+        }
+
+        while (tokenKind != TokenKind.Invalid &&
+               tokenKind != TokenKind.CloseParenthesis)
+        {
+            arguments.Add(ParseExpression(ref reader));
+
+            if (reader.CurrentTokenKind == TokenKind.Comma)
+            {
+                reader.MoveNext();
+                if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
+            {
+                reader.TryConsume(TokenKind.Comma, out range);
+                reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
+
+                if (reader.CurrentTokenKind == TokenKind.Comma)
+                {
+                    reader.MoveNext();
+                    continue;
+                }
+            }
+
+            break;
+        }
+
+        reader.TryConsume(TokenKind.CloseParenthesis, out range);
+        return arguments;
     }
 
     private static Koto ParsePrimaryExpression(ref TokenReader reader)

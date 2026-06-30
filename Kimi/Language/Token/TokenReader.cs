@@ -17,7 +17,7 @@ public ref struct TokenReader
 
     public readonly CodeContext CodeContext;
 
-    private readonly IReadOnlyList<Token> list;
+    private readonly List<Token> list;
 
     public int Position { get; private set; }
 
@@ -33,7 +33,7 @@ public ref struct TokenReader
 
     #endregion
 
-    public TokenReader(DiagnosticCollection diagnostic, IReadOnlyList<Token> tokens, CodeContext codeContext)
+    public TokenReader(DiagnosticCollection diagnostic, List<Token> tokens, CodeContext codeContext)
     {
         this.Diagnostic = diagnostic;
         this.CodeContext = codeContext;
@@ -134,6 +134,24 @@ public ref struct TokenReader
         }
 
         range = default;
+        return false;
+    }
+
+    public bool SkipUntil(TokenKind kind1, TokenKind kind2)
+    {
+        while (this.Position < this.list.Count)
+        {
+            var tokenKind = this.list[this.Position].Kind;
+            if (tokenKind == kind1 || tokenKind == kind2)
+            {
+                return true;
+            }
+            else
+            {
+                this.Position++;
+            }
+        }
+
         return false;
     }
 
