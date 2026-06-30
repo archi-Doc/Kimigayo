@@ -12,9 +12,7 @@ public ref struct TokenReader
 
     public readonly DiagnosticCollection Diagnostic;
 
-    public readonly Kotonoha Kotonoha;
-
-    public readonly uint SourceId;
+    public readonly CodeContext CodeContext;
 
     private readonly IReadOnlyList<Token> list;
 
@@ -30,11 +28,10 @@ public ref struct TokenReader
 
     #endregion
 
-    public TokenReader(DiagnosticCollection diagnostic, IReadOnlyList<Token> tokens, Kotonoha kotonoha, uint sourceId)
+    public TokenReader(DiagnosticCollection diagnostic, IReadOnlyList<Token> tokens, CodeContext codeContext)
     {
         this.Diagnostic = diagnostic;
-        this.Kotonoha = kotonoha;
-        this.SourceId = sourceId;
+        this.CodeContext = codeContext;
         this.list = tokens;
     }
 

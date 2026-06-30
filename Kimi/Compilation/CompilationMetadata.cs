@@ -4,4 +4,4 @@ using Kimigayo.Language;
 
 namespace Kimigayo.Diagnostics;
 
-public sealed record class CompilationMetadata(DiagnosticCollection DiagnosticCollection, SourceRange Range, Kotonoha kotonoha, uint SourceId);
+public sealed record class CompilationMetadata(DiagnosticCollection DiagnosticCollection, SourceRange Range, CodeContext codeContext);

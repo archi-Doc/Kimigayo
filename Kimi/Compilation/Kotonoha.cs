@@ -62,7 +62,7 @@ public sealed partial class Kotonoha
             }
 
             // Token to Koto
-            var tokenReader = new TokenReader(diagnostic, list, this, kimiId);
+            var tokenReader = new TokenReader(diagnostic, list, codeContext);
             fileRoot.Parse(ref tokenReader);
         }
 
