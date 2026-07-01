@@ -42,6 +42,8 @@ public partial class InvocationKoto : Koto
             }
         }
 
+        sb.Append(Constants.CloseParenthesisChar);
+
         return sb.ToString();
     }
 }

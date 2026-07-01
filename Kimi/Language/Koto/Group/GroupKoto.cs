@@ -18,6 +18,9 @@ public partial class GroupKoto : Koto
     [Key(1)]
     public string Name { get; protected set; } = string.Empty;
 
+    [Key(2)]
+    protected List<Koto> KotoList { get; set; } = [];
+
     private readonly Utf16Hashtable<Koto> identifierToGroupKoto = new();
 
     #endregion
@@ -34,6 +37,12 @@ public partial class GroupKoto : Koto
     internal GroupKoto(CompilationMetadata compilationMetadata)
         : base(compilationMetadata)
     {
+    }
+
+    public void Add(Koto koto)
+    {
+        this.KotoList.Add(koto);
+        koto.Parent = this;
     }
 
     public override string ToString()

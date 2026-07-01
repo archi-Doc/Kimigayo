@@ -15,5 +15,5 @@ public partial class UnresolvedKoto : Koto
     }
 
     public override string ToString()
-        => $"?{this.Identifier}?";
+        => $"{this.Identifier}";
 }

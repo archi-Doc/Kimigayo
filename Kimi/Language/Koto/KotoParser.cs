@@ -7,9 +7,14 @@ namespace Kimi.Language;
 
 public static class KotoParser
 {
-    public static InvocationKoto? ParseAttribute(ref TokenReader reader, Koto parent)
+    public static PrefixUnaryKoto? ParseAttribute(ref TokenReader reader)
     {// #Attribute(...)
-        if (!reader.TryConsume(TokenKind.Sharp, out var range))
+        /*if (!reader.TryConsume(TokenKind.Sharp, out var range))
+        {
+            return default;
+        }*/
+
+        if (reader.CurrentTokenKind != TokenKind.Sharp)
         {
             return default;
         }
@@ -20,15 +25,7 @@ public static class KotoParser
             return default;
         }
 
-        if (expression is InvocationKoto invocationKoto)
-        {
-            if (invocationKoto.Method is UnresolvedKoto unresolvedKoto)
-            {
-                return invocationKoto;
-            }
-        }
-
-        return default;
+        return expression as PrefixUnaryKoto;
 
         /*var attributeKoto = new AttributeKoto(ref reader, parent, ref reader);
 
@@ -256,6 +253,7 @@ public static class KotoParser
             TokenKind.MinusMinus => 90,
             TokenKind.Asterisk => 90,
             TokenKind.Ampersand => 90,
+            TokenKind.Sharp => 90,
             _ => 0,
         };
 

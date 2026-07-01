@@ -32,13 +32,20 @@ public sealed class FileRoot
 
     public void Parse(ref TokenReader reader)
     {
+        /*while (!reader.IsEmpty)
+        {
+            var k = KotoParser.ParseExpression(ref reader);
+        }*/
+
         if (reader.TryPeek(out var token))
         {
             if (token.Kind == TokenKind.Sharp)
             {// #Attribute
-                var koto = KotoParser.ParseAttribute(ref reader, this.CurrentGroup);
-                koto?.Parent = this.CurrentGroup;
-                // var bin = TinyhandSerializer.Serialize(koto);
+                var koto = KotoParser.ParseAttribute(ref reader);
+                if (koto is not null)
+                {
+                    this.CurrentGroup.Add(koto);
+                }
             }
             else if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
