@@ -21,4 +21,17 @@ public partial class PrefixUnaryKoto : Koto
 
     public override string ToString()
         => $"{this.Kind.ToText()}{this.Operand.ToString()}";
+
+    internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        if (oldKoto == this.Operand)
+        {
+            this.Operand = newKoto;
+            newKoto.Parent = this;
+            oldKoto.Parent = default;
+            return true;
+        }
+
+        return false;
+    }
 }

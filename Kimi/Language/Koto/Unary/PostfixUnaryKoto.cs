@@ -22,11 +22,13 @@ public partial class PostfixUnaryKoto : Koto
     public override string ToString()
         => $"{this.Operand.ToString()}{this.Kind.ToText()}";
 
-    public override bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
     {
         if (oldKoto == this.Operand)
         {
             this.Operand = newKoto;
+            newKoto.Parent = this;
+            oldKoto.Parent = default;
             return true;
         }
 

@@ -8,15 +8,28 @@ namespace Kimigayo.Language;
 public partial class ParenthesizedKoto : Koto
 {
     [Key(1)]
-    public Koto Koto { get; private set; }
+    public Koto Operand { get; private set; }
 
     public ParenthesizedKoto(ref TokenReader reader, SourceRange range, Koto koto)
         : base(ref reader, range)
     {
-        this.Koto = koto;
+        this.Operand = koto;
         koto.Parent = this;
     }
 
     public override string ToString()
-        => $"({this.Koto.ToString()})";
+        => $"({this.Operand.ToString()})";
+
+    internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        if (oldKoto == this.Operand)
+        {
+            this.Operand = newKoto;
+            newKoto.Parent = this;
+            oldKoto.Parent = default;
+            return true;
+        }
+
+        return false;
+    }
 }

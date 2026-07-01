@@ -26,4 +26,20 @@ public partial class BinaryKoto : Koto
 
     public override string ToString()
         => $"{this.Left.ToString()}{this.Kind.ToText()}{this.Right.ToString()}";
+
+    internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        if (oldKoto == this.Left)
+        {
+            this.Left = newKoto;
+            return true;
+        }
+        else if (oldKoto == this.Right)
+        {
+            this.Right = newKoto;
+            return true;
+        }
+
+        return false;
+    }
 }
