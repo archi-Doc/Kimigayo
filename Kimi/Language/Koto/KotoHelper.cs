@@ -7,6 +7,39 @@ namespace Kimigayo.Language;
 
 public static class KotoHelper
 {
+    public static void Dump(Koto koto, TextWriter writer)
+    {
+        DumpNode(koto, writer, indent: string.Empty, isLast: true, label: null);
+    }
+
+    private static void DumpNode(Koto koto, TextWriter writer, string indent, bool isLast, string? label)
+    {
+        writer.Write(indent);
+
+        if (indent.Length > 0)
+        {
+            writer.Write(isLast ? "└─ " : "├─ ");
+        }
+
+        var dump = koto.Dump();
+        writer.WriteLine(dump.Text);
+
+        var childIndent = indent;
+        if (indent.Length > 0)
+        {
+            childIndent += isLast ? "   " : "│  ";
+        }
+
+        if (dump.Children is { } children)
+        {
+            for (var i = 0; i < children.Length; i++)
+            {
+                var child = children[i];
+                DumpNode(child, writer, childIndent, i == children.Length - 1, default);
+            }
+        }
+    }
+
     public static string ValidateAndGetNamespace(ref TokenReader reader)
     {
         if (reader.IsEmpty)
