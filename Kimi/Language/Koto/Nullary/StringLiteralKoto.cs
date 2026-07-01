@@ -18,4 +18,9 @@ public sealed partial class StringLiteralKoto : Koto
 
     public override string ToString()
         => $"\"{this.Literal}\"";
+
+    public override (string Text, Koto[]? Children) Dump()
+    {
+        return ($"{this.GetType().Name}({this.Literal})", default);
+    }
 }

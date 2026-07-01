@@ -46,4 +46,9 @@ public partial class InvocationKoto : Koto
 
         return sb.ToString();
     }
+
+    public override (string Text, Koto[]? Children) Dump()
+    {
+        return ($"{this.GetType().Name}", [this.Method, ..this.Arguments]);
+    }
 }

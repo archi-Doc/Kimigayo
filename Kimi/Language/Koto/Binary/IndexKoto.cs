@@ -24,4 +24,9 @@ public partial class IndexKoto : Koto
 
     public override string ToString()
         => $"{this.Left.ToString()}[{this.Index.ToString()}]";
+
+    public override (string Text, Koto[]? Children) Dump()
+    {
+        return ($"{this.GetType().Name}", [this.Left, this.Index,]);
+    }
 }

@@ -22,6 +22,11 @@ public partial class PostfixUnaryKoto : Koto
     public override string ToString()
         => $"{this.Operand.ToString()}{this.Kind.ToText()}";
 
+    public override (string Text, Koto[]? Children) Dump()
+    {
+        return ($"{this.GetType().Name}({this.Kind.ToText()})", [this.Operand,]);
+    }
+
     internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
     {
         if (oldKoto == this.Operand)

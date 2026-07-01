@@ -16,4 +16,9 @@ public partial class UnresolvedKoto : Koto
 
     public override string ToString()
         => $"{this.Identifier}";
+
+    public override (string Text, Koto[]? Children) Dump()
+    {
+        return ($"{this.GetType().Name}({this.Identifier})", default);
+    }
 }

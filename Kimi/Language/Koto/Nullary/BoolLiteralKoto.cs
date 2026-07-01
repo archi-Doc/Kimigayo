@@ -28,4 +28,9 @@ public sealed partial class BoolLiteralKoto : Koto
             return TokenKind.False.ToText();
         }
     }
+
+    public override (string Text, Koto[]? Children) Dump()
+    {
+        return ($"{this.GetType().Name}({this.ToString()})", default);
+    }
 }

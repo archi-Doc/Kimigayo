@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using Arc.Collections;
 using Kimi.Language;
 using Kimigayo.Diagnostics;
@@ -45,6 +46,11 @@ public sealed class FileRoot
                 if (koto is not null)
                 {
                     this.CurrentGroup.Add(koto);
+
+                    var sb = new StringBuilder();
+                    using var writer = new StringWriter(sb);
+                    KotoHelper.Dump(koto, writer);
+                    var st = sb.ToString();//
                 }
             }
             else if (token.IsIdentifierToken(Constants.AliasKeyword))
