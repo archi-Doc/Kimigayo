@@ -84,6 +84,11 @@ public abstract partial class Koto
         return default;
     }
 
+    public virtual bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        return false;
+    }
+
     public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
     {
         if (this.CompilationMetadata is not null)

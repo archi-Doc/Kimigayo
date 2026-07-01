@@ -7,6 +7,18 @@ namespace Kimigayo.Language;
 
 public static class KotoHelper
 {
+    public static bool Replace(Koto parent, Koto oldKoto, Koto newKoto)
+    {
+        if (parent.ReplaceChild(oldKoto, newKoto))
+        {
+            oldKoto.Parent = default;
+            newKoto.Parent = parent;
+            return true;
+        }
+
+        return false;
+    }
+
     public static void Dump(Koto koto, TextWriter writer)
     {
         DumpNode(koto, writer, indent: string.Empty, isLast: true, label: null);
