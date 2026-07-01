@@ -3,5 +3,6 @@ alias Kimi.Base
 #Condition(Os == "Windows")
 namespace Playground.A
 
-public const string Name = "Test"
-public const Id: i32 = 1 + 2 * 3 + 4
+#Condition(Os.Version.Current == 1 and "text".Length > 0)
+var x = 1 + 2 * 3
+var y = (1 + 2) * 3

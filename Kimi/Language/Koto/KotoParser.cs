@@ -7,7 +7,7 @@ namespace Kimi.Language;
 
 public static class KotoParser
 {
-    public static AttributeKoto? ParseAttribute(ref TokenReader reader, Koto parent)
+    public static InvocationKoto? ParseAttribute(ref TokenReader reader, Koto parent)
     {// #Attribute(...)
         if (!reader.TryConsume(TokenKind.Sharp, out var range))
         {
@@ -20,7 +20,17 @@ public static class KotoParser
             return default;
         }
 
-        var attributeKoto = new AttributeKoto(ref reader, parent, ref reader);
+        if (expression is InvocationKoto invocationKoto)
+        {
+            if (invocationKoto.Method is UnresolvedKoto unresolvedKoto)
+            {
+                return invocationKoto;
+            }
+        }
+
+        return default;
+
+        /*var attributeKoto = new AttributeKoto(ref reader, parent, ref reader);
 
         if (!reader.TryConsume(TokenKind.OpenParenthesis, out range))
         {
@@ -42,13 +52,12 @@ public static class KotoParser
             return default;
         }
 
-        return expression;
+        return expression;*/
     }
 
     public static Koto ParseExpression(ref TokenReader reader, int minBindingPower = 0)
     {
         var left = ParsePrefixExpression(ref reader);
-
         while (true)
         {
             if (TryParsePostfixExpression(ref reader, ref left))
@@ -57,15 +66,15 @@ public static class KotoParser
             }
 
             var tokenKind = reader.CurrentTokenKind;
-            var bp = GetInfixBindingPower(tokenKind);
+            var bindingPower = GetInfixBindingPower(tokenKind);
 
-            if (bp == default || bp.Left < minBindingPower)
+            if (bindingPower == default || bindingPower.Left < minBindingPower)
             {
                 break;
             }
 
             reader.TryRead(out var token);
-            var right = ParseExpression(ref reader, bp.Right);
+            var right = ParseExpression(ref reader, bindingPower.Right);
             left = new BinaryKoto(ref reader, token, left, right);
         }
 
@@ -141,14 +150,15 @@ public static class KotoParser
 
     private static List<Koto> ParseArgumentList(ref TokenReader reader)
     {
-        SourceRange range;
         var tokenKind = reader.CurrentTokenKind;
-        var arguments = new List<Koto>();
         if (tokenKind == TokenKind.CloseParenthesis)
         {
             reader.MoveNext();
-            return arguments;
+            return [];
         }
+
+        SourceRange range;
+        var arguments = new List<Koto>();
 
         while (tokenKind != TokenKind.Invalid &&
                tokenKind != TokenKind.CloseParenthesis)
@@ -181,7 +191,7 @@ public static class KotoParser
             break;
         }
 
-        reader.TryConsume(TokenKind.CloseParenthesis, out range);
+        // reader.TryConsume(TokenKind.CloseParenthesis, out range);
         return arguments;
     }
 
@@ -192,7 +202,8 @@ public static class KotoParser
         {
             case TokenKind.Identifier:
                 {
-                    return UnresolvedKoto.FromReader(ref reader);
+                    reader.TryRead(out var token);
+                    return new UnresolvedKoto(ref reader, token);
                 }
 
             case TokenKind.NumericLiteral:
@@ -251,27 +262,53 @@ public static class KotoParser
     private static (int Left, int Right) GetInfixBindingPower(TokenKind kind)
         => kind switch
         {
+            // Multiplicative
             TokenKind.Asterisk => (80, 81),
             TokenKind.Slash => (80, 81),
             TokenKind.Percent => (80, 81),
 
+            // Additive
             TokenKind.Plus => (70, 71),
             TokenKind.Minus => (70, 71),
 
+            // Shift
+            TokenKind.LessThanLessThan => (65, 66),
+            TokenKind.GreaterThanGreaterThan => (65, 66),
+
+            // Relational
             TokenKind.LessThan => (60, 61),
             TokenKind.LessThanEquals => (60, 61),
             TokenKind.GreaterThan => (60, 61),
             TokenKind.GreaterThanEquals => (60, 61),
+            TokenKind.Is => (60, 61),
 
+            // Equality
             TokenKind.EqualsEquals => (50, 51),
             TokenKind.ExclamationEquals => (50, 51),
 
+            // Bitwise
             TokenKind.Ampersand => (40, 41),
             TokenKind.Caret => (35, 36),
             TokenKind.Bar => (30, 31),
 
-            TokenKind.AmpersandAmpersand => (20, 21),
-            TokenKind.BarBar => (10, 11),
+            // Logical
+            // TokenKind.AmpersandAmpersand => (20, 21),
+            TokenKind.And => (20, 21),
+            // TokenKind.BarBar => (10, 11),
+            TokenKind.Or => (10, 11),
+
+            // Assignment
+            TokenKind.Equals => (5, 5),
+            TokenKind.PlusEquals => (5, 5),
+            TokenKind.MinusEquals => (5, 5),
+            TokenKind.AsteriskEquals => (5, 5),
+            TokenKind.SlashEquals => (5, 5),
+            TokenKind.PercentEquals => (5, 5),
+            TokenKind.AmpersandEquals => (5, 5),
+            TokenKind.CaretEquals => (5, 5),
+            TokenKind.BarEquals => (5, 5),
+            TokenKind.LessThanLessThanEquals => (5, 5),
+            TokenKind.GreaterThanGreaterThanEquals => (5, 5),
 
             _ => default,
         };

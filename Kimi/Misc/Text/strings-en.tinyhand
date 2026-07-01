@@ -22,6 +22,7 @@ Kimi=
   InvalidIndentation="Invalid indentation. Insert {0} spaces for each indentation level"
   InvalidNumericLiteral="Invalid numeric literal"
   MissingBlockCommentEnd="Reached end-of-file. Missing '*/'"
+  MissingExpectedToken="Expected: {0}, but reached the end of line."
   MissingStringLiteralEnd="String literal is not terminated. Expected closing \""
   TokenMismatch="The token does not match the expected token. Expected: {0}"
   TopLevelKeywordAfterCode="Top-level keywords such as 'alias' must appear before any other code"

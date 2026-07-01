@@ -37,6 +37,7 @@ public sealed class FileRoot
             if (token.Kind == TokenKind.Sharp)
             {// #Attribute
                 var koto = KotoParser.ParseAttribute(ref reader, this.CurrentGroup);
+                koto?.Parent = this.CurrentGroup;
                 // var bin = TinyhandSerializer.Serialize(koto);
             }
             else if (token.IsIdentifierToken(Constants.AliasKeyword))

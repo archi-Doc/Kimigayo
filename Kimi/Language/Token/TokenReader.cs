@@ -130,7 +130,18 @@ public ref struct TokenReader
 
         if (addDiagnostic)
         {
-            this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToText());
+            if (this.IsEmpty)
+            {
+                if (this.Position > 0)
+                {
+                    var r = this.list[this.Position - 1].Range;
+                    this.Diagnostic.Add(new(r.End, r.End), Hashed.Kimi.MissingExpectedToken, targetKind.ToText());
+                }
+            }
+            else
+            {
+                this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToText());
+            }
         }
 
         range = default;
