@@ -2,30 +2,30 @@
 
 using System.Buffers;
 
-namespace Kimi.Language;
+namespace Kimigayo.Language;
 
 #pragma warning disable SA1124
 
-public class ByteSequence : IBufferWriter<byte>, IDisposable
+public ref struct ByteSequence : IBufferWriter<Token>, IDisposable
 {
-    public const int DefaultVaultSize = 1024; // 32kb x 40 = 128kb
-    private static ArrayPool<byte> arrayPool = ArrayPool<byte>.Create(2 * 1024, 100);
+    public const int DefaultVaultSize = 1024; // 1024 x 40 = 40kb
+    private static ArrayPool<Token> arrayPool = ArrayPool<Token>.Shared; // ArrayPool<Token>.Create(2 * 1024, 100);
 
     #region FieldAndProperty
 
-    private ByteVault? firstVault;
-    private ByteVault? lastVault;
+    private Vault? firstVault;
+    private Vault? lastVault;
 
     #endregion
 
-    public ReadOnlySequence<byte> ToReadOnlySequence()
+    public ReadOnlySequence<Token> ToReadOnlySequence()
     {
         return this.firstVault == null ?
-            ReadOnlySequence<byte>.Empty :
-            new ReadOnlySequence<byte>(this.firstVault, 0, this.lastVault!, this.lastVault!.Size);
+            ReadOnlySequence<Token>.Empty :
+            new ReadOnlySequence<Token>(this.firstVault, 0, this.lastVault!, this.lastVault!.Size);
     }
 
-    public ReadOnlyMemory<byte> ToReadOnlyMemory()
+    public ReadOnlyMemory<Token> ToReadOnlyMemory()
     {
         if (this.firstVault == null)
         {
@@ -33,15 +33,15 @@ public class ByteSequence : IBufferWriter<byte>, IDisposable
         }
         else if (this.firstVault == this.lastVault)
         {// Single vault
-            return new ReadOnlyMemory<byte>(this.firstVault.Array, 0, this.firstVault.Size);
+            return new ReadOnlyMemory<Token>(this.firstVault.Array, 0, this.firstVault.Size);
         }
         else
         {// Multiple vaults
-            return new ReadOnlySequence<byte>(this.firstVault, 0, this.lastVault!, this.lastVault!.Size).ToArray();
+            return new ReadOnlySequence<Token>(this.firstVault, 0, this.lastVault!, this.lastVault!.Size).ToArray();
         }
     }
 
-    public ReadOnlySpan<byte> ToReadOnlySpan()
+    public ReadOnlySpan<Token> ToReadOnlySpan()
     {
         if (this.firstVault == null)
         {
@@ -49,11 +49,11 @@ public class ByteSequence : IBufferWriter<byte>, IDisposable
         }
         else if (this.firstVault == this.lastVault)
         {// Single vault
-            return new ReadOnlySpan<byte>(this.firstVault.Array, 0, this.firstVault.Size);
+            return new ReadOnlySpan<Token>(this.firstVault.Array, 0, this.firstVault.Size);
         }
         else
         {// Multiple vaults
-            return new ReadOnlySequence<byte>(this.firstVault, 0, this.lastVault!, this.lastVault!.Size).ToArray();
+            return new ReadOnlySequence<Token>(this.firstVault, 0, this.lastVault!, this.lastVault!.Size).ToArray();
         }
     }
 
@@ -72,7 +72,7 @@ public class ByteSequence : IBufferWriter<byte>, IDisposable
         var current = this.firstVault;
         while (current != null)
         {
-            var next = (ByteVault?)current.Next;
+            var next = (Vault?)current.Next;
 
             arrayPool.Return(current.Array);
             current.Clear();
@@ -83,11 +83,11 @@ public class ByteSequence : IBufferWriter<byte>, IDisposable
         this.firstVault = this.lastVault = null;
     }
 
-    public Memory<byte> GetMemory(int sizeHint = 0) => this.GetVault(sizeHint).RemainingMemory;
+    public Memory<Token> GetMemory(int sizeHint = 0) => this.GetVault(sizeHint).RemainingMemory;
 
-    public Span<byte> GetSpan(int sizeHint = 0) => this.GetVault(sizeHint).RemainingSpan;
+    public Span<Token> GetSpan(int sizeHint = 0) => this.GetVault(sizeHint).RemainingSpan;
 
-    private ByteVault GetVault(int sizeHint)
+    private Vault GetVault(int sizeHint)
     {
         int bufferSizeToAllocate = 0;
 
@@ -108,14 +108,14 @@ public class ByteSequence : IBufferWriter<byte>, IDisposable
 
         if (bufferSizeToAllocate > 0)
         {
-            var vault = new ByteVault(arrayPool.Rent(bufferSizeToAllocate));
+            var vault = new Vault(arrayPool.Rent(bufferSizeToAllocate));
             this.AddVault(vault);
         }
 
         return this.lastVault!;
     }
 
-    private void AddVault(ByteVault vault)
+    private void AddVault(Vault vault)
     {
         if (this.lastVault == null)
         {
@@ -138,7 +138,7 @@ public class ByteSequence : IBufferWriter<byte>, IDisposable
                 {
                     while (current.Next != this.lastVault)
                     {
-                        current = (ByteVault)current.Next!;
+                        current = (Vault)current.Next!;
                     }
                 }
 
@@ -152,34 +152,35 @@ public class ByteSequence : IBufferWriter<byte>, IDisposable
         }
     }
 
-    private class ByteVault : ReadOnlySequenceSegment<byte>
+    private class Vault : ReadOnlySequenceSegment<Token>
     {
-        public ByteVault(byte[] array)
+        public Vault(Token[] array)
         {
             this.Array = array;
             this.Memory = array;
         }
 
-        internal byte[] Array { get; set; }
+        internal Token[] Array { get; set; }
 
         internal int Size { get; set; }
 
         internal int Remaining => this.Array.Length - this.Size;
 
-        internal Memory<byte> RemainingMemory => this.Array.AsMemory().Slice(this.Size);
+        internal Memory<Token> RemainingMemory => this.Array.AsMemory().Slice(this.Size);
 
-        internal Span<byte> RemainingSpan => this.Array.AsSpan().Slice(this.Size);
+        internal Span<Token> RemainingSpan => this.Array.AsSpan().Slice(this.Size);
 
         internal void Advance(int count)
         {
-            this.Size += count;
-            if (count < 0 || this.Size > this.Array.Length)
+            if ((uint)count > (uint)this.Remaining)
             {
                 throw new ArgumentOutOfRangeException(nameof(count));
             }
+
+            this.Size += count;
         }
 
-        internal void SetNext(ByteVault next)
+        internal void SetNext(Vault next)
         {
             this.Next = next;
             next.RunningIndex = this.RunningIndex + this.Size;
@@ -192,7 +193,6 @@ public class ByteSequence : IBufferWriter<byte>, IDisposable
             this.Next = null;
             this.RunningIndex = 0;
             this.Size = 0;
-            // arrayPool.Return(this.Array); // Called by ByteSequence.
             this.Array = null!;
         }
     }
