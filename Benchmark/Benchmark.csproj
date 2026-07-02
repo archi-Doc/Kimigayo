@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Arc.Collections" Version="1.34.0" />
+    <PackageReference Include="Arc.Collections" Version="1.36.0" />
     <PackageReference Include="Arc.Crypto" Version="1.44.2" />
     
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
@@ -22,6 +22,10 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Kimi\Kimi.csproj" />
   </ItemGroup>
 
 </Project>
