@@ -59,7 +59,7 @@ public sealed class FileRoot
                     goto UnexpectedTopLevelKeyword;
                 }
 
-                reader.MoveNext();
+                reader.Advance();
                 var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
                 this.alias.Add(qualifiedName);
             }

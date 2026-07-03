@@ -1393,7 +1393,7 @@ EndOfFile:
         }
 
         length += 2;
-        return this.AddTokenAndSliceWithLineTracking(ref builder, TokenKind.MultiLineComment, ref text, length);
+        return this.AddTokenAndSliceWithLineTracking(ref builder, TokenKind.Invalid, ref text, length); // TokenKind.MultiLineComment -> TokenKind.Invalid
     }
 
     private bool ReadSingleLineComment(ref TokenSequenceBuilder builder, ref ReadOnlySpan<char> span)
@@ -1401,12 +1401,14 @@ EndOfFile:
         var idx = Arc.BaseHelper.IndexOfLfOrCrLf(span, out var newLineLength);
         if (idx < 0)
         {
-            this.AddTokenAndSlice(ref builder, TokenKind.SingleLineComment, ref span, span.Length);
+            // this.AddTokenAndSlice(ref builder, TokenKind.SingleLineComment, ref span, span.Length);
+            this.Slice(ref span, span.Length);
             return false;
         }
         else
         {
-            this.AddTokenAndSlice(ref builder, TokenKind.SingleLineComment, ref span, idx);
+            // this.AddTokenAndSlice(ref builder, TokenKind.SingleLineComment, ref span, idx);
+            this.Slice(ref span, idx);
             this.Slice(ref span, newLineLength);
             return true;
         }
@@ -1489,8 +1491,11 @@ EndOfFile:
             this.character += length;
         }
 
-        builder.Add(new(tokenKind, this.text.Slice(this.position, length), new Diagnostics.SourceRange(start, new(this.line, this.character))));
-        this.tokenAdded++;
+        if (tokenKind != TokenKind.Invalid)
+        {
+            builder.Add(new(tokenKind, this.text.Slice(this.position, length), new Diagnostics.SourceRange(start, new(this.line, this.character))));
+            this.tokenAdded++;
+        }
 
         this.position += length;
         span = span.Slice(length);

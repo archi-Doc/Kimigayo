@@ -150,7 +150,7 @@ public static class KotoParser
         var tokenKind = reader.CurrentTokenKind;
         if (tokenKind == TokenKind.CloseParenthesis)
         {
-            reader.MoveNext();
+            reader.Advance();
             return [];
         }
 
@@ -164,7 +164,7 @@ public static class KotoParser
 
             if (reader.CurrentTokenKind == TokenKind.Comma)
             {
-                reader.MoveNext();
+                reader.Advance();
                 if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
                 {
                     break;
@@ -180,7 +180,7 @@ public static class KotoParser
 
                 if (reader.CurrentTokenKind == TokenKind.Comma)
                 {
-                    reader.MoveNext();
+                    reader.Advance();
                     continue;
                 }
             }

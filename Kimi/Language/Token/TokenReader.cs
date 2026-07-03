@@ -67,31 +67,6 @@ public ref struct TokenReader
         this.MoveToNextNonEmptySpan();
     }
 
-    /// <summary>
-    /// Skips comment tokens and returns whether a non-comment token remains.
-    /// </summary>
-    /// <returns>
-    /// <see langword="true"/> if a non-comment token remains after skipping comments;
-    /// otherwise, <see langword="false"/> if the end of the token sequence was reached.
-    /// </returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool SkipCommentsAndHasMore()
-    {
-        while (this.TryGetCurrentToken(out var token))
-        {
-            if (token.Kind == TokenKind.SingleLineComment ||
-                token.Kind == TokenKind.MultiLineComment)
-            {
-                this.AdvanceOne();
-                continue;
-            }
-
-            return true;
-        }
-
-        return false;
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void IncrementDepth()
     {
@@ -112,9 +87,8 @@ public ref struct TokenReader
 
     public bool TryRead(out Token token)
     {
-        if (this.SkipCommentsAndHasMore())
+        if (this.TryGetCurrentToken(out token))
         {
-            this.TryGetCurrentToken(out token);
             this.AdvanceOne();
             return true;
         }
@@ -125,9 +99,9 @@ public ref struct TokenReader
 
     public bool TryPeek(out Token token)
     {
-        if (this.SkipCommentsAndHasMore())
+        if (this.TryGetCurrentToken(out token))
         {
-            return this.TryGetCurrentToken(out token);
+            return true;
         }
 
         token = default;
@@ -136,10 +110,8 @@ public ref struct TokenReader
 
     public bool TryConsume(TokenKind targetKind, out SourceRange range, bool addDiagnostic = true)
     {
-        if (this.SkipCommentsAndHasMore())
+        if (this.TryGetCurrentToken(out var token))
         {
-            this.TryGetCurrentToken(out var token);
-
             if (token.Kind == targetKind)
             {
                 range = token.Range;
@@ -149,10 +121,7 @@ public ref struct TokenReader
 
             if (addDiagnostic)
             {
-                this.Diagnostic.AddToken(
-                    token,
-                    Hashed.Kimi.TokenMismatch,
-                    targetKind.ToText());
+                this.Diagnostic.AddToken(token, Hashed.Kimi.TokenMismatch, targetKind.ToText());
             }
 
             range = default;
@@ -168,10 +137,6 @@ public ref struct TokenReader
                     var r = this.PreviousToken.Range;
                     this.Diagnostic.Add(new(r.End, r.End), Hashed.Kimi.MissingExpectedToken, targetKind.ToText());
                 }
-            }
-            else if (this.TryGetCurrentToken(out var token))
-            {
-                this.Diagnostic.AddToken(token, Hashed.Kimi.TokenMismatch, targetKind.ToText());
             }
         }
 
@@ -195,24 +160,9 @@ public ref struct TokenReader
         return false;
     }
 
-    public ReadOnlySpan<char> ReadIdentifier()
-    {
-        if (this.SkipCommentsAndHasMore() &&
-            this.TryGetCurrentToken(out var token) &&
-            token.Kind == TokenKind.Identifier)
-        {
-            var identifier = token.Text.Span;
-            this.AdvanceOne();
-            return identifier;
-        }
-
-        return [];
-    }
-
     public bool TryConsumeIdentifier(ReadOnlySpan<char> name)
     {
-        if (this.SkipCommentsAndHasMore() &&
-            this.TryGetCurrentToken(out var token) &&
+        if (this.TryGetCurrentToken(out var token) &&
             token.Kind == TokenKind.Identifier &&
             token.Text.Span.Equals(name, StringComparison.Ordinal))
         {
@@ -223,7 +173,20 @@ public ref struct TokenReader
         return false;
     }
 
-    public bool MoveNext()
+    public bool TryReadIdentifier(out Token token)
+    {
+        if (this.TryGetCurrentToken(out token) &&
+            token.Kind == TokenKind.Identifier)
+        {
+            this.AdvanceOne();
+            return true;
+        }
+
+        token = default;
+        return false;
+    }
+
+    public bool Advance()
     {
         if (this.Position >= this.count)
         {
