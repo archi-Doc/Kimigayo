@@ -3,7 +3,7 @@
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
-namespace Kimi.Language;
+namespace Kimigayo.Language;
 
 public static class KotoParser
 {

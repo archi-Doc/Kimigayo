@@ -3,7 +3,6 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Arc.Collections;
-using Kimi.Language;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 

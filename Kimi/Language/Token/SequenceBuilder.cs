@@ -3,38 +3,11 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
-namespace Kimigayo.Language;
-
 #pragma warning disable SA1401 // Fields should be private
 
-public ref struct TokenSequenceBuilder
-{
-    private PooledSequenceBuilder<Token> builder;
+namespace Kimigayo.Language;
 
-    public TokenSequenceBuilder(int initialCapacity = 256, bool? clearArrayOnReturn = null)
-    {
-        this.builder = new(initialCapacity, clearArrayOnReturn);
-    }
-
-    public long Length
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => this.builder.Length;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Add(Token token)
-        => this.builder.Add(token);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ReadOnlySequence<Token> ToReadOnlySequence()
-        => this.builder.ToReadOnlySequence();
-
-    public void Dispose()
-        => this.builder.Dispose();
-}
-
-public ref struct PooledSequenceBuilder<T>
+public ref struct SequenceBuilder<T>
 {
     public const int DefaultInitialCapacity = 256;
     public const int MaxChunkCapacity = 32 * 1024;
@@ -46,8 +19,8 @@ public ref struct PooledSequenceBuilder<T>
     private T[]? currentArray;
     private int currentIndex;
 
-    private PooledSequenceSegment<T>? firstSegment;
-    private PooledSequenceSegment<T>? lastSegment;
+    private PooledSequenceSegment? firstSegment;
+    private PooledSequenceSegment? lastSegment;
 
     private long length;
     private int nextChunkCapacity;
@@ -56,9 +29,7 @@ public ref struct PooledSequenceBuilder<T>
 
     private sbyte clearArrayOnReturnMode;
 
-    public PooledSequenceBuilder(
-        int initialCapacity = DefaultInitialCapacity,
-        bool? clearArrayOnReturn = null)
+    public SequenceBuilder(        int initialCapacity = DefaultInitialCapacity,        bool? clearArrayOnReturn = null)
     {
         if (initialCapacity <= 0)
         {
@@ -84,25 +55,14 @@ public ref struct PooledSequenceBuilder<T>
         };
     }
 
-    public long Length
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => this.length;
-    }
+    public long Length => this.length;
 
-    private bool ClearArrayOnReturn
+    private bool ClearArrayOnReturn => this.clearArrayOnReturnMode switch
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get
-        {
-            return this.clearArrayOnReturnMode switch
-            {
-                ClearModeTrue => true,
-                ClearModeFalse => false,
-                _ => RuntimeHelpers.IsReferenceOrContainsReferences<T>(),
-            };
-        }
-    }
+        ClearModeTrue => true,
+        ClearModeFalse => false,
+        _ => RuntimeHelpers.IsReferenceOrContainsReferences<T>(),
+    };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Add(T value)
@@ -198,7 +158,7 @@ public ref struct PooledSequenceBuilder<T>
                 ArrayPool<T>.Shared.Return(segmentArray, clearArray: clearArray);
             }
 
-            PooledSequenceSegmentPool<T>.Return(segment);
+            PooledSequenceSegmentPool.Return(segment);
             segment = next;
         }
 
@@ -261,7 +221,7 @@ public ref struct PooledSequenceBuilder<T>
 
         var runningIndex = this.length - written;
 
-        var segment = PooledSequenceSegmentPool<T>.Rent();
+        var segment = PooledSequenceSegmentPool.Rent();
         segment.Initialize(array, written, runningIndex);
 
         if (this.firstSegment is null)
@@ -278,81 +238,81 @@ public ref struct PooledSequenceBuilder<T>
         this.currentArray = null;
         this.currentIndex = 0;
     }
-}
 
-internal static class PooledSequenceSegmentPool<T>
-{
-    private static PooledSequenceSegment<T>? head;
-
-    public static PooledSequenceSegment<T> Rent()
+    private static class PooledSequenceSegmentPool
     {
-        while (true)
+        private static PooledSequenceSegment? head;
+
+        public static PooledSequenceSegment Rent()
         {
-            var current = Volatile.Read(ref head);
-            if (current is null)
+            while (true)
             {
-                return new PooledSequenceSegment<T>();
+                var current = Volatile.Read(ref head);
+                if (current is null)
+                {
+                    return new PooledSequenceSegment();
+                }
+
+                var next = current.PoolNext;
+
+                if (Interlocked.CompareExchange(ref head, next, current) == current)
+                {
+                    current.PoolNext = null;
+                    return current;
+                }
             }
+        }
 
-            var next = current.PoolNext;
+        public static void Return(PooledSequenceSegment segment)
+        {
+            segment.ResetForPool();
 
-            if (Interlocked.CompareExchange(ref head, next, current) == current)
+            while (true)
             {
-                current.PoolNext = null;
-                return current;
+                var current = Volatile.Read(ref head);
+                segment.PoolNext = current;
+
+                if (Interlocked.CompareExchange(ref head, segment, current) == current)
+                {
+                    return;
+                }
             }
         }
     }
 
-    public static void Return(PooledSequenceSegment<T> segment)
+    internal sealed class PooledSequenceSegment : ReadOnlySequenceSegment<T>
     {
-        segment.ResetForPool();
+        internal T[]? Array;
+        internal PooledSequenceSegment? PoolNext;
 
-        while (true)
+        public void Initialize(T[] array, int length, long runningIndex)
         {
-            var current = Volatile.Read(ref head);
-            segment.PoolNext = current;
-
-            if (Interlocked.CompareExchange(ref head, segment, current) == current)
-            {
-                return;
-            }
+            this.Array = array;
+            this.Memory = array.AsMemory(0, length);
+            this.RunningIndex = runningIndex;
+            this.Next = null;
+            this.PoolNext = null;
         }
-    }
-}
 
-internal sealed class PooledSequenceSegment<T> : ReadOnlySequenceSegment<T>
-{
-    internal T[]? Array;
-    internal PooledSequenceSegment<T>? PoolNext;
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void SetNext(PooledSequenceSegment next)
+        {
+            this.Next = next;
+        }
 
-    public void Initialize(T[] array, int length, long runningIndex)
-    {
-        this.Array = array;
-        this.Memory = array.AsMemory(0, length);
-        this.RunningIndex = runningIndex;
-        this.Next = null;
-        this.PoolNext = null;
-    }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public PooledSequenceSegment? GetNextSegment()
+        {
+            return (PooledSequenceSegment?)this.Next;
+        }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void SetNext(PooledSequenceSegment<T> next)
-    {
-        this.Next = next;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public PooledSequenceSegment<T>? GetNextSegment()
-    {
-        return (PooledSequenceSegment<T>?)this.Next;
-    }
-
-    public void ResetForPool()
-    {
-        this.Array = null;
-        this.Memory = default;
-        this.RunningIndex = 0;
-        this.Next = null;
-        this.PoolNext = null;
+        public void ResetForPool()
+        {
+            this.Array = null;
+            this.Memory = default;
+            this.RunningIndex = 0;
+            this.Next = null;
+            this.PoolNext = null;
+        }
     }
 }
