@@ -86,7 +86,7 @@ public static class KotoParser
         {
             reader.TryRead(out var token);
             var operand = ParseExpression(ref reader, bindingPower);
-            // var koto = new PrefixUnaryKoto(ref reader, token, operand);
+            // var koto = new UnaryKoto(ref reader, token, operand);
             var koto = KotoHelper.NewUnaryKoto(ref reader, token, operand);
             return koto;
         }
@@ -135,10 +135,16 @@ public static class KotoParser
                 }
 
             case TokenKind.PlusPlus:
+                {// A++
+                    reader.TryRead(out var token);
+                    left = new PostfixIncrementKoto(ref reader, token.Range, left);
+                    return true;
+                }
+
             case TokenKind.MinusMinus:
-                {
-                    reader.TryRead(out var token); // '++'
-                    left = new PostfixUnaryKoto(ref reader, token, left);
+                {// A--
+                    reader.TryRead(out var token);
+                    left = new PostfixDecrementKoto(ref reader, token.Range, left);
                     return true;
                 }
         }

@@ -10,7 +10,7 @@ public static class KotoHelper
     public static Koto NewUnaryKoto(ref TokenReader reader, Token token, Koto operand) => token.Kind switch
     {
         TokenKind.Sharp => new AttributeKoto(ref reader, token.Range, operand),
-        _ => new PrefixUnaryKoto(ref reader, token.Range, operand), // throw new InvalidOperationException(),
+        _ => new UnaryKoto(ref reader, token.Range, operand), // throw new InvalidOperationException(),
     };
 
     public static bool Replace(Koto parent, Koto oldKoto, Koto newKoto)

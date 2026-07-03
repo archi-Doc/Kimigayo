@@ -5,14 +5,10 @@ using Kimigayo.Diagnostics;
 namespace Kimigayo.Language;
 
 [TinyhandObject]
-public partial class AttributeKoto : PrefixUnaryKoto
+public partial class AttributeKoto : UnaryKoto
 {
     public AttributeKoto(ref TokenReader reader, SourceRange range, Koto operand)
         : base(ref reader, range, operand)
-    {
-    }
-
-    public AttributeKoto()
     {
     }
 
@@ -21,7 +17,43 @@ public partial class AttributeKoto : PrefixUnaryKoto
 }
 
 [TinyhandObject]
-public partial class PrefixUnaryKoto : Koto
+public partial class PrefixIncrementKoto : UnaryKoto
+{// ++A
+    public PrefixIncrementKoto(ref TokenReader reader, SourceRange range, Koto operand)
+        : base(ref reader, range, operand)
+    {
+    }
+
+    public override string ToString()
+        => $"++{this.Operand.ToString()}";
+}
+
+[TinyhandObject]
+public partial class PostfixIncrementKoto : UnaryKoto
+{// A++
+    public PostfixIncrementKoto(ref TokenReader reader, SourceRange range, Koto operand)
+        : base(ref reader, range, operand)
+    {
+    }
+
+    public override string ToString()
+        => $"{this.Operand.ToString()}++";
+}
+
+[TinyhandObject]
+public partial class PostfixDecrementKoto : UnaryKoto
+{// A--
+    public PostfixDecrementKoto(ref TokenReader reader, SourceRange range, Koto operand)
+        : base(ref reader, range, operand)
+    {
+    }
+
+    public override string ToString()
+        => $"{this.Operand.ToString()}--";
+}
+
+[TinyhandObject]
+public partial class UnaryKoto : Koto
 {// + - not ~ ++ -- * &
     // [Key(1)]
     // public TokenKind Kind { get; private set; }
@@ -29,7 +61,7 @@ public partial class PrefixUnaryKoto : Koto
     [Key(1)]
     public Koto Operand { get; private set; }
 
-    public PrefixUnaryKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public UnaryKoto(ref TokenReader reader, SourceRange range, Koto operand)
         : base(ref reader, range)
     {
         // this.Kind = token.Kind;
@@ -37,7 +69,7 @@ public partial class PrefixUnaryKoto : Koto
         operand.Parent = this;
     }
 
-    public PrefixUnaryKoto()
+    public UnaryKoto()
     {
     }
 

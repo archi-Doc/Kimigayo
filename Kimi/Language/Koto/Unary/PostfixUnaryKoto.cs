@@ -2,7 +2,7 @@
 
 namespace Kimigayo.Language;
 
-[TinyhandObject]
+/*[TinyhandObject]
 public partial class PostfixUnaryKoto : Koto
 {// ++ --
     [Key(1)]
@@ -39,4 +39,4 @@ public partial class PostfixUnaryKoto : Koto
 
         return false;
     }
-}
+}*/
