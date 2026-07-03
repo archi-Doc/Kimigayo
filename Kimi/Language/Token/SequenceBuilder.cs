@@ -13,15 +13,27 @@ namespace Kimigayo.Language;
 /// Builds a <see cref="ReadOnlySequence{T}"/> backed by pooled arrays.
 /// </summary>
 /// <remarks>
-/// The returned sequence is valid only until this builder is disposed.
-/// Do not store or use the returned sequence after calling <see cref="Dispose"/>.
+/// The returned sequence directly references pooled arrays owned by this builder.
+/// It is valid only until <see cref="Dispose"/> is called.
+/// Do not store or use the returned sequence after this builder has been disposed.
 /// </remarks>
 /// <typeparam name="T">The element type stored in the sequence.</typeparam>
 public ref struct SequenceBuilder<T>
 {
+    /// <summary>
+    /// The default size (in elements) for the first rented chunk.
+    /// </summary>
     public const int DefaultInitialCapacity = 256;
+
+    /// <summary>
+    /// The maximum size (in elements) for any single rented chunk.
+    /// </summary>
     public const int MaxChunkCapacity = 32 * 1024;
-    public const int SegmentPoolCapacity = 2;
+
+    /// <summary>
+    /// The maximum number of reusable sequence segment instances kept in the segment pool.
+    /// </summary>
+    public const int SegmentPoolCapacity = 4 * 1024;
 
     private static readonly ObjectPool<PooledSequenceSegment> SegmentPool = new(() => new(), SegmentPoolCapacity);
 
@@ -37,6 +49,21 @@ public ref struct SequenceBuilder<T>
     private bool isFinalized;
     private ReadOnlySequence<T> sequence;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SequenceBuilder{T}"/> struct.
+    /// </summary>
+    /// <param name="initialCapacity">
+    /// Initial chunk size to rent from <see cref="ArrayPool{T}"/>. Must be greater than 0
+    /// and less than or equal to <see cref="MaxChunkCapacity"/>.
+    /// </param>
+    /// <param name="clearArrayOnReturn">
+    /// Controls whether rented arrays are cleared before they are returned to the pool.
+    /// If <see langword="null"/>, the value is inferred from
+    /// <see cref="RuntimeHelpers.IsReferenceOrContainsReferences{T}"/>.
+    /// </param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <paramref name="initialCapacity"/> is outside the valid range.
+    /// </exception>
     public SequenceBuilder(int initialCapacity = DefaultInitialCapacity, bool? clearArrayOnReturn = null)
     {
         if (initialCapacity <= 0 || initialCapacity > MaxChunkCapacity)
@@ -63,8 +90,18 @@ public ref struct SequenceBuilder<T>
         };
     }
 
+    /// <summary>
+    /// Gets the number of elements written to the builder.
+    /// </summary>
     public long Length => this.length;
 
+    /// <summary>
+    /// Appends a single value to the sequence under construction.
+    /// </summary>
+    /// <param name="value">The value to append.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the builder has already been finalized.
+    /// </exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Add(T value)
     {
@@ -92,6 +129,13 @@ public ref struct SequenceBuilder<T>
         this.length++;
     }
 
+    /// <summary>
+    /// Appends a contiguous range of values to the sequence under construction.
+    /// </summary>
+    /// <param name="values">The values to append.</param>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown when the builder has already been finalized.
+    /// </exception>
     public void AddRange(ReadOnlySpan<T> values)
     {
         if (this.isFinalized)
@@ -125,6 +169,13 @@ public ref struct SequenceBuilder<T>
         }
     }
 
+    /// <summary>
+    /// Finalizes this builder and returns the produced <see cref="ReadOnlySequence{T}"/>.
+    /// </summary>
+    /// <returns>
+    /// A sequence over the data written to this builder. The returned value remains valid
+    /// only until <see cref="Dispose"/> is called.
+    /// </returns>
     public ReadOnlySequence<T> ToReadOnlySequence()
     {
         if (this.isFinalized)
@@ -162,6 +213,12 @@ public ref struct SequenceBuilder<T>
         return this.sequence;
     }
 
+    /// <summary>
+    /// Returns all rented arrays and pooled segment instances used by this builder.
+    /// </summary>
+    /// <remarks>
+    /// After disposal, previously returned sequences from this builder must be considered invalid.
+    /// </remarks>
     public void Dispose()
     {
         var array = this.currentArray;
