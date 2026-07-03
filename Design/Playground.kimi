@@ -9,4 +9,4 @@ namespace Playground.A
 
 #Condition(Os.Version.Current == 1 and "text".Length > 0)
 var x = 1 + 2 * 3
-var y = (1 + 2) * 3
+var y = (1 + #Test 2) * 3
