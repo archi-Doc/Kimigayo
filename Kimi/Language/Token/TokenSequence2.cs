@@ -3,133 +3,356 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
-#pragma warning disable SA1401 // Fields should be private
-
 namespace Kimigayo.Language;
 
-public ref struct TokenSequenceBuilder2
+#pragma warning disable SA1401 // Fields should be private
+
+public ref struct TokenSequenceBuilderRef
 {
-    private const int DefaultInitialCapacity = 256;
+    private PooledSequenceBuilderRef<Token> builder;
 
-    private Token[]? _currentArray;   // 現在書き込み中の配列
-    private int _currentCount;        // _currentArray 内の書き込み済み数
-    private Segment? _firstSegment;   // 満杯になり確定済みのセグメント(先頭)
-    private Segment? _lastSegment;    // 同(末尾)
-    private long _sealedLength;       // 確定済みセグメントの合計長
-
-    public TokenSequenceBuilder2(int initialCapacity)
+    public TokenSequenceBuilderRef(int initialCapacity = 256, bool? clearArrayOnReturn = null)
     {
-        this._currentArray = ArrayPool<Token>.Shared.Rent(initialCapacity);
-        this._currentCount = 0;
-        this._firstSegment = null;
-        this._lastSegment = null;
-        this._sealedLength = 0;
+        this.builder = new(initialCapacity, clearArrayOnReturn);
     }
 
-    public readonly long Length => this._sealedLength + this._currentCount;
+    public long Length
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => this.builder.Length;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void AddToken(Token token)
-    {
-        Token[]? array = this._currentArray;
-        int count = this._currentCount;
+    public void Add(Token token)
+        => this.builder.Add(token);
 
-        if (array is not null && (uint)count < (uint)array.Length)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ReadOnlySequence<Token> ToReadOnlySequence()
+        => this.builder.ToReadOnlySequence();
+
+    public void Dispose()
+        => this.builder.Dispose();
+}
+
+public ref struct PooledSequenceBuilderRef<T>
+{
+    public const int DefaultInitialCapacity = 256;
+    public const int MaxChunkCapacity = 32 * 1024;
+
+    private const sbyte ClearModeDefault = 0;
+    private const sbyte ClearModeFalse = 1;
+    private const sbyte ClearModeTrue = 2;
+
+    private T[]? currentArray;
+    private int currentIndex;
+
+    private PooledSequenceSegmentRef<T>? firstSegment;
+    private PooledSequenceSegmentRef<T>? lastSegment;
+
+    private long length;
+    private int nextChunkCapacity;
+    private bool isFinalized;
+    private ReadOnlySequence<T> sequence;
+
+    private sbyte clearArrayOnReturnMode;
+
+    public PooledSequenceBuilderRef(
+        int initialCapacity = DefaultInitialCapacity,
+        bool? clearArrayOnReturn = null)
+    {
+        if (initialCapacity <= 0)
         {
-            array[count] = token;
-            this._currentCount = count + 1;
-            return;
+            throw new ArgumentOutOfRangeException(nameof(initialCapacity));
         }
 
-        this.AddTokenSlow(token);
+        this.currentArray = null;
+        this.currentIndex = 0;
+
+        this.firstSegment = null;
+        this.lastSegment = null;
+
+        this.length = 0;
+        this.nextChunkCapacity = initialCapacity;
+        this.isFinalized = false;
+        this.sequence = ReadOnlySequence<T>.Empty;
+
+        this.clearArrayOnReturnMode = clearArrayOnReturn switch
+        {
+            true => ClearModeTrue,
+            false => ClearModeFalse,
+            null => ClearModeDefault,
+        };
     }
 
-    public ReadOnlySequence<Token> Build()
+    public long Length
     {
-        if (this._firstSegment is null)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => this.length;
+    }
+
+    private bool ClearArrayOnReturn
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
         {
-            return this._currentArray is null
-                ? ReadOnlySequence<Token>.Empty
-                : new ReadOnlySequence<Token>(this._currentArray, 0, this._currentCount);
+            return this.clearArrayOnReturnMode switch
+            {
+                ClearModeTrue => true,
+                ClearModeFalse => false,
+                _ => RuntimeHelpers.IsReferenceOrContainsReferences<T>(),
+            };
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Add(T value)
+    {
+        if (this.isFinalized)
+        {
+            ThrowAlreadyFinalized();
         }
 
-        var tail = new Segment(this._currentArray!, this._currentCount, this._sealedLength);
-        this._lastSegment!.SetNext(tail);
+        var array = this.currentArray;
+        if (array is null)
+        {
+            array = this.RentChunk();
+            this.currentArray = array;
+        }
 
-        var sequence = new ReadOnlySequence<Token>(this._firstSegment, 0, tail, this._currentCount);
+        if ((uint)this.currentIndex >= (uint)array.Length)
+        {
+            this.CommitCurrentChunk();
 
-        return sequence;
+            array = this.RentChunk();
+            this.currentArray = array;
+        }
+
+        array[this.currentIndex++] = value;
+        this.length++;
+    }
+
+    public ReadOnlySequence<T> ToReadOnlySequence()
+    {
+        if (this.isFinalized)
+        {
+            return this.sequence;
+        }
+
+        this.isFinalized = true;
+
+        if (this.length == 0)
+        {
+            this.sequence = ReadOnlySequence<T>.Empty;
+            return this.sequence;
+        }
+
+        // Fast path: only one array was used.
+        // No ReadOnlySequenceSegment allocation is needed.
+        if (this.firstSegment is null)
+        {
+            var array = this.currentArray!;
+            this.sequence = new ReadOnlySequence<T>(
+                array.AsMemory(0, this.currentIndex));
+
+            return this.sequence;
+        }
+
+        // Multi-chunk path.
+        // Commit the current partially-filled chunk as the final segment.
+        if (this.currentIndex > 0)
+        {
+            this.CommitCurrentChunk();
+        }
+
+        var first = this.firstSegment!;
+        var last = this.lastSegment!;
+
+        this.sequence = new ReadOnlySequence<T>(
+            first,
+            0,
+            last,
+            last.Memory.Length);
+
+        return this.sequence;
     }
 
     public void Dispose()
     {
-        bool clear = RuntimeHelpers.IsReferenceOrContainsReferences<Token>();
+        var clearArray = this.ClearArrayOnReturn;
 
-        Segment? segment = this._firstSegment;
+        var array = this.currentArray;
+        if (array is not null)
+        {
+            ArrayPool<T>.Shared.Return(array, clearArray: clearArray);
+            this.currentArray = null;
+        }
+
+        var segment = this.firstSegment;
         while (segment is not null)
         {
-            ArrayPool<Token>.Shared.Return(segment.Array, clear);
-            segment = (Segment?)segment.Next;
+            var next = segment.GetNextSegment();
+            var segmentArray = segment.Array;
+
+            if (segmentArray is not null)
+            {
+                ArrayPool<T>.Shared.Return(segmentArray, clearArray: clearArray);
+            }
+
+            PooledSequenceSegmentPoolRef<T>.Return(segment);
+            segment = next;
         }
 
-        if (this._currentArray is not null)
-        {
-            ArrayPool<Token>.Shared.Return(this._currentArray, clear);
-        }
-
-        this._currentArray = null;
-        this._firstSegment = null;
-        this._lastSegment = null;
-        this._currentCount = 0;
-        this._sealedLength = 0;
+        this.currentIndex = 0;
+        this.firstSegment = null;
+        this.lastSegment = null;
+        this.length = 0;
+        this.sequence = ReadOnlySequence<T>.Empty;
+        this.isFinalized = true;
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void AddTokenSlow(Token token)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetNextChunkCapacity(int currentCapacity)
     {
-        if (this._currentArray is null)
+        if (currentCapacity >= MaxChunkCapacity)
         {
-            this._currentArray = ArrayPool<Token>.Shared.Rent(DefaultInitialCapacity);
+            return currentCapacity;
+        }
+
+        if (currentCapacity > MaxChunkCapacity / 2)
+        {
+            return MaxChunkCapacity;
+        }
+
+        return currentCapacity * 2;
+    }
+
+    private static void ThrowAlreadyFinalized()
+        => throw new InvalidOperationException("The sequence has already been finalized.");
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private T[] RentChunk()
+    {
+        var capacity = this.nextChunkCapacity;
+        if (capacity <= 0)
+        {
+            capacity = DefaultInitialCapacity;
+        }
+
+        var array = ArrayPool<T>.Shared.Rent(capacity);
+
+        this.nextChunkCapacity = GetNextChunkCapacity(array.Length);
+
+        return array;
+    }
+
+    private void CommitCurrentChunk()
+    {
+        var array = this.currentArray;
+        if (array is null)
+        {
+            return;
+        }
+
+        var written = this.currentIndex;
+        if (written == 0)
+        {
+            return;
+        }
+
+        var runningIndex = this.length - written;
+
+        var segment = PooledSequenceSegmentPoolRef<T>.Rent();
+        segment.Initialize(array, written, runningIndex);
+
+        if (this.firstSegment is null)
+        {
+            this.firstSegment = segment;
         }
         else
         {
-            this.SealCurrentArray();
-            int newSize = Math.Min(this._currentArray!.Length * 2, 0x40000000); // 上限 2^30
-            this._currentArray = ArrayPool<Token>.Shared.Rent(newSize);
-            this._currentCount = 0;
+            this.lastSegment!.SetNext(segment);
         }
 
-        this._currentArray[this._currentCount++] = token;
+        this.lastSegment = segment;
+
+        this.currentArray = null;
+        this.currentIndex = 0;
+    }
+}
+
+internal static class PooledSequenceSegmentPoolRef<T>
+{
+    private static PooledSequenceSegmentRef<T>? head;
+
+    public static PooledSequenceSegmentRef<T> Rent()
+    {
+        while (true)
+        {
+            var current = Volatile.Read(ref head);
+            if (current is null)
+            {
+                return new PooledSequenceSegmentRef<T>();
+            }
+
+            var next = current.PoolNext;
+
+            if (Interlocked.CompareExchange(ref head, next, current) == current)
+            {
+                current.PoolNext = null;
+                return current;
+            }
+        }
     }
 
-    private void SealCurrentArray()
+    public static void Return(PooledSequenceSegmentRef<T> segment)
     {
-        var segment = new Segment(this._currentArray!, this._currentCount, this._sealedLength);
-        this._sealedLength += this._currentCount;
+        segment.ResetForPool();
 
-        if (this._firstSegment is null)
+        while (true)
         {
-            this._firstSegment = segment;
-        }
-        else
-        {
-            this._lastSegment!.SetNext(segment);
-        }
+            var current = Volatile.Read(ref head);
+            segment.PoolNext = current;
 
-        this._lastSegment = segment;
+            if (Interlocked.CompareExchange(ref head, segment, current) == current)
+            {
+                return;
+            }
+        }
+    }
+}
+
+internal sealed class PooledSequenceSegmentRef<T> : ReadOnlySequenceSegment<T>
+{
+    internal T[]? Array;
+    internal PooledSequenceSegmentRef<T>? PoolNext;
+
+    public void Initialize(T[] array, int length, long runningIndex)
+    {
+        this.Array = array;
+        this.Memory = array.AsMemory(0, length);
+        this.RunningIndex = runningIndex;
+        this.Next = null;
+        this.PoolNext = null;
     }
 
-    private sealed class Segment : ReadOnlySequenceSegment<Token>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SetNext(PooledSequenceSegmentRef<T> next)
     {
-        public readonly Token[] Array;
+        this.Next = next;
+    }
 
-        public Segment(Token[] array, int count, long runningIndex)
-        {
-            this.Array = array;
-            this.Memory = new ReadOnlyMemory<Token>(array, 0, count);
-            this.RunningIndex = runningIndex;
-        }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public PooledSequenceSegmentRef<T>? GetNextSegment()
+    {
+        return (PooledSequenceSegmentRef<T>?)this.Next;
+    }
 
-        public void SetNext(Segment next) => this.Next = next;
+    public void ResetForPool()
+    {
+        this.Array = null;
+        this.Memory = default;
+        this.RunningIndex = 0;
+        this.Next = null;
+        this.PoolNext = null;
     }
 }

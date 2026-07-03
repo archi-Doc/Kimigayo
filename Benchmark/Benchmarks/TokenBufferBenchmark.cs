@@ -11,6 +11,8 @@ public class TokenBufferBenchmark
 {
     public const int N = 100 * 1024;
 
+    private readonly List<Token> list = new();
+
     public TokenBufferBenchmark()
     {
     }
@@ -47,15 +49,15 @@ public class TokenBufferBenchmark
     [Benchmark]
     public long List2()
     {
-        var list = new List<Token>(N);
+        this.list.Clear();
         for (var i = 0; i < N; i++)
         {
             var token = new Token((TokenKind)(i & 7), default, default);
-            list.Add(token);
+            this.list.Add(token);
         }
 
         long sum = 0;
-        foreach (var x in list)
+        foreach (var x in this.list)
         {
             sum += (long)x.Kind;
         }
@@ -88,20 +90,22 @@ public class TokenBufferBenchmark
     }
 
     [Benchmark]
-    public long BuilderSeq()
+    public long BuilderRef()
     {
-        var list = default(TokenSequenceBuilder);
+        var list = default(TokenSequenceBuilderRef);
         for (var i = 0; i < N; i++)
         {
             var token = new Token((TokenKind)(i & 7), default, default);
             list.Add(token);
         }
 
-        var sr = new SequenceReader<Token>(list.ToReadOnlySequence());
         long sum = 0;
-        while (sr.TryRead(out var x))
+        foreach (var y in list.ToReadOnlySequence())
         {
-            sum += (long)x.Kind;
+            foreach (var x in y.Span)
+            {
+                sum += (long)x.Kind;
+            }
         }
 
         list.Dispose();
