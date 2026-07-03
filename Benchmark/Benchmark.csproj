@@ -28,8 +28,4 @@
     <ProjectReference Include="..\Kimi\Kimi.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Obsolete\" />
-  </ItemGroup>
-
 </Project>
