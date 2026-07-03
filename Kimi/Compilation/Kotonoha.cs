@@ -90,7 +90,7 @@ public sealed partial class Kotonoha
             {
                 foreach (var x in y.Span)
                 {
-                    if (x.Kind == TokenKind.Invalid)
+                    if (x.Kind == TokenKind.Separator)
                     {
                         sb.AppendLf();
                     }

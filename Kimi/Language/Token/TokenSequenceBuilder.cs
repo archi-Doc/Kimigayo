@@ -17,7 +17,7 @@ public ref struct TokenSequenceBuilder
     /// <summary>
     /// The default number of token slots allocated when no initial capacity is provided.
     /// </summary>
-    public const int DefaultInitialCapacity = 256;
+    public const int DefaultInitialCapacity = 1024 * 4;
 
     private SequenceBuilder<Token> builder;
 
@@ -31,9 +31,14 @@ public ref struct TokenSequenceBuilder
     /// Whether rented arrays should be cleared when returned to the pool.
     /// If <see langword="null"/>, the underlying builder default behavior is used.
     /// </param>
-    public TokenSequenceBuilder(int initialCapacity = DefaultInitialCapacity, bool? clearArrayOnReturn = null)
+    public TokenSequenceBuilder(int initialCapacity, bool? clearArrayOnReturn = null)
     {
         this.builder = new(initialCapacity, clearArrayOnReturn);
+    }
+
+    public TokenSequenceBuilder()
+        : this(DefaultInitialCapacity)
+    {
     }
 
     /// <summary>

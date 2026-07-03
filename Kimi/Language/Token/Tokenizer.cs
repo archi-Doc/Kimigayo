@@ -780,10 +780,11 @@ internal sealed class Tokenizer
 
     public TokenSequenceBuilder ReadAll()
     {
-        var builder = new TokenSequenceBuilder(4);
+        var builder = new TokenSequenceBuilder();
         var currentIndentLevel = 0;
         while (this.Read(ref currentIndentLevel, ref builder) > 0)
         {
+            builder.Add(new(TokenKind.Separator));
         }
 
         return builder;
@@ -1353,7 +1354,7 @@ LineContent:
         {
             if (dif == 0 && this.indentStack.Peek() == IndentSource.Block)
             {
-                this.AddToken(ref builder, new(TokenKind.Separator, default));
+                // this.AddToken(ref builder, new(TokenKind.Separator));
             }
 
             goto Loop;

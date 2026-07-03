@@ -64,7 +64,7 @@ public ref struct SequenceBuilder<T>
     /// <exception cref="ArgumentOutOfRangeException">
     /// Thrown when <paramref name="initialCapacity"/> is outside the valid range.
     /// </exception>
-    public SequenceBuilder(int initialCapacity = DefaultInitialCapacity, bool? clearArrayOnReturn = null)
+    public SequenceBuilder(int initialCapacity, bool? clearArrayOnReturn = null)
     {
         if (initialCapacity <= 0 || initialCapacity > MaxChunkCapacity)
         {
@@ -88,6 +88,11 @@ public ref struct SequenceBuilder<T>
             false => false,
             _ => RuntimeHelpers.IsReferenceOrContainsReferences<T>(),
         };
+    }
+
+    public SequenceBuilder()
+        : this(DefaultInitialCapacity)
+    {
     }
 
     /// <summary>
