@@ -7,6 +7,14 @@ using System.Runtime.CompilerServices;
 
 namespace Kimigayo.Language;
 
+/// <summary>
+/// Builds a <see cref="ReadOnlySequence{T}"/> backed by pooled arrays.
+/// </summary>
+/// <remarks>
+/// The returned sequence is valid only until this builder is disposed.
+/// Do not store or use the returned sequence after calling <see cref="Dispose"/>.
+/// </remarks>
+/// <typeparam name="T">Represents the type held by <see cref="SequenceBuilder{T}"/>.</typeparam>
 public ref struct SequenceBuilder<T>
 {
     public const int DefaultInitialCapacity = 256;
@@ -78,6 +86,39 @@ public ref struct SequenceBuilder<T>
 
         array[this.currentIndex++] = value;
         this.length++;
+    }
+
+    public void AddRange(ReadOnlySpan<T> values)
+    {
+        if (this.isFinalized)
+        {
+            ThrowAlreadyFinalized();
+        }
+
+        while (!values.IsEmpty)
+        {
+            var array = this.currentArray;
+            if (array is null)
+            {
+                array = this.RentChunk();
+                this.currentArray = array;
+            }
+
+            if ((uint)this.currentIndex >= (uint)array.Length)
+            {
+                this.CommitCurrentChunk();
+                continue;
+            }
+
+            var destination = array.AsSpan(this.currentIndex);
+            var copyLength = Math.Min(destination.Length, values.Length);
+
+            values.Slice(0, copyLength).CopyTo(destination);
+
+            this.currentIndex += copyLength;
+            this.length += copyLength;
+            values = values.Slice(copyLength);
+        }
     }
 
     public ReadOnlySequence<T> ToReadOnlySequence()
@@ -195,6 +236,7 @@ public ref struct SequenceBuilder<T>
         var written = this.currentIndex;
         if (written == 0)
         {
+            // Keep the current rented array for subsequent writes.
             return;
         }
 
