@@ -1,6 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 #pragma warning disable SA1401 // Fields should be private
@@ -14,12 +16,15 @@ namespace Kimigayo.Language;
 /// The returned sequence is valid only until this builder is disposed.
 /// Do not store or use the returned sequence after calling <see cref="Dispose"/>.
 /// </remarks>
-/// <typeparam name="T">Represents the type held by <see cref="SequenceBuilder{T}"/>.</typeparam>
+/// <typeparam name="T">The element type stored in the sequence.</typeparam>
 public ref struct SequenceBuilder<T>
 {
     public const int DefaultInitialCapacity = 256;
     public const int MaxChunkCapacity = 32 * 1024;
 
+    private static readonly ConcurrentQueue<PooledSequenceSegment> SegmentPool = new();
+
+    private readonly bool clearArrayOnReturn;
     private T[]? currentArray;
     private int currentIndex;
 
@@ -31,11 +36,9 @@ public ref struct SequenceBuilder<T>
     private bool isFinalized;
     private ReadOnlySequence<T> sequence;
 
-    private bool clearArrayOnReturn;
-
     public SequenceBuilder(int initialCapacity = DefaultInitialCapacity, bool? clearArrayOnReturn = null)
     {
-        if (initialCapacity <= 0)
+        if (initialCapacity <= 0 || initialCapacity > MaxChunkCapacity)
         {
             throw new ArgumentOutOfRangeException(nameof(initialCapacity));
         }
@@ -178,7 +181,8 @@ public ref struct SequenceBuilder<T>
                 ArrayPool<T>.Shared.Return(segmentArray, this.clearArrayOnReturn);
             }
 
-            PooledSequenceSegmentPool.Return(segment);
+            segment.ResetForPool();
+            SegmentPool.Enqueue(segment);
             segment = next;
         }
 
@@ -206,6 +210,7 @@ public ref struct SequenceBuilder<T>
         return currentCapacity * 2;
     }
 
+    [DoesNotReturn]
     private static void ThrowAlreadyFinalized()
         => throw new InvalidOperationException("The sequence has already been finalized.");
 
@@ -242,7 +247,12 @@ public ref struct SequenceBuilder<T>
 
         var runningIndex = this.length - written;
 
-        var segment = PooledSequenceSegmentPool.Rent();
+        PooledSequenceSegment? segment;
+        if (!SegmentPool.TryDequeue(out segment))
+        {
+            segment = new();
+        }
+
         segment.Initialize(array, written, runningIndex);
 
         if (this.firstSegment is null)
@@ -260,51 +270,9 @@ public ref struct SequenceBuilder<T>
         this.currentIndex = 0;
     }
 
-    private static class PooledSequenceSegmentPool
-    {
-        private static PooledSequenceSegment? head;
-
-        public static PooledSequenceSegment Rent()
-        {
-            while (true)
-            {
-                var current = Volatile.Read(ref head);
-                if (current is null)
-                {
-                    return new PooledSequenceSegment();
-                }
-
-                var next = current.PoolNext;
-
-                if (Interlocked.CompareExchange(ref head, next, current) == current)
-                {
-                    current.PoolNext = null;
-                    return current;
-                }
-            }
-        }
-
-        public static void Return(PooledSequenceSegment segment)
-        {
-            segment.ResetForPool();
-
-            while (true)
-            {
-                var current = Volatile.Read(ref head);
-                segment.PoolNext = current;
-
-                if (Interlocked.CompareExchange(ref head, segment, current) == current)
-                {
-                    return;
-                }
-            }
-        }
-    }
-
     private sealed class PooledSequenceSegment : ReadOnlySequenceSegment<T>
     {
         internal T[]? Array;
-        internal PooledSequenceSegment? PoolNext;
 
         public void Initialize(T[] array, int length, long runningIndex)
         {
@@ -312,7 +280,6 @@ public ref struct SequenceBuilder<T>
             this.Memory = array.AsMemory(0, length);
             this.RunningIndex = runningIndex;
             this.Next = null;
-            this.PoolNext = null;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -333,7 +300,6 @@ public ref struct SequenceBuilder<T>
             this.Memory = default;
             this.RunningIndex = 0;
             this.Next = null;
-            this.PoolNext = null;
         }
     }
 }
