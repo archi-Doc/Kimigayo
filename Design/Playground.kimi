@@ -1,5 +1,8 @@
 alias Kimi.Base
 
+#Condition
+alias Kimi.Windows
+
 // comment
 #Condition(Os == "Windows")
 namespace Playground.A

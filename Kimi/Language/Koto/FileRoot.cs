@@ -37,7 +37,8 @@ public sealed class FileRoot
             var k = KotoParser.ParseExpression(ref reader);
         }*/
 
-        if (reader.TryPeek(out var token))
+        // Top-level (alias, Attribute)
+        while (reader.TryPeek(out var token))
         {
             if (token.Kind == TokenKind.Sharp)
             {// #Attribute
@@ -56,12 +57,14 @@ public sealed class FileRoot
             {// alias
                 if (!this.allowTopLevelKeyword)
                 {
-                    goto UnexpectedTopLevelKeyword;
+                    // goto UnexpectedTopLevelKeyword;
                 }
 
                 reader.Advance();
-                var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
-                this.alias.Add(qualifiedName);
+                var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
+                var aliasKoto = new AliasKoto(ref reader, list);
+                this.CurrentGroup.Add(aliasKoto);
+                // this.alias.Add(qualifiedName);
             }
         }
 
@@ -69,7 +72,7 @@ public sealed class FileRoot
         this.CurrentGroup.Parse(ref reader);
         return;
 
-UnexpectedTopLevelKeyword:
-        this.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);
+/*UnexpectedTopLevelKeyword:
+        this.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);*/
     }
 }

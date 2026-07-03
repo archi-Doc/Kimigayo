@@ -7,7 +7,7 @@ namespace Kimigayo.Language;
 
 public static class KotoParser
 {
-    public static PrefixUnaryKoto? ParseAttribute(ref TokenReader reader)
+    public static AttributeKoto? ParseAttribute(ref TokenReader reader)
     {// #Attribute(...)
         /*if (!reader.TryConsume(TokenKind.Sharp, out var range))
         {
@@ -25,7 +25,7 @@ public static class KotoParser
             return default;
         }
 
-        return expression as PrefixUnaryKoto;
+        return expression as AttributeKoto;
 
         /*var attributeKoto = new AttributeKoto(ref reader, parent, ref reader);
 
@@ -86,7 +86,8 @@ public static class KotoParser
         {
             reader.TryRead(out var token);
             var operand = ParseExpression(ref reader, bindingPower);
-            var koto = new PrefixUnaryKoto(ref reader, token, operand);
+            // var koto = new PrefixUnaryKoto(ref reader, token, operand);
+            var koto = KotoHelper.NewUnaryKoto(ref reader, token, operand);
             return koto;
         }
 

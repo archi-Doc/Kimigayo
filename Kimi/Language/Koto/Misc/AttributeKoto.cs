@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Kimigayo.Language;
 
-[TinyhandObject]
+/*[TinyhandObject]
 public partial class AttributeKoto : Koto
 {// #Attribute(KotoList)
     [Key(1)]
@@ -45,4 +45,4 @@ public partial class AttributeKoto : Koto
 
         return sb.ToString();
     }
-}
+}*/

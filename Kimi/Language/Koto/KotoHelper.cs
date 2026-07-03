@@ -7,6 +7,12 @@ namespace Kimigayo.Language;
 
 public static class KotoHelper
 {
+    public static Koto NewUnaryKoto(ref TokenReader reader, Token token, Koto operand) => token.Kind switch
+    {
+        TokenKind.Sharp => new AttributeKoto(ref reader, token.Range, operand),
+        _ => throw new InvalidOperationException(),
+    };
+
     public static bool Replace(Koto parent, Koto oldKoto, Koto newKoto)
     {
         if (parent.ReplaceChild(oldKoto, newKoto))
@@ -75,6 +81,57 @@ public static class KotoHelper
         }
 
         return sb.ToString();
+    }
+
+    public static List<string> ValidateAndGetNamespace2(ref TokenReader reader)
+    {
+        if (reader.IsEmpty)
+        {
+            return [];
+        }
+
+        var list = new List<string>();
+        var flag = true;
+        while (reader.TryRead(out var token))
+        {
+            if (token.Kind == TokenKind.Separator)
+            {
+                break;
+            }
+
+            if (flag)
+            {// Identifier
+                flag = false;
+                if (IsValidIdentifier(token.Span))
+                {
+                    list.Add(token.Span.ToString());
+                }
+                else
+                {
+                    reader.Diagnostic.AddToken(token, Hashed.Kimi.InvalidIdentifier, token.Text);
+                    break;
+                }
+            }
+            else
+            {// Dot
+                flag = true;
+                if (token.Kind == TokenKind.Dot)
+                {
+                }
+                else
+                {
+                    reader.Diagnostic.AddToken(token, Hashed.Kimi.UnexpectedToken, token);
+                    break;
+                }
+            }
+        }
+
+        if (flag)
+        {
+            reader.Diagnostic.Add(reader.CurrentRange(), Hashed.Kimi.IdentifierExpected);
+        }
+
+        return list;
     }
 
     public static bool IsValidIdentifier(ReadOnlySpan<char> text)

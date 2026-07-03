@@ -20,7 +20,6 @@ public enum KotoKind : byte
     Contract,
 
     // Literal
-    Comment,
     NumericLiteral,
     StringLiteral,
     BoolLiteral,
@@ -35,7 +34,6 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Namespace, typeof(NamespaceKoto))]
 [TinyhandUnion((int)KotoKind.Group, typeof(GroupKoto))]
 
-[TinyhandUnion((int)KotoKind.Comment, typeof(CommentKoto))]
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.NumericLiteral, typeof(NumericLiteralKoto))]
 [TinyhandUnion((int)KotoKind.BoolLiteral, typeof(BoolLiteralKoto))]
