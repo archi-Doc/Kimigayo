@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Kimigayo.Diagnostics;
@@ -33,11 +34,11 @@ public ref struct TokenReader
 
     #endregion
 
-    public TokenReader(DiagnosticCollection diagnostic, List<Token> tokens, CodeContext codeContext)
+    public TokenReader(DiagnosticCollection diagnostic, CodeContext codeContext, ReadOnlySequence<Token> tokenSequence)
     {
         this.Diagnostic = diagnostic;
         this.CodeContext = codeContext;
-        this.list = tokens;
+        this.list = tokenSequence.ToArray().ToList();//
     }
 
     /// <summary>
