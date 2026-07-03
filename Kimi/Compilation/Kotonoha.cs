@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -60,7 +61,6 @@ public sealed partial class Kotonoha
         var tokenizer = new Tokenizer(diagnostic);
         tokenizer.Initialize(pathAndSource.Source.AsMemory(), 0, 0);
         var fileRoot = new FileRoot(diagnostic);
-        var currentIndentLevel = 0;
 
         var kimiId = this.SourceList.Count;
         var kimiFile = new KimiSource(pathAndSource.Path, [], default);
@@ -69,50 +69,41 @@ public sealed partial class Kotonoha
         var codeContext = compilation.CreateCodeContext();
 
         // Tokenize
-        var dumpToken = compilation.KimiOptions.DumpToken ? new List<Token>() : null;
-        while (true)
-        {
-            // Read token
-            var list = tokenizer.Read(ref currentIndentLevel);
-            if (list.Count == 0)
-            {
-                break;
-            }
-
-            // Dump token
-            if (dumpToken is not null)
-            {
-                dumpToken.AddRange(list);
-                dumpToken.Add(Token.Invalid);
-            }
-
-            // Token to Koto
-            var tokenReader = new TokenReader(diagnostic, list, codeContext);
-            fileRoot.Parse(ref tokenReader);
+        using var tokenBuilder = tokenizer.ReadAll();
+        var tokenSequence = tokenBuilder.ToReadOnlySequence();
+        if (compilation.KimiOptions.DumpToken)
+        {// Dump token
+            this.DumpToken(pathAndSource.Path, tokenSequence);
         }
 
-        if (dumpToken is not null &&
-            Path.ChangeExtension(pathAndSource.Path, Constants.TokenExtension) is { } tokenPath)
+        // Token to Koto
+        // var tokenReader = new TokenReader(diagnostic, list, codeContext);
+        // fileRoot.Parse(ref tokenReader);
+    }
+
+    private void DumpToken(string path, ReadOnlySequence<Token> sequence)
+    {
+        if (Path.ChangeExtension(path, Constants.TokenExtension) is { } tokenPath)
         {
             var sb = new StringBuilder();
-            foreach (var x in dumpToken)
+            foreach (var y in sequence)
             {
-                if (x.Kind == TokenKind.Invalid)
+                foreach (var x in y.Span)
                 {
-                    sb.AppendLf();
-                }
-                else
-                {
-                    sb.Append(x.ToString());
+                    if (x.Kind == TokenKind.Invalid)
+                    {
+                        sb.AppendLf();
+                    }
+                    else
+                    {
+                        sb.Append(x.ToString());
+                    }
                 }
             }
 
             try
             {
                 File.WriteAllText(tokenPath, sb.ToString());
-
-                // var b = TinyhandSerializer.Serialize(dumpToken);
-                // var t = TinyhandSerializer.Deserialize<List<Token>>(b);
             }
             catch
             {

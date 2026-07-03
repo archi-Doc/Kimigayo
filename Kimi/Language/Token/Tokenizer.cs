@@ -740,7 +740,6 @@ internal sealed class Tokenizer
     #region FieldAndProperty
 
     private readonly DiagnosticCollection urlDiagnostic;
-    private readonly List<Token> tokenList = new();
     private readonly Stack<IndentSource> indentStack = new();
 
     private ReadOnlyMemory<char> text;
@@ -750,6 +749,7 @@ internal sealed class Tokenizer
 
     private int blockDepth;
     private int nonBlockDepth;
+    private int tokenAdded;
 
     #endregion
 
@@ -778,6 +778,17 @@ internal sealed class Tokenizer
         this.ClearState();
     }
 
+    public TokenSequenceBuilder ReadAll()
+    {
+        var builder = new TokenSequenceBuilder(4);
+        var currentIndentLevel = 0;
+        while (this.Read(ref currentIndentLevel, ref builder) > 0)
+        {
+        }
+
+        return builder;
+    }
+
     /// <summary>
     /// Reads the next logical line and returns its tokens.<br/>
     /// NOTE: The returned list is an internal buffer that is cleared and reused by the next call to
@@ -786,7 +797,7 @@ internal sealed class Tokenizer
     /// </summary>
     /// <param name="currentIndentLevel">The current logical indentation level. The value is updated as blocks are opened or closed.</param>
     /// <returns>The internal token buffer containing the tokens read for the next logical line.</returns>
-    public List<Token> Read(ref int currentIndentLevel)
+    public int Read(ref int currentIndentLevel, ref TokenSequenceBuilder builder)
     {
         this.ClearState();
 
@@ -838,19 +849,19 @@ Loop:
                 case Constants.AmpersandChar: // && &= &
                     if (span.Length == 1)
                     {// &
-                        this.AddTokenAndSlice(TokenKind.Ampersand, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Ampersand, ref span, 1);
                     }
                     else if (span[1] == Constants.AmpersandChar)
                     {// &&
-                        this.AddTokenAndSlice(TokenKind.AmpersandAmpersand, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.AmpersandAmpersand, ref span, 2);
                     }
                     else if (span[1] == Constants.EqualsChar)
                     {// &=
-                        this.AddTokenAndSlice(TokenKind.AmpersandEquals, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.AmpersandEquals, ref span, 2);
                     }
                     else
                     {// &
-                        this.AddTokenAndSlice(TokenKind.Ampersand, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Ampersand, ref span, 1);
                     }
 
                     break;
@@ -858,11 +869,11 @@ Loop:
                 case Constants.AsteriskChar: // * *=
                     if (span.Length > 1 && span[1] == Constants.EqualsChar)
                     {// *=
-                        this.AddTokenAndSlice(TokenKind.AsteriskEquals, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.AsteriskEquals, ref span, 2);
                     }
                     else
                     {// *
-                        this.AddTokenAndSlice(TokenKind.Asterisk, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Asterisk, ref span, 1);
                     }
 
                     break;
@@ -870,19 +881,19 @@ Loop:
                 case Constants.BarChar: // | || |=
                     if (span.Length == 1)
                     {// |
-                        this.AddTokenAndSlice(TokenKind.Bar, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Bar, ref span, 1);
                     }
                     else if (span[1] == Constants.BarChar)
                     {// ||
-                        this.AddTokenAndSlice(TokenKind.BarBar, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.BarBar, ref span, 2);
                     }
                     else if (span[1] == Constants.EqualsChar)
                     {// |=
-                        this.AddTokenAndSlice(TokenKind.BarEquals, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.BarEquals, ref span, 2);
                     }
                     else
                     {// |
-                        this.AddTokenAndSlice(TokenKind.Bar, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Bar, ref span, 1);
                     }
 
                     break;
@@ -890,11 +901,11 @@ Loop:
                 case Constants.CaretChar: // ^ ^=
                     if (span.Length > 1 && span[1] == Constants.EqualsChar)
                     {// ^=
-                        this.AddTokenAndSlice(TokenKind.CaretEquals, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.CaretEquals, ref span, 2);
                     }
                     else
                     {// ^
-                        this.AddTokenAndSlice(TokenKind.Caret, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Caret, ref span, 1);
                     }
 
                     break;
@@ -902,22 +913,22 @@ Loop:
                 case Constants.DotChar: // . .. ..=
                     if (span.Length == 1)
                     {// .
-                        this.AddTokenAndSlice(TokenKind.Dot, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Dot, ref span, 1);
                     }
                     else if (span[1] == Constants.DotChar)
                     {// ..
                         if (span.Length >= 3 && span[2] == Constants.EqualsChar)
                         {// ..=
-                            this.AddTokenAndSlice(TokenKind.DotDotEquals, ref span, 3);
+                            this.AddTokenAndSlice(ref builder, TokenKind.DotDotEquals, ref span, 3);
                         }
                         else
                         {// ..
-                            this.AddTokenAndSlice(TokenKind.DotDot, ref span, 2);
+                            this.AddTokenAndSlice(ref builder, TokenKind.DotDot, ref span, 2);
                         }
                     }
                     else
                     {// .
-                        this.AddTokenAndSlice(TokenKind.Dot, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Dot, ref span, 1);
                     }
 
                     break;
@@ -925,19 +936,19 @@ Loop:
                 case Constants.EqualsChar: // = == =>
                     if (span.Length == 1)
                     {// =
-                        this.AddTokenAndSlice(TokenKind.Equals, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Equals, ref span, 1);
                     }
                     else if (span[1] == Constants.EqualsChar)
                     {// ==
-                        this.AddTokenAndSlice(TokenKind.EqualsEquals, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.EqualsEquals, ref span, 2);
                     }
                     else if (span[1] == Constants.GreaterThanChar)
                     {// =>
-                        this.AddTokenAndSlice(TokenKind.EqualsGreaterThan, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.EqualsGreaterThan, ref span, 2);
                     }
                     else
                     {// =
-                        this.AddTokenAndSlice(TokenKind.Equals, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Equals, ref span, 1);
                     }
 
                     break;
@@ -945,11 +956,11 @@ Loop:
                 case Constants.ExclamationChar: // ! !=
                     if (span.Length > 1 && span[1] == Constants.EqualsChar)
                     {// !=
-                        this.AddTokenAndSlice(TokenKind.ExclamationEquals, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.ExclamationEquals, ref span, 2);
                     }
                     else
                     {// !
-                        this.AddTokenAndSlice(TokenKind.Exclamation, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Exclamation, ref span, 1);
                     }
 
                     break;
@@ -957,26 +968,26 @@ Loop:
                 case Constants.GreaterThanChar: // > >= >> >>=
                     if (span.Length == 1)
                     {// >
-                        this.AddTokenAndSlice(TokenKind.GreaterThan, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.GreaterThan, ref span, 1);
                     }
                     else if (span[1] == Constants.EqualsChar)
                     {// >=
-                        this.AddTokenAndSlice(TokenKind.GreaterThanEquals, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.GreaterThanEquals, ref span, 2);
                     }
                     else if (span[1] == Constants.GreaterThanChar)
                     {// >>
                         if (span.Length >= 3 && span[2] == Constants.EqualsChar)
                         {// >>=
-                            this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThanEquals, ref span, 3);
+                            this.AddTokenAndSlice(ref builder, TokenKind.GreaterThanGreaterThanEquals, ref span, 3);
                         }
                         else
                         {// >>
-                            this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThan, ref span, 2);
+                            this.AddTokenAndSlice(ref builder, TokenKind.GreaterThanGreaterThan, ref span, 2);
                         }
                     }
                     else
                     {// >
-                        this.AddTokenAndSlice(TokenKind.GreaterThan, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.GreaterThan, ref span, 1);
                     }
 
                     break;
@@ -984,26 +995,26 @@ Loop:
                 case Constants.LessThanChar: // < <= << <<=
                     if (span.Length == 1)
                     {// <
-                        this.AddTokenAndSlice(TokenKind.LessThan, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.LessThan, ref span, 1);
                     }
                     else if (span[1] == Constants.EqualsChar)
                     {// <=
-                        this.AddTokenAndSlice(TokenKind.LessThanEquals, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.LessThanEquals, ref span, 2);
                     }
                     else if (span[1] == Constants.LessThanChar)
                     {// <<
                         if (span.Length >= 3 && span[2] == Constants.EqualsChar)
                         {// <<=
-                            this.AddTokenAndSlice(TokenKind.LessThanLessThanEquals, ref span, 3);
+                            this.AddTokenAndSlice(ref builder, TokenKind.LessThanLessThanEquals, ref span, 3);
                         }
                         else
                         {// <<
-                            this.AddTokenAndSlice(TokenKind.LessThanLessThan, ref span, 2);
+                            this.AddTokenAndSlice(ref builder, TokenKind.LessThanLessThan, ref span, 2);
                         }
                     }
                     else
                     {// <
-                        this.AddTokenAndSlice(TokenKind.LessThan, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.LessThan, ref span, 1);
                     }
 
                     break;
@@ -1011,19 +1022,19 @@ Loop:
                 case Constants.MinusChar: // -- -= -
                     if (span.Length == 1)
                     {// -
-                        this.AddTokenAndSlice(TokenKind.Minus, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Minus, ref span, 1);
                     }
                     else if (span[1] == Constants.MinusChar)
                     {// --
-                        this.AddTokenAndSlice(TokenKind.MinusMinus, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.MinusMinus, ref span, 2);
                     }
                     else if (span[1] == Constants.EqualsChar)
                     {// -=
-                        this.AddTokenAndSlice(TokenKind.MinusEquals, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.MinusEquals, ref span, 2);
                     }
                     else
                     {// -
-                        this.AddTokenAndSlice(TokenKind.Minus, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Minus, ref span, 1);
                     }
 
                     break;
@@ -1031,11 +1042,11 @@ Loop:
                 case Constants.PercentChar: // % %=
                     if (span.Length > 1 && span[1] == Constants.EqualsChar)
                     {// %=
-                        this.AddTokenAndSlice(TokenKind.PercentEquals, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.PercentEquals, ref span, 2);
                     }
                     else
                     {// %
-                        this.AddTokenAndSlice(TokenKind.Percent, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Percent, ref span, 1);
                     }
 
                     break;
@@ -1043,19 +1054,19 @@ Loop:
                 case Constants.PlusChar: // ++ += +
                     if (span.Length == 1)
                     {// +
-                        this.AddTokenAndSlice(TokenKind.Plus, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Plus, ref span, 1);
                     }
                     else if (span[1] == Constants.PlusChar)
                     {// ++
-                        this.AddTokenAndSlice(TokenKind.PlusPlus, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.PlusPlus, ref span, 2);
                     }
                     else if (span[1] == Constants.EqualsChar)
                     {// +=
-                        this.AddTokenAndSlice(TokenKind.PlusEquals, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.PlusEquals, ref span, 2);
                     }
                     else
                     {// +
-                        this.AddTokenAndSlice(TokenKind.Plus, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Plus, ref span, 1);
                     }
 
                     break;
@@ -1063,11 +1074,11 @@ Loop:
                 case Constants.SlashChar: // // /* /= /
                     if (span.Length == 1)
                     {// /
-                        this.AddTokenAndSlice(TokenKind.Slash, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Slash, ref span, 1);
                     }
                     else if (span[1] == Constants.SlashChar)
                     {// //
-                        if (this.ReadSingleLineComment(ref span))
+                        if (this.ReadSingleLineComment(ref builder, ref span))
                         {
                             this.NextLine();
                         }
@@ -1076,15 +1087,15 @@ Loop:
                     }
                     else if (span[1] == Constants.AsteriskChar)
                     {// /*
-                        this.ReadMultiLineComment(ref span);
+                        this.ReadMultiLineComment(ref builder, ref span);
                     }
                     else if (span[1] == Constants.EqualsChar)
                     {// /=
-                        this.AddTokenAndSlice(TokenKind.SlashEquals, ref span, 2);
+                        this.AddTokenAndSlice(ref builder, TokenKind.SlashEquals, ref span, 2);
                     }
                     else
                     {// /
-                        this.AddTokenAndSlice(TokenKind.Slash, ref span, 1);
+                        this.AddTokenAndSlice(ref builder, TokenKind.Slash, ref span, 1);
                     }
 
                     break;
@@ -1099,24 +1110,24 @@ Loop:
                             }
                             else if (depth < 0)
                             {
-                                this.PopIndentSource(tokenKind);
+                                this.PopIndentSource(ref builder, tokenKind);
                             }
 
-                            this.AddTokenAndSlice(tokenKind, ref span, 1);
+                            this.AddTokenAndSlice(ref builder, tokenKind, ref span, 1);
                             continue;
                         }
 
                         if (TokenHelper.ScanNumberLiteral(span, out var numberLiteralLength))
                         {// Numeric literal
                          // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
-                            this.AddTokenAndSlice(TokenKind.NumericLiteral, ref span, numberLiteralLength);
+                            this.AddTokenAndSlice(ref builder, TokenKind.NumericLiteral, ref span, numberLiteralLength);
                         }
                         else if (numberLiteralLength > 0)
                         {// Starts with a digit but is not a valid numeric literal (e.g. "0x", "1e+", "1.0u8", "123abc").
                          // Emit a single Invalid token with a diagnostic instead of silently falling back
                          // to the identifier path, which would produce bogus Identifier tokens.
                             this.urlDiagnostic.Add(this.NewRange(numberLiteralLength), Hashed.Kimi.InvalidNumericLiteral);
-                            this.AddTokenAndSlice(TokenKind.Invalid, ref span, numberLiteralLength);
+                            this.AddTokenAndSlice(ref builder, TokenKind.Invalid, ref span, numberLiteralLength);
                         }
                         else if (TokenHelper.StartsWithStringLiteral(span, out var literalLength, out var quoteCount))
                         {// String literal
@@ -1132,20 +1143,20 @@ Loop:
 
                                 if (quoteCount >= 3)
                                 {// An unterminated raw string literal may contain line breaks.
-                                    this.AddTokenAndSliceWithLineTracking(TokenKind.Invalid, ref span, invalidLength);
+                                    this.AddTokenAndSliceWithLineTracking(ref builder, TokenKind.Invalid, ref span, invalidLength);
                                 }
                                 else
                                 {
-                                    this.AddTokenAndSlice(TokenKind.Invalid, ref span, invalidLength);
+                                    this.AddTokenAndSlice(ref builder, TokenKind.Invalid, ref span, invalidLength);
                                 }
                             }
                             else if (quoteCount >= 3)
                             {// Raw string literal: may span multiple lines, so track line breaks.
-                                this.AddTokenAndSliceWithLineTracking(TokenKind.StringLiteral, ref span, literalLength);
+                                this.AddTokenAndSliceWithLineTracking(ref builder, TokenKind.StringLiteral, ref span, literalLength);
                             }
                             else
                             {// Regular string literal (quoteCount is 1 or 2; "" is an empty literal).
-                                this.AddTokenAndSlice(TokenKind.StringLiteral, ref span, literalLength);
+                                this.AddTokenAndSlice(ref builder, TokenKind.StringLiteral, ref span, literalLength);
                             }
                         }
                         else
@@ -1158,17 +1169,17 @@ Loop:
                             else if (length == 0)
                             {
                                 this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.InvalidCharacter, span[0]);
-                                this.AddTokenAndSlice(TokenKind.Invalid, ref span, 1);
+                                this.AddTokenAndSlice(ref builder, TokenKind.Invalid, ref span, 1);
                                 break;
                             }
 
                             if (TokenHelper.KeywordToTokenKind.TryGetValue(span.Slice(0, length), out var tokenKind2))
                             {// Keyword
-                                this.AddTokenAndSlice(tokenKind2, ref span, length);
+                                this.AddTokenAndSlice(ref builder, tokenKind2, ref span, length);
                             }
                             else
                             {// Identifier
-                                this.AddTokenAndSlice(TokenKind.Identifier, ref span, length);
+                                this.AddTokenAndSlice(ref builder, TokenKind.Identifier, ref span, length);
                             }
                         }
 
@@ -1182,7 +1193,7 @@ NextLine:
         {// End-of-file
             goto EndOfFile;
         }
-        else if (this.tokenList.Count == 0)
+        else if (this.tokenAdded == 0)
         {// If text remains but no token was found, such as on a blank line, retry processing.
             goto Loop;
         }
@@ -1215,7 +1226,7 @@ LineContent:
         {// /
             if (span[1] == Constants.SlashChar)
             {// // Single line comment
-                if (this.ReadSingleLineComment(ref span))
+                if (this.ReadSingleLineComment(ref builder, ref span))
                 {
                     this.NextLine();
                 }
@@ -1224,7 +1235,7 @@ LineContent:
             }
             else if (span[1] == Constants.AsteriskChar)
             {// /* Multi line comment */
-                _ = this.ReadMultiLineComment(ref span);
+                _ = this.ReadMultiLineComment(ref builder, ref span);
 
                 // Skip spaces after the comment WITHOUT counting them as indentation;
                 // the indentation of this line was already measured at the line start
@@ -1274,7 +1285,7 @@ LineContent:
             // TODO: Consider reporting Hashed.Kimi.UnexpectedIndent when dif > 1.
             for (var i = 0; i < dif; i++)
             {
-                this.AddToken(new(TokenKind.StartBlock, default));
+                this.AddToken(ref builder, new(TokenKind.StartBlock, default));
                 this.PushIndentSource(IndentSource.Block);
             }
         }
@@ -1291,7 +1302,7 @@ LineContent:
                 {
                     if (indentSource == IndentSource.Block)
                     {
-                        this.AddToken(new(TokenKind.EndBlock, default));
+                        this.AddToken(ref builder, new(TokenKind.EndBlock, default));
                         this.blockDepth--;
                     }
                     else if (indentSource == IndentSource.LineContinuation)
@@ -1299,7 +1310,7 @@ LineContent:
                         this.nonBlockDepth--;
                         continue;
                     }
-                    else if (this.TryCloseIndentSourceByCurrentToken(indentSource, ref span))
+                    else if (this.TryCloseIndentSourceByCurrentToken(ref builder, indentSource, ref span))
                     {
                         // Treat only an immediate member access after an outer-indented closing
                         // delimiter as part of the same logical line.
@@ -1327,7 +1338,7 @@ LineContent:
                 }
                 else if (currentIndentLevel > 0)
                 {
-                    this.AddToken(new(TokenKind.EndBlock, default));
+                    this.AddToken(ref builder, new(TokenKind.EndBlock, default));
                     currentIndentLevel--;
                 }
                 else
@@ -1342,7 +1353,7 @@ LineContent:
         {
             if (dif == 0 && this.indentStack.Peek() == IndentSource.Block)
             {
-                this.AddToken(new(TokenKind.Separator, default));
+                this.AddToken(ref builder, new(TokenKind.Separator, default));
             }
 
             goto Loop;
@@ -1352,47 +1363,47 @@ LineContent:
             currentIndentLevel += this.blockDepth;
             this.blockDepth = 0;
 
-            return this.tokenList;
+            return this.tokenAdded;
         }
 
 EndOfFile:
-        this.ClearIndentStack();
+        this.ClearIndentStack(ref builder);
         while (currentIndentLevel-- > 0)
         {
-            this.AddToken(new(TokenKind.EndBlock, default));
+            this.AddToken(ref builder, new(TokenKind.EndBlock, default));
         }
 
         Debug.Assert(this.blockDepth == 0);
         Debug.Assert(this.nonBlockDepth == 0);
 
-        return this.tokenList;
+        return this.tokenAdded;
     }
 
-    private int ReadMultiLineComment(ref ReadOnlySpan<char> text)
+    private int ReadMultiLineComment(ref TokenSequenceBuilder builder, ref ReadOnlySpan<char> text)
     {
         var length = text.IndexOf("*/");
         if (length < 0)
         {
             this.urlDiagnostic.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), Hashed.Kimi.MissingBlockCommentEnd);
 
-            return this.AddTokenAndSliceWithLineTracking(TokenKind.Invalid, ref text, text.Length);
+            return this.AddTokenAndSliceWithLineTracking(ref builder, TokenKind.Invalid, ref text, text.Length);
         }
 
         length += 2;
-        return this.AddTokenAndSliceWithLineTracking(TokenKind.MultiLineComment, ref text, length);
+        return this.AddTokenAndSliceWithLineTracking(ref builder, TokenKind.MultiLineComment, ref text, length);
     }
 
-    private bool ReadSingleLineComment(ref ReadOnlySpan<char> span)
+    private bool ReadSingleLineComment(ref TokenSequenceBuilder builder, ref ReadOnlySpan<char> span)
     {// // Comment\n
         var idx = Arc.BaseHelper.IndexOfLfOrCrLf(span, out var newLineLength);
         if (idx < 0)
         {
-            this.AddTokenAndSlice(TokenKind.SingleLineComment, ref span, span.Length);
+            this.AddTokenAndSlice(ref builder, TokenKind.SingleLineComment, ref span, span.Length);
             return false;
         }
         else
         {
-            this.AddTokenAndSlice(TokenKind.SingleLineComment, ref span, idx);
+            this.AddTokenAndSlice(ref builder, TokenKind.SingleLineComment, ref span, idx);
             this.Slice(ref span, newLineLength);
             return true;
         }
@@ -1413,15 +1424,17 @@ EndOfFile:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AddToken(Token token)
+    private void AddToken(ref TokenSequenceBuilder builder, Token token)
     {
-        this.tokenList.Add(token);
+        builder.Add(token);
+        this.tokenAdded++;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AddTokenAndSlice(TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
+    private void AddTokenAndSlice(ref TokenSequenceBuilder builder, TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
     {
-        this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length), this.line, this.character));
+        builder.Add(new(tokenKind, this.text.Slice(this.position, length), this.line, this.character));
+        this.tokenAdded++;
 
         span = span.Slice(length);
         this.position += length;
@@ -1436,7 +1449,7 @@ EndOfFile:
     /// <param name="span">The remaining text span. The span is advanced by <paramref name="length"/> characters.</param>
     /// <param name="length">The number of characters to consume.</param>
     /// <returns>The number of line breaks consumed.</returns>
-    private int AddTokenAndSliceWithLineTracking(TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
+    private int AddTokenAndSliceWithLineTracking(ref TokenSequenceBuilder builder, TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
     {
         SourcePosition start = new(this.line, this.character);
 
@@ -1473,7 +1486,8 @@ EndOfFile:
             this.character += length;
         }
 
-        this.tokenList.Add(new(tokenKind, this.text.Slice(this.position, length), new Diagnostics.SourceRange(start, new(this.line, this.character))));
+        builder.Add(new(tokenKind, this.text.Slice(this.position, length), new Diagnostics.SourceRange(start, new(this.line, this.character))));
+        this.tokenAdded++;
 
         this.position += length;
         span = span.Slice(length);
@@ -1529,14 +1543,14 @@ EndOfFile:
         }
     }
 
-    private void PopIndentSource(TokenKind expected)
+    private void PopIndentSource(ref TokenSequenceBuilder builder, TokenKind expected)
     {
         while (this.indentStack.TryPeek(out var indentSource))
         {
             if (indentSource == IndentSource.Block)
             {
                 this.indentStack.Pop();
-                this.AddToken(new(TokenKind.EndBlock, default));
+                this.AddToken(ref builder, new(TokenKind.EndBlock, default));
                 this.blockDepth--;
                 continue;
             }
@@ -1581,34 +1595,34 @@ EndOfFile:
         this.urlDiagnostic.Add(this.NewRange(1), diagnostic);
     }
 
-    private void ClearIndentStack()
+    private void ClearIndentStack(ref TokenSequenceBuilder builder)
     {
         while (this.indentStack.TryPop(out var indentSource))
         {
             switch (indentSource)
             {
                 case IndentSource.Block:
-                    this.AddToken(new(TokenKind.EndBlock, true));
+                    this.AddToken(ref builder, new(TokenKind.EndBlock, true));
                     this.blockDepth--;
                     break;
 
                 case IndentSource.Parenthesis: // ()
-                    this.AddToken(new(TokenKind.CloseParenthesis, true));
+                    this.AddToken(ref builder, new(TokenKind.CloseParenthesis, true));
                     this.nonBlockDepth--;
                     break;
 
                 case IndentSource.Bracket: // []
-                    this.AddToken(new(TokenKind.CloseBracket, true));
+                    this.AddToken(ref builder, new(TokenKind.CloseBracket, true));
                     this.nonBlockDepth--;
                     break;
 
                 case IndentSource.AngleBracket: // <>
-                    this.AddToken(new(TokenKind.GreaterThan, true));
+                    this.AddToken(ref builder, new(TokenKind.GreaterThan, true));
                     this.nonBlockDepth--;
                     break;
 
                 case IndentSource.Brace: // {}
-                    this.AddToken(new(TokenKind.CloseBrace, true));
+                    this.AddToken(ref builder, new(TokenKind.CloseBrace, true));
                     this.nonBlockDepth--;
                     break;
 
@@ -1622,7 +1636,7 @@ EndOfFile:
         }
     }
 
-    private bool TryCloseIndentSourceByCurrentToken(IndentSource indentSource, ref ReadOnlySpan<char> span)
+    private bool TryCloseIndentSourceByCurrentToken(ref TokenSequenceBuilder builder, IndentSource indentSource, ref ReadOnlySpan<char> span)
     {
         if (span.IsEmpty)
         {
@@ -1643,14 +1657,14 @@ EndOfFile:
             return false;
         }
 
-        this.AddTokenAndSlice(tokenKind, ref span, 1);
+        this.AddTokenAndSlice(ref builder, tokenKind, ref span, 1);
         this.nonBlockDepth--;
         return true;
     }
 
     private void ClearState()
     {
-        this.tokenList.Clear();
+        this.tokenAdded = 0;
         this.indentStack.Clear();
         this.blockDepth = 0;
         this.nonBlockDepth = 0;
