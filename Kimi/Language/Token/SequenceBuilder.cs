@@ -1,9 +1,9 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Arc.Collections;
 
 #pragma warning disable SA1401 // Fields should be private
 
@@ -21,8 +21,9 @@ public ref struct SequenceBuilder<T>
 {
     public const int DefaultInitialCapacity = 256;
     public const int MaxChunkCapacity = 32 * 1024;
+    public const int SegmentPoolCapacity = 2;
 
-    private static readonly ConcurrentQueue<PooledSequenceSegment> SegmentPool = new();
+    private static readonly ObjectPool<PooledSequenceSegment> SegmentPool = new(() => new(), SegmentPoolCapacity);
 
     private readonly bool clearArrayOnReturn;
     private T[]? currentArray;
@@ -175,14 +176,13 @@ public ref struct SequenceBuilder<T>
         {
             var next = segment.GetNextSegment();
             var segmentArray = segment.Array;
-
             if (segmentArray is not null)
             {
                 ArrayPool<T>.Shared.Return(segmentArray, this.clearArrayOnReturn);
             }
 
             segment.ResetForPool();
-            SegmentPool.Enqueue(segment);
+            SegmentPool.Return(segment);
             segment = next;
         }
 
@@ -247,12 +247,7 @@ public ref struct SequenceBuilder<T>
 
         var runningIndex = this.length - written;
 
-        PooledSequenceSegment? segment;
-        if (!SegmentPool.TryDequeue(out segment))
-        {
-            segment = new();
-        }
-
+        var segment = SegmentPool.Rent();
         segment.Initialize(array, written, runningIndex);
 
         if (this.firstSegment is null)
