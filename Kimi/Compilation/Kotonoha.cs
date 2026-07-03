@@ -69,16 +69,24 @@ public sealed partial class Kotonoha
         var codeContext = compilation.CreateCodeContext();
 
         // Tokenize
-        using var tokenBuilder = tokenizer.ReadAll();
-        var tokenSequence = tokenBuilder.ToReadOnlySequence();
-        if (compilation.KimiOptions.DumpToken)
-        {// Dump token
-            this.DumpToken(pathAndSource.Path, tokenSequence);
-        }
+        var tokenBuilder = new TokenSequenceBuilder();
+        try
+        {
+            tokenizer.ReadAll(ref tokenBuilder);
+            var tokenSequence = tokenBuilder.ToReadOnlySequence();
+            if (compilation.KimiOptions.DumpToken)
+            {// Dump token
+                this.DumpToken(pathAndSource.Path, tokenSequence);
+            }
 
-        // Token to Koto
-        var tokenReader = new TokenReader(diagnostic, codeContext, tokenSequence);
-        fileRoot.Parse(ref tokenReader);
+            // Token to Koto
+            var tokenReader = new TokenReader(diagnostic, codeContext, tokenSequence);
+            fileRoot.Parse(ref tokenReader);
+        }
+        finally
+        {
+            tokenBuilder.Dispose();
+        }
     }
 
     private void DumpToken(string path, ReadOnlySequence<Token> sequence)

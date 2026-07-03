@@ -4,7 +4,6 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Kimigayo.Diagnostics;
-using Kimigayo.Language;
 
 namespace Kimigayo.Language;
 
@@ -18,19 +17,33 @@ public ref struct TokenReader
 
     public readonly CodeContext CodeContext;
 
-    private readonly List<Token> list;
+    private readonly ReadOnlySequence<Token> sequence;
+    private readonly int count;
+
+    private SequencePosition nextSegmentPosition;
+    private ReadOnlySpan<Token> currentSpan;
+    private int currentSpanIndex;
+
+    public Token PreviousToken { get; private set; }
 
     public int Position { get; private set; }
 
     public int Depth { get; private set; }
 
-    public int Count => this.list.Count;
+    public readonly int Count => this.count;
 
-    public int Remaining => this.list.Count - this.Position;
+    public readonly int Remaining => this.count - this.Position;
 
-    public bool IsEmpty => this.Position >= this.list.Count;
+    public readonly bool IsEmpty => this.Position >= this.count;
 
-    public TokenKind CurrentTokenKind => this.Position < this.list.Count ? this.list[this.Position].Kind : TokenKind.Invalid;
+    public TokenKind CurrentTokenKind
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            return this.TryGetCurrentToken(out var token) ? token.Kind : TokenKind.Invalid;
+        }
+    }
 
     #endregion
 
@@ -38,7 +51,20 @@ public ref struct TokenReader
     {
         this.Diagnostic = diagnostic;
         this.CodeContext = codeContext;
-        this.list = tokenSequence.ToArray().ToList();//
+
+        this.sequence = tokenSequence;
+        this.count = checked((int)tokenSequence.Length);
+
+        this.Position = 0;
+        this.Depth = 0;
+
+        this.nextSegmentPosition = tokenSequence.Start;
+        this.currentSpan = default;
+        this.currentSpanIndex = 0;
+
+        this.PreviousToken = default;
+
+        this.MoveToNextNonEmptySpan();
     }
 
     /// <summary>
@@ -46,18 +72,17 @@ public ref struct TokenReader
     /// </summary>
     /// <returns>
     /// <see langword="true"/> if a non-comment token remains after skipping comments;
-    /// otherwise, <see langword="false"/> if the end of the token list was reached.
+    /// otherwise, <see langword="false"/> if the end of the token sequence was reached.
     /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool SkipCommentsAndHasMore()
     {
-        while (this.Position < this.Count)
+        while (this.TryGetCurrentToken(out var token))
         {
-            var kind = this.list[this.Position].Kind;
-            if (kind == TokenKind.SingleLineComment ||
-                kind == TokenKind.MultiLineComment)
+            if (token.Kind == TokenKind.SingleLineComment ||
+                token.Kind == TokenKind.MultiLineComment)
             {
-                this.Position++;
+                this.AdvanceOne();
                 continue;
             }
 
@@ -70,10 +95,12 @@ public ref struct TokenReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void IncrementDepth()
     {
-        if (this.Depth++ > MaxDepth)
+        if (this.Depth >= MaxDepth)
         {
             throw new InvalidOperationException("The token depth has reached the maximum limit");
         }
+
+        this.Depth++;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -87,7 +114,8 @@ public ref struct TokenReader
     {
         if (this.SkipCommentsAndHasMore())
         {
-            token = this.list[this.Position++];
+            this.TryGetCurrentToken(out token);
+            this.AdvanceOne();
             return true;
         }
 
@@ -99,8 +127,7 @@ public ref struct TokenReader
     {
         if (this.SkipCommentsAndHasMore())
         {
-            token = this.list[this.Position];
-            return true;
+            return this.TryGetCurrentToken(out token);
         }
 
         token = default;
@@ -111,37 +138,40 @@ public ref struct TokenReader
     {
         if (this.SkipCommentsAndHasMore())
         {
-            if (this.list[this.Position].Kind == targetKind)
+            this.TryGetCurrentToken(out var token);
+
+            if (token.Kind == targetKind)
             {
-                range = this.list[this.Position].Range;
-                this.Position++;
+                range = token.Range;
+                this.AdvanceOne();
                 return true;
             }
-            else
-            {
-                if (addDiagnostic)
-                {
-                    this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToText());
-                }
 
-                range = default;
-                return false;
+            if (addDiagnostic)
+            {
+                this.Diagnostic.AddToken(
+                    token,
+                    Hashed.Kimi.TokenMismatch,
+                    targetKind.ToText());
             }
+
+            range = default;
+            return false;
         }
 
         if (addDiagnostic)
         {
             if (this.IsEmpty)
             {
-                if (this.Position > 0)
+                if (this.PreviousToken.Kind != TokenKind.Invalid)
                 {
-                    var r = this.list[this.Position - 1].Range;
+                    var r = this.PreviousToken.Range;
                     this.Diagnostic.Add(new(r.End, r.End), Hashed.Kimi.MissingExpectedToken, targetKind.ToText());
                 }
             }
-            else
+            else if (this.TryGetCurrentToken(out var token))
             {
-                this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToText());
+                this.Diagnostic.AddToken(token, Hashed.Kimi.TokenMismatch, targetKind.ToText());
             }
         }
 
@@ -151,17 +181,15 @@ public ref struct TokenReader
 
     public bool SkipUntil(TokenKind kind1, TokenKind kind2)
     {
-        while (this.Position < this.list.Count)
+        while (this.TryGetCurrentToken(out var token))
         {
-            var tokenKind = this.list[this.Position].Kind;
+            var tokenKind = token.Kind;
             if (tokenKind == kind1 || tokenKind == kind2)
             {
                 return true;
             }
-            else
-            {
-                this.Position++;
-            }
+
+            this.AdvanceOne();
         }
 
         return false;
@@ -170,10 +198,11 @@ public ref struct TokenReader
     public ReadOnlySpan<char> ReadIdentifier()
     {
         if (this.SkipCommentsAndHasMore() &&
-            this.list[this.Position].Kind == TokenKind.Identifier)
+            this.TryGetCurrentToken(out var token) &&
+            token.Kind == TokenKind.Identifier)
         {
-            var identifier = this.list[this.Position].Text.Span;
-            this.Position++;
+            var identifier = token.Text.Span;
+            this.AdvanceOne();
             return identifier;
         }
 
@@ -182,14 +211,13 @@ public ref struct TokenReader
 
     public bool TryConsumeIdentifier(ReadOnlySpan<char> name)
     {
-        if (this.SkipCommentsAndHasMore())
+        if (this.SkipCommentsAndHasMore() &&
+            this.TryGetCurrentToken(out var token) &&
+            token.Kind == TokenKind.Identifier &&
+            token.Text.Span.Equals(name, StringComparison.Ordinal))
         {
-            if (this.list[this.Position].Kind == TokenKind.Identifier &&
-                this.list[this.Position].Text.Span.Equals(name, StringComparison.Ordinal))
-            {
-                this.Position++;
-                return true;
-            }
+            this.AdvanceOne();
+            return true;
         }
 
         return false;
@@ -197,37 +225,37 @@ public ref struct TokenReader
 
     public bool MoveNext()
     {
-        while (this.Position < this.Count)
+        if (this.Position >= this.count)
         {
-            if (this.list[this.Position].Kind == TokenKind.SingleLineComment ||
-                this.list[this.Position].Kind == TokenKind.MultiLineComment)
-            {
-                this.Position++;
-                continue;
-            }
-
-            this.Position++;
-            return true;
+            return false;
         }
 
-        return false;
+        if (this.currentSpanIndex >= this.currentSpan.Length)
+        {
+            if (!this.MoveToNextNonEmptySpan())
+            {
+                return false;
+            }
+        }
+
+        this.AdvanceOne();
+        return true;
     }
 
     public SourceRange CurrentRange()
     {
-        if (this.Position < this.Count)
+        if (this.TryGetCurrentToken(out var token))
         {
-            return this.list[this.Position].Range;
+            return token.Range;
         }
-        else if (this.Position > 0)
+
+        if (this.PreviousToken.Kind != TokenKind.Invalid)
         {
-            var range = this.list[this.Position - 1].Range;
+            var range = this.PreviousToken.Range;
             return new(range.End, range.End);
         }
-        else
-        {
-            return default;
-        }
+
+        return default;
     }
 
     public void ReportUnexpectedToken(Token token)
@@ -235,17 +263,54 @@ public ref struct TokenReader
         this.Diagnostic.AddToken(token, Hashed.Kimi.UnmatchedToken, token.Kind.ToText());
     }
 
-    /*public bool Expect(TokenKind tokenKind)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryGetCurrentToken(out Token token)
     {
-        if (this.TryRead(out var token))
+        if (this.Position >= this.count)
         {
-            if (token.Kind == tokenKind)
+            token = default;
+            return false;
+        }
+
+        if (this.currentSpanIndex >= this.currentSpan.Length)
+        {
+            if (!this.MoveToNextNonEmptySpan())
             {
+                token = default;
+                return false;
+            }
+        }
+
+        token = this.currentSpan[this.currentSpanIndex];
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void AdvanceOne()
+    {
+        Debug.Assert(this.Position < this.count);
+        Debug.Assert(this.currentSpanIndex < this.currentSpan.Length);
+
+        this.PreviousToken = this.currentSpan[this.currentSpanIndex];
+
+        this.currentSpanIndex++;
+        this.Position++;
+    }
+
+    private bool MoveToNextNonEmptySpan()
+    {
+        while (this.sequence.TryGet(ref this.nextSegmentPosition, out var memory, advance: true))
+        {
+            if (!memory.IsEmpty)
+            {
+                this.currentSpan = memory.Span;
+                this.currentSpanIndex = 0;
                 return true;
             }
         }
 
-        this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToText());
+        this.currentSpan = default;
+        this.currentSpanIndex = 0;
         return false;
-    }*/
+    }
 }

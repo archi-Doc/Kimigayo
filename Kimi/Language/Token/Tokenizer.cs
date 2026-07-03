@@ -778,9 +778,8 @@ internal sealed class Tokenizer
         this.ClearState();
     }
 
-    public TokenSequenceBuilder ReadAll()
+    public TokenSequenceBuilder ReadAll(ref TokenSequenceBuilder builder)
     {
-        var builder = new TokenSequenceBuilder();
         var currentIndentLevel = 0;
         while (this.Read(ref currentIndentLevel, ref builder) > 0)
         {
@@ -797,6 +796,9 @@ internal sealed class Tokenizer
     /// invoking this tokenizer again.
     /// </summary>
     /// <param name="currentIndentLevel">The current logical indentation level. The value is updated as blocks are opened or closed.</param>
+    /// <param name="builder">
+    /// The token sequence builder that receives all tokens emitted during this read operation.
+    /// </param>
     /// <returns>The internal token buffer containing the tokens read for the next logical line.</returns>
     public int Read(ref int currentIndentLevel, ref TokenSequenceBuilder builder)
     {

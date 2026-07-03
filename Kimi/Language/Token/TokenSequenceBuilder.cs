@@ -36,6 +36,10 @@ public ref struct TokenSequenceBuilder
         this.builder = new(initialCapacity, clearArrayOnReturn);
     }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TokenSequenceBuilder"/> struct
+    /// with the default initial token capacity.
+    /// </summary>
     public TokenSequenceBuilder()
         : this(DefaultInitialCapacity)
     {
