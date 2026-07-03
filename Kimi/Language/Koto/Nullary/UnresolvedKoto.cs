@@ -6,14 +6,19 @@ namespace Kimigayo.Language;
 public partial class UnresolvedKoto : Koto
 {
     [Key(1)]
-    public string Unresolved { get; private set; }
+    public string Identifier { get; private set; }
 
     public UnresolvedKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Range)
     {
-        this.Unresolved = token.Text.ToString();
+        this.Identifier = token.Text.ToString();
     }
 
     public override string ToString()
-        => $"?{this.Unresolved}?";
+        => $"{this.Identifier}";
+
+    public override (string Text, Koto[]? Children) Dump()
+    {
+        return ($"{this.GetType().Name}({this.Identifier})", default);
+    }
 }

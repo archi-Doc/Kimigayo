@@ -25,6 +25,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="Generated\*" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Misc\Text\strings-en.tinyhand" />
     <EmbeddedResource Include="Misc\Text\strings-ja.tinyhand" />
   </ItemGroup>
@@ -39,7 +43,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Tinyhand" Version="0.140.2" />
+    <PackageReference Include="Tinyhand" Version="0.141.0" />
     <PackageReference Include="ValueLink" Version="0.116.0" />
   </ItemGroup>
 

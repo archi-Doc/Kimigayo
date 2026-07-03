@@ -1,15 +1,12 @@
 alias Kimi.Base
 
-var point = Point.New() {
-    x: 1,
-    y: 2 }
-var rect = Rect.New(point, point2)
-var list = List<i32>.New() { 1, 2, 3, }
+#Condition
+alias Kimi.Windows
 
+// comment
 #Condition(Os == "Windows")
-namespace Playground.A // a
-namespace Playground.B
+namespace Playground.A
 
-public const string Name = "Test"
-
-$WriteLine(Name)
+#Condition(Os.Version.Current == 1 and "text".Length > 0)
+var x = 1 + 2 * 3
+var y = (1 + 2) * 3

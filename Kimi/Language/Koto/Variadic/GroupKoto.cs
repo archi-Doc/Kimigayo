@@ -18,6 +18,9 @@ public partial class GroupKoto : Koto
     [Key(1)]
     public string Name { get; protected set; } = string.Empty;
 
+    [Key(2)]
+    protected List<Koto> KotoList { get; set; } = [];
+
     private readonly Utf16Hashtable<Koto> identifierToGroupKoto = new();
 
     #endregion
@@ -25,6 +28,17 @@ public partial class GroupKoto : Koto
     public GroupKoto(ref TokenReader reader, SourceRange range)
         : base(ref reader, range)
     {
+    }
+
+    internal GroupKoto(CompilationMetadata compilationMetadata)
+        : base(compilationMetadata)
+    {
+    }
+
+    public void Add(Koto koto)
+    {
+        this.KotoList.Add(koto);
+        koto.Parent = this;
     }
 
     public override string ToString()
@@ -68,8 +82,8 @@ public partial class GroupKoto : Koto
     {
         Func<string, Koto> factory = groupKind switch
         {
-            KotoKind.Group => static x => new GroupKoto(),
-            KotoKind.Namespace => static x => new NamespaceKoto(),
+            KotoKind.Group => static x => new GroupKoto(new CompilationMetadata(default!, default, default!)),
+            KotoKind.Namespace => static x => new NamespaceKoto(new CompilationMetadata(default!, default, default!)),
             _ => throw new InvalidOperationException(),
         };
 

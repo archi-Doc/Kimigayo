@@ -5,7 +5,7 @@ using Arc.Crypto;
 namespace Kimigayo.Diagnostics;
 
 public readonly record struct SourceRange : IComparable<SourceRange>
-{
+{// 8 + 8 = 16
     public SourcePosition Start { get; }
 
     public SourcePosition End { get; }

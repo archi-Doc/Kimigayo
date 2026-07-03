@@ -81,25 +81,50 @@ public partial class Project
         var targets = this.ProjectFile.Targets.ToArray();
         foreach (var x in targets)
         {
-            var compilation = new Compilation(this.kimiControl, this.KimiOptions, this.ProjectFile, this.ProjectName);
-            compilation.Prepare(x);
-            foreach (var y in this.kimiFiles)
-            {
-                try
-                {
-                    var st = File.ReadAllText(y);
-                    compilation.Parse(new(y, st));
-                }
-                catch
-                {
-                }
-            }
+            await this.Buildtarget(x).ConfigureAwait(false);
+        }
 
-            foreach (var y in this.additionalSource)
+        return true;
+    }
+
+    private async Task<bool> Buildtarget(string target)
+    {
+        // Create & Prepare Compilation
+        var compilation = new Compilation(this.kimiControl, this.KimiOptions, this.ProjectFile, this.ProjectName);
+        compilation.Prepare(target);
+
+        foreach (var y in this.kimiFiles)
+        {
+            try
             {
-                compilation.Parse(y);
+                var st = File.ReadAllText(y);
+                compilation.Parse(new(y, st));
+            }
+            catch
+            {
             }
         }
+
+        foreach (var y in this.additionalSource)
+        {
+            compilation.Parse(y);
+        }
+
+        // Resolve const & #Condition
+
+        // Prepare CodeContext
+
+        // Resolve
+
+        // Mods
+
+        // Validate
+
+        // Emit
+
+        // Compile
+
+        // Link
 
         return true;
     }

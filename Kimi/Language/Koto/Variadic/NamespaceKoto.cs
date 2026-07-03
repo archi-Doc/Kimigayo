@@ -5,17 +5,22 @@ using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
 [TinyhandObject]
-public sealed partial class RootKoto : GroupKoto
+public sealed partial class NamespaceKoto : GroupKoto
 {
     private readonly Utf16Hashtable<GroupKoto> namespaceToGroupNode = new();
 
-    public RootKoto(ref TokenReader reader, SourceRange range)
+    public NamespaceKoto(ref TokenReader reader, SourceRange range)
         : base(ref reader,  range)
     {
     }
 
+    internal NamespaceKoto(CompilationMetadata compilationMetadata)
+        : base(compilationMetadata)
+    {
+    }
+
     public override string ToString()
-        => $"Root: {this.Name}";
+        => $"Namespace: {this.Name}";
 
     public override void Parse(ref TokenReader reader)
     {
@@ -23,7 +28,7 @@ public sealed partial class RootKoto : GroupKoto
         {
             if (token.IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
-                reader.MoveNext();
+                reader.Advance();
                 var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
                 // var @namespace = this.GetOrAddGroup(qualifiedName);
                 // this.namespaceToGroupNode.TryAdd(qualifiedName, @namespace);

@@ -1,74 +1,95 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Kimigayo.Diagnostics;
-using Kimigayo.Language;
 
 namespace Kimigayo.Language;
 
 public ref struct TokenReader
 {
+    public const int MaxDepth = 10;
+
     #region FieldAndProperty
 
     public readonly DiagnosticCollection Diagnostic;
 
-    public readonly Kotonoha Kotonoha;
+    public readonly CodeContext CodeContext;
 
-    public readonly int SourceId;
+    private readonly ReadOnlySequence<Token> sequence;
+    private readonly int count;
 
-    private readonly IReadOnlyList<Token> list;
+    private SequencePosition nextSegmentPosition;
+    private ReadOnlySpan<Token> currentSpan;
+    private int currentSpanIndex;
+
+    public Token PreviousToken { get; private set; }
 
     public int Position { get; private set; }
 
-    public int Count => this.list.Count;
+    public int Depth { get; private set; }
 
-    public int Remaining => this.list.Count - this.Position;
+    public readonly int Count => this.count;
 
-    public bool IsEmpty => this.Position >= this.list.Count;
+    public readonly int Remaining => this.count - this.Position;
 
-    public TokenKind NextToken => this.Position < this.list.Count ? this.list[this.Position].Kind : TokenKind.Invalid;
+    public readonly bool IsEmpty => this.Position >= this.count;
+
+    public TokenKind CurrentTokenKind
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            return this.TryGetCurrentToken(out var token) ? token.Kind : TokenKind.Invalid;
+        }
+    }
 
     #endregion
 
-    public TokenReader(DiagnosticCollection diagnostic, IReadOnlyList<Token> tokens, Kotonoha kotonoha, int sourceId)
+    public TokenReader(DiagnosticCollection diagnostic, CodeContext codeContext, ReadOnlySequence<Token> tokenSequence)
     {
         this.Diagnostic = diagnostic;
-        this.Kotonoha = kotonoha;
-        this.SourceId = sourceId;
-        this.list = tokens;
+        this.CodeContext = codeContext;
+
+        this.sequence = tokenSequence;
+        this.count = checked((int)tokenSequence.Length);
+
+        this.Position = 0;
+        this.Depth = 0;
+
+        this.nextSegmentPosition = tokenSequence.Start;
+        this.currentSpan = default;
+        this.currentSpanIndex = 0;
+
+        this.PreviousToken = default;
+
+        this.MoveToNextNonEmptySpan();
     }
 
-    /// <summary>
-    /// Skips comment tokens and returns whether a non-comment token remains.
-    /// </summary>
-    /// <returns>
-    /// <see langword="true"/> if a non-comment token remains after skipping comments;
-    /// otherwise, <see langword="false"/> if the end of the token list was reached.
-    /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool SkipCommentsAndHasMore()
+    public void IncrementDepth()
     {
-        while (this.Position < this.Count)
+        if (this.Depth >= MaxDepth)
         {
-            var kind = this.list[this.Position].Kind;
-            if (kind == TokenKind.SingleLineComment ||
-                kind == TokenKind.MultiLineComment)
-            {
-                this.Position++;
-                continue;
-            }
-
-            return true;
+            throw new InvalidOperationException("The token depth has reached the maximum limit");
         }
 
-        return false;
+        this.Depth++;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecrementDepth()
+    {
+        this.Depth--;
+        Debug.Assert(this.Depth >= 0);
     }
 
     public bool TryRead(out Token token)
     {
-        if (this.SkipCommentsAndHasMore())
+        if (this.TryGetCurrentToken(out token))
         {
-            token = this.list[this.Position++];
+            this.AdvanceOne();
             return true;
         }
 
@@ -78,9 +99,8 @@ public ref struct TokenReader
 
     public bool TryPeek(out Token token)
     {
-        if (this.SkipCommentsAndHasMore())
+        if (this.TryGetCurrentToken(out token))
         {
-            token = this.list[this.Position];
             return true;
         }
 
@@ -88,94 +108,172 @@ public ref struct TokenReader
         return false;
     }
 
-    public bool TryConsume(TokenKind targetKind, bool addDiagnostic = true)
+    public bool TryConsume(TokenKind targetKind, out SourceRange range, bool addDiagnostic = true)
     {
-        if (this.SkipCommentsAndHasMore())
+        if (this.TryGetCurrentToken(out var token))
         {
-            if (this.list[this.Position].Kind == targetKind)
+            if (token.Kind == targetKind)
             {
-                this.Position++;
+                range = token.Range;
+                this.AdvanceOne();
                 return true;
             }
-            else
-            {
-                if (addDiagnostic)
-                {
-                    this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToText());
-                }
 
-                return false;
+            if (addDiagnostic)
+            {
+                this.Diagnostic.AddToken(token, Hashed.Kimi.TokenMismatch, targetKind.ToText());
             }
+
+            range = default;
+            return false;
         }
 
         if (addDiagnostic)
         {
-            this.Diagnostic.AddToken(this.list[this.Position], Hashed.Kimi.TokenMismatch, targetKind.ToText());
+            if (this.IsEmpty)
+            {
+                if (this.PreviousToken.Kind != TokenKind.Invalid)
+                {
+                    var r = this.PreviousToken.Range;
+                    this.Diagnostic.Add(new(r.End, r.End), Hashed.Kimi.MissingExpectedToken, targetKind.ToText());
+                }
+            }
         }
 
+        range = default;
         return false;
     }
 
-    public ReadOnlySpan<char> ReadIdentifier()
+    public bool SkipUntil(TokenKind kind1, TokenKind kind2)
     {
-        if (this.SkipCommentsAndHasMore() &&
-            this.list[this.Position].Kind == TokenKind.Identifier)
+        while (this.TryGetCurrentToken(out var token))
         {
-            var identifier = this.list[this.Position].Text.Span;
-            this.Position++;
-            return identifier;
+            var tokenKind = token.Kind;
+            if (tokenKind == kind1 || tokenKind == kind2)
+            {
+                return true;
+            }
+
+            this.AdvanceOne();
         }
 
-        return [];
+        return false;
     }
 
     public bool TryConsumeIdentifier(ReadOnlySpan<char> name)
     {
-        if (this.SkipCommentsAndHasMore())
+        if (this.TryGetCurrentToken(out var token) &&
+            token.Kind == TokenKind.Identifier &&
+            token.Text.Span.Equals(name, StringComparison.Ordinal))
         {
-            if (this.list[this.Position].Kind == TokenKind.Identifier &&
-                this.list[this.Position].Text.Span.Equals(name, StringComparison.Ordinal))
-            {
-                this.Position++;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    public bool MoveNext()
-    {
-        while (this.Position < this.Count)
-        {
-            if (this.list[this.Position].Kind == TokenKind.SingleLineComment ||
-                this.list[this.Position].Kind == TokenKind.MultiLineComment)
-            {
-                this.Position++;
-                continue;
-            }
-
-            this.Position++;
+            this.AdvanceOne();
             return true;
         }
 
         return false;
     }
 
+    public bool TryReadIdentifier(out Token token)
+    {
+        if (this.TryGetCurrentToken(out token) &&
+            token.Kind == TokenKind.Identifier)
+        {
+            this.AdvanceOne();
+            return true;
+        }
+
+        token = default;
+        return false;
+    }
+
+    public bool Advance()
+    {
+        if (this.Position >= this.count)
+        {
+            return false;
+        }
+
+        if (this.currentSpanIndex >= this.currentSpan.Length)
+        {
+            if (!this.MoveToNextNonEmptySpan())
+            {
+                return false;
+            }
+        }
+
+        this.AdvanceOne();
+        return true;
+    }
+
     public SourceRange CurrentRange()
     {
-        if (this.Position < this.Count)
+        if (this.TryGetCurrentToken(out var token))
         {
-            return this.list[this.Position].Range;
+            return token.Range;
         }
-        else if (this.Position > 0)
+
+        if (this.PreviousToken.Kind != TokenKind.Invalid)
         {
-            var range = this.list[this.Position - 1].Range;
+            var range = this.PreviousToken.Range;
             return new(range.End, range.End);
         }
-        else
+
+        return default;
+    }
+
+    public void ReportUnexpectedToken(Token token)
+    {
+        this.Diagnostic.AddToken(token, Hashed.Kimi.UnmatchedToken, token.Kind.ToText());
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryGetCurrentToken(out Token token)
+    {
+        if (this.Position >= this.count)
         {
-            return default;
+            token = default;
+            return false;
         }
+
+        if (this.currentSpanIndex >= this.currentSpan.Length)
+        {
+            if (!this.MoveToNextNonEmptySpan())
+            {
+                token = default;
+                return false;
+            }
+        }
+
+        token = this.currentSpan[this.currentSpanIndex];
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void AdvanceOne()
+    {
+        Debug.Assert(this.Position < this.count);
+        Debug.Assert(this.currentSpanIndex < this.currentSpan.Length);
+
+        this.PreviousToken = this.currentSpan[this.currentSpanIndex];
+
+        this.currentSpanIndex++;
+        this.Position++;
+    }
+
+    private bool MoveToNextNonEmptySpan()
+    {
+        while (this.sequence.TryGet(ref this.nextSegmentPosition, out var memory, advance: true))
+        {
+            if (!memory.IsEmpty)
+            {
+                this.currentSpan = memory.Span;
+                this.currentSpanIndex = 0;
+                return true;
+            }
+        }
+
+        this.currentSpan = default;
+        this.currentSpanIndex = 0;
+        return false;
     }
 }

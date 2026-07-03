@@ -35,6 +35,11 @@ public class Compilation
         this.ProjectName = projectName;
     }
 
+    public CodeContext CreateCodeContext(string[]? aliases = default)
+    {
+        return new(this);
+    }
+
     public bool Prepare(string target)
     {
         if (!TargetTripleParser.TryParse(target, out var targetTriple))

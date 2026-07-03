@@ -19,7 +19,7 @@ public record class DiagnosticCollection
         this.Url = url;
     }
 
-    public void AddToken(Token token, ulong diagnosticHash, object? obj = null)
+    public void AddToken(Token token, ulong diagnosticHash, object? obj = null, object? obj2 = null)
     {
         using (this.diagnostics.LockObject.EnterScope())
         {
@@ -35,9 +35,13 @@ public record class DiagnosticCollection
             {
                 message = HashedString.Get(diagnosticHash);
             }
-            else
+            else if (obj2 is null)
             {
                 message = HashedString.Get(diagnosticHash, obj);
+            }
+            else
+            {
+                message = HashedString.Get(diagnosticHash, obj, obj2);
             }
 
             var diagnostic = new Diagnostic(token.Range, severity, message);

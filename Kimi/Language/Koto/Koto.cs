@@ -10,6 +10,8 @@ namespace Kimigayo.Language;
 public enum KotoKind : byte
 {
     Unresolved,
+    Attribute,
+    Alias,
 
     // Group
     Namespace,
@@ -17,32 +19,24 @@ public enum KotoKind : byte
     Struct,
     Contract,
 
-    Comment,
-    Literal,
-
-    // Condition
-    ConditionUnresolved,
-    ConditionNegate,
-    ConditionEquals,
-    ConditionNotEquals,
-    ConditionAnd,
-    ConditionOr,
+    // Literal
+    NumericLiteral,
+    StringLiteral,
+    BoolLiteral,
+    I8Literal,
 }
 
 [TinyhandObject(ReservedKeyCount = 1)]
 [TinyhandUnion((int)KotoKind.Unresolved, typeof(UnresolvedKoto))]
+[TinyhandUnion((int)KotoKind.Alias, typeof(AliasKoto))]
+[TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
 
 [TinyhandUnion((int)KotoKind.Namespace, typeof(NamespaceKoto))]
 [TinyhandUnion((int)KotoKind.Group, typeof(GroupKoto))]
 
-[TinyhandUnion((int)KotoKind.Comment, typeof(CommentKoto))]
-[TinyhandUnion((int)KotoKind.Literal, typeof(LiteralKoto))]
-
-[TinyhandUnion((int)KotoKind.ConditionNegate, typeof(ConditionNegateKoto))]
-[TinyhandUnion((int)KotoKind.ConditionEquals, typeof(ConditionEqualsKoto))]
-[TinyhandUnion((int)KotoKind.ConditionNotEquals, typeof(ConditionNotEqualsKoto))]
-[TinyhandUnion((int)KotoKind.ConditionAnd, typeof(ConditionAndKoto))]
-[TinyhandUnion((int)KotoKind.ConditionOr, typeof(ConditionOrKoto))]
+[TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
+[TinyhandUnion((int)KotoKind.NumericLiteral, typeof(NumericLiteralKoto))]
+[TinyhandUnion((int)KotoKind.BoolLiteral, typeof(BoolLiteralKoto))]
 public abstract partial class Koto
 {
     [IgnoreMember]
@@ -60,12 +54,23 @@ public abstract partial class Koto
 
     public Koto(ref TokenReader reader, SourceRange range)
     {
-        this.CompilationMetadata = new(reader.Diagnostic, range, reader.Kotonoha, reader.SourceId);
+        this.CompilationMetadata = new(reader.Diagnostic, range, reader.CodeContext);
+        // this.Parent = parent;
+    }
+
+    internal Koto(CompilationMetadata compilationMetadata)
+    {
+        this.CompilationMetadata = compilationMetadata;
         // this.Parent = parent;
     }
 
     public virtual void Parse(ref TokenReader reader)
     {
+    }
+
+    public virtual (string Text, Koto[]? Children) Dump()
+    {
+        return (string.Empty, default);
     }
 
     public virtual Koto? ResolveIdentifier(ReadOnlySpan<char> identifier)
@@ -79,5 +84,10 @@ public abstract partial class Koto
         {
             this.CompilationMetadata.DiagnosticCollection.Add(this.CompilationMetadata.Range, diagnosticHash, obj);
         }
+    }
+
+    internal virtual bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        return false;
     }
 }

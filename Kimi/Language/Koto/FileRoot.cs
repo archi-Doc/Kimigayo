@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using Arc.Collections;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
@@ -18,7 +19,7 @@ public sealed class FileRoot
 
     public FileRoot(DiagnosticCollection diagnostic)
     {
-        this.rootGroup = new();
+        this.rootGroup = new(new CompilationMetadata(default!, default, default!));
         this.Diagnostic = diagnostic;
         this.SetNamespace(Constants.DefaultNamespace);
     }
@@ -31,23 +32,39 @@ public sealed class FileRoot
 
     public void Parse(ref TokenReader reader)
     {
-        if (reader.TryPeek(out var token))
+        /*while (!reader.IsEmpty)
+        {
+            var k = KotoParser.ParseExpression(ref reader);
+        }*/
+
+        // Top-level (alias, Attribute)
+        while (reader.TryPeek(out var token))
         {
             if (token.Kind == TokenKind.Sharp)
             {// #Attribute
-                var koto = AttributeKotoHelper.Parse(ref reader, this.CurrentGroup);
-                // var bin = TinyhandSerializer.Serialize(koto);
+                var koto = KotoParser.ParseAttribute(ref reader);
+                if (koto is not null)
+                {
+                    this.CurrentGroup.Add(koto);
+
+                    var sb = new StringBuilder();
+                    using var writer = new StringWriter(sb);
+                    KotoHelper.Dump(koto, writer);
+                    var st = sb.ToString();//
+                }
             }
             else if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
                 if (!this.allowTopLevelKeyword)
                 {
-                    goto UnexpectedTopLevelKeyword;
+                    // goto UnexpectedTopLevelKeyword;
                 }
 
-                reader.MoveNext();
-                var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
-                this.alias.Add(qualifiedName);
+                reader.Advance();
+                var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
+                var aliasKoto = new AliasKoto(ref reader, list);
+                this.CurrentGroup.Add(aliasKoto);
+                // this.alias.Add(qualifiedName);
             }
         }
 
@@ -55,7 +72,7 @@ public sealed class FileRoot
         this.CurrentGroup.Parse(ref reader);
         return;
 
-UnexpectedTopLevelKeyword:
-        this.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);
+/*UnexpectedTopLevelKeyword:
+        this.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);*/
     }
 }

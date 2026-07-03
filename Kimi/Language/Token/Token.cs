@@ -6,7 +6,7 @@ namespace Kimigayo.Language;
 
 [TinyhandObject]
 public readonly partial struct Token
-{// 1+1+16+4+4
+{// 1 + 1 + 16 + 16 -> 40
     public static readonly Token Invalid = default;
 
     [Key(0)]
@@ -48,8 +48,8 @@ public readonly partial struct Token
     {
         if (this.Kind == TokenKind.Identifier ||
             this.Kind == TokenKind.NumericLiteral ||
-            this.Kind == TokenKind.Literal ||
-            this.Kind == TokenKind.RawLiteral ||
+            this.Kind == TokenKind.StringLiteral ||
+            this.Kind == TokenKind.RawStringLiteral ||
             this.Kind == TokenKind.SingleLineComment ||
             this.Kind == TokenKind.MultiLineComment)
         {
