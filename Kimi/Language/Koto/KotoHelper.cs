@@ -36,6 +36,11 @@ public static class KotoHelper
         var flag = true;
         while (reader.TryRead(out var token))
         {
+            if (token.Kind == TokenKind.Separator)
+            {
+                break;
+            }
+
             if (flag)
             {// Identifier
                 flag = false;
@@ -46,6 +51,7 @@ public static class KotoHelper
                 else
                 {
                     reader.Diagnostic.AddToken(token, Hashed.Kimi.InvalidIdentifier, token.Text);
+                    break;
                 }
             }
             else
@@ -58,6 +64,7 @@ public static class KotoHelper
                 else
                 {
                     reader.Diagnostic.AddToken(token, Hashed.Kimi.UnexpectedToken, token);
+                    break;
                 }
             }
         }
