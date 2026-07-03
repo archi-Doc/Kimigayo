@@ -69,10 +69,6 @@ public partial class UnaryKoto : Koto
         operand.Parent = this;
     }
 
-    public UnaryKoto()
-    {
-    }
-
     public override string ToString()
         => $"Unary:{this.Operand.ToString()}";
 
