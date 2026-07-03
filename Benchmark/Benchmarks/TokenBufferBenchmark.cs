@@ -2,6 +2,7 @@
 
 using System.Buffers;
 using BenchmarkDotNet.Attributes;
+using Kimi.Language.Token;
 using Kimigayo.Language;
 
 namespace Benchmark;
@@ -106,6 +107,27 @@ public class TokenBufferBenchmark
             {
                 sum += (long)x.Kind;
             }
+        }
+
+        list.Dispose();
+
+        return sum;
+    }
+
+    [Benchmark]
+    public long PooledArray()
+    {
+        var list = new PooledArray<Token>(4096);
+        for (var i = 0; i < N; i++)
+        {
+            var token = new Token((TokenKind)(i & 7), default, default);
+            list.Add(token);
+        }
+
+        long sum = 0;
+        foreach (var x in list.AsSpan())
+        {
+            sum += (long)x.Kind;
         }
 
         list.Dispose();

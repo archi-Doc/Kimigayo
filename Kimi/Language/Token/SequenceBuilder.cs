@@ -12,10 +12,6 @@ public ref struct SequenceBuilder<T>
     public const int DefaultInitialCapacity = 256;
     public const int MaxChunkCapacity = 32 * 1024;
 
-    private const sbyte ClearModeDefault = 0;
-    private const sbyte ClearModeFalse = 1;
-    private const sbyte ClearModeTrue = 2;
-
     private T[]? currentArray;
     private int currentIndex;
 
@@ -27,9 +23,9 @@ public ref struct SequenceBuilder<T>
     private bool isFinalized;
     private ReadOnlySequence<T> sequence;
 
-    private sbyte clearArrayOnReturnMode;
+    private bool clearArrayOnReturn;
 
-    public SequenceBuilder(        int initialCapacity = DefaultInitialCapacity,        bool? clearArrayOnReturn = null)
+    public SequenceBuilder(int initialCapacity = DefaultInitialCapacity, bool? clearArrayOnReturn = null)
     {
         if (initialCapacity <= 0)
         {
@@ -47,22 +43,15 @@ public ref struct SequenceBuilder<T>
         this.isFinalized = false;
         this.sequence = ReadOnlySequence<T>.Empty;
 
-        this.clearArrayOnReturnMode = clearArrayOnReturn switch
+        this.clearArrayOnReturn = clearArrayOnReturn switch
         {
-            true => ClearModeTrue,
-            false => ClearModeFalse,
-            null => ClearModeDefault,
+            true => true,
+            false => false,
+            _ => RuntimeHelpers.IsReferenceOrContainsReferences<T>(),
         };
     }
 
     public long Length => this.length;
-
-    private bool ClearArrayOnReturn => this.clearArrayOnReturnMode switch
-    {
-        ClearModeTrue => true,
-        ClearModeFalse => false,
-        _ => RuntimeHelpers.IsReferenceOrContainsReferences<T>(),
-    };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Add(T value)
@@ -111,9 +100,7 @@ public ref struct SequenceBuilder<T>
         if (this.firstSegment is null)
         {
             var array = this.currentArray!;
-            this.sequence = new ReadOnlySequence<T>(
-                array.AsMemory(0, this.currentIndex));
-
+            this.sequence = new ReadOnlySequence<T>(array.AsMemory(0, this.currentIndex));
             return this.sequence;
         }
 
@@ -126,24 +113,16 @@ public ref struct SequenceBuilder<T>
 
         var first = this.firstSegment!;
         var last = this.lastSegment!;
-
-        this.sequence = new ReadOnlySequence<T>(
-            first,
-            0,
-            last,
-            last.Memory.Length);
-
+        this.sequence = new ReadOnlySequence<T>(first, 0, last, last.Memory.Length);
         return this.sequence;
     }
 
     public void Dispose()
     {
-        var clearArray = this.ClearArrayOnReturn;
-
         var array = this.currentArray;
         if (array is not null)
         {
-            ArrayPool<T>.Shared.Return(array, clearArray: clearArray);
+            ArrayPool<T>.Shared.Return(array, this.clearArrayOnReturn);
             this.currentArray = null;
         }
 
@@ -155,7 +134,7 @@ public ref struct SequenceBuilder<T>
 
             if (segmentArray is not null)
             {
-                ArrayPool<T>.Shared.Return(segmentArray, clearArray: clearArray);
+                ArrayPool<T>.Shared.Return(segmentArray, this.clearArrayOnReturn);
             }
 
             PooledSequenceSegmentPool.Return(segment);
@@ -280,7 +259,7 @@ public ref struct SequenceBuilder<T>
         }
     }
 
-    internal sealed class PooledSequenceSegment : ReadOnlySequenceSegment<T>
+    private sealed class PooledSequenceSegment : ReadOnlySequenceSegment<T>
     {
         internal T[]? Array;
         internal PooledSequenceSegment? PoolNext;

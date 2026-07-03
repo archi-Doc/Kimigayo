@@ -7,9 +7,11 @@ namespace Kimigayo.Language;
 
 public ref struct TokenSequenceBuilder
 {
+    public const int DefaultInitialCapacity = 256;
+
     private SequenceBuilder<Token> builder;
 
-    public TokenSequenceBuilder(int initialCapacity = 256, bool? clearArrayOnReturn = null)
+    public TokenSequenceBuilder(int initialCapacity = DefaultInitialCapacity, bool? clearArrayOnReturn = null)
     {
         this.builder = new(initialCapacity, clearArrayOnReturn);
     }
