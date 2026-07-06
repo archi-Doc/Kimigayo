@@ -69,6 +69,7 @@ public ref struct TokenReader
         this.MoveToNextNonEmptySpan();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushAttribute(AttributeKoto attributeKoto)
     {
         if (this.AttributeKoto is not null)
@@ -77,6 +78,14 @@ public ref struct TokenReader
         }
 
         this.AttributeKoto = attributeKoto;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public AttributeKoto? PopAttribute()
+    {
+        var attributeKoto = this.AttributeKoto;
+        this.AttributeKoto = default;
+        return attributeKoto;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

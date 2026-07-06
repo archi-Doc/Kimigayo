@@ -15,7 +15,7 @@ public sealed class FileRoot
     private readonly GroupKoto rootGroup;
     private readonly HashSet<string> alias = new();
     private readonly Utf16Hashtable<GroupKoto> namespaceToGroupNode = new();
-    private bool allowTopLevelKeyword = true;
+    // private bool allowTopLevelKeyword = true;
 
     public FileRoot(DiagnosticCollection diagnostic)
     {
@@ -43,22 +43,22 @@ public sealed class FileRoot
             if (token.Kind == TokenKind.At)
             {// @Attribute
                 var koto = KotoParser.ParseAttribute(ref reader);
-                if (koto is not null)
+                /*if (koto is not null)
                 {
                     this.CurrentGroup.Add(koto);
 
                     var sb = new StringBuilder();
                     using var writer = new StringWriter(sb);
                     KotoHelper.Dump(koto, writer);
-                    var st = sb.ToString();//
-                }
+                    var st = sb.ToString();
+                }*/
             }
             else if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
-                if (!this.allowTopLevelKeyword)
+                /*if (!this.allowTopLevelKeyword)
                 {
                     // goto UnexpectedTopLevelKeyword;
-                }
+                }*/
 
                 reader.Advance();
                 var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
@@ -66,9 +66,13 @@ public sealed class FileRoot
                 this.CurrentGroup.Add(aliasKoto);
                 // this.alias.Add(qualifiedName);
             }
+            else
+            {
+                break;
+            }
         }
 
-        this.allowTopLevelKeyword = false;
+        // this.allowTopLevelKeyword = false;
         this.CurrentGroup.Parse(ref reader);
         return;
 

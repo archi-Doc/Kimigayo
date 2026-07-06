@@ -208,6 +208,7 @@ ProcessPrefix:
 
     private static Koto ParsePrimaryExpression(ref TokenReader reader)
     {
+Loop:
         var tokenKind = reader.CurrentTokenKind;
         switch (tokenKind)
         {
@@ -245,6 +246,10 @@ ProcessPrefix:
 
                     return new ParenthesizedKoto(ref reader, new(token.Range.Start, range.End), expression);
                 }
+
+            case TokenKind.Separator:
+                reader.Advance();
+                goto Loop;
 
             default:
                 {

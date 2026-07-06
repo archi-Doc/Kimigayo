@@ -58,6 +58,7 @@ public abstract partial class Koto
     public Koto(ref TokenReader reader, SourceRange range)
     {
         this.CompilationMetadata = new(reader.Diagnostic, range, reader.CodeContext);
+        this.AttributeChain = reader.PopAttribute();
         // this.Parent = parent;
     }
 
