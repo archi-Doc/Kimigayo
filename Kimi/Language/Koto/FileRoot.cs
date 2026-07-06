@@ -38,11 +38,26 @@ public sealed class FileRoot
         }*/
 
         // Top-level (alias, Attribute)
+        /*while (true)
+        {
+            var expression = KotoParser.ParseExpression(ref reader);
+            if (expression is UnresolvedKoto unresolvedKoto &&
+                unresolvedKoto.Identifier == Constants.AliasKeyword)
+            {
+
+            }
+        }*/
+
         while (reader.TryPeek(out var token))
         {
-            if (token.Kind == TokenKind.At)
+            if (token.Kind == TokenKind.Separator)
+            {
+                reader.Advance();
+                continue;
+            }
+            else if (token.Kind == TokenKind.At)
             {// @Attribute
-                var koto = KotoParser.ParseAttribute(ref reader);
+                var koto = KotoParser.ConsumeAttribute(ref reader);
                 /*if (koto is not null)
                 {
                     this.CurrentGroup.Add(koto);

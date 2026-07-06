@@ -7,14 +7,35 @@ namespace Kimigayo.Language;
 
 public static class KotoParser
 {
-    public static AttributeKoto? ParseAttribute(ref TokenReader reader)
+    private const int PrefixBindingPower = 90;
+
+    public static AttributeKoto? ConsumeAttribute(ref TokenReader reader)
     {// #Attribute(...)
         /*if (!reader.TryConsume(TokenKind.Sharp, out var range))
         {
             return default;
         }*/
 
-        if (reader.CurrentTokenKind != TokenKind.At)
+        AttributeKoto? koto = default;
+        while (reader.CurrentTokenKind == TokenKind.At)
+        {
+            var previousAttribute = reader.PopAttribute();
+
+            reader.TryRead(out var token);
+            var operand = ParseExpression(ref reader, PrefixBindingPower);
+
+            if (previousAttribute is not null)
+            {
+                reader.PushAttribute(previousAttribute);
+            }
+
+            koto = new AttributeKoto(ref reader, token.Range, operand);
+            reader.PushAttribute(koto);
+        }
+
+        return koto;
+
+        /*if (reader.CurrentTokenKind != TokenKind.At)
         {
             return default;
         }
@@ -25,7 +46,7 @@ public static class KotoParser
             return default;
         }
 
-        return expression as AttributeKoto;
+        return expression as AttributeKoto;*/
 
         /*var attributeKoto = new AttributeKoto(ref reader, parent, ref reader);
 
@@ -264,16 +285,16 @@ Loop:
     private static int GetPrefixBindingPower(TokenKind kind)
         => kind switch
         {
-            TokenKind.Plus => 90,
-            TokenKind.Minus => 90,
-            TokenKind.Not => 90,
-            TokenKind.Tilde => 90,
-            TokenKind.PlusPlus => 90,
-            TokenKind.MinusMinus => 90,
-            TokenKind.Asterisk => 90,
-            TokenKind.Ampersand => 90,
-            TokenKind.At => 90,
-            TokenKind.Sharp => 90,
+            TokenKind.Plus => PrefixBindingPower,
+            TokenKind.Minus => PrefixBindingPower,
+            TokenKind.Not => PrefixBindingPower,
+            TokenKind.Tilde => PrefixBindingPower,
+            TokenKind.PlusPlus => PrefixBindingPower,
+            TokenKind.MinusMinus => PrefixBindingPower,
+            TokenKind.Asterisk => PrefixBindingPower,
+            TokenKind.Ampersand => PrefixBindingPower,
+            TokenKind.At => PrefixBindingPower,
+            TokenKind.Sharp => PrefixBindingPower,
             _ => 0,
         };
 

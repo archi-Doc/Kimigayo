@@ -10,7 +10,7 @@ public sealed partial class NamespaceKoto : GroupKoto
     private readonly Utf16Hashtable<GroupKoto> namespaceToGroupNode = new();
 
     public NamespaceKoto(ref TokenReader reader, SourceRange range)
-        : base(ref reader,  range)
+        : base(ref reader, range)
     {
     }
 
@@ -26,7 +26,10 @@ public sealed partial class NamespaceKoto : GroupKoto
     {
         if (reader.TryPeek(out var token))
         {
-            if (token.IsIdentifierToken(Constants.NamespaceKeyword))
+            if (token.IsIdentifierToken(Constants.AliasKeyword))
+            {// alias
+            }
+            else if (token.IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
                 reader.Advance();
                 var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
