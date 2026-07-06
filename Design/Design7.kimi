@@ -11,7 +11,7 @@ alias Kimi.Base.Linux
 namespace Kimi.LowInterface// Represents a group that specifies an identifier by its absolute position.
 
 var count: i32 = 0
-var name: String = "abc"
+let name: String = "abc"
 var items: Array<Int> = [1, 2, 3]
 var items2 = [1, 2, 3, ]
 var map: Map<String, Int> = ["A": 1, "B": 2]
@@ -23,13 +23,20 @@ var movedObj = &move obj
 &owner obj => var movedObj
 array.Add(movedObj) // movedObj => array
 
-
-public shared group Kernel32
-    public const LibraryName: string = "Kernel32.dll"
-    public shared Count = 1 // readonly
+#Description("Kernel32 helper")
+public namespace Kernel32 // shared (no instance)
+    public let libraryName: string = "Kernel32.dll"
+    public let count = 1 // readonly
     #LibraryImport(LibraryName) public GetStdHandle(nStdHandle: u32) => ptr
     #LibraryImport(LibraryName) WriteFile(hFile:ptr, lpBuffer:ptr, nNumberOfBytesToWrite:u32, lpNumberOfBytesWritten:ptr, lpOverlapped:ptr) => i32
-    #LibraryImport(LibraryName) ExitProcess(u32 uExitCode) => ()
+    #LibraryImport(LibraryName) ExitProcess(
+        #Description("Exit code")
+        u32 uExitCode
+        ) => ()
+
+    public TestMethod() =>
+        @Macro()
+        return
 
     #Layout(C)
     public struct OVERLAPPED
