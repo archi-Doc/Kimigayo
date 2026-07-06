@@ -88,6 +88,10 @@ public static class KotoParser
             var operand = ParseExpression(ref reader, bindingPower);
             // var koto = new UnaryKoto(ref reader, token, operand);
             var koto = KotoHelper.NewUnaryKoto(ref reader, token, operand);
+            if (koto is AttributeKoto attributeKoto)
+            {
+            }
+
             return koto;
         }
 

@@ -66,8 +66,6 @@ public sealed class FileRoot
                 this.CurrentGroup.Add(aliasKoto);
                 // this.alias.Add(qualifiedName);
             }
-
-            break;
         }
 
         this.allowTopLevelKeyword = false;
