@@ -30,6 +30,8 @@ public ref struct TokenReader
 
     public int Depth { get; private set; }
 
+    public AttributeKoto? AttributeKoto { get; private set; }
+
     public readonly int Count => this.count;
 
     public readonly int Remaining => this.count - this.Position;
@@ -65,6 +67,16 @@ public ref struct TokenReader
         this.PreviousToken = default;
 
         this.MoveToNextNonEmptySpan();
+    }
+
+    public void PushAttribute(AttributeKoto attributeKoto)
+    {
+        if (this.AttributeKoto is not null)
+        {
+            attributeKoto.AttributeChain = this.AttributeKoto;
+        }
+
+        this.AttributeKoto = attributeKoto;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

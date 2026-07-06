@@ -45,6 +45,9 @@ public abstract partial class Koto
     [IgnoreMember]
     public Koto? Parent { get; internal set; }
 
+    [IgnoreMember]
+    public AttributeKoto? AttributeChain { get; internal set; }
+
     [Key(0)]
     public ulong KotoId { get; internal set; }
     // public string? Description { get; private set; }

@@ -1,6 +1,6 @@
 alias Kimi.Base
 
-@Condition
+@Condition @Test
 alias Kimi.Windows
 
 // comment

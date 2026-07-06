@@ -80,6 +80,7 @@ public static class KotoParser
 
     private static Koto ParsePrefixExpression(ref TokenReader reader)
     {
+ProcessPrefix:
         var tokenKind = reader.CurrentTokenKind;
         var bindingPower = GetPrefixBindingPower(tokenKind);
         if (bindingPower > 0)
@@ -90,6 +91,8 @@ public static class KotoParser
             var koto = KotoHelper.NewUnaryKoto(ref reader, token, operand);
             if (koto is AttributeKoto attributeKoto)
             {
+                reader.PushAttribute(attributeKoto);
+                goto ProcessPrefix;
             }
 
             return koto;
