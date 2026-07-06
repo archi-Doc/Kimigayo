@@ -40,8 +40,8 @@ public sealed class FileRoot
         // Top-level (alias, Attribute)
         while (reader.TryPeek(out var token))
         {
-            if (token.Kind == TokenKind.Sharp)
-            {// #Attribute
+            if (token.Kind == TokenKind.At)
+            {// @Attribute
                 var koto = KotoParser.ParseAttribute(ref reader);
                 if (koto is not null)
                 {
@@ -66,6 +66,8 @@ public sealed class FileRoot
                 this.CurrentGroup.Add(aliasKoto);
                 // this.alias.Add(qualifiedName);
             }
+
+            break;
         }
 
         this.allowTopLevelKeyword = false;

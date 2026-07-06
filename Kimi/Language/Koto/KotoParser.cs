@@ -14,7 +14,7 @@ public static class KotoParser
             return default;
         }*/
 
-        if (reader.CurrentTokenKind != TokenKind.Sharp)
+        if (reader.CurrentTokenKind != TokenKind.At)
         {
             return default;
         }
@@ -260,6 +260,7 @@ public static class KotoParser
             TokenKind.MinusMinus => 90,
             TokenKind.Asterisk => 90,
             TokenKind.Ampersand => 90,
+            TokenKind.At => 90,
             TokenKind.Sharp => 90,
             _ => 0,
         };

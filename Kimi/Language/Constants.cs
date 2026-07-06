@@ -37,6 +37,7 @@ public static class Constants
     public const char OpenBracketChar = '[';
     public const char OpenParenthesisChar = '(';
     public const char SemicolonChar = ';';
+    public const char AtChar = '@';
     public const char SharpChar = '#';
     public const char SpaceChar = ' ';
     public const char TildeChar = '~';

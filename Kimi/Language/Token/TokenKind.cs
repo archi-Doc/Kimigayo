@@ -4,7 +4,10 @@ namespace Kimigayo.Language;
 
 /// <summary>
 /// Represents the lexical token kinds produced by the lexer.<br/>
-///  When adding a new TokenKind, remember to also add the corresponding descriptor to TokenHelper.TokenDescriptors.
+/// When adding a new TokenKind, remember to do the following:<br/>
+/// Add the corresponding descriptor to TokenHelper.TokenDescriptors.<br/>
+/// Add the necessary handling to Tokenizer.<br/>
+/// Add it to TokenHelper.Separator if necessary.
 /// </summary>
 public enum TokenKind : byte
 {
@@ -83,6 +86,7 @@ public enum TokenKind : byte
     // Reference, // &
 
     // Single token
+    At, // @
     Sharp, // #
     Comma, // ,
     OpenBracket, // [

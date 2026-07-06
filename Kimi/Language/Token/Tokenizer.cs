@@ -30,7 +30,7 @@ public static class TokenHelper
         '.', ',', ';', ':', '?',
         '+', '-', '*', '/', '%',
         '&', '|', '^', '!', '~',
-        '=', '<', '>', '#', '$',
+        '=', '<', '>', '#', '$', '@',
     ]);
 
     static TokenHelper()
@@ -106,6 +106,7 @@ public static class TokenHelper
         Set(TokenKind.MultiLineComment, false, string.Empty);
 
         // Single token
+        Set(TokenKind.At, false, "@");
         Set(TokenKind.Sharp, false, "#");
         Set(TokenKind.Comma, false, ",");
         Set(TokenKind.OpenBracket, false, "[");
@@ -403,8 +404,9 @@ public static class TokenHelper
         (tokenKind, groupingDepth) = c switch
         {
             Constants.DotChar => (TokenKind.Dot, 0),
-            Constants.CommaChar => (TokenKind.Comma, 0),
+            Constants.AtChar => (TokenKind.At, 0),
             Constants.SharpChar => (TokenKind.Sharp, 0),
+            Constants.CommaChar => (TokenKind.Comma, 0),
             Constants.OpenBracketChar => (TokenKind.OpenBracket, +1),
             Constants.CloseBracketChar => (TokenKind.CloseBracket, -1),
             Constants.OpenParenthesisChar => (TokenKind.OpenParenthesis, +1),
