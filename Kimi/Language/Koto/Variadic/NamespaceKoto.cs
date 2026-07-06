@@ -24,15 +24,20 @@ public sealed partial class NamespaceKoto : GroupKoto
 
     public override void Parse(ref TokenReader reader)
     {
+Loop:
         if (reader.TryPeek(out var token))
         {
             if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
+                reader.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);
             }
             else if (token.IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
                 reader.Advance();
                 var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
+
+                goto Loop;
+
                 // var @namespace = this.GetOrAddGroup(qualifiedName);
                 // this.namespaceToGroupNode.TryAdd(qualifiedName, @namespace);
 

@@ -15,7 +15,6 @@ public sealed class FileRoot
     private readonly GroupKoto rootGroup;
     private readonly HashSet<string> alias = new();
     private readonly Utf16Hashtable<GroupKoto> namespaceToGroupNode = new();
-    // private bool allowTopLevelKeyword = true;
 
     public FileRoot(DiagnosticCollection diagnostic)
     {
@@ -87,11 +86,7 @@ public sealed class FileRoot
             }
         }
 
-        // this.allowTopLevelKeyword = false;
         this.CurrentGroup.Parse(ref reader);
         return;
-
-/*UnexpectedTopLevelKeyword:
-        this.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);*/
     }
 }
