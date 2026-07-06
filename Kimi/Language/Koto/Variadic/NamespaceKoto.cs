@@ -14,7 +14,7 @@ public sealed partial class NamespaceKoto : GroupKoto
     {
     }
 
-    internal NamespaceKoto(CompilationMetadata compilationMetadata)
+    internal NamespaceKoto(FrontendMetadata compilationMetadata)
         : base(compilationMetadata)
     {
     }

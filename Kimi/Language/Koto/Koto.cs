@@ -40,7 +40,7 @@ public enum KotoKind : byte
 public abstract partial class Koto
 {
     [IgnoreMember]
-    public CompilationMetadata? CompilationMetadata { get; internal set; }
+    public FrontendMetadata? FrontendMetadata { get; internal set; }
 
     [IgnoreMember]
     public Koto? Parent { get; internal set; }
@@ -57,14 +57,14 @@ public abstract partial class Koto
 
     public Koto(ref TokenReader reader, SourceRange range)
     {
-        this.CompilationMetadata = new(reader.Diagnostic, range, reader.CodeContext);
+        this.FrontendMetadata = new(reader.Diagnostic, range, reader.CodeContext);
         this.AttributeChain = reader.PopAttribute();
         // this.Parent = parent;
     }
 
-    internal Koto(CompilationMetadata compilationMetadata)
+    internal Koto(FrontendMetadata compilationMetadata)
     {
-        this.CompilationMetadata = compilationMetadata;
+        this.FrontendMetadata = compilationMetadata;
         // this.Parent = parent;
     }
 
@@ -84,9 +84,9 @@ public abstract partial class Koto
 
     public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
     {
-        if (this.CompilationMetadata is not null)
+        if (this.FrontendMetadata is not null)
         {
-            this.CompilationMetadata.DiagnosticCollection.Add(this.CompilationMetadata.Range, diagnosticHash, obj);
+            this.FrontendMetadata.DiagnosticCollection.Add(this.FrontendMetadata.Range, diagnosticHash, obj);
         }
     }
 

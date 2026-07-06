@@ -30,7 +30,7 @@ public partial class GroupKoto : Koto
     {
     }
 
-    internal GroupKoto(CompilationMetadata compilationMetadata)
+    internal GroupKoto(FrontendMetadata compilationMetadata)
         : base(compilationMetadata)
     {
     }
@@ -82,8 +82,8 @@ public partial class GroupKoto : Koto
     {
         Func<string, Koto> factory = groupKind switch
         {
-            KotoKind.Group => static x => new GroupKoto(new CompilationMetadata(default!, default, default!)),
-            KotoKind.Namespace => static x => new NamespaceKoto(new CompilationMetadata(default!, default, default!)),
+            KotoKind.Group => static x => new GroupKoto(new FrontendMetadata(default!, default, default!)),
+            KotoKind.Namespace => static x => new NamespaceKoto(new FrontendMetadata(default!, default, default!)),
             _ => throw new InvalidOperationException(),
         };
 

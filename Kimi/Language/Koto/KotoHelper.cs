@@ -19,7 +19,7 @@ public static class KotoHelper
         {
             oldKoto.Parent = default;
             newKoto.Parent = parent;
-            newKoto.CompilationMetadata = oldKoto.CompilationMetadata;
+            newKoto.FrontendMetadata = oldKoto.FrontendMetadata;
             return true;
         }
 
