@@ -11,14 +11,20 @@ public static class KotoParser
 
     public static AttributeKoto? ConsumeAttribute(ref TokenReader reader)
     {// #Attribute(...)
-        /*if (!reader.TryConsume(TokenKind.Sharp, out var range))
-        {
-            return default;
-        }*/
-
         AttributeKoto? koto = default;
-        while (reader.CurrentTokenKind == TokenKind.At)
+        while (true)
         {
+            var tokenKind = reader.CurrentTokenKind;
+            if (tokenKind == TokenKind.Separator)
+            {
+                reader.Advance();
+                continue;
+            }
+            else if (tokenKind != TokenKind.At)
+            {
+                return koto;
+            }
+
             var previousAttribute = reader.PopAttribute();
 
             reader.TryRead(out var token);
@@ -32,45 +38,6 @@ public static class KotoParser
             koto = new AttributeKoto(ref reader, token.Range, operand);
             reader.PushAttribute(koto);
         }
-
-        return koto;
-
-        /*if (reader.CurrentTokenKind != TokenKind.At)
-        {
-            return default;
-        }
-
-        var expression = ParseExpression(ref reader);
-        if (expression is null)
-        {
-            return default;
-        }
-
-        return expression as AttributeKoto;*/
-
-        /*var attributeKoto = new AttributeKoto(ref reader, parent, ref reader);
-
-        if (!reader.TryConsume(TokenKind.OpenParenthesis, out range))
-        {
-            return default;
-        }
-
-        ParseArgumentList(ref reader);
-
-        var expression = ParseExpression(ref reader);
-        if (expression is null)
-        {
-            return default;
-        }
-
-        expression.Parent = parent;
-
-        if (!reader.TryConsume(TokenKind.CloseParenthesis, out range))
-        {
-            return default;
-        }
-
-        return expression;*/
     }
 
     public static Koto ParseExpression(ref TokenReader reader, int minBindingPower = 0)

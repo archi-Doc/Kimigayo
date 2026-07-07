@@ -27,11 +27,7 @@ public sealed partial class NamespaceKoto : GroupKoto
 Loop:
         if (reader.TryPeek(out var token))
         {
-            if (token.IsIdentifierToken(Constants.AliasKeyword))
-            {// alias
-                reader.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);
-            }
-            else if (token.IsIdentifierToken(Constants.NamespaceKeyword))
+            if (token.IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
                 reader.Advance();
                 var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
@@ -45,6 +41,6 @@ Loop:
             }
         }
 
-        base.Parse(ref reader);
+        this.ParseSingle(ref reader);
     }
 }

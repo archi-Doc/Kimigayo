@@ -31,22 +31,6 @@ public sealed class FileRoot
 
     public void Parse(ref TokenReader reader)
     {
-        /*while (!reader.IsEmpty)
-        {
-            var k = KotoParser.ParseExpression(ref reader);
-        }*/
-
-        // Top-level (alias, Attribute)
-        /*while (true)
-        {
-            var expression = KotoParser.ParseExpression(ref reader);
-            if (expression is UnresolvedKoto unresolvedKoto &&
-                unresolvedKoto.Identifier == Constants.AliasKeyword)
-            {
-
-            }
-        }*/
-
         while (reader.TryPeek(out var token))
         {
             if (token.Kind == TokenKind.Separator)
@@ -56,7 +40,7 @@ public sealed class FileRoot
             }
             else if (token.Kind == TokenKind.At)
             {// @Attribute
-                var koto = KotoParser.ConsumeAttribute(ref reader);
+                _ = KotoParser.ConsumeAttribute(ref reader);
                 /*if (koto is not null)
                 {
                     this.CurrentGroup.Add(koto);
@@ -81,12 +65,11 @@ public sealed class FileRoot
                 // this.alias.Add(qualifiedName);
             }
             else
-            {
+            {// Delegate processing to CurrentGroup because this token is not a top-level keyword.
                 break;
             }
         }
 
         this.CurrentGroup.Parse(ref reader);
-        return;
     }
 }

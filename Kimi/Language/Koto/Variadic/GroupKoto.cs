@@ -78,6 +78,21 @@ public partial class GroupKoto : Koto
         }
     }
 
+    protected void ParseSingle(ref TokenReader reader)
+    {
+        _ = KotoParser.ConsumeAttribute(ref reader);
+
+        if (!reader.TryRead(out var token))
+        {
+            return;
+        }
+
+        if (token.IsIdentifierToken(Constants.AliasKeyword))
+        {// alias
+            reader.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);
+        }
+    }
+
     private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, KotoKind groupKind)
     {
         Func<string, Koto> factory = groupKind switch
