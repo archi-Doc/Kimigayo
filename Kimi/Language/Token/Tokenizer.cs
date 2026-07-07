@@ -58,7 +58,6 @@ public static class TokenHelper
         Set(TokenKind.F64, true, "f64");
 
         // Keywords (Group)
-        Set(TokenKind.Const, true, "const");
         Set(TokenKind.Shared, true, "shared");
         Set(TokenKind.Public, true, "public");
         Set(TokenKind.Protected, true, "protected");
@@ -66,6 +65,7 @@ public static class TokenHelper
         Set(TokenKind.Internal, true, "internal");
         Set(TokenKind.ProtectedOrInternal, true, "protected_or_internal");
         Set(TokenKind.ProtectedAndInternal, true, "protected_and_internal");
+        Set(TokenKind.Let, true, "let");
         Set(TokenKind.Var, true, "var");
         Set(TokenKind.True, true, "true");
         Set(TokenKind.False, true, "false");
@@ -83,6 +83,7 @@ public static class TokenHelper
         Set(TokenKind.If, true, "if");
         Set(TokenKind.Else, true, "else");
         Set(TokenKind.Block, true, "block");
+        Set(TokenKind.As, true, "as");
         Set(TokenKind.Is, true, "is");
         Set(TokenKind.Not, true, "not");
         Set(TokenKind.And, true, "and");

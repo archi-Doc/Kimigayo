@@ -24,23 +24,26 @@ public sealed partial class NamespaceKoto : GroupKoto
 
     public override void Parse(ref TokenReader reader)
     {
-Loop:
-        if (reader.TryPeek(out var token))
+        while (true)
         {
+            _ = KotoParser.ConsumeAttribute(ref reader);
+            if (!reader.TryRead(out var token))
+            {
+                return;
+            }
+
             if (token.IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
-                reader.Advance();
                 var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
+                var @namespace = this.GetOrAddGroup(qualifiedName);
+                this.namespaceToGroupNode.TryAdd(qualifiedName, @namespace);
 
-                goto Loop;
+                this.RootNode.SetNamespace(qualifiedName);
 
-                // var @namespace = this.GetOrAddGroup(qualifiedName);
-                // this.namespaceToGroupNode.TryAdd(qualifiedName, @namespace);
-
-                //this.RootNode.SetNamespace(qualifiedName);
+                continue;
             }
-        }
 
-        this.ParseSingle(ref reader);
+            this.Parse(ref token, ref reader);
+        }
     }
 }

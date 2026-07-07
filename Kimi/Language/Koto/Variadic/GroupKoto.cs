@@ -78,15 +78,8 @@ public partial class GroupKoto : Koto
         }
     }
 
-    protected void ParseSingle(ref TokenReader reader)
+    protected void Parse(ref Token token, ref TokenReader reader)
     {
-        _ = KotoParser.ConsumeAttribute(ref reader);
-
-        if (!reader.TryRead(out var token))
-        {
-            return;
-        }
-
         if (token.IsIdentifierToken(Constants.AliasKeyword))
         {// alias
             reader.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);

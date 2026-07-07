@@ -286,6 +286,7 @@ Loop:
             TokenKind.LessThanEquals => (60, 61),
             TokenKind.GreaterThan => (60, 61),
             TokenKind.GreaterThanEquals => (60, 61),
+            TokenKind.As => (60, 61),
             TokenKind.Is => (60, 61),
 
             // Equality

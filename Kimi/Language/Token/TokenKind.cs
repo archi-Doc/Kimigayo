@@ -31,14 +31,14 @@ public enum TokenKind : byte
     F64,
 
     // Keywords (Group)
-    Const = 32,
-    Shared,
+    Shared = 32,
     Public,
     Protected,
     Private,
     Internal,
     ProtectedOrInternal,
     ProtectedAndInternal,
+    Let,
     Var,
     True,
     False,
@@ -57,6 +57,7 @@ public enum TokenKind : byte
     Else, // else
     Block, // block
     // EqualsGreaterThan, // =>
+    As, // as
     Is, // is
     Not, // not
     And, // and
@@ -70,9 +71,9 @@ public enum TokenKind : byte
 
     // Not keyword
     Identifier = 128,
+    Separator,
     StartBlock,
     EndBlock,
-    Separator,
     NumericLiteral, // 1.23d
     CharLiteral, // 'a'
     StringLiteral, // "text"
