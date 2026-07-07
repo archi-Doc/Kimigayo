@@ -68,8 +68,8 @@ public sealed class FileRoot
             {// Delegate processing to CurrentGroup because this token is not a top-level keyword.
                 break;
             }
-        }
 
-        this.CurrentGroup.Parse(ref reader);
+            this.CurrentGroup.Parse(ref reader);
+        }
     }
 }

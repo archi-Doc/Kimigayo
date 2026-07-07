@@ -35,12 +35,9 @@ public sealed partial class NamespaceKoto : GroupKoto
             if (token.IsIdentifierToken(Constants.NamespaceKeyword))
             {// namespace
                 var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
-                var @namespace = this.GetOrAddGroup(qualifiedName);
-                this.namespaceToGroupNode.TryAdd(qualifiedName, @namespace);
-
-                this.RootNode.SetNamespace(qualifiedName);
-
-                continue;
+                var fileRoot = new FileRoot(default!);
+                fileRoot.SetNamespace(qualifiedName);
+                return;
             }
 
             this.Parse(ref token, ref reader);
