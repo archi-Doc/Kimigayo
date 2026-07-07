@@ -1,5 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Arc.Collections;
 
@@ -25,6 +27,8 @@ public class Compilation
 
     private Kotonoha? projectKotonoha;
 
+    private UInt32Hashtable<Kotonoha> kotonohaIdToKotonoha = new();
+
     #endregion
 
     public Compilation(KimiControl kimiControl, KimiOptions kimiOptions, ProjectFile projectFile, string projectName)
@@ -35,9 +39,9 @@ public class Compilation
         this.ProjectName = projectName;
     }
 
-    public CodeContext CreateCodeContext(string[]? aliases = default)
+    public CodeContext CreateCodeContext(Kotonoha kotonoha, string[]? aliases = default)
     {
-        return new(this);
+        return new(this, kotonoha);
     }
 
     public bool Prepare(string target)
@@ -65,5 +69,23 @@ public class Compilation
         }
 
         this.projectKotonoha.AddSource(this, pathAndSource);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryGetKotonoha(uint kotonohaId, [MaybeNullWhen(false)] out Kotonoha kotonoha)
+    {
+        return this.kotonohaIdToKotonoha.TryGetValue(kotonohaId, out kotonoha);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryGetKoto(ulong kotoId, [MaybeNullWhen(false)] out Koto koto)
+    {
+        if (this.kotonohaIdToKotonoha.TryGetValue((uint)(kotoId >> 32), out var kotonoha))
+        {
+            return kotonoha.TryGetKoto(kotoId, out koto);
+        }
+
+        koto = default;
+        return false;
     }
 }

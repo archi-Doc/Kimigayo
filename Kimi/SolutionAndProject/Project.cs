@@ -110,7 +110,7 @@ public partial class Project
             compilation.Parse(y);
         }
 
-        // Resolve const & #Condition
+        // Resolve shared let & @Attribute
 
         // Prepare CodeContext
 

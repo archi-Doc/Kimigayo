@@ -44,7 +44,7 @@ public partial class GroupKoto : Koto
     public override string ToString()
         => $"Group: {this.Name}";
 
-    public override void Parse(ref TokenReader reader)
+    public void Parse(ref TokenReader reader)
     {
         while (reader.TryRead(out var token))
         {

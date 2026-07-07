@@ -68,9 +68,9 @@ public abstract partial class Koto
         // this.Parent = parent;
     }
 
-    public virtual void Parse(ref TokenReader reader)
+    /*public virtual void Parse(ref TokenReader reader)
     {
-    }
+    }*/
 
     public virtual (string Text, Koto[]? Children) Dump()
     {

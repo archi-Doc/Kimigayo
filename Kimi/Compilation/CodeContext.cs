@@ -6,8 +6,11 @@ public class CodeContext
 {
     public Compilation Compilation { get; }
 
-    internal CodeContext(Compilation compilation)
+    public Kotonoha Kotonoha { get; }
+
+    internal CodeContext(Compilation compilation, Kotonoha kotonoha)
     {
         this.Compilation = compilation;
+        this.Kotonoha = kotonoha;
     }
 }

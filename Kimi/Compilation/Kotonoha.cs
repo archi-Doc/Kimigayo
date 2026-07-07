@@ -5,7 +5,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Arc.Collections;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Kimigayo.Language;
 
@@ -60,13 +59,12 @@ public sealed partial class Kotonoha
         var diagnostic = compilation.KimiControl.GetOrAddFileDiagnostic(pathAndSource.Path);
         var tokenizer = new Tokenizer(diagnostic);
         tokenizer.Initialize(pathAndSource.Source.AsMemory(), 0, 0);
-        var fileRoot = new FileRoot(diagnostic);
 
         var kimiId = this.SourceList.Count;
-        var kimiFile = new KimiSource(pathAndSource.Path, [], default);
-        this.SourceList.Add(kimiFile);
+        var kimiSource = new KimiSource(pathAndSource.Path, [], default);
+        this.SourceList.Add(kimiSource);
 
-        var codeContext = compilation.CreateCodeContext();
+        var codeContext = compilation.CreateCodeContext(this);
 
         // Tokenize
         var tokenBuilder = new TokenSequenceBuilder();
@@ -81,6 +79,7 @@ public sealed partial class Kotonoha
 
             // Token to Koto
             var tokenReader = new TokenReader(diagnostic, codeContext, tokenSequence);
+            codeContext
             fileRoot.Parse(ref tokenReader);
         }
         finally

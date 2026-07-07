@@ -22,7 +22,7 @@ public sealed partial class NamespaceKoto : GroupKoto
     public override string ToString()
         => $"Namespace: {this.Name}";
 
-    public override void Parse(ref TokenReader reader)
+    public void Parse(ref TokenReader reader)
     {
         while (true)
         {
