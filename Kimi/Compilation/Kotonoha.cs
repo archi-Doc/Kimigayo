@@ -23,8 +23,8 @@ public sealed partial class Kotonoha
     [Key(3)]
     public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
 
-    [Key(4)]
-    public List<KimiSource> SourceList { get; private set; } = [];
+    // [Key(4)]
+    // public List<KimiSource> SourceList { get; private set; } = [];
 
     [IgnoreMember]
     private Koto[] kotoArray = [];
@@ -60,9 +60,9 @@ public sealed partial class Kotonoha
         var tokenizer = new Tokenizer(diagnostic);
         tokenizer.Initialize(pathAndSource.Source.AsMemory(), 0, 0);
 
-        var kimiId = this.SourceList.Count;
+        /*var kimiId = this.SourceList.Count;
         var kimiSource = new KimiSource(pathAndSource.Path, [], default);
-        this.SourceList.Add(kimiSource);
+        this.SourceList.Add(kimiSource);*/
 
         var codeContext = compilation.CreateCodeContext(this);
 
@@ -79,8 +79,8 @@ public sealed partial class Kotonoha
 
             // Token to Koto
             var tokenReader = new TokenReader(diagnostic, codeContext, tokenSequence);
-            codeContext
-            fileRoot.Parse(ref tokenReader);
+            // codeContext
+            // fileRoot.Parse(ref tokenReader);
         }
         finally
         {

@@ -4,7 +4,7 @@ using Arc.Collections;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
 
-[TinyhandObject]
+/*[TinyhandObject]
 public sealed partial class RootKoto : GroupKoto
 {
     private readonly Utf16Hashtable<GroupKoto> namespaceToGroupNode = new();
@@ -34,4 +34,4 @@ public sealed partial class RootKoto : GroupKoto
 
         base.Parse(ref reader);
     }
-}
+}*/
