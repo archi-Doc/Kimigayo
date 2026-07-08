@@ -60,11 +60,10 @@ public abstract partial class Koto
         // this.Parent = parent;
     }
 
-    internal Koto(FrontendMetadata compilationMetadata)
+    /*internal Koto(FrontendMetadata compilationMetadata)
     {
         this.FrontendMetadata = compilationMetadata;
-        // this.Parent = parent;
-    }
+    }*/
 
     /*public virtual void Parse(ref TokenReader reader)
     {

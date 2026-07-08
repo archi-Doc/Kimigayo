@@ -50,10 +50,10 @@ public abstract partial class IdentifiableKoto : Koto
     {
     }
 
-    internal IdentifiableKoto(FrontendMetadata compilationMetadata)
+    /*internal IdentifiableKoto(FrontendMetadata compilationMetadata)
         : base(compilationMetadata)
     {
-    }
+    }*/
 }
 
 /// <summary>
@@ -79,10 +79,10 @@ public partial class GroupKoto : IdentifiableKoto
     {
     }
 
-    internal GroupKoto(FrontendMetadata compilationMetadata)
+    /*internal GroupKoto(FrontendMetadata compilationMetadata)
         : base(compilationMetadata)
     {
-    }
+    }*/
 
     public override ReadOnlySpan<char> GetIdentifier()
         => this.Name;
