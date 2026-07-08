@@ -13,6 +13,10 @@ namespace Kimi.LowInterface// Represents a group that specifies an identifier by
 public contract @Equatable
     static function == (left: Self, right: Self) => Bool
 
+#Attribute() var x = 1
+$Macro
+@Contract
+
 public contract @Comparable
     static func < (left: Self, right: Self) => bool
 
