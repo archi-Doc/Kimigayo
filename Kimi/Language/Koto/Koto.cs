@@ -26,7 +26,7 @@ public enum KotoKind : byte
     I8Literal,
 }
 
-[TinyhandObject(ReservedKeyCount = 1)]
+[TinyhandObject(ReservedKeyCount = 0)]
 [TinyhandUnion((int)KotoKind.Unresolved, typeof(UnresolvedKoto))]
 [TinyhandUnion((int)KotoKind.Alias, typeof(AliasKoto))]
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
@@ -48,8 +48,6 @@ public abstract partial class Koto
     [IgnoreMember]
     public AttributeKoto? AttributeChain { get; internal set; }
 
-    [Key(0)]
-    public ulong KotoId { get; internal set; }
     // public string? Description { get; private set; }
 
     [MemberNotNullWhen(false, nameof(Parent))]

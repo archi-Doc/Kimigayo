@@ -7,11 +7,60 @@ using Kimigayo.Language;
 
 namespace Kimigayo.Language;
 
+[TinyhandObject(ReservedKeyCount = 1)]
+public abstract partial class IdentifiableKoto : Koto
+{
+    [Key(0)]
+    public ulong KotoId
+    {
+        get
+        {
+            if (field == 0)
+            {
+                var hash = XxHash3Slim.Hash64(this.GetIdentifier());
+
+                var parent = this.Parent;
+                while (parent is not null)
+                {
+                    if (parent is IdentifiableKoto identifiableKoto)
+                    {
+                        hash = XxHash3Slim.Combine(identifiableKoto.KotoId, hash);
+                    }
+
+                    parent = parent.Parent;
+                }
+
+                field = hash;
+
+            }
+
+            return field;
+        }
+
+        protected set
+        {
+            field = value;
+        }
+    }
+
+    public abstract ReadOnlySpan<char> GetIdentifier();
+
+    public IdentifiableKoto(ref TokenReader reader, SourceRange range)
+        : base(ref reader, range)
+    {
+    }
+
+    internal IdentifiableKoto(FrontendMetadata compilationMetadata)
+        : base(compilationMetadata)
+    {
+    }
+}
+
 /// <summary>
 /// group, struct, enum.
 /// </summary>
 [TinyhandObject]
-public partial class GroupKoto : Koto
+public partial class GroupKoto : IdentifiableKoto
 {
     #region FieldAndProperty
 
@@ -34,6 +83,9 @@ public partial class GroupKoto : Koto
         : base(compilationMetadata)
     {
     }
+
+    public override ReadOnlySpan<char> GetIdentifier()
+        => this.Name;
 
     public void Add(Koto koto)
     {
