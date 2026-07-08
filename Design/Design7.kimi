@@ -10,6 +10,12 @@ alias Kimi.Base.Linux
 
 namespace Kimi.LowInterface// Represents a group that specifies an identifier by its absolute position.
 
+public contract @Equatable
+    static function == (left: Self, right: Self) => Bool
+
+public contract @Comparable
+    static func < (left: Self, right: Self) => bool
+
 var count: i32 = 0
 let name: String = "abc"
 var items: Array<Int> = [1, 2, 3]
