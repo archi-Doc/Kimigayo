@@ -25,7 +25,7 @@ public class Compilation
 
     public KotonohaIdentifier[] KotonohaArray { get; private set; } = [];
 
-    private Kotonoha? projectKotonoha;
+    public Kotonoha? ProjectKotonoha { get; private set; }
 
     private UInt32Hashtable<Kotonoha> kotonohaIdToKotonoha = new();
 
@@ -44,6 +44,7 @@ public class Compilation
         return new(this, kotonoha);
     }
 
+    [MemberNotNullWhen(true, nameof(ProjectKotonoha))]
     public bool Prepare(string target)
     {
         if (!TargetTripleParser.TryParse(target, out var targetTriple))
@@ -56,19 +57,9 @@ public class Compilation
 
         // Prepare Kotonoha
 
-        this.projectKotonoha = new(this.ProjectName, string.Empty);
+        this.ProjectKotonoha = new(this.ProjectName, string.Empty);
 
         return true;
-    }
-
-    public void Parse(PathAndSource pathAndSource)
-    {
-        if (this.projectKotonoha is null)
-        {
-            return;
-        }
-
-        this.projectKotonoha.AddSource(this, pathAndSource);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -91,14 +91,19 @@ public partial class Project
     {
         // Create & Prepare Compilation
         var compilation = new Compilation(this.kimiControl, this.KimiOptions, this.ProjectFile, this.ProjectName);
-        compilation.Prepare(target);
+        if (!compilation.Prepare(target))
+        {
+            return false;
+        }
+
+        var projectKotonoha = compilation.ProjectKotonoha;
 
         foreach (var y in this.kimiFiles)
         {
             try
             {
                 var st = File.ReadAllText(y);
-                compilation.Parse(new(y, st));
+                projectKotonoha.AddSource(compilation, new(y, st));
             }
             catch
             {
@@ -107,7 +112,7 @@ public partial class Project
 
         foreach (var y in this.additionalSource)
         {
-            compilation.Parse(y);
+            projectKotonoha.AddSource(compilation, y);
         }
 
         // Resolve shared let & @Attribute

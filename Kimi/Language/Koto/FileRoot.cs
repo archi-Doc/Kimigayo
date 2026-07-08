@@ -53,11 +53,6 @@ public sealed class FileRoot
             }
             else if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
-                /*if (!this.allowTopLevelKeyword)
-                {
-                    // goto UnexpectedTopLevelKeyword;
-                }*/
-
                 reader.Advance();
                 var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
                 var aliasKoto = new AliasKoto(ref reader, list);

@@ -79,12 +79,57 @@ public sealed partial class Kotonoha
 
             // Token to Koto
             var tokenReader = new TokenReader(diagnostic, codeContext, tokenSequence);
-            // codeContext
+            this.Parse(ref tokenReader);
+            compilation.Parse(ref tokenReader);
             // fileRoot.Parse(ref tokenReader);
         }
         finally
         {
             tokenBuilder.Dispose();
+        }
+    }
+
+    private void Parse(ref TokenReader reader)
+    {
+        while (reader.TryPeek(out var token))
+        {
+            if (token.Kind == TokenKind.Separator)
+            {
+                reader.Advance();
+                continue;
+            }
+            else if (token.Kind == TokenKind.Sharp)
+            {// @Attribute
+                _ = KotoParser.ConsumeAttribute(ref reader);
+                /*if (koto is not null)
+                {
+                    this.CurrentGroup.Add(koto);
+
+                    var sb = new StringBuilder();
+                    using var writer = new StringWriter(sb);
+                    KotoHelper.Dump(koto, writer);
+                    var st = sb.ToString();
+                }*/
+            }
+            else if (token.IsIdentifierToken(Constants.AliasKeyword))
+            {// alias
+                /*if (!this.allowTopLevelKeyword)
+                {
+                    // goto UnexpectedTopLevelKeyword;
+                }*/
+
+                reader.Advance();
+                var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
+                var aliasKoto = new AliasKoto(ref reader, list);
+                this.CurrentGroup.Add(aliasKoto);
+                // this.alias.Add(qualifiedName);
+            }
+            else
+            {// Delegate processing to CurrentGroup because this token is not a top-level keyword.
+                break;
+            }
+
+            this.CurrentGroup.Parse(ref reader);
         }
     }
 
