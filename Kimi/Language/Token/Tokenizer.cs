@@ -107,8 +107,9 @@ public static class TokenHelper
         Set(TokenKind.MultiLineComment, false, string.Empty);
 
         // Single token
-        Set(TokenKind.At, false, "@");
         Set(TokenKind.Sharp, false, "#");
+        Set(TokenKind.Dollar, false, "$");
+        Set(TokenKind.At, false, "@");
         Set(TokenKind.Comma, false, ",");
         Set(TokenKind.OpenBracket, false, "[");
         Set(TokenKind.CloseBracket, false, "]");
@@ -118,7 +119,6 @@ public static class TokenHelper
         Set(TokenKind.CloseBrace, false, "}");
         Set(TokenKind.Colon, false, ":");
         Set(TokenKind.Semicolon, false, ";");
-        Set(TokenKind.Dollar, false, "$");
         Set(TokenKind.Tilde, false, "~");
         Set(TokenKind.Question, false, "?");
 
@@ -404,9 +404,12 @@ public static class TokenHelper
     {
         (tokenKind, groupingDepth) = c switch
         {
-            Constants.DotChar => (TokenKind.Dot, 0),
-            Constants.AtChar => (TokenKind.At, 0),
             Constants.SharpChar => (TokenKind.Sharp, 0),
+            Constants.DollarChar => (TokenKind.Dollar, 0),
+            Constants.AmpersandChar => (TokenKind.Ampersand, 0),
+            Constants.AsteriskChar => (TokenKind.Asterisk, 0),
+            Constants.AtChar => (TokenKind.At, 0),
+            Constants.DotChar => (TokenKind.Dot, 0),
             Constants.CommaChar => (TokenKind.Comma, 0),
             Constants.OpenBracketChar => (TokenKind.OpenBracket, +1),
             Constants.CloseBracketChar => (TokenKind.CloseBracket, -1),
@@ -416,10 +419,7 @@ public static class TokenHelper
             Constants.CloseBraceChar => (TokenKind.CloseBrace, -1),
             Constants.ColonChar => (TokenKind.Colon, 0),
             Constants.SemicolonChar => (TokenKind.Semicolon, 0),
-            Constants.DollarChar => (TokenKind.Dollar, 0),
             Constants.TildeChar => (TokenKind.Tilde, 0),
-            Constants.AmpersandChar => (TokenKind.Ampersand, 0),
-            Constants.AsteriskChar => (TokenKind.Asterisk, 0),
             Constants.BarChar => (TokenKind.Bar, 0),
             Constants.CaretChar => (TokenKind.Caret, 0),
             Constants.EqualsChar => (TokenKind.Equals, 0),

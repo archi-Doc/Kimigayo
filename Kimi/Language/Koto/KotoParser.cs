@@ -20,7 +20,7 @@ public static class KotoParser
                 reader.Advance();
                 continue;
             }
-            else if (tokenKind != TokenKind.At)
+            else if (tokenKind != TokenKind.Sharp)
             {
                 return koto;
             }
@@ -252,16 +252,17 @@ Loop:
     private static int GetPrefixBindingPower(TokenKind kind)
         => kind switch
         {
+            TokenKind.Sharp => PrefixBindingPower,
+            TokenKind.Dollar => PrefixBindingPower,
+            TokenKind.Ampersand => PrefixBindingPower,
+            TokenKind.Asterisk => PrefixBindingPower,
+            TokenKind.At => PrefixBindingPower,
             TokenKind.Plus => PrefixBindingPower,
             TokenKind.Minus => PrefixBindingPower,
             TokenKind.Not => PrefixBindingPower,
             TokenKind.Tilde => PrefixBindingPower,
             TokenKind.PlusPlus => PrefixBindingPower,
             TokenKind.MinusMinus => PrefixBindingPower,
-            TokenKind.Asterisk => PrefixBindingPower,
-            TokenKind.Ampersand => PrefixBindingPower,
-            TokenKind.At => PrefixBindingPower,
-            TokenKind.Sharp => PrefixBindingPower,
             _ => 0,
         };
 

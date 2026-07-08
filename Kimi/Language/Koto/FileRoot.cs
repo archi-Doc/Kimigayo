@@ -38,7 +38,7 @@ public sealed class FileRoot
                 reader.Advance();
                 continue;
             }
-            else if (token.Kind == TokenKind.At)
+            else if (token.Kind == TokenKind.Sharp)
             {// @Attribute
                 _ = KotoParser.ConsumeAttribute(ref reader);
                 /*if (koto is not null)

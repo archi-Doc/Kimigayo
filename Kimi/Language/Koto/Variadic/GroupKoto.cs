@@ -48,7 +48,7 @@ public partial class GroupKoto : Koto
     {
         while (reader.TryRead(out var token))
         {
-            if (token.Kind == TokenKind.At)
+            if (token.Kind == TokenKind.Sharp)
             {// #Attribute
             }
         }
