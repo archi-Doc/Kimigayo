@@ -31,7 +31,8 @@ public sealed partial class Kotonoha
     private readonly Utf16Hashtable<GroupKoto> qualifiedNameToGroupKoto = new();
 
     [IgnoreMember]
-    private Koto[] kotoArray = [];
+    private readonly UInt64Hashtable<Koto> kotoIdToKoto = new();
+    // private Koto[] kotoArray = [];
 
     public Kotonoha(string name, string url)
     {
@@ -44,9 +45,11 @@ public sealed partial class Kotonoha
         => $"Kotonoha: {this.Name}";
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryGetKoto(ulong id, [MaybeNullWhen(false)] out Koto koto)
+    public bool TryGetKoto(ulong kotoId, [MaybeNullWhen(false)] out Koto koto)
     {
-        var kotoId = (uint)id;
+        return this.kotoIdToKoto.TryGetValue(kotoId, out koto);
+
+        /*var kotoId = (uint)id;
         if (this.Id != (uint)(id >> 32) ||
             kotoId >= this.kotoArray.Length)
         {
@@ -55,7 +58,7 @@ public sealed partial class Kotonoha
         }
 
         koto = this.kotoArray[kotoId];
-        return true;
+        return true;*/
     }
 
     public void AddSource(Compilation compilation, PathAndSource pathAndSource)

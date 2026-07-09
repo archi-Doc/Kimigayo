@@ -69,9 +69,9 @@ public class Compilation
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryGetKoto(ulong kotoId, [MaybeNullWhen(false)] out Koto koto)
+    public bool TryGetKoto(uint kotonohaId, ulong kotoId, [MaybeNullWhen(false)] out Koto koto)
     {
-        if (this.kotonohaIdToKotonoha.TryGetValue((uint)(kotoId >> 32), out var kotonoha))
+        if (this.kotonohaIdToKotonoha.TryGetValue(kotonohaId, out var kotonoha))
         {
             return kotonoha.TryGetKoto(kotoId, out koto);
         }
