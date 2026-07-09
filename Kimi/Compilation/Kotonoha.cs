@@ -80,8 +80,6 @@ public sealed partial class Kotonoha
             // Token to Koto
             var tokenReader = new TokenReader(diagnostic, codeContext, tokenSequence);
             this.Parse(ref tokenReader);
-            compilation.Parse(ref tokenReader);
-            // fileRoot.Parse(ref tokenReader);
         }
         finally
         {

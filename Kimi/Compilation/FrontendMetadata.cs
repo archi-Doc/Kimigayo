@@ -4,4 +4,4 @@ using Kimigayo.Language;
 
 namespace Kimigayo.Diagnostics;
 
-public sealed record class FrontendMetadata(DiagnosticCollection DiagnosticCollection, SourceRange Range, CodeContext codeContext);
+// public sealed record class FrontendMetadata(DiagnosticCollection DiagnosticCollection, SourceRange Range, CodeContext codeContext);

@@ -39,23 +39,38 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.BoolLiteral, typeof(BoolLiteralKoto))]
 public abstract partial class Koto
 {
-    [IgnoreMember]
-    public FrontendMetadata? FrontendMetadata { get; internal set; }
+    #region FieldAndProperty
 
+    // Frontend Metadata
+    [IgnoreMember]
+    public DiagnosticCollection? DiagnosticCollection { get; protected set; }
+
+    [IgnoreMember]
+    public SourceRange Range { get; protected set; }
+
+    [IgnoreMember]
+    public CodeContext CodeContext { get; internal set; }
+
+    // Backend Metadata
+
+    // Koto Structure
     [IgnoreMember]
     public Koto? Parent { get; internal set; }
 
     [IgnoreMember]
     public AttributeKoto? AttributeChain { get; internal set; }
 
-    // public string? Description { get; private set; }
-
     [MemberNotNullWhen(false, nameof(Parent))]
     public bool IsRoot => this.Parent is null;
 
+    #endregion
+
     public Koto(ref TokenReader reader, SourceRange range)
     {
-        this.FrontendMetadata = new(reader.Diagnostic, range, reader.CodeContext);
+        this.DiagnosticCollection = reader.Diagnostic;
+        this.Range = range;
+        this.CodeContext = reader.CodeContext;
+
         this.AttributeChain = reader.PopAttribute();
         // this.Parent = parent;
     }

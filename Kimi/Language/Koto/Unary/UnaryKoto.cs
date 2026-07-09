@@ -59,7 +59,7 @@ public partial class UnaryKoto : Koto
     // public TokenKind Kind { get; private set; }
 
     [Key(1)]
-    public Koto Operand { get; private set; }
+    public Koto Operand { get; protected set; }
 
     public UnaryKoto(ref TokenReader reader, SourceRange range, Koto operand)
         : base(ref reader, range)
@@ -88,5 +88,12 @@ public partial class UnaryKoto : Koto
         }
 
         return false;
+    }
+
+    [TinyhandOnDeserialized]
+    protected void OnDeserialized()
+    {
+        this.Operand.Parent = this;
+        this.Operand.CodeContext = this.CodeContext;
     }
 }
