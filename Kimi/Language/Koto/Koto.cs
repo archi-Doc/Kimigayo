@@ -26,7 +26,7 @@ public enum KotoKind : byte
     I8Literal,
 }
 
-[TinyhandObject(ReservedKeyCount = 0)]
+[TinyhandObject(ReservedKeyCount = 1)]
 [TinyhandUnion((int)KotoKind.Unresolved, typeof(UnresolvedKoto))]
 [TinyhandUnion((int)KotoKind.Alias, typeof(AliasKoto))]
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
@@ -42,10 +42,10 @@ public abstract partial class Koto
 
     // Frontend Metadata
     [IgnoreMember]
-    public DiagnosticCollection? DiagnosticCollection { get; protected set; }
+    public DiagnosticCollection? DiagnosticCollection { get; internal set; }
 
     [IgnoreMember]
-    public SourceRange Range { get; protected set; }
+    public SourceRange Range { get; internal set; }
 
     [IgnoreMember]
     public CodeContext CodeContext { get; internal set; }
@@ -56,7 +56,7 @@ public abstract partial class Koto
     [IgnoreMember]
     public Koto? Parent { get; internal set; }
 
-    [IgnoreMember]
+    [Key(0)]
     public AttributeKoto? AttributeChain { get; internal set; }
 
     [MemberNotNullWhen(false, nameof(Parent))]

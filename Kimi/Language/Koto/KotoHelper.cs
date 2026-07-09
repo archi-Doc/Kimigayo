@@ -19,7 +19,11 @@ public static class KotoHelper
         {
             oldKoto.Parent = default;
             newKoto.Parent = parent;
-            newKoto.FrontendMetadata = oldKoto.FrontendMetadata;
+
+            // Frontend Metadata
+            newKoto.DiagnosticCollection = oldKoto.DiagnosticCollection;
+            newKoto.Range = oldKoto.Range;
+            newKoto.CodeContext = oldKoto.newKoto.CodeContext = oldKoto.DiagnosticCollection;
             return true;
         }
 

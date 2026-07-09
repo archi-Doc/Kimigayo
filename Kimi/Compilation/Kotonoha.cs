@@ -123,7 +123,7 @@ public sealed partial class Kotonoha
                 reader.Advance();
                 var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
                 var aliasKoto = new AliasKoto(ref reader, list);
-                this.CurrentGroup.Add(aliasKoto);
+                this.RootKoto.Add(aliasKoto);
                 // this.alias.Add(qualifiedName);
             }
             else
@@ -131,7 +131,7 @@ public sealed partial class Kotonoha
                 break;
             }
 
-            this.CurrentGroup.Parse(ref reader);
+            this.RootKoto.Parse(ref reader);
         }
     }
 

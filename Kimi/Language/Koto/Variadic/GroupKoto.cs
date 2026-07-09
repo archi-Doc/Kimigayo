@@ -7,10 +7,10 @@ using Kimigayo.Language;
 
 namespace Kimigayo.Language;
 
-[TinyhandObject(ReservedKeyCount = 1)]
+[TinyhandObject(ReservedKeyCount = 2)]
 public abstract partial class IdentifiableKoto : Koto
 {
-    [Key(0)]
+    [Key(1)]
     public ulong KotoId
     {
         get
@@ -64,10 +64,10 @@ public abstract partial class GroupKoto : IdentifiableKoto
 {
     #region FieldAndProperty
 
-    [Key(1)]
+    [Key(2)]
     public string Name { get; protected set; } = string.Empty;
 
-    [Key(2)]
+    [Key(3)]
     protected List<Koto> KotoList { get; set; } = [];
 
     private readonly Utf16Hashtable<Koto> identifierToGroupKoto = new();

@@ -7,13 +7,11 @@ namespace Kimigayo.Language;
 [TinyhandObject]
 public partial class IndexKoto : BinaryKoto
 {
+    public Koto Index => this.Right;
+
     public IndexKoto(ref TokenReader reader, SourceRange range, Koto left, Koto index)
         : base(ref reader, range, left, index)
     {
-        this.Left = left;
-        this.Index = index;
-        this.Left.Parent = this;
-        this.Index.Parent = this;
     }
 
     public override string ToString()
