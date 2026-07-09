@@ -1,7 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimigayo.Diagnostics;
-using Kimigayo.Language;
 
 namespace Kimigayo.Language;
 
@@ -60,7 +59,7 @@ public static class KotoParser
 
             reader.TryRead(out var token);
             var right = ParseExpression(ref reader, bindingPower.Right);
-            left = new BinaryKoto(ref reader, token, left, right);
+            left = new BinaryKoto(ref reader, token,Range, left, right);
         }
 
         return left;

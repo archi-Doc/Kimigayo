@@ -60,7 +60,7 @@ public abstract partial class IdentifiableKoto : Koto
 /// group, struct, enum.
 /// </summary>
 [TinyhandObject]
-public partial class GroupKoto : IdentifiableKoto
+public abstract partial class GroupKoto : IdentifiableKoto
 {
     #region FieldAndProperty
 
@@ -142,7 +142,6 @@ public partial class GroupKoto : IdentifiableKoto
     {
         Func<string, Koto> factory = groupKind switch
         {
-            KotoKind.Group => static x => new GroupKoto(new FrontendMetadata(default!, default, default!)),
             KotoKind.Namespace => static x => new NamespaceKoto(new FrontendMetadata(default!, default, default!)),
             _ => throw new InvalidOperationException(),
         };

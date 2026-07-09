@@ -15,8 +15,8 @@ public enum KotoKind : byte
 
     // Group
     Namespace,
-    Group,
     Struct,
+    Enum,
     Contract,
 
     // Literal
@@ -32,7 +32,6 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
 
 [TinyhandUnion((int)KotoKind.Namespace, typeof(NamespaceKoto))]
-[TinyhandUnion((int)KotoKind.Group, typeof(GroupKoto))]
 
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.NumericLiteral, typeof(NumericLiteralKoto))]
@@ -96,10 +95,7 @@ public abstract partial class Koto
 
     public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
     {
-        if (this.FrontendMetadata is not null)
-        {
-            this.FrontendMetadata.DiagnosticCollection.Add(this.FrontendMetadata.Range, diagnosticHash, obj);
-        }
+        this.DiagnosticCollection?.Add(this.Range, diagnosticHash, obj);
     }
 
     internal virtual bool ReplaceChild(Koto oldKoto, Koto newKoto)

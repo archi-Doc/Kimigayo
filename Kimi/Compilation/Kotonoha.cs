@@ -21,10 +21,14 @@ public sealed partial class Kotonoha
     public string Url { get; private set; } = string.Empty;
 
     [Key(3)]
-    public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
+    public NamespaceKoto RootKoto { get; private set; }
+    // public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
 
     // [Key(4)]
     // public List<KimiSource> SourceList { get; private set; } = [];
+
+    [IgnoreMember]
+    private readonly Utf16Hashtable<GroupKoto> qualifiedNameToGroupKoto = new();
 
     [IgnoreMember]
     private Koto[] kotoArray = [];

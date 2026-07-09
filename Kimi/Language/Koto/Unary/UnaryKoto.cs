@@ -17,6 +17,18 @@ public partial class AttributeKoto : UnaryKoto
 }
 
 [TinyhandObject]
+public partial class ParenthesizedKoto : UnaryKoto
+{
+    public ParenthesizedKoto(ref TokenReader reader, SourceRange range, Koto operand)
+        : base(ref reader, range, operand)
+    {
+    }
+
+    public override string ToString()
+        => $"({this.Operand.ToString()})";
+}
+
+[TinyhandObject]
 public partial class PrefixIncrementKoto : UnaryKoto
 {// ++A
     public PrefixIncrementKoto(ref TokenReader reader, SourceRange range, Koto operand)

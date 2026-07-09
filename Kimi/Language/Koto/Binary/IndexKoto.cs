@@ -5,16 +5,10 @@ using Kimigayo.Diagnostics;
 namespace Kimigayo.Language;
 
 [TinyhandObject]
-public partial class IndexKoto : Koto
+public partial class IndexKoto : BinaryKoto
 {
-    [Key(1)]
-    public Koto Left { get; private set; }
-
-    [Key(2)]
-    public Koto Index { get; private set; }
-
     public IndexKoto(ref TokenReader reader, SourceRange range, Koto left, Koto index)
-        : base(ref reader, range)
+        : base(ref reader, range, left, index)
     {
         this.Left = left;
         this.Index = index;
