@@ -20,13 +20,12 @@ public sealed class FileRoot
     {
         this.rootGroup = default!;
         this.Diagnostic = diagnostic;
-        this.SetNamespace(Constants.DefaultNamespace);
     }
 
     [MemberNotNull(nameof(CurrentGroup))]
-    public void SetNamespace(ReadOnlySpan<char> qualifiedName)
+    public void SetNamespace(CodeContext codeContext, ReadOnlySpan<char> qualifiedName)
     {
-        this.CurrentGroup = this.rootGroup.GetOrAddGroup(qualifiedName, KotoKind.Namespace);
+        this.CurrentGroup = this.rootGroup.GetOrAddGroup(codeContext, qualifiedName, KotoKind.Namespace);
     }
 
     public void Parse(ref TokenReader reader)

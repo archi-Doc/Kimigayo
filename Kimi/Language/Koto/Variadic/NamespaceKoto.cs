@@ -41,7 +41,7 @@ public sealed partial class NamespaceKoto : GroupKoto
             {// namespace
                 var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
                 var fileRoot = new FileRoot(default!);
-                fileRoot.SetNamespace(qualifiedName);
+                fileRoot.SetNamespace(reader.CodeContext, qualifiedName);
                 return;
             }
 

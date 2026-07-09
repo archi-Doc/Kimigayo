@@ -115,7 +115,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
         }*/
     }
 
-    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, KotoKind groupKind)
+    public GroupKoto GetOrAddGroup(CodeContext codeContext, ReadOnlySpan<char> qualifiedName, KotoKind groupKind)
     {
         var text = qualifiedName;
         var group = this;
@@ -124,12 +124,12 @@ public abstract partial class GroupKoto : IdentifiableKoto
             var index = text.IndexOf(Constants.DotChar);
             if (index < 0)
             {
-                GetOrAddGroup(ref group, text, groupKind);
+                GetOrAddGroup(codeContext, ref group, text, groupKind);
                 return group;
             }
 
             var segment = text[..index];
-            GetOrAddGroup(ref group, segment, groupKind);
+            GetOrAddGroup(codeContext, ref group, segment, groupKind);
             text = text[(index + 1)..];
         }
     }
@@ -142,11 +142,11 @@ public abstract partial class GroupKoto : IdentifiableKoto
         }
     }
 
-    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, KotoKind groupKind)
+    private static void GetOrAddGroup(CodeContext codeContext, ref GroupKoto group, ReadOnlySpan<char> text, KotoKind groupKind)
     {
         Func<string, Koto> factory = groupKind switch
         {
-            KotoKind.Namespace => static x => new NamespaceKoto(new FrontendMetadata(default!, default, default!)),
+            KotoKind.Namespace => x => new NamespaceKoto(codeContext),
             _ => throw new InvalidOperationException(),
         };
 
