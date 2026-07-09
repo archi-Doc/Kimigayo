@@ -31,7 +31,6 @@ public abstract partial class IdentifiableKoto : Koto
                 }
 
                 field = hash;
-
             }
 
             return field;
@@ -47,6 +46,11 @@ public abstract partial class IdentifiableKoto : Koto
 
     public IdentifiableKoto(ref TokenReader reader, SourceRange range)
         : base(ref reader, range)
+    {
+    }
+
+    public IdentifiableKoto(CodeContext codeContext)
+        : base(codeContext)
     {
     }
 
@@ -79,10 +83,10 @@ public abstract partial class GroupKoto : IdentifiableKoto
     {
     }
 
-    /*internal GroupKoto(FrontendMetadata compilationMetadata)
-        : base(compilationMetadata)
+    internal GroupKoto(CodeContext codeContext)
+        : base(codeContext)
     {
-    }*/
+    }
 
     public override ReadOnlySpan<char> GetIdentifier()
         => this.Name;
@@ -147,7 +151,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
         };
 
         group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(text, factory);
-        //group.Initialize(group, )
+
         if (string.IsNullOrEmpty(group.Name))
         {
             group.Name = text.ToString();

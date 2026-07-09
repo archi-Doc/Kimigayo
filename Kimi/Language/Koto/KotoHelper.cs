@@ -23,7 +23,7 @@ public static class KotoHelper
             // Frontend Metadata
             newKoto.DiagnosticCollection = oldKoto.DiagnosticCollection;
             newKoto.Range = oldKoto.Range;
-            newKoto.CodeContext = oldKoto.newKoto.CodeContext = oldKoto.DiagnosticCollection;
+            newKoto.CodeContext = oldKoto.CodeContext;
             return true;
         }
 

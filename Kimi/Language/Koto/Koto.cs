@@ -74,10 +74,10 @@ public abstract partial class Koto
         // this.Parent = parent;
     }
 
-    /*internal Koto(FrontendMetadata compilationMetadata)
+    internal Koto(CodeContext codeContext)
     {
-        this.FrontendMetadata = compilationMetadata;
-    }*/
+        this.CodeContext = codeContext;
+    }
 
     /*public virtual void Parse(ref TokenReader reader)
     {

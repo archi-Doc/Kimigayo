@@ -55,9 +55,10 @@ public class Compilation
         this.Target = target;
         this.TargetTriple = targetTriple;
 
-        // Prepare Kotonoha
+        // External Kotonoha
 
-        this.ProjectKotonoha = new(this.ProjectName, string.Empty);
+        // Project Kotonoha
+        this.ProjectKotonoha = new(this, this.ProjectName, string.Empty);
 
         return true;
     }

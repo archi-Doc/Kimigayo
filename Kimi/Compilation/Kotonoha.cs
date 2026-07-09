@@ -11,6 +11,9 @@ namespace Kimigayo.Language;
 [TinyhandObject]
 public sealed partial class Kotonoha
 {
+    [IgnoreMember]
+    public Compilation Compilation { get; }
+
     [Key(0)]
     public uint Id { get; private set; }
 
@@ -34,11 +37,22 @@ public sealed partial class Kotonoha
     private readonly UInt64Hashtable<Koto> kotoIdToKoto = new();
     // private Koto[] kotoArray = [];
 
-    public Kotonoha(string name, string url)
+    public Kotonoha(Compilation compilation, string name, string url)
     {
+        var codeContext = new CodeContext(compilation, this);
+
+        this.Compilation = compilation;
         this.Name = name;
         this.Id = (uint)XxHash3Slim.Hash64(name);
         this.Url = url;
+        this.RootKoto = new(codeContext);
+    }
+
+    public Kotonoha(Compilation compilation)
+    {
+        var codeContext = new CodeContext(compilation, this);
+        this.Compilation = compilation;
+        this.RootKoto = new(codeContext);
     }
 
     public override string ToString()

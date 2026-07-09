@@ -14,6 +14,11 @@ public sealed partial class NamespaceKoto : GroupKoto
     {
     }
 
+    internal NamespaceKoto(CodeContext codeContext)
+        : base(codeContext)
+    {
+    }
+
     /*internal NamespaceKoto(FrontendMetadata compilationMetadata)
         : base(compilationMetadata)
     {
@@ -22,7 +27,7 @@ public sealed partial class NamespaceKoto : GroupKoto
     public override string ToString()
         => $"Namespace: {this.Name}";
 
-    public void Parse(ref TokenReader reader)
+    public new void Parse(ref TokenReader reader)
     {
         while (true)
         {
