@@ -60,14 +60,26 @@ public abstract partial class IdentifiableKoto : Koto
     }*/
 }
 
+[Flags]
+public enum KotoModifierKind
+{
+    NoAccessibility = 0,
+    Public = 1,
+    Protected = 2,
+    Private = 3,
+    Internal = 4,
+    ProtectedOrInternal = 5,
+    ProtectedAndInternal = 6,
+
+    Static = 16,
+}
+
 /// <summary>
 /// group, struct, enum.
 /// </summary>
 [TinyhandObject]
 public abstract partial class GroupKoto : IdentifiableKoto
 {
-
-
     #region FieldAndProperty
 
     [Key(2)]
@@ -146,8 +158,8 @@ public abstract partial class GroupKoto : IdentifiableKoto
             }
 
             // Consume Attribute
-            _ = KotoParser.ConsumeAttribute(ref reader);
-            if (!reader.TryRead(out token))
+            _ = KotoParser.ConsumeAttributeAndRead(ref reader, out token);
+            if (!token.IsValid)
             {
                 return;
             }

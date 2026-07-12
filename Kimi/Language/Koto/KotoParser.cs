@@ -8,7 +8,7 @@ public static class KotoParser
 {
     private const int PrefixBindingPower = 90;
 
-    public static AttributeKoto? ConsumeAttribute(ref TokenReader reader)
+    public static AttributeKoto? ConsumeAttributeAndRead(ref TokenReader reader, out Token token)
     {// #Attribute(...)
         AttributeKoto? koto = default;
         while (true)
@@ -21,12 +21,13 @@ public static class KotoParser
             }
             else if (tokenKind != TokenKind.Sharp)
             {
+                reader.TryRead(out token);
                 return koto;
             }
 
             var previousAttribute = reader.PopAttribute();
 
-            reader.TryRead(out var token);
+            reader.TryRead(out var attributeToken);
             var operand = ParseExpression(ref reader, PrefixBindingPower);
 
             if (previousAttribute is not null)
@@ -34,7 +35,7 @@ public static class KotoParser
                 reader.PushAttribute(previousAttribute);
             }
 
-            koto = new AttributeKoto(ref reader, token.Range, operand);
+            koto = new AttributeKoto(ref reader, attributeToken.Range, operand);
             reader.PushAttribute(koto);
         }
     }

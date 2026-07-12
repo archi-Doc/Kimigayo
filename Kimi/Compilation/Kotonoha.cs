@@ -112,9 +112,9 @@ public sealed partial class Kotonoha
     {
         while (true)
         {
-            // Consume Attribute
-            _ = KotoParser.ConsumeAttribute(ref reader);
-            if (!reader.TryRead(out var token))
+            // Consume Attribute and modifiers
+            _ = KotoParser.ConsumeAttributeAndRead(ref reader, out var token);
+            if (!token.IsValid)
             {
                 return;
             }
@@ -154,8 +154,6 @@ public sealed partial class Kotonoha
 
             this.RootKoto.Parse(ref reader);*/
         }
-
-        
     }
 
     private void DumpToken(string path, ReadOnlySequence<Token> sequence)
