@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.CompilerServices;
+using System.Security.AccessControl;
 using Arc.Collections;
 using Kimigayo.Diagnostics;
 using Kimigayo.Language;
@@ -80,7 +81,9 @@ public abstract partial class GroupKoto : IdentifiableKoto
     {
         NamespaceKoto => KotoKind.Namespace,
         StructKoto => KotoKind.Struct,
-        // NamespaceKoto => KotoKind.Namespace,
+        EnumKoto => KotoKind.Enum,
+        ExtensionKoto => KotoKind.Extension,
+        ContractKoto => KotoKind.Contract,
         _ => KotoKind.Invalid,
     };
 
@@ -116,6 +119,9 @@ public abstract partial class GroupKoto : IdentifiableKoto
         {
             KotoKind.Namespace => $"namespace {this.Name}",
             KotoKind.Struct => $"struct {this.Name}",
+            KotoKind.Enum => $"enum {this.Name}",
+            KotoKind.Extension => $"extension {this.Name}",
+            KotoKind.Contract => $"contract {this.Name}",
             _ => string.Empty,
         };
     }
@@ -134,22 +140,30 @@ public abstract partial class GroupKoto : IdentifiableKoto
             else if (token.Kind == TokenKind.EndBlock)
             {
                 // reader.Clear();
-                return;
+                break;
             }
             else if (token.Kind == TokenKind.Let ||
                 token.Kind == TokenKind.Var)
             {// let a = 1, var b = 2
                 // KotoHelper.ParseVariable(this, ref reader, ref token);
             }
-            else if (token.Kind == TokenKind.Namespace)
-            {// namespace
-                var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
-                nextGroup = this.GetOrAddGroup(qualifiedName, KotoKind.Namespace);
-            }
-            else if (token.Kind == TokenKind.Struct)
-            {// struct
-                var name = KotoHelper.ValidateAndGetGroupName(ref reader);
-                var group = this.GetOrAddGroup(name, KotoKind.Struct);
+            else if (token.Kind == TokenKind.Namespace ||
+                token.Kind == TokenKind.Struct ||
+                token.Kind == TokenKind.Enum ||
+                token.Kind == TokenKind.Extension ||
+                token.Kind == TokenKind.Contract)
+            {// group
+                string name;
+                if (token.Kind == TokenKind.Namespace)
+                {
+                    name = KotoHelper.ValidateAndGetNamespace(ref reader);
+                }
+                else
+                {
+                    name = KotoHelper.ValidateAndGetGroupName(ref reader);
+                }
+
+                var group = this.GetOrAddGroup(name, token.Kind);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.Advance();
@@ -173,7 +187,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
         }
     }
 
-    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, KotoKind groupKind)
+    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind)
     {
         var text = qualifiedName;
         var group = this;
@@ -182,24 +196,27 @@ public abstract partial class GroupKoto : IdentifiableKoto
             var index = text.IndexOf(Constants.DotChar);
             if (index < 0)
             {
-                GetOrAddGroup(ref group, text, groupKind);
+                GetOrAddGroup(ref group, text, kind);
                 return group;
             }
 
             var segment = text[..index];
-            GetOrAddGroup(ref group, segment, groupKind);
+            GetOrAddGroup(ref group, segment, kind);
             text = text[(index + 1)..];
         }
     }
 
-    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, KotoKind groupKind)
+    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, TokenKind kind)
     {
         var parent = group;
         var codeContext = group.CodeContext;
-        Func<string, Koto> factory = groupKind switch
+        Func<string, Koto> factory = kind switch
         {
-            KotoKind.Namespace => x => new NamespaceKoto(codeContext),
-            KotoKind.Struct => x => new StructKoto(codeContext),
+            TokenKind.Namespace => x => new NamespaceKoto(codeContext),
+            TokenKind.Struct => x => new StructKoto(codeContext),
+            TokenKind.Enum => x => new EnumKoto(codeContext),
+            TokenKind.Extension => x => new ExtensionKoto(codeContext),
+            TokenKind.Contract => x => new ContractKoto(codeContext),
             _ => throw new InvalidOperationException(),
         };
 
