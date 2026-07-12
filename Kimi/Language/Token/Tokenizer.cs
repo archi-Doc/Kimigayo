@@ -58,7 +58,7 @@ public static class TokenHelper
         Set(TokenKind.F64, true, "f64");
 
         // Keywords (Group)
-        Set(TokenKind.Shared, true, "shared");
+        Set(TokenKind.Static, true, "static");
         Set(TokenKind.Public, true, "public");
         Set(TokenKind.Protected, true, "protected");
         Set(TokenKind.Private, true, "private");

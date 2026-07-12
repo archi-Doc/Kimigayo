@@ -113,7 +113,7 @@ public sealed partial class Kotonoha
         while (true)
         {
             // Consume Attribute and modifiers
-            _ = KotoParser.ConsumeAttributeAndRead(ref reader, out var token);
+            _ = KotoParser.ConsumeTriviaAndRead(ref reader, out var token);
             if (!token.IsValid)
             {
                 return;
@@ -130,29 +130,6 @@ public sealed partial class Kotonoha
             {// Delegate processing to CurrentGroup because this token is not a top-level keyword.
                 this.RootKoto.Parse(ref token, ref reader);
             }
-
-            /*if (token.Kind == TokenKind.Separator)
-            {
-                reader.Advance();
-                continue;
-            }
-            else if (token.Kind == TokenKind.Sharp)
-            {
-            }
-            else if (token.IsIdentifierToken(Constants.AliasKeyword))
-            {// alias
-                reader.Advance();
-                var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
-                var aliasKoto = new AliasKoto(ref reader, list);
-                this.RootKoto.Add(aliasKoto);
-                continue;
-            }
-            else
-            {// Delegate processing to CurrentGroup because this token is not a top-level keyword.
-                break;
-            }
-
-            this.RootKoto.Parse(ref reader);*/
         }
     }
 

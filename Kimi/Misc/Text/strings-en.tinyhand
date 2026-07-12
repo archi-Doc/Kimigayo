@@ -14,6 +14,7 @@ Project=
   NotLoaded="Failed to load the project file '{0}'"
 
 Kimi=
+  DuplicateModifier="Duplicate modifier '{0}'"
   IdentifierExpected="Identifier expected"
   IndentationLevelMismatch="The indentation level does not match the expected level"
   InvalidCharacter="Unexpected character '{0}'"
@@ -24,6 +25,7 @@ Kimi=
   MissingBlockCommentEnd="Reached end-of-file. Missing '*/'"
   MissingExpectedToken="Expected: {0}, but reached the end of line."
   MissingStringLiteralEnd="String literal is not terminated. Expected closing \""
+  MultipleAccessibilityModifiers="Only one accessibility modifier is allowed"
   TokenMismatch="The token does not match the expected token. Expected: {0}"
   TopLevelKeywordAfterCode="Top-level keywords such as 'alias' must appear before any other code"
   UnexpectedIndent="Unexpected indentation"

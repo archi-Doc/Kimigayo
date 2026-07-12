@@ -1,25 +1,102 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
 
 public static class KotoParser
 {
+    private const int AccessibilityModifierMask = 31;
     private const int PrefixBindingPower = 90;
 
-    public static AttributeKoto? ConsumeAttributeAndRead(ref TokenReader reader, out Token token)
-    {// #Attribute(...)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static string ToText(this KotoModifierKind kind)
+    {
+        var acc = kind.ExtractAccessibilityModifiers();
+        if (kind.HasFlag(KotoModifierKind.Static))
+        {
+            return acc switch
+            {
+                KotoModifierKind.Public => "public static",
+                KotoModifierKind.Protected => "protected static",
+                KotoModifierKind.Private => "private static",
+                KotoModifierKind.Internal => "internal static",
+                KotoModifierKind.ProtectedOrInternal => "protected_or_internal static",
+                KotoModifierKind.ProtectedAndInternal => "protected_and_internal static",
+                _ => string.Empty,
+            };
+        }
+        else
+        {
+            return acc switch
+            {
+                KotoModifierKind.Public => "public",
+                KotoModifierKind.Protected => "protected",
+                KotoModifierKind.Private => "private",
+                KotoModifierKind.Internal => "internal",
+                KotoModifierKind.ProtectedOrInternal => "protected_or_internal",
+                KotoModifierKind.ProtectedAndInternal => "protected_and_internal",
+                _ => string.Empty,
+            };
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static KotoModifierKind ExtractAccessibilityModifiers(this KotoModifierKind kind)
+    {
+        return (KotoModifierKind)((byte)kind & AccessibilityModifierMask);
+    }
+
+    public static AttributeKoto? ConsumeTriviaAndRead(ref TokenReader reader, out Token token)
+    {// Consume Attribute and Modifiers
+        reader.ModifierKind = default;
         AttributeKoto? koto = default;
         while (true)
         {
             var tokenKind = reader.CurrentTokenKind;
-            if (tokenKind == TokenKind.Separator)
+            switch (tokenKind)
             {
-                reader.Advance();
-                continue;
+                case TokenKind.Separator:
+                    reader.Advance();
+                    continue;
+
+                case TokenKind.Static:
+                    if (reader.ModifierKind.HasFlag(KotoModifierKind.Static))
+                    {// Duplicate
+                        reader.AddDiagnostic(Hashed.Kimi.DuplicateModifier, KotoModifierKind.Static.ToString());
+                    }
+
+                    reader.ModifierKind |= KotoModifierKind.Static;
+                    reader.Advance();
+                    continue;
+
+                case TokenKind.Public:
+                    ReadAccessibility(ref reader, KotoModifierKind.Public);
+                    continue;
+
+                case TokenKind.Protected:
+                    ReadAccessibility(ref reader, KotoModifierKind.Protected);
+                    continue;
+
+                case TokenKind.Private:
+                    ReadAccessibility(ref reader, KotoModifierKind.Private);
+                    continue;
+
+                case TokenKind.Internal:
+                    ReadAccessibility(ref reader, KotoModifierKind.Internal);
+                    continue;
+
+                case TokenKind.ProtectedOrInternal:
+                    ReadAccessibility(ref reader, KotoModifierKind.ProtectedOrInternal);
+                    continue;
+
+                case TokenKind.ProtectedAndInternal:
+                    ReadAccessibility(ref reader, KotoModifierKind.ProtectedAndInternal);
+                    continue;
             }
-            else if (tokenKind != TokenKind.Sharp)
+
+            if (tokenKind != TokenKind.Sharp)
             {
                 reader.TryRead(out token);
                 return koto;
@@ -37,6 +114,28 @@ public static class KotoParser
 
             koto = new AttributeKoto(ref reader, attributeToken.Range, operand);
             reader.PushAttribute(koto);
+        }
+
+        void ReadAccessibility(ref TokenReader reader, KotoModifierKind kind)
+        {
+            var acc = reader.ModifierKind.ExtractAccessibilityModifiers();
+            if (acc != default)
+            {
+                if (acc == kind)
+                {// Duplicate
+                    reader.AddDiagnostic(Hashed.Kimi.DuplicateModifier, kind.ToText());
+                }
+                else
+                {// More than one accessibility modifier
+                    reader.AddDiagnostic(Hashed.Kimi.MultipleAccessibilityModifiers);
+                }
+            }
+            else
+            {
+                reader.ModifierKind = reader.ModifierKind | kind;
+            }
+
+            reader.Advance();
         }
     }
 

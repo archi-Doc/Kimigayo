@@ -60,20 +60,6 @@ public abstract partial class IdentifiableKoto : Koto
     }*/
 }
 
-[Flags]
-public enum KotoModifierKind
-{
-    NoAccessibility = 0,
-    Public = 1,
-    Protected = 2,
-    Private = 3,
-    Internal = 4,
-    ProtectedOrInternal = 5,
-    ProtectedAndInternal = 6,
-
-    Static = 16,
-}
-
 /// <summary>
 /// group, struct, enum.
 /// </summary>
@@ -141,24 +127,23 @@ public abstract partial class GroupKoto : IdentifiableKoto
 
             if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
+                _ = KotoHelper.ValidateAndGetNamespace2(ref reader);
                 reader.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);
             }
-
-            if (token.Kind == TokenKind.Let)
+            else if (token.Kind == TokenKind.Let)
             {// let a = 1
             }
             else if (token.Kind == TokenKind.Var)
             {// var a = 1
             }
-            else if (token.IsIdentifierToken(Constants.NamespaceKeyword))
+            else if (token.Kind == TokenKind.Namespace)
             {// namespace
                 var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
                 nextGroup = this.GetOrAddGroup(qualifiedName, KotoKind.Namespace);
-                return;
             }
 
-            // Consume Attribute
-            _ = KotoParser.ConsumeAttributeAndRead(ref reader, out token);
+            // Consume Attribute and modifiers
+            _ = KotoParser.ConsumeTriviaAndRead(ref reader, out token);
             if (!token.IsValid)
             {
                 return;

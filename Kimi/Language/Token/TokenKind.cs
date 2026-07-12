@@ -31,7 +31,7 @@ public enum TokenKind : byte
     F64,
 
     // Keywords (Group)
-    Shared = 32,
+    Static = 32,
     Public,
     Protected,
     Private,

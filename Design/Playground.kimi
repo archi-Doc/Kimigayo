@@ -9,7 +9,7 @@ namespace Playground.A
 
 alias Kimi.Error
 
-group Test
+public public group Test
     public static var x = 1
 
 #Condition(Os.Version.Current == 1 and "text".Length > 0)

@@ -32,6 +32,8 @@ public ref struct TokenReader
 
     public AttributeKoto? AttributeKoto { get; private set; }
 
+    public KotoModifierKind ModifierKind { get; internal set; }
+
     public readonly int Count => this.count;
 
     public readonly int Remaining => this.count - this.Position;
@@ -245,6 +247,14 @@ public ref struct TokenReader
     public void ReportUnexpectedToken(Token token)
     {
         this.Diagnostic.AddToken(token, Hashed.Kimi.UnmatchedToken, token.Kind.ToText());
+    }
+
+    public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
+    {
+        if (this.TryGetCurrentToken(out var token))
+        {
+            this.Diagnostic.AddToken(token, diagnosticHash, obj);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
