@@ -174,6 +174,21 @@ public ref struct TokenReader
         return false;
     }
 
+    public bool SkipUntil(TokenKind kind1)
+    {
+        while (this.TryGetCurrentToken(out var token))
+        {
+            if (token.Kind == kind1)
+            {
+                return true;
+            }
+
+            this.AdvanceOne();
+        }
+
+        return false;
+    }
+
     public bool SkipUntil(TokenKind kind1, TokenKind kind2)
     {
         while (this.TryGetCurrentToken(out var token))

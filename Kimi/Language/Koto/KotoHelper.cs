@@ -37,19 +37,35 @@ public static class KotoHelper
 
     public static string ValidateAndGetGroupName(ref TokenReader reader)
     {
+        string name = string.Empty;
         if (!reader.TryRead(out var token))
         {
             reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
-            return string.Empty;
+            goto Exit;
         }
 
-        if (token.Kind == TokenKind.Identifier &&
-            IsValidIdentifier(token.Span))
+        if (token.Kind != TokenKind.Identifier)
         {
-            return token.Span.ToString();
+            reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
+            goto SkipAndExit;
         }
 
-        return string.Empty;
+        if (IsValidIdentifier(token.Span))
+        {
+            name = token.Span.ToString();
+        }
+        else
+        {
+            reader.AddDiagnostic(Hashed.Kimi.InvalidIdentifier, token.Span.ToString());
+        }
+
+        reader.TryConsume(TokenKind.Colon, out var range);
+
+SkipAndExit:
+        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator);
+
+Exit:
+        return name;
     }
 
     public static string ValidateAndGetNamespace(ref TokenReader reader)

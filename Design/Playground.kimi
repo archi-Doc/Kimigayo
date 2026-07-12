@@ -7,7 +7,7 @@ alias Kimi.Windows
 #Condition(Os == "Windows")
 namespace Playground.A
 
-public struct Test
+public open struct Test : @A
     public static var x = 1
 
 #Condition(Os.Version.Current == 1 and "text".Length > 0)
@@ -15,7 +15,7 @@ var x = 1 + 2 * 3
 var y = (1 + #Test 2) * 3
 
 static var x = 1
-shared let y = 2
+static let y = 2
 let z = 3
 
 namespace Pg.Extensions
