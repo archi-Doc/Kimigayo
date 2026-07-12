@@ -8,7 +8,7 @@ using Kimigayo.Diagnostics;
 namespace Kimigayo.Language;
 
 public ref struct TokenReader
-{
+{// 144
     public const int MaxDepth = 10;
 
     #region FieldAndProperty

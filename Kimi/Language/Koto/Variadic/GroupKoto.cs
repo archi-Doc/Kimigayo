@@ -160,8 +160,8 @@ public abstract partial class GroupKoto : IdentifiableKoto
             }
             else if (token.Kind == TokenKind.Struct)
             {// struct
-                var name = KotoHelper.ValidateAndGetGroupName(ref reader);
-                var structKoto = (StructKoto)this.GetOrAddGroup(name, token.Kind);
+                var r = KotoHelper.ParseGroupDeclaration(ref reader);
+                var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, token.Kind);
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {

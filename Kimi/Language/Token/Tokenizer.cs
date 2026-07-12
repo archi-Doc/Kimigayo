@@ -410,7 +410,7 @@ public static class TokenHelper
             Constants.DollarChar => (TokenKind.Dollar, 0),
             Constants.AmpersandChar => (TokenKind.Ampersand, 0),
             Constants.AsteriskChar => (TokenKind.Asterisk, 0),
-            Constants.AtChar => (TokenKind.At, 0),
+            // Constants.AtChar => (TokenKind.At, 0),
             Constants.DotChar => (TokenKind.Dot, 0),
             Constants.CommaChar => (TokenKind.Comma, 0),
             Constants.OpenBracketChar => (TokenKind.OpenBracket, +1),
@@ -1106,6 +1106,23 @@ Loop:
                     }
 
                     break;
+
+                case Constants.AtChar: // @Identifier
+                    {
+                        var length = TokenHelper.IndexOfSeparator(span.Slice(1));
+                        if (length < 0)
+                        {
+                            length = span.Length;
+                        }
+                        else
+                        {
+                            length++;
+                        }
+
+                        this.AddTokenAndSlice(ref builder, TokenKind.Identifier, ref span, length);
+
+                        break;
+                    }
 
                 default:
                     {

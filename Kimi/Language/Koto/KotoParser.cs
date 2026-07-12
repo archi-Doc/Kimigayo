@@ -356,7 +356,7 @@ Loop:
             TokenKind.Dollar => PrefixBindingPower,
             TokenKind.Ampersand => PrefixBindingPower,
             TokenKind.Asterisk => PrefixBindingPower,
-            TokenKind.At => PrefixBindingPower,
+            // TokenKind.At => PrefixBindingPower,
             TokenKind.Plus => PrefixBindingPower,
             TokenKind.Minus => PrefixBindingPower,
             TokenKind.Not => PrefixBindingPower,

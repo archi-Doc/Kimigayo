@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Kimigayo.Language;
@@ -35,9 +36,10 @@ public static class KotoHelper
         DumpKoto(koto, writer, indent: "  ", isLast: true, label: null);
     }
 
-    public static string ValidateAndGetGroupName(ref TokenReader reader)
+    public static (string Name, List<string?> List) ParseGroupDeclaration(ref TokenReader reader)
     {
         string name = string.Empty;
+        List<string>? list = default;
         if (!reader.TryRead(out var token))
         {
             reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
@@ -64,11 +66,42 @@ public static class KotoHelper
             reader.Advance(); // :
         }
 
+        while (true)
+        {
+            if (!reader.TryRead(out token))
+            {
+                goto Exit;
+            }
+
+            if (token.Kind == TokenKind.Comma)
+            {
+                if (reader.CurrentTokenKind == TokenKind.StartBlock)
+                {
+                    break;
+                }
+
+                continue;
+            }
+            else if (token.Kind == TokenKind.Identifier)
+            {
+                list ??= new();
+                list.Add(token.Text.ToString());
+            }
+            else if (token.Kind == TokenKind.StartBlock)
+            {
+                break;
+            }
+            else
+            {
+                reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
+            }
+        }
+
 SkipAndExit:
         reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator);
 
 Exit:
-        return name;
+        return (name, list);
     }
 
     public static string ValidateAndGetNamespace(ref TokenReader reader)
