@@ -75,7 +75,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
     [Key(3)]
     protected List<Koto> KotoList { get; set; } = [];
 
-    private readonly Utf16Hashtable<Koto> identifierToGroupKoto = new();
+    private readonly Utf16Hashtable<GroupKoto> identifierToGroupKoto = new();
 
     public KotoKind Kind => this switch
     {
@@ -117,11 +117,11 @@ public abstract partial class GroupKoto : IdentifiableKoto
 
         return this.Kind switch
         {
-            KotoKind.Namespace => $"namespace {this.Name}",
-            KotoKind.Struct => $"struct {this.Name}",
-            KotoKind.Enum => $"enum {this.Name}",
-            KotoKind.Extension => $"extension {this.Name}",
-            KotoKind.Contract => $"contract {this.Name}",
+            KotoKind.Namespace => $"{TokenKind.Namespace.ToText()} {this.Name}",
+            KotoKind.Struct => $"{TokenKind.Struct.ToText()} {this.Name}",
+            KotoKind.Enum => $"{TokenKind.Enum.ToText()} {this.Name}",
+            KotoKind.Extension => $"{TokenKind.Extension.ToText()} {this.Name}",
+            KotoKind.Contract => $"{TokenKind.Contract.ToText()} {this.Name}",
             _ => string.Empty,
         };
     }
@@ -147,27 +147,26 @@ public abstract partial class GroupKoto : IdentifiableKoto
             {// let a = 1, var b = 2
                 // KotoHelper.ParseVariable(this, ref reader, ref token);
             }
-            else if (token.Kind == TokenKind.Namespace ||
-                token.Kind == TokenKind.Struct ||
-                token.Kind == TokenKind.Enum ||
-                token.Kind == TokenKind.Extension ||
-                token.Kind == TokenKind.Contract)
-            {// group
-                string name;
-                if (token.Kind == TokenKind.Namespace)
-                {
-                    name = KotoHelper.ValidateAndGetNamespace(ref reader);
-                }
-                else
-                {
-                    name = KotoHelper.ValidateAndGetGroupName(ref reader);
-                }
+            else if (token.Kind == TokenKind.Namespace)
+            {// namespace
+                var name = KotoHelper.ValidateAndGetNamespace(ref reader);
+                var namespaceKoto = (NamespaceKoto)this.GetOrAddGroup(name, token.Kind);
 
-                var group = this.GetOrAddGroup(name, token.Kind);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.Advance();
-                    nextGroup = group;
+                    nextGroup = namespaceKoto;
+                }
+            }
+            else if (token.Kind == TokenKind.Struct)
+            {// struct
+                var name = KotoHelper.ValidateAndGetGroupName(ref reader);
+                var structKoto = (StructKoto)this.GetOrAddGroup(name, token.Kind);
+
+                if (reader.CurrentTokenKind == TokenKind.StartBlock)
+                {
+                    reader.Advance();
+                    nextGroup = structKoto;
                 }
             }
 
@@ -182,8 +181,6 @@ public abstract partial class GroupKoto : IdentifiableKoto
             {
                 nextGroup.Parse(ref token, ref reader);
             }
-
-            // this.Parse(ref token, ref reader);
         }
     }
 
@@ -206,11 +203,25 @@ public abstract partial class GroupKoto : IdentifiableKoto
         }
     }
 
+    /*private GroupKoto? GetOrAddGroupAndStartBlock(ref TokenReader reader, ReadOnlySpan<char> qualifiedName, TokenKind kind)
+    {
+        var groupKoto = this.GetOrAddGroup(qualifiedName, kind);
+        if (reader.CurrentTokenKind == TokenKind.StartBlock)
+        {
+            reader.Advance();
+            return groupKoto;
+        }
+        else
+        {
+            return default;
+        }
+    }*/
+
     private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, TokenKind kind)
     {
         var parent = group;
         var codeContext = group.CodeContext;
-        Func<string, Koto> factory = kind switch
+        Func<string, GroupKoto> factory = kind switch
         {
             TokenKind.Namespace => x => new NamespaceKoto(codeContext),
             TokenKind.Struct => x => new StructKoto(codeContext),
