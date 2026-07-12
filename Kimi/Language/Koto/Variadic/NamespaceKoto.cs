@@ -23,29 +23,4 @@ public sealed partial class NamespaceKoto : GroupKoto
         : base(compilationMetadata)
     {
     }*/
-
-    public override string ToString()
-        => $"Namespace: {this.Name}";
-
-    public new void Parse(ref TokenReader reader)
-    {
-        while (true)
-        {
-            _ = KotoParser.ConsumeAttribute(ref reader);
-            if (!reader.TryRead(out var token))
-            {
-                return;
-            }
-
-            if (token.IsIdentifierToken(Constants.NamespaceKeyword))
-            {// namespace
-                var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
-                var fileRoot = new FileRoot(default!);
-                fileRoot.SetNamespace(reader.CodeContext, qualifiedName);
-                return;
-            }
-
-            this.Parse(ref token, ref reader);
-        }
-    }
 }

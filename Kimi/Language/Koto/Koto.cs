@@ -9,6 +9,8 @@ namespace Kimigayo.Language;
 
 public enum KotoKind : byte
 {
+    Invalid,
+
     Unresolved,
     Attribute,
     Alias,
@@ -17,6 +19,7 @@ public enum KotoKind : byte
     Namespace,
     Struct,
     Enum,
+    Extension,
     Contract,
 
     // Literal
@@ -61,6 +64,8 @@ public abstract partial class Koto
 
     [MemberNotNullWhen(false, nameof(Parent))]
     public bool IsRoot => this.Parent is null;
+
+    public Kotonoha Kotonoha => this.CodeContext.Kotonoha;
 
     #endregion
 

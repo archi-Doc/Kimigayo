@@ -110,46 +110,52 @@ public sealed partial class Kotonoha
 
     private void Parse(ref TokenReader reader)
     {
-        while (reader.TryPeek(out var token))
+        while (true)
         {
-            if (token.Kind == TokenKind.Separator)
+            // Consume Attribute
+            _ = KotoParser.ConsumeAttribute(ref reader);
+            if (!reader.TryRead(out var token))
+            {
+                return;
+            }
+
+            if (token.IsIdentifierToken(Constants.AliasKeyword))
+            {// alias
+                var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
+                var aliasKoto = new AliasKoto(ref reader, list);
+                this.RootKoto.Add(aliasKoto);
+                continue;
+            }
+            else
+            {// Delegate processing to CurrentGroup because this token is not a top-level keyword.
+                this.RootKoto.Parse(ref token, ref reader);
+            }
+
+            /*if (token.Kind == TokenKind.Separator)
             {
                 reader.Advance();
                 continue;
             }
             else if (token.Kind == TokenKind.Sharp)
-            {// @Attribute
-                _ = KotoParser.ConsumeAttribute(ref reader);
-                /*if (koto is not null)
-                {
-                    this.CurrentGroup.Add(koto);
-
-                    var sb = new StringBuilder();
-                    using var writer = new StringWriter(sb);
-                    KotoHelper.Dump(koto, writer);
-                    var st = sb.ToString();
-                }*/
+            {
             }
             else if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
-                /*if (!this.allowTopLevelKeyword)
-                {
-                    // goto UnexpectedTopLevelKeyword;
-                }*/
-
                 reader.Advance();
                 var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
                 var aliasKoto = new AliasKoto(ref reader, list);
                 this.RootKoto.Add(aliasKoto);
-                // this.alias.Add(qualifiedName);
+                continue;
             }
             else
             {// Delegate processing to CurrentGroup because this token is not a top-level keyword.
                 break;
             }
 
-            this.RootKoto.Parse(ref reader);
+            this.RootKoto.Parse(ref reader);*/
         }
+
+        
     }
 
     private void DumpToken(string path, ReadOnlySequence<Token> sequence)

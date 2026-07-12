@@ -24,6 +24,8 @@ public readonly partial struct Token
 
     public int Length => this.Text.Length;
 
+    public bool IsValid => this.Kind != TokenKind.Invalid;
+
     public Token(TokenKind kind, ReadOnlyMemory<char> span, Diagnostics.SourceRange range)
     {
         this.Kind = kind;

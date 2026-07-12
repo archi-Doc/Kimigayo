@@ -72,9 +72,11 @@ public static class TokenHelper
         Set(TokenKind.String, true, "string");
 
         // Block keyword
-        Set(TokenKind.Group, true, "group");
+        Set(TokenKind.Namespace, true, "namespace");
         Set(TokenKind.Struct, true, "struct");
         Set(TokenKind.Enum, true, "enum");
+        Set(TokenKind.Extension, true, "extension");
+        Set(TokenKind.Contract, true, "contract");
         Set(TokenKind.For, true, "for");
         Set(TokenKind.Loop, true, "loop");
         Set(TokenKind.Match, true, "match");
@@ -391,7 +393,7 @@ public static class TokenHelper
     /// <param name="tokenKind">The token kind to inspect.</param>
     /// <returns><see langword="true"/> if <paramref name="tokenKind"/> is a block-starting token; otherwise, <see langword="false"/>.</returns>
     public static bool IsBlockToken(this TokenKind tokenKind)
-        => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Match;
+        => tokenKind >= TokenKind.Namespace && tokenKind <= TokenKind.Match;
 
     /// <summary>
     /// Tries to classify a single-character token and reports its grouping-depth effect.

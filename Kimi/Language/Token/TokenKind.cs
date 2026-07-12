@@ -45,9 +45,11 @@ public enum TokenKind : byte
     String,
 
     // Block keyword
-    Group, // group
+    Namespace, // namespace
     Struct, // struct
     Enum, // enum
+    Extension, // extension
+    Contract, // contract
     For, // for
     Loop, // loop
     Match, // match

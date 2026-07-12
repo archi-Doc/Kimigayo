@@ -1,16 +1,23 @@
 alias Kimi.Base
 
-@Condition @Test
+#Condition #Test
 alias Kimi.Windows
 
 // comment
-@Condition(Os == "Windows")
+#Condition(Os == "Windows")
 namespace Playground.A
 
-@Condition(Os.Version.Current == 1 and "text".Length > 0)
+alias Kimi.Error
+
+group Test
+    public static var x = 1
+
+#Condition(Os.Version.Current == 1 and "text".Length > 0)
 var x = 1 + 2 * 3
 var y = (1 + #Test 2) * 3
 
 shared var x = 1
 shared let y = 2
 let z = 3
+
+public extension i32
