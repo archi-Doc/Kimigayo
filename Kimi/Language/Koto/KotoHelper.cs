@@ -35,6 +35,23 @@ public static class KotoHelper
         DumpKoto(koto, writer, indent: "  ", isLast: true, label: null);
     }
 
+    public static string ValidateAndGetGroupName(ref TokenReader reader)
+    {
+        if (!reader.TryRead(out var token))
+        {
+            reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
+            return string.Empty;
+        }
+
+        if (token.Kind == TokenKind.Identifier &&
+            IsValidIdentifier(token.Span))
+        {
+            return token.Span.ToString();
+        }
+
+        return string.Empty;
+    }
+
     public static string ValidateAndGetNamespace(ref TokenReader reader)
     {
         if (reader.IsEmpty)

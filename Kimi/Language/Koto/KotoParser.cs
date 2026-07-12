@@ -50,7 +50,8 @@ public static class KotoParser
 
     public static AttributeKoto? ConsumeTriviaAndRead(ref TokenReader reader, out Token token)
     {// Consume Attribute and Modifiers
-        reader.ModifierKind = default;
+        reader.Clear();
+
         AttributeKoto? koto = default;
         while (true)
         {

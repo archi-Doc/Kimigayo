@@ -72,6 +72,13 @@ public ref struct TokenReader
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Clear()
+    {
+        this.AttributeKoto = default;
+        this.ModifierKind = default;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushAttribute(AttributeKoto attributeKoto)
     {
         if (this.AttributeKoto is not null)

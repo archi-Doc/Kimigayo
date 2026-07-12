@@ -35,6 +35,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
 
 [TinyhandUnion((int)KotoKind.Namespace, typeof(NamespaceKoto))]
+[TinyhandUnion((int)KotoKind.Struct, typeof(StructKoto))]
 
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.NumericLiteral, typeof(NumericLiteralKoto))]

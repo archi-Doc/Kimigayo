@@ -79,7 +79,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
     public KotoKind Kind => this switch
     {
         NamespaceKoto => KotoKind.Namespace,
-        // NamespaceKoto => KotoKind.Namespace,
+        StructKoto => KotoKind.Struct,
         // NamespaceKoto => KotoKind.Namespace,
         _ => KotoKind.Invalid,
     };
@@ -115,6 +115,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
         return this.Kind switch
         {
             KotoKind.Namespace => $"namespace {this.Name}",
+            KotoKind.Struct => $"struct {this.Name}",
             _ => string.Empty,
         };
     }
@@ -130,16 +131,30 @@ public abstract partial class GroupKoto : IdentifiableKoto
                 _ = KotoHelper.ValidateAndGetNamespace2(ref reader);
                 reader.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);
             }
-            else if (token.Kind == TokenKind.Let)
-            {// let a = 1
+            else if (token.Kind == TokenKind.EndBlock)
+            {
+                // reader.Clear();
+                return;
             }
-            else if (token.Kind == TokenKind.Var)
-            {// var a = 1
+            else if (token.Kind == TokenKind.Let ||
+                token.Kind == TokenKind.Var)
+            {// let a = 1, var b = 2
+                // KotoHelper.ParseVariable(this, ref reader, ref token);
             }
             else if (token.Kind == TokenKind.Namespace)
             {// namespace
                 var qualifiedName = KotoHelper.ValidateAndGetNamespace(ref reader);
                 nextGroup = this.GetOrAddGroup(qualifiedName, KotoKind.Namespace);
+            }
+            else if (token.Kind == TokenKind.Struct)
+            {// struct
+                var name = KotoHelper.ValidateAndGetGroupName(ref reader);
+                var group = this.GetOrAddGroup(name, KotoKind.Struct);
+                if (reader.CurrentTokenKind == TokenKind.StartBlock)
+                {
+                    reader.Advance();
+                    nextGroup = group;
+                }
             }
 
             // Consume Attribute and modifiers
@@ -184,6 +199,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
         Func<string, Koto> factory = groupKind switch
         {
             KotoKind.Namespace => x => new NamespaceKoto(codeContext),
+            KotoKind.Struct => x => new StructKoto(codeContext),
             _ => throw new InvalidOperationException(),
         };
 
