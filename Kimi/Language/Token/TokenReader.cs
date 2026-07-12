@@ -174,35 +174,45 @@ public ref struct TokenReader
         return false;
     }
 
-    public bool SkipUntil(TokenKind kind1)
+    public TokenKind SkipUntil(TokenKind kind1, ulong hash = 0)
     {
         while (this.TryGetCurrentToken(out var token))
         {
             if (token.Kind == kind1)
             {
-                return true;
+                return token.Kind;
+            }
+
+            if (hash != 0)
+            {
+                this.AddDiagnostic(hash, token.Span.ToString());
             }
 
             this.AdvanceOne();
         }
 
-        return false;
+        return default;
     }
 
-    public bool SkipUntil(TokenKind kind1, TokenKind kind2)
+    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, ulong hash = 0)
     {
         while (this.TryGetCurrentToken(out var token))
         {
             var tokenKind = token.Kind;
             if (tokenKind == kind1 || tokenKind == kind2)
             {
-                return true;
+                return token.Kind;
+            }
+
+            if (hash != 0)
+            {
+                this.AddDiagnostic(hash, token.Span.ToString());
             }
 
             this.AdvanceOne();
         }
 
-        return false;
+        return default;
     }
 
     public bool TryConsumeIdentifier(ReadOnlySpan<char> name)

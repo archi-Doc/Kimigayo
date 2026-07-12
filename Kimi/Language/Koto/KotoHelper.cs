@@ -59,7 +59,10 @@ public static class KotoHelper
             reader.AddDiagnostic(Hashed.Kimi.InvalidIdentifier, token.Span.ToString());
         }
 
-        reader.TryConsume(TokenKind.Colon, out var range);
+        if (reader.SkipUntil(TokenKind.StartBlock, TokenKind.Colon, Hashed.Kimi.InvalidIdentifier) == TokenKind.Colon)
+        {
+            reader.Advance(); // :
+        }
 
 SkipAndExit:
         reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator);

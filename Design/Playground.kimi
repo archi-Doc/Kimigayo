@@ -7,7 +7,7 @@ alias Kimi.Windows
 #Condition(Os == "Windows")
 namespace Playground.A
 
-public open struct Test : @A
+public open struct Test i8: @A
     public static var x = 1
 
 #Condition(Os.Version.Current == 1 and "text".Length > 0)
