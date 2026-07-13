@@ -36,7 +36,7 @@ public static class KotoHelper
         DumpKoto(koto, writer, indent: "  ", isLast: true, label: null);
     }
 
-    public static (string Name, List<string?> List) ParseGroupDeclaration(ref TokenReader reader)
+    public static (string Name, List<string>? List) ParseGroupDeclaration(ref TokenReader reader)
     {
         string name = string.Empty;
         List<string>? list = default;
