@@ -16,7 +16,15 @@ var y = (1 + #Test 2) * 3
 
 static var x = 1
 static let y = 2
-let z = 3
+var z = Test.New()
+z.Func1()
+var a = z // Clone
+var b = &z // borrow
+var c <= &z // move. invalidate z
+var d = c // borrow
+var e <= c // move
+e.drop()
+
 
 namespace Pg.Extensions
 public extension i32
