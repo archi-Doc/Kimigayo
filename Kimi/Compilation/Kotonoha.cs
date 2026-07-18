@@ -46,6 +46,8 @@ public sealed partial class Kotonoha
         this.Id = (uint)XxHash3Slim.Hash64(name);
         this.Url = url;
         this.RootKoto = new(codeContext);
+
+        codeContext.CurrentNamespace = this.RootKoto;
     }
 
     public Kotonoha(Compilation compilation)

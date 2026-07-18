@@ -139,7 +139,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
             }
             else if (token.Kind == TokenKind.EndBlock)
             {
-                // reader.Clear();
+                _ = KotoParser.ConsumeTriviaAndRead(ref reader, out token);
                 break;
             }
             else if (token.Kind == TokenKind.Let ||
@@ -151,12 +151,14 @@ public abstract partial class GroupKoto : IdentifiableKoto
             {// namespace
                 var name = KotoHelper.ValidateAndGetNamespace(ref reader);
                 var namespaceKoto = (NamespaceKoto)this.GetOrAddGroup(name, token.Kind);
+                this.CodeContext.CurrentNamespace = namespaceKoto;
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.Advance();
-                    nextGroup = namespaceKoto;
                 }
+
+                nextGroup = namespaceKoto;
             }
             else if (token.Kind == TokenKind.Struct)
             {// struct
@@ -168,6 +170,15 @@ public abstract partial class GroupKoto : IdentifiableKoto
                     reader.Advance();
                     nextGroup = structKoto;
                 }
+
+                if (r.List is not null)
+                {
+                    structKoto.BaseList.AddRange(r.List);
+                }
+            }
+            else
+            {// unknown
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
             }
 
             // Consume Attribute and modifiers

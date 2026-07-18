@@ -13,5 +13,6 @@ public enum KotoModifierKind : byte
     ProtectedOrInternal = 5,
     ProtectedAndInternal = 6,
 
-    Static = 32,
+    Static = 16,
+    Open = 32,
 }

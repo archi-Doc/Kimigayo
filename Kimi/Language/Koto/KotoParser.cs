@@ -72,6 +72,16 @@ public static class KotoParser
                     reader.Advance();
                     continue;
 
+                case TokenKind.Open:
+                    if (reader.ModifierKind.HasFlag(KotoModifierKind.Open))
+                    {// Duplicate
+                        reader.AddDiagnostic(Hashed.Kimi.DuplicateModifier, KotoModifierKind.Open.ToString());
+                    }
+
+                    reader.ModifierKind |= KotoModifierKind.Open;
+                    reader.Advance();
+                    continue;
+
                 case TokenKind.Public:
                     ReadAccessibility(ref reader, KotoModifierKind.Public);
                     continue;

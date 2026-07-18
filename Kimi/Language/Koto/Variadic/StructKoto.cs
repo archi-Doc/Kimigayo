@@ -7,6 +7,12 @@ using Kimigayo.Language;
 [TinyhandObject]
 public sealed partial class StructKoto : GroupKoto
 {
+    #region FieldAndProperty
+
+    public List<Token> BaseList { get; } = [];
+
+    #endregion
+
     public StructKoto(ref TokenReader reader, SourceRange range)
         : base(ref reader, range)
     {

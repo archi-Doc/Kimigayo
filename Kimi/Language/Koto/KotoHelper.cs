@@ -18,8 +18,14 @@ public static class KotoHelper
     {
         if (parent.ReplaceChild(oldKoto, newKoto))
         {
-            oldKoto.Parent = default;
+            // Koto structure
             newKoto.Parent = parent;
+            newKoto.Previous = oldKoto.Previous;
+            newKoto.Next = oldKoto.Next;
+
+            oldKoto.Parent = default;
+            oldKoto.Previous = default;
+            oldKoto.Next = default;
 
             // Frontend Metadata
             newKoto.DiagnosticCollection = oldKoto.DiagnosticCollection;
@@ -36,10 +42,10 @@ public static class KotoHelper
         DumpKoto(koto, writer, indent: "  ", isLast: true, label: null);
     }
 
-    public static (string Name, List<string>? List) ParseGroupDeclaration(ref TokenReader reader)
+    public static (string Name, List<Token>? List) ParseGroupDeclaration(ref TokenReader reader)
     {
         string name = string.Empty;
-        List<string>? list = default;
+        List<Token>? list = default;
         if (!reader.TryRead(out var token))
         {
             reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
@@ -85,7 +91,7 @@ public static class KotoHelper
             else if (token.Kind == TokenKind.Identifier)
             {
                 list ??= new();
-                list.Add(token.Text.ToString());
+                list.Add(token);
             }
             else if (token.Kind == TokenKind.StartBlock)
             {

@@ -38,6 +38,7 @@ public enum TokenKind : byte
     Internal,
     ProtectedOrInternal,
     ProtectedAndInternal,
+    Open,
     Let,
     Var,
     True,

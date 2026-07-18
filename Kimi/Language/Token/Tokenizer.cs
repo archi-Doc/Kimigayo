@@ -65,6 +65,7 @@ public static class TokenHelper
         Set(TokenKind.Internal, true, "internal");
         Set(TokenKind.ProtectedOrInternal, true, "protected_or_internal");
         Set(TokenKind.ProtectedAndInternal, true, "protected_and_internal");
+        Set(TokenKind.Open, true, "open");
         Set(TokenKind.Let, true, "let");
         Set(TokenKind.Var, true, "var");
         Set(TokenKind.True, true, "true");

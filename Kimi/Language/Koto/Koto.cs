@@ -60,6 +60,12 @@ public abstract partial class Koto
     [IgnoreMember]
     public Koto? Parent { get; internal set; }
 
+    [IgnoreMember]
+    public Koto? Previous { get; internal set; }
+
+    [IgnoreMember]
+    public Koto? Next { get; internal set; }
+
     [Key(0)]
     public AttributeKoto? AttributeChain { get; internal set; }
 
@@ -84,10 +90,6 @@ public abstract partial class Koto
     {
         this.CodeContext = codeContext;
     }
-
-    /*public virtual void Parse(ref TokenReader reader)
-    {
-    }*/
 
     public virtual (string Text, Koto[]? Children) Dump()
     {
