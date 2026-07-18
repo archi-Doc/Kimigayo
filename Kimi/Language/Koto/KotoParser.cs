@@ -7,16 +7,52 @@ namespace Kimigayo.Language;
 
 public static class KotoParser
 {
-    private const int AccessibilityModifierMask = 31;
+    private const int AccessibilityModifierMask = 15;
     private const int PrefixBindingPower = 90;
+
+    public static FieldKoto? ParseField(ref TokenReader reader, Token token)
+    {// var x = 1
+        var variableKind = token.Kind == TokenKind.Let ? VariableKind.Let : VariableKind.Var;
+
+        // Field name
+        if (!reader.TryRead(out var identifierToken) ||
+            identifierToken.Kind != TokenKind.Identifier)
+        {
+            return default;
+        }
+
+        var name = identifierToken.Text;
+
+        Token typeToken = default;
+        if (reader.TryConsume(TokenKind.Colon, out _))
+        {// var x: i32
+            if (!reader.TryRead(out typeToken))
+            {
+                return default;
+            }
+        }
+
+        Koto? initializer = default;
+        if (reader.TryConsume(TokenKind.Equals, out _))
+        {// var x = 1 + 2
+            initializer = ParseExpression(ref reader);
+        }
+
+        var fieldKoto = new FieldKoto(ref reader, token, typeToken, initializer);
+
+        reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator);// check
+
+        return default;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static string ToText(this KotoModifierKind kind)
     {
         var acc = kind.ExtractAccessibilityModifiers();
+        string text;
         if (kind.HasFlag(KotoModifierKind.Static))
         {
-            return acc switch
+            text = acc switch
             {
                 KotoModifierKind.Public => "public static",
                 KotoModifierKind.Protected => "protected static",
@@ -29,7 +65,7 @@ public static class KotoParser
         }
         else
         {
-            return acc switch
+            text = acc switch
             {
                 KotoModifierKind.Public => "public",
                 KotoModifierKind.Protected => "protected",
@@ -39,6 +75,15 @@ public static class KotoParser
                 KotoModifierKind.ProtectedAndInternal => "protected_and_internal",
                 _ => string.Empty,
             };
+        }
+
+        if (kind.HasFlag(KotoModifierKind.Open))
+        {
+            return text + " open";
+        }
+        else
+        {
+            return text;
         }
     }
 

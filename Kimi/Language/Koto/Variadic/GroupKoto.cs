@@ -145,7 +145,11 @@ public abstract partial class GroupKoto : IdentifiableKoto
             else if (token.Kind == TokenKind.Let ||
                 token.Kind == TokenKind.Var)
             {// let a = 1, var b = 2
-                // KotoHelper.ParseVariable(this, ref reader, ref token);
+                var fieldKoto = KotoParser.ParseField(ref reader, token);
+                if (fieldKoto is not null)
+                {
+                    this.KotoList.Add(fieldKoto);
+                }
             }
             else if (token.Kind == TokenKind.Namespace)
             {// namespace
