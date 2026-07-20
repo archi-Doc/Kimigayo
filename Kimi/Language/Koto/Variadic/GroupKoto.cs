@@ -139,7 +139,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
             }
             else if (token.Kind == TokenKind.EndBlock)
             {// Exit block
-                _ = KotoParser.ConsumeTriviaAndRead(ref reader, out token);
+                _ = KotoParser.ConsumeAttributeModifierAndRead(ref reader, out token);
                 break;
             }
             else if (token.Kind == TokenKind.Let ||
@@ -186,7 +186,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
             }
 
             // Consume Attribute and modifiers
-            _ = KotoParser.ConsumeTriviaAndRead(ref reader, out token);
+            _ = KotoParser.ConsumeAttributeModifierAndRead(ref reader, out token);
             if (!token.IsValid)
             {
                 return;
