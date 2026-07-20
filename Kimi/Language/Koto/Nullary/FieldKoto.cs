@@ -26,7 +26,7 @@ public partial class FieldKoto : Koto
     [IgnoreMember]
     private Token typeToken;
 
-    public FieldKoto(ref TokenReader reader, Token token, Token typeToken, UnresolvedKoto nameKoto, Koto? initializerKoto)
+    public FieldKoto(ref TokenReader reader, ref Token token, Token typeToken, UnresolvedKoto nameKoto, Koto? initializerKoto)
         : base(ref reader, token.Range)
     {
         this.Modifier = reader.ModifierKind;

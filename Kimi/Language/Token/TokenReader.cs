@@ -154,6 +154,7 @@ public ref struct TokenReader
 
     public bool TryConsume(TokenKind targetKind, out SourceRange range, bool addDiagnostic = true)
     {
+Loop:
         if (this.TryGetCurrentToken(out var token))
         {
             if (token.Kind == targetKind)
@@ -161,6 +162,11 @@ public ref struct TokenReader
                 range = token.Range;
                 this.AdvanceOne();
                 return true;
+            }
+            else if (token.Kind == TokenKind.Sharp)
+            {// Skip attribute
+                _ = KotoParser.ParseAttributeKoto(ref this);
+                goto Loop;
             }
 
             if (addDiagnostic)
@@ -229,7 +235,7 @@ public ref struct TokenReader
         return default;
     }
 
-    public bool TryConsumeIdentifier(ReadOnlySpan<char> name)
+    /*public bool TryConsumeIdentifier(ReadOnlySpan<char> name)
     {
         if (this.TryGetCurrentToken(out var token) &&
             token.Kind == TokenKind.Identifier &&
@@ -253,7 +259,7 @@ public ref struct TokenReader
 
         token = default;
         return false;
-    }
+    }*/
 
     public bool Advance()
     {

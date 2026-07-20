@@ -10,7 +10,7 @@ public static class KotoParser
     private const int AccessibilityModifierMask = 15;
     private const int PrefixBindingPower = 90;
 
-    public static FieldKoto? ParseField(ref TokenReader reader, Token token)
+    public static FieldKoto? ParseField(ref TokenReader reader, ref Token token)
     {// var x = 1
         var variableState = reader.StoreState();
 
@@ -24,7 +24,7 @@ public static class KotoParser
         var nameKoto = new UnresolvedKoto(ref reader, nameToken);
 
         Token typeToken = default;
-        if (reader.TryConsume(TokenKind.Colon, out _))
+        if (reader.TryConsume(TokenKind.Colon, out _, false))
         {// var x: i32
             if (!reader.TryRead(out typeToken))
             {
@@ -40,7 +40,7 @@ public static class KotoParser
 
         reader.RestoreState(variableState);
 
-        var fieldKoto = new FieldKoto(ref reader, token, typeToken, nameKoto, initializerKoto);
+        var fieldKoto = new FieldKoto(ref reader, ref token, typeToken, nameKoto, initializerKoto);
 
         reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator);// check
 
@@ -216,6 +216,25 @@ public static class KotoParser
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static AttributeKoto ParseAttributeKoto(ref TokenReader reader)
+    {
+        var previousAttribute = reader.PopAttribute();
+
+        reader.TryRead(out var attributeToken);
+        var operand = ParseExpression(ref reader, PrefixBindingPower);
+
+        if (previousAttribute is not null)
+        {
+            reader.PushAttribute(previousAttribute);
+        }
+
+        var attributeKoto = new AttributeKoto(ref reader, attributeToken.Range, operand);
+        reader.PushAttribute(attributeKoto);
+
+        return attributeKoto;
+    }
+
     public static Koto ParseExpression(ref TokenReader reader, int minBindingPower = 0)
     {
         var left = ParsePrefixExpression(ref reader);
@@ -328,7 +347,6 @@ ProcessPrefix:
         var tokenKind = reader.CurrentTokenKind;
         if (tokenKind == TokenKind.CloseParenthesis)
         {
-            reader.Advance();
             return [];
         }
 
@@ -496,23 +514,4 @@ Loop:
 
             _ => default,
         };
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static AttributeKoto ParseAttributeKoto(ref TokenReader reader)
-    {
-        var previousAttribute = reader.PopAttribute();
-
-        reader.TryRead(out var attributeToken);
-        var operand = ParseExpression(ref reader, PrefixBindingPower);
-
-        if (previousAttribute is not null)
-        {
-            reader.PushAttribute(previousAttribute);
-        }
-
-        var attributeKoto = new AttributeKoto(ref reader, attributeToken.Range, operand);
-        reader.PushAttribute(attributeKoto);
-
-        return attributeKoto;
-    }
 }

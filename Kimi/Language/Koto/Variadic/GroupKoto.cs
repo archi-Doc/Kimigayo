@@ -62,7 +62,7 @@ public abstract partial class IdentifiableKoto : Koto
 }
 
 /// <summary>
-/// namespace, struct, enum, extension, contract
+/// namespace, struct, enum, extension, contract.
 /// </summary>
 [TinyhandObject]
 public abstract partial class GroupKoto : IdentifiableKoto
@@ -145,7 +145,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
             else if (token.Kind == TokenKind.Let ||
                 token.Kind == TokenKind.Var)
             {// let a = 1, var b = 2
-                var fieldKoto = KotoParser.ParseField(ref reader, token);
+                var fieldKoto = KotoParser.ParseField(ref reader, ref token);
                 if (fieldKoto is not null)
                 {
                     this.AddLast(fieldKoto);
