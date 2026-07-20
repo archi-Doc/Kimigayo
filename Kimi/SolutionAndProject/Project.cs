@@ -103,7 +103,7 @@ public partial class Project
             try
             {
                 var st = File.ReadAllText(y);
-                projectKotonoha.AddSource(compilation, new(y, st));
+                projectKotonoha.AddSource(new(y, st));
             }
             catch
             {
@@ -112,8 +112,10 @@ public partial class Project
 
         foreach (var y in this.additionalSource)
         {
-            projectKotonoha.AddSource(compilation, y);
+            projectKotonoha.AddSource(y);
         }
+
+        projectKotonoha.Unparse();
 
         // Resolve shared let & @Attribute
 

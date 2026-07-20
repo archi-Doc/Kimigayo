@@ -77,9 +77,16 @@ public sealed partial class Kotonoha
         return true;*/
     }
 
-    public void AddSource(Compilation compilation, PathAndSource pathAndSource)
+    public void Unparse()
     {
-        var diagnostic = compilation.KimiControl.GetOrAddFileDiagnostic(pathAndSource.Path);
+        using var writer = new StringWriter();
+        this.RootKoto.Unparse(writer);
+        var sb = writer.ToString();
+    }
+
+    public void AddSource(PathAndSource pathAndSource)
+    {
+        var diagnostic = this.Compilation.KimiControl.GetOrAddFileDiagnostic(pathAndSource.Path);
         var tokenizer = new Tokenizer(diagnostic);
         tokenizer.Initialize(pathAndSource.Source.AsMemory(), 0, 0);
 
@@ -87,7 +94,7 @@ public sealed partial class Kotonoha
         var kimiSource = new KimiSource(pathAndSource.Path, [], default);
         this.SourceList.Add(kimiSource);*/
 
-        var codeContext = compilation.CreateCodeContext(this);
+        var codeContext = this.Compilation.CreateCodeContext(this);
 
         // Tokenize
         var tokenBuilder = new TokenSequenceBuilder();
@@ -95,7 +102,7 @@ public sealed partial class Kotonoha
         {
             tokenizer.ReadAll(ref tokenBuilder);
             var tokenSequence = tokenBuilder.ToReadOnlySequence();
-            if (compilation.KimiOptions.DumpToken)
+            if (this.Compilation.KimiOptions.DumpToken)
             {// Dump token
                 this.DumpToken(pathAndSource.Path, tokenSequence);
             }

@@ -199,6 +199,20 @@ public abstract partial class GroupKoto : IdentifiableKoto
         }
     }
 
+    public void Unparse(StringWriter writer)
+    {
+        foreach (var x in this.KotoList)
+        {
+            x.Unparse(writer);
+        }
+
+        var groups = this.identifierToGroupKoto.ToArray();
+        foreach (var x in groups)
+        {
+            x.Unparse(writer);
+        }
+    }
+
     public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind)
     {
         var text = qualifiedName;
