@@ -14,6 +14,12 @@ public static class KotoHelper
         _ => new UnaryKoto(ref reader, token.Range, operand), // throw new InvalidOperationException(),
     };
 
+    public static Koto NewBinaryKoto(ref TokenReader reader, Token token, Koto left, Koto right) => token.Kind switch
+    {
+        TokenKind.EqualsEquals => new EqualsEqualsKoto(ref reader, token.Range, left, right),
+        _ => new BinaryKoto(ref reader, token.Range, left, right), // throw new InvalidOperationException(),
+    };
+
     public static bool Replace(Koto parent, Koto oldKoto, Koto newKoto)
     {
         if (parent.ReplaceChild(oldKoto, newKoto))

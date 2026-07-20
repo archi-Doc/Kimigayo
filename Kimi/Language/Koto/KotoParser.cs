@@ -255,7 +255,8 @@ public static class KotoParser
 
             reader.TryRead(out var token);
             var right = ParseExpression(ref reader, bindingPower.Right);
-            left = new BinaryKoto(ref reader, token.Range, left, right);
+            left = KotoHelper.NewBinaryKoto(ref reader, token, left, right);
+            // left = new BinaryKoto(ref reader, token.Range, left, right);
         }
 
         return left;

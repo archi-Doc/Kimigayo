@@ -5,6 +5,18 @@ using Kimigayo.Diagnostics;
 namespace Kimigayo.Language;
 
 [TinyhandObject]
+public partial class EqualsEqualsKoto : BinaryKoto
+{// A == B
+    public EqualsEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
+        : base(ref reader, range, left, right)
+    {
+    }
+
+    public override string ToString()
+        => $"{this.Left.ToString()} == {this.Right.ToString()}";
+}
+
+[TinyhandObject]
 public partial class BinaryKoto : Koto
 {
     // [Key(1)]

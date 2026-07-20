@@ -200,10 +200,15 @@ public abstract partial class GroupKoto : IdentifiableKoto
     }
 
     public override void Unparse(StringWriter writer)
-    {
+    {//
         foreach (var x in this.KotoList)
         {
             x.Unparse(writer);
+        }
+
+        if (this.KotoList.Count > 0)
+        {
+            writer.WriteLine();
         }
 
         var groups = this.identifierToGroupKoto.ToArray();
