@@ -7,6 +7,8 @@ using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
 
+public readonly record struct TokenState(AttributeKoto? AttributeKoto, KotoModifierKind ModifierKind);
+
 public ref struct TokenReader
 {// 144
     public const int MaxDepth = 10;
@@ -76,6 +78,18 @@ public ref struct TokenReader
     {
         this.AttributeKoto = default;
         this.ModifierKind = default;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public TokenState StoreState()
+    {
+        return new(this.AttributeKoto, this.ModifierKind);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void RestoreState(TokenState state)
+    {
+        (this.AttributeKoto, this.ModifierKind) = (state.AttributeKoto, state.ModifierKind);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -12,22 +12,16 @@ public static class KotoParser
 
     public static FieldKoto? ParseField(ref TokenReader reader, Token token)
     {// var x = 1
-        KotoParser
-        var variableKind = token.Kind == TokenKind.Let ? VariableKind.Let : VariableKind.Var;
-
-        var attributeKoto = KotoParser.ConsumeAttributeAndRead(ref reader, out token);
-        if (nameKoto is not )
-        {
-        }
+        var variableState = reader.StoreState();
 
         // Field name
-        if (!reader.TryRead(out var identifierToken) ||
-            identifierToken.Kind != TokenKind.Identifier)
+        var nameAttribute = KotoParser.ConsumeAttributeAndRead(ref reader, out var nameToken);
+        if (nameToken.Kind != TokenKind.Identifier)
         {
             return default;
         }
 
-        var name = identifierToken.Text;
+        var nameKoto = new UnresolvedKoto(ref reader, nameToken);
 
         Token typeToken = default;
         if (reader.TryConsume(TokenKind.Colon, out _))
@@ -38,13 +32,15 @@ public static class KotoParser
             }
         }
 
-        Koto? initializer = default;
+        Koto? initializerKoto = default;
         if (reader.TryConsume(TokenKind.Equals, out _))
         {// var x = 1 + 2
-            initializer = ParseExpression(ref reader);
+            initializerKoto = ParseExpression(ref reader);
         }
 
-        var fieldKoto = new FieldKoto(ref reader, token, typeToken, initializer);
+        reader.RestoreState(variableState);
+
+        var fieldKoto = new FieldKoto(ref reader, token, typeToken, nameKoto, initializerKoto);
 
         reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator);// check
 

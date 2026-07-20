@@ -18,16 +18,22 @@ public partial class FieldKoto : Koto
     public VariableKind VariableKind { get; private set; }
 
     [Key(3)]
-    public Koto? Initializer { get; private set; }
+    public UnresolvedKoto NameKoto { get; private set; }
+
+    [Key(4)]
+    public Koto? InitializerKoto { get; private set; }
 
     [IgnoreMember]
     private Token typeToken;
 
-    public FieldKoto(ref TokenReader reader, Token token, Token typeToken, Koto? initializer)
+    public FieldKoto(ref TokenReader reader, Token token, Token typeToken, UnresolvedKoto nameKoto, Koto? initializerKoto)
         : base(ref reader, token.Range)
     {
+        this.Modifier = reader.ModifierKind;
+        this.VariableKind = token.Kind == TokenKind.Let ? VariableKind.Let : VariableKind.Var;
         this.typeToken = typeToken;
-        this.Initializer = initializer;
+        this.NameKoto = nameKoto;
+        this.InitializerKoto = initializerKoto;
     }
 
     public override string ToString()

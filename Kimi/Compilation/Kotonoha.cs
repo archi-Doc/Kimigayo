@@ -114,7 +114,7 @@ public sealed partial class Kotonoha
     {
         while (true)
         {
-            // Consume Attribute and modifiers
+            // Consume attributes and modifiers
             _ = KotoParser.ConsumeAttributeModifierAndRead(ref reader, out var token);
             if (!token.IsValid)
             {
