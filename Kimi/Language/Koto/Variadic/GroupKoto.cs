@@ -199,7 +199,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
         }
     }
 
-    public void Unparse(StringWriter writer)
+    public override void Unparse(StringWriter writer)
     {
         foreach (var x in this.KotoList)
         {

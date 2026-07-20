@@ -91,6 +91,19 @@ public abstract partial class Koto
         this.CodeContext = codeContext;
     }
 
+    public virtual void Unparse(StringWriter writer)
+    {
+        var attributeKoto = this.AttributeChain;
+        while (attributeKoto is not null)
+        {
+            writer.Write(attributeKoto.ToString());
+            writer.Write(' ');
+            attributeKoto = attributeKoto.AttributeChain;
+        }
+
+        writer.WriteLine(this.ToString());
+    }
+
     public virtual (string Text, Koto[]? Children) Dump()
     {
         return (string.Empty, default);
