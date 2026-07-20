@@ -42,7 +42,7 @@ public static class KotoParser
 
         var fieldKoto = new FieldKoto(ref reader, ref token, typeToken, nameKoto, initializerKoto);
 
-        reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator);// check
+        reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, Hashed.Kimi.UnexpectedTrailingToken);
 
         return default;
     }
@@ -358,10 +358,11 @@ ProcessPrefix:
         {
             arguments.Add(ParseExpression(ref reader));
 
-            if (reader.CurrentTokenKind == TokenKind.Comma)
+            tokenKind = reader.CurrentTokenKind;
+            if (tokenKind == TokenKind.Comma)
             {
                 reader.Advance();
-                if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
+                if (tokenKind == TokenKind.CloseParenthesis)
                 {
                     break;
                 }
@@ -369,7 +370,7 @@ ProcessPrefix:
                 continue;
             }
 
-            if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
+            if (tokenKind != TokenKind.CloseParenthesis)
             {
                 reader.TryConsume(TokenKind.Comma, out range);
                 reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);

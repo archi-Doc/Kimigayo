@@ -8,7 +8,7 @@ alias Kimi.Windows
 namespace Playground.A
 
 public open struct Test: @A, @B,
-    public static #Test1 var #Test2 x: i32 #Test3 = #One 1
+    public static #Test1 var #Test2 x: i32 = #One 1
 
 #Condition(Os.Version.Current == 1 and "text".Length > 0)
 var x = 1 + 2 * 3
@@ -16,7 +16,7 @@ var y = (1 + #Test 2) * 3
 
 static var x = 1
 static let y = 2
-var z = Test.New()
+var z = #Func1 Test.New()
 z.Func1()
 var a = z // Clone
 var b = &z // borrow

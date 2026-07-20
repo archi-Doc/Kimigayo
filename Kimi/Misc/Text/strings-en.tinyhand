@@ -30,6 +30,7 @@ Kimi=
   TopLevelKeywordAfterCode="Top-level keywords such as 'alias' must appear before any other code"
   UnexpectedIndent="Unexpected indentation"
   UnexpectedToken="Token {0} is not expected at this position"
+  UnexpectedTrailingToken="Unexpected token at the end of the statement"
   UnmatchedEndBlock="Unmatched end block"
   UnmatchedAngleBracket="Unmatched angle bracket"
   UnmatchedBrace="Unmatched brace"

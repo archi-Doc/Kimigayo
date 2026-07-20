@@ -206,6 +206,7 @@ Loop:
             if (hash != 0)
             {
                 this.AddDiagnostic(hash, token.Span.ToString());
+                hash = 0;
             }
 
             this.AdvanceOne();
