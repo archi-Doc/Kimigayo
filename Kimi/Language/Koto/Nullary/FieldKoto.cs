@@ -10,7 +10,7 @@ public enum VariableKind
 
 [TinyhandObject]
 public partial class FieldKoto : Koto
-{
+{// var x = 1
     [Key(1)]
     public KotoModifierKind Modifier { get; private set; }
 

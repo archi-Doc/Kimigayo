@@ -62,7 +62,7 @@ public abstract partial class IdentifiableKoto : Koto
 }
 
 /// <summary>
-/// group, struct, enum.
+/// namespace, struct, enum, extension, contract
 /// </summary>
 [TinyhandObject]
 public abstract partial class GroupKoto : IdentifiableKoto
@@ -102,7 +102,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
     public override ReadOnlySpan<char> GetIdentifier()
         => this.Name;
 
-    public void Add(Koto koto)
+    public void AddLast(Koto koto)
     {
         this.KotoList.Add(koto);
         koto.Parent = this;
@@ -133,12 +133,12 @@ public abstract partial class GroupKoto : IdentifiableKoto
             GroupKoto? nextGroup = default;
 
             if (token.IsIdentifierToken(Constants.AliasKeyword))
-            {// alias
+            {// alias (not supported)
                 _ = KotoHelper.ValidateAndGetNamespace2(ref reader);
                 reader.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);
             }
             else if (token.Kind == TokenKind.EndBlock)
-            {
+            {// Exit block
                 _ = KotoParser.ConsumeTriviaAndRead(ref reader, out token);
                 break;
             }
@@ -148,7 +148,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
                 var fieldKoto = KotoParser.ParseField(ref reader, token);
                 if (fieldKoto is not null)
                 {
-                    this.KotoList.Add(fieldKoto);
+                    this.AddLast(fieldKoto);
                 }
             }
             else if (token.Kind == TokenKind.Namespace)

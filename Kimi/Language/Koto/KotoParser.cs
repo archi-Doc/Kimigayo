@@ -14,6 +14,11 @@ public static class KotoParser
     {// var x = 1
         var variableKind = token.Kind == TokenKind.Let ? VariableKind.Let : VariableKind.Var;
 
+        var attributeKoto = KotoParser.ConsumeAttributeAndRead(ref reader, out token);
+        if (nameKoto is not )
+        {
+        }
+
         // Field name
         if (!reader.TryRead(out var identifierToken) ||
             identifierToken.Kind != TokenKind.Identifier)
@@ -91,6 +96,46 @@ public static class KotoParser
     public static KotoModifierKind ExtractAccessibilityModifiers(this KotoModifierKind kind)
     {
         return (KotoModifierKind)((byte)kind & AccessibilityModifierMask);
+    }
+
+    public static AttributeKoto? ConsumeAttributeAndRead(ref TokenReader reader, out Token token)
+    {// Consume Attribute
+        reader.Clear();
+
+        AttributeKoto? koto = default;
+        while (true)
+        {
+            while (true)
+            {
+                var tokenKind = reader.CurrentTokenKind;
+
+                if (tokenKind == TokenKind.Separator)
+                {
+                    reader.Advance();
+                    continue;
+                }
+                else if (tokenKind == TokenKind.Sharp)
+                {
+                    break;
+                }
+
+                reader.TryRead(out token);
+                return koto;
+            }
+
+            var previousAttribute = reader.PopAttribute();
+
+            reader.TryRead(out var attributeToken);
+            var operand = ParseExpression(ref reader, PrefixBindingPower);
+
+            if (previousAttribute is not null)
+            {
+                reader.PushAttribute(previousAttribute);
+            }
+
+            koto = new AttributeKoto(ref reader, attributeToken.Range, operand);
+            reader.PushAttribute(koto);
+        }
     }
 
     public static AttributeKoto? ConsumeTriviaAndRead(ref TokenReader reader, out Token token)

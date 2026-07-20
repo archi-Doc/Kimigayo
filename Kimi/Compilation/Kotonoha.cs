@@ -125,7 +125,7 @@ public sealed partial class Kotonoha
             {// alias
                 var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
                 var aliasKoto = new AliasKoto(ref reader, list);
-                this.RootKoto.Add(aliasKoto);
+                this.RootKoto.AddLast(aliasKoto);
                 continue;
             }
             else
