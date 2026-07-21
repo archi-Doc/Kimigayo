@@ -102,10 +102,8 @@ public abstract partial class Koto
         {
             KotoParser.UnparseAttribute(this.AttributeChain, writer);
 
-            if (this is UnaryKoto)
-            {
-            }
-            else
+            if (this is AliasKoto ||
+                this is GroupKoto)
             {
                 writer.WriteLine();
             }

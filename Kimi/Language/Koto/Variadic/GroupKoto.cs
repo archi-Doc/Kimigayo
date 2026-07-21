@@ -82,13 +82,22 @@ public partial class GroupKoto : IdentifiableKoto
 
     private readonly Utf16Hashtable<GroupKoto> identifierToGroupKoto = new();
 
-    public KotoKind Kind => this switch
+    public KotoKind KotoKind => this switch
     {
         StructKoto => KotoKind.Struct,
         EnumKoto => KotoKind.Enum,
         ExtensionKoto => KotoKind.Extension,
         ContractKoto => KotoKind.Contract,
         _ => KotoKind.Group,
+    };
+
+    public TokenKind TokenKind => this switch
+    {
+        StructKoto => TokenKind.Struct,
+        EnumKoto => TokenKind.Enum,
+        ExtensionKoto => TokenKind.Extension,
+        ContractKoto => TokenKind.Contract,
+        _ => TokenKind.Group,
     };
 
     #endregion
@@ -121,19 +130,22 @@ public partial class GroupKoto : IdentifiableKoto
             return "Root";
         }
 
-        var modifier = this.Modifier.ToText(true);
+        return $"{this.TokenKind.ToText()} {this.Name}";
+    }
 
-        var st = this.Kind switch
+    public override void UnparseTo(StringWriter writer)
+    {// public group A
+        KotoParser.UnparseAttribute(this.AttributeChain, writer);
+        writer.WriteLine();
+
+        if (this.IsRoot)
         {
-            KotoKind.Group => $"{modifier}{TokenKind.Group.ToText()} {this.Name}",
-            KotoKind.Struct => $"{modifier}{TokenKind.Struct.ToText()} {this.Name}",
-            KotoKind.Enum => $"{modifier}{TokenKind.Enum.ToText()} {this.Name}",
-            KotoKind.Extension => $"{modifier}{TokenKind.Extension.ToText()} {this.Name}",
-            KotoKind.Contract => $"{modifier}{TokenKind.Contract.ToText()} {this.Name}",
-            _ => string.Empty,
-        };
+            writer.Write("Root");
+            return;
+        }
 
-        return st;
+        this.Modifier.WriteTo(writer, true);
+        writer.Write(this.TokenKind.ToText());
     }
 
     public void Parse(ref Token token, ref TokenReader reader)
@@ -213,13 +225,20 @@ public partial class GroupKoto : IdentifiableKoto
         }
     }
 
-    public override void WriteTo(StringWriter writer)
+    public void UnparseAll(StringWriter writer)
     {//
+        if (!this.IsRoot)
+        {
+            this.UnparseTo(writer);
+            writer.WriteLine();
+        }
+
         if (this.KotoList.Count > 0)
         {
             foreach (var x in this.KotoList)
             {
                 x.UnparseTo(writer);
+                writer.WriteLine();
             }
 
             writer.WriteLine();
@@ -228,7 +247,7 @@ public partial class GroupKoto : IdentifiableKoto
         var groups = this.identifierToGroupKoto.ToArray();
         foreach (var x in groups)
         {
-            x.UnparseTo(writer);
+            x.UnparseAll(writer);
         }
     }
 

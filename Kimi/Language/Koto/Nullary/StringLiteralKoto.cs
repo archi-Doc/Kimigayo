@@ -21,9 +21,9 @@ public sealed partial class StringLiteralKoto : Koto
 
     public override void WriteTo(StringWriter writer)
     {
-        writer.Write('\"');
+        // writer.Write('\"');
         writer.Write(this.Literal);
-        writer.Write('\"');
+        // writer.Write('\"');
     }
 
     public override (string Text, Koto[]? Children) Dump()

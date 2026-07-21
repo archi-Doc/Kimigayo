@@ -25,25 +25,19 @@ public sealed partial class StructKoto : GroupKoto
     {
     }
 
-    public override string ToString()
-    {
-        if (this.BaseList.Count == 0)
+    public override void UnparseTo(StringWriter writer)
+    {// public group A: @B
+        base.UnparseTo(writer);
+
+        if (this.BaseList.Count != 0)
         {
-            return base.ToString();
-        }
-        else
-        {
-            var sb = new StringBuilder();
-            sb.Append(base.ToString());
-            sb.Append(": ");
+            writer.Write(": ");
 
             foreach (var x in this.BaseList)
             {
-                sb.Append(x.Text);
-                sb.Append(", ");
+                writer.Write(x.Text);
+                writer.Write(", ");
             }
-
-            return sb.ToString();
         }
     }
 }
