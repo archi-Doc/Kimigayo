@@ -213,13 +213,13 @@ public partial class GroupKoto : IdentifiableKoto
         }
     }
 
-    public override void Unparse(StringWriter writer)
+    public override void WriteTo(StringWriter writer)
     {//
         if (this.KotoList.Count > 0)
         {
             foreach (var x in this.KotoList)
             {
-                x.Unparse(writer);
+                x.UnparseTo(writer);
             }
 
             writer.WriteLine();
@@ -228,7 +228,7 @@ public partial class GroupKoto : IdentifiableKoto
         var groups = this.identifierToGroupKoto.ToArray();
         foreach (var x in groups)
         {
-            x.Unparse(writer);
+            x.UnparseTo(writer);
         }
     }
 

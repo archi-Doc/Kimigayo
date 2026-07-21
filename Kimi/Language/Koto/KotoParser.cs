@@ -166,6 +166,74 @@ public static class KotoParser
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void WriteTo(this KotoModifierKind kind, StringWriter writer, bool addSpace = false)
+    {
+        var acc = kind.ExtractAccessibilityModifiers();
+        var accText = acc switch
+        {
+            KotoModifierKind.Public => "public",
+            KotoModifierKind.Protected => "protected",
+            KotoModifierKind.Private => "private",
+            KotoModifierKind.Internal => "internal",
+            KotoModifierKind.ProtectedOrInternal => "protected_or_internal",
+            KotoModifierKind.ProtectedAndInternal => "protected_and_internal",
+            _ => string.Empty,
+        };
+
+        writer.Write(accText);
+
+        if (addSpace)
+        {// "public "
+            if (kind.HasFlag(KotoModifierKind.Static))
+            {// "public static "
+                if (kind.HasFlag(KotoModifierKind.Open))
+                {// "public static open "
+                    writer.Write(" static open ");
+                }
+                else
+                {// "public static "
+                    writer.Write(" static ");
+                }
+            }
+            else
+            {// "public "
+                if (kind.HasFlag(KotoModifierKind.Open))
+                {// public open "
+                    writer.Write(" open ");
+                }
+                else
+                {// "public "
+                    writer.Write(" ");
+                }
+            }
+        }
+        else
+        {// "public"
+            if (kind.HasFlag(KotoModifierKind.Static))
+            {// "public static"
+                if (kind.HasFlag(KotoModifierKind.Open))
+                {// "public static open"
+                    writer.Write(" static open");
+                }
+                else
+                {// "public static"
+                    writer.Write(" static");
+                }
+            }
+            else
+            {// "public"
+                if (kind.HasFlag(KotoModifierKind.Open))
+                {// public open"
+                    writer.Write(" open");
+                }
+                else
+                {// "public"
+                }
+            }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static string ToText(this KotoModifierKind kind, bool addSpace = false)
     {
         var acc = kind.ExtractAccessibilityModifiers();

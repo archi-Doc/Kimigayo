@@ -13,6 +13,11 @@ public partial class ErrorKoto : Koto
     public override string ToString()
         => $"Error";
 
+    public override void WriteTo(StringWriter writer)
+    {
+        writer.Write("Error");
+    }
+
     public override (string Text, Koto[]? Children) Dump()
     {
         return ($"{this.GetType().Name}", default);

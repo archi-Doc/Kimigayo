@@ -29,6 +29,18 @@ public sealed partial class BoolLiteralKoto : Koto
         }
     }
 
+    public override void WriteTo(StringWriter writer)
+    {
+        if (this.Value)
+        {
+            writer.Write(TokenKind.True.ToText());
+        }
+        else
+        {
+            writer.Write(TokenKind.False.ToText());
+        }
+    }
+
     public override (string Text, Koto[]? Children) Dump()
     {
         return ($"{this.GetType().Name}({this.ToString()})", default);

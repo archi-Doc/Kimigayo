@@ -89,7 +89,7 @@ public class Compilation
         }
 
         using var writer = new StringWriter();
-        this.ProjectKotonoha.RootKoto.Unparse(writer);
+        this.ProjectKotonoha.RootKoto.UnparseTo(writer);
         var sb = writer.ToString();
 
         var bin = TinyhandSerializer.Serialize(this.ProjectKotonoha);
@@ -101,7 +101,7 @@ public class Compilation
         }
 
         using var writer2 = new StringWriter();
-        kotonoha.RootKoto.Unparse(writer2);
+        kotonoha.RootKoto.UnparseTo(writer2);
         var sb2 = writer2.ToString();
     }
 }

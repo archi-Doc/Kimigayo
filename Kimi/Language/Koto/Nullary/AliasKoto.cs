@@ -1,26 +1,37 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimigayo.Diagnostics;
-
 namespace Kimigayo.Language;
 
 [TinyhandObject]
 public sealed partial class AliasKoto : Koto
 {
     [Key(1)]
-    public List<string> Alias { get; private set; }
+    public List<string> QualifiedName { get; private set; }
 
     public AliasKoto(ref TokenReader reader, List<string> alias)
         : base(ref reader, default)
     {
-        this.Alias = alias;
+        this.QualifiedName = alias;
     }
 
     public override string ToString()
-        => $"alias {string.Join(Constants.DotChar, this.Alias)}";
+        => $"alias {string.Join(Constants.DotChar, this.QualifiedName)}";
+
+    public override void WriteTo(StringWriter writer)
+    {
+        writer.Write("alias ");
+        for (var i = 0; i < this.QualifiedName.Count; i++)
+        {
+            writer.Write(this.QualifiedName[i]);
+            if (i < (this.QualifiedName.Count - 1))
+            {
+                writer.Write(Constants.DotChar);
+            }
+        }
+    }
 
     public override (string Text, Koto[]? Children) Dump()
     {
-        return ($"{this.GetType().Name}({string.Join(Constants.DotChar, this.Alias)})", default);
+        return ($"{this.GetType().Name}({string.Join(Constants.DotChar, this.QualifiedName)})", default);
     }
 }

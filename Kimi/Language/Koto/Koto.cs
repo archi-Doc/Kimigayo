@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using Kimigayo.Diagnostics;
 
 #pragma warning disable SA1401 // Fields should be private
@@ -91,7 +92,11 @@ public abstract partial class Koto
         this.CodeContext = codeContext;
     }
 
-    public virtual void Unparse(StringWriter writer)
+    public virtual void WriteTo(StringWriter writer)
+    {
+    }
+
+    public virtual void UnparseTo(StringWriter writer)
     {
         if (this.AttributeChain is not null)
         {
@@ -106,7 +111,7 @@ public abstract partial class Koto
             }
         }
 
-        writer.WriteLine(this.ToString());
+        this.WriteTo(writer);
     }
 
     public virtual (string Text, Koto[]? Children) Dump()

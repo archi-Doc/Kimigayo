@@ -17,6 +17,11 @@ public sealed partial class NumericLiteralKoto : Koto
     public override string ToString()
         => $"{this.Literal}";
 
+    public override void WriteTo(StringWriter writer)
+    {
+        writer.Write(this.Literal);
+    }
+
     public override (string Text, Koto[]? Children) Dump()
     {
         return ($"{this.GetType().Name}({this.Literal})", default);

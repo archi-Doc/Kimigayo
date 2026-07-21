@@ -41,8 +41,44 @@ public partial class FieldKoto : Koto
     public override string ToString()
     {
         var typeText = this.typeToken.Kind == TokenKind.Invalid ? string.Empty : $": {this.typeToken.Text}";
-        var initializerText = this.InitializerKoto == default ? string.Empty : $" = {this.InitializerKoto.ToString()}";
-        return $"{this.Modifier.ToText()}{KotoParser.UnparseAttribute(this.AttributeChain)}{this.NameKoto.Identifier}{typeText}{initializerText}";
+        return $"{this.VariableText} {this.NameKoto.Identifier}{typeText}";
+    }
+
+    public override void WriteTo(StringWriter writer)
+    {
+        writer.Write(this.VariableText);
+        writer.Write(' ');
+
+        writer.Write(this.NameKoto.Identifier);
+
+        if (this.typeToken.Kind != TokenKind.Invalid)
+        {// ": i32"
+            writer.Write(": ");
+            writer.Write(this.typeToken.Text);
+        }
+    }
+
+    public override void UnparseTo(StringWriter writer)
+    {// public let x: i32 = 1
+        this.Modifier.WriteTo(writer, true);
+        KotoParser.UnparseAttribute(this.AttributeChain, writer);
+
+        writer.Write(this.VariableText);
+        writer.Write(' ');
+
+        writer.Write(this.NameKoto.Identifier);
+
+        if (this.typeToken.Kind != TokenKind.Invalid)
+        {// ": i32"
+            writer.Write(": ");
+            writer.Write(this.typeToken.Text);
+        }
+
+        if (this.InitializerKoto != default)
+        {// "= 1"
+            writer.Write(" = ");
+            this.InitializerKoto.UnparseTo(writer);
+        }
     }
 
     public override (string Text, Koto[]? Children) Dump()
