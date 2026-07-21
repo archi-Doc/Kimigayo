@@ -24,7 +24,7 @@ public sealed partial class Kotonoha
     public string Url { get; private set; } = string.Empty;
 
     [Key(3)]
-    public NamespaceKoto RootKoto { get; private set; }
+    public GroupKoto RootKoto { get; private set; }
     // public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
 
     // [Key(4)]
@@ -47,7 +47,7 @@ public sealed partial class Kotonoha
         this.Url = url;
         this.RootKoto = new(codeContext);
 
-        codeContext.CurrentNamespace = this.RootKoto;
+        codeContext.CurrentGroup = this.RootKoto;
     }
 
     public Kotonoha(Compilation compilation)

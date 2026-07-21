@@ -28,5 +28,5 @@ var e = c // move
 e.drop()
 
 
-// namespace Pg.Extensions
-// public extension i32
+namespace Pg.Extensions
+public extension i32

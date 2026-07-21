@@ -46,7 +46,7 @@ public enum TokenKind : byte
     String,
 
     // Block keyword
-    Namespace, // namespace
+    Group, // group
     Struct, // struct
     Enum, // enum
     Extension, // extension
@@ -67,6 +67,7 @@ public enum TokenKind : byte
     Or, // Or
 
     // Non-block keyword
+    Namespace, // namespace
     Return, // method/return
     Break, // loop/break
     Continue, // continue

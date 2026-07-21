@@ -73,7 +73,7 @@ public static class TokenHelper
         Set(TokenKind.String, true, "string");
 
         // Block keyword
-        Set(TokenKind.Namespace, true, "namespace");
+        Set(TokenKind.Group, true, "group");
         Set(TokenKind.Struct, true, "struct");
         Set(TokenKind.Enum, true, "enum");
         Set(TokenKind.Extension, true, "extension");
@@ -93,6 +93,7 @@ public static class TokenHelper
         Set(TokenKind.Or, true, "or");
 
         // Non-block keyword
+        Set(TokenKind.Namespace, true, "namespace");
         Set(TokenKind.Return, true, "return");
         Set(TokenKind.Break, true, "break");
         Set(TokenKind.Continue, true, "continue");

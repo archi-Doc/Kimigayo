@@ -65,7 +65,7 @@ public abstract partial class IdentifiableKoto : Koto
 /// namespace, struct, enum, extension, contract.
 /// </summary>
 [TinyhandObject]
-public abstract partial class GroupKoto : IdentifiableKoto
+public partial class GroupKoto : IdentifiableKoto
 {
     #region FieldAndProperty
 
@@ -79,12 +79,11 @@ public abstract partial class GroupKoto : IdentifiableKoto
 
     public KotoKind Kind => this switch
     {
-        NamespaceKoto => KotoKind.Namespace,
         StructKoto => KotoKind.Struct,
         EnumKoto => KotoKind.Enum,
         ExtensionKoto => KotoKind.Extension,
         ContractKoto => KotoKind.Contract,
-        _ => KotoKind.Invalid,
+        _ => KotoKind.Group,
     };
 
     #endregion
@@ -117,7 +116,7 @@ public abstract partial class GroupKoto : IdentifiableKoto
 
         return this.Kind switch
         {
-            KotoKind.Namespace => $"{TokenKind.Namespace.ToText()} {this.Name}",
+            KotoKind.Group => $"{TokenKind.Group.ToText()} {this.Name}",
             KotoKind.Struct => $"{TokenKind.Struct.ToText()} {this.Name}",
             KotoKind.Enum => $"{TokenKind.Enum.ToText()} {this.Name}",
             KotoKind.Extension => $"{TokenKind.Extension.ToText()} {this.Name}",
@@ -154,15 +153,18 @@ public abstract partial class GroupKoto : IdentifiableKoto
             else if (token.Kind == TokenKind.Namespace)
             {// namespace
                 var name = KotoHelper.ValidateAndGetNamespace(ref reader);
-                var namespaceKoto = (NamespaceKoto)this.GetOrAddGroup(name, token.Kind);
-                this.CodeContext.CurrentNamespace = namespaceKoto;
+                var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, token.Kind);
+                this.CodeContext.CurrentGroup = groupKoto;
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.Advance();
                 }
 
-                nextGroup = namespaceKoto;
+                nextGroup = groupKoto;
+            }
+            else if (token.Kind == TokenKind.Group)
+            {// group
             }
             else if (token.Kind == TokenKind.Struct)
             {// struct
@@ -257,12 +259,11 @@ public abstract partial class GroupKoto : IdentifiableKoto
         var codeContext = group.CodeContext;
         Func<string, GroupKoto> factory = kind switch
         {
-            TokenKind.Namespace => x => new NamespaceKoto(codeContext),
             TokenKind.Struct => x => new StructKoto(codeContext),
             TokenKind.Enum => x => new EnumKoto(codeContext),
             TokenKind.Extension => x => new ExtensionKoto(codeContext),
             TokenKind.Contract => x => new ContractKoto(codeContext),
-            _ => throw new InvalidOperationException(),
+            _ => x => new GroupKoto(codeContext),
         };
 
         group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(text, factory);

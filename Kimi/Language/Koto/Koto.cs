@@ -16,7 +16,7 @@ public enum KotoKind : byte
     Alias,
 
     // Group
-    Namespace,
+    Group,
     Struct,
     Enum,
     Extension,
@@ -34,7 +34,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Alias, typeof(AliasKoto))]
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
 
-[TinyhandUnion((int)KotoKind.Namespace, typeof(NamespaceKoto))]
+[TinyhandUnion((int)KotoKind.Group, typeof(GroupKoto))]
 [TinyhandUnion((int)KotoKind.Struct, typeof(StructKoto))]
 
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]

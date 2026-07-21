@@ -8,12 +8,12 @@ public class CodeContext
 
     public Kotonoha Kotonoha { get; }
 
-    public NamespaceKoto CurrentNamespace { get; set; }
+    public GroupKoto CurrentGroup { get; set; }
 
     internal CodeContext(Compilation compilation, Kotonoha kotonoha)
     {
         this.Compilation = compilation;
         this.Kotonoha = kotonoha;
-        this.CurrentNamespace = this.Kotonoha.RootKoto;
+        this.CurrentGroup = this.Kotonoha.RootKoto;
     }
 }
