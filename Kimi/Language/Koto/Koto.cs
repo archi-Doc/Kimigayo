@@ -95,7 +95,7 @@ public abstract partial class Koto
     {
         if (this.AttributeChain is not null)
         {
-            UnparseAttribute(this.AttributeChain, writer);
+            KotoParser.UnparseAttribute(this.AttributeChain, writer);
 
             if (this is UnaryKoto)
             {
@@ -107,68 +107,6 @@ public abstract partial class Koto
         }
 
         writer.WriteLine(this.ToString());
-
-        static void UnparseAttribute(AttributeKoto a0, StringWriter writer)
-        {
-            var a1 = a0.AttributeChain;
-            if (a1 is null)
-            {
-                writer.Write(a0.ToString());
-                writer.Write(' ');
-                return;
-            }
-
-            var a2 = a1.AttributeChain;
-            if (a2 is null)
-            {
-                writer.Write(a1.ToString());
-                writer.Write(' ');
-                writer.Write(a0.ToString());
-                writer.Write(' ');
-                return;
-            }
-
-            var a3 = a2.AttributeChain;
-            if (a3 is null)
-            {
-                writer.Write(a2.ToString());
-                writer.Write(' ');
-                writer.Write(a1.ToString());
-                writer.Write(' ');
-                writer.Write(a0.ToString());
-                writer.Write(' ');
-                return;
-            }
-
-            var a4 = a3.AttributeChain;
-            if (a4 is null)
-            {
-                writer.Write(a3.ToString());
-                writer.Write(' ');
-                writer.Write(a2.ToString());
-                writer.Write(' ');
-                writer.Write(a1.ToString());
-                writer.Write(' ');
-                writer.Write(a0.ToString());
-                writer.Write(' ');
-                return;
-            }
-
-            var list = new List<Koto>();
-            var x = a0;
-            while (x is not null)
-            {
-                list.Add(x);
-                x = x.AttributeChain;
-            }
-
-            list.Reverse();
-            foreach (var y in list)
-            {
-                writer.Write(y.ToString());
-                writer.Write(' ');
-            }
-        }
     }
 
     public virtual (string Text, Koto[]? Children) Dump()

@@ -183,16 +183,15 @@ public partial class GroupKoto : IdentifiableKoto
                 var r = KotoHelper.ParseGroupDeclaration(ref reader);
                 var state = reader.StoreState();
                 var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, token.Kind, state);
+                if (r.List is not null)
+                {
+                    structKoto.BaseList.AddRange(r.List);
+                }
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.Advance();
                     nextGroup = structKoto;
-                }
-
-                if (r.List is not null)
-                {
-                    structKoto.BaseList.AddRange(r.List);
                 }
             }
             else

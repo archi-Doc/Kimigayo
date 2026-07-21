@@ -26,6 +26,8 @@ public partial class FieldKoto : Koto
     [IgnoreMember]
     private Token typeToken;
 
+    public string VariableText => this.VariableKind == VariableKind.Var ? "var" : "let";
+
     public FieldKoto(ref TokenReader reader, ref Token token, Token typeToken, UnresolvedKoto nameKoto, Koto? initializerKoto)
         : base(ref reader, token.Range)
     {
@@ -37,7 +39,11 @@ public partial class FieldKoto : Koto
     }
 
     public override string ToString()
-        => $"{this.Modifier.ToText()}";
+    {
+        var typeText = this.typeToken.Kind == TokenKind.Invalid ? string.Empty : $": {this.typeToken.Text}";
+        var initializerText = this.InitializerKoto == default ? string.Empty : $" = {this.InitializerKoto.ToString()}";
+        return $"{this.Modifier.ToText()}{KotoParser.UnparseAttribute(this.AttributeChain)}{this.NameKoto.Identifier}{typeText}{initializerText}";
+    }
 
     public override (string Text, Koto[]? Children) Dump()
     {

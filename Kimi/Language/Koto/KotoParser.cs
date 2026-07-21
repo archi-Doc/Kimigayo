@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.CompilerServices;
+using System.Text;
 using Kimigayo.Diagnostics;
 
 namespace Kimigayo.Language;
@@ -9,6 +10,123 @@ public static class KotoParser
 {
     private const int AccessibilityModifierMask = 15;
     private const int PrefixBindingPower = 90;
+
+    public static void UnparseAttribute(AttributeKoto? a0, StringWriter writer)
+    {
+        if (a0 is null)
+        {
+            return;
+        }
+
+        var a1 = a0.AttributeChain;
+        if (a1 is null)
+        {
+            writer.Write(a0.ToString());
+            writer.Write(' ');
+            return;
+        }
+
+        var a2 = a1.AttributeChain;
+        if (a2 is null)
+        {
+            writer.Write(a1.ToString());
+            writer.Write(' ');
+            writer.Write(a0.ToString());
+            writer.Write(' ');
+            return;
+        }
+
+        var a3 = a2.AttributeChain;
+        if (a3 is null)
+        {
+            writer.Write(a2.ToString());
+            writer.Write(' ');
+            writer.Write(a1.ToString());
+            writer.Write(' ');
+            writer.Write(a0.ToString());
+            writer.Write(' ');
+            return;
+        }
+
+        var a4 = a3.AttributeChain;
+        if (a4 is null)
+        {
+            writer.Write(a3.ToString());
+            writer.Write(' ');
+            writer.Write(a2.ToString());
+            writer.Write(' ');
+            writer.Write(a1.ToString());
+            writer.Write(' ');
+            writer.Write(a0.ToString());
+            writer.Write(' ');
+            return;
+        }
+
+        var list = new List<Koto>();
+        var x = a0;
+        while (x is not null)
+        {
+            list.Add(x);
+            x = x.AttributeChain;
+        }
+
+        list.Reverse();
+        foreach (var y in list)
+        {
+            writer.Write(y.ToString());
+            writer.Write(' ');
+        }
+    }
+
+    public static string UnparseAttribute(AttributeKoto? a0)
+    {
+        if (a0 is null)
+        {
+            return string.Empty;
+        }
+
+        var a1 = a0.AttributeChain;
+        if (a1 is null)
+        {
+            return $"{a0.ToString()} ";
+        }
+
+        var a2 = a1.AttributeChain;
+        if (a2 is null)
+        {
+            return $"{a1.ToString()} {a0.ToString()} ";
+        }
+
+        var a3 = a2.AttributeChain;
+        if (a3 is null)
+        {
+            return $"{a2.ToString()} {a1.ToString()} {a0.ToString()} ";
+        }
+
+        var a4 = a3.AttributeChain;
+        if (a4 is null)
+        {
+            return $"{a3.ToString()} {a2.ToString()} {a1.ToString()} {a0.ToString()} ";
+        }
+
+        var list = new List<Koto>();
+        var sb = new StringBuilder();
+        var x = a0;
+        while (x is not null)
+        {
+            list.Add(x);
+            x = x.AttributeChain;
+        }
+
+        list.Reverse();
+        foreach (var y in list)
+        {
+            sb.Append(y.ToString());
+            sb.Append(' ');
+        }
+
+        return sb.ToString();
+    }
 
     public static FieldKoto? ParseField(ref TokenReader reader, ref Token token)
     {// var x = 1
