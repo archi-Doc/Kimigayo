@@ -67,7 +67,7 @@ public enum TokenKind : byte
     Or, // Or
 
     // Non-block keyword
-    Namespace, // namespace
+    RootGroup, // rootgroup
     Return, // method/return
     Break, // loop/break
     Continue, // continue

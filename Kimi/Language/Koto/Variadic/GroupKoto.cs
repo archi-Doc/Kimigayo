@@ -150,10 +150,10 @@ public partial class GroupKoto : IdentifiableKoto
                     this.AddLast(fieldKoto);
                 }
             }
-            else if (token.Kind == TokenKind.Namespace)
-            {// namespace
+            else if (token.Kind == TokenKind.RootGroup)
+            {// rootgroup
                 var name = KotoHelper.ValidateAndGetNamespace(ref reader);
-                var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, token.Kind);
+                var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, TokenKind.Group);
                 this.CodeContext.CurrentGroup = groupKoto;
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
@@ -234,24 +234,10 @@ public partial class GroupKoto : IdentifiableKoto
             }
 
             var segment = text[..index];
-            GetOrAddGroup(ref group, segment, kind);
+            GetOrAddGroup(ref group, segment, TokenKind.Group);
             text = text[(index + 1)..];
         }
     }
-
-    /*private GroupKoto? GetOrAddGroupAndStartBlock(ref TokenReader reader, ReadOnlySpan<char> qualifiedName, TokenKind kind)
-    {
-        var groupKoto = this.GetOrAddGroup(qualifiedName, kind);
-        if (reader.CurrentTokenKind == TokenKind.StartBlock)
-        {
-            reader.Advance();
-            return groupKoto;
-        }
-        else
-        {
-            return default;
-        }
-    }*/
 
     private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, TokenKind kind)
     {
