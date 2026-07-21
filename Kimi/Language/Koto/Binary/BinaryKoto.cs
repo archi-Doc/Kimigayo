@@ -16,8 +16,8 @@ public partial class EqualsEqualsKoto : BinaryKoto
         => $"{this.Left.ToString()} == {this.Right.ToString()}";
 }
 
-[TinyhandObject]
-public partial class BinaryKoto : Koto
+// [TinyhandObject]
+public abstract partial class BinaryKoto : Koto
 {
     // [Key(1)]
     // public TokenKind Kind { get; private set; }
@@ -36,6 +36,13 @@ public partial class BinaryKoto : Koto
         this.Right = right;
         this.Left.Parent = this;
         this.Right.Parent = this;
+    }
+
+    internal BinaryKoto(CodeContext codeContext)
+        : base(codeContext)
+    {
+        this.Left = default!;
+        this.Right = default!;
     }
 
     public override string ToString()

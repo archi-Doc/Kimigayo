@@ -160,8 +160,8 @@ public partial class ParenthesizedKoto : UnaryKoto
         => $"({this.Operand.ToString()})";
 }
 
-[TinyhandObject]
-public partial class UnaryKoto : Koto
+// [TinyhandObject]
+public abstract partial class UnaryKoto : Koto
 {// + - not ^ ++ -- * &
     [Key(1)]
     public Koto Operand { get; protected set; }
@@ -172,6 +172,12 @@ public partial class UnaryKoto : Koto
         // this.Kind = token.Kind;
         this.Operand = operand;
         operand.Parent = this;
+    }
+
+    internal UnaryKoto(CodeContext codeContext)
+        : base(codeContext)
+    {
+        this.Operand = default!;
     }
 
     public override string ToString()
