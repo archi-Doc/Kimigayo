@@ -421,7 +421,6 @@ public static class TokenHelper
             Constants.CloseBraceChar => (TokenKind.CloseBrace, -1),
             Constants.ColonChar => (TokenKind.Colon, 0),
             Constants.SemicolonChar => (TokenKind.Semicolon, 0),
-            Constants.TildeChar => (TokenKind.Tilde, 0),
             Constants.BarChar => (TokenKind.Bar, 0),
             Constants.CaretChar => (TokenKind.Caret, 0),
             Constants.EqualsChar => (TokenKind.Equals, 0),

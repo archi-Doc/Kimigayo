@@ -53,9 +53,9 @@ public partial class UnwrapKoto : UnaryKoto
 }
 
 [TinyhandObject]
-public partial class CaretKoto : UnaryKoto
+public partial class PrefixCaretKoto : UnaryKoto
 {// ^A
-    public CaretKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public PrefixCaretKoto(ref TokenReader reader, SourceRange range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -113,42 +113,6 @@ public partial class PrefixMinusMinusKoto : UnaryKoto
 }
 
 [TinyhandObject]
-public partial class NotKoto : UnaryKoto
-{// not A
-    public NotKoto(ref TokenReader reader, SourceRange range, Koto operand)
-        : base(ref reader, range, operand)
-    {
-    }
-
-    public override string ToString()
-        => $"not {this.Operand.ToString()}";
-}
-
-[TinyhandObject]
-public partial class ParenthesizedKoto : UnaryKoto
-{// (A)
-    public ParenthesizedKoto(ref TokenReader reader, SourceRange range, Koto operand)
-        : base(ref reader, range, operand)
-    {
-    }
-
-    public override string ToString()
-        => $"({this.Operand.ToString()})";
-}
-
-[TinyhandObject]
-public partial class PrefixIncrementKoto : UnaryKoto
-{// ++A
-    public PrefixIncrementKoto(ref TokenReader reader, SourceRange range, Koto operand)
-        : base(ref reader, range, operand)
-    {
-    }
-
-    public override string ToString()
-        => $"++{this.Operand.ToString()}";
-}
-
-[TinyhandObject]
 public partial class PostfixIncrementKoto : UnaryKoto
 {// A++
     public PostfixIncrementKoto(ref TokenReader reader, SourceRange range, Koto operand)
@@ -173,11 +137,32 @@ public partial class PostfixDecrementKoto : UnaryKoto
 }
 
 [TinyhandObject]
+public partial class NotKoto : UnaryKoto
+{// not A
+    public NotKoto(ref TokenReader reader, SourceRange range, Koto operand)
+        : base(ref reader, range, operand)
+    {
+    }
+
+    public override string ToString()
+        => $"not {this.Operand.ToString()}";
+}
+
+[TinyhandObject]
+public partial class ParenthesizedKoto : UnaryKoto
+{// (A)
+    public ParenthesizedKoto(ref TokenReader reader, SourceRange range, Koto operand)
+        : base(ref reader, range, operand)
+    {
+    }
+
+    public override string ToString()
+        => $"({this.Operand.ToString()})";
+}
+
+[TinyhandObject]
 public partial class UnaryKoto : Koto
 {// + - not ^ ++ -- * &
-    // [Key(1)]
-    // public TokenKind Kind { get; private set; }
-
     [Key(1)]
     public Koto Operand { get; protected set; }
 

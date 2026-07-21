@@ -16,7 +16,7 @@ public static class KotoHelper
         TokenKind.Plus => new PrefixPlusKoto(ref reader, token.Range, operand),
         TokenKind.Minus => new PrefixMinusKoto(ref reader, token.Range, operand),
         TokenKind.Not => new NotKoto(ref reader, token.Range, operand),
-        TokenKind.Caret => new CaretKoto(ref reader, token.Range, operand),
+        TokenKind.Caret => new PrefixCaretKoto(ref reader, token.Range, operand),
         TokenKind.PlusPlus => new PrefixPlusPlusKoto(ref reader, token.Range, operand),
         TokenKind.MinusMinus => new PrefixMinusMinusKoto(ref reader, token.Range, operand),
         _ => new UnaryKoto(ref reader, token.Range, operand), // throw new InvalidOperationException(),

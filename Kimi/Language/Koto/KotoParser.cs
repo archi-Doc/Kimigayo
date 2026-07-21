@@ -456,7 +456,7 @@ Loop:
             TokenKind.Plus => PrefixBindingPower,
             TokenKind.Minus => PrefixBindingPower,
             TokenKind.Not => PrefixBindingPower,
-            TokenKind.Tilde => PrefixBindingPower,
+            TokenKind.Caret => PrefixBindingPower,
             TokenKind.PlusPlus => PrefixBindingPower,
             TokenKind.MinusMinus => PrefixBindingPower,
             _ => 0,
