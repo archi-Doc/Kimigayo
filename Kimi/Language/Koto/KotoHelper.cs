@@ -1,7 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Kimigayo.Language;
@@ -11,6 +10,9 @@ public static class KotoHelper
     public static Koto NewUnaryKoto(ref TokenReader reader, Token token, Koto operand) => token.Kind switch
     {
         TokenKind.Sharp => new AttributeKoto(ref reader, token.Range, operand),
+        TokenKind.Dollar => new AttributeKoto(ref reader, token.Range, operand),
+        TokenKind.Plus => new PrefixPlusKoto(ref reader, token.Range, operand),
+        TokenKind.Minus => new PrefixMinusKoto(ref reader, token.Range, operand),
         _ => new UnaryKoto(ref reader, token.Range, operand), // throw new InvalidOperationException(),
     };
 

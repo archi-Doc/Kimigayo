@@ -6,7 +6,7 @@ namespace Kimigayo.Language;
 
 [TinyhandObject]
 public partial class AttributeKoto : UnaryKoto
-{
+{// #A
     public AttributeKoto(ref TokenReader reader, SourceRange range, Koto operand)
         : base(ref reader, range, operand)
     {
@@ -17,8 +17,44 @@ public partial class AttributeKoto : UnaryKoto
 }
 
 [TinyhandObject]
+public partial class MacroKoto : UnaryKoto
+{// $A
+    public MacroKoto(ref TokenReader reader, SourceRange range, Koto operand)
+        : base(ref reader, range, operand)
+    {
+    }
+
+    public override string ToString()
+        => $"${this.Operand.ToString()}";
+}
+
+[TinyhandObject]
+public partial class PrefixPlusKoto : UnaryKoto
+{// +A
+    public PrefixPlusKoto(ref TokenReader reader, SourceRange range, Koto operand)
+        : base(ref reader, range, operand)
+    {
+    }
+
+    public override string ToString()
+        => $"+{this.Operand.ToString()}";
+}
+
+[TinyhandObject]
+public partial class PrefixMinusKoto : UnaryKoto
+{// -A
+    public PrefixMinusKoto(ref TokenReader reader, SourceRange range, Koto operand)
+        : base(ref reader, range, operand)
+    {
+    }
+
+    public override string ToString()
+        => $"-{this.Operand.ToString()}";
+}
+
+[TinyhandObject]
 public partial class ParenthesizedKoto : UnaryKoto
-{
+{// (A)
     public ParenthesizedKoto(ref TokenReader reader, SourceRange range, Koto operand)
         : base(ref reader, range, operand)
     {
