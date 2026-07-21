@@ -11,8 +11,8 @@ public sealed partial class ContractKoto : GroupKoto
     {
     }
 
-    internal ContractKoto(CodeContext codeContext)
-        : base(codeContext)
+    internal ContractKoto(CodeContext codeContext, TokenState state)
+        : base(codeContext, state)
     {
     }
 }

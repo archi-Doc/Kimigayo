@@ -44,48 +44,73 @@ public static class KotoParser
 
         reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, Hashed.Kimi.UnexpectedTrailingToken);
 
-        return default;
+        return fieldKoto;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string ToText(this KotoModifierKind kind)
+    public static string ToText(this KotoModifierKind kind, bool addSpace = false)
     {
         var acc = kind.ExtractAccessibilityModifiers();
-        string text;
-        if (kind.HasFlag(KotoModifierKind.Static))
+        var accText = acc switch
         {
-            text = acc switch
-            {
-                KotoModifierKind.Public => "public static",
-                KotoModifierKind.Protected => "protected static",
-                KotoModifierKind.Private => "private static",
-                KotoModifierKind.Internal => "internal static",
-                KotoModifierKind.ProtectedOrInternal => "protected_or_internal static",
-                KotoModifierKind.ProtectedAndInternal => "protected_and_internal static",
-                _ => string.Empty,
-            };
-        }
-        else
-        {
-            text = acc switch
-            {
-                KotoModifierKind.Public => "public",
-                KotoModifierKind.Protected => "protected",
-                KotoModifierKind.Private => "private",
-                KotoModifierKind.Internal => "internal",
-                KotoModifierKind.ProtectedOrInternal => "protected_or_internal",
-                KotoModifierKind.ProtectedAndInternal => "protected_and_internal",
-                _ => string.Empty,
-            };
-        }
+            KotoModifierKind.Public => "public",
+            KotoModifierKind.Protected => "protected",
+            KotoModifierKind.Private => "private",
+            KotoModifierKind.Internal => "internal",
+            KotoModifierKind.ProtectedOrInternal => "protected_or_internal",
+            KotoModifierKind.ProtectedAndInternal => "protected_and_internal",
+            _ => string.Empty,
+        };
 
-        if (kind.HasFlag(KotoModifierKind.Open))
-        {
-            return text + " open";
+        if (addSpace)
+        {// "public "
+            if (kind.HasFlag(KotoModifierKind.Static))
+            {// "public static "
+                if (kind.HasFlag(KotoModifierKind.Open))
+                {// "public static open "
+                    return $"{accText} static open ";
+                }
+                else
+                {// "public static "
+                    return $"{accText} static ";
+                }
+            }
+            else
+            {// "public "
+                if (kind.HasFlag(KotoModifierKind.Open))
+                {// public open "
+                    return $"{accText} open ";
+                }
+                else
+                {// "public "
+                    return $"{accText} ";
+                }
+            }
         }
         else
-        {
-            return text;
+        {// "public"
+            if (kind.HasFlag(KotoModifierKind.Static))
+            {// "public static"
+                if (kind.HasFlag(KotoModifierKind.Open))
+                {// "public static open"
+                    return $"{accText} static open";
+                }
+                else
+                {// "public static"
+                    return $"{accText} static";
+                }
+            }
+            else
+            {// "public"
+                if (kind.HasFlag(KotoModifierKind.Open))
+                {// public open"
+                    return $"{accText} open";
+                }
+                else
+                {// "public"
+                    return $"{accText}";
+                }
+            }
         }
     }
 

@@ -11,8 +11,8 @@ public sealed partial class EnumKoto : GroupKoto
     {
     }
 
-    internal EnumKoto(CodeContext codeContext)
-        : base(codeContext)
+    internal EnumKoto(CodeContext codeContext, TokenState state)
+        : base(codeContext, state)
     {
     }
 }

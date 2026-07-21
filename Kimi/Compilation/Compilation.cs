@@ -80,4 +80,28 @@ public class Compilation
         koto = default;
         return false;
     }
+
+    internal void ScrubForTest()
+    {
+        if (this.ProjectKotonoha is null)
+        {
+            return;
+        }
+
+        using var writer = new StringWriter();
+        this.ProjectKotonoha.RootKoto.Unparse(writer);
+        var sb = writer.ToString();
+
+        var bin = TinyhandSerializer.Serialize(this.ProjectKotonoha);
+        var kotonoha = new Kotonoha(this);
+        TinyhandSerializer.DeserializeObject(bin, ref kotonoha);
+        if (kotonoha is null)
+        {
+            return;
+        }
+
+        using var writer2 = new StringWriter();
+        kotonoha.RootKoto.Unparse(writer2);
+        var sb2 = writer2.ToString();
+    }
 }

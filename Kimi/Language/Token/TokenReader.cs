@@ -83,7 +83,11 @@ public ref struct TokenReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TokenState StoreState()
     {
-        return new(this.AttributeKoto, this.ModifierKind);
+        var state = new TokenState(this.AttributeKoto, this.ModifierKind);
+        this.AttributeKoto = default;
+        this.ModifierKind = default;
+
+        return state;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -115,7 +115,7 @@ public partial class Project
             projectKotonoha.AddSource(y);
         }
 
-        projectKotonoha.Unparse();
+        compilation.ScrubForTest();
 
         // Resolve shared let & @Attribute
 
