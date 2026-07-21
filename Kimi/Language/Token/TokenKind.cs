@@ -102,7 +102,6 @@ public enum TokenKind : byte
     Colon, // :
     Semicolon, // ;
     Dollar, // $
-    Tilde, // ~
     Question, // ?
 
     Ampersand, // &

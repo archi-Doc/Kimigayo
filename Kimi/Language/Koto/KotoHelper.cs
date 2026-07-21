@@ -10,9 +10,15 @@ public static class KotoHelper
     public static Koto NewUnaryKoto(ref TokenReader reader, Token token, Koto operand) => token.Kind switch
     {
         TokenKind.Sharp => new AttributeKoto(ref reader, token.Range, operand),
-        TokenKind.Dollar => new AttributeKoto(ref reader, token.Range, operand),
+        TokenKind.Dollar => new MacroKoto(ref reader, token.Range, operand),
+        TokenKind.Ampersand => new HeapKoto(ref reader, token.Range, operand),
+        TokenKind.Asterisk => new HeapKoto(ref reader, token.Range, operand),
         TokenKind.Plus => new PrefixPlusKoto(ref reader, token.Range, operand),
         TokenKind.Minus => new PrefixMinusKoto(ref reader, token.Range, operand),
+        TokenKind.Not => new NotKoto(ref reader, token.Range, operand),
+        TokenKind.Caret => new CaretKoto(ref reader, token.Range, operand),
+        TokenKind.PlusPlus => new PrefixPlusPlusKoto(ref reader, token.Range, operand),
+        TokenKind.MinusMinus => new PrefixMinusMinusKoto(ref reader, token.Range, operand),
         _ => new UnaryKoto(ref reader, token.Range, operand), // throw new InvalidOperationException(),
     };
 

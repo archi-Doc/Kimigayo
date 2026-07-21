@@ -122,7 +122,6 @@ public static class TokenHelper
         Set(TokenKind.CloseBrace, false, "}");
         Set(TokenKind.Colon, false, ":");
         Set(TokenKind.Semicolon, false, ";");
-        Set(TokenKind.Tilde, false, "~");
         Set(TokenKind.Question, false, "?");
 
         // Others
