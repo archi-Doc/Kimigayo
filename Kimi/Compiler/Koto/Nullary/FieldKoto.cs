@@ -14,7 +14,7 @@ public enum VariableKind
 public partial class FieldKoto : Koto
 {// var x = 1
     [Key(1)]
-    public KotoModifierKind Modifier { get; private set; }
+    public ModifierKind Modifier { get; private set; }
 
     [Key(2)]
     public VariableKind VariableKind { get; private set; }

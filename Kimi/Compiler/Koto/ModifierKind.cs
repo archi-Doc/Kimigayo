@@ -3,7 +3,7 @@
 namespace Kimi.Compiler;
 
 [Flags]
-public enum KotoModifierKind : byte
+public enum ModifierKind : byte
 {
     NoModifier = 0,
     Public = 1,

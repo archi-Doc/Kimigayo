@@ -167,17 +167,17 @@ public static class KotoParser
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WriteTo(this KotoModifierKind kind, StringWriter writer, bool addSpace = false)
+    public static void WriteTo(this ModifierKind kind, StringWriter writer, bool addSpace = false)
     {
         var acc = kind.ExtractAccessibilityModifiers();
         var accText = acc switch
         {
-            KotoModifierKind.Public => "public",
-            KotoModifierKind.Protected => "protected",
-            KotoModifierKind.Private => "private",
-            KotoModifierKind.Internal => "internal",
-            KotoModifierKind.ProtectedOrInternal => "protected_or_internal",
-            KotoModifierKind.ProtectedAndInternal => "protected_and_internal",
+            ModifierKind.Public => "public",
+            ModifierKind.Protected => "protected",
+            ModifierKind.Private => "private",
+            ModifierKind.Internal => "internal",
+            ModifierKind.ProtectedOrInternal => "protected_or_internal",
+            ModifierKind.ProtectedAndInternal => "protected_and_internal",
             _ => string.Empty,
         };
 
@@ -185,9 +185,9 @@ public static class KotoParser
 
         if (addSpace)
         {// "public "
-            if (kind.HasFlag(KotoModifierKind.Static))
+            if (kind.HasFlag(ModifierKind.Static))
             {// "public static "
-                if (kind.HasFlag(KotoModifierKind.Open))
+                if (kind.HasFlag(ModifierKind.Open))
                 {// "public static open "
                     writer.Write(" static open ");
                 }
@@ -198,7 +198,7 @@ public static class KotoParser
             }
             else
             {// "public "
-                if (kind.HasFlag(KotoModifierKind.Open))
+                if (kind.HasFlag(ModifierKind.Open))
                 {// public open "
                     writer.Write(" open ");
                 }
@@ -210,9 +210,9 @@ public static class KotoParser
         }
         else
         {// "public"
-            if (kind.HasFlag(KotoModifierKind.Static))
+            if (kind.HasFlag(ModifierKind.Static))
             {// "public static"
-                if (kind.HasFlag(KotoModifierKind.Open))
+                if (kind.HasFlag(ModifierKind.Open))
                 {// "public static open"
                     writer.Write(" static open");
                 }
@@ -223,7 +223,7 @@ public static class KotoParser
             }
             else
             {// "public"
-                if (kind.HasFlag(KotoModifierKind.Open))
+                if (kind.HasFlag(ModifierKind.Open))
                 {// public open"
                     writer.Write(" open");
                 }
@@ -235,25 +235,25 @@ public static class KotoParser
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string ToText(this KotoModifierKind kind, bool addSpace = false)
+    public static string ToText(this ModifierKind kind, bool addSpace = false)
     {
         var acc = kind.ExtractAccessibilityModifiers();
         var accText = acc switch
         {
-            KotoModifierKind.Public => "public",
-            KotoModifierKind.Protected => "protected",
-            KotoModifierKind.Private => "private",
-            KotoModifierKind.Internal => "internal",
-            KotoModifierKind.ProtectedOrInternal => "protected_or_internal",
-            KotoModifierKind.ProtectedAndInternal => "protected_and_internal",
+            ModifierKind.Public => "public",
+            ModifierKind.Protected => "protected",
+            ModifierKind.Private => "private",
+            ModifierKind.Internal => "internal",
+            ModifierKind.ProtectedOrInternal => "protected_or_internal",
+            ModifierKind.ProtectedAndInternal => "protected_and_internal",
             _ => string.Empty,
         };
 
         if (addSpace)
         {// "public "
-            if (kind.HasFlag(KotoModifierKind.Static))
+            if (kind.HasFlag(ModifierKind.Static))
             {// "public static "
-                if (kind.HasFlag(KotoModifierKind.Open))
+                if (kind.HasFlag(ModifierKind.Open))
                 {// "public static open "
                     return $"{accText} static open ";
                 }
@@ -264,7 +264,7 @@ public static class KotoParser
             }
             else
             {// "public "
-                if (kind.HasFlag(KotoModifierKind.Open))
+                if (kind.HasFlag(ModifierKind.Open))
                 {// public open "
                     return $"{accText} open ";
                 }
@@ -276,9 +276,9 @@ public static class KotoParser
         }
         else
         {// "public"
-            if (kind.HasFlag(KotoModifierKind.Static))
+            if (kind.HasFlag(ModifierKind.Static))
             {// "public static"
-                if (kind.HasFlag(KotoModifierKind.Open))
+                if (kind.HasFlag(ModifierKind.Open))
                 {// "public static open"
                     return $"{accText} static open";
                 }
@@ -289,7 +289,7 @@ public static class KotoParser
             }
             else
             {// "public"
-                if (kind.HasFlag(KotoModifierKind.Open))
+                if (kind.HasFlag(ModifierKind.Open))
                 {// public open"
                     return $"{accText} open";
                 }
@@ -302,9 +302,9 @@ public static class KotoParser
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static KotoModifierKind ExtractAccessibilityModifiers(this KotoModifierKind kind)
+    public static ModifierKind ExtractAccessibilityModifiers(this ModifierKind kind)
     {
-        return (KotoModifierKind)((byte)kind & AccessibilityModifierMask);
+        return (ModifierKind)((byte)kind & AccessibilityModifierMask);
     }
 
     public static AttributeKoto? ConsumeAttributeAndRead(ref TokenReader reader, out Token token)
@@ -352,47 +352,47 @@ public static class KotoParser
                     continue;
 
                 case TokenKind.Static:
-                    if (reader.ModifierKind.HasFlag(KotoModifierKind.Static))
+                    if (reader.ModifierKind.HasFlag(ModifierKind.Static))
                     {// Duplicate
-                        reader.AddDiagnostic(Hashed.Kimi.DuplicateModifier, KotoModifierKind.Static.ToString());
+                        reader.AddDiagnostic(Hashed.Kimi.DuplicateModifier, ModifierKind.Static.ToString());
                     }
 
-                    reader.ModifierKind |= KotoModifierKind.Static;
+                    reader.ModifierKind |= ModifierKind.Static;
                     reader.Advance();
                     continue;
 
                 case TokenKind.Open:
-                    if (reader.ModifierKind.HasFlag(KotoModifierKind.Open))
+                    if (reader.ModifierKind.HasFlag(ModifierKind.Open))
                     {// Duplicate
-                        reader.AddDiagnostic(Hashed.Kimi.DuplicateModifier, KotoModifierKind.Open.ToString());
+                        reader.AddDiagnostic(Hashed.Kimi.DuplicateModifier, ModifierKind.Open.ToString());
                     }
 
-                    reader.ModifierKind |= KotoModifierKind.Open;
+                    reader.ModifierKind |= ModifierKind.Open;
                     reader.Advance();
                     continue;
 
                 case TokenKind.Public:
-                    ReadAccessibility(ref reader, KotoModifierKind.Public);
+                    ReadAccessibility(ref reader, ModifierKind.Public);
                     continue;
 
                 case TokenKind.Protected:
-                    ReadAccessibility(ref reader, KotoModifierKind.Protected);
+                    ReadAccessibility(ref reader, ModifierKind.Protected);
                     continue;
 
                 case TokenKind.Private:
-                    ReadAccessibility(ref reader, KotoModifierKind.Private);
+                    ReadAccessibility(ref reader, ModifierKind.Private);
                     continue;
 
                 case TokenKind.Internal:
-                    ReadAccessibility(ref reader, KotoModifierKind.Internal);
+                    ReadAccessibility(ref reader, ModifierKind.Internal);
                     continue;
 
                 case TokenKind.ProtectedOrInternal:
-                    ReadAccessibility(ref reader, KotoModifierKind.ProtectedOrInternal);
+                    ReadAccessibility(ref reader, ModifierKind.ProtectedOrInternal);
                     continue;
 
                 case TokenKind.ProtectedAndInternal:
-                    ReadAccessibility(ref reader, KotoModifierKind.ProtectedAndInternal);
+                    ReadAccessibility(ref reader, ModifierKind.ProtectedAndInternal);
                     continue;
             }
 
@@ -405,7 +405,7 @@ public static class KotoParser
             attributeKoto = ParseAttributeKoto(ref reader);
         }
 
-        void ReadAccessibility(ref TokenReader reader, KotoModifierKind kind)
+        void ReadAccessibility(ref TokenReader reader, ModifierKind kind)
         {
             var acc = reader.ModifierKind.ExtractAccessibilityModifiers();
             if (acc != default)

@@ -7,7 +7,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Lexing;
 
-public readonly record struct TokenState(AttributeKoto? AttributeKoto, KotoModifierKind ModifierKind);
+public readonly record struct TokenState(AttributeKoto? AttributeKoto, ModifierKind ModifierKind);
 
 public ref struct TokenReader
 {// 144
@@ -34,7 +34,7 @@ public ref struct TokenReader
 
     public AttributeKoto? AttributeKoto { get; private set; }
 
-    public KotoModifierKind ModifierKind { get; internal set; }
+    public ModifierKind ModifierKind { get; internal set; }
 
     public readonly int Count => this.count;
 

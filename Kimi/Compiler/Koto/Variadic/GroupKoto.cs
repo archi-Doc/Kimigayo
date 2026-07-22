@@ -68,12 +68,12 @@ public abstract partial class IdentifiableKoto : Koto
 [TinyhandObject]
 public partial class GroupKoto : IdentifiableKoto
 {
-    public static readonly TokenState DefaultState = new(default, KotoModifierKind.Public);
+    public static readonly TokenState DefaultState = new(default, ModifierKind.Public);
 
     #region FieldAndProperty
 
     [Key(2)]
-    public KotoModifierKind Modifier { get; private set; }
+    public ModifierKind Modifier { get; private set; }
 
     [Key(3)]
     public string Name { get; protected set; } = string.Empty;
