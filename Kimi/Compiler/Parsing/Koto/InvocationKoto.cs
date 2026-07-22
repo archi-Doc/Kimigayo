@@ -48,8 +48,25 @@ public partial class InvocationKoto : Koto
         return sb.ToString();
     }
 
+    public override void WriteTo(StringWriter writer)
+    {
+        this.Method.WriteTo(writer);
+        writer.Write(Constants.OpenParenthesisChar);
+        for (var i = 0; i < this.Arguments.Count; i++)
+        {
+            this.Arguments[i].WriteTo(writer);
+            if (i < (this.Arguments.Count - 1))
+            {
+                writer.Write(Constants.CommaChar);
+                writer.Write(Constants.SpaceChar);
+            }
+        }
+
+        writer.Write(Constants.CloseParenthesisChar);
+    }
+
     public override (string Text, Koto[]? Children) Dump()
     {
-        return ($"{this.GetType().Name}", [this.Method, ..this.Arguments]);
+        return ($"{this.GetType().Name}", [this.Method, .. this.Arguments]);
     }
 }
