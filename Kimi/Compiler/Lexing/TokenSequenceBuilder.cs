@@ -3,7 +3,7 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
-namespace Kimi.Compiler;
+namespace Kimi.Compiler.Lexing;
 
 /// <summary>
 /// Provides a stack-only builder for creating a contiguous <see cref="ReadOnlySequence{T}"/> of <see cref="Token"/> values.

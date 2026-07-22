@@ -5,7 +5,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Kimi.Diagnostics;
 
-namespace Kimi.Compiler;
+namespace Kimi.Compiler.Lexing;
 
 public readonly record struct TokenState(AttributeKoto? AttributeKoto, KotoModifierKind ModifierKind);
 

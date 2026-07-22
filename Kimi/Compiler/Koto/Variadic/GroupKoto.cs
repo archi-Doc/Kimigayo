@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Security.AccessControl;
 using Arc.Collections;
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;

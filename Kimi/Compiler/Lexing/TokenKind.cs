@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimi.Compiler;
+namespace Kimi.Compiler.Lexing;
 
 /// <summary>
 /// Represents the lexical token kinds produced by the lexer.<br/>

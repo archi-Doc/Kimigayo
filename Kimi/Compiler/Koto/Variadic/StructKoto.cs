@@ -3,6 +3,7 @@
 using System.Text;
 using Arc.Collections;
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
 [TinyhandObject]

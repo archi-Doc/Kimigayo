@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using Arc.Collections;
 using Kimi.Diagnostics;
 
-namespace Kimi.Compiler;
+namespace Kimi.Compiler.Lexing;
 
 public readonly record struct TokenDescriptor(TokenKind Kind, bool IsKeyword, string Text);
 
