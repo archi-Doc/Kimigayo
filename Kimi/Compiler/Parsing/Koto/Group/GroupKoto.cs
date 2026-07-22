@@ -191,7 +191,7 @@ public partial class GroupKoto : IdentifiableKoto
             }
             else if (token.Kind == TokenKind.Struct)
             {// struct
-                var r = KotoHelper.ParseGroupDeclaration(ref reader);
+                var r = KotoParser.ParseGroupDeclaration(ref reader);
                 var state = reader.StoreState();
                 var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, token.Kind, state);
                 if (r.List is not null)

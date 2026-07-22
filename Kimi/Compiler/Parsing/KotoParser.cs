@@ -130,6 +130,74 @@ public static class KotoParser
         return sb.ToString();
     }
 
+    public static (string Name, List<Token>? List) ParseGroupDeclaration(ref TokenReader reader)
+    {
+        string name = string.Empty;
+        List<Token>? list = default;
+        if (!reader.TryRead(out var token))
+        {
+            reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
+            goto Exit;
+        }
+
+        if (token.Kind != TokenKind.Identifier)
+        {
+            reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
+            goto SkipAndExit;
+        }
+
+        if (KotoHelper.IsValidIdentifier(token.Span))
+        {
+            name = token.Span.ToString();
+        }
+        else
+        {
+            reader.AddDiagnostic(Hashed.Kimi.InvalidIdentifier, token.Span.ToString());
+        }
+
+        if (reader.SkipUntil(TokenKind.StartBlock, TokenKind.Colon, Hashed.Kimi.InvalidIdentifier) == TokenKind.Colon)
+        {
+            reader.Advance(); // :
+        }
+
+        while (true)
+        {
+            if (!reader.TryRead(out token))
+            {
+                goto Exit;
+            }
+
+            if (token.Kind == TokenKind.Comma)
+            {
+                if (reader.CurrentTokenKind == TokenKind.StartBlock)
+                {
+                    break;
+                }
+
+                continue;
+            }
+            else if (token.Kind == TokenKind.Identifier)
+            {
+                list ??= new();
+                list.Add(token);
+            }
+            else if (token.Kind == TokenKind.StartBlock)
+            {
+                break;
+            }
+            else
+            {
+                reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
+            }
+        }
+
+SkipAndExit:
+        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator);
+
+Exit:
+        return (name, list);
+    }
+
     public static FieldKoto? ParseField(ref TokenReader reader, ref Token token)
     {// var x = 1
         var variableState = reader.StoreState();
