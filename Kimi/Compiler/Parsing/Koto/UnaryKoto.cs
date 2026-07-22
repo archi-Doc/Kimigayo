@@ -42,9 +42,9 @@ public partial class MacroKoto : UnaryKoto
 }
 
 [TinyhandObject]
-public partial class HeapKoto : UnaryKoto
+public partial class ReferenceKoto : UnaryKoto
 {// &A
-    public HeapKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public ReferenceKoto(ref TokenReader reader, SourceRange range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -246,14 +246,13 @@ public partial class ParenthesizedKoto : UnaryKoto
 
 // [TinyhandObject]
 public abstract partial class UnaryKoto : Koto
-{// + - not ^ ++ -- * &
+{
     [Key(1)]
     public Koto Operand { get; protected set; }
 
     public UnaryKoto(ref TokenReader reader, SourceRange range, Koto operand)
         : base(ref reader, range)
     {
-        // this.Kind = token.Kind;
         this.Operand = operand;
         operand.Parent = this;
     }

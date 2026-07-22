@@ -13,8 +13,8 @@ public static class KotoHelper
     {
         TokenKind.Sharp => new AttributeKoto(ref reader, token.Range, operand),
         TokenKind.Dollar => new MacroKoto(ref reader, token.Range, operand),
-        TokenKind.Ampersand => new HeapKoto(ref reader, token.Range, operand),
-        TokenKind.Asterisk => new HeapKoto(ref reader, token.Range, operand),
+        TokenKind.Ampersand => new ReferenceKoto(ref reader, token.Range, operand),
+        TokenKind.Asterisk => new ReferenceKoto(ref reader, token.Range, operand),
         TokenKind.Plus => new PrefixPlusKoto(ref reader, token.Range, operand),
         TokenKind.Minus => new PrefixMinusKoto(ref reader, token.Range, operand),
         TokenKind.Not => new NotKoto(ref reader, token.Range, operand),

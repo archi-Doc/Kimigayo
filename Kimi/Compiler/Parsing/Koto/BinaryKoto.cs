@@ -6,6 +6,47 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 [TinyhandObject]
+public partial class MemberAccessKoto : Koto
+{// A.B
+    [Key(1)]
+    public Koto Left { get; private set; }
+
+    [Key(2)]
+    public Koto Accessor { get; private set; }
+
+    public MemberAccessKoto(ref TokenReader reader, SourceRange range, Koto left, Koto accessor)
+        : base(ref reader, range)
+    {
+        this.Left = left;
+        this.Accessor = accessor;
+        left.Parent = this;
+        accessor.Parent = this;
+    }
+
+    public override string ToString()
+        => $"{this.Left.ToString()}{Constants.DotChar}{this.Accessor.ToString()}";
+}
+
+[TinyhandObject]
+public partial class IndexKoto : BinaryKoto
+{// A[B]
+    public Koto Index => this.Right;
+
+    public IndexKoto(ref TokenReader reader, SourceRange range, Koto left, Koto index)
+        : base(ref reader, range, left, index)
+    {
+    }
+
+    public override string ToString()
+        => $"{this.Left.ToString()}[{this.Index.ToString()}]";
+
+    public override (string Text, Koto[]? Children) Dump()
+    {
+        return ($"{this.GetType().Name}", [this.Left, this.Index,]);
+    }
+}
+
+[TinyhandObject]
 public partial class EqualsEqualsKoto : BinaryKoto
 {// A == B
     public EqualsEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
