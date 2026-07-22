@@ -43,7 +43,40 @@ public enum KotoKind : byte
     Not,
     Parenthesized,
 
-    // 
+    // Binary
+    MemberAccess,
+    Index,
+    Asterisk,
+    Slash,
+    Percent,
+    Plus,
+    Minus,
+    LessThanLessThan,
+    GreaterThanGreaterThan,
+    LessThan,
+    LessThanEquals,
+    GreaterThan,
+    GreaterThanEquals,
+    As,
+    Is,
+    EqualsEquals,
+    ExclamationEquals,
+    Ampersand,
+    Caret,
+    Bar,
+    And,
+    Or,
+    Equals,
+    PlusEquals,
+    MinusEquals,
+    AsteriskEquals,
+    SlashEquals,
+    PercentEquals,
+    AmpersandEquals,
+    CaretEquals,
+    BarEquals,
+    LessThanLessThanEquals,
+    GreaterThanGreaterThanEquals,
 
     // Misc
     Invocation,
@@ -77,6 +110,40 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.PostfixDecrement, typeof(PostfixDecrementKoto))]
 [TinyhandUnion((int)KotoKind.Not, typeof(NotKoto))]
 [TinyhandUnion((int)KotoKind.Parenthesized, typeof(ParenthesizedKoto))]
+
+[TinyhandUnion((int)KotoKind.MemberAccess, typeof(MemberAccessKoto))]
+[TinyhandUnion((int)KotoKind.Index, typeof(IndexKoto))]
+[TinyhandUnion((int)KotoKind.Asterisk, typeof(AsteriskKoto))]
+[TinyhandUnion((int)KotoKind.Slash, typeof(SlashKoto))]
+[TinyhandUnion((int)KotoKind.Percent, typeof(PercentKoto))]
+[TinyhandUnion((int)KotoKind.Plus, typeof(PlusKoto))]
+[TinyhandUnion((int)KotoKind.Minus, typeof(MinusKoto))]
+[TinyhandUnion((int)KotoKind.LessThanLessThan, typeof(LessThanLessThanKoto))]
+[TinyhandUnion((int)KotoKind.GreaterThanGreaterThan, typeof(GreaterThanGreaterThanKoto))]
+[TinyhandUnion((int)KotoKind.LessThan, typeof(LessThanKoto))]
+[TinyhandUnion((int)KotoKind.LessThanEquals, typeof(LessThanEqualsKoto))]
+[TinyhandUnion((int)KotoKind.GreaterThan, typeof(GreaterThanKoto))]
+[TinyhandUnion((int)KotoKind.GreaterThanEquals, typeof(GreaterThanEqualsKoto))]
+[TinyhandUnion((int)KotoKind.As, typeof(AsKoto))]
+[TinyhandUnion((int)KotoKind.Is, typeof(IsKoto))]
+[TinyhandUnion((int)KotoKind.EqualsEquals, typeof(EqualsEqualsKoto))]
+[TinyhandUnion((int)KotoKind.ExclamationEquals, typeof(ExclamationEqualsKoto))]
+[TinyhandUnion((int)KotoKind.Ampersand, typeof(AmpersandKoto))]
+[TinyhandUnion((int)KotoKind.Caret, typeof(CaretKoto))]
+[TinyhandUnion((int)KotoKind.Bar, typeof(BarKoto))]
+[TinyhandUnion((int)KotoKind.And, typeof(AndKoto))]
+[TinyhandUnion((int)KotoKind.Or, typeof(OrKoto))]
+[TinyhandUnion((int)KotoKind.Equals, typeof(EqualsKoto))]
+[TinyhandUnion((int)KotoKind.PlusEquals, typeof(PlusEqualsKoto))]
+[TinyhandUnion((int)KotoKind.MinusEquals, typeof(MinusEqualsKoto))]
+[TinyhandUnion((int)KotoKind.AsteriskEquals, typeof(AsteriskEqualsKoto))]
+[TinyhandUnion((int)KotoKind.SlashEquals, typeof(SlashEqualsKoto))]
+[TinyhandUnion((int)KotoKind.PercentEquals, typeof(PercentEqualsKoto))]
+[TinyhandUnion((int)KotoKind.AmpersandEquals, typeof(AmpersandEqualsKoto))]
+[TinyhandUnion((int)KotoKind.CaretEquals, typeof(CaretEqualsKoto))]
+[TinyhandUnion((int)KotoKind.BarEquals, typeof(BarEqualsKoto))]
+[TinyhandUnion((int)KotoKind.LessThanLessThanEquals, typeof(LessThanLessThanEqualsKoto))]
+[TinyhandUnion((int)KotoKind.GreaterThanGreaterThanEquals, typeof(GreaterThanGreaterThanEqualsKoto))]
 
 [TinyhandUnion((int)KotoKind.Invocation, typeof(InvocationKoto))]
 public abstract partial class Koto

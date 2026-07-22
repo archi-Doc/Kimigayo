@@ -26,7 +26,38 @@ public static class KotoHelper
 
     public static Koto NewBinaryKoto(ref TokenReader reader, Token token, Koto left, Koto right) => token.Kind switch
     {
+        TokenKind.Asterisk => new AsteriskKoto(ref reader, token.Range, left, right),
+        TokenKind.Slash => new SlashKoto(ref reader, token.Range, left, right),
+        TokenKind.Percent => new PercentKoto(ref reader, token.Range, left, right),
+        TokenKind.Plus => new PlusKoto(ref reader, token.Range, left, right),
+        TokenKind.Minus => new MinusKoto(ref reader, token.Range, left, right),
+        TokenKind.LessThanLessThan => new LessThanLessThanKoto(ref reader, token.Range, left, right),
+        TokenKind.GreaterThanGreaterThan => new GreaterThanGreaterThanKoto(ref reader, token.Range, left, right),
+        TokenKind.LessThan => new LessThanKoto(ref reader, token.Range, left, right),
+        TokenKind.LessThanEquals => new LessThanEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.GreaterThan => new GreaterThanKoto(ref reader, token.Range, left, right),
+        TokenKind.GreaterThanEquals => new GreaterThanEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.As => new AsKoto(ref reader, token.Range, left, right),
+        TokenKind.Is => new IsKoto(ref reader, token.Range, left, right),
         TokenKind.EqualsEquals => new EqualsEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.ExclamationEquals => new ExclamationEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.Ampersand => new AmpersandKoto(ref reader, token.Range, left, right),
+        TokenKind.Caret => new CaretKoto(ref reader, token.Range, left, right),
+        TokenKind.Bar => new BarKoto(ref reader, token.Range, left, right),
+        TokenKind.And => new AndKoto(ref reader, token.Range, left, right),
+        TokenKind.Or => new OrKoto(ref reader, token.Range, left, right),
+        TokenKind.Equals => new EqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.PlusEquals => new PlusEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.MinusEquals => new MinusEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.AsteriskEquals => new AsteriskEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.SlashEquals => new SlashEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.PercentEquals => new PercentEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.AmpersandEquals => new AmpersandEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.CaretEquals => new CaretEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.BarEquals => new BarEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.LessThanLessThanEquals => new LessThanLessThanEqualsKoto(ref reader, token.Range, left, right),
+        TokenKind.GreaterThanGreaterThanEquals => new GreaterThanGreaterThanEqualsKoto(ref reader, token.Range, left, right),
+
         _ => throw new InvalidOperationException(),
     };
 
