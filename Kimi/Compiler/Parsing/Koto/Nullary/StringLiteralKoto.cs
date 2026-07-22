@@ -17,7 +17,7 @@ public sealed partial class StringLiteralKoto : Koto
     }
 
     public override string ToString()
-        => $"\"{this.Literal}\"";
+        => $"{this.Literal}";
 
     public override void WriteTo(StringWriter writer)
     {

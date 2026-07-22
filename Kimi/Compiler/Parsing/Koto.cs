@@ -212,6 +212,10 @@ public abstract partial class Koto
             {
                 writer.WriteLine();
             }
+            else
+            {
+                writer.Write(' ');
+            }
         }
 
         this.WriteTo(writer);

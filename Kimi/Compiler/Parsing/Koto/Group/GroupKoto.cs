@@ -145,6 +145,8 @@ public partial class GroupKoto : IdentifiableKoto
 
         this.Modifier.WriteTo(writer, true);
         writer.Write(this.TokenKind.ToText());
+        writer.Write(' ');
+        writer.Write(this.Name);
     }
 
     public void Parse(ref Token token, ref TokenReader reader)

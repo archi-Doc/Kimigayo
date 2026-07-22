@@ -7,12 +7,12 @@ alias Kimi.Windows
 // comment
 #Condition(Os == "Windows")
 rootgroup Playground.A
+var x = 1 + 2 * 3
 
-public open struct Test: @A, @B,
+/*public open struct Test: @A, @B,
     public static #Test1 var #Test2 x: i32 = #One 1
 
 #Condition(Os.Version.Current == 1 and "text".Length > 0)
-var x = 1 + 2 * 3
 var y = (1 + #Test 2) * 3
 
 static var x = 1
@@ -28,4 +28,4 @@ e.drop()
 
 
 rootgroup Pg.Extensions
-public extension i32
+public extension i32*/

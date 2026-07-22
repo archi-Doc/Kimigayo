@@ -62,8 +62,11 @@ public partial class FieldKoto : Koto
 
     public override void UnparseTo(StringWriter writer)
     {// public let x: i32 = 1
-        KotoParser.UnparseAttribute(this.AttributeChain, writer);
-        writer.WriteLine();
+        if (this.AttributeChain is not null)
+        {
+            KotoParser.UnparseAttribute(this.AttributeChain, writer);
+            writer.WriteLine();
+        }
 
         this.Modifier.WriteTo(writer, true);
 

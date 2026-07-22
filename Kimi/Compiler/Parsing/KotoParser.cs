@@ -23,44 +23,44 @@ public static class KotoParser
         var a1 = a0.AttributeChain;
         if (a1 is null)
         {
-            writer.Write(a0.ToString());
-            writer.Write(' ');
+            a0.WriteTo(writer);
+            // writer.Write(' ');
             return;
         }
 
         var a2 = a1.AttributeChain;
         if (a2 is null)
         {
-            writer.Write(a1.ToString());
+            a1.WriteTo(writer);
             writer.Write(' ');
-            writer.Write(a0.ToString());
-            writer.Write(' ');
+            a0.WriteTo(writer);
+            // writer.Write(' ');
             return;
         }
 
         var a3 = a2.AttributeChain;
         if (a3 is null)
         {
-            writer.Write(a2.ToString());
+            a2.WriteTo(writer);
             writer.Write(' ');
-            writer.Write(a1.ToString());
+            a1.WriteTo(writer);
             writer.Write(' ');
-            writer.Write(a0.ToString());
-            writer.Write(' ');
+            a0.WriteTo(writer);
+            // writer.Write(' ');
             return;
         }
 
         var a4 = a3.AttributeChain;
         if (a4 is null)
         {
-            writer.Write(a3.ToString());
+            a3.WriteTo(writer);
             writer.Write(' ');
-            writer.Write(a2.ToString());
+            a2.WriteTo(writer);
             writer.Write(' ');
-            writer.Write(a1.ToString());
+            a1.WriteTo(writer);
             writer.Write(' ');
-            writer.Write(a0.ToString());
-            writer.Write(' ');
+            a0.WriteTo(writer);
+            // writer.Write(' ');
             return;
         }
 
@@ -72,12 +72,21 @@ public static class KotoParser
             x = x.AttributeChain;
         }
 
-        list.Reverse();
+        for (var i = list.Count - 1; i >= 0; i--)
+        {
+            list[i].WriteTo(writer);
+            if (i != 0)
+            {
+                writer.Write(' ');
+            }
+        }
+
+        /*list.Reverse();
         foreach (var y in list)
         {
             writer.Write(y.ToString());
             writer.Write(' ');
-        }
+        }*/
     }
 
     public static string UnparseAttribute(AttributeKoto? a0)
@@ -249,6 +258,11 @@ Exit:
             ModifierKind.ProtectedAndInternal => "protected_and_internal",
             _ => string.Empty,
         };
+
+        if (string.IsNullOrEmpty(accText))
+        {
+            return;
+        }
 
         writer.Write(accText);
 
