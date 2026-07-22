@@ -2,7 +2,7 @@
 
 using Arc.Collections;
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 public class SourceContext
 {

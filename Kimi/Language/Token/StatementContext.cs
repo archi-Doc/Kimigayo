@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 /// <summary>
 /// Represents the syntactic context in which the statement appears.

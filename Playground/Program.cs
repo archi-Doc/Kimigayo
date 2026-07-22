@@ -4,8 +4,8 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Arc.Unit;
-using Kimigayo;
-using Kimigayo.Language;
+using Kimi;
+using Kimi.Language;
 using Microsoft.Extensions.DependencyInjection;
 using SimplePrompt;
 using Tinyhand;
@@ -43,7 +43,7 @@ internal class Program
             """);*/
         project.AddSource("test", """
             /* Multi-line comment
-            Kimigayo by archi-Doc.
+            Kimi by archi-Doc.
             */
             namespace Playground // Single-line comment
             use Kimi.Crypto 

@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 [TinyhandObject]
 public sealed partial class BoolLiteralKoto : Koto

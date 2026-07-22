@@ -2,7 +2,7 @@
 
 using System.Text.Json.Serialization;
 
-namespace Kimigayo.Diagnostics;
+namespace Kimi.Diagnostics;
 
 [ValueLinkObject(Isolation = IsolationLevel.Serializable)]
 public sealed partial record class Diagnostic

@@ -3,10 +3,10 @@
 using System.Runtime.CompilerServices;
 using System.Security.AccessControl;
 using Arc.Collections;
-using Kimigayo.Diagnostics;
-using Kimigayo.Language;
+using Kimi.Diagnostics;
+using Kimi.Language;
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 [TinyhandObject(ReservedKeyCount = 2)]
 public abstract partial class IdentifiableKoto : Koto

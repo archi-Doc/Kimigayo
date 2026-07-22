@@ -2,7 +2,7 @@
 
 using Arc.Crypto;
 
-namespace Kimigayo.Diagnostics;
+namespace Kimi.Diagnostics;
 
 public readonly record struct SourceRange : IComparable<SourceRange>
 {// 8 + 8 = 16

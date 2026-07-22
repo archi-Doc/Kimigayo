@@ -3,7 +3,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 
-namespace Kimigayo;
+namespace Kimi;
 
 public static class KimigayoHelper
 {

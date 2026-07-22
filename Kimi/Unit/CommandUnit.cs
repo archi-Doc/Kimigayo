@@ -1,10 +1,10 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimigayo.Command;
-using Kimigayo.Lsp;
+using Kimi.Command;
+using Kimi.Lsp;
 using SimpleCommandLine;
 
-namespace Kimigayo;
+namespace Kimi;
 
 public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
 {

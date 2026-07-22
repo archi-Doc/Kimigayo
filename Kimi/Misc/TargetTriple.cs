@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 public record class TargetTriple(string Architecture, string Vendor, string OperatingSystem, string Environment, string Abi)
 {

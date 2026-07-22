@@ -3,7 +3,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 public static class KotoHelper
 {

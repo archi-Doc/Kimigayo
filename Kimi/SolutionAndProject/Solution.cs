@@ -2,7 +2,7 @@
 
 using System.Text;
 
-namespace Kimigayo;
+namespace Kimi;
 
 public class Solution
 {

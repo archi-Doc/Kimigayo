@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 /// <summary>
 /// Represents the lexical token kinds produced by the lexer.<br/>

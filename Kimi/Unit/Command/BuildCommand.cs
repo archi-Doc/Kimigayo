@@ -2,7 +2,7 @@
 
 using SimpleCommandLine;
 
-namespace Kimigayo.Command;
+namespace Kimi.Command;
 
 [SimpleCommand("build")]
 public class BuildCommand : ISimpleCommand<KimiOptions>

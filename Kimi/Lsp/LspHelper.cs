@@ -4,7 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
-namespace Kimigayo.Lsp;
+namespace Kimi.Lsp;
 
 internal class LspHelper
 {

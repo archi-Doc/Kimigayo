@@ -2,11 +2,11 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
-using Kimigayo.Diagnostics;
+using Kimi.Diagnostics;
 
 #pragma warning disable SA1401 // Fields should be private
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 public enum KotoKind : byte
 {

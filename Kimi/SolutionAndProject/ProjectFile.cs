@@ -1,8 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimigayo.Language;
+using Kimi.Language;
 
-namespace Kimigayo;
+namespace Kimi;
 
 [TinyhandObject(ImplicitMemberNameAsKey = true)]
 public partial record class ProjectFile

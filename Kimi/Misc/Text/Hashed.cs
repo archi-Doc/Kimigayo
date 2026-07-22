@@ -1,8 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimigayo.Diagnostics;
+using Kimi.Diagnostics;
 
-namespace Kimigayo;
+namespace Kimi;
 
 [TinyhandGenerateHash("strings-en.tinyhand")]
 public static partial class Hashed

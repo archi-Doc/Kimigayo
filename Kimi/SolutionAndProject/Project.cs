@@ -1,9 +1,9 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo;
+namespace Kimi;
 
 using System.Diagnostics.CodeAnalysis;
-using Kimigayo.Language;
+using Kimi.Language;
 
 public readonly record struct PathAndSource(string Path, string Source);
 

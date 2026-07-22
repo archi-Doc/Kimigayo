@@ -1,8 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimigayo.Language;
+using Kimi.Language;
 
-namespace Kimigayo.Diagnostics;
+namespace Kimi.Diagnostics;
 
 public record class DiagnosticCollection
 {

@@ -3,7 +3,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
-namespace Kimigayo.Lsp;
+namespace Kimi.Lsp;
 
 /// <summary>
 /// Represents an LSP text document as pooled text lines.

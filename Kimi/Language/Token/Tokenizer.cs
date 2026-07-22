@@ -4,14 +4,14 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Arc.Collections;
-using Kimigayo.Diagnostics;
+using Kimi.Diagnostics;
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 public readonly record struct TokenDescriptor(TokenKind Kind, bool IsKeyword, string Text);
 
 /// <summary>
-/// Provides token-related helper methods used by the Kimigayo tokenizer.
+/// Provides token-related helper methods used by the Kimi tokenizer.
 /// </summary>
 public static class TokenHelper
 {
@@ -727,7 +727,7 @@ public static class TokenHelper
 }
 
 /// <summary>
-/// Converts Kimigayo source text into a sequence of lexical tokens and indentation tokens.
+/// Converts Kimi source text into a sequence of lexical tokens and indentation tokens.
 /// </summary>
 internal sealed class Tokenizer
 {

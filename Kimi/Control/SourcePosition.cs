@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo.Diagnostics;
+namespace Kimi.Diagnostics;
 
 public readonly record struct SourcePosition : IComparable<SourcePosition>
 {// 4 + 4 = 8

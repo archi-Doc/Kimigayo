@@ -1,8 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimigayo.Diagnostics;
+using Kimi.Diagnostics;
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 [TinyhandObject]
 public partial class EqualsEqualsKoto : BinaryKoto

@@ -1,10 +1,10 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo;
+namespace Kimi;
 
 using System.Collections.Concurrent;
 using System.Text.Json;
-using Kimigayo.Diagnostics;
+using Kimi.Diagnostics;
 
 public class KimiControl
 {

@@ -2,7 +2,7 @@
 
 using SimpleCommandLine;
 
-namespace Kimigayo.Command;
+namespace Kimi.Command;
 
 [SimpleCommand("run")]
 public class RunCommand : ISimpleCommand<KimiOptions>

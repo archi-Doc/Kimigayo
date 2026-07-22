@@ -3,7 +3,7 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 
-namespace Kimigayo.Diagnostics;
+namespace Kimi.Diagnostics;
 
 public static class DiagnosticCode
 {

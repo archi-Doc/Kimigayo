@@ -2,9 +2,9 @@
 
 using System.Runtime.CompilerServices;
 using System.Text;
-using Kimigayo.Diagnostics;
+using Kimi.Diagnostics;
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 public static class KotoParser
 {

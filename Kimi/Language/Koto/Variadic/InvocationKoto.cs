@@ -2,7 +2,7 @@
 
 using System.Text;
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 [TinyhandObject]
 public partial class InvocationKoto : Koto

@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Arc.Collections;
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 public class Compilation
 {

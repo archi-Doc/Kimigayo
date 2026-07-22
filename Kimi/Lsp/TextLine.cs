@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo.Lsp;
+namespace Kimi.Lsp;
 
 using System.Buffers;
 using System.Runtime.CompilerServices;

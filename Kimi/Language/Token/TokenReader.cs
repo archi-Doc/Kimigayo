@@ -3,9 +3,9 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Kimigayo.Diagnostics;
+using Kimi.Diagnostics;
 
-namespace Kimigayo.Language;
+namespace Kimi.Language;
 
 public readonly record struct TokenState(AttributeKoto? AttributeKoto, KotoModifierKind ModifierKind);
 

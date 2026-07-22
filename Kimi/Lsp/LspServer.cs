@@ -5,9 +5,9 @@ using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Kimigayo.Diagnostics;
+using Kimi.Diagnostics;
 
-namespace Kimigayo.Lsp;
+namespace Kimi.Lsp;
 
 public class LspServer
 {
