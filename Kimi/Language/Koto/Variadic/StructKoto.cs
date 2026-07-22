@@ -2,8 +2,8 @@
 
 using System.Text;
 using Arc.Collections;
+using Kimi.Compiler;
 using Kimi.Diagnostics;
-using Kimi.Language;
 
 [TinyhandObject]
 public sealed partial class StructKoto : GroupKoto

@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimi.Language;
+namespace Kimi.Compiler;
 
 [TinyhandObject(ImplicitMemberNameAsKey = true)]
 public partial record class KotonohaIdentifier

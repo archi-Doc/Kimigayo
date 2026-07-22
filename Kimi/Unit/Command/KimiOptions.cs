@@ -2,7 +2,7 @@
 
 using SimpleCommandLine;
 
-namespace Kimi;
+namespace Kimi.Command;
 
 public class KimiOptions
 {

@@ -7,7 +7,7 @@ using Arc.Collections;
 
 #pragma warning disable SA1401 // Fields should be private
 
-namespace Kimi.Language;
+namespace Kimi.Compiler;
 
 /// <summary>
 /// Builds a <see cref="ReadOnlySequence{T}"/> backed by pooled arrays.

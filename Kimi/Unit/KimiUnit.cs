@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimi;
+namespace Kimi.Unit;
 
 public class KimiUnit : UnitBase
 {

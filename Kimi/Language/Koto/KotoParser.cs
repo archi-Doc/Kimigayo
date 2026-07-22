@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Kimi.Diagnostics;
 
-namespace Kimi.Language;
+namespace Kimi.Compiler;
 
 public static class KotoParser
 {

@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Arc.Collections;
 
-namespace Kimi.Language;
+namespace Kimi.Compiler;
 
 [TinyhandObject]
 public sealed partial class Kotonoha

@@ -3,7 +3,8 @@
 namespace Kimi;
 
 using System.Diagnostics.CodeAnalysis;
-using Kimi.Language;
+using Kimi.Command;
+using Kimi.Compiler;
 
 public readonly record struct PathAndSource(string Path, string Source);
 

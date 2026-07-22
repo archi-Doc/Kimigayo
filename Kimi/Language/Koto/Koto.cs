@@ -6,7 +6,7 @@ using Kimi.Diagnostics;
 
 #pragma warning disable SA1401 // Fields should be private
 
-namespace Kimi.Language;
+namespace Kimi.Compiler;
 
 public enum KotoKind : byte
 {

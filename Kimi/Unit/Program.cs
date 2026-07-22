@@ -10,6 +10,7 @@ global using Microsoft.Extensions.DependencyInjection;
 global using Tinyhand;
 global using ValueLink;
 using Kimi.Command;
+using Kimi.Unit;
 using SimpleCommandLine;
 
 namespace Kimi;

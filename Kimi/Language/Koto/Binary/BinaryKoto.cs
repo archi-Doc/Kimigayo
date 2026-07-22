@@ -2,7 +2,7 @@
 
 using Kimi.Diagnostics;
 
-namespace Kimi.Language;
+namespace Kimi.Compiler;
 
 [TinyhandObject]
 public partial class EqualsEqualsKoto : BinaryKoto

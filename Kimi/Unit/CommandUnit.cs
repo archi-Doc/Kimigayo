@@ -4,7 +4,7 @@ using Kimi.Command;
 using Kimi.Lsp;
 using SimpleCommandLine;
 
-namespace Kimi;
+namespace Kimi.Unit;
 
 public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
 {

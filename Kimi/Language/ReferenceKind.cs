@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimi.Language;
+namespace Kimi.Compiler;
 
 public enum ReferenceKind : byte
 {

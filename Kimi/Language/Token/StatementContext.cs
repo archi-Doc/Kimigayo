@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimi.Language;
+namespace Kimi.Compiler;
 
 /// <summary>
 /// Represents the syntactic context in which the statement appears.
