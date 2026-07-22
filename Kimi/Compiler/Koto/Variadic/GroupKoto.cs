@@ -1,13 +1,11 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.CompilerServices;
-using System.Security.AccessControl;
 using Arc.Collections;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
-namespace Kimi.Compiler;
+namespace Kimi.Compiler.Parsing;
 
 [TinyhandObject(ReservedKeyCount = 2)]
 public abstract partial class IdentifiableKoto : Koto

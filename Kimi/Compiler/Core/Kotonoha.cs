@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Arc.Collections;
 using Kimi.Compiler.Lexing;
+using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 

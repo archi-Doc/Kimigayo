@@ -4,6 +4,8 @@ using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
+namespace Kimi.Compiler.Parsing;
+
 [TinyhandObject]
 public sealed partial class EnumKoto : GroupKoto
 {

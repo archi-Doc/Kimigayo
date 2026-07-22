@@ -3,6 +3,7 @@
 using System.Globalization;
 using System.Text;
 using Kimi.Compiler.Lexing;
+using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 

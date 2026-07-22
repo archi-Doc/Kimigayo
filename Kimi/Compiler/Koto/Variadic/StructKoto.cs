@@ -1,10 +1,9 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Text;
-using Arc.Collections;
-using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
+
+namespace Kimi.Compiler.Parsing;
 
 [TinyhandObject]
 public sealed partial class StructKoto : GroupKoto

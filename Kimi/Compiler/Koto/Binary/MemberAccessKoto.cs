@@ -3,7 +3,7 @@
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
-namespace Kimi.Compiler;
+namespace Kimi.Compiler.Parsing;
 
 [TinyhandObject]
 public partial class MemberAccessKoto : Koto

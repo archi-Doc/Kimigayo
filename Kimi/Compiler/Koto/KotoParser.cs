@@ -3,6 +3,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using Kimi.Compiler.Lexing;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;

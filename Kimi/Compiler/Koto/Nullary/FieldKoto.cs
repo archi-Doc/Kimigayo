@@ -2,7 +2,7 @@
 
 using Kimi.Compiler.Lexing;
 
-namespace Kimi.Compiler;
+namespace Kimi.Compiler.Parsing;
 
 public enum VariableKind
 {

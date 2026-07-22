@@ -4,6 +4,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Arc.Collections;
 using Kimi.Command;
+using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
