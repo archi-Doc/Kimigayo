@@ -35,8 +35,9 @@ public partial class Project
             }
 
             project = new(kimiControl);
-            project.ProjectFile = file;
+            project.ProjectDirectory = Path.GetDirectoryName(path) ?? string.Empty;
             project.ProjectName = Path.GetFileNameWithoutExtension(path);
+            project.ProjectFile = file;
         }
         catch
         {
@@ -54,6 +55,8 @@ public partial class Project
     private HashSet<string> kimiFiles = new();
 
     public KimiOptions KimiOptions { get; set; } = new();
+
+    public string ProjectDirectory { get; set; } = string.Empty;
 
     public string ProjectName { get; set; } = string.Empty;
 
@@ -91,7 +94,7 @@ public partial class Project
     private async Task<bool> Buildtarget(string target)
     {
         // Create & Prepare Compilation
-        var compilation = new Compilation(this.kimiControl, this.KimiOptions, this.ProjectFile, this.ProjectName);
+        var compilation = new Compilation(this.kimiControl, this);
         if (!compilation.Prepare(target))
         {
             return false;

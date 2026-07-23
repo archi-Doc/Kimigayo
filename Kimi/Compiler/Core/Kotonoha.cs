@@ -97,7 +97,7 @@ public sealed partial class Kotonoha
         {
             tokenizer.ReadAll(ref tokenBuilder);
             var tokenSequence = tokenBuilder.ToReadOnlySequence();
-            if (this.Compilation.KimiOptions.DumpToken)
+            if (this.Compilation.Project.KimiOptions.DumpToken)
             {// Dump token
                 this.DumpToken(pathAndSource.Path, tokenSequence);
             }
@@ -139,31 +139,34 @@ public sealed partial class Kotonoha
 
     private void DumpToken(string path, ReadOnlySequence<Token> sequence)
     {
-        if (Path.ChangeExtension(path, Constants.TokenExtension) is { } tokenPath)
+        var tokenPath = Path.ChangeExtension(path, Constants.TokenExtension);
+        if (tokenPath is null)
         {
-            var sb = new StringBuilder();
-            foreach (var y in sequence)
+            return;
+        }
+
+        var sb = new StringBuilder();
+        foreach (var y in sequence)
+        {
+            foreach (var x in y.Span)
             {
-                foreach (var x in y.Span)
+                if (x.Kind == TokenKind.Separator)
                 {
-                    if (x.Kind == TokenKind.Separator)
-                    {
-                        sb.AppendLf();
-                    }
-                    else
-                    {
-                        sb.Append(x.ToString());
-                    }
+                    sb.AppendLf();
+                }
+                else
+                {
+                    sb.Append(x.ToString());
                 }
             }
+        }
 
-            try
-            {
-                File.WriteAllText(tokenPath, sb.ToString());
-            }
-            catch
-            {
-            }
+        try
+        {
+            File.WriteAllText(tokenPath, sb.ToString());
+        }
+        catch
+        {
         }
     }
 }

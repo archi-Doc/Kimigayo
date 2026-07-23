@@ -2,6 +2,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Text;
 using Arc.Collections;
 using Kimi.Command;
 using Kimi.Compiler.Parsing;
@@ -14,11 +15,13 @@ public class Compilation
 
     public KimiControl KimiControl { get; }
 
-    public KimiOptions KimiOptions { get; private set; }
+    public Project Project { get; }
+
+    /*public KimiOptions KimiOptions { get; private set; }
 
     public ProjectFile ProjectFile { get; }
 
-    public string ProjectName { get; }
+    public string ProjectName { get; }*/
 
     public string Target { get; private set; } = string.Empty;
 
@@ -32,12 +35,10 @@ public class Compilation
 
     #endregion
 
-    public Compilation(KimiControl kimiControl, KimiOptions kimiOptions, ProjectFile projectFile, string projectName)
+    public Compilation(KimiControl kimiControl, Project project)
     {
         this.KimiControl = kimiControl;
-        this.KimiOptions = kimiOptions;
-        this.ProjectFile = projectFile;
-        this.ProjectName = projectName;
+        this.Project = project;
     }
 
     public CodeContext CreateCodeContext(Kotonoha kotonoha, string[]? aliases = default)
@@ -59,7 +60,7 @@ public class Compilation
         // External Kotonoha
 
         // Project Kotonoha
-        this.ProjectKotonoha = new(this, this.ProjectName, string.Empty);
+        this.ProjectKotonoha = new(this, this.Project.ProjectName, string.Empty);
 
         return true;
     }
@@ -92,6 +93,9 @@ public class Compilation
         using var writer = new StringWriter();
         this.ProjectKotonoha.RootKoto.UnparseAll(writer);
         var sb = writer.ToString();
+
+        var path = Path.Combine(this.Project.ProjectDirectory, Constants.ScrubFileName);
+        File.WriteAllText(path, writer.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
         var bin = TinyhandSerializer.Serialize(this.ProjectKotonoha);
         var kotonoha = new Kotonoha(this);
