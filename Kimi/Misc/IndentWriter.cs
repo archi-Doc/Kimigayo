@@ -14,31 +14,40 @@ namespace Kimi;
 /// </remarks>
 public sealed class IndentWriter
 {
-    public const int MaxIndents = 256;
+    public const int DefaultSpacesPerIndent = 4;
+    private const int SpaceBufferLength = 512;
 
     private static readonly char[] SpaceBuffer;
 
     static IndentWriter()
     {
-        SpaceBuffer = new char[Constants.IndentationSpaces * MaxIndents];
+        SpaceBuffer = new char[SpaceBufferLength];
         Array.Fill(SpaceBuffer, ' ');
     }
 
     #region FieldAndProperty
 
+    private readonly int spacesPerIndent;
     private readonly StringBuilder builder;
     private int indentLevel;
     private bool isLineStart = true;
 
     #endregion
 
-    public IndentWriter()
+    public IndentWriter(int spacesPerIndent = DefaultSpacesPerIndent)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(spacesPerIndent);
+
+        this.spacesPerIndent = spacesPerIndent;
         this.builder = new StringBuilder();
     }
 
-    public IndentWriter(int capacity)
+    public IndentWriter(int capacity, int spacesPerIndent = DefaultSpacesPerIndent)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(capacity);
+        ArgumentOutOfRangeException.ThrowIfNegative(spacesPerIndent);
+
+        this.spacesPerIndent = spacesPerIndent;
         this.builder = new StringBuilder(capacity);
     }
 
@@ -85,11 +94,6 @@ public sealed class IndentWriter
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter IncrementIndent()
     {
-        if (this.indentLevel == MaxIndents)
-        {
-            throw new InvalidOperationException("The indentation level is too large.");
-        }
-
         this.indentLevel++;
         return this;
     }
@@ -222,9 +226,7 @@ public sealed class IndentWriter
             position += newlineIndex + 1;
 
             // Normalize CRLF to a single LF.
-            if (newline == BaseHelper.CrChar &&
-                position < value.Length &&
-                value[position] == BaseHelper.LfChar)
+            if (newline == BaseHelper.CrChar && position < value.Length && value[position] == BaseHelper.LfChar)
             {
                 position++;
             }
@@ -233,7 +235,6 @@ public sealed class IndentWriter
         return this;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Write(bool value)
     {
         this.WriteIndentIfRequired();
@@ -241,7 +242,6 @@ public sealed class IndentWriter
         return this;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Write(int value)
     {
         this.WriteIndentIfRequired();
@@ -249,7 +249,6 @@ public sealed class IndentWriter
         return this;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Write(uint value)
     {
         this.WriteIndentIfRequired();
@@ -257,7 +256,6 @@ public sealed class IndentWriter
         return this;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Write(long value)
     {
         this.WriteIndentIfRequired();
@@ -265,7 +263,6 @@ public sealed class IndentWriter
         return this;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Write(ulong value)
     {
         this.WriteIndentIfRequired();
@@ -273,7 +270,6 @@ public sealed class IndentWriter
         return this;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Write(float value)
     {
         this.WriteIndentIfRequired();
@@ -281,7 +277,6 @@ public sealed class IndentWriter
         return this;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Write(double value)
     {
         this.WriteIndentIfRequired();
@@ -289,7 +284,6 @@ public sealed class IndentWriter
         return this;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Write(decimal value)
     {
         this.WriteIndentIfRequired();
@@ -297,7 +291,6 @@ public sealed class IndentWriter
         return this;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Write(object? value)
     {
         if (value is not null)
@@ -331,98 +324,78 @@ public sealed class IndentWriter
         return this.WriteLine();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter WriteLine(char value)
     {
         this.Write(value);
         return this.WriteLine();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter WriteLine(int value)
     {
         this.Write(value);
         return this.WriteLine();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter WriteLine(long value)
     {
         this.Write(value);
         return this.WriteLine();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter WriteLine(double value)
     {
         this.Write(value);
         return this.WriteLine();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter WriteLine(object? value)
     {
         this.Write(value);
         return this.WriteLine();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Append(char value)
         => this.Write(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Append(string? value)
         => this.Write(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Append(ReadOnlySpan<char> value)
         => this.Write(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Append(bool value)
         => this.Write(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Append(int value)
         => this.Write(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Append(uint value)
         => this.Write(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Append(long value)
         => this.Write(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Append(ulong value)
         => this.Write(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Append(float value)
         => this.Write(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Append(double value)
         => this.Write(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Append(decimal value)
         => this.Write(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Append(object? value)
         => this.Write(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter AppendLine()
         => this.WriteLine();
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter AppendLine(string? value)
         => this.WriteLine(value);
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter AppendLine(ReadOnlySpan<char> value)
         => this.WriteLine(value);
 
@@ -443,12 +416,24 @@ public sealed class IndentWriter
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WriteIndentIfRequired()
     {
-        if (!this.isLineStart || this.indentLevel == 0)
+        if (!this.isLineStart)
         {
             return;
         }
 
         this.isLineStart = false;
-        this.builder.Append(SpaceBuffer.AsSpan(0, Constants.IndentationSpaces * this.indentLevel));
+
+        if (this.indentLevel == 0)
+        {
+            return;
+        }
+
+        var remaining = this.spacesPerIndent * this.indentLevel;
+        while (remaining > 0)
+        {
+            var length = Math.Min(SpaceBufferLength, remaining);
+            this.builder.Append(SpaceBuffer.AsSpan(0, length));
+            remaining -= length;
+        }
     }
 }

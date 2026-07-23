@@ -3,10 +3,10 @@ alias Kimi.Base
 #Condition(+x == -y) #Test
 alias Kimi.Windows
 
-    #Condition(Os == "Windows")
-    group Playground
+#Condition(Os == "Windows")
+group Playground
 
-        public group A
+    public group A
         var x = 1 + 2 * 3
         #Condition(Os.Version.Current == 1 and "text".Length > 0)
         var y = (1 + 2) * 3
@@ -20,11 +20,11 @@ alias Kimi.Windows
         var e = c
 
 
-            public open struct Test: @A, @B, 
+        public open struct Test: @A, @B, 
             #Test1
             public static var x: i32 = #One 1
 
 
-    group Pg
+group Pg
 
-        public group Extensions
+    public group Extensions

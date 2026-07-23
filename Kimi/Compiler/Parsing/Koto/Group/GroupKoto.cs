@@ -231,6 +231,8 @@ public partial class GroupKoto : IdentifiableKoto
         if (!this.IsRoot)
         {
             this.UnparseTo(writer);
+            writer.IncrementIndent();
+
             writer.WriteLine();
         }
 
@@ -245,15 +247,16 @@ public partial class GroupKoto : IdentifiableKoto
             writer.WriteLine();
         }
 
-        writer.IncrementIndent();
-
         var groups = this.identifierToGroupKoto.ToArray();
         foreach (var x in groups)
         {
             x.UnparseAll(indents + 1, writer);
         }
 
-        writer.DecrementIndent();
+        if (!this.IsRoot)
+        {
+            writer.DecrementIndent();
+        }
     }
 
     public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenState state)
