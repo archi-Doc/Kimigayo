@@ -60,7 +60,7 @@ public class Compilation
         // External Kotonoha
 
         // Project Kotonoha
-        this.ProjectKotonoha = new(this, this.Project.ProjectName, string.Empty);
+        this.ProjectKotonoha = new(this, this.Project.Name, string.Empty);
 
         return true;
     }
@@ -94,7 +94,7 @@ public class Compilation
         this.ProjectKotonoha.RootKoto.UnparseAll(writer);
         var sb = writer.ToString();
 
-        var path = Path.Combine(this.Project.ProjectDirectory, Constants.ScrubFileName);
+        var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
         File.WriteAllText(path, writer.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
         var bin = TinyhandSerializer.Serialize(this.ProjectKotonoha);

@@ -26,7 +26,7 @@ public partial class Project
         project = default;
         try
         {
-            var utf8 = File.ReadAllBytes(path);
+            var utf8 = System.IO.File.ReadAllBytes(path);
             var file = TinyhandSerializer.DeserializeFromUtf8<ProjectFile>(utf8);
             if (file is null)
             {
@@ -35,9 +35,9 @@ public partial class Project
             }
 
             project = new(kimiControl);
-            project.ProjectDirectory = Path.GetDirectoryName(path) ?? string.Empty;
-            project.ProjectName = Path.GetFileNameWithoutExtension(path);
-            project.ProjectFile = file;
+            project.Directory = Path.GetDirectoryName(path) ?? string.Empty;
+            project.Name = Path.GetFileNameWithoutExtension(path);
+            project.File = file;
         }
         catch
         {
@@ -56,18 +56,18 @@ public partial class Project
 
     public KimiOptions KimiOptions { get; set; } = new();
 
-    public string ProjectDirectory { get; set; } = string.Empty;
+    public string Directory { get; set; } = string.Empty;
 
-    public string ProjectName { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
 
-    public ProjectFile ProjectFile { get; private set; } = new();
+    public ProjectFile File { get; private set; } = new();
 
     #endregion
 
     public Project(KimiControl kimiControl)
     {
         this.kimiControl = kimiControl;
-        this.ProjectFile = DefaultProjectFile;
+        this.File = DefaultProjectFile;
     }
 
     public void AddSource(string url, string text)
@@ -82,7 +82,7 @@ public partial class Project
 
     public async Task<bool> Build()
     {
-        var targets = this.ProjectFile.Targets.ToArray();
+        var targets = this.File.Targets.ToArray();
         foreach (var x in targets)
         {
             await this.Buildtarget(x).ConfigureAwait(false);
@@ -106,7 +106,7 @@ public partial class Project
         {
             try
             {
-                var st = File.ReadAllText(y);
+                var st = System.IO.File.ReadAllText(y);
                 projectKotonoha.AddSource(new(y, st));
             }
             catch

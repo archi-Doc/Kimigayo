@@ -255,8 +255,8 @@ SolutionLoaed:
             if (File.Exists(this.SingleFile))
             {
                 var project = new Project(this.kimiControl);
-                project.ProjectName = Path.GetFileNameWithoutExtension(this.SingleFile);
-                project.ProjectDirectory = Path.GetDirectoryName(this.SingleFile) ?? string.Empty;
+                project.Name = Path.GetFileNameWithoutExtension(this.SingleFile);
+                project.Directory = Path.GetDirectoryName(this.SingleFile) ?? string.Empty;
                 project.AddKimiFile(this.SingleFile);
                 this.Projects[this.SingleFile] = project;
             }
