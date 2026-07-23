@@ -48,7 +48,7 @@ public partial class InvocationKoto : Koto
         return sb.ToString();
     }
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Method.WriteTo(writer);
         writer.Write(Constants.OpenParenthesisChar);

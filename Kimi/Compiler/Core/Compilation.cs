@@ -90,9 +90,8 @@ public class Compilation
             return;
         }
 
-        using var writer = new StringWriter();
-        this.ProjectKotonoha.RootKoto.UnparseAll(writer);
-        var sb = writer.ToString();
+        var writer = new IndentWriter();
+        this.ProjectKotonoha.RootKoto.UnparseAll(0, writer);
 
         var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
         File.WriteAllText(path, writer.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -105,7 +104,7 @@ public class Compilation
             return;
         }
 
-        using var writer2 = new StringWriter();
+        var writer2 = new IndentWriter();
         kotonoha.RootKoto.UnparseTo(writer2);
         var sb2 = writer2.ToString();
     }

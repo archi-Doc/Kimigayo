@@ -18,7 +18,7 @@ public partial class MemberAccessKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left.ToString()}{Constants.DotChar}{this.Accessor.ToString()}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(Constants.DotChar);
@@ -39,7 +39,7 @@ public partial class IndexKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left.ToString()}[{this.Index.ToString()}]";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write("[");
@@ -64,7 +64,7 @@ public partial class AsteriskKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} * {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" * ");
@@ -83,7 +83,7 @@ public partial class SlashKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} / {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" / ");
@@ -102,7 +102,7 @@ public partial class PercentKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} % {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" % ");
@@ -121,7 +121,7 @@ public partial class PlusKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} + {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" + ");
@@ -140,7 +140,7 @@ public partial class MinusKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} - {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" - ");
@@ -159,7 +159,7 @@ public partial class LessThanLessThanKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} << {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" << ");
@@ -178,7 +178,7 @@ public partial class GreaterThanGreaterThanKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} >> {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" >> ");
@@ -197,7 +197,7 @@ public partial class LessThanKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} < {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" < ");
@@ -216,7 +216,7 @@ public partial class LessThanEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} <= {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" <= ");
@@ -235,7 +235,7 @@ public partial class GreaterThanKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} > {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" > ");
@@ -254,7 +254,7 @@ public partial class GreaterThanEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} >= {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" >= ");
@@ -273,7 +273,7 @@ public partial class AsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} as {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" as ");
@@ -292,7 +292,7 @@ public partial class IsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} is {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" is ");
@@ -311,7 +311,7 @@ public partial class EqualsEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} == {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" == ");
@@ -330,7 +330,7 @@ public partial class ExclamationEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} != {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" != ");
@@ -349,7 +349,7 @@ public partial class AmpersandKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} & {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" & ");
@@ -368,7 +368,7 @@ public partial class CaretKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} ^ {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" ^ ");
@@ -387,7 +387,7 @@ public partial class BarKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} | {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" | ");
@@ -406,7 +406,7 @@ public partial class AndKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} and {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" and ");
@@ -425,7 +425,7 @@ public partial class OrKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} or {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" or ");
@@ -444,7 +444,7 @@ public partial class EqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} = {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" = ");
@@ -463,7 +463,7 @@ public partial class PlusEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} += {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" += ");
@@ -482,7 +482,7 @@ public partial class MinusEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} -= {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" -= ");
@@ -501,7 +501,7 @@ public partial class AsteriskEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} *= {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" *= ");
@@ -520,7 +520,7 @@ public partial class SlashEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} /= {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" /= ");
@@ -539,7 +539,7 @@ public partial class PercentEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} %= {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" %= ");
@@ -558,7 +558,7 @@ public partial class AmpersandEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} &= {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" &= ");
@@ -577,7 +577,7 @@ public partial class CaretEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} ^= {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" ^= ");
@@ -596,7 +596,7 @@ public partial class BarEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} |= {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" |= ");
@@ -615,7 +615,7 @@ public partial class LessThanLessThanEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} <<= {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" <<= ");
@@ -634,7 +634,7 @@ public partial class GreaterThanGreaterThanEqualsKoto : BinaryKoto
     public override string ToString()
         => $"{this.Left} >>= {this.Right}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         this.Left.WriteTo(writer);
         writer.Write(" >>= ");

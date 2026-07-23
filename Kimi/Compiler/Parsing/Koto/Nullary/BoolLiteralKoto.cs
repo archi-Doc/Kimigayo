@@ -31,7 +31,7 @@ public sealed partial class BoolLiteralKoto : Koto
         }
     }
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         if (this.Value)
         {

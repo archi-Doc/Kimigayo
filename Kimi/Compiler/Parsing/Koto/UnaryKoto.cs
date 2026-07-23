@@ -16,7 +16,7 @@ public partial class AttributeKoto : UnaryKoto
     public override string ToString()
         => $"#{this.Operand.ToString()}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(Constants.SharpChar);
         writer.Write(this.Operand.ToString());
@@ -34,7 +34,7 @@ public partial class MacroKoto : UnaryKoto
     public override string ToString()
         => $"${this.Operand.ToString()}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(Constants.DollarChar);
         writer.Write(this.Operand.ToString());
@@ -52,7 +52,7 @@ public partial class ReferenceKoto : UnaryKoto
     public override string ToString()
         => $"&{this.Operand.ToString()}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(Constants.AmpersandChar);
         writer.Write(this.Operand.ToString());
@@ -70,7 +70,7 @@ public partial class UnwrapKoto : UnaryKoto
     public override string ToString()
         => $"*{this.Operand.ToString()}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(Constants.AsteriskChar);
         writer.Write(this.Operand.ToString());
@@ -88,7 +88,7 @@ public partial class PrefixCaretKoto : UnaryKoto
     public override string ToString()
         => $"^{this.Operand.ToString()}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(Constants.CaretChar);
         writer.Write(this.Operand.ToString());
@@ -106,7 +106,7 @@ public partial class PrefixPlusKoto : UnaryKoto
     public override string ToString()
         => $"+{this.Operand.ToString()}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(Constants.PlusChar);
         writer.Write(this.Operand.ToString());
@@ -124,7 +124,7 @@ public partial class PrefixPlusPlusKoto : UnaryKoto
     public override string ToString()
         => $"++{this.Operand.ToString()}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(Constants.PlusChar);
         writer.Write(Constants.PlusChar);
@@ -143,7 +143,7 @@ public partial class PrefixMinusKoto : UnaryKoto
     public override string ToString()
         => $"-{this.Operand.ToString()}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(Constants.MinusChar);
         writer.Write(this.Operand.ToString());
@@ -161,7 +161,7 @@ public partial class PrefixMinusMinusKoto : UnaryKoto
     public override string ToString()
         => $"--{this.Operand.ToString()}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(Constants.MinusChar);
         writer.Write(Constants.MinusChar);
@@ -180,7 +180,7 @@ public partial class PostfixIncrementKoto : UnaryKoto
     public override string ToString()
         => $"{this.Operand.ToString()}++";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(this.Operand.ToString());
         writer.Write(Constants.PlusChar);
@@ -199,7 +199,7 @@ public partial class PostfixDecrementKoto : UnaryKoto
     public override string ToString()
         => $"{this.Operand.ToString()}--";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(this.Operand.ToString());
         writer.Write(Constants.MinusChar);
@@ -218,7 +218,7 @@ public partial class NotKoto : UnaryKoto
     public override string ToString()
         => $"not {this.Operand.ToString()}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write("not ");
         writer.Write(this.Operand.ToString());
@@ -236,7 +236,7 @@ public partial class ParenthesizedKoto : UnaryKoto
     public override string ToString()
         => $"({this.Operand.ToString()})";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(Constants.OpenParenthesisChar);
         writer.Write(this.Operand.ToString());

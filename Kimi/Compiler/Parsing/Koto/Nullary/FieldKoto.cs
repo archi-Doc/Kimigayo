@@ -46,7 +46,7 @@ public partial class FieldKoto : Koto
         return $"{this.VariableText} {this.NameKoto.Identifier}{typeText}";
     }
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(this.VariableText);
         writer.Write(' ');
@@ -60,7 +60,7 @@ public partial class FieldKoto : Koto
         }
     }
 
-    public override void UnparseTo(StringWriter writer)
+    public override void UnparseTo(IndentWriter writer)
     {// public let x: i32 = 1
         if (this.AttributeChain is not null)
         {

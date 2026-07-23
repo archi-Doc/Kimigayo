@@ -25,7 +25,7 @@ public sealed partial class StructKoto : GroupKoto
     {
     }
 
-    public override void UnparseTo(StringWriter writer)
+    public override void UnparseTo(IndentWriter writer)
     {// public group A: @B
         base.UnparseTo(writer);
 

@@ -19,7 +19,7 @@ public sealed partial class AliasKoto : Koto
     public override string ToString()
         => $"alias {string.Join(Constants.DotChar, this.QualifiedName)}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write("alias ");
         for (var i = 0; i < this.QualifiedName.Count; i++)

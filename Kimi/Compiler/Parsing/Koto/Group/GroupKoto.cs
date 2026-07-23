@@ -132,7 +132,7 @@ public partial class GroupKoto : IdentifiableKoto
         return $"{this.TokenKind.ToText()} {this.Name}";
     }
 
-    public override void UnparseTo(StringWriter writer)
+    public override void UnparseTo(IndentWriter writer)
     {// public group A
         KotoParser.UnparseAttribute(this.AttributeChain, writer);
         writer.WriteLine();
@@ -226,7 +226,7 @@ public partial class GroupKoto : IdentifiableKoto
         }
     }
 
-    public void UnparseAll(StringWriter writer)
+    public void UnparseAll(int indents, IndentWriter writer)
     {//
         if (!this.IsRoot)
         {
@@ -245,11 +245,15 @@ public partial class GroupKoto : IdentifiableKoto
             writer.WriteLine();
         }
 
+        writer.IncrementIndent();
+
         var groups = this.identifierToGroupKoto.ToArray();
         foreach (var x in groups)
         {
-            x.UnparseAll(writer);
+            x.UnparseAll(indents + 1, writer);
         }
+
+        writer.DecrementIndent();
     }
 
     public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenState state)

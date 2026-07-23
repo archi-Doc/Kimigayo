@@ -13,7 +13,7 @@ public static class KotoParser
     private const int AccessibilityModifierMask = 15;
     private const int PrefixBindingPower = 90;
 
-    public static void UnparseAttribute(AttributeKoto? a0, StringWriter writer)
+    public static void UnparseAttribute(AttributeKoto? a0, IndentWriter writer)
     {
         if (a0 is null)
         {
@@ -245,7 +245,7 @@ Exit:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WriteTo(this ModifierKind kind, StringWriter writer, bool addSpace = false)
+    public static void WriteTo(this ModifierKind kind, IndentWriter writer, bool addSpace = false)
     {
         var acc = kind.ExtractAccessibilityModifiers();
         var accText = acc switch

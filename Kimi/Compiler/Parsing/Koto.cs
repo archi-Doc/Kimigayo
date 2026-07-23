@@ -197,11 +197,11 @@ public abstract partial class Koto
         this.CodeContext = codeContext;
     }
 
-    public virtual void WriteTo(StringWriter writer)
+    public virtual void WriteTo(IndentWriter writer)
     {
     }
 
-    public virtual void UnparseTo(StringWriter writer)
+    public virtual void UnparseTo(IndentWriter writer)
     {
         if (this.AttributeChain is not null)
         {

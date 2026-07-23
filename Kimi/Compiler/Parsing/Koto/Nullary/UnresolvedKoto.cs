@@ -19,7 +19,7 @@ public partial class UnresolvedKoto : Koto
     public override string ToString()
         => $"{this.Identifier}";
 
-    public override void WriteTo(StringWriter writer)
+    public override void WriteTo(IndentWriter writer)
     {
         writer.Write(this.Identifier);
     }
