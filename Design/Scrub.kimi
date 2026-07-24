@@ -1,6 +1,6 @@
 #A #B
 alias Kimi.Base
-#If(+x == -y) #Test
+#If(os == "Windows") #Test
 alias Kimi.Windows
 
 public rootgroup Playground

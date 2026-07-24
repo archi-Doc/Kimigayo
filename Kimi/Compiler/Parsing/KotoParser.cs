@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
@@ -12,6 +13,44 @@ public static class KotoParser
 {
     private const int AccessibilityModifierMask = 15;
     private const int PrefixBindingPower = 90;
+
+    public static bool ResolveIfAttribute(ref TokenReader reader, Koto koto)
+    {
+        var compilation = reader.CodeContext.Compilation;
+        var attributeKoto = koto.AttributeChain;
+        while (attributeKoto is not null)
+        {
+            if (attributeKoto.Operand is InvocationKoto invocationKoto &&
+                invocationKoto.Method is UnresolvedKoto unresolvedKoto &&
+                unresolvedKoto.Identifier.SequenceEqual(Constants.IfAttribute))
+            {// #If()
+                var arg = invocationKoto.Arguments;
+                if (arg.Count != 1)
+                {
+                    invocationKoto.AddDiagnostic(Hashed.Kimi.InvalidIfAttributeArgumentCount);
+                }
+                else
+                {
+                    var limitedValue = LimitedValueHelper.Evaluate(compilation, arg[0]);
+                    if (limitedValue.Kind == LimitedValueKind.Bool)
+                    {
+                        if (!limitedValue.Bool)
+                        {// false
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        arg[0].AddDiagnostic(Hashed.Kimi.ConditionMustBeBool);
+                    }
+                }
+            }
+
+            attributeKoto = attributeKoto.AttributeChain;
+        }
+
+        return true;
+    }
 
     public static void WriteQualifiedNameTo(IdentifiableKoto? a0, IndentWriter builder)
     {
