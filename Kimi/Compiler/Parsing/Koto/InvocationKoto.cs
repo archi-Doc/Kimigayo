@@ -20,6 +20,15 @@ public partial class InvocationKoto : Koto
         this.Method = method;
         this.Arguments = arguments;
 
+        if (arguments.Count == 0)
+        {
+            this.Range = method.Range;
+        }
+        else
+        {
+            this.Range = new(method.Range.Start, arguments[^1].Range.End);
+        }
+
         method.Parent = this;
         foreach (var x in arguments)
         {

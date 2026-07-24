@@ -1,50 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.InteropServices;
-
 namespace Kimi.Compiler.Parsing;
-
-public enum LimitedValueKind
-{
-    Bool,
-    I32,
-    Single,
-
-}
-
-[StructLayout(LayoutKind.Explicit)]
-public readonly struct LimitedValue
-{
-    [FieldOffset(0)]
-    public readonly LimitedValueKind Kind;
-
-    [FieldOffset(4)]
-    public readonly bool Bool;
-
-    [FieldOffset(4)]
-    public readonly int I32;
-
-    [FieldOffset(4)]
-    public readonly float Single;
-
-    public LimitedValue(bool value)
-    {
-        this.Kind = LimitedValueKind.Bool;
-        this.Bool = value;
-    }
-
-    public LimitedValue(int value)
-    {
-        this.Kind = LimitedValueKind.I32;
-        this.I32 = value;
-    }
-
-    public LimitedValue(float value)
-    {
-        this.Kind = LimitedValueKind.Single;
-        this.Single = value;
-    }
-}
 
 public static class LimitedValueHelper
 {
@@ -80,13 +36,13 @@ public static class LimitedValueHelper
         else if (koto is PrefixPlusKoto prefixPlusKoto)
         {// +A
             var op = Evaluate(compilation, prefixPlusKoto.Operand);
-            if (op.Kind == LimitedValueKind.I32)
+            if (op.Kind == LimitedValueKind.I64)
             {
-                return new(op.I32);
+                return new(op.I64);
             }
-            else if (op.Kind == LimitedValueKind.Single)
+            else if (op.Kind == LimitedValueKind.Double)
             {
-                return new(op.Single);
+                return new(op.Double);
             }
             else
             {
@@ -96,13 +52,13 @@ public static class LimitedValueHelper
         else if (koto is PrefixMinusKoto prefixMinusKoto)
         {// -A
             var op = Evaluate(compilation, prefixMinusKoto.Operand);
-            if (op.Kind == LimitedValueKind.I32)
+            if (op.Kind == LimitedValueKind.I64)
             {
-                return new(-op.I32);
+                return new(-op.I64);
             }
-            else if (op.Kind == LimitedValueKind.Single)
+            else if (op.Kind == LimitedValueKind.Double)
             {
-                return new(-op.Single);
+                return new(-op.Double);
             }
             else
             {
@@ -124,8 +80,8 @@ public static class LimitedValueHelper
                 return left.Kind switch
                 {
                     LimitedValueKind.Bool => new(left.Bool == right.Bool),
-                    LimitedValueKind.I32 => new(left.I32 == right.I32),
-                    LimitedValueKind.Single => new(left.Single == right.Single),
+                    LimitedValueKind.I64 => new(left.I64 == right.I64),
+                    LimitedValueKind.Double => new(left.Double == right.Double),
                     _ => new(true),
                 };
             }
@@ -140,8 +96,8 @@ public static class LimitedValueHelper
                 return left.Kind switch
                 {
                     LimitedValueKind.Bool => new(left.Bool != right.Bool),
-                    LimitedValueKind.I32 => new(left.I32 != right.I32),
-                    LimitedValueKind.Single => new(left.Single != right.Single),
+                    LimitedValueKind.I64 => new(left.I64 != right.I64),
+                    LimitedValueKind.Double => new(left.Double != right.Double),
                     _ => new(true),
                 };
             }

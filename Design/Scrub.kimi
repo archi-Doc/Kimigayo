@@ -1,6 +1,6 @@
 #A #B
 alias Kimi.Base
-#If(os == "Windows") #Test
+#If(true) #Test
 alias Kimi.Windows
 
 public rootgroup Playground
@@ -10,7 +10,7 @@ rootgroup Playground.A
     var x = 1 + 2 * 3
     #If(Os.Version.Current == 1 and "text".Length > 0)
     var y = (1 + 2) * 3
-    var x = #If(windows) 1 #If(linux) 2
+    var x = 1
     let y = 2
     var z = Test.New()
     var a = z
