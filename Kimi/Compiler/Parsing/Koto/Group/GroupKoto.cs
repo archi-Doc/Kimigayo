@@ -134,8 +134,11 @@ public partial class GroupKoto : IdentifiableKoto
 
     public override void UnparseTo(IndentWriter writer)
     {// public group A
-        KotoParser.UnparseAttribute(this.AttributeChain, writer);
-        writer.WriteLine();
+        if (this.AttributeChain is not null)
+        {
+            KotoParser.UnparseAttribute(this.AttributeChain, writer);
+            writer.WriteLine();
+        }
 
         if (this.IsRoot)
         {
@@ -231,9 +234,8 @@ public partial class GroupKoto : IdentifiableKoto
         if (!this.IsRoot)
         {
             this.UnparseTo(writer);
-            writer.IncrementIndent();
-
             writer.WriteLine();
+            writer.IncrementIndent();
         }
 
         if (this.KotoList.Count > 0)

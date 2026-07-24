@@ -5,7 +5,6 @@ alias Kimi.Windows
 
 #Condition(Os == "Windows")
 group Playground
-
     public group A
         var x = 1 + 2 * 3
         #Condition(Os.Version.Current == 1 and "text".Length > 0)
@@ -19,12 +18,9 @@ group Playground
         var d = c
         var e = c
 
-
         public open struct Test: @A, @B, 
             #Test1
             public static var x: i32 = #One 1
 
-
 group Pg
-
     public group Extensions
