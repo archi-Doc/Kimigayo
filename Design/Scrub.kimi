@@ -3,7 +3,8 @@ alias Kimi.Base
 #Condition(+x == -y) #Test
 alias Kimi.Windows
 
-public group A
+#Condition(Os == "Windows")
+group A
     var x = 1 + 2 * 3
     #Condition(Os.Version.Current == 1 and "text".Length > 0)
     var y = (1 + 2) * 3

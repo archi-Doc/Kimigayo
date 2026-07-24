@@ -661,7 +661,7 @@ public abstract partial class BinaryKoto : Koto
     }
 
     internal BinaryKoto(CodeContext codeContext)
-        : base(codeContext)
+        : base(codeContext, default)
     {
         this.Left = default!;
         this.Right = default!;

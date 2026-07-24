@@ -49,8 +49,8 @@ public abstract partial class IdentifiableKoto : Koto
     {
     }
 
-    public IdentifiableKoto(CodeContext codeContext)
-        : base(codeContext)
+    public IdentifiableKoto(CodeContext codeContext, SourceRange range)
+        : base(codeContext, range)
     {
     }
 
@@ -66,7 +66,7 @@ public abstract partial class IdentifiableKoto : Koto
 [TinyhandObject]
 public partial class GroupKoto : IdentifiableKoto
 {
-    public static readonly TokenState DefaultState = new(default, ModifierKind.Public);
+    // public static readonly TokenState DefaultState = new(default, ModifierKind.Public);
 
     #region FieldAndProperty
 
@@ -106,8 +106,8 @@ public partial class GroupKoto : IdentifiableKoto
     {
     }
 
-    internal GroupKoto(CodeContext codeContext, TokenState state)
-        : base(codeContext)
+    internal GroupKoto(CodeContext codeContext, TokenState state, SourceRange range)
+        : base(codeContext, range)
     {
         this.AttributeChain = state.AttributeKoto;
         this.Modifier = state.ModifierKind;
@@ -201,7 +201,7 @@ public partial class GroupKoto : IdentifiableKoto
             {// rootgroup
                 var name = KotoHelper.ValidateAndGetNamespace(ref reader);
                 var state = reader.StoreState();
-                var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, TokenKind.Group, state);
+                var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, TokenKind.Group, state, token.Range);
                 this.CodeContext.CurrentGroup = groupKoto;
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
@@ -218,7 +218,7 @@ public partial class GroupKoto : IdentifiableKoto
             {// struct
                 var r = KotoParser.ParseGroupDeclaration(ref reader);
                 var state = reader.StoreState();
-                var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, token.Kind, state);
+                var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, token.Kind, state, token.Range);
                 if (r.List is not null)
                 {
                     structKoto.BaseList.AddRange(r.List);
@@ -255,7 +255,7 @@ public partial class GroupKoto : IdentifiableKoto
         this.UnparseAllInternal(0, writer, ref currentGroup);
     }
 
-    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenState state)
+    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenState state, SourceRange range)
     {
         var text = qualifiedName;
         var group = this;
@@ -264,37 +264,43 @@ public partial class GroupKoto : IdentifiableKoto
             var index = text.IndexOf(Constants.DotChar);
             if (index < 0)
             {
-                GetOrAddGroup(ref group, text, kind, state);
-                state = DefaultState;
+                GetOrAddGroup(ref group, text, kind, state, range);
                 return group;
             }
 
             var segment = text[..index];
-            GetOrAddGroup(ref group, segment, TokenKind.Group, state);
-            state = DefaultState;
+            GetOrAddGroup(ref group, segment, TokenKind.Group, default, default);
             text = text[(index + 1)..];
         }
     }
 
-    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, TokenKind kind, TokenState state)
+    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, TokenKind kind, TokenState state, SourceRange range)
     {
         var parent = group;
         var codeContext = group.CodeContext;
         Func<string, GroupKoto> factory = kind switch
         {
-            TokenKind.Struct => x => new StructKoto(codeContext, state),
-            TokenKind.Enum => x => new EnumKoto(codeContext, state),
-            TokenKind.Extension => x => new ExtensionKoto(codeContext, state),
-            TokenKind.Contract => x => new ContractKoto(codeContext, state),
-            _ => x => new GroupKoto(codeContext, state),
+            TokenKind.Struct => x => new StructKoto(codeContext, state, range),
+            TokenKind.Enum => x => new EnumKoto(codeContext, state, range),
+            TokenKind.Extension => x => new ExtensionKoto(codeContext, state, range),
+            TokenKind.Contract => x => new ContractKoto(codeContext, state, range),
+            _ => x => new GroupKoto(codeContext, state, range),
         };
 
         group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(text, factory);
         if (string.IsNullOrEmpty(group.Name))
-        {
+        {// New
             group.Parent = parent;
             group.Name = text.ToString();
         }
+        else
+        {// Existing
+            group.Merge(state);
+        }
+    }
+
+    private void Merge(TokenState state)
+    {
     }
 
     private void UnparseAllInternal(int indents, IndentWriter writer, ref GroupKoto? currentGroup)

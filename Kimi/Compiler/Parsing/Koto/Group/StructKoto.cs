@@ -20,8 +20,8 @@ public sealed partial class StructKoto : GroupKoto
     {
     }
 
-    internal StructKoto(CodeContext codeContext, TokenState state)
-        : base(codeContext, state)
+    internal StructKoto(CodeContext codeContext, TokenState state, SourceRange range)
+        : base(codeContext, state, range)
     {
     }
 

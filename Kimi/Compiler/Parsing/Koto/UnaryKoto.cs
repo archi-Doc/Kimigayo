@@ -258,7 +258,7 @@ public abstract partial class UnaryKoto : Koto
     }
 
     internal UnaryKoto(CodeContext codeContext)
-        : base(codeContext)
+        : base(codeContext, default)
     {
         this.Operand = default!;
     }

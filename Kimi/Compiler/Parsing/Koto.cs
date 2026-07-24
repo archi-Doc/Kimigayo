@@ -185,16 +185,17 @@ public abstract partial class Koto
     public Koto(ref TokenReader reader, SourceRange range)
     {
         this.DiagnosticCollection = reader.Diagnostic;
-        this.Range = range;
         this.CodeContext = reader.CodeContext;
+        this.Range = range;
 
         this.AttributeChain = reader.PopAttribute();
         // this.Parent = parent;
     }
 
-    internal Koto(CodeContext codeContext)
+    internal Koto(CodeContext codeContext, SourceRange range)
     {
         this.CodeContext = codeContext;
+        this.Range = range;
     }
 
     public virtual void WriteTo(IndentWriter writer)

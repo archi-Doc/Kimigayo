@@ -47,7 +47,7 @@ public sealed partial class Kotonoha
         this.Name = name;
         this.Id = (uint)XxHash3Slim.Hash64(name);
         this.Url = url;
-        this.RootKoto = new(codeContext, GroupKoto.DefaultState);
+        this.RootKoto = new(codeContext, default, default);
 
         codeContext.CurrentGroup = this.RootKoto;
     }
@@ -56,7 +56,7 @@ public sealed partial class Kotonoha
     {
         var codeContext = new CodeContext(compilation, this);
         this.Compilation = compilation;
-        this.RootKoto = new(codeContext, GroupKoto.DefaultState);
+        this.RootKoto = new(codeContext, default, default);
     }
 
     public override string ToString()
