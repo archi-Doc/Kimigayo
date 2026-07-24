@@ -4,6 +4,8 @@
 #Condition(+x == -y) #Test
 alias Kimi.Windows
 
+public rootgroup Playground
+
 // comment
 #Condition(Os == "Windows")
 rootgroup Playground.A

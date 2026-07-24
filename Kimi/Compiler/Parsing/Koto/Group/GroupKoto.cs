@@ -304,33 +304,34 @@ public partial class GroupKoto : IdentifiableKoto
     {
         var groupDeclared = false;
 
-        if (this.KotoList.Count > 0)
+        if ((!this.IsRoot && this.KotoList.Count > 0)
+            || this.Modifier != 0)
         {
-            if (!this.IsRoot || this.Modifier != 0)
-            {
-                if (this.KotoKind == KotoKind.Group)
-                {
-                    this.UnparseToRoot(writer);
-                    writer.WriteLine();
-                    writer.SetIndent(1);
-                }
-                else
-                {
-                    this.UnparseTo(writer);
-                    writer.WriteLine();
-                    writer.IncrementIndent();
-                }
-
-                groupDeclared = true;
+            writer.AppendEmptyLine();
+            if (this.KotoKind == KotoKind.Group)
+            {// rootgroup A
+                writer.SetIndent(0);
+                this.UnparseToRoot(writer);
+                writer.WriteLine();
+                writer.IncrementIndent();
+            }
+            else
+            {// struct A
+                this.UnparseTo(writer);
+                writer.WriteLine();
+                writer.IncrementIndent();
             }
 
+            groupDeclared = true;
+        }
+
+        if (this.KotoList.Count > 0)
+        {
             foreach (var x in this.KotoList)
             {
                 x.UnparseTo(writer);
                 writer.WriteLine();
             }
-
-            writer.WriteLine();
         }
 
         var groups = this.IdentifierToGroupKoto.ToArray();
@@ -338,6 +339,7 @@ public partial class GroupKoto : IdentifiableKoto
         {
             // DeclareGroup(writer, ref currentGroup);
 
+            writer.AppendEmptyLine();
             foreach (var x in groups)
             {
                 x.UnparseAllInternal(indents + 1, writer, groupDeclared);

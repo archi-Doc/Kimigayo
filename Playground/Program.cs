@@ -49,7 +49,7 @@ internal class Program
             namespace Playground // Single-line comment
             use Kimi.Crypto 
 
-            Condition(Os=="Linux") // Attribute-next rule.
+            #If(Os=="Linux") // Attribute-next rule.
             use Kimi.Base.Linux
 
             public const string Name = "Test Program"

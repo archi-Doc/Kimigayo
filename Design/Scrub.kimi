@@ -1,9 +1,11 @@
 #A #B
 alias Kimi.Base
-#Condition(+x == -y) #Test
+#If(+x == -y) #Test
 alias Kimi.Windows
 
-#Condition(Os == "Windows")
+public rootgroup Playground
+
+#If(Os == "Windows")
 rootgroup Playground.A
     var x = 1 + 2 * 3
     #Condition(Os.Version.Current == 1 and "text".Length > 0)

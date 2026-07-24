@@ -52,5 +52,5 @@ public static class Constants
 
     public static ReadOnlySpan<char> NamespaceKeyword => "namespace";
 
-    public static ReadOnlySpan<char> ConditionKeyword => "Condition";
+    public static ReadOnlySpan<char> IfAttribute => "If";
 }

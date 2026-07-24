@@ -312,6 +312,32 @@ public sealed class IndentWriter
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public IndentWriter AppendEmptyLine()
+    {
+        this.isLineStart = true;
+
+        if (this.builder.Length == 0)
+        {
+            this.builder.Append(BaseHelper.LfChar);
+            return this;
+        }
+
+        if (this.builder.Length >= 2 && this.builder[this.builder.Length - 1] == BaseHelper.LfChar && this.builder[this.builder.Length - 2] == BaseHelper.LfChar)
+        {
+            return this;
+        }
+
+        if (this.builder[this.builder.Length - 1] != BaseHelper.LfChar)
+        {
+            this.builder.Append(BaseHelper.LfChar);
+        }
+
+        this.builder.Append(BaseHelper.LfChar);
+
+        return this;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter WriteLine(string? value)
     {
         this.Write(value);
