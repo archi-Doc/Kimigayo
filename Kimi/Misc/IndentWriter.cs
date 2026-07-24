@@ -120,10 +120,11 @@ public sealed class IndentWriter
     /// Resets the indentation level to zero.
     /// </summary>
     /// <returns> This <see cref="IndentWriter"/> instance.</returns>
+    /// <param name="indentLevel">The indentation level.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public IndentWriter ResetIndent()
+    public IndentWriter SetIndent(int indentLevel)
     {
-        this.indentLevel = 0;
+        this.indentLevel = indentLevel;
         return this;
     }
 

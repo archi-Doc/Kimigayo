@@ -93,7 +93,7 @@ public static class TokenHelper
         Set(TokenKind.Or, true, "or");
 
         // Non-block keyword
-        Set(TokenKind.RootGroup, true, "rootgroup");
+        Set(TokenKind.RootGroup, true, Constants.RootgroupKeyword);
         Set(TokenKind.Return, true, "return");
         Set(TokenKind.Break, true, "break");
         Set(TokenKind.Continue, true, "continue");

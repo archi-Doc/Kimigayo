@@ -160,14 +160,8 @@ public partial class GroupKoto : IdentifiableKoto
             writer.WriteLine();
         }
 
-        if (this.IsRoot)
-        {
-            writer.Write("Root");
-            return;
-        }
-
         this.Modifier.WriteTo(writer, true);
-        writer.Write(this.TokenKind.ToText());
+        writer.Write(Constants.RootgroupKeyword);
         writer.Write(' ');
         writer.Write(this.Name);
     }
@@ -252,7 +246,7 @@ public partial class GroupKoto : IdentifiableKoto
     public void UnparseAll(IndentWriter writer)
     {
         GroupKoto? currentGroup = this.IsRoot ? null : this;
-        this.UnparseAllInternal(0, writer, ref currentGroup);
+        this.UnparseAllInternal(0, writer, false);
     }
 
     public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenState state, SourceRange range)
@@ -303,17 +297,26 @@ public partial class GroupKoto : IdentifiableKoto
     {
     }
 
-    private void UnparseAllInternal(int indents, IndentWriter writer, ref GroupKoto? currentGroup)
+    private void UnparseAllInternal(int indents, IndentWriter writer, bool parentDeclared)
     {//
         var groupDeclared = false;
 
         if (this.KotoList.Count > 0)
         {
-            if (!this.IsRoot)
+            if (!this.IsRoot || this.Modifier != 0)
             {
-                this.UnparseTo(writer);
-                writer.WriteLine();
-                writer.IncrementIndent();
+                if (this.KotoKind == KotoKind.Group)
+                {
+                    this.UnparseToRoot(writer);
+                    writer.WriteLine();
+                    writer.SetIndent(1);
+                }
+                else
+                {
+                    this.UnparseTo(writer);
+                    writer.WriteLine();
+                    writer.IncrementIndent();
+                }
 
                 groupDeclared = true;
                 // currentGroup = this;
@@ -337,7 +340,7 @@ public partial class GroupKoto : IdentifiableKoto
 
             foreach (var x in groups)
             {
-                x.UnparseAllInternal(indents + 1, writer, ref currentGroup);
+                x.UnparseAllInternal(indents + 1, writer, groupDeclared);
             }
         }
 

@@ -11,6 +11,7 @@ public static class Constants
     public const string TokenExtension = ".token";
     public const string DefaultNamespace = "Playground";
     public const string ScrubFileName = "Scrub.kimi";
+    public const string RootgroupKeyword = "rootgroup";
 
     public const char LfChar = '\n';
     public const char CrChar = '\r';
