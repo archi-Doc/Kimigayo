@@ -359,10 +359,18 @@ public sealed class IndentWriter
         => this.Write(value);
 
     public IndentWriter Append(string? value)
-        => this.Write(value);
+    {
+        this.WriteIndentIfRequired();
+        this.builder.Append(value);
+        return this;
+    }
 
     public IndentWriter Append(ReadOnlySpan<char> value)
-        => this.Write(value);
+    {
+        this.WriteIndentIfRequired();
+        this.builder.Append(value);
+        return this;
+    }
 
     public IndentWriter Append(bool value)
         => this.Write(value);

@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
 using Arc.Collections;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
@@ -163,7 +164,7 @@ public partial class GroupKoto : IdentifiableKoto
         this.Modifier.WriteTo(writer, true);
         writer.Write(Constants.RootgroupKeyword);
         writer.Write(' ');
-        writer.Write(this.Name);
+        KotoParser.WriteQualifiedNameTo(this, writer);
     }
 
     public void Parse(ref Token token, ref TokenReader reader)

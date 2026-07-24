@@ -13,6 +13,71 @@ public static class KotoParser
     private const int AccessibilityModifierMask = 15;
     private const int PrefixBindingPower = 90;
 
+    public static void WriteQualifiedNameTo(IdentifiableKoto? a0, IndentWriter builder)
+    {
+        if (a0 is null)
+        {
+            return;
+        }
+
+        var a1 = a0.Parent as IdentifiableKoto;
+        if (a1 is null || a1.IsRoot)
+        {
+            builder.Append(a0.GetIdentifier());
+            return;
+        }
+
+        var a2 = a1.Parent as IdentifiableKoto;
+        if (a2 is null || a2.IsRoot)
+        {
+            builder.Append(a1.GetIdentifier());
+            builder.Append(Constants.DotChar);
+            builder.Append(a0.GetIdentifier());
+            return;
+        }
+
+        var a3 = a2.Parent as IdentifiableKoto;
+        if (a3 is null || a3.IsRoot)
+        {
+            builder.Append(a2.GetIdentifier());
+            builder.Append(Constants.DotChar);
+            builder.Append(a1.GetIdentifier());
+            builder.Append(Constants.DotChar);
+            builder.Append(a0.GetIdentifier());
+            return;
+        }
+
+        var a4 = a3.Parent as IdentifiableKoto;
+        if (a4 is null || a4.IsRoot)
+        {
+            builder.Append(a3.GetIdentifier());
+            builder.Append(Constants.DotChar);
+            builder.Append(a2.GetIdentifier());
+            builder.Append(Constants.DotChar);
+            builder.Append(a1.GetIdentifier());
+            builder.Append(Constants.DotChar);
+            builder.Append(a0.GetIdentifier());
+            return;
+        }
+
+        var list = new List<IdentifiableKoto>();
+        var x = a0;
+        while (x is not null && !x.IsRoot)
+        {
+            list.Add(x);
+            x = x.Parent as IdentifiableKoto;
+        }
+
+        for (var i = list.Count - 1; i >= 0; i--)
+        {
+            builder.Append(list[i].GetIdentifier());
+            if (i != 0)
+            {
+                builder.Append(Constants.DotChar);
+            }
+        }
+    }
+
     public static void UnparseAttribute(AttributeKoto? a0, IndentWriter writer)
     {
         if (a0 is null)
