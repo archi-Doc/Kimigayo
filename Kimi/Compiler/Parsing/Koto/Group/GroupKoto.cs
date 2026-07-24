@@ -152,6 +152,26 @@ public partial class GroupKoto : IdentifiableKoto
         writer.Write(this.Name);
     }
 
+    public void UnparseToRoot(IndentWriter writer)
+    {// rootgroup A
+        if (this.AttributeChain is not null)
+        {
+            KotoParser.UnparseAttribute(this.AttributeChain, writer);
+            writer.WriteLine();
+        }
+
+        if (this.IsRoot)
+        {
+            writer.Write("Root");
+            return;
+        }
+
+        this.Modifier.WriteTo(writer, true);
+        writer.Write(this.TokenKind.ToText());
+        writer.Write(' ');
+        writer.Write(this.Name);
+    }
+
     public void Parse(ref Token token, ref TokenReader reader)
     {
         while (true)
@@ -229,36 +249,10 @@ public partial class GroupKoto : IdentifiableKoto
         }
     }
 
-    public void UnparseAll(int indents, IndentWriter writer)
-    {//
-        if (!this.IsRoot)
-        {
-            this.UnparseTo(writer);
-            writer.WriteLine();
-            writer.IncrementIndent();
-        }
-
-        if (this.KotoList.Count > 0)
-        {
-            foreach (var x in this.KotoList)
-            {
-                x.UnparseTo(writer);
-                writer.WriteLine();
-            }
-
-            writer.WriteLine();
-        }
-
-        var groups = this.identifierToGroupKoto.ToArray();
-        foreach (var x in groups)
-        {
-            x.UnparseAll(indents + 1, writer);
-        }
-
-        if (!this.IsRoot)
-        {
-            writer.DecrementIndent();
-        }
+    public void UnparseAll(IndentWriter writer)
+    {
+        GroupKoto? currentGroup = this.IsRoot ? null : this;
+        this.UnparseAllInternal(0, writer, ref currentGroup);
     }
 
     public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenState state)
@@ -300,6 +294,62 @@ public partial class GroupKoto : IdentifiableKoto
         {
             group.Parent = parent;
             group.Name = text.ToString();
+        }
+    }
+
+    private void UnparseAllInternal(int indents, IndentWriter writer, ref GroupKoto? currentGroup)
+    {//
+        var groupDeclared = false;
+
+        if (this.KotoList.Count > 0)
+        {
+            if (!this.IsRoot)
+            {
+                this.UnparseTo(writer);
+                writer.WriteLine();
+                writer.IncrementIndent();
+
+                groupDeclared = true;
+                // currentGroup = this;
+            }
+
+            // DeclareGroup(writer, ref currentGroup);
+
+            foreach (var x in this.KotoList)
+            {
+                x.UnparseTo(writer);
+                writer.WriteLine();
+            }
+
+            writer.WriteLine();
+        }
+
+        var groups = this.identifierToGroupKoto.ToArray();
+        if (groups.Length > 0)
+        {
+            // DeclareGroup(writer, ref currentGroup);
+
+            foreach (var x in groups)
+            {
+                x.UnparseAllInternal(indents + 1, writer, ref currentGroup);
+            }
+        }
+
+        if (groupDeclared)
+        {
+            writer.DecrementIndent();
+        }
+
+        static void DeclareGroup(IndentWriter writer, ref GroupKoto? groupKoto)
+        {
+            if (groupKoto is not null)
+            {
+                groupKoto.UnparseTo(writer);
+                writer.WriteLine();
+                writer.IncrementIndent();
+
+                groupKoto = null;
+            }
         }
     }
 

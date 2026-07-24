@@ -91,7 +91,7 @@ public class Compilation
         }
 
         var writer = new IndentWriter();
-        this.ProjectKotonoha.RootKoto.UnparseAll(0, writer);
+        this.ProjectKotonoha.RootKoto.UnparseAll(writer);
 
         var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
         File.WriteAllText(path, writer.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
