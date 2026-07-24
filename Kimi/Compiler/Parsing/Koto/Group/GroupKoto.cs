@@ -1,12 +1,13 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Text;
 using Arc.Collections;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
+
+#pragma warning disable SA1202 // Elements should be ordered by access
 
 [TinyhandObject(ReservedKeyCount = 2)]
 public abstract partial class IdentifiableKoto : Koto
@@ -80,7 +81,8 @@ public partial class GroupKoto : IdentifiableKoto
     [Key(4)]
     protected List<Koto> KotoList { get; set; } = [];
 
-    private readonly Utf16Hashtable<GroupKoto> identifierToGroupKoto = new();
+    [Key(5)]
+    protected Utf16Hashtable<GroupKoto> IdentifierToGroupKoto { get; set; } = new();
 
     public KotoKind KotoKind => this switch
     {
@@ -282,7 +284,7 @@ public partial class GroupKoto : IdentifiableKoto
             _ => x => new GroupKoto(codeContext, state, range),
         };
 
-        group = (GroupKoto)group.identifierToGroupKoto.GetOrAdd(text, factory);
+        group = (GroupKoto)group.IdentifierToGroupKoto.GetOrAdd(text, factory);
         if (string.IsNullOrEmpty(group.Name))
         {// New
             group.Parent = parent;
@@ -299,7 +301,7 @@ public partial class GroupKoto : IdentifiableKoto
     }
 
     private void UnparseAllInternal(int indents, IndentWriter writer, bool parentDeclared)
-    {//
+    {
         var groupDeclared = false;
 
         if (this.KotoList.Count > 0)
@@ -320,10 +322,7 @@ public partial class GroupKoto : IdentifiableKoto
                 }
 
                 groupDeclared = true;
-                // currentGroup = this;
             }
-
-            // DeclareGroup(writer, ref currentGroup);
 
             foreach (var x in this.KotoList)
             {
@@ -334,7 +333,7 @@ public partial class GroupKoto : IdentifiableKoto
             writer.WriteLine();
         }
 
-        var groups = this.identifierToGroupKoto.ToArray();
+        var groups = this.IdentifierToGroupKoto.ToArray();
         if (groups.Length > 0)
         {
             // DeclareGroup(writer, ref currentGroup);
@@ -348,18 +347,6 @@ public partial class GroupKoto : IdentifiableKoto
         if (groupDeclared)
         {
             writer.DecrementIndent();
-        }
-
-        static void DeclareGroup(IndentWriter writer, ref GroupKoto? groupKoto)
-        {
-            if (groupKoto is not null)
-            {
-                groupKoto.UnparseTo(writer);
-                writer.WriteLine();
-                writer.IncrementIndent();
-
-                groupKoto = null;
-            }
         }
     }
 
