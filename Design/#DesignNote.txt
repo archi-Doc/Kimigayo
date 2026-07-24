@@ -1,0 +1,19 @@
+## Central Dogma (Grand line)
+Source -> Lexing: Token/Tokenizer -> Parsing: Koto/Parser -> Resolution/Generation: LVVM IR/BC
+それぞれSerialize可能。
+
+Package: Koto/Kotonoha
+Frontend: Tokenizer -> Parser
+Backend: Resolver -> Emitter
+
+## #If(os == "Windows")
+Rustの#cfgに相当する。
+コード中の条件式と同じ扱いにしたい。
+
+当初は、コード中の定数も参照できるようにしたいと考えていたが、
+Multipathが必要になるのと、Kotoの統合が難しくなる（Raw koto treeを作成して、#Ifを複数処理で解決して、それから最終的なKoto treeを作成する）ので、簡略化することにした。
+IfAttributeResolverで参照・解決可能なもの = Compilationから直接参照できるもの（TargetTriple, ProjectFile）
+
+具体的には、
+os, debug/release, pointerWidth, test, custom
+など。

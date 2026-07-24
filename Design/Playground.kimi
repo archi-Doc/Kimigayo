@@ -1,20 +1,20 @@
 // alias, rootgroup, group, struct, enum,
 #A #B alias Kimi.Base
 
-#Condition(+x == -y) #Test
+#If(+x == -y) #Test
 alias Kimi.Windows
 
 public rootgroup Playground
 
 // comment
-#Condition(Os == "Windows")
+#If(os == "Windows")
 rootgroup Playground.A
 var x = 1 + 2 * 3
 
 public open struct Test: @A, @B,
     public static #Test1 var #Test2 x: i32 = #One 1
 
-#Condition(Os.Version.Current == 1 and "text".Length > 0)
+#If(Os.Version.Current == 1 and "text".Length > 0)
 var y = (1 + #Test 2) * 3
 
 static var x = 1
