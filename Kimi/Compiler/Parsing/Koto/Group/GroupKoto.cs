@@ -292,11 +292,11 @@ public partial class GroupKoto : IdentifiableKoto
         }
         else
         {// Existing
-            group.Merge(state);
+            group.Merge(state, range);
         }
     }
 
-    private void Merge(TokenState state)
+    private void Merge(TokenState state, SourceRange range)
     {
     }
 
