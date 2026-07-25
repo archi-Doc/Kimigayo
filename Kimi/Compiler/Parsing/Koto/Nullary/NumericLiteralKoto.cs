@@ -4,23 +4,6 @@ using Kimi.Compiler.Lexing;
 
 namespace Kimi.Compiler.Parsing;
 
-public enum NumericLiteraKind
-{
-    Invalid,
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
-    ISize,
-    U8,
-    U16,
-    U32,
-    U64,
-    U128,
-    USize,
-}
-
 [TinyhandObject]
 public sealed partial class NumericLiteralKoto : Koto
 {//
@@ -28,10 +11,10 @@ public sealed partial class NumericLiteralKoto : Koto
     public string Literal { get; private set; }
 
     [Key(2)]
-    public NumericLiteraKind NumericKind { get; private set; }
+    public NumericLiteralKind NumericKind { get; private set; }
 
     [Key(3)]
-    private UInt128 numericValue;
+    private UInt128 uv;
 
     public NumericLiteralKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Range)
@@ -41,6 +24,13 @@ public sealed partial class NumericLiteralKoto : Koto
 
     public bool TryGetI64(out long value)
     {
+        unsafe
+        {
+            fixed (void* d = &this.numericValue)
+            {
+
+            }
+        }
     }
 
     public override string ToString()
