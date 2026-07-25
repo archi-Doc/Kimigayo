@@ -146,12 +146,12 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.GreaterThanGreaterThanEquals, typeof(GreaterThanGreaterThanEqualsKoto))]
 
 [TinyhandUnion((int)KotoKind.Invocation, typeof(InvocationKoto))]
+[ValueLinkObject]
 public abstract partial class Koto
 {
     #region FieldAndProperty
 
     private Koto? head;
-    private AttributeKoto? attributeHead;
     private Koto? previous;
     private Koto? next;
 
@@ -172,10 +172,29 @@ public abstract partial class Koto
     public Koto? Parent { get; internal set; }
 
     [IgnoreMember]
-    public Koto? Previous => this.previous == null || this == this.Parent?.head ? null : this.previous;
+    public Koto? Previous { get; internal set; }
 
     [IgnoreMember]
     public Koto? Next { get; internal set; }
+
+    /*[IgnoreMember]
+    public Koto? Previous => this.previous == null || this == this.Parent?.head ? null : this.previous;
+
+    [IgnoreMember]
+    public Koto? Next
+    {//
+        get
+        {
+            if (this is AttributeKoto)
+            {
+                return this.next == this.Parent?.head ? null : this.next;
+            }
+            else
+            {
+                return this.next == this.Parent?.attributeHead ? null : this.next;
+            }
+        }
+    }*/
 
     [Key(0)]
     public AttributeKoto? AttributeChain { get; internal set; }
@@ -187,6 +206,7 @@ public abstract partial class Koto
 
     #endregion
 
+    [Link(Type = ChainType.LinkedList, Name = "TestLink")]
     public Koto(ref TokenReader reader, SourceRange range)
     {
         this.DiagnosticCollection = reader.Diagnostic;
@@ -250,8 +270,8 @@ public abstract partial class Koto
         }
 
         attributeKoto.Parent = this;
-        attributeKoto.Previous = default;
-        attributeKoto.Next = this.AttributeChain;
+        //attributeKoto.Previous = default;
+        //attributeKoto.Next = this.AttributeChain;
 
         this.AttributeChain = attributeKoto;
     }

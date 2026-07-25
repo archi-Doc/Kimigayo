@@ -9,6 +9,23 @@ namespace Kimi.Compiler.Parsing;
 
 #pragma warning disable SA1202 // Elements should be ordered by access
 
+[TinyhandObject(ReservedKeyCount = 3)]
+public abstract partial class BlockKoto : IdentifiableKoto
+{
+    [Key(2)]
+    public Koto.GoshujinClass Goshujin { get; protected set; } = new();
+
+    public BlockKoto(ref TokenReader reader, SourceRange range)
+        : base(ref reader, range)
+    {
+    }
+
+    public BlockKoto(CodeContext codeContext, SourceRange range)
+        : base(codeContext, range)
+    {
+    }
+}
+
 [TinyhandObject(ReservedKeyCount = 2)]
 public abstract partial class IdentifiableKoto : Koto
 {
@@ -66,22 +83,22 @@ public abstract partial class IdentifiableKoto : Koto
 /// namespace, struct, enum, extension, contract.
 /// </summary>
 [TinyhandObject]
-public partial class GroupKoto : IdentifiableKoto
+public partial class GroupKoto : BlockKoto
 {
     // public static readonly TokenState DefaultState = new(default, ModifierKind.Public);
 
     #region FieldAndProperty
 
-    [Key(2)]
+    [Key(3)]
     public ModifierKind Modifier { get; private set; }
 
-    [Key(3)]
+    [Key(4)]
     public string Name { get; protected set; } = string.Empty;
 
-    [Key(4)]
+    [Key(5)]
     protected List<Koto> KotoList { get; set; } = [];
 
-    [Key(5)]
+    [Key(6)]
     protected Utf16Hashtable<GroupKoto> IdentifierToGroupKoto { get; set; } = new();
 
     public KotoKind KotoKind => this switch
