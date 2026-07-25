@@ -1,5 +1,7 @@
 #A #B
 alias Kimi.Base
+#Test
+alias Kimi.Windows
 
 public rootgroup Playground
 

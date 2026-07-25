@@ -16,8 +16,9 @@ public static class KotoParser
 
     public static bool ResolveIfAttribute(ref TokenReader reader, Koto koto)
     {
+        var previous = koto;
         var compilation = reader.CodeContext.Compilation;
-        var attributeKoto = koto.AttributeChain;
+        var attributeKoto = previous.AttributeChain;
         while (attributeKoto is not null)
         {
             if (attributeKoto.Operand is InvocationKoto invocationKoto &&
@@ -44,8 +45,11 @@ public static class KotoParser
                         arg[0].AddDiagnostic(Hashed.Kimi.ConditionMustBeBool);
                     }
                 }
+
+                previous.AttributeChain = attributeKoto.AttributeChain;
             }
 
+            previous = attributeKoto;
             attributeKoto = attributeKoto.AttributeChain;
         }
 

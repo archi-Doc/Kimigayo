@@ -80,40 +80,131 @@ public static class LimitedValueHelper
         {// Binary operation
             var left = Evaluate(compilation, binaryKoto.Left);
             var right = Evaluate(compilation, binaryKoto.Right);
-            if (koto is EqualsEqualsKoto)
-            {// A == B
-                if (left.Kind != right.Kind)
-                {
-                    koto.AddDiagnostic(Hashed.Kimi.ComparisonTypeMismatch);
-                    goto Exit;
-                }
+            if (left.Kind != right.Kind)
+            {
+                koto.AddDiagnostic(Hashed.Kimi.TypeMismatch);
+                goto Exit;
+            }
 
+            if (koto is AsteriskKoto)
+            {// A * B
+                if (left.Kind == LimitedValueKind.I64)
+                {
+                    return new(left.I64 * right.I64);
+                }
+                else if (left.Kind == LimitedValueKind.Double)
+                {
+                    return new(left.Double * right.Double);
+                }
+            }
+            else if (koto is SlashKoto)
+            {// A / B
+                if (left.Kind == LimitedValueKind.I64)
+                {
+                    return new(left.I64 / right.I64);
+                }
+                else if (left.Kind == LimitedValueKind.Double)
+                {
+                    return new(left.Double / right.Double);
+                }
+            }
+            else if (koto is PercentKoto)
+            {// A % B
+                if (left.Kind == LimitedValueKind.I64)
+                {
+                    return new(left.I64 % right.I64);
+                }
+            }
+            else if (koto is PlusKoto)
+            {// A + B
+                if (left.Kind == LimitedValueKind.I64)
+                {
+                    return new(left.I64 + right.I64);
+                }
+                else if (left.Kind == LimitedValueKind.Double)
+                {
+                    return new(left.Double + right.Double);
+                }
+            }
+            else if (koto is MinusKoto)
+            {// A - B
+                if (left.Kind == LimitedValueKind.I64)
+                {
+                    return new(left.I64 - right.I64);
+                }
+                else if (left.Kind == LimitedValueKind.Double)
+                {
+                    return new(left.Double - right.Double);
+                }
+            }
+            else if (koto is LessThanKoto)
+            {// A < B
+                if (left.Kind == LimitedValueKind.I64)
+                {
+                    return new(left.I64 < right.I64);
+                }
+                else if (left.Kind == LimitedValueKind.Double)
+                {
+                    return new(left.Double < right.Double);
+                }
+            }
+            else if (koto is LessThanEqualsKoto)
+            {// A <= B
+                if (left.Kind == LimitedValueKind.I64)
+                {
+                    return new(left.I64 <= right.I64);
+                }
+                else if (left.Kind == LimitedValueKind.Double)
+                {
+                    return new(left.Double <= right.Double);
+                }
+            }
+            else if (koto is GreaterThanKoto)
+            {// A > B
+                if (left.Kind == LimitedValueKind.I64)
+                {
+                    return new(left.I64 > right.I64);
+                }
+                else if (left.Kind == LimitedValueKind.Double)
+                {
+                    return new(left.Double > right.Double);
+                }
+            }
+            else if (koto is GreaterThanEqualsKoto)
+            {// A >= B
+                if (left.Kind == LimitedValueKind.I64)
+                {
+                    return new(left.I64 >= right.I64);
+                }
+                else if (left.Kind == LimitedValueKind.Double)
+                {
+                    return new(left.Double >= right.Double);
+                }
+            }
+            else if (koto is EqualsEqualsKoto)
+            {// A == B
                 return left.Kind switch
                 {
                     LimitedValueKind.Bool => new(left.Bool == right.Bool),
                     LimitedValueKind.I64 => new(left.I64 == right.I64),
                     LimitedValueKind.Double => new(left.Double == right.Double),
+                    LimitedValueKind.Text => new(string.Equals(left.Text, right.Text, StringComparison.Ordinal)),
                     _ => new(true),
                 };
             }
             else if (koto is ExclamationEqualsKoto exclamationEqualsKoto)
             {// A != B
-                if (left.Kind != right.Kind)
-                {
-                    koto.AddDiagnostic(Hashed.Kimi.ComparisonTypeMismatch);
-                    goto Exit;
-                }
-
                 return left.Kind switch
                 {
                     LimitedValueKind.Bool => new(left.Bool != right.Bool),
                     LimitedValueKind.I64 => new(left.I64 != right.I64),
                     LimitedValueKind.Double => new(left.Double != right.Double),
+                    LimitedValueKind.Text => new(!string.Equals(left.Text, right.Text, StringComparison.Ordinal)),
                     _ => new(true),
                 };
             }
             else if (koto is AndKoto andKoto)
-            {
+            {// A and B
                 if (left.Kind != LimitedValueKind.Bool ||
                     right.Kind != LimitedValueKind.Bool)
                 {
@@ -121,6 +212,16 @@ public static class LimitedValueHelper
                 }
 
                 return new(left.Bool && right.Bool);
+            }
+            else if (koto is OrKoto orKoto)
+            {// A or B
+                if (left.Kind != LimitedValueKind.Bool ||
+                    right.Kind != LimitedValueKind.Bool)
+                {
+                    goto NotSupported;
+                }
+
+                return new(left.Bool || right.Bool);
             }
         }
 

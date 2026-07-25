@@ -14,7 +14,6 @@ Project=
   NotLoaded="Failed to load the project file '{0}'"
 
 Kimi=
-  ComparisonTypeMismatch="Values must be of the same type to be compared"
   ConditionMustBeBool="The condition expression must be of type Bool"
   DuplicateModifier="Duplicate modifier '{0}'"
   IdentifierExpected="Identifier expected"
@@ -31,6 +30,7 @@ Kimi=
   MultipleAccessibilityModifiers="Only one accessibility modifier is allowed"
   TokenMismatch="The token does not match the expected token. Expected: {0}"
   TopLevelKeywordAfterCode="Top-level keywords such as 'alias' must appear before any other code"
+  TypeMismatch="Values must be of the same type"
   UnexpectedIndent="Unexpected indentation"
   UnexpectedToken="Token {0} is not expected at this position"
   UnexpectedTrailingToken="Unexpected token at the end of the statement"
