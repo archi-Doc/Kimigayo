@@ -6,10 +6,6 @@ public static class LimitedValueHelper
 {
     public static LimitedValue Evaluate(Compilation compilation, Koto koto)
     {
-        var value = new LimitedValue("i");//
-
-        Console.WriteLine(value.Kind); // I64
-
         if (koto is BoolLiteralKoto boolLiteralKoto)
         {// true, false
             return new(boolLiteralKoto.Value);
@@ -17,13 +13,16 @@ public static class LimitedValueHelper
         else if (koto is NumericLiteralKoto numericLiteralKoto)
         {// 1
         }
+        else if (koto is StringLiteralKoto stringLiteralKoto)
+        {// Text
+            return new(stringLiteralKoto.Literal);
+        }
         else if (koto is UnresolvedKoto unresolvedKoto)
         {// os value: bool
         }
         else if (koto is ParenthesizedKoto parenthesizedKoto)
         {// (A)
-            var op = Evaluate(compilation, parenthesizedKoto.Operand);
-            return op;
+            return Evaluate(compilation, parenthesizedKoto.Operand);
         }
         else if (koto is NotKoto notKoto)
         {// not A
@@ -70,7 +69,7 @@ public static class LimitedValueHelper
             }
         }
         else if (koto is BinaryKoto binaryKoto)
-        {
+        {// Binary operation
             var left = Evaluate(compilation, binaryKoto.Left);
             var right = Evaluate(compilation, binaryKoto.Right);
             if (koto is EqualsEqualsKoto)
@@ -104,6 +103,16 @@ public static class LimitedValueHelper
                     LimitedValueKind.Double => new(left.Double != right.Double),
                     _ => new(true),
                 };
+            }
+            else if (koto is AndKoto andKoto)
+            {
+                if (left.Kind != LimitedValueKind.Bool ||
+                    right.Kind != LimitedValueKind.Bool)
+                {
+                    goto NotSupported;
+                }
+
+                return new(left.Bool && right.Bool);
             }
         }
 

@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Kimi.Compiler.Parsing;
@@ -9,35 +10,69 @@ namespace Kimi.Compiler.Parsing;
 [StructLayout(LayoutKind.Explicit)]
 public readonly struct LimitedValue : IEquatable<LimitedValue>
 {
-    private const string I64Text = "i";
-    private const string DoubleText = "d";
+    private static readonly object I64Tag = new();
+    private static readonly object DoubleTag = new();
 
+    // null      : Bool
+    // I64Tag    : I64
+    // DoubleTag : Double
+    // string    : Text
     [FieldOffset(0)]
-    public readonly string? Text;
+    private readonly object? tagOrText;
 
     [FieldOffset(8)]
-    public readonly bool Bool; // Text = null
+    public readonly bool Bool;
 
     [FieldOffset(8)]
-    public readonly long I64; // Text = I64Text
+    public readonly long I64;
 
     [FieldOffset(8)]
-    public readonly double Double; // Text = DoubleText
+    public readonly double Double;
+
+    public string Text => (this.tagOrText as string) ?? string.Empty;
+
+    public LimitedValue(bool value)
+    {
+        this.tagOrText = null;
+        this.Bool = value;
+    }
+
+    public LimitedValue(long value)
+    {
+        this.tagOrText = I64Tag;
+        this.I64 = value;
+    }
+
+    public LimitedValue(double value)
+    {
+        this.tagOrText = DoubleTag;
+        this.Double = value;
+    }
+
+    public LimitedValue(string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+
+        this.tagOrText = value;
+    }
 
     public LimitedValueKind Kind
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            if (this.Text is null)
-            {// Bool
+            var tagOrText = this.tagOrText;
+
+            if (tagOrText is null)
+            {
                 return LimitedValueKind.Bool;
             }
-            else if (object.ReferenceEquals(this.Text, I64Text))
-            {// I64
+            else if (ReferenceEquals(tagOrText, I64Tag))
+            {
                 return LimitedValueKind.I64;
             }
-            else if (object.ReferenceEquals(this.Text, DoubleText))
-            {// Double
+            else if (ReferenceEquals(tagOrText, DoubleTag))
+            {
                 return LimitedValueKind.Double;
             }
 
@@ -45,80 +80,55 @@ public readonly struct LimitedValue : IEquatable<LimitedValue>
         }
     }
 
-    public LimitedValue(bool value)
-    {
-        this.Text = null;
-        this.Bool = value;
-    }
-
-    public LimitedValue(long value)
-    {
-        this.Text = I64Text;
-        this.I64 = value;
-    }
-
-    public LimitedValue(double value)
-    {
-        this.Text = DoubleText;
-        this.Double = value;
-    }
-
-    public LimitedValue(string text)
-    {
-        ArgumentNullException.ThrowIfNull(text);
-
-        this.Text = text;
-    }
-
     public bool Equals(LimitedValue other)
     {
-        if (this.Text is null)
-        {// Bool
-            if (other.Text is null)
-            {
-                return this.Bool == other.Bool;
-            }
+        var tagOrText = this.tagOrText;
+
+        if (tagOrText is null)
+        {
+            return other.tagOrText is null && this.Bool == other.Bool;
         }
-        else if (object.ReferenceEquals(this.Text, I64Text))
-        {// I64
-            if (object.ReferenceEquals(other.Text, I64Text))
-            {
-                return this.I64 == other.I64;
-            }
+        else if (ReferenceEquals(tagOrText, I64Tag))
+        {
+            return ReferenceEquals(other.tagOrText, I64Tag) &&
+                this.I64 == other.I64;
         }
-        else if (object.ReferenceEquals(this.Text, DoubleText))
-        {// Double
-            if (object.ReferenceEquals(other.Text, DoubleText))
-            {
-                return this.Double.Equals(other.Double);
-            }
-        }
-        else
-        {// Text
-            return other.Kind == LimitedValueKind.Text &&
-                string.Equals(this.Text, other.Text, StringComparison.Ordinal);
+        else if (ReferenceEquals(tagOrText, DoubleTag))
+        {
+            return ReferenceEquals(other.tagOrText, DoubleTag) &&
+                this.Double.Equals(other.Double);
         }
 
-        return false;
+        return other.tagOrText is string otherText &&
+            string.Equals((string)tagOrText, otherText, StringComparison.Ordinal);
     }
+
+    public override bool Equals(object? obj)
+        => obj is LimitedValue other && this.Equals(other);
 
     public override int GetHashCode()
     {
-        if (this.Text is null)
-        {// Bool
-            return HashCode.Combine(this.Kind, this.Bool);
+        var tagOrText = this.tagOrText;
+
+        if (tagOrText is null)
+        {
+            return HashCode.Combine(LimitedValueKind.Bool, this.Bool);
         }
-        else if (object.ReferenceEquals(this.Text, I64Text))
-        {// I64
-            return HashCode.Combine(this.Kind, this.I64);
+        else if (ReferenceEquals(tagOrText, I64Tag))
+        {
+            return HashCode.Combine(LimitedValueKind.I64, this.I64);
         }
-        else if (object.ReferenceEquals(this.Text, DoubleText))
-        {// Double
-            return HashCode.Combine(this.Kind, this.Double);
+        else if (ReferenceEquals(tagOrText, DoubleTag))
+        {
+            return HashCode.Combine(LimitedValueKind.Double, this.Double);
         }
-        else
-        {// Text
-            return HashCode.Combine(this.Kind, StringComparer.Ordinal.GetHashCode(this.Text));
-        }
+
+        return HashCode.Combine(LimitedValueKind.Text, StringComparer.Ordinal.GetHashCode((string)tagOrText));
     }
+
+    public static bool operator ==(LimitedValue left, LimitedValue right)
+        => left.Equals(right);
+
+    public static bool operator !=(LimitedValue left, LimitedValue right)
+        => !left.Equals(right);
 }
