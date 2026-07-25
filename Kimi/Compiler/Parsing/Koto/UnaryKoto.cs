@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.Serialization;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
@@ -8,9 +9,26 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public partial class AttributeKoto : UnaryKoto
 {// #A
+    [IgnoreMember]
+    public UnresolvedKoto IdentifierKoto { get; private set; }
+
+    [IgnoreMember]
+    public List<Koto> Arguments { get; private set; } = [];
+
     public AttributeKoto(ref TokenReader reader, SourceRange range, Koto operand)
         : base(ref reader, range, operand)
     {
+        if (operand is InvocationKoto invocationKoto &&
+            invocationKoto.Method is UnresolvedKoto unresolvedKoto)
+        {// #Attribute
+            this.IdentifierKoto = unresolvedKoto;
+            this.Arguments = invocationKoto.Arguments;
+        }
+        else
+        {
+            this.Operand = new ErrorKoto(ref reader, range);
+            // this.IdentifierKoto = this.Operand;
+        }
     }
 
     public override string ToString()

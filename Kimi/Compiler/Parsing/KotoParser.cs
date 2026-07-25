@@ -843,7 +843,7 @@ Loop:
                     reader.TryRead(out var token);
                     reader.ReportUnexpectedToken(token);
 
-                    return new ErrorKoto(ref reader, token);
+                    return new ErrorKoto(ref reader, token.Range);
                 }
         }
     }
