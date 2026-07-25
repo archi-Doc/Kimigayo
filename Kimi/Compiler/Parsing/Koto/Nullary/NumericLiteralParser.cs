@@ -1,4 +1,6 @@
-﻿using System.Buffers;
+﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using System.Buffers;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 
@@ -16,9 +18,6 @@ public static class NumericLiteralParser
     /// <param name="source">
     /// The complete numeric literal, excluding a leading unary plus or minus.
     /// </param>
-    /// <param name="targetPointerSize">
-    /// The target pointer size in bytes. The value must be 4 or 8.
-    /// </param>
     /// <param name="kind">
     /// The parsed numeric literal kind.
     /// </param>
@@ -29,15 +28,10 @@ public static class NumericLiteralParser
     /// <see langword="true"/> if the literal was parsed successfully;
     /// otherwise, <see langword="false"/>.
     /// </returns>
-    public static bool TryParse(ReadOnlySpan<char> source, int targetPointerSize, out NumericLiteralKind kind, out UInt128 uv)
+    public static bool TryParse(ReadOnlySpan<char> source, out NumericLiteralKind kind, out UInt128 uv)
     {
         kind = NumericLiteralKind.Invalid;
         uv = 0;
-
-        if (targetPointerSize is not 4 and not 8)
-        {
-            return false;
-        }
 
         if (source.IsEmpty || source[0] is '+' or '-')
         {
@@ -49,23 +43,84 @@ public static class NumericLiteralParser
             switch (source[1])
             {
                 case 'b':
-                    return TryParseRadixInteger(source, prefixLength: 2, shift: 1, radix: 2, targetPointerSize, ref kind, ref uv);
+                    return TryParseRadixInteger(source, prefixLength: 2, shift: 1, ref kind, ref uv);
 
                 case 'o':
-                    return TryParseRadixInteger(source, prefixLength: 2, shift: 3, radix: 8, targetPointerSize, ref kind, ref uv);
+                    return TryParseRadixInteger(source, prefixLength: 2, shift: 3, ref kind, ref uv);
 
                 case 'x':
-                    return TryParseRadixInteger(source, prefixLength: 2, shift: 4, radix: 16, targetPointerSize, ref kind, ref uv);
+                    return TryParseRadixInteger(source, prefixLength: 2, shift: 4, ref kind, ref uv);
             }
         }
 
-        return TryParseDecimal(source, targetPointerSize, ref kind, ref uv);
+        return TryParseDecimal(source, ref kind, ref uv);
     }
 
-    public static bool TryParse(ReadOnlySpan<char> source, out NumericLiteralKind kind, out UInt128 uv)
-        => TryParse(source, IntPtr.Size, out kind, out uv);
+    public static bool IsIntegerInRange(NumericLiteralKind kind, UInt128 value, int targetPointerSize)
+    {
+        if (targetPointerSize is not 4 and not 8)
+        {
+            return false;
+        }
 
-    private static bool TryParseDecimal(ReadOnlySpan<char> source, int targetPointerSize, ref NumericLiteralKind kind, ref UInt128 uv)
+        return kind switch
+        {
+            NumericLiteralKind.Integer => true,
+
+            NumericLiteralKind.I8 => value <= (UInt128)sbyte.MaxValue,
+            NumericLiteralKind.I16 => value <= (UInt128)short.MaxValue,
+            NumericLiteralKind.I32 => value <= int.MaxValue,
+            NumericLiteralKind.I64 => value <= long.MaxValue,
+            NumericLiteralKind.I128 => value <= (UInt128)Int128.MaxValue,
+
+            NumericLiteralKind.ISize => targetPointerSize == 8
+                ? value <= long.MaxValue
+                : value <= int.MaxValue,
+
+            NumericLiteralKind.U8 => value <= byte.MaxValue,
+            NumericLiteralKind.U16 => value <= ushort.MaxValue,
+            NumericLiteralKind.U32 => value <= uint.MaxValue,
+            NumericLiteralKind.U64 => value <= ulong.MaxValue,
+            NumericLiteralKind.U128 => true,
+
+            NumericLiteralKind.USize => targetPointerSize == 8
+                ? value <= ulong.MaxValue
+                : value <= uint.MaxValue,
+
+            _ => false,
+        };
+    }
+
+    public static bool IsNegatedIntegerInRange(NumericLiteralKind kind, UInt128 value, int targetPointerSize)
+    {
+        if (targetPointerSize is not 4 and not 8)
+        {
+            return false;
+        }
+
+        return kind switch
+        {
+            NumericLiteralKind.Integer => true,
+
+            NumericLiteralKind.I8 => value <= (UInt128)sbyte.MaxValue + 1,
+            NumericLiteralKind.I16 => value <= (UInt128)short.MaxValue + 1,
+            NumericLiteralKind.I32 => value <= (UInt128)int.MaxValue + 1,
+            NumericLiteralKind.I64 => value <= (UInt128)long.MaxValue + 1,
+            NumericLiteralKind.I128 => value <= (UInt128)Int128.MaxValue + 1,
+
+            NumericLiteralKind.ISize => targetPointerSize == 8
+                ? value <= (UInt128)long.MaxValue + 1
+                : value <= (UInt128)int.MaxValue + 1,
+
+            /*
+             * Applying unary minus to an unsigned literal may be disallowed
+             * or handled separately according to the language specification.
+             */
+            _ => false,
+        };
+    }
+
+    private static bool TryParseDecimal(ReadOnlySpan<char> source, ref NumericLiteralKind kind, ref UInt128 uv)
     {
         if (!TryScanDecimalBody(source, out var bodyLength, out var hasFloatSyntax, out var integerValue, out var integerOverflow))
         {
@@ -91,11 +146,14 @@ public static class NumericLiteralParser
             return false;
         }
 
-        return TryStoreInteger(integerValue, requestedKind, targetPointerSize, ref kind, ref uv);
+        kind = requestedKind;
+        uv = integerValue;
+        return true;
     }
 
-    private static bool TryParseRadixInteger(ReadOnlySpan<char> source, int prefixLength, int shift, uint radix, int targetPointerSize, ref NumericLiteralKind kind, ref UInt128 uv)
+    private static bool TryParseRadixInteger(ReadOnlySpan<char> source, int prefixLength, int shift, ref NumericLiteralKind kind, ref UInt128 uv)
     {
+        var radix = 1u << shift;
         var index = prefixLength;
         var value = (UInt128)0;
         var hasDigit = false;
@@ -137,7 +195,9 @@ public static class NumericLiteralParser
             return false;
         }
 
-        return TryStoreInteger(value, requestedKind, targetPointerSize, ref kind, ref uv);
+        kind = requestedKind;
+        uv = value;
+        return true;
     }
 
     private static bool TryScanDecimalBody(ReadOnlySpan<char> source, out int bodyLength, out bool hasFloatSyntax, out UInt128 integerValue, out bool integerOverflow)
@@ -161,7 +221,7 @@ public static class NumericLiteralParser
             {
                 if (!integerOverflow)
                 {
-                    var digit = (UInt128)(uint)(c - '0');
+                    var digit = (uint)(c - '0');
                     if (integerValue > UInt128MaxDiv10 || (integerValue == UInt128MaxDiv10 && digit > UInt128MaxMod10))
                     {
                         integerOverflow = true;
@@ -245,127 +305,6 @@ public static class NumericLiteralParser
         }
 
         bodyLength = index;
-        return true;
-    }
-
-    private static bool TryStoreInteger(UInt128 value, NumericLiteralKind requestedKind, int targetPointerSize, ref NumericLiteralKind kind, ref UInt128 uv)
-    {
-        switch (requestedKind)
-        {
-            case NumericLiteralKind.Integer:
-                break;
-
-            case NumericLiteralKind.I8:
-                if (value > (UInt128)sbyte.MaxValue)
-                {
-                    return false;
-                }
-
-                break;
-
-            case NumericLiteralKind.I16:
-                if (value > (UInt128)short.MaxValue)
-                {
-                    return false;
-                }
-
-                break;
-
-            case NumericLiteralKind.I32:
-                if (value > int.MaxValue)
-                {
-                    return false;
-                }
-
-                break;
-
-            case NumericLiteralKind.I64:
-                if (value > long.MaxValue)
-                {
-                    return false;
-                }
-
-                break;
-
-            case NumericLiteralKind.I128:
-                if (value > (UInt128)Int128.MaxValue)
-                {
-                    return false;
-                }
-
-                break;
-
-            case NumericLiteralKind.ISize:
-                if (targetPointerSize == 8)
-                {
-                    if (value > long.MaxValue)
-                    {
-                        return false;
-                    }
-                }
-                else if (value > int.MaxValue)
-                {
-                    return false;
-                }
-
-                break;
-
-            case NumericLiteralKind.U8:
-                if (value > byte.MaxValue)
-                {
-                    return false;
-                }
-
-                break;
-
-            case NumericLiteralKind.U16:
-                if (value > ushort.MaxValue)
-                {
-                    return false;
-                }
-
-                break;
-
-            case NumericLiteralKind.U32:
-                if (value > uint.MaxValue)
-                {
-                    return false;
-                }
-
-                break;
-
-            case NumericLiteralKind.U64:
-                if (value > ulong.MaxValue)
-                {
-                    return false;
-                }
-
-                break;
-
-            case NumericLiteralKind.U128:
-                break;
-
-            case NumericLiteralKind.USize:
-                if (targetPointerSize == 8)
-                {
-                    if (value > ulong.MaxValue)
-                    {
-                        return false;
-                    }
-                }
-                else if (value > uint.MaxValue)
-                {
-                    return false;
-                }
-
-                break;
-
-            default:
-                return false;
-        }
-
-        uv = value;
-        kind = requestedKind;
         return true;
     }
 

@@ -26,6 +26,7 @@ public sealed partial class NumericLiteralKoto : Koto
     public bool TryGetI64(out long value)
     {
         this.PrepareNumericLiteral();
+        NumericLiteralParser.IsIntegerInRange(this.NumericKind, this.uv, IntPtr.Size);
         if (this.NumericKind >= NumericLiteralKind.Integer &&
             this.NumericKind <= NumericLiteralKind.U128)
         {
