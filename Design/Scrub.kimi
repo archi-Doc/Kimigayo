@@ -1,7 +1,5 @@
 #A #B
 alias Kimi.Base
-#If(true) #Test
-alias Kimi.Windows
 
 public rootgroup Playground
 

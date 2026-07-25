@@ -6,6 +6,10 @@ public static class LimitedValueHelper
 {
     public static LimitedValue Evaluate(Compilation compilation, Koto koto)
     {
+        var value = new LimitedValue("i");//
+
+        Console.WriteLine(value.Kind); // I64
+
         if (koto is BoolLiteralKoto boolLiteralKoto)
         {// true, false
             return new(boolLiteralKoto.Value);
