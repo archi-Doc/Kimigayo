@@ -8,7 +8,7 @@ namespace Kimi.Compiler.Parsing;
 
 [TinyhandObject]
 public sealed partial class NumericLiteralKoto : Koto
-{//
+{
     [Key(1)]
     public string Literal { get; private set; }
 

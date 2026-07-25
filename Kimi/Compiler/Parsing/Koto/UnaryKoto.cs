@@ -20,12 +20,19 @@ public partial class AttributeKoto : UnaryKoto
     {
         if (operand is InvocationKoto invocationKoto &&
             invocationKoto.Method is UnresolvedKoto unresolvedKoto)
-        {// #Attribute
+        {// #Attribute(arguments)
             this.IdentifierKoto = unresolvedKoto;
             this.Arguments = invocationKoto.Arguments;
         }
+        else if (operand is UnresolvedKoto unresolvedKoto2)
+        {// #Attribute
+            this.IdentifierKoto = unresolvedKoto2;
+        }
         else
         {
+            this.AddDiagnostic(Hashed.Kimi.InvalidAttributeKoto);
+
+            this.IdentifierKoto = UnresolvedKoto.Error;
             this.Operand = new ErrorKoto(ref reader, range);
             // this.IdentifierKoto = this.Operand;
         }

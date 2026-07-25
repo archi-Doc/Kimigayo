@@ -21,14 +21,12 @@ public static class KotoParser
         var attributeKoto = previous.AttributeChain;
         while (attributeKoto is not null)
         {
-            if (attributeKoto.Operand is InvocationKoto invocationKoto &&
-                invocationKoto.Method is UnresolvedKoto unresolvedKoto &&
-                unresolvedKoto.Identifier.SequenceEqual(Constants.IfAttribute))
+            if (attributeKoto.IdentifierKoto.Identifier.SequenceEqual(Constants.IfAttribute))
             {// #If()
-                var arg = invocationKoto.Arguments;
+                var arg = attributeKoto.Arguments;
                 if (arg.Count != 1)
                 {
-                    invocationKoto.AddDiagnostic(Hashed.Kimi.InvalidIfAttributeArgumentCount);
+                    attributeKoto.AddDiagnostic(Hashed.Kimi.InvalidIfAttributeArgumentCount);
                 }
                 else
                 {

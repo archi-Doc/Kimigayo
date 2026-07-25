@@ -7,6 +7,13 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public partial class UnresolvedKoto : Koto
 {
+    public static readonly UnresolvedKoto Error;
+
+    static UnresolvedKoto()
+    {
+        Error = UnresolvedKoto.UnsafeConstructor();
+    }
+
     [Key(1)]
     public string Identifier { get; private set; }
 

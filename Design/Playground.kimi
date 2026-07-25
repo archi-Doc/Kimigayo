@@ -1,5 +1,5 @@
 // alias, rootgroup, group, struct, enum,
-#1 #A #B alias Kimi.Base
+#A #B alias Kimi.Base
 
 #If(1 <= 2 / 2) #Test
 alias Kimi.Windows
