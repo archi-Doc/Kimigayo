@@ -237,6 +237,20 @@ public abstract partial class Koto
         this.DiagnosticCollection?.Add(this.Range, diagnosticHash, obj);
     }
 
+    public void AddAttribute(AttributeKoto attributeKoto)
+    {
+        if (attributeKoto.Parent is not null)
+        {
+            throw new InvalidOperationException();
+        }
+
+        attributeKoto.Parent = this;
+        attributeKoto.Previous = default;
+        attributeKoto.Next = this.AttributeChain;
+
+        this.AttributeChain = attributeKoto;
+    }
+
     internal virtual bool ReplaceChild(Koto oldKoto, Koto newKoto)
     {
         return false;
