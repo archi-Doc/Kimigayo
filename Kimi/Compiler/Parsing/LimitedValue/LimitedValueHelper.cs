@@ -11,7 +11,15 @@ public static class LimitedValueHelper
             return new(boolLiteralKoto.Value);
         }
         else if (koto is NumericLiteralKoto numericLiteralKoto)
-        {// 1
+        {// long or double
+            if (numericLiteralKoto.TryGetLimitedValue(out var lv))
+            {
+                return lv;
+            }
+            else
+            {
+                goto NotSupported;
+            }
         }
         else if (koto is StringLiteralKoto stringLiteralKoto)
         {// Text

@@ -2,6 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Lexing;
+using Tinyhand.Tree;
 
 namespace Kimi.Compiler.Parsing;
 
@@ -12,7 +13,7 @@ public sealed partial class NumericLiteralKoto : Koto
     public string Literal { get; private set; }
 
     [Key(2)]
-    public NumericLiteralKind NumericKind { get; private set; }
+    public NumericLiteralKind Kind { get; private set; }
 
     [Key(3)]
     private UInt128 uv;
@@ -26,11 +27,93 @@ public sealed partial class NumericLiteralKoto : Koto
     public bool TryGetI64(out long value)
     {
         this.PrepareNumericLiteral();
-        NumericLiteralParser.IsIntegerInRange(this.NumericKind, this.uv, IntPtr.Size);
-        if (this.NumericKind >= NumericLiteralKind.Integer &&
-            this.NumericKind <= NumericLiteralKind.U128)
+
+        if (this.Kind is >= NumericLiteralKind.Integer and <= NumericLiteralKind.USize &&
+            this.uv <= long.MaxValue)
         {
+            value = (long)this.uv;
+            return true;
         }
+
+        value = default;
+        return false;
+    }
+
+    public bool TryGetF32(out float value)
+    {
+        this.PrepareNumericLiteral();
+
+        if (this.Kind == NumericLiteralKind.F32)
+        {
+            value = BitConverter.UInt32BitsToSingle((uint)this.uv);
+            return float.IsFinite(value);
+        }
+        else if (this.Kind == NumericLiteralKind.Float ||
+            this.Kind == NumericLiteralKind.F64)
+        {
+            var doubleValue = BitConverter.UInt64BitsToDouble((ulong)this.uv);
+            value = (float)doubleValue;
+            return double.IsFinite(doubleValue) && float.IsFinite(value);
+        }
+
+        value = default;
+        return false;
+    }
+
+    public bool TryGetF64(out double value)
+    {
+        this.PrepareNumericLiteral();
+
+        if (this.Kind == NumericLiteralKind.F32)
+        {
+            value = BitConverter.UInt32BitsToSingle((uint)this.uv);
+            return double.IsFinite(value);
+        }
+        else if (this.Kind == NumericLiteralKind.Float ||
+            this.Kind == NumericLiteralKind.F64)
+        {
+            value = BitConverter.UInt64BitsToDouble((ulong)this.uv);
+            return double.IsFinite(value);
+        }
+
+        value = default;
+        return false;
+    }
+
+    public bool TryGetLimitedValue(out LimitedValue limitedValue)
+    {
+        this.PrepareNumericLiteral();
+
+        if (this.Kind is >= NumericLiteralKind.Integer and <= NumericLiteralKind.USize)
+        {// Integer
+            if (this.uv <= long.MaxValue)
+            {
+                limitedValue = new((long)this.uv);
+                return true;
+            }
+        }
+        else if (this.Kind == NumericLiteralKind.F32)
+        {
+            var value = BitConverter.UInt32BitsToSingle((uint)this.uv);
+            if (double.IsFinite(value))
+            {
+                limitedValue = new(value);
+                return true;
+            }
+        }
+        else if (this.Kind == NumericLiteralKind.Float ||
+            this.Kind == NumericLiteralKind.F64)
+        {
+            var value = BitConverter.UInt64BitsToDouble((ulong)this.uv);
+            if (double.IsFinite(value))
+            {
+                limitedValue = new(value);
+                return true;
+            }
+        }
+
+        limitedValue = default;
+        return false;
     }
 
     public override string ToString()
@@ -49,10 +132,10 @@ public sealed partial class NumericLiteralKoto : Koto
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PrepareNumericLiteral()
     {
-        if (this.NumericKind == NumericLiteralKind.Invalid)
+        if (this.Kind == NumericLiteralKind.Invalid)
         {
             NumericLiteralParser.TryParse(this.Literal, out var kind, out var uv);
-            this.NumericKind = kind;
+            this.Kind = kind;
             this.uv = uv;
         }
     }

@@ -1,7 +1,7 @@
 // alias, rootgroup, group, struct, enum,
 #A #B alias Kimi.Base
 
-#If(false) #Test
+#If(1 == 2) #Test
 alias Kimi.Windows
 
 public rootgroup Playground
