@@ -150,6 +150,11 @@ public abstract partial class Koto
 {
     #region FieldAndProperty
 
+    private Koto? head;
+    private AttributeKoto? attributeHead;
+    private Koto? previous;
+    private Koto? next;
+
     // Frontend Metadata
     [IgnoreMember]
     public DiagnosticCollection? DiagnosticCollection { get; internal set; }
@@ -167,7 +172,7 @@ public abstract partial class Koto
     public Koto? Parent { get; internal set; }
 
     [IgnoreMember]
-    public Koto? Previous { get; internal set; }
+    public Koto? Previous => this.previous == null || this == this.Parent?.head ? null : this.previous;
 
     [IgnoreMember]
     public Koto? Next { get; internal set; }
