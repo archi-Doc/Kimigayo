@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using Kimi.Compiler.Lexing;
 
 namespace Kimi.Compiler.Parsing;
@@ -22,6 +23,15 @@ public sealed partial class NumericLiteralKoto : Koto
         this.Literal = token.Text.ToString();
     }
 
+    public bool TryGetI64(out long value)
+    {
+        this.PrepareNumericLiteral();
+        if (this.NumericKind >= NumericLiteralKind.Integer &&
+            this.NumericKind <= NumericLiteralKind.U128)
+        {
+        }
+    }
+
     public override string ToString()
         => $"{this.Literal}";
 
@@ -35,7 +45,8 @@ public sealed partial class NumericLiteralKoto : Koto
         return ($"{this.GetType().Name}({this.Literal})", default);
     }
 
-    private void ParseNumericLiteral()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void PrepareNumericLiteral()
     {
         if (this.NumericKind == NumericLiteralKind.Invalid)
         {

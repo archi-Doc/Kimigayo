@@ -18,11 +18,6 @@ public enum NumericLiteralKind
     Integer,
 
     /// <summary>
-    /// A floating-point literal without an explicit type suffix.
-    /// </summary>
-    Float,
-
-    /// <summary>
     /// A signed 8-bit integer literal.
     /// </summary>
     I8,
@@ -81,6 +76,11 @@ public enum NumericLiteralKind
     /// An unsigned pointer-sized integer literal.
     /// </summary>
     USize,
+
+    /// <summary>
+    /// A floating-point literal without an explicit type suffix.
+    /// </summary>
+    Float,
 
     /// <summary>
     /// A 32-bit floating-point literal.

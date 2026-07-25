@@ -7,6 +7,8 @@ namespace Kimi.Compiler.Parsing;
 public static class NumericLiteralParser
 {
     private const int StackallocThreshold = 256;
+    private const uint UInt128MaxMod10 = 5;
+    private static readonly UInt128 UInt128MaxDiv10 = UInt128.MaxValue / 10;
 
     /// <summary>
     /// Parses a numeric literal.
@@ -47,13 +49,13 @@ public static class NumericLiteralParser
             switch (source[1])
             {
                 case 'b':
-                    return TryParseRadixInteger(source, prefixLength: 2, radix: 2, targetPointerSize, ref kind, ref uv);
+                    return TryParseRadixInteger(source, prefixLength: 2, shift: 1, radix: 2, targetPointerSize, ref kind, ref uv);
 
                 case 'o':
-                    return TryParseRadixInteger(source, prefixLength: 2, radix: 8, targetPointerSize, ref kind, ref uv);
+                    return TryParseRadixInteger(source, prefixLength: 2, shift: 3, radix: 8, targetPointerSize, ref kind, ref uv);
 
                 case 'x':
-                    return TryParseRadixInteger(source, prefixLength: 2, radix: 16, targetPointerSize, ref kind, ref uv);
+                    return TryParseRadixInteger(source, prefixLength: 2, shift: 4, radix: 16, targetPointerSize, ref kind, ref uv);
             }
         }
 
@@ -92,26 +94,12 @@ public static class NumericLiteralParser
         return TryStoreInteger(integerValue, requestedKind, targetPointerSize, ref kind, ref uv);
     }
 
-    private static bool TryParseRadixInteger(ReadOnlySpan<char> source, int prefixLength, uint radix, int targetPointerSize, ref NumericLiteralKind kind, ref UInt128 uv)
+    private static bool TryParseRadixInteger(ReadOnlySpan<char> source, int prefixLength, int shift, uint radix, int targetPointerSize, ref NumericLiteralKind kind, ref UInt128 uv)
     {
-        if ((uint)prefixLength >= (uint)source.Length)
-        {
-            return false;
-        }
-
-        var firstDigit = GetDigit(source[prefixLength]);
-
-        if ((uint)firstDigit >= radix)
-        {
-            return false;
-        }
-
-        var radixValue = (UInt128)radix;
-        var maximumBeforeMultiply = UInt128.MaxValue / radixValue;
-        var maximumLastDigit = UInt128.MaxValue % radixValue;
-
         var index = prefixLength;
         var value = (UInt128)0;
+        var hasDigit = false;
+        var maximumBeforeShift = UInt128.MaxValue >> shift;
 
         while ((uint)index < (uint)source.Length)
         {
@@ -124,34 +112,32 @@ public static class NumericLiteralParser
             }
 
             var digit = GetDigit(c);
-
             if ((uint)digit >= radix)
             {
                 break;
             }
 
-            var digitValue = (UInt128)(uint)digit;
-
-            if (value > maximumBeforeMultiply ||
-                (value == maximumBeforeMultiply &&
-                 digitValue > maximumLastDigit))
+            if (value > maximumBeforeShift)
             {
                 return false;
             }
 
-            value = (value * radixValue) + digitValue;
+            value = (value << shift) | (uint)digit;
+            hasDigit = true;
             index++;
         }
 
-        var suffix = source[index..];
-
-        if (!TryGetIntegerSuffixKind(suffix, out var requestedKind))
+        if (!hasDigit)
         {
             return false;
         }
 
-        return TryStoreInteger(value, requestedKind, targetPointerSize, ref kind,
-            ref uv);
+        if (!TryGetIntegerSuffixKind(source[index..], out var requestedKind))
+        {
+            return false;
+        }
+
+        return TryStoreInteger(value, requestedKind, targetPointerSize, ref kind, ref uv);
     }
 
     private static bool TryScanDecimalBody(ReadOnlySpan<char> source, out int bodyLength, out bool hasFloatSyntax, out UInt128 integerValue, out bool integerOverflow)
@@ -166,14 +152,7 @@ public static class NumericLiteralParser
             return false;
         }
 
-        const uint Radix = 10;
-
-        var maximumBeforeMultiply = UInt128.MaxValue / Radix;
-
-        var maximumLastDigit = UInt128.MaxValue % Radix;
-
         var index = 0;
-
         while ((uint)index < (uint)source.Length)
         {
             var c = source[index];
@@ -183,17 +162,13 @@ public static class NumericLiteralParser
                 if (!integerOverflow)
                 {
                     var digit = (UInt128)(uint)(c - '0');
-
-                    if (integerValue > maximumBeforeMultiply ||
-                        (integerValue == maximumBeforeMultiply &&
-                         digit > maximumLastDigit))
+                    if (integerValue > UInt128MaxDiv10 || (integerValue == UInt128MaxDiv10 && digit > UInt128MaxMod10))
                     {
                         integerOverflow = true;
                     }
                     else
                     {
-                        integerValue =
-                            (integerValue * Radix) + digit;
+                        integerValue = (integerValue * 10) + digit;
                     }
                 }
 
@@ -243,13 +218,18 @@ public static class NumericLiteralParser
                 index++;
             }
 
-            if ((uint)index >= (uint)source.Length ||
-                !IsDecimalDigit(source[index]))
+            while ((uint)index < (uint)source.Length && source[index] == '_')
+            {
+                index++;
+            }
+
+            if ((uint)index >= (uint)source.Length || !IsDecimalDigit(source[index]))
             {
                 return false;
             }
 
             index++;
+
             while ((uint)index < (uint)source.Length)
             {
                 var c = source[index];
@@ -425,7 +405,7 @@ public static class NumericLiteralParser
         }
     }
 
-    private static unsafe bool TryParseNormalizedFloat(ReadOnlySpan<char> source, NumericLiteralKind requestedKind, ref NumericLiteralKind kind, ref UInt128 uv)
+    private static bool TryParseNormalizedFloat(ReadOnlySpan<char> source, NumericLiteralKind requestedKind, ref NumericLiteralKind kind, ref UInt128 uv)
     {
         const NumberStyles Styles = NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent;
 
@@ -437,31 +417,20 @@ public static class NumericLiteralParser
                     return false;
                 }
 
-                {
-                    UInt128 bits = 0;
-                    *(float*)&bits = f32;
-
-                    uv = bits;
-                    kind = NumericLiteralKind.F32;
-                    return true;
-                }
+                uv = BitConverter.SingleToUInt32Bits(f32);
+                kind = NumericLiteralKind.F32;
+                return true;
 
             case NumericLiteralKind.Float:
             case NumericLiteralKind.F64:
-                if (!double.TryParse(source, Styles, CultureInfo.InvariantCulture,
-                    out var f64) || !double.IsFinite(f64))
+                if (!double.TryParse(source, Styles, CultureInfo.InvariantCulture, out var f64) || !double.IsFinite(f64))
                 {
                     return false;
                 }
 
-                {
-                    UInt128 bits = 0;
-                    *(double*)&bits = f64;
-
-                    uv = bits;
-                    kind = requestedKind;
-                    return true;
-                }
+                uv = BitConverter.DoubleToUInt64Bits(f64);
+                kind = requestedKind;
+                return true;
 
             default:
                 return false;
@@ -590,9 +559,7 @@ public static class NumericLiteralParser
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static NumericLiteralKind GetSuffix4(ReadOnlySpan<char> suffix)
     {
-        if (suffix[1] != '1' ||
-            suffix[2] != '2' ||
-            suffix[3] != '8')
+        if (suffix[1] != '1' || suffix[2] != '2' || suffix[3] != '8')
         {
             return NumericLiteralKind.Invalid;
         }
@@ -608,10 +575,7 @@ public static class NumericLiteralParser
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static NumericLiteralKind GetSuffix5(ReadOnlySpan<char> suffix)
     {
-        if (suffix[1] != 's' ||
-            suffix[2] != 'i' ||
-            suffix[3] != 'z' ||
-            suffix[4] != 'e')
+        if (suffix[1] != 's' || suffix[2] != 'i' || suffix[3] != 'z' || suffix[4] != 'e')
         {
             return NumericLiteralKind.Invalid;
         }
