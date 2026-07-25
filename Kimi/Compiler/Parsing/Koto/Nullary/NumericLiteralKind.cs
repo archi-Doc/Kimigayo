@@ -13,6 +13,16 @@ public enum NumericLiteralKind
     Invalid,
 
     /// <summary>
+    /// An integer literal without an explicit type suffix.
+    /// </summary>
+    Integer,
+
+    /// <summary>
+    /// A floating-point literal without an explicit type suffix.
+    /// </summary>
+    Float,
+
+    /// <summary>
     /// A signed 8-bit integer literal.
     /// </summary>
     I8,

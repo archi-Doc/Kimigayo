@@ -8,7 +8,7 @@ public static class NumericLiteralParser
 {
     private const int StackallocThreshold = 256;
 
-    public static unsafe bool TryParse(ReadOnlySpan<char> source, out NumericLiteralKind kind, out UInt128 uv)
+    public static unsafe bool TryParse(int pointerSize, ReadOnlySpan<char> source, out NumericLiteralKind kind, out UInt128 uv)
     {
         kind = NumericLiteralKind.Invalid;
         uv = 0;
@@ -43,13 +43,13 @@ public static class NumericLiteralParser
 
         if (radix == 10)
         {
-            return TryParseDecimal(source, ref kind, ref uv);
+            return TryParseDecimal(pointerSize, source, ref kind, ref uv);
         }
 
-        return TryParseRadixInteger(source, prefixLength, radix, ref kind, ref uv);
+        return TryParseRadixInteger(pointerSize, source, prefixLength, radix, ref kind, ref uv);
     }
 
-    private static unsafe bool TryParseDecimal(ReadOnlySpan<char> source, ref NumericLiteralKind kind, ref UInt128 uv)
+    private static unsafe bool TryParseDecimal(int pointerSize, ReadOnlySpan<char> source, ref NumericLiteralKind kind, ref UInt128 uv)
     {
         if (!TryScanDecimalBody(source, out var bodyLength, out var hasFloatSyntax))
         {
@@ -78,10 +78,10 @@ public static class NumericLiteralParser
             return false;
         }
 
-        return TryStoreInteger(value, requestedKind, ref kind, ref uv);
+        return TryStoreInteger(pointerSize, value, requestedKind, ref kind, ref uv);
     }
 
-    private static bool TryParseRadixInteger(ReadOnlySpan<char> source, int prefixLength, int radix, ref NumericLiteralKind kind, ref UInt128 uv)
+    private static bool TryParseRadixInteger(int pointerSize, ReadOnlySpan<char> source, int prefixLength, int radix, ref NumericLiteralKind kind, ref UInt128 uv)
     {
         var index = prefixLength;
         var hasDigit = false;
@@ -126,10 +126,10 @@ public static class NumericLiteralParser
             return false;
         }
 
-        return TryStoreInteger(value, requestedKind, ref kind, ref uv);
+        return TryStoreInteger(pointerSize, value, requestedKind, ref kind, ref uv);
     }
 
-    private static unsafe bool TryStoreInteger(UInt128 value, NumericLiteralKind requestedKind, ref NumericLiteralKind kind, ref UInt128 uv)
+    private static unsafe bool TryStoreInteger(int pointerSize, UInt128 value, NumericLiteralKind requestedKind, ref NumericLiteralKind kind, ref UInt128 uv)
     {
         kind = NumericLiteralKind.Invalid;
         uv = 0;
@@ -182,7 +182,7 @@ public static class NumericLiteralParser
                 break;
 
             case NumericLiteralKind.ISize:
-                if (IntPtr.Size == 8)
+                if (pointerSize == 8)
                 {
                     if (value > long.MaxValue)
                     {
@@ -194,7 +194,7 @@ public static class NumericLiteralParser
                     return false;
                 }
 
-                *(nuint*)Unsafe.AsPointer(ref uv) = (nuint)value;
+                *(nint*)Unsafe.AsPointer(ref uv) = (nint)value;
                 break;
 
             case NumericLiteralKind.U8:
@@ -238,7 +238,7 @@ public static class NumericLiteralParser
                 break;
 
             case NumericLiteralKind.USize:
-                if (IntPtr.Size == 8)
+                if (pointerSize == 8)
                 {
                     if (value > ulong.MaxValue)
                     {
