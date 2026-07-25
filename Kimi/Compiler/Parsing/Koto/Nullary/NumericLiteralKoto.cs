@@ -22,17 +22,6 @@ public sealed partial class NumericLiteralKoto : Koto
         this.Literal = token.Text.ToString();
     }
 
-    public bool TryGetI64(out long value)
-    {
-        unsafe
-        {
-            fixed (void* d = &this.numericValue)
-            {
-
-            }
-        }
-    }
-
     public override string ToString()
         => $"{this.Literal}";
 
@@ -44,5 +33,15 @@ public sealed partial class NumericLiteralKoto : Koto
     public override (string Text, Koto[]? Children) Dump()
     {
         return ($"{this.GetType().Name}({this.Literal})", default);
+    }
+
+    private void ParseNumericLiteral()
+    {
+        if (this.NumericKind == NumericLiteralKind.Invalid)
+        {
+            NumericLiteralParser.TryParse(this.Literal, out var kind, out var uv);
+            this.NumericKind = kind;
+            this.uv = uv;
+        }
     }
 }
