@@ -13,7 +13,7 @@ namespace Kimi.Compiler.Parsing;
 public abstract partial class BlockKoto : IdentifiableKoto
 {
     [Key(2)]
-    public Koto.GoshujinClass Goshujin { get; protected set; } = new();
+    public Koto.GoshujinClass Children { get; protected set; } = new();
 
     public BlockKoto(ref TokenReader reader, SourceRange range)
         : base(ref reader, range)

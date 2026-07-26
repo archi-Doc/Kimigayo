@@ -67,12 +67,14 @@ public static class KotoHelper
         {
             // Koto structure
             newKoto.Parent = parent;
-            newKoto.Previous = oldKoto.Previous;
+            newKoto.Goshujin?.ChildLinkChain.UnsafeReplaceInstance(oldKoto, newKoto);
+            /*newKoto.ChildLinkLink.Previous = oldKoto.Previous;
             newKoto.Next = oldKoto.Next;
 
             oldKoto.Parent = default;
             oldKoto.Previous = default;
-            oldKoto.Next = default;
+            oldKoto.Next = default;*/
+            oldKoto.Goshujin = default;
 
             // Frontend Metadata
             newKoto.DiagnosticCollection = oldKoto.DiagnosticCollection;

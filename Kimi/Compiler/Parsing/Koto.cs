@@ -151,10 +151,6 @@ public abstract partial class Koto
 {
     #region FieldAndProperty
 
-    private Koto? head;
-    private Koto? previous;
-    private Koto? next;
-
     // Frontend Metadata
     [IgnoreMember]
     public DiagnosticCollection? DiagnosticCollection { get; internal set; }
@@ -171,11 +167,11 @@ public abstract partial class Koto
     [IgnoreMember]
     public Koto? Parent { get; internal set; }
 
-    [IgnoreMember]
+    /*[IgnoreMember]
     public Koto? Previous { get; internal set; }
 
     [IgnoreMember]
-    public Koto? Next { get; internal set; }
+    public Koto? Next { get; internal set; }*/
 
     /*[IgnoreMember]
     public Koto? Previous => this.previous == null || this == this.Parent?.head ? null : this.previous;
@@ -206,7 +202,7 @@ public abstract partial class Koto
 
     #endregion
 
-    [Link(Type = ChainType.LinkedList, Name = "TestLink")]
+    [Link(Primary = true, Type = ChainType.LinkedList, Name = "ChildLink")]
     public Koto(ref TokenReader reader, SourceRange range)
     {
         this.DiagnosticCollection = reader.Diagnostic;
@@ -270,10 +266,33 @@ public abstract partial class Koto
         }
 
         attributeKoto.Parent = this;
-        //attributeKoto.Previous = default;
-        //attributeKoto.Next = this.AttributeChain;
-
+        attributeKoto.AttributeChain = this.AttributeChain;
         this.AttributeChain = attributeKoto;
+    }
+
+    public bool RemoveAttribute(AttributeKoto attributeKoto)
+    {
+        AttributeKoto? previous = default;
+        var current = this.AttributeChain;
+        while (current is not null)
+        {
+            if (current == attributeKoto)
+            {
+                current.Parent = default;
+                if (previous == null)
+                {
+                    this.AttributeChain = current.AttributeChain;
+                }
+                else
+                {
+                    previous.AttributeChain = current.AttributeChain;
+                }
+
+                return true;
+            }
+        }
+
+        return false;
     }
 
     internal virtual bool ReplaceChild(Koto oldKoto, Koto newKoto)
