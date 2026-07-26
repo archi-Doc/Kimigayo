@@ -3,12 +3,13 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Arc.Crypto;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Lexing;
 
-public readonly record struct TokenState(AttributeKoto? AttributeKoto, ModifierKind ModifierKind);
+public readonly record struct TokenState(AttributeKoto? AttributeKoto, ModifierKind ModifierKind, bool IsExcluded);
 
 public ref struct TokenReader
 {// 144
@@ -36,6 +37,8 @@ public ref struct TokenReader
     public AttributeKoto? AttributeKoto { get; private set; }
 
     public ModifierKind ModifierKind { get; internal set; }
+
+    public bool IsExcluded { get; internal set; }
 
     public readonly int Count => this.count;
 
@@ -79,14 +82,16 @@ public ref struct TokenReader
     {
         this.AttributeKoto = default;
         this.ModifierKind = default;
+        this.IsExcluded = false;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TokenState StoreState()
     {
-        var state = new TokenState(this.AttributeKoto, this.ModifierKind);
+        var state = new TokenState(this.AttributeKoto, this.ModifierKind, this.IsExcluded);
         this.AttributeKoto = default;
         this.ModifierKind = default;
+        this.IsExcluded = default;
 
         return state;
     }
@@ -94,7 +99,7 @@ public ref struct TokenReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void RestoreState(TokenState state)
     {
-        (this.AttributeKoto, this.ModifierKind) = (state.AttributeKoto, state.ModifierKind);
+        (this.AttributeKoto, this.ModifierKind, this.IsExcluded) = (state.AttributeKoto, state.ModifierKind, this.IsExcluded);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -239,6 +244,61 @@ Loop:
         }
 
         return default;
+    }
+
+    public void SkipCurrentBlock(bool isRootGroup)
+    {
+        Token token;
+        if (isRootGroup)
+        {
+            while (this.TryGetCurrentToken(out token))
+            {
+                if (token.Kind == TokenKind.RootGroup)
+                {
+                    return;
+                }
+
+                this.AdvanceOne();
+            }
+
+            return;
+        }
+
+        if (!this.TryGetCurrentToken(out token))
+        {
+            return;
+        }
+
+        if (token.Kind != TokenKind.StartBlock)
+        {
+            return;
+        }
+
+        this.AdvanceOne();
+        var indent = 1;
+
+        while (this.TryGetCurrentToken(out token))
+        {
+            if (token.Kind == TokenKind.StartBlock)
+            {
+                indent++;
+            }
+            else if (token.Kind == TokenKind.EndBlock)
+            {
+                indent--;
+                if (indent <= 0)
+                {
+                    this.AdvanceOne();
+                    return;
+                }
+            }
+            else if (token.Kind == TokenKind.RootGroup)
+            {
+                return;
+            }
+
+            this.AdvanceOne();
+        }
     }
 
     /*public bool TryConsumeIdentifier(ReadOnlySpan<char> name)

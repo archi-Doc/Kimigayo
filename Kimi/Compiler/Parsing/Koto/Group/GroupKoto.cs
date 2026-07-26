@@ -199,7 +199,7 @@ public partial class GroupKoto : BlockKoto
             }
             else if (token.Kind == TokenKind.EndBlock)
             {// Exit block
-                _ = KotoParser.ConsumeAttributeModifierAndRead(ref reader, out token);
+                KotoParser.ConsumeAttributeModifierAndRead(ref reader, out token);
                 break;
             }
             else if (token.Kind == TokenKind.Let ||
@@ -214,6 +214,12 @@ public partial class GroupKoto : BlockKoto
             else if (token.Kind == TokenKind.RootGroup)
             {// rootgroup
                 var name = KotoHelper.ValidateAndGetNamespace(ref reader);
+                if (reader.IsExcluded)
+                {
+                    reader.SkipCurrentBlock(true);
+                    goto NextToken;
+                }
+
                 var state = reader.StoreState();
                 var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, TokenKind.Group, state, token.Range);
                 this.CodeContext.CurrentGroup = groupKoto;
@@ -231,6 +237,12 @@ public partial class GroupKoto : BlockKoto
             else if (token.Kind == TokenKind.Struct)
             {// struct
                 var r = KotoParser.ParseGroupDeclaration(ref reader);
+                if (reader.IsExcluded)
+                {
+                    reader.SkipCurrentBlock(false);
+                    goto NextToken;
+                }
+
                 var state = reader.StoreState();
                 var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, token.Kind, state, token.Range);
                 if (r.List is not null)
@@ -249,8 +261,9 @@ public partial class GroupKoto : BlockKoto
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
             }
 
+NextToken:
             // Consume Attribute and modifiers
-            _ = KotoParser.ConsumeAttributeModifierAndRead(ref reader, out token);
+            KotoParser.ConsumeAttributeModifierAndRead(ref reader, out token);
             if (!token.IsValid)
             {
                 return;

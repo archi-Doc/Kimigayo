@@ -347,9 +347,8 @@ Exit:
         var variableState = reader.StoreState();
 
         // Field name
-        var ifAttribute = KotoParser.ConsumeAttributeAndRead(ref reader, out var nameToken);
-        if (!ifAttribute ||
-            nameToken.Kind != TokenKind.Identifier)
+        KotoParser.ConsumeAttributeAndRead(ref reader, out var nameToken);
+        if (nameToken.Kind != TokenKind.Identifier)
         {
             return default;
         }
@@ -526,7 +525,7 @@ Exit:
         return (ModifierKind)((byte)kind & AccessibilityModifierMask);
     }
 
-    public static bool ConsumeAttributeAndRead(ref TokenReader reader, out Token token)
+    public static void ConsumeAttributeAndRead(ref TokenReader reader, out Token token)
     {// Consume Attribute
         reader.Clear();
 
@@ -548,20 +547,21 @@ Exit:
                 else
                 {// Other
                     reader.TryRead(out token);
-                    return true;
+                    return;
                 }
             }
 
             attributeKoto = ParseAttributeKoto(ref reader);
             if (!ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto))
             {
-                token = default;
-                return false;
+                reader.IsExcluded = true;
+                // token = default;
+                // return false;
             }
         }
     }
 
-    public static bool ConsumeAttributeModifierAndRead(ref TokenReader reader, out Token token)
+    public static void ConsumeAttributeModifierAndRead(ref TokenReader reader, out Token token)
     {// Consume Attributes and Modifiers
         reader.Clear();
 
@@ -623,14 +623,15 @@ Exit:
             if (tokenKind != TokenKind.Sharp)
             {
                 reader.TryRead(out token);
-                return true;
+                return;
             }
 
             attributeKoto = ParseAttributeKoto(ref reader);
             if (!ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto))
             {
-                token = default;
-                return false;
+                reader.IsExcluded = true;
+                // token = default;
+                // return false;
             }
         }
 

@@ -117,10 +117,7 @@ public sealed partial class Kotonoha
         while (true)
         {
             // Consume attributes and modifiers
-            if (!KotoParser.ConsumeAttributeModifierAndRead(ref reader, out var token))
-            {
-                continue;
-            }
+            KotoParser.ConsumeAttributeModifierAndRead(ref reader, out var token);
             if (!token.IsValid)
             {
                 return;
@@ -130,7 +127,7 @@ public sealed partial class Kotonoha
             {// alias
                 var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
                 var aliasKoto = new AliasKoto(ref reader, list);
-                // if (KotoParser.ResolveIfAttribute(ref reader, aliasKoto))
+                if (!reader.IsExcluded)
                 {
                     this.RootKoto.AddLast(aliasKoto);
                 }

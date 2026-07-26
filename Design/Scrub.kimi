@@ -1,7 +1,5 @@
 #A #B
 alias Kimi.Base
-#Test
-alias Kimi.Windows
 
 public rootgroup Playground
 
@@ -16,8 +14,4 @@ rootgroup Playground.A
     var c = &z
     var d = c
     var e = c
-
-    public open struct Test: @A, @B, 
-        #Test1
-        public static var x: i32 = #One 1
 

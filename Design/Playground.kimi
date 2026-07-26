@@ -7,10 +7,10 @@ alias Kimi.Windows
 public rootgroup Playground
 
 // comment
-#If(os == "Windows")
 rootgroup Playground.A
 var x = 1 + 2 * 3
 
+#If(os == "Windows")
 public open struct Test: @A, @B,
     public static #Test1 var #Test2 x: i32 = #One 1
 
