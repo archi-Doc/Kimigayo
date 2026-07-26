@@ -31,6 +31,8 @@ public class Compilation
 
     public Kotonoha? ProjectKotonoha { get; private set; }
 
+    public Utf16Hashtable<LimitedValue> Values { get; private set; } = new();
+
     private UInt32Hashtable<Kotonoha> kotonohaIdToKotonoha = new();
 
     #endregion
@@ -61,6 +63,10 @@ public class Compilation
 
         // Project Kotonoha
         this.ProjectKotonoha = new(this, this.Project.Name, string.Empty);
+
+        // Values
+        this.Values.Clear();
+        this.Values.Add("os", new(this.TargetTriple.OperatingSystem));
 
         return true;
     }
@@ -107,5 +113,10 @@ public class Compilation
         var writer2 = new IndentWriter();
         kotonoha.RootKoto.UnparseTo(writer2);
         var sb2 = writer2.ToString();
+    }
+
+    internal bool TryResolveValue(UnresolvedKoto koto, out LimitedValue limitedValue)
+    {
+        return this.Values.TryGetValue(koto.Identifier, out limitedValue);
     }
 }

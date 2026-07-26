@@ -1,7 +1,7 @@
 // alias, rootgroup, group, struct, enum,
 #A #B alias Kimi.Base
 
-#If(1 <= 2 / 2) #Test
+#If(1 < 2 / 2) #Test
 alias Kimi.Windows
 
 public rootgroup Playground
@@ -14,7 +14,7 @@ var x = 1 + 2 * 3
 public open struct Test: @A, @B,
     public static #Test1 var #Test2 x: i32 = #One 1
 
-#If(Os.Version.Current == 1 and "text".Length > 0)
+// #If(Os.Version.Current == 1 and "text".Length > 0)
 var y = (1 + #Test 2) * 3
 
 static var x = 1

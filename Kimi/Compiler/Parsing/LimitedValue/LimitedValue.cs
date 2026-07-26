@@ -31,6 +31,30 @@ public readonly struct LimitedValue : IEquatable<LimitedValue>
 
     public string Text => (this.tagOrText as string) ?? string.Empty;
 
+    public LimitedValueKind Kind
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            var tagOrText = this.tagOrText;
+
+            if (tagOrText is null)
+            {
+                return LimitedValueKind.Bool;
+            }
+            else if (ReferenceEquals(tagOrText, I64Tag))
+            {
+                return LimitedValueKind.I64;
+            }
+            else if (ReferenceEquals(tagOrText, DoubleTag))
+            {
+                return LimitedValueKind.Double;
+            }
+
+            return LimitedValueKind.Text;
+        }
+    }
+
     public LimitedValue(bool value)
     {
         this.tagOrText = null;
@@ -54,30 +78,6 @@ public readonly struct LimitedValue : IEquatable<LimitedValue>
         ArgumentNullException.ThrowIfNull(value);
 
         this.tagOrText = value;
-    }
-
-    public LimitedValueKind Kind
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get
-        {
-            var tagOrText = this.tagOrText;
-
-            if (tagOrText is null)
-            {
-                return LimitedValueKind.Bool;
-            }
-            else if (ReferenceEquals(tagOrText, I64Tag))
-            {
-                return LimitedValueKind.I64;
-            }
-            else if (ReferenceEquals(tagOrText, DoubleTag))
-            {
-                return LimitedValueKind.Double;
-            }
-
-            return LimitedValueKind.Text;
-        }
     }
 
     public bool Equals(LimitedValue other)
@@ -131,4 +131,13 @@ public readonly struct LimitedValue : IEquatable<LimitedValue>
 
     public static bool operator !=(LimitedValue left, LimitedValue right)
         => !left.Equals(right);
+
+    public override string ToString() => this.Kind switch
+    {
+        LimitedValueKind.Bool => this.Bool.ToString(),
+        LimitedValueKind.I64 => this.I64.ToString(),
+        LimitedValueKind.Double => this.Double.ToString(),
+        LimitedValueKind.Text => this.Text,
+        _ => string.Empty,
+    };
 }

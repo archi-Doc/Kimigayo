@@ -5,10 +5,8 @@ alias Kimi.Windows
 
 public rootgroup Playground
 
-#If(os == "Windows")
 rootgroup Playground.A
     var x = 1 + 2 * 3
-    #If(Os.Version.Current == 1 and "text".Length > 0)
     var y = (1 + 2) * 3
     var x = 1
     let y = 2

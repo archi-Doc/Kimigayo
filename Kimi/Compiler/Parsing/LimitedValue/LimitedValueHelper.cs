@@ -27,6 +27,14 @@ public static class LimitedValueHelper
         }
         else if (koto is UnresolvedKoto unresolvedKoto)
         {// os value: bool
+            if (compilation.TryResolveValue(unresolvedKoto, out var lv))
+            {
+                return lv;
+            }
+            else
+            {
+                goto NotSupported;
+            }
         }
         else if (koto is ParenthesizedKoto parenthesizedKoto)
         {// (A)
@@ -188,7 +196,7 @@ public static class LimitedValueHelper
                     LimitedValueKind.Bool => new(left.Bool == right.Bool),
                     LimitedValueKind.I64 => new(left.I64 == right.I64),
                     LimitedValueKind.Double => new(left.Double == right.Double),
-                    LimitedValueKind.Text => new(string.Equals(left.Text, right.Text, StringComparison.Ordinal)),
+                    LimitedValueKind.Text => new(string.Equals(left.Text, right.Text, StringComparison.OrdinalIgnoreCase)),
                     _ => new(true),
                 };
             }
@@ -199,7 +207,7 @@ public static class LimitedValueHelper
                     LimitedValueKind.Bool => new(left.Bool != right.Bool),
                     LimitedValueKind.I64 => new(left.I64 != right.I64),
                     LimitedValueKind.Double => new(left.Double != right.Double),
-                    LimitedValueKind.Text => new(!string.Equals(left.Text, right.Text, StringComparison.Ordinal)),
+                    LimitedValueKind.Text => new(!string.Equals(left.Text, right.Text, StringComparison.OrdinalIgnoreCase)),
                     _ => new(true),
                 };
             }
