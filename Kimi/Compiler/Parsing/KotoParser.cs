@@ -54,6 +54,35 @@ public static class KotoParser
         return true;
     }
 
+    public static bool ResolveIfAttribute(Compilation compilation, AttributeKoto attributeKoto)
+    {
+        if (attributeKoto.IdentifierKoto.Identifier.SequenceEqual(Constants.IfAttribute))
+        {// #If()
+            var arg = attributeKoto.Arguments;
+            if (arg.Count != 1)
+            {
+                attributeKoto.AddDiagnostic(Hashed.Kimi.InvalidIfAttributeArgumentCount);
+            }
+            else
+            {
+                var limitedValue = LimitedValueHelper.Evaluate(compilation, arg[0]);
+                if (limitedValue.Kind == LimitedValueKind.Bool)
+                {
+                    if (!limitedValue.Bool)
+                    {// false
+                        return false;
+                    }
+                }
+                else
+                {
+                    arg[0].AddDiagnostic(Hashed.Kimi.ConditionMustBeBool);
+                }
+            }
+        }
+
+        return true;
+    }
+
     public static void WriteQualifiedNameTo(IdentifiableKoto? a0, IndentWriter builder)
     {
         if (a0 is null)
@@ -318,8 +347,9 @@ Exit:
         var variableState = reader.StoreState();
 
         // Field name
-        var nameAttribute = KotoParser.ConsumeAttributeAndRead(ref reader, out var nameToken);
-        if (nameToken.Kind != TokenKind.Identifier)
+        var ifAttribute = KotoParser.ConsumeAttributeAndRead(ref reader, out var nameToken);
+        if (!ifAttribute ||
+            nameToken.Kind != TokenKind.Identifier)
         {
             return default;
         }
@@ -496,7 +526,7 @@ Exit:
         return (ModifierKind)((byte)kind & AccessibilityModifierMask);
     }
 
-    public static AttributeKoto? ConsumeAttributeAndRead(ref TokenReader reader, out Token token)
+    public static bool ConsumeAttributeAndRead(ref TokenReader reader, out Token token)
     {// Consume Attribute
         reader.Clear();
 
@@ -518,15 +548,20 @@ Exit:
                 else
                 {// Other
                     reader.TryRead(out token);
-                    return attributeKoto;
+                    return true;
                 }
             }
 
             attributeKoto = ParseAttributeKoto(ref reader);
+            if (!ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto))
+            {
+                token = default;
+                return false;
+            }
         }
     }
 
-    public static AttributeKoto? ConsumeAttributeModifierAndRead(ref TokenReader reader, out Token token)
+    public static bool ConsumeAttributeModifierAndRead(ref TokenReader reader, out Token token)
     {// Consume Attributes and Modifiers
         reader.Clear();
 
@@ -588,10 +623,15 @@ Exit:
             if (tokenKind != TokenKind.Sharp)
             {
                 reader.TryRead(out token);
-                return attributeKoto;
+                return true;
             }
 
             attributeKoto = ParseAttributeKoto(ref reader);
+            if (!ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto))
+            {
+                token = default;
+                return false;
+            }
         }
 
         void ReadAccessibility(ref TokenReader reader, ModifierKind kind)
