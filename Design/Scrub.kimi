@@ -4,7 +4,7 @@ alias Kimi.Base
 public rootgroup Playground
 
 rootgroup Playground.A
-    var x = 1 + 2 * 3
+    var x = 1 + 2
     var y = (1 + 2) * 3
     var x = 1
     let y = 2

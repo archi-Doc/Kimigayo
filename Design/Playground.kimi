@@ -8,7 +8,7 @@ public rootgroup Playground
 
 // comment
 rootgroup Playground.A
-var x = 1 + 2 * 3
+var x = 1 + 2 #Multi * 3
 
 #If(os == "Windows")
 public open struct Test: @A, @B,
