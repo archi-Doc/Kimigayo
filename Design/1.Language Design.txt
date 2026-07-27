@@ -1,0 +1,47 @@
+## Central Dogma (Grand line)
+Source -> Lexing: Token/Tokenizer -> Parsing: Koto/Parser -> Resolution/Generation: LVVM IR/BC
+それぞれSerialize可能。
+
+Package: Koto/Kotonoha
+Frontend: Tokenizer -> Parser
+Backend: Resolver -> Emitter
+
+## 文字列リテラル
+文字コードはUTF-8で、"Text" と """Multi-line text""" がある。
+
+"Text": Interpolated string literal. C#における $"" と同じ。
+一つのダブルクォーテーションで囲まれたもの。
+バックスラッシュ\によるエスケープあり。
+
+"""Text""": Interpolated raw string literal.
+3個以上のダブルクォーテーションで囲まれたもの。
+文字列中に"""が必要なら、さらに外側の引用符の数を増やす。
+エスケープなし。
+
+いずれも文字列補間に対応している。
+C#の{}は、'{'を書きたい場合に {{}} とうるさくなるので好みではない。
+Swiftと同様、\()にしたい。1文字増えるが、分かりやすいし、'('を書きやすい。
+C#とSwiftの中間の仕様。
+
+Raw string literalは、エスケープをサポートしない。
+エスケープできるような追加の仕様も考えたが、ルールは可能な限り少なくしたい。
+エスケープシーケンスを使用したい場合は、String literalを使ってもらう。
+
+なので、Swift形式 \() だとエスケープありになり、一貫性に問題がある。
+やっぱりC#の{}が良い。
+ほぼC#と同じ仕様。
+
+{Method("A: {}")}
+
+
+## #If Attribute
+Rustの#cfgに相当する。
+コード中の条件式と同じ扱いにしたい。
+
+当初は、コード中の定数も参照できるようにしたいと考えていたが、
+Multipathが必要になるのと、Kotoの統合が難しくなる（Raw koto treeを作成して、#Ifを複数処理で解決して、それから最終的なKoto treeを作成する）ので、簡略化することにした。
+IfAttributeResolverで参照・解決可能なもの = Compilationから直接参照できるもの（TargetTriple, ProjectFile）
+
+具体的には、
+os, debug/release, pointerWidth, test, custom
+など。
