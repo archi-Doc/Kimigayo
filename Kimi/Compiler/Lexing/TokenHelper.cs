@@ -187,20 +187,6 @@ public static class TokenHelper
         => token.Kind == TokenKind.Identifier && token.Text.Span.SequenceEqual(identifier);
 
     /// <summary>
-    /// Determines whether the specified statement context represents a group-like declaration.
-    /// </summary>
-    /// <param name="statementContext">The statement context to inspect.</param>
-    /// <returns><see langword="true"/> if the context represents a namespace, group, struct, or enum; otherwise, <see langword="false"/>.</returns>
-    public static bool IsGroup(this StatementContext statementContext) => statementContext switch
-    {
-        StatementContext.Namespace => true,
-        StatementContext.Group => true,
-        StatementContext.Struct => true,
-        StatementContext.Enum => true,
-        _ => false,
-    };
-
-    /// <summary>
     /// Scans a numeric literal at the start of <paramref name="text"/>.<br/>
     /// Returns <see langword="true"/> when a valid literal was found; <paramref name="length"/> is its length.<br/>
     /// Returns <see langword="false"/> with <paramref name="length"/> == 0 when the text does not start with a digit.<br/>
