@@ -688,7 +688,12 @@ Exit:
             }
 
             var tokenKind = reader.CurrentTokenKind;
-            var bindingPower = GetInfixBindingPower(tokenKind);
+            if (tokenKind == TokenKind.Sharp)
+            {
+
+            }
+
+                var bindingPower = GetInfixBindingPower(tokenKind);
 
             if (bindingPower == default || bindingPower.Left < minBindingPower)
             {
@@ -708,6 +713,18 @@ Exit:
     {
 ProcessPrefix:
         var tokenKind = reader.CurrentTokenKind;
+
+        if (tokenKind == TokenKind.Sharp)
+        {//#Attribute
+            var attributeKoto = ParseAttributeKoto(ref reader);
+            if (!ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto))
+            {
+                reader.IsExcluded = true;
+            }
+
+            goto ProcessPrefix;
+        }
+
         var bindingPower = GetPrefixBindingPower(tokenKind);
         if (bindingPower > 0)
         {
