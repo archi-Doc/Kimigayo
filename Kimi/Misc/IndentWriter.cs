@@ -12,7 +12,7 @@ namespace Kimi;
 /// This class is not thread-safe.
 /// All newline characters written through this class are normalized to '\n'.
 /// </remarks>
-public sealed class IndentWriter
+public class IndentWriter
 {
     public const int DefaultSpacesPerIndent = 4;
     private const int SpaceBufferLength = 512;
