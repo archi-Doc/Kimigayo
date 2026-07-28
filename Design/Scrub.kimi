@@ -1,4 +1,4 @@
-#A #B
+#A #B(1) #C.D(1 + 2 + E.F())
 alias Kimi.Base
 
 public rootgroup Playground

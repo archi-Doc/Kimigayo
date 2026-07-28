@@ -162,6 +162,16 @@ public ref struct TokenReader
         return false;
     }
 
+    public void Consume(out Token token)
+    {
+        this.Clear();
+
+        while (this.TryRead(out token) &&
+            token.Kind == TokenKind.Separator)
+        {// Skip Separator
+        }
+    }
+
     public bool TryConsume(TokenKind targetKind, out SourceRange range, bool addDiagnostic = true)
     {
 Loop:

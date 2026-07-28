@@ -21,7 +21,7 @@ public static class KotoParser
         var attributeKoto = previous.AttributeChain;
         while (attributeKoto is not null)
         {
-            if (attributeKoto.IdentifierKoto.Identifier.SequenceEqual(Constants.IfAttribute))
+            if (attributeKoto.IsIfAttribute)
             {// #If()
                 var arg = attributeKoto.Arguments;
                 if (arg.Count != 1)
@@ -56,7 +56,7 @@ public static class KotoParser
 
     public static bool ResolveIfAttribute(Compilation compilation, AttributeKoto attributeKoto)
     {
-        if (attributeKoto.IdentifierKoto.Identifier.SequenceEqual(Constants.IfAttribute))
+        if (attributeKoto.IsIfAttribute)
         {// #If()
             var arg = attributeKoto.Arguments;
             if (arg.Count != 1)
@@ -348,6 +348,7 @@ Exit:
 
         // Field name
         KotoParser.ConsumeAttributeAndRead(ref reader, out var nameToken);
+        // KotoParser.Read(ref reader, out var nameToken);
         if (nameToken.Kind != TokenKind.Identifier)
         {
             return default;
@@ -664,7 +665,9 @@ Exit:
         var previousAttribute = reader.PopAttribute();
 
         reader.TryRead(out var attributeToken);
-        var operand = ParseExpression(ref reader, PrefixBindingPower);
+
+        var operand = ParsePrimaryExpression(ref reader);
+        TryParsePostfixExpression(ref reader, ref operand);
 
         if (previousAttribute is not null)
         {
@@ -688,13 +691,7 @@ Exit:
             }
 
             var tokenKind = reader.CurrentTokenKind;
-            if (tokenKind == TokenKind.Sharp)
-            {
-
-            }
-
-                var bindingPower = GetInfixBindingPower(tokenKind);
-
+            var bindingPower = GetInfixBindingPower(tokenKind);
             if (bindingPower == default || bindingPower.Left < minBindingPower)
             {
                 break;
@@ -753,14 +750,14 @@ ProcessPrefix:
                 {// Class.Member
                     reader.TryRead(out var token); // .
 
-                    if (!reader.TryRead(out var token2) ||
+                    /*if (!reader.TryRead(out var token2) ||
                         token2.Kind != TokenKind.Identifier)
                     {
                         break;
-                    }
+                    }*/
 
-                    var koto = new UnresolvedKoto(ref reader, token2);
-                    left = new MemberAccessKoto(ref reader, new(token.Range.Start, token2.Range.End), left, koto);
+                    var accessor = ParseExpression(ref reader);
+                    left = new MemberAccessKoto(ref reader, new(token.Range.Start, accessor.Range.End), left, accessor);
                     return true;
                 }
 

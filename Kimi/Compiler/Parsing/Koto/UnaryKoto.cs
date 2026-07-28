@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
@@ -10,10 +11,26 @@ namespace Kimi.Compiler.Parsing;
 public partial class AttributeKoto : UnaryKoto
 {// #A
     [IgnoreMember]
-    public UnresolvedKoto IdentifierKoto { get; private set; }
+    public Koto IdentifierKoto { get; private set; }
 
     [IgnoreMember]
     public List<Koto> Arguments { get; private set; } = [];
+
+    public bool IsIfAttribute
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get
+        {
+            if (this.IdentifierKoto is UnresolvedKoto unresolvedKoto)
+            {
+                return unresolvedKoto.Identifier.SequenceEqual(Constants.IfAttribute) == true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+    }
 
     public AttributeKoto(ref TokenReader reader, SourceRange range, Koto operand)
         : base(ref reader, range, operand)
@@ -24,18 +41,19 @@ public partial class AttributeKoto : UnaryKoto
             this.IdentifierKoto = unresolvedKoto;
             this.Arguments = invocationKoto.Arguments;
         }
-        else if (operand is UnresolvedKoto unresolvedKoto2)
-        {// #Attribute
-            this.IdentifierKoto = unresolvedKoto2;
-        }
         else
+        {
+            this.IdentifierKoto = operand;
+        }
+
+        /*else
         {
             this.AddDiagnostic(Hashed.Kimi.InvalidAttributeKoto);
 
             this.IdentifierKoto = UnresolvedKoto.Error;
             this.Operand = new ErrorKoto(ref reader, range);
             // this.IdentifierKoto = this.Operand;
-        }
+        }*/
     }
 
     public override string ToString()

@@ -31,7 +31,7 @@ public class Compilation
 
     public Kotonoha? ProjectKotonoha { get; private set; }
 
-    public Utf16Hashtable<LimitedValue> Values { get; private set; } = new();
+    public Utf16Hashtable<LimitedValue> CompilationVariables { get; private set; } = new();
 
     private UInt32Hashtable<Kotonoha> kotonohaIdToKotonoha = new();
 
@@ -64,9 +64,9 @@ public class Compilation
         // Project Kotonoha
         this.ProjectKotonoha = new(this, this.Project.Name, string.Empty);
 
-        // Values
-        this.Values.Clear();
-        this.Values.Add("os", new(this.TargetTriple.OperatingSystem));
+        // CompilationVariables
+        this.CompilationVariables.Clear();
+        this.CompilationVariables.Add("os", new(this.TargetTriple.OperatingSystem));
 
         return true;
     }
@@ -117,6 +117,6 @@ public class Compilation
 
     internal bool TryResolveValue(UnresolvedKoto koto, out LimitedValue limitedValue)
     {
-        return this.Values.TryGetValue(koto.Identifier, out limitedValue);
+        return this.CompilationVariables.TryGetValue(koto.Identifier, out limitedValue);
     }
 }
