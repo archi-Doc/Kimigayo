@@ -11,7 +11,7 @@ alias Kimi.Base.Linux
 roogroup Playground.A// Represents a group that specifies an identifier by its absolute position.
 
 public contract @Equatable
-    static func ==(left: Self, right: Self) => Bool
+    static function ==(left: Self, right: Self) => Bool
 
 #Attribute() var x = 1
 $Macro

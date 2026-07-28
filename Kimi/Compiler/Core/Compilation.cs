@@ -4,7 +4,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Arc.Collections;
-using Kimi.Command;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -97,7 +96,7 @@ public class Compilation
         }
 
         var writer = new IndentWriter();
-        this.ProjectKotonoha.RootKoto.UnparseAll(writer);
+        this.ProjectKotonoha.Root.UnparseAll(writer);
 
         var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
         File.WriteAllText(path, writer.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -111,7 +110,7 @@ public class Compilation
         }
 
         var writer2 = new IndentWriter();
-        kotonoha.RootKoto.UnparseTo(writer2);
+        kotonoha.Root.UnparseTo(writer2);
         var sb2 = writer2.ToString();
     }
 
