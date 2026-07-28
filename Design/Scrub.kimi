@@ -1,10 +1,10 @@
-#A #B(1) #C.D(1 + 2 + E.F())
+#A #B(1)
 alias Kimi.Base
 
 public rootgroup Playground
 
 rootgroup Playground.A
-    var x = 1 + 2
+    var x = 1 + 2 * 3
     var y = (1 + 2) * 3
     var x = 1
     let y = 2
