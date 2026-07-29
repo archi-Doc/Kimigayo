@@ -159,7 +159,7 @@ public static class KotoParser
         if (a1 is null)
         {
             a0.WriteTo(writer);
-            // writer.Write(' ');
+            // writer.Append(' ');
             return;
         }
 
@@ -167,9 +167,9 @@ public static class KotoParser
         if (a2 is null)
         {
             a1.WriteTo(writer);
-            writer.Write(' ');
+            writer.Append(' ');
             a0.WriteTo(writer);
-            // writer.Write(' ');
+            // writer.Append(' ');
             return;
         }
 
@@ -177,11 +177,11 @@ public static class KotoParser
         if (a3 is null)
         {
             a2.WriteTo(writer);
-            writer.Write(' ');
+            writer.Append(' ');
             a1.WriteTo(writer);
-            writer.Write(' ');
+            writer.Append(' ');
             a0.WriteTo(writer);
-            // writer.Write(' ');
+            // writer.Append(' ');
             return;
         }
 
@@ -189,13 +189,13 @@ public static class KotoParser
         if (a4 is null)
         {
             a3.WriteTo(writer);
-            writer.Write(' ');
+            writer.Append(' ');
             a2.WriteTo(writer);
-            writer.Write(' ');
+            writer.Append(' ');
             a1.WriteTo(writer);
-            writer.Write(' ');
+            writer.Append(' ');
             a0.WriteTo(writer);
-            // writer.Write(' ');
+            // writer.Append(' ');
             return;
         }
 
@@ -212,15 +212,15 @@ public static class KotoParser
             list[i].WriteTo(writer);
             if (i != 0)
             {
-                writer.Write(' ');
+                writer.Append(' ');
             }
         }
 
         /*list.Reverse();
         foreach (var y in list)
         {
-            writer.Write(y.ToString());
-            writer.Write(' ');
+            writer.Append(y.ToString());
+            writer.Append(' ');
         }*/
     }
 
@@ -381,7 +381,7 @@ Exit:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WriteTo(this ModifierKind kind, IndentWriter writer, bool addSpace = false)
+    public static void WriteTo(this ModifierKind kind, ref IndentWriter writer, bool addSpace = false)
     {
         var acc = kind.ExtractAccessibilityModifiers();
         var accText = acc switch
@@ -400,7 +400,7 @@ Exit:
             return;
         }
 
-        writer.Write(accText);
+        writer.Append(accText);
 
         if (addSpace)
         {// "public "
@@ -408,22 +408,22 @@ Exit:
             {// "public static "
                 if (kind.HasFlag(ModifierKind.Open))
                 {// "public static open "
-                    writer.Write(" static open ");
+                    writer.Append(" static open ");
                 }
                 else
                 {// "public static "
-                    writer.Write(" static ");
+                    writer.Append(" static ");
                 }
             }
             else
             {// "public "
                 if (kind.HasFlag(ModifierKind.Open))
                 {// public open "
-                    writer.Write(" open ");
+                    writer.Append(" open ");
                 }
                 else
                 {// "public "
-                    writer.Write(" ");
+                    writer.Append(" ");
                 }
             }
         }
@@ -433,18 +433,18 @@ Exit:
             {// "public static"
                 if (kind.HasFlag(ModifierKind.Open))
                 {// "public static open"
-                    writer.Write(" static open");
+                    writer.Append(" static open");
                 }
                 else
                 {// "public static"
-                    writer.Write(" static");
+                    writer.Append(" static");
                 }
             }
             else
             {// "public"
                 if (kind.HasFlag(ModifierKind.Open))
                 {// public open"
-                    writer.Write(" open");
+                    writer.Append(" open");
                 }
                 else
                 {// "public"

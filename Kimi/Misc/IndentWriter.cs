@@ -2,17 +2,20 @@
 
 using System.Runtime.CompilerServices;
 using System.Text;
+using Arc.Collections;
 
 namespace Kimi;
 
 /// <summary>
-/// Provides a high-performance text builder with automatic indentation.
+/// Provides a high-performance text builder with automatic indentation.<br/>
+/// Append(): Appends a value to the character buffer with indentation.<br/>
+/// If the value starts on a new line, the current indentation is inserted first.
 /// </summary>
 /// <remarks>
-/// This class is not thread-safe.
+/// This class is not thread-safe.<br/>
 /// All newline characters written through this class are normalized to '\n'.
 /// </remarks>
-public class IndentWriter
+public ref struct IndentWriter
 {
     public const int DefaultSpacesPerIndent = 4;
     private const int SpaceBufferLength = 512;
@@ -28,7 +31,7 @@ public class IndentWriter
     #region FieldAndProperty
 
     private readonly int spacesPerIndent;
-    private readonly StringBuilder builder;
+    private readonly PooledStringBuilder builder;
     private int indentLevel;
     private bool isLineStart = true;
 
@@ -39,16 +42,6 @@ public class IndentWriter
         ArgumentOutOfRangeException.ThrowIfNegative(spacesPerIndent);
 
         this.spacesPerIndent = spacesPerIndent;
-        this.builder = new StringBuilder();
-    }
-
-    public IndentWriter(int capacity, int spacesPerIndent = DefaultSpacesPerIndent)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegative(capacity);
-        ArgumentOutOfRangeException.ThrowIfNegative(spacesPerIndent);
-
-        this.spacesPerIndent = spacesPerIndent;
-        this.builder = new StringBuilder(capacity);
     }
 
     /// <summary>
@@ -114,8 +107,21 @@ public class IndentWriter
         return this;
     }
 
+    public IndentWriter Append(bool value)
+    {
+        this.AppendIndentIfRequired();
+        this.builder.Append(value);
+        return this;
+    }
+
+    public IndentWriter AppendWithoutIndent(bool value)
+    {
+        this.builder.Append(value);
+        return this;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public IndentWriter Write(char value)
+    public IndentWriter Append(char value)
     {
         if (value == BaseHelper.LfChar || value == BaseHelper.CrChar)
         {
@@ -124,23 +130,49 @@ public class IndentWriter
             return this;
         }
 
-        this.WriteIndentIfRequired();
+        this.AppendIndentIfRequired();
         this.builder.Append(value);
         return this;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public IndentWriter Write(string? value)
+    public IndentWriter AppendWithoutIndent(char value)
     {
-        if (value is not null)
+        if (value == BaseHelper.LfChar || value == BaseHelper.CrChar)
         {
-            this.Write(value.AsSpan());
+            this.builder.Append(BaseHelper.LfChar);
+            this.isLineStart = true;
+            return this;
         }
 
+        this.builder.Append(value);
         return this;
     }
 
-    public IndentWriter Write(ReadOnlySpan<char> value)
+    /// <summary>
+    /// Appends the formatted representation of a value.
+    /// </summary>
+    /// <typeparam name="T">The type of value to append.</typeparam>
+    /// <param name="value">The value to format and append.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Append<T>(T value)
+        where T : ISpanFormattable
+    {
+        this.AppendIndentIfRequired();
+        this.builder.Append(value);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AppendWithoutIndent<T>(T value)
+        where T : ISpanFormattable
+    {
+        this.builder.Append(value);
+    }
+
+    public IndentWriter Append(ReadOnlyMemory<char> value)
+        => this.Append(value.Span);
+
+    public IndentWriter Append(ReadOnlySpan<char> value)
     {
         int position = 0;
 
@@ -172,7 +204,7 @@ public class IndentWriter
                     continue;
                 }
 
-                this.WriteIndentIfRequired();
+                this.AppendIndentIfRequired();
             }
 
             ReadOnlySpan<char> remaining = value[position..];
@@ -206,154 +238,61 @@ public class IndentWriter
         return this;
     }
 
-    public IndentWriter Write(bool value)
+    /// <summary>
+    /// Ensures that the builder ends with a blank line represented by two
+    /// consecutive line feed characters.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void EnsureTrailingBlankLine()
     {
-        this.WriteIndentIfRequired();
-        this.builder.Append(value);
-        return this;
-    }
+        this.builder.GetLastTwoChars(out var previous, out var last);
 
-    public IndentWriter Write(int value)
-    {
-        this.WriteIndentIfRequired();
-        this.builder.Append(value);
-        return this;
-    }
-
-    public IndentWriter Write(uint value)
-    {
-        this.WriteIndentIfRequired();
-        this.builder.Append(value);
-        return this;
-    }
-
-    public IndentWriter Write(long value)
-    {
-        this.WriteIndentIfRequired();
-        this.builder.Append(value);
-        return this;
-    }
-
-    public IndentWriter Write(ulong value)
-    {
-        this.WriteIndentIfRequired();
-        this.builder.Append(value);
-        return this;
-    }
-
-    public IndentWriter Write(float value)
-    {
-        this.WriteIndentIfRequired();
-        this.builder.Append(value);
-        return this;
-    }
-
-    public IndentWriter Write(double value)
-    {
-        this.WriteIndentIfRequired();
-        this.builder.Append(value);
-        return this;
-    }
-
-    public IndentWriter Write(decimal value)
-    {
-        this.WriteIndentIfRequired();
-        this.builder.Append(value);
-        return this;
-    }
-
-    public IndentWriter Write(object? value)
-    {
-        if (value is not null)
+        if (last != BaseHelper.LfChar)
         {
-            this.WriteIndentIfRequired();
-            this.builder.Append(value);
+            this.AppendWithoutIndent(BaseHelper.LfChar);
+            this.AppendWithoutIndent(BaseHelper.LfChar);
         }
-
-        return this;
+        else if (previous != BaseHelper.LfChar)
+        {
+            this.AppendWithoutIndent(BaseHelper.LfChar);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public IndentWriter WriteLine()
-    {
-        this.builder.Append(BaseHelper.LfChar);
-        this.isLineStart = true;
-        return this;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public IndentWriter AppendEmptyLine()
-    {
-        this.isLineStart = true;
-
-        if (this.builder.Length == 0)
-        {
-            this.builder.Append(BaseHelper.LfChar);
-            return this;
-        }
-
-        if (this.builder.Length >= 2 && this.builder[this.builder.Length - 1] == BaseHelper.LfChar && this.builder[this.builder.Length - 2] == BaseHelper.LfChar)
-        {
-            return this;
-        }
-
-        if (this.builder[this.builder.Length - 1] != BaseHelper.LfChar)
-        {
-            this.builder.Append(BaseHelper.LfChar);
-        }
-
-        this.builder.Append(BaseHelper.LfChar);
-
-        return this;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public IndentWriter WriteLine(string? value)
-    {
-        this.Write(value);
-        return this.WriteLine();
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public IndentWriter WriteLine(ReadOnlySpan<char> value)
-    {
-        this.Write(value);
-        return this.WriteLine();
-    }
-
-    public IndentWriter WriteLine(char value)
-    {
-        this.Write(value);
-        return this.WriteLine();
-    }
-
-    public IndentWriter Append(char value)
-        => this.Write(value);
-
-    public IndentWriter Append(ReadOnlySpan<char> value)
-    {
-        this.WriteIndentIfRequired();
-        this.builder.Append(value);
-        return this;
-    }
-
     public IndentWriter AppendLine()
-        => this.WriteLine();
+    {
+        this.builder.AppendLine();
+        this.isLineStart = true;
+        return this;
+    }
 
-    public IndentWriter AppendLine(string? value)
-        => this.WriteLine(value);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public IndentWriter AppendLine<T>(T value)
+        where T : ISpanFormattable
+    {
+        this.Append(value);
+        return this.AppendLine();
+    }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public IndentWriter AppendLine(ReadOnlyMemory<char> value)
+        => this.AppendLine(value.Span);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter AppendLine(ReadOnlySpan<char> value)
-        => this.WriteLine(value);
+    {
+        this.Append(value);
+        return this.AppendLine();
+    }
 
     public override string ToString()
         => this.builder.ToString();
 
-    public string ToString(int startIndex, int length)
-        => this.builder.ToString(startIndex, length);
+    public void Dispose()
+        => this.builder.Dispose();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void WriteIndentIfRequired()
+    private void AppendIndentIfRequired()
     {
         if (!this.isLineStart)
         {

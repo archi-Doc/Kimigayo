@@ -16,9 +16,9 @@ public partial class ErrorKoto : Koto
     public override string ToString()
         => $"Error";
 
-    public override void WriteTo(IndentWriter writer)
+    public override void WriteTo(ref IndentWriter writer)
     {
-        writer.Write("Error");
+        writer.Append("Error");
     }
 
     public override (string Text, Koto[]? Children) Dump()

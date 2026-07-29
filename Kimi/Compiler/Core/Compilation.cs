@@ -95,8 +95,8 @@ public class Compilation
             return;
         }
 
-        var writer = new IndentWriter();
-        this.ProjectKotonoha.Root.UnparseAll(writer);
+        using var writer = default(IndentWriter);
+        this.ProjectKotonoha.Root.UnparseAll(ref writer);
 
         var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
         File.WriteAllText(path, writer.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
@@ -109,8 +109,8 @@ public class Compilation
             return;
         }
 
-        var writer2 = new IndentWriter();
-        kotonoha.Root.UnparseTo(writer2);
+        using var writer2 = default(IndentWriter);
+        kotonoha.Root.UnparseTo(ref writer2);
         var sb2 = writer2.ToString();
     }
 

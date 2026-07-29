@@ -219,11 +219,11 @@ public abstract partial class Koto
         this.Range = range;
     }
 
-    public virtual void WriteTo(IndentWriter writer)
+    public virtual void WriteTo(ref IndentWriter writer)
     {
     }
 
-    public virtual void UnparseTo(IndentWriter writer)
+    public virtual void UnparseTo(ref IndentWriter writer)
     {
         if (this.AttributeChain is not null)
         {
@@ -232,15 +232,15 @@ public abstract partial class Koto
             if (this is AliasKoto ||
                 this is GroupKoto)
             {
-                writer.WriteLine();
+                writer.AppendLine();
             }
             else
             {
-                writer.Write(' ');
+                writer.Append(' ');
             }
         }
 
-        this.WriteTo(writer);
+        this.WriteTo(ref writer);
     }
 
     public virtual (string Text, Koto[]? Children) Dump()

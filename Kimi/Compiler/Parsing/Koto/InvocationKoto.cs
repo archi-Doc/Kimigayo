@@ -57,21 +57,21 @@ public partial class InvocationKoto : Koto
         return sb.ToString();
     }
 
-    public override void WriteTo(IndentWriter writer)
+    public override void WriteTo(ref IndentWriter writer)
     {
         this.Method.WriteTo(writer);
-        writer.Write(Constants.OpenParenthesisChar);
+        writer.Append(Constants.OpenParenthesisChar);
         for (var i = 0; i < this.Arguments.Count; i++)
         {
             this.Arguments[i].WriteTo(writer);
             if (i < (this.Arguments.Count - 1))
             {
-                writer.Write(Constants.CommaChar);
-                writer.Write(Constants.SpaceChar);
+                writer.Append(Constants.CommaChar);
+                writer.Append(Constants.SpaceChar);
             }
         }
 
-        writer.Write(Constants.CloseParenthesisChar);
+        writer.Append(Constants.CloseParenthesisChar);
     }
 
     public override (string Text, Koto[]? Children) Dump()

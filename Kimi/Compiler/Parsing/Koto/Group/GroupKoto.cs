@@ -152,37 +152,37 @@ public partial class GroupKoto : BlockKoto
         return $"{this.TokenKind.ToText()} {this.Name}";
     }
 
-    public override void UnparseTo(IndentWriter writer)
+    public override void UnparseTo(ref IndentWriter writer)
     {// public group A
         if (this.AttributeChain is not null)
         {
             KotoParser.UnparseAttribute(this.AttributeChain, writer);
-            writer.WriteLine();
+            writer.AppendLine();
         }
 
         if (this.IsRoot)
         {
-            writer.Write("Root");
+            writer.Append("Root");
             return;
         }
 
         this.Modifier.WriteTo(writer, true);
-        writer.Write(this.TokenKind.ToText());
-        writer.Write(' ');
-        writer.Write(this.Name);
+        writer.Append(this.TokenKind.ToText());
+        writer.Append(' ');
+        writer.Append(this.Name);
     }
 
-    public void UnparseToRoot(IndentWriter writer)
+    public void UnparseToRoot(ref IndentWriter writer)
     {// rootgroup A
         if (this.AttributeChain is not null)
         {
             KotoParser.UnparseAttribute(this.AttributeChain, writer);
-            writer.WriteLine();
+            writer.AppendLine();
         }
 
         this.Modifier.WriteTo(writer, true);
-        writer.Write(Constants.RootgroupKeyword);
-        writer.Write(' ');
+        writer.Append(Constants.RootgroupKeyword);
+        writer.Append(' ');
         KotoParser.WriteQualifiedNameTo(this, writer);
     }
 
@@ -276,10 +276,10 @@ NextToken:
         }
     }
 
-    public void UnparseAll(IndentWriter writer)
+    public void UnparseAll(ref IndentWriter writer)
     {
         GroupKoto? currentGroup = this.IsRoot ? null : this;
-        this.UnparseAllInternal(0, writer, false);
+        this.UnparseAllInternal(0, ref writer, false);
     }
 
     public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenState state, SourceRange range)
@@ -330,25 +330,25 @@ NextToken:
     {
     }
 
-    private void UnparseAllInternal(int indents, IndentWriter writer, bool parentDeclared)
+    private void UnparseAllInternal(int indents, ref IndentWriter writer, bool parentDeclared)
     {
         var groupDeclared = false;
 
         if ((!this.IsRoot && this.KotoList.Count > 0)
             || this.Modifier != 0)
         {
-            writer.AppendEmptyLine();
+            writer.EnsureTrailingBlankLine();
             if (this.KotoKind == KotoKind.Group)
             {// rootgroup A
                 writer.SetIndent(0);
-                this.UnparseToRoot(writer);
-                writer.WriteLine();
+                this.UnparseToRoot(ref writer);
+                writer.AppendLine();
                 writer.IncrementIndent();
             }
             else
             {// struct A
-                this.UnparseTo(writer);
-                writer.WriteLine();
+                this.UnparseTo(ref writer);
+                writer.AppendLine();
                 writer.IncrementIndent();
             }
 
@@ -359,8 +359,8 @@ NextToken:
         {
             foreach (var x in this.KotoList)
             {
-                x.UnparseTo(writer);
-                writer.WriteLine();
+                x.UnparseTo(ref writer);
+                writer.AppendLine();
             }
         }
 
@@ -369,10 +369,10 @@ NextToken:
         {
             // DeclareGroup(writer, ref currentGroup);
 
-            writer.AppendEmptyLine();
+            writer.EnsureTrailingBlankLine();
             foreach (var x in groups)
             {
-                x.UnparseAllInternal(indents + 1, writer, groupDeclared);
+                x.UnparseAllInternal(indents + 1, ref writer, groupDeclared);
             }
         }
 

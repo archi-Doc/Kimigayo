@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
 using Kimi.Compiler.Lexing;
 
 namespace Kimi.Compiler.Parsing;
@@ -46,45 +47,46 @@ public partial class FieldKoto : Koto
         return $"{this.VariableText} {this.NameKoto.Identifier}{typeText}";
     }
 
-    public override void WriteTo(IndentWriter writer)
+    public override void WriteTo(ref IndentWriter writer)
     {
-        writer.Write(this.VariableText);
-        writer.Write(' ');
+        writer.Append(this.VariableText);
+        writer.Append(' ');
 
-        writer.Write(this.NameKoto.Identifier);
+        writer.Append(this.NameKoto.Identifier);
 
         if (this.typeToken.Kind != TokenKind.Invalid)
         {// ": i32"
-            writer.Write(": ");
-            writer.Write(this.typeToken.Text);
+            writer.Append(": ");
+            writer.Append(this.typeToken.Text);
+            var sb = new StringBuilder();
         }
     }
 
-    public override void UnparseTo(IndentWriter writer)
+    public override void UnparseTo(ref IndentWriter writer)
     {// public let x: i32 = 1
         if (this.AttributeChain is not null)
         {
             KotoParser.UnparseAttribute(this.AttributeChain, writer);
-            writer.WriteLine();
+            writer.AppendLine();
         }
 
-        this.Modifier.WriteTo(writer, true);
+        this.Modifier.WriteTo(ref writer, true);
 
-        writer.Write(this.VariableText);
-        writer.Write(' ');
+        writer.Append(this.VariableText);
+        writer.Append(' ');
 
-        writer.Write(this.NameKoto.Identifier);
+        writer.Append(this.NameKoto.Identifier);
 
         if (this.typeToken.Kind != TokenKind.Invalid)
         {// ": i32"
-            writer.Write(": ");
-            writer.Write(this.typeToken.Text);
+            writer.Append(": ");
+            writer.Append(this.typeToken.Text);
         }
 
         if (this.InitializerKoto != default)
         {// "= 1"
-            writer.Write(" = ");
-            this.InitializerKoto.UnparseTo(writer);
+            writer.Append(" = ");
+            this.InitializerKoto.UnparseTo(ref writer);
         }
     }
 
