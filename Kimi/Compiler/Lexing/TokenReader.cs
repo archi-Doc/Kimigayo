@@ -99,7 +99,7 @@ public ref struct TokenReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void RestoreState(TokenState state)
     {
-        (this.AttributeKoto, this.ModifierKind, this.IsExcluded) = (state.AttributeKoto, state.ModifierKind, this.IsExcluded);
+        (this.AttributeKoto, this.ModifierKind, this.IsExcluded) = (state.AttributeKoto, state.ModifierKind, state.IsExcluded);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

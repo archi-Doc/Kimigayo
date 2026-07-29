@@ -95,7 +95,7 @@ public class Compilation
             return;
         }
 
-        var builder = default(IndentedStringBuilder);
+        var builder = new IndentedStringBuilder(IndentedStringBuilder.DefaultSpacesPerIndent);
         var builder2 = default(IndentedStringBuilder);
         try
         {

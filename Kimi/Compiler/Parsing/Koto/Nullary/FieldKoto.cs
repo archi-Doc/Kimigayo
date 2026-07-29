@@ -52,7 +52,6 @@ public partial class FieldKoto : Koto
         if (this.AttributeChain is not null)
         {
             KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
-            builder.AppendLine();
         }
 
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);

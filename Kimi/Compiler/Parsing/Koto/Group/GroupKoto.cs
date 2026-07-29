@@ -256,8 +256,16 @@ public partial class GroupKoto : BlockKoto
                 }
             }
             else
-            {// unknown
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+            {
+                var koto = KotoParser.ParseExpression(ref reader);//
+                if (koto is ErrorKoto)
+                {// Error
+                    reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+                }
+                else
+                {
+                    this.AddLast(koto);
+                }
             }
 
 NextToken:
