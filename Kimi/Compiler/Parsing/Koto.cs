@@ -8,6 +8,12 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+[Flags]
+public enum KotoWriteFlag : byte
+{
+
+}
+
 public enum KotoKind : byte
 {
     Invalid,
@@ -217,6 +223,20 @@ public abstract partial class Koto
     {
         this.CodeContext = codeContext;
         this.Range = range;
+    }
+
+    public override string ToString()
+    {
+        var builder = default(IndentWriter);
+        try
+        {
+            this.WriteTo(ref builder);
+            return builder.ToString();
+        }
+        finally
+        {
+            builder.Dispose();
+        }
     }
 
     public virtual void WriteTo(ref IndentWriter writer)
