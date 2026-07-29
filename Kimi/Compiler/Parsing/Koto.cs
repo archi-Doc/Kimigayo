@@ -11,7 +11,6 @@ namespace Kimi.Compiler.Parsing;
 [Flags]
 public enum KotoWriteFlag : byte
 {
-
 }
 
 public enum KotoKind : byte

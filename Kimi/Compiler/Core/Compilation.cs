@@ -96,7 +96,7 @@ public class Compilation
         }
 
         var builder = default(IndentedStringBuilder);
-        var writer2 = default(IndentedStringBuilder);
+        var builder2 = default(IndentedStringBuilder);
         try
         {
             this.ProjectKotonoha.Root.UnparseAll(ref builder);
@@ -113,13 +113,13 @@ public class Compilation
                 return;
             }
 
-            kotonoha.Root.UnparseTo(ref writer2);
-            var sb2 = writer2.ToString();
+            kotonoha.Root.UnparseTo(ref builder2);
+            var sb2 = builder2.ToString();
         }
         finally
         {
             builder.Dispose();
-            writer2.Dispose();
+            builder2.Dispose();
         }
     }
 
