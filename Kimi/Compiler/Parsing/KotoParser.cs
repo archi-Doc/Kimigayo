@@ -148,7 +148,7 @@ public static class KotoParser
         }
     }
 
-    public static void UnparseAttribute(AttributeKoto? a0, IndentWriter writer)
+    public static void UnparseAttribute(AttributeKoto? a0, ref IndentWriter writer)
     {
         if (a0 is null)
         {

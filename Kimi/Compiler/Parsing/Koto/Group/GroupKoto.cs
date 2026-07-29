@@ -156,7 +156,7 @@ public partial class GroupKoto : BlockKoto
     {// public group A
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, writer);
+            KotoParser.UnparseAttribute(this.AttributeChain, ref writer);
             writer.AppendLine();
         }
 
@@ -176,7 +176,7 @@ public partial class GroupKoto : BlockKoto
     {// rootgroup A
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, writer);
+            KotoParser.UnparseAttribute(this.AttributeChain, ref writer);
             writer.AppendLine();
         }
 

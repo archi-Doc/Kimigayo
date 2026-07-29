@@ -66,7 +66,7 @@ public partial class FieldKoto : Koto
     {// public let x: i32 = 1
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, writer);
+            KotoParser.UnparseAttribute(this.AttributeChain, ref writer);
             writer.AppendLine();
         }
 

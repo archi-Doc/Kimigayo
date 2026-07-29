@@ -227,7 +227,7 @@ public abstract partial class Koto
     {
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, writer);
+            KotoParser.UnparseAttribute(this.AttributeChain, ref writer);
 
             if (this is AliasKoto ||
                 this is GroupKoto)
