@@ -259,6 +259,11 @@ public abstract partial class Koto
 
     public virtual void WriteTo(ref IndentedStringBuilder builder)
     {
+        if (this.AttributeChain is not null)
+        {
+            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
+        }
+
         builder.Append("Koto");
     }
 

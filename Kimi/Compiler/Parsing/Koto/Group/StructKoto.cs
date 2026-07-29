@@ -25,9 +25,9 @@ public sealed partial class StructKoto : GroupKoto
     {
     }
 
-    public override void UnparseTo(ref IndentedStringBuilder builder)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {// public group A: @B
-        base.UnparseTo(ref builder);
+        base.WriteTo(ref builder);
 
         if (this.BaseList.Count != 0)
         {

@@ -48,25 +48,10 @@ public partial class FieldKoto : Koto
     }
 
     public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        builder.Append(this.VariableText);
-        builder.Append(' ');
-
-        builder.Append(this.NameKoto.Identifier);
-
-        if (this.typeToken.Kind != TokenKind.Invalid)
-        {// ": i32"
-            builder.Append(": ");
-            builder.Append(this.typeToken.Text);
-            var sb = new StringBuilder();
-        }
-    }
-
-    public override void UnparseTo(ref IndentedStringBuilder builder)
     {// public let x: i32 = 1
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder);
+            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
             builder.AppendLine();
         }
 
@@ -86,7 +71,7 @@ public partial class FieldKoto : Koto
         if (this.InitializerKoto != default)
         {// "= 1"
             builder.Append(" = ");
-            this.InitializerKoto.UnparseTo(ref builder);
+            this.InitializerKoto.WriteTo(ref builder);
         }
     }
 

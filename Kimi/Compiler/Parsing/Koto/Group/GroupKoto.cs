@@ -152,12 +152,11 @@ public partial class GroupKoto : BlockKoto
         return $"{this.TokenKind.ToText()} {this.Name}";
     }
 
-    public override void UnparseTo(ref IndentedStringBuilder builder)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {// public group A
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder);
-            builder.AppendLine();
+            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
         }
 
         if (this.IsRoot)
@@ -176,7 +175,7 @@ public partial class GroupKoto : BlockKoto
     {// rootgroup A
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder);
+            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
             builder.AppendLine();
         }
 
@@ -262,7 +261,7 @@ public partial class GroupKoto : BlockKoto
             }
 
 NextToken:
-            // Consume Attribute and modifiers
+// Consume Attribute and modifiers
             KotoParser.ConsumeAttributeModifierAndRead(ref reader, out token);
             if (!token.IsValid)
             {
@@ -347,7 +346,7 @@ NextToken:
             }
             else
             {// struct A
-                this.UnparseTo(ref builder);
+                this.WriteTo(ref builder);
                 builder.AppendLine();
                 builder.IncrementIndent();
             }
@@ -359,7 +358,7 @@ NextToken:
         {
             foreach (var x in this.KotoList)
             {
-                x.UnparseTo(ref builder);
+                x.WriteTo(ref builder);
                 builder.AppendLine();
             }
         }

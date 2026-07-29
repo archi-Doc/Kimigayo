@@ -113,8 +113,8 @@ public class Compilation
                 return;
             }
 
-            kotonoha.Root.UnparseTo(ref builder2);
-            var sb2 = builder2.ToString();
+            // kotonoha.Root.WriteTo(ref builder2);
+            // var sb2 = builder2.ToString();
         }
         finally
         {
