@@ -2,6 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using Arc.Collections;
+using Kimi.Compiler.Parsing;
 
 namespace Kimi;
 
@@ -32,7 +33,7 @@ public ref struct IndentedStringBuilder
     static IndentedStringBuilder()
     {
         SpaceBuffer = new char[SpaceBufferLength];
-        Array.Fill(SpaceBuffer, ' ');
+        Array.Fill(SpaceBuffer, BaseHelper.SpaceChar);
     }
 
     /// <summary>
@@ -272,25 +273,35 @@ public ref struct IndentedStringBuilder
     }
 
     /// <summary>
-    /// Ensures that the builder ends with a blank line represented by two
-    /// consecutive line feed characters.
+    /// Ensures that the builder ends with a blank line represented by two consecutive line feed characters.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void EnsureTrailingBlankLine()
     {
-        this.builder.GetLastTwoChars(out char previous, out char last);
-
-        if (last != BaseHelper.LfChar)
-        {
-            this.builder.Append(BaseHelper.LfChar);
-            this.builder.Append(BaseHelper.LfChar);
-        }
-        else if (previous != BaseHelper.LfChar)
-        {
-            this.builder.Append(BaseHelper.LfChar);
-        }
-
+        this.builder.EnsureTrailingBlankLine();
         this.isLineStart = true;
+    }
+
+    /// <summary>
+    /// Ensures that the builder ends with a space unless it already ends with a space or line feed.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void EnsureTrailingSpace()
+    {
+        this.builder.EnsureTrailingSpace();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AppendTrailingSpaceOrLineFeed(KotoWriteOptions options)
+    {
+        if (options.HasFlag(KotoWriteOptions.AppendLineFeed))
+        {
+            this.AppendLine();
+        }
+        else if (options.HasFlag(KotoWriteOptions.AppendSpace))
+        {
+            this.EnsureTrailingSpace();
+        }
     }
 
     /// <summary>

@@ -259,26 +259,7 @@ public abstract partial class Koto
 
     public virtual void WriteTo(ref IndentedStringBuilder builder)
     {
-    }
-
-    public virtual void UnparseTo(ref IndentedStringBuilder builder)
-    {
-        if (this.AttributeChain is not null)
-        {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder);
-
-            if (this is AliasKoto ||
-                this is GroupKoto)
-            {
-                builder.AppendLine();
-            }
-            else
-            {
-                builder.Append(' ');
-            }
-        }
-
-        this.WriteTo(ref builder);
+        builder.Append("Koto");
     }
 
     public virtual (string Text, Koto[]? Children) Dump()

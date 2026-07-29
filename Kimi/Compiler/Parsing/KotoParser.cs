@@ -148,7 +148,7 @@ public static class KotoParser
         }
     }
 
-    public static void UnparseAttribute(AttributeKoto? a0, ref IndentedStringBuilder builder)
+    public static void UnparseAttribute(AttributeKoto? a0, ref IndentedStringBuilder builder, KotoWriteOptions options)
     {
         if (a0 is null)
         {
@@ -159,7 +159,7 @@ public static class KotoParser
         if (a1 is null)
         {
             a0.WriteTo(ref builder);
-            // builder.Append(' ');
+            builder.AppendTrailingSpaceOrLineFeed(options);
             return;
         }
 
@@ -169,7 +169,7 @@ public static class KotoParser
             a1.WriteTo(ref builder);
             builder.Append(' ');
             a0.WriteTo(ref builder);
-            // builder.Append(' ');
+            builder.AppendTrailingSpaceOrLineFeed(options);
             return;
         }
 
@@ -181,7 +181,7 @@ public static class KotoParser
             a1.WriteTo(ref builder);
             builder.Append(' ');
             a0.WriteTo(ref builder);
-            // builder.Append(' ');
+            builder.AppendTrailingSpaceOrLineFeed(options);
             return;
         }
 
@@ -195,7 +195,7 @@ public static class KotoParser
             a1.WriteTo(ref builder);
             builder.Append(' ');
             a0.WriteTo(ref builder);
-            // builder.Append(' ');
+            builder.AppendTrailingSpaceOrLineFeed(options);
             return;
         }
 
@@ -216,12 +216,7 @@ public static class KotoParser
             }
         }
 
-        /*list.Reverse();
-        foreach (var y in list)
-        {
-            builder.Append(y.ToString());
-            builder.Append(' ');
-        }*/
+        builder.AppendTrailingSpaceOrLineFeed(options);
     }
 
     public static string UnparseAttribute(AttributeKoto? a0)
@@ -381,7 +376,7 @@ Exit:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WriteTo(this ModifierKind kind, ref IndentedStringBuilder builder, bool addSpace = false)
+    public static void WriteTo(this ModifierKind kind, ref IndentedStringBuilder builder, KotoWriteOptions writeOptions)
     {
         var acc = kind.ExtractAccessibilityModifiers();
         var accText = acc switch
@@ -402,55 +397,31 @@ Exit:
 
         builder.Append(accText);
 
-        if (addSpace)
-        {// "public "
-            if (kind.HasFlag(ModifierKind.Static))
-            {// "public static "
-                if (kind.HasFlag(ModifierKind.Open))
-                {// "public static open "
-                    builder.Append(" static open ");
-                }
-                else
-                {// "public static "
-                    builder.Append(" static ");
-                }
+        if (kind.HasFlag(ModifierKind.Static))
+        {// "public static "
+            builder.EnsureTrailingSpace();
+            if (kind.HasFlag(ModifierKind.Open))
+            {// "public static open "
+                builder.Append("static open");
             }
             else
-            {// "public "
-                if (kind.HasFlag(ModifierKind.Open))
-                {// public open "
-                    builder.Append(" open ");
-                }
-                else
-                {// "public "
-                    builder.Append(" ");
-                }
+            {// "public static "
+                builder.Append("static");
             }
         }
         else
-        {// "public"
-            if (kind.HasFlag(ModifierKind.Static))
-            {// "public static"
-                if (kind.HasFlag(ModifierKind.Open))
-                {// "public static open"
-                    builder.Append(" static open");
-                }
-                else
-                {// "public static"
-                    builder.Append(" static");
-                }
+        {// "public "
+            if (kind.HasFlag(ModifierKind.Open))
+            {// public open "
+                builder.EnsureTrailingSpace();
+                builder.Append("open");
             }
             else
-            {// "public"
-                if (kind.HasFlag(ModifierKind.Open))
-                {// public open"
-                    builder.Append(" open");
-                }
-                else
-                {// "public"
-                }
+            {// "public "
             }
         }
+
+        builder.AppendTrailingSpaceOrLineFeed(writeOptions);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

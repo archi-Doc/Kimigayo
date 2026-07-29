@@ -166,7 +166,7 @@ public partial class GroupKoto : BlockKoto
             return;
         }
 
-        this.Modifier.WriteTo(ref builder, true);
+        this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
         builder.Append(this.TokenKind.ToText());
         builder.Append(' ');
         builder.Append(this.Name);
@@ -180,7 +180,7 @@ public partial class GroupKoto : BlockKoto
             builder.AppendLine();
         }
 
-        this.Modifier.WriteTo(ref builder, true);
+        this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
         builder.Append(Constants.RootgroupKeyword);
         builder.Append(' ');
         KotoParser.WriteQualifiedNameTo(this, ref builder);

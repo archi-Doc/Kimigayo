@@ -70,7 +70,7 @@ public partial class FieldKoto : Koto
             builder.AppendLine();
         }
 
-        this.Modifier.WriteTo(ref builder, true);
+        this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
 
         builder.Append(this.VariableText);
         builder.Append(' ');
