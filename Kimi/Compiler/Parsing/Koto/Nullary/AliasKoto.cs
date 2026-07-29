@@ -21,6 +21,11 @@ public sealed partial class AliasKoto : Koto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
+        if (this.AttributeChain is not null)
+        {
+            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
+        }
+
         builder.Append("alias ");
         for (var i = 0; i < this.QualifiedName.Count; i++)
         {

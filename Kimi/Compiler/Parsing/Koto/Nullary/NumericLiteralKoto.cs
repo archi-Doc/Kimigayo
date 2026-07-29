@@ -121,6 +121,11 @@ public sealed partial class NumericLiteralKoto : Koto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
+        if (this.AttributeChain is not null)
+        {
+            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
+        }
+
         builder.Append(this.Literal);
     }
 

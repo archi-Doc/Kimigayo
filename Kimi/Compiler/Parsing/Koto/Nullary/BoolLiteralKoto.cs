@@ -19,20 +19,13 @@ public sealed partial class BoolLiteralKoto : Koto
         }
     }
 
-    public override string ToString()
-    {
-        if (this.Value)
-        {
-            return TokenKind.True.ToText();
-        }
-        else
-        {
-            return TokenKind.False.ToText();
-        }
-    }
-
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
+        if (this.AttributeChain is not null)
+        {
+            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
+        }
+
         if (this.Value)
         {
             builder.Append(TokenKind.True.ToText());

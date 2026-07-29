@@ -60,7 +60,7 @@ public partial class FieldKoto : Koto
         builder.Append(this.VariableText);
         builder.Append(' ');
 
-        builder.Append(this.NameKoto.Identifier);
+        this.NameKoto.WriteTo(ref builder);
 
         if (this.typeToken.Kind != TokenKind.Invalid)
         {// ": i32"

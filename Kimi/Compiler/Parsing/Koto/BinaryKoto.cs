@@ -66,9 +66,7 @@ public partial class AsteriskKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" * ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " * ");
     }
 }
 
@@ -85,9 +83,7 @@ public partial class SlashKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" / ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " / ");
     }
 }
 
@@ -104,9 +100,7 @@ public partial class PercentKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" % ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " % ");
     }
 }
 
@@ -123,9 +117,7 @@ public partial class PlusKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" + ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " + ");
     }
 }
 
@@ -142,9 +134,7 @@ public partial class MinusKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" - ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " - ");
     }
 }
 
@@ -161,9 +151,7 @@ public partial class LessThanLessThanKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" << ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " << ");
     }
 }
 
@@ -180,9 +168,7 @@ public partial class GreaterThanGreaterThanKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" >> ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " >> ");
     }
 }
 
@@ -199,9 +185,7 @@ public partial class LessThanKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" < ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " < ");
     }
 }
 
@@ -218,9 +202,7 @@ public partial class LessThanEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" <= ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " <= ");
     }
 }
 
@@ -237,9 +219,7 @@ public partial class GreaterThanKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" > ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " > ");
     }
 }
 
@@ -256,9 +236,7 @@ public partial class GreaterThanEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" >= ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " >= ");
     }
 }
 
@@ -275,9 +253,7 @@ public partial class AsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" as ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " as ");
     }
 }
 
@@ -294,9 +270,7 @@ public partial class IsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" is ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " is ");
     }
 }
 
@@ -313,9 +287,7 @@ public partial class EqualsEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" == ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " == ");
     }
 }
 
@@ -332,9 +304,7 @@ public partial class ExclamationEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" != ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " != ");
     }
 }
 
@@ -351,9 +321,7 @@ public partial class AmpersandKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" & ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " & ");
     }
 }
 
@@ -370,9 +338,7 @@ public partial class CaretKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" ^ ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " ^ ");
     }
 }
 
@@ -389,9 +355,7 @@ public partial class BarKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" | ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " | ");
     }
 }
 
@@ -408,9 +372,7 @@ public partial class AndKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" and ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " and ");
     }
 }
 
@@ -427,9 +389,7 @@ public partial class OrKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" or ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " or ");
     }
 }
 
@@ -446,9 +406,7 @@ public partial class EqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" = ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " = ");
     }
 }
 
@@ -465,9 +423,7 @@ public partial class PlusEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" += ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " += ");
     }
 }
 
@@ -484,9 +440,7 @@ public partial class MinusEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" -= ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " -= ");
     }
 }
 
@@ -503,9 +457,7 @@ public partial class AsteriskEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" *= ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " *= ");
     }
 }
 
@@ -522,9 +474,7 @@ public partial class SlashEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" /= ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " /= ");
     }
 }
 
@@ -541,9 +491,7 @@ public partial class PercentEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" %= ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " %= ");
     }
 }
 
@@ -560,9 +508,7 @@ public partial class AmpersandEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" &= ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " &= ");
     }
 }
 
@@ -579,9 +525,7 @@ public partial class CaretEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" ^= ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " ^= ");
     }
 }
 
@@ -598,9 +542,7 @@ public partial class BarEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" |= ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " |= ");
     }
 }
 
@@ -617,9 +559,7 @@ public partial class LessThanLessThanEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" <<= ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " <<= ");
     }
 }
 
@@ -636,9 +576,7 @@ public partial class GreaterThanGreaterThanEqualsKoto : BinaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Left.WriteTo(ref builder);
-        builder.Append(" >>= ");
-        this.Right.WriteTo(ref builder);
+        this.WriteBinaryKoto(ref builder, " >>= ");
     }
 }
 
@@ -689,6 +627,20 @@ public abstract partial class BinaryKoto : Koto
         }
 
         return false;
+    }
+
+    protected void WriteBinaryKoto(ref IndentedStringBuilder builder, string infix)
+    {
+        this.Left.WriteTo(ref builder);
+
+        if (this.AttributeChain is not null)
+        {
+            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.None);
+        }
+
+        builder.Append(infix);
+
+        this.Right.WriteTo(ref builder);
     }
 
     [TinyhandOnDeserialized]

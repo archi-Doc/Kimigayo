@@ -1,13 +1,14 @@
+#A #B(1)
 alias Kimi.Base
 
 public rootgroup Playground
 
 rootgroup Playground.A
-var x = 1 + 2 * 3
+var x = 1 + 2 * #Multi 3
 var y = (1 + 2) * 3
 var x = 1
 let y = 2
-var z = Test.New()
+var z = #Func1 Test.New()
 var a = z
 var b = &z
 var c = &z
