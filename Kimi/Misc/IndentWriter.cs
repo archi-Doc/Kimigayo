@@ -52,40 +52,14 @@ public class IndentWriter
     }
 
     /// <summary>
-    /// Gets or sets the number of characters in the builder.
+    /// Gets the number of characters in the builder.
     /// </summary>
-    public int Length
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => this.builder.Length;
-
-        set
-        {
-            this.builder.Length = value;
-            this.isLineStart =
-                value == 0 ||
-                this.builder[value - 1] == BaseHelper.LfChar;
-        }
-    }
-
-    /// <summary>
-    /// Gets or sets the capacity of the internal buffer.
-    /// </summary>
-    public int Capacity
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => this.builder.Capacity;
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        set => this.builder.Capacity = value;
-    }
+    public int Length => this.builder.Length;
 
     /// <summary>
     /// Gets the current indentation level.
     /// </summary>
     public int IndentLevel => this.indentLevel;
-
-    public char this[int index] => this.builder[index];
 
     /// <summary>
     /// Increases the indentation level by one.
@@ -139,10 +113,6 @@ public class IndentWriter
         this.isLineStart = true;
         return this;
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int EnsureCapacity(int capacity)
-        => this.builder.EnsureCapacity(capacity);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IndentWriter Write(char value)
@@ -357,39 +327,8 @@ public class IndentWriter
         return this.WriteLine();
     }
 
-    public IndentWriter WriteLine(int value)
-    {
-        this.Write(value);
-        return this.WriteLine();
-    }
-
-    public IndentWriter WriteLine(long value)
-    {
-        this.Write(value);
-        return this.WriteLine();
-    }
-
-    public IndentWriter WriteLine(double value)
-    {
-        this.Write(value);
-        return this.WriteLine();
-    }
-
-    public IndentWriter WriteLine(object? value)
-    {
-        this.Write(value);
-        return this.WriteLine();
-    }
-
     public IndentWriter Append(char value)
         => this.Write(value);
-
-    public IndentWriter Append(string? value)
-    {
-        this.WriteIndentIfRequired();
-        this.builder.Append(value);
-        return this;
-    }
 
     public IndentWriter Append(ReadOnlySpan<char> value)
     {
@@ -397,33 +336,6 @@ public class IndentWriter
         this.builder.Append(value);
         return this;
     }
-
-    public IndentWriter Append(bool value)
-        => this.Write(value);
-
-    public IndentWriter Append(int value)
-        => this.Write(value);
-
-    public IndentWriter Append(uint value)
-        => this.Write(value);
-
-    public IndentWriter Append(long value)
-        => this.Write(value);
-
-    public IndentWriter Append(ulong value)
-        => this.Write(value);
-
-    public IndentWriter Append(float value)
-        => this.Write(value);
-
-    public IndentWriter Append(double value)
-        => this.Write(value);
-
-    public IndentWriter Append(decimal value)
-        => this.Write(value);
-
-    public IndentWriter Append(object? value)
-        => this.Write(value);
 
     public IndentWriter AppendLine()
         => this.WriteLine();
@@ -433,14 +345,6 @@ public class IndentWriter
 
     public IndentWriter AppendLine(ReadOnlySpan<char> value)
         => this.WriteLine(value);
-
-    public void CopyTo(int sourceIndex, Span<char> destination, int count)
-    {
-        this.builder.CopyTo(sourceIndex, destination, count);
-    }
-
-    public StringBuilder.ChunkEnumerator GetChunks()
-        => this.builder.GetChunks();
 
     public override string ToString()
         => this.builder.ToString();
