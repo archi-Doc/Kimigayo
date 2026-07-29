@@ -95,14 +95,14 @@ public class Compilation
             return;
         }
 
-        var writer = default(IndentedStringBuilder);
+        var builder = default(IndentedStringBuilder);
         var writer2 = default(IndentedStringBuilder);
         try
         {
-            this.ProjectKotonoha.Root.UnparseAll(ref writer);
+            this.ProjectKotonoha.Root.UnparseAll(ref builder);
 
             var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
-            var st = writer.ToString();
+            var st = builder.ToString();
             File.WriteAllText(path, st, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
             var bin = TinyhandSerializer.Serialize(this.ProjectKotonoha);
@@ -118,7 +118,7 @@ public class Compilation
         }
         finally
         {
-            writer.Dispose();
+            builder.Dispose();
             writer2.Dispose();
         }
     }

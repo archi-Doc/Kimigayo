@@ -239,28 +239,28 @@ public abstract partial class Koto
         }
     }
 
-    public virtual void WriteTo(ref IndentedStringBuilder writer)
+    public virtual void WriteTo(ref IndentedStringBuilder builder)
     {
     }
 
-    public virtual void UnparseTo(ref IndentedStringBuilder writer)
+    public virtual void UnparseTo(ref IndentedStringBuilder builder)
     {
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref writer);
+            KotoParser.UnparseAttribute(this.AttributeChain, ref builder);
 
             if (this is AliasKoto ||
                 this is GroupKoto)
             {
-                writer.AppendLine();
+                builder.AppendLine();
             }
             else
             {
-                writer.Append(' ');
+                builder.Append(' ');
             }
         }
 
-        this.WriteTo(ref writer);
+        this.WriteTo(ref builder);
     }
 
     public virtual (string Text, Koto[]? Children) Dump()

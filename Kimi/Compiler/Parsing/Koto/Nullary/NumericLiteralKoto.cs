@@ -119,9 +119,9 @@ public sealed partial class NumericLiteralKoto : Koto
     public override string ToString()
         => $"{this.Literal}";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(this.Literal);
+        builder.Append(this.Literal);
     }
 
     public override (string Text, Koto[]? Children) Dump()

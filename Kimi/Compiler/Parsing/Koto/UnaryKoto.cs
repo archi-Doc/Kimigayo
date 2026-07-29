@@ -59,10 +59,10 @@ public partial class AttributeKoto : UnaryKoto
     public override string ToString()
         => $"#{this.Operand.ToString()}";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(Constants.SharpChar);
-        writer.Append(this.Operand.ToString());
+        builder.Append(Constants.SharpChar);
+        builder.Append(this.Operand.ToString());
     }
 }
 
@@ -77,10 +77,10 @@ public partial class MacroKoto : UnaryKoto
     public override string ToString()
         => $"${this.Operand.ToString()}";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(Constants.DollarChar);
-        writer.Append(this.Operand.ToString());
+        builder.Append(Constants.DollarChar);
+        builder.Append(this.Operand.ToString());
     }
 }
 
@@ -95,10 +95,10 @@ public partial class ReferenceKoto : UnaryKoto
     public override string ToString()
         => $"&{this.Operand.ToString()}";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(Constants.AmpersandChar);
-        writer.Append(this.Operand.ToString());
+        builder.Append(Constants.AmpersandChar);
+        builder.Append(this.Operand.ToString());
     }
 }
 
@@ -113,10 +113,10 @@ public partial class UnwrapKoto : UnaryKoto
     public override string ToString()
         => $"*{this.Operand.ToString()}";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(Constants.AsteriskChar);
-        writer.Append(this.Operand.ToString());
+        builder.Append(Constants.AsteriskChar);
+        builder.Append(this.Operand.ToString());
     }
 }
 
@@ -131,10 +131,10 @@ public partial class PrefixCaretKoto : UnaryKoto
     public override string ToString()
         => $"^{this.Operand.ToString()}";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(Constants.CaretChar);
-        writer.Append(this.Operand.ToString());
+        builder.Append(Constants.CaretChar);
+        builder.Append(this.Operand.ToString());
     }
 }
 
@@ -149,10 +149,10 @@ public partial class PrefixPlusKoto : UnaryKoto
     public override string ToString()
         => $"+{this.Operand.ToString()}";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(Constants.PlusChar);
-        writer.Append(this.Operand.ToString());
+        builder.Append(Constants.PlusChar);
+        builder.Append(this.Operand.ToString());
     }
 }
 
@@ -167,11 +167,11 @@ public partial class PrefixPlusPlusKoto : UnaryKoto
     public override string ToString()
         => $"++{this.Operand.ToString()}";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(Constants.PlusChar);
-        writer.Append(Constants.PlusChar);
-        writer.Append(this.Operand.ToString());
+        builder.Append(Constants.PlusChar);
+        builder.Append(Constants.PlusChar);
+        builder.Append(this.Operand.ToString());
     }
 }
 
@@ -186,10 +186,10 @@ public partial class PrefixMinusKoto : UnaryKoto
     public override string ToString()
         => $"-{this.Operand.ToString()}";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(Constants.MinusChar);
-        writer.Append(this.Operand.ToString());
+        builder.Append(Constants.MinusChar);
+        builder.Append(this.Operand.ToString());
     }
 }
 
@@ -204,11 +204,11 @@ public partial class PrefixMinusMinusKoto : UnaryKoto
     public override string ToString()
         => $"--{this.Operand.ToString()}";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(Constants.MinusChar);
-        writer.Append(Constants.MinusChar);
-        writer.Append(this.Operand.ToString());
+        builder.Append(Constants.MinusChar);
+        builder.Append(Constants.MinusChar);
+        builder.Append(this.Operand.ToString());
     }
 }
 
@@ -223,11 +223,11 @@ public partial class PostfixIncrementKoto : UnaryKoto
     public override string ToString()
         => $"{this.Operand.ToString()}++";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(this.Operand.ToString());
-        writer.Append(Constants.PlusChar);
-        writer.Append(Constants.PlusChar);
+        builder.Append(this.Operand.ToString());
+        builder.Append(Constants.PlusChar);
+        builder.Append(Constants.PlusChar);
     }
 }
 
@@ -242,11 +242,11 @@ public partial class PostfixDecrementKoto : UnaryKoto
     public override string ToString()
         => $"{this.Operand.ToString()}--";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(this.Operand.ToString());
-        writer.Append(Constants.MinusChar);
-        writer.Append(Constants.MinusChar);
+        builder.Append(this.Operand.ToString());
+        builder.Append(Constants.MinusChar);
+        builder.Append(Constants.MinusChar);
     }
 }
 
@@ -261,10 +261,10 @@ public partial class NotKoto : UnaryKoto
     public override string ToString()
         => $"not {this.Operand.ToString()}";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append("not ");
-        writer.Append(this.Operand.ToString());
+        builder.Append("not ");
+        builder.Append(this.Operand.ToString());
     }
 }
 
@@ -279,11 +279,11 @@ public partial class ParenthesizedKoto : UnaryKoto
     public override string ToString()
         => $"({this.Operand.ToString()})";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        writer.Append(Constants.OpenParenthesisChar);
-        writer.Append(this.Operand.ToString());
-        writer.Append(Constants.CloseParenthesisChar);
+        builder.Append(Constants.OpenParenthesisChar);
+        builder.Append(this.Operand.ToString());
+        builder.Append(Constants.CloseParenthesisChar);
     }
 }
 

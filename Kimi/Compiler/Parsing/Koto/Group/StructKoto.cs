@@ -25,18 +25,18 @@ public sealed partial class StructKoto : GroupKoto
     {
     }
 
-    public override void UnparseTo(ref IndentedStringBuilder writer)
+    public override void UnparseTo(ref IndentedStringBuilder builder)
     {// public group A: @B
-        base.UnparseTo(ref writer);
+        base.UnparseTo(ref builder);
 
         if (this.BaseList.Count != 0)
         {
-            writer.Append(": ");
+            builder.Append(": ");
 
             foreach (var x in this.BaseList)
             {
-                writer.Append(x.Text);
-                writer.Append(", ");
+                builder.Append(x.Text);
+                builder.Append(", ");
             }
         }
     }

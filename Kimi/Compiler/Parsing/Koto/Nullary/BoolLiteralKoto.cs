@@ -31,15 +31,15 @@ public sealed partial class BoolLiteralKoto : Koto
         }
     }
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
         if (this.Value)
         {
-            writer.Append(TokenKind.True.ToText());
+            builder.Append(TokenKind.True.ToText());
         }
         else
         {
-            writer.Append(TokenKind.False.ToText());
+            builder.Append(TokenKind.False.ToText());
         }
     }
 

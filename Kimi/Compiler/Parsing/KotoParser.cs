@@ -148,7 +148,7 @@ public static class KotoParser
         }
     }
 
-    public static void UnparseAttribute(AttributeKoto? a0, ref IndentedStringBuilder writer)
+    public static void UnparseAttribute(AttributeKoto? a0, ref IndentedStringBuilder builder)
     {
         if (a0 is null)
         {
@@ -158,44 +158,44 @@ public static class KotoParser
         var a1 = a0.AttributeChain;
         if (a1 is null)
         {
-            a0.WriteTo(ref writer);
-            // writer.Append(' ');
+            a0.WriteTo(ref builder);
+            // builder.Append(' ');
             return;
         }
 
         var a2 = a1.AttributeChain;
         if (a2 is null)
         {
-            a1.WriteTo(ref writer);
-            writer.Append(' ');
-            a0.WriteTo(ref writer);
-            // writer.Append(' ');
+            a1.WriteTo(ref builder);
+            builder.Append(' ');
+            a0.WriteTo(ref builder);
+            // builder.Append(' ');
             return;
         }
 
         var a3 = a2.AttributeChain;
         if (a3 is null)
         {
-            a2.WriteTo(ref writer);
-            writer.Append(' ');
-            a1.WriteTo(ref writer);
-            writer.Append(' ');
-            a0.WriteTo(ref writer);
-            // writer.Append(' ');
+            a2.WriteTo(ref builder);
+            builder.Append(' ');
+            a1.WriteTo(ref builder);
+            builder.Append(' ');
+            a0.WriteTo(ref builder);
+            // builder.Append(' ');
             return;
         }
 
         var a4 = a3.AttributeChain;
         if (a4 is null)
         {
-            a3.WriteTo(ref writer);
-            writer.Append(' ');
-            a2.WriteTo(ref writer);
-            writer.Append(' ');
-            a1.WriteTo(ref writer);
-            writer.Append(' ');
-            a0.WriteTo(ref writer);
-            // writer.Append(' ');
+            a3.WriteTo(ref builder);
+            builder.Append(' ');
+            a2.WriteTo(ref builder);
+            builder.Append(' ');
+            a1.WriteTo(ref builder);
+            builder.Append(' ');
+            a0.WriteTo(ref builder);
+            // builder.Append(' ');
             return;
         }
 
@@ -209,18 +209,18 @@ public static class KotoParser
 
         for (var i = list.Count - 1; i >= 0; i--)
         {
-            list[i].WriteTo(ref writer);
+            list[i].WriteTo(ref builder);
             if (i != 0)
             {
-                writer.Append(' ');
+                builder.Append(' ');
             }
         }
 
         /*list.Reverse();
         foreach (var y in list)
         {
-            writer.Append(y.ToString());
-            writer.Append(' ');
+            builder.Append(y.ToString());
+            builder.Append(' ');
         }*/
     }
 
@@ -381,7 +381,7 @@ Exit:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WriteTo(this ModifierKind kind, ref IndentedStringBuilder writer, bool addSpace = false)
+    public static void WriteTo(this ModifierKind kind, ref IndentedStringBuilder builder, bool addSpace = false)
     {
         var acc = kind.ExtractAccessibilityModifiers();
         var accText = acc switch
@@ -400,7 +400,7 @@ Exit:
             return;
         }
 
-        writer.Append(accText);
+        builder.Append(accText);
 
         if (addSpace)
         {// "public "
@@ -408,22 +408,22 @@ Exit:
             {// "public static "
                 if (kind.HasFlag(ModifierKind.Open))
                 {// "public static open "
-                    writer.Append(" static open ");
+                    builder.Append(" static open ");
                 }
                 else
                 {// "public static "
-                    writer.Append(" static ");
+                    builder.Append(" static ");
                 }
             }
             else
             {// "public "
                 if (kind.HasFlag(ModifierKind.Open))
                 {// public open "
-                    writer.Append(" open ");
+                    builder.Append(" open ");
                 }
                 else
                 {// "public "
-                    writer.Append(" ");
+                    builder.Append(" ");
                 }
             }
         }
@@ -433,18 +433,18 @@ Exit:
             {// "public static"
                 if (kind.HasFlag(ModifierKind.Open))
                 {// "public static open"
-                    writer.Append(" static open");
+                    builder.Append(" static open");
                 }
                 else
                 {// "public static"
-                    writer.Append(" static");
+                    builder.Append(" static");
                 }
             }
             else
             {// "public"
                 if (kind.HasFlag(ModifierKind.Open))
                 {// public open"
-                    writer.Append(" open");
+                    builder.Append(" open");
                 }
                 else
                 {// "public"

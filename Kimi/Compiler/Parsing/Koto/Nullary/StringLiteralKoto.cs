@@ -19,11 +19,11 @@ public sealed partial class StringLiteralKoto : Koto
     public override string ToString()
         => $"{this.Literal}";
 
-    public override void WriteTo(ref IndentedStringBuilder writer)
+    public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        // writer.Append('\"');
-        writer.Append(this.Literal);
-        // writer.Append('\"');
+        // builder.Append('\"');
+        builder.Append(this.Literal);
+        // builder.Append('\"');
     }
 
     public override (string Text, Koto[]? Children) Dump()
