@@ -83,7 +83,7 @@ public static class KotoParser
         return true;
     }
 
-    public static void WriteQualifiedNameTo(IdentifiableKoto? a0, ref IndentWriter builder)
+    public static void WriteQualifiedNameTo(IdentifiableKoto? a0, ref IndentedStringBuilder builder)
     {
         if (a0 is null)
         {
@@ -148,7 +148,7 @@ public static class KotoParser
         }
     }
 
-    public static void UnparseAttribute(AttributeKoto? a0, ref IndentWriter writer)
+    public static void UnparseAttribute(AttributeKoto? a0, ref IndentedStringBuilder writer)
     {
         if (a0 is null)
         {
@@ -381,7 +381,7 @@ Exit:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WriteTo(this ModifierKind kind, ref IndentWriter writer, bool addSpace = false)
+    public static void WriteTo(this ModifierKind kind, ref IndentedStringBuilder writer, bool addSpace = false)
     {
         var acc = kind.ExtractAccessibilityModifiers();
         var accText = acc switch

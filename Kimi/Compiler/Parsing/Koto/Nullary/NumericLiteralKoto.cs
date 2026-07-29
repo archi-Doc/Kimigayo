@@ -119,7 +119,7 @@ public sealed partial class NumericLiteralKoto : Koto
     public override string ToString()
         => $"{this.Literal}";
 
-    public override void WriteTo(ref IndentWriter writer)
+    public override void WriteTo(ref IndentedStringBuilder writer)
     {
         writer.Append(this.Literal);
     }

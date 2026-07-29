@@ -16,7 +16,7 @@ public partial class ErrorKoto : Koto
     public override string ToString()
         => $"Error";
 
-    public override void WriteTo(ref IndentWriter writer)
+    public override void WriteTo(ref IndentedStringBuilder writer)
     {
         writer.Append("Error");
     }

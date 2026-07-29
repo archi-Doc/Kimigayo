@@ -95,8 +95,8 @@ public class Compilation
             return;
         }
 
-        var writer = default(IndentWriter);
-        var writer2 = default(IndentWriter);
+        var writer = default(IndentedStringBuilder);
+        var writer2 = default(IndentedStringBuilder);
         try
         {
             this.ProjectKotonoha.Root.UnparseAll(ref writer);

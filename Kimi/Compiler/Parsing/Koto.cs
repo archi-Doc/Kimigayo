@@ -227,7 +227,7 @@ public abstract partial class Koto
 
     public override string ToString()
     {
-        var builder = default(IndentWriter);
+        var builder = default(IndentedStringBuilder);
         try
         {
             this.WriteTo(ref builder);
@@ -239,11 +239,11 @@ public abstract partial class Koto
         }
     }
 
-    public virtual void WriteTo(ref IndentWriter writer)
+    public virtual void WriteTo(ref IndentedStringBuilder writer)
     {
     }
 
-    public virtual void UnparseTo(ref IndentWriter writer)
+    public virtual void UnparseTo(ref IndentedStringBuilder writer)
     {
         if (this.AttributeChain is not null)
         {

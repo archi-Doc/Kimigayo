@@ -152,7 +152,7 @@ public partial class GroupKoto : BlockKoto
         return $"{this.TokenKind.ToText()} {this.Name}";
     }
 
-    public override void UnparseTo(ref IndentWriter writer)
+    public override void UnparseTo(ref IndentedStringBuilder writer)
     {// public group A
         if (this.AttributeChain is not null)
         {
@@ -172,7 +172,7 @@ public partial class GroupKoto : BlockKoto
         writer.Append(this.Name);
     }
 
-    public void UnparseToRoot(ref IndentWriter writer)
+    public void UnparseToRoot(ref IndentedStringBuilder writer)
     {// rootgroup A
         if (this.AttributeChain is not null)
         {
@@ -276,7 +276,7 @@ NextToken:
         }
     }
 
-    public void UnparseAll(ref IndentWriter writer)
+    public void UnparseAll(ref IndentedStringBuilder writer)
     {
         GroupKoto? currentGroup = this.IsRoot ? null : this;
         this.UnparseAllInternal(0, ref writer, false);
@@ -330,7 +330,7 @@ NextToken:
     {
     }
 
-    private void UnparseAllInternal(int indents, ref IndentWriter writer, bool parentDeclared)
+    private void UnparseAllInternal(int indents, ref IndentedStringBuilder writer, bool parentDeclared)
     {
         var groupDeclared = false;
 
