@@ -59,11 +59,11 @@ public partial class InvocationKoto : Koto
 
     public override void WriteTo(ref IndentWriter writer)
     {
-        this.Method.WriteTo(writer);
+        this.Method.WriteTo(ref writer);
         writer.Append(Constants.OpenParenthesisChar);
         for (var i = 0; i < this.Arguments.Count; i++)
         {
-            this.Arguments[i].WriteTo(writer);
+            this.Arguments[i].WriteTo(ref writer);
             if (i < (this.Arguments.Count - 1))
             {
                 writer.Append(Constants.CommaChar);

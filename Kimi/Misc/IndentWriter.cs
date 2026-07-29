@@ -31,7 +31,7 @@ public ref struct IndentWriter
     #region FieldAndProperty
 
     private readonly int spacesPerIndent;
-    private readonly PooledStringBuilder builder;
+    private PooledStringBuilder builder;
     private int indentLevel;
     private bool isLineStart = true;
 

@@ -83,7 +83,7 @@ public static class KotoParser
         return true;
     }
 
-    public static void WriteQualifiedNameTo(IdentifiableKoto? a0, IndentWriter builder)
+    public static void WriteQualifiedNameTo(IdentifiableKoto? a0, ref IndentWriter builder)
     {
         if (a0 is null)
         {
@@ -158,7 +158,7 @@ public static class KotoParser
         var a1 = a0.AttributeChain;
         if (a1 is null)
         {
-            a0.WriteTo(writer);
+            a0.WriteTo(ref writer);
             // writer.Append(' ');
             return;
         }
@@ -166,9 +166,9 @@ public static class KotoParser
         var a2 = a1.AttributeChain;
         if (a2 is null)
         {
-            a1.WriteTo(writer);
+            a1.WriteTo(ref writer);
             writer.Append(' ');
-            a0.WriteTo(writer);
+            a0.WriteTo(ref writer);
             // writer.Append(' ');
             return;
         }
@@ -176,11 +176,11 @@ public static class KotoParser
         var a3 = a2.AttributeChain;
         if (a3 is null)
         {
-            a2.WriteTo(writer);
+            a2.WriteTo(ref writer);
             writer.Append(' ');
-            a1.WriteTo(writer);
+            a1.WriteTo(ref writer);
             writer.Append(' ');
-            a0.WriteTo(writer);
+            a0.WriteTo(ref writer);
             // writer.Append(' ');
             return;
         }
@@ -188,13 +188,13 @@ public static class KotoParser
         var a4 = a3.AttributeChain;
         if (a4 is null)
         {
-            a3.WriteTo(writer);
+            a3.WriteTo(ref writer);
             writer.Append(' ');
-            a2.WriteTo(writer);
+            a2.WriteTo(ref writer);
             writer.Append(' ');
-            a1.WriteTo(writer);
+            a1.WriteTo(ref writer);
             writer.Append(' ');
-            a0.WriteTo(writer);
+            a0.WriteTo(ref writer);
             // writer.Append(' ');
             return;
         }
@@ -209,7 +209,7 @@ public static class KotoParser
 
         for (var i = list.Count - 1; i >= 0; i--)
         {
-            list[i].WriteTo(writer);
+            list[i].WriteTo(ref writer);
             if (i != 0)
             {
                 writer.Append(' ');

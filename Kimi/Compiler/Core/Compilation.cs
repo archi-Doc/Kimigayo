@@ -95,23 +95,32 @@ public class Compilation
             return;
         }
 
-        using var writer = default(IndentWriter);
-        this.ProjectKotonoha.Root.UnparseAll(ref writer);
-
-        var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
-        File.WriteAllText(path, writer.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-
-        var bin = TinyhandSerializer.Serialize(this.ProjectKotonoha);
-        var kotonoha = new Kotonoha(this);
-        TinyhandSerializer.DeserializeObject(bin, ref kotonoha);
-        if (kotonoha is null)
+        var writer = default(IndentWriter);
+        var writer2 = default(IndentWriter);
+        try
         {
-            return;
-        }
+            this.ProjectKotonoha.Root.UnparseAll(ref writer);
 
-        using var writer2 = default(IndentWriter);
-        kotonoha.Root.UnparseTo(ref writer2);
-        var sb2 = writer2.ToString();
+            var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
+            var st = writer.ToString();
+            File.WriteAllText(path, st, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            var bin = TinyhandSerializer.Serialize(this.ProjectKotonoha);
+            var kotonoha = new Kotonoha(this);
+            TinyhandSerializer.DeserializeObject(bin, ref kotonoha);
+            if (kotonoha is null)
+            {
+                return;
+            }
+
+            kotonoha.Root.UnparseTo(ref writer2);
+            var sb2 = writer2.ToString();
+        }
+        finally
+        {
+            writer.Dispose();
+            writer2.Dispose();
+        }
     }
 
     internal bool TryResolveValue(UnresolvedKoto koto, out LimitedValue limitedValue)

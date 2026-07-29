@@ -166,7 +166,7 @@ public partial class GroupKoto : BlockKoto
             return;
         }
 
-        this.Modifier.WriteTo(writer, true);
+        this.Modifier.WriteTo(ref writer, true);
         writer.Append(this.TokenKind.ToText());
         writer.Append(' ');
         writer.Append(this.Name);
@@ -180,10 +180,10 @@ public partial class GroupKoto : BlockKoto
             writer.AppendLine();
         }
 
-        this.Modifier.WriteTo(writer, true);
+        this.Modifier.WriteTo(ref writer, true);
         writer.Append(Constants.RootgroupKeyword);
         writer.Append(' ');
-        KotoParser.WriteQualifiedNameTo(this, writer);
+        KotoParser.WriteQualifiedNameTo(this, ref writer);
     }
 
     public void Parse(ref Token token, ref TokenReader reader)
