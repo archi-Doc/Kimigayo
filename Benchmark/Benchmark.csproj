@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Arc.Collections" Version="1.38.2" />
+    <PackageReference Include="Arc.Collections" Version="1.38.3" />
     <PackageReference Include="Arc.Crypto" Version="1.44.2" />
     
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />

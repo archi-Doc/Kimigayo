@@ -286,28 +286,7 @@ public ref struct IndentedStringBuilder
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void EnsureTrailingBlankLine()
     {
-        // this.builder.EnsureTrailingBlankLine();
-
-        this.builder.GetLastTwoChars(out char previous, out char last);
-
-        if (last == 0)
-        {// Empty
-            return;
-        }
-
-        if (last != BaseHelper.LfChar)
-        {// Text
-            this.builder.Append(BaseHelper.LfChar);
-            this.builder.Append(BaseHelper.LfChar);
-        }
-        else if (previous == 0)
-        {// \n
-        }
-        else if (previous != BaseHelper.LfChar)
-        {// A\n
-            this.builder.Append(BaseHelper.LfChar);
-        }
-
+        this.builder.EnsureTrailingBlankLine();
         this.hasLineContent = false;
     }
 
