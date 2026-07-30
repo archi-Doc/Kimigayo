@@ -1,33 +1,3 @@
-// alias, rootgroup, group, struct, enum,
-#A #B(1) alias Kimi.Base // C->D
-
-#If(1 < 2 / 2) #Test
-alias Kimi.Windows
-
-public rootgroup Playground
-
-// comment
-rootgroup Playground.A
-var x = 1 + 2 #Multi * 3
-
-#If(os == "Windows")
-public open struct Test: @A, @B,
-    public static #Test1 var #Test2 x: i32 = #One 1
-
-// #If(Os.Version.Current == 1 and "text".Length > 0)
-var y = (1 + #Test 2) * 3
-
-static var x = 1
-static let y = 2
-var z = #Func1 Test.New()
-z.Func1()
-var a = z // Clone
-var b = &z // borrow
-var c = &z // move. invalidate z
-var d = c // borrow
-var e = c // move
-e.drop()
-
-
-rootgroup Pg.Extensions
-public extension i32
+public open struct Test: @A, @B, 
+    #Test1
+    public static var #Test2 x: i32 = #One 1

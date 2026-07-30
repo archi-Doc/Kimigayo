@@ -95,8 +95,8 @@ public class Compilation
             return;
         }
 
-        var builder = new IndentedStringBuilder(IndentedStringBuilder.DefaultSpacesPerIndent);
-        var builder2 = default(IndentedStringBuilder);
+        var builder = new IndentedStringBuilder();
+        var builder2 = new IndentedStringBuilder();
         try
         {
             this.ProjectKotonoha.Root.UnparseAll(ref builder);

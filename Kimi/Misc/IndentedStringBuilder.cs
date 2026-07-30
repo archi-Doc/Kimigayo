@@ -28,7 +28,7 @@ public ref struct IndentedStringBuilder
     private readonly int spacesPerIndent;
     private PooledStringBuilder builder;
     private int indentLevel;
-    private bool isLineStart = true;
+    private bool hasLineContent;
 
     static IndentedStringBuilder()
     {
@@ -39,10 +39,18 @@ public ref struct IndentedStringBuilder
     /// <summary>
     /// Initializes a new instance of the <see cref="IndentedStringBuilder"/> struct.
     /// </summary>
+    public IndentedStringBuilder()
+        : this(DefaultSpacesPerIndent)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="IndentedStringBuilder"/> struct.
+    /// </summary>
     /// <param name="spacesPerIndent">
     /// The number of spaces inserted for each indentation level.
     /// </param>
-    public IndentedStringBuilder(int spacesPerIndent = DefaultSpacesPerIndent)
+    public IndentedStringBuilder(int spacesPerIndent)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(spacesPerIndent);
 
@@ -106,7 +114,7 @@ public ref struct IndentedStringBuilder
     public void Clear()
     {
         this.builder.Clear();
-        this.isLineStart = true;
+        this.hasLineContent = false;
     }
 
     /// <summary>
@@ -128,7 +136,7 @@ public ref struct IndentedStringBuilder
     public void AppendWithoutIndent(bool value)
     {
         this.builder.Append(value);
-        this.isLineStart = false;
+        this.hasLineContent = true;
     }
 
     /// <summary>
@@ -141,7 +149,7 @@ public ref struct IndentedStringBuilder
         if (value == BaseHelper.LfChar || value == BaseHelper.CrChar)
         {
             this.builder.Append(BaseHelper.LfChar);
-            this.isLineStart = true;
+            this.hasLineContent = false;
             return;
         }
 
@@ -159,12 +167,12 @@ public ref struct IndentedStringBuilder
         if (value == BaseHelper.LfChar || value == BaseHelper.CrChar)
         {
             this.builder.Append(BaseHelper.LfChar);
-            this.isLineStart = true;
+            this.hasLineContent = false;
             return;
         }
 
         this.builder.Append(value);
-        this.isLineStart = false;
+        this.hasLineContent = true;
     }
 
     /// <summary>
@@ -190,7 +198,7 @@ public ref struct IndentedStringBuilder
         where T : ISpanFormattable
     {
         this.builder.Append(value);
-        this.isLineStart = false;
+        this.hasLineContent = true;
     }
 
     /// <summary>
@@ -210,9 +218,9 @@ public ref struct IndentedStringBuilder
         var position = 0;
         while (position < value.Length)
         {
-            if (this.isLineStart)
+            if (!this.hasLineContent)
             {
-                char first = value[position];
+                var first = value[position];
 
                 // Do not add indentation to an empty line.
                 if (first == BaseHelper.LfChar)
@@ -258,7 +266,7 @@ public ref struct IndentedStringBuilder
             char newline = remaining[newlineIndex];
 
             this.builder.Append(BaseHelper.LfChar);
-            this.isLineStart = true;
+            this.hasLineContent = false;
 
             position += newlineIndex + 1;
 
@@ -273,13 +281,34 @@ public ref struct IndentedStringBuilder
     }
 
     /// <summary>
-    /// Ensures that the builder ends with a blank line represented by two consecutive line feed characters.
+    /// Ensures that a non-empty builder ends with two consecutive line feed characters.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void EnsureTrailingBlankLine()
     {
-        this.builder.EnsureTrailingBlankLine();
-        this.isLineStart = true;
+        // this.builder.EnsureTrailingBlankLine();
+
+        this.builder.GetLastTwoChars(out char previous, out char last);
+
+        if (last == 0)
+        {// Empty
+            return;
+        }
+
+        if (last != BaseHelper.LfChar)
+        {// Text
+            this.builder.Append(BaseHelper.LfChar);
+            this.builder.Append(BaseHelper.LfChar);
+        }
+        else if (previous == 0)
+        {// \n
+        }
+        else if (previous != BaseHelper.LfChar)
+        {// A\n
+            this.builder.Append(BaseHelper.LfChar);
+        }
+
+        this.hasLineContent = false;
     }
 
     /// <summary>
@@ -291,14 +320,18 @@ public ref struct IndentedStringBuilder
         this.builder.EnsureTrailingSpace();
     }
 
+    /// <summary>
+    /// Appends a line feed or ensures a trailing space according to the specified options.
+    /// </summary>
+    /// <param name="options">The options controlling the trailing character.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void AppendTrailingSpaceOrLineFeed(KotoWriteOptions options)
     {
-        if (options.HasFlag(KotoWriteOptions.AppendLineFeed))
+        if ((options & KotoWriteOptions.AppendLineFeed) != 0)
         {
             this.AppendLine();
         }
-        else if (options.HasFlag(KotoWriteOptions.AppendSpace))
+        else if ((options & KotoWriteOptions.AppendSpace) != 0)
         {
             this.EnsureTrailingSpace();
         }
@@ -311,7 +344,7 @@ public ref struct IndentedStringBuilder
     public void AppendLine()
     {
         this.builder.Append(BaseHelper.LfChar);
-        this.isLineStart = true;
+        this.hasLineContent = false;
     }
 
     /// <summary>
@@ -362,22 +395,22 @@ public ref struct IndentedStringBuilder
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AppendIndentIfRequired()
     {
-        if (!this.isLineStart)
+        if (this.hasLineContent)
         {
             return;
         }
 
-        this.isLineStart = false;
+        this.hasLineContent = true;
 
         if (this.indentLevel == 0 || this.spacesPerIndent == 0)
         {
             return;
         }
 
-        int remaining = this.spacesPerIndent * this.indentLevel;
+        var remaining = this.spacesPerIndent * this.indentLevel;
         while (remaining > 0)
         {
-            int length = Math.Min(SpaceBufferLength, remaining);
+            var length = Math.Min(SpaceBufferLength, remaining);
             this.builder.Append(SpaceBuffer.AsSpan(0, length));
             remaining -= length;
         }
