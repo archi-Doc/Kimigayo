@@ -342,7 +342,7 @@ Exit:
         var variableState = reader.StoreState();
 
         // Field name
-        KotoParser.ConsumeAttributeAndRead(ref reader, out var nameToken);
+        KotoParser.ConsumeAttributeModifierAndRead(ref reader, out var nameToken);
         // KotoParser.Read(ref reader, out var nameToken);
         if (nameToken.Kind != TokenKind.Identifier)
         {
@@ -497,7 +497,7 @@ Exit:
         return (ModifierKind)((byte)kind & AccessibilityModifierMask);
     }
 
-    public static void ConsumeAttributeAndRead(ref TokenReader reader, out Token token)
+    /*public static void ConsumeAttributeAndRead(ref TokenReader reader, out Token token)
     {// Consume Attribute
         reader.Clear();
 
@@ -531,9 +531,9 @@ Exit:
                 // return false;
             }
         }
-    }
+    }*/
 
-    public static void ConsumeAttributeModifierAndRead(ref TokenReader reader, out Token token)
+    /*public static void ConsumeAttributeModifierAndRead(ref TokenReader reader, out Token token)
     {// Consume Attributes and Modifiers
         reader.Clear();
 
@@ -595,6 +595,102 @@ Exit:
             if (tokenKind != TokenKind.Sharp)
             {
                 reader.TryRead(out token);
+                return;
+            }
+
+            attributeKoto = ParseAttributeKoto(ref reader);
+            if (!ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto))
+            {
+                reader.IsExcluded = true;
+                // token = default;
+                // return false;
+            }
+        }
+
+        void ReadAccessibility(ref TokenReader reader, ModifierKind kind)
+        {
+            var acc = reader.ModifierKind.ExtractAccessibilityModifiers();
+            if (acc != default)
+            {
+                if (acc == kind)
+                {// Duplicate
+                    reader.AddDiagnostic(Hashed.Kimi.DuplicateModifier, kind.ToText());
+                }
+                else
+                {// More than one accessibility modifier
+                    reader.AddDiagnostic(Hashed.Kimi.MultipleAccessibilityModifiers);
+                }
+            }
+            else
+            {
+                reader.ModifierKind = reader.ModifierKind | kind;
+            }
+
+            reader.Advance();
+        }
+    }*/
+
+    public static void ConsumeAttributeAndModifier(ref TokenReader reader)
+    {// Consume Attributes and Modifiers
+        reader.Clear();
+
+        AttributeKoto? attributeKoto = default;
+        while (reader.CanRead)
+        {
+            var tokenKind = reader.CurrentTokenKind;
+            switch (tokenKind)
+            {
+                case TokenKind.Separator:
+                    reader.Advance();
+                    continue;
+
+                case TokenKind.Static:
+                    if (reader.ModifierKind.HasFlag(ModifierKind.Static))
+                    {// Duplicate
+                        reader.AddDiagnostic(Hashed.Kimi.DuplicateModifier, ModifierKind.Static.ToString());
+                    }
+
+                    reader.ModifierKind |= ModifierKind.Static;
+                    reader.Advance();
+                    continue;
+
+                case TokenKind.Open:
+                    if (reader.ModifierKind.HasFlag(ModifierKind.Open))
+                    {// Duplicate
+                        reader.AddDiagnostic(Hashed.Kimi.DuplicateModifier, ModifierKind.Open.ToString());
+                    }
+
+                    reader.ModifierKind |= ModifierKind.Open;
+                    reader.Advance();
+                    continue;
+
+                case TokenKind.Public:
+                    ReadAccessibility(ref reader, ModifierKind.Public);
+                    continue;
+
+                case TokenKind.Protected:
+                    ReadAccessibility(ref reader, ModifierKind.Protected);
+                    continue;
+
+                case TokenKind.Private:
+                    ReadAccessibility(ref reader, ModifierKind.Private);
+                    continue;
+
+                case TokenKind.Internal:
+                    ReadAccessibility(ref reader, ModifierKind.Internal);
+                    continue;
+
+                case TokenKind.ProtectedOrInternal:
+                    ReadAccessibility(ref reader, ModifierKind.ProtectedOrInternal);
+                    continue;
+
+                case TokenKind.ProtectedAndInternal:
+                    ReadAccessibility(ref reader, ModifierKind.ProtectedAndInternal);
+                    continue;
+            }
+
+            if (tokenKind != TokenKind.Sharp)
+            {
                 return;
             }
 
