@@ -187,6 +187,7 @@ Loop:
             if (addDiagnostic)
             {
                 this.Diagnostic.AddToken(token, Hashed.Kimi.TokenMismatch, targetKind.ToText());
+                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
             }
 
             range = default;
@@ -243,6 +244,7 @@ Loop:
             if (hash != 0)
             {
                 this.AddDiagnostic(hash, this.currentToken.Span.ToString());
+                hash = 0;
             }
 
             this.AdvanceOne();

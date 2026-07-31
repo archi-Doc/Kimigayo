@@ -2,7 +2,15 @@ alias AliasB
 
 var count: i32 = 0
 let name: String = "abc"
-var items: Array<Int>
+var array: Array<Error>
+var obj = T.New()
+var obj2 = &owner
+var movedObj = &owner
+var movedObj = &move
+&owner
+obj = Error
+movedObj
+array.Add(movedObj)
 
 public open struct Test: @A, @B, 
     #Test1

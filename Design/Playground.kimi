@@ -5,14 +5,12 @@ public open struct Test: @A, @B,
 
 var count: i32 = 0
 let name: String = "abc"
-var items: Array<Int>/* = [1, 2, 3]
-var items2 = [1, 2, 3, ]
-var map: Map<String, Int> = ["A": 1, "B": 2]
+// var items: Array<Int> = [1, 2, 3]
+// var items2 = [1, 2, 3, ]
+// var map: Map<String, Int> = ["A": 1, "B": 2]
 var array: Array<&owner T> = new()
 var obj = T.New() // T: stack
-var obj2 = &owner T.New() // &owner T: heap
-var movedObj <= &owner obj // obj => movedObj
+var obj2 = &owner T.New() // T.New()
+var movedObj = &owner obj // obj => movedObj
 var movedObj = &move obj
-&owner obj => var movedObj
 array.Add(movedObj) // movedObj => array
-*/
