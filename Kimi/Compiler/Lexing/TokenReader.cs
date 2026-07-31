@@ -12,9 +12,7 @@ namespace Kimi.Compiler.Lexing;
 public readonly record struct TokenState(AttributeKoto? AttributeKoto, ModifierKind ModifierKind, bool IsExcluded);
 
 public ref struct TokenReader
-{// 144
-    public const int MaxDepth = 10;
-
+{// 136
     #region FieldAndProperty
 
     public readonly DiagnosticCollection Diagnostic;
@@ -27,12 +25,11 @@ public ref struct TokenReader
     private SequencePosition nextSegmentPosition;
     private ReadOnlySpan<Token> currentSpan;
     private int currentSpanIndex;
-
-    public Token CurrentToken { get; private set; }
+    private Token currentToken;
 
     public int Position { get; private set; }
 
-    public int Depth { get; private set; }
+    // public int Depth { get; private set; }
 
     public AttributeKoto? AttributeKoto { get; private set; }
 
@@ -48,20 +45,16 @@ public ref struct TokenReader
 
     public readonly bool IsEnd => this.Position >= this.length;
 
-    public TokenKind CurrentTokenKind
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get
-        {
-            return this.TryGetCurrentToken(out var token) ? token.Kind : TokenKind.Invalid;
-        }
-    }
+    public Token CurrentToken => this.currentToken;
+
+    public TokenKind CurrentTokenKind => this.currentToken.Kind;
+
+    public SourceRange CurrentTokenRange => this.currentToken.Range;
 
     #endregion
 
     public TokenReader(DiagnosticCollection diagnostic, CodeContext codeContext, ReadOnlySequence<Token> tokenSequence)
     {
-        //var x = Unsafe.SizeOf<TokenReader>();
         this.Diagnostic = diagnostic;
         this.CodeContext = codeContext;
 
@@ -69,13 +62,10 @@ public ref struct TokenReader
         this.length = checked((int)tokenSequence.Length);
 
         this.Position = 0;
-        this.Depth = 0;
 
         this.nextSegmentPosition = tokenSequence.Start;
         this.currentSpan = default;
         this.currentSpanIndex = 0;
-
-        this.PreviousToken = default;
 
         this.MoveToNextNonEmptySpan();
     }
@@ -124,7 +114,7 @@ public ref struct TokenReader
         return attributeKoto;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    /*[MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void IncrementDepth()
     {
         if (this.Depth >= MaxDepth)
@@ -140,7 +130,7 @@ public ref struct TokenReader
     {
         this.Depth--;
         Debug.Assert(this.Depth >= 0);
-    }
+    }*/
 
     public bool TryRead(out Token token)
     {
@@ -178,8 +168,9 @@ public ref struct TokenReader
     public bool TryConsume(TokenKind targetKind, out SourceRange range, bool addDiagnostic = true)
     {
 Loop:
-        if (this.TryGetCurrentToken(out var token))
+        if (this.CanRead)
         {
+            var token = this.currentToken;
             if (token.Kind == targetKind)
             {
                 range = token.Range;
@@ -205,9 +196,9 @@ Loop:
         {
             if (this.IsEnd)
             {
-                if (this.PreviousToken.Kind != TokenKind.Invalid)
+                if (this.CurrentTokenKind != TokenKind.Invalid)
                 {
-                    var r = this.PreviousToken.Range;
+                    var r = this.CurrentTokenRange;
                     this.Diagnostic.Add(new(r.End, r.End), Hashed.Kimi.MissingExpectedToken, targetKind.ToText());
                 }
             }
@@ -359,22 +350,6 @@ Loop:
         return true;
     }
 
-    public SourceRange CurrentRange()
-    {
-        if (this.TryGetCurrentToken(out var token))
-        {
-            return token.Range;
-        }
-
-        if (this.PreviousToken.Kind != TokenKind.Invalid)
-        {
-            var range = this.PreviousToken.Range;
-            return new(range.End, range.End);
-        }
-
-        return default;
-    }
-
     public void ReportUnexpectedToken(Token token)
     {
         this.Diagnostic.AddToken(token, Hashed.Kimi.UnmatchedToken, token.Kind.ToText());
@@ -416,20 +391,24 @@ Loop:
         Debug.Assert(this.Position < this.length);
         Debug.Assert(this.currentSpanIndex < this.currentSpan.Length);
 
-        this.PreviousToken = this.currentSpan[this.currentSpanIndex];
-
         this.currentSpanIndex++;
         this.Position++;
+        this.currentToken = this.currentSpan[this.currentSpanIndex];
     }
 
     private bool MoveToNextNonEmptySpan()
     {
         while (this.sequence.TryGet(ref this.nextSegmentPosition, out var memory, advance: true))
         {
-            if (!memory.IsEmpty)
+            if (memory.IsEmpty)
+            {
+                // this.currentToken = default;
+            }
+            else
             {
                 this.currentSpan = memory.Span;
                 this.currentSpanIndex = 0;
+                this.currentToken = this.currentSpan[0];
                 return true;
             }
         }

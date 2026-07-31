@@ -137,7 +137,7 @@ public static class KotoHelper
 
         if (flag)
         {
-            reader.Diagnostic.Add(reader.CurrentRange(), Hashed.Kimi.IdentifierExpected);
+            reader.Diagnostic.Add(reader.CurrentTokenRange, Hashed.Kimi.IdentifierExpected);
         }
 
         return sb.ToString();
@@ -188,7 +188,7 @@ public static class KotoHelper
 
         if (flag)
         {
-            reader.Diagnostic.Add(reader.CurrentRange(), Hashed.Kimi.IdentifierExpected);
+            reader.Diagnostic.Add(reader.CurrentTokenRange, Hashed.Kimi.IdentifierExpected);
         }
 
         return list;

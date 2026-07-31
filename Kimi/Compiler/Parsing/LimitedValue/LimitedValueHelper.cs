@@ -192,7 +192,7 @@ public static class LimitedValueHelper
             else if (koto is EqualsEqualsKoto)
             {// A == B
                 return left.Kind switch
-                {//
+                {
                     LimitedValueKind.Bool => new(left.Bool == right.Bool),
                     LimitedValueKind.I64 => new(left.I64 == right.I64),
                     LimitedValueKind.Double => new(left.Double == right.Double),
