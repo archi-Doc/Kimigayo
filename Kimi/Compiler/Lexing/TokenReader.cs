@@ -22,7 +22,7 @@ public ref struct TokenReader
     public readonly CodeContext CodeContext;
 
     private readonly ReadOnlySequence<Token> sequence;
-    private readonly int count;
+    private readonly int length;
 
     private SequencePosition nextSegmentPosition;
     private ReadOnlySpan<Token> currentSpan;
@@ -40,11 +40,13 @@ public ref struct TokenReader
 
     public bool IsExcluded { get; internal set; }
 
-    public readonly int Count => this.count;
+    public readonly int Length => this.length;
 
-    public readonly int Remaining => this.count - this.Position;
+    public readonly int Remaining => this.length - this.Position;
 
-    public readonly bool IsEmpty => this.Position >= this.count;
+    public readonly bool CanRead => this.Position < this.length;
+
+    public readonly bool IsEnd => this.Position >= this.length;
 
     public TokenKind CurrentTokenKind
     {
@@ -59,11 +61,12 @@ public ref struct TokenReader
 
     public TokenReader(DiagnosticCollection diagnostic, CodeContext codeContext, ReadOnlySequence<Token> tokenSequence)
     {
+        //var x = Unsafe.SizeOf<TokenReader>();
         this.Diagnostic = diagnostic;
         this.CodeContext = codeContext;
 
         this.sequence = tokenSequence;
-        this.count = checked((int)tokenSequence.Length);
+        this.length = checked((int)tokenSequence.Length);
 
         this.Position = 0;
         this.Depth = 0;
@@ -200,7 +203,7 @@ Loop:
 
         if (addDiagnostic)
         {
-            if (this.IsEmpty)
+            if (this.IsEnd)
             {
                 if (this.PreviousToken.Kind != TokenKind.Invalid)
                 {
@@ -339,7 +342,7 @@ Loop:
 
     public bool Advance()
     {
-        if (this.Position >= this.count)
+        if (this.Position >= this.length)
         {
             return false;
         }
@@ -388,7 +391,7 @@ Loop:
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool TryGetCurrentToken(out Token token)
     {
-        if (this.Position >= this.count)
+        if (this.Position >= this.length)
         {
             token = default;
             return false;
@@ -410,7 +413,7 @@ Loop:
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AdvanceOne()
     {
-        Debug.Assert(this.Position < this.count);
+        Debug.Assert(this.Position < this.length);
         Debug.Assert(this.currentSpanIndex < this.currentSpan.Length);
 
         this.PreviousToken = this.currentSpan[this.currentSpanIndex];

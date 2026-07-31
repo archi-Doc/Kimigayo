@@ -93,7 +93,7 @@ public static class KotoHelper
 
     public static string ValidateAndGetNamespace(ref TokenReader reader)
     {
-        if (reader.IsEmpty)
+        if (reader.IsEnd)
         {
             return string.Empty;
         }
@@ -145,7 +145,7 @@ public static class KotoHelper
 
     public static List<string> ValidateAndGetNamespace2(ref TokenReader reader)
     {
-        if (reader.IsEmpty)
+        if (reader.IsEnd)
         {
             return [];
         }
