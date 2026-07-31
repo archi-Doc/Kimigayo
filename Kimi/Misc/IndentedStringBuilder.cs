@@ -3,6 +3,7 @@
 using System.Runtime.CompilerServices;
 using Arc.Collections;
 using Kimi.Compiler.Parsing;
+using Tinyhand.Tree;
 
 namespace Kimi;
 
@@ -362,6 +363,12 @@ public ref struct IndentedStringBuilder
     public void AppendSpace()
     {
         this.Append(Constants.SpaceChar);
+    }
+
+    public void AppendCommaAndSpace()
+    {
+        this.AppendIndentIfRequired();
+        this.builder.Append(Constants.CommaAndSpace);
     }
 
     /// <summary>

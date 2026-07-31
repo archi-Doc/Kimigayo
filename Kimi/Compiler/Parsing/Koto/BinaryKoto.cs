@@ -54,31 +54,6 @@ public partial class IndexKoto : BinaryKoto
 }
 
 [TinyhandObject]
-public partial class GenericsKoto : BinaryKoto
-{// A<B>
-    public GenericsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
-        : base(ref reader, range, left, right)
-    {
-    }
-
-    public override string ToString()
-        => $"{this.Left.ToString()}<{this.Right.ToString()}>";
-
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.Left.WriteTo(ref builder);
-        builder.Append(Constants.LessThanChar);
-        this.Right.WriteTo(ref builder);
-        builder.Append(Constants.GreaterThanChar);
-    }
-
-    public override (string Text, Koto[]? Children) Dump()
-    {
-        return ($"{this.GetType().Name}", [this.Left, this.Right,]);
-    }
-}
-
-[TinyhandObject]
 public partial class AsteriskKoto : BinaryKoto
 {// A * B
     public AsteriskKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)

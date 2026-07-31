@@ -2,7 +2,10 @@ alias AliasB
 
 var count: i32 = 0
 let name: String = "abc"
-var array: Array<Error>
+var items: Array<Int>
+var items2
+var map: Map<String, Int>
+var array: Array<&owner T.U> = new()
 var obj = T.New()
 var obj2 = &owner T.New()
 var movedObj = &owner obj

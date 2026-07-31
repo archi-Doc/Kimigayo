@@ -761,9 +761,22 @@ Exit:
             else if (tokenKind == TokenKind.LessThan)
             {// Generics<T>
                 reader.TryRead(out var token); // <
-                var typeKoto = ParseType(ref reader);
+                var typeList = new List<Koto>();
+                while (ParseType(ref reader) is { } typeKoto)
+                {
+                    typeList.Add(typeKoto);
+                    if (reader.CurrentTokenKind != TokenKind.Comma)
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        reader.Advance();
+                    }
+                }
+
                 reader.TryConsume(TokenKind.GreaterThan, out var range, true); // >
-                left = new GenericsKoto(ref reader, new(token.Range.Start, range.End), left, typeKoto);
+                left = new GenericsKoto(ref reader, new(token.Range.Start, range.End), left, typeList);
                 continue;
             }
             else
@@ -778,10 +791,30 @@ Exit:
         {
             var token = reader.CurrentToken;
             reader.Advance();
-            if (token.Kind.IsPrimitiveType() ||
-                token.Kind == TokenKind.Identifier)
-            {// Primitive type or Identifier
+            if (token.Kind.IsPrimitiveType())
+            {// Primitive type
                 return new TypeKoto(ref reader, token);
+            }
+            else if (token.Kind == TokenKind.Identifier)
+            {// Identifier
+                var left = new TypeKoto(ref reader, token);
+                if (reader.CurrentTokenKind != TokenKind.Dot)
+                {
+                    return left;
+                }
+
+                // A.B
+                reader.Advance();
+                var accessor = ParseTypeKoto(ref reader);
+                accessor ??= reader.NewErrorKoto();
+                return new MemberAccessKoto(ref reader, new(token.Range.Start, accessor.Range.End), left, accessor);
+            }
+            else if (token.Kind == TokenKind.Ampersand)
+            {// Reference
+                var referenceKind = reader.ReadReferenceKind();
+                var operand = ParseTypeKoto(ref reader);
+                operand ??= reader.NewErrorKoto();
+                return new ReferenceKoto(ref reader, token.Range, operand, referenceKind);
             }
 
             return null;
