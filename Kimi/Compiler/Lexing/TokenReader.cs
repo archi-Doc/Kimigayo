@@ -3,7 +3,6 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Arc.Crypto;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -132,10 +131,12 @@ public ref struct TokenReader
         Debug.Assert(this.Depth >= 0);
     }*/
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryRead(out Token token)
     {
-        if (this.TryGetCurrentToken(out token))
+        if (this.CanRead)
         {
+            token = this.currentToken;
             this.AdvanceOne();
             return true;
         }
@@ -210,16 +211,16 @@ Loop:
 
     public TokenKind SkipUntil(TokenKind kind1, ulong hash = 0)
     {
-        while (this.TryGetCurrentToken(out var token))
+        while (this.CanRead)
         {
-            if (token.Kind == kind1)
+            if (this.currentToken.Kind == kind1)
             {
-                return token.Kind;
+                return this.currentToken.Kind;
             }
 
             if (hash != 0)
             {
-                this.AddDiagnostic(hash, token.Span.ToString());
+                this.AddDiagnostic(hash, this.currentToken.Span.ToString());
                 hash = 0;
             }
 
@@ -231,17 +232,17 @@ Loop:
 
     public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, ulong hash = 0)
     {
-        while (this.TryGetCurrentToken(out var token))
+        while (this.CanRead)
         {
-            var tokenKind = token.Kind;
+            var tokenKind = this.currentToken.Kind;
             if (tokenKind == kind1 || tokenKind == kind2)
             {
-                return token.Kind;
+                return this.currentToken.Kind;
             }
 
             if (hash != 0)
             {
-                this.AddDiagnostic(hash, token.Span.ToString());
+                this.AddDiagnostic(hash, this.currentToken.Span.ToString());
             }
 
             this.AdvanceOne();
@@ -252,12 +253,11 @@ Loop:
 
     public void SkipCurrentBlock(bool isRootGroup)
     {
-        Token token;
         if (isRootGroup)
         {
-            while (this.TryGetCurrentToken(out token))
+            while (this.CanRead)
             {
-                if (token.Kind == TokenKind.RootGroup)
+                if (this.currentToken.Kind == TokenKind.RootGroup)
                 {
                     return;
                 }
@@ -268,12 +268,12 @@ Loop:
             return;
         }
 
-        if (!this.TryGetCurrentToken(out token))
+        if (this.IsEnd)
         {
             return;
         }
 
-        if (token.Kind != TokenKind.StartBlock)
+        if (this.currentToken.Kind != TokenKind.StartBlock)
         {
             return;
         }
@@ -281,13 +281,13 @@ Loop:
         this.AdvanceOne();
         var indent = 1;
 
-        while (this.TryGetCurrentToken(out token))
+        while (this.CanRead)
         {
-            if (token.Kind == TokenKind.StartBlock)
+            if (this.currentToken.Kind == TokenKind.StartBlock)
             {
                 indent++;
             }
-            else if (token.Kind == TokenKind.EndBlock)
+            else if (this.currentToken.Kind == TokenKind.EndBlock)
             {
                 indent--;
                 if (indent <= 0)
@@ -296,7 +296,7 @@ Loop:
                     return;
                 }
             }
-            else if (token.Kind == TokenKind.RootGroup)
+            else if (this.currentToken.Kind == TokenKind.RootGroup)
             {
                 return;
             }
@@ -357,32 +357,10 @@ Loop:
 
     public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
     {
-        if (this.TryGetCurrentToken(out var token))
+        if (this.CanRead)
         {
-            this.Diagnostic.AddToken(token, diagnosticHash, obj);
+            this.Diagnostic.AddToken(this.currentToken, diagnosticHash, obj);
         }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool TryGetCurrentToken(out Token token)
-    {
-        if (this.Position >= this.length)
-        {
-            token = default;
-            return false;
-        }
-
-        if (this.currentSpanIndex >= this.currentSpan.Length)
-        {
-            if (!this.MoveToNextNonEmptySpan())
-            {
-                token = default;
-                return false;
-            }
-        }
-
-        token = this.currentSpan[this.currentSpanIndex];
-        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
