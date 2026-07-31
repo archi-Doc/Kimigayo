@@ -28,7 +28,7 @@ public ref struct TokenReader
     private ReadOnlySpan<Token> currentSpan;
     private int currentSpanIndex;
 
-    public Token PreviousToken { get; private set; }
+    public Token CurrentToken { get; private set; }
 
     public int Position { get; private set; }
 
