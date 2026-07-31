@@ -185,14 +185,17 @@ public partial class GroupKoto : BlockKoto
         KotoParser.WriteQualifiedNameTo(this, ref builder);
     }
 
-    public void Parse(ref TokenReader reader)
+    public void Parse(ref TokenReader reader, bool consumed)
     {
         while (reader.CanRead)
         {
-            KotoParser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
-            if (isEnd)
+            if (!consumed)
             {
-                return;
+                KotoParser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
+                if (isEnd)
+                {
+                    return;
+                }
             }
 
             var token = reader.CurrentToken;
@@ -203,6 +206,11 @@ public partial class GroupKoto : BlockKoto
                 reader.Advance();
                 _ = KotoHelper.ValidateAndGetNamespace2(ref reader);
                 reader.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);
+            }
+            else if (token.Kind == TokenKind.Separator)
+            {
+                reader.Advance();
+                continue;
             }
             else if (token.Kind == TokenKind.EndBlock)
             {// Exit block
@@ -283,7 +291,7 @@ public partial class GroupKoto : BlockKoto
 NextToken:
             if (nextGroup is not null)
             {
-                nextGroup.Parse(ref reader);
+                nextGroup.Parse(ref reader, false);
             }
         }
     }

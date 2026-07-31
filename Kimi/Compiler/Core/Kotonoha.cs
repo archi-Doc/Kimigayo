@@ -137,7 +137,7 @@ public sealed partial class Kotonoha
             }
             else
             {// Delegate processing to CurrentGroup because this token is not a top-level keyword.
-                this.Root.Parse(ref reader);
+                this.Root.Parse(ref reader, true);
             }
         }
     }

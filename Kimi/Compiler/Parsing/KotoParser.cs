@@ -360,10 +360,13 @@ Exit:
         Token typeToken = default;
         if (reader.TryConsume(TokenKind.Colon, out _, false))
         {// var x: i32
-            if (!reader.TryRead(out typeToken))
+            KotoParser.ConsumeAttributeAndModifier(ref reader, out isEnd);
+            if (isEnd)
             {
                 return default;
             }
+
+            var typeKoto = ParseExpression(ref reader);
         }
 
         Koto? initializerKoto = default;
@@ -854,6 +857,16 @@ ProcessPrefix:
                     reader.TryConsume(TokenKind.CloseParenthesis, out var range, true); // )
 
                     left = new InvocationKoto(ref reader, left, arguments);
+                    return true;
+                }
+
+            case TokenKind.LessThan:
+                {// Generics<T>
+                    reader.TryRead(out var token); // <
+                    var typeKoto = ParseType(ref reader);
+                    reader.TryConsume(TokenKind.GreaterThan, out var range, true); // >
+
+                    left = new IndexKoto(ref reader, new(token.Range.Start, range.End), left, typeKoto);
                     return true;
                 }
 
