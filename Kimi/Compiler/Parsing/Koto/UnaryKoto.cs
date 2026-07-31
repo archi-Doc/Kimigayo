@@ -1,7 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.CompilerServices;
-using System.Runtime.Serialization;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
@@ -87,9 +86,13 @@ public partial class MacroKoto : UnaryKoto
 [TinyhandObject]
 public partial class ReferenceKoto : UnaryKoto
 {// &A
-    public ReferenceKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    [Key(2)]
+    public ReferenceKind ReferenceKind { get; private set; }
+
+    public ReferenceKoto(ref TokenReader reader, SourceRange range, Koto operand, ReferenceKind referenceKind)
         : base(ref reader, range, operand)
-    {
+    {// &, &owner
+        this.ReferenceKind = referenceKind;
     }
 
     public override string ToString()
@@ -97,7 +100,7 @@ public partial class ReferenceKoto : UnaryKoto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append(Constants.AmpersandChar);
+        builder.Append(this.ReferenceKind.ToText(true));
         builder.Append(this.Operand.ToString());
     }
 }
@@ -287,7 +290,7 @@ public partial class ParenthesizedKoto : UnaryKoto
     }
 }
 
-// [TinyhandObject]
+[TinyhandObject(ReservedKeyCount = 2)]
 public abstract partial class UnaryKoto : Koto
 {
     [Key(1)]

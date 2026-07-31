@@ -864,10 +864,25 @@ ProcessPrefix:
         var bindingPower = GetPrefixBindingPower(tokenKind);
         if (bindingPower > 0)
         {
+            ReferenceKind referenceKind = default;
             reader.TryRead(out var token);
+            if (tokenKind == TokenKind.Ampersand)
+            {
+                referenceKind = reader.ReadReferenceKind();
+            }
+
             var operand = ParseExpression(ref reader, bindingPower);
-            // var koto = new UnaryKoto(ref reader, token, operand);
-            var koto = KotoHelper.NewUnaryKoto(ref reader, token, operand);
+
+            Koto koto;
+            if (referenceKind == ReferenceKind.None)
+            {
+                koto = KotoHelper.NewUnaryKoto(ref reader, token, operand);
+            }
+            else
+            {
+                koto = new ReferenceKoto(ref reader, token.Range, operand, referenceKind);
+            }
+
             if (koto is AttributeKoto attributeKoto)
             {
                 reader.PushAttribute(attributeKoto);

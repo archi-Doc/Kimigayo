@@ -4,12 +4,9 @@ var count: i32 = 0
 let name: String = "abc"
 var array: Array<Error>
 var obj = T.New()
-var obj2 = &owner
-var movedObj = &owner
-var movedObj = &move
-&owner
-obj = Error
-movedObj
+var obj2 = &owner T.New()
+var movedObj = &owner obj
+var movedObj = &unsafe obj
 array.Add(movedObj)
 
 public open struct Test: @A, @B, 

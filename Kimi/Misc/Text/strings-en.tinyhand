@@ -25,6 +25,7 @@ Kimi=
   InvalidIfAttributeArgumentCount="#If attribute must have exactly one argument"
   InvalidIndentation="Invalid indentation. Insert {0} spaces for each indentation level"
   InvalidNumericLiteral="Invalid numeric literal"
+  InvalidReferenceSyntax="Reference form &{0} is invalid"
   MissingBlockCommentEnd="Reached end-of-file. Missing '*/'"
   MissingExpectedToken="Expected: {0}, but reached the end of line."
   MissingStringLiteralEnd="String literal is not terminated. Expected closing \""

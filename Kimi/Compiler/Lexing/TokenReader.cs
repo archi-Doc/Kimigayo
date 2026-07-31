@@ -3,6 +3,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Arc.Crypto;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -304,6 +305,27 @@ Loop:
             }
 
             this.AdvanceOne();
+        }
+    }
+
+    public ReferenceKind ReadReferenceKind()
+    {
+        var token = this.CurrentToken;
+        if (token.Kind == TokenKind.Identifier)
+        {
+            this.Advance();
+            var referenceKind = token.Span.ToReferenceKind();
+            if (referenceKind == ReferenceKind.None)
+            {
+                this.AddDiagnostic(Hashed.Kimi.InvalidReferenceSyntax, token.Span.ToString());
+                referenceKind = ReferenceKind.Borrow;
+            }
+
+            return referenceKind;
+        }
+        else
+        {
+            return ReferenceKind.Borrow;
         }
     }
 
