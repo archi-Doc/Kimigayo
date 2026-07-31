@@ -185,25 +185,34 @@ public partial class GroupKoto : BlockKoto
         KotoParser.WriteQualifiedNameTo(this, ref builder);
     }
 
-    public void Parse(ref Token token, ref TokenReader reader)
+    public void Parse(ref TokenReader reader)
     {
-        while (true)
+        while (reader.CanRead)
         {
+            KotoParser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
+            if (isEnd)
+            {
+                return;
+            }
+
+            var token = reader.CurrentToken;
             GroupKoto? nextGroup = default;
 
             if (token.IsIdentifierToken(Constants.AliasKeyword))
             {// alias (not supported)
+                reader.Advance();
                 _ = KotoHelper.ValidateAndGetNamespace2(ref reader);
                 reader.Diagnostic.AddToken(token, Hashed.Kimi.TopLevelKeywordAfterCode);
             }
             else if (token.Kind == TokenKind.EndBlock)
             {// Exit block
-                KotoParser.ConsumeAttributeModifierAndRead(ref reader, out token);
+                reader.Advance();
                 break;
             }
             else if (token.Kind == TokenKind.Let ||
                 token.Kind == TokenKind.Var)
             {// let a = 1, var b = 2
+                reader.Advance();
                 var fieldKoto = KotoParser.ParseField(ref reader, ref token);
                 if (fieldKoto is not null)
                 {
@@ -212,6 +221,7 @@ public partial class GroupKoto : BlockKoto
             }
             else if (token.Kind == TokenKind.RootGroup)
             {// rootgroup
+                reader.Advance();
                 var name = KotoHelper.ValidateAndGetNamespace(ref reader);
                 if (reader.IsExcluded)
                 {
@@ -232,9 +242,11 @@ public partial class GroupKoto : BlockKoto
             }
             else if (token.Kind == TokenKind.Group)
             {// group
+                reader.Advance();
             }
             else if (token.Kind == TokenKind.Struct)
             {// struct
+                reader.Advance();
                 var r = KotoParser.ParseGroupDeclaration(ref reader);
                 if (reader.IsExcluded)
                 {
@@ -256,8 +268,8 @@ public partial class GroupKoto : BlockKoto
                 }
             }
             else
-            {
-                var koto = KotoParser.ParseExpression(ref reader);//
+            {// Other
+                var koto = KotoParser.ParseExpression(ref reader);
                 if (koto is ErrorKoto)
                 {// Error
                     reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
@@ -269,16 +281,9 @@ public partial class GroupKoto : BlockKoto
             }
 
 NextToken:
-// Consume Attribute and modifiers
-            KotoParser.ConsumeAttributeModifierAndRead(ref reader, out token);
-            if (!token.IsValid)
-            {
-                return;
-            }
-
             if (nextGroup is not null)
             {
-                nextGroup.Parse(ref token, ref reader);
+                nextGroup.Parse(ref reader);
             }
         }
     }

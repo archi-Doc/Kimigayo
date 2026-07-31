@@ -152,8 +152,11 @@ public static class KotoHelper
 
         var list = new List<string>();
         var flag = true;
-        while (reader.TryRead(out var token))
+        while (reader.CanRead)
         {
+            var token = reader.CurrentToken;
+            reader.Advance();
+
             if (token.Kind == TokenKind.Separator)
             {
                 break;

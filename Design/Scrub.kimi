@@ -1,3 +1,5 @@
-public open struct Test: @A, @B, 
+alias AliasB
+
+struct Test: @A, @B, 
     #Test1
     public static var #Test2 x: i32 = #One 1

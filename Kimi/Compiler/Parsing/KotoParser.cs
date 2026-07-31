@@ -342,8 +342,14 @@ Exit:
         var variableState = reader.StoreState();
 
         // Field name
-        KotoParser.ConsumeAttributeModifierAndRead(ref reader, out var nameToken);
-        // KotoParser.Read(ref reader, out var nameToken);
+        KotoParser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
+        if (isEnd)
+        {
+            return default;
+        }
+
+        var nameToken = reader.CurrentToken;
+        reader.Advance();
         if (nameToken.Kind != TokenKind.Identifier)
         {
             return default;
@@ -630,7 +636,7 @@ Exit:
         }
     }*/
 
-    public static void ConsumeAttributeAndModifier(ref TokenReader reader)
+    public static void ConsumeAttributeAndModifier(ref TokenReader reader, out bool isEnd)
     {// Consume Attributes and Modifiers
         reader.Clear();
 
@@ -691,6 +697,7 @@ Exit:
 
             if (tokenKind != TokenKind.Sharp)
             {
+                isEnd = reader.IsEnd;
                 return;
             }
 
@@ -702,6 +709,8 @@ Exit:
                 // return false;
             }
         }
+
+        isEnd = true;
 
         void ReadAccessibility(ref TokenReader reader, ModifierKind kind)
         {

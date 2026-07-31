@@ -144,7 +144,7 @@ public ref struct TokenReader
         return false;
     }
 
-    public bool TryPeek(out Token token)
+    /*public bool TryPeek(out Token token)
     {
         if (this.TryGetCurrentToken(out token))
         {
@@ -163,7 +163,7 @@ public ref struct TokenReader
             token.Kind == TokenKind.Separator)
         {// Skip Separator
         }
-    }
+    }*/
 
     public bool TryConsume(TokenKind targetKind, out SourceRange range, bool addDiagnostic = true)
     {
