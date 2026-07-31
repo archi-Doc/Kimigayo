@@ -358,6 +358,12 @@ public ref struct IndentedStringBuilder
         this.AppendLine();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AppendSpace()
+    {
+        this.Append(Constants.SpaceChar);
+    }
+
     /// <summary>
     /// Returns the accumulated characters as a string.
     /// </summary>

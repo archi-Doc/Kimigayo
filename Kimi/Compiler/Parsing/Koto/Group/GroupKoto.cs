@@ -377,10 +377,18 @@ NextToken:
 
         if (this.KotoList.Count > 0)
         {
+            var previousToplevel = false;
             foreach (var x in this.KotoList)
             {
+                if (!x.IsToplevel && previousToplevel)
+                {
+                    builder.AppendLine();
+                }
+
                 x.WriteTo(ref builder);
                 builder.AppendLine();
+
+                previousToplevel = x.IsToplevel;
             }
         }
 

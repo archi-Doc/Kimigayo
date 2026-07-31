@@ -363,6 +363,11 @@ Loop:
         }
     }
 
+    public ErrorKoto NewErrorKoto()
+    {
+        return new ErrorKoto(ref this, this.CurrentToken.Range);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AdvanceOne()
     {

@@ -357,7 +357,7 @@ Exit:
 
         var nameKoto = new UnresolvedKoto(ref reader, nameToken);
 
-        Token typeToken = default;
+        Koto? typeKoto = default;
         if (reader.TryConsume(TokenKind.Colon, out _, false))
         {// var x: i32
             KotoParser.ConsumeAttributeAndModifier(ref reader, out isEnd);
@@ -366,18 +366,18 @@ Exit:
                 return default;
             }
 
-            var typeKoto = ParseExpression(ref reader);
+            typeKoto = ParseType(ref reader);
         }
 
         Koto? initializerKoto = default;
-        if (reader.TryConsume(TokenKind.Equals, out _))
+        if (reader.TryConsume(TokenKind.Equals, out _, false))
         {// var x = 1 + 2
             initializerKoto = ParseExpression(ref reader);
         }
 
         reader.RestoreState(variableState);
 
-        var fieldKoto = new FieldKoto(ref reader, ref token, typeToken, nameKoto, initializerKoto);
+        var fieldKoto = new FieldKoto(ref reader, ref token, nameKoto, typeKoto, initializerKoto);
 
         reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, Hashed.Kimi.UnexpectedTrailingToken);
 
@@ -738,6 +738,56 @@ Exit:
         }
     }
 
+    public static Koto ParseType(ref TokenReader reader)
+    {// A.B<C>
+        var left = ParseTypeKoto(ref reader);
+        if (left is null)
+        {
+            return reader.NewErrorKoto();
+        }
+
+        while (reader.CanRead)
+        {
+            var tokenKind = reader.CurrentTokenKind;
+            if (tokenKind == TokenKind.Dot)
+            {// Class.Nested
+                reader.TryRead(out var token);
+
+                var accessor = ParseTypeKoto(ref reader);
+                accessor ??= reader.NewErrorKoto();
+                left = new MemberAccessKoto(ref reader, new(token.Range.Start, accessor.Range.End), left, accessor);
+                continue;
+            }
+            else if (tokenKind == TokenKind.LessThan)
+            {// Generics<T>
+                reader.TryRead(out var token); // <
+                var typeKoto = ParseType(ref reader);
+                reader.TryConsume(TokenKind.GreaterThan, out var range, true); // >
+                left = new GenericsKoto(ref reader, new(token.Range.Start, range.End), left, typeKoto);
+                continue;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return left;
+
+        static Koto? ParseTypeKoto(ref TokenReader reader)
+        {
+            var token = reader.CurrentToken;
+            reader.Advance();
+            if (token.Kind.IsPrimitiveType() ||
+                token.Kind == TokenKind.Identifier)
+            {// Primitive type or Identifier
+                return new TypeKoto(ref reader, token);
+            }
+
+            return null;
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static AttributeKoto ParseAttributeKoto(ref TokenReader reader)
     {
@@ -839,12 +889,6 @@ ProcessPrefix:
                 {// Class.Member
                     reader.TryRead(out var token); // .
 
-                    /*if (!reader.TryRead(out var token2) ||
-                        token2.Kind != TokenKind.Identifier)
-                    {
-                        break;
-                    }*/
-
                     var accessor = ParseExpression(ref reader);
                     left = new MemberAccessKoto(ref reader, new(token.Range.Start, accessor.Range.End), left, accessor);
                     return true;
@@ -865,7 +909,6 @@ ProcessPrefix:
                     reader.TryRead(out var token); // <
                     var typeKoto = ParseType(ref reader);
                     reader.TryConsume(TokenKind.GreaterThan, out var range, true); // >
-
                     left = new IndexKoto(ref reader, new(token.Range.Start, range.End), left, typeKoto);
                     return true;
                 }

@@ -51,6 +51,7 @@ public enum KotoKind : byte
     NumericLiteral,
     StringLiteral,
     Unresolved,
+    Type,
 
     // Unary
     Attribute,
@@ -120,6 +121,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.NumericLiteral, typeof(NumericLiteralKoto))]
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.Unresolved, typeof(UnresolvedKoto))]
+[TinyhandUnion((int)KotoKind.Type, typeof(TypeKoto))]
 
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
 [TinyhandUnion((int)KotoKind.Macro, typeof(MacroKoto))]
@@ -256,6 +258,8 @@ public abstract partial class Koto
             builder.Dispose();
         }
     }
+
+    public virtual bool IsToplevel => false;
 
     public virtual void WriteTo(ref IndentedStringBuilder builder)
     {

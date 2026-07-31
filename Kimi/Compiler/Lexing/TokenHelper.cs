@@ -56,6 +56,7 @@ public static class TokenHelper
         Set(TokenKind.U128, true, "u128");
         Set(TokenKind.F32, true, "f32");
         Set(TokenKind.F64, true, "f64");
+        Set(TokenKind.String, true, "string");
 
         // Keywords (Group)
         Set(TokenKind.Static, true, "static");
@@ -70,7 +71,6 @@ public static class TokenHelper
         Set(TokenKind.Var, true, "var");
         Set(TokenKind.True, true, "true");
         Set(TokenKind.False, true, "false");
-        Set(TokenKind.String, true, "string");
 
         // Block keyword
         Set(TokenKind.Group, true, "group");
@@ -381,6 +381,9 @@ public static class TokenHelper
     /// <returns><see langword="true"/> if <paramref name="tokenKind"/> is a block-starting token; otherwise, <see langword="false"/>.</returns>
     public static bool IsBlockToken(this TokenKind tokenKind)
         => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Match;
+
+    public static bool IsPrimitiveType(this TokenKind tokenKind)
+        => tokenKind >= TokenKind.Bool && tokenKind <= TokenKind.String;
 
     /// <summary>
     /// Tries to classify a single-character token and reports its grouping-depth effect.

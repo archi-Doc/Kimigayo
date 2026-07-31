@@ -1,7 +1,8 @@
 alias AliasB
+
 var count: i32 = 0
 let name: String = "abc"
-var items: Array
+var items: Array<Int>
 
 public open struct Test: @A, @B, 
     #Test1

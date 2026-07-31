@@ -16,6 +16,8 @@ public sealed partial class AliasKoto : Koto
         this.QualifiedName = alias;
     }
 
+    public override bool IsToplevel => true;
+
     public override string ToString()
         => $"alias {string.Join(Constants.DotChar, this.QualifiedName)}";
 

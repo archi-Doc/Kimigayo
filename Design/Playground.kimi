@@ -15,3 +15,4 @@ var movedObj <= &owner obj // obj => movedObj
 var movedObj = &move obj
 &owner obj => var movedObj
 array.Add(movedObj) // movedObj => array
+*/

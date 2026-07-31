@@ -29,6 +29,7 @@ public enum TokenKind : byte
     U128,
     F32,
     F64,
+    String,
 
     // Keywords (Group)
     Static = 32,
@@ -43,7 +44,6 @@ public enum TokenKind : byte
     Var,
     True,
     False,
-    String,
 
     // Block keyword
     Group, // group

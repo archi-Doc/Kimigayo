@@ -27,24 +27,18 @@ public partial class FieldKoto : Koto
     public Koto? InitializerKoto { get; private set; }
 
     [IgnoreMember]
-    private Token typeToken;
+    private Koto? typeKoto;
 
     public string VariableText => this.VariableKind == VariableKind.Var ? "var" : "let";
 
-    public FieldKoto(ref TokenReader reader, ref Token token, Token typeToken, UnresolvedKoto nameKoto, Koto? initializerKoto)
+    public FieldKoto(ref TokenReader reader, ref Token token, UnresolvedKoto nameKoto, Koto? typeKoto, Koto? initializerKoto)
         : base(ref reader, token.Range)
     {
         this.Modifier = reader.ModifierKind;
         this.VariableKind = token.Kind == TokenKind.Let ? VariableKind.Let : VariableKind.Var;
-        this.typeToken = typeToken;
+        this.typeKoto = typeKoto;
         this.NameKoto = nameKoto;
         this.InitializerKoto = initializerKoto;
-    }
-
-    public override string ToString()
-    {
-        var typeText = this.typeToken.Kind == TokenKind.Invalid ? string.Empty : $": {this.typeToken.Text}";
-        return $"{this.VariableText} {this.NameKoto.Identifier}{typeText}";
     }
 
     public override void WriteTo(ref IndentedStringBuilder builder)
@@ -57,14 +51,14 @@ public partial class FieldKoto : Koto
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
 
         builder.Append(this.VariableText);
-        builder.Append(' ');
+        builder.AppendSpace();
 
         this.NameKoto.WriteTo(ref builder);
 
-        if (this.typeToken.Kind != TokenKind.Invalid)
-        {// ": i32"
+        if (this.typeKoto is not null)
+        {
             builder.Append(": ");
-            builder.Append(this.typeToken.Text);
+            this.typeKoto.WriteTo(ref builder);
         }
 
         if (this.InitializerKoto != default)
