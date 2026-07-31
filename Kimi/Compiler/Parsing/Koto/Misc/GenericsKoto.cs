@@ -6,19 +6,24 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 [TinyhandObject]
-public partial class GenericsKoto : UnaryKoto
+public partial class GenericsKoto : Koto
 {// A<B, C>
+    [IgnoreMember]
+    public Koto Identifier { get; private set; }
+
     private readonly List<Koto> typeList;
 
-    public GenericsKoto(ref TokenReader reader, SourceRange range, Koto operand, List<Koto> typeList)
-        : base(ref reader, range, operand)
+    public GenericsKoto(ref TokenReader reader, SourceRange range, Koto identifier, List<Koto> typeList)
+        : base(ref reader, range)
     {
+        this.Identifier = identifier;
         this.typeList = typeList;
     }
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Operand.WriteTo(ref builder);
+        this.Identifier.WriteTo(ref builder);
+        // builder.Append(this.Identifier);
         builder.Append(Constants.LessThanChar);
 
         for (var i = 0; i < this.typeList.Count; i++)

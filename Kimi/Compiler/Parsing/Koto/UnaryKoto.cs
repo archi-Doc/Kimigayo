@@ -20,7 +20,7 @@ public partial class AttributeKoto : UnaryKoto
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            if (this.IdentifierKoto is UnresolvedKoto unresolvedKoto)
+            if (this.IdentifierKoto is IdentifierNameKoto unresolvedKoto)
             {
                 return unresolvedKoto.Identifier.SequenceEqual(Constants.IfAttribute) == true;
             }
@@ -35,7 +35,7 @@ public partial class AttributeKoto : UnaryKoto
         : base(ref reader, range, operand)
     {
         if (operand is InvocationKoto invocationKoto &&
-            invocationKoto.Method is UnresolvedKoto unresolvedKoto)
+            invocationKoto.Method is IdentifierNameKoto unresolvedKoto)
         {// #Attribute(arguments)
             this.IdentifierKoto = unresolvedKoto;
             this.Arguments = invocationKoto.Arguments;

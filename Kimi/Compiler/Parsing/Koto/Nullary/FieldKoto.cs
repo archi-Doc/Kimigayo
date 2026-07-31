@@ -21,7 +21,7 @@ public partial class FieldKoto : Koto
     public VariableKind VariableKind { get; private set; }
 
     [Key(3)]
-    public UnresolvedKoto NameKoto { get; private set; }
+    public IdentifierNameKoto NameKoto { get; private set; }
 
     [Key(4)]
     public Koto? InitializerKoto { get; private set; }
@@ -31,7 +31,7 @@ public partial class FieldKoto : Koto
 
     public string VariableText => this.VariableKind == VariableKind.Var ? "var" : "let";
 
-    public FieldKoto(ref TokenReader reader, ref Token token, UnresolvedKoto nameKoto, Koto? typeKoto, Koto? initializerKoto)
+    public FieldKoto(ref TokenReader reader, ref Token token, IdentifierNameKoto nameKoto, Koto? typeKoto, Koto? initializerKoto)
         : base(ref reader, token.Range)
     {
         this.Modifier = reader.ModifierKind;

@@ -5,19 +5,19 @@ using Kimi.Compiler.Lexing;
 namespace Kimi.Compiler.Parsing;
 
 [TinyhandObject]
-public partial class UnresolvedKoto : Koto
+public partial class IdentifierNameKoto : Koto
 {
-    public static readonly UnresolvedKoto Error;
+    public static readonly IdentifierNameKoto Error;
 
-    static UnresolvedKoto()
+    static IdentifierNameKoto()
     {
-        Error = UnresolvedKoto.UnsafeConstructor();
+        Error = IdentifierNameKoto.UnsafeConstructor();
     }
 
     [Key(1)]
     public string Identifier { get; private set; }
 
-    public UnresolvedKoto(ref TokenReader reader, Token token)
+    public IdentifierNameKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Range)
     {
         this.Identifier = token.Text.ToString();

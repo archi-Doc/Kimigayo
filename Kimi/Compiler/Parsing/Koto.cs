@@ -120,7 +120,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Field, typeof(FieldKoto))]
 [TinyhandUnion((int)KotoKind.NumericLiteral, typeof(NumericLiteralKoto))]
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
-[TinyhandUnion((int)KotoKind.Unresolved, typeof(UnresolvedKoto))]
+[TinyhandUnion((int)KotoKind.Unresolved, typeof(IdentifierNameKoto))]
 [TinyhandUnion((int)KotoKind.Type, typeof(TypeKoto))]
 
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
@@ -220,6 +220,8 @@ public abstract partial class Koto
 
     [Key(0)]
     public AttributeKoto? AttributeChain { get; internal set; }
+
+    public Type Atype => this.GetType();
 
     [MemberNotNullWhen(false, nameof(Parent))]
     public bool IsRoot => this.Parent is null;

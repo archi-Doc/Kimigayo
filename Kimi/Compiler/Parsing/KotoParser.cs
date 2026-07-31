@@ -355,7 +355,7 @@ Exit:
             return default;
         }
 
-        var nameKoto = new UnresolvedKoto(ref reader, nameToken);
+        var nameKoto = new IdentifierNameKoto(ref reader, nameToken);
 
         Koto? typeKoto = default;
         if (reader.TryConsume(TokenKind.Colon, out _, false))
@@ -805,7 +805,7 @@ Exit:
 
                 // A.B
                 reader.Advance();
-                var accessor = ParseTypeKoto(ref reader);
+                var accessor = ParseType(ref reader);
                 accessor ??= reader.NewErrorKoto();
                 return new MemberAccessKoto(ref reader, new(token.Range.Start, accessor.Range.End), left, accessor);
             }
@@ -955,9 +955,22 @@ ProcessPrefix:
             case TokenKind.LessThan:
                 {// Generics<T>
                     reader.TryRead(out var token); // <
-                    var typeKoto = ParseType(ref reader);
+                    var typeList = new List<Koto>();
+                    while (ParseType(ref reader) is { } typeKoto)
+                    {
+                        typeList.Add(typeKoto);
+                        if (reader.CurrentTokenKind != TokenKind.Comma)
+                        {
+                            break;
+                        }
+                        else
+                        {
+                            reader.Advance();
+                        }
+                    }
+
                     reader.TryConsume(TokenKind.GreaterThan, out var range, true); // >
-                    left = new IndexKoto(ref reader, new(token.Range.Start, range.End), left, typeKoto);
+                    left = new GenericsKoto(ref reader, new(token.Range.Start, range.End), left, typeList);
                     return true;
                 }
 
@@ -1045,7 +1058,7 @@ Loop:
             case TokenKind.Identifier:
                 {
                     reader.TryRead(out var token);
-                    return new UnresolvedKoto(ref reader, token);
+                    return new IdentifierNameKoto(ref reader, token);
                 }
 
             case TokenKind.NumericLiteral:

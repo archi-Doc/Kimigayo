@@ -123,7 +123,7 @@ public class Compilation
         }
     }
 
-    internal bool TryResolveValue(UnresolvedKoto koto, out LimitedValue limitedValue)
+    internal bool TryResolveValue(IdentifierNameKoto koto, out LimitedValue limitedValue)
     {
         return this.CompilationVariables.TryGetValue(koto.Identifier, out limitedValue);
     }

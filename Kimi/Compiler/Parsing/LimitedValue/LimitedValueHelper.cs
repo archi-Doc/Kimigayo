@@ -25,7 +25,7 @@ public static class LimitedValueHelper
         {// Text
             return new(stringLiteralKoto.Literal);
         }
-        else if (koto is UnresolvedKoto unresolvedKoto)
+        else if (koto is IdentifierNameKoto unresolvedKoto)
         {// os value: bool
             if (compilation.TryResolveValue(unresolvedKoto, out var lv))
             {
