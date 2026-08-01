@@ -1,0 +1,253 @@
+alias Kimi.Crypto
+alias Kimi.LowLevelInterface
+
+#If(os=="Linux") // Attribute-next rule.
+alias Kimi.Base.Linux
+
+// Single-line comment
+/* Multi-line
+   comment */
+
+roogroup Playground.A// Represents a group that specifies an identifier by its absolute position.
+
+public contract @Equatable
+    static function ==(left: Self, right: Self) => Bool
+
+#Attribute() var x = 1
+$Macro
+@Contract
+
+public contract @Comparable
+    static func < (left: Self, right: Self) => bool
+
+var count: i32 = 0
+let name: String = "abc"
+var items: Array<Int> = [1, 2, 3]
+var items2 = [1, 2, 3, ]
+var map: Map<String, Int> = ["A": 1, "B": 2]
+var array: Array<&owner T> = new()
+var obj = T.New() // T: stack
+var obj2 = &owner T.New() // &owner T: heap
+var movedObj <= &owner obj // obj => movedObj
+var movedObj = &move obj
+&owner obj => var movedObj
+array.Add(movedObj) // movedObj => array
+
+#Description("Kernel32 helper")
+public namespace Kernel32 // shared (no instance)
+    public let libraryName: string = "Kernel32.dll"
+    public let count = 1 // readonly
+    #LibraryImport(LibraryName) public GetStdHandle(nStdHandle: u32) => ptr
+    #LibraryImport(LibraryName) WriteFile(hFile:ptr, lpBuffer:ptr, nNumberOfBytesToWrite:u32, lpNumberOfBytesWritten:ptr, lpOverlapped:ptr) => i32
+    #LibraryImport(LibraryName) ExitProcess(
+        #Description("Exit code")
+        u32 uExitCode
+        ) => ()
+
+    public TestMethod() =>
+        @Macro()
+        return
+
+    #Layout(C)
+    public struct OVERLAPPED
+        public var Internal: usize
+        public var Pointer: pointer
+
+namespace Program
+
+struct $ :  StandardContext // Compose Context
+    public T Inject<T>()
+        => self.GetService<T>() // IServiceProvider
+
+#Key(0) public const string Name = "Test Program"
+#Key(1)
+public const string Name = "Test Program"
+
+// (): Group (collection of values of any type)
+// []: Array (collection of values of the same type)
+// <>: Generics (collection of types)
+// {}: Not used
+
+// Group: namespace, group, struct
+// Map: method:return, switch:yield, if:yield, loop:break
+// Statement: while, for
+// Block
+
+public group Helper // namespace - alias
+    public const i32 Id = 123
+    public Method1() => int32 // use PackageName, Helper
+        return 1
+
+    Method2() =>
+        #Condition(Os=="Windows")
+        block Initialize
+            var func = () => 3 // () => return 4
+            var i = if (x == true) 1 else 0
+        var i2 = if (x == true)
+            1
+        else
+            yield 2
+        goto Initialize
+        var i3 = if (
+            var z = Func()
+            yield (z > 0)) 1 else 0
+        var j = match x
+            true => 1
+            false => 0
+        var k = match x
+            true =>
+                1
+            false =>
+                0
+        return
+
+public struct SomeObject
+    #Inject
+    IConsoleService& ConsoleService { get; }
+
+    public New() => Self
+        var self = Self
+        // self.ConsoleService = $Inject<IConsoleService>() // GetService
+        return self
+
+#TinyhandObject
+public struct TestStruct // group + field
+    #Key(1)
+    var id: i32
+
+    public New() => Self
+        self.id = 11
+
+    public GetId(&) => i32 // &, &owner, &rc, &arc
+        return self.id
+
+    public GetText(&, i32 id) => string
+        return id switch
+            1 => "Test",
+            2 => 
+
+TestMethod()
+    var st = TestStruct.New()
+    
+
+public enum TestEnum
+    Success
+    Failure
+
+$WriteLine("Kimigayo")
+
+method Main()
+    Array<i32> array = 
+    [
+        1,
+        2,
+    ]
+
+    Array<i32> array = [
+        1,
+        2,
+    ]
+    for var x in array
+        $Print(x)
+    var i = 8
+    var j = i++
+    var st = i.ToString()
+    loop
+        var x = 1
+    switch ()
+        case ()
+    return
+
+public group Example
+    public method Main() => Task
+        $Console.WriteLine("Hello world!")
+        context.Console.WriteLine("Hello world!")
+        Example::Example.Test()
+        $Panic("")
+        self.Method2(32)
+        new Class() -> var x
+        var x = new Class()
+        var y = &x
+        var z = !x
+        var a < new Class()
+        &Class b < &x
+        !Class c <- !x
+classA.x = classB.x
+classA.y <= classB.y
+        return
+
+    private static method Test()
+
+    private static method Test() => Task
+        // Block
+        if (context.CancellationToken.IsCancelRequested)
+            return
+
+        var st = TestStruct.New()
+        var st2 = Arc.New(st) // &owner Arc<TestStruct> // TそのものはThread-traversalではない
+        _ = Task.Run(async () => // Closure -> Block. Require reference analysis
+            var i = 0
+            i++
+            st.Test() // Error
+            st2.Test() // Success
+        )
+
+        _ = Task.Run(async () =>
+            var i = 0
+            i++
+        )
+        .ConfigureAwait(false)
+
+
+
+#Namespace(Kimi.Low.Windows)
+public group Helper
+    #LibraryImport("kernel32.dll")
+    public static method HeapAlloc(isize hHeap, uint32 dwFlags, usize dwBytes) -> isize
+
+    public method Method1(int x) -> int
+        return x + 4
+
+    #Condition(Architecture=="x64")
+    public method ReadTsc() -> i64
+        let low: u32;
+        let high: u32;
+        #Assembler(
+            "rdtsc",
+            out("eax") low,
+            out("edx") high,
+            options(nomem, nostack, preserves_flags)
+            )
+        return ((high as u64) << 32) | low as u64
+
+impl ExampleImpl1
+    int x
+
+    method Metho2(int x) int
+        return x + 1
+
+if (a == 1 &&
+    b == 2)
+var x = [1,
+    2,]
+var a = 1 +
+    2
+var record = Record.New()
+    A = 3
+    C = Value.New()
+        X = 1
+    B = "D"
+var func = () =>
+    return
+
+chainMethod().Do().IsTrue()
+
+complexMethod(
+    A,
+    B,
+    C)
+
+if (Condition)
+    return 1
+else
+    return 9

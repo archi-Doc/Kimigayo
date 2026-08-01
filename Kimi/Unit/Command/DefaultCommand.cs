@@ -2,7 +2,7 @@
 
 using SimpleCommandLine;
 
-namespace Kimigayo.Command;
+namespace Kimi.Command;
 
 [SimpleCommand("Default", Default = true)]
 public class DefaultCommand : ISimpleCommand
@@ -17,6 +17,6 @@ public class DefaultCommand : ISimpleCommand
 
     public async Task Execute(string[] args, CancellationToken cancellationToken)
     {
-        Console.WriteLine($"Kimigayo ({Arc.VersionHelper.VersionString}) by archi-Doc");
+        Console.WriteLine($"Kimi ({Arc.VersionHelper.VersionString}) by archi-Doc");
     }
 }

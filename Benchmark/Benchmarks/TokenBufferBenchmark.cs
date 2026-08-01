@@ -2,7 +2,8 @@
 
 using System.Buffers;
 using BenchmarkDotNet.Attributes;
-using Kimigayo.Language;
+using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 
 namespace Benchmark;
 

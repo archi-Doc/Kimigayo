@@ -5,14 +5,15 @@
 global using Arc;
 global using Arc.Threading;
 global using Arc.Unit;
-global using Kimigayo;
+global using Kimi;
 global using Microsoft.Extensions.DependencyInjection;
 global using Tinyhand;
 global using ValueLink;
-using Kimigayo.Command;
+using Kimi.Command;
+using Kimi.Unit;
 using SimpleCommandLine;
 
-namespace Kimigayo;
+namespace Kimi;
 
 public class Program
 {

@@ -1,12 +1,21 @@
-alias Kimi.Base
+#If(os == "windows")
+alias AliasB
 
-#Condition
-alias Kimi.Windows
+#If(os == """Windows")
+alias AliasC
 
-// comment
-#Condition(Os == "Windows")
-namespace Playground.A
+public open struct Test: @A, @B,
+    public static #Test1 var #Test2 x: i32 = #One 1
 
-#Condition(Os.Version.Current == 1 and "text".Length > 0)
-var x = 1 + 2 * 3
-var y = (1 + 2) * 3
+var x:&unsafe Base.Map<String, Int>
+var count: i32 = #TestAtr 0
+let name: String = "abc"
+var items: Array<Int> // = [1, 2, 3]
+var items2 // = [1, 2, 3, ]
+var map: Map<String, Int>// =  ["A": 1, "B": 2]
+var array: Array<&owner T.U> = new()
+var obj = T.New() // T: stack
+var obj2 = &owner T.New() // T.New()
+var movedObj = &owner obj // obj => movedObj
+var movedObj = &unsafe obj
+array.Add(movedObj) // movedObj => array

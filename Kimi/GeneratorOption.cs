@@ -3,7 +3,7 @@
 using Tinyhand;
 using ValueLink;
 
-namespace Kimigayo;
+namespace Kimi;
 
 [TinyhandGeneratorOption(AttachDebugger = false, GenerateToFile = false)]
 internal class GeneratorOption

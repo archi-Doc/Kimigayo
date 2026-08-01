@@ -3,7 +3,7 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
-namespace Kimigayo.Language;
+namespace Kimi.Compiler;
 
 #pragma warning disable SA1401 // Fields should be private
 

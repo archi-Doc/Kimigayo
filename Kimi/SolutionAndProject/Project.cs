@@ -1,11 +1,12 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo;
+namespace Kimi;
 
 using System.Diagnostics.CodeAnalysis;
-using Kimigayo.Language;
+using Kimi.Command;
+using Kimi.Compiler;
 
-public readonly record struct PathAndSource(string Path, string Source);
+public readonly record struct PathAndSource(string Path, string SourceText);
 
 public partial class Project
 {
@@ -25,7 +26,7 @@ public partial class Project
         project = default;
         try
         {
-            var utf8 = File.ReadAllBytes(path);
+            var utf8 = System.IO.File.ReadAllBytes(path);
             var file = TinyhandSerializer.DeserializeFromUtf8<ProjectFile>(utf8);
             if (file is null)
             {
@@ -34,8 +35,9 @@ public partial class Project
             }
 
             project = new(kimiControl);
-            project.ProjectFile = file;
-            project.ProjectName = Path.GetFileNameWithoutExtension(path);
+            project.Directory = Path.GetDirectoryName(path) ?? string.Empty;
+            project.Name = Path.GetFileNameWithoutExtension(path);
+            project.File = file;
         }
         catch
         {
@@ -54,16 +56,18 @@ public partial class Project
 
     public KimiOptions KimiOptions { get; set; } = new();
 
-    public string ProjectName { get; set; } = string.Empty;
+    public string Directory { get; set; } = string.Empty;
 
-    public ProjectFile ProjectFile { get; private set; } = new();
+    public string Name { get; set; } = string.Empty;
+
+    public ProjectFile File { get; private set; } = new();
 
     #endregion
 
     public Project(KimiControl kimiControl)
     {
         this.kimiControl = kimiControl;
-        this.ProjectFile = DefaultProjectFile;
+        this.File = DefaultProjectFile;
     }
 
     public void AddSource(string url, string text)
@@ -78,7 +82,7 @@ public partial class Project
 
     public async Task<bool> Build()
     {
-        var targets = this.ProjectFile.Targets.ToArray();
+        var targets = this.File.Targets.ToArray();
         foreach (var x in targets)
         {
             await this.Buildtarget(x).ConfigureAwait(false);
@@ -90,15 +94,20 @@ public partial class Project
     private async Task<bool> Buildtarget(string target)
     {
         // Create & Prepare Compilation
-        var compilation = new Compilation(this.kimiControl, this.KimiOptions, this.ProjectFile, this.ProjectName);
-        compilation.Prepare(target);
+        var compilation = new Compilation(this.kimiControl, this);
+        if (!compilation.Prepare(target))
+        {
+            return false;
+        }
+
+        var projectKotonoha = compilation.ProjectKotonoha;
 
         foreach (var y in this.kimiFiles)
         {
             try
             {
-                var st = File.ReadAllText(y);
-                compilation.Parse(new(y, st));
+                var st = System.IO.File.ReadAllText(y);
+                projectKotonoha.AddSource(new(y, st));
             }
             catch
             {
@@ -107,10 +116,12 @@ public partial class Project
 
         foreach (var y in this.additionalSource)
         {
-            compilation.Parse(y);
+            projectKotonoha.AddSource(y);
         }
 
-        // Resolve const & #Condition
+        compilation.ScrubForTest();
+
+        // Resolve shared let & @Attribute
 
         // Prepare CodeContext
 

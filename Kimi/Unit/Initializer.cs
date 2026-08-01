@@ -2,7 +2,7 @@
 
 using System.Runtime.CompilerServices;
 
-namespace Kimigayo;
+namespace Kimi;
 
 internal static class Initializer
 {

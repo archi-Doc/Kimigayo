@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-namespace Kimigayo.Lsp;
+namespace Kimi.Lsp;
 
 internal sealed record TomlDiagnostic(int Line, int Character, int Length, string Severity, string Message);
 

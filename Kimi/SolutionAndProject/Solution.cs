@@ -1,8 +1,9 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using Kimi.Command;
 
-namespace Kimigayo;
+namespace Kimi;
 
 public class Solution
 {
@@ -254,7 +255,8 @@ SolutionLoaed:
             if (File.Exists(this.SingleFile))
             {
                 var project = new Project(this.kimiControl);
-                project.ProjectName = Path.GetFileNameWithoutExtension(this.SingleFile);
+                project.Name = Path.GetFileNameWithoutExtension(this.SingleFile);
+                project.Directory = Path.GetDirectoryName(this.SingleFile) ?? string.Empty;
                 project.AddKimiFile(this.SingleFile);
                 this.Projects[this.SingleFile] = project;
             }

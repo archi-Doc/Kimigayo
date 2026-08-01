@@ -4,8 +4,9 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Arc.Unit;
-using Kimigayo;
-using Kimigayo.Language;
+using Kimi;
+using Kimi.Compiler;
+using Kimi.Unit;
 using Microsoft.Extensions.DependencyInjection;
 using SimplePrompt;
 using Tinyhand;
@@ -43,12 +44,12 @@ internal class Program
             """);*/
         project.AddSource("test", """
             /* Multi-line comment
-            Kimigayo by archi-Doc.
+            Kimi by archi-Doc.
             */
             namespace Playground // Single-line comment
             use Kimi.Crypto 
 
-            Condition(Os=="Linux") // Attribute-next rule.
+            #If(Os=="Linux") // Attribute-next rule.
             use Kimi.Base.Linux
 
             public const string Name = "Test Program"
