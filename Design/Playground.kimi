@@ -4,6 +4,9 @@ alias AliasB
 #If(os == """Windows")
 alias AliasC
 
+#If(windows)
+alias AliasC
+
 public open struct Test: @A, @B,
     public static #Test1 var #Test2 x: i32 = #One 1
 

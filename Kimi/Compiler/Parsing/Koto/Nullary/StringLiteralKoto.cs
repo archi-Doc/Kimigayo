@@ -19,7 +19,7 @@ public sealed partial class StringLiteralKoto : Koto
                 return field;
             }
 
-            field = KotoHelper.ParseLiteral(this.rawLiteral);
+            field = KotoHelper.ParseLiteral(this.rawLiteral, this.DiagnosticCollection);
             return field;
         }
     }

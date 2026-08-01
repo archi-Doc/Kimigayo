@@ -65,7 +65,12 @@ public class Compilation
 
         // CompilationVariables
         this.CompilationVariables.Clear();
-        this.CompilationVariables.Add("os", new(this.TargetTriple.OperatingSystem));
+
+        var os = this.TargetTriple.OperatingSystem;
+        this.CompilationVariables.Add("os", new(os));
+        this.CompilationVariables.Add("windows", new(string.Equals(os, "Windows", StringComparison.InvariantCultureIgnoreCase)));
+        this.CompilationVariables.Add("linux", new(string.Equals(os, "linux", StringComparison.InvariantCultureIgnoreCase)));
+        this.CompilationVariables.Add("macos", new(string.Equals(os, "macos", StringComparison.InvariantCultureIgnoreCase)));
 
         return true;
     }
