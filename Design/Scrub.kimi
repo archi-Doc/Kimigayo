@@ -1,4 +1,5 @@
 alias AliasB
+alias AliasC
 
 var x: &unsafe Base.Map<String, Int>
 var count: i32 = #TestAtr 0

@@ -416,14 +416,10 @@ public static class KotoHelper
         return rawLiteral.Slice(delimiterLength, sourceLength - delimiterLength - i).ToString();
     }
 
-    private static int GetDecodedLength(
-        string source,
-        int start,
-        int end)
+    private static int GetDecodedLength(ReadOnlySpan<char> source, int start, int end)
     {
         int decodedLength = 0;
         int index = start;
-
         while (index < end)
         {
             char c = source[index++];
@@ -471,31 +467,20 @@ public static class KotoHelper
                     break;
 
                 case 'x':
-                    ReadVariableHexEscape(
-                        source,
-                        ref index,
-                        end);
+                    ReadVariableHexEscape(source, ref index, end);
 
                     decodedLength++;
                     break;
 
                 case 'u':
-                    ReadFixedHexEscape(
-                        source,
-                        ref index,
-                        end,
-                        4);
+                    ReadFixedHexEscape(source, ref index, end, 4);
 
                     decodedLength++;
                     break;
 
                 case 'U':
                     {
-                        uint codePoint = ReadFixedHexEscape(
-                            source,
-                            ref index,
-                            end,
-                            8);
+                        uint codePoint = ReadFixedHexEscape(source, ref index, end, 8);
 
                         ValidateUnicodeScalar(codePoint);
 
@@ -512,11 +497,7 @@ public static class KotoHelper
         return decodedLength;
     }
 
-    private static void DecodeEscapes(
-        string source,
-        int start,
-        int end,
-        Span<char> destination)
+    private static void DecodeEscapes(string source, int start, int end, Span<char> destination)
     {
         int sourceIndex = start;
         int destinationIndex = 0;
@@ -643,7 +624,7 @@ public static class KotoHelper
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint ReadVariableHexEscape(
-        string source,
+        ReadOnlySpan<char> source,
         ref int index,
         int end)
     {
@@ -674,7 +655,7 @@ public static class KotoHelper
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint ReadFixedHexEscape(
-        string source,
+        ReadOnlySpan<char> source,
         ref int index,
         int end,
         int digitCount)
