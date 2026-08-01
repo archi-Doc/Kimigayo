@@ -384,6 +384,26 @@ public static class KotoHelper
 
     private static string ParseRegularLiteral(string rawLiteral)
     {
+        var firstBackslash = rawLiteral.IndexOf('\\');
+        if (firstBackslash < 0)
+        {// Fast path: no escape
+            return rawLiteral.Substring(1, rawLiteral.Length - 2);
+        }
+
+        int decodedLength = GetDecodedLength(rawLiteral, firstBackslash);
+
+        return string.Create(
+            decodedLength,
+            new DecodeState(rawLiteral, firstBackslash),
+            static (destination, state) =>
+            {
+                Decode(
+                    state.Source,
+                    state.FirstBackslash,
+                    destination);
+
+            });
+
         var contentStart = 1;
         var contentEnd = rawLiteral.Length - 1;
         var decodedLength = GetDecodedLength(rawLiteral, contentStart, contentEnd);
@@ -416,80 +436,64 @@ public static class KotoHelper
         return rawLiteral.Slice(delimiterLength, sourceLength - delimiterLength - i).ToString();
     }
 
-    private static int GetDecodedLength(ReadOnlySpan<char> source, int start, int end)
+    /// <summary>
+    /// Decodes supported escape sequences in the specified string.
+    /// </summary>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="source"/> is null.
+    /// </exception>
+    /// <exception cref="FormatException">
+    /// The string contains an invalid or unsupported escape sequence.
+    /// </exception>
+    public static string Unescape(string source)
     {
-        int decodedLength = 0;
-        int index = start;
-        while (index < end)
+        ArgumentNullException.ThrowIfNull(source);
+
+
+    }
+
+    private static int GetDecodedLength(string source, int firstBackslash)
+    {
+        var sourceLength = source.Length;
+        var decodedLength = firstBackslash;
+        var index = firstBackslash;
+        while (index < sourceLength)
         {
             char c = source[index++];
-
-            if (c == '"')
-            {
-                // A quote inside a regular literal must be escaped.
-                ThrowInvalidLiteral();
-            }
-
-            if (c is '\r' or '\n')
-            {
-                // Regular string literals cannot contain literal line breaks.
-                ThrowInvalidLiteral();
-            }
-
             if (c != '\\')
             {
                 decodedLength++;
                 continue;
             }
 
-            if (index >= end)
+            if (index >= sourceLength)
             {
-                ThrowInvalidEscape();
+                ThrowIncompleteEscape();
             }
 
             char escapeKind = source[index++];
 
             switch (escapeKind)
             {
-                case '\'':
-                case '"':
-                case '\\':
                 case '0':
-                case 'a':
-                case 'b':
-                case 'e':
-                case 'f':
+                case '\\':
+                case 't':
                 case 'n':
                 case 'r':
-                case 't':
-                case 'v':
-                    decodedLength++;
-                    break;
-
-                case 'x':
-                    ReadVariableHexEscape(source, ref index, end);
-
+                case '"':
+                case '\'':
                     decodedLength++;
                     break;
 
                 case 'u':
-                    ReadFixedHexEscape(source, ref index, end, 4);
-
-                    decodedLength++;
-                    break;
-
-                case 'U':
                     {
-                        uint codePoint = ReadFixedHexEscape(source, ref index, end, 8);
-
-                        ValidateUnicodeScalar(codePoint);
-
-                        decodedLength += codePoint <= 0xFFFF ? 1 : 2;
+                        uint scalar = ReadUnicodeEscape(source, ref index);
+                        decodedLength += scalar <= 0xFFFF ? 1 : 2;
                         break;
                     }
 
                 default:
-                    ThrowInvalidEscape();
+                    ThrowUnsupportedEscape(escapeKind);
                     break;
             }
         }
@@ -497,12 +501,15 @@ public static class KotoHelper
         return decodedLength;
     }
 
-    private static void DecodeEscapes(string source, int start, int end, Span<char> destination)
+    private static void Decode(string source, int firstBackslash, Span<char> destination)
     {
-        int sourceIndex = start;
-        int destinationIndex = 0;
+        source.AsSpan(0, firstBackslash).CopyTo(destination);
 
-        while (sourceIndex < end)
+        int sourceLength = source.Length;
+        int sourceIndex = firstBackslash;
+        int destinationIndex = firstBackslash;
+
+        while (sourceIndex < sourceLength)
         {
             char c = source[sourceIndex++];
 
@@ -516,36 +523,16 @@ public static class KotoHelper
 
             switch (escapeKind)
             {
-                case '\'':
-                    destination[destinationIndex++] = '\'';
-                    break;
-
-                case '"':
-                    destination[destinationIndex++] = '"';
+                case '0':
+                    destination[destinationIndex++] = '\0';
                     break;
 
                 case '\\':
                     destination[destinationIndex++] = '\\';
                     break;
 
-                case '0':
-                    destination[destinationIndex++] = '\0';
-                    break;
-
-                case 'a':
-                    destination[destinationIndex++] = '\a';
-                    break;
-
-                case 'b':
-                    destination[destinationIndex++] = '\b';
-                    break;
-
-                case 'e':
-                    destination[destinationIndex++] = '\u001B';
-                    break;
-
-                case 'f':
-                    destination[destinationIndex++] = '\f';
+                case 't':
+                    destination[destinationIndex++] = '\t';
                     break;
 
                 case 'n':
@@ -556,148 +543,95 @@ public static class KotoHelper
                     destination[destinationIndex++] = '\r';
                     break;
 
-                case 't':
-                    destination[destinationIndex++] = '\t';
+                case '"':
+                    destination[destinationIndex++] = '"';
                     break;
 
-                case 'v':
-                    destination[destinationIndex++] = '\v';
+                case '\'':
+                    destination[destinationIndex++] = '\'';
                     break;
-
-                case 'x':
-                    {
-                        uint value = ReadVariableHexEscape(
-                            source,
-                            ref sourceIndex,
-                            end);
-
-                        destination[destinationIndex++] = (char)value;
-                        break;
-                    }
 
                 case 'u':
                     {
-                        uint value = ReadFixedHexEscape(
-                            source,
-                            ref sourceIndex,
-                            end,
-                            4);
+                        uint scalar = ReadUnicodeEscape(source, ref sourceIndex);
 
-                        destination[destinationIndex++] = (char)value;
-                        break;
-                    }
-
-                case 'U':
-                    {
-                        uint codePoint = ReadFixedHexEscape(
-                            source,
-                            ref sourceIndex,
-                            end,
-                            8);
-
-                        if (codePoint <= 0xFFFF)
+                        if (scalar <= 0xFFFF)
                         {
-                            destination[destinationIndex++] = (char)codePoint;
+                            destination[destinationIndex++] = (char)scalar;
                         }
                         else
                         {
-                            codePoint -= 0x10000;
+                            scalar -= 0x10000;
 
                             destination[destinationIndex++] =
-                                (char)(0xD800 + (codePoint >> 10));
+                                (char)(0xD800 + (scalar >> 10));
 
                             destination[destinationIndex++] =
-                                (char)(0xDC00 + (codePoint & 0x3FF));
+                                (char)(0xDC00 + (scalar & 0x3FF));
                         }
 
                         break;
                     }
-
-                default:
-                    Debug.Fail("Escape sequences were validated in the first pass.");
-                    break;
             }
         }
-
-        Debug.Assert(destinationIndex == destination.Length);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static uint ReadVariableHexEscape(
-        ReadOnlySpan<char> source,
-        ref int index,
-        int end)
+    private static uint ReadUnicodeEscape(string source, ref int index)
     {
+        int sourceLength = source.Length;
+
+        if (index >= sourceLength || source[index] != '{')
+        {
+            ThrowInvalidUnicodeEscape();
+        }
+
+        index++;
+
         uint value = 0;
         int digitCount = 0;
 
-        while (digitCount < 4 && index < end)
+        while (index < sourceLength)
         {
-            int digit = GetHexValue(source[index]);
+            char c = source[index++];
 
-            if (digit < 0)
+            if (c == '}')
             {
-                break;
+                if (digitCount == 0)
+                {
+                    ThrowInvalidUnicodeEscape();
+                }
+
+                ValidateUnicodeScalar(value);
+                return value;
+            }
+
+            int digit = GetHexValue(c);
+
+            if (digit < 0 || digitCount == 6)
+            {
+                ThrowInvalidUnicodeEscape();
             }
 
             value = (value << 4) | (uint)digit;
-            index++;
             digitCount++;
         }
 
-        if (digitCount == 0)
-        {
-            ThrowInvalidEscape();
-        }
-
-        return value;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static uint ReadFixedHexEscape(
-        ReadOnlySpan<char> source,
-        ref int index,
-        int end,
-        int digitCount)
-    {
-        if (end - index < digitCount)
-        {
-            ThrowInvalidEscape();
-        }
-
-        uint value = 0;
-        int limit = index + digitCount;
-
-        while (index < limit)
-        {
-            int digit = GetHexValue(source[index++]);
-
-            if (digit < 0)
-            {
-                ThrowInvalidEscape();
-            }
-
-            value = (value << 4) | (uint)digit;
-        }
-
-        return value;
+        ThrowInvalidUnicodeEscape();
+        return 0;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetHexValue(char c)
     {
         uint value = c;
-
         if (value - '0' <= 9)
         {
             return (int)(value - '0');
         }
 
         value = (value | 0x20) - 'a';
-
-        return value <= 5
-            ? (int)value + 10
-            : -1;
+        return value <= 5 ? (int)value + 10 : -1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -711,13 +645,19 @@ public static class KotoHelper
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void ThrowInvalidLiteral()
-        => throw new FormatException("The string literal is invalid.");
+    private static void ThrowIncompleteEscape()
+        => throw new FormatException(
+            "The string ends with an incomplete escape sequence.");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void ThrowInvalidEscape()
+    private static void ThrowUnsupportedEscape(char escapeKind)
         => throw new FormatException(
-            "The string literal contains an invalid escape sequence.");
+            $"The escape sequence '\\{escapeKind}' is not supported.");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowInvalidUnicodeEscape()
+        => throw new FormatException(
+            "The Unicode escape sequence must have the form '\\u{...}' and contain one to six hexadecimal digits.");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void ThrowInvalidUnicodeScalar()
@@ -726,17 +666,14 @@ public static class KotoHelper
 
     private readonly struct DecodeState
     {
-        public DecodeState(string source, int start, int end)
+        public DecodeState(string source, int firstBackslash)
         {
             this.Source = source;
-            this.Start = start;
-            this.End = end;
+            this.FirstBackslash = firstBackslash;
         }
 
         public string Source { get; }
 
-        public int Start { get; }
-
-        public int End { get; }
+        public int FirstBackslash { get; }
     }
 }
