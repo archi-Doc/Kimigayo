@@ -129,7 +129,7 @@ public sealed partial class Kotonoha
                 reader.Advance();
                 var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
                 var aliasKoto = new AliasKoto(ref reader, list);
-                if (!reader.IsExcluded)
+                if (KotoParser.ResolveIfAttribute(ref reader, aliasKoto))
                 {
                     this.Root.AddLast(aliasKoto);
                 }

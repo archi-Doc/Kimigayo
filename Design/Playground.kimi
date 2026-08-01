@@ -5,7 +5,7 @@ public open struct Test: @A, @B,
     public static #Test1 var #Test2 x: i32 = #One 1
 
 var x:&unsafe Base.Map<String, Int>
-var count: i32 = 0
+var count: i32 = #TestAtr 0
 let name: String = "abc"
 var items: Array<Int> // = [1, 2, 3]
 var items2 // = [1, 2, 3, ]

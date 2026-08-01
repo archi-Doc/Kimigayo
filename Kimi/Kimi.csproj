@@ -43,7 +43,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Tinyhand" Version="0.141.0" />
+    <PackageReference Include="Tinyhand" Version="0.141.1" />
     <PackageReference Include="ValueLink" Version="0.116.1" />
   </ItemGroup>
 

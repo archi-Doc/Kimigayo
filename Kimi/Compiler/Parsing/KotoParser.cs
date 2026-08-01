@@ -704,13 +704,12 @@ Exit:
                 return;
             }
 
-            attributeKoto = ParseAttributeKoto(ref reader);
+            _ = ParseAttributeKoto(ref reader);
+            /*attributeKoto = ParseAttributeKoto(ref reader);
             if (!ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto))
             {
                 reader.IsExcluded = true;
-                // token = default;
-                // return false;
-            }
+            }*/
         }
 
         isEnd = true;
@@ -822,7 +821,7 @@ Exit:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static AttributeKoto ParseAttributeKoto(ref TokenReader reader)
+    public static AttributeKoto? ParseAttributeKoto(ref TokenReader reader)
     {
         var previousAttribute = reader.PopAttribute();
 
@@ -837,9 +836,16 @@ Exit:
         }
 
         var attributeKoto = new AttributeKoto(ref reader, attributeToken.Range, operand);
-        reader.PushAttribute(attributeKoto);
-
-        return attributeKoto;
+        if (KotoParser.ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto))
+        {
+            reader.PushAttribute(attributeKoto);
+            return attributeKoto;
+        }
+        else
+        {
+            reader.IsExcluded = true;
+            return null;
+        }
     }
 
     public static Koto ParseExpression(ref TokenReader reader, int minBindingPower = 0)
@@ -855,11 +861,13 @@ Exit:
             var tokenKind = reader.CurrentTokenKind;
             if (tokenKind == TokenKind.Sharp)
             {// Process attribute
-                var attributeKoto = ParseAttributeKoto(ref reader);
+                _ = ParseAttributeKoto(ref reader);
+
+                /*var attributeKoto = ParseAttributeKoto(ref reader);
                 if (!ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto))
                 {
                     reader.IsExcluded = true;
-                }
+                }*/
 
                 continue;
             }
@@ -885,11 +893,12 @@ ProcessPrefix:
         var tokenKind = reader.CurrentTokenKind;
         if (tokenKind == TokenKind.Sharp)
         {// Process attribute
-            var attributeKoto = ParseAttributeKoto(ref reader);
+            _ = ParseAttributeKoto(ref reader);
+            /*var attributeKoto = ParseAttributeKoto(ref reader);
             if (!ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto))
             {
                 reader.IsExcluded = true;
-            }
+            }*/
 
             goto ProcessPrefix;
         }
