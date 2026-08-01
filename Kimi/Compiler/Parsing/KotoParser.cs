@@ -643,7 +643,6 @@ Exit:
     {// Consume Attributes and Modifiers
         reader.Clear();
 
-        AttributeKoto? attributeKoto = default;
         while (reader.CanRead)
         {
             var tokenKind = reader.CurrentTokenKind;
