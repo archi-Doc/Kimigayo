@@ -42,9 +42,9 @@ public class Compilation
         this.Project = project;
     }
 
-    public CodeContext CreateCodeContext(Kotonoha kotonoha, string[]? aliases = default)
+    public CodeContext CreateCodeContext(Kotonoha kotonoha, ReadOnlyMemory<char> sourceText, string[]? aliases = default)
     {
-        return new(this, kotonoha);
+        return new(this, kotonoha, sourceText);
     }
 
     [MemberNotNullWhen(true, nameof(ProjectKotonoha))]

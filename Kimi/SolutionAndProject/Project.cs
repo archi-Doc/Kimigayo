@@ -6,7 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using Kimi.Command;
 using Kimi.Compiler;
 
-public readonly record struct PathAndSource(string Path, string Source);
+public readonly record struct PathAndSource(string Path, string SourceText);
 
 public partial class Project
 {

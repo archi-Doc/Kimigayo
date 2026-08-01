@@ -1,3 +1,4 @@
+#If(os == "windows")
 alias AliasB
 
 public open struct Test: @A, @B,

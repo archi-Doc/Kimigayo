@@ -1,5 +1,7 @@
+#If(os == "windows")
 alias AliasB
 
+var x: &unsafe Base.Map<String, Int>
 var count: i32 = 0
 let name: String = "abc"
 var items: Array<Int>

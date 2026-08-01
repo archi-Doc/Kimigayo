@@ -6,7 +6,7 @@ Package: Koto/Kotonoha
 Frontend: Tokenizer -> Parser
 Backend: Resolver -> Emitter
 
-## 文字列リテラル
+## 文字列リテラル StringLiteral
 文字コードはUTF-8で、"Text" と """Multi-line text""" がある。
 
 "Text": Interpolated string literal. C#における $"" と同じ。

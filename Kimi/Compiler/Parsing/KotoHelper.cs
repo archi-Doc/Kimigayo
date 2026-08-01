@@ -1,6 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
@@ -9,6 +11,27 @@ namespace Kimi.Compiler;
 
 public static class KotoHelper
 {
+    public static string ParseLiteral(string rawLiteral)
+    {
+        var span = rawLiteral.AsSpan();
+        var leadingQuoteCount = 0;
+        while (leadingQuoteCount < span.Length && span[leadingQuoteCount] == '"')
+        {
+            leadingQuoteCount++;
+        }
+
+        if (leadingQuoteCount == 1)
+        {// "Text" + Escape
+            return ParseRegularLiteral(rawLiteral);
+        }
+        else if (leadingQuoteCount >= 3)
+        {// """RawText"""
+            return ParseRawLiteral(rawLiteral, leadingQuoteCount);
+        }
+
+        return string.Empty;
+    }
+
     public static string ToText(this ReferenceKind referenceKind, bool appendSpace)
     {
         if (appendSpace)
@@ -357,5 +380,382 @@ public static class KotoHelper
                 DumpKoto(children[i], writer, childIndent, i == children.Length - 1, default);
             }
         }
+    }
+
+    private static string ParseRegularLiteral(string rawLiteral)
+    {
+        var contentStart = 1;
+        var contentEnd = rawLiteral.Length - 1;
+        var decodedLength = GetDecodedLength(rawLiteral, contentStart, contentEnd);
+
+        if (decodedLength == contentEnd - contentStart)
+        {// No escape sequences were present.
+            return rawLiteral.Substring(contentStart, decodedLength);
+        }
+
+        return string.Create(decodedLength, new DecodeState(rawLiteral, contentStart, contentEnd), static (destination, state) => DecodeEscapes(state.Source, state.Start, state.End, destination));
+    }
+
+    private static string ParseRawLiteral(ReadOnlySpan<char> rawLiteral, int delimiterLength)
+    {
+        var sourceLength = rawLiteral.Length;
+        if (sourceLength < delimiterLength * 2)
+        {
+            return string.Empty;
+        }
+
+        int i;
+        for (i = 1; i <= delimiterLength; i++)
+        {
+            if (rawLiteral[sourceLength - i] != '"')
+            {
+                break;
+            }
+        }
+
+        return rawLiteral.Slice(delimiterLength, sourceLength - delimiterLength - i).ToString();
+    }
+
+    private static int GetDecodedLength(
+        string source,
+        int start,
+        int end)
+    {
+        int decodedLength = 0;
+        int index = start;
+
+        while (index < end)
+        {
+            char c = source[index++];
+
+            if (c == '"')
+            {
+                // A quote inside a regular literal must be escaped.
+                ThrowInvalidLiteral();
+            }
+
+            if (c is '\r' or '\n')
+            {
+                // Regular string literals cannot contain literal line breaks.
+                ThrowInvalidLiteral();
+            }
+
+            if (c != '\\')
+            {
+                decodedLength++;
+                continue;
+            }
+
+            if (index >= end)
+            {
+                ThrowInvalidEscape();
+            }
+
+            char escapeKind = source[index++];
+
+            switch (escapeKind)
+            {
+                case '\'':
+                case '"':
+                case '\\':
+                case '0':
+                case 'a':
+                case 'b':
+                case 'e':
+                case 'f':
+                case 'n':
+                case 'r':
+                case 't':
+                case 'v':
+                    decodedLength++;
+                    break;
+
+                case 'x':
+                    ReadVariableHexEscape(
+                        source,
+                        ref index,
+                        end);
+
+                    decodedLength++;
+                    break;
+
+                case 'u':
+                    ReadFixedHexEscape(
+                        source,
+                        ref index,
+                        end,
+                        4);
+
+                    decodedLength++;
+                    break;
+
+                case 'U':
+                    {
+                        uint codePoint = ReadFixedHexEscape(
+                            source,
+                            ref index,
+                            end,
+                            8);
+
+                        ValidateUnicodeScalar(codePoint);
+
+                        decodedLength += codePoint <= 0xFFFF ? 1 : 2;
+                        break;
+                    }
+
+                default:
+                    ThrowInvalidEscape();
+                    break;
+            }
+        }
+
+        return decodedLength;
+    }
+
+    private static void DecodeEscapes(
+        string source,
+        int start,
+        int end,
+        Span<char> destination)
+    {
+        int sourceIndex = start;
+        int destinationIndex = 0;
+
+        while (sourceIndex < end)
+        {
+            char c = source[sourceIndex++];
+
+            if (c != '\\')
+            {
+                destination[destinationIndex++] = c;
+                continue;
+            }
+
+            char escapeKind = source[sourceIndex++];
+
+            switch (escapeKind)
+            {
+                case '\'':
+                    destination[destinationIndex++] = '\'';
+                    break;
+
+                case '"':
+                    destination[destinationIndex++] = '"';
+                    break;
+
+                case '\\':
+                    destination[destinationIndex++] = '\\';
+                    break;
+
+                case '0':
+                    destination[destinationIndex++] = '\0';
+                    break;
+
+                case 'a':
+                    destination[destinationIndex++] = '\a';
+                    break;
+
+                case 'b':
+                    destination[destinationIndex++] = '\b';
+                    break;
+
+                case 'e':
+                    destination[destinationIndex++] = '\u001B';
+                    break;
+
+                case 'f':
+                    destination[destinationIndex++] = '\f';
+                    break;
+
+                case 'n':
+                    destination[destinationIndex++] = '\n';
+                    break;
+
+                case 'r':
+                    destination[destinationIndex++] = '\r';
+                    break;
+
+                case 't':
+                    destination[destinationIndex++] = '\t';
+                    break;
+
+                case 'v':
+                    destination[destinationIndex++] = '\v';
+                    break;
+
+                case 'x':
+                    {
+                        uint value = ReadVariableHexEscape(
+                            source,
+                            ref sourceIndex,
+                            end);
+
+                        destination[destinationIndex++] = (char)value;
+                        break;
+                    }
+
+                case 'u':
+                    {
+                        uint value = ReadFixedHexEscape(
+                            source,
+                            ref sourceIndex,
+                            end,
+                            4);
+
+                        destination[destinationIndex++] = (char)value;
+                        break;
+                    }
+
+                case 'U':
+                    {
+                        uint codePoint = ReadFixedHexEscape(
+                            source,
+                            ref sourceIndex,
+                            end,
+                            8);
+
+                        if (codePoint <= 0xFFFF)
+                        {
+                            destination[destinationIndex++] = (char)codePoint;
+                        }
+                        else
+                        {
+                            codePoint -= 0x10000;
+
+                            destination[destinationIndex++] =
+                                (char)(0xD800 + (codePoint >> 10));
+
+                            destination[destinationIndex++] =
+                                (char)(0xDC00 + (codePoint & 0x3FF));
+                        }
+
+                        break;
+                    }
+
+                default:
+                    Debug.Fail("Escape sequences were validated in the first pass.");
+                    break;
+            }
+        }
+
+        Debug.Assert(destinationIndex == destination.Length);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint ReadVariableHexEscape(
+        string source,
+        ref int index,
+        int end)
+    {
+        uint value = 0;
+        int digitCount = 0;
+
+        while (digitCount < 4 && index < end)
+        {
+            int digit = GetHexValue(source[index]);
+
+            if (digit < 0)
+            {
+                break;
+            }
+
+            value = (value << 4) | (uint)digit;
+            index++;
+            digitCount++;
+        }
+
+        if (digitCount == 0)
+        {
+            ThrowInvalidEscape();
+        }
+
+        return value;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint ReadFixedHexEscape(
+        string source,
+        ref int index,
+        int end,
+        int digitCount)
+    {
+        if (end - index < digitCount)
+        {
+            ThrowInvalidEscape();
+        }
+
+        uint value = 0;
+        int limit = index + digitCount;
+
+        while (index < limit)
+        {
+            int digit = GetHexValue(source[index++]);
+
+            if (digit < 0)
+            {
+                ThrowInvalidEscape();
+            }
+
+            value = (value << 4) | (uint)digit;
+        }
+
+        return value;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetHexValue(char c)
+    {
+        uint value = c;
+
+        if (value - '0' <= 9)
+        {
+            return (int)(value - '0');
+        }
+
+        value = (value | 0x20) - 'a';
+
+        return value <= 5
+            ? (int)value + 10
+            : -1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ValidateUnicodeScalar(uint value)
+    {
+        if (value > 0x10FFFF ||
+            value is >= 0xD800 and <= 0xDFFF)
+        {
+            ThrowInvalidUnicodeScalar();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowInvalidLiteral()
+        => throw new FormatException("The string literal is invalid.");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowInvalidEscape()
+        => throw new FormatException(
+            "The string literal contains an invalid escape sequence.");
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowInvalidUnicodeScalar()
+        => throw new FormatException(
+            "The Unicode escape sequence does not represent a valid Unicode scalar value.");
+
+    private readonly struct DecodeState
+    {
+        public DecodeState(string source, int start, int end)
+        {
+            this.Source = source;
+            this.Start = start;
+            this.End = end;
+        }
+
+        public string Source { get; }
+
+        public int Start { get; }
+
+        public int End { get; }
     }
 }

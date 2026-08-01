@@ -41,7 +41,7 @@ public sealed partial class Kotonoha
 
     public Kotonoha(Compilation compilation, string name, string url)
     {
-        var codeContext = new CodeContext(compilation, this);
+        var codeContext = new CodeContext(compilation, this, ReadOnlyMemory<char>.Empty);
 
         this.Compilation = compilation;
         this.Name = name;
@@ -54,7 +54,7 @@ public sealed partial class Kotonoha
 
     public Kotonoha(Compilation compilation)
     {
-        var codeContext = new CodeContext(compilation, this);
+        var codeContext = new CodeContext(compilation, this, ReadOnlyMemory<char>.Empty);
         this.Compilation = compilation;
         this.Root = new(codeContext, default, default);
     }
@@ -82,14 +82,15 @@ public sealed partial class Kotonoha
     public void AddSource(PathAndSource pathAndSource)
     {
         var diagnostic = this.Compilation.KimiControl.GetOrAddFileDiagnostic(pathAndSource.Path);
+        var sourceText = pathAndSource.SourceText.AsMemory();
         var tokenizer = new Tokenizer(diagnostic);
-        tokenizer.Initialize(pathAndSource.Source.AsMemory(), 0, 0);
+        tokenizer.Initialize(sourceText, 0, 0);
 
         /*var kimiId = this.SourceList.Count;
         var kimiSource = new KimiSource(pathAndSource.Path, [], default);
         this.SourceList.Add(kimiSource);*/
 
-        var codeContext = this.Compilation.CreateCodeContext(this);
+        var codeContext = this.Compilation.CreateCodeContext(this, sourceText);
 
         // Tokenize
         var tokenBuilder = new TokenSequenceBuilder();

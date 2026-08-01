@@ -8,16 +8,30 @@ namespace Kimi.Compiler.Parsing;
 public sealed partial class StringLiteralKoto : Koto
 {
     [Key(1)]
-    public string Literal { get; private set; }
+    private string rawLiteral;
+
+    public string Literal
+    {
+        get
+        {
+            if (field is not null)
+            {
+                return field;
+            }
+
+            field = KotoHelper.ParseLiteral(this.rawLiteral);
+            return field;
+        }
+    }
 
     public StringLiteralKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Range)
     {
-        this.Literal = token.Text.ToString();
+        this.rawLiteral = token.Text.ToString();
     }
 
     public override string ToString()
-        => $"{this.Literal}";
+        => $"{this.rawLiteral}";
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
@@ -26,13 +40,11 @@ public sealed partial class StringLiteralKoto : Koto
             KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
         }
 
-        // builder.Append('\"');
-        builder.Append(this.Literal);
-        // builder.Append('\"');
+        builder.Append(this.rawLiteral);
     }
 
     public override (string Text, Koto[]? Children) Dump()
     {
-        return ($"{this.GetType().Name}({this.Literal})", default);
+        return ($"{this.GetType().Name}({this.rawLiteral})", default);
     }
 }
