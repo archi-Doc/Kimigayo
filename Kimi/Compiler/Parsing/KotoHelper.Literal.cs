@@ -113,15 +113,16 @@ public static partial class KotoHelper
 
     private static void Decode(string source, int firstBackslash, Span<char> destination)
     {
-        source.AsSpan(0, firstBackslash).CopyTo(destination);
+        var span = source.AsSpan(1, source.Length - 2);
+        span.Slice(0, firstBackslash - 1).CopyTo(destination);
 
-        var sourceLength = source.Length;
-        var sourceIndex = firstBackslash;
-        var destinationIndex = firstBackslash;
+        var sourceLength = span.Length;
+        var sourceIndex = firstBackslash - 1;
+        var destinationIndex = firstBackslash - 1;
 
         while (sourceIndex < sourceLength)
         {
-            char c = source[sourceIndex++];
+            var c = source[sourceIndex++];
 
             if (c != '\\')
             {
@@ -163,7 +164,7 @@ public static partial class KotoHelper
 
                 case 'u':
                     {
-                        var scalar = ReadUnicodeEscape(source, ref sourceIndex);
+                        var scalar = ReadUnicodeEscape(ref span, default);
                         if (scalar <= 0xFFFF)
                         {
                             destination[destinationIndex++] = (char)scalar;
@@ -195,7 +196,7 @@ public static partial class KotoHelper
 
         while (!span.IsEmpty)
         {
-            char c = span[0];
+            var c = span[0];
             span = span.Slice(1);
 
             if (c == '}')
