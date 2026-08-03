@@ -8,10 +8,10 @@ namespace Benchmark;
 [Config(typeof(BenchmarkConfig))]
 public class NumberLiteralBenchmark
 {
-    [Params(10)]
-    public int Length { get; set; }
-
     private readonly string doubleString = "1.7976_931348_6237E+38";
+    private readonly string i128String = "111_282_366";
+    private readonly string i128String2 = "111_282_366_920_938_463_463_374_607_431_768_211_456";
+    private readonly string bString = "0b1110_1001_0011_0101_1011_1011_0000_1101";
 
     public NumberLiteralBenchmark()
     {
@@ -27,18 +27,24 @@ public class NumberLiteralBenchmark
     {
     }
 
-    [Benchmark]
-    public Int128 Test1()
+    // [Benchmark]
+    public Int128 TryParseFloat()
     {
-        TokenHelper.ParseNumberLiteral(this.doubleString, out var kind, out var i128, out var f64);
-        i128 = BitConverter.DoubleToUInt64Bits(f64);
+        TokenHelper.TryParseNumberLiteral(this.doubleString, out var i128);
+        return i128;
+    }
+
+    // [Benchmark]
+    public Int128 TryParseInteger()
+    {
+        TokenHelper.TryParseNumberLiteral(this.i128String, out var i128);
         return i128;
     }
 
     [Benchmark]
-    public Int128 Test2()
+    public Int128 TryParseBinary()
     {
-        TokenHelper.TryParseNumberLiteral(this.doubleString, out var i128);
+        TokenHelper.TryParseNumberLiteral(this.bString, out var i128);
         return i128;
     }
 }

@@ -58,7 +58,7 @@ public static partial class TokenHelper
             switch ((char)(numberLiteral[1] | 0x20))
             {
                 case 'b':
-                    return ParseBasedInteger(numberLiteral[2..], 2, out value);
+                    return ParseNumber(numberLiteral[2..], 2, out value);
 
                 case 'o':
                     return ParseBasedInteger(numberLiteral[2..], 8, out value);
@@ -68,17 +68,84 @@ public static partial class TokenHelper
             }
         }
 
-        var isFloat = false;
-        foreach (var c in numberLiteral)
+        return numberLiteral.IndexOfAny('.', 'e', 'E') >= 0 ?
+            ParseNumber(numberLiteral, 0, out value) : // Float
+            ParseNumber(numberLiteral, 10, out value); // Decimal
+    }
+
+    private static NumberLiteralParseResult ParseNumber(ReadOnlySpan<char> text, int radix, out Int128 value)
+    {
+        Span<char> buffer = text.Length <= 128 ? stackalloc char[128] : new char[text.Length];
+        var writeIndex = 0;
+        foreach (var c in text)
         {
-            if (c == '.' || (c | 0x20) == 'e')
+            if (c != '_')
             {
-                isFloat = true;
-                break;
+                buffer[writeIndex++] = c;
             }
         }
 
-        return isFloat ? ParseFloat(numberLiteral, out value) : ParseDecimalInteger(numberLiteral, out value);
+        var span = buffer[..writeIndex];
+        if (radix == 10)
+        {// Decimal
+            if (span.Length <= 19)
+            {
+                if (!long.TryParse(span, CultureInfo.InvariantCulture, out var v))
+                {
+                    value = default;
+                    return NumberLiteralParseResult.InvalidFormat;
+                }
+
+                value = v;
+            }
+            else
+            {
+                if (!Int128.TryParse(span, CultureInfo.InvariantCulture, out value))
+                {
+                    value = default;
+                    return NumberLiteralParseResult.InvalidFormat;
+                }
+            }
+        }
+        else if (radix == 2)
+        {
+            if (span.Length <= 64)
+            {
+                if (!ulong.TryParse(span, NumberStyles.BinaryNumber, CultureInfo.InvariantCulture, out var v))
+                {
+                    value = default;
+                    return NumberLiteralParseResult.InvalidFormat;
+                }
+
+                value = v;
+            }
+            else
+            {
+                if (!Int128.TryParse(span, NumberStyles.BinaryNumber, CultureInfo.InvariantCulture, out value))
+                {
+                    value = default;
+                    return NumberLiteralParseResult.InvalidFormat;
+                }
+            }
+        }
+        else
+        {// Float
+            if (!double.TryParse(span, NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
+            {
+                value = default;
+                return NumberLiteralParseResult.InvalidFormat;
+            }
+
+            if (double.IsInfinity(result))
+            {
+                value = default;
+                return NumberLiteralParseResult.FloatOverflow;
+            }
+
+            value = BitConverter.DoubleToUInt64Bits(result);
+        }
+
+        return NumberLiteralParseResult.Success;
     }
 
     /// <summary>
@@ -138,6 +205,29 @@ public static partial class TokenHelper
         }
 
         value = accumulator;
+        return NumberLiteralParseResult.Success;
+    }
+
+    private static NumberLiteralParseResult ParseDecimalInteger2(ReadOnlySpan<char> text, out Int128 value)
+    {
+        value = default;
+
+        Span<char> buffer = text.Length <= 128 ? stackalloc char[128] : new char[text.Length];
+        var writeIndex = 0;
+
+        foreach (var c in text)
+        {
+            if (c != '_')
+            {
+                buffer[writeIndex++] = c;
+            }
+        }
+
+        if (!Int128.TryParse(buffer[..writeIndex], CultureInfo.InvariantCulture, out value))
+        {
+            return NumberLiteralParseResult.InvalidFormat;
+        }
+
         return NumberLiteralParseResult.Success;
     }
 
