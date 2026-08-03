@@ -29,14 +29,14 @@ public class NumberLiteralBenchmark
     {
     }
 
-    [Benchmark]
+    // [Benchmark]
     public Int128 TryParseFloat()
     {
         TokenHelper.TryParseNumberLiteral(this.doubleString, out var i128);
         return i128;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public Int128 TryParseInteger()
     {
         TokenHelper.TryParseNumberLiteral(this.i128String, out var i128);
@@ -50,14 +50,14 @@ public class NumberLiteralBenchmark
         return i128;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public Int128 TryParseHex()
     {
         TokenHelper.TryParseNumberLiteral(this.hString, out var i128);
         return i128;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public Int128 TryParseOct()
     {
         TokenHelper.TryParseNumberLiteral(this.oString, out var i128);
