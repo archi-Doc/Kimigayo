@@ -27,6 +27,7 @@ public static partial class TokenHelper
     public static bool ScanNumberLiteral(ReadOnlySpan<char> text, out int length)
     {
         length = 0;
+
         if (text.IsEmpty || !IsDigit(text[0]))
         {
             return false;
@@ -47,19 +48,23 @@ public static partial class TokenHelper
             }
         }
 
-        // The first decimal digit has already been validated.
+        // The first decimal digit has already been validated. Therefore,
+        // separators are allowed from the current position onward.
         var i = ScanDigitsAndSeparators(text, 1, 10);
 
-        if ((uint)i < (uint)text.Length && text[i] == '.')
+        // A fractional part is recognized only when the decimal point is
+        // immediately followed by a digit:
+        //
+        // 1.0  => floating-point literal
+        // 1.   => integer literal + dot
+        // 1._2 => integer literal + dot + identifier
+        if ((uint)i < (uint)text.Length &&
+            text[i] == '.' &&
+            (uint)(i + 1) < (uint)text.Length &&
+            IsDigit(text[i + 1]))
         {
-            var fractionStart = i + 1;
-
-            // A fractional part is recognized only when it starts with a digit.
-            if ((uint)fractionStart < (uint)text.Length &&
-                IsDigit(text[fractionStart]))
-            {
-                i = ScanDigitsAndSeparators(text, fractionStart + 1, 10);
-            }
+            // The first fractional digit has already been validated.
+            i = ScanDigitsAndSeparators(text, i + 2, 10);
         }
 
         if ((uint)i < (uint)text.Length &&
@@ -73,14 +78,15 @@ public static partial class TokenHelper
                 i++;
             }
 
-            // The exponent must start with a digit. Therefore, separators
-            // cannot immediately follow 'e', 'E', '+' or '-'.
+            // The exponent must start with a digit. Separators cannot
+            // immediately follow 'e', 'E', '+' or '-'.
             if ((uint)i >= (uint)text.Length || !IsDigit(text[i]))
             {
                 length = ExtendWithIdentifierContinue(text, i);
                 return false;
             }
 
+            // The first exponent digit has already been validated.
             i = ScanDigitsAndSeparators(text, i + 1, 10);
         }
 
@@ -111,9 +117,12 @@ public static partial class TokenHelper
     private static bool ScanBasedInteger(ReadOnlySpan<char> text, int start, int radix, out int length)
     {
         // Separators are allowed immediately after the radix prefix.
+        // A prefix followed by no digits, such as "0x" or "0x____",
+        // represents zero.
         var i = ScanDigitsAndSeparators(text, start, radix);
 
-        // Reject invalid radix digits and unsupported suffixes.
+        // Reject digits that are invalid for the radix, identifier characters
+        // and unsupported type suffixes.
         if ((uint)i < (uint)text.Length &&
             IsIdentifierContinue(text[i]))
         {
@@ -129,13 +138,17 @@ public static partial class TokenHelper
     /// <summary>
     /// Scans digits of the specified radix and underscore separators.
     /// </summary>
+    /// <remarks>
+    /// The caller must ensure that a digit or radix prefix precedes
+    /// <paramref name="i"/>, allowing separators at that position.
+    /// </remarks>
     private static int ScanDigitsAndSeparators(ReadOnlySpan<char> text, int i, int radix)
     {
         while ((uint)i < (uint)text.Length)
         {
             var c = text[i];
 
-            if (!IsDigit(c, radix) && c != '_')
+            if (c != '_' && !IsRadixDigit(c, radix))
             {
                 break;
             }
@@ -147,7 +160,7 @@ public static partial class TokenHelper
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsDigit(char c, int radix)
+    private static bool IsRadixDigit(char c, int radix)
     {
         var value = (uint)(c - '0');
 
