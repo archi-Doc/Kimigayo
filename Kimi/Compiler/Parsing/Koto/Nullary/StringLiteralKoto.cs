@@ -7,6 +7,8 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public sealed partial class StringLiteralKoto : Koto
 {
+    public override KotoKind _Kind => KotoKind.StringLiteral;
+
     [Key(1)]
     private string rawLiteral;
 

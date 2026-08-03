@@ -9,6 +9,8 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public sealed partial class ExtensionKoto : GroupKoto
 {
+    public override KotoKind _Kind => KotoKind.Extension;
+
     public ExtensionKoto(ref TokenReader reader, SourceRange range)
         : base(ref reader, range)
     {

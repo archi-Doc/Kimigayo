@@ -7,6 +7,8 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public sealed partial class BoolLiteralKoto : Koto
 {
+    public override KotoKind _Kind => KotoKind.BoolLiteral;
+
     [Key(1)]
     public bool Value { get; private set; }
 

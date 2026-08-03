@@ -7,6 +7,8 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public sealed partial class AliasKoto : Koto
 {
+    public override KotoKind _Kind => KotoKind.Alias;
+
     [Key(1)]
     public List<string> QualifiedName { get; private set; }
 

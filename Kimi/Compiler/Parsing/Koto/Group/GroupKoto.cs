@@ -85,6 +85,8 @@ public abstract partial class IdentifiableKoto : Koto
 [TinyhandObject]
 public partial class GroupKoto : BlockKoto
 {
+    public override KotoKind _Kind => KotoKind.Group;
+
     // public static readonly TokenState DefaultState = new(default, ModifierKind.Public);
 
     #region FieldAndProperty

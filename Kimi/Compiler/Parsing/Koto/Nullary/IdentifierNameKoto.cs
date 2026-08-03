@@ -7,6 +7,8 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public partial class IdentifierNameKoto : Koto
 {
+    public override KotoKind _Kind => KotoKind.IdentifierName;
+
     public static readonly IdentifierNameKoto Error;
 
     static IdentifierNameKoto()

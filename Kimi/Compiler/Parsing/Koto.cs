@@ -50,7 +50,7 @@ public enum KotoKind : byte
     Field,
     NumberLiteral,
     StringLiteral,
-    Unresolved,
+    IdentifierName,
     Type,
 
     // Unary
@@ -105,6 +105,7 @@ public enum KotoKind : byte
 
     // Misc
     Invocation,
+    Generics,
 }
 
 [TinyhandObject(ReservedKeyCount = 1)]
@@ -120,7 +121,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Field, typeof(FieldKoto))]
 [TinyhandUnion((int)KotoKind.NumberLiteral, typeof(NumberLiteralKoto))]
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
-[TinyhandUnion((int)KotoKind.Unresolved, typeof(IdentifierNameKoto))]
+[TinyhandUnion((int)KotoKind.IdentifierName, typeof(IdentifierNameKoto))]
 [TinyhandUnion((int)KotoKind.Type, typeof(TypeKoto))]
 
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
@@ -172,6 +173,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.GreaterThanGreaterThanEquals, typeof(GreaterThanGreaterThanEqualsKoto))]
 
 [TinyhandUnion((int)KotoKind.Invocation, typeof(InvocationKoto))]
+[TinyhandUnion((int)KotoKind.Generics, typeof(GenericsKoto))]
 [ValueLinkObject]
 public abstract partial class Koto
 {
