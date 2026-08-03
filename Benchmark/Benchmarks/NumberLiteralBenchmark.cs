@@ -36,14 +36,14 @@ public class NumberLiteralBenchmark
         return i128;
     }
 
-    // [Benchmark]
+    [Benchmark]
     public Int128 TryParseInteger()
     {
         TokenHelper.TryParseNumberLiteral(this.i128String, out var i128);
         return i128;
     }
 
-    [Benchmark]
+    // [Benchmark]
     public Int128 TryParseBinary()
     {
         TokenHelper.TryParseNumberLiteral(this.bString, out var i128);

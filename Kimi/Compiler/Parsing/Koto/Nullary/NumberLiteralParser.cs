@@ -52,7 +52,7 @@ public static partial class TokenHelper
 
         return numberLiteral.IndexOfAny('.', 'e', 'E') >= 0 ?
             ParseNumber(numberLiteral, 0, out value) : // Float
-            ParseNumber(numberLiteral, 10, out value); // Decimal
+            ParseDecimalInteger(numberLiteral, out value);// ParseNumber(numberLiteral, 10, out value); // Decimal
     }
 
     private static ParseNumberLiteralResult ParseNumber(ReadOnlySpan<char> text, int radix, out Int128 value)
@@ -176,6 +176,56 @@ public static partial class TokenHelper
 
         value = unchecked((Int128)accumulator);
         return ParseNumberLiteralResult.I128;
+    }
+
+    private static ParseNumberLiteralResult ParseDecimalInteger(ReadOnlySpan<char> digits, out Int128 value)
+    {
+        if (digits.Length <= 18)
+        {
+            ulong accumulator = 0;
+            foreach (var c in digits)
+            {
+                if (c == '_')
+                {
+                    continue;
+                }
+
+                // The input has already been validated by ScanNumberLiteral().
+                var digit = (uint)(c - '0');
+                accumulator = (accumulator << 3) + (accumulator << 1) + digit;
+            }
+
+            value = unchecked((Int128)accumulator);
+            return ParseNumberLiteralResult.I128;
+        }
+        else
+        {
+            var maxBeforeMultiply = ((UInt128)0x1999_9999_9999_9999UL << 64) | 0x9999_9999_9999_9999UL;
+            UInt128 accumulator = 0;
+            foreach (var c in digits)
+            {
+                if (c == '_')
+                {
+                    continue;
+                }
+
+                // The input has already been validated by ScanNumberLiteral().
+                var digit = (uint)(c - '0');
+
+                if (accumulator > maxBeforeMultiply ||
+                    (accumulator == maxBeforeMultiply && digit > 5))
+                {
+                    value = default;
+                    return ParseNumberLiteralResult.Invalid;
+                }
+
+                // accumulator * 10 + digit
+                accumulator = (accumulator << 3) + (accumulator << 1) + digit;
+            }
+
+            value = unchecked((Int128)accumulator);
+            return ParseNumberLiteralResult.I128;
+        }
     }
 
     private static ParseNumberLiteralResult ParseOctalInteger(ReadOnlySpan<char> digits, out Int128 value)
