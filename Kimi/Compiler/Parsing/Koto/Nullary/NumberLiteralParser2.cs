@@ -1,17 +1,18 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
+using System.Runtime.CompilerServices;
 
 namespace Kimi.Compiler.Lexing;
 
 /// <summary>
 /// Indicates why <see cref="TokenHelper.TryParseNumberLiteral"/> failed to
-/// produce a value, or <see cref="None"/> when parsing succeeded.
+/// produce a value, or <see cref="Success"/> when parsing succeeded.
 /// </summary>
 public enum NumberLiteralParseResult
 {
     /// <summary>Parsing succeeded.</summary>
-    None = 0,
+    Success = 0,
 
     /// <summary>
     /// The input is not a lexically valid numeric literal, or it contains
@@ -33,7 +34,6 @@ public enum NumberLiteralParseResult
     FloatOverflow,
 }
 
-
 public static partial class TokenHelper
 {
     /// <summary>
@@ -45,35 +45,26 @@ public static partial class TokenHelper
     /// lexically valid numeric literal; trailing characters are treated as a format error rather
     /// than being ignored.
     /// </param>
-    /// <param name="value">When this method returns <see cref="NumberLiteralParseResult.None"/>, the parsed value.</param>
+    /// <param name="value">When this method returns <see cref="NumberLiteralParseResult.Success"/>, the parsed value.</param>
     /// <returns>
-    /// <see cref="NumberLiteralParseResult.None"/> on success; otherwise, an error code describing
+    /// <see cref="NumberLiteralParseResult.Success"/> on success; otherwise, an error code describing
     /// why parsing failed.
     /// </returns>
-    public static NumberLiteralParseResult TryParseNumberLiteral(ReadOnlySpan<char> numberLiteral, out Int128 i128Value, out double f64Value)
+    public static NumberLiteralParseResult TryParseNumberLiteral(ReadOnlySpan<char> numberLiteral, out Int128 value)
     {
-        i128Value = default;
-        f64Value = default;
-
-        // Reject anything that is not, in its entirety, a single valid numeric literal.
-        // This mirrors ScanNumberLiteral's own prefix dispatch below so the two stay in sync.
-        if (!ScanNumberLiteral(numberLiteral, out var length) || length != numberLiteral.Length)
-        {
-            return NumberLiteralParseResult.InvalidFormat;
-        }
-
+        value = default;
         if (numberLiteral.Length >= 2 && numberLiteral[0] == '0')
         {
             switch ((char)(numberLiteral[1] | 0x20))
             {
                 case 'b':
-                    return ParseBasedInteger(numberLiteral[2..], 2, out i128Value);
+                    return ParseBasedInteger(numberLiteral[2..], 2, out value);
 
                 case 'o':
-                    return ParseBasedInteger(numberLiteral[2..], 8, out i128Value);
+                    return ParseBasedInteger(numberLiteral[2..], 8, out value);
 
                 case 'x':
-                    return ParseBasedInteger(numberLiteral[2..], 16, out i128Value);
+                    return ParseBasedInteger(numberLiteral[2..], 16, out value);
             }
         }
 
@@ -87,9 +78,7 @@ public static partial class TokenHelper
             }
         }
 
-        return isFloat
-            ? ParseFloat(numberLiteral, out value)
-            : ParseDecimalInteger(numberLiteral, out value);
+        return isFloat ? ParseFloat(numberLiteral, out value) : ParseDecimalInteger(numberLiteral, out value);
     }
 
     /// <summary>
@@ -98,7 +87,6 @@ public static partial class TokenHelper
     /// </summary>
     private static NumberLiteralParseResult ParseBasedInteger(ReadOnlySpan<char> digits, int radix, out Int128 value)
     {
-        value = default;
         UInt128 accumulator = 0;
         foreach (var c in digits)
         {
@@ -112,6 +100,7 @@ public static partial class TokenHelper
             // accumulator * radix + digitValue must fit in 128 bits.
             if (accumulator > (UInt128.MaxValue - digitValue) / (uint)radix)
             {
+                value = default;
                 return NumberLiteralParseResult.IntegerOverflow;
             }
 
@@ -119,19 +108,16 @@ public static partial class TokenHelper
         }
 
         value = unchecked((Int128)accumulator);
-        return NumberLiteralParseResult.None;
+        return NumberLiteralParseResult.Success;
     }
 
     /// <summary>
     /// Parses a decimal digit sequence (and '_' separators), with no fractional part or
     /// exponent, into an <see cref="Int128"/>.
     /// </summary>
-    private static NumberLiteralParseResult ParseDecimalInteger(ReadOnlySpan<char> text, out NumberLiteralValue value)
+    private static NumberLiteralParseResult ParseDecimalInteger(ReadOnlySpan<char> text, out Int128 value)
     {
-        value = default;
-
         Int128 accumulator = 0;
-
         foreach (var c in text)
         {
             if (c == '_')
@@ -144,20 +130,21 @@ public static partial class TokenHelper
             // accumulator * 10 + digitValue must fit in Int128 (literals have no sign).
             if (accumulator > (Int128.MaxValue - digitValue) / 10)
             {
+                value = default;
                 return NumberLiteralParseResult.IntegerOverflow;
             }
 
-            accumulator = accumulator * 10 + digitValue;
+            accumulator = (accumulator * 10) + digitValue;
         }
 
-        value = NumberLiteralValue.FromInteger(accumulator);
-        return NumberLiteralParseResult.None;
+        value = accumulator;
+        return NumberLiteralParseResult.Success;
     }
 
     /// <summary>
     /// Parses a literal containing a fractional part and/or an exponent into a <see cref="double"/>.
     /// </summary>
-    private static NumberLiteralParseResult ParseFloat(ReadOnlySpan<char> text, out NumberLiteralValue value)
+    private static NumberLiteralParseResult ParseFloat(ReadOnlySpan<char> text, out Int128 value)
     {
         value = default;
 
@@ -186,22 +173,26 @@ public static partial class TokenHelper
             return NumberLiteralParseResult.FloatOverflow;
         }
 
-        value = NumberLiteralValue.FromFloat(result);
-        return NumberLiteralParseResult.None;
+        value = BitConverter.DoubleToUInt64Bits(result);
+        return NumberLiteralParseResult.Success;
     }
 
     /// <summary>
-    /// Returns the numeric value (0-15) of a hexadecimal/octal/binary digit. The caller
-    /// must ensure <paramref name="c"/> is a valid digit for the literal's radix.
+    /// Returns the numeric value (0-15) of a hexadecimal/octal/binary digit.<br/>
+    /// The caller must ensure <paramref name="c"/> is a valid digit for the literal's radix.
     /// </summary>
-    private static int GetRadixDigitValue2(char c)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetRadixDigitValue(char c)
     {
-        var value = (uint)(c - '0');
+        var alphabetic = c >> 6;
+        return (c & 0x0F) + (alphabetic << 3) + alphabetic;
+
+        /*var value = (uint)(c - '0');
         if (value <= 9)
         {
             return (int)value;
         }
 
-        return 10 + (int)((uint)((c | 0x20) - 'a'));
+        return 10 + (int)((uint)((c | 0x20) - 'a'));*/
     }
 }

@@ -163,7 +163,6 @@ public static partial class TokenHelper
     private static bool IsRadixDigit(char c, int radix)
     {
         var value = (uint)(c - '0');
-
         if (value <= 9)
         {
             return value < (uint)radix;

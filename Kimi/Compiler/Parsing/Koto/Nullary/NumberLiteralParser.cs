@@ -206,7 +206,7 @@ public static partial class TokenHelper
                 continue;
             }
 
-            var digit = GetRadixDigitValue(c);
+            var digit = GetRadixDigitValueObs(c);
             if (current > cutoff ||
                 (current == cutoff && digit > remainderLimit))
             {
@@ -397,7 +397,7 @@ public static partial class TokenHelper
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static uint GetRadixDigitValue(char c)
+    private static uint GetRadixDigitValueObs(char c)
     {
         var digit = (uint)(c - '0');
         if (digit <= 9)
