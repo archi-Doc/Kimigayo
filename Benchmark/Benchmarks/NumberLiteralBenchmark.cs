@@ -29,38 +29,38 @@ public class NumberLiteralBenchmark
     {
     }
 
-    // [Benchmark]
+    [Benchmark]
     public Int128 TryParseFloat()
     {
-        TokenHelper.TryParseNumberLiteral(this.doubleString, out var i128);
+        TokenHelper.ParseNumberLiteral(this.doubleString, out var i128);
         return i128;
     }
 
     [Benchmark]
     public Int128 TryParseInteger()
     {
-        TokenHelper.TryParseNumberLiteral(this.i128String, out var i128);
+        TokenHelper.ParseNumberLiteral(this.i128String, out var i128);
         return i128;
     }
 
-    // [Benchmark]
+    [Benchmark]
     public Int128 TryParseBinary()
     {
-        TokenHelper.TryParseNumberLiteral(this.bString, out var i128);
+        TokenHelper.ParseNumberLiteral(this.bString, out var i128);
         return i128;
     }
 
-    // [Benchmark]
+    [Benchmark]
     public Int128 TryParseHex()
     {
-        TokenHelper.TryParseNumberLiteral(this.hString, out var i128);
+        TokenHelper.ParseNumberLiteral(this.hString, out var i128);
         return i128;
     }
 
-    // [Benchmark]
+    [Benchmark]
     public Int128 TryParseOct()
     {
-        TokenHelper.TryParseNumberLiteral(this.oString, out var i128);
+        TokenHelper.ParseNumberLiteral(this.oString, out var i128);
         return i128;
     }
 }
