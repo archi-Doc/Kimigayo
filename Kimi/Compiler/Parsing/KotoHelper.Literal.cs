@@ -78,7 +78,6 @@ public static partial class KotoHelper
             span = span.Slice(1);
             if (span.IsEmpty)
             {
-
                 return additionalLength;
             }
 
@@ -97,8 +96,8 @@ public static partial class KotoHelper
 
                 case 'u':
                     {
-                        var scalar = ReadUnicodeEscape(source, ref index);
-                        additionalLength += scalar <= 0xFFFF ? 1 : 2;
+                        //var scalar = ReadUnicodeEscape(source, ref index);
+                        //additionalLength += scalar <= 0xFFFF ? 1 : 2;
                         break;
                     }
 
