@@ -2,6 +2,7 @@
 
 using BenchmarkDotNet.Attributes;
 using Kimi.Compiler.Lexing;
+using Kimi.Compiler.Parsing;
 
 namespace Benchmark;
 
@@ -10,7 +11,7 @@ public class NumberLiteralBenchmark
 {
     private readonly string doubleString = "1.7976_931348_6237E+38";
     private readonly string i128String = "111_282_366";
-    private readonly string i128String2 = "111_282_366_920_938_463_463_374_607_431_768_211_456";
+    // private readonly string i128String2 = "111_282_366_920_938_463_463_374_607_431_768_211_456";
     private readonly string bString = "0b1110_1001_0011_0101_1011_1011_0000_1101";
     private readonly string hString = "0x1234_abCD_4567";
     private readonly string oString = "0o_1234_4567_4567_7654";
@@ -32,35 +33,35 @@ public class NumberLiteralBenchmark
     [Benchmark]
     public Int128 TryParseFloat()
     {
-        TokenHelper.ParseNumberLiteral(this.doubleString, out var i128);
+        NumberLiteralHelper.ParseNumberLiteral(this.doubleString, out var i128);
         return i128;
     }
 
     [Benchmark]
     public Int128 TryParseInteger()
     {
-        TokenHelper.ParseNumberLiteral(this.i128String, out var i128);
+        NumberLiteralHelper.ParseNumberLiteral(this.i128String, out var i128);
         return i128;
     }
 
     [Benchmark]
     public Int128 TryParseBinary()
     {
-        TokenHelper.ParseNumberLiteral(this.bString, out var i128);
+        NumberLiteralHelper.ParseNumberLiteral(this.bString, out var i128);
         return i128;
     }
 
     [Benchmark]
     public Int128 TryParseHex()
     {
-        TokenHelper.ParseNumberLiteral(this.hString, out var i128);
+        NumberLiteralHelper.ParseNumberLiteral(this.hString, out var i128);
         return i128;
     }
 
     [Benchmark]
     public Int128 TryParseOct()
     {
-        TokenHelper.ParseNumberLiteral(this.oString, out var i128);
+        NumberLiteralHelper.ParseNumberLiteral(this.oString, out var i128);
         return i128;
     }
 }

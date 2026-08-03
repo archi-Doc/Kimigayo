@@ -13,10 +13,10 @@ public sealed partial class NumericLiteralKoto : Koto
     public string Literal { get; private set; }
 
     [Key(2)]
-    public NumericLiteralKind Kind { get; private set; }
+    private NumberLiteralParseResult parseResult;
 
     [Key(3)]
-    private UInt128 uv;
+    private Int128 uv;
 
     public NumericLiteralKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Range)
@@ -24,7 +24,7 @@ public sealed partial class NumericLiteralKoto : Koto
         this.Literal = token.Text.ToString();
     }
 
-    public bool TryGetI64(out long value)
+    /*public bool TryGetI64(out long value)
     {
         this.PrepareNumericLiteral();
 
@@ -78,13 +78,24 @@ public sealed partial class NumericLiteralKoto : Koto
 
         value = default;
         return false;
-    }
+    }*/
 
     public bool TryGetLimitedValue(out LimitedValue limitedValue)
     {
         this.PrepareNumericLiteral();
 
-        if (this.Kind is >= NumericLiteralKind.Integer and <= NumericLiteralKind.USize)
+        if (this.parseResult == NumberLiteralParseResult.I128)
+        {
+            limitedValue = new((long)this.uv);
+            return true;
+        }
+        else if (this.parseResult == NumberLiteralParseResult.F64)
+        {
+            limitedValue = new(BitConverter.UInt64BitsToDouble((ulong)this.uv));
+            return true;
+        }
+
+        /*if (this.Kind is >= NumericLiteralKind.Integer and <= NumericLiteralKind.USize)
         {// Integer
             if (this.uv <= long.MaxValue)
             {
@@ -110,7 +121,7 @@ public sealed partial class NumericLiteralKoto : Koto
                 limitedValue = new(value);
                 return true;
             }
-        }
+        }*/
 
         limitedValue = default;
         return false;
@@ -137,10 +148,10 @@ public sealed partial class NumericLiteralKoto : Koto
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PrepareNumericLiteral()
     {
-        if (this.Kind == NumericLiteralKind.Invalid)
+        if (this.parseResult == NumberLiteralParseResult.Invalid)
         {
-            NumericLiteralParser.TryParse(this.Literal, out var kind, out var uv);
-            this.Kind = kind;
+            this.parseResult = NumberLiteralHelper.ParseNumberLiteral(this.Literal, out var uv);
+            // this.Kind = kind;
             this.uv = uv;
         }
     }

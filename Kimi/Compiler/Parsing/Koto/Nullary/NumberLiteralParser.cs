@@ -1,33 +1,34 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
+using Kimi.Compiler.Lexing;
 
-namespace Kimi.Compiler.Lexing;
+namespace Kimi.Compiler.Parsing;
 
-public static partial class TokenHelper
+public enum NumberLiteralParseResult : byte
 {
-    public enum ParseNumberLiteralResult : byte
-    {
-        /// <summary>
-        /// The literal is invalid or its value exceeds 128 bits.
-        /// </summary>
-        Invalid,
-
-        /// <summary>
-        /// The result contains the parsed 128-bit integer bit pattern,
-        /// interpreted as an <see cref="Int128"/>.
-        /// </summary>
-        I128,
-
-        /// <summary>
-        /// The lower 64 bits of the result contain the raw IEEE 754
-        /// representation of a <see cref="double"/>.
-        /// </summary>
-        F64,
-    }
+    /// <summary>
+    /// The literal is invalid or its value exceeds 128 bits.
+    /// </summary>
+    Invalid,
 
     /// <summary>
-    /// Parses a numeric literal, as recognized by <see cref="ScanNumberLiteral"/>, into an
+    /// The result contains the parsed 128-bit integer bit pattern,
+    /// interpreted as an <see cref="Int128"/>.
+    /// </summary>
+    I128,
+
+    /// <summary>
+    /// The lower 64 bits of the result contain the raw IEEE 754
+    /// representation of a <see cref="double"/>.
+    /// </summary>
+    F64,
+}
+
+public static partial class NumberLiteralHelper
+{
+    /// <summary>
+    /// Parses a numeric literal, as recognized by <see cref="TokenHelper.ScanNumberLiteral"/>, into an
     /// <see cref="Int128"/> or a <see cref="double"/>.
     /// </summary>
     /// <param name="numberLiteral">
@@ -36,20 +37,20 @@ public static partial class TokenHelper
     /// than being ignored.
     /// </param>
     /// <param name="value">
-    /// When the result is <see cref="ParseNumberLiteralResult.I128"/>,
+    /// When the result is <see cref="NumberLiteralParseResult.I128"/>,
     /// contains the parsed integer value.<br/>
-    /// When the result is <see cref="ParseNumberLiteralResult.F64"/>,
+    /// When the result is <see cref="NumberLiteralParseResult.F64"/>,
     /// contains the raw IEEE 754 representation of the parsed
     /// <see cref="double"/> in its lower 64 bits.
     /// </param>
     /// <returns>
     /// The kind of parsed numeric literal, or
-    /// <see cref="ParseNumberLiteralResult.Invalid"/> if parsing fails.
+    /// <see cref="NumberLiteralParseResult.Invalid"/> if parsing fails.
     /// </returns>
     /// <remarks>
-    /// The input must already have been validated by <see cref="ScanNumberLiteral"/>.
+    /// The input must already have been validated by <see cref="TokenHelper.ScanNumberLiteral"/>.
     /// </remarks>
-    public static ParseNumberLiteralResult ParseNumberLiteral(ReadOnlySpan<char> numberLiteral, out Int128 value)
+    public static NumberLiteralParseResult ParseNumberLiteral(ReadOnlySpan<char> numberLiteral, out Int128 value)
     {
         if (numberLiteral.Length >= 2 && numberLiteral[0] == '0')
         {
@@ -71,7 +72,7 @@ public static partial class TokenHelper
             ParseDecimalInteger(numberLiteral, out value); // Decimal
     }
 
-    private static ParseNumberLiteralResult ParseFloat(ReadOnlySpan<char> text, out Int128 value)
+    private static NumberLiteralParseResult ParseFloat(ReadOnlySpan<char> text, out Int128 value)
     {
         Span<char> buffer = text.Length <= 128 ? stackalloc char[text.Length] : new char[text.Length];
         var writeIndex = 0;
@@ -86,20 +87,20 @@ public static partial class TokenHelper
         if (!double.TryParse(buffer[..writeIndex], NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
         {
             value = default;
-            return ParseNumberLiteralResult.Invalid;
+            return NumberLiteralParseResult.Invalid;
         }
 
         if (double.IsInfinity(result))
         {
             value = default;
-            return ParseNumberLiteralResult.Invalid;
+            return NumberLiteralParseResult.Invalid;
         }
 
         value = BitConverter.DoubleToUInt64Bits(result);
-        return ParseNumberLiteralResult.F64;
+        return NumberLiteralParseResult.F64;
     }
 
-    private static ParseNumberLiteralResult ParseBinaryInteger(ReadOnlySpan<char> digits, out Int128 value)
+    private static NumberLiteralParseResult ParseBinaryInteger(ReadOnlySpan<char> digits, out Int128 value)
     {
         if (digits.Length <= 64)
         {
@@ -116,7 +117,7 @@ public static partial class TokenHelper
             }
 
             value = unchecked((Int128)accumulator);
-            return ParseNumberLiteralResult.I128;
+            return NumberLiteralParseResult.I128;
         }
         else
         {
@@ -134,18 +135,18 @@ public static partial class TokenHelper
                 if (accumulator > maxBeforeShift)
                 {
                     value = default;
-                    return ParseNumberLiteralResult.Invalid;
+                    return NumberLiteralParseResult.Invalid;
                 }
 
                 accumulator = (accumulator << 1) | digit;
             }
 
             value = unchecked((Int128)accumulator);
-            return ParseNumberLiteralResult.I128;
+            return NumberLiteralParseResult.I128;
         }
     }
 
-    private static ParseNumberLiteralResult ParseOctalInteger(ReadOnlySpan<char> digits, out Int128 value)
+    private static NumberLiteralParseResult ParseOctalInteger(ReadOnlySpan<char> digits, out Int128 value)
     {
         if (digits.Length <= 21)
         {
@@ -161,7 +162,7 @@ public static partial class TokenHelper
             }
 
             value = unchecked((Int128)accumulator);
-            return ParseNumberLiteralResult.I128;
+            return NumberLiteralParseResult.I128;
         }
         else
         {
@@ -177,18 +178,18 @@ public static partial class TokenHelper
                 if (accumulator > maxBeforeShift)
                 {
                     value = default;
-                    return ParseNumberLiteralResult.Invalid;
+                    return NumberLiteralParseResult.Invalid;
                 }
 
                 accumulator = (accumulator << 3) | (uint)(c - '0');
             }
 
             value = unchecked((Int128)accumulator);
-            return ParseNumberLiteralResult.I128;
+            return NumberLiteralParseResult.I128;
         }
     }
 
-    private static ParseNumberLiteralResult ParseDecimalInteger(ReadOnlySpan<char> digits, out Int128 value)
+    private static NumberLiteralParseResult ParseDecimalInteger(ReadOnlySpan<char> digits, out Int128 value)
     {
         if (digits.Length <= 18)
         {
@@ -206,7 +207,7 @@ public static partial class TokenHelper
             }
 
             value = unchecked((Int128)accumulator);
-            return ParseNumberLiteralResult.I128;
+            return NumberLiteralParseResult.I128;
         }
         else
         {
@@ -226,7 +227,7 @@ public static partial class TokenHelper
                     (accumulator == maxBeforeMultiply && digit > 5))
                 {
                     value = default;
-                    return ParseNumberLiteralResult.Invalid;
+                    return NumberLiteralParseResult.Invalid;
                 }
 
                 // accumulator * 10 + digit
@@ -234,11 +235,11 @@ public static partial class TokenHelper
             }
 
             value = unchecked((Int128)accumulator);
-            return ParseNumberLiteralResult.I128;
+            return NumberLiteralParseResult.I128;
         }
     }
 
-    private static ParseNumberLiteralResult ParseHexInteger(ReadOnlySpan<char> digits, out Int128 value)
+    private static NumberLiteralParseResult ParseHexInteger(ReadOnlySpan<char> digits, out Int128 value)
     {
         if (digits.Length <= 16)
         {
@@ -255,7 +256,7 @@ public static partial class TokenHelper
             }
 
             value = unchecked((Int128)accumulator);
-            return ParseNumberLiteralResult.I128;
+            return NumberLiteralParseResult.I128;
         }
         else
         {
@@ -271,7 +272,7 @@ public static partial class TokenHelper
                 if (accumulator > maxBeforeShift)
                 {
                     value = default;
-                    return ParseNumberLiteralResult.Invalid;
+                    return NumberLiteralParseResult.Invalid;
                 }
 
                 var digitValue = (uint)((c & 0x0F) + ((c >> 6) * 9));
@@ -279,7 +280,7 @@ public static partial class TokenHelper
             }
 
             value = unchecked((Int128)accumulator);
-            return ParseNumberLiteralResult.I128;
+            return NumberLiteralParseResult.I128;
         }
     }
 }
