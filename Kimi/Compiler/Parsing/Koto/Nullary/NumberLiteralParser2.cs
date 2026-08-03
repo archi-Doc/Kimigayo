@@ -1,38 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
-using System.Runtime.CompilerServices;
 
 namespace Kimi.Compiler.Lexing;
-
-/// <summary>
-/// Indicates why <see cref="TokenHelper.TryParseNumberLiteral"/> failed to
-/// produce a value, or <see cref="Success"/> when parsing succeeded.
-/// </summary>
-public enum NumberLiteralParseResult
-{
-    /// <summary>Parsing succeeded.</summary>
-    Success = 0,
-
-    /// <summary>
-    /// The input is not a lexically valid numeric literal, or it contains
-    /// trailing characters that are not part of the literal.
-    /// </summary>
-    InvalidFormat,
-
-    /// <summary>
-    /// The literal denotes an integer (decimal, or radix-prefixed) whose
-    /// magnitude does not fit in <see cref="Int128"/>.
-    /// </summary>
-    IntegerOverflow,
-
-    /// <summary>
-    /// The literal denotes a floating-point value whose magnitude is too
-    /// large to be represented as a finite <see cref="double"/> (it would
-    /// parse to positive or negative infinity).
-    /// </summary>
-    FloatOverflow,
-}
 
 public static partial class TokenHelper
 {
@@ -45,12 +15,11 @@ public static partial class TokenHelper
     /// lexically valid numeric literal; trailing characters are treated as a format error rather
     /// than being ignored.
     /// </param>
-    /// <param name="value">When this method returns <see cref="NumberLiteralParseResult.Success"/>, the parsed value.</param>
+    /// <param name="value">When this method returns true, the parsed value.</param>
     /// <returns>
-    /// <see cref="NumberLiteralParseResult.Success"/> on success; otherwise, an error code describing
-    /// why parsing failed.
+    /// Returns true if parsing succeeds.
     /// </returns>
-    public static NumberLiteralParseResult TryParseNumberLiteral(ReadOnlySpan<char> numberLiteral, out Int128 value)
+    public static bool TryParseNumberLiteral(ReadOnlySpan<char> numberLiteral, out Int128 value)
     {
         value = default;
         if (numberLiteral.Length >= 2 && numberLiteral[0] == '0')
@@ -61,10 +30,10 @@ public static partial class TokenHelper
                     return ParseNumber(numberLiteral[2..], 2, out value);
 
                 case 'o':
-                    return ParseBasedInteger(numberLiteral[2..], 8, out value);
+                    return ParseOctalInteger(numberLiteral[2..], out value); // ParseBasedInteger(numberLiteral[2..], 8, out value);
 
                 case 'x':
-                    return ParseNumber(numberLiteral[2..], 16, out value);
+                    return ParseHexInteger(numberLiteral[2..], out value); // return ParseNumber(numberLiteral[2..], 16, out value);
             }
         }
 
@@ -73,7 +42,7 @@ public static partial class TokenHelper
             ParseNumber(numberLiteral, 10, out value); // Decimal
     }
 
-    private static NumberLiteralParseResult ParseNumber(ReadOnlySpan<char> text, int radix, out Int128 value)
+    private static bool ParseNumber(ReadOnlySpan<char> text, int radix, out Int128 value)
     {
         Span<char> buffer = text.Length <= 128 ? stackalloc char[128] : new char[text.Length];
         var writeIndex = 0;
@@ -93,7 +62,7 @@ public static partial class TokenHelper
                 if (!long.TryParse(span, CultureInfo.InvariantCulture, out var v))
                 {
                     value = default;
-                    return NumberLiteralParseResult.InvalidFormat;
+                    return false;
                 }
 
                 value = v;
@@ -103,7 +72,7 @@ public static partial class TokenHelper
                 if (!Int128.TryParse(span, CultureInfo.InvariantCulture, out value))
                 {
                     value = default;
-                    return NumberLiteralParseResult.InvalidFormat;
+                    return false;
                 }
             }
         }
@@ -114,7 +83,7 @@ public static partial class TokenHelper
                 if (!ulong.TryParse(span, NumberStyles.BinaryNumber, CultureInfo.InvariantCulture, out var v))
                 {
                     value = default;
-                    return NumberLiteralParseResult.InvalidFormat;
+                    return false;
                 }
 
                 value = v;
@@ -124,7 +93,7 @@ public static partial class TokenHelper
                 if (!Int128.TryParse(span, NumberStyles.BinaryNumber, CultureInfo.InvariantCulture, out value))
                 {
                     value = default;
-                    return NumberLiteralParseResult.InvalidFormat;
+                    return false;
                 }
             }
         }
@@ -135,7 +104,7 @@ public static partial class TokenHelper
                 if (!ulong.TryParse(span, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var v))
                 {
                     value = default;
-                    return NumberLiteralParseResult.InvalidFormat;
+                    return false;
                 }
 
                 value = v;
@@ -145,7 +114,7 @@ public static partial class TokenHelper
                 if (!Int128.TryParse(span, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value))
                 {
                     value = default;
-                    return NumberLiteralParseResult.InvalidFormat;
+                    return false;
                 }
             }
         }
@@ -154,28 +123,26 @@ public static partial class TokenHelper
             if (!double.TryParse(span, NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
             {
                 value = default;
-                return NumberLiteralParseResult.InvalidFormat;
+                return false;
             }
 
             if (double.IsInfinity(result))
             {
                 value = default;
-                return NumberLiteralParseResult.FloatOverflow;
+                return false;
             }
 
             value = BitConverter.DoubleToUInt64Bits(result);
         }
 
-        return NumberLiteralParseResult.Success;
+        return true;
     }
 
-    /// <summary>
-    /// Parses the digits (and '_' separators) following a radix prefix into an <see cref="Int128"/>.
-    /// A digit sequence with no digits at all (e.g. "0x" or "0x____") represents zero.
-    /// </summary>
-    private static NumberLiteralParseResult ParseBasedInteger(ReadOnlySpan<char> digits, int radix, out Int128 value)
+    private static bool ParseHexInteger(ReadOnlySpan<char> digits, out Int128 value)
     {
         UInt128 accumulator = 0;
+        var maxBeforeShift = UInt128.MaxValue >> 4;
+
         foreach (var c in digits)
         {
             if (c == '_')
@@ -183,38 +150,42 @@ public static partial class TokenHelper
                 continue;
             }
 
-            var digitValue = (UInt128)GetRadixDigitValue(c);
-
-            // accumulator * radix + digitValue must fit in 128 bits.
-            if (accumulator > (UInt128.MaxValue - digitValue) / (uint)radix)
+            if (accumulator > maxBeforeShift)
             {
                 value = default;
-                return NumberLiteralParseResult.IntegerOverflow;
+                return false;
             }
 
-            accumulator = (accumulator * (uint)radix) + digitValue;
+            var digitValue = (uint)((c & 0x0F) + ((c >> 6) * 9));
+            accumulator = (accumulator << 4) | digitValue;
         }
 
         value = unchecked((Int128)accumulator);
-        return NumberLiteralParseResult.Success;
+        return true;
     }
 
-    /// <summary>
-    /// Returns the numeric value (0-15) of a hexadecimal/octal/binary digit.<br/>
-    /// The caller must ensure <paramref name="c"/> is a valid digit for the literal's radix.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int GetRadixDigitValue(char c)
+    private static bool ParseOctalInteger(ReadOnlySpan<char> digits, out Int128 value)
     {
-        var alphabetic = c >> 6;
-        return (c & 0x0F) + (alphabetic << 3) + alphabetic;
+        UInt128 accumulator = 0;
+        var maxBeforeShift = UInt128.MaxValue >> 3;
 
-        /*var value = (uint)(c - '0');
-        if (value <= 9)
+        foreach (var c in digits)
         {
-            return (int)value;
+            if (c == '_')
+            {
+                continue;
+            }
+
+            if (accumulator > maxBeforeShift)
+            {
+                value = default;
+                return false;
+            }
+
+            accumulator = (accumulator << 3) | (uint)(c - '0');
         }
 
-        return 10 + (int)((uint)((c | 0x20) - 'a'));*/
+        value = unchecked((Int128)accumulator);
+        return true;
     }
 }

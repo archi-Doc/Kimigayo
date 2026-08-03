@@ -29,7 +29,7 @@ public class NumberLiteralBenchmark
     {
     }
 
-    /*[Benchmark]
+    [Benchmark]
     public Int128 TryParseFloat()
     {
         TokenHelper.TryParseNumberLiteral(this.doubleString, out var i128);
@@ -55,7 +55,7 @@ public class NumberLiteralBenchmark
     {
         TokenHelper.TryParseNumberLiteral(this.hString, out var i128);
         return i128;
-    }*/
+    }
 
     [Benchmark]
     public Int128 TryParseOct()
