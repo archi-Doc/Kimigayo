@@ -48,7 +48,7 @@ public enum KotoKind : byte
     BoolLiteral,
     Error,
     Field,
-    NumericLiteral,
+    NumberLiteral,
     StringLiteral,
     Unresolved,
     Type,
@@ -118,7 +118,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.BoolLiteral, typeof(BoolLiteralKoto))]
 [TinyhandUnion((int)KotoKind.Error, typeof(ErrorKoto))]
 [TinyhandUnion((int)KotoKind.Field, typeof(FieldKoto))]
-[TinyhandUnion((int)KotoKind.NumericLiteral, typeof(NumericLiteralKoto))]
+[TinyhandUnion((int)KotoKind.NumberLiteral, typeof(NumberLiteralKoto))]
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.Unresolved, typeof(IdentifierNameKoto))]
 [TinyhandUnion((int)KotoKind.Type, typeof(TypeKoto))]
@@ -176,6 +176,8 @@ public enum KotoKind : byte
 public abstract partial class Koto
 {
     #region FieldAndProperty
+
+    public abstract KotoKind _Kind { get; }
 
     // Frontend Metadata
     [IgnoreMember]

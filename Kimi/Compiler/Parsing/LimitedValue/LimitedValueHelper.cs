@@ -10,7 +10,7 @@ public static class LimitedValueHelper
         {// true, false
             return new(boolLiteralKoto.Value);
         }
-        else if (koto is NumericLiteralKoto numericLiteralKoto)
+        else if (koto is NumberLiteralKoto numericLiteralKoto)
         {// long or double
             if (numericLiteralKoto.TryGetLimitedValue(out var lv))
             {

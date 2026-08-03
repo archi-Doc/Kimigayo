@@ -1072,7 +1072,7 @@ Loop:
             case TokenKind.NumericLiteral:
                 {
                     reader.TryRead(out var token);
-                    return new NumericLiteralKoto(ref reader, token);
+                    return new NumberLiteralKoto(ref reader, token);
                 }
 
             case TokenKind.StringLiteral:

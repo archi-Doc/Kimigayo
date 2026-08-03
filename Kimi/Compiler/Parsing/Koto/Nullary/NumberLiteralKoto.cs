@@ -7,8 +7,10 @@ using Tinyhand.Tree;
 namespace Kimi.Compiler.Parsing;
 
 [TinyhandObject]
-public sealed partial class NumericLiteralKoto : Koto
+public sealed partial class NumberLiteralKoto : Koto
 {
+    public override KotoKind _Kind => KotoKind.NumberLiteral;
+
     [Key(1)]
     public string Literal { get; private set; }
 
@@ -18,7 +20,7 @@ public sealed partial class NumericLiteralKoto : Koto
     [Key(3)]
     private Int128 uv;
 
-    public NumericLiteralKoto(ref TokenReader reader, Token token)
+    public NumberLiteralKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Range)
     {
         this.Literal = token.Text.ToString();

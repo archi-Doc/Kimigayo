@@ -8,6 +8,8 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public partial class MemberAccessKoto : BinaryKoto
 {// A.B
+    public KotoKind _Kind => KotoKind.MemberAccess;
+
     public Koto Accessor => this.Right;
 
     public MemberAccessKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
@@ -566,6 +568,8 @@ public partial class LessThanLessThanEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class GreaterThanGreaterThanEqualsKoto : BinaryKoto
 {// A >>= B
+    public override KotoKind _Kind => KotoKind.GreaterThanGreaterThan;
+
     public GreaterThanGreaterThanEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
