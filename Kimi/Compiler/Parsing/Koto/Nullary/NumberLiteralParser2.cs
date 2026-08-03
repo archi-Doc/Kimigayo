@@ -64,7 +64,7 @@ public static partial class TokenHelper
                     return ParseBasedInteger(numberLiteral[2..], 8, out value);
 
                 case 'x':
-                    return ParseBasedInteger(numberLiteral[2..], 16, out value);
+                    return ParseNumber(numberLiteral[2..], 16, out value);
             }
         }
 
@@ -108,7 +108,7 @@ public static partial class TokenHelper
             }
         }
         else if (radix == 2)
-        {
+        {// Binary
             if (span.Length <= 64)
             {
                 if (!ulong.TryParse(span, NumberStyles.BinaryNumber, CultureInfo.InvariantCulture, out var v))
@@ -122,6 +122,27 @@ public static partial class TokenHelper
             else
             {
                 if (!Int128.TryParse(span, NumberStyles.BinaryNumber, CultureInfo.InvariantCulture, out value))
+                {
+                    value = default;
+                    return NumberLiteralParseResult.InvalidFormat;
+                }
+            }
+        }
+        else if (radix == 16)
+        {// Hex
+            if (span.Length <= 16)
+            {
+                if (!ulong.TryParse(span, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var v))
+                {
+                    value = default;
+                    return NumberLiteralParseResult.InvalidFormat;
+                }
+
+                value = v;
+            }
+            else
+            {
+                if (!Int128.TryParse(span, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out value))
                 {
                     value = default;
                     return NumberLiteralParseResult.InvalidFormat;
@@ -175,95 +196,6 @@ public static partial class TokenHelper
         }
 
         value = unchecked((Int128)accumulator);
-        return NumberLiteralParseResult.Success;
-    }
-
-    /// <summary>
-    /// Parses a decimal digit sequence (and '_' separators), with no fractional part or
-    /// exponent, into an <see cref="Int128"/>.
-    /// </summary>
-    private static NumberLiteralParseResult ParseDecimalInteger(ReadOnlySpan<char> text, out Int128 value)
-    {
-        Int128 accumulator = 0;
-        foreach (var c in text)
-        {
-            if (c == '_')
-            {
-                continue;
-            }
-
-            var digitValue = (Int128)(c - '0');
-
-            // accumulator * 10 + digitValue must fit in Int128 (literals have no sign).
-            if (accumulator > (Int128.MaxValue - digitValue) / 10)
-            {
-                value = default;
-                return NumberLiteralParseResult.IntegerOverflow;
-            }
-
-            accumulator = (accumulator * 10) + digitValue;
-        }
-
-        value = accumulator;
-        return NumberLiteralParseResult.Success;
-    }
-
-    private static NumberLiteralParseResult ParseDecimalInteger2(ReadOnlySpan<char> text, out Int128 value)
-    {
-        value = default;
-
-        Span<char> buffer = text.Length <= 128 ? stackalloc char[128] : new char[text.Length];
-        var writeIndex = 0;
-
-        foreach (var c in text)
-        {
-            if (c != '_')
-            {
-                buffer[writeIndex++] = c;
-            }
-        }
-
-        if (!Int128.TryParse(buffer[..writeIndex], CultureInfo.InvariantCulture, out value))
-        {
-            return NumberLiteralParseResult.InvalidFormat;
-        }
-
-        return NumberLiteralParseResult.Success;
-    }
-
-    /// <summary>
-    /// Parses a literal containing a fractional part and/or an exponent into a <see cref="double"/>.
-    /// </summary>
-    private static NumberLiteralParseResult ParseFloat(ReadOnlySpan<char> text, out Int128 value)
-    {
-        value = default;
-
-        // double.Parse does not understand '_' separators, so strip them into a scratch
-        // buffer before handing the text to the runtime parser.
-        Span<char> buffer = text.Length <= 128 ? stackalloc char[128] : new char[text.Length];
-        var writeIndex = 0;
-
-        foreach (var c in text)
-        {
-            if (c != '_')
-            {
-                buffer[writeIndex++] = c;
-            }
-        }
-
-        // The text was already validated by ScanNumberLiteral, so this should not fail;
-        // the check remains as a defensive guard against future grammar changes.
-        if (!double.TryParse(buffer[..writeIndex], NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
-        {
-            return NumberLiteralParseResult.InvalidFormat;
-        }
-
-        if (double.IsInfinity(result))
-        {
-            return NumberLiteralParseResult.FloatOverflow;
-        }
-
-        value = BitConverter.DoubleToUInt64Bits(result);
         return NumberLiteralParseResult.Success;
     }
 
