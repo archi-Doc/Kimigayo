@@ -27,43 +27,43 @@ public static partial class TokenHelper
 
         if (text.Length >= 2 && text[0] == '0')
         {
-            // 0b..., 0o..., 0x...
             var prefix = (char)(text[1] | 0x20);
             if (prefix == 'b')
-            {
+            {// 0b...
                 return ScanBasedInteger(text, 2, 2, out length);
             }
-
-            if (prefix == 'o')
-            {
+            else if (prefix == 'o')
+            {// 0o...
                 return ScanBasedInteger(text, 2, 8, out length);
             }
-
-            if (prefix == 'x')
-            {
+            else if (prefix == 'x')
+            {// 0x...
                 return ScanBasedInteger(text, 2, 16, out length);
             }
         }
 
         // A decimal literal is Int128 unless it contains a fraction or exponent,
         // in which case it is Double. Value conversion is performed after tokenization.
-        var i = ScanDecDigitsOrUnderscores(text, 0);
+        var i = ScanDecDigitsOrUnderscores(text, 0, out _);
 
         // Fraction part:
-        // 1.0  => floating-point literal
-        // 1.   => integer literal + dot
-        // 1..2 => integer literal + range/operator
+        // 1.0   => floating-point literal
+        // 1._0  => floating-point literal
+        // 1.    => integer literal + dot
+        // 1..2  => integer literal + range/operator
         // 1.foo => integer literal + member access
-        if ((uint)i < (uint)text.Length &&
-            text[i] == '.' &&
-            i + 1 < text.Length &&
-            IsDigit(text[i + 1]))
+        if ((uint)i < (uint)text.Length && text[i] == '.')
         {
-            i = ScanDecDigitsOrUnderscores(text, i + 1);
+            var fractionStart = i + 1;
+            var fractionEnd = ScanDecDigitsOrUnderscores(text, fractionStart, out var hasFractionDigit);
+            if (hasFractionDigit)
+            {
+                i = fractionEnd;
+            }
         }
 
-        // Exponent part. The first character after 'e'/'E' and an optional sign
-        // must be a digit; underscores are allowed only after that first digit.
+        // Exponent part. Underscores may appear immediately after 'e'/'E'
+        // or its optional sign, but the exponent must contain at least one digit.
         if ((uint)i < (uint)text.Length && (text[i] | 0x20) == 'e')
         {
             i++;
@@ -76,14 +76,13 @@ public static partial class TokenHelper
                 }
             }
 
-            if ((uint)i >= (uint)text.Length || !IsDigit(text[i]))
+            i = ScanDecDigitsOrUnderscores(text, i, out var hasExponentDigit);
+            if (!hasExponentDigit)
             {
-                // e.g. "1e", "1e+", "1e_2", "1e+x"
+                // e.g. "1e", "1e+", "1e___", "1e+___x"
                 length = ExtendWithIdentifierContinue(text, i);
                 return false;
             }
-
-            i = ScanDecDigitsOrUnderscores(text, i);
         }
 
         // Numeric type suffixes are not supported. Any identifier continuation
@@ -110,40 +109,37 @@ public static partial class TokenHelper
         return (uint)(c - '0') <= 9;
     }
 
-    /// <summary>
-    /// Determines whether the specified character is an ASCII decimal digit or an underscore separator.
-    /// </summary>
-    /// <param name="c">The character to inspect.</param>
-    /// <returns><see langword="true"/> if <paramref name="c"/> is a digit or '_'; otherwise, <see langword="false"/>.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsDigitOrNumericSeparator(char c)
-    {
-        return IsDigit(c) || c == '_';
-    }
-
     private static bool ScanBasedInteger(ReadOnlySpan<char> text, int start, int numberBase, out int length)
     {
-        // The first character after the base prefix must be a digit.
-        // After that first digit, underscores may appear anywhere, including
-        // consecutively or at the end of the literal.
-        if ((uint)start >= (uint)text.Length || !IsBasedDigit(text[start], numberBase))
-        {
-            // e.g. "0x", "0x_", "0b2", "0o8", "0xg"
-            length = ExtendInvalidBasedInteger(text, start);
-            return false;
-        }
+        // Underscores may appear immediately after the base prefix and may be
+        // repeated, but the literal must contain at least one digit of the base.
+        var i = start;
+        var hasDigit = false;
 
-        var i = start + 1;
         while ((uint)i < (uint)text.Length)
         {
             var c = text[i];
-            if (c == '_' || IsBasedDigit(c, numberBase))
+            if (c == '_')
             {
                 i++;
                 continue;
             }
 
+            if (IsBasedDigit(c, numberBase))
+            {
+                hasDigit = true;
+                i++;
+                continue;
+            }
+
             break;
+        }
+
+        if (!hasDigit)
+        {
+            // e.g. "0x", "0x___", "0b__2", "0o__8", "0x__g"
+            length = ExtendWithIdentifierContinue(text, i);
+            return false;
         }
 
         // Numeric type suffixes are not supported. This also rejects digits
@@ -176,32 +172,21 @@ public static partial class TokenHelper
         return (uint)(c - '0') <= 9 || (uint)((c | 0x20) - 'a') <= 5;
     }
 
-    private static int ExtendInvalidBasedInteger(ReadOnlySpan<char> text, int i)
+    private static int ScanDecDigitsOrUnderscores(ReadOnlySpan<char> text, int i, out bool hasDigit)
     {
+        hasDigit = false;
         while ((uint)i < (uint)text.Length)
         {
             var c = text[i];
-
-            if (IsIdentifierContinue(c) || c == '_')
+            if (c == '_')
             {
                 i++;
                 continue;
             }
 
-            break;
-        }
-
-        return i;
-    }
-
-    private static int ScanDecDigitsOrUnderscores(ReadOnlySpan<char> text, int i)
-    {
-        while ((uint)i < (uint)text.Length)
-        {
-            var c = text[i];
-
-            if (IsDigit(c) || c == '_')
+            if (IsDigit(c))
             {
+                hasDigit = true;
                 i++;
                 continue;
             }
