@@ -34,42 +34,34 @@ public static partial class TokenHelper
 
         if (text.Length >= 2 && text[0] == '0')
         {
-            var prefix = (char)(text[1] | 0x20);
-
-            if (prefix == 'b')
+            switch ((char)(text[1] | 0x20))
             {
-                return ScanBasedInteger(text, 2, 2, out length);
-            }
+                case 'b':
+                    return ScanBasedInteger(text, 2, 2, out length);
 
-            if (prefix == 'o')
-            {
-                return ScanBasedInteger(text, 2, 8, out length);
-            }
+                case 'o':
+                    return ScanBasedInteger(text, 2, 8, out length);
 
-            if (prefix == 'x')
-            {
-                return ScanBasedInteger(text, 2, 16, out length);
+                case 'x':
+                    return ScanBasedInteger(text, 2, 16, out length);
             }
         }
 
-        // The literal starts with a digit, so separators become allowed
-        // after the first digit has been consumed.
-        var i = ScanDigitsAndSeparators(text, 0, 10, precededByDigitOrPrefix: false, out _);
+        // The first decimal digit has already been validated.
+        var i = ScanDigitsAndSeparators(text, 1, 10);
 
-        // A fractional part must contain at least one digit.
-        // Separators cannot appear immediately after the decimal point.
         if ((uint)i < (uint)text.Length && text[i] == '.')
         {
-            var fractionEnd = ScanDigitsAndSeparators(text, i + 1, 10, precededByDigitOrPrefix: false, out var hasFractionDigit);
+            var fractionStart = i + 1;
 
-            if (hasFractionDigit)
+            // A fractional part is recognized only when it starts with a digit.
+            if ((uint)fractionStart < (uint)text.Length &&
+                IsDigit(text[fractionStart]))
             {
-                i = fractionEnd;
+                i = ScanDigitsAndSeparators(text, fractionStart + 1, 10);
             }
         }
 
-        // Separators cannot appear immediately after 'e', 'E',
-        // or the optional exponent sign.
         if ((uint)i < (uint)text.Length &&
             (text[i] | 0x20) == 'e')
         {
@@ -81,13 +73,15 @@ public static partial class TokenHelper
                 i++;
             }
 
-            i = ScanDigitsAndSeparators(text, i, 10, precededByDigitOrPrefix: false, out var hasExponentDigit);
-
-            if (!hasExponentDigit)
+            // The exponent must start with a digit. Therefore, separators
+            // cannot immediately follow 'e', 'E', '+' or '-'.
+            if ((uint)i >= (uint)text.Length || !IsDigit(text[i]))
             {
                 length = ExtendWithIdentifierContinue(text, i);
                 return false;
             }
+
+            i = ScanDigitsAndSeparators(text, i + 1, 10);
         }
 
         // Type suffixes and other identifier continuations are not supported.
@@ -106,21 +100,24 @@ public static partial class TokenHelper
     /// Determines whether the specified character is an ASCII decimal digit.
     /// </summary>
     /// <param name="c">The character to inspect.</param>
-    /// <returns><see langword="true"/> if <paramref name="c"/> is in the range '0' through '9'; otherwise, <see langword="false"/>.</returns>
+    /// <returns>
+    /// <see langword="true"/> if <paramref name="c"/> is in the range
+    /// '0' through '9'; otherwise, <see langword="false"/>.
+    /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsDigit(char c)
         => (uint)(c - '0') <= 9;
 
     private static bool ScanBasedInteger(ReadOnlySpan<char> text, int start, int radix, out int length)
     {
-        // Separators are allowed immediately after a radix prefix.
-        var i = ScanDigitsAndSeparators(text, start, radix, precededByDigitOrPrefix: true, out _);
+        // Separators are allowed immediately after the radix prefix.
+        var i = ScanDigitsAndSeparators(text, start, radix);
 
         // Reject invalid radix digits and unsupported suffixes.
         if ((uint)i < (uint)text.Length &&
             IsIdentifierContinue(text[i]))
         {
-            // e.g. "0b102", "0x1g", "0x1i128"
+            // e.g. "0b102", "0o8", "0x1g", "0x1i128"
             length = ExtendWithIdentifierContinue(text, i);
             return false;
         }
@@ -129,29 +126,21 @@ public static partial class TokenHelper
         return true;
     }
 
-    private static int ScanDigitsAndSeparators(ReadOnlySpan<char> text, int i, int radix, bool precededByDigitOrPrefix, out bool hasDigit)
+    /// <summary>
+    /// Scans digits of the specified radix and underscore separators.
+    /// </summary>
+    private static int ScanDigitsAndSeparators(ReadOnlySpan<char> text, int i, int radix)
     {
-        hasDigit = false;
-
         while ((uint)i < (uint)text.Length)
         {
             var c = text[i];
 
-            if (IsDigit(c, radix))
+            if (!IsDigit(c, radix) && c != '_')
             {
-                hasDigit = true;
-                precededByDigitOrPrefix = true;
-                i++;
-                continue;
+                break;
             }
 
-            if (c == '_' && precededByDigitOrPrefix)
-            {
-                i++;
-                continue;
-            }
-
-            break;
+            i++;
         }
 
         return i;
@@ -171,6 +160,11 @@ public static partial class TokenHelper
             (uint)((c | 0x20) - 'a') <= 5;
     }
 
+    /// <summary>
+    /// Extends <paramref name="i"/> over trailing identifier-continue
+    /// characters so that a malformed numeric literal is reported as a
+    /// single token.
+    /// </summary>
     private static int ExtendWithIdentifierContinue(ReadOnlySpan<char> text, int i)
     {
         while ((uint)i < (uint)text.Length &&
