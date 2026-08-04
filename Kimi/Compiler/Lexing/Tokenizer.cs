@@ -404,6 +404,12 @@ Loop:
                         break;
                     }
 
+                case '\"':
+                    {
+                        var result = StringLiteralHelper.ScanStringLiteral(span, out var doubleQuoteCount, out var stringLiteralLength, out var interpolationLength);
+                        break;
+                    }
+
                 default:
                     {// Single char token, Number literal, String literal, Keyword, Identifier
                         if (TokenHelper.TryGetSingleCharTokenKind(span[0], out var tokenKind, out var depth))
