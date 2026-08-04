@@ -1,8 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using BenchmarkDotNet.Attributes;
-using Kimi.Compiler.Lexing;
-using Kimi.Compiler.Parsing;
+using Kimi.Compiler.Helper;
 
 namespace Benchmark;
 
