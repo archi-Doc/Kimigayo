@@ -9,7 +9,8 @@ public enum ScanStringLiteralResult : byte
 {
     None,
     Invalid,
-    StringLiteral,
+    String,
+    MultilineString,
     Interpolation,
     MultilineInterpolation,
 }
@@ -28,14 +29,13 @@ public static class StringLiteralHelper
         }
         else if (doubleQuoteCount == 1)
         {// "Text with escape"
-            doubleQuoteCount = 1;
             return ScanEscapedStringLiteral(text, out stringLiteralLength);
         }
         else if (doubleQuoteCount == 2)
         {// ""
             doubleQuoteCount = 1;
             stringLiteralLength = 2;
-            return ScanStringLiteralResult.StringLiteral;
+            return ScanStringLiteralResult.String;
         }
         else
         {// """Text without escape"""
@@ -71,7 +71,7 @@ public static class StringLiteralHelper
         }
 
         var isMultiline = StartsWithLineBreak(span);
-        if (!isMultiline && span[..delimiterIndex].IndexOf(BaseHelper.LfChar) >= 0)
+        if (!isMultiline && span[..delimiterIndex].Contains(BaseHelper.LfChar))
         {
             return ScanInvalidStringLiteral(span, 1, out stringLiteralLength);
         }
@@ -85,7 +85,9 @@ public static class StringLiteralHelper
 
             stringLiteralLength = delimiterIndex + 2;
 
-            return ScanStringLiteralResult.StringLiteral;
+            return isMultiline ?
+                ScanStringLiteralResult.MultilineString :
+                ScanStringLiteralResult.String;
         }
         else
         {// text\(
@@ -107,7 +109,7 @@ public static class StringLiteralHelper
         }
 
         var isMultiline = StartsWithLineBreak(span);
-        if (!isMultiline && span[..delimiterIndex].IndexOf(BaseHelper.LfChar) >= 0)
+        if (!isMultiline && span[..delimiterIndex].Contains(BaseHelper.LfChar))
         {
             return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
         }
@@ -125,7 +127,9 @@ public static class StringLiteralHelper
         }
 
         stringLiteralLength = doubleQuoteCount + delimiterIndex + doubleQuoteCount;
-        return ScanStringLiteralResult.StringLiteral;
+        return isMultiline ?
+            ScanStringLiteralResult.MultilineString :
+            ScanStringLiteralResult.String;
     }
 
     private static bool HasValidClosingDelimiterIndent(ReadOnlySpan<char> text)

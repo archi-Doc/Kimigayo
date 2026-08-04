@@ -407,6 +407,20 @@ Loop:
                 case '\"':
                     {
                         var result = StringLiteralHelper.ScanStringLiteral(span, out var doubleQuoteCount, out var stringLiteralLength);
+                        if (result == ScanStringLiteralResult.String)
+                        {
+                            this.AddTokenAndSlice(ref builder, TokenKind.StringLiteral, ref span, stringLiteralLength);
+                        }
+                        else if (result == ScanStringLiteralResult.MultilineString)
+                        {
+                            this.AddTokenAndSliceWithLineTracking(ref builder, TokenKind.StringLiteral, ref span, stringLiteralLength);
+                        }
+                        else
+                        {// Invalid
+                            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.MissingStringLiteralEnd);
+                            this.AddTokenAndSlice(ref builder, TokenKind.Invalid, ref span, stringLiteralLength);
+                        }
+
                         break;
                     }
 
