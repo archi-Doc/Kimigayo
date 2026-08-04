@@ -1,15 +1,15 @@
-#If(os == "windows")
 alias AliasB
-
-#If(os == """
-Windows
-""") // """
-alias AliasC
     method(1,
         "
         a
         b
         ")
+
+#If(os == """
+Windows
+""") // """
+alias AliasC
+
 
 #If(windows and 1 == 0x_001)
 alias AliasD

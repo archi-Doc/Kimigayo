@@ -1,5 +1,10 @@
 alias AliasB
 alias AliasC
+
+method(1, "
+        a
+        b
+        ")
 alias AliasD
 
 var x: &unsafe Base.Map<String, Int>

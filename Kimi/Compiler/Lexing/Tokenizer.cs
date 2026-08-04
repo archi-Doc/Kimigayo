@@ -404,7 +404,7 @@ Loop:
                         break;
                     }
 
-                case '\"':
+                case '"':
                     {
                         var result = StringLiteralHelper.ScanStringLiteral(span, out var doubleQuoteCount, out var stringLiteralLength);
                         if (result == ScanStringLiteralResult.String)
