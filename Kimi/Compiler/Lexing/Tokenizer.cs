@@ -406,7 +406,7 @@ Loop:
 
                 case '\"':
                     {
-                        var result = StringLiteralHelper.ScanStringLiteral(span, out var doubleQuoteCount, out var stringLiteralLength, out var interpolationLength);
+                        var result = StringLiteralHelper.ScanStringLiteral(span, out var doubleQuoteCount, out var stringLiteralLength);
                         break;
                     }
 

@@ -6,16 +6,16 @@ public static class LimitedValueHelper
 {
     public delegate void Kotodama(Compilation compilation, Koto koto);
 
-    private static readonly Kotodama?[] table = new Kotodama[Koto.MaxKind];
+    private static readonly Kotodama?[] Table = new Kotodama[Koto.MaxKind];
 
     static LimitedValueHelper()
     {
-        table[(int)KotoKind.BoolLiteral] = (c, k) => { };
+        Table[(int)KotoKind.BoolLiteral] = (c, k) => { };
     }
 
     public static LimitedValue Evaluate(Compilation compilation, Koto koto)
     {
-        if (table[(int)koto._Kind] is { } f)
+        if (Table[(int)koto._Kind] is { } f)
         {//
             f(compilation, koto);
         }

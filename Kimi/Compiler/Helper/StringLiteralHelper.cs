@@ -1,90 +1,102 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 
 namespace Kimi.Compiler;
 
 public enum ScanStringLiteralResult
 {
-    NotStringLiteral,
+    None,
+    Invalid,
     StringLiteral,
-    InvalidStringLiteral,
-    StartInterpolation,
+    Interpolation,
+    MultilineInterpolation,
 }
 
 public class StringLiteralHelper
 {
+    private static readonly SearchValues<char> SlashOrDoubleQuote = SearchValues.Create("\\\"");
+
     public static ScanStringLiteralResult ScanStringLiteral(ReadOnlySpan<char> text, out int doubleQuoteCount, out int stringLiteralLength)
     {
         doubleQuoteCount = CountDoubleQuotes(text);
         if (doubleQuoteCount == 0)
-        {
+        {// Not string literal
             stringLiteralLength = 0;
-            return ScanStringLiteralResult.NotStringLiteral;
+            return ScanStringLiteralResult.None;
         }
-        else if (doubleQuoteCount < 3)
-        {
-            // Two consecutive quotes represent an empty escaped string,
-            // rather than a two-character delimiter.
+        else if (doubleQuoteCount == 1)
+        {// "Text with escape"
             doubleQuoteCount = 1;
             return ScanEscapedStringLiteral(text, out stringLiteralLength);
         }
+        else if (doubleQuoteCount == 2)
+        {// ""
+            doubleQuoteCount = 1;
+            stringLiteralLength = 2;
+            return ScanStringLiteralResult.StringLiteral;
+        }
         else
-        {
+        {// """Text without escape"""
             return ScanRawStringLiteral(text, doubleQuoteCount, out stringLiteralLength);
         }
     }
 
-    private static void ScanEscapedStringLiteral(
-        ReadOnlySpan<char> text,
-        out int stringLiteralLength,
-        out int interpolationLength)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ScanStringLiteralResult ScanInvalidStringLiteral(ReadOnlySpan<char> span, int quoteCount, out int stringLiteralLength)
     {
-        stringLiteralLength = -1;
-        interpolationLength = -1;
-
-        var index = 1;
-
-        while (index < text.Length)
-        {
-            var c = text[index];
-
-            if (c == '"')
-            {
-                stringLiteralLength = index + 1;
-                return;
-            }
-
-            if (c != '\\')
-            {
-                index++;
-                continue;
-            }
-
-            if (index + 1 >= text.Length)
-            {
-                // The literal ends with an incomplete escape sequence.
-                return;
-            }
-
-            if (text[index + 1] == '(')
-            {
-                SetInterpolationLength(index, ref interpolationLength);
-
-                if (!TrySkipInterpolation(text, index, out index))
-                {
-                    return;
-                }
-
-                continue;
-            }
-
-            // Escape validity is deliberately not checked here.
-            //
-            // This also prevents \" from terminating the string. An invalid
-            // escape such as \q is skipped structurally in the same manner.
-            index += 2;
+        // The closing delimiter is missing.
+        // Returns the text up to the end of the input or the first delimiter.
+        var linebreakIndex = span.IndexOf(BaseHelper.LfChar);
+        if (linebreakIndex >= 0)
+        {// Lf, CrLf
+            stringLiteralLength = quoteCount + linebreakIndex + 1;
         }
+        else
+        {
+            stringLiteralLength = quoteCount;
+        }
+
+        return ScanStringLiteralResult.Invalid;
+    }
+
+    private static ScanStringLiteralResult ScanEscapedStringLiteral(ReadOnlySpan<char> text, out int stringLiteralLength)
+    {
+        var span = text.Slice(1);
+        var delimiterIndex = IndexOfInterpolationOrUnescapedQuote(span);
+        if (delimiterIndex < 0)
+        {
+            return ScanInvalidStringLiteral(span, 1, out stringLiteralLength);
+        }
+
+        if (span[delimiterIndex] == '\"')
+        {// Text"
+            if (span[0] == BaseHelper.LfChar || span[0] == BaseHelper.CrChar)
+            {// Multi-line string
+                var spaceIndent = CountIndentSpace(span.Slice(0, delimiterIndex - 1));
+                if (spaceIndent < 0)
+                {// Treated as invalid because the text to the left of the closing delimiter contains non-whitespace characters.
+                    stringLiteralLength = 2;
+                    if (span.Length > 1 && span[1] == BaseHelper.LfChar)
+                    {// CrLf
+                        stringLiteralLength++;
+                    }
+
+                    return ScanStringLiteralResult.Invalid;
+                }
+            }
+
+            stringLiteralLength = delimiterIndex + 1;
+        }
+        else
+        {// text\(
+            stringLiteralLength = delimiterIndex + 2;
+        }
+
+        return (span[0] == BaseHelper.LfChar || span[0] == BaseHelper.CrChar) ?
+            ScanStringLiteralResult.MultilineInterpolation :
+            ScanStringLiteralResult.Interpolation;
     }
 
     private static ScanStringLiteralResult ScanRawStringLiteral(ReadOnlySpan<char> text, int doubleQuoteCount, out int stringLiteralLength)
@@ -94,26 +106,21 @@ public class StringLiteralHelper
 
         if (closingDelimiterIndex < 0)
         {
-            // The closing delimiter is missing.
-            // Returns the text up to the end of the input or the next line break.
-            var linebreakIndex = span.IndexOf(BaseHelper.LfChar);
-            if (linebreakIndex >= 0)
-            {// Lf, CrLf
-                stringLiteralLength = doubleQuoteCount + linebreakIndex + 1;
-            }
-
-            stringLiteralLength = text.Length;
-            return ScanStringLiteralResult.InvalidStringLiteral;
+            return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
         }
 
         if (span[0] == BaseHelper.LfChar || span[0] == BaseHelper.CrChar)
         {// Multi-line string
-            var lastLinebreakIndex = span.Slice(0, closingDelimiterIndex).LastIndexOf(BaseHelper.LfChar);
-            var indentSpan = span.Slice(lastLinebreakIndex + 1, closingDelimiterIndex);
-            if (indentSpan.IndexOfAnyExcept(' ') >= 0)
+            var indentSpan = CountIndentSpace(span.Slice(0, closingDelimiterIndex - 1));
+            if (indentSpan < 0)
             {// Treated as invalid because the text to the left of the closing delimiter contains non-whitespace characters.
                 stringLiteralLength = doubleQuoteCount + 1;
-                return ScanStringLiteralResult.InvalidStringLiteral;
+                if (span.Length > 1 && span[1] == BaseHelper.LfChar)
+                {// CrLf
+                    stringLiteralLength++;
+                }
+
+                return ScanStringLiteralResult.Invalid;
             }
         }
 
@@ -121,385 +128,92 @@ public class StringLiteralHelper
         return ScanStringLiteralResult.StringLiteral;
     }
 
-    private static void ScanSingleLineRawStringLiteral(
-        ReadOnlySpan<char> text,
-        int doubleQuoteCount,
-        out int stringLiteralLength,
-        out int interpolationLength)
+    private static int CountIndentSpace(ReadOnlySpan<char> text)
     {
-        stringLiteralLength = -1;
-        interpolationLength = -1;
-
-        var index = doubleQuoteCount;
-
-        while (index < text.Length)
+        var index = text.Length - 1;
+        while (index >= 0)
         {
             var c = text[index];
-
-            if (c is '\r' or '\n')
+            if (c == Constants.SpaceChar)
             {
-                // A raw literal containing a line break must use the
-                // multiline delimiter layout.
-                return;
+                index--;
             }
-
-            if (c == '\\' &&
-                index + 1 < text.Length &&
-                text[index + 1] == '(')
-            {
-                SetInterpolationLength(index, ref interpolationLength);
-
-                var interpolationStart = index;
-
-                if (!TrySkipInterpolation(text, index, out index))
-                {
-                    return;
-                }
-
-                if (ContainsLineBreak(text[interpolationStart..index]))
-                {
-                    // The entire literal must remain on one physical line.
-                    return;
-                }
-
-                continue;
-            }
-
-            if (c != '"')
-            {
-                index++;
-                continue;
-            }
-
-            var closingQuoteCount = CountDoubleQuotes(text, index);
-
-            if (closingQuoteCount == doubleQuoteCount)
-            {
-                stringLiteralLength = index + closingQuoteCount;
-                return;
-            }
-
-            if (closingQuoteCount > doubleQuoteCount)
-            {
-                // The longest quote sequence at the end does not match
-                // the opening delimiter.
-                return;
-            }
-
-            // A shorter run of quotes is literal content.
-            index += closingQuoteCount;
-        }
-    }
-
-    private static void ScanMultilineRawStringLiteral(
-        ReadOnlySpan<char> text,
-        int doubleQuoteCount,
-        int contentStart,
-        out int stringLiteralLength,
-        out int interpolationLength)
-    {
-        stringLiteralLength = -1;
-        interpolationLength = -1;
-
-        var index = contentStart;
-        var lineStart = contentStart;
-
-        while (index < text.Length)
-        {
-            var c = text[index];
-
-            if (c == '\\' &&
-                index + 1 < text.Length &&
-                text[index + 1] == '(')
-            {
-                SetInterpolationLength(index, ref interpolationLength);
-
-                var interpolationStart = index;
-
-                if (!TrySkipInterpolation(text, index, out index))
-                {
-                    return;
-                }
-
-                UpdateLineStart(
-                    text,
-                    interpolationStart,
-                    index,
-                    ref lineStart);
-
-                continue;
-            }
-
-            if (c == '"')
-            {
-                var closingQuoteCount = CountDoubleQuotes(text, index);
-
-                if (closingQuoteCount >= doubleQuoteCount)
-                {
-                    // The closing delimiter must be preceded only by
-                    // indentation on its physical line.
-                    var indentation = text[lineStart..index];
-
-                    if (closingQuoteCount != doubleQuoteCount ||
-                        indentation.IndexOfAnyExcept(Constants.SpaceChar) >= 0 ||
-                        !HasValidMultilineIndentation(
-                            text,
-                            contentStart,
-                            lineStart,
-                            indentation))
-                    {
-                        return;
-                    }
-
-                    stringLiteralLength = index + closingQuoteCount;
-                    return;
-                }
-
-                index += closingQuoteCount;
-                continue;
-            }
-
-            if (TryConsumeLineBreak(text, index, out var nextLineStart))
-            {
-                index = nextLineStart;
-                lineStart = nextLineStart;
-                continue;
-            }
-
-            index++;
-        }
-    }
-
-    /// <summary>
-    /// Skips an interpolation beginning with <c>\(</c>.
-    /// </summary>
-    /// <remarks>
-    /// Parentheses are balanced, and nested string literals are skipped so
-    /// that quotes and parentheses inside them do not affect the outer scan.
-    /// </remarks>
-    private static bool TrySkipInterpolation(
-        ReadOnlySpan<char> text,
-        int interpolationStart,
-        out int nextIndex)
-    {
-        var index = interpolationStart + 2;
-        var parenthesisDepth = 1;
-
-        while (index < text.Length)
-        {
-            var c = text[index];
-
-            if (c == '"')
-            {
-                if (!ScanStringLiteral(
-                        text[index..],
-                        out _,
-                        out var nestedLiteralLength,
-                        out _) ||
-                    nestedLiteralLength < 0)
-                {
-                    nextIndex = text.Length;
-                    return false;
-                }
-
-                index += nestedLiteralLength;
-                continue;
-            }
-
-            if (c == '(')
-            {
-                parenthesisDepth++;
-                index++;
-                continue;
-            }
-
-            if (c == ')')
-            {
-                parenthesisDepth--;
-                index++;
-
-                if (parenthesisDepth == 0)
-                {
-                    nextIndex = index;
-                    return true;
-                }
-
-                continue;
-            }
-
-            index++;
-        }
-
-        nextIndex = text.Length;
-        return false;
-    }
-
-    private static bool HasValidMultilineIndentation(
-        ReadOnlySpan<char> text,
-        int contentStart,
-        int closingLineStart,
-        ReadOnlySpan<char> indentation)
-    {
-        var lineStart = contentStart;
-
-        while (lineStart < closingLineStart)
-        {
-            var lineEnd = lineStart;
-
-            while (lineEnd < closingLineStart &&
-                   text[lineEnd] is not ('\r' or '\n'))
-            {
-                lineEnd++;
-            }
-
-            var line = text[lineStart..lineEnd];
-
-            if (line.IndexOfAnyExcept(Constants.SpaceChar) < 0)
-            {
-                // For a blank line, either whitespace sequence may be a
-                // prefix of the other. This permits empty and partially
-                // indented blank lines without allowing mixed indentation.
-                if (!IsPrefix(line, indentation) &&
-                    !IsPrefix(indentation, line))
-                {
-                    return false;
-                }
-            }
-            else if (!IsPrefix(indentation, line))
-            {
-                // Every nonblank line must begin with the indentation
-                // established by the closing delimiter.
-                return false;
-            }
-
-            if (lineEnd >= closingLineStart)
+            else if (c == BaseHelper.LfChar)
             {
                 break;
             }
-
-            if (!TryConsumeLineBreak(text, lineEnd, out lineStart))
+            else
             {
-                return false;
+                return -1;
             }
         }
 
-        return true;
+        return text.Length - 1 - index;
+    }
+
+    private static int IndexOfInterpolationOrUnescapedQuote(ReadOnlySpan<char> text)
+    {
+        var offset = 0;
+        while ((uint)offset < (uint)text.Length)
+        {// /( or " (except \")
+            var relativeIndex = text[offset..].IndexOfAny(SlashOrDoubleQuote);
+            if (relativeIndex < 0)
+            {
+                return -1;
+            }
+
+            var index = offset + relativeIndex;
+            if (text[index] == '"')
+            {// A quotation mark without preceding backslashes.
+                return index;
+            }
+
+            // Count a consecutive run of backslashes.
+            var backslashStart = index;
+            do
+            {
+                index++;
+            }
+            while ((uint)index < (uint)text.Length &&
+                   text[index] == '\\');
+
+            if ((uint)index >= (uint)text.Length)
+            {
+                return -1;
+            }
+
+            var backslashCount = index - backslashStart;
+            var next = text[index];
+
+            if ((backslashCount & 1) != 0)
+            {
+                // An odd number of backslashes means that the final backslash
+                // introduces an escape sequence or string interpolation.
+                if (next == '(')
+                {
+                    return index - 1;
+                }
+
+                if (next == '"')
+                {// Escaped quotation mark.
+                    offset = index + 1;
+                    continue;
+                }
+            }
+            else if (next == '"')
+            {// An even number of backslashes leaves the quotation mark unescaped.
+                return index;
+            }
+
+            offset = index + 1;
+        }
+
+        return -1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int CountDoubleQuotes(ReadOnlySpan<char> text)
     {
         return text.Slice(0, text.Length >> 1).IndexOfAnyExcept('"');
-    }
-
-    private static void SetInterpolationLength(
-        int interpolationStart,
-        ref int interpolationLength)
-    {
-        if (interpolationLength < 0)
-        {
-            // Include both '\' and '('.
-            interpolationLength = interpolationStart + 2;
-        }
-    }
-
-    private static bool TryConsumeLineBreak(
-        ReadOnlySpan<char> text,
-        int index,
-        out int nextIndex)
-    {
-        if ((uint)index >= (uint)text.Length)
-        {
-            nextIndex = index;
-            return false;
-        }
-
-        if (text[index] == '\n')
-        {
-            nextIndex = index + 1;
-            return true;
-        }
-
-        if (text[index] == '\r')
-        {
-            index++;
-
-            if (index < text.Length && text[index] == '\n')
-            {
-                index++;
-            }
-
-            nextIndex = index;
-            return true;
-        }
-
-        nextIndex = index;
-        return false;
-    }
-
-    private static void UpdateLineStart(
-        ReadOnlySpan<char> text,
-        int start,
-        int end,
-        ref int lineStart)
-    {
-        var index = start;
-
-        while (index < end)
-        {
-            if (text[index] == '\n')
-            {
-                lineStart = ++index;
-                continue;
-            }
-
-            if (text[index] == '\r')
-            {
-                index++;
-
-                if (index < end && text[index] == '\n')
-                {
-                    index++;
-                }
-
-                lineStart = index;
-                continue;
-            }
-
-            index++;
-        }
-    }
-
-    private static bool ContainsLineBreak(ReadOnlySpan<char> text)
-    {
-        foreach (var c in text)
-        {
-            if (c is '\r' or '\n')
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool IsPrefix(
-        ReadOnlySpan<char> prefix,
-        ReadOnlySpan<char> text)
-    {
-        if (prefix.Length > text.Length)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < prefix.Length; i++)
-        {
-            if (prefix[i] != text[i])
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 }
