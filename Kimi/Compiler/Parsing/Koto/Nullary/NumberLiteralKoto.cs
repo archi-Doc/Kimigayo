@@ -13,18 +13,42 @@ public sealed partial class NumberLiteralKoto : Koto
     public override KotoKind _Kind => KotoKind.NumberLiteral;
 
     [Key(1)]
-    public string Literal { get; private set; }
-
-    [Key(2)]
     private NumberLiteralParseResult parseResult;
 
-    [Key(3)]
+    [Key(2)]
     private Int128 uv;
+
+    public string Literal
+    {
+        get
+        {
+            if (field is not null)
+            {
+                return field;
+            }
+
+            if (this.parseResult == NumberLiteralParseResult.I128)
+            {
+                field = this.uv.ToString();
+            }
+            else if (this.parseResult == NumberLiteralParseResult.F64)
+            {
+                field = BitConverter.UInt64BitsToDouble((ulong)this.uv).ToString();
+            }
+            else
+            {
+                field = string.Empty;
+            }
+
+            return field;
+        }
+    }
 
     public NumberLiteralKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Range)
     {
-        this.Literal = token.Text.ToString();
+        this.parseResult = NumberLiteralHelper.ParseNumberLiteral(token.Text.Span, out var uv);
+        this.uv = uv;
     }
 
     /*public bool TryGetI64(out long value)
@@ -85,7 +109,7 @@ public sealed partial class NumberLiteralKoto : Koto
 
     public bool TryGetLimitedValue(out LimitedValue limitedValue)
     {
-        this.PrepareNumericLiteral();
+        // this.PrepareNumericLiteral();
 
         if (this.parseResult == NumberLiteralParseResult.I128)
         {
@@ -131,7 +155,7 @@ public sealed partial class NumberLiteralKoto : Koto
     }
 
     public override string ToString()
-        => $"{this.Literal}";
+        => this.Literal;
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
@@ -148,14 +172,13 @@ public sealed partial class NumberLiteralKoto : Koto
         return ($"{this.GetType().Name}({this.Literal})", default);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    /*[MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void PrepareNumericLiteral()
     {
         if (this.parseResult == NumberLiteralParseResult.Invalid)
         {
             this.parseResult = NumberLiteralHelper.ParseNumberLiteral(this.Literal, out var uv);
-            // this.Kind = kind;
             this.uv = uv;
         }
-    }
+    }*/
 }

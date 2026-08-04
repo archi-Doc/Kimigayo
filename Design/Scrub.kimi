@@ -1,4 +1,5 @@
 alias AliasB
+alias AliasC
 alias AliasD
 
 var x: &unsafe Base.Map<String, Int>
@@ -16,3 +17,4 @@ var movedObj = &unsafe obj
 public open struct Test: @A, @B, 
     #Test1
     public static var #Test2 x: i32 = #One 1
+    private let pi = 1.2
