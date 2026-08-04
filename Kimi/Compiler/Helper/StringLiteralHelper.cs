@@ -14,10 +14,7 @@ public enum ScanStringLiteralResult
 
 public class StringLiteralHelper
 {
-    public static ScanStringLiteralResult ScanStringLiteral(
-        ReadOnlySpan<char> text,
-        out int doubleQuoteCount,
-        out int stringLiteralLength)
+    public static ScanStringLiteralResult ScanStringLiteral(ReadOnlySpan<char> text, out int doubleQuoteCount, out int stringLiteralLength)
     {
         doubleQuoteCount = CountDoubleQuotes(text);
         if (doubleQuoteCount == 0)
@@ -90,10 +87,7 @@ public class StringLiteralHelper
         }
     }
 
-    private static ScanStringLiteralResult ScanRawStringLiteral(
-        ReadOnlySpan<char> text,
-        int doubleQuoteCount,
-        out int stringLiteralLength)
+    private static ScanStringLiteralResult ScanRawStringLiteral(ReadOnlySpan<char> text, int doubleQuoteCount, out int stringLiteralLength)
     {
         var span = text.Slice(doubleQuoteCount); // Text
         var closingDelimiterIndex = span.IndexOf(text.Slice(0, doubleQuoteCount), StringComparison.InvariantCulture);
