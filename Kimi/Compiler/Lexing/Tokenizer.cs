@@ -2,6 +2,7 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using Kimi.Compiler.Helper;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Lexing;
@@ -441,7 +442,7 @@ Loop:
                             continue;
                         }
 
-                        if (TokenHelper.ScanNumberLiteral(span, out var numberLiteralLength))
+                        if (NumberLiteralHelper.ScanNumberLiteral(span, out var numberLiteralLength))
                         {// Numeric literal
                          // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
                             this.AddTokenAndSlice(ref builder, TokenKind.NumericLiteral, ref span, numberLiteralLength);

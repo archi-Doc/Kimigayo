@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler.Lexing;
+using Kimi.Compiler.Helper;
 using Xunit;
 
 namespace XunitTest;
@@ -18,7 +18,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.False(result);
         Assert.Equal(expectedLength, length);
@@ -41,7 +41,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.True(result);
         Assert.Equal(expectedLength, length);
@@ -63,7 +63,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.True(result);
         Assert.Equal(expectedLength, length);
@@ -85,7 +85,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.True(result);
         Assert.Equal(expectedLength, length);
@@ -109,7 +109,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.True(result);
         Assert.Equal(expectedLength, length);
@@ -130,7 +130,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.True(result);
         Assert.Equal(expectedLength, length);
@@ -157,7 +157,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.True(result);
         Assert.Equal(expectedLength, length);
@@ -172,7 +172,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.True(result);
         Assert.Equal(expectedLength, length);
@@ -189,7 +189,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.False(result);
         Assert.Equal(expectedLength, length);
@@ -206,7 +206,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.False(result);
         Assert.Equal(expectedLength, length);
@@ -223,7 +223,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.False(result);
         Assert.Equal(expectedLength, length);
@@ -247,7 +247,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.False(result);
         Assert.Equal(expectedLength, length);
@@ -268,7 +268,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.False(result);
         Assert.Equal(expectedLength, length);
@@ -282,7 +282,7 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
-        var result = TokenHelper.ScanNumberLiteral(text, out var length);
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         if (text[expectedLength] == '.')
         {
