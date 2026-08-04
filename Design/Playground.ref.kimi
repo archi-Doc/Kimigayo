@@ -1,6 +1,12 @@
 alias AliasB
+    method(1,
+        "
+        a
+        b
+        ")
 
-#If(os == """Windows
+#If(os == """
+Windows
 """) // """
 alias AliasC
 

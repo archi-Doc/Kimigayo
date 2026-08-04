@@ -36,6 +36,8 @@ internal sealed class Tokenizer
     private int nonBlockDepth;
     private int tokenAdded;
 
+    public SourceRange CurrentRange => new(new(this.line, this.character), new(this.line, this.character));
+
     #endregion
 
     /// <summary>
@@ -68,7 +70,7 @@ internal sealed class Tokenizer
         var currentIndentLevel = 0;
         while (this.Read(ref currentIndentLevel, ref builder) > 0)
         {
-            builder.Add(new(TokenKind.Separator));
+            // builder.Add(new(TokenKind.Separator));
         }
 
         return builder;
@@ -589,45 +591,51 @@ LineContent:
         // Therefore, both block depth and non-block depth are subtracted when
         // calculating the indentation difference.
         var dif = indentLevel - currentIndentLevel - this.blockDepth - this.nonBlockDepth;
+
+        if (dif == 1)
+        {
+            // A line that starts with "." is treated as a continuation of the previous
+            // expression. It contributes one required indentation level, like grouping
+            // constructs, but does not require an explicit closing token.
+            if (span.Length > 0 && span[0] == Constants.DotChar)
+            {// Method chain
+                this.PushIndentSource(IndentSource.LineContinuation);
+                goto Loop;
+            }
+            else if (span.Length > 1 && span[0] == Constants.EqualsChar && span[1] == Constants.GreaterThanChar)
+            {// =>
+                goto Loop;
+            }
+        }
+
+        var separatorInserted = false;
+
         if (dif > 0)
         {
-            if (dif == 1)
-            {
-                // A line that starts with "." is treated as a continuation of the previous
-                // expression. It contributes one required indentation level, like grouping
-                // constructs, but does not require an explicit closing token.
-                if (span.Length > 0 && span[0] == Constants.DotChar)
-                {// Method chain
-                    this.PushIndentSource(IndentSource.LineContinuation);
-                    goto Loop;
-                }
-                else if (span.Length > 1 && span[0] == Constants.EqualsChar && span[1] == Constants.GreaterThanChar)
-                {// =>
-                    goto Loop;
-                }
-            }
+            this.AddToken(ref builder, new(TokenKind.Separator, this.CurrentRange));
+            separatorInserted = true;
 
             // TODO: Consider reporting Hashed.Kimi.UnexpectedIndent when dif > 1.
             for (var i = 0; i < dif; i++)
             {
-                this.AddToken(ref builder, new(TokenKind.StartBlock, default));
+                this.AddToken(ref builder, new(TokenKind.StartBlock, this.CurrentRange));
                 this.PushIndentSource(IndentSource.Block);
             }
         }
-
-        // When indentation decreases inside a grouping construct, the current token
-        // may be the matching closing delimiter placed at the outer indentation level.
-        // In that case, consume the closing token and close the grouping context.
-        // Otherwise, keep the grouping context open and report an indentation mismatch.
         else if (dif < 0)
         {
+            // When indentation decreases inside a grouping construct, the current token
+            // may be the matching closing delimiter placed at the outer indentation level.
+            // In that case, consume the closing token and close the grouping context.
+            // Otherwise, keep the grouping context open and report an indentation mismatch.
+
             for (var i = dif; i < 0; i++)
             {
                 if (this.indentStack.TryPop(out var indentSource))
                 {
                     if (indentSource == IndentSource.Block)
                     {
-                        this.AddToken(ref builder, new(TokenKind.EndBlock, default));
+                        this.AddToken(ref builder, new(TokenKind.EndBlock, this.CurrentRange));
                         this.blockDepth--;
                     }
                     else if (indentSource == IndentSource.LineContinuation)
@@ -663,7 +671,7 @@ LineContent:
                 }
                 else if (currentIndentLevel > 0)
                 {
-                    this.AddToken(ref builder, new(TokenKind.EndBlock, default));
+                    this.AddToken(ref builder, new(TokenKind.EndBlock, this.CurrentRange));
                     currentIndentLevel--;
                 }
                 else
@@ -672,6 +680,9 @@ LineContent:
                     break;
                 }
             }
+
+            this.AddToken(ref builder, new(TokenKind.Separator, this.CurrentRange));
+            separatorInserted = true;
         }
 
         if (this.nonBlockDepth > 0)
@@ -688,6 +699,11 @@ LineContent:
             currentIndentLevel += this.blockDepth;
             this.blockDepth = 0;
 
+            if (this.tokenAdded > 0 && !separatorInserted)
+            {
+                this.AddToken(ref builder, new(TokenKind.Separator, this.CurrentRange));
+            }
+
             return this.tokenAdded;
         }
 
@@ -695,11 +711,13 @@ EndOfFile:
         this.ClearIndentStack(ref builder);
         while (currentIndentLevel-- > 0)
         {
-            this.AddToken(ref builder, new(TokenKind.EndBlock, default));
+            builder.Add(new(TokenKind.Separator, this.CurrentRange));
         }
 
         Debug.Assert(this.blockDepth == 0);
         Debug.Assert(this.nonBlockDepth == 0);
+
+        builder.Add(new(TokenKind.Separator, this.CurrentRange));
 
         return this.tokenAdded;
     }
@@ -880,7 +898,7 @@ EndOfFile:
             if (indentSource == IndentSource.Block)
             {
                 this.indentStack.Pop();
-                this.AddToken(ref builder, new(TokenKind.EndBlock, default));
+                this.AddToken(ref builder, new(TokenKind.EndBlock, this.CurrentRange));
                 this.blockDepth--;
                 continue;
             }

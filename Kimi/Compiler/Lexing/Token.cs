@@ -27,7 +27,7 @@ public readonly partial struct Token
 
     public bool IsValid => this.Kind != TokenKind.Invalid;
 
-    public Token(TokenKind kind, ReadOnlyMemory<char> span, Diagnostics.SourceRange range)
+    public Token(TokenKind kind, ReadOnlyMemory<char> span, SourceRange range)
     {
         this.Kind = kind;
         this.Text = span;
@@ -45,6 +45,12 @@ public readonly partial struct Token
     {
         this.Kind = kind;
         this.IsMissing = isMissing;
+    }
+
+    public Token(TokenKind kind, SourceRange range)
+    {
+        this.Kind = kind;
+        this.Range = range;
     }
 
     public override string ToString()

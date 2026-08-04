@@ -320,6 +320,10 @@ public static class KotoParser
                 list ??= new();
                 list.Add(token);
             }
+            else if (token.Kind == TokenKind.Separator)
+            {
+                break;
+            }
             else if (token.Kind == TokenKind.StartBlock)
             {
                 break;

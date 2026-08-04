@@ -392,6 +392,11 @@ Loop:
         return new ErrorKoto(ref this, this.CurrentToken.Range);
     }
 
+    public override string ToString()
+    {
+        return this.CurrentToken.ToString();
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AdvanceOne()
     {
