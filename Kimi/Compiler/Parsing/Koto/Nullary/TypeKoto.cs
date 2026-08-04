@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public partial class TypeKoto : Koto
 {
-    public override KotoKind _Kind => KotoKind.Type;
+    public override KotoKind Akind => KotoKind.Type;
 
     static TypeKoto()
     {

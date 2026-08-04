@@ -8,7 +8,7 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public partial class GenericsKoto : Koto
 {// A<B, C>
-    public override KotoKind _Kind => KotoKind.Generics;
+    public override KotoKind Akind => KotoKind.Generics;
 
     [IgnoreMember]
     public Koto Identifier { get; private set; }

@@ -8,7 +8,7 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public partial class InvocationKoto : Koto
 {
-    public override KotoKind _Kind => KotoKind.Invocation;
+    public override KotoKind Akind => KotoKind.Invocation;
 
     [Key(1)]
     public Koto Method { get; private set; }

@@ -17,8 +17,6 @@ public class KimiControl
 
     public DiagnosticCollection GlobalDiagnostic { get; }
 
-    public int PointerSize { get; private set; }
-
     public KimiControl(IConsoleService consoleService)
     {
         this.consoleService = consoleService;
@@ -27,7 +25,7 @@ public class KimiControl
         this.urlDiagnostics = new();
         this.GlobalDiagnostic = new(this, GlobalName);
         this.urlDiagnostics.TryAdd(this.GlobalDiagnostic.Url, this.GlobalDiagnostic);
-        this.PointerSize = IntPtr.Size;
+        // this.PointerSize = IntPtr.Size;
     }
 
     public void ReportDiagnostic(string url, Diagnostic diagnostic)

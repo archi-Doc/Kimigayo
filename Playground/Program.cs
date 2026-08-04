@@ -6,6 +6,8 @@ using System.Text.Json;
 using Arc.Unit;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
+using Kimi.Compiler.Parsing;
 using Kimi.Unit;
 using Microsoft.Extensions.DependencyInjection;
 using SimplePrompt;
@@ -18,6 +20,14 @@ internal class Program
     static async Task Main(string[] args)
     {
         Console.WriteLine("Hello, World!");
+
+        var compilation = Compilation.CreateForTest();
+        compilation.Project.AddSource("test", "#If(true)");
+        await compilation.Project.Build();
+
+        var codeContext = compilation.CreateCodeContext();
+        var reader = new TokenReader(compilation.Project)
+        var numberLiteralKoto = new NumberLiteralKoto()
 
         var unit = new KimiUnit.Builder().Build();
         var serviceProvider = unit.Context.ServiceProvider;

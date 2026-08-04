@@ -8,7 +8,7 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public partial class ErrorKoto : Koto
 {
-    public override KotoKind _Kind => KotoKind.Error;
+    public override KotoKind Akind => KotoKind.Error;
 
     public ErrorKoto(ref TokenReader reader, SourceRange range)
         : base(ref reader, range)

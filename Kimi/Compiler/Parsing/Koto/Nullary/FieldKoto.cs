@@ -14,7 +14,7 @@ public enum VariableKind
 [TinyhandObject]
 public partial class FieldKoto : Koto
 {// var x = 1
-    public override KotoKind _Kind => KotoKind.Field;
+    public override KotoKind Akind => KotoKind.Field;
 
     [Key(1)]
     public ModifierKind Modifier { get; private set; }

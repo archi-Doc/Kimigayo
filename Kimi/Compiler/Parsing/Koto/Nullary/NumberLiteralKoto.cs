@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public sealed partial class NumberLiteralKoto : Koto
 {
-    public override KotoKind _Kind => KotoKind.NumberLiteral;
+    public override KotoKind Akind => KotoKind.NumberLiteral;
 
     [Key(1)]
     private NumberLiteralParseResult parseResult;

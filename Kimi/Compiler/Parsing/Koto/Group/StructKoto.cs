@@ -8,7 +8,7 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public sealed partial class StructKoto : GroupKoto
 {
-    public override KotoKind _Kind => KotoKind.Struct;
+    public override KotoKind Akind => KotoKind.Struct;
 
     #region FieldAndProperty
 

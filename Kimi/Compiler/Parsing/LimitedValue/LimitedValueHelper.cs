@@ -15,7 +15,7 @@ public static class LimitedValueHelper
 
     public static LimitedValue Evaluate(Compilation compilation, Koto koto)
     {
-        if (Table[(int)koto._Kind] is { } f)
+        if (Table[(int)koto.Akind] is { } f)
         {//
             f(compilation, koto);
         }

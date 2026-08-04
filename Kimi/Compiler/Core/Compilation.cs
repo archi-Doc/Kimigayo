@@ -8,6 +8,35 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+public sealed class EmptyConsole : IConsoleService
+{
+    public bool KeyAvailable => false;
+
+    public bool EnableColor { get; set; }
+
+    public ConsoleKeyInfo ReadKey(bool intercept)
+    {
+        return default;
+    }
+
+    public Task<InputResult> ReadLine(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(new InputResult(InputResultKind.Success));
+    }
+
+    public void Write(string? message = null, ConsoleColor color = (ConsoleColor)(-1))
+    {
+    }
+
+    public void WriteLine(string? message = null, ConsoleColor color = (ConsoleColor)(-1))
+    {
+    }
+
+    public void WriteLine(ReadOnlySpan<char> message, ConsoleColor color = (ConsoleColor)(-1))
+    {
+    }
+}
+
 public class Compilation
 {
     #region FieldAndProperty
@@ -35,6 +64,15 @@ public class Compilation
     private UInt32Hashtable<Kotonoha> kotonohaIdToKotonoha = new();
 
     #endregion
+
+    public static Compilation CreateForTest()
+    {
+        var kimiControl = new KimiControl(new EmptyConsole());
+        var project = new Project(kimiControl);
+        var compilation = new Compilation(kimiControl, project);
+
+        return compilation;
+    }
 
     public Compilation(KimiControl kimiControl, Project project)
     {

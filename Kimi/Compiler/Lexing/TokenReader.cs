@@ -405,7 +405,10 @@ Loop:
 
         this.currentSpanIndex++;
         this.Position++;
-        this.currentToken = this.currentSpan[this.currentSpanIndex];
+        if (this.currentSpanIndex < this.currentSpan.Length)
+        {
+            this.currentToken = this.currentSpan[this.currentSpanIndex];
+        }
     }
 
     private bool MoveToNextNonEmptySpan()

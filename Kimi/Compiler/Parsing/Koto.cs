@@ -183,7 +183,7 @@ public abstract partial class Koto
 
     #region FieldAndProperty
 
-    public abstract KotoKind _Kind { get; }
+    public abstract KotoKind Akind { get; }
 
     // Frontend Metadata
     [IgnoreMember]
