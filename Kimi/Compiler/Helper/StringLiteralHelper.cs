@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 
 namespace Kimi.Compiler;
 
-public enum ScanStringLiteralResult
+public enum ScanStringLiteralResult : byte
 {
     None,
     Invalid,
@@ -14,9 +14,9 @@ public enum ScanStringLiteralResult
     MultilineInterpolation,
 }
 
-public class StringLiteralHelper
+public static class StringLiteralHelper
 {
-    private static readonly SearchValues<char> SlashOrDoubleQuote = SearchValues.Create("\\\"");
+    private static readonly SearchValues<char> BackslashOrDoubleQuote = SearchValues.Create("\\\"");
 
     public static ScanStringLiteralResult ScanStringLiteral(ReadOnlySpan<char> text, out int doubleQuoteCount, out int stringLiteralLength)
     {
@@ -74,7 +74,7 @@ public class StringLiteralHelper
         {// Text"
             if (span[0] == BaseHelper.LfChar || span[0] == BaseHelper.CrChar)
             {// Multi-line string
-                var spaceIndent = CountIndentSpace(span.Slice(0, delimiterIndex - 1));
+                var spaceIndent = CountIndentSpace(span[..delimiterIndex]);
                 if (spaceIndent < 0)
                 {// Treated as invalid because the text to the left of the closing delimiter contains non-whitespace characters.
                     stringLiteralLength = 2;
@@ -87,22 +87,24 @@ public class StringLiteralHelper
                 }
             }
 
-            stringLiteralLength = delimiterIndex + 1;
+            stringLiteralLength = delimiterIndex + 2;
+
+            return ScanStringLiteralResult.StringLiteral;
         }
         else
         {// text\(
-            stringLiteralLength = delimiterIndex + 2;
-        }
+            stringLiteralLength = delimiterIndex + 3;
 
-        return (span[0] == BaseHelper.LfChar || span[0] == BaseHelper.CrChar) ?
-            ScanStringLiteralResult.MultilineInterpolation :
-            ScanStringLiteralResult.Interpolation;
+            return (span[0] == BaseHelper.LfChar || span[0] == BaseHelper.CrChar) ?
+                ScanStringLiteralResult.MultilineInterpolation :
+                ScanStringLiteralResult.Interpolation;
+        }
     }
 
     private static ScanStringLiteralResult ScanRawStringLiteral(ReadOnlySpan<char> text, int doubleQuoteCount, out int stringLiteralLength)
     {
         var span = text.Slice(doubleQuoteCount); // Text
-        var closingDelimiterIndex = span.IndexOf(text.Slice(0, doubleQuoteCount), StringComparison.InvariantCulture);
+        var closingDelimiterIndex = span.IndexOf(text[..doubleQuoteCount]);
 
         if (closingDelimiterIndex < 0)
         {
@@ -111,7 +113,7 @@ public class StringLiteralHelper
 
         if (span[0] == BaseHelper.LfChar || span[0] == BaseHelper.CrChar)
         {// Multi-line string
-            var indentSpan = CountIndentSpace(span.Slice(0, closingDelimiterIndex - 1));
+            var indentSpan = CountIndentSpace(span[..closingDelimiterIndex]);
             if (indentSpan < 0)
             {// Treated as invalid because the text to the left of the closing delimiter contains non-whitespace characters.
                 stringLiteralLength = doubleQuoteCount + 1;
@@ -155,8 +157,8 @@ public class StringLiteralHelper
     {
         var offset = 0;
         while ((uint)offset < (uint)text.Length)
-        {// /( or " (except \")
-            var relativeIndex = text[offset..].IndexOfAny(SlashOrDoubleQuote);
+        {// \( or an unescaped "
+            var relativeIndex = text[offset..].IndexOfAny(BackslashOrDoubleQuote);
             if (relativeIndex < 0)
             {
                 return -1;
