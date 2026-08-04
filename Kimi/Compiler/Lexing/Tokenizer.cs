@@ -369,7 +369,7 @@ Loop:
                     }
                     else if (span[1] == Constants.SlashChar)
                     {// //
-                        if (this.ReadSingleLineComment(ref builder, ref span))
+                        if (this.ReadSingleLineComment(ref span))
                         {
                             this.NextLine();
                         }
@@ -524,7 +524,7 @@ LineContent:
         {// /
             if (span[1] == Constants.SlashChar)
             {// // Single line comment
-                if (this.ReadSingleLineComment(ref builder, ref span))
+                if (this.ReadSingleLineComment(ref span))
                 {
                     this.NextLine();
                 }
@@ -660,11 +660,6 @@ LineContent:
 
         if (this.nonBlockDepth > 0)
         {
-            if (indentDelta == 0 && this.indentStack.Peek() == IndentSource.Block)
-            {
-                // this.AddToken(ref builder, new(TokenKind.Separator));
-            }
-
             goto Loop;
         }
         else
@@ -708,7 +703,7 @@ EndOfFile:
         return this.AddTokenAndSliceWithLineTracking(ref builder, TokenKind.Invalid, ref text, length); // TokenKind.MultiLineComment -> TokenKind.Invalid
     }
 
-    private bool ReadSingleLineComment(ref TokenSequenceBuilder builder, ref ReadOnlySpan<char> span)
+    private bool ReadSingleLineComment(ref ReadOnlySpan<char> span)
     {// // Comment\n
         var idx = Arc.BaseHelper.IndexOfLfOrCrLf(span, out var newLineLength);
         if (idx < 0)
