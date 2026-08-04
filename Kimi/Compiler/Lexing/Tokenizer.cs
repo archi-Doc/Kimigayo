@@ -664,7 +664,9 @@ LineContent:
                     }
                     else
                     {
-                        this.indentStack.Push(indentSource);
+                        // this.indentStack.Push(indentSource);
+                        this.nonBlockDepth--;
+
                         this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.IndentationLevelMismatch);
                         break;
                     }
@@ -709,15 +711,14 @@ LineContent:
 
 EndOfFile:
         this.ClearIndentStack(ref builder);
-        while (currentIndentLevel-- > 0)
+        while (currentIndentLevel > 0)
         {
-            builder.Add(new(TokenKind.Separator, this.CurrentRange));
+            builder.Add(new(TokenKind.EndBlock, this.CurrentRange));
+            currentIndentLevel--;
         }
 
         Debug.Assert(this.blockDepth == 0);
         Debug.Assert(this.nonBlockDepth == 0);
-
-        builder.Add(new(TokenKind.Separator, this.CurrentRange));
 
         return this.tokenAdded;
     }

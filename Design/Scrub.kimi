@@ -1,6 +1,7 @@
 alias AliasB
 alias AliasD
 
+var x: &unsafe Base.Map<String, Int>
 var count: i32 = #TestAtr 0
 let name: String = "abc"
 var items: Array<Int>
@@ -11,6 +12,7 @@ var obj = T.New()
 var obj2 = &owner T.New()
 var movedObj = &owner obj
 var movedObj = &unsafe obj
-array.Add(movedObj)
 
-public open struct Test: @A, @B, Test1, Test2, x, One, 
+public open struct Test: @A, @B, 
+    #Test1
+    public static var #Test2 x: i32 = #One 1
