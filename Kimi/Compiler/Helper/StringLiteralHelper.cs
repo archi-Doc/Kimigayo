@@ -70,7 +70,7 @@ public static class StringLiteralHelper
             return ScanInvalidStringLiteral(span, 1, out stringLiteralLength);
         }
 
-        if (span[delimiterIndex] == '\"')
+        if (span[delimiterIndex] == '"')
         {// Text"
             if (span[0] == BaseHelper.LfChar || span[0] == BaseHelper.CrChar)
             {// Multi-line string
@@ -109,6 +109,13 @@ public static class StringLiteralHelper
         if (closingDelimiterIndex < 0)
         {
             return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
+        }
+
+        var i = closingDelimiterIndex + doubleQuoteCount;
+        while (i < span.Length && span[i] == '"')
+        {
+            i++;
+            closingDelimiterIndex++;
         }
 
         if (span[0] == BaseHelper.LfChar || span[0] == BaseHelper.CrChar)
@@ -214,8 +221,15 @@ public static class StringLiteralHelper
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int CountDoubleQuotes(ReadOnlySpan<char> text)
+    private static int CountLeadingDoubleQuotes(ReadOnlySpan<char> text)
     {
-        return text.Slice(0, text.Length >> 1).IndexOfAnyExcept('"');
+        var index = 0;
+        while ((uint)index < (uint)text.Length &&
+               text[index] == '"')
+        {
+            index++;
+        }
+
+        return index;
     }
 }
