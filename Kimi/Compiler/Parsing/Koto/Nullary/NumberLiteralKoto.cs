@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.CompilerServices;
+using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
 using Tinyhand.Tree;
 

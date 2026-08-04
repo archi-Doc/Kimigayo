@@ -405,7 +405,7 @@ Loop:
                     }
 
                 default:
-                    {
+                    {// Single char token, Number literal, String literal, Keyword, Identifier
                         if (TokenHelper.TryGetSingleCharTokenKind(span[0], out var tokenKind, out var depth))
                         {// Single char token
                             if (depth > 0)

@@ -3,7 +3,7 @@
 using System.Globalization;
 using Kimi.Compiler.Lexing;
 
-namespace Kimi.Compiler.Parsing;
+namespace Kimi.Compiler.Helper;
 
 public enum NumberLiteralParseResult : byte
 {
