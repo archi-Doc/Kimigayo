@@ -2,7 +2,7 @@
 
 using Xunit;
 
-namespace xUnitTest;
+namespace XunitTest;
 
 public class TemplateTest
 {
