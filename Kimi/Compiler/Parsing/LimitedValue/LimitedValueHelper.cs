@@ -4,8 +4,22 @@ namespace Kimi.Compiler.Parsing;
 
 public static class LimitedValueHelper
 {
+    public delegate void Kotodama(Compilation compilation, Koto koto);
+
+    private static readonly Kotodama?[] table = new Kotodama[Koto.MaxKind];
+
+    static LimitedValueHelper()
+    {
+        table[(int)KotoKind.BoolLiteral] = (c, k) => { };
+    }
+
     public static LimitedValue Evaluate(Compilation compilation, Koto koto)
     {
+        if (table[(int)koto._Kind] is { } f)
+        {//
+            f(compilation, koto);
+        }
+
         if (koto is BoolLiteralKoto boolLiteralKoto)
         {// true, false
             return new(boolLiteralKoto.Value);

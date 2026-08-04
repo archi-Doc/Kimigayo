@@ -106,6 +106,8 @@ public enum KotoKind : byte
     // Misc
     Invocation,
     Generics,
+
+    Omega,
 }
 
 [TinyhandObject(ReservedKeyCount = 1)]
@@ -177,6 +179,8 @@ public enum KotoKind : byte
 [ValueLinkObject]
 public abstract partial class Koto
 {
+    public const int MaxKind = (int)KotoKind.Omega + 1;
+
     #region FieldAndProperty
 
     public abstract KotoKind _Kind { get; }
