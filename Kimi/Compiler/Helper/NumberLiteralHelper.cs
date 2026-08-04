@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
 using System.Globalization;
 using Kimi.Compiler.Lexing;
 
@@ -27,6 +28,8 @@ public enum NumberLiteralParseResult : byte
 
 public static partial class NumberLiteralHelper
 {
+    private static readonly SearchValues<char> FloatChars = SearchValues.Create(".eE");
+
     /// <summary>
     /// Parses a numeric literal, as recognized by <see cref="TokenHelper.ScanNumberLiteral"/>, into an
     /// <see cref="Int128"/> or a <see cref="double"/>.
@@ -67,7 +70,7 @@ public static partial class NumberLiteralHelper
             }
         }
 
-        return numberLiteral.IndexOfAny('.', 'e', 'E') >= 0 ?
+        return numberLiteral.IndexOfAny(FloatChars) >= 0 ?
             ParseFloat(numberLiteral, out value) : // Float
             ParseDecimalInteger(numberLiteral, out value); // Decimal
     }

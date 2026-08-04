@@ -41,7 +41,7 @@ public class NumberLiteralBenchmark
     {
     }
 
-    [Benchmark]
+    /*[Benchmark]
     public int ScanFloat()
     {
         TokenHelper.ScanNumberLiteral(this.doubleString2, out var length);
@@ -74,9 +74,9 @@ public class NumberLiteralBenchmark
     {
         TokenHelper.ScanNumberLiteral(this.oString2, out var length);
         return length;
-    }
+    }*/
 
-    /*[Benchmark]
+    [Benchmark]
     public Int128 TryParseFloat()
     {
         NumberLiteralHelper.ParseNumberLiteral(this.doubleString, out var i128);
@@ -90,7 +90,7 @@ public class NumberLiteralBenchmark
         return i128;
     }
 
-    [Benchmark]
+    /*[Benchmark]
     public Int128 TryParseBinary()
     {
         NumberLiteralHelper.ParseNumberLiteral(this.bString, out var i128);

@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class NumberLiteralHelperTest
+public class NumberLiteralParseTest
 {
     [Theory]
     [InlineData("0", "0")]
