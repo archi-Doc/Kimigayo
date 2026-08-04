@@ -10,6 +10,11 @@ public readonly partial struct Token
 {// 1 + 1 + 16 + 16 -> 40
     public static readonly Token Invalid = default;
 
+    public static Token Create(string identifier)
+    {
+        return new(TokenKind.Identifier, identifier.AsMemory(), default);
+    }
+
     [Key(0)]
     public readonly TokenKind Kind;
 

@@ -44,6 +44,11 @@ public sealed partial class NumberLiteralKoto : Koto
         }
     }
 
+    public static NumberLiteralKoto Create(ref TokenReader reader, string value)
+    {
+        return new(ref reader, Token.Create(value));
+    }
+
     public NumberLiteralKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Range)
     {

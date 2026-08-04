@@ -41,7 +41,7 @@ public sealed partial class Kotonoha
 
     public Kotonoha(Compilation compilation, string name, string url)
     {
-        var codeContext = new CodeContext(compilation, this, ReadOnlyMemory<char>.Empty);
+        var codeContext = new CodeContext(compilation, this);
 
         this.Compilation = compilation;
         this.Name = name;
@@ -54,7 +54,7 @@ public sealed partial class Kotonoha
 
     public Kotonoha(Compilation compilation)
     {
-        var codeContext = new CodeContext(compilation, this, ReadOnlyMemory<char>.Empty);
+        var codeContext = new CodeContext(compilation, this);
         this.Compilation = compilation;
         this.Root = new(codeContext, default, default);
     }
@@ -90,7 +90,7 @@ public sealed partial class Kotonoha
         var kimiSource = new KimiSource(pathAndSource.Path, [], default);
         this.SourceList.Add(kimiSource);*/
 
-        var codeContext = this.Compilation.CreateCodeContext(this, sourceText);
+        var codeContext = this.Compilation.CreateCodeContext(this);
 
         // Tokenize
         var tokenBuilder = new TokenSequenceBuilder();

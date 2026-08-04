@@ -12,24 +12,24 @@ public class CodeContext
 
     public Kotonoha Kotonoha { get; }
 
-    public ReadOnlyMemory<char> SourceText { get; }
+    // public ReadOnlyMemory<char> SourceText { get; }
 
     public GroupKoto Root => this.Kotonoha.Root;
 
     public GroupKoto CurrentGroup { get; set; }
 
-    internal CodeContext(Compilation compilation, Kotonoha kotonoha, ReadOnlyMemory<char> sourceText)
+    internal CodeContext(Compilation compilation, Kotonoha kotonoha/*, ReadOnlyMemory<char> sourceText*/)
     {
         this.Compilation = compilation;
         this.Kotonoha = kotonoha;
-        this.SourceText = sourceText;
+        // this.SourceText = sourceText;
         this.CurrentGroup = this.Kotonoha.Root;
     }
 
-    public ReadOnlySpan<char> GetSpan(Token token)
+    /*public ReadOnlySpan<char> GetSpan(Token token)
     {
         var start = 0;
         var length = 0;
         return this.SourceText.Span.Slice(start, length);
-    }
+    }*/
 }

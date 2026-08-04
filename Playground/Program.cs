@@ -8,6 +8,7 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Kimi.Unit;
 using Microsoft.Extensions.DependencyInjection;
 using SimplePrompt;
@@ -25,9 +26,11 @@ internal class Program
         compilation.Project.AddSource("test", "#If(true)");
         await compilation.Project.Build();
 
-        var codeContext = compilation.CreateCodeContext();
-        var reader = new TokenReader(compilation.Project)
-        var numberLiteralKoto = new NumberLiteralKoto()
+        var kotonoha2 = new Kotonoha(compilation);
+        var codeContext = compilation.CreateCodeContext(kotonoha2, []);
+        var di = compilation.KimiControl.GlobalDiagnostic;
+        var reader = new TokenReader(di, codeContext, default);
+        var numberLiteralKoto = NumberLiteralKoto.Create(ref reader, "0x1234");
 
         var unit = new KimiUnit.Builder().Build();
         var serviceProvider = unit.Context.ServiceProvider;
