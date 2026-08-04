@@ -24,7 +24,7 @@ internal sealed class Tokenizer
 
     #region FieldAndProperty
 
-    private readonly DiagnosticCollection urlDiagnostic;
+    private readonly DiagnosticCollection diagnostics;
     private readonly Stack<IndentSource> indentStack = new();
 
     private ReadOnlyMemory<char> text;
@@ -46,7 +46,7 @@ internal sealed class Tokenizer
     /// <param name="urlDiagnostic">The diagnostic sink used to report lexical errors.</param>
     public Tokenizer(DiagnosticCollection urlDiagnostic)
     {
-        this.urlDiagnostic = urlDiagnostic;
+        this.diagnostics = urlDiagnostic;
     }
 
     /// <summary>
@@ -65,28 +65,29 @@ internal sealed class Tokenizer
         this.ClearState();
     }
 
-    public TokenSequenceBuilder ReadAll(ref TokenSequenceBuilder builder)
+    public void ReadAll(ref TokenSequenceBuilder builder)
     {
         var currentIndentLevel = 0;
         while (this.Read(ref currentIndentLevel, ref builder) > 0)
         {
             // builder.Add(new(TokenKind.Separator));
         }
-
-        return builder;
     }
 
     /// <summary>
-    /// Reads the next logical line and returns its tokens.<br/>
-    /// NOTE: The returned list is an internal buffer that is cleared and reused by the next call to
-    /// <see cref="Read"/> or <see cref="Initialize"/>. Callers must consume (or copy) the tokens before
-    /// invoking this tokenizer again.
+    /// Reads and tokenizes the next logical line.
     /// </summary>
-    /// <param name="currentIndentLevel">The current logical indentation level. The value is updated as blocks are opened or closed.</param>
-    /// <param name="builder">
-    /// The token sequence builder that receives all tokens emitted during this read operation.
+    /// <param name="currentIndentLevel">
+    /// The current block indentation level. The value is updated when
+    /// indentation blocks are opened or closed.
     /// </param>
-    /// <returns>The internal token buffer containing the tokens read for the next logical line.</returns>
+    /// <param name="builder">
+    /// The builder that receives the generated tokens.
+    /// </param>
+    /// <returns>
+    /// The number of tokens added to <paramref name="builder"/>.
+    /// Returns zero when tokenization has finished.
+    /// </returns>
     public int Read(ref int currentIndentLevel, ref TokenSequenceBuilder builder)
     {
         this.ClearState();
@@ -420,8 +421,8 @@ Loop:
                         }
                         else
                         {// Invalid
-                            this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.MissingStringLiteralEnd);
-                            this.AddTokenAndSlice(ref builder, TokenKind.Invalid, ref span, stringLiteralLength);
+                            this.diagnostics.Add(this.NewRange(1), Hashed.Kimi.MissingStringLiteralEnd);
+                            this.AddTokenAndSliceWithLineTracking(ref builder, TokenKind.Invalid, ref span, stringLiteralLength);
                         }
 
                         break;
@@ -450,41 +451,11 @@ Loop:
                             this.AddTokenAndSlice(ref builder, TokenKind.NumericLiteral, ref span, numberLiteralLength);
                         }
                         else if (numberLiteralLength > 0)
-                        {// Starts with a digit but is not a valid numeric literal (e.g. "0x", "1e+", "1.0u8", "123abc").
+                        {// Starts with a digit but is not a valid numeric literal.
                          // Emit a single Invalid token with a diagnostic instead of silently falling back
                          // to the identifier path, which would produce bogus Identifier tokens.
-                            this.urlDiagnostic.Add(this.NewRange(numberLiteralLength), Hashed.Kimi.InvalidNumericLiteral);
+                            this.diagnostics.Add(this.NewRange(numberLiteralLength), Hashed.Kimi.InvalidNumericLiteral);
                             this.AddTokenAndSlice(ref builder, TokenKind.Invalid, ref span, numberLiteralLength);
-                        }
-                        else if (TokenHelper.StartsWithStringLiteral(span, out var literalLength, out var quoteCount))
-                        {// String literal
-                            if (literalLength < 0)
-                            {// Invalid literal
-                                var invalidLength = Arc.BaseHelper.IndexOfLfOrCrLf(span, out _);
-                                if (invalidLength < 0)
-                                {
-                                    invalidLength = span.Length;
-                                }
-
-                                this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.MissingStringLiteralEnd);
-
-                                if (quoteCount >= 3)
-                                {// An unterminated raw string literal may contain line breaks.
-                                    this.AddTokenAndSliceWithLineTracking(ref builder, TokenKind.Invalid, ref span, invalidLength);
-                                }
-                                else
-                                {
-                                    this.AddTokenAndSlice(ref builder, TokenKind.Invalid, ref span, invalidLength);
-                                }
-                            }
-                            else if (quoteCount >= 3)
-                            {// Raw string literal: may span multiple lines, so track line breaks.
-                                this.AddTokenAndSliceWithLineTracking(ref builder, TokenKind.StringLiteral, ref span, literalLength);
-                            }
-                            else
-                            {// Regular string literal (quoteCount is 1 or 2; "" is an empty literal).
-                                this.AddTokenAndSlice(ref builder, TokenKind.StringLiteral, ref span, literalLength);
-                            }
                         }
                         else
                         {// Keyword or Identifier
@@ -495,7 +466,7 @@ Loop:
                             }
                             else if (length == 0)
                             {
-                                this.urlDiagnostic.Add(this.NewRange(1), Hashed.Kimi.InvalidCharacter, span[0]);
+                                this.diagnostics.Add(this.NewRange(1), Hashed.Kimi.InvalidCharacter, span[0]);
                                 this.AddTokenAndSlice(ref builder, TokenKind.Invalid, ref span, 1);
                                 break;
                             }
@@ -577,7 +548,7 @@ LineContent:
         var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
         if (unnecessarySpaces > 0)
         {// Invalid indentation
-            this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.InvalidIndentation, Constants.IndentationSpaces);
+            this.diagnostics.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.InvalidIndentation, Constants.IndentationSpaces);
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
         }
 
@@ -590,9 +561,9 @@ LineContent:
         // Indentation remains significant even inside grouping constructs.
         // Therefore, both block depth and non-block depth are subtracted when
         // calculating the indentation difference.
-        var dif = indentLevel - currentIndentLevel - this.blockDepth - this.nonBlockDepth;
+        var indentDelta = indentLevel - currentIndentLevel - this.blockDepth - this.nonBlockDepth;
 
-        if (dif == 1)
+        if (indentDelta == 1)
         {
             // A line that starts with "." is treated as a continuation of the previous
             // expression. It contributes one required indentation level, like grouping
@@ -610,26 +581,26 @@ LineContent:
 
         var separatorInserted = false;
 
-        if (dif > 0)
+        if (indentDelta > 0)
         {
             this.AddToken(ref builder, new(TokenKind.Separator, this.CurrentRange));
             separatorInserted = true;
 
             // TODO: Consider reporting Hashed.Kimi.UnexpectedIndent when dif > 1.
-            for (var i = 0; i < dif; i++)
+            for (var i = 0; i < indentDelta; i++)
             {
                 this.AddToken(ref builder, new(TokenKind.StartBlock, this.CurrentRange));
                 this.PushIndentSource(IndentSource.Block);
             }
         }
-        else if (dif < 0)
+        else if (indentDelta < 0)
         {
             // When indentation decreases inside a grouping construct, the current token
             // may be the matching closing delimiter placed at the outer indentation level.
             // In that case, consume the closing token and close the grouping context.
             // Otherwise, keep the grouping context open and report an indentation mismatch.
 
-            for (var i = dif; i < 0; i++)
+            for (var i = indentDelta; i < 0; i++)
             {
                 if (this.indentStack.TryPop(out var indentSource))
                 {
@@ -667,7 +638,7 @@ LineContent:
                         // this.indentStack.Push(indentSource);
                         this.nonBlockDepth--;
 
-                        this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.IndentationLevelMismatch);
+                        this.diagnostics.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.IndentationLevelMismatch);
                         break;
                     }
                 }
@@ -678,7 +649,7 @@ LineContent:
                 }
                 else
                 {
-                    this.urlDiagnostic.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.IndentationLevelMismatch);
+                    this.diagnostics.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.IndentationLevelMismatch);
                     break;
                 }
             }
@@ -689,7 +660,7 @@ LineContent:
 
         if (this.nonBlockDepth > 0)
         {
-            if (dif == 0 && this.indentStack.Peek() == IndentSource.Block)
+            if (indentDelta == 0 && this.indentStack.Peek() == IndentSource.Block)
             {
                 // this.AddToken(ref builder, new(TokenKind.Separator));
             }
@@ -728,7 +699,7 @@ EndOfFile:
         var length = text.IndexOf("*/");
         if (length < 0)
         {
-            this.urlDiagnostic.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), Hashed.Kimi.MissingBlockCommentEnd);
+            this.diagnostics.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), Hashed.Kimi.MissingBlockCommentEnd);
 
             return this.AddTokenAndSliceWithLineTracking(ref builder, TokenKind.Invalid, ref text, text.Length);
         }
@@ -941,7 +912,7 @@ EndOfFile:
             _ => Hashed.Kimi.UnmatchedBracket,
         };
 
-        this.urlDiagnostic.Add(this.NewRange(1), diagnostic);
+        this.diagnostics.Add(this.NewRange(1), diagnostic);
     }
 
     private void ClearIndentStack(ref TokenSequenceBuilder builder)
