@@ -20,7 +20,7 @@ public static class StringLiteralHelper
 
     public static ScanStringLiteralResult ScanStringLiteral(ReadOnlySpan<char> text, out int doubleQuoteCount, out int stringLiteralLength)
     {
-        doubleQuoteCount = CountDoubleQuotes(text);
+        doubleQuoteCount = CountLeadingDoubleQuotes(text);
         if (doubleQuoteCount == 0)
         {// Not string literal
             stringLiteralLength = 0;
@@ -46,8 +46,8 @@ public static class StringLiteralHelper
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ScanStringLiteralResult ScanInvalidStringLiteral(ReadOnlySpan<char> span, int quoteCount, out int stringLiteralLength)
     {
-        // The closing delimiter is missing.
-        // Returns the text up to the end of the input or the first delimiter.
+        // Consumes through the first LF, including a preceding CR when present.
+        // If no LF exists, consumes only the opening delimiter.
         var linebreakIndex = span.IndexOf(BaseHelper.LfChar);
         if (linebreakIndex >= 0)
         {// Lf, CrLf
@@ -70,21 +70,17 @@ public static class StringLiteralHelper
             return ScanInvalidStringLiteral(span, 1, out stringLiteralLength);
         }
 
+        var isMultiline = StartsWithLineBreak(span);
+        if (!isMultiline && span[..delimiterIndex].IndexOf(BaseHelper.LfChar) >= 0)
+        {
+            return ScanInvalidStringLiteral(span, 1, out stringLiteralLength);
+        }
+
         if (span[delimiterIndex] == '"')
         {// Text"
-            if (span[0] == BaseHelper.LfChar || span[0] == BaseHelper.CrChar)
-            {// Multi-line string
-                var spaceIndent = CountIndentSpace(span[..delimiterIndex]);
-                if (spaceIndent < 0)
-                {// Treated as invalid because the text to the left of the closing delimiter contains non-whitespace characters.
-                    stringLiteralLength = 2;
-                    if (span.Length > 1 && span[1] == BaseHelper.LfChar)
-                    {// CrLf
-                        stringLiteralLength++;
-                    }
-
-                    return ScanStringLiteralResult.Invalid;
-                }
+            if (isMultiline && !HasValidClosingDelimiterIndent(span[..delimiterIndex]))
+            {// Treated as invalid because the text to the left of the closing delimiter contains non-whitespace characters.
+                return ScanInvalidStringLiteral(span, 1, out stringLiteralLength);
             }
 
             stringLiteralLength = delimiterIndex + 2;
@@ -95,7 +91,7 @@ public static class StringLiteralHelper
         {// text\(
             stringLiteralLength = delimiterIndex + 3;
 
-            return (span[0] == BaseHelper.LfChar || span[0] == BaseHelper.CrChar) ?
+            return isMultiline ?
                 ScanStringLiteralResult.MultilineInterpolation :
                 ScanStringLiteralResult.Interpolation;
         }
@@ -104,40 +100,35 @@ public static class StringLiteralHelper
     private static ScanStringLiteralResult ScanRawStringLiteral(ReadOnlySpan<char> text, int doubleQuoteCount, out int stringLiteralLength)
     {
         var span = text.Slice(doubleQuoteCount); // Text
-        var closingDelimiterIndex = span.IndexOf(text[..doubleQuoteCount]);
-
-        if (closingDelimiterIndex < 0)
+        var delimiterIndex = span.IndexOf(text[..doubleQuoteCount]);
+        if (delimiterIndex < 0)
         {
             return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
         }
 
-        var i = closingDelimiterIndex + doubleQuoteCount;
+        var isMultiline = StartsWithLineBreak(span);
+        if (!isMultiline && span[..delimiterIndex].IndexOf(BaseHelper.LfChar) >= 0)
+        {
+            return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
+        }
+
+        var i = delimiterIndex + doubleQuoteCount;
         while (i < span.Length && span[i] == '"')
         {
             i++;
-            closingDelimiterIndex++;
+            delimiterIndex++;
         }
 
-        if (span[0] == BaseHelper.LfChar || span[0] == BaseHelper.CrChar)
-        {// Multi-line string
-            var indentSpan = CountIndentSpace(span[..closingDelimiterIndex]);
-            if (indentSpan < 0)
-            {// Treated as invalid because the text to the left of the closing delimiter contains non-whitespace characters.
-                stringLiteralLength = doubleQuoteCount + 1;
-                if (span.Length > 1 && span[1] == BaseHelper.LfChar)
-                {// CrLf
-                    stringLiteralLength++;
-                }
-
-                return ScanStringLiteralResult.Invalid;
-            }
+        if (isMultiline && !HasValidClosingDelimiterIndent(span[..delimiterIndex]))
+        {// Treated as invalid because the text to the left of the closing delimiter contains non-whitespace characters.
+            return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
         }
 
-        stringLiteralLength = doubleQuoteCount + closingDelimiterIndex + doubleQuoteCount;
+        stringLiteralLength = doubleQuoteCount + delimiterIndex + doubleQuoteCount;
         return ScanStringLiteralResult.StringLiteral;
     }
 
-    private static int CountIndentSpace(ReadOnlySpan<char> text)
+    private static bool HasValidClosingDelimiterIndent(ReadOnlySpan<char> text)
     {
         var index = text.Length - 1;
         while (index >= 0)
@@ -146,18 +137,13 @@ public static class StringLiteralHelper
             if (c == Constants.SpaceChar)
             {
                 index--;
+                continue;
             }
-            else if (c == BaseHelper.LfChar)
-            {
-                break;
-            }
-            else
-            {
-                return -1;
-            }
+
+            return c == BaseHelper.LfChar;
         }
 
-        return text.Length - 1 - index;
+        return false;
     }
 
     private static int IndexOfInterpolationOrUnescapedQuote(ReadOnlySpan<char> text)
@@ -231,5 +217,13 @@ public static class StringLiteralHelper
         }
 
         return index;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool StartsWithLineBreak(ReadOnlySpan<char> text)
+    {
+        return !text.IsEmpty &&
+            (text[0] == BaseHelper.LfChar ||
+            (text[0] == BaseHelper.CrChar && text.Length >= 2 && text[1] == BaseHelper.LfChar));
     }
 }
