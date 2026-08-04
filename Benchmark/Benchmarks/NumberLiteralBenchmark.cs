@@ -2,21 +2,33 @@
 
 using BenchmarkDotNet.Attributes;
 using Kimi.Compiler.Helper;
+using Kimi.Compiler.Lexing;
+using Kimi.Compiler.Parsing;
 
 namespace Benchmark;
 
 [Config(typeof(BenchmarkConfig))]
 public class NumberLiteralBenchmark
 {
+    private const string Suffix = "#abc";
     private readonly string doubleString = "1.7976_931348_6237E+38";
     private readonly string i128String = "111_282_366";
-    // private readonly string i128String2 = "111_282_366_920_938_463_463_374_607_431_768_211_456";
     private readonly string bString = "0b1110_1001_0011_0101_1011_1011_0000_1101";
     private readonly string hString = "0x1234_abCD_4567";
     private readonly string oString = "0o_1234_4567_4567_7654";
+    private readonly string doubleString2;
+    private readonly string i128String2 = "111_282_366";
+    private readonly string bString2 = "0b1110_1001_0011_0101_1011_1011_0000_1101";
+    private readonly string hString2 = "0x1234_abCD_4567";
+    private readonly string oString2 = "0o_1234_4567_4567_7654";
 
     public NumberLiteralBenchmark()
     {
+        this.doubleString2 = this.doubleString + Suffix;
+        this.i128String2 = this.i128String + Suffix;
+        this.bString2 = this.bString + Suffix;
+        this.hString2 = this.hString + Suffix;
+        this.oString2 = this.oString + Suffix;
     }
 
     [GlobalSetup]
@@ -30,6 +42,41 @@ public class NumberLiteralBenchmark
     }
 
     [Benchmark]
+    public int ScanFloat()
+    {
+        TokenHelper.ScanNumberLiteral(this.doubleString2, out var length);
+        return length;
+    }
+
+    [Benchmark]
+    public int ScanInteger()
+    {
+        TokenHelper.ScanNumberLiteral(this.i128String2, out var length);
+        return length;
+    }
+
+    [Benchmark]
+    public int ScanBinary()
+    {
+        TokenHelper.ScanNumberLiteral(this.bString2, out var length);
+        return length;
+    }
+
+    [Benchmark]
+    public int ScanHex()
+    {
+        TokenHelper.ScanNumberLiteral(this.hString2, out var length);
+        return length;
+    }
+
+    [Benchmark]
+    public int ScanOct()
+    {
+        TokenHelper.ScanNumberLiteral(this.oString2, out var length);
+        return length;
+    }
+
+    /*[Benchmark]
     public Int128 TryParseFloat()
     {
         NumberLiteralHelper.ParseNumberLiteral(this.doubleString, out var i128);
@@ -62,5 +109,5 @@ public class NumberLiteralBenchmark
     {
         NumberLiteralHelper.ParseNumberLiteral(this.oString, out var i128);
         return i128;
-    }
+    }*/
 }
