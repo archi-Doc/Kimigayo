@@ -45,8 +45,7 @@ public class CodeContext
         try
         {
             tokenizer.ReadAll(ref tokenBuilder);
-            var tokenSequence = tokenBuilder.ToReadOnlySequence();
-            var reader = new TokenReader(this, tokenSequence);
+            var reader = new TokenReader(this, ref tokenBuilder);
             parentKoto.Parse(ref reader);
         }
         finally

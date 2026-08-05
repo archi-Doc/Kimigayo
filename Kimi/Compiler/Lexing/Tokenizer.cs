@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Lexing;
 /// <summary>
 /// Converts Kimi source text into a sequence of lexical tokens and indentation tokens.
 /// </summary>
-internal sealed class Tokenizer
+internal ref struct Tokenizer
 {
     private enum IndentSource : byte
     {
@@ -27,7 +27,7 @@ internal sealed class Tokenizer
     private readonly DiagnosticCollection diagnostics;
     private readonly Stack<IndentSource> indentStack = new();
 
-    private ReadOnlyMemory<char> sourceText;
+    private ReadOnlySpan<char> sourceText;
     private int position;
     private int line;
     private int character;
@@ -40,10 +40,6 @@ internal sealed class Tokenizer
 
     #endregion
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="Tokenizer"/> class.
-    /// </summary>
-    /// <param name="urlDiagnostic">The diagnostic sink used to report lexical errors.</param>
     public Tokenizer(DiagnosticCollection urlDiagnostic)
     {
         this.diagnostics = urlDiagnostic;
@@ -55,7 +51,7 @@ internal sealed class Tokenizer
     /// <param name="sourceText">The source text to tokenize.</param>
     /// <param name="line">The initial zero-based line number.</param>
     /// <param name="character">The initial zero-based character position.</param>
-    public void Initialize(ReadOnlyMemory<char> sourceText, int line, int character)
+    public void Initialize(ReadOnlySpan<char> sourceText, int line, int character)
     {
         this.sourceText = sourceText;
         this.position = 0;
@@ -93,7 +89,7 @@ internal sealed class Tokenizer
         this.ClearState();
 
 Loop:
-        var span = this.sourceText.Slice(this.position).Span;
+        var span = this.sourceText.Slice(this.position);
         if (span.Length == 0)
         {// End-of-file
             goto EndOfFile;

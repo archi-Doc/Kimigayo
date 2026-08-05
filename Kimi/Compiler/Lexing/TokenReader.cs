@@ -16,6 +16,7 @@ public ref struct TokenReader
 
     public readonly CodeContext CodeContext;
 
+    private readonly ReadOnlySpan<char> sourceText;
     private readonly ReadOnlySequence<Token> sequence;
     private readonly int length;
 
@@ -52,10 +53,11 @@ public ref struct TokenReader
 
     #endregion
 
-    public TokenReader(CodeContext codeContext, ReadOnlySequence<Token> tokenSequence)
+    public TokenReader(CodeContext codeContext, ref TokenSequenceBuilder tokenBuilder)
     {
         this.CodeContext = codeContext;
 
+        var tokenSequence = tokenBuilder.ToReadOnlySequence();
         this.sequence = tokenSequence;
         this.length = checked((int)tokenSequence.Length);
 
