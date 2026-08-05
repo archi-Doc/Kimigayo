@@ -37,7 +37,7 @@ internal class Program
         /*var unit = new KimiUnit.Builder().Build();
         var serviceProvider = unit.Context.ServiceProvider;
 
-        var kimiControl = serviceProvider.GetRequiredService<KimiControl>();
+        var kimigayo = serviceProvider.GetRequiredService<KimiControl>();
         var solution = serviceProvider.GetRequiredService<Solution>();
         solution.TryReadFile("aaa");
         // var tree = CodeTree.Parse("");
@@ -86,7 +86,7 @@ internal class Program
               "Kimi.Base"
             """);*/
 
-        // kimiControl.DumpToConsole();
+        // kimigayo.DumpToConsole();
 
     }
 

@@ -6,16 +6,16 @@ namespace Kimi.Diagnostics;
 
 public record class Diagnostics
 {
-    private readonly KimiControl kimiControl;
+    private readonly Kimigayo kimigayo;
     private readonly Diagnostic.GoshujinClass diagnostics = new();
 
     public string Name { get; init; } = string.Empty;
 
-    public bool IsGlobal => this.Name == string.Empty || this.Name == KimiControl.GlobalName;
+    public bool IsGlobal => this.Name == string.Empty || this.Name == Kimigayo.GlobalName;
 
-    internal Diagnostics(KimiControl kimiControl, string name)
+    internal Diagnostics(Kimigayo kimigayo, string name)
     {
-        this.kimiControl = kimiControl;
+        this.kimigayo = kimigayo;
         this.Name = name;
     }
 
@@ -47,7 +47,7 @@ public record class Diagnostics
             var diagnostic = new Diagnostic(token.Range, severity, message);
             diagnostic.Goshujin = this.diagnostics;
 
-            this.kimiControl.ReportDiagnostic(this.Name, diagnostic);
+            this.kimigayo.ReportDiagnostic(this.Name, diagnostic);
         }
     }
 
@@ -75,7 +75,7 @@ public record class Diagnostics
             var diagnostic = new Diagnostic(range, severity, message);
             diagnostic.Goshujin = this.diagnostics;
 
-            this.kimiControl.ReportDiagnostic(this.Name, diagnostic);
+            this.kimigayo.ReportDiagnostic(this.Name, diagnostic);
         }
     }
 

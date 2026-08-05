@@ -6,7 +6,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Kimi.Diagnostics;
 
-public class KimiControl
+public class Kimigayo
 {
     internal const string GlobalName = "Global";
     internal const string ErrorPrefix = "KimiError";
@@ -17,7 +17,7 @@ public class KimiControl
 
     public DiagnosticCollection GlobalDiagnosticCollection { get; }
 
-    public KimiControl(IConsoleService consoleService)
+    public Kimigayo(IConsoleService consoleService)
     {
         this.consoleService = consoleService;
         this.Settings = new();

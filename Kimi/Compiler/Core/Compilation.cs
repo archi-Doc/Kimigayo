@@ -12,7 +12,7 @@ public class Compilation
 {
     #region FieldAndProperty
 
-    public KimiControl KimiControl { get; }
+    public Kimigayo KimiControl { get; }
 
     public Project Project { get; }
 
@@ -38,16 +38,16 @@ public class Compilation
 
     public static Compilation CreateForTest()
     {
-        var kimiControl = new KimiControl(new EmptyConsole());
-        var project = new Project(kimiControl);
-        var compilation = new Compilation(kimiControl, project);
+        var kimigayo = new Kimigayo(new EmptyConsole());
+        var project = new Project(kimigayo);
+        var compilation = new Compilation(kimigayo, project);
 
         return compilation;
     }
 
-    public Compilation(KimiControl kimiControl, Project project)
+    public Compilation(Kimigayo kimigayo, Project project)
     {
-        this.KimiControl = kimiControl;
+        this.KimiControl = kimigayo;
         this.Project = project;
     }
 

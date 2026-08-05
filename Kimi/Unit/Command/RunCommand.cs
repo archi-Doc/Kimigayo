@@ -9,14 +9,14 @@ public class RunCommand : ISimpleCommand<KimiOptions>
 {
     private readonly UnitContext unitContext;
     private readonly ILogger logger;
-    private readonly KimiControl kimiControl;
+    private readonly Kimigayo kimigayo;
     private readonly Solution solution;
 
-    public RunCommand(UnitContext unitContext, ILogger<RunCommand> logger, KimiControl kimiControl, Solution solution)
+    public RunCommand(UnitContext unitContext, ILogger<RunCommand> logger, Kimigayo kimigayo, Solution solution)
     {
         this.unitContext = unitContext;
         this.logger = logger;
-        this.kimiControl = kimiControl;
+        this.kimigayo = kimigayo;
         this.solution = solution;
     }
 

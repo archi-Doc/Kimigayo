@@ -9,14 +9,14 @@ public class BuildCommand : ISimpleCommand<KimiOptions>
 {
     private readonly UnitContext unitContext;
     private readonly ILogger logger;
-    private readonly KimiControl kimiControl;
+    private readonly Kimigayo kimigayo;
     private readonly Solution solution;
 
-    public BuildCommand(UnitContext unitContext, ILogger<BuildCommand> logger, KimiControl kimiControl, Solution solution)
+    public BuildCommand(UnitContext unitContext, ILogger<BuildCommand> logger, Kimigayo kimigayo, Solution solution)
     {
         this.unitContext = unitContext;
         this.logger = logger;
-        this.kimiControl = kimiControl;
+        this.kimigayo = kimigayo;
         this.solution = solution;
     }
 
