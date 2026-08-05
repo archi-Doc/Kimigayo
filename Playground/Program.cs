@@ -25,11 +25,11 @@ internal class Program
         var compilation = Compilation.CreateForTest();
 
         var kotonoha2 = new Kotonoha(compilation);
-        var codeContext = compilation.CreateCodeContext(kotonoha2, []);
+        var codeContext = kotonoha2.CreateCodeContext();
         var di = compilation.KimiControl.GlobalDiagnosticCollection;
         var reader = new TokenReader(di, codeContext, default);
         var numberLiteralKoto = NumberLiteralKoto.Create(ref reader, "0x1234");
-        var koto = Parse($"""
+        codeContext.Parse(kotonoha2.RootKoto, $"""
             #If (true)
             public struct TestStruct: @Ia
                 let x = 1

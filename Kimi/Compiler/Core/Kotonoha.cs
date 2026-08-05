@@ -31,7 +31,7 @@ public sealed partial class Kotonoha
     public string Url { get; private set; } = string.Empty;
 
     [Key(3)]
-    public GroupKoto Root { get; private set; }
+    public GroupKoto RootKoto { get; private set; }
     // public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
 
     // [Key(4)]
@@ -53,7 +53,7 @@ public sealed partial class Kotonoha
         this.Url = url;
 
         var codeContext = new CodeContext(this);
-        this.Root = new(codeContext, default, default);
+        this.RootKoto = new(codeContext, default, default);
 
         // codeContext.CurrentGroup = this.Root;
     }
@@ -146,14 +146,14 @@ public sealed partial class Kotonoha
                 var aliasKoto = new AliasKoto(ref reader, list);
                 if (KotoParser.ResolveIfAttribute(ref reader, aliasKoto))
                 {
-                    this.Root.AddLast(aliasKoto);
+                    this.RootKoto.AddLast(aliasKoto);
                 }
 
                 continue;
             }
             else
             {// Delegate processing to CurrentGroup because this token is not a top-level keyword.
-                this.Root.Parse(ref reader, true);
+                this.RootKoto.Parse(ref reader, true);
             }
         }
     }

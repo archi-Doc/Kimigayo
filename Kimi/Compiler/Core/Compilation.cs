@@ -108,7 +108,7 @@ public class Compilation
         var builder2 = new IndentedStringBuilder();
         try
         {
-            this.ProjectKotonoha.Root.UnparseAll(ref builder);
+            this.ProjectKotonoha.RootKoto.UnparseAll(ref builder);
 
             var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
             var st = builder.ToString();

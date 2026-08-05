@@ -240,7 +240,7 @@ public partial class GroupKoto : BlockKoto
                 }
 
                 var state = reader.StoreState();
-                var groupKoto = this.Kotonoha.Root.GetOrAddGroup(name, TokenKind.Group, state, token.Range);
+                var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, TokenKind.Group, state, token.Range);
                 // this.CodeContext.CurrentGroup = groupKoto;
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)

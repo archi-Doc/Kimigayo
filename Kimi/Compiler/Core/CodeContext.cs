@@ -14,7 +14,7 @@ public class CodeContext
 
     public Kotonoha Kotonoha { get; }
 
-    public GroupKoto Root => this.Kotonoha.Root;
+    public GroupKoto RootKoto => this.Kotonoha.RootKoto;
 
     // public GroupKoto CurrentGroup { get; set; }
 
@@ -22,5 +22,10 @@ public class CodeContext
     {
         this.Kotonoha = kotonoha;
         // this.CurrentGroup = this.Kotonoha.Root;
+    }
+
+    public void Parse(GroupKoto parentKoto, string sourceText)
+    {
+        parentKoto.Parse(ref reader, true);
     }
 }
