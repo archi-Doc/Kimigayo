@@ -285,13 +285,14 @@ public static class KotoParser
             goto SkipAndExit;
         }
 
-        if (KotoHelper.IsValidIdentifier(token.Span))
+        var span = reader.GetSpan(token);
+        if (KotoHelper.IsValidIdentifier(span))
         {
-            name = token.Span.ToString();
+            name = span.ToString();
         }
         else
         {
-            reader.AddDiagnostic(Hashed.Kimi.InvalidIdentifier, token.Span.ToString());
+            reader.AddDiagnostic(Hashed.Kimi.InvalidIdentifier, span.ToString());
         }
 
         if (reader.SkipUntil(TokenKind.StartBlock, TokenKind.Colon, Hashed.Kimi.InvalidIdentifier) == TokenKind.Colon)

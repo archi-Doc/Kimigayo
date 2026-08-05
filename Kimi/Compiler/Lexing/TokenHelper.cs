@@ -183,9 +183,6 @@ public static partial class TokenHelper
         return TokenDescriptors[(int)tokenKind].Text;
     }
 
-    public static bool IsIdentifierToken(this Token token, ReadOnlySpan<char> identifier)
-        => token.Kind == TokenKind.Identifier && token.Text.Span.SequenceEqual(identifier);
-
     /// <summary>
     /// Finds the first tokenizer separator in the specified text.
     /// </summary>

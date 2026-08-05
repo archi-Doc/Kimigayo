@@ -37,7 +37,7 @@ public partial class TypeKoto : Koto
         this.tokenKind = token.Kind;
         if (!this.tokenKind.IsPrimitiveType())
         {
-            this.identifier = token.Text.ToString();
+            this.identifier = reader.GetSpan(token).ToString();
         }
     }
 

@@ -179,13 +179,14 @@ public static partial class KotoHelper
             if (flag)
             {// Identifier
                 flag = false;
-                if (IsValidIdentifier(token.Span))
+                var span = reader.GetSpan(token);
+                if (IsValidIdentifier(span))
                 {
-                    sb.Append(token.Span);
+                    sb.Append(span);
                 }
                 else
                 {
-                    reader.Diagnostic.AddToken(token, Hashed.Kimi.InvalidIdentifier, token.Text);
+                    reader.Diagnostic.AddToken(token, Hashed.Kimi.InvalidIdentifier, span.ToString());
                     break;
                 }
             }
@@ -234,13 +235,14 @@ public static partial class KotoHelper
             if (flag)
             {// Identifier
                 flag = false;
-                if (IsValidIdentifier(token.Span))
+                var span = reader.GetSpan(token);
+                if (IsValidIdentifier(span))
                 {
-                    list.Add(token.Span.ToString());
+                    list.Add(span.ToString());
                 }
                 else
                 {
-                    reader.Diagnostic.AddToken(token, Hashed.Kimi.InvalidIdentifier, token.Text);
+                    reader.Diagnostic.AddToken(token, Hashed.Kimi.InvalidIdentifier, span.ToString());
                     break;
                 }
             }

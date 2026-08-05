@@ -29,7 +29,7 @@ public sealed partial class StringLiteralKoto : Koto
     public StringLiteralKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Range)
     {
-        this.rawLiteral = token.Text.ToString();
+        this.rawLiteral = reader.GetSpan(token).ToString();
     }
 
     public override string ToString()

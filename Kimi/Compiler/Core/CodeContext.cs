@@ -48,22 +48,19 @@ public class CodeContext
         }
     }
 
-    public void Test(GroupKoto parentKoto, ReadOnlyMemory<char> sourceText)
+    public void Test(GroupKoto parentKoto, ReadOnlySpan<char> sourceText)
     {
-        var tokenizer = new Tokenizer(this.DiagnosticCollection);
-        tokenizer.Initialize(sourceText, 0, 0);
-
-        var tokenBuilder = new TokenSequenceBuilder();
+        var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceText);
         try
         {
-            tokenizer.ReadAll(ref tokenBuilder);
+            tokenizer.ReadAll();
             // var tokenSequence = tokenBuilder.ToReadOnlySequence();
             // var reader = new TokenReader(this, tokenSequence);
             // parentKoto.Parse(ref reader);
         }
         finally
         {
-            tokenBuilder.Dispose();
+            tokenizer.Dispose();
         }
     }
 }

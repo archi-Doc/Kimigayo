@@ -389,13 +389,19 @@ Loop:
         }
     }
 
+    public bool IsIdentifierToken(ReadOnlySpan<char> identifier)
+    {
+        return this.currentToken.Kind == TokenKind.Identifier &&
+            this.GetSpan(this.currentToken).SequenceEqual(identifier);
+    }
+
     public ErrorKoto NewErrorKoto()
     {
         return new ErrorKoto(ref this, this.CurrentToken.Range);
     }
 
     public ReadOnlySpan<char> GetSpan(Token token)
-    {
+    {//
         return this.sourceText.Slice(token.Start, token.Length);
     }
 

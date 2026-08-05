@@ -97,9 +97,8 @@ public sealed partial class Kotonoha
     public void AddSource(PathAndSource pathAndSource)
     {
         var diagnostic = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(pathAndSource.Path);
-        var sourceText = pathAndSource.SourceText.AsMemory();
-        var tokenizer = new Tokenizer(diagnostic);
-        tokenizer.Initialize(sourceText, 0, 0);
+        var sourceText = pathAndSource.SourceText.AsSpan();
+        var tokenizer = new Tokenizer(diagnostic, sourceText);
 
         /*var kimiId = this.SourceList.Count;
         var kimiSource = new KimiSource(pathAndSource.Path, [], default);
@@ -108,23 +107,21 @@ public sealed partial class Kotonoha
         var codeContext = this.CreateCodeContext(diagnostic);
 
         // Tokenize
-        var tokenBuilder = new TokenSequenceBuilder();
         try
         {
-            tokenizer.ReadAll(ref tokenBuilder);
-            var tokenSequence = tokenBuilder.ToReadOnlySequence();
+            tokenizer.ReadAll();
             if (this.Compilation.Project.KimiOptions.DumpToken)
             {// Dump token
-                this.DumpToken(pathAndSource.Path, tokenSequence);
+                this.DumpToken(pathAndSource.Path, tokenizer.ToReadOnlySequence());
             }
 
             // Token to Koto
-            var tokenReader = new TokenReader(codeContext, tokenSequence);
+            var tokenReader = new TokenReader(codeContext, ref tokenizer);
             this.Parse(ref tokenReader);
         }
         finally
         {
-            tokenBuilder.Dispose();
+            tokenizer.Dispose();
         }
     }
 
@@ -139,7 +136,7 @@ public sealed partial class Kotonoha
                 return;
             }
 
-            if (reader.CurrentToken.IsIdentifierToken(Constants.AliasKeyword))
+            if (reader.IsIdentifierToken(Constants.AliasKeyword))
             {// alias
                 reader.Advance();
                 var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
