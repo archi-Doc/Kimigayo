@@ -23,6 +23,354 @@ internal ref struct Tokenizer
         LineContinuation, // Implicit continuation, such as a method chain line starting with ".".
     }
 
+    private delegate bool TokenizerInvocation(ref Tokenizer tokenizer);
+
+    private static readonly TokenizerInvocation?[] InvocationTable;
+
+    static Tokenizer()
+    {
+        InvocationTable = new TokenizerInvocation?[Constants.ExclusiveUpperBound];
+
+        InvocationTable[(int)Constants.CrChar] = (ref tokenizer) =>
+        {
+            if (tokenizer.span.Length > 1 && tokenizer.span[1] == Constants.LfChar)
+            {// \r\n
+                tokenizer.Slice(2);
+            }
+            else
+            {
+                tokenizer.Slice(1);
+            }
+
+            tokenizer.NextLine();
+            return true;
+        };
+
+        InvocationTable[(int)Constants.LfChar] = (ref tokenizer) =>
+        {// \n
+            tokenizer.Slice(1);
+            tokenizer.NextLine();
+            return true;
+        };
+
+        InvocationTable[(int)Constants.AmpersandChar] = (ref tokenizer) =>
+        {// && &= &
+            if (tokenizer.span.Length == 1)
+            {// &
+                tokenizer.AddTokenAndSlice(TokenKind.Ampersand, 1);
+            }
+            else if (tokenizer.span[1] == Constants.AmpersandChar)
+            {// &&
+                tokenizer.AddTokenAndSlice(TokenKind.AmpersandAmpersand, 2);
+            }
+            else if (tokenizer.span[1] == Constants.EqualsChar)
+            {// &=
+                tokenizer.AddTokenAndSlice(TokenKind.AmpersandEquals, 2);
+            }
+            else
+            {// &
+                tokenizer.AddTokenAndSlice(TokenKind.Ampersand, 1);
+            }
+
+            return false;
+        };
+
+        InvocationTable[(int)Constants.AsteriskChar] = (ref tokenizer) =>
+        {// * *=
+            if (tokenizer.span.Length > 1 && tokenizer.span[1] == Constants.EqualsChar)
+            {// *=
+                tokenizer.AddTokenAndSlice(TokenKind.AsteriskEquals, 2);
+            }
+            else
+            {// *
+                tokenizer.AddTokenAndSlice(TokenKind.Asterisk, 1);
+            }
+
+            return false;
+        };
+
+        InvocationTable[(int)Constants.BarChar] = (ref tokenizer) =>
+        {// | || |=
+            if (tokenizer.span.Length == 1)
+            {// |
+                tokenizer.AddTokenAndSlice(TokenKind.Bar, 1);
+            }
+            else if (tokenizer.span[1] == Constants.BarChar)
+            {// ||
+                tokenizer.AddTokenAndSlice(TokenKind.BarBar, 2);
+            }
+            else if (tokenizer.span[1] == Constants.EqualsChar)
+            {// |=
+                tokenizer.AddTokenAndSlice(TokenKind.BarEquals, 2);
+            }
+            else
+            {// |
+                tokenizer.AddTokenAndSlice(TokenKind.Bar, 1);
+            }
+
+            return false;
+        };
+
+        InvocationTable[(int)Constants.CaretChar] = (ref tokenizer) =>
+        {// ^ ^=
+            if (tokenizer.span.Length > 1 && tokenizer.span[1] == Constants.EqualsChar)
+            {// ^=
+                tokenizer.AddTokenAndSlice(TokenKind.CaretEquals, 2);
+            }
+            else
+            {// ^
+                tokenizer.AddTokenAndSlice(TokenKind.Caret, 1);
+            }
+
+            return false;
+        };
+
+        InvocationTable[(int)Constants.DotChar] = (ref tokenizer) =>
+        {// . .. ..=
+            if (tokenizer.span.Length == 1)
+            {// .
+                tokenizer.AddTokenAndSlice(TokenKind.Dot, 1);
+            }
+            else if (tokenizer.span[1] == Constants.DotChar)
+            {// ..
+                if (tokenizer.span.Length >= 3 && tokenizer.span[2] == Constants.EqualsChar)
+                {// ..=
+                    tokenizer.AddTokenAndSlice(TokenKind.DotDotEquals, 3);
+                }
+                else
+                {// ..
+                    tokenizer.AddTokenAndSlice(TokenKind.DotDot, 2);
+                }
+            }
+            else
+            {// .
+                tokenizer.AddTokenAndSlice(TokenKind.Dot, 1);
+            }
+
+            return false;
+        };
+
+        InvocationTable[(int)Constants.EqualsChar] = (ref tokenizer) =>
+        {// = == =>
+            if (tokenizer.span.Length == 1)
+            {// =
+                tokenizer.AddTokenAndSlice(TokenKind.Equals, 1);
+            }
+            else if (tokenizer.span[1] == Constants.EqualsChar)
+            {// ==
+                tokenizer.AddTokenAndSlice(TokenKind.EqualsEquals, 2);
+            }
+            else if (tokenizer.span[1] == Constants.GreaterThanChar)
+            {// =>
+                tokenizer.AddTokenAndSlice(TokenKind.EqualsGreaterThan, 2);
+            }
+            else
+            {// =
+                tokenizer.AddTokenAndSlice(TokenKind.Equals, 1);
+            }
+
+            return false;
+        };
+
+        InvocationTable[(int)Constants.ExclamationChar] = (ref tokenizer) =>
+        {// ! !=
+            if (tokenizer.span.Length > 1 && tokenizer.span[1] == Constants.EqualsChar)
+            {// !=
+                tokenizer.AddTokenAndSlice(TokenKind.ExclamationEquals, 2);
+            }
+            else
+            {// !
+                tokenizer.AddTokenAndSlice(TokenKind.Exclamation, 1);
+            }
+
+            return false;
+        };
+
+        InvocationTable[(int)Constants.GreaterThanChar] = (ref tokenizer) =>
+        {// > >= >> >>=
+            if (tokenizer.span.Length == 1)
+            {// >
+                tokenizer.AddTokenAndSlice(TokenKind.GreaterThan, 1);
+            }
+            else if (tokenizer.span[1] == Constants.EqualsChar)
+            {// >=
+                tokenizer.AddTokenAndSlice(TokenKind.GreaterThanEquals, 2);
+            }
+            else if (tokenizer.span[1] == Constants.GreaterThanChar)
+            {// >>
+                if (tokenizer.span.Length >= 3 && tokenizer.span[2] == Constants.EqualsChar)
+                {// >>=
+                    tokenizer.AddTokenAndSlice(TokenKind.GreaterThanGreaterThanEquals, 3);
+                }
+                else
+                {// >>
+                    tokenizer.AddTokenAndSlice(TokenKind.GreaterThanGreaterThan, 2);
+                }
+            }
+            else
+            {// >
+                tokenizer.AddTokenAndSlice(TokenKind.GreaterThan, 1);
+            }
+
+            return false;
+        };
+
+        InvocationTable[(int)Constants.LessThanChar] = (ref tokenizer) =>
+        {// < <= << <<=
+            if (tokenizer.span.Length == 1)
+            {// <
+                tokenizer.AddTokenAndSlice(TokenKind.LessThan, 1);
+            }
+            else if (tokenizer.span[1] == Constants.EqualsChar)
+            {// <=
+                tokenizer.AddTokenAndSlice(TokenKind.LessThanEquals, 2);
+            }
+            else if (tokenizer.span[1] == Constants.LessThanChar)
+            {// <<
+                if (tokenizer.span.Length >= 3 && tokenizer.span[2] == Constants.EqualsChar)
+                {// <<=
+                    tokenizer.AddTokenAndSlice(TokenKind.LessThanLessThanEquals, 3);
+                }
+                else
+                {// <<
+                    tokenizer.AddTokenAndSlice(TokenKind.LessThanLessThan, 2);
+                }
+            }
+            else
+            {// <
+                tokenizer.AddTokenAndSlice(TokenKind.LessThan, 1);
+            }
+
+            return false;
+        };
+
+        InvocationTable[(int)Constants.MinusChar] = (ref tokenizer) =>
+        {// -- -= -
+            if (tokenizer.span.Length == 1)
+            {// -
+                tokenizer.AddTokenAndSlice(TokenKind.Minus, 1);
+            }
+            else if (tokenizer.span[1] == Constants.MinusChar)
+            {// --
+                tokenizer.AddTokenAndSlice(TokenKind.MinusMinus, 2);
+            }
+            else if (tokenizer.span[1] == Constants.EqualsChar)
+            {// -=
+                tokenizer.AddTokenAndSlice(TokenKind.MinusEquals, 2);
+            }
+            else
+            {// -
+                tokenizer.AddTokenAndSlice(TokenKind.Minus, 1);
+            }
+
+            return false;
+        };
+
+        InvocationTable[(int)Constants.PercentChar] = (ref tokenizer) =>
+        {// % %=
+            if (tokenizer.span.Length > 1 && tokenizer.span[1] == Constants.EqualsChar)
+            {// %=
+                tokenizer.AddTokenAndSlice(TokenKind.PercentEquals, 2);
+            }
+            else
+            {// %
+                tokenizer.AddTokenAndSlice(TokenKind.Percent, 1);
+
+            }
+            return false;
+        };
+
+        InvocationTable[(int)Constants.PlusChar] = (ref tokenizer) =>
+        {// ++ += +
+            if (tokenizer.span.Length == 1)
+            {// +
+                tokenizer.AddTokenAndSlice(TokenKind.Plus, 1);
+            }
+            else if (tokenizer.span[1] == Constants.PlusChar)
+            {// ++
+                tokenizer.AddTokenAndSlice(TokenKind.PlusPlus, 2);
+            }
+            else if (tokenizer.span[1] == Constants.EqualsChar)
+            {// +=
+                tokenizer.AddTokenAndSlice(TokenKind.PlusEquals, 2);
+            }
+            else
+            {// +
+                tokenizer.AddTokenAndSlice(TokenKind.Plus, 1);
+            }
+
+            return false;
+        };
+
+        InvocationTable[(int)Constants.SlashChar] = (ref tokenizer) =>
+        {// // /* /= /
+            if (tokenizer.span.Length == 1)
+            {// /
+                tokenizer.AddTokenAndSlice(TokenKind.Slash, 1);
+            }
+            else if (tokenizer.span[1] == Constants.SlashChar)
+            {// //
+                if (tokenizer.ReadSingleLineComment())
+                {
+                    tokenizer.NextLine();
+                }
+
+                return true;
+            }
+            else if (tokenizer.span[1] == Constants.AsteriskChar)
+            {// /*
+                tokenizer.ReadMultiLineComment();
+            }
+            else if (tokenizer.span[1] == Constants.EqualsChar)
+            {// /=
+                tokenizer.AddTokenAndSlice(TokenKind.SlashEquals, 2);
+            }
+            else
+            {// /
+                tokenizer.AddTokenAndSlice(TokenKind.Slash, 1);
+            }
+
+            return false;
+        };
+
+        InvocationTable[(int)Constants.AtChar] = (ref tokenizer) =>
+        {// @Identifier
+            var length = TokenHelper.IndexOfSeparator(tokenizer.span.Slice(1));
+            if (length < 0)
+            {
+                length = tokenizer.span.Length;
+            }
+            else
+            {
+                length++;
+            }
+
+            tokenizer.AddTokenAndSlice(TokenKind.Identifier, length);
+
+            return false;
+        };
+
+        InvocationTable[(int)'"'] = (ref tokenizer) =>
+        {
+            var result = StringLiteralHelper.ScanStringLiteral(tokenizer.span, out _, out var stringLiteralLength);
+            if (result == ScanStringLiteralResult.String)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
+            }
+            else if (result == ScanStringLiteralResult.MultilineString)
+            {
+                tokenizer.AddTokenAndSliceWithLineTracking(TokenKind.StringLiteral, stringLiteralLength);
+            }
+            else
+            {// Invalid
+                tokenizer.diagnostics.Add(tokenizer.NewRange(1), Hashed.Kimi.MissingStringLiteralEnd);
+                tokenizer.AddTokenAndSliceWithLineTracking(TokenKind.Invalid, stringLiteralLength);
+            }
+
+            return false;
+        };
+    }
+
     #region FieldAndProperty
 
     private readonly DiagnosticCollection diagnostics;
@@ -96,373 +444,67 @@ Loop:
             }
 
             // span.Length >= 1
-            switch (this.span[0])
+            var c = this.span[0];
+            if (c < Constants.ExclusiveUpperBound &&
+                InvocationTable[c] is { } invocation)
             {
-                case Constants.CrChar:
-                    if (this.span.Length > 1 && this.span[1] == Constants.LfChar)
-                    {// \r\n
-                        this.Slice(2);
-                        this.NextLine();
-                        goto NextLine;
-                    }
-                    else
-                    {
-                        this.Slice(1);
-                        this.NextLine();
-                        goto NextLine;
-                    }
-
-                case Constants.LfChar: // \n
-                    this.Slice(1);
-                    this.NextLine();
+                if (invocation(ref this))
+                {
                     goto NextLine;
-
-                case Constants.AmpersandChar: // && &= &
-                    if (this.span.Length == 1)
-                    {// &
-                        this.AddTokenAndSlice(TokenKind.Ampersand, 1);
-                    }
-                    else if (this.span[1] == Constants.AmpersandChar)
-                    {// &&
-                        this.AddTokenAndSlice(TokenKind.AmpersandAmpersand, 2);
-                    }
-                    else if (this.span[1] == Constants.EqualsChar)
-                    {// &=
-                        this.AddTokenAndSlice(TokenKind.AmpersandEquals, 2);
-                    }
-                    else
-                    {// &
-                        this.AddTokenAndSlice(TokenKind.Ampersand, 1);
-                    }
-
-                    break;
-
-                case Constants.AsteriskChar: // * *=
-                    if (this.span.Length > 1 && this.span[1] == Constants.EqualsChar)
-                    {// *=
-                        this.AddTokenAndSlice(TokenKind.AsteriskEquals, 2);
-                    }
-                    else
-                    {// *
-                        this.AddTokenAndSlice(TokenKind.Asterisk, 1);
-                    }
-
-                    break;
-
-                case Constants.BarChar: // | || |=
-                    if (this.span.Length == 1)
-                    {// |
-                        this.AddTokenAndSlice(TokenKind.Bar, 1);
-                    }
-                    else if (this.span[1] == Constants.BarChar)
-                    {// ||
-                        this.AddTokenAndSlice(TokenKind.BarBar, 2);
-                    }
-                    else if (this.span[1] == Constants.EqualsChar)
-                    {// |=
-                        this.AddTokenAndSlice(TokenKind.BarEquals, 2);
-                    }
-                    else
-                    {// |
-                        this.AddTokenAndSlice(TokenKind.Bar, 1);
-                    }
-
-                    break;
-
-                case Constants.CaretChar: // ^ ^=
-                    if (this.span.Length > 1 && this.span[1] == Constants.EqualsChar)
-                    {// ^=
-                        this.AddTokenAndSlice(TokenKind.CaretEquals, 2);
-                    }
-                    else
-                    {// ^
-                        this.AddTokenAndSlice(TokenKind.Caret, 1);
-                    }
-
-                    break;
-
-                case Constants.DotChar: // . .. ..=
-                    if (this.span.Length == 1)
-                    {// .
-                        this.AddTokenAndSlice(TokenKind.Dot, 1);
-                    }
-                    else if (this.span[1] == Constants.DotChar)
-                    {// ..
-                        if (this.span.Length >= 3 && this.span[2] == Constants.EqualsChar)
-                        {// ..=
-                            this.AddTokenAndSlice(TokenKind.DotDotEquals, 3);
-                        }
-                        else
-                        {// ..
-                            this.AddTokenAndSlice(TokenKind.DotDot, 2);
-                        }
-                    }
-                    else
-                    {// .
-                        this.AddTokenAndSlice(TokenKind.Dot, 1);
-                    }
-
-                    break;
-
-                case Constants.EqualsChar: // = == =>
-                    if (this.span.Length == 1)
-                    {// =
-                        this.AddTokenAndSlice(TokenKind.Equals, 1);
-                    }
-                    else if (this.span[1] == Constants.EqualsChar)
-                    {// ==
-                        this.AddTokenAndSlice(TokenKind.EqualsEquals, 2);
-                    }
-                    else if (this.span[1] == Constants.GreaterThanChar)
-                    {// =>
-                        this.AddTokenAndSlice(TokenKind.EqualsGreaterThan, 2);
-                    }
-                    else
-                    {// =
-                        this.AddTokenAndSlice(TokenKind.Equals, 1);
-                    }
-
-                    break;
-
-                case Constants.ExclamationChar: // ! !=
-                    if (this.span.Length > 1 && this.span[1] == Constants.EqualsChar)
-                    {// !=
-                        this.AddTokenAndSlice(TokenKind.ExclamationEquals, 2);
-                    }
-                    else
-                    {// !
-                        this.AddTokenAndSlice(TokenKind.Exclamation, 1);
-                    }
-
-                    break;
-
-                case Constants.GreaterThanChar: // > >= >> >>=
-                    if (this.span.Length == 1)
-                    {// >
-                        this.AddTokenAndSlice(TokenKind.GreaterThan, 1);
-                    }
-                    else if (this.span[1] == Constants.EqualsChar)
-                    {// >=
-                        this.AddTokenAndSlice(TokenKind.GreaterThanEquals, 2);
-                    }
-                    else if (this.span[1] == Constants.GreaterThanChar)
-                    {// >>
-                        if (this.span.Length >= 3 && this.span[2] == Constants.EqualsChar)
-                        {// >>=
-                            this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThanEquals, 3);
-                        }
-                        else
-                        {// >>
-                            this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThan, 2);
-                        }
-                    }
-                    else
-                    {// >
-                        this.AddTokenAndSlice(TokenKind.GreaterThan, 1);
-                    }
-
-                    break;
-
-                case Constants.LessThanChar: // < <= << <<=
-                    if (this.span.Length == 1)
-                    {// <
-                        this.AddTokenAndSlice(TokenKind.LessThan, 1);
-                    }
-                    else if (this.span[1] == Constants.EqualsChar)
-                    {// <=
-                        this.AddTokenAndSlice(TokenKind.LessThanEquals, 2);
-                    }
-                    else if (this.span[1] == Constants.LessThanChar)
-                    {// <<
-                        if (this.span.Length >= 3 && this.span[2] == Constants.EqualsChar)
-                        {// <<=
-                            this.AddTokenAndSlice(TokenKind.LessThanLessThanEquals, 3);
-                        }
-                        else
-                        {// <<
-                            this.AddTokenAndSlice(TokenKind.LessThanLessThan, 2);
-                        }
-                    }
-                    else
-                    {// <
-                        this.AddTokenAndSlice(TokenKind.LessThan, 1);
-                    }
-
-                    break;
-
-                case Constants.MinusChar: // -- -= -
-                    if (this.span.Length == 1)
-                    {// -
-                        this.AddTokenAndSlice(TokenKind.Minus, 1);
-                    }
-                    else if (this.span[1] == Constants.MinusChar)
-                    {// --
-                        this.AddTokenAndSlice(TokenKind.MinusMinus, 2);
-                    }
-                    else if (this.span[1] == Constants.EqualsChar)
-                    {// -=
-                        this.AddTokenAndSlice(TokenKind.MinusEquals, 2);
-                    }
-                    else
-                    {// -
-                        this.AddTokenAndSlice(TokenKind.Minus, 1);
-                    }
-
-                    break;
-
-                case Constants.PercentChar: // % %=
-                    if (this.span.Length > 1 && this.span[1] == Constants.EqualsChar)
-                    {// %=
-                        this.AddTokenAndSlice(TokenKind.PercentEquals, 2);
-                    }
-                    else
-                    {// %
-                        this.AddTokenAndSlice(TokenKind.Percent, 1);
-                    }
-
-                    break;
-
-                case Constants.PlusChar: // ++ += +
-                    if (this.span.Length == 1)
-                    {// +
-                        this.AddTokenAndSlice(TokenKind.Plus, 1);
-                    }
-                    else if (this.span[1] == Constants.PlusChar)
-                    {// ++
-                        this.AddTokenAndSlice(TokenKind.PlusPlus, 2);
-                    }
-                    else if (this.span[1] == Constants.EqualsChar)
-                    {// +=
-                        this.AddTokenAndSlice(TokenKind.PlusEquals, 2);
-                    }
-                    else
-                    {// +
-                        this.AddTokenAndSlice(TokenKind.Plus, 1);
-                    }
-
-                    break;
-
-                case Constants.SlashChar: // // /* /= /
-                    if (this.span.Length == 1)
-                    {// /
-                        this.AddTokenAndSlice(TokenKind.Slash, 1);
-                    }
-                    else if (this.span[1] == Constants.SlashChar)
-                    {// //
-                        if (this.ReadSingleLineComment())
-                        {
-                            this.NextLine();
-                        }
-
-                        goto NextLine;
-                    }
-                    else if (this.span[1] == Constants.AsteriskChar)
-                    {// /*
-                        this.ReadMultiLineComment();
-                    }
-                    else if (this.span[1] == Constants.EqualsChar)
-                    {// /=
-                        this.AddTokenAndSlice(TokenKind.SlashEquals, 2);
-                    }
-                    else
-                    {// /
-                        this.AddTokenAndSlice(TokenKind.Slash, 1);
-                    }
-
-                    break;
-
-                case Constants.AtChar: // @Identifier
+                }
+            }
+            else
+            {// Single char token, Number literal, String literal, Keyword, Identifier
+                if (TokenHelper.TryGetSingleCharTokenKind(this.span[0], out var tokenKind, out var depth))
+                {// Single char token
+                    if (depth > 0)
                     {
-                        var length = TokenHelper.IndexOfSeparator(this.span.Slice(1));
-                        if (length < 0)
-                        {
-                            length = this.span.Length;
-                        }
-                        else
-                        {
-                            length++;
-                        }
+                        this.PushIndentSource(tokenKind);
+                    }
+                    else if (depth < 0)
+                    {
+                        this.PopIndentSource(tokenKind);
+                    }
 
+                    this.AddTokenAndSlice(tokenKind, 1);
+                    continue;
+                }
+
+                if (NumberLiteralHelper.ScanNumberLiteral(this.span, out var numberLiteralLength))
+                {// Numeric literal
+                 // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
+                    this.AddTokenAndSlice(TokenKind.NumericLiteral, numberLiteralLength);
+                }
+                else if (numberLiteralLength > 0)
+                {// Starts with a digit but is not a valid numeric literal.
+                 // Emit a single Invalid token with a diagnostic instead of silently falling back
+                 // to the identifier path, which would produce bogus Identifier tokens.
+                    this.diagnostics.Add(this.NewRange(numberLiteralLength), Hashed.Kimi.InvalidNumericLiteral);
+                    this.AddTokenAndSlice(TokenKind.Invalid, numberLiteralLength);
+                }
+                else
+                {// Keyword or Identifier
+                    var length = TokenHelper.IndexOfSeparator(this.span);
+                    if (length < 0)
+                    {
+                        length = this.span.Length;
+                    }
+                    else if (length == 0)
+                    {
+                        this.diagnostics.Add(this.NewRange(1), Hashed.Kimi.InvalidCharacter, this.span[0]);
+                        this.AddTokenAndSlice(TokenKind.Invalid, 1);
+                        continue;
+                    }
+
+                    if (TokenHelper.KeywordToTokenKind.TryGetValue(this.span.Slice(0, length), out var tokenKind2))
+                    {// Keyword
+                        this.AddTokenAndSlice(tokenKind2, length);
+                    }
+                    else
+                    {// Identifier
                         this.AddTokenAndSlice(TokenKind.Identifier, length);
-
-                        break;
                     }
-
-                case '"':
-                    {
-                        var result = StringLiteralHelper.ScanStringLiteral(this.span, out _, out var stringLiteralLength);
-                        if (result == ScanStringLiteralResult.String)
-                        {
-                            this.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
-                        }
-                        else if (result == ScanStringLiteralResult.MultilineString)
-                        {
-                            this.AddTokenAndSliceWithLineTracking(TokenKind.StringLiteral, stringLiteralLength);
-                        }
-                        else
-                        {// Invalid
-                            this.diagnostics.Add(this.NewRange(1), Hashed.Kimi.MissingStringLiteralEnd);
-                            this.AddTokenAndSliceWithLineTracking(TokenKind.Invalid, stringLiteralLength);
-                        }
-
-                        break;
-                    }
-
-                default:
-                    {// Single char token, Number literal, String literal, Keyword, Identifier
-                        if (TokenHelper.TryGetSingleCharTokenKind(this.span[0], out var tokenKind, out var depth))
-                        {// Single char token
-                            if (depth > 0)
-                            {
-                                this.PushIndentSource(tokenKind);
-                            }
-                            else if (depth < 0)
-                            {
-                                this.PopIndentSource(tokenKind);
-                            }
-
-                            this.AddTokenAndSlice(tokenKind, 1);
-                            continue;
-                        }
-
-                        if (NumberLiteralHelper.ScanNumberLiteral(this.span, out var numberLiteralLength))
-                        {// Numeric literal
-                         // If the current position starts a numeric literal, scan the entire numeric literal before checking separators.
-                            this.AddTokenAndSlice(TokenKind.NumericLiteral, numberLiteralLength);
-                        }
-                        else if (numberLiteralLength > 0)
-                        {// Starts with a digit but is not a valid numeric literal.
-                         // Emit a single Invalid token with a diagnostic instead of silently falling back
-                         // to the identifier path, which would produce bogus Identifier tokens.
-                            this.diagnostics.Add(this.NewRange(numberLiteralLength), Hashed.Kimi.InvalidNumericLiteral);
-                            this.AddTokenAndSlice(TokenKind.Invalid, numberLiteralLength);
-                        }
-                        else
-                        {// Keyword or Identifier
-                            var length = TokenHelper.IndexOfSeparator(this.span);
-                            if (length < 0)
-                            {
-                                length = this.span.Length;
-                            }
-                            else if (length == 0)
-                            {
-                                this.diagnostics.Add(this.NewRange(1), Hashed.Kimi.InvalidCharacter, this.span[0]);
-                                this.AddTokenAndSlice(TokenKind.Invalid, 1);
-                                break;
-                            }
-
-                            if (TokenHelper.KeywordToTokenKind.TryGetValue(this.span.Slice(0, length), out var tokenKind2))
-                            {// Keyword
-                                this.AddTokenAndSlice(tokenKind2, length);
-                            }
-                            else
-                            {// Identifier
-                                this.AddTokenAndSlice(TokenKind.Identifier, length);
-                            }
-                        }
-
-                        break;
-                    }
+                }
             }
         }
 

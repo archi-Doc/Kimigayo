@@ -13,6 +13,7 @@ public static class Constants
     public const string ScrubFileName = "Scrub.kimi";
     public const string RootgroupKeyword = "rootgroup";
 
+    public const int ExclusiveUpperBound = 126; // '}' + 1
     public const char LfChar = '\n';
     public const char CrChar = '\r';
 
