@@ -80,11 +80,6 @@ public class Compilation
         this.Project = project;
     }
 
-    public CodeContext CreateCodeContext(Kotonoha kotonoha, string[]? aliases = default)
-    {
-        return new(this, kotonoha);
-    }
-
     [MemberNotNullWhen(true, nameof(ProjectKotonoha))]
     public bool Prepare(string target)
     {

@@ -8,22 +8,18 @@ namespace Kimi.Compiler;
 
 public class CodeContext
 {
-    public DiagnosticCollection Diagnostics { get; }
+    public DiagnosticCollection DiagnosticCollection => this.Kotonoha.DiagnosticCollection;
 
-    public Compilation Compilation { get; }
+    public Compilation Compilation => this.Kotonoha.Compilation;
 
     public Kotonoha Kotonoha { get; }
-
-    // public ReadOnlyMemory<char> SourceText { get; }
 
     public GroupKoto Root => this.Kotonoha.Root;
 
     // public GroupKoto CurrentGroup { get; set; }
 
-    internal CodeContext(DiagnosticCollection diagnosticCollection, Compilation compilation, Kotonoha kotonoha)
+    internal CodeContext(Kotonoha kotonoha)
     {
-        this.Diagnostics = diagnosticCollection;
-        this.Compilation = compilation;
         this.Kotonoha = kotonoha;
         // this.CurrentGroup = this.Kotonoha.Root;
     }

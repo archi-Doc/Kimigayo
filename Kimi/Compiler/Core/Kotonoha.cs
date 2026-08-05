@@ -4,9 +4,11 @@ using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Xml.Linq;
 using Arc.Collections;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -14,7 +16,10 @@ namespace Kimi.Compiler;
 public sealed partial class Kotonoha
 {
     [IgnoreMember]
-    public Compilation Compilation { get; }
+    public DiagnosticCollection DiagnosticCollection { get; private set; }
+
+    [IgnoreMember]
+    public Compilation Compilation { get; private set; }
 
     [Key(0)]
     public uint Id { get; private set; }
@@ -41,26 +46,36 @@ public sealed partial class Kotonoha
 
     public Kotonoha(Compilation compilation, string name, string url)
     {
-        var codeContext = new CodeContext(compilation, this);
-
+        this.DiagnosticCollection = compilation.KimiControl.GetOrAddDiagnosticCollection(name);
         this.Compilation = compilation;
         this.Name = name;
         this.Id = (uint)XxHash3Slim.Hash64(name);
         this.Url = url;
+
+        var codeContext = new CodeContext(this);
         this.Root = new(codeContext, default, default);
 
         // codeContext.CurrentGroup = this.Root;
     }
 
     public Kotonoha(Compilation compilation)
+        : this(compilation, "test", "test")
     {
-        var codeContext = new CodeContext(compilation, this);
+    }
+
+    public void OnDeserialized(Compilation compilation)
+    {
+        this.DiagnosticCollection = compilation.KimiControl.GetOrAddDiagnosticCollection(this.Name);
         this.Compilation = compilation;
-        this.Root = new(codeContext, default, default);
     }
 
     public override string ToString()
         => $"Kotonoha: {this.Name}";
+
+    public CodeContext CreateCodeContext(string[]? aliases = default)
+    {
+        return new(this);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryGetKoto(ulong kotoId, [MaybeNullWhen(false)] out Koto koto)
@@ -90,7 +105,7 @@ public sealed partial class Kotonoha
         var kimiSource = new KimiSource(pathAndSource.Path, [], default);
         this.SourceList.Add(kimiSource);*/
 
-        var codeContext = this.Compilation.CreateCodeContext(this);
+        var codeContext = this.CreateCodeContext();
 
         // Tokenize
         var tokenBuilder = new TokenSequenceBuilder();
