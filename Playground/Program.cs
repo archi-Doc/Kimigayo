@@ -23,11 +23,9 @@ internal class Program
         Console.WriteLine("Hello, World!");
 
         var compilation = Compilation.CreateForTest();
-
-        var kotonoha2 = new Kotonoha(compilation);
-        var codeContext = kotonoha2.CreateCodeContext();
-        var di = compilation.Kimigayo.GlobalDiagnosticCollection;
-        codeContext.Parse(kotonoha2.RootKoto, $"""
+        var kotonoha = compilation.Kotonoha;
+        var codeContext = kotonoha.CreateCodeContext();
+        codeContext.Parse(kotonoha.RootKoto, $"""
             #If (true)
             public struct TestStruct: @Ia
                 let x = 1

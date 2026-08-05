@@ -28,8 +28,7 @@ internal ref struct Tokenizer
     private readonly DiagnosticCollection diagnostics;
     private readonly ReadOnlySpan<char> sourceText;
     private readonly Stack<IndentSource> indentStack;
-    private readonly SequenceBuilder<Token> builder;
-
+    private SequenceBuilder<Token> builder;
     private ReadOnlySpan<char> span;
     private int position;
     private int line;
