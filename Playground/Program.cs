@@ -31,6 +31,11 @@ internal class Program
         var di = compilation.KimiControl.GlobalDiagnostic;
         var reader = new TokenReader(di, codeContext, default);
         var numberLiteralKoto = NumberLiteralKoto.Create(ref reader, "0x1234");
+        var koto = Parse($"""
+            #If (true)
+            public struct TestStruct: @Ia
+                let x = 1
+            """);
 
         var unit = new KimiUnit.Builder().Build();
         var serviceProvider = unit.Context.ServiceProvider;

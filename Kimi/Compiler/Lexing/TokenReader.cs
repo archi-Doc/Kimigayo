@@ -3,7 +3,6 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Arc.Crypto;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
