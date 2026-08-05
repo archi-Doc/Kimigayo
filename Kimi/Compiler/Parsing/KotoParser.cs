@@ -269,10 +269,10 @@ public static class KotoParser
         return sb.ToString();
     }
 
-    public static (string Name, List<Token>? List) ParseGroupDeclaration(ref TokenReader reader)
+    public static (string Name, List<string>? List) ParseGroupDeclaration(ref TokenReader reader)
     {
         string name = string.Empty;
-        List<Token>? list = default;
+        List<string>? list = default;
         if (!reader.TryRead(out var token))
         {
             reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
@@ -319,7 +319,7 @@ public static class KotoParser
             else if (token.Kind == TokenKind.Identifier)
             {
                 list ??= new();
-                list.Add(token);
+                list.Add(reader.GetSpan(token).ToString());
             }
             else if (token.Kind == TokenKind.Separator)
             {

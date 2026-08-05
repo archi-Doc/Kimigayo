@@ -389,10 +389,10 @@ Loop:
         }
     }
 
-    public bool IsIdentifierToken(ReadOnlySpan<char> identifier)
+    public bool IsIdentifierToken(Token token, ReadOnlySpan<char> identifier)
     {
-        return this.currentToken.Kind == TokenKind.Identifier &&
-            this.GetSpan(this.currentToken).SequenceEqual(identifier);
+        return token.Kind == TokenKind.Identifier &&
+            this.GetSpan(token).SequenceEqual(identifier);
     }
 
     public ErrorKoto NewErrorKoto()

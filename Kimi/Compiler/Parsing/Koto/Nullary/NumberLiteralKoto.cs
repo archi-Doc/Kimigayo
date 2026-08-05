@@ -47,7 +47,7 @@ public sealed partial class NumberLiteralKoto : Koto
     public NumberLiteralKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Range)
     {
-        this.parseResult = NumberLiteralHelper.ParseNumberLiteral(token.Text.Span, out var uv);
+        this.parseResult = NumberLiteralHelper.ParseNumberLiteral(reader.GetSpan(token), out var uv);
         this.uv = uv;
     }
 

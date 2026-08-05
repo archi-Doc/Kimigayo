@@ -214,7 +214,7 @@ public partial class GroupKoto : BlockKoto
             var token = reader.CurrentToken;
             GroupKoto? nextGroup = default;
 
-            if (token.IsIdentifierToken(Constants.AliasKeyword))
+            if (reader.IsIdentifierToken(token, Constants.AliasKeyword))
             {// alias (not supported)
                 reader.Advance();
                 _ = KotoHelper.ValidateAndGetNamespace2(ref reader);

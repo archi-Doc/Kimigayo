@@ -23,7 +23,6 @@ public class Program
         {
             typeof(ParseBenchmark),
             typeof(NumberLiteralBenchmark),
-            typeof(TokenBufferBenchmark),
             typeof(TemplateBenchmark),
         });
         switcher.Run(args);

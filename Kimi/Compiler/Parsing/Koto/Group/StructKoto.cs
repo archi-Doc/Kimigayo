@@ -13,7 +13,7 @@ public sealed partial class StructKoto : GroupKoto
     #region FieldAndProperty
 
     [IgnoreMember]
-    public List<Token> BaseList { get; } = [];
+    public List<string> BaseList { get; } = [];
 
     #endregion
 
@@ -37,7 +37,7 @@ public sealed partial class StructKoto : GroupKoto
 
             foreach (var x in this.BaseList)
             {
-                builder.Append(x.Text);
+                builder.Append(x);
                 builder.Append(", ");
             }
         }
