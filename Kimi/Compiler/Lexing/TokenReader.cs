@@ -14,8 +14,6 @@ public ref struct TokenReader
 {// 136
     #region FieldAndProperty
 
-    public readonly DiagnosticCollection Diagnostic;
-
     public readonly CodeContext CodeContext;
 
     private readonly ReadOnlySequence<Token> sequence;
@@ -36,6 +34,8 @@ public ref struct TokenReader
 
     public bool IsExcluded { get; internal set; }
 
+    public DiagnosticCollection Diagnostic => this.CodeContext.DiagnosticCollection;
+
     public readonly int Length => this.length;
 
     public readonly int Remaining => this.length - this.Position;
@@ -52,9 +52,8 @@ public ref struct TokenReader
 
     #endregion
 
-    public TokenReader(DiagnosticCollection diagnostic, CodeContext codeContext, ReadOnlySequence<Token> tokenSequence)
+    public TokenReader(CodeContext codeContext, ReadOnlySequence<Token> tokenSequence)
     {
-        this.Diagnostic = diagnostic;
         this.CodeContext = codeContext;
 
         this.sequence = tokenSequence;

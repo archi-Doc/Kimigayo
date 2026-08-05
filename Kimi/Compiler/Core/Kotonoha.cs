@@ -46,7 +46,7 @@ public sealed partial class Kotonoha
 
     public Kotonoha(Compilation compilation, string name, string url)
     {
-        this.DiagnosticCollection = compilation.KimiControl.GetOrAddDiagnosticCollection(name);
+        this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(name);
         this.Compilation = compilation;
         this.Name = name;
         this.Id = (uint)XxHash3Slim.Hash64(name);
@@ -65,16 +65,16 @@ public sealed partial class Kotonoha
 
     public void OnDeserialized(Compilation compilation)
     {
-        this.DiagnosticCollection = compilation.KimiControl.GetOrAddDiagnosticCollection(this.Name);
+        this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(this.Name);
         this.Compilation = compilation;
     }
 
     public override string ToString()
         => $"Kotonoha: {this.Name}";
 
-    public CodeContext CreateCodeContext(string[]? aliases = default)
+    public CodeContext CreateCodeContext(DiagnosticCollection? diagnosticCollection = null)
     {
-        return new(this);
+        return new(this, diagnosticCollection);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -96,7 +96,7 @@ public sealed partial class Kotonoha
 
     public void AddSource(PathAndSource pathAndSource)
     {
-        var diagnostic = this.Compilation.KimiControl.GetOrAddDiagnosticCollection(pathAndSource.Path);
+        var diagnostic = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(pathAndSource.Path);
         var sourceText = pathAndSource.SourceText.AsMemory();
         var tokenizer = new Tokenizer(diagnostic);
         tokenizer.Initialize(sourceText, 0, 0);
@@ -105,7 +105,7 @@ public sealed partial class Kotonoha
         var kimiSource = new KimiSource(pathAndSource.Path, [], default);
         this.SourceList.Add(kimiSource);*/
 
-        var codeContext = this.CreateCodeContext();
+        var codeContext = this.CreateCodeContext(diagnostic);
 
         // Tokenize
         var tokenBuilder = new TokenSequenceBuilder();
@@ -119,7 +119,7 @@ public sealed partial class Kotonoha
             }
 
             // Token to Koto
-            var tokenReader = new TokenReader(diagnostic, codeContext, tokenSequence);
+            var tokenReader = new TokenReader(codeContext, tokenSequence);
             this.Parse(ref tokenReader);
         }
         finally

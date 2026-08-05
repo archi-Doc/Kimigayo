@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 
 public class CodeContext
 {
-    public DiagnosticCollection DiagnosticCollection => this.Kotonoha.DiagnosticCollection;
+    public DiagnosticCollection DiagnosticCollection => this.diagnosticCollection ?? this.Kotonoha.DiagnosticCollection;
 
     public Compilation Compilation => this.Kotonoha.Compilation;
 
@@ -17,11 +17,14 @@ public class CodeContext
 
     public GroupKoto RootKoto => this.Kotonoha.RootKoto;
 
+    private readonly DiagnosticCollection? diagnosticCollection;
+
     // public GroupKoto CurrentGroup { get; set; }
 
-    internal CodeContext(Kotonoha kotonoha)
+    internal CodeContext(Kotonoha kotonoha, DiagnosticCollection? customDiagnosticCollection = default)
     {
         this.Kotonoha = kotonoha;
+        this.diagnosticCollection = customDiagnosticCollection;
         // this.CurrentGroup = this.Kotonoha.Root;
     }
 
@@ -43,7 +46,7 @@ public class CodeContext
         {
             tokenizer.ReadAll(ref tokenBuilder);
             var tokenSequence = tokenBuilder.ToReadOnlySequence();
-            var reader = new TokenReader(this.DiagnosticCollection, this, tokenSequence);
+            var reader = new TokenReader(this, tokenSequence);
             parentKoto.Parse(ref reader);
         }
         finally

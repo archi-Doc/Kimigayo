@@ -12,7 +12,7 @@ public class Compilation
 {
     #region FieldAndProperty
 
-    public Kimigayo KimiControl { get; }
+    public Kimigayo Kimigayo { get; }
 
     public Project Project { get; }
 
@@ -47,7 +47,7 @@ public class Compilation
 
     public Compilation(Kimigayo kimigayo, Project project)
     {
-        this.KimiControl = kimigayo;
+        this.Kimigayo = kimigayo;
         this.Project = project;
     }
 

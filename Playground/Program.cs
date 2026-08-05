@@ -26,7 +26,7 @@ internal class Program
 
         var kotonoha2 = new Kotonoha(compilation);
         var codeContext = kotonoha2.CreateCodeContext();
-        var di = compilation.KimiControl.GlobalDiagnosticCollection;
+        var di = compilation.Kimigayo.GlobalDiagnosticCollection;
         var reader = new TokenReader(di, codeContext, default);
         codeContext.Parse(kotonoha2.RootKoto, $"""
             #If (true)
@@ -37,7 +37,7 @@ internal class Program
         /*var unit = new KimiUnit.Builder().Build();
         var serviceProvider = unit.Context.ServiceProvider;
 
-        var kimigayo = serviceProvider.GetRequiredService<KimiControl>();
+        var kimigayo = serviceProvider.GetRequiredService<Kimigayo>();
         var solution = serviceProvider.GetRequiredService<Solution>();
         solution.TryReadFile("aaa");
         // var tree = CodeTree.Parse("");
