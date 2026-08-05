@@ -49,7 +49,7 @@ public sealed partial class Kotonoha
         this.Url = url;
         this.Root = new(codeContext, default, default);
 
-        codeContext.CurrentGroup = this.Root;
+        // codeContext.CurrentGroup = this.Root;
     }
 
     public Kotonoha(Compilation compilation)

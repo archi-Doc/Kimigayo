@@ -15,7 +15,7 @@ public class KimiControl
 
     public KimiSettings Settings { get; }
 
-    public DiagnosticCollection GlobalDiagnostic { get; }
+    public DiagnosticCollection GlobalDiagnosticCollection { get; }
 
     public KimiControl(IConsoleService consoleService)
     {
@@ -23,8 +23,7 @@ public class KimiControl
         this.Settings = new();
 
         this.diagnosticCollections = new();
-        this.GlobalDiagnostic = new(this, GlobalName);
-        this.diagnosticCollections.TryAdd(this.GlobalDiagnostic.Name, this.GlobalDiagnostic);
+        this.GlobalDiagnosticCollection = this.GetOrAddDiagnosticCollection(GlobalName);
         // this.PointerSize = IntPtr.Size;
     }
 
