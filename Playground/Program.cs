@@ -28,14 +28,13 @@ internal class Program
         var codeContext = kotonoha2.CreateCodeContext();
         var di = compilation.KimiControl.GlobalDiagnosticCollection;
         var reader = new TokenReader(di, codeContext, default);
-        var numberLiteralKoto = NumberLiteralKoto.Create(ref reader, "0x1234");
         codeContext.Parse(kotonoha2.RootKoto, $"""
             #If (true)
             public struct TestStruct: @Ia
                 let x = 1
             """);
 
-        var unit = new KimiUnit.Builder().Build();
+        /*var unit = new KimiUnit.Builder().Build();
         var serviceProvider = unit.Context.ServiceProvider;
 
         var kimiControl = serviceProvider.GetRequiredService<KimiControl>();
@@ -46,22 +45,7 @@ internal class Program
         var project = serviceProvider.GetRequiredService<Project>();
         Test1();
 
-        /*project.AddSource("test", """
-            namespace Test.Program // Comment
-            public Main()
-                var x = 1.23
-                var list = [
-                    1,
-                    2,]
-                var list2 = [
-                    1,
-                ]
-                return
-            """);*/
         project.AddSource("test", """
-            /* Multi-line comment
-            Kimi by archi-Doc.
-            */
             namespace Playground // Single-line comment
             use Kimi.Crypto 
 
@@ -100,7 +84,7 @@ internal class Program
               + Name="valuelink", Version="1.2"
             Use=
               "Kimi.Base"
-            """);
+            """);*/
 
         // kimiControl.DumpToConsole();
 

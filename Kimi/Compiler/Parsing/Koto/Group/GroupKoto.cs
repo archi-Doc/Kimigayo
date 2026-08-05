@@ -187,17 +187,14 @@ public partial class GroupKoto : BlockKoto
         KotoParser.WriteQualifiedNameTo(this, ref builder);
     }
 
-    public void Parse(ref TokenReader reader, bool consumed)
+    public void Parse(ref TokenReader reader)
     {
         while (reader.CanRead)
         {
-            if (!consumed)
+            KotoParser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
+            if (isEnd)
             {
-                KotoParser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
-                if (isEnd)
-                {
-                    return;
-                }
+                return;
             }
 
             var token = reader.CurrentToken;
@@ -293,7 +290,7 @@ public partial class GroupKoto : BlockKoto
 NextToken:
             if (nextGroup is not null)
             {
-                nextGroup.Parse(ref reader, false);
+                nextGroup.Parse(ref reader);
             }
         }
     }
