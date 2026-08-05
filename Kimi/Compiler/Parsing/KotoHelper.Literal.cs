@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 public static partial class KotoHelper
 {
     public static string ParseLiteral(string rawLiteral, Koto? koto = default)
-    {
+    {// WithEscape, """WithoutEscape""", Interpolation\( Medium )End
         var span = rawLiteral.AsSpan();
         var leadingQuoteCount = 0;
         while (leadingQuoteCount < span.Length && span[leadingQuoteCount] == '"')
@@ -16,9 +16,18 @@ public static partial class KotoHelper
             leadingQuoteCount++;
         }
 
-        if (leadingQuoteCount == 1)
+        if (leadingQuoteCount <= 1)
         {// "Text" + Escape
-            return ParseRegularLiteral(rawLiteral, koto);
+            var firstBackslash = rawLiteral.IndexOf('\\');
+            if (firstBackslash < 0)
+            {// Fast path (no escape)
+                return rawLiteral.Substring(leadingQuoteCount, rawLiteral.Length - leadingQuoteCount - leadingQuoteCount);
+            }
+
+            var decodedLength = rawLiteral.Length - leadingQuoteCount - leadingQuoteCount +
+                GetAdditionalLength(rawLiteral.AsSpan(firstBackslash, rawLiteral.Length - firstBackslash - 1), koto);
+
+            return string.Create(decodedLength, new DecodeState(rawLiteral, firstBackslash), static (destination, state) => Decode(state.Source, state.FirstBackslash, destination));
         }
         else if (leadingQuoteCount >= 3)
         {// """RawText"""
@@ -26,20 +35,6 @@ public static partial class KotoHelper
         }
 
         return string.Empty;
-    }
-
-    private static string ParseRegularLiteral(string rawLiteral, Koto? koto)
-    {
-        var firstBackslash = rawLiteral.IndexOf('\\');
-        if (firstBackslash < 0)
-        {// Fast path (no escape)
-            return rawLiteral.Substring(1, rawLiteral.Length - 2);
-        }
-
-        var decodedLength = rawLiteral.Length - 2 +
-            GetAdditionalLength(rawLiteral.AsSpan(firstBackslash, rawLiteral.Length - firstBackslash - 1), koto);
-
-        return string.Create(decodedLength, new DecodeState(rawLiteral, firstBackslash), static (destination, state) => Decode(state.Source, state.FirstBackslash, destination));
     }
 
     private static string ParseRawLiteral(ReadOnlySpan<char> rawLiteral, int delimiterLength, Koto? koto)
@@ -51,16 +46,7 @@ public static partial class KotoHelper
             return string.Empty;
         }
 
-        int i;
-        for (i = 1; i <= delimiterLength; i++)
-        {
-            if (rawLiteral[sourceLength - i] != '"')
-            {
-                break;
-            }
-        }
-
-        return rawLiteral.Slice(delimiterLength, sourceLength - delimiterLength - i).ToString();
+        return rawLiteral.Slice(delimiterLength, sourceLength - delimiterLength - delimiterLength).ToString();
     }
 
     private static int GetAdditionalLength(ReadOnlySpan<char> span, Koto? koto)

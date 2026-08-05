@@ -352,13 +352,23 @@ internal ref struct Tokenizer
 
         CharacterHandlerTable[(int)'"'] = (ref tokenizer) =>
         {
-            var result = StringLiteralHelper.ScanStringLiteral(tokenizer.span, out _, out var stringLiteralLength);
+            var result = StringLiteralHelper.ScanStringLiteral(tokenizer.span, out var doubleQuoteCount, out var stringLiteralLength);
             if (result == ScanStringLiteralResult.String)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
+            {// "Text" -> Text
+                if (doubleQuoteCount == 1)
+                {
+                    tokenizer.Slice(1);
+                    stringLiteralLength -= 2;
+                    tokenizer.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
+                    tokenizer.Slice(1);
+                }
+                else
+                {
+                    tokenizer.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
+                }
             }
             else if (result == ScanStringLiteralResult.MultilineString)
-            {
+            {// """Text"""
                 tokenizer.AddTokenAndSliceWithLineTracking(TokenKind.StringLiteral, stringLiteralLength);
             }
             else

@@ -1,6 +1,6 @@
 alias AliasB
 
-#If(os == """Windows""") // """
+#If(os == """Windows""" and os == "windows") // """
 alias AliasC
 
 
