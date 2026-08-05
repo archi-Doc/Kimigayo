@@ -12,11 +12,11 @@ namespace Benchmark;
 [Config(typeof(BenchmarkConfig))]
 public class ParseBenchmark
 {
-    [Params(10)]
-    public int Length { get; set; }
+    private readonly Compilation compilation;
 
     public ParseBenchmark()
     {
+        this.compilation = Compilation.CreateForTest();
     }
 
     [GlobalSetup]
@@ -32,12 +32,14 @@ public class ParseBenchmark
     [Benchmark]
     public Koto Test1()
     {
-        var compilation = Compilation.CreateForTest();
-        var kotonoha = new Kotonoha(compilation);
+        var kotonoha = new Kotonoha(this.compilation);
         var codeContext = kotonoha.CreateCodeContext();
         codeContext.Parse(kotonoha.RootKoto, $"""
             #If (true)
             public struct TestStruct: @Ia
+                let x = 1
+            #If (true)
+            public struct TestStruct2: @Ib
                 let x = 1
             """);
 
