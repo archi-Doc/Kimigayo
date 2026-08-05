@@ -23,16 +23,16 @@ internal ref struct Tokenizer
         LineContinuation, // Implicit continuation, such as a method chain line starting with ".".
     }
 
-    private delegate bool TokenizerInvocation(ref Tokenizer tokenizer);
+    private delegate bool CharacterHandler(ref Tokenizer tokenizer);
 
-    private static readonly TokenizerInvocation?[] InvocationTable;
+    private static readonly CharacterHandler?[] CharacterHandlerTable;
 
     static Tokenizer()
     {
-        InvocationTable = new TokenizerInvocation?[Constants.ExclusiveUpperBound];
+        CharacterHandlerTable = new CharacterHandler?[Constants.ExclusiveUpperBound];
 
-        InvocationTable[(int)Constants.CrChar] = (ref tokenizer) =>
-        {
+        CharacterHandlerTable[(int)Constants.CrChar] = (ref tokenizer) =>
+        {// \r
             if (tokenizer.span.Length > 1 && tokenizer.span[1] == Constants.LfChar)
             {// \r\n
                 tokenizer.Slice(2);
@@ -46,14 +46,14 @@ internal ref struct Tokenizer
             return true;
         };
 
-        InvocationTable[(int)Constants.LfChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.LfChar] = (ref tokenizer) =>
         {// \n
             tokenizer.Slice(1);
             tokenizer.NextLine();
             return true;
         };
 
-        InvocationTable[(int)Constants.AmpersandChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.AmpersandChar] = (ref tokenizer) =>
         {// && &= &
             if (tokenizer.span.Length == 1)
             {// &
@@ -75,7 +75,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.AsteriskChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.AsteriskChar] = (ref tokenizer) =>
         {// * *=
             if (tokenizer.span.Length > 1 && tokenizer.span[1] == Constants.EqualsChar)
             {// *=
@@ -89,7 +89,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.BarChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.BarChar] = (ref tokenizer) =>
         {// | || |=
             if (tokenizer.span.Length == 1)
             {// |
@@ -111,7 +111,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.CaretChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.CaretChar] = (ref tokenizer) =>
         {// ^ ^=
             if (tokenizer.span.Length > 1 && tokenizer.span[1] == Constants.EqualsChar)
             {// ^=
@@ -125,7 +125,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.DotChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.DotChar] = (ref tokenizer) =>
         {// . .. ..=
             if (tokenizer.span.Length == 1)
             {// .
@@ -150,7 +150,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.EqualsChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.EqualsChar] = (ref tokenizer) =>
         {// = == =>
             if (tokenizer.span.Length == 1)
             {// =
@@ -172,7 +172,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.ExclamationChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.ExclamationChar] = (ref tokenizer) =>
         {// ! !=
             if (tokenizer.span.Length > 1 && tokenizer.span[1] == Constants.EqualsChar)
             {// !=
@@ -186,7 +186,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.GreaterThanChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.GreaterThanChar] = (ref tokenizer) =>
         {// > >= >> >>=
             if (tokenizer.span.Length == 1)
             {// >
@@ -215,7 +215,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.LessThanChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.LessThanChar] = (ref tokenizer) =>
         {// < <= << <<=
             if (tokenizer.span.Length == 1)
             {// <
@@ -244,7 +244,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.MinusChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.MinusChar] = (ref tokenizer) =>
         {// -- -= -
             if (tokenizer.span.Length == 1)
             {// -
@@ -266,7 +266,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.PercentChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.PercentChar] = (ref tokenizer) =>
         {// % %=
             if (tokenizer.span.Length > 1 && tokenizer.span[1] == Constants.EqualsChar)
             {// %=
@@ -280,7 +280,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.PlusChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.PlusChar] = (ref tokenizer) =>
         {// ++ += +
             if (tokenizer.span.Length == 1)
             {// +
@@ -302,7 +302,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.SlashChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.SlashChar] = (ref tokenizer) =>
         {// // /* /= /
             if (tokenizer.span.Length == 1)
             {// /
@@ -333,7 +333,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)Constants.AtChar] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)Constants.AtChar] = (ref tokenizer) =>
         {// @Identifier
             var length = TokenHelper.IndexOfSeparator(tokenizer.span.Slice(1));
             if (length < 0)
@@ -350,7 +350,7 @@ internal ref struct Tokenizer
             return false;
         };
 
-        InvocationTable[(int)'"'] = (ref tokenizer) =>
+        CharacterHandlerTable[(int)'"'] = (ref tokenizer) =>
         {
             var result = StringLiteralHelper.ScanStringLiteral(tokenizer.span, out _, out var stringLiteralLength);
             if (result == ScanStringLiteralResult.String)
@@ -446,7 +446,7 @@ Loop:
             // span.Length >= 1
             var c = this.span[0];
             if (c < Constants.ExclusiveUpperBound &&
-                InvocationTable[c] is { } invocation)
+                CharacterHandlerTable[c] is { } invocation)
             {
                 if (invocation(ref this))
                 {
