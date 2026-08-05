@@ -5,45 +5,36 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-[TinyhandObject]
 public readonly partial struct Token
-{// 1 + 1 + 16 + 16 -> 40
+{// 1 + 1 + 8 + 16 -> 32
     public static readonly Token Invalid = default;
 
-    public static Token Create(string identifier)
-    {
-        return new(TokenKind.Identifier, identifier.AsMemory(), default);
-    }
-
-    [Key(0)]
     public readonly TokenKind Kind;
 
-    [Key(1)]
     public readonly bool IsMissing;
 
-    [Key(2)]
-    public readonly ReadOnlyMemory<char> Text;
+    public readonly int Start;
+
+    public readonly int Length;
 
     public readonly SourceRange Range;
 
-    public ReadOnlySpan<char> Span => this.Text.Span;
-
-    public int Length => this.Text.Length;
-
     public bool IsValid => this.Kind != TokenKind.Invalid;
 
-    public Token(TokenKind kind, ReadOnlyMemory<char> span, SourceRange range)
+    public Token(TokenKind kind, int start, int length, SourceRange range)
     {
         this.Kind = kind;
-        this.Text = span;
+        this.Start = start;
+        this.Length = length;
         this.Range = range;
     }
 
-    public Token(TokenKind kind, ReadOnlyMemory<char> span, int line, int character)
+    public Token(TokenKind kind, int start, int length, int line, int character)
     {
         this.Kind = kind;
-        this.Text = span;
-        this.Range = new(new(line, character), new(line, character + span.Length));
+        this.Start = start;
+        this.Length = length;
+        this.Range = new(new(line, character), new(line, character + length));
     }
 
     public Token(TokenKind kind, bool isMissing = false)
@@ -60,7 +51,7 @@ public readonly partial struct Token
 
     public override string ToString()
     {
-        if (this.Kind == TokenKind.Identifier ||
+        /*if (this.Kind == TokenKind.Identifier ||
             this.Kind == TokenKind.NumericLiteral ||
             this.Kind == TokenKind.StringLiteral ||
             this.Kind == TokenKind.RawStringLiteral ||
@@ -68,10 +59,8 @@ public readonly partial struct Token
             this.Kind == TokenKind.MultiLineComment)
         {
             return $"({this.Kind.ToString()}:'{this.Text}')";
-        }
-        else
-        {
-            return $"({this.Kind.ToString()})";
-        }
+        }*/
+
+        return $"({this.Kind.ToString()})";
     }
 }

@@ -28,29 +28,23 @@ public class CodeContext
         // this.CurrentGroup = this.Kotonoha.Root;
     }
 
-    public void Parse(GroupKoto parentKoto, string sourceText)
-        => this.Parse(parentKoto, sourceText.AsMemory());
-
-    public void Parse(GroupKoto parentKoto, ReadOnlyMemory<char> sourceText)
+    public void Parse(GroupKoto parentKoto, ReadOnlySpan<char> sourceText)
     {
         if (parentKoto.CodeContext.Compilation != this.Compilation)
         {// Unmatched compilation
             return;
         }
 
-        var tokenizer = new Tokenizer(this.DiagnosticCollection);
-        tokenizer.Initialize(sourceText, 0, 0);
-
-        var tokenBuilder = new TokenSequenceBuilder();
+        var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceText);
         try
         {
-            tokenizer.ReadAll(ref tokenBuilder);
-            var reader = new TokenReader(this, ref tokenBuilder);
+            tokenizer.ReadAll();
+            var reader = new TokenReader(this, ref tokenizer);
             parentKoto.Parse(ref reader);
         }
         finally
         {
-            tokenBuilder.Dispose();
+            tokenizer.Dispose();
         }
     }
 

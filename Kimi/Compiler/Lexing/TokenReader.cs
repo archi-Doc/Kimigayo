@@ -53,11 +53,12 @@ public ref struct TokenReader
 
     #endregion
 
-    public TokenReader(CodeContext codeContext, ref TokenSequenceBuilder tokenBuilder)
+    internal TokenReader(CodeContext codeContext, ref Tokenizer tokenizer)
     {
         this.CodeContext = codeContext;
 
-        var tokenSequence = tokenBuilder.ToReadOnlySequence();
+        var tokenSequence = tokenizer.ToReadOnlySequence();
+        this.sourceText = tokenizer.SourceText;
         this.sequence = tokenSequence;
         this.length = checked((int)tokenSequence.Length);
 
@@ -222,7 +223,7 @@ Loop:
 
             if (hash != 0)
             {
-                this.AddDiagnostic(hash, this.currentToken.Span.ToString());
+                this.AddDiagnostic(hash, this.GetSpan(this.currentToken).ToString());
                 hash = 0;
             }
 
@@ -244,7 +245,7 @@ Loop:
 
             if (hash != 0)
             {
-                this.AddDiagnostic(hash, this.currentToken.Span.ToString());
+                this.AddDiagnostic(hash, this.GetSpan(this.currentToken).ToString());
                 hash = 0;
             }
 
@@ -314,10 +315,11 @@ Loop:
         if (token.Kind == TokenKind.Identifier)
         {
             this.Advance();
-            var referenceKind = token.Span.ToReferenceKind();
+            var span = this.GetSpan(token);
+            var referenceKind = span.ToReferenceKind();
             if (referenceKind == ReferenceKind.None)
             {
-                this.AddDiagnostic(Hashed.Kimi.InvalidReferenceSyntax, token.Span.ToString());
+                this.AddDiagnostic(Hashed.Kimi.InvalidReferenceSyntax, span.ToString());
                 referenceKind = ReferenceKind.Borrow;
             }
 
@@ -390,6 +392,11 @@ Loop:
     public ErrorKoto NewErrorKoto()
     {
         return new ErrorKoto(ref this, this.CurrentToken.Range);
+    }
+
+    public ReadOnlySpan<char> GetSpan(Token token)
+    {
+        return this.sourceText.Slice(token.Start, token.Length);
     }
 
     public override string ToString()
