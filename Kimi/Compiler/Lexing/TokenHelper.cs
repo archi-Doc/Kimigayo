@@ -210,6 +210,7 @@ public static partial class TokenHelper
     /// <param name="tokenKind">When this method returns, contains the token kind for <paramref name="c"/>, or <see cref="TokenKind.Invalid"/>.</param>
     /// <param name="groupingDepth">When this method returns, contains +1 for an opening grouping token, -1 for a closing grouping token, or 0 for a neutral token.</param>
     /// <returns><see langword="true"/> if <paramref name="c"/> is a recognized single-character token; otherwise, <see langword="false"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     public static bool TryGetSingleCharTokenKind(char c, out TokenKind tokenKind, out int groupingDepth)
     {
         (tokenKind, groupingDepth) = c switch

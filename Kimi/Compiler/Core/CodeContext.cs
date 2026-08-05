@@ -19,13 +19,10 @@ public class CodeContext
 
     private readonly DiagnosticCollection? diagnosticCollection;
 
-    // public GroupKoto CurrentGroup { get; set; }
-
     internal CodeContext(Kotonoha kotonoha, DiagnosticCollection? customDiagnosticCollection = default)
     {
         this.Kotonoha = kotonoha;
         this.diagnosticCollection = customDiagnosticCollection;
-        // this.CurrentGroup = this.Kotonoha.Root;
     }
 
     public void Parse(GroupKoto parentKoto, ReadOnlySpan<char> sourceText)

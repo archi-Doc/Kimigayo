@@ -9,15 +9,15 @@ public readonly partial struct Token
 {// 1 + 1 + 8 + 16 -> 32
     public static readonly Token Invalid = default;
 
-    public readonly TokenKind Kind;
+    public readonly TokenKind Kind; // 1
 
-    public readonly bool IsMissing;
+    public readonly bool IsMissing; // 1
 
-    public readonly int Start;
+    public readonly int Start; // 4
 
-    public readonly int Length;
+    public readonly int Length; // 4
 
-    public readonly SourceRange Range;
+    public readonly SourceRange Range; // 16
 
     public bool IsValid => this.Kind != TokenKind.Invalid;
 

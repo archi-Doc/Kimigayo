@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;

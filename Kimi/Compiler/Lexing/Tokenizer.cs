@@ -479,7 +479,7 @@ NextLine:
 MeasureIndentation:
 // Indentation is measured once, at the physical line start.
 // Comments that follow do not change it.
-        var numberOfSpaces = Arc.BaseHelper.CountLeadingSpaces(this.span);
+        var numberOfSpaces = BaseHelper.CountLeadingSpaces(this.span);
         this.Slice(numberOfSpaces);
 
 LineContent:
