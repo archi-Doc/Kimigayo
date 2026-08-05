@@ -23,8 +23,6 @@ internal class Program
         Console.WriteLine("Hello, World!");
 
         var compilation = Compilation.CreateForTest();
-        compilation.Project.AddSource("test", "#If(true)");
-        await compilation.Project.Build();
 
         var kotonoha2 = new Kotonoha(compilation);
         var codeContext = compilation.CreateCodeContext(kotonoha2, []);
