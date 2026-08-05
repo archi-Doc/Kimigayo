@@ -8,35 +8,6 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-public sealed class EmptyConsole : IConsoleService
-{
-    public bool KeyAvailable => false;
-
-    public bool EnableColor { get; set; }
-
-    public ConsoleKeyInfo ReadKey(bool intercept)
-    {
-        return default;
-    }
-
-    public Task<InputResult> ReadLine(CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(new InputResult(InputResultKind.Success));
-    }
-
-    public void Write(string? message = null, ConsoleColor color = (ConsoleColor)(-1))
-    {
-    }
-
-    public void WriteLine(string? message = null, ConsoleColor color = (ConsoleColor)(-1))
-    {
-    }
-
-    public void WriteLine(ReadOnlySpan<char> message, ConsoleColor color = (ConsoleColor)(-1))
-    {
-    }
-}
-
 public class Compilation
 {
     #region FieldAndProperty
