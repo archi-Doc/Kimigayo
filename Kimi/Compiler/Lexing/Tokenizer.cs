@@ -34,6 +34,7 @@ internal ref struct Tokenizer
     private int line;
     private int character;
 
+    private int currentIndentLevel;
     private int blockDepth;
     private int nonBlockDepth;
     private int tokenAdded;
@@ -60,14 +61,14 @@ internal ref struct Tokenizer
 
     public void ReadAll()
     {
-        var currentIndentLevel = 0;
-        while (this.Read(ref currentIndentLevel) > 0)
+        this.currentIndentLevel = 0;
+        while (this.Read() > 0)
         {
             // builder.Add(new(TokenKind.Separator));
         }
     }
 
-    public int Read(ref int currentIndentLevel)
+    public int Read()
     {
         this.ClearState();
 
@@ -389,7 +390,7 @@ Loop:
 
                 case '"':
                     {
-                        var result = StringLiteralHelper.ScanStringLiteral(this.span, out var doubleQuoteCount, out var stringLiteralLength);
+                        var result = StringLiteralHelper.ScanStringLiteral(this.span, out _, out var stringLiteralLength);
                         if (result == ScanStringLiteralResult.String)
                         {
                             this.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
@@ -532,15 +533,15 @@ LineContent:
         }
 
         var indentLevel = numberOfSpaces / Constants.IndentationSpaces;
-        if (currentIndentLevel < 0)
+        if (this.currentIndentLevel < 0)
         {
-            currentIndentLevel = indentLevel;
+            this.currentIndentLevel = indentLevel;
         }
 
         // Indentation remains significant even inside grouping constructs.
         // Therefore, both block depth and non-block depth are subtracted when
         // calculating the indentation difference.
-        var indentDelta = indentLevel - currentIndentLevel - this.blockDepth - this.nonBlockDepth;
+        var indentDelta = indentLevel - this.currentIndentLevel - this.blockDepth - this.nonBlockDepth;
 
         if (indentDelta == 1)
         {
@@ -576,8 +577,9 @@ LineContent:
         {
             // When indentation decreases inside a grouping construct, the current token
             // may be the matching closing delimiter placed at the outer indentation level.
-            // In that case, consume the closing token and close the grouping context.
-            // Otherwise, keep the grouping context open and report an indentation mismatch.
+            // If it matches, consume the delimiter and close the grouping context.
+            // Otherwise, recover by treating the grouping construct as implicitly closed,
+            // remove it from the indentation stack, and report an indentation mismatch.
 
             for (var i = indentDelta; i < 0; i++)
             {
@@ -621,10 +623,10 @@ LineContent:
                         break;
                     }
                 }
-                else if (currentIndentLevel > 0)
+                else if (this.currentIndentLevel > 0)
                 {
                     this.AddToken(new(TokenKind.EndBlock, this.CurrentRange));
-                    currentIndentLevel--;
+                    this.currentIndentLevel--;
                 }
                 else
                 {
@@ -643,7 +645,7 @@ LineContent:
         }
         else
         {
-            currentIndentLevel += this.blockDepth;
+            this.currentIndentLevel += this.blockDepth;
             this.blockDepth = 0;
 
             if (this.tokenAdded > 0 && !separatorInserted)
@@ -656,10 +658,10 @@ LineContent:
 
 EndOfFile:
         this.ClearIndentStack();
-        while (currentIndentLevel > 0)
+        while (this.currentIndentLevel > 0)
         {
             this.builder.Add(new(TokenKind.EndBlock, this.CurrentRange));
-            currentIndentLevel--;
+            this.currentIndentLevel--;
         }
 
         Debug.Assert(this.blockDepth == 0);
