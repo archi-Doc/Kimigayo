@@ -81,7 +81,7 @@ public sealed partial class Kotonoha
 
     public void AddSource(PathAndSource pathAndSource)
     {
-        var diagnostic = this.Compilation.KimiControl.GetOrAddFileDiagnostic(pathAndSource.Path);
+        var diagnostic = this.Compilation.KimiControl.GetOrAddDiagnosticCollection(pathAndSource.Path);
         var sourceText = pathAndSource.SourceText.AsMemory();
         var tokenizer = new Tokenizer(diagnostic);
         tokenizer.Initialize(sourceText, 0, 0);

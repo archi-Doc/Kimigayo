@@ -11,7 +11,7 @@ public class KimiControl
     internal const string GlobalName = "Global";
     internal const string ErrorPrefix = "KimiError";
     private readonly IConsoleService consoleService;
-    private readonly ConcurrentDictionary<string, DiagnosticCollection> urlDiagnostics;
+    private readonly ConcurrentDictionary<string, DiagnosticCollection> diagnosticCollections;
 
     public KimiSettings Settings { get; }
 
@@ -22,9 +22,9 @@ public class KimiControl
         this.consoleService = consoleService;
         this.Settings = new();
 
-        this.urlDiagnostics = new();
+        this.diagnosticCollections = new();
         this.GlobalDiagnostic = new(this, GlobalName);
-        this.urlDiagnostics.TryAdd(this.GlobalDiagnostic.Url, this.GlobalDiagnostic);
+        this.diagnosticCollections.TryAdd(this.GlobalDiagnostic.Name, this.GlobalDiagnostic);
         // this.PointerSize = IntPtr.Size;
     }
 
@@ -33,14 +33,14 @@ public class KimiControl
         this.WriteLine(diagnostic.Severity, diagnostic.ToString(url));
     }
 
-    public DiagnosticCollection GetOrAddFileDiagnostic(string url)
+    public DiagnosticCollection GetOrAddDiagnosticCollection(string url)
     {
-        return this.urlDiagnostics.GetOrAdd(url, x => new(this, x));
+        return this.diagnosticCollections.GetOrAdd(url, x => new(this, x));
     }
 
     public void DumpToConsole()
     {
-        var array = this.urlDiagnostics.ToArray();
+        var array = this.diagnosticCollections.ToArray();
         foreach (var x in array)
         {
             this.WriteLine(LogLevel.Warning, x.Key);

@@ -9,14 +9,14 @@ public record class DiagnosticCollection
     private readonly KimiControl kimiControl;
     private readonly Diagnostic.GoshujinClass diagnostics = new();
 
-    public string Url { get; init; } = string.Empty;
+    public string Name { get; init; } = string.Empty;
 
-    public bool IsGlobal => this.Url == string.Empty || this.Url == KimiControl.GlobalName;
+    public bool IsGlobal => this.Name == string.Empty || this.Name == KimiControl.GlobalName;
 
-    internal DiagnosticCollection(KimiControl kimiControl, string url)
+    internal DiagnosticCollection(KimiControl kimiControl, string name)
     {
         this.kimiControl = kimiControl;
-        this.Url = url;
+        this.Name = name;
     }
 
     public void AddToken(Token token, ulong diagnosticHash, object? obj = null, object? obj2 = null)
@@ -47,7 +47,7 @@ public record class DiagnosticCollection
             var diagnostic = new Diagnostic(token.Range, severity, message);
             diagnostic.Goshujin = this.diagnostics;
 
-            this.kimiControl.ReportDiagnostic(this.Url, diagnostic);
+            this.kimiControl.ReportDiagnostic(this.Name, diagnostic);
         }
     }
 
@@ -75,7 +75,7 @@ public record class DiagnosticCollection
             var diagnostic = new Diagnostic(range, severity, message);
             diagnostic.Goshujin = this.diagnostics;
 
-            this.kimiControl.ReportDiagnostic(this.Url, diagnostic);
+            this.kimiControl.ReportDiagnostic(this.Name, diagnostic);
         }
     }
 
