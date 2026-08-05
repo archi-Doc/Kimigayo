@@ -54,4 +54,23 @@ public class CodeContext
             tokenBuilder.Dispose();
         }
     }
+
+    public void Test(GroupKoto parentKoto, ReadOnlyMemory<char> sourceText)
+    {
+        var tokenizer = new Tokenizer(this.DiagnosticCollection);
+        tokenizer.Initialize(sourceText, 0, 0);
+
+        var tokenBuilder = new TokenSequenceBuilder();
+        try
+        {
+            tokenizer.ReadAll(ref tokenBuilder);
+            // var tokenSequence = tokenBuilder.ToReadOnlySequence();
+            // var reader = new TokenReader(this, tokenSequence);
+            // parentKoto.Parse(ref reader);
+        }
+        finally
+        {
+            tokenBuilder.Dispose();
+        }
+    }
 }

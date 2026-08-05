@@ -27,7 +27,7 @@ internal sealed class Tokenizer
     private readonly DiagnosticCollection diagnostics;
     private readonly Stack<IndentSource> indentStack = new();
 
-    private ReadOnlyMemory<char> text;
+    private ReadOnlyMemory<char> sourceText;
     private int position;
     private int line;
     private int character;
@@ -52,12 +52,12 @@ internal sealed class Tokenizer
     /// <summary>
     /// Resets the tokenizer to read from the specified text and source position.
     /// </summary>
-    /// <param name="text">The source text to tokenize.</param>
+    /// <param name="sourceText">The source text to tokenize.</param>
     /// <param name="line">The initial zero-based line number.</param>
     /// <param name="character">The initial zero-based character position.</param>
-    public void Initialize(ReadOnlyMemory<char> text, int line, int character)
+    public void Initialize(ReadOnlyMemory<char> sourceText, int line, int character)
     {
-        this.text = text;
+        this.sourceText = sourceText;
         this.position = 0;
         this.line = line;
         this.character = character;
@@ -93,7 +93,7 @@ internal sealed class Tokenizer
         this.ClearState();
 
 Loop:
-        var span = this.text.Slice(this.position).Span;
+        var span = this.sourceText.Slice(this.position).Span;
         if (span.Length == 0)
         {// End-of-file
             goto EndOfFile;
@@ -745,7 +745,7 @@ EndOfFile:
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AddTokenAndSlice(ref TokenSequenceBuilder builder, TokenKind tokenKind, ref ReadOnlySpan<char> span, int length)
     {
-        builder.Add(new(tokenKind, this.text.Slice(this.position, length), this.line, this.character));
+        builder.Add(new(tokenKind, this.sourceText.Slice(this.position, length), this.line, this.character));
         this.tokenAdded++;
 
         span = span.Slice(length);
@@ -800,7 +800,7 @@ EndOfFile:
 
         if (tokenKind != TokenKind.Invalid)
         {
-            builder.Add(new(tokenKind, this.text.Slice(this.position, length), new Diagnostics.SourceRange(start, new(this.line, this.character))));
+            builder.Add(new(tokenKind, this.sourceText.Slice(this.position, length), new Diagnostics.SourceRange(start, new(this.line, this.character))));
             this.tokenAdded++;
         }
 

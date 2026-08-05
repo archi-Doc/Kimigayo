@@ -27,7 +27,7 @@ internal class Program
         var kotonoha2 = new Kotonoha(compilation);
         var codeContext = kotonoha2.CreateCodeContext();
         var di = compilation.Kimigayo.GlobalDiagnosticCollection;
-        var reader = new TokenReader(di, codeContext, default);
+        var reader = new TokenReader(codeContext, default);
         codeContext.Parse(kotonoha2.RootKoto, $"""
             #If (true)
             public struct TestStruct: @Ia

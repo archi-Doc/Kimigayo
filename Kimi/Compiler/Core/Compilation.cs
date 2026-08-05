@@ -28,9 +28,9 @@ public class Compilation
 
     public KotonohaIdentifier[] KotonohaArray { get; private set; } = [];
 
-    public Kotonoha? ProjectKotonoha { get; private set; }
+    public Kotonoha Kotonoha { get; private set; }
 
-    public Utf16Hashtable<LimitedValue> CompilationVariables { get; private set; } = new();
+    public Utf16Hashtable<LimitedValue> Variables { get; private set; } = new();
 
     private UInt32Hashtable<Kotonoha> kotonohaIdToKotonoha = new();
 
@@ -49,9 +49,9 @@ public class Compilation
     {
         this.Kimigayo = kimigayo;
         this.Project = project;
+        this.Kotonoha = new(this, this.Project.Name, string.Empty);
     }
 
-    [MemberNotNullWhen(true, nameof(ProjectKotonoha))]
     public bool Prepare(string target)
     {
         if (!TargetTripleParser.TryParse(target, out var targetTriple))
@@ -64,17 +64,14 @@ public class Compilation
 
         // External Kotonoha
 
-        // Project Kotonoha
-        this.ProjectKotonoha = new(this, this.Project.Name, string.Empty);
-
-        // CompilationVariables
-        this.CompilationVariables.Clear();
+        // Compilation Variables
+        this.Variables.Clear();
 
         var os = this.TargetTriple.OperatingSystem;
-        this.CompilationVariables.Add("os", new(os));
-        this.CompilationVariables.Add("windows", new(string.Equals(os, "Windows", StringComparison.InvariantCultureIgnoreCase)));
-        this.CompilationVariables.Add("linux", new(string.Equals(os, "linux", StringComparison.InvariantCultureIgnoreCase)));
-        this.CompilationVariables.Add("macos", new(string.Equals(os, "macos", StringComparison.InvariantCultureIgnoreCase)));
+        this.Variables.Add("os", new(os));
+        this.Variables.Add("windows", new(string.Equals(os, "Windows", StringComparison.InvariantCultureIgnoreCase)));
+        this.Variables.Add("linux", new(string.Equals(os, "linux", StringComparison.InvariantCultureIgnoreCase)));
+        this.Variables.Add("macos", new(string.Equals(os, "macos", StringComparison.InvariantCultureIgnoreCase)));
 
         return true;
     }
@@ -99,7 +96,7 @@ public class Compilation
 
     internal void ScrubForTest()
     {
-        if (this.ProjectKotonoha is null)
+        if (this.Kotonoha is null)
         {
             return;
         }
@@ -108,13 +105,13 @@ public class Compilation
         var builder2 = new IndentedStringBuilder();
         try
         {
-            this.ProjectKotonoha.RootKoto.UnparseAll(ref builder);
+            this.Kotonoha.RootKoto.UnparseAll(ref builder);
 
             var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
             var st = builder.ToString();
             File.WriteAllText(path, st, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
-            var bin = TinyhandSerializer.Serialize(this.ProjectKotonoha);
+            var bin = TinyhandSerializer.Serialize(this.Kotonoha);
             var kotonoha = new Kotonoha(this);
             TinyhandSerializer.DeserializeObject(bin, ref kotonoha);
             if (kotonoha is null)
@@ -134,6 +131,6 @@ public class Compilation
 
     internal bool TryResolveValue(IdentifierNameKoto koto, out LimitedValue limitedValue)
     {
-        return this.CompilationVariables.TryGetValue(koto.Identifier, out limitedValue);
+        return this.Variables.TryGetValue(koto.Identifier, out limitedValue);
     }
 }

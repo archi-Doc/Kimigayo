@@ -100,7 +100,7 @@ public partial class Project
             return false;
         }
 
-        var projectKotonoha = compilation.ProjectKotonoha;
+        var projectKotonoha = compilation.Kotonoha;
 
         foreach (var y in this.kimiFiles)
         {

@@ -13,6 +13,14 @@ namespace Benchmark;
 public class ParseBenchmark
 {
     private readonly Compilation compilation;
+    private readonly string sourceText = $"""
+            #If (true)
+            public struct TestStruct: @Ia
+                let x = 1
+            #If (true)
+            public struct TestStruct2: @Ib
+                let x = 1
+            """;
 
     public ParseBenchmark()
     {
@@ -29,20 +37,23 @@ public class ParseBenchmark
     {
     }
 
-    [Benchmark]
+    // [Benchmark]
     public Koto Test1()
     {
-        var kotonoha = new Kotonoha(this.compilation);
+        var kotonoha = this.compilation.Kotonoha;
         var codeContext = kotonoha.CreateCodeContext();
-        codeContext.Parse(kotonoha.RootKoto, $"""
-            #If (true)
-            public struct TestStruct: @Ia
-                let x = 1
-            #If (true)
-            public struct TestStruct2: @Ib
-                let x = 1
-            """);
+        codeContext.Parse(kotonoha.RootKoto, this.sourceText);
+
+        kotonoha.RootKoto.Clear();
 
         return kotonoha.RootKoto;
+    }
+
+    [Benchmark]
+    public void Test2()
+    {
+        var kotonoha = this.compilation.Kotonoha;
+        var codeContext = kotonoha.CreateCodeContext();
+        codeContext.Test(kotonoha.RootKoto, this.sourceText.AsMemory());
     }
 }

@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection.Metadata;
 using Arc.Collections;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
@@ -23,6 +24,19 @@ public abstract partial class BlockKoto : IdentifiableKoto
     public BlockKoto(CodeContext codeContext, SourceRange range)
         : base(codeContext, range)
     {
+    }
+
+    public virtual void Clear()
+    {
+        foreach (var x in this.Children)
+        {
+            if (x is BlockKoto blockKoto)
+            {
+                blockKoto.Clear();
+            }
+        }
+
+        this.Children.ClearAll();
     }
 }
 
@@ -293,6 +307,14 @@ NextToken:
                 nextGroup.Parse(ref reader);
             }
         }
+    }
+
+    public override void Clear()
+    {
+        base.Clear();
+
+        this.KotoList.Clear(); // TODO
+        this.IdentifierToGroupKoto.Clear(); // TODO
     }
 
     public void UnparseAll(ref IndentedStringBuilder builder)
