@@ -21,7 +21,7 @@ public sealed partial class StringLiteralKoto : Koto
                 return field;
             }
 
-            field = KotoHelper.ParseLiteral(this.rawLiteral, this);
+            field = StringLiteralHelper.GetStringLiteralValue(this.rawLiteral, this);
             return field;
         }
     }
