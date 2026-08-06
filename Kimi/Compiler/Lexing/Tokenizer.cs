@@ -275,8 +275,8 @@ internal ref struct Tokenizer
             else
             {// %
                 tokenizer.AddTokenAndSlice(TokenKind.Percent, 1);
-
             }
+
             return false;
         };
 

@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 
@@ -7,6 +8,8 @@ namespace Kimi.Compiler;
 
 public static partial class KotoHelper
 {
+    private const char UnicodeFallbackChar = 'k';
+
     public static string ParseLiteral(string rawLiteral, Koto? koto = default)
     {// WithEscape, """WithoutEscape"""
         var span = rawLiteral.AsSpan();
@@ -48,7 +51,7 @@ public static partial class KotoHelper
             var backslashIndex = span.IndexOf('\\');
             if (backslashIndex < 0)
             {
-                return length;
+                return length + span.Length;
             }
 
             length += backslashIndex;
@@ -71,6 +74,7 @@ public static partial class KotoHelper
                     break;
 
                 case 'u':
+                    span = span.Slice(1);
                     var scalar = ReadUnicodeEscape(ref span, koto);
                     length += scalar <= 0xFFFF ? 1 : 2;
                     break;
@@ -86,73 +90,78 @@ public static partial class KotoHelper
 
     private static void Decode(string source, int firstBackslash, Span<char> destination)
     {
-        var span = source.AsSpan(1, source.Length - 2);
-        span.Slice(0, firstBackslash - 1).CopyTo(destination);
+        var span = source.AsSpan();
+        var dest = destination;
+        span.Slice(0, firstBackslash).CopyTo(dest);
+        span = span.Slice(firstBackslash);
+        dest = dest.Slice(firstBackslash);
 
-        var sourceLength = span.Length;
-        var sourceIndex = firstBackslash - 1;
-        var destinationIndex = firstBackslash - 1;
-
-        while (sourceIndex < sourceLength)
+        var destinationIndex = firstBackslash;
+        while (!span.IsEmpty)
         {
-            var c = source[sourceIndex++];
-
-            if (c != '\\')
+            var backslashIndex = span.IndexOf('\\');
+            if (backslashIndex < 0)
             {
-                destination[destinationIndex++] = c;
+                span.CopyTo(dest);
+                dest = dest.Slice(span.Length);
+                break;
+            }
+            else if (backslashIndex > 0)
+            {
+                span.Slice(0, backslashIndex).CopyTo(dest);
+                dest = dest.Slice(backslashIndex);
+            }
+
+            span = span.Slice(backslashIndex + 1);
+            if (span.IsEmpty)
+            {
+                break;
+            }
+
+            char escape = span[0];
+            if (escape != 'u')
+            {
+                dest[0] = escape switch
+                {
+                    '0' => '\0',
+                    '\\' => '\\',
+                    'e' => '\u001b',
+                    't' => '\t',
+                    'n' => '\n',
+                    '"' => '"',
+                    '\'' => '\'',
+                    _ => UnicodeFallbackChar,
+                };
+
+                span = span.Slice(1);
+                dest = dest.Slice(1);
                 continue;
             }
-
-            char escapeKind = source[sourceIndex++];
-
-            switch (escapeKind)
-            {
-                case '0':
-                    destination[destinationIndex++] = '\0';
-                    break;
-
-                case '\\':
-                    destination[destinationIndex++] = '\\';
-                    break;
-
-                case 't':
-                    destination[destinationIndex++] = '\t';
-                    break;
-
-                case 'n':
-                    destination[destinationIndex++] = '\n';
-                    break;
-
-                case 'r':
-                    destination[destinationIndex++] = '\r';
-                    break;
-
-                case '"':
-                    destination[destinationIndex++] = '"';
-                    break;
-
-                case '\'':
-                    destination[destinationIndex++] = '\'';
-                    break;
-
-                case 'u':
-                    {
-                        var scalar = ReadUnicodeEscape(ref span, default);
-                        if (scalar <= 0xFFFF)
-                        {
-                            destination[destinationIndex++] = (char)scalar;
-                        }
-                        else
-                        {
-                            scalar -= 0x10000;
-                            destination[destinationIndex++] = (char)(0xD800 + (scalar >> 10));
-                            destination[destinationIndex++] = (char)(0xDC00 + (scalar & 0x3FF));
-                        }
-
-                        break;
-                    }
+            else
+            {// u(1234)
+                span = span.Slice(1);
+                var scalar = ReadUnicodeEscape(ref span, default);
+                if (scalar == 0)
+                {
+                    dest[0] = UnicodeFallbackChar;
+                    dest = dest.Slice(1);
+                }
+                else if (scalar <= 0xFFFF)
+                {
+                    dest[0] = (char)scalar;
+                    dest = dest.Slice(1);
+                }
+                else
+                {
+                    scalar -= 0x10000;
+                    dest[0] = (char)(0xD800 + (scalar >> 10));
+                    dest[1] = (char)(0xDC00 + (scalar & 0x3FF));
+                    dest = dest.Slice(2);
+                }
             }
         }
+
+        Debug.Assert(dest.Length == 0);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -163,6 +172,8 @@ public static partial class KotoHelper
             koto?.AddDiagnostic(Hashed.Kimi.InvalidUnicodeEscape);
             return 0;
         }
+
+        span = span.Slice(1);
 
         uint value = 0;
         var digitCount = 0;
@@ -176,12 +187,14 @@ public static partial class KotoHelper
                 if (digitCount == 0)
                 {
                     koto?.AddDiagnostic(Hashed.Kimi.InvalidUnicodeEscape);
+                    koto = default;
                     value = 0;
                 }
 
                 if (value > 0x10FFFF || value is >= 0xD800 and <= 0xDFFF)
                 {
                     koto?.AddDiagnostic(Hashed.Kimi.InvalidUnicodeScalar);
+                    koto = default;
                     value = 0;
                 }
 
@@ -192,6 +205,7 @@ public static partial class KotoHelper
             if (digit < 0 || digitCount == 6)
             {
                 koto?.AddDiagnostic(Hashed.Kimi.InvalidUnicodeEscape);
+                koto = default;
             }
 
             value = (value << 4) | (uint)digit;

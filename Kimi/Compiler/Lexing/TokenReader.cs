@@ -401,7 +401,7 @@ Loop:
     }
 
     public ReadOnlySpan<char> GetSpan(Token token)
-    {//
+    {
         return this.sourceText.Slice(token.Start, token.Length);
     }
 
