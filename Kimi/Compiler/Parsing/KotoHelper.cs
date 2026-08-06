@@ -363,17 +363,4 @@ public static partial class KotoHelper
             }
         }
     }
-
-    private readonly struct DecodeState
-    {
-        public DecodeState(string source, int firstBackslash)
-        {
-            this.Source = source;
-            this.FirstBackslash = firstBackslash;
-        }
-
-        public string Source { get; }
-
-        public int FirstBackslash { get; }
-    }
 }
