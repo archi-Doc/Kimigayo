@@ -4,22 +4,33 @@ namespace Kimi.Compiler.Parsing;
 
 public static class LimitedValueHelper
 {
-    public delegate void Kotodama(Compilation compilation, Koto koto);
+    public delegate LimitedValue LimitedValueHandler(Compilation compilation, Koto koto);
 
-    private static readonly Kotodama?[] Table = new Kotodama[Koto.MaxKind];
+    private static readonly LimitedValueHandler?[] HandlerTable = new LimitedValueHandler[Koto.MaxKind];
 
     static LimitedValueHelper()
     {
-        Table[(int)KotoKind.BoolLiteral] = (c, k) => { };
+        HandlerTable[(int)KotoKind.BoolLiteral] = (compilation, koto)
+            =>
+        {
+            return new(((BoolLiteralKoto)koto).Value);
+        };
+    }
+
+    public static LimitedValue Evaluate2(Compilation compilation, Koto koto)
+    {
+        if (HandlerTable[(int)koto.Akind] is { } handler)
+        {
+            return handler(compilation, koto);
+        }
+        else
+        {
+            return new(true);
+        }
     }
 
     public static LimitedValue Evaluate(Compilation compilation, Koto koto)
     {
-        if (Table[(int)koto.Akind] is { } f)
-        {//
-            f(compilation, koto);
-        }
-
         if (koto is BoolLiteralKoto boolLiteralKoto)
         {// true, false
             return new(boolLiteralKoto.Value);
@@ -251,6 +262,12 @@ NotSupported:
         koto.AddDiagnostic(Hashed.Kimi.UnsupportedIfAttributeConditionType);
 
 Exit:
+        return new(true);
+    }
+
+    private static LimitedValue AddNotSupportedDiagnostic(Koto koto)
+    {
+        koto.AddDiagnostic(Hashed.Kimi.UnsupportedIfAttributeConditionType);
         return new(true);
     }
 }
