@@ -8,92 +8,80 @@ namespace Kimi.Compiler;
 public static partial class KotoHelper
 {
     public static string ParseLiteral(string rawLiteral, Koto? koto = default)
-    {// WithEscape, """WithoutEscape""", Interpolation\( Medium )End
+    {// WithEscape, """WithoutEscape"""
         var span = rawLiteral.AsSpan();
+
+        if (span.IsEmpty)
+        {
+            return string.Empty;
+        }
+
+        if (span[0] != '"')
+        {// Text + Escape
+            var firstBackslash = rawLiteral.IndexOf('\\');
+            if (firstBackslash < 0)
+            {// Fast path (no escape)
+                return rawLiteral;
+            }
+
+            var decodedLength = firstBackslash +
+                GetUnescapedLength(rawLiteral.AsSpan(firstBackslash, rawLiteral.Length - firstBackslash), koto);
+
+            return string.Create(decodedLength, new DecodeState(rawLiteral, firstBackslash), static (destination, state) => Decode(state.Source, state.FirstBackslash, destination));
+        }
+
         var leadingQuoteCount = 0;
         while (leadingQuoteCount < span.Length && span[leadingQuoteCount] == '"')
         {
             leadingQuoteCount++;
         }
 
-        if (leadingQuoteCount <= 1)
-        {// "Text" + Escape
-            var firstBackslash = rawLiteral.IndexOf('\\');
-            if (firstBackslash < 0)
-            {// Fast path (no escape)
-                return rawLiteral.Substring(leadingQuoteCount, rawLiteral.Length - leadingQuoteCount - leadingQuoteCount);
-            }
-
-            var decodedLength = rawLiteral.Length - leadingQuoteCount - leadingQuoteCount +
-                GetAdditionalLength(rawLiteral.AsSpan(firstBackslash, rawLiteral.Length - firstBackslash - 1), koto);
-
-            return string.Create(decodedLength, new DecodeState(rawLiteral, firstBackslash), static (destination, state) => Decode(state.Source, state.FirstBackslash, destination));
-        }
-        else if (leadingQuoteCount >= 3)
-        {// """RawText"""
-            return ParseRawLiteral(rawLiteral, leadingQuoteCount, koto);
-        }
-
-        return string.Empty;
+        // """RawText"""
+        return rawLiteral.Substring(leadingQuoteCount, rawLiteral.Length - leadingQuoteCount - leadingQuoteCount).ToString();
     }
 
-    private static string ParseRawLiteral(ReadOnlySpan<char> rawLiteral, int delimiterLength, Koto? koto)
+    private static int GetUnescapedLength(ReadOnlySpan<char> span, Koto? koto)
     {
-        var sourceLength = rawLiteral.Length;
-        if (sourceLength < delimiterLength * 2)
-        {
-            koto?.AddDiagnostic(Hashed.Kimi.IncompleteEscape);
-            return string.Empty;
-        }
-
-        return rawLiteral.Slice(delimiterLength, sourceLength - delimiterLength - delimiterLength).ToString();
-    }
-
-    private static int GetAdditionalLength(ReadOnlySpan<char> span, Koto? koto)
-    {
-        var additionalLength = 0;
+        var length = 0;
         while (!span.IsEmpty)
         {
-            var c = span[0];
-            if (c != '\\')
+            var backslashIndex = span.IndexOf('\\');
+            if (backslashIndex < 0)
             {
-                additionalLength++;
-                continue;
+                return length;
             }
 
-            span = span.Slice(1);
+            length += backslashIndex;
+            span = span.Slice(backslashIndex + 1);
             if (span.IsEmpty)
             {
-                return additionalLength;
+                return length;
             }
 
-            c = span[0];
-            switch (c)
+            switch (span[0])
             {
                 case '0':
                 case '\\':
+                case 'e':
                 case 't':
                 case 'n':
-                case 'r':
                 case '"':
                 case '\'':
-                    additionalLength++;
+                    length++;
                     break;
 
                 case 'u':
-                    {
-                        //var scalar = ReadUnicodeEscape(source, ref index);
-                        //additionalLength += scalar <= 0xFFFF ? 1 : 2;
-                        break;
-                    }
+                    var scalar = ReadUnicodeEscape(ref span, koto);
+                    length += scalar <= 0xFFFF ? 1 : 2;
+                    break;
 
                 default:
-                    koto?.AddDiagnostic(Hashed.Kimi.UnsupportedEscape, c);
+                    koto?.AddDiagnostic(Hashed.Kimi.UnsupportedEscape, span[0]);
                     break;
             }
         }
 
-        return additionalLength;
+        return length;
     }
 
     private static void Decode(string source, int firstBackslash, Span<char> destination)
@@ -170,34 +158,30 @@ public static partial class KotoHelper
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint ReadUnicodeEscape(ref ReadOnlySpan<char> span, Koto? koto)
     {
-        if (span.IsEmpty || span[0] != '{')
+        if (span.IsEmpty || span[0] != '(')
         {
             koto?.AddDiagnostic(Hashed.Kimi.InvalidUnicodeEscape);
             return 0;
         }
 
         uint value = 0;
-        int digitCount = 0;
-
+        var digitCount = 0;
         while (!span.IsEmpty)
         {
             var c = span[0];
             span = span.Slice(1);
 
-            if (c == '}')
+            if (c == ')')
             {
                 if (digitCount == 0)
                 {
                     koto?.AddDiagnostic(Hashed.Kimi.InvalidUnicodeEscape);
-
                     value = 0;
                 }
 
-                if (value > 0x10FFFF ||
-                    value is >= 0xD800 and <= 0xDFFF)
+                if (value > 0x10FFFF || value is >= 0xD800 and <= 0xDFFF)
                 {
                     koto?.AddDiagnostic(Hashed.Kimi.InvalidUnicodeScalar);
-
                     value = 0;
                 }
 
