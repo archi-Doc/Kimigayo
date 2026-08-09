@@ -30,7 +30,7 @@ public class Compilation
 
     public Kotonoha Kotonoha { get; private set; }
 
-    public Utf16Hashtable<LimitedValue> Variables { get; private set; } = new();
+    public Utf16Hashtable<BasicValue> Variables { get; private set; } = new();
 
     private UInt32Hashtable<Kotonoha> kotonohaIdToKotonoha = new();
 
@@ -129,8 +129,8 @@ public class Compilation
         }
     }
 
-    internal bool TryResolveValue(IdentifierNameKoto koto, out LimitedValue limitedValue)
+    internal bool TryResolveValue(IdentifierNameKoto koto, out BasicValue basicValue)
     {
-        return this.Variables.TryGetValue(koto.Identifier, out limitedValue);
+        return this.Variables.TryGetValue(koto.Identifier, out basicValue);
     }
 }

@@ -30,10 +30,10 @@ public static class KotoParser
                 }
                 else
                 {
-                    var limitedValue = LimitedValueHelper.Evaluate(compilation, arg[0]);
-                    if (limitedValue.Kind == LimitedValueKind.Bool)
+                    var basicValue = LimitedValueHelper.Evaluate(compilation, arg[0]);
+                    if (basicValue.Kind == BasicValueKind.Bool)
                     {
-                        if (!limitedValue.Bool)
+                        if (!basicValue.Bool)
                         {// false
                             return false;
                         }
@@ -65,10 +65,10 @@ public static class KotoParser
             }
             else
             {
-                var limitedValue = LimitedValueHelper.Evaluate(compilation, arg[0]);
-                if (limitedValue.Kind == LimitedValueKind.Bool)
+                var basicValue = LimitedValueHelper.Evaluate(compilation, arg[0]);
+                if (basicValue.Kind == BasicValueKind.Bool)
                 {
-                    if (!limitedValue.Bool)
+                    if (!basicValue.Bool)
                     {// false
                         return false;
                     }

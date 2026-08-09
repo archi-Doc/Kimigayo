@@ -107,18 +107,18 @@ public sealed partial class NumberLiteralKoto : Koto
         return false;
     }*/
 
-    public bool TryGetLimitedValue(out LimitedValue limitedValue)
+    public bool TryGetLimitedValue(out BasicValue basicValue)
     {
         // this.PrepareNumericLiteral();
 
         if (this.parseResult == NumberLiteralParseResult.I128)
         {
-            limitedValue = new((long)this.uv);
+            basicValue = new((long)this.uv);
             return true;
         }
         else if (this.parseResult == NumberLiteralParseResult.F64)
         {
-            limitedValue = new(BitConverter.UInt64BitsToDouble((ulong)this.uv));
+            basicValue = new(BitConverter.UInt64BitsToDouble((ulong)this.uv));
             return true;
         }
 
@@ -126,7 +126,7 @@ public sealed partial class NumberLiteralKoto : Koto
         {// Integer
             if (this.uv <= long.MaxValue)
             {
-                limitedValue = new((long)this.uv);
+                basicValue = new((long)this.uv);
                 return true;
             }
         }
@@ -135,7 +135,7 @@ public sealed partial class NumberLiteralKoto : Koto
             var value = BitConverter.UInt32BitsToSingle((uint)this.uv);
             if (double.IsFinite(value))
             {
-                limitedValue = new(value);
+                basicValue = new(value);
                 return true;
             }
         }
@@ -145,12 +145,12 @@ public sealed partial class NumberLiteralKoto : Koto
             var value = BitConverter.UInt64BitsToDouble((ulong)this.uv);
             if (double.IsFinite(value))
             {
-                limitedValue = new(value);
+                basicValue = new(value);
                 return true;
             }
         }*/
 
-        limitedValue = default;
+        basicValue = default;
         return false;
     }
 

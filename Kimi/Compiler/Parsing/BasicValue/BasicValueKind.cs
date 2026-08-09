@@ -2,10 +2,11 @@
 
 namespace Kimi.Compiler.Parsing;
 
-public enum LimitedValueKind
+public enum BasicValueKind
 {
+    Invalid,
     Bool,
     I64,
-    Double,
-    Text,
+    F64,
+    String,
 }
