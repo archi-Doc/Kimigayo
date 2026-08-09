@@ -107,7 +107,7 @@ public sealed partial class NumberLiteralKoto : Koto
         return false;
     }*/
 
-    public bool TryGetLimitedValue(out BasicValue basicValue)
+    public bool TryGetBasicValue(out BasicValue basicValue)
     {
         // this.PrepareNumericLiteral();
 

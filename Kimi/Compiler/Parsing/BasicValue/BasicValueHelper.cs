@@ -4,11 +4,11 @@ using System.Runtime.CompilerServices;
 
 namespace Kimi.Compiler.Parsing;
 
-public static class LimitedValueHelper
+public static class BasicValueHelper
 {
-    public delegate BasicValue LimitedValueHandler(Compilation compilation, Koto koto);
+    public delegate BasicValue BasicValueHandler(Compilation compilation, Koto koto);
 
-    private static readonly LimitedValueHandler?[] HandlerTable = CreateHandlerTable();
+    private static readonly BasicValueHandler?[] HandlerTable = CreateHandlerTable();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static BasicValue Evaluate(Compilation compilation, Koto koto)
@@ -22,9 +22,9 @@ public static class LimitedValueHelper
         return AddNotSupportedDiagnostic(koto);
     }
 
-    private static LimitedValueHandler?[] CreateHandlerTable()
+    private static BasicValueHandler?[] CreateHandlerTable()
     {
-        var table = new LimitedValueHandler?[Koto.MaxKind];
+        var table = new BasicValueHandler?[Koto.MaxKind];
 
         table[(int)KotoKind.BoolLiteral] = EvaluateBoolLiteral;
         table[(int)KotoKind.NumberLiteral] = EvaluateNumberLiteral;
@@ -63,7 +63,7 @@ public static class LimitedValueHelper
     private static BasicValue EvaluateNumberLiteral(Compilation compilation, Koto koto)
     {// long or double
         var literal = (NumberLiteralKoto)koto;
-        if (literal.TryGetLimitedValue(out var value))
+        if (literal.TryGetBasicValue(out var value))
         {
             return value;
         }
@@ -116,7 +116,6 @@ public static class LimitedValueHelper
     private static BasicValue EvaluatePrefixMinus(Compilation compilation, Koto koto)
     {// -A
         var operand = Evaluate(compilation, ((PrefixMinusKoto)koto).Operand);
-
         return operand.Kind switch
         {
             BasicValueKind.I64 => new(-operand.I64),
@@ -129,7 +128,7 @@ public static class LimitedValueHelper
     {// A * B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         return left.Kind switch
@@ -144,7 +143,7 @@ public static class LimitedValueHelper
     {// A / B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         return left.Kind switch
@@ -159,7 +158,7 @@ public static class LimitedValueHelper
     {// A % B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         if (left.Kind == BasicValueKind.I64)
@@ -174,7 +173,7 @@ public static class LimitedValueHelper
     {// A + B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         return left.Kind switch
@@ -189,7 +188,7 @@ public static class LimitedValueHelper
     {// A - B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         return left.Kind switch
@@ -204,7 +203,7 @@ public static class LimitedValueHelper
     {// A < B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         return left.Kind switch
@@ -219,7 +218,7 @@ public static class LimitedValueHelper
     {// A <= B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         return left.Kind switch
@@ -234,7 +233,7 @@ public static class LimitedValueHelper
     {// A > B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         return left.Kind switch
@@ -249,7 +248,7 @@ public static class LimitedValueHelper
     {// A >= B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         return left.Kind switch
@@ -264,7 +263,7 @@ public static class LimitedValueHelper
     {// A == B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         return left.Kind switch
@@ -281,7 +280,7 @@ public static class LimitedValueHelper
     {// A != B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         return left.Kind switch
@@ -298,7 +297,7 @@ public static class LimitedValueHelper
     {// A and B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         if (left.Kind == BasicValueKind.Bool)
@@ -313,7 +312,7 @@ public static class LimitedValueHelper
     {// A or B
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
-            return new(true);
+            return default;
         }
 
         if (left.Kind == BasicValueKind.Bool)
@@ -342,6 +341,6 @@ public static class LimitedValueHelper
     private static BasicValue AddNotSupportedDiagnostic(Koto koto)
     {
         koto.AddDiagnostic(Hashed.Kimi.UnsupportedIfAttributeConditionType);
-        return new(true);
+        return default;
     }
 }

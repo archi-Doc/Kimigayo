@@ -229,8 +229,6 @@ public abstract partial class Koto
     [Key(0)]
     public AttributeKoto? AttributeChain { get; internal set; }
 
-    public Type Atype => this.GetType();
-
     [MemberNotNullWhen(false, nameof(Parent))]
     public bool IsRoot => this.Parent is null;
 
