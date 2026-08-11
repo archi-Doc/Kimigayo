@@ -16,11 +16,12 @@ public class Program
 {
     public static void Main(string[] args)
     {
-        DebugRun<HexToIntBenchmark>();
+        DebugRun<TargetTripleBenchmark>();
 
         // var summary = BenchmarkRunner.Run<TestBenchmark>();
         var switcher = new BenchmarkSwitcher(new[]
         {
+            typeof(TargetTripleBenchmark),
             typeof(HexToIntBenchmark),
             typeof(ParseBenchmark),
             typeof(NumberLiteralBenchmark),

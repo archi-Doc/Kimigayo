@@ -826,6 +826,11 @@ public sealed record class TargetTriple(
 
                 break;
             case 'm':
+                if (name.StartsWith("msvc"))
+                {
+                    return EnvironmentType.Msvc;
+                }
+
                 if (name.StartsWith("muslabin32"))
                 {
                     return EnvironmentType.MuslAbiN32;
@@ -869,11 +874,6 @@ public sealed record class TargetTriple(
                 if (name.StartsWith("musl"))
                 {
                     return EnvironmentType.Musl;
-                }
-
-                if (name.StartsWith("msvc"))
-                {
-                    return EnvironmentType.Msvc;
                 }
 
                 if (name.StartsWith("macabi"))
