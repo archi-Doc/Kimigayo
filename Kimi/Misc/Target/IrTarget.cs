@@ -1,10 +1,9 @@
-// Copyright(c) All contributors. All rights reserved.Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 namespace Kimi.Compiler.Target;
 
 #pragma warning disable SA1611 // Element parameters should be documented
 #pragma warning disable SA1615
-
 
 /// <summary>
 /// The IR-level target description derived from a parsed triple:
@@ -12,6 +11,8 @@ namespace Kimi.Compiler.Target;
 /// </summary>
 public sealed record class IrTarget(int PointerWidth, string DataLayout)
 {
+    public static readonly IrTarget Invalid = new(0, string.Empty);
+
     /// <summary>
     /// Build an IrTarget from a parsed triple. <paramref name="abiName"/>
     /// mirrors the ABIName parameter of Triple::computeDataLayout (e.g.
@@ -51,34 +52,6 @@ public sealed record class IrTarget(int PointerWidth, string DataLayout)
         // Everything else (aarch64, x86_64, riscv64, wasm64, systemz, ...).
         _ => 64,
     };
-
-    /// <summary>
-    /// Arch pointer width refined by ABI-affecting environments so it agrees
-    /// with the "p:" entry of the computed data layout (x32, AArch64 ILP32,
-    /// MIPS N32 use 32-bit pointers on 64-bit architectures).
-    /// </summary>
-    private static int ComputePointerWidth(TargetTriple t)
-    {
-        int width = GetArchPointerBitWidth(t.Arch);
-        if (width == 64)
-        {
-            if (t.Arch == Architecture.X86_64 && t.IsX32)
-            {
-                return 32;
-            }
-
-            if (t.Arch == Architecture.AArch64 && t.Environment == EnvironmentType.GnuIlp32)
-            {
-                return 32;
-            }
-
-            if ((t.Arch == Architecture.Mips64 || t.Arch == Architecture.Mips64EL) && t.IsAbiN32)
-            {
-                return 32;
-            }
-        }
-        return width;
-    }
 
     // ==================================================================
     // Data layout (port of Triple::computeDataLayout and helpers from
@@ -260,11 +233,45 @@ public sealed record class IrTarget(int PointerWidth, string DataLayout)
         return "-m:e";
     }
 
+    /// <summary>
+    /// Arch pointer width refined by ABI-affecting environments so it agrees
+    /// with the "p:" entry of the computed data layout (x32, AArch64 ILP32,
+    /// MIPS N32 use 32-bit pointers on 64-bit architectures).
+    /// </summary>
+    private static int ComputePointerWidth(TargetTriple t)
+    {
+        int width = GetArchPointerBitWidth(t.Arch);
+        if (width == 64)
+        {
+            if (t.Arch == Architecture.X86_64 && t.IsX32)
+            {
+                return 32;
+            }
+
+            if (t.Arch == Architecture.AArch64 && t.Environment == EnvironmentType.GnuIlp32)
+            {
+                return 32;
+            }
+
+            if ((t.Arch == Architecture.Mips64 || t.Arch == Architecture.Mips64EL) && t.IsAbiN32)
+            {
+                return 32;
+            }
+        }
+
+        return width;
+    }
+
     // ------------------------------------------------------------------
     // ARM
     // ------------------------------------------------------------------
 
-    private enum ArmAbi { Apcs, Aapcs, Aapcs16 }
+    private enum ArmAbi
+    {
+        Apcs,
+        Aapcs,
+        Aapcs16,
+    }
 
     /// <summary>
     /// Port of ARM::computeTargetABI + computeDefaultTargetABI
@@ -291,6 +298,7 @@ public sealed record class IrTarget(int PointerWidth, string DataLayout)
             {
                 return ArmAbi.Apcs;
             }
+
             // Unknown ABI names fall back to the triple-derived default.
         }
 
@@ -405,14 +413,20 @@ public sealed record class IrTarget(int PointerWidth, string DataLayout)
         if (t.IsOsBinFormatMachO)
         {
             if (t.Arch == Architecture.AArch64_32)
+            {
                 return "e-m:o-p:32:32-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-" +
                        "n32:64-S128-Fn32";
+            }
+
             return "e-m:o-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-n32:64-S128-" +
                    "Fn32";
         }
+
         if (t.IsOsBinFormatCoff)
+        {
             return "e-m:w-p270:32:32-p271:32:32-p272:64:64-p:64:64-i32:32-i64:64-i128:" +
                    "128-n32:64-S128-Fn32";
+        }
 
         var endian = t.IsLittleEndian ? "e" : "E";
         var ptr32 = t.Environment == EnvironmentType.GnuIlp32 ? "-p:32:32" : string.Empty;
@@ -425,7 +439,12 @@ public sealed record class IrTarget(int PointerWidth, string DataLayout)
     // MIPS
     // ------------------------------------------------------------------
 
-    private enum MipsAbi { O32, N32, N64 }
+    private enum MipsAbi
+    {
+        O32,
+        N32,
+        N64,
+    }
 
     /// <summary>Port of getMipsABI.</summary>
     private static MipsAbi GetMipsAbi(TargetTriple t, string abiName)
@@ -549,8 +568,10 @@ public sealed record class IrTarget(int PointerWidth, string DataLayout)
     private static string ComputeAmdDataLayout(TargetTriple t)
     {
         if (t.Arch == Architecture.R600)
+        {
             return "e-m:e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128" +
                    "-v192:256-v256:256-v512:512-v1024:1024-v2048:2048-n32:64-S32-A5-G1";
+        }
 
         return "e-m:e-p:64:64-p1:64:64-p2:32:32-p3:32:32-p4:64:64-p5:32:32-p6:32:32" +
                "-p7:160:256:256:32-p8:128:128:128:48-p9:192:256:256:32-i64:64-" +
@@ -679,11 +700,16 @@ public sealed record class IrTarget(int PointerWidth, string DataLayout)
 
         // f80 alignment: 128 bits on 64-bit/Darwin/MSVC, 32 bits otherwise.
         if (isIamcu)
-        { /* no f80 */ }
+        { // no f80
+        }
         else if (is64Bit || t.IsOsDarwin || t.IsWindowsMsvcEnvironment)
+        {
             sb.Append("-f80:128");
+        }
         else
+        {
             sb.Append("-f80:32");
+        }
 
         if (isIamcu)
         {
@@ -735,6 +761,7 @@ public sealed record class IrTarget(int PointerWidth, string DataLayout)
                 sb.Append("-p7:32:32-p101:32:32");
             }
         }
+
         sb.Append("-i64:64-i128:128-i256:256-v16:16-v32:32-n16:32:64");
         return sb.ToString();
     }
@@ -747,19 +774,28 @@ public sealed record class IrTarget(int PointerWidth, string DataLayout)
     private static string ComputeSpirVDataLayout(TargetTriple t)
     {
         if (t.Arch is Architecture.SpirV32 or Architecture.Spir)
+        {
             return "e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-" +
                    "v256:256-v512:512-v1024:1024-n8:16:32:64-G1";
+        }
+
         if (t.Arch == Architecture.SpirV)
         {
             return "e-ve-i64:64-n8:16:32:64-G10";
         }
 
         if (t.Vendor == VendorType.AMD && t.Os == OsType.AmdHsa)
+        {
             return "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-" +
                    "v512:512-v1024:1024-n32:64-S32-G1-P4-A0";
+        }
+
         if (t.Vendor == VendorType.Intel)
+        {
             return "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-" +
                    "v512:512-v1024:1024-n8:16:32:64-G1-P9-A0";
+        }
+
         return "e-i64:64-v16:16-v24:32-v32:32-v48:64-v96:128-v192:256-v256:256-" +
                "v512:512-v1024:1024-n8:16:32:64-G1";
     }

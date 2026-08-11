@@ -1,4 +1,10 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
 namespace Kimi.Compiler.Target;
+
+#pragma warning disable SA1623 // Property summary documentation should match accessors
+#pragma warning disable SA1615 // Element return value should be documented
+#pragma warning disable SA1611 // Element parameters should be documented
 
 /// <summary>
 /// Parsed LLVM target triple: ARCHITECTURE-VENDOR-OS[-ENVIRONMENT].
@@ -16,8 +22,10 @@ public sealed record class TargetTriple(
     string OsName,
     string EnvironmentName)
 {
+    public static readonly TargetTriple Invalid = new(string.Empty, Architecture.Unknown, VendorType.Unknown, OsType.Unknown, EnvironmentType.Unknown, ObjectFormatType.Unknown, string.Empty, string.Empty, string.Empty, string.Empty);
+
     /// <summary>
-    /// Parse a target triple string. Mirrors Triple::Triple(std::string&&):
+    /// Parse a target triple string. Mirrors Triple::Triple(std::string):
     /// split into at most 4 dash-separated components, parse each positionally.
     /// </summary>
     public static TargetTriple Parse(string triple)
@@ -38,6 +46,7 @@ public sealed record class TargetTriple(
                 start = i + 1;
             }
         }
+
         ranges[count++] = new Range(start, s.Length);
 
         var archSpan = s[ranges[0]];
@@ -233,7 +242,10 @@ public sealed record class TargetTriple(
             isThumb = false;
             rest = name[3..];
         }
-        else return Architecture.Unknown;
+        else
+        {
+            return Architecture.Unknown;
+        }
 
         // Thumb only exists in v4+ (ARM::parseArchISA rejects thumbv2/v3).
         if (isThumb && (rest.StartsWith("v2") || rest.StartsWith("v3")))
@@ -624,6 +636,7 @@ public sealed record class TargetTriple(
 
                 break;
         }
+
         return OsType.Unknown;
     }
 
@@ -935,6 +948,7 @@ public sealed record class TargetTriple(
 
                 break;
         }
+
         return EnvironmentType.Unknown;
     }
 
@@ -1077,37 +1091,39 @@ public sealed record class TargetTriple(
 
     /// <summary>macOS, iOS, tvOS, watchOS, DriverKit, XROS, bridgeOS or Apple firmware.</summary>
     public bool IsOsDarwin =>
-        Os is OsType.Darwin or OsType.MacOSX or OsType.IOS or OsType.TvOS
+        this.Os is OsType.Darwin or OsType.MacOSX or OsType.IOS or OsType.TvOS
            or OsType.WatchOS or OsType.DriverKit or OsType.XROS or OsType.BridgeOS
-        || (Vendor == VendorType.Apple && Os == OsType.Firmware);
+        || (this.Vendor == VendorType.Apple && this.Os == OsType.Firmware);
 
-    public bool IsOsWindows => Os == OsType.Win32;
+    public bool IsOsWindows => this.Os == OsType.Win32;
 
-    /// <summary>MSVC environment, or Windows with an unknown environment.</summary>
     public bool IsWindowsMsvcEnvironment =>
-        IsOsWindows && Environment is EnvironmentType.Msvc or EnvironmentType.Unknown;
+        this.IsOsWindows && this.Environment is EnvironmentType.Msvc or EnvironmentType.Unknown;
 
     public bool IsMusl =>
-        Environment is EnvironmentType.Musl or EnvironmentType.MuslAbiN32
+        this.Environment is EnvironmentType.Musl or EnvironmentType.MuslAbiN32
             or EnvironmentType.MuslAbi64 or EnvironmentType.MuslEabi
             or EnvironmentType.MuslEabiHF or EnvironmentType.MuslF32
             or EnvironmentType.MuslSF or EnvironmentType.MuslX32
             or EnvironmentType.MuslWali or EnvironmentType.OpenHos
-        || Os == OsType.LiteOS;
+        || this.Os == OsType.LiteOS;
 
     /// <summary>x32 ABI: 32-bit pointers on x86-64.</summary>
-    public bool IsX32 => Environment is EnvironmentType.GnuX32 or EnvironmentType.MuslX32;
+    public bool IsX32 => this.Environment is EnvironmentType.GnuX32 or EnvironmentType.MuslX32;
 
     /// <summary>MIPS N32 ABI.</summary>
-    public bool IsAbiN32 => Environment is EnvironmentType.GnuAbiN32 or EnvironmentType.MuslAbiN32;
+    public bool IsAbiN32 => this.Environment is EnvironmentType.GnuAbiN32 or EnvironmentType.MuslAbiN32;
 
-    public bool IsOsBinFormatMachO => ObjectFormat == ObjectFormatType.MachO;
-    public bool IsOsBinFormatCoff => ObjectFormat == ObjectFormatType.Coff;
-    public bool IsOsBinFormatGoff => ObjectFormat == ObjectFormatType.Goff;
-    public bool IsOsBinFormatXcoff => ObjectFormat == ObjectFormatType.Xcoff;
+    public bool IsOsBinFormatMachO => this.ObjectFormat == ObjectFormatType.MachO;
+
+    public bool IsOsBinFormatCoff => this.ObjectFormat == ObjectFormatType.Coff;
+
+    public bool IsOsBinFormatGoff => this.ObjectFormat == ObjectFormatType.Goff;
+
+    public bool IsOsBinFormatXcoff => this.ObjectFormat == ObjectFormatType.Xcoff;
 
     /// <summary>Port of Triple::isLittleEndian (enumerated by big-endian set).</summary>
-    public bool IsLittleEndian => Arch switch
+    public bool IsLittleEndian => this.Arch switch
     {
         Architecture.ArmEB or Architecture.ThumbEB or Architecture.AArch64BE or
         Architecture.BpfEB or Architecture.M68k or Architecture.Mips or
@@ -1126,7 +1142,7 @@ public sealed record class TargetTriple(
     {
         get
         {
-            ReadOnlySpan<char> s = OsName.AsSpan();
+            ReadOnlySpan<char> s = this.OsName.AsSpan();
             int i = 0;
             while (i < s.Length && !char.IsAsciiDigit(s[i]))
             {
@@ -1136,12 +1152,12 @@ public sealed record class TargetTriple(
             int v = 0;
             while (i < s.Length && char.IsAsciiDigit(s[i]))
             {
-                v = v * 10 + (s[i++] - '0');
+                v = (v * 10) + (s[i++] - '0');
             }
 
             return v;
         }
     }
 
-    public override string ToString() => Value;
+    public override string ToString() => this.Value;
 }

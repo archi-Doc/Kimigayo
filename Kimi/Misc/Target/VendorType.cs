@@ -1,3 +1,5 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
 namespace Kimi.Compiler.Target;
 
 /// <summary>Mirror of llvm::Triple::VendorType (LLVM main, Aug 2026).</summary>

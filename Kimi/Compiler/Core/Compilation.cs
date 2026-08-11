@@ -23,9 +23,9 @@ public class Compilation
 
     public string ProjectName { get; }*/
 
-    public TargetTriple TargetTriple { get; private set; }
+    public TargetTriple TargetTriple { get; private set; } = TargetTriple.Invalid;
 
-    public IrTarget IrTarget { get; private set; }
+    public IrTarget IrTarget { get; private set; } = IrTarget.Invalid;
 
     public int PointerWidth => this.IrTarget.PointerWidth;
 
