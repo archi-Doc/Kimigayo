@@ -358,7 +358,7 @@ Exit:
 
         var nameToken = reader.CurrentToken;
         reader.Advance();
-        if (nameToken.Kind != TokenKind.Identifier)
+        if (nameToken.Kind.IsIdentifierOrContextualKeyword())
         {
             return default;
         }

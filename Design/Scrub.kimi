@@ -2,21 +2,13 @@ alias AliasB
 alias AliasC
 alias AliasD
 
-public
-open
-struct
-Test
-private
-let pi = 1.2
-var x: &unsafe Base.Map<String, Int>
-var count: i32 = #TestAtr 0
-let name: String = abc
-var items: Array<Int>
-var items2
-var map: Map<String, Int>
-var array: Array<&owner T.U> = new()
-var obj = T.New()
-var obj2 = &owner T.New()
-var movedObj = &owner obj
-var movedObj = &unsafe obj
+Error & unsafe
+Base.Map<String, Int>
+Error & owner
+T.New()
+Error & owner
+obj
+Error & unsafe
+obj
 array.Add(movedObj)
+

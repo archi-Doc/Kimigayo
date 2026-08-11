@@ -456,9 +456,9 @@ Loop:
             // span.Length >= 1
             var c = this.span[0];
             if (c < Constants.ExclusiveUpperBound &&
-                CharacterHandlerTable[c] is { } invocation)
+                CharacterHandlerTable[c] is { } handler)
             {
-                if (invocation(ref this))
+                if (handler(ref this))
                 {
                     goto NextLine;
                 }

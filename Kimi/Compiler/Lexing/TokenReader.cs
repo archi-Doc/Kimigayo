@@ -51,6 +51,8 @@ public ref struct TokenReader
 
     public SourceRange CurrentTokenRange => this.currentToken.Range;
 
+    public int CurrentTokenLength => this.currentToken.Length;
+
     #endregion
 
     internal TokenReader(CodeContext codeContext, ref Tokenizer tokenizer)

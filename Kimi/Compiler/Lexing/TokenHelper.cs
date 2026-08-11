@@ -83,20 +83,21 @@ public static partial class TokenHelper
         Set(TokenKind.Yield, true, "yield");
 
         // Contextual keyword
-        Set(TokenKind.RootGroup, false, Constants.RootgroupKeyword); // 9
-        Set(TokenKind.Group, false, "group"); // 5
-        Set(TokenKind.Struct, false, "struct"); // 6
-        Set(TokenKind.Enum, false, "enum"); // 4
-        Set(TokenKind.Extension, false, "extension"); // 9
-        Set(TokenKind.Contract, false, "contract"); // 8
-        Set(TokenKind.Static, false, "static"); // 6
-        Set(TokenKind.Public, false, "public"); // 6
-        Set(TokenKind.Protected, false, "protected"); // 9
-        Set(TokenKind.Private, false, "private"); // 7
-        Set(TokenKind.Internal, false, "internal"); // 8
-        Set(TokenKind.ProtectedOrInternal, false, "protected_or_internal"); // 21
-        Set(TokenKind.ProtectedAndInternal, false, "protected_and_internal"); // 22
-        Set(TokenKind.Open, false, "open"); // 4
+        Set(TokenKind.Alias, true, Constants.AliasKeyword);
+        Set(TokenKind.RootGroup, true, Constants.RootgroupKeyword);
+        Set(TokenKind.Group, true, Constants.GroupKeyword);
+        Set(TokenKind.Struct, true, Constants.StructKeyword);
+        Set(TokenKind.Enum, true, Constants.EnumKeyword);
+        Set(TokenKind.Extension, true, Constants.ExtensionKeyword);
+        Set(TokenKind.Contract, true, Constants.ContractKeyword);
+        Set(TokenKind.Static, true, Constants.StaticKeyword);
+        Set(TokenKind.Public, true, Constants.PublicKeyword);
+        Set(TokenKind.Protected, true, Constants.ProtectedKeyword);
+        Set(TokenKind.Private, true, Constants.PrivateKeyword);
+        Set(TokenKind.Internal, true, Constants.InternalKeyword);
+        Set(TokenKind.ProtectedOrInternal, true, Constants.ProtectedOrInternalKeyword);
+        Set(TokenKind.ProtectedAndInternal, true, Constants.ProtectedAndInternalKeyword);
+        Set(TokenKind.Open, true, Constants.OpenKeyword);
 
         // Not keyword
         Set(TokenKind.Identifier, false, string.Empty);
@@ -203,6 +204,10 @@ public static partial class TokenHelper
     public static bool IsPrimitiveType(this TokenKind tokenKind)
         => tokenKind >= TokenKind.Bool && tokenKind <= TokenKind.String;
 
+    public static bool IsIdentifierOrContextualKeyword(this TokenKind tokenKind)
+        => tokenKind == TokenKind.Identifier ||
+        (tokenKind >= TokenKind.Alias && tokenKind < TokenKind.Identifier);
+
     /// <summary>
     /// Tries to classify a single-character token and reports its grouping-depth effect.
     /// </summary>
@@ -246,6 +251,4 @@ public static partial class TokenHelper
 
         return tokenKind != TokenKind.Invalid;
     }
-
-    public static bool Is
 }

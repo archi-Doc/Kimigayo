@@ -12,6 +12,20 @@ public static class Constants
     public const string DefaultNamespace = "Playground";
     public const string ScrubFileName = "Scrub.kimi";
     public const string RootgroupKeyword = "rootgroup";
+    public const string AliasKeyword = "alias";
+    public const string GroupKeyword = "group";
+    public const string StructKeyword = "struct";
+    public const string EnumKeyword = "enum";
+    public const string ExtensionKeyword = "extension";
+    public const string ContractKeyword = "contract";
+    public const string StaticKeyword = "static";
+    public const string PublicKeyword = "public";
+    public const string ProtectedKeyword = "protected";
+    public const string PrivateKeyword = "private";
+    public const string InternalKeyword = "internal";
+    public const string ProtectedOrInternalKeyword = "protected_or_internal";
+    public const string ProtectedAndInternalKeyword = "protected_and_internal";
+    public const string OpenKeyword = "open";
 
     public const int ExclusiveUpperBound = 126; // '}' + 1
     public const char LfChar = '\n';
@@ -48,8 +62,6 @@ public static class Constants
     public static ReadOnlySpan<char> Move => "<=";
 
     public static ReadOnlySpan<char> Map => "=>";
-
-    public static ReadOnlySpan<char> AliasKeyword => "alias";
 
     public static ReadOnlySpan<char> NamespaceKeyword => "namespace";
 

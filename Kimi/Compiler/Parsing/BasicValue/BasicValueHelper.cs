@@ -17,7 +17,7 @@ public static class BasicValueHelper
     {
         var kind = (uint)koto.Akind;
         if (kind < (uint)HandlerTable.Length && HandlerTable[kind] is { } handler)
-        {//
+        {
             return handler(compilation, koto);
         }
 

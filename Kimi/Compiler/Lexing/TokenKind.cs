@@ -56,12 +56,13 @@ public enum TokenKind : byte
     Yield, // yield
 
     // Contextual keyword
-    RootGroup, // rootgroup
-    Group, // group
-    Struct, // struct
-    Enum, // enum
-    Extension, // extension
-    Contract, // contract
+    Alias = 96,
+    RootGroup,
+    Group,
+    Struct,
+    Enum,
+    Extension,
+    Contract,
     Static,
     Public,
     Protected,

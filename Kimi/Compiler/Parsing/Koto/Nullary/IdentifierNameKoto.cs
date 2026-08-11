@@ -22,7 +22,14 @@ public partial class IdentifierNameKoto : Koto
     public IdentifierNameKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Range)
     {
-        this.Identifier = reader.GetSpan(token).ToString();
+        if (token.Kind == TokenKind.Identifier)
+        {
+            this.Identifier = reader.GetSpan(token).ToString();
+        }
+        else
+        {
+            this.Identifier = token.Kind.ToText();
+        }
     }
 
     public override string ToString()
