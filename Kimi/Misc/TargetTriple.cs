@@ -2,11 +2,8 @@
 
 namespace Kimi.Compiler;
 
-public record class TargetTriple
+public record class IrTarget
 {
-    // x86_64-pc-windows-msvc
-    public static readonly TargetTriple Empty;
-
     private static readonly Dictionary<string, int> PointerWidthByArchitecture;
 
     static TargetTriple()
@@ -78,9 +75,25 @@ public record class TargetTriple
             ["wasm64"] = 64,
             ["x86_64"] = 64,
         };
-
-        Empty = new(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
     }
+
+    public bool TryCreate(TargetTriple targetTriple, out IrTarget irTarget)
+    {
+    }
+
+    private IrTarget(int pointerWidth, string dataLayout)
+    {
+    }
+
+    public int PointerWidth { get; }
+
+    public string DataLayout { get; }
+}
+
+public record class TargetTriple
+{
+    // x86_64-pc-windows-msvc
+    public static readonly TargetTriple Empty = new(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
 
     public static bool TryParse(ReadOnlySpan<char> text, out TargetTriple triple)
     {
@@ -187,8 +200,6 @@ public record class TargetTriple
     public string Environment { get; init; }
 
     public string Abi { get; init; }
-
-    public int PointerWidth { get; }
 
     public TargetTriple(string architecture, string vendor, string operatingSystem, string environment, string abi)
     {
