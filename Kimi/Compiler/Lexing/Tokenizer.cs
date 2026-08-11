@@ -420,7 +420,7 @@ internal ref struct Tokenizer
     public void ReadAll()
     {
         this.currentIndentLevel = 0;
-        while (this.Read() > 0)
+        while (this.position >= this.sourceText.Length) // (this.Read() > 0)
         {
             // builder.Add(new(TokenKind.Separator));
         }
@@ -506,9 +506,9 @@ Loop:
                         continue;
                     }
 
-                    if (TokenHelper.KeywordToTokenKind.TryGetValue(this.span.Slice(0, length), out var tokenKind2))
+                    if (TokenHelper.KeywordToTokenKind.TryGetValue(this.span.Slice(0, length), out var keywordKind))
                     {// Keyword
-                        this.AddTokenAndSlice(tokenKind2, length);
+                        this.AddTokenAndSlice(keywordKind, length);
                     }
                     else
                     {// Identifier
