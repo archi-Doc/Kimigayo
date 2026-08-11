@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using Arc.Collections;
 using Kimi.Compiler.Parsing;
+using Kimi.Compiler.Target;
 
 namespace Kimi.Compiler;
 
@@ -22,11 +23,11 @@ public class Compilation
 
     public string ProjectName { get; }*/
 
-    public string Target { get; private set; } = string.Empty;
+    public TargetTriple TargetTriple { get; private set; }
 
-    public TargetTriple TargetTriple { get; private set; } = TargetTriple.Empty;
+    public IrTarget IrTarget { get; private set; }
 
-    public int PointerWidth => this.TargetTriple.PointerWidth;
+    public int PointerWidth => this.IrTarget.PointerWidth;
 
     public KotonohaIdentifier[] KotonohaArray { get; private set; } = [];
 
@@ -56,25 +57,20 @@ public class Compilation
 
     public bool Prepare(string target)
     {
-        if (!TargetTriple.TryParse(target, out var targetTriple))
-        {
-            return false;
-        }
-
-        this.Target = target;
-        this.TargetTriple = targetTriple;
+        this.TargetTriple = TargetTriple.Parse(target);
+        this.IrTarget = IrTarget.Create(this.TargetTriple);
 
         // External Kotonoha
 
         // Compilation Variables
         this.Variables.Clear();
 
-        var os = this.TargetTriple.OperatingSystem;
+        var os = this.TargetTriple.OsName;
         this.Variables.Add("os", new(os));
         this.Variables.Add("windows", new(string.Equals(os, "Windows", StringComparison.InvariantCultureIgnoreCase)));
         this.Variables.Add("linux", new(string.Equals(os, "linux", StringComparison.InvariantCultureIgnoreCase)));
         this.Variables.Add("macos", new(string.Equals(os, "macos", StringComparison.InvariantCultureIgnoreCase)));
-        this.Variables.Add("pointerWidth", new(this.TargetTriple.PointerWidth));
+        this.Variables.Add("pointerWidth", new(this.IrTarget.PointerWidth));
 
         return true;
     }

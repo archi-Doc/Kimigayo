@@ -1,7 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 namespace Kimi.Compiler;
-
+/*
 public record class IrTarget
 {
     private static readonly Dictionary<string, int> PointerWidthByArchitecture;
@@ -230,4 +230,4 @@ public record class TargetTriple
 
         return $"{this.Architecture}-{this.Vendor}-{this.OperatingSystem}";
     }
-}
+}*/
