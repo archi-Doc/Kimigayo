@@ -1,6 +1,8 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.CompilerServices;
+using Kimi.Compiler.Helper;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
@@ -94,6 +96,11 @@ public static class BasicValueHelper
     private static BasicValue EvaluateNot(Compilation compilation, Koto koto)
     {// not A
         var operand = Evaluate(compilation, ((NotKoto)koto).Operand);
+        if (operand.Kind == BasicValueKind.Invalid)
+        {// Invalid value already has its diagnostic.
+            return default;
+        }
+
         if (operand.Kind == BasicValueKind.Bool)
         {
             return new(!operand.Bool);
@@ -105,6 +112,11 @@ public static class BasicValueHelper
     private static BasicValue EvaluatePrefixPlus(Compilation compilation, Koto koto)
     {// +A
         var operand = Evaluate(compilation, ((PrefixPlusKoto)koto).Operand);
+        if (operand.Kind == BasicValueKind.Invalid)
+        {// Invalid value already has its diagnostic.
+            return default;
+        }
+
         if (operand.Kind is BasicValueKind.I64 or BasicValueKind.F64)
         {
             return operand;
@@ -116,12 +128,26 @@ public static class BasicValueHelper
     private static BasicValue EvaluatePrefixMinus(Compilation compilation, Koto koto)
     {// -A
         var operand = Evaluate(compilation, ((PrefixMinusKoto)koto).Operand);
-        return operand.Kind switch
+        if (operand.Kind == BasicValueKind.Invalid)
+        {// Invalid value already has its diagnostic.
+            return default;
+        }
+
+        if (operand.Kind == BasicValueKind.I64)
         {
-            BasicValueKind.I64 => new(-operand.I64),
-            BasicValueKind.F64 => new(-operand.F64),
-            _ => AddNotSupportedDiagnostic(koto),
-        };
+            if (operand.I64 == long.MinValue)
+            {
+                return AddIntegerOverflowDiagnostic(koto);
+            }
+
+            return new(-operand.I64);
+        }
+        else if (operand.Kind == BasicValueKind.F64)
+        {
+            return new(-operand.F64);
+        }
+
+        return AddNotSupportedDiagnostic(koto);
     }
 
     private static BasicValue EvaluateAsterisk(Compilation compilation, Koto koto)
@@ -131,12 +157,24 @@ public static class BasicValueHelper
             return default;
         }
 
-        return left.Kind switch
+        if (left.Kind == BasicValueKind.I64)
         {
-            BasicValueKind.I64 => new(left.I64 * right.I64),
-            BasicValueKind.F64 => new(left.F64 * right.F64),
-            _ => AddNotSupportedDiagnostic(koto),
-        };
+            var result = (Int128)left.I64 * right.I64;
+            if (NumberLiteralHelper.IsInt64(result))
+            {
+                return new((long)result);
+            }
+            else
+            {
+                return AddIntegerOverflowDiagnostic(koto);
+            }
+        }
+        else if (left.Kind == BasicValueKind.F64)
+        {
+            return new(left.F64 * right.F64);
+        }
+
+        return AddNotSupportedDiagnostic(koto);
     }
 
     private static BasicValue EvaluateSlash(Compilation compilation, Koto koto)
@@ -146,12 +184,26 @@ public static class BasicValueHelper
             return default;
         }
 
-        return left.Kind switch
+        if (left.Kind == BasicValueKind.I64)
         {
-            BasicValueKind.I64 => new(left.I64 / right.I64),
-            BasicValueKind.F64 => new(left.F64 / right.F64),
-            _ => AddNotSupportedDiagnostic(koto),
-        };
+            if (right.I64 == 0)
+            {
+                return AddDivisionByZeroDiagnostic(koto);
+            }
+            else if (left.I64 == long.MinValue && right.I64 == -1)
+            {
+                return AddIntegerOverflowDiagnostic(koto);
+            }
+
+            return new(left.I64 / right.I64);
+        }
+
+        if (left.Kind == BasicValueKind.F64)
+        {
+            return new(left.F64 / right.F64);
+        }
+
+        return AddNotSupportedDiagnostic(koto);
     }
 
     private static BasicValue EvaluatePercent(Compilation compilation, Koto koto)
@@ -163,6 +215,16 @@ public static class BasicValueHelper
 
         if (left.Kind == BasicValueKind.I64)
         {
+            if (right.I64 == 0)
+            {
+                return AddDivisionByZeroDiagnostic(koto);
+            }
+
+            if (right.I64 == -1)
+            {
+                return new(0L);
+            }
+
             return new(left.I64 % right.I64);
         }
 
@@ -176,12 +238,24 @@ public static class BasicValueHelper
             return default;
         }
 
-        return left.Kind switch
+        if (left.Kind == BasicValueKind.I64)
         {
-            BasicValueKind.I64 => new(left.I64 + right.I64),
-            BasicValueKind.F64 => new(left.F64 + right.F64),
-            _ => AddNotSupportedDiagnostic(koto),
-        };
+            var result = (Int128)left.I64 + right.I64;
+            if (NumberLiteralHelper.IsInt64(result))
+            {
+                return new((long)result);
+            }
+            else
+            {
+                return AddIntegerOverflowDiagnostic(koto);
+            }
+        }
+        else if (left.Kind == BasicValueKind.F64)
+        {
+            return new(left.F64 + right.F64);
+        }
+
+        return AddNotSupportedDiagnostic(koto);
     }
 
     private static BasicValue EvaluateMinus(Compilation compilation, Koto koto)
@@ -191,12 +265,24 @@ public static class BasicValueHelper
             return default;
         }
 
-        return left.Kind switch
+        if (left.Kind == BasicValueKind.I64)
         {
-            BasicValueKind.I64 => new(left.I64 - right.I64),
-            BasicValueKind.F64 => new(left.F64 - right.F64),
-            _ => AddNotSupportedDiagnostic(koto),
-        };
+            var result = (Int128)left.I64 - right.I64;
+            if (NumberLiteralHelper.IsInt64(result))
+            {
+                return new((long)result);
+            }
+            else
+            {
+                return AddIntegerOverflowDiagnostic(koto);
+            }
+        }
+        else if (left.Kind == BasicValueKind.F64)
+        {
+            return new(left.F64 - right.F64);
+        }
+
+        return AddNotSupportedDiagnostic(koto);
     }
 
     private static BasicValue EvaluateLessThan(Compilation compilation, Koto koto)
@@ -295,32 +381,68 @@ public static class BasicValueHelper
 
     private static BasicValue EvaluateAnd(Compilation compilation, Koto koto)
     {// A and B
-        if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
+        var binary = (BinaryKoto)koto;
+        var left = Evaluate(compilation, binary.Left);
+        if (left.Kind == BasicValueKind.Invalid)
         {
             return default;
         }
 
-        if (left.Kind == BasicValueKind.Bool)
+        if (left.Kind != BasicValueKind.Bool)
         {
-            return new(left.Bool && right.Bool);
+            return AddNotSupportedDiagnostic(koto);
         }
 
-        return AddNotSupportedDiagnostic(koto);
+        if (!left.Bool)
+        {
+            return new(false);
+        }
+
+        var right = Evaluate(compilation, binary.Right);
+        if (right.Kind == BasicValueKind.Invalid)
+        {
+            return default;
+        }
+
+        if (right.Kind != BasicValueKind.Bool)
+        {
+            return AddNotSupportedDiagnostic(koto);
+        }
+
+        return new(right.Bool);
     }
 
     private static BasicValue EvaluateOr(Compilation compilation, Koto koto)
     {// A or B
-        if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
+        var binary = (BinaryKoto)koto;
+        var left = Evaluate(compilation, binary.Left);
+        if (left.Kind == BasicValueKind.Invalid)
         {
             return default;
         }
 
-        if (left.Kind == BasicValueKind.Bool)
+        if (left.Kind != BasicValueKind.Bool)
         {
-            return new(left.Bool || right.Bool);
+            return AddNotSupportedDiagnostic(koto);
         }
 
-        return AddNotSupportedDiagnostic(koto);
+        if (left.Bool)
+        {
+            return new(true);
+        }
+
+        var right = Evaluate(compilation, binary.Right);
+        if (right.Kind == BasicValueKind.Invalid)
+        {
+            return default;
+        }
+
+        if (right.Kind != BasicValueKind.Bool)
+        {
+            return AddNotSupportedDiagnostic(koto);
+        }
+
+        return new(right.Bool);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -328,6 +450,12 @@ public static class BasicValueHelper
     {
         left = Evaluate(compilation, koto.Left);
         right = Evaluate(compilation, koto.Right);
+
+        if (left.Kind == BasicValueKind.Invalid || right.Kind == BasicValueKind.Invalid)
+        {
+            return false;
+        }
+
         if (left.Kind == right.Kind)
         {
             return true;
@@ -335,6 +463,20 @@ public static class BasicValueHelper
 
         koto.AddDiagnostic(Hashed.Kimi.TypeMismatch);
         return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static BasicValue AddIntegerOverflowDiagnostic(Koto koto)
+    {
+        koto.AddDiagnostic(Hashed.Kimi.IntegerOverflow);
+        return default;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static BasicValue AddDivisionByZeroDiagnostic(Koto koto)
+    {
+        koto.AddDiagnostic(Hashed.Kimi.DivisionByZero);
+        return default;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
