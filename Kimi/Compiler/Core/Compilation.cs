@@ -26,6 +26,8 @@ public class Compilation
 
     public TargetTriple TargetTriple { get; private set; } = TargetTriple.Empty;
 
+    public int PointerWidth => this.TargetTriple.PointerWidth;
+
     public KotonohaIdentifier[] KotonohaArray { get; private set; } = [];
 
     public Kotonoha Kotonoha { get; private set; }
@@ -54,7 +56,7 @@ public class Compilation
 
     public bool Prepare(string target)
     {
-        if (!TargetTripleParser.TryParse(target, out var targetTriple))
+        if (!TargetTriple.TryParse(target, out var targetTriple))
         {
             return false;
         }
@@ -72,6 +74,7 @@ public class Compilation
         this.Variables.Add("windows", new(string.Equals(os, "Windows", StringComparison.InvariantCultureIgnoreCase)));
         this.Variables.Add("linux", new(string.Equals(os, "linux", StringComparison.InvariantCultureIgnoreCase)));
         this.Variables.Add("macos", new(string.Equals(os, "macos", StringComparison.InvariantCultureIgnoreCase)));
+        this.Variables.Add("pointerWidth", new(this.TargetTriple.PointerWidth));
 
         return true;
     }

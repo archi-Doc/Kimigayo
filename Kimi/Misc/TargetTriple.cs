@@ -2,29 +2,86 @@
 
 namespace Kimi.Compiler;
 
-public record class TargetTriple(string Architecture, string Vendor, string OperatingSystem, string Environment, string Abi)
+public record class TargetTriple
 {
     // x86_64-pc-windows-msvc
-    public static readonly TargetTriple Empty = new(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+    public static readonly TargetTriple Empty;
 
-    public override string ToString()
+    private static readonly Dictionary<string, int> PointerWidthByArchitecture;
+
+    static TargetTriple()
     {
-        if (this.Abi.Length > 0)
+        PointerWidthByArchitecture = new(StringComparer.OrdinalIgnoreCase)
         {
-            return $"{this.Architecture}-{this.Vendor}-{this.OperatingSystem}-{this.Environment}-{this.Abi}";
-        }
+            ["avr"] = 16,
+            ["msp430"] = 16,
 
-        if (this.Environment.Length > 0)
-        {
-            return $"{this.Architecture}-{this.Vendor}-{this.OperatingSystem}-{this.Environment}";
-        }
+            ["aarch64_32"] = 32,
+            ["amdil"] = 32,
+            ["arc"] = 32,
+            ["arm"] = 32,
+            ["armeb"] = 32,
+            ["csky"] = 32,
+            ["dxil"] = 32,
+            ["hexagon"] = 32,
+            ["hsail"] = 32,
+            ["kalimba"] = 32,
+            ["lanai"] = 32,
+            ["loongarch32"] = 32,
+            ["m68k"] = 32,
+            ["mips"] = 32,
+            ["mipsel"] = 32,
+            ["nvptx"] = 32,
+            ["ppc"] = 32,
+            ["ppcle"] = 32,
+            ["r600"] = 32,
+            ["renderscript32"] = 32,
+            ["riscv32"] = 32,
+            ["riscv32be"] = 32,
+            ["shave"] = 32,
+            ["sparc"] = 32,
+            ["sparcel"] = 32,
+            ["spir"] = 32,
+            ["spirv32"] = 32,
+            ["tce"] = 32,
+            ["tcele"] = 32,
+            ["thumb"] = 32,
+            ["thumbeb"] = 32,
+            ["wasm32"] = 32,
+            ["x86"] = 32,
+            ["xcore"] = 32,
+            ["xtensa"] = 32,
 
-        return $"{this.Architecture}-{this.Vendor}-{this.OperatingSystem}";
+            ["aarch64"] = 64,
+            ["aarch64_be"] = 64,
+            ["amdgpu"] = 64,
+            ["amdil64"] = 64,
+            ["bpfeb"] = 64,
+            ["bpfel"] = 64,
+            ["hsail64"] = 64,
+            ["loongarch64"] = 64,
+            ["mips64"] = 64,
+            ["mips64el"] = 64,
+            ["nvptx64"] = 64,
+            ["ppc64"] = 64,
+            ["ppc64le"] = 64,
+            ["renderscript64"] = 64,
+            ["riscv64"] = 64,
+            ["riscv64be"] = 64,
+            ["sparcv9"] = 64,
+            ["spirv"] = 64,
+            ["spir64"] = 64,
+            ["spirv64"] = 64,
+            ["tcele64"] = 64,
+            ["systemz"] = 64,
+            ["ve"] = 64,
+            ["wasm64"] = 64,
+            ["x86_64"] = 64,
+        };
+
+        Empty = new(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
     }
-}
 
-public static class TargetTripleParser
-{
     public static bool TryParse(ReadOnlySpan<char> text, out TargetTriple triple)
     {
         triple = TargetTriple.Empty;
@@ -119,5 +176,47 @@ public static class TargetTripleParser
             text.Equals("ilp32", StringComparison.Ordinal) ||
             text.Equals("musleabi", StringComparison.Ordinal) ||
             text.Equals("musleabihf", StringComparison.Ordinal);
+    }
+
+    public string Architecture { get; init; }
+
+    public string Vendor { get; init; }
+
+    public string OperatingSystem { get; init; }
+
+    public string Environment { get; init; }
+
+    public string Abi { get; init; }
+
+    public int PointerWidth { get; }
+
+    public TargetTriple(string architecture, string vendor, string operatingSystem, string environment, string abi)
+    {
+        this.Architecture = architecture;
+        this.Vendor = vendor;
+        this.OperatingSystem = operatingSystem;
+        this.Environment = environment;
+        this.Abi = abi;
+
+        this.PointerWidth = 64;
+        if (PointerWidthByArchitecture.TryGetValue(architecture, out var pointerWidth))
+        {
+            this.PointerWidth = pointerWidth;
+        }
+    }
+
+    public override string ToString()
+    {
+        if (this.Abi.Length > 0)
+        {
+            return $"{this.Architecture}-{this.Vendor}-{this.OperatingSystem}-{this.Environment}-{this.Abi}";
+        }
+
+        if (this.Environment.Length > 0)
+        {
+            return $"{this.Architecture}-{this.Vendor}-{this.OperatingSystem}-{this.Environment}";
+        }
+
+        return $"{this.Architecture}-{this.Vendor}-{this.OperatingSystem}";
     }
 }
