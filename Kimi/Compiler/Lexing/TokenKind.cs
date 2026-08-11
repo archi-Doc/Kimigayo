@@ -38,7 +38,7 @@ public enum TokenKind : byte
     Var,
     Func,
 
-    // Block or expression keyword
+    // Expression keyword
     If, // if
     Else, // else
     // Block, // block
@@ -50,8 +50,6 @@ public enum TokenKind : byte
     For, // for
     Loop, // loop
     Match, // match
-
-    // Non-block keyword
     Return, // method/return
     Break, // loop/break
     Continue, // continue

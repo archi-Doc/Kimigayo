@@ -58,46 +58,45 @@ public static partial class TokenHelper
         Set(TokenKind.F64, true, "f64");
         Set(TokenKind.String, true, "string");
 
-        // Keywords (Group)
-        Set(TokenKind.Static, true, "static");
-        Set(TokenKind.Public, true, "public");
-        Set(TokenKind.Protected, true, "protected");
-        Set(TokenKind.Private, true, "private");
-        Set(TokenKind.Internal, true, "internal");
-        Set(TokenKind.ProtectedOrInternal, true, "protected_or_internal");
-        Set(TokenKind.ProtectedAndInternal, true, "protected_and_internal");
-        Set(TokenKind.Open, true, "open");
-        Set(TokenKind.Let, true, "let");
-        Set(TokenKind.Var, true, "var");
+        // Keywords
         Set(TokenKind.True, true, "true");
         Set(TokenKind.False, true, "false");
+        Set(TokenKind.Let, true, "let");
+        Set(TokenKind.Var, true, "var");
+        Set(TokenKind.Func, true, "func");
 
-        // Block keyword
-        Set(TokenKind.Group, true, "group");
-        Set(TokenKind.Struct, true, "struct");
-        Set(TokenKind.Enum, true, "enum");
-        Set(TokenKind.Extension, true, "extension");
-        Set(TokenKind.Contract, true, "contract");
-        Set(TokenKind.For, true, "for");
-        Set(TokenKind.Loop, true, "loop");
-        Set(TokenKind.Match, true, "match");
-
-        // Block or expression keyword
+        // Expression keyword
         Set(TokenKind.If, true, "if");
         Set(TokenKind.Else, true, "else");
-        Set(TokenKind.Block, true, "block");
+        // Set(TokenKind.Block, true, "block");
         Set(TokenKind.As, true, "as");
         Set(TokenKind.Is, true, "is");
         Set(TokenKind.Not, true, "not");
         Set(TokenKind.And, true, "and");
         Set(TokenKind.Or, true, "or");
-
-        // Non-block keyword
-        Set(TokenKind.RootGroup, true, Constants.RootgroupKeyword);
+        Set(TokenKind.For, true, "for");
+        Set(TokenKind.Loop, true, "loop");
+        Set(TokenKind.Match, true, "match");
         Set(TokenKind.Return, true, "return");
         Set(TokenKind.Break, true, "break");
         Set(TokenKind.Continue, true, "continue");
         Set(TokenKind.Yield, true, "yield");
+
+        // Contextual keyword
+        Set(TokenKind.RootGroup, false, Constants.RootgroupKeyword); // 9
+        Set(TokenKind.Group, false, "group"); // 5
+        Set(TokenKind.Struct, false, "struct"); // 6
+        Set(TokenKind.Enum, false, "enum"); // 4
+        Set(TokenKind.Extension, false, "extension"); // 9
+        Set(TokenKind.Contract, false, "contract"); // 8
+        Set(TokenKind.Static, false, "static"); // 6
+        Set(TokenKind.Public, false, "public"); // 6
+        Set(TokenKind.Protected, false, "protected"); // 9
+        Set(TokenKind.Private, false, "private"); // 7
+        Set(TokenKind.Internal, false, "internal"); // 8
+        Set(TokenKind.ProtectedOrInternal, false, "protected_or_internal"); // 21
+        Set(TokenKind.ProtectedAndInternal, false, "protected_and_internal"); // 22
+        Set(TokenKind.Open, false, "open"); // 4
 
         // Not keyword
         Set(TokenKind.Identifier, false, string.Empty);
@@ -105,6 +104,7 @@ public static partial class TokenHelper
         Set(TokenKind.EndBlock, false, string.Empty);
         Set(TokenKind.Separator, false, string.Empty);
         Set(TokenKind.NumericLiteral, false, string.Empty);
+        Set(TokenKind.CharLiteral, false, string.Empty);
         Set(TokenKind.StringLiteral, false, string.Empty);
         Set(TokenKind.RawStringLiteral, false, string.Empty);
         Set(TokenKind.SingleLineComment, false, string.Empty);
@@ -246,4 +246,6 @@ public static partial class TokenHelper
 
         return tokenKind != TokenKind.Invalid;
     }
+
+    public static bool Is
 }
