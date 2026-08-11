@@ -44,10 +44,10 @@ public enum KotoKind : byte
     Struct,
 
     // Nullary
-    Alias,
-    BoolLiteral,
     Error,
+    Alias,
     Field,
+    BoolLiteral,
     NumberLiteral,
     StringLiteral,
     IdentifierName,

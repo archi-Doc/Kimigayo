@@ -31,6 +31,9 @@ public static partial class NumberLiteralHelper
 {
     private static readonly SearchValues<char> FloatChars = SearchValues.Create(".eE");
 
+    public static bool IsInt64(Int128 value)
+        => value >= long.MinValue && value <= long.MaxValue;
+
     /// <summary>
     /// Scans a numeric literal at the start of <paramref name="text"/>.
     /// </summary>

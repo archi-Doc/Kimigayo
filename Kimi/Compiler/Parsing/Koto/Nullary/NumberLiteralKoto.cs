@@ -113,8 +113,11 @@ public sealed partial class NumberLiteralKoto : Koto
 
         if (this.parseResult == NumberLiteralParseResult.I128)
         {
-            basicValue = new((long)this.uv);
-            return true;
+            if (NumberLiteralHelper.IsInt64(this.uv))
+            {
+                basicValue = new((long)this.uv);
+                return true;
+            }
         }
         else if (this.parseResult == NumberLiteralParseResult.F64)
         {
