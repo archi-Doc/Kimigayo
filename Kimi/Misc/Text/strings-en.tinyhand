@@ -33,6 +33,7 @@ Kimi=
   InvalidUnicodeScalar="The Unicode escape sequence does not represent a valid Unicode scalar value"
   IntegerOverflow="The integer operation exceeds the supported range"
   MissingBlockCommentEnd="Reached end-of-file. Missing '*/'"
+  MissingComma="A comma is required to separate syntax elements"
   MissingExpectedToken="Expected: {0}, but reached the end of line."
   MissingStringLiteralEnd="String literal is not terminated. Expected closing \""
   MultipleAccessibilityModifiers="Only one accessibility modifier is allowed"

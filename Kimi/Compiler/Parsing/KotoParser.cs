@@ -293,7 +293,6 @@ public static class KotoParser
             goto SkipAndExit;
         }
 
-        reader.Advance();
         if (reader.CurrentTokenKind == TokenKind.LessThan)
         {// <&s T, &s2 T2, >
             ParseGenericArguments(ref reader);
@@ -1237,12 +1236,12 @@ Loop:
             _ => default,
         };
 
-    private static List<int>? ParseGenericArguments(ref TokenReader reader)
+    private static List<GenericTypeSemantics>? ParseGenericArguments(ref TokenReader reader)
     {// <&s T, &s2 T2, >
         Debug.Assert(reader.CurrentTokenKind == TokenKind.LessThan);
         reader.Advance();
 
-        List<int>? list = default;
+        List<GenericTypeSemantics>? list = default;
         var firstArgument = true;
         while (reader.TryRead(out var token))
         {
@@ -1259,24 +1258,23 @@ Loop:
             {
                 if (reader.CurrentTokenKind == TokenKind.Comma)
                 {// ,
-                    reader.Advance();
+                    reader.TryRead(out token);
                 }
-
-                if (reader.CurrentTokenKind == TokenKind.GreaterThan)
-                {// >
-                    reader.Advance();
-                    return list;
+                else
+                {
+                    reader.AddDiagnostic(Hashed.Kimi.MissingComma);
                 }
             }
 
-            if (reader.CurrentTokenKind == TokenKind.Ampersand)
+            GenericSemanticsKoto? semanticsKoto = default;
+            if (token.Kind == TokenKind.Ampersand)
             {// &s
                 if (!reader.TryRead(out var semanticToken))
                 {
                     return list;
                 }
 
-                if (!IdentifierNameKoto.TryCreate(ref reader, semanticToken, out var semanticKoto))
+                if (!GenericSemanticsKoto.TryCreate(ref reader, semanticToken, out semanticsKoto))
                 {
                     return list;
                 }
@@ -1288,10 +1286,16 @@ Loop:
             }
 
             // T
-            if (!IdentifierNameKoto.TryCreate(ref reader, token, out var typeKoto))
+            GenericTypeKoto? typeKoto;
+            if (!GenericTypeKoto.TryCreate(ref reader, token, out typeKoto))
             {
                 return list;
             }
+
+            list ??= new();
+            list.Add(new(typeKoto, semanticsKoto));
         }
+
+        return list;
     }
 }
