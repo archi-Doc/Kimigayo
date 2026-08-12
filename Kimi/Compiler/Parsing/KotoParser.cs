@@ -274,12 +274,8 @@ public static class KotoParser
         return sb.ToString();
     }
 
-    public static void Test<TList>()
-    {
-    }
-
     public static FunctionKoto? ParseFuncDeclaration(ref TokenReader reader)
-    {// public func Method1<T>(external -> internal: type, external?: type2 = default, ) -> (type, type2, )
+    {// public func Method1<T>(external -> internal: type, external?: type2 = default) -> (type, type2)
         var context = reader.TakeContext();
 
         if (!reader.TryRead(out var methodToken))

@@ -53,8 +53,6 @@ public enum KotoKind : byte
     StringLiteral,
     IdentifierName,
     Type,
-    TupleType,
-    FunctionType,
 
     // Unary
     Attribute,
@@ -110,6 +108,10 @@ public enum KotoKind : byte
     Invocation,
     Generics,
 
+    // Types
+    TupleType,
+    FunctionType,
+
     Omega,
 }
 
@@ -129,8 +131,6 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.IdentifierName, typeof(IdentifierNameKoto))]
 [TinyhandUnion((int)KotoKind.Type, typeof(TypeKoto))]
-[TinyhandUnion((int)KotoKind.TupleType, typeof(TupleTypeKoto))]
-[TinyhandUnion((int)KotoKind.FunctionType, typeof(FunctionTypeKoto))]
 
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
 [TinyhandUnion((int)KotoKind.Macro, typeof(MacroKoto))]
@@ -182,6 +182,8 @@ public enum KotoKind : byte
 
 [TinyhandUnion((int)KotoKind.Invocation, typeof(InvocationKoto))]
 [TinyhandUnion((int)KotoKind.Generics, typeof(GenericsKoto))]
+[TinyhandUnion((int)KotoKind.TupleType, typeof(TupleTypeKoto))]
+[TinyhandUnion((int)KotoKind.FunctionType, typeof(FunctionTypeKoto))]
 [ValueLinkObject]
 public abstract partial class Koto
 {

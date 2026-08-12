@@ -31,4 +31,18 @@ public partial class GenericSemanticsKoto : IdentifierNameKoto
         : base(ref reader, token, identifierName)
     {
     }
+
+    public override string ToString()
+        => $"{Constants.AmpersandChar}{this.IdentifierName}";
+
+    public override void WriteTo(ref IndentedStringBuilder builder)
+    {
+        if (this.AttributeChain is not null)
+        {
+            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
+        }
+
+        builder.Append(Constants.AmpersandChar);
+        builder.Append(this.IdentifierName);
+    }
 }

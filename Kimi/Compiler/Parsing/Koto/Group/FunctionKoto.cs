@@ -5,19 +5,12 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
-public sealed record FunctionParameterKoto(
-    string ExternalName,
-    string InternalName,
-    bool IsOptional,
-    Koto Type,
-    Koto? DefaultValue);
+public sealed record FunctionParameterKoto(string ExternalName, string InternalName, bool IsOptional, Koto Type, Koto? DefaultValue);
 
 [TinyhandObject]
 public partial class FunctionKoto : IdentifiableKoto, ITokenParser
 {
     public override KotoKind Akind => KotoKind.Function;
-
-    public override bool IsToplevel => true;
 
     [Key(2)]
     public ModifierKind Modifier { get; private set; }
@@ -37,14 +30,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     [IgnoreMember]
     public bool IsExcluded { get; }
 
-    public FunctionKoto(
-        ref TokenReader reader,
-        TokenContext context,
-        SourceRange range,
-        string name,
-        List<GenericTypeSemanticsPair>? genericArguments,
-        List<FunctionParameterKoto> parameters,
-        Koto? returnType)
+    public FunctionKoto(ref TokenReader reader, TokenContext context, SourceRange range, string name, List<GenericTypeSemanticsPair>? genericArguments, List<FunctionParameterKoto> parameters, Koto? returnType)
         : base(ref reader, range)
     {
         this.AttributeChain = context.AttributeKoto;
@@ -124,7 +110,6 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
                 var argument = this.GenericArguments[i];
                 if (argument.semanticsKoto is not null)
                 {
-                    builder.Append('&');
                     argument.semanticsKoto.WriteTo(ref builder);
                     builder.Append(' ');
                 }
