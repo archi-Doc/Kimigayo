@@ -242,7 +242,25 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             else if (token.Kind == TokenKind.Func)
             {// public func Main() => ()
                 reader.Advance();
-                KotoParser.ParseFuncDeclaration(ref reader);
+                var functionKoto = KotoParser.ParseFuncDeclaration(ref reader);
+                if (functionKoto is not null)
+                {
+                    if (!functionKoto.IsExcluded)
+                    {
+                        this.AddLast(functionKoto);
+                    }
+
+                    while (reader.CurrentTokenKind == TokenKind.Separator)
+                    {
+                        reader.Advance();
+                    }
+
+                    if (reader.CurrentTokenKind == TokenKind.StartBlock)
+                    {
+                        reader.Advance();
+                        nextParser = functionKoto;
+                    }
+                }
             }
             else
             {// Other

@@ -42,6 +42,7 @@ public enum KotoKind : byte
     Extension,
     Group,
     Struct,
+    Function,
 
     // Nullary
     Error,
@@ -52,6 +53,8 @@ public enum KotoKind : byte
     StringLiteral,
     IdentifierName,
     Type,
+    TupleType,
+    FunctionType,
 
     // Unary
     Attribute,
@@ -116,6 +119,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Extension, typeof(ExtensionKoto))]
 [TinyhandUnion((int)KotoKind.Group, typeof(GroupKoto))]
 [TinyhandUnion((int)KotoKind.Struct, typeof(StructKoto))]
+[TinyhandUnion((int)KotoKind.Function, typeof(FunctionKoto))]
 
 [TinyhandUnion((int)KotoKind.Alias, typeof(AliasKoto))]
 [TinyhandUnion((int)KotoKind.BoolLiteral, typeof(BoolLiteralKoto))]
@@ -125,6 +129,8 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.IdentifierName, typeof(IdentifierNameKoto))]
 [TinyhandUnion((int)KotoKind.Type, typeof(TypeKoto))]
+[TinyhandUnion((int)KotoKind.TupleType, typeof(TupleTypeKoto))]
+[TinyhandUnion((int)KotoKind.FunctionType, typeof(FunctionTypeKoto))]
 
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
 [TinyhandUnion((int)KotoKind.Macro, typeof(MacroKoto))]
