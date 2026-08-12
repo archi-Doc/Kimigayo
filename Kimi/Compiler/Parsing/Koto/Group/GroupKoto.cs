@@ -11,7 +11,7 @@ namespace Kimi.Compiler.Parsing;
 #pragma warning disable SA1202 // Elements should be ordered by access
 
 [TinyhandObject(ReservedKeyCount = 3)]
-public abstract partial class BlockKoto : IdentifiableKoto
+public abstract partial class BlockKoto : IdentifiableKoto, ITokenParser
 {
     [Key(2)]
     public Koto.GoshujinClass Children { get; protected set; } = new();
@@ -38,13 +38,17 @@ public abstract partial class BlockKoto : IdentifiableKoto
 
         this.Children.ClearAll();
     }
+
+    public void Parse(ref TokenReader reader)
+    {
+    }
 }
 
 /// <summary>
 /// namespace, struct, enum, extension, contract.
 /// </summary>
 [TinyhandObject]
-public partial class GroupKoto : BlockKoto
+public partial class GroupKoto : IdentifiableKoto, ITokenParser
 {
     public override KotoKind Akind => KotoKind.Group;
 
@@ -159,7 +163,7 @@ public partial class GroupKoto : BlockKoto
             }
 
             var token = reader.CurrentToken;
-            GroupKoto? nextGroup = default;
+            ITokenParser? nextParser = default;
 
             if (reader.IsIdentifierToken(token, Constants.AliasKeyword))
             {// alias (not supported)
@@ -206,7 +210,7 @@ public partial class GroupKoto : BlockKoto
                     reader.Advance();
                 }
 
-                nextGroup = groupKoto;
+                nextParser = groupKoto;
             }
             else if (token.Kind == TokenKind.Group)
             {// group
@@ -232,7 +236,7 @@ public partial class GroupKoto : BlockKoto
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.Advance();
-                    nextGroup = structKoto;
+                    nextParser = structKoto;
                 }
             }
             else if (token.Kind == TokenKind.Func)
@@ -254,17 +258,15 @@ public partial class GroupKoto : BlockKoto
             }
 
 NextToken:
-            if (nextGroup is not null)
+            if (nextParser is not null)
             {
-                nextGroup.Parse(ref reader);
+                nextParser.Parse(ref reader);
             }
         }
     }
 
-    public override void Clear()
+    public void Clear()
     {
-        base.Clear();
-
         this.KotoList.Clear(); // TODO
         this.IdentifierToGroupKoto.Clear(); // TODO
     }

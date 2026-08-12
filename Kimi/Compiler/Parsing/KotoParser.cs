@@ -1236,12 +1236,12 @@ Loop:
             _ => default,
         };
 
-    private static List<GenericTypeSemantics>? ParseGenericArguments(ref TokenReader reader)
+    private static List<GenericTypeSemanticsPair>? ParseGenericArguments(ref TokenReader reader)
     {// <&s T, &s2 T2, >
         Debug.Assert(reader.CurrentTokenKind == TokenKind.LessThan);
         reader.Advance();
 
-        List<GenericTypeSemantics>? list = default;
+        List<GenericTypeSemanticsPair>? list = default;
         var firstArgument = true;
         while (reader.TryRead(out var token))
         {
