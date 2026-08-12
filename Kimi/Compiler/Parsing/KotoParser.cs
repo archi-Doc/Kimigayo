@@ -1231,11 +1231,29 @@ Loop:
 
     private static void ParseGenericArguments(ref TokenReader reader)
     {// &s T, &s2 T2, >
+        var firstArgument = true;
         while (reader.TryRead(out var token))
         {
             if (token.Kind == TokenKind.GreaterThan)
             {// >
                 return;
+            }
+
+            if (firstArgument)
+            {
+                firstArgument = false;
+            }
+            else
+            {
+                if (reader.CurrentTokenKind == TokenKind.Comma)
+                {// ,
+                    reader.Advance();
+                }
+
+                if (token.Kind == TokenKind.GreaterThan)
+                {// >
+                    return;
+                }
             }
 
             if (token.Kind == TokenKind.Ampersand)
@@ -1249,6 +1267,17 @@ Loop:
                 {
                     return;
                 }
+
+                if (!reader.TryRead(out token))
+                {
+                    return;
+                }
+            }
+
+            // T
+            if (!IdentifierNameKoto.TryCreate(ref reader, token, out var typeKoto))
+            {
+                return;
             }
         }
     }
