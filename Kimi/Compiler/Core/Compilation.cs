@@ -130,6 +130,6 @@ public class Compilation
 
     internal bool TryResolveValue(IdentifierNameKoto koto, out BasicValue basicValue)
     {
-        return this.Variables.TryGetValue(koto.Identifier, out basicValue);
+        return this.Variables.TryGetValue(koto.IdentifierName, out basicValue);
     }
 }

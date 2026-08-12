@@ -395,12 +395,10 @@ Exit:
 
         var nameToken = reader.CurrentToken;
         reader.Advance();
-        if (!nameToken.Kind.IsIdentifierOrContextualKeyword())
+        if (!IdentifierNameKoto.TryCreate(ref reader, nameToken, out var nameKoto))
         {
             return default;
         }
-
-        var nameKoto = new IdentifierNameKoto(ref reader, nameToken);
 
         Koto? typeKoto = default;
         if (reader.TryConsume(TokenKind.Colon, out _, false))
@@ -1111,7 +1109,14 @@ Loop:
             case TokenKind.Identifier:
                 {
                     reader.TryRead(out var token);
-                    return new IdentifierNameKoto(ref reader, token);
+                    if (IdentifierNameKoto.TryCreate(ref reader, token, out var koto))
+                    {
+                        return koto;
+                    }
+                    else
+                    {
+                        return reader.NewErrorKoto();
+                    }
                 }
 
             case TokenKind.NumericLiteral:

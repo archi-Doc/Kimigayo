@@ -7,11 +7,11 @@ alias AliasC
 #If(windows and 1 == 0x_001)
 alias AliasD
 
-private func find<T>(
+private func find<&s T>(
     value?: T,
     in => collection: Collection<T>,
     using => comparer: (T, T) -> Bool
-) -> i32
+    ) -> i32
     where T is Comparable
     return 0
 

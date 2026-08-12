@@ -291,6 +291,7 @@ public partial class GroupKoto : BlockKoto
             else if (token.Kind == TokenKind.Func)
             {// public func Main() => ()
                 reader.Advance();
+                KotoParser.ParseFuncDeclaration(ref reader);
             }
             else
             {// Other

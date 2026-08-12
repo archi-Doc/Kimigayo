@@ -24,7 +24,7 @@ public partial class AttributeKoto : UnaryKoto
         {
             if (this.IdentifierKoto is IdentifierNameKoto unresolvedKoto)
             {
-                return unresolvedKoto.Identifier.SequenceEqual(Constants.IfAttribute) == true;
+                return unresolvedKoto.IdentifierName.SequenceEqual(Constants.IfAttribute) == true;
             }
             else
             {

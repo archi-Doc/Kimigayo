@@ -19,36 +19,33 @@ public partial class IdentifierNameKoto : Koto
 
     public static bool TryCreate(ref TokenReader reader, Token token, [MaybeNullWhen(false)] out IdentifierNameKoto koto)
     {
-        if (KotoHelper.IsValidIdentifier(reader.GetSpan(token)))
+        var identifierName = reader.GetSpan(token).ToString();
+        if (token.Kind.IsIdentifierOrContextualKeyword() &&
+            KotoHelper.IsValidIdentifier(identifierName))
         {
-            koto = new(ref reader, token);
+            koto = new(ref reader, token, identifierName);
             return true;
         }
         else
         {
+            reader.AddDiagnostic(Hashed.Kimi.InvalidIdentifier, identifierName);
+
             koto = default;
             return false;
         }
     }
 
     [Key(1)]
-    public string Identifier { get; private set; }
+    public string IdentifierName { get; private set; }
 
-    public IdentifierNameKoto(ref TokenReader reader, Token token)
+    private IdentifierNameKoto(ref TokenReader reader, Token token, string identifierName)
         : base(ref reader, token.Range)
     {
-        if (token.Kind == TokenKind.Identifier)
-        {
-            this.Identifier = reader.GetSpan(token).ToString();
-        }
-        else
-        {
-            this.Identifier = token.Kind.ToText();
-        }
+        this.IdentifierName = identifierName;
     }
 
     public override string ToString()
-        => $"{this.Identifier}";
+        => $"{this.IdentifierName}";
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
@@ -57,11 +54,11 @@ public partial class IdentifierNameKoto : Koto
             KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
         }
 
-        builder.Append(this.Identifier);
+        builder.Append(this.IdentifierName);
     }
 
     public override (string Text, Koto[]? Children) Dump()
     {
-        return ($"{this.GetType().Name}({this.Identifier})", default);
+        return ($"{this.GetType().Name}({this.IdentifierName})", default);
     }
 }
