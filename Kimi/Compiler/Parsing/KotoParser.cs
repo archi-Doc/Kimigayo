@@ -273,8 +273,12 @@ public static class KotoParser
         return sb.ToString();
     }
 
+    public static void Test<TList>()
+    {
+    }
+
     public static (string Name, List<string>? List) ParseFuncDeclaration(ref TokenReader reader)
-    {// public func Method1() => ()
+    {// public func Method1<T>(external -> internal: type, external?: type2 = default, ) -> (type, type2, )
         string name = string.Empty;
         if (!reader.TryRead(out var token))
         {
