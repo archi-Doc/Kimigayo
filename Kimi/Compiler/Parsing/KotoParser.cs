@@ -279,7 +279,6 @@ public static class KotoParser
 
     public static (string Name, List<string>? List) ParseFuncDeclaration(ref TokenReader reader)
     {// public func Method1<T>(external -> internal: type, external?: type2 = default, ) -> (type, type2, )
-        string name = string.Empty;
         if (!reader.TryRead(out var token))
         {
             reader.AddDiagnostic(Hashed.Kimi.IncompleteSyntax);
