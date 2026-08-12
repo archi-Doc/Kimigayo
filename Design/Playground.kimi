@@ -7,7 +7,7 @@ alias AliasC
 #If(windows and 1 == 0x_001)
 alias AliasD
 
-public func Main() => ()
+public func Main() -> ()
     return
 
 public open struct Test: @A, @B,

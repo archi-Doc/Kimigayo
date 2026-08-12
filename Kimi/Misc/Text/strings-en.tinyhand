@@ -19,6 +19,7 @@ Kimi=
   DuplicateModifier="Duplicate modifier '{0}'"
   IdentifierExpected="Identifier expected"
   IncompleteEscape="The string ends with an incomplete escape sequence"
+  IncompleteSyntax="The syntax is incomplete"
   IndentationLevelMismatch="The indentation level does not match the expected level"
   InvalidAttributeKoto="An attribute must be in the form #Attribute or #Attribute(arguments)"
   InvalidCharacter="Unexpected character '{0}'"

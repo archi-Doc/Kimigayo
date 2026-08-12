@@ -288,6 +288,10 @@ public partial class GroupKoto : BlockKoto
                     nextGroup = structKoto;
                 }
             }
+            else if (token.Kind == TokenKind.Func)
+            {// public func Main() => ()
+                reader.Advance();
+            }
             else
             {// Other
                 var koto = KotoParser.ParseExpression(ref reader);

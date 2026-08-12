@@ -273,13 +273,35 @@ public static class KotoParser
         return sb.ToString();
     }
 
+    public static (string Name, List<string>? List) ParseFuncDeclaration(ref TokenReader reader)
+    {// public func Method1() => ()
+        string name = string.Empty;
+        if (!reader.TryRead(out var token))
+        {
+            reader.AddDiagnostic(Hashed.Kimi.IncompleteSyntax);
+            goto Exit;
+        }
+
+        if (token.Kind != TokenKind.Identifier)
+        {
+            reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
+            goto SkipAndExit;
+        }
+
+SkipAndExit:
+        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator);
+
+Exit:
+        return default;
+    }
+
     public static (string Name, List<string>? List) ParseGroupDeclaration(ref TokenReader reader)
     {
         string name = string.Empty;
         List<string>? list = default;
         if (!reader.TryRead(out var token))
         {
-            reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
+            reader.AddDiagnostic(Hashed.Kimi.IncompleteSyntax);
             goto Exit;
         }
 
@@ -854,7 +876,6 @@ Exit:
             reader.PushAttribute(attributeKoto);
             return attributeKoto;
         }
-
     }
 
     public static Koto ParseExpression(ref TokenReader reader, int minBindingPower = 0)
@@ -1021,7 +1042,7 @@ ProcessPrefix:
     }
 
     private static List<Koto> ParseArgumentList(ref TokenReader reader)
-    {
+    {// (arg0, arg1, )
         var tokenKind = reader.CurrentTokenKind;
         if (tokenKind == TokenKind.CloseParenthesis)
         {
