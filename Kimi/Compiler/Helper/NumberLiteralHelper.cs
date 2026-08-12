@@ -3,7 +3,6 @@
 using System.Buffers;
 using System.Globalization;
 using System.Runtime.CompilerServices;
-using Kimi.Compiler.Lexing;
 
 namespace Kimi.Compiler.Helper;
 

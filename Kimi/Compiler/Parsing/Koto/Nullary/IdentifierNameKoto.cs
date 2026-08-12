@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
+using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
 
 namespace Kimi.Compiler.Parsing;
@@ -21,7 +22,7 @@ public partial class IdentifierNameKoto : Koto
     {
         var identifierName = reader.GetSpan(token).ToString();
         if (token.Kind.IsIdentifierOrContextualKeyword() &&
-            KotoHelper.IsValidIdentifier(identifierName))
+            IdentifierHelper.IsValidIdentifier(identifierName))
         {
             koto = new(ref reader, token, identifierName);
             return true;

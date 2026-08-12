@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -180,7 +181,7 @@ public static partial class KotoHelper
             {// Identifier
                 flag = false;
                 var span = reader.GetSpan(token);
-                if (IsValidIdentifier(span))
+                if (IdentifierHelper.IsValidIdentifier(span))
                 {
                     sb.Append(span);
                 }
@@ -236,7 +237,7 @@ public static partial class KotoHelper
             {// Identifier
                 flag = false;
                 var span = reader.GetSpan(token);
-                if (IsValidIdentifier(span))
+                if (IdentifierHelper.IsValidIdentifier(span))
                 {
                     list.Add(span.ToString());
                 }
@@ -266,75 +267,6 @@ public static partial class KotoHelper
         }
 
         return list;
-    }
-
-    public static bool IsValidIdentifier(ReadOnlySpan<char> text)
-    {
-        if (text.IsEmpty)
-        {
-            return false;
-        }
-
-        var enumerator = text.EnumerateRunes();
-        if (!enumerator.MoveNext())
-        {
-            return false;
-        }
-
-        if (!IsIdentifierStartCharacter(enumerator.Current))
-        {
-            return false;
-        }
-
-        while (enumerator.MoveNext())
-        {
-            if (!IsIdentifierPartCharacter(enumerator.Current))
-            {
-                return false;
-            }
-        }
-
-        if (TokenHelper.KeywordToTokenKind.TryGetValue(text, out var tokenKind))
-        {
-            return TokenHelper.IsIdentifierOrContextualKeyword(tokenKind);
-        }
-
-        return true;
-    }
-
-    private static bool IsIdentifierStartCharacter(Rune rune)
-    {
-        if (rune.Value == '_')
-        {
-            return true;
-        }
-
-        var category = Rune.GetUnicodeCategory(rune);
-
-        return category is
-            UnicodeCategory.UppercaseLetter or
-            UnicodeCategory.LowercaseLetter or
-            UnicodeCategory.TitlecaseLetter or
-            UnicodeCategory.ModifierLetter or
-            UnicodeCategory.OtherLetter or
-            UnicodeCategory.LetterNumber;
-    }
-
-    private static bool IsIdentifierPartCharacter(Rune rune)
-    {
-        if (IsIdentifierStartCharacter(rune))
-        {
-            return true;
-        }
-
-        var category = Rune.GetUnicodeCategory(rune);
-
-        return category is
-            UnicodeCategory.DecimalDigitNumber or
-            UnicodeCategory.ConnectorPunctuation or
-            UnicodeCategory.NonSpacingMark or
-            UnicodeCategory.SpacingCombiningMark or
-            UnicodeCategory.Format;
     }
 
     private static void DumpKoto(Koto koto, TextWriter writer, string indent, bool isLast, string? label)

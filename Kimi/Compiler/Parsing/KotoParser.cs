@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -326,7 +327,7 @@ Exit:
         }
 
         var span = reader.GetSpan(token);
-        if (KotoHelper.IsValidIdentifier(span))
+        if (IdentifierHelper.IsValidIdentifier(span))
         {
             name = span.ToString();
         }

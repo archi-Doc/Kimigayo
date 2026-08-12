@@ -5,7 +5,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 
-namespace Kimi.Compiler;
+namespace Kimi.Compiler.Helper;
 
 public enum ScanStringLiteralResult : byte
 {

@@ -1,6 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler;
+using Kimi.Compiler.Helper;
 using Xunit;
 
 namespace XunitTest;
