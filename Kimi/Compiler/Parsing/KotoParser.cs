@@ -278,7 +278,7 @@ public static class KotoParser
     {
     }
 
-    public static (string Name, List<string>? List) ParseFuncDeclaration(ref TokenReader reader)
+    public static FunctionKoto? ParseFuncDeclaration(ref TokenReader reader)
     {// public func Method1<T>(external -> internal: type, external?: type2 = default, ) -> (type, type2, )
         var state = reader.TakeContext();
 
@@ -294,7 +294,7 @@ public static class KotoParser
         }
 
         if (reader.CurrentTokenKind == TokenKind.LessThan)
-        {// <&s T, &s2 T2, >
+        {// <&s T, &s2 T2>
             ParseGenericArguments(ref reader);
         }
 
@@ -1237,7 +1237,7 @@ Loop:
         };
 
     private static List<GenericTypeSemanticsPair>? ParseGenericArguments(ref TokenReader reader)
-    {// <&s T, &s2 T2, >
+    {// <&s T, &s2 T2>
         Debug.Assert(reader.CurrentTokenKind == TokenKind.LessThan);
         reader.Advance();
 
