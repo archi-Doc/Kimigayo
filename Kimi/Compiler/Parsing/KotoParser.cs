@@ -293,14 +293,16 @@ public static class KotoParser
             goto SkipAndExit;
         }
 
-        if (!reader.TryRead(out var token))
-        {
-            return default;
-        }
-
-        if (token.Kind == TokenKind.LessThan)
+        reader.Advance();
+        if (reader.CurrentTokenKind == TokenKind.LessThan)
         {// <&s T, &s2 T2, >
             ParseGenericArguments(ref reader);
+        }
+
+        if (reader.CurrentTokenKind != TokenKind.OpenParenthesis)
+        {// not (
+            reader.AddDiagnostic(Hashed.Kimi.IncompleteSyntax);
+            goto Exit;
         }
 
 SkipAndExit:
@@ -1235,14 +1237,18 @@ Loop:
             _ => default,
         };
 
-    private static void ParseGenericArguments(ref TokenReader reader)
-    {// &s T, &s2 T2, >
+    private static List<int>? ParseGenericArguments(ref TokenReader reader)
+    {// <&s T, &s2 T2, >
+        Debug.Assert(reader.CurrentTokenKind == TokenKind.LessThan);
+        reader.Advance();
+
+        List<int>? list = default;
         var firstArgument = true;
         while (reader.TryRead(out var token))
         {
             if (token.Kind == TokenKind.GreaterThan)
             {// >
-                return;
+                return list;
             }
 
             if (firstArgument)
@@ -1256,34 +1262,35 @@ Loop:
                     reader.Advance();
                 }
 
-                if (token.Kind == TokenKind.GreaterThan)
+                if (reader.CurrentTokenKind == TokenKind.GreaterThan)
                 {// >
-                    return;
+                    reader.Advance();
+                    return list;
                 }
             }
 
-            if (token.Kind == TokenKind.Ampersand)
+            if (reader.CurrentTokenKind == TokenKind.Ampersand)
             {// &s
                 if (!reader.TryRead(out var semanticToken))
                 {
-                    return;
+                    return list;
                 }
 
                 if (!IdentifierNameKoto.TryCreate(ref reader, semanticToken, out var semanticKoto))
                 {
-                    return;
+                    return list;
                 }
 
                 if (!reader.TryRead(out token))
                 {
-                    return;
+                    return list;
                 }
             }
 
             // T
             if (!IdentifierNameKoto.TryCreate(ref reader, token, out var typeKoto))
             {
-                return;
+                return list;
             }
         }
     }
