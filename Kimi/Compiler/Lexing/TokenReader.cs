@@ -27,8 +27,6 @@ public ref struct TokenReader
 
     public int Position { get; private set; }
 
-    // public int Depth { get; private set; }
-
     public AttributeKoto? AttributeKoto { get; private set; }
 
     public ModifierKind ModifierKind { get; internal set; }
@@ -136,7 +134,7 @@ public ref struct TokenReader
     }*/
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryRead(out Token token)
+    public bool TryRead(out Token token, bool addDiagnostic = true)
     {
         if (this.CanRead)
         {
@@ -145,30 +143,14 @@ public ref struct TokenReader
             return true;
         }
 
-        token = default;
-        return false;
-    }
-
-    /*public bool TryPeek(out Token token)
-    {
-        if (this.TryGetCurrentToken(out token))
+        if (addDiagnostic)
         {
-            return true;
+            this.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
         }
 
         token = default;
         return false;
     }
-
-    public void Consume(out Token token)
-    {
-        this.Clear();
-
-        while (this.TryRead(out token) &&
-            token.Kind == TokenKind.Separator)
-        {// Skip Separator
-        }
-    }*/
 
     public bool TryConsume(TokenKind targetKind, out SourceRange range, bool addDiagnostic = true)
     {
@@ -332,32 +314,6 @@ Loop:
             return ReferenceKind.Borrow;
         }
     }
-
-    /*public bool TryConsumeIdentifier(ReadOnlySpan<char> name)
-    {
-        if (this.TryGetCurrentToken(out var token) &&
-            token.Kind == TokenKind.Identifier &&
-            token.Text.Span.Equals(name, StringComparison.Ordinal))
-        {
-            this.AdvanceOne();
-            return true;
-        }
-
-        return false;
-    }
-
-    public bool TryReadIdentifier(out Token token)
-    {
-        if (this.TryGetCurrentToken(out token) &&
-            token.Kind == TokenKind.Identifier)
-        {
-            this.AdvanceOne();
-            return true;
-        }
-
-        token = default;
-        return false;
-    }*/
 
     public bool Advance()
     {

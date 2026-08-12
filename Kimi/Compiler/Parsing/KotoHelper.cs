@@ -294,9 +294,9 @@ public static partial class KotoHelper
             }
         }
 
-        if (TokenHelper.KeywordToTokenKind.TryGetValue(text, out _))
+        if (TokenHelper.KeywordToTokenKind.TryGetValue(text, out var tokenKind))
         {
-            return false;
+            return TokenHelper.IsIdentifierOrContextualKeyword(tokenKind);
         }
 
         return true;

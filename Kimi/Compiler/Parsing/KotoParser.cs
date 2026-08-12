@@ -279,16 +279,27 @@ public static class KotoParser
 
     public static (string Name, List<string>? List) ParseFuncDeclaration(ref TokenReader reader)
     {// public func Method1<T>(external -> internal: type, external?: type2 = default, ) -> (type, type2, )
-        if (!reader.TryRead(out var token))
+        var state = reader.StoreState();
+
+        if (!reader.TryRead(out var methodToken))
         {
-            reader.AddDiagnostic(Hashed.Kimi.IncompleteSyntax);
-            goto Exit;
+            return default;
         }
 
-        if (token.Kind != TokenKind.Identifier)
+        if (methodToken.Kind != TokenKind.Identifier)
         {
             reader.AddDiagnostic(Hashed.Kimi.IdentifierExpected);
             goto SkipAndExit;
+        }
+
+        if (!reader.TryRead(out var token))
+        {
+            return default;
+        }
+
+        if (token.Kind == TokenKind.LessThan)
+        {// <&s T, &s2 T2, >
+            ParseGenericArguments(ref reader);
         }
 
 SkipAndExit:
@@ -1217,4 +1228,28 @@ Loop:
 
             _ => default,
         };
+
+    private static void ParseGenericArguments(ref TokenReader reader)
+    {// &s T, &s2 T2, >
+        while (reader.TryRead(out var token))
+        {
+            if (token.Kind == TokenKind.GreaterThan)
+            {// >
+                return;
+            }
+
+            if (token.Kind == TokenKind.Ampersand)
+            {// &s
+                if (!reader.TryRead(out var semanticToken))
+                {
+                    return;
+                }
+
+                if (!IdentifierNameKoto.TryCreate(ref reader, semanticToken, out var semanticKoto))
+                {
+                    return;
+                }
+            }
+        }
+    }
 }

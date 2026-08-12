@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Lexing;
 
 namespace Kimi.Compiler.Parsing;
@@ -14,6 +15,20 @@ public partial class IdentifierNameKoto : Koto
     static IdentifierNameKoto()
     {
         Error = IdentifierNameKoto.UnsafeConstructor();
+    }
+
+    public static bool TryCreate(ref TokenReader reader, Token token, [MaybeNullWhen(false)] out IdentifierNameKoto koto)
+    {
+        if (KotoHelper.IsValidIdentifier(reader.GetSpan(token)))
+        {
+            koto = new(ref reader, token);
+            return true;
+        }
+        else
+        {
+            koto = default;
+            return false;
+        }
     }
 
     [Key(1)]

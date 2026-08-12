@@ -204,6 +204,7 @@ public static partial class TokenHelper
     public static bool IsPrimitiveType(this TokenKind tokenKind)
         => tokenKind >= TokenKind.Bool && tokenKind <= TokenKind.String;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsIdentifierOrContextualKeyword(this TokenKind tokenKind)
         => tokenKind == TokenKind.Identifier ||
         (tokenKind >= TokenKind.Alias && tokenKind < TokenKind.Identifier);
