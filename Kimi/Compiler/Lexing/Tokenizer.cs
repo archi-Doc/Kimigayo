@@ -420,9 +420,9 @@ internal ref struct Tokenizer
     public void ReadAll()
     {
         this.currentIndentLevel = 0;
-        while (this.position >= this.sourceText.Length) // (this.Read() > 0)
+        while (this.Read() > 0 &&
+            this.position < this.sourceText.Length)
         {
-            // builder.Add(new(TokenKind.Separator));
         }
     }
 

@@ -1,11 +1,14 @@
 alias AliasB
 
-#If(os == "win\"do\u(20)w\ts") // """
+#If(os == "windows" and 
+    pointerWidth == 64)
 alias AliasC
-
 
 #If(windows and 1 == 0x_001)
 alias AliasD
+
+public func Main() => ()
+    return
 
 public open struct Test: @A, @B,
     public static #Test1 var #Test2 x: i32 = #One 1

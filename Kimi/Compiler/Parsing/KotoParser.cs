@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -14,7 +15,7 @@ public static class KotoParser
     private const int AccessibilityModifierMask = 15;
     private const int PrefixBindingPower = 90;
 
-    public static bool ResolveIfAttribute(ref TokenReader reader, Koto koto)
+    /*public static bool ResolveIfAttribute(ref TokenReader reader, Koto koto)
     {
         var previous = koto;
         var compilation = reader.CodeContext.Compilation;
@@ -55,31 +56,31 @@ public static class KotoParser
         }
 
         return true;
-    }
+    }*/
 
     public static bool ResolveIfAttribute(Compilation compilation, AttributeKoto attributeKoto)
     {
-        if (attributeKoto.IsIfAttribute)
-        {// #If()
-            var arg = attributeKoto.Arguments;
-            if (arg.Count != 1)
+        Debug.Assert(attributeKoto.IsIfAttribute);
+
+        // #If()
+        var arg = attributeKoto.Arguments;
+        if (arg.Count != 1)
+        {
+            attributeKoto.AddDiagnostic(Hashed.Kimi.InvalidIfAttributeArgumentCount);
+        }
+        else
+        {
+            var basicValue = BasicValueHelper.Evaluate(compilation, arg[0]);
+            if (basicValue.Kind == BasicValueKind.Bool)
             {
-                attributeKoto.AddDiagnostic(Hashed.Kimi.InvalidIfAttributeArgumentCount);
+                if (!basicValue.Bool)
+                {// false
+                    return false;
+                }
             }
             else
             {
-                var basicValue = BasicValueHelper.Evaluate(compilation, arg[0]);
-                if (basicValue.Kind == BasicValueKind.Bool)
-                {
-                    if (!basicValue.Bool)
-                    {// false
-                        return false;
-                    }
-                }
-                else
-                {
-                    arg[0].AddDiagnostic(Hashed.Kimi.ConditionMustBeBool);
-                }
+                arg[0].AddDiagnostic(Hashed.Kimi.ConditionMustBeBool);
             }
         }
 
@@ -843,16 +844,17 @@ Exit:
         }
 
         var attributeKoto = new AttributeKoto(ref reader, attributeToken.Range, operand);
-        if (KotoParser.ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto))
-        {
+        if (attributeKoto.IsIfAttribute)
+        {// #If
+            reader.IsExcluded = !KotoParser.ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto);
+            return null;
+        }
+        else
+        {// Other attribute
             reader.PushAttribute(attributeKoto);
             return attributeKoto;
         }
-        else
-        {
-            reader.IsExcluded = true;
-            return null;
-        }
+
     }
 
     public static Koto ParseExpression(ref TokenReader reader, int minBindingPower = 0)
