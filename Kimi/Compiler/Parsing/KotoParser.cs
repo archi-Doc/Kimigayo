@@ -279,7 +279,7 @@ public static class KotoParser
 
     public static (string Name, List<string>? List) ParseFuncDeclaration(ref TokenReader reader)
     {// public func Method1<T>(external -> internal: type, external?: type2 = default, ) -> (type, type2, )
-        var state = reader.StoreState();
+        var state = reader.TakeContext();
 
         if (!reader.TryRead(out var methodToken))
         {
@@ -384,7 +384,7 @@ Exit:
 
     public static FieldKoto? ParseField(ref TokenReader reader, ref Token token)
     {// var x = 1
-        var variableState = reader.StoreState();
+        var variableContext = reader.TakeContext();
 
         // Field name
         KotoParser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
@@ -420,7 +420,7 @@ Exit:
             initializerKoto = ParseExpression(ref reader);
         }
 
-        reader.RestoreState(variableState);
+        reader.RestoreContext(variableContext);
 
         var fieldKoto = new FieldKoto(ref reader, ref token, nameKoto, typeKoto, initializerKoto);
 
@@ -686,7 +686,7 @@ Exit:
 
     public static void ConsumeAttributeAndModifier(ref TokenReader reader, out bool isEnd)
     {// Consume Attributes and Modifiers
-        reader.Clear();
+        reader.ClearContext();
 
         while (reader.CanRead)
         {

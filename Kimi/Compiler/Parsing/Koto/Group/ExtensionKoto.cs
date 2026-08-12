@@ -16,7 +16,7 @@ public sealed partial class ExtensionKoto : GroupKoto
     {
     }
 
-    internal ExtensionKoto(CodeContext codeContext, TokenState state, SourceRange range)
+    internal ExtensionKoto(CodeContext codeContext, TokenContext state, SourceRange range)
         : base(codeContext, state, range)
     {
     }
