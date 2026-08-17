@@ -7,7 +7,7 @@ alias AliasC
 #If(windows and 1 == 0x_001)
 alias AliasD
 
-private func find<&s T, T2>(
+private func find<T/s, T2>(
     value?: T,
     in => collection: Collection<T>,
     using => comparer: (T, T) -> Bool
@@ -22,15 +22,15 @@ public open struct Test: @A, @B,
     public static #Test1 var #Test2 x: i32 = #One 1
     private let pi = 1.2
 
-var x:&unsafe Base.Map<String, Int>
+var x:unsafe/Base.Map<String, Int>
 var count: i32 = #TestAtr 0
 let name: String = "abc"
 var items: Array<Int> // = [1, 2, 3]
 var items2 // = [1, 2, 3, ]
 var map: Map<String, Int>// =  ["A": 1, "B": 2]
-var array: Array<&owner T.U> = new()
-var obj = T.New() // T: stack
-var obj2 = &owner T.New() // T.New()
-var movedObj = &owner obj // obj => movedObj
-var movedObj = &unsafe obj
+var array: Array<owner/T.U> = new()
+var obj = T.new() // T: owner/T
+var obj2 = T.new() // T.New()
+var movedObj = obj // obj => movedObj
+var movedObj = obj@unsafe/T
 array.Add(movedObj) // movedObj => array
