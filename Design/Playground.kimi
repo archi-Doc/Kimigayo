@@ -1,10 +1,10 @@
 alias AliasB
-
+var movedObj = obj //@unsafe/T
 #If(os == "windows" and 
     pointerWidth == 64)
 alias AliasC
 
-#If(windows and 1 == 0x_001)
+#If(windows and 1 == 0x_000)
 alias AliasD
 
 private func find<s/T, T2>(
@@ -18,7 +18,7 @@ private func find<s/T, T2>(
 public func Main() -> ()
     return
 
-public open struct Test: @A, @B,
+public open struct Test: A, B,
     public static #Test1 var #Test2 x: i32 = #One 1
     private let pi = 1.2
 

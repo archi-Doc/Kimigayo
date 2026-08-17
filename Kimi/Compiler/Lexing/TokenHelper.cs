@@ -206,6 +206,10 @@ public static partial class TokenHelper
         => tokenKind >= TokenKind.Bool && tokenKind <= TokenKind.String;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsKeyword(this TokenKind tokenKind)
+        => tokenKind < TokenKind.Alias;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsIdentifierOrContextualKeyword(this TokenKind tokenKind)
         => tokenKind == TokenKind.Identifier ||
         (tokenKind >= TokenKind.Alias && tokenKind < TokenKind.Identifier);

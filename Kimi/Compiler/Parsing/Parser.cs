@@ -2,7 +2,6 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
@@ -13,51 +12,7 @@ namespace Kimi.Compiler;
 
 public static class Parser
 {
-    private const int AccessibilityModifierMask = 15;
     private const int PrefixBindingPower = 90;
-
-    /*public static bool ResolveIfAttribute(ref TokenReader reader, Koto koto)
-    {
-        var previous = koto;
-        var compilation = reader.CodeContext.Compilation;
-        var attributeKoto = previous.AttributeChain;
-        while (attributeKoto is not null)
-        {
-            if (attributeKoto.IsIfAttribute)
-            {// #If()
-                var arg = attributeKoto.Arguments;
-                if (arg.Count != 1)
-                {
-                    attributeKoto.AddDiagnostic(Hashed.Kimi.InvalidIfAttributeArgumentCount);
-                }
-                else
-                {
-                    var basicValue = BasicValueHelper.Evaluate(compilation, arg[0]);
-                    if (basicValue.Kind == BasicValueKind.Bool)
-                    {
-                        if (!basicValue.Bool)
-                        {// false
-                            return false;
-                        }
-                    }
-                    else if (basicValue.Kind == BasicValueKind.Invalid)
-                    {
-                    }
-                    else
-                    {
-                        arg[0].AddDiagnostic(Hashed.Kimi.ConditionMustBeBool);
-                    }
-                }
-
-                previous.AttributeChain = attributeKoto.AttributeChain;
-            }
-
-            previous = attributeKoto;
-            attributeKoto = attributeKoto.AttributeChain;
-        }
-
-        return true;
-    }*/
 
     public static bool ResolveIfAttribute(Compilation compilation, AttributeKoto attributeKoto)
     {
@@ -666,12 +621,6 @@ Exit:
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ModifierKind ExtractAccessibilityModifiers(this ModifierKind kind)
-    {
-        return (ModifierKind)((byte)kind & AccessibilityModifierMask);
-    }
-
     /*public static void ConsumeAttributeAndRead(ref TokenReader reader, out Token token)
     {// Consume Attribute
         reader.Clear();
@@ -812,7 +761,91 @@ Exit:
         while (reader.CanRead)
         {
             var tokenKind = reader.CurrentTokenKind;
-            switch (tokenKind)
+            if (tokenKind == TokenKind.Separator)
+            {
+                reader.Advance();
+                continue;
+            }
+            else if (tokenKind == TokenKind.Identifier)
+            {// Contextual keyword
+                var identifier = reader.GetSpan(reader.CurrentToken);
+                var length = identifier.Length;
+                if (length == 4)
+                {
+                    if (identifier.SequenceEqual(Constants.OpenKeyword))
+                    {// open
+                        if (reader.ModifierKind.HasFlag(ModifierKind.Open))
+                        {// Duplicate
+                            reader.AddDiagnostic(Hashed.Kimi.DuplicateModifier, ModifierKind.Open.ToString());
+                        }
+
+                        reader.ModifierKind |= ModifierKind.Open;
+                        reader.Advance();
+                        continue;
+                    }
+                }
+                else if (length == 6)
+                {
+                    if (identifier.SequenceEqual(Constants.StaticKeyword))
+                    {// static
+                        if (reader.ModifierKind.HasFlag(ModifierKind.Static))
+                        {// Duplicate
+                            reader.AddDiagnostic(Hashed.Kimi.DuplicateModifier, ModifierKind.Static.ToString());
+                        }
+
+                        reader.ModifierKind |= ModifierKind.Static;
+                        reader.Advance();
+                        continue;
+                    }
+                    else if (identifier.SequenceEqual(Constants.PublicKeyword))
+                    {// public
+                        ReadAccessibility(ref reader, ModifierKind.Public);
+                        continue;
+                    }
+                }
+                else if (length == 7)
+                {
+                    if (identifier.SequenceEqual(Constants.PrivateKeyword))
+                    {// private
+                        ReadAccessibility(ref reader, ModifierKind.Private);
+                        continue;
+                    }
+                }
+                else if (length == 8)
+                {
+                    if (identifier.SequenceEqual(Constants.InternalKeyword))
+                    {// internal
+                        ReadAccessibility(ref reader, ModifierKind.Internal);
+                        continue;
+                    }
+                }
+                else if (length == 9)
+                {
+                    if (identifier.SequenceEqual(Constants.ProtectedKeyword))
+                    {// protected
+                        ReadAccessibility(ref reader, ModifierKind.Protected);
+                        continue;
+                    }
+                }
+                else if (length == 21)
+                {
+                    if (identifier.SequenceEqual(Constants.ProtectedOrInternalKeyword))
+                    {// protected_or_internal
+                        ReadAccessibility(ref reader, ModifierKind.ProtectedOrInternal);
+                        continue;
+                    }
+                }
+                else if (length == 22)
+                {
+                    if (identifier.SequenceEqual(Constants.ProtectedAndInternalKeyword))
+                    {// protected_and_internal
+                        ReadAccessibility(ref reader, ModifierKind.ProtectedAndInternal);
+                        continue;
+                    }
+                }
+            }
+
+            /*switch (tokenKind)
             {
                 case TokenKind.Separator:
                     reader.Advance();
@@ -861,7 +894,7 @@ Exit:
                 case TokenKind.ProtectedAndInternal:
                     ReadAccessibility(ref reader, ModifierKind.ProtectedAndInternal);
                     continue;
-            }
+            }*/
 
             if (tokenKind != TokenKind.Sharp)
             {
@@ -974,7 +1007,7 @@ Exit:
                 reader.CurrentTokenKind == TokenKind.Slash)
             {
                 var semantics = reader.GetSpan(token);
-                if (!SemanticsKindHelper.TryParse(semantics, out semanticsKind))
+                if (!CompilerHelper.TryParse(semantics, out semanticsKind))
                 {
                     semanticsParameter = semantics.ToString();
                 }
@@ -1352,6 +1385,7 @@ Loop:
             TokenKind.Asterisk => (80, 81),
             TokenKind.Slash => (80, 81),
             TokenKind.Percent => (80, 81),
+            TokenKind.At => (80, 81),
 
             // Additive
             TokenKind.Plus => (70, 71),

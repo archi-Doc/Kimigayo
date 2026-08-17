@@ -70,7 +70,7 @@ public class FuncDeclarationParseTest
     [InlineData("unsafe", SemanticsKind.Unsafe)]
     public void ClassifiesBuiltInSemantics(string text, SemanticsKind expected)
     {
-        Assert.True(SemanticsKindHelper.TryParse(text, out var actual));
+        Assert.True(CompilerHelper.TryParse(text, out var actual));
         Assert.Equal(expected, actual);
         Assert.Equal(expected <= SemanticsKind.Stack, actual.IsValue());
         Assert.Equal(expected >= SemanticsKind.OwnerRef, actual.IsReference());
@@ -79,7 +79,7 @@ public class FuncDeclarationParseTest
     [Fact]
     public void ClassifiesSemanticsParameter()
     {
-        Assert.False(SemanticsKindHelper.TryParse("s", out var actual));
+        Assert.False(CompilerHelper.TryParse("s", out var actual));
         Assert.Equal(SemanticsKind.Parameter, actual);
         Assert.False(actual.IsValue());
         Assert.False(actual.IsReference());
