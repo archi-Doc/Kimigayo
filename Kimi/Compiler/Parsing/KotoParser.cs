@@ -275,7 +275,7 @@ public static class KotoParser
     }
 
     public static FunctionKoto? ParseFuncDeclaration(ref TokenReader reader)
-    {// public func Method1<T>(external -> internal: type, external?: type2 = default) -> (type, type2)
+    {// public func Method1<T>(external => internal: type, external?: type2 = default) -> (type, type2)
         var context = reader.TakeContext();
 
         if (!reader.TryRead(out var methodToken))
@@ -298,7 +298,7 @@ public static class KotoParser
 
         List<GenericTypeSemanticsPair>? genericArguments = default;
         if (reader.CurrentTokenKind == TokenKind.LessThan)
-        {// <&s T, &s2 T2>
+        {// <s/T, s/T2>
             genericArguments = ParseGenericArguments(ref reader);
         }
 
