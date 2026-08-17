@@ -19,7 +19,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     public string Name { get; private set; }
 
     [IgnoreMember]
-    public IReadOnlyList<GenericTypeSemanticsPair> GenericArguments { get; }
+    public IReadOnlyList<TypeSemanticsKoto> GenericArguments { get; }
 
     [IgnoreMember]
     public IReadOnlyList<FunctionParameterKoto> Parameters { get; }
@@ -30,7 +30,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     [IgnoreMember]
     public bool IsExcluded { get; }
 
-    public FunctionKoto(ref TokenReader reader, TokenContext context, SourceRange range, string name, List<GenericTypeSemanticsPair>? genericArguments, List<FunctionParameterKoto> parameters, Koto? returnType)
+    public FunctionKoto(ref TokenReader reader, TokenContext context, SourceRange range, string name, List<TypeSemanticsKoto>? genericArguments, List<FunctionParameterKoto> parameters, Koto? returnType)
         : base(ref reader, range)
     {
         this.AttributeChain = context.AttributeKoto;
@@ -43,11 +43,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
 
         foreach (var argument in this.GenericArguments)
         {
-            argument.typeKoto.Parent = this;
-            if (argument.semanticsKoto is not null)
-            {
-                argument.semanticsKoto.Parent = this;
-            }
+            argument.Parent = this;
         }
 
         foreach (var parameter in parameters)
@@ -107,14 +103,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
                     builder.AppendCommaAndSpace();
                 }
 
-                var argument = this.GenericArguments[i];
-                if (argument.semanticsKoto is not null)
-                {
-                    argument.semanticsKoto.WriteTo(ref builder);
-                    builder.Append(' ');
-                }
-
-                argument.typeKoto.WriteTo(ref builder);
+                this.GenericArguments[i].WriteTo(ref builder);
             }
 
             builder.Append('>');
@@ -153,7 +142,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
         builder.Append(')');
         if (this.ReturnType is not null)
         {
-            builder.Append(" -> ");
+            builder.Append(" => ");
             this.ReturnType.WriteTo(ref builder);
         }
     }

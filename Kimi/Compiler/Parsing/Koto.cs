@@ -52,7 +52,7 @@ public enum KotoKind : byte
     NumberLiteral,
     StringLiteral,
     IdentifierName,
-    Type,
+    TypeSemantics,
 
     // Unary
     Attribute,
@@ -130,7 +130,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.NumberLiteral, typeof(NumberLiteralKoto))]
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.IdentifierName, typeof(IdentifierNameKoto))]
-[TinyhandUnion((int)KotoKind.Type, typeof(TypeKoto))]
+[TinyhandUnion((int)KotoKind.TypeSemantics, typeof(TypeSemanticsKoto))]
 
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
 [TinyhandUnion((int)KotoKind.Macro, typeof(MacroKoto))]

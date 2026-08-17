@@ -17,14 +17,23 @@ public class FuncDeclarationParseTest
         var context = kotonoha.CreateCodeContext();
 
         var source = """
-            private func find<&s T, T2>(
+            private func find<s/T, T2>(
                 value?: T,
-                in => collection: Collection<T>,
-                using => comparer: (T, T) -> Bool
-                ) -> i32
+                owned: owner/T,
+                borrowed: borrow/T,
+                stacked: stack/T,
+                ownerReference: ownerref/T,
+                borrowReference: /T,
+                longBorrowReference: borrowref/T,
+                shared: rc/T,
+                atomic: arc/T,
+                raw: unsafe/T,
+                in => collection: Collection<s/T>,
+                using => comparer: (s/T, T2) => borrowref/Bool
+                ) => owner/i32
                 return 0
 
-            public func Main() -> ()
+            public func Main() => ()
                 return
             """;
         context.Parse(kotonoha.RootKoto, source);
@@ -40,13 +49,39 @@ public class FuncDeclarationParseTest
             kotonoha.RootKoto.UnparseAll(ref builder);
             var text = builder.ToString();
             Assert.Contains(
-                "private func find<&s T, T2>(value?: T, in => collection: Collection<T>, using => comparer: (T, T) -> Bool) -> i32",
+                "private func find<s/T, T2>(value?: T, owned: owner/T, borrowed: borrow/T, stacked: stack/T, ownerReference: ownerref/T, borrowReference: /T, longBorrowReference: borrowref/T, shared: rc/T, atomic: arc/T, raw: unsafe/T, in => collection: Collection<s/T>, using => comparer: (s/T, T2) => borrowref/Bool) => owner/i32",
                 text);
-            Assert.Contains("public func Main() -> ()", text);
+            Assert.Contains("public func Main() => ()", text);
         }
         finally
         {
             builder.Dispose();
         }
+    }
+
+    [Theory]
+    [InlineData("owner", SemanticsKind.Owner)]
+    [InlineData("borrow", SemanticsKind.Borrow)]
+    [InlineData("stack", SemanticsKind.Stack)]
+    [InlineData("ownerref", SemanticsKind.OwnerRef)]
+    [InlineData("borrowref", SemanticsKind.BorrowRef)]
+    [InlineData("rc", SemanticsKind.Rc)]
+    [InlineData("arc", SemanticsKind.Arc)]
+    [InlineData("unsafe", SemanticsKind.Unsafe)]
+    public void ClassifiesBuiltInSemantics(string text, SemanticsKind expected)
+    {
+        Assert.True(SemanticsKindHelper.TryParse(text, out var actual));
+        Assert.Equal(expected, actual);
+        Assert.Equal(expected <= SemanticsKind.Stack, actual.IsValue());
+        Assert.Equal(expected >= SemanticsKind.OwnerRef, actual.IsReference());
+    }
+
+    [Fact]
+    public void ClassifiesSemanticsParameter()
+    {
+        Assert.False(SemanticsKindHelper.TryParse("s", out var actual));
+        Assert.Equal(SemanticsKind.Parameter, actual);
+        Assert.False(actual.IsValue());
+        Assert.False(actual.IsReference());
     }
 }

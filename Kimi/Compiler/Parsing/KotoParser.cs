@@ -275,7 +275,7 @@ public static class KotoParser
     }
 
     public static FunctionKoto? ParseFuncDeclaration(ref TokenReader reader)
-    {// public func Method1<T>(external => internal: type, external?: type2 = default) -> (type, type2)
+    {// public func Method1<T>(external => internal: type) => returnType
         var context = reader.TakeContext();
 
         if (!reader.TryRead(out var methodToken))
@@ -296,7 +296,7 @@ public static class KotoParser
             goto SkipAndExit;
         }
 
-        List<GenericTypeSemanticsPair>? genericArguments = default;
+        List<TypeSemanticsKoto>? genericArguments = default;
         if (reader.CurrentTokenKind == TokenKind.LessThan)
         {// <s/T, s/T2>
             genericArguments = ParseGenericArguments(ref reader);
@@ -334,22 +334,9 @@ public static class KotoParser
             }
 
             var internalName = externalNameKoto.IdentifierName;
-            if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan ||
-                reader.CurrentTokenKind == TokenKind.Minus)
+            if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
             {
-                if (reader.CurrentTokenKind == TokenKind.Minus)
-                {
-                    reader.Advance();
-                    if (!reader.TryConsume(TokenKind.GreaterThan, out _, true))
-                    {
-                        SkipParameter(ref reader);
-                        goto NextParameter;
-                    }
-                }
-                else
-                {
-                    reader.Advance();
-                }
+                reader.Advance();
 
                 if (!reader.TryRead(out var internalNameToken) ||
                     !IdentifierNameKoto.TryCreate(ref reader, internalNameToken, out var internalNameKoto))
@@ -404,14 +391,9 @@ NextParameter:
 
         Koto? returnType = default;
         var end = closeParenthesisRange.End;
-        if (reader.CurrentTokenKind == TokenKind.Minus)
+        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
         {
             reader.Advance();
-            if (!reader.TryConsume(TokenKind.GreaterThan, out _, true))
-            {
-                goto Exit;
-            }
-
             returnType = ParseDeclarationType(ref reader);
             end = returnType.Range.End;
         }
@@ -909,7 +891,7 @@ Exit:
     }
 
     public static Koto ParseType(ref TokenReader reader)
-    {// A.B<C>
+    {// semantics/A.B<C>
         var left = ParseTypeKoto(ref reader);
         if (left is null)
         {
@@ -960,31 +942,48 @@ Exit:
         static Koto? ParseTypeKoto(ref TokenReader reader)
         {
             var token = reader.CurrentToken;
+            var start = token.Range.Start;
+            var semanticsKind = SemanticsKind.Owner;
+            var semanticsForm = SemanticsForm.None;
+            string? semanticsParameter = default;
+
             reader.Advance();
-            if (token.Kind.IsPrimitiveType())
-            {// Primitive type
-                return new TypeKoto(ref reader, token);
-            }
-            else if (token.Kind == TokenKind.Identifier)
-            {// Identifier
-                var left = new TypeKoto(ref reader, token);
-                if (reader.CurrentTokenKind != TokenKind.Dot)
+
+            if (token.Kind == TokenKind.Slash)
+            {
+                semanticsKind = SemanticsKind.BorrowRef;
+                semanticsForm = SemanticsForm.Slash;
+                if (!reader.TryRead(out token))
                 {
-                    return left;
+                    return reader.NewErrorKoto();
+                }
+            }
+            else if (token.Kind == TokenKind.Identifier &&
+                reader.CurrentTokenKind == TokenKind.Slash)
+            {
+                var semantics = reader.GetSpan(token);
+                if (!SemanticsKindHelper.TryParse(semantics, out semanticsKind))
+                {
+                    semanticsParameter = semantics.ToString();
                 }
 
-                // A.B
+                semanticsForm = SemanticsForm.Named;
                 reader.Advance();
-                var accessor = ParseType(ref reader);
-                accessor ??= reader.NewErrorKoto();
-                return new MemberAccessKoto(ref reader, new(token.Range.Start, accessor.Range.End), left, accessor);
+                if (!reader.TryRead(out token))
+                {
+                    return reader.NewErrorKoto();
+                }
             }
-            else if (token.Kind == TokenKind.Ampersand)
-            {// Reference
-                var referenceKind = reader.ReadReferenceKind();
-                var operand = ParseTypeKoto(ref reader);
-                operand ??= reader.NewErrorKoto();
-                return new ReferenceKoto(ref reader, token.Range, operand, referenceKind);
+
+            if (token.Kind.IsPrimitiveType() || token.Kind == TokenKind.Identifier)
+            {
+                return new TypeSemanticsKoto(
+                    ref reader,
+                    new(start, token.Range.End),
+                    token,
+                    semanticsKind,
+                    semanticsParameter,
+                    semanticsForm);
             }
 
             return null;
@@ -1408,17 +1407,12 @@ Loop:
             type = ParseType(ref reader);
         }
 
-        if (reader.CurrentTokenKind != TokenKind.Minus)
+        if (reader.CurrentTokenKind != TokenKind.EqualsGreaterThan)
         {
             return type;
         }
 
         reader.Advance();
-        if (!reader.TryConsume(TokenKind.GreaterThan, out _, true))
-        {
-            return type;
-        }
-
         var returnType = ParseDeclarationType(ref reader);
         var functionType = new FunctionTypeKoto(
             ref reader,
@@ -1430,12 +1424,12 @@ Loop:
         return functionType;
     }
 
-    private static List<GenericTypeSemanticsPair>? ParseGenericArguments(ref TokenReader reader)
-    {// <&s T, &s2 T2>
+    private static List<TypeSemanticsKoto>? ParseGenericArguments(ref TokenReader reader)
+    {// <s/T, T2>
         Debug.Assert(reader.CurrentTokenKind == TokenKind.LessThan);
         reader.Advance();
 
-        List<GenericTypeSemanticsPair>? list = default;
+        List<TypeSemanticsKoto>? list = default;
         while (reader.CanRead)
         {
             if (reader.CurrentTokenKind == TokenKind.GreaterThan)
@@ -1450,30 +1444,13 @@ Loop:
                 continue;
             }
 
-            GenericSemanticsKoto? semanticsKoto = default;
-            if (reader.CurrentTokenKind == TokenKind.Ampersand)
-            {// &s
-                reader.Advance();
-                if (!reader.TryRead(out var semanticToken) ||
-                    !GenericSemanticsKoto.TryCreate(ref reader, semanticToken, out semanticsKoto))
-                {
-                    return list;
-                }
-            }
-
-            if (!reader.TryRead(out var token))
-            {
-                return list;
-            }
-
-            // T
-            if (!GenericTypeKoto.TryCreate(ref reader, token, out var typeKoto))
+            if (ParseType(ref reader) is not TypeSemanticsKoto typeKoto)
             {
                 return list;
             }
 
             list ??= new();
-            list.Add(new(typeKoto, semanticsKoto));
+            list.Add(typeKoto);
 
             if (reader.CurrentTokenKind == TokenKind.Comma)
             {
