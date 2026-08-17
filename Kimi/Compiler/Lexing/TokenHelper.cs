@@ -155,6 +155,7 @@ public static partial class TokenHelper
         Set(TokenKind.LessThanLessThanEquals, false, "<<=");
         Set(TokenKind.Minus, false, "-");
         Set(TokenKind.MinusEquals, false, "-=");
+        Set(TokenKind.MinusGreaterThan, false, "->");
         Set(TokenKind.MinusMinus, false, "--");
         Set(TokenKind.Percent, false, "%");
         Set(TokenKind.PercentEquals, false, "%=");

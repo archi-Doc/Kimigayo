@@ -275,7 +275,7 @@ public static class KotoParser
     }
 
     public static FunctionKoto? ParseFuncDeclaration(ref TokenReader reader)
-    {// public func Method1<T>(external => internal: type) => returnType
+    {// public func Method1<T>(external => internal: type) -> returnType
         var context = reader.TakeContext();
 
         if (!reader.TryRead(out var methodToken))
@@ -391,7 +391,7 @@ NextParameter:
 
         Koto? returnType = default;
         var end = closeParenthesisRange.End;
-        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
+        if (reader.CurrentTokenKind == TokenKind.MinusGreaterThan)
         {
             reader.Advance();
             returnType = ParseDeclarationType(ref reader);
@@ -1460,7 +1460,7 @@ Loop:
             type = ParseType(ref reader);
         }
 
-        if (reader.CurrentTokenKind != TokenKind.EqualsGreaterThan)
+        if (reader.CurrentTokenKind != TokenKind.MinusGreaterThan)
         {
             return type;
         }

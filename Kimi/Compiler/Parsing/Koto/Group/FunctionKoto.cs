@@ -142,7 +142,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
         builder.Append(')');
         if (this.ReturnType is not null)
         {
-            builder.Append(" => ");
+            builder.Append(" -> ");
             this.ReturnType.WriteTo(ref builder);
         }
     }

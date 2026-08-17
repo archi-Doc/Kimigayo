@@ -132,6 +132,7 @@ public enum TokenKind : byte
     LessThanLessThanEquals, // <<=
     Minus, // -
     MinusEquals, // -=
+    MinusGreaterThan, // ->
     MinusMinus, // --
     Percent, // %
     PercentEquals, // %=

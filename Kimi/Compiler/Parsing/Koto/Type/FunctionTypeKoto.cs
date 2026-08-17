@@ -26,7 +26,7 @@ public partial class FunctionTypeKoto : Koto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         this.Parameters.WriteTo(ref builder);
-        builder.Append(" => ");
+        builder.Append(" -> ");
         this.ReturnType.WriteTo(ref builder);
     }
 }

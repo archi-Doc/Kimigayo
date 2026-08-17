@@ -245,7 +245,7 @@ internal ref struct Tokenizer
         };
 
         CharacterHandlerTable[(int)Constants.MinusChar] = (ref tokenizer) =>
-        {// -- -= -
+        {// -- -= -> -
             if (tokenizer.span.Length == 1)
             {// -
                 tokenizer.AddTokenAndSlice(TokenKind.Minus, 1);
@@ -257,6 +257,10 @@ internal ref struct Tokenizer
             else if (tokenizer.span[1] == Constants.EqualsChar)
             {// -=
                 tokenizer.AddTokenAndSlice(TokenKind.MinusEquals, 2);
+            }
+            else if (tokenizer.span[1] == Constants.GreaterThanChar)
+            {// ->
+                tokenizer.AddTokenAndSlice(TokenKind.MinusGreaterThan, 2);
             }
             else
             {// -
@@ -605,8 +609,10 @@ LineContent:
                 this.PushIndentSource(IndentSource.LineContinuation);
                 goto Loop;
             }
-            else if (this.span.Length > 1 && this.span[0] == Constants.EqualsChar && this.span[1] == Constants.GreaterThanChar)
-            {// =>
+            else if (this.span.Length > 1 &&
+                (this.span[0] == Constants.EqualsChar || this.span[0] == Constants.MinusChar) &&
+                this.span[1] == Constants.GreaterThanChar)
+            {// => or ->
                 goto Loop;
             }
         }
