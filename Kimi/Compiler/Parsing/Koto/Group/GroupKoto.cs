@@ -8,42 +8,6 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
-#pragma warning disable SA1202 // Elements should be ordered by access
-
-[TinyhandObject(ReservedKeyCount = 3)]
-public abstract partial class BlockKoto : IdentifiableKoto, ITokenParser
-{
-    [Key(2)]
-    public Koto.GoshujinClass Children { get; protected set; } = new();
-
-    public BlockKoto(ref TokenReader reader, SourceRange range)
-        : base(ref reader, range)
-    {
-    }
-
-    public BlockKoto(CodeContext codeContext, SourceRange range)
-        : base(codeContext, range)
-    {
-    }
-
-    public virtual void Clear()
-    {
-        foreach (var x in this.Children)
-        {
-            if (x is BlockKoto blockKoto)
-            {
-                blockKoto.Clear();
-            }
-        }
-
-        this.Children.ClearAll();
-    }
-
-    public void Parse(ref TokenReader reader)
-    {
-    }
-}
-
 /// <summary>
 /// namespace, struct, enum, extension, contract.
 /// </summary>
@@ -62,12 +26,6 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
     [Key(4)]
     public string Name { get; protected set; } = string.Empty;
 
-    [Key(5)]
-    protected List<Koto> KotoList { get; set; } = [];
-
-    [Key(6)]
-    protected Utf16Hashtable<GroupKoto> IdentifierToGroupKoto { get; set; } = new();
-
     public KotoKind KotoKind => this switch
     {
         StructKoto => KotoKind.Struct,
@@ -85,6 +43,12 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         ContractKoto => TokenKind.Contract,
         _ => TokenKind.Group,
     };
+
+    [Key(5)]
+    protected List<Koto> KotoList { get; set; } = [];
+
+    [Key(6)]
+    protected Utf16Hashtable<GroupKoto> IdentifierToGroupKoto { get; set; } = new();
 
     #endregion
 
@@ -215,6 +179,20 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             else if (token.Kind == TokenKind.Group)
             {// group
                 reader.Advance();
+                var r = KotoParser.ParseGroupDeclaration(ref reader);
+                if (reader.IsExcluded)
+                {
+                    reader.SkipCurrentBlock(false);
+                    goto NextToken;
+                }
+
+                var state = reader.TakeContext();
+                var groupKoto = this.GetOrAddGroup(r.Name, token.Kind, state, token.Range);
+                if (reader.CurrentTokenKind == TokenKind.StartBlock)
+                {
+                    reader.Advance();
+                    nextParser = groupKoto;
+                }
             }
             else if (token.Kind == TokenKind.Struct)
             {// struct
@@ -240,7 +218,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 }
             }
             else if (token.Kind == TokenKind.Func)
-            {// public func Main() => ()
+            {// public func Main() -> ()
                 reader.Advance();
                 var functionKoto = KotoParser.ParseFuncDeclaration(ref reader);
                 if (functionKoto is not null)

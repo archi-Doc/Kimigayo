@@ -446,39 +446,51 @@ Exit:
             reader.AddDiagnostic(Hashed.Kimi.InvalidIdentifier, span.ToString());
         }
 
-        if (reader.SkipUntil(TokenKind.StartBlock, TokenKind.Colon, Hashed.Kimi.InvalidIdentifier) == TokenKind.Colon)
+        while (reader.CanRead)
         {
-            reader.Advance(); // :
-        }
-
-        while (true)
-        {
-            if (!reader.TryRead(out token))
+            if (reader.CurrentTokenKind == TokenKind.StartBlock)
             {
                 goto Exit;
             }
 
+            if (reader.CurrentTokenKind == TokenKind.Colon)
+            {
+                reader.Advance();
+                break;
+            }
+
+            if (reader.CurrentTokenKind == TokenKind.Separator)
+            {
+                reader.Advance();
+                continue;
+            }
+
+            reader.AddDiagnostic(Hashed.Kimi.InvalidIdentifier, reader.GetSpan(reader.CurrentToken).ToString());
+            reader.Advance();
+        }
+
+        while (reader.CanRead)
+        {
+            if (reader.CurrentTokenKind == TokenKind.StartBlock)
+            {
+                goto Exit;
+            }
+
+            if (reader.CurrentTokenKind == TokenKind.Separator)
+            {
+                reader.Advance();
+                continue;
+            }
+
+            reader.TryRead(out token);
             if (token.Kind == TokenKind.Comma)
             {
-                if (reader.CurrentTokenKind == TokenKind.StartBlock)
-                {
-                    break;
-                }
-
                 continue;
             }
             else if (token.Kind == TokenKind.Identifier)
             {
                 list ??= new();
                 list.Add(reader.GetSpan(token).ToString());
-            }
-            else if (token.Kind == TokenKind.Separator)
-            {
-                break;
-            }
-            else if (token.Kind == TokenKind.StartBlock)
-            {
-                break;
             }
             else
             {
@@ -1114,10 +1126,10 @@ ProcessPrefix:
         {
             case TokenKind.Dot:
                 {// Class.Member
-                    reader.TryRead(out var token); // .
+                    reader.Advance(); // .
 
-                    var accessor = ParseExpression(ref reader);
-                    left = new MemberAccessKoto(ref reader, new(token.Range.Start, accessor.Range.End), left, accessor);
+                    var accessor = ParsePrimaryExpression(ref reader);
+                    left = new MemberAccessKoto(ref reader, new(left.Range.Start, accessor.Range.End), left, accessor);
                     return true;
                 }
 
@@ -1133,6 +1145,11 @@ ProcessPrefix:
 
             case TokenKind.LessThan:
                 {// Generics<T>
+                    if (!IsGenericPostfix(ref reader, left))
+                    {
+                        return false;
+                    }
+
                     reader.TryRead(out var token); // <
                     var typeList = new List<Koto>();
                     while (ParseType(ref reader) is { } typeKoto)
@@ -1176,6 +1193,42 @@ ProcessPrefix:
                     left = new PostfixDecrementKoto(ref reader, token.Range, left);
                     return true;
                 }
+        }
+
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsGenericPostfix(ref TokenReader reader, Koto left)
+    {
+        if (left is not (IdentifierNameKoto or MemberAccessKoto or GenericsKoto) ||
+            reader.CurrentTokenRange.Start != left.Range.End)
+        {
+            return false;
+        }
+
+        var lookahead = reader;
+        var depth = 0;
+        while (lookahead.CanRead)
+        {
+            switch (lookahead.CurrentTokenKind)
+            {
+                case TokenKind.LessThan:
+                    depth++;
+                    break;
+                case TokenKind.GreaterThan:
+                    if (--depth == 0)
+                    {
+                        return true;
+                    }
+
+                    break;
+                case TokenKind.Separator:
+                case TokenKind.EndBlock:
+                    return false;
+            }
+
+            lookahead.Advance();
         }
 
         return false;

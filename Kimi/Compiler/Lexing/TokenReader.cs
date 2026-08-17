@@ -509,7 +509,12 @@ Loop:
             // Keep the current token synchronized when crossing sequence segments.
             var result = this.MoveToNextNonEmptySpan();
             Debug.Assert(result);
+            return;
         }
+
+        this.currentSpan = default;
+        this.currentSpanIndex = 0;
+        this.currentToken = Token.Invalid;
     }
 
     private bool MoveToNextNonEmptySpan()

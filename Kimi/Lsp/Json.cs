@@ -109,7 +109,7 @@ public sealed class VersionedTextDocumentIdentifier : TextDocumentIdentifier
 
 public sealed class TextDocumentContentChangeEvent
 {
-    public SourceRange Range { get; set; }
+    public SourceRange? Range { get; set; }
 
     public int? RangeLength { get; set; }
 

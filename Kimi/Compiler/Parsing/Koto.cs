@@ -322,18 +322,23 @@ public abstract partial class Koto
         {
             if (current == attributeKoto)
             {
+                var next = current.AttributeChain;
                 current.Parent = default;
                 if (previous == null)
                 {
-                    this.AttributeChain = current.AttributeChain;
+                    this.AttributeChain = next;
                 }
                 else
                 {
-                    previous.AttributeChain = current.AttributeChain;
+                    previous.AttributeChain = next;
                 }
 
+                current.AttributeChain = default;
                 return true;
             }
+
+            previous = current;
+            current = current.AttributeChain;
         }
 
         return false;
