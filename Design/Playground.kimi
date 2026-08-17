@@ -7,7 +7,7 @@ alias AliasC
 #If(windows and 1 == 0x_001)
 alias AliasD
 
-private func find<T/s, T2>(
+private func find<s/T, T2>(
     value?: T,
     in => collection: Collection<T>,
     using => comparer: (T, T) -> Bool
