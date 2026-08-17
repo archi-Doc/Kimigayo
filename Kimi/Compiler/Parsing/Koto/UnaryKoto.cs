@@ -87,7 +87,7 @@ public partial class MacroKoto : UnaryKoto
     }
 }
 
-[TinyhandObject]
+/*[TinyhandObject]
 public partial class ReferenceKoto : UnaryKoto
 {// &A
     public override KotoKind Akind => KotoKind.Reference;
@@ -109,7 +109,7 @@ public partial class ReferenceKoto : UnaryKoto
         builder.Append(this.ReferenceKind.ToText(true));
         builder.Append(this.Operand.ToString());
     }
-}
+}*/
 
 [TinyhandObject]
 public partial class UnwrapKoto : UnaryKoto

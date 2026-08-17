@@ -246,7 +246,7 @@ Loop:
             if (token.Kind == TokenKind.Sharp)
             {
                 // Attributes may appear between the caller and the expected token.
-                _ = KotoParser.ParseAttributeKoto(ref this);
+                _ = Parser.ParseAttributeKoto(ref this);
                 goto Loop;
             }
 
@@ -380,34 +380,6 @@ Loop:
 
             this.AdvanceOne();
         }
-    }
-
-    /// <summary>
-    /// Reads a reference kind from the current identifier token.
-    /// </summary>
-    /// <returns>
-    /// The parsed reference kind, or <see cref="ReferenceKind.Borrow"/> if no valid reference kind is present.
-    /// </returns>
-    public ReferenceKind ReadReferenceKind()
-    {
-        if (!this.CanRead || this.currentToken.Kind != TokenKind.Identifier)
-        {
-            return ReferenceKind.Borrow;
-        }
-
-        var token = this.currentToken;
-        var span = this.GetSpan(token);
-        var referenceKind = span.ToReferenceKind();
-
-        this.AdvanceOne();
-
-        if (referenceKind == ReferenceKind.None)
-        {
-            this.Diagnostic.AddToken(token, Hashed.Kimi.InvalidReferenceSyntax, span.ToString());
-            return ReferenceKind.Borrow;
-        }
-
-        return referenceKind;
     }
 
     /// <summary>

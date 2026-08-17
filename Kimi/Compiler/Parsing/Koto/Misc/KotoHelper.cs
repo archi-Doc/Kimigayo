@@ -13,78 +13,11 @@ namespace Kimi.Compiler;
 
 public static partial class KotoHelper
 {
-    public static string ToText(this ReferenceKind referenceKind, bool appendSpace)
-    {
-        if (appendSpace)
-        {
-            return referenceKind switch
-            {
-                ReferenceKind.Borrow => "&",
-                ReferenceKind.Owner => "&owner ",
-                ReferenceKind.Unsafe => "&unsafe ",
-                ReferenceKind.Rc => "&rc ",
-                ReferenceKind.Arc => "&arc ",
-                _ => string.Empty,
-            };
-        }
-        else
-        {
-            return referenceKind switch
-            {
-                ReferenceKind.Borrow => "&",
-                ReferenceKind.Owner => "&owner",
-                ReferenceKind.Unsafe => "&unsafe",
-                ReferenceKind.Rc => "&rc",
-                ReferenceKind.Arc => "&arc",
-                _ => string.Empty,
-            };
-        }
-    }
-
-    public static ReferenceKind ToReferenceKind(this ReadOnlySpan<char> text)
-    {
-        var length = text.Length;
-        if (length == 0)
-        {
-            return ReferenceKind.Borrow;
-        }
-        else if (length == 2)
-        {
-            if (text[0] == 'r' && text[1] == 'c')
-            {
-                return ReferenceKind.Rc;
-            }
-        }
-        else if (length == 3)
-        {
-            if (text[0] == 'a' && text[1] == 'r' && text[2] == 'c')
-            {
-                return ReferenceKind.Arc;
-            }
-        }
-        else if (length == 5)
-        {
-            if (text[0] == 'o' && text[1] == 'w' && text[2] == 'n' && text[3] == 'e' && text[4] == 'r')
-            {
-                return ReferenceKind.Owner;
-            }
-        }
-        else if (length == 6)
-        {
-            if (text[0] == 'u' && text[1] == 'n' && text[2] == 's' && text[3] == 'a' && text[4] == 'f' && text[5] == 'e')
-            {
-                return ReferenceKind.Unsafe;
-            }
-        }
-
-        return ReferenceKind.None;
-    }
-
     public static Koto NewUnaryKoto(ref TokenReader reader, Token token, Koto operand) => token.Kind switch
     {
         TokenKind.Sharp => new AttributeKoto(ref reader, token.Range, operand),
         TokenKind.Dollar => new MacroKoto(ref reader, token.Range, operand),
-        TokenKind.Asterisk => new ReferenceKoto(ref reader, token.Range, operand, ReferenceKind.None),
+        // TokenKind.Asterisk => new ReferenceKoto(ref reader, token.Range, operand, ReferenceKind.None),
         TokenKind.Plus => new PrefixPlusKoto(ref reader, token.Range, operand),
         TokenKind.Minus => new PrefixMinusKoto(ref reader, token.Range, operand),
         TokenKind.Not => new NotKoto(ref reader, token.Range, operand),

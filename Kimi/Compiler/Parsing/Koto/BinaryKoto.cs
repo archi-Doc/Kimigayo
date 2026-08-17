@@ -701,7 +701,7 @@ public abstract partial class BinaryKoto : Koto
 
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.None);
+            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.None);
         }
 
         builder.Append(infix);

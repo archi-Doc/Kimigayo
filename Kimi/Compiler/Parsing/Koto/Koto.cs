@@ -8,30 +8,6 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
-[Flags]
-public enum KotoWriteOptions : byte
-{
-    /// <summary>
-    /// Uses the default output format and appends nothing.
-    /// </summary>
-    None = 0,
-
-    /// <summary>
-    /// Appends a single space after the output.
-    /// </summary>
-    AppendSpace = 1 << 0,
-
-    /// <summary>
-    /// Appends a line feed after the output.
-    /// </summary>
-    AppendLineFeed = 1 << 1,
-
-    /// <summary>
-    /// Writes names in fully qualified form.
-    /// </summary>
-    FullyQualified = 1 << 2,
-}
-
 public enum KotoKind : byte
 {
     Invalid,
@@ -134,7 +110,7 @@ public enum KotoKind : byte
 
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
 [TinyhandUnion((int)KotoKind.Macro, typeof(MacroKoto))]
-[TinyhandUnion((int)KotoKind.Reference, typeof(ReferenceKoto))]
+// [TinyhandUnion((int)KotoKind.Reference, typeof(ReferenceKoto))]
 [TinyhandUnion((int)KotoKind.Unwrap, typeof(UnwrapKoto))]
 [TinyhandUnion((int)KotoKind.PrefixCaret, typeof(PrefixCaretKoto))]
 [TinyhandUnion((int)KotoKind.PrefixPlus, typeof(PrefixPlusKoto))]
@@ -281,7 +257,7 @@ public abstract partial class Koto
     {
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
+            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
         }
 
         builder.Append("Koto");

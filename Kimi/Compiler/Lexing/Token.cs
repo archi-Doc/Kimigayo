@@ -5,6 +5,9 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
+/// <summary>
+/// Represents a lexical token produced by the lexer.
+/// </summary>
 public readonly partial struct Token
 {// 1 + 1 + 8 + 16 -> 32
     public static readonly Token Invalid = default;

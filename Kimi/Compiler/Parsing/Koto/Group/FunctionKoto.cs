@@ -86,7 +86,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     {
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
+            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
         }
 
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);

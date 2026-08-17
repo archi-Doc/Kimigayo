@@ -87,7 +87,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
     {// public group A
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
+            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
         }
 
         if (this.IsRoot)
@@ -106,21 +106,21 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
     {// rootgroup A
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
+            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
             builder.AppendLine();
         }
 
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
         builder.Append(Constants.RootgroupKeyword);
         builder.Append(' ');
-        KotoParser.WriteQualifiedNameTo(this, ref builder);
+        Parser.WriteQualifiedNameTo(this, ref builder);
     }
 
     public void Parse(ref TokenReader reader)
     {
         while (reader.CanRead)
         {
-            KotoParser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
+            Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
             if (isEnd)
             {
                 return;
@@ -149,7 +149,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 token.Kind == TokenKind.Var)
             {// let a = 1, var b = 2
                 reader.Advance();
-                var fieldKoto = KotoParser.ParseField(ref reader, ref token);
+                var fieldKoto = Parser.ParseField(ref reader, ref token);
                 if (fieldKoto is not null)
                 {
                     this.AddLast(fieldKoto);
@@ -179,7 +179,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             else if (token.Kind == TokenKind.Group)
             {// group
                 reader.Advance();
-                var r = KotoParser.ParseGroupDeclaration(ref reader);
+                var r = Parser.ParseGroupDeclaration(ref reader);
                 if (reader.IsExcluded)
                 {
                     reader.SkipCurrentBlock(false);
@@ -197,7 +197,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             else if (token.Kind == TokenKind.Struct)
             {// struct
                 reader.Advance();
-                var r = KotoParser.ParseGroupDeclaration(ref reader);
+                var r = Parser.ParseGroupDeclaration(ref reader);
                 if (reader.IsExcluded)
                 {
                     reader.SkipCurrentBlock(false);
@@ -220,7 +220,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             else if (token.Kind == TokenKind.Func)
             {// public func Main() -> ()
                 reader.Advance();
-                var functionKoto = KotoParser.ParseFuncDeclaration(ref reader);
+                var functionKoto = Parser.ParseFuncDeclaration(ref reader);
                 if (functionKoto is not null)
                 {
                     if (!functionKoto.IsExcluded)
@@ -242,7 +242,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             }
             else
             {// Other
-                var koto = KotoParser.ParseExpression(ref reader);
+                var koto = Parser.ParseExpression(ref reader);
                 if (koto is ErrorKoto)
                 {// Error
                     reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);

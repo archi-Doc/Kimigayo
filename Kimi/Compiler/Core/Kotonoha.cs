@@ -130,7 +130,7 @@ public sealed partial class Kotonoha
         while (reader.CanRead)
         {
             // Consume attributes and modifiers
-            KotoParser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
+            Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
             if (isEnd)
             {
                 return;

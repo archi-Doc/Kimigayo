@@ -47,7 +47,7 @@ public partial class TypeSemanticsKoto : Koto
     {
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
+            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
         }
 
         if (this.semanticsForm == SemanticsForm.Slash)

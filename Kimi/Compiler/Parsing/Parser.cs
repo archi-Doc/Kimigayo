@@ -11,7 +11,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-public static class KotoParser
+public static class Parser
 {
     private const int AccessibilityModifierMask = 15;
     private const int PrefixBindingPower = 90;
@@ -510,7 +510,7 @@ Exit:
         var variableContext = reader.TakeContext();
 
         // Field name
-        KotoParser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
+        Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
         if (isEnd)
         {
             return default;
@@ -526,7 +526,7 @@ Exit:
         Koto? typeKoto = default;
         if (reader.TryConsume(TokenKind.Colon, out _, false))
         {// var x: i32
-            KotoParser.ConsumeAttributeAndModifier(ref reader, out isEnd);
+            Parser.ConsumeAttributeAndModifier(ref reader, out isEnd);
             if (isEnd)
             {
                 return default;
@@ -1020,7 +1020,7 @@ Exit:
         var attributeKoto = new AttributeKoto(ref reader, attributeToken.Range, operand);
         if (attributeKoto.IsIfAttribute)
         {// #If
-            reader.IsExcluded = !KotoParser.ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto);
+            reader.IsExcluded = !Parser.ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto);
             return null;
         }
         else
@@ -1088,24 +1088,9 @@ ProcessPrefix:
         var bindingPower = GetPrefixBindingPower(tokenKind);
         if (bindingPower > 0)
         {
-            ReferenceKind referenceKind = default;
             reader.TryRead(out var token);
-            if (tokenKind == TokenKind.Ampersand)
-            {
-                referenceKind = reader.ReadReferenceKind();
-            }
-
             var operand = ParseExpression(ref reader, bindingPower);
-
-            Koto koto;
-            if (referenceKind == ReferenceKind.None)
-            {
-                koto = KotoHelper.NewUnaryKoto(ref reader, token, operand);
-            }
-            else
-            {
-                koto = new ReferenceKoto(ref reader, token.Range, operand, referenceKind);
-            }
+            var koto = KotoHelper.NewUnaryKoto(ref reader, token, operand);
 
             if (koto is AttributeKoto attributeKoto)
             {
