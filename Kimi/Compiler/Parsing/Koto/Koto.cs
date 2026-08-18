@@ -274,6 +274,10 @@ public abstract partial class Koto
         return default;
     }
 
+    public virtual void Bind(Compilation compilation)
+    {
+    }
+
     public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
     {
         this.DiagnosticCollection?.Add(this.Range, diagnosticHash, obj);

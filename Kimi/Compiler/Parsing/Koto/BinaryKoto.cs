@@ -690,6 +690,12 @@ public abstract partial class BinaryKoto : Koto
         this.Right = default!;
     }
 
+    public override void Bind(Compilation compilation)
+    {
+        this.Left.Bind(compilation);
+        this.Right.Bind(compilation);
+    }
+
     public override string ToString()
         => $"BinaryKoto: {this.Right.ToString()}";
 
