@@ -510,8 +510,7 @@ Loop:
                         continue;
                     }
 
-                    if (TokenHelper.KeywordToTokenKind.TryGetValue(this.span.Slice(0, length), out var keywordKind) &&
-                        keywordKind.IsKeyword())
+                    if (TokenHelper.KeywordToTokenKind.TryGetValue(this.span.Slice(0, length), out var keywordKind))
                     {// Keyword
                         this.AddTokenAndSlice(keywordKind, length);
                     }

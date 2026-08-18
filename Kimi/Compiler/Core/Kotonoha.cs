@@ -136,7 +136,7 @@ public sealed partial class Kotonoha
                 return;
             }
 
-            if (reader.IsIdentifierToken(reader.CurrentToken, Constants.AliasKeyword))
+            if (reader.CurrentTokenKind == TokenKind.Alias)
             {// alias
                 reader.Advance();
                 var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
