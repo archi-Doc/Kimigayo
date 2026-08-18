@@ -24,7 +24,7 @@ public static class DiagnosticCode
 
     static DiagnosticCode()
     {
-        AddCode(typeof(Hashed), KimiControl.ErrorPrefix);
+        AddCode(typeof(Hashed), Kimigayo.ErrorPrefix);
 
         Hashed.SetDiagnosticSeverity(SetSeverity);
     }

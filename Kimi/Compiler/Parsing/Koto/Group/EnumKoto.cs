@@ -9,12 +9,14 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public sealed partial class EnumKoto : GroupKoto
 {
+    public override KotoKind Akind => KotoKind.Enum;
+
     public EnumKoto(ref TokenReader reader, SourceRange range)
         : base(ref reader, range)
     {
     }
 
-    internal EnumKoto(CodeContext codeContext, TokenState state, SourceRange range)
+    internal EnumKoto(CodeContext codeContext, TokenContext state, SourceRange range)
         : base(codeContext, state, range)
     {
     }

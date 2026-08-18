@@ -7,7 +7,7 @@ namespace Kimi;
 
 public class Solution
 {
-    private readonly KimiControl kimiControl;
+    private readonly Kimigayo kimigayo;
 
     public SolutionFile SolutionFile { get; private set; } = new();
 
@@ -17,9 +17,9 @@ public class Solution
 
     public Dictionary<string, Project> Projects { get; private set; } = new();
 
-    public Solution(KimiControl kimiControl)
+    public Solution(Kimigayo kimigayo)
     {
-        this.kimiControl = kimiControl;
+        this.kimigayo = kimigayo;
     }
 
     public bool TryReadFile(string path, ILogger? logger = default)
@@ -144,7 +144,7 @@ SolutionLoaed:
         if (this.SolutionFile.Projects.Count == 0)
         {
             logger.GetWriter(LogLevel.Warning)?.Write(Hashed.Solution.NoProject);
-            // this.kimiControl.GlobalDiagnostic.Add(default, Hashed.Solution.NoProject);
+            // this.kimigayo.GlobalDiagnostic.Add(default, Hashed.Solution.NoProject);
         }
 
         var sb = new StringBuilder();
@@ -242,7 +242,7 @@ SolutionLoaed:
         {
             if (!this.Projects.ContainsKey(x))
             {
-                if (Project.TryCreate(this.kimiControl, logger, x, out var project))
+                if (Project.TryCreate(this.kimigayo, logger, x, out var project))
                 {
                     this.Projects[x] = project;
                 }
@@ -254,7 +254,7 @@ SolutionLoaed:
         {
             if (File.Exists(this.SingleFile))
             {
-                var project = new Project(this.kimiControl);
+                var project = new Project(this.kimigayo);
                 project.Name = Path.GetFileNameWithoutExtension(this.SingleFile);
                 project.Directory = Path.GetDirectoryName(this.SingleFile) ?? string.Empty;
                 project.AddKimiFile(this.SingleFile);

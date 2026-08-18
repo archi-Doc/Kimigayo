@@ -31,7 +31,10 @@ Raw string literalは、エスケープをサポートしない。
 やっぱりC#の{}が良い。
 ほぼC#と同じ仕様。
 
-{Method("A: {}")}
+## Escape/Interpolation
+Swift/Rust寄りで、頻用のエスケープのみ。
+\0 \\ \e \t \n \r \" \' \u(...) \(Interpolation)
+
 
 
 ## #If Attribute

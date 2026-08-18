@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
 
 namespace Kimi.Compiler.Parsing;
@@ -7,6 +8,8 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public sealed partial class StringLiteralKoto : Koto
 {
+    public override KotoKind Akind => KotoKind.StringLiteral;
+
     [Key(1)]
     private string rawLiteral;
 
@@ -19,7 +22,7 @@ public sealed partial class StringLiteralKoto : Koto
                 return field;
             }
 
-            field = KotoHelper.ParseLiteral(this.rawLiteral);
+            field = StringLiteralHelper.GetStringLiteralValue(this.rawLiteral, this);
             return field;
         }
     }
@@ -27,7 +30,7 @@ public sealed partial class StringLiteralKoto : Koto
     public StringLiteralKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Range)
     {
-        this.rawLiteral = token.Text.ToString();
+        this.rawLiteral = reader.GetSpan(token).ToString();
     }
 
     public override string ToString()
@@ -37,7 +40,7 @@ public sealed partial class StringLiteralKoto : Koto
     {
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
+            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
         }
 
         builder.Append(this.rawLiteral);

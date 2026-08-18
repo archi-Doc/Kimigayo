@@ -7,7 +7,7 @@ public class KimiUnit : UnitBase
     public static void ConfigureBase(IUnitConfigurationContext context)
     {
         context.AddScoped<IConsoleService, ConsoleService>();
-        context.AddSingleton<KimiControl>();
+        context.AddSingleton<Kimigayo>();
         context.AddTransient<Solution>();
         context.AddTransient<Project>();
     }

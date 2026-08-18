@@ -31,8 +31,39 @@ public enum TokenKind : byte
     F64,
     String,
 
-    // Keywords (Group)
-    Static = 32,
+    // Keywords
+    True = 32,
+    False,
+    Let,
+    Var,
+    Func,
+
+    // Expression keyword
+    If, // if
+    Else, // else
+    // Block, // block
+    As, // as
+    Is, // is
+    Not, // not
+    And, // and
+    Or, // Or
+    For, // for
+    Loop, // loop
+    Match, // match
+    Return, // method/return
+    Break, // loop/break
+    Continue, // continue
+    Yield, // yield
+
+    // Contextual keyword
+    Alias = 96,
+    RootGroup,
+    Group,
+    Struct,
+    Enum,
+    Extension,
+    Contract,
+    Static,
     Public,
     Protected,
     Private,
@@ -40,38 +71,6 @@ public enum TokenKind : byte
     ProtectedOrInternal,
     ProtectedAndInternal,
     Open,
-    Let,
-    Var,
-    True,
-    False,
-
-    // Block keyword
-    Group, // group
-    Struct, // struct
-    Enum, // enum
-    Extension, // extension
-    Contract, // contract
-    For, // for
-    Loop, // loop
-    Match, // match
-
-    // Block or expression keyword
-    If, // if
-    Else, // else
-    Block, // block
-    // EqualsGreaterThan, // =>
-    As, // as
-    Is, // is
-    Not, // not
-    And, // and
-    Or, // Or
-
-    // Non-block keyword
-    RootGroup, // rootgroup
-    Return, // method/return
-    Break, // loop/break
-    Continue, // continue
-    Yield, // yield
 
     // Not keyword
     Identifier = 128,
@@ -133,6 +132,7 @@ public enum TokenKind : byte
     LessThanLessThanEquals, // <<=
     Minus, // -
     MinusEquals, // -=
+    MinusGreaterThan, // ->
     MinusMinus, // --
     Percent, // %
     PercentEquals, // %=

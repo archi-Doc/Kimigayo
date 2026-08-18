@@ -4,9 +4,11 @@ using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Xml.Linq;
 using Arc.Collections;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -14,7 +16,10 @@ namespace Kimi.Compiler;
 public sealed partial class Kotonoha
 {
     [IgnoreMember]
-    public Compilation Compilation { get; }
+    public DiagnosticCollection DiagnosticCollection { get; private set; }
+
+    [IgnoreMember]
+    public Compilation Compilation { get; private set; }
 
     [Key(0)]
     public uint Id { get; private set; }
@@ -26,7 +31,7 @@ public sealed partial class Kotonoha
     public string Url { get; private set; } = string.Empty;
 
     [Key(3)]
-    public GroupKoto Root { get; private set; }
+    public GroupKoto RootKoto { get; private set; }
     // public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
 
     // [Key(4)]
@@ -41,26 +46,36 @@ public sealed partial class Kotonoha
 
     public Kotonoha(Compilation compilation, string name, string url)
     {
-        var codeContext = new CodeContext(compilation, this, ReadOnlyMemory<char>.Empty);
-
+        this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(name);
         this.Compilation = compilation;
         this.Name = name;
         this.Id = (uint)XxHash3Slim.Hash64(name);
         this.Url = url;
-        this.Root = new(codeContext, default, default);
 
-        codeContext.CurrentGroup = this.Root;
+        var codeContext = new CodeContext(this);
+        this.RootKoto = new(codeContext, default, default);
+
+        // codeContext.CurrentGroup = this.Root;
     }
 
     public Kotonoha(Compilation compilation)
+        : this(compilation, "test", "test")
     {
-        var codeContext = new CodeContext(compilation, this, ReadOnlyMemory<char>.Empty);
+    }
+
+    public void OnDeserialized(Compilation compilation)
+    {
+        this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(this.Name);
         this.Compilation = compilation;
-        this.Root = new(codeContext, default, default);
     }
 
     public override string ToString()
         => $"Kotonoha: {this.Name}";
+
+    public CodeContext CreateCodeContext(DiagnosticCollection? diagnosticCollection = null)
+    {
+        return new(this, diagnosticCollection);
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryGetKoto(ulong kotoId, [MaybeNullWhen(false)] out Koto koto)
@@ -81,35 +96,32 @@ public sealed partial class Kotonoha
 
     public void AddSource(PathAndSource pathAndSource)
     {
-        var diagnostic = this.Compilation.KimiControl.GetOrAddFileDiagnostic(pathAndSource.Path);
-        var sourceText = pathAndSource.SourceText.AsMemory();
-        var tokenizer = new Tokenizer(diagnostic);
-        tokenizer.Initialize(sourceText, 0, 0);
+        var diagnostic = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(pathAndSource.Path);
+        var sourceText = pathAndSource.SourceText.AsSpan();
+        var tokenizer = new Tokenizer(diagnostic, sourceText);
 
         /*var kimiId = this.SourceList.Count;
         var kimiSource = new KimiSource(pathAndSource.Path, [], default);
         this.SourceList.Add(kimiSource);*/
 
-        var codeContext = this.Compilation.CreateCodeContext(this, sourceText);
+        var codeContext = this.CreateCodeContext(diagnostic);
 
         // Tokenize
-        var tokenBuilder = new TokenSequenceBuilder();
         try
         {
-            tokenizer.ReadAll(ref tokenBuilder);
-            var tokenSequence = tokenBuilder.ToReadOnlySequence();
+            tokenizer.ReadAll();
             if (this.Compilation.Project.KimiOptions.DumpToken)
             {// Dump token
-                this.DumpToken(pathAndSource.Path, tokenSequence);
+                this.DumpToken(pathAndSource.Path, tokenizer.ToReadOnlySequence());
             }
 
             // Token to Koto
-            var tokenReader = new TokenReader(diagnostic, codeContext, tokenSequence);
+            var tokenReader = new TokenReader(codeContext, ref tokenizer);
             this.Parse(ref tokenReader);
         }
         finally
         {
-            tokenBuilder.Dispose();
+            tokenizer.Dispose();
         }
     }
 
@@ -118,27 +130,28 @@ public sealed partial class Kotonoha
         while (reader.CanRead)
         {
             // Consume attributes and modifiers
-            KotoParser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
+            Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
             if (isEnd)
             {
                 return;
             }
 
-            if (reader.CurrentToken.IsIdentifierToken(Constants.AliasKeyword))
+            if (reader.CurrentTokenKind == TokenKind.Alias)
             {// alias
                 reader.Advance();
                 var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
                 var aliasKoto = new AliasKoto(ref reader, list);
-                if (KotoParser.ResolveIfAttribute(ref reader, aliasKoto))
+                // if (KotoParser.ResolveIfAttribute(ref reader, aliasKoto))
+                if (!reader.IsExcluded)
                 {
-                    this.Root.AddLast(aliasKoto);
+                    this.RootKoto.AddLast(aliasKoto);
                 }
 
                 continue;
             }
             else
             {// Delegate processing to CurrentGroup because this token is not a top-level keyword.
-                this.Root.Parse(ref reader, true);
+                this.RootKoto.Parse(ref reader);
             }
         }
     }

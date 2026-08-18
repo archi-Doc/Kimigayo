@@ -6,6 +6,9 @@ using System.Text.Json;
 using Arc.Unit;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
+using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Kimi.Unit;
 using Microsoft.Extensions.DependencyInjection;
 using SimplePrompt;
@@ -19,10 +22,21 @@ internal class Program
     {
         Console.WriteLine("Hello, World!");
 
-        var unit = new KimiUnit.Builder().Build();
+        DiagnosticEntries.TryGet(KimiDiagnostic.ConditionMustBeBool_Kd, out var e);
+
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        var codeContext = kotonoha.CreateCodeContext();
+        codeContext.Parse(kotonoha.RootKoto, $"""
+            #If (true)
+            public struct TestStruct: @Ia
+                let x = 1
+            """);
+
+        /*var unit = new KimiUnit.Builder().Build();
         var serviceProvider = unit.Context.ServiceProvider;
 
-        var kimiControl = serviceProvider.GetRequiredService<KimiControl>();
+        var kimigayo = serviceProvider.GetRequiredService<Kimigayo>();
         var solution = serviceProvider.GetRequiredService<Solution>();
         solution.TryReadFile("aaa");
         // var tree = CodeTree.Parse("");
@@ -30,22 +44,7 @@ internal class Program
         var project = serviceProvider.GetRequiredService<Project>();
         Test1();
 
-        /*project.AddSource("test", """
-            namespace Test.Program // Comment
-            public Main()
-                var x = 1.23
-                var list = [
-                    1,
-                    2,]
-                var list2 = [
-                    1,
-                ]
-                return
-            """);*/
         project.AddSource("test", """
-            /* Multi-line comment
-            Kimi by archi-Doc.
-            */
             namespace Playground // Single-line comment
             use Kimi.Crypto 
 
@@ -84,9 +83,9 @@ internal class Program
               + Name="valuelink", Version="1.2"
             Use=
               "Kimi.Base"
-            """);
+            """);*/
 
-        // kimiControl.DumpToConsole();
+        // kimigayo.DumpToConsole();
 
     }
 

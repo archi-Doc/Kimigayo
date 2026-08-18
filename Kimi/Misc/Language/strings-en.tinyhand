@@ -1,0 +1,14 @@
+// identifier="string" /* null: Use the default value. */
+
+Solution=
+  NotFound="Solution file '{0}' not found"
+  Loaded="Solution file '{0}' loaded"
+  NoProject="No build target project was found"
+  NotLoaded="Failed to load the solution file '{0}'"
+  TargetProjects="Target Projects: "
+  NoRunTarget="No project or file to run was found"
+
+Project=
+  NoProjectFile="Project file '{0}' not found"
+  NoKimiFile="Kimi file '{0}' not found"
+  NotLoaded="Failed to load the project file '{0}'"

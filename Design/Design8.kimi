@@ -10,6 +10,21 @@ alias Kimi.Base.Linux
 
 roogroup Playground.A// Represents a group that specifies an identifier by its absolute position.
 
+// Type Semantics
+// value: value
+// reference: stack, borrow, owner, rc, arc
+public struct Array<T{not stack, not borrow, }>
+var array = Array<StructA{owner}>.new()
+func Set(i32 index, T{reference => owner, unsafe=>unsafe} obj) => ()
+func Get(i32 index) => T{owner => borrow, }
+
+var array2 = Array<int>.new()
+
+var x = t@T{owner}
+var y = x@{borrow} // T{borrow}
+var i = 3@i32
+var refInt = i@{stack} // ref int 3
+
 public contract @Equatable
     static function ==(left: Self, right: Self) => Bool
 

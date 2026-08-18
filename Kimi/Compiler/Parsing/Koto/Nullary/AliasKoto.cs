@@ -7,6 +7,8 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public sealed partial class AliasKoto : Koto
 {
+    public override KotoKind Akind => KotoKind.Alias;
+
     [Key(1)]
     public List<string> QualifiedName { get; private set; }
 
@@ -25,7 +27,7 @@ public sealed partial class AliasKoto : Koto
     {
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
+            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
         }
 
         builder.Append("alias ");

@@ -1,19 +1,22 @@
 alias AliasB
 alias AliasC
 
-var x: &unsafe Base.Map<String, Int>
+func find<s/T, T2>(value?: T, in => collection: Collection<T>, using => comparer: (T, T) -> Bool) -> i32
+public func Main() -> ()
+var x: unsafe/Base.Map<String, Int>
 var count: i32 = #TestAtr 0
-let name: String = "abc"
+let name: String = abc
 var items: Array<Int>
 var items2
 var map: Map<String, Int>
-var array: Array<&owner T.U> = new()
-var obj = T.New()
-var obj2 = &owner T.New()
-var movedObj = &owner obj
-var movedObj = &unsafe obj
+var array: Array<owner/T.U> = new()
+var obj = T.new()
+var obj2 = T.new()
+var movedObj = obj
+var movedObj = obj@unsafe/T
 array.Add(movedObj)
 
-public open struct Test: @A, @B, 
+public open struct Test: A, B, 
     #Test1
     public static var #Test2 x: i32 = #One 1
+    private let pi = 1.2

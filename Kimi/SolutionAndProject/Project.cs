@@ -21,7 +21,7 @@ public partial class Project
         DefaultProjectFile = projectFile;
     }
 
-    public static bool TryCreate(KimiControl kimiControl, ILogger logger, string path, [MaybeNullWhen(false)] out Project project)
+    public static bool TryCreate(Kimigayo kimigayo, ILogger logger, string path, [MaybeNullWhen(false)] out Project project)
     {
         project = default;
         try
@@ -34,7 +34,7 @@ public partial class Project
                 return false;
             }
 
-            project = new(kimiControl);
+            project = new(kimigayo);
             project.Directory = Path.GetDirectoryName(path) ?? string.Empty;
             project.Name = Path.GetFileNameWithoutExtension(path);
             project.File = file;
@@ -50,7 +50,7 @@ public partial class Project
 
     #region FieldAndProperty
 
-    private readonly KimiControl kimiControl;
+    private readonly Kimigayo kimigayo;
     private List<PathAndSource> additionalSource = [];
     private HashSet<string> kimiFiles = new();
 
@@ -64,9 +64,9 @@ public partial class Project
 
     #endregion
 
-    public Project(KimiControl kimiControl)
+    public Project(Kimigayo kimigayo)
     {
-        this.kimiControl = kimiControl;
+        this.kimigayo = kimigayo;
         this.File = DefaultProjectFile;
     }
 
@@ -94,13 +94,13 @@ public partial class Project
     private async Task<bool> Buildtarget(string target)
     {
         // Create & Prepare Compilation
-        var compilation = new Compilation(this.kimiControl, this);
+        var compilation = new Compilation(this.kimigayo, this);
         if (!compilation.Prepare(target))
         {
             return false;
         }
 
-        var projectKotonoha = compilation.ProjectKotonoha;
+        var projectKotonoha = compilation.Kotonoha;
 
         foreach (var y in this.kimiFiles)
         {

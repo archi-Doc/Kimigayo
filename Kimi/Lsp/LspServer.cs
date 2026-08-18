@@ -258,6 +258,11 @@ public class LspServer
         var state = new TextDocument(doc.Uri);
         state.Open(doc.Text ?? string.Empty, doc.Version);
 
+        if (this.documents.Remove(doc.Uri, out var previous))
+        {
+            previous.Dispose();
+        }
+
         this.documents[doc.Uri] = state;
 
         // await this.PublishDiagnosticsAsync(state).ConfigureAwait(false);
@@ -285,17 +290,17 @@ public class LspServer
 
         foreach (var change in parameters.ContentChanges)
         {
-            /*if (change.Range is null)
+            if (change.Range is not { } range)
             {
                 document.Open(change.Text ?? string.Empty, version);
                 continue;
-            }*/
+            }
 
             document.ApplyChange(
-                change.Range.Start.Line,
-                change.Range.Start.Character,
-                change.Range.End.Line,
-                change.Range.End.Character,
+                range.Start.Line,
+                range.Start.Character,
+                range.End.Line,
+                range.End.Character,
                 change.Text ?? string.Empty,
                 version);
         }
@@ -366,7 +371,10 @@ public class LspServer
 
         var uri = parameters.TextDocument.Uri;
 
-        this.documents.Remove(uri);
+        if (this.documents.Remove(uri, out var document))
+        {
+            document.Dispose();
+        }
 
         await this.PublishEmptyDiagnosticsAsync(uri).ConfigureAwait(false);
     }

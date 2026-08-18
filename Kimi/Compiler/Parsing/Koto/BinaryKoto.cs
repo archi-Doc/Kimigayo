@@ -8,6 +8,8 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public partial class MemberAccessKoto : BinaryKoto
 {// A.B
+    public override KotoKind Akind => KotoKind.MemberAccess;
+
     public Koto Accessor => this.Right;
 
     public MemberAccessKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
@@ -29,6 +31,8 @@ public partial class MemberAccessKoto : BinaryKoto
 [TinyhandObject]
 public partial class IndexKoto : BinaryKoto
 {// A[B]
+    public override KotoKind Akind => KotoKind.Index;
+
     public Koto Index => this.Right;
 
     public IndexKoto(ref TokenReader reader, SourceRange range, Koto left, Koto index)
@@ -56,6 +60,8 @@ public partial class IndexKoto : BinaryKoto
 [TinyhandObject]
 public partial class AsteriskKoto : BinaryKoto
 {// A * B
+    public override KotoKind Akind => KotoKind.Asterisk;
+
     public AsteriskKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -71,8 +77,29 @@ public partial class AsteriskKoto : BinaryKoto
 }
 
 [TinyhandObject]
+public partial class ConversionKoto : BinaryKoto
+{// A@B
+    public override KotoKind Akind => KotoKind.Conversion;
+
+    public ConversionKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
+        : base(ref reader, range, left, right)
+    {
+    }
+
+    public override string ToString()
+        => $"{this.Left}@{this.Right}";
+
+    public override void WriteTo(ref IndentedStringBuilder builder)
+    {
+        this.WriteBinaryKoto(ref builder, "@");
+    }
+}
+
+[TinyhandObject]
 public partial class SlashKoto : BinaryKoto
 {// A / B
+    public override KotoKind Akind => KotoKind.Slash;
+
     public SlashKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -90,6 +117,8 @@ public partial class SlashKoto : BinaryKoto
 [TinyhandObject]
 public partial class PercentKoto : BinaryKoto
 {// A % B
+    public override KotoKind Akind => KotoKind.Percent;
+
     public PercentKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -107,6 +136,8 @@ public partial class PercentKoto : BinaryKoto
 [TinyhandObject]
 public partial class PlusKoto : BinaryKoto
 {// A + B
+    public override KotoKind Akind => KotoKind.Plus;
+
     public PlusKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -124,6 +155,8 @@ public partial class PlusKoto : BinaryKoto
 [TinyhandObject]
 public partial class MinusKoto : BinaryKoto
 {// A - B
+    public override KotoKind Akind => KotoKind.Minus;
+
     public MinusKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -141,6 +174,8 @@ public partial class MinusKoto : BinaryKoto
 [TinyhandObject]
 public partial class LessThanLessThanKoto : BinaryKoto
 {// A << B
+    public override KotoKind Akind => KotoKind.LessThanLessThan;
+
     public LessThanLessThanKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -158,6 +193,8 @@ public partial class LessThanLessThanKoto : BinaryKoto
 [TinyhandObject]
 public partial class GreaterThanGreaterThanKoto : BinaryKoto
 {// A >> B
+    public override KotoKind Akind => KotoKind.GreaterThanGreaterThan;
+
     public GreaterThanGreaterThanKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -175,6 +212,8 @@ public partial class GreaterThanGreaterThanKoto : BinaryKoto
 [TinyhandObject]
 public partial class LessThanKoto : BinaryKoto
 {// A < B
+    public override KotoKind Akind => KotoKind.LessThan;
+
     public LessThanKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -192,6 +231,8 @@ public partial class LessThanKoto : BinaryKoto
 [TinyhandObject]
 public partial class LessThanEqualsKoto : BinaryKoto
 {// A <= B
+    public override KotoKind Akind => KotoKind.LessThanEquals;
+
     public LessThanEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -209,6 +250,8 @@ public partial class LessThanEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class GreaterThanKoto : BinaryKoto
 {// A > B
+    public override KotoKind Akind => KotoKind.GreaterThan;
+
     public GreaterThanKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -226,6 +269,8 @@ public partial class GreaterThanKoto : BinaryKoto
 [TinyhandObject]
 public partial class GreaterThanEqualsKoto : BinaryKoto
 {// A >= B
+    public override KotoKind Akind => KotoKind.GreaterThanEquals;
+
     public GreaterThanEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -243,6 +288,8 @@ public partial class GreaterThanEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class AsKoto : BinaryKoto
 {// A as B
+    public override KotoKind Akind => KotoKind.As;
+
     public AsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -260,6 +307,8 @@ public partial class AsKoto : BinaryKoto
 [TinyhandObject]
 public partial class IsKoto : BinaryKoto
 {// A is B
+    public override KotoKind Akind => KotoKind.Is;
+
     public IsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -277,6 +326,8 @@ public partial class IsKoto : BinaryKoto
 [TinyhandObject]
 public partial class EqualsEqualsKoto : BinaryKoto
 {// A == B
+    public override KotoKind Akind => KotoKind.EqualsEquals;
+
     public EqualsEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -294,6 +345,8 @@ public partial class EqualsEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class ExclamationEqualsKoto : BinaryKoto
 {// A != B
+    public override KotoKind Akind => KotoKind.ExclamationEquals;
+
     public ExclamationEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -311,6 +364,8 @@ public partial class ExclamationEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class AmpersandKoto : BinaryKoto
 {// A & B
+    public override KotoKind Akind => KotoKind.Ampersand;
+
     public AmpersandKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -328,6 +383,8 @@ public partial class AmpersandKoto : BinaryKoto
 [TinyhandObject]
 public partial class CaretKoto : BinaryKoto
 {// A ^ B
+    public override KotoKind Akind => KotoKind.Caret;
+
     public CaretKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -345,6 +402,8 @@ public partial class CaretKoto : BinaryKoto
 [TinyhandObject]
 public partial class BarKoto : BinaryKoto
 {// A | B
+    public override KotoKind Akind => KotoKind.Bar;
+
     public BarKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -362,6 +421,8 @@ public partial class BarKoto : BinaryKoto
 [TinyhandObject]
 public partial class AndKoto : BinaryKoto
 {// A and B
+    public override KotoKind Akind => KotoKind.And;
+
     public AndKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -379,6 +440,8 @@ public partial class AndKoto : BinaryKoto
 [TinyhandObject]
 public partial class OrKoto : BinaryKoto
 {// A or B
+    public override KotoKind Akind => KotoKind.Or;
+
     public OrKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -396,6 +459,8 @@ public partial class OrKoto : BinaryKoto
 [TinyhandObject]
 public partial class EqualsKoto : BinaryKoto
 {// A = B
+    public override KotoKind Akind => KotoKind.Equals;
+
     public EqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -413,6 +478,8 @@ public partial class EqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class PlusEqualsKoto : BinaryKoto
 {// A += B
+    public override KotoKind Akind => KotoKind.PlusEquals;
+
     public PlusEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -430,6 +497,8 @@ public partial class PlusEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class MinusEqualsKoto : BinaryKoto
 {// A -= B
+    public override KotoKind Akind => KotoKind.MinusEquals;
+
     public MinusEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -447,6 +516,8 @@ public partial class MinusEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class AsteriskEqualsKoto : BinaryKoto
 {// A *= B
+    public override KotoKind Akind => KotoKind.AsteriskEquals;
+
     public AsteriskEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -464,6 +535,8 @@ public partial class AsteriskEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class SlashEqualsKoto : BinaryKoto
 {// A /= B
+    public override KotoKind Akind => KotoKind.SlashEquals;
+
     public SlashEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -481,6 +554,8 @@ public partial class SlashEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class PercentEqualsKoto : BinaryKoto
 {// A %= B
+    public override KotoKind Akind => KotoKind.PercentEquals;
+
     public PercentEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -498,6 +573,8 @@ public partial class PercentEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class AmpersandEqualsKoto : BinaryKoto
 {// A &= B
+    public override KotoKind Akind => KotoKind.AmpersandEquals;
+
     public AmpersandEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -515,6 +592,8 @@ public partial class AmpersandEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class CaretEqualsKoto : BinaryKoto
 {// A ^= B
+    public override KotoKind Akind => KotoKind.CaretEquals;
+
     public CaretEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -532,6 +611,8 @@ public partial class CaretEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class BarEqualsKoto : BinaryKoto
 {// A |= B
+    public override KotoKind Akind => KotoKind.BarEquals;
+
     public BarEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -549,6 +630,8 @@ public partial class BarEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class LessThanLessThanEqualsKoto : BinaryKoto
 {// A <<= B
+    public override KotoKind Akind => KotoKind.LessThanLessThanEquals;
+
     public LessThanLessThanEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -566,6 +649,8 @@ public partial class LessThanLessThanEqualsKoto : BinaryKoto
 [TinyhandObject]
 public partial class GreaterThanGreaterThanEqualsKoto : BinaryKoto
 {// A >>= B
+    public override KotoKind Akind => KotoKind.GreaterThanGreaterThanEquals;
+
     public GreaterThanGreaterThanEqualsKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
@@ -605,6 +690,12 @@ public abstract partial class BinaryKoto : Koto
         this.Right = default!;
     }
 
+    public override void Bind(Compilation compilation)
+    {
+        this.Left.Bind(compilation);
+        this.Right.Bind(compilation);
+    }
+
     public override string ToString()
         => $"BinaryKoto: {this.Right.ToString()}";
 
@@ -635,7 +726,7 @@ public abstract partial class BinaryKoto : Koto
 
         if (this.AttributeChain is not null)
         {
-            KotoParser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.None);
+            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.None);
         }
 
         builder.Append(infix);

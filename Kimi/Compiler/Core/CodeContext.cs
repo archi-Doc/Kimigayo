@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.CompilerServices;
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -8,28 +9,55 @@ namespace Kimi.Compiler;
 
 public class CodeContext
 {
-    public Compilation Compilation { get; }
+    public DiagnosticCollection DiagnosticCollection => this.diagnosticCollection ?? this.Kotonoha.DiagnosticCollection;
+
+    public Compilation Compilation => this.Kotonoha.Compilation;
 
     public Kotonoha Kotonoha { get; }
 
-    public ReadOnlyMemory<char> SourceText { get; }
+    public GroupKoto RootKoto => this.Kotonoha.RootKoto;
 
-    public GroupKoto Root => this.Kotonoha.Root;
+    private readonly DiagnosticCollection? diagnosticCollection;
 
-    public GroupKoto CurrentGroup { get; set; }
-
-    internal CodeContext(Compilation compilation, Kotonoha kotonoha, ReadOnlyMemory<char> sourceText)
+    internal CodeContext(Kotonoha kotonoha, DiagnosticCollection? customDiagnosticCollection = default)
     {
-        this.Compilation = compilation;
         this.Kotonoha = kotonoha;
-        this.SourceText = sourceText;
-        this.CurrentGroup = this.Kotonoha.Root;
+        this.diagnosticCollection = customDiagnosticCollection;
     }
 
-    public ReadOnlySpan<char> GetSpan(Token token)
+    public void Parse(GroupKoto parentKoto, ReadOnlySpan<char> sourceText)
     {
-        var start = 0;
-        var length = 0;
-        return this.SourceText.Span.Slice(start, length);
+        if (parentKoto.CodeContext.Compilation != this.Compilation)
+        {// Unmatched compilation
+            return;
+        }
+
+        var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceText);
+        try
+        {
+            tokenizer.ReadAll();
+            var reader = new TokenReader(this, ref tokenizer);
+            parentKoto.Parse(ref reader);
+        }
+        finally
+        {
+            tokenizer.Dispose();
+        }
+    }
+
+    public void Test(GroupKoto parentKoto, ReadOnlySpan<char> sourceText)
+    {
+        var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceText);
+        try
+        {
+            tokenizer.ReadAll();
+            // var tokenSequence = tokenBuilder.ToReadOnlySequence();
+            // var reader = new TokenReader(this, tokenSequence);
+            // parentKoto.Parse(ref reader);
+        }
+        finally
+        {
+            tokenizer.Dispose();
+        }
     }
 }

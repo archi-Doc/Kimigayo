@@ -5,40 +5,39 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-[TinyhandObject]
+/// <summary>
+/// Represents a lexical token produced by the lexer.
+/// </summary>
 public readonly partial struct Token
-{// 1 + 1 + 16 + 16 -> 40
+{// 1 + 1 + 8 + 16 -> 32
     public static readonly Token Invalid = default;
 
-    [Key(0)]
-    public readonly TokenKind Kind;
+    public readonly TokenKind Kind; // 1
 
-    [Key(1)]
-    public readonly bool IsMissing;
+    public readonly bool IsMissing; // 1
 
-    [Key(2)]
-    public readonly ReadOnlyMemory<char> Text;
+    public readonly int Start; // 4
 
-    public readonly SourceRange Range;
+    public readonly int Length; // 4
 
-    public ReadOnlySpan<char> Span => this.Text.Span;
-
-    public int Length => this.Text.Length;
+    public readonly SourceRange Range; // 16
 
     public bool IsValid => this.Kind != TokenKind.Invalid;
 
-    public Token(TokenKind kind, ReadOnlyMemory<char> span, Diagnostics.SourceRange range)
+    public Token(TokenKind kind, int start, int length, SourceRange range)
     {
         this.Kind = kind;
-        this.Text = span;
+        this.Start = start;
+        this.Length = length;
         this.Range = range;
     }
 
-    public Token(TokenKind kind, ReadOnlyMemory<char> span, int line, int character)
+    public Token(TokenKind kind, int start, int length, int line, int character)
     {
         this.Kind = kind;
-        this.Text = span;
-        this.Range = new(new(line, character), new(line, character + span.Length));
+        this.Start = start;
+        this.Length = length;
+        this.Range = new(new(line, character), new(line, character + length));
     }
 
     public Token(TokenKind kind, bool isMissing = false)
@@ -47,9 +46,15 @@ public readonly partial struct Token
         this.IsMissing = isMissing;
     }
 
+    public Token(TokenKind kind, SourceRange range)
+    {
+        this.Kind = kind;
+        this.Range = range;
+    }
+
     public override string ToString()
     {
-        if (this.Kind == TokenKind.Identifier ||
+        /*if (this.Kind == TokenKind.Identifier ||
             this.Kind == TokenKind.NumericLiteral ||
             this.Kind == TokenKind.StringLiteral ||
             this.Kind == TokenKind.RawStringLiteral ||
@@ -57,10 +62,8 @@ public readonly partial struct Token
             this.Kind == TokenKind.MultiLineComment)
         {
             return $"({this.Kind.ToString()}:'{this.Text}')";
-        }
-        else
-        {
-            return $"({this.Kind.ToString()})";
-        }
+        }*/
+
+        return $"({this.Kind.ToString()})";
     }
 }

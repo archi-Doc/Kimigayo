@@ -3,22 +3,32 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using Arc.Crypto;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Lexing;
 
-public readonly record struct TokenState(AttributeKoto? AttributeKoto, ModifierKind ModifierKind, bool IsExcluded);
+/// <summary>
+/// Represents parser context temporarily detached from a <see cref="TokenReader"/>.
+/// </summary>
+/// <param name="AttributeKoto">The current attribute chain.</param>
+/// <param name="ModifierKind">The current modifiers.</param>
+/// <param name="IsExcluded">Whether the current declaration is excluded.</param>
+public readonly record struct TokenContext(AttributeKoto? AttributeKoto, ModifierKind ModifierKind, bool IsExcluded);
 
+/// <summary>
+/// Provides sequential access to tokens produced by a <see cref="Tokenizer"/>.
+/// </summary>
 public ref struct TokenReader
-{// 136
-    #region FieldAndProperty
+{
+    #region FieldsAndProperties
 
-    public readonly DiagnosticCollection Diagnostic;
-
+    /// <summary>
+    /// Gets the code context associated with this reader.
+    /// </summary>
     public readonly CodeContext CodeContext;
 
+    private readonly ReadOnlySpan<char> sourceText;
     private readonly ReadOnlySequence<Token> sequence;
     private readonly int length;
 
@@ -27,74 +37,144 @@ public ref struct TokenReader
     private int currentSpanIndex;
     private Token currentToken;
 
+    /// <summary>
+    /// Gets the current token position.
+    /// </summary>
     public int Position { get; private set; }
 
-    // public int Depth { get; private set; }
-
+    /// <summary>
+    /// Gets the current attribute chain.
+    /// </summary>
     public AttributeKoto? AttributeKoto { get; private set; }
 
+    /// <summary>
+    /// Gets the modifiers associated with the current declaration.
+    /// </summary>
     public ModifierKind ModifierKind { get; internal set; }
 
+    /// <summary>
+    /// Gets a value indicating whether the current declaration is excluded.
+    /// </summary>
     public bool IsExcluded { get; internal set; }
 
+    /// <summary>
+    /// Gets the diagnostic collection associated with this reader.
+    /// </summary>
+    public readonly DiagnosticCollection Diagnostic => this.CodeContext.DiagnosticCollection;
+
+    /// <summary>
+    /// Gets the total number of tokens.
+    /// </summary>
     public readonly int Length => this.length;
 
+    /// <summary>
+    /// Gets the number of unread tokens.
+    /// </summary>
     public readonly int Remaining => this.length - this.Position;
 
+    /// <summary>
+    /// Gets a value indicating whether another token can be read.
+    /// </summary>
     public readonly bool CanRead => this.Position < this.length;
 
+    /// <summary>
+    /// Gets a value indicating whether all tokens have been consumed.
+    /// </summary>
     public readonly bool IsEnd => this.Position >= this.length;
 
-    public Token CurrentToken => this.currentToken;
+    /// <summary>
+    /// Gets the current token.
+    /// </summary>
+    public readonly Token CurrentToken => this.currentToken;
 
-    public TokenKind CurrentTokenKind => this.currentToken.Kind;
+    /// <summary>
+    /// Gets the kind of the current token.
+    /// </summary>
+    public readonly TokenKind CurrentTokenKind => this.currentToken.Kind;
 
-    public SourceRange CurrentTokenRange => this.currentToken.Range;
+    /// <summary>
+    /// Gets the source range of the current token.
+    /// </summary>
+    public readonly SourceRange CurrentTokenRange => this.currentToken.Range;
+
+    /// <summary>
+    /// Gets the source length of the current token.
+    /// </summary>
+    public readonly int CurrentTokenLength => this.currentToken.Length;
 
     #endregion
 
-    public TokenReader(DiagnosticCollection diagnostic, CodeContext codeContext, ReadOnlySequence<Token> tokenSequence)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="TokenReader"/> struct.
+    /// </summary>
+    /// <param name="codeContext">The code context.</param>
+    /// <param name="tokenizer">The tokenizer containing the token sequence.</param>
+    internal TokenReader(CodeContext codeContext, ref Tokenizer tokenizer)
     {
-        this.Diagnostic = diagnostic;
         this.CodeContext = codeContext;
 
+        var tokenSequence = tokenizer.ToReadOnlySequence();
+        this.sourceText = tokenizer.SourceText;
         this.sequence = tokenSequence;
         this.length = checked((int)tokenSequence.Length);
 
         this.Position = 0;
 
+        this.AttributeKoto = default;
+        this.ModifierKind = default;
+        this.IsExcluded = default;
+
         this.nextSegmentPosition = tokenSequence.Start;
         this.currentSpan = default;
         this.currentSpanIndex = 0;
+        this.currentToken = default;
 
         this.MoveToNextNonEmptySpan();
     }
 
+    /// <summary>
+    /// Clears the current parser context.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Clear()
+    public void ClearContext()
     {
         this.AttributeKoto = default;
         this.ModifierKind = default;
         this.IsExcluded = false;
     }
 
+    /// <summary>
+    /// Detaches and returns the current parser context.
+    /// </summary>
+    /// <returns>The detached parser context.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public TokenState StoreState()
+    public TokenContext TakeContext()
     {
-        var state = new TokenState(this.AttributeKoto, this.ModifierKind, this.IsExcluded);
+        var context = new TokenContext(this.AttributeKoto, this.ModifierKind, this.IsExcluded);
+
         this.AttributeKoto = default;
         this.ModifierKind = default;
-        this.IsExcluded = default;
+        this.IsExcluded = false;
 
-        return state;
+        return context;
     }
 
+    /// <summary>
+    /// Restores a previously detached parser context.
+    /// </summary>
+    /// <param name="context">The parser context to restore.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void RestoreState(TokenState state)
+    public void RestoreContext(TokenContext context)
     {
-        (this.AttributeKoto, this.ModifierKind, this.IsExcluded) = (state.AttributeKoto, state.ModifierKind, state.IsExcluded);
+        this.AttributeKoto = context.AttributeKoto;
+        this.ModifierKind = context.ModifierKind;
+        this.IsExcluded = context.IsExcluded;
     }
 
+    /// <summary>
+    /// Adds an attribute to the current attribute chain.
+    /// </summary>
+    /// <param name="attributeKoto">The attribute to add.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushAttribute(AttributeKoto attributeKoto)
     {
@@ -106,6 +186,10 @@ public ref struct TokenReader
         this.AttributeKoto = attributeKoto;
     }
 
+    /// <summary>
+    /// Removes and returns the current attribute chain.
+    /// </summary>
+    /// <returns>The current attribute chain, or <see langword="null"/> if none exists.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public AttributeKoto? PopAttribute()
     {
@@ -114,26 +198,14 @@ public ref struct TokenReader
         return attributeKoto;
     }
 
-    /*[MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void IncrementDepth()
-    {
-        if (this.Depth >= MaxDepth)
-        {
-            throw new InvalidOperationException("The token depth has reached the maximum limit");
-        }
-
-        this.Depth++;
-    }
-
+    /// <summary>
+    /// Reads the current token and advances to the next token.
+    /// </summary>
+    /// <param name="token">The token that was read.</param>
+    /// <param name="addDiagnostic">Whether to report a diagnostic when the syntax is incomplete.</param>
+    /// <returns><see langword="true"/> if a token was read; otherwise, <see langword="false"/>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void DecrementDepth()
-    {
-        this.Depth--;
-        Debug.Assert(this.Depth >= 0);
-    }*/
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryRead(out Token token)
+    public bool TryRead(out Token token, bool addDiagnostic = true)
     {
         if (this.CanRead)
         {
@@ -142,31 +214,22 @@ public ref struct TokenReader
             return true;
         }
 
-        token = default;
-        return false;
-    }
-
-    /*public bool TryPeek(out Token token)
-    {
-        if (this.TryGetCurrentToken(out token))
+        if (addDiagnostic)
         {
-            return true;
+            this.AddDiagnostic(KimiDiagnostic.IncompleteSyntax_Kd);
         }
 
         token = default;
         return false;
     }
 
-    public void Consume(out Token token)
-    {
-        this.Clear();
-
-        while (this.TryRead(out token) &&
-            token.Kind == TokenKind.Separator)
-        {// Skip Separator
-        }
-    }*/
-
+    /// <summary>
+    /// Consumes a token of the specified kind.
+    /// </summary>
+    /// <param name="targetKind">The expected token kind.</param>
+    /// <param name="range">The source range of the consumed token.</param>
+    /// <param name="addDiagnostic">Whether to report a diagnostic when the expected token is not found.</param>
+    /// <returns><see langword="true"/> if the expected token was consumed; otherwise, <see langword="false"/>.</returns>
     public bool TryConsume(TokenKind targetKind, out SourceRange range, bool addDiagnostic = true)
     {
 Loop:
@@ -179,39 +242,41 @@ Loop:
                 this.AdvanceOne();
                 return true;
             }
-            else if (token.Kind == TokenKind.Sharp)
-            {// Skip attribute
-                _ = KotoParser.ParseAttributeKoto(ref this);
+
+            if (token.Kind == TokenKind.Sharp)
+            {
+                // Attributes may appear between the caller and the expected token.
+                _ = Parser.ParseAttributeKoto(ref this);
                 goto Loop;
             }
 
             if (addDiagnostic)
             {
-                this.Diagnostic.AddToken(token, Hashed.Kimi.TokenMismatch, targetKind.ToText());
-                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+                this.Diagnostic.Add(token.Range, KimiDiagnostic.TokenMismatch_Kd, targetKind.ToText());
+                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
             }
 
             range = default;
             return false;
         }
 
-        if (addDiagnostic)
+        if (addDiagnostic && this.IsEnd && this.CurrentTokenKind != TokenKind.Invalid)
         {
-            if (this.IsEnd)
-            {
-                if (this.CurrentTokenKind != TokenKind.Invalid)
-                {
-                    var r = this.CurrentTokenRange;
-                    this.Diagnostic.Add(new(r.End, r.End), Hashed.Kimi.MissingExpectedToken, targetKind.ToText());
-                }
-            }
+            var r = this.CurrentTokenRange;
+            this.Diagnostic.Add(new(r.End, r.End), KimiDiagnostic.MissingExpectedToken_Kd, targetKind.ToText());
         }
 
         range = default;
         return false;
     }
 
-    public TokenKind SkipUntil(TokenKind kind1, ulong hash = 0)
+    /// <summary>
+    /// Advances until the specified token kind is reached.
+    /// </summary>
+    /// <param name="kind1">The token kind at which to stop.</param>
+    /// <param name="kimiDiagnostic">An optional diagnostic hash reported for the first skipped token.</param>
+    /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
+    public TokenKind SkipUntil(TokenKind kind1, KimiDiagnostic kimiDiagnostic)
     {
         while (this.CanRead)
         {
@@ -220,10 +285,10 @@ Loop:
                 return this.currentToken.Kind;
             }
 
-            if (hash != 0)
+            if (kimiDiagnostic != 0)
             {
-                this.AddDiagnostic(hash, this.currentToken.Span.ToString());
-                hash = 0;
+                this.AddDiagnostic(kimiDiagnostic, this.GetSpan(this.currentToken).ToString());
+                kimiDiagnostic = 0;
             }
 
             this.AdvanceOne();
@@ -232,20 +297,27 @@ Loop:
         return default;
     }
 
-    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, ulong hash = 0)
+    /// <summary>
+    /// Advances until either of the specified token kinds is reached.
+    /// </summary>
+    /// <param name="kind1">The first token kind at which to stop.</param>
+    /// <param name="kind2">The second token kind at which to stop.</param>
+    /// <param name="kimiDiagnostic">An optional diagnostic hash reported for the first skipped token.</param>
+    /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
+    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, KimiDiagnostic kimiDiagnostic = KimiDiagnostic.Template_Kd)
     {
         while (this.CanRead)
         {
             var tokenKind = this.currentToken.Kind;
             if (tokenKind == kind1 || tokenKind == kind2)
             {
-                return this.currentToken.Kind;
+                return tokenKind;
             }
 
-            if (hash != 0)
+            if (kimiDiagnostic != 0)
             {
-                this.AddDiagnostic(hash, this.currentToken.Span.ToString());
-                hash = 0;
+                this.AddDiagnostic(kimiDiagnostic, this.GetSpan(this.currentToken).ToString());
+                kimiDiagnostic = 0;
             }
 
             this.AdvanceOne();
@@ -254,6 +326,13 @@ Loop:
         return default;
     }
 
+    /// <summary>
+    /// Skips the current block while respecting nested blocks.
+    /// </summary>
+    /// <param name="isRootGroup">
+    /// <see langword="true"/> to skip until the next root group;
+    /// otherwise, to skip the current nested block.
+    /// </param>
     public void SkipCurrentBlock(bool isRootGroup)
     {
         if (isRootGroup)
@@ -271,29 +350,24 @@ Loop:
             return;
         }
 
-        if (this.IsEnd)
-        {
-            return;
-        }
-
-        if (this.currentToken.Kind != TokenKind.StartBlock)
+        if (this.IsEnd || this.currentToken.Kind != TokenKind.StartBlock)
         {
             return;
         }
 
         this.AdvanceOne();
-        var indent = 1;
+        var depth = 1;
 
         while (this.CanRead)
         {
             if (this.currentToken.Kind == TokenKind.StartBlock)
             {
-                indent++;
+                depth++;
             }
             else if (this.currentToken.Kind == TokenKind.EndBlock)
             {
-                indent--;
-                if (indent <= 0)
+                depth--;
+                if (depth == 0)
                 {
                     this.AdvanceOne();
                     return;
@@ -308,88 +382,84 @@ Loop:
         }
     }
 
-    public ReferenceKind ReadReferenceKind()
-    {
-        var token = this.CurrentToken;
-        if (token.Kind == TokenKind.Identifier)
-        {
-            this.Advance();
-            var referenceKind = token.Span.ToReferenceKind();
-            if (referenceKind == ReferenceKind.None)
-            {
-                this.AddDiagnostic(Hashed.Kimi.InvalidReferenceSyntax, token.Span.ToString());
-                referenceKind = ReferenceKind.Borrow;
-            }
-
-            return referenceKind;
-        }
-        else
-        {
-            return ReferenceKind.Borrow;
-        }
-    }
-
-    /*public bool TryConsumeIdentifier(ReadOnlySpan<char> name)
-    {
-        if (this.TryGetCurrentToken(out var token) &&
-            token.Kind == TokenKind.Identifier &&
-            token.Text.Span.Equals(name, StringComparison.Ordinal))
-        {
-            this.AdvanceOne();
-            return true;
-        }
-
-        return false;
-    }
-
-    public bool TryReadIdentifier(out Token token)
-    {
-        if (this.TryGetCurrentToken(out token) &&
-            token.Kind == TokenKind.Identifier)
-        {
-            this.AdvanceOne();
-            return true;
-        }
-
-        token = default;
-        return false;
-    }*/
-
+    /// <summary>
+    /// Advances to the next token.
+    /// </summary>
+    /// <returns><see langword="true"/> if a token was consumed; otherwise, <see langword="false"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Advance()
     {
-        if (this.Position >= this.length)
+        if (!this.CanRead)
         {
             return false;
-        }
-
-        if (this.currentSpanIndex >= this.currentSpan.Length)
-        {
-            if (!this.MoveToNextNonEmptySpan())
-            {
-                return false;
-            }
         }
 
         this.AdvanceOne();
         return true;
     }
 
+    /// <summary>
+    /// Reports an unexpected-token diagnostic.
+    /// </summary>
+    /// <param name="token">The unexpected token.</param>
     public void ReportUnexpectedToken(Token token)
     {
-        this.Diagnostic.AddToken(token, Hashed.Kimi.UnmatchedToken, token.Kind.ToText());
+        this.Diagnostic.Add(token.Range, KimiDiagnostic.UnmatchedToken_Kd, token.Kind.ToText());
     }
 
-    public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
+    /// <summary>
+    /// Adds a diagnostic for the current token.
+    /// </summary>
+    /// <param name="kimiDiagnostic">The diagnostic.</param>
+    /// <param name="obj">An optional diagnostic argument.</param>
+    public void AddDiagnostic(KimiDiagnostic kimiDiagnostic, object? obj = null, object? obj2 = null)
     {
         if (this.CanRead)
         {
-            this.Diagnostic.AddToken(this.currentToken, diagnosticHash, obj);
+            this.Diagnostic.Add(this.currentToken.Range, kimiDiagnostic, obj, obj2);
         }
     }
 
+    /// <summary>
+    /// Determines whether the specified token is an identifier with the given text.
+    /// </summary>
+    /// <param name="token">The token to examine.</param>
+    /// <param name="identifier">The expected identifier text.</param>
+    /// <returns><see langword="true"/> if the token matches the identifier; otherwise, <see langword="false"/>.</returns>
+    public readonly bool IsIdentifierToken(Token token, ReadOnlySpan<char> identifier)
+    {
+        return token.Kind == TokenKind.Identifier &&
+            this.GetSpan(token).SequenceEqual(identifier);
+    }
+
+    /// <summary>
+    /// Creates an error node at the current token.
+    /// </summary>
+    /// <returns>A new error node.</returns>
     public ErrorKoto NewErrorKoto()
     {
         return new ErrorKoto(ref this, this.CurrentToken.Range);
+    }
+
+    /// <summary>
+    /// Gets the source text represented by the specified token.
+    /// </summary>
+    /// <param name="token">The token whose source text is requested.</param>
+    /// <returns>The source span represented by the token.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public readonly ReadOnlySpan<char> GetSpan(Token token)
+    {
+        return this.sourceText.Slice(token.Start, token.Length);
+    }
+
+    /// <summary>
+    /// Returns the textual representation of the current token.
+    /// </summary>
+    /// <returns>The textual representation of the current token.</returns>
+    public readonly override string ToString()
+    {
+        // return this.CurrentToken.ToString();
+        return this.GetSpan(this.CurrentToken).ToString();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -400,18 +470,31 @@ Loop:
 
         this.currentSpanIndex++;
         this.Position++;
-        this.currentToken = this.currentSpan[this.currentSpanIndex];
+
+        if (this.currentSpanIndex < this.currentSpan.Length)
+        {
+            this.currentToken = this.currentSpan[this.currentSpanIndex];
+            return;
+        }
+
+        if (this.Position < this.length)
+        {
+            // Keep the current token synchronized when crossing sequence segments.
+            var result = this.MoveToNextNonEmptySpan();
+            Debug.Assert(result);
+            return;
+        }
+
+        this.currentSpan = default;
+        this.currentSpanIndex = 0;
+        this.currentToken = Token.Invalid;
     }
 
     private bool MoveToNextNonEmptySpan()
     {
         while (this.sequence.TryGet(ref this.nextSegmentPosition, out var memory, advance: true))
         {
-            if (memory.IsEmpty)
-            {
-                // this.currentToken = default;
-            }
-            else
+            if (!memory.IsEmpty)
             {
                 this.currentSpan = memory.Span;
                 this.currentSpanIndex = 0;

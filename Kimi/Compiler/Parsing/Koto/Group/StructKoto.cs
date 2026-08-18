@@ -8,10 +8,12 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public sealed partial class StructKoto : GroupKoto
 {
+    public override KotoKind Akind => KotoKind.Struct;
+
     #region FieldAndProperty
 
     [IgnoreMember]
-    public List<Token> BaseList { get; } = [];
+    public List<string> BaseList { get; } = [];
 
     #endregion
 
@@ -20,7 +22,7 @@ public sealed partial class StructKoto : GroupKoto
     {
     }
 
-    internal StructKoto(CodeContext codeContext, TokenState state, SourceRange range)
+    internal StructKoto(CodeContext codeContext, TokenContext state, SourceRange range)
         : base(codeContext, state, range)
     {
     }
@@ -35,7 +37,7 @@ public sealed partial class StructKoto : GroupKoto
 
             foreach (var x in this.BaseList)
             {
-                builder.Append(x.Text);
+                builder.Append(x);
                 builder.Append(", ");
             }
         }
