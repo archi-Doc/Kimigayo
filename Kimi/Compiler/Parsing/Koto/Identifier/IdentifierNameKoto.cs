@@ -29,7 +29,7 @@ public partial class IdentifierNameKoto : Koto
         }
         else
         {
-            reader.AddDiagnostic(Hashed.Kimi.InvalidIdentifier, identifierName);
+            reader.AddDiagnostic(KimiDiagnostic.InvalidIdentifier, identifierName);
 
             koto = default;
             return false;

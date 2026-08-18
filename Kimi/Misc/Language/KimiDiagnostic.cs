@@ -8,7 +8,7 @@ namespace Kimi;
 
 public enum KimiDiagnostic
 {
-    Template_Kd,
+    Template_Kd, // First sentinel
 
     ConditionMustBeBool_Kd,
     DivisionByZero_Kd,

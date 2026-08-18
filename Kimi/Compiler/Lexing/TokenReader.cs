@@ -216,7 +216,7 @@ public ref struct TokenReader
 
         if (addDiagnostic)
         {
-            this.AddDiagnostic(Hashed.Kimi.IncompleteSyntax);
+            this.AddDiagnostic(KimiDiagnostic.IncompleteSyntax_Kd);
         }
 
         token = default;
@@ -252,8 +252,8 @@ Loop:
 
             if (addDiagnostic)
             {
-                this.Diagnostic.Add(token.Range, Hashed.Kimi.TokenMismatch, targetKind.ToText());
-                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+                this.Diagnostic.Add(token.Range, KimiDiagnostic.TokenMismatch_Kd, targetKind.ToText());
+                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
             }
 
             range = default;
@@ -263,7 +263,7 @@ Loop:
         if (addDiagnostic && this.IsEnd && this.CurrentTokenKind != TokenKind.Invalid)
         {
             var r = this.CurrentTokenRange;
-            this.Diagnostic.Add(new(r.End, r.End), Hashed.Kimi.MissingExpectedToken, targetKind.ToText());
+            this.Diagnostic.Add(new(r.End, r.End), KimiDiagnostic.MissingExpectedToken_Kd, targetKind.ToText());
         }
 
         range = default;
@@ -274,9 +274,9 @@ Loop:
     /// Advances until the specified token kind is reached.
     /// </summary>
     /// <param name="kind1">The token kind at which to stop.</param>
-    /// <param name="hash">An optional diagnostic hash reported for the first skipped token.</param>
+    /// <param name="kimiDiagnostic">An optional diagnostic hash reported for the first skipped token.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1, ulong hash = 0)
+    public TokenKind SkipUntil(TokenKind kind1, KimiDiagnostic kimiDiagnostic)
     {
         while (this.CanRead)
         {
@@ -285,10 +285,10 @@ Loop:
                 return this.currentToken.Kind;
             }
 
-            if (hash != 0)
+            if (kimiDiagnostic != 0)
             {
-                this.AddDiagnostic(hash, this.GetSpan(this.currentToken).ToString());
-                hash = 0;
+                this.AddDiagnostic(kimiDiagnostic, this.GetSpan(this.currentToken).ToString());
+                kimiDiagnostic = 0;
             }
 
             this.AdvanceOne();
@@ -302,9 +302,9 @@ Loop:
     /// </summary>
     /// <param name="kind1">The first token kind at which to stop.</param>
     /// <param name="kind2">The second token kind at which to stop.</param>
-    /// <param name="hash">An optional diagnostic hash reported for the first skipped token.</param>
+    /// <param name="kimiDiagnostic">An optional diagnostic hash reported for the first skipped token.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, ulong hash = 0)
+    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, KimiDiagnostic kimiDiagnostic = KimiDiagnostic.Template_Kd)
     {
         while (this.CanRead)
         {
@@ -314,10 +314,10 @@ Loop:
                 return tokenKind;
             }
 
-            if (hash != 0)
+            if (kimiDiagnostic != 0)
             {
-                this.AddDiagnostic(hash, this.GetSpan(this.currentToken).ToString());
-                hash = 0;
+                this.AddDiagnostic(kimiDiagnostic, this.GetSpan(this.currentToken).ToString());
+                kimiDiagnostic = 0;
             }
 
             this.AdvanceOne();
@@ -404,19 +404,19 @@ Loop:
     /// <param name="token">The unexpected token.</param>
     public void ReportUnexpectedToken(Token token)
     {
-        this.Diagnostic.Add(token.Range, Hashed.Kimi.UnmatchedToken, token.Kind.ToText());
+        this.Diagnostic.Add(token.Range, KimiDiagnostic.UnmatchedToken_Kd, token.Kind.ToText());
     }
 
     /// <summary>
     /// Adds a diagnostic for the current token.
     /// </summary>
-    /// <param name="diagnosticHash">The diagnostic hash.</param>
+    /// <param name="kimiDiagnostic">The diagnostic.</param>
     /// <param name="obj">An optional diagnostic argument.</param>
-    public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
+    public void AddDiagnostic(KimiDiagnostic kimiDiagnostic, object? obj = null, object? obj2 = null)
     {
         if (this.CanRead)
         {
-            this.Diagnostic.Add(this.currentToken.Range, diagnosticHash, obj);
+            this.Diagnostic.Add(this.currentToken.Range, kimiDiagnostic, obj, obj2);
         }
     }
 

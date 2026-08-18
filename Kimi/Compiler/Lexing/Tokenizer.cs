@@ -379,7 +379,7 @@ internal ref struct Tokenizer
             }
             else
             {// Invalid
-                tokenizer.diagnostics.Add(tokenizer.NewRange(1), Hashed.Kimi.MissingStringLiteralEnd);
+                tokenizer.diagnostics.Add(tokenizer.NewRange(1), KimiDiagnostic.MissingStringLiteralEnd_Kd);
                 tokenizer.AddTokenAndSliceWithLineTracking(TokenKind.Invalid, stringLiteralLength);
             }
 
@@ -495,7 +495,7 @@ Loop:
                 {// Starts with a digit but is not a valid numeric literal.
                  // Emit a single Invalid token with a diagnostic instead of silently falling back
                  // to the identifier path, which would produce bogus Identifier tokens.
-                    this.diagnostics.Add(this.NewRange(numberLiteralLength), Hashed.Kimi.InvalidNumericLiteral);
+                    this.diagnostics.Add(this.NewRange(numberLiteralLength), KimiDiagnostic.InvalidNumericLiteral_Kd);
                     this.AddTokenAndSlice(TokenKind.Invalid, numberLiteralLength);
                 }
                 else
@@ -507,7 +507,7 @@ Loop:
                     }
                     else if (length == 0)
                     {
-                        this.diagnostics.Add(this.NewRange(1), Hashed.Kimi.InvalidCharacter, this.span[0]);
+                        this.diagnostics.Add(this.NewRange(1), KimiDiagnostic.InvalidCharacter_Kd, this.span[0]);
                         this.AddTokenAndSlice(TokenKind.Invalid, 1);
                         continue;
                     }
@@ -586,7 +586,7 @@ LineContent:
         var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
         if (unnecessarySpaces > 0)
         {// Invalid indentation
-            this.diagnostics.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.InvalidIndentation, Constants.IndentationSpaces);
+            this.diagnostics.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), KimiDiagnostic.InvalidIndentation_Kd, Constants.IndentationSpaces);
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
         }
 
@@ -626,7 +626,7 @@ LineContent:
             this.AddToken(new(TokenKind.Separator, this.CurrentRange));
             separatorInserted = true;
 
-            // TODO: Consider reporting Hashed.Kimi.UnexpectedIndent when dif > 1.
+            // TODO: Consider reporting KimiDiagnostic.UnexpectedIndent_Kd when dif > 1.
             for (var i = 0; i < indentDelta; i++)
             {
                 this.AddToken(new(TokenKind.StartBlock, this.CurrentRange));
@@ -679,7 +679,7 @@ LineContent:
                         // this.indentStack.Push(indentSource);
                         this.nonBlockDepth--;
 
-                        this.diagnostics.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.IndentationLevelMismatch);
+                        this.diagnostics.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), KimiDiagnostic.IndentationLevelMismatch_Kd);
                         break;
                     }
                 }
@@ -690,7 +690,7 @@ LineContent:
                 }
                 else
                 {
-                    this.diagnostics.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), Hashed.Kimi.IndentationLevelMismatch);
+                    this.diagnostics.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), KimiDiagnostic.IndentationLevelMismatch_Kd);
                     break;
                 }
             }
@@ -940,11 +940,11 @@ EndOfFile:
         // later. e.g. "(]" reports an unmatched ']' and keeps '(' open.
         var diagnostic = expected switch
         {
-            TokenKind.CloseParenthesis => Hashed.Kimi.UnmatchedParenthesis,
-            TokenKind.CloseBracket => Hashed.Kimi.UnmatchedBracket,
-            TokenKind.CloseBrace => Hashed.Kimi.UnmatchedBrace,
-            TokenKind.GreaterThan => Hashed.Kimi.UnmatchedAngleBracket,
-            _ => Hashed.Kimi.UnmatchedBracket,
+            TokenKind.CloseParenthesis => KimiDiagnostic.UnmatchedParenthesis_Kd,
+            TokenKind.CloseBracket => KimiDiagnostic.UnmatchedBracket_Kd,
+            TokenKind.CloseBrace => KimiDiagnostic.UnmatchedBrace_Kd,
+            TokenKind.GreaterThan => KimiDiagnostic.UnmatchedAngleBracket_Kd,
+            _ => KimiDiagnostic.UnmatchedBracket_Kd,
         };
 
         this.diagnostics.Add(this.NewRange(1), diagnostic);

@@ -278,9 +278,9 @@ public abstract partial class Koto
     {
     }
 
-    public void AddDiagnostic(ulong diagnosticHash, object? obj = null)
+    public void AddDiagnostic(KimiDiagnostic kimiDiagnostic, object? obj = null, object? obj2 = null)
     {
-        this.DiagnosticCollection?.Add(this.Range, diagnosticHash, obj);
+        this.DiagnosticCollection?.Add(this.Range, kimiDiagnostic, obj, obj2);
     }
 
     public void AddAttribute(AttributeKoto attributeKoto)

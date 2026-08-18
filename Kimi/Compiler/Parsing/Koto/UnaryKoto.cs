@@ -49,7 +49,7 @@ public partial class AttributeKoto : UnaryKoto
 
         /*else
         {
-            this.AddDiagnostic(Hashed.Kimi.InvalidAttributeKoto);
+            this.AddDiagnostic(KimiDiagnostic.InvalidAttributeKoto);
 
             this.IdentifierKoto = UnresolvedKoto.Error;
             this.Operand = new ErrorKoto(ref reader, range);

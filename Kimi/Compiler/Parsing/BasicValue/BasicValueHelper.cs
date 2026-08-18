@@ -461,28 +461,28 @@ public static class BasicValueHelper
             return true;
         }
 
-        koto.AddDiagnostic(Hashed.Kimi.TypeMismatch);
+        koto.AddDiagnostic(KimiDiagnostic.TypeMismatch_Kd);
         return false;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static BasicValue AddIntegerOverflowDiagnostic(Koto koto)
     {
-        koto.AddDiagnostic(Hashed.Kimi.IntegerOverflow);
+        koto.AddDiagnostic(KimiDiagnostic.IntegerOverflow_Kd);
         return default;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static BasicValue AddDivisionByZeroDiagnostic(Koto koto)
     {
-        koto.AddDiagnostic(Hashed.Kimi.DivisionByZero);
+        koto.AddDiagnostic(KimiDiagnostic.DivisionByZero_Kd);
         return default;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static BasicValue AddNotSupportedDiagnostic(Koto koto)
     {
-        koto.AddDiagnostic(Hashed.Kimi.UnsupportedIfAttributeConditionType);
+        koto.AddDiagnostic(KimiDiagnostic.UnsupportedIfAttributeConditionType_Kd);
         return default;
     }
 }
