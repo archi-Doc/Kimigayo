@@ -1,5 +1,5 @@
 alias AliasB
-
+var x = 1
 #If(os == "windows" and 
     pointerWidth == 64)
 alias AliasC

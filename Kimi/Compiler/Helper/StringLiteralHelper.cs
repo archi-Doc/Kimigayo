@@ -274,7 +274,7 @@ public static class StringLiteralHelper
         scalar = 0;
         if (span.IsEmpty || span[0] != '(')
         {
-            koto?.AddDiagnostic(KimiDiagnostic.InvalidUnicodeEscape);
+            koto?.AddDiagnostic(KimiDiagnostic.InvalidUnicodeEscape_Kd);
             return false;
         }
 
@@ -292,7 +292,7 @@ public static class StringLiteralHelper
             {
                 if (digitCount == 0 || !isValid)
                 {
-                    koto?.AddDiagnostic(KimiDiagnostic.InvalidUnicodeEscape);
+                    koto?.AddDiagnostic(KimiDiagnostic.InvalidUnicodeEscape_Kd);
 
                     return false;
                 }
@@ -300,7 +300,7 @@ public static class StringLiteralHelper
                 if (value > 0x10FFFF ||
                     value is >= 0xD800 and <= 0xDFFF)
                 {
-                    koto?.AddDiagnostic(KimiDiagnostic.InvalidUnicodeScalar);
+                    koto?.AddDiagnostic(KimiDiagnostic.InvalidUnicodeScalar_Kd);
 
                     return false;
                 }
@@ -322,7 +322,7 @@ public static class StringLiteralHelper
             digitCount++;
         }
 
-        koto?.AddDiagnostic(KimiDiagnostic.InvalidUnicodeEscape);
+        koto?.AddDiagnostic(KimiDiagnostic.InvalidUnicodeEscape_Kd);
 
         return false;
     }

@@ -1249,7 +1249,7 @@ Loop:
                 }
                 else if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
                 {
-                    reader.AddDiagnostic(KimiDiagnostic.MissingComma);
+                    reader.AddDiagnostic(KimiDiagnostic.MissingComma_Kd);
                     reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
                     if (reader.CurrentTokenKind == TokenKind.Comma)
                     {
@@ -1321,7 +1321,7 @@ Loop:
             }
             else if (reader.CurrentTokenKind != TokenKind.GreaterThan)
             {
-                reader.AddDiagnostic(KimiDiagnostic.MissingComma);
+                reader.AddDiagnostic(KimiDiagnostic.MissingComma_Kd);
                 reader.SkipUntil(TokenKind.Comma, TokenKind.GreaterThan);
                 if (reader.CurrentTokenKind == TokenKind.Comma)
                 {

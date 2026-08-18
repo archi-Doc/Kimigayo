@@ -412,6 +412,7 @@ Loop:
     /// </summary>
     /// <param name="kimiDiagnostic">The diagnostic.</param>
     /// <param name="obj">An optional diagnostic argument.</param>
+    /// <param name="obj2">An optional diagnostic argument 2.</param>
     public void AddDiagnostic(KimiDiagnostic kimiDiagnostic, object? obj = null, object? obj2 = null)
     {
         if (this.CanRead)

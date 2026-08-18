@@ -19,66 +19,6 @@ public record class Diagnostics
         this.Name = name;
     }
 
-    public void AddToken(Token token, ulong diagnosticHash, object? obj = null, object? obj2 = null)
-    {
-        using (this.diagnostics.LockObject.EnterScope())
-        {
-            if (this.diagnostics.StartPositionChain.ContainsKey(token.Range.Start))
-            {
-                return;
-            }
-
-            DiagnosticCode.GetSeverity(diagnosticHash, out var code, out var severity);
-
-            string message;
-            if (obj is null)
-            {
-                message = HashedString.Get(diagnosticHash);
-            }
-            else if (obj2 is null)
-            {
-                message = HashedString.Get(diagnosticHash, obj);
-            }
-            else
-            {
-                message = HashedString.Get(diagnosticHash, obj, obj2);
-            }
-
-            var diagnostic = new Diagnostic(token.Range, severity, message);
-            diagnostic.Goshujin = this.diagnostics;
-
-            this.kimigayo.ReportDiagnostic(this.Name, diagnostic);
-        }
-    }
-
-    public void Add(SourceRange range, ulong diagnosticHash, object? obj = null)
-    {
-        using (this.diagnostics.LockObject.EnterScope())
-        {
-            if (this.diagnostics.StartPositionChain.ContainsKey(range.Start))
-            {
-                return;
-            }
-
-            DiagnosticCode.GetSeverity(diagnosticHash, out var code, out var severity);
-
-            string message;
-            if (obj is null)
-            {
-                message = HashedString.Get(diagnosticHash);
-            }
-            else
-            {
-                message = HashedString.Get(diagnosticHash, obj);
-            }
-
-            var diagnostic = new Diagnostic(range, severity, message);
-            diagnostic.Goshujin = this.diagnostics;
-
-            this.kimigayo.ReportDiagnostic(this.Name, diagnostic);
-        }
-    }
-
     public bool Remove(SourcePosition startPosition)
     {
         using (this.diagnostics.LockObject.EnterScope())
