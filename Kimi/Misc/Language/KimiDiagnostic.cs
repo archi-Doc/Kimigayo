@@ -9,8 +9,44 @@ namespace Kimi;
 public enum KimiDiagnostic
 {
     Template_Kd,
+
     ConditionMustBeBool_Kd,
-    ERROR1,
+    DivisionByZero_Kd,
+    DuplicateModifier_Kd,
+    IdentifierExpected_Kd,
+    IncompleteEscape_Kd,
+    IncompleteSyntax_Kd,
+    IndentationLevelMismatch_Kd,
+    InvalidAttributeKoto_Kd,
+    InvalidCharacter_Kd,
+    InvalidCharacterAtEndOfFile_Kd,
+    InvalidIdentifier_Kd,
+    InvalidIfAttributeArgumentCount_Kd,
+    InvalidIndentation_Kd,
+    InvalidNumericLiteral_Kd,
+    InvalidReferenceSyntax_Kd,
+    InvalidUnicodeEscape_Kd,
+    InvalidUnicodeScalar_Kd,
+    IntegerOverflow_Kd,
+    MissingBlockCommentEnd_Kd,
+    MissingComma_Kd,
+    MissingExpectedToken_Kd,
+    MissingStringLiteralEnd_Kd,
+    MultipleAccessibilityModifiers_Kd,
+    TokenMismatch_Kd,
+    TopLevelKeywordAfterCode_Kd,
+    TypeMismatch_Kd,
+    UnexpectedIndent_Kd,
+    UnexpectedToken_Kd,
+    UnexpectedTrailingToken_Kd,
+    UnmatchedEndBlock_Kd,
+    UnmatchedAngleBracket_Kd,
+    UnmatchedBrace_Kd,
+    UnmatchedBracket_Kd,
+    UnmatchedParenthesis_Kd,
+    UnmatchedToken_Kd,
+    UnsupportedIfAttributeConditionType_Kd,
+    UnsupportedEscape_Kd,
 
     Count, // Last sentinel
 }
@@ -51,10 +87,10 @@ public static class DiagnosticEntries
             var bytes = new byte[stream.Length];
             stream.ReadExactly(bytes);
 
+            table = new DiagnosticEntry[(int)KimiDiagnostic.Count + 1];
             var entries = TinyhandSerializer.DeserializeFromUtf8<DiagnosticEntry[]>(bytes);
             if (entries is not null)
             {
-                table = new DiagnosticEntry[(int)KimiDiagnostic.Count + 1];
                 foreach (var e in entries)
                 {
                     if (Enum.TryParse<KimiDiagnostic>(e.Name, out var kimiDiagnostic))
