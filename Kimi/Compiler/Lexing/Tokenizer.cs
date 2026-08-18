@@ -735,7 +735,7 @@ EndOfFile:
         var length = this.span.IndexOf("*/");
         if (length < 0)
         {
-            this.diagnostics.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), Hashed.Kimi.MissingBlockCommentEnd);
+            this.diagnostics.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), KimiDiagnostic.MissingBlockCommentEnd_Kd);
 
             return this.AddTokenAndSliceWithLineTracking(TokenKind.Invalid, this.span.Length);
         }

@@ -121,7 +121,7 @@ public static partial class KotoHelper
                 }
                 else
                 {
-                    reader.Diagnostic.AddToken(token, Hashed.Kimi.InvalidIdentifier, span.ToString());
+                    reader.Diagnostic.Add(token.Range, Hashed.Kimi.InvalidIdentifier, span.ToString());
                     break;
                 }
             }
@@ -134,7 +134,7 @@ public static partial class KotoHelper
                 }
                 else
                 {
-                    reader.Diagnostic.AddToken(token, Hashed.Kimi.UnexpectedToken, token);
+                    reader.Diagnostic.Add(token.Range, Hashed.Kimi.UnexpectedToken, token.Kind);
                     break;
                 }
             }
@@ -177,7 +177,7 @@ public static partial class KotoHelper
                 }
                 else
                 {
-                    reader.Diagnostic.AddToken(token, Hashed.Kimi.InvalidIdentifier, span.ToString());
+                    reader.Diagnostic.Add(token.Range, Hashed.Kimi.InvalidIdentifier, span.ToString());
                     break;
                 }
             }
@@ -189,7 +189,7 @@ public static partial class KotoHelper
                 }
                 else
                 {
-                    reader.Diagnostic.AddToken(token, Hashed.Kimi.UnexpectedToken, token);
+                    reader.Diagnostic.Add(token.Range, Hashed.Kimi.UnexpectedToken, token);
                     break;
                 }
             }

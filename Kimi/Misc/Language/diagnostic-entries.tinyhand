@@ -1,6 +1,5 @@
 // To create diagnostic information, follow the Template format, add it below, and add the corresponding entry to the KimiDiagnostic enum.
 
-
   + Name="Template_Kd"
     Severity="Error"
     Message="The primary diagnostic message"

@@ -8,6 +8,7 @@ public record class DiagnosticCollection
 {
     private readonly Kimigayo kimigayo;
     private readonly Diagnostic.GoshujinClass diagnostics = new();
+    private static readonly DiagnosticEntry NotRegistered = new("NotRegistered_Kd", DiagnosticSeverity.Error, "Diagnostic not registered");
 
     public string Name { get; init; } = string.Empty;
 
@@ -19,40 +20,13 @@ public record class DiagnosticCollection
         this.Name = name;
     }
 
-    public void AddToken(Token token, ulong diagnosticHash, object? obj = null, object? obj2 = null)
+    public void Add(SourceRange range, KimiDiagnostic kimiDiagnostic, object? obj = null, object? obj2 = null)
     {
-        using (this.diagnostics.LockObject.EnterScope())
+        if (!DiagnosticEntries.TryGet(kimiDiagnostic, out var entry))
         {
-            if (this.diagnostics.StartPositionChain.ContainsKey(token.Range.Start))
-            {
-                return;
-            }
-
-            DiagnosticCode.GetSeverity(diagnosticHash, out var code, out var severity);
-
-            string message;
-            if (obj is null)
-            {
-                message = HashedString.Get(diagnosticHash);
-            }
-            else if (obj2 is null)
-            {
-                message = HashedString.Get(diagnosticHash, obj);
-            }
-            else
-            {
-                message = HashedString.Get(diagnosticHash, obj, obj2);
-            }
-
-            var diagnostic = new Diagnostic(token.Range, severity, message);
-            diagnostic.Goshujin = this.diagnostics;
-
-            this.kimigayo.ReportDiagnostic(this.Name, diagnostic);
+            entry = NotRegistered;
         }
-    }
 
-    public void Add(SourceRange range, ulong diagnosticHash, object? obj = null)
-    {
         using (this.diagnostics.LockObject.EnterScope())
         {
             if (this.diagnostics.StartPositionChain.ContainsKey(range.Start))
@@ -60,19 +34,20 @@ public record class DiagnosticCollection
                 return;
             }
 
-            DiagnosticCode.GetSeverity(diagnosticHash, out var code, out var severity);
-
-            string message;
-            if (obj is null)
+            var message = entry.Message;
+            if (obj is not null)
             {
-                message = HashedString.Get(diagnosticHash);
-            }
-            else
-            {
-                message = HashedString.Get(diagnosticHash, obj);
+                if (obj2 is not null)
+                {
+                    message = string.Format(message, obj, obj2);
+                }
+                else
+                {
+                    message = string.Format(message, obj);
+                }
             }
 
-            var diagnostic = new Diagnostic(range, severity, message);
+            var diagnostic = new Diagnostic(range, entry.Severity, entry.Message);
             diagnostic.Goshujin = this.diagnostics;
 
             this.kimigayo.ReportDiagnostic(this.Name, diagnostic);

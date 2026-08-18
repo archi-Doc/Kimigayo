@@ -252,7 +252,7 @@ Loop:
 
             if (addDiagnostic)
             {
-                this.Diagnostic.AddToken(token, Hashed.Kimi.TokenMismatch, targetKind.ToText());
+                this.Diagnostic.Add(token.Range, Hashed.Kimi.TokenMismatch, targetKind.ToText());
                 this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
             }
 
@@ -404,7 +404,7 @@ Loop:
     /// <param name="token">The unexpected token.</param>
     public void ReportUnexpectedToken(Token token)
     {
-        this.Diagnostic.AddToken(token, Hashed.Kimi.UnmatchedToken, token.Kind.ToText());
+        this.Diagnostic.Add(token.Range, Hashed.Kimi.UnmatchedToken, token.Kind.ToText());
     }
 
     /// <summary>
@@ -416,7 +416,7 @@ Loop:
     {
         if (this.CanRead)
         {
-            this.Diagnostic.AddToken(this.currentToken, diagnosticHash, obj);
+            this.Diagnostic.Add(this.currentToken.Range, diagnosticHash, obj);
         }
     }
 
