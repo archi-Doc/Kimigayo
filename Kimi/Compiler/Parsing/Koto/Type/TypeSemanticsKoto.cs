@@ -13,7 +13,8 @@ public partial class TypeSemanticsKoto : Koto
     private readonly TokenKind tokenKind;
     private readonly string? identifier;
 
-    public SemanticsKind SemanticsKind { get; }
+    [Key(1)]
+    public SemanticsKind SemanticsKind { get; private set; }
 
     public string? SemanticsParameter { get; }
 

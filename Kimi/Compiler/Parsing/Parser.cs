@@ -870,6 +870,14 @@ Exit:
                 continue;
             }
 
+            if (tokenKind == TokenKind.At)
+            {// A@B
+                reader.TryRead(out var token2);
+                var typeKoto = ParseType(ref reader);
+                left = new ConversionKoto(ref reader, token2.Range, left, typeKoto);
+                continue;
+            }
+
             var bindingPower = GetInfixBindingPower(tokenKind);
             if (bindingPower == default || bindingPower.Left < minBindingPower)
             {

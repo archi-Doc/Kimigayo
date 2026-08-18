@@ -1,7 +1,7 @@
 alias AliasB
+alias AliasC
 
-var movedObj = obj@unsafe / T
-private func find<s/T, T2>(value?: T, in => collection: Collection<T>, using => comparer: (T, T) -> Bool) -> i32
+func find<s/T, T2>(value?: T, in => collection: Collection<T>, using => comparer: (T, T) -> Bool) -> i32
 public func Main() -> ()
 var x: unsafe/Base.Map<String, Int>
 var count: i32 = #TestAtr 0
@@ -13,7 +13,7 @@ var array: Array<owner/T.U> = new()
 var obj = T.new()
 var obj2 = T.new()
 var movedObj = obj
-var movedObj = obj@unsafe / T
+var movedObj = obj@unsafe/T
 array.Add(movedObj)
 
 public open struct Test: A, B, 
