@@ -1,0 +1,14 @@
+// To create diagnostic information, follow the Template format, add it below, and add the corresponding entry to the KimiDiagnostic enum.
+
+  + Name="Template_Kd"
+    Severity="Error"
+    Message="The primary diagnostic message"
+    Label="A short label describing the relevant code"
+    Fix="A suggested fix for the diagnostic"
+    Note="Additional information about the diagnostic"
+    
+  + Name="ConditionMustBeBool_Kd"
+    Message="The condition expression must be of type Bool"
+    
+  + Name="ERROR1"
+    Message="Message"

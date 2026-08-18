@@ -16,6 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Misc\Language\diagnostic-entries.tinyhand" />
     <None Remove="Misc\Language\strings-en.tinyhand" />
     <None Remove="Misc\Language\strings-ja.tinyhand" />
   </ItemGroup>
@@ -29,6 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Misc\Language\diagnostic-entries.tinyhand" />
     <EmbeddedResource Include="Misc\Language\strings-en.tinyhand" />
     <EmbeddedResource Include="Misc\Language\strings-ja.tinyhand" />
   </ItemGroup>

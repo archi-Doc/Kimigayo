@@ -6,10 +6,8 @@ using Tinyhand;
 namespace Kimi.Diagnostics;
 
 [TinyhandObject(ImplicitMemberNameAsKey = true, EnumAsString = true)]
-[ValueLinkObject]
 public partial record class DiagnosticEntry
 {
-    [Link(Primary = true, Unique = true, Type = ChainType.Unordered)]
     public string Name { get; init; } = string.Empty;
 
     public DiagnosticSeverity Severity { get; init; } = DiagnosticSeverity.Error;

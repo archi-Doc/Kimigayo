@@ -22,6 +22,8 @@ internal class Program
     {
         Console.WriteLine("Hello, World!");
 
+        DiagnosticEntries.TryGet(KimiDiagnostic.ConditionMustBeBool_Kd, out var e);
+
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         var codeContext = kotonoha.CreateCodeContext();
