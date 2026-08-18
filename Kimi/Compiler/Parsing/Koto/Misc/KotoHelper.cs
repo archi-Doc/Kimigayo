@@ -30,6 +30,7 @@ public static partial class KotoHelper
     public static Koto NewBinaryKoto(ref TokenReader reader, Token token, Koto left, Koto right) => token.Kind switch
     {
         TokenKind.Asterisk => new AsteriskKoto(ref reader, token.Range, left, right),
+        TokenKind.At => new AtKoto(ref reader, token.Range, left, right),
         TokenKind.Slash => new SlashKoto(ref reader, token.Range, left, right),
         TokenKind.Percent => new PercentKoto(ref reader, token.Range, left, right),
         TokenKind.Plus => new PlusKoto(ref reader, token.Range, left, right),

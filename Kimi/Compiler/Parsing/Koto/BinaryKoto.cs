@@ -77,6 +77,25 @@ public partial class AsteriskKoto : BinaryKoto
 }
 
 [TinyhandObject]
+public partial class ConversionKoto : BinaryKoto
+{// A@B
+    public override KotoKind Akind => KotoKind.Conversion;
+
+    public ConversionKoto(ref TokenReader reader, SourceRange range, Koto left, Koto right)
+        : base(ref reader, range, left, right)
+    {
+    }
+
+    public override string ToString()
+        => $"{this.Left}@{this.Right}";
+
+    public override void WriteTo(ref IndentedStringBuilder builder)
+    {
+        this.WriteBinaryKoto(ref builder, "@");
+    }
+}
+
+[TinyhandObject]
 public partial class SlashKoto : BinaryKoto
 {// A / B
     public override KotoKind Akind => KotoKind.Slash;

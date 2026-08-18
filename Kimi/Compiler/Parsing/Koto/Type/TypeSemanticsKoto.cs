@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Parsing;
 
 [TinyhandObject]
 public partial class TypeSemanticsKoto : Koto
-{
+{// semantics/Type
     public override KotoKind Akind => KotoKind.TypeSemantics;
 
     private readonly TokenKind tokenKind;
@@ -25,12 +25,11 @@ public partial class TypeSemanticsKoto : Koto
 
     internal TypeSemanticsKoto(
         ref TokenReader reader,
-        SourceRange range,
         Token typeToken,
         SemanticsKind semanticsKind,
         string? semanticsParameter,
         SemanticsForm semanticsForm)
-        : base(ref reader, range)
+        : base(ref reader, typeToken.Range)
     {
         this.tokenKind = typeToken.Kind;
         this.SemanticsKind = semanticsKind;

@@ -458,7 +458,8 @@ Loop:
     /// <returns>The textual representation of the current token.</returns>
     public readonly override string ToString()
     {
-        return this.CurrentToken.ToString();
+        // return this.CurrentToken.ToString();
+        return this.GetSpan(this.CurrentToken).ToString();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

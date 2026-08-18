@@ -1,5 +1,5 @@
 alias AliasB
-var movedObj = obj //@unsafe/T
+var movedObj = obj@unsafe/T
 #If(os == "windows" and 
     pointerWidth == 64)
 alias AliasC

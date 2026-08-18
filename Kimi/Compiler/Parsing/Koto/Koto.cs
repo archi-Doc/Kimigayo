@@ -49,6 +49,7 @@ public enum KotoKind : byte
     MemberAccess,
     Index,
     Asterisk,
+    Conversion, // A@B, A@owner/T, A@/
     Slash,
     Percent,
     Plus,

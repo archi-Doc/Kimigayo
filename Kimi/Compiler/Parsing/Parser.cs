@@ -720,7 +720,7 @@ Exit:
 
     public static Koto ParseType(ref TokenReader reader)
     {// semantics/A.B<C>
-        var left = ParseTypeKoto(ref reader);
+        var left = ParseTypeInternal(ref reader);
         if (left is null)
         {
             return reader.NewErrorKoto();
@@ -733,7 +733,7 @@ Exit:
             {// Class.Nested
                 reader.TryRead(out var token);
 
-                var accessor = ParseTypeKoto(ref reader);
+                var accessor = ParseTypeInternal(ref reader);
                 accessor ??= reader.NewErrorKoto();
                 left = new MemberAccessKoto(ref reader, new(token.Range.Start, accessor.Range.End), left, accessor);
                 continue;
@@ -767,10 +767,9 @@ Exit:
 
         return left;
 
-        static Koto? ParseTypeKoto(ref TokenReader reader)
+        static Koto? ParseTypeInternal(ref TokenReader reader)
         {
             var token = reader.CurrentToken;
-            var start = token.Range.Start;
             var semanticsKind = SemanticsKind.Owner;
             var semanticsForm = SemanticsForm.None;
             string? semanticsParameter = default;
@@ -778,7 +777,7 @@ Exit:
             reader.Advance();
 
             if (token.Kind == TokenKind.Slash)
-            {
+            {// /T
                 semanticsKind = SemanticsKind.BorrowRef;
                 semanticsForm = SemanticsForm.Slash;
                 if (!reader.TryRead(out token))
@@ -788,10 +787,10 @@ Exit:
             }
             else if (token.Kind == TokenKind.Identifier &&
                 reader.CurrentTokenKind == TokenKind.Slash)
-            {
+            {// semantics/
                 var semantics = reader.GetSpan(token);
                 if (!CompilerHelper.TryParse(semantics, out semanticsKind))
-                {
+                {// semanticsParameter/
                     semanticsParameter = semantics.ToString();
                 }
 
@@ -807,7 +806,6 @@ Exit:
             {
                 return new TypeSemanticsKoto(
                     ref reader,
-                    new(start, token.Range.End),
                     token,
                     semanticsKind,
                     semanticsParameter,

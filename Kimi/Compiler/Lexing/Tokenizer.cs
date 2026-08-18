@@ -338,8 +338,10 @@ internal ref struct Tokenizer
         };
 
         CharacterHandlerTable[(int)Constants.AtChar] = (ref tokenizer) =>
-        {// @Identifier
-            var length = TokenHelper.IndexOfSeparator(tokenizer.span.Slice(1));
+        {// @ = as
+            tokenizer.AddTokenAndSlice(TokenKind.At, 1);
+
+            /*var length = TokenHelper.IndexOfSeparator(tokenizer.span.Slice(1));
             if (length < 0)
             {
                 length = tokenizer.span.Length;
@@ -349,7 +351,7 @@ internal ref struct Tokenizer
                 length++;
             }
 
-            tokenizer.AddTokenAndSlice(TokenKind.Identifier, length);
+            tokenizer.AddTokenAndSlice(TokenKind.Identifier, length);*/
 
             return false;
         };
