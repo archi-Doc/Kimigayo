@@ -49,7 +49,7 @@ public class FuncDeclarationParseTest
             kotonoha.RootKoto.UnparseAll(ref builder);
             var text = builder.ToString();
             Assert.Contains(
-                "private func find<s/T, T2>(value?: T, owned: owner/T, borrowed: borrow/T, stacked: stack/T, ownerReference: ownerref/T, borrowReference: /T, longBorrowReference: borrowref/T, shared: rc/T, atomic: arc/T, raw: unsafe/T, in => collection: Collection<s/T>, using => comparer: (s/T, T2) -> borrowref/Bool) -> owner/i32",
+                "private func find<s/T, T2>(value?: T, owned: owner/T, borrowed: borrow/T, stacked: stack/T, ownerReference: ownerref/T, borrowReference: borrowref/T, longBorrowReference: borrowref/T, shared: rc/T, atomic: arc/T, raw: unsafe/T, in => collection: Collection<s/T>, using => comparer: (s/T, T2) -> borrowref/Bool) -> owner/i32",
                 text);
             Assert.Contains("public func Main() -> ()", text);
         }

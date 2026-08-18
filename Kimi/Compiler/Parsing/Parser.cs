@@ -770,8 +770,9 @@ Exit:
         static Koto? ParseTypeInternal(ref TokenReader reader)
         {
             var token = reader.CurrentToken;
+            var start = token.Range.Start;
             var semanticsKind = SemanticsKind.Owner;
-            var semanticsForm = SemanticsForm.None;
+            var hasSemantics = false;
             string? semanticsParameter = default;
 
             reader.Advance();
@@ -779,11 +780,7 @@ Exit:
             if (token.Kind == TokenKind.Slash)
             {// /T
                 semanticsKind = SemanticsKind.BorrowRef;
-                semanticsForm = SemanticsForm.Slash;
-                if (!reader.TryRead(out token))
-                {
-                    return reader.NewErrorKoto();
-                }
+                hasSemantics = true;
             }
             else if (token.Kind == TokenKind.Identifier &&
                 reader.CurrentTokenKind == TokenKind.Slash)
@@ -794,22 +791,27 @@ Exit:
                     semanticsParameter = semantics.ToString();
                 }
 
-                semanticsForm = SemanticsForm.Named;
+                hasSemantics = true;
                 reader.Advance();
-                if (!reader.TryRead(out token))
-                {
-                    return reader.NewErrorKoto();
-                }
+            }
+
+            if (hasSemantics)
+            {
+                var attribute = reader.PopAttribute();
+                var type = ParseType(ref reader);
+                var semantics = new TypeSemanticsKoto(
+                    ref reader,
+                    new(start, type.Range.End),
+                    type,
+                    semanticsKind,
+                    semanticsParameter);
+                semantics.AttributeChain = attribute;
+                return semantics;
             }
 
             if (token.Kind.IsPrimitiveType() || token.Kind == TokenKind.Identifier)
             {
-                return new TypeSemanticsKoto(
-                    ref reader,
-                    token,
-                    semanticsKind,
-                    semanticsParameter,
-                    semanticsForm);
+                return new TypeSemanticsKoto(ref reader, token);
             }
 
             return null;

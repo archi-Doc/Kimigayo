@@ -59,6 +59,19 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void AppliesSemanticsToCompoundType()
+    {
+        var (root, diagnostics) = Parse("func F(value: borrowref/SomeType<List<owner/T>, I>)");
+
+        Assert.Empty(diagnostics);
+        var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
+        var semantics = Assert.IsType<TypeSemanticsKoto>(function.Parameters.Single().Type);
+        Assert.Equal(SemanticsKind.BorrowRef, semantics.SemanticsKind);
+        Assert.IsType<GenericsKoto>(semantics.Type);
+        Assert.Equal("borrowref/SomeType<List<owner/T>, I>", semantics.ToString());
+    }
+
+    [Fact]
     public void RemovesAttributeBeyondChainHead()
     {
         var (root, diagnostics) = Parse("#A\n#B\nvar x = 1");

@@ -12,34 +12,50 @@ public partial class TypeSemanticsKoto : Koto
 
     private readonly TokenKind tokenKind;
     private readonly string? identifier;
-    private readonly SemanticsForm semanticsForm;
 
     public SemanticsKind SemanticsKind { get; }
 
     public string? SemanticsParameter { get; }
 
+    /// <summary>
+    /// Gets the type to which the semantics applies when it is a compound type.
+    /// </summary>
+    [IgnoreMember]
+    public Koto? Type { get; }
+
     public string Identifier
-        => this.tokenKind.IsPrimitiveType()
+        => this.Type is TypeSemanticsKoto simpleType
+            ? simpleType.Identifier
+            : this.tokenKind.IsPrimitiveType()
             ? this.tokenKind.ToText()
             : this.identifier ?? string.Empty;
 
     internal TypeSemanticsKoto(
         ref TokenReader reader,
-        Token typeToken,
-        SemanticsKind semanticsKind,
-        string? semanticsParameter,
-        SemanticsForm semanticsForm)
+        Token typeToken)
         : base(ref reader, typeToken.Range)
     {
         this.tokenKind = typeToken.Kind;
-        this.SemanticsKind = semanticsKind;
-        this.SemanticsParameter = semanticsParameter;
-        this.semanticsForm = semanticsForm;
+        this.SemanticsKind = SemanticsKind.Owner;
 
         if (!this.tokenKind.IsPrimitiveType())
         {
             this.identifier = reader.GetSpan(typeToken).ToString();
         }
+    }
+
+    internal TypeSemanticsKoto(
+        ref TokenReader reader,
+        SourceRange range,
+        Koto type,
+        SemanticsKind semanticsKind,
+        string? semanticsParameter)
+        : base(ref reader, range)
+    {
+        this.SemanticsKind = semanticsKind;
+        this.SemanticsParameter = semanticsParameter;
+        this.Type = type;
+        type.Parent = this;
     }
 
     public override void WriteTo(ref IndentedStringBuilder builder)
@@ -49,11 +65,7 @@ public partial class TypeSemanticsKoto : Koto
             Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
         }
 
-        if (this.semanticsForm == SemanticsForm.Slash)
-        {
-            builder.Append(Constants.SlashChar);
-        }
-        else if (this.semanticsForm == SemanticsForm.Named)
+        if (this.Type is not null)
         {
             if (this.SemanticsKind == SemanticsKind.Parameter)
             {
@@ -65,18 +77,15 @@ public partial class TypeSemanticsKoto : Koto
             }
 
             builder.Append(Constants.SlashChar);
+            this.Type.WriteTo(ref builder);
+            return;
         }
 
         builder.Append(this.Identifier);
     }
 
     public override (string Text, Koto[]? Children) Dump()
-        => ($"{this.GetType().Name}({this.SemanticsKind}, {this.Identifier})", default);
-}
-
-internal enum SemanticsForm : byte
-{
-    None,
-    Named,
-    Slash,
+        => this.Type is null
+            ? ($"{this.GetType().Name}({this.SemanticsKind}, {this.Identifier})", default)
+            : ($"{this.GetType().Name}({this.SemanticsKind})", [this.Type]);
 }
