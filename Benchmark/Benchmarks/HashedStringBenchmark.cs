@@ -37,4 +37,35 @@ public class HashedStringBenchmark
         hash ^= FarmHash.Hash64($"Kimi.{this.name}.Note");
         return hash;
     }
+
+    [Benchmark]
+    public ulong Append()
+    {
+        var farm = default(FarmHash);
+        farm.Append(this.baseName);
+        farm.Append(".Message");
+        var hash = farm.Finalize();
+
+        farm.Initialize();
+        farm.Append(this.baseName);
+        farm.Append(".Severity");
+        hash ^= farm.Finalize();
+
+        farm.Initialize();
+        farm.Append(this.baseName);
+        farm.Append(".Label");
+        hash ^= farm.Finalize();
+
+        farm.Initialize();
+        farm.Append(this.baseName);
+        farm.Append(".Fix");
+        hash ^= farm.Finalize();
+
+        farm.Initialize();
+        farm.Append(this.baseName);
+        farm.Append(".Note");
+        hash ^= farm.Finalize();
+
+        return hash;
+    }
 }
