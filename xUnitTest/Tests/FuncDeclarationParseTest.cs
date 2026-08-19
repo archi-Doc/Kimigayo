@@ -84,4 +84,47 @@ public class FuncDeclarationParseTest
         Assert.False(actual.IsValue());
         Assert.False(actual.IsReference());
     }
+
+    [Theory]
+    [InlineData(SemanticsKind.Owner, SemanticsMask.Owner)]
+    [InlineData(SemanticsKind.Borrow, SemanticsMask.Borrow)]
+    [InlineData(SemanticsKind.Stack, SemanticsMask.Stack)]
+    [InlineData(SemanticsKind.OwnerRef, SemanticsMask.OwnerRef)]
+    [InlineData(SemanticsKind.BorrowRef, SemanticsMask.BorrowRef)]
+    [InlineData(SemanticsKind.Rc, SemanticsMask.Rc)]
+    [InlineData(SemanticsKind.Arc, SemanticsMask.Arc)]
+    [InlineData(SemanticsKind.Unsafe, SemanticsMask.Unsafe)]
+    public void ConvertsSemanticsKindToMask(SemanticsKind kind, SemanticsMask expected)
+    {
+        Assert.Equal(expected, kind.ToMask());
+        Assert.True(expected.Contains(kind));
+    }
+
+    [Fact]
+    public void ProvidesCompositeSemanticsMasks()
+    {
+        Assert.Equal(
+            SemanticsMask.Owner | SemanticsMask.Borrow | SemanticsMask.Stack,
+            SemanticsMask.Value);
+        Assert.Equal(
+            SemanticsMask.OwnerRef | SemanticsMask.BorrowRef | SemanticsMask.Rc | SemanticsMask.Arc | SemanticsMask.Unsafe,
+            SemanticsMask.Reference);
+        Assert.Equal(
+            SemanticsMask.Owner | SemanticsMask.OwnerRef | SemanticsMask.Rc | SemanticsMask.Arc | SemanticsMask.Unsafe,
+            SemanticsMask.Owning);
+        Assert.Equal(SemanticsMask.Value | SemanticsMask.Reference, SemanticsMask.All);
+    }
+
+    [Fact]
+    public void MatchesPositiveAndNegatedSemanticsConstraints()
+    {
+        var borrowed = SemanticsMask.Borrow | SemanticsMask.BorrowRef;
+
+        Assert.True(borrowed.IsSatisfiedBy(SemanticsKind.Borrow));
+        Assert.False(borrowed.IsSatisfiedBy(SemanticsKind.Owner));
+        Assert.False(borrowed.IsSatisfiedBy(SemanticsKind.Borrow, isNegated: true));
+        Assert.True(borrowed.IsSatisfiedBy(SemanticsKind.Owner, isNegated: true));
+        Assert.False(borrowed.IsSatisfiedBy(SemanticsKind.Parameter));
+        Assert.False(borrowed.IsSatisfiedBy(SemanticsKind.Parameter, isNegated: true));
+    }
 }
