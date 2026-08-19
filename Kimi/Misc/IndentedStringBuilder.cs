@@ -22,9 +22,9 @@ public ref struct IndentedStringBuilder
     /// </summary>
     public const int DefaultSpacesPerIndent = 4;
 
-    private const int SpaceBufferLength = 512;
+    public const int SpaceBufferLength = 512;
 
-    private static readonly char[] SpaceBuffer;
+    public static readonly char[] SpaceBuffer;
 
     private readonly int spacesPerIndent;
     private PooledStringBuilder builder;

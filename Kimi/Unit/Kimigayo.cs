@@ -3,6 +3,7 @@
 namespace Kimi;
 
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Kimi.Diagnostics;
 
@@ -10,12 +11,21 @@ public class Kimigayo
 {
     internal const string GlobalName = "Global";
     internal const string ErrorPrefix = "KimiError";
+    private const int CaretBufferLength = 512;
+
+    private static readonly char[] CaretBuffer;
     private readonly IConsoleService consoleService;
     private readonly ConcurrentDictionary<string, DiagnosticCollection> diagnosticCollections;
 
     public KimiSettings Settings { get; }
 
     public DiagnosticCollection GlobalDiagnosticCollection { get; }
+
+    static Kimigayo()
+    {
+        CaretBuffer = new char[CaretBufferLength];
+        Array.Fill(CaretBuffer, Constants.CaretChar);
+    }
 
     public Kimigayo(IConsoleService consoleService)
     {
@@ -34,10 +44,35 @@ public class Kimigayo
         var start = diagnostic.Range.Start;
         var fixOrNote = entry.Fix is not null || entry.Note is not null;
 
+        // Message : Name
         this.consoleService.Write(entry.Message);
         this.consoleService.Write(" : ");
         this.WriteLine(entry.Severity, entry.Name);
+
+        // (Path Line:Character)
         this.consoleService.WriteLine($"({url} {start.Line + 1}:{start.Character + 1})");
+
+        // Code
+        if (diagnostic.Range != default)
+        {
+            this.consoleService.WriteLine();
+
+            var remaining = start.Character;
+            while (remaining > 0)
+            {
+                var length = Math.Min(IndentedStringBuilder.SpaceBufferLength, remaining);
+                this.consoleService.WriteLine(IndentedStringBuilder.SpaceBuffer.AsSpan(0, length));
+                remaining -= length;
+            }
+
+            remaining = diagnostic.Range.End.Character - start.Character;
+            while (remaining > 0)
+            {
+                var length = Math.Min(CaretBufferLength, remaining);
+                this.consoleService.WriteLine(CaretBuffer.AsSpan(0, length));
+                remaining -= length;
+            }
+        }
 
         if (fixOrNote)
         {
