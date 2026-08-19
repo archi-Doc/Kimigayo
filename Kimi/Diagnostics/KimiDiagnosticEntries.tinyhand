@@ -81,6 +81,7 @@
 
   + Name="TopLevelKeywordAfterCode_Kd"
     Message="Top-level keywords such as 'alias' must appear before any other code"
+    Fix="Fix"
 
   + Name="TypeMismatch_Kd"
     Message="Values must be of the same type"

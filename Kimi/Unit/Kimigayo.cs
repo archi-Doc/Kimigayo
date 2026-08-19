@@ -29,7 +29,31 @@ public class Kimigayo
 
     public void ReportDiagnostic(string url, Diagnostic diagnostic)
     {
-        this.WriteLine(diagnostic.Entry.Severity, diagnostic.ToString(url));
+        // this.WriteLine(diagnostic.Entry.Severity, diagnostic.ToString(url));
+        var entry = diagnostic.Entry;
+        var start = diagnostic.Range.Start;
+        var fixOrNote = entry.Fix is not null || entry.Note is not null;
+
+        this.consoleService.Write(entry.Message);
+        this.consoleService.Write(" : ");
+        this.WriteLine(entry.Severity, entry.Name);
+        this.consoleService.WriteLine($"({url} {start.Line + 1}:{start.Character + 1})");
+
+        if (fixOrNote)
+        {
+            this.consoleService.WriteLine();
+            if (entry.Fix is not null)
+            {
+                this.consoleService.WriteLine($"Fix: {entry.Fix}");
+            }
+
+            if (entry.Note is not null)
+            {
+                this.consoleService.WriteLine($"Note: {entry.Note}");
+            }
+        }
+
+        this.consoleService.WriteLine();
     }
 
     public DiagnosticCollection GetOrAddDiagnosticCollection(string url)
