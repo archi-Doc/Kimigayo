@@ -13,7 +13,7 @@ public sealed partial class BoolLiteralKoto : Koto
     public bool Value { get; private set; }
 
     public BoolLiteralKoto(ref TokenReader reader, Token token)
-        : base(ref reader, token.Range)
+        : base(ref reader, token.SourceSpan)
     {
         if (token.Kind == TokenKind.True)
         {

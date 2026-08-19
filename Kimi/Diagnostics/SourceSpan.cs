@@ -2,13 +2,15 @@
 
 namespace Kimi.Diagnostics;
 
+#pragma warning disable SA1514 // Element documentation header should be preceded by blank line
+
 /// <summary>
 /// Represents an absolute, half-open span in a source document.
 /// </summary>
 /// <param name="Start">The zero-based absolute start offset.</param>
 /// <param name="Length">The span length.</param>
 public readonly record struct SourceSpan(int Start, int Length) : IComparable<SourceSpan>
-{
+{// 4 + 4 = 8
     /// <summary>
     /// Gets the exclusive absolute end offset.
     /// </summary>

@@ -22,7 +22,8 @@ internal class Program
     {
         Console.WriteLine("Hello, World!");
 
-        DiagnosticEntries.TryGet(KimiDiagnostic.ConditionMustBeBool_Kd, out var e);
+        var x = Unsafe.SizeOf<Token>();
+
 
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;

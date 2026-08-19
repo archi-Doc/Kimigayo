@@ -100,7 +100,7 @@ public ref struct TokenReader
     /// <summary>
     /// Gets the source range of the current token.
     /// </summary>
-    public readonly SourceSpan CurrentTokenRange => this.currentToken.Range;
+    public readonly SourceSpan CurrentTokenRange => this.currentToken.SourceSpan;
 
     /// <summary>
     /// Gets the source length of the current token.
@@ -244,7 +244,7 @@ Loop:
             var token = this.currentToken;
             if (token.Kind == targetKind)
             {
-                range = token.Range;
+                range = token.SourceSpan;
                 this.AdvanceOne();
                 return true;
             }
@@ -258,7 +258,7 @@ Loop:
 
             if (addDiagnostic)
             {
-                this.Diagnostic.Add(token.Range, KimiDiagnostic.TokenMismatch_Kd, targetKind.ToText());
+                this.Diagnostic.Add(token.SourceSpan, KimiDiagnostic.TokenMismatch_Kd, targetKind.ToText());
                 this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
             }
 
@@ -410,7 +410,7 @@ Loop:
     /// <param name="token">The unexpected token.</param>
     public void ReportUnexpectedToken(Token token)
     {
-        this.Diagnostic.Add(token.Range, KimiDiagnostic.UnmatchedToken_Kd, token.Kind.ToText());
+        this.Diagnostic.Add(token.SourceSpan, KimiDiagnostic.UnmatchedToken_Kd, token.Kind.ToText());
     }
 
     /// <summary>
@@ -423,7 +423,7 @@ Loop:
     {
         if (this.CanRead)
         {
-            this.Diagnostic.Add(this.currentToken.Range, kimiDiagnostic, obj, obj2);
+            this.Diagnostic.Add(this.currentToken.SourceSpan, kimiDiagnostic, obj, obj2);
         }
     }
 
@@ -445,7 +445,7 @@ Loop:
     /// <returns>A new error node.</returns>
     public ErrorKoto NewErrorKoto()
     {
-        return new ErrorKoto(ref this, this.CurrentToken.Range);
+        return new ErrorKoto(ref this, this.CurrentToken.SourceSpan);
     }
 
     /// <summary>

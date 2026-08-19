@@ -87,13 +87,13 @@ public partial class Project
         var targets = this.File.Targets.ToArray();
         foreach (var x in targets)
         {
-            await this.Buildtarget(x).ConfigureAwait(false);
+            await this.BuildTarget(x).ConfigureAwait(false);
         }
 
         return true;
     }
 
-    private async Task<bool> Buildtarget(string target)
+    private async Task<bool> BuildTarget(string target)
     {
         // Create & Prepare Compilation
         var compilation = new Compilation(this.kimigayo, this);

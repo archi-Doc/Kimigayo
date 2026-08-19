@@ -67,7 +67,7 @@ public class Compilation
 
         var os = this.TargetTriple.OsName;
         this.Variables.Add("os", new(os));
-        this.Variables.Add("windows", new(string.Equals(os, "Windows", StringComparison.InvariantCultureIgnoreCase)));
+        this.Variables.Add("windows", new(string.Equals(os, "windows", StringComparison.InvariantCultureIgnoreCase)));
         this.Variables.Add("linux", new(string.Equals(os, "linux", StringComparison.InvariantCultureIgnoreCase)));
         this.Variables.Add("macos", new(string.Equals(os, "macos", StringComparison.InvariantCultureIgnoreCase)));
         this.Variables.Add("pointerWidth", new(this.IrTarget.PointerWidth));

@@ -134,7 +134,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             {// alias (not supported)
                 reader.Advance();
                 _ = KotoHelper.ValidateAndGetNamespace2(ref reader);
-                reader.Diagnostic.Add(token.Range, KimiDiagnostic.TopLevelKeywordAfterCode_Kd);
+                reader.Diagnostic.Add(token.SourceSpan, KimiDiagnostic.TopLevelKeywordAfterCode_Kd);
             }
             else if (tokenKind == TokenKind.Separator)
             {
@@ -167,7 +167,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 }
 
                 var state = reader.TakeContext();
-                var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, TokenKind.Group, state, token.Range);
+                var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, TokenKind.Group, state, token.SourceSpan);
                 // this.CodeContext.CurrentGroup = groupKoto;
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
@@ -188,7 +188,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 }
 
                 var state = reader.TakeContext();
-                var groupKoto = this.GetOrAddGroup(r.Name, tokenKind, state, token.Range);
+                var groupKoto = this.GetOrAddGroup(r.Name, tokenKind, state, token.SourceSpan);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.Advance();
@@ -206,7 +206,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 }
 
                 var state = reader.TakeContext();
-                var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, tokenKind, state, token.Range);
+                var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, tokenKind, state, token.SourceSpan);
                 if (r.List is not null)
                 {
                     structKoto.BaseList.AddRange(r.List);

@@ -34,7 +34,7 @@ public partial class TypeSemanticsKoto : Koto
     internal TypeSemanticsKoto(
         ref TokenReader reader,
         Token typeToken)
-        : base(ref reader, typeToken.Range)
+        : base(ref reader, typeToken.SourceSpan)
     {
         this.tokenKind = typeToken.Kind;
         this.SemanticsKind = SemanticsKind.Owner;

@@ -40,7 +40,7 @@ public partial class IdentifierNameKoto : Koto
     public string IdentifierName { get; private set; }
 
     protected IdentifierNameKoto(ref TokenReader reader, Token token, string identifierName)
-        : base(ref reader, token.Range)
+        : base(ref reader, token.SourceSpan)
     {
         this.IdentifierName = identifierName;
     }

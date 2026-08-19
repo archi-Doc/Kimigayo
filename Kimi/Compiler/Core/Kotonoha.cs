@@ -102,14 +102,9 @@ public sealed partial class Kotonoha
             path = Path.GetRelativePath(this.Compilation.Project.Directory, path);
         }
 
-        var diagnostic = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
-        var tokenizer = new Tokenizer(diagnostic, sourceDocument);
-
-        /*var kimiId = this.SourceList.Count;
-        var kimiSource = new KimiSource(pathAndSource.Path, [], default);
-        this.SourceList.Add(kimiSource);*/
-
-        var codeContext = this.CreateCodeContext(diagnostic);
+        var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
+        var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument);
+        var codeContext = this.CreateCodeContext(diagnosticCollection);
 
         // Tokenize
         try

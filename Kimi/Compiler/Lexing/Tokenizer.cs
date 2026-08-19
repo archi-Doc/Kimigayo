@@ -431,7 +431,7 @@ internal ref struct Tokenizer
         }
     }
 
-    public int Read()
+    private int Read()
     {
         this.ClearState();
 
