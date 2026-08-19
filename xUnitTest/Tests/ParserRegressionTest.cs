@@ -48,6 +48,64 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void ParsesLogicalExpressionsWithCorrectPrecedence()
+    {
+        var source = """
+            var first = A and B
+            var second = not A or B
+            var third = A and not B
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.Empty(diagnostics);
+        var fields = GetChildren(root).Select(Assert.IsType<FieldKoto>).ToArray();
+
+        var first = Assert.IsType<AndKoto>(fields[0].InitializerKoto);
+        Assert.IsType<IdentifierNameKoto>(first.Left);
+        Assert.IsType<IdentifierNameKoto>(first.Right);
+
+        var second = Assert.IsType<OrKoto>(fields[1].InitializerKoto);
+        Assert.IsType<NotKoto>(second.Left);
+        Assert.IsType<IdentifierNameKoto>(second.Right);
+
+        var third = Assert.IsType<AndKoto>(fields[2].InitializerKoto);
+        Assert.IsType<IdentifierNameKoto>(third.Left);
+        Assert.IsType<NotKoto>(third.Right);
+    }
+
+    [Fact]
+    public void ParsesLogicalExpressionsAsIsRightOperand()
+    {
+        var source = """
+            var first = X is A and B
+            var second = X is not A or B
+            var third = X is A and not B
+            var fourth = P or X is A and B
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.Empty(diagnostics);
+        var fields = GetChildren(root).Select(Assert.IsType<FieldKoto>).ToArray();
+
+        var first = Assert.IsType<IsKoto>(fields[0].InitializerKoto);
+        Assert.IsType<AndKoto>(first.Right);
+
+        var second = Assert.IsType<IsKoto>(fields[1].InitializerKoto);
+        var secondCondition = Assert.IsType<NotKoto>(second.Right);
+        Assert.IsType<OrKoto>(secondCondition.Operand);
+
+        var third = Assert.IsType<IsKoto>(fields[2].InitializerKoto);
+        var thirdCondition = Assert.IsType<AndKoto>(third.Right);
+        Assert.IsType<NotKoto>(thirdCondition.Right);
+
+        var fourth = Assert.IsType<OrKoto>(fields[3].InitializerKoto);
+        var fourthCondition = Assert.IsType<IsKoto>(fourth.Right);
+        Assert.IsType<AndKoto>(fourthCondition.Right);
+    }
+
+    [Fact]
     public void ContinuesAfterOuterIndentedClosingDelimiterOnSameLine()
     {
         var source = """

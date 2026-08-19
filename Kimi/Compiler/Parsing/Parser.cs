@@ -885,7 +885,18 @@ Exit:
             }
 
             reader.TryRead(out var token);
-            var right = ParseExpression(ref reader, bindingPower.Right);
+            Koto right;
+            if (token.Kind == TokenKind.Is && reader.CurrentTokenKind == TokenKind.Not)
+            {
+                reader.TryRead(out var notToken);
+                var condition = ParseExpression(ref reader, bindingPower.Right);
+                right = KotoHelper.NewUnaryKoto(ref reader, notToken, condition);
+            }
+            else
+            {
+                right = ParseExpression(ref reader, bindingPower.Right);
+            }
+
             left = KotoHelper.NewBinaryKoto(ref reader, token, left, right);
             // left = new BinaryKoto(ref reader, token.Range, left, right);
         }
@@ -1192,7 +1203,9 @@ Loop:
             TokenKind.GreaterThan => (60, 61),
             TokenKind.GreaterThanEquals => (60, 61),
             TokenKind.As => (60, 61),
-            TokenKind.Is => (60, 61),
+            // Keep "is" relational on its left, but allow its right operand to be
+            // a logical condition: X is not A or B -> X is not (A or B).
+            TokenKind.Is => (60, 10),
 
             // Equality
             TokenKind.EqualsEquals => (50, 51),
