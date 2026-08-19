@@ -142,9 +142,7 @@ public sealed class SourceDocument
 
     private static int[] CreateLineStarts(ReadOnlySpan<char> sourceText)
     {
-        // Single pass over the text using the vectorized IndexOfAny, collecting
-        // line starts into a pooled scratch buffer so the only allocation that
-        // survives is the exact-size result array.
+        // Collect line starts in a pooled buffer and return an exact-size array.
         var pool = ArrayPool<int>.Shared;
         var buffer = pool.Rent((sourceText.Length / 16) + 8);
         var count = 0;
