@@ -2,6 +2,7 @@
 
 namespace Kimi.Compiler;
 
+using System.Buffers;
 using Kimi.Diagnostics;
 
 /// <summary>
@@ -9,6 +10,8 @@ using Kimi.Diagnostics;
 /// </summary>
 public sealed class SourceDocument
 {
+    private static readonly SearchValues<char> LineBreakChars = SearchValues.Create("\r\n");
+
     private readonly int[] lineStarts;
 
     /// <summary>
@@ -34,14 +37,14 @@ public sealed class SourceDocument
     /// <summary>
     /// Initializes a new instance of the <see cref="SourceDocument"/> class.
     /// </summary>
-    /// <param name="url">The source URL or path.</param>
+    /// <param name="path">The source URL or path.</param>
     /// <param name="sourceText">The complete source text.</param>
-    public SourceDocument(string url, string sourceText)
+    public SourceDocument(string path, string sourceText)
     {
-        ArgumentNullException.ThrowIfNull(url);
+        ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(sourceText);
 
-        this.Path = url;
+        this.Path = path;
         this.SourceText = sourceText;
         this.lineStarts = CreateLineStarts(sourceText.AsSpan());
     }
@@ -60,18 +63,26 @@ public sealed class SourceDocument
     /// <returns>The requested source line.</returns>
     public ReadOnlySpan<char> GetLineSpan(int line)
     {
+        var starts = this.lineStarts;
         ArgumentOutOfRangeException.ThrowIfNegative(line);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(line, this.lineStarts.Length);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(line, starts.Length);
 
-        var start = this.lineStarts[line];
-        var end = line + 1 < this.lineStarts.Length ? this.lineStarts[line + 1] : this.SourceText.Length;
+        var text = this.SourceText.AsSpan();
+        var start = starts[line];
+        var end = line + 1 < starts.Length ? starts[line + 1] : text.Length;
 
-        while (end > start && this.SourceText[end - 1] is '\r' or '\n')
+        // A line ends with exactly one terminator: "\n", "\r", or "\r\n".
+        if (end > start && text[end - 1] == '\n')
         {
             end--;
         }
 
-        return this.SourceText.AsSpan(start, end - start);
+        if (end > start && text[end - 1] == '\r')
+        {
+            end--;
+        }
+
+        return text[start..end];
     }
 
     /// <summary>
@@ -131,26 +142,44 @@ public sealed class SourceDocument
 
     private static int[] CreateLineStarts(ReadOnlySpan<char> sourceText)
     {
-        var starts = new List<int> { 0 };
+        // Single pass over the text using the vectorized IndexOfAny, collecting
+        // line starts into a pooled scratch buffer so the only allocation that
+        // survives is the exact-size result array.
+        var pool = ArrayPool<int>.Shared;
+        var buffer = pool.Rent((sourceText.Length / 16) + 8);
+        var count = 0;
+        buffer[count++] = 0;
 
-        for (var i = 0; i < sourceText.Length; i++)
+        var i = 0;
+        while (true)
         {
-            if (sourceText[i] == '\r')
+            var next = sourceText.Slice(i).IndexOfAny(LineBreakChars);
+            if (next < 0)
             {
-                if (i + 1 < sourceText.Length && sourceText[i + 1] == '\n')
-                {
-                    i++;
-                }
+                break;
+            }
 
-                starts.Add(i + 1);
-            }
-            else if (sourceText[i] == '\n')
+            i += next;
+            if (sourceText[i] == '\r' && i + 1 < sourceText.Length && sourceText[i + 1] == '\n')
             {
-                starts.Add(i + 1);
+                i++;
             }
+
+            i++;
+            if (count == buffer.Length)
+            {
+                var larger = pool.Rent(buffer.Length * 2);
+                Array.Copy(buffer, larger, count);
+                pool.Return(buffer);
+                buffer = larger;
+            }
+
+            buffer[count++] = i;
         }
 
-        return starts.ToArray();
+        var starts = buffer.AsSpan(0, count).ToArray();
+        pool.Return(buffer);
+        return starts;
     }
 
     private void ValidateSpan(TextSpan span)
