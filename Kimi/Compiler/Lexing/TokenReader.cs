@@ -28,6 +28,11 @@ public ref struct TokenReader
     /// </summary>
     public readonly CodeContext CodeContext;
 
+    /// <summary>
+    /// Gets the source document associated with the token sequence.
+    /// </summary>
+    public readonly SourceDocument SourceDocument;
+
     private readonly ReadOnlySpan<char> sourceText;
     private readonly ReadOnlySequence<Token> sequence;
     private readonly int length;
@@ -112,9 +117,10 @@ public ref struct TokenReader
     internal TokenReader(CodeContext codeContext, ref Tokenizer tokenizer)
     {
         this.CodeContext = codeContext;
+        this.SourceDocument = tokenizer.SourceDocument;
 
         var tokenSequence = tokenizer.ToReadOnlySequence();
-        this.sourceText = tokenizer.SourceText;
+        this.sourceText = this.SourceDocument.AsSpan();
         this.sequence = tokenSequence;
         this.length = checked((int)tokenSequence.Length);
 

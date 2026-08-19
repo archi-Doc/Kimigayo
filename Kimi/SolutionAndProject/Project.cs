@@ -6,8 +6,6 @@ using System.Diagnostics.CodeAnalysis;
 using Kimi.Command;
 using Kimi.Compiler;
 
-public readonly record struct PathAndSource(string Path, string SourceText);
-
 public partial class Project
 {
     public static readonly ProjectFile DefaultProjectFile;
@@ -51,7 +49,7 @@ public partial class Project
     #region FieldAndProperty
 
     private readonly Kimigayo kimigayo;
-    private List<PathAndSource> additionalSource = [];
+    private List<SourceDocument> additionalSource = [];
     private HashSet<string> kimiFiles = new();
 
     public KimiOptions KimiOptions { get; set; } = new();
@@ -71,8 +69,12 @@ public partial class Project
     }
 
     public void AddSource(string url, string text)
+        => this.AddSource(new SourceDocument(url, text));
+
+    public void AddSource(SourceDocument sourceDocument)
     {
-        this.additionalSource.Add(new(url, text));
+        ArgumentNullException.ThrowIfNull(sourceDocument);
+        this.additionalSource.Add(sourceDocument);
     }
 
     public void AddKimiFile(string path)
@@ -102,12 +104,13 @@ public partial class Project
 
         var projectKotonoha = compilation.Kotonoha;
 
-        foreach (var y in this.kimiFiles)
+        foreach (var path in this.kimiFiles)
         {
             try
             {
-                var st = System.IO.File.ReadAllText(y);
-                projectKotonoha.AddSource(new(y, st));
+                var sourceText = System.IO.File.ReadAllText(path);
+                var sourceDocument = new SourceDocument(path, sourceText);
+                projectKotonoha.AddSource(sourceDocument);
             }
             catch
             {

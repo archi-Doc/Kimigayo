@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json.Serialization;
+using Kimi.Compiler;
 
 namespace Kimi.Diagnostics;
 
@@ -11,7 +12,8 @@ public sealed partial record class Diagnostic
 
     public DiagnosticEntry Entry { get; init; }
 
-    // public string? Source { get; init; }
+    [JsonIgnore]
+    public SourceDocument? SourceDocument { get; init; }
 
     public string Message { get; init; } = string.Empty;
 
@@ -22,10 +24,12 @@ public sealed partial record class Diagnostic
     [JsonIgnore]
     public partial GoshujinClass? Goshujin { get; set; }
 
-    public Diagnostic(SourceRange range, DiagnosticEntry entry)
+    public Diagnostic(SourceRange range, DiagnosticEntry entry, SourceDocument? sourceDocument = default)
     {
         this.Range = range;
         this.Entry = entry;
+        this.SourceDocument = sourceDocument;
+        this.Message = entry.Message;
     }
 
     public override string ToString()

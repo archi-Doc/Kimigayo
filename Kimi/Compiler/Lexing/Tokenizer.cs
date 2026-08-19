@@ -390,6 +390,7 @@ internal ref struct Tokenizer
     #region FieldAndProperty
 
     private readonly DiagnosticCollection diagnostics;
+    private readonly SourceDocument sourceDocument;
     private readonly ReadOnlySpan<char> sourceText;
     private readonly Stack<IndentSource> indentStack;
     private SequenceBuilder<Token> builder;
@@ -403,18 +404,25 @@ internal ref struct Tokenizer
     private int nonBlockDepth;
     private int tokenAdded;
 
+    public SourceDocument SourceDocument => this.sourceDocument;
+
     public ReadOnlySpan<char> SourceText => this.sourceText;
 
     public SourceRange CurrentRange => new(new(this.line, this.character), new(this.line, this.character));
 
     #endregion
 
-    public Tokenizer(DiagnosticCollection diagnostics, ReadOnlySpan<char> sourceText)
+    public Tokenizer(DiagnosticCollection diagnostics, SourceDocument sourceDocument)
     {
+        ArgumentNullException.ThrowIfNull(sourceDocument);
+
         this.diagnostics = diagnostics;
-        this.sourceText = sourceText;
+        this.sourceDocument = sourceDocument;
+        this.sourceText = sourceDocument.AsSpan();
         this.indentStack = new();
         this.builder = new(1024 * 4);
+
+        diagnostics.SetSourceDocument(sourceDocument);
     }
 
     public void Dispose()

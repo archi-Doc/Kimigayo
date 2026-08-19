@@ -3,6 +3,7 @@
 namespace Kimi;
 
 using System.Collections.Concurrent;
+using System.Text;
 using System.Text.Json;
 using Kimi.Diagnostics;
 
@@ -10,21 +11,13 @@ public class Kimigayo
 {
     internal const string GlobalName = "Global";
     internal const string ErrorPrefix = "KimiError";
-    private const int CaretBufferLength = 512;
 
-    private static readonly char[] CaretBuffer;
     private readonly IConsoleService consoleService;
     private readonly ConcurrentDictionary<string, DiagnosticCollection> diagnosticCollections;
 
     public KimiSettings Settings { get; }
 
     public DiagnosticCollection GlobalDiagnosticCollection { get; }
-
-    static Kimigayo()
-    {
-        CaretBuffer = new char[CaretBufferLength];
-        Array.Fill(CaretBuffer, Constants.CaretChar);
-    }
 
     public Kimigayo(IConsoleService consoleService)
     {
@@ -44,33 +37,17 @@ public class Kimigayo
         var fixOrNote = entry.Fix is not null || entry.Note is not null;
 
         // Message : Name
-        this.consoleService.Write(entry.Message);
+        this.consoleService.Write(diagnostic.Message);
         this.consoleService.Write(" : ");
         this.WriteLine(entry.Severity, entry.Name);
 
-        // (Path Line:Character)
-        this.consoleService.WriteLine($"({url} {start.Line + 1}:{start.Character + 1})");
+        // --> Path:Line:Character
+        this.consoleService.WriteLine($" --> {url}:{start.Line + 1}:{start.Character + 1}");
 
         // Code
-        if (diagnostic.Range != default)
+        if (diagnostic.Range != default && diagnostic.SourceDocument is not null)
         {
-            this.consoleService.WriteLine();
-
-            var remaining = start.Character;
-            while (remaining > 0)
-            {
-                var length = Math.Min(IndentedStringBuilder.SpaceBufferLength, remaining);
-                this.consoleService.WriteLine(IndentedStringBuilder.SpaceBuffer.AsSpan(0, length));
-                remaining -= length;
-            }
-
-            remaining = diagnostic.Range.End.Character - start.Character;
-            while (remaining > 0)
-            {
-                var length = Math.Min(CaretBufferLength, remaining);
-                this.consoleService.WriteLine(CaretBuffer.AsSpan(0, length));
-                remaining -= length;
-            }
+            this.WriteSourceRange(diagnostic);
         }
 
         if (fixOrNote)
@@ -159,4 +136,84 @@ public class Kimigayo
 
     public void WriteLine(DiagnosticSeverity severity, ulong hash, object obj1)
         => this.WriteLine(severity, HashedString.Get(hash, obj1));
+
+    private static int GetDisplayWidth(ReadOnlySpan<char> sourceText)
+    {
+        var width = 0;
+        foreach (var c in sourceText)
+        {
+            width += c == '\t' ? Constants.IndentationSpaces - (width % Constants.IndentationSpaces) : 1;
+        }
+
+        return width;
+    }
+
+    private void WriteSourceRange(Diagnostic diagnostic)
+    {
+        var sourceDocument = diagnostic.SourceDocument!;
+        var range = diagnostic.Range;
+        var startLine = range.Start.Line;
+
+        if (startLine < 0 || startLine >= sourceDocument.LineCount)
+        {
+            return;
+        }
+
+        var endLine = Math.Clamp(range.End.Line, startLine, sourceDocument.LineCount - 1);
+        if (endLine > startLine && range.End.Character == 0)
+        {
+            endLine--;
+        }
+
+        var lineNumberWidth = (endLine + 1).ToString().Length;
+        var margin = new string(' ', lineNumberWidth + 1);
+        this.consoleService.WriteLine($"{margin}|");
+
+        for (var lineIndex = startLine; lineIndex <= endLine; lineIndex++)
+        {
+            var sourceLine = sourceDocument.GetLineSpan(lineIndex);
+            var startCharacter = lineIndex == startLine ? Math.Clamp(range.Start.Character, 0, sourceLine.Length) : 0;
+            var endCharacter = lineIndex == range.End.Line ? Math.Clamp(range.End.Character, 0, sourceLine.Length) : sourceLine.Length;
+            var caretStart = GetDisplayWidth(sourceLine[..startCharacter]);
+            var caretEnd = GetDisplayWidth(sourceLine[..endCharacter]);
+            var caretLength = Math.Max(1, caretEnd - caretStart);
+
+            this.consoleService.Write($"{(lineIndex + 1).ToString().PadLeft(lineNumberWidth)} | ");
+            this.WriteSourceLine(sourceLine);
+
+            this.consoleService.Write($"{margin}| ");
+            this.consoleService.Write(new string(' ', caretStart));
+            this.WriteLine(diagnostic.Entry.Severity, new string(Constants.CaretChar, caretLength));
+        }
+
+        this.consoleService.WriteLine($"{margin}|");
+    }
+
+    private void WriteSourceLine(ReadOnlySpan<char> sourceLine)
+    {
+        if (sourceLine.IndexOf('\t') < 0)
+        {
+            this.consoleService.WriteLine(sourceLine);
+            return;
+        }
+
+        var builder = new StringBuilder(sourceLine.Length);
+        var column = 0;
+        foreach (var c in sourceLine)
+        {
+            if (c == '\t')
+            {
+                var spaces = Constants.IndentationSpaces - (column % Constants.IndentationSpaces);
+                builder.Append(' ', spaces);
+                column += spaces;
+            }
+            else
+            {
+                builder.Append(c);
+                column++;
+            }
+        }
+
+        this.consoleService.WriteLine(builder.ToString());
+    }
 }

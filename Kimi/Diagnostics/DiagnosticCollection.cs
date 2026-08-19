@@ -12,6 +12,8 @@ public record class DiagnosticCollection
 
     public string Name { get; init; } = string.Empty;
 
+    public SourceDocument? SourceDocument { get; private set; }
+
     public bool IsGlobal => this.Name == string.Empty || this.Name == Kimigayo.GlobalName;
 
     internal DiagnosticCollection(Kimigayo kimigayo, string name)
@@ -47,7 +49,7 @@ public record class DiagnosticCollection
                 }
             }
 
-            var diagnostic = new Diagnostic(range, entry);
+            var diagnostic = new Diagnostic(range, entry, this.SourceDocument) { Message = message };
             diagnostic.Goshujin = this.diagnostics;
 
             this.kimigayo.ReportDiagnostic(this.Name, diagnostic);
@@ -83,6 +85,14 @@ public record class DiagnosticCollection
         using (this.diagnostics.LockObject.EnterScope())
         {
             this.diagnostics.ClearAll();
+        }
+    }
+
+    internal void SetSourceDocument(SourceDocument sourceDocument)
+    {
+        using (this.diagnostics.LockObject.EnterScope())
+        {
+            this.SourceDocument = sourceDocument;
         }
     }
 }

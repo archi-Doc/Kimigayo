@@ -94,17 +94,16 @@ public sealed partial class Kotonoha
         return true;*/
     }
 
-    public void AddSource(PathAndSource pathAndSource)
+    public void AddSource(SourceDocument sourceDocument)
     {
-        var path = pathAndSource.Path;
+        var path = sourceDocument.Path;
         if (!string.IsNullOrEmpty(this.Compilation.Project.Directory))
         {
             path = Path.GetRelativePath(this.Compilation.Project.Directory, path);
         }
 
         var diagnostic = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
-        var sourceText = pathAndSource.SourceText.AsSpan();
-        var tokenizer = new Tokenizer(diagnostic, sourceText);
+        var tokenizer = new Tokenizer(diagnostic, sourceDocument);
 
         /*var kimiId = this.SourceList.Count;
         var kimiSource = new KimiSource(pathAndSource.Path, [], default);
@@ -118,7 +117,7 @@ public sealed partial class Kotonoha
             tokenizer.ReadAll();
             if (this.Compilation.Project.KimiOptions.DumpToken)
             {// Dump token
-                this.DumpToken(pathAndSource.Path, tokenizer.ToReadOnlySequence());
+                this.DumpToken(sourceDocument.Path, tokenizer.ToReadOnlySequence());
             }
 
             // Token to Koto
