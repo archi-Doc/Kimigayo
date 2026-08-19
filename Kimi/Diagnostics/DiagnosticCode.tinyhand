@@ -28,6 +28,10 @@
   + Name="IndentationLevelMismatch_Kd"
     Message="The indentation level does not match the expected level"
 
+  + Name="IndentationLevelMismatchWarning_Kd"
+    Severity="Warning"
+    Message="The indentation level does not match the expected level"
+
   + Name="InvalidAttributeKoto_Kd"
     Message="An attribute must be in the form #Attribute or #Attribute(arguments)"
 

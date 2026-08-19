@@ -636,6 +636,9 @@ LineContent:
             // Otherwise, recover by treating the grouping construct as implicitly closed,
             // remove it from the indentation stack, and report an indentation mismatch.
 
+            var hasTrailingContentOnCurrentLine = false;
+            var indentationMismatch = false;
+
             for (var i = indentDelta; i < 0; i++)
             {
                 if (this.indentStack.TryPop(out var indentSource))
@@ -652,20 +655,29 @@ LineContent:
                     }
                     else if (this.TryCloseIndentSourceByCurrentToken(indentSource))
                     {
-                        // Treat only an immediate member access after an outer-indented closing
-                        // delimiter as part of the same logical line.
+                        // Content after an outer-indented closing delimiter remains part of
+                        // the same logical line, even when separated from the delimiter by spaces.
                         //
                         // Example:
                         //     foo(
                         //         a
-                        //     ).bar
+                        //     ) + 1
                         //
-                        // Other cases, such as ") + 1" or a "." on the next physical line, are not
-                        // continued here.
-                        if (!this.span.IsEmpty && this.span[0] == Constants.DotChar)
+                        // A newline or single-line comment still ends the logical line. Finish
+                        // processing the remaining indentation sources before continuing so that
+                        // enclosing blocks are closed correctly.
+                        while (!this.span.IsEmpty && this.span[0] == Constants.SpaceChar)
                         {
-                            goto Loop;
+                            this.Slice(1);
                         }
+
+                        hasTrailingContentOnCurrentLine =
+                            !this.span.IsEmpty &&
+                            this.span[0] != Constants.CrChar &&
+                            this.span[0] != Constants.LfChar &&
+                            !(this.span.Length >= 2 &&
+                                this.span[0] == Constants.SlashChar &&
+                                this.span[1] == Constants.SlashChar);
 
                         continue;
                     }
@@ -675,6 +687,7 @@ LineContent:
                         this.nonBlockDepth--;
 
                         this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                        indentationMismatch = true;
                         break;
                     }
                 }
@@ -686,8 +699,16 @@ LineContent:
                 else
                 {
                     this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                    indentationMismatch = true;
                     break;
                 }
+            }
+
+            if (hasTrailingContentOnCurrentLine && !indentationMismatch)
+            {
+                this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatchWarning_Kd);
+
+                goto Loop;
             }
 
             this.AddToken(new(TokenKind.Separator, this.CurrentRange));

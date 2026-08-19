@@ -17,6 +17,7 @@ public enum DiagnosticCode
     IncompleteEscape_Kd,
     IncompleteSyntax_Kd,
     IndentationLevelMismatch_Kd,
+    IndentationLevelMismatchWarning_Kd,
     InvalidAttributeKoto_Kd,
     InvalidCharacter_Kd,
     InvalidCharacterAtEndOfFile_Kd,
