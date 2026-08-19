@@ -222,7 +222,7 @@ public ref struct TokenReader
 
         if (addDiagnostic)
         {
-            this.AddDiagnostic(KimiDiagnostic.IncompleteSyntax_Kd);
+            this.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
         }
 
         token = default;
@@ -258,7 +258,7 @@ Loop:
 
             if (addDiagnostic)
             {
-                this.Diagnostic.Add(token.SourceSpan, KimiDiagnostic.TokenMismatch_Kd, targetKind.ToText());
+                this.Diagnostic.Add(token.SourceSpan, DiagnosticCode.TokenMismatch_Kd, targetKind.ToText());
                 this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
             }
 
@@ -269,7 +269,7 @@ Loop:
         if (addDiagnostic && this.IsEnd && this.CurrentTokenKind != TokenKind.Invalid)
         {
             var r = this.CurrentTokenRange;
-            this.Diagnostic.Add(new(r.End, 0), KimiDiagnostic.MissingExpectedToken_Kd, targetKind.ToText());
+            this.Diagnostic.Add(new(r.End, 0), DiagnosticCode.MissingExpectedToken_Kd, targetKind.ToText());
         }
 
         range = default;
@@ -282,7 +282,7 @@ Loop:
     /// <param name="kind1">The token kind at which to stop.</param>
     /// <param name="kimiDiagnostic">An optional diagnostic hash reported for the first skipped token.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1, KimiDiagnostic kimiDiagnostic)
+    public TokenKind SkipUntil(TokenKind kind1, DiagnosticCode kimiDiagnostic)
     {
         while (this.CanRead)
         {
@@ -310,7 +310,7 @@ Loop:
     /// <param name="kind2">The second token kind at which to stop.</param>
     /// <param name="kimiDiagnostic">An optional diagnostic hash reported for the first skipped token.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, KimiDiagnostic kimiDiagnostic = KimiDiagnostic.Template_Kd)
+    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, DiagnosticCode kimiDiagnostic = DiagnosticCode.Template_Kd)
     {
         while (this.CanRead)
         {
@@ -410,7 +410,7 @@ Loop:
     /// <param name="token">The unexpected token.</param>
     public void ReportUnexpectedToken(Token token)
     {
-        this.Diagnostic.Add(token.SourceSpan, KimiDiagnostic.UnmatchedToken_Kd, token.Kind.ToText());
+        this.Diagnostic.Add(token.SourceSpan, DiagnosticCode.UnmatchedToken_Kd, token.Kind.ToText());
     }
 
     /// <summary>
@@ -419,7 +419,7 @@ Loop:
     /// <param name="kimiDiagnostic">The diagnostic.</param>
     /// <param name="obj">An optional diagnostic argument.</param>
     /// <param name="obj2">An optional diagnostic argument 2.</param>
-    public void AddDiagnostic(KimiDiagnostic kimiDiagnostic, object? obj = null, object? obj2 = null)
+    public void AddDiagnostic(DiagnosticCode kimiDiagnostic, object? obj = null, object? obj2 = null)
     {
         if (this.CanRead)
         {

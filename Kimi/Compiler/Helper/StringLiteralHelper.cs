@@ -138,7 +138,7 @@ public static class StringLiteralHelper
             if (span.IsEmpty)
             {
                 // A trailing backslash is replaced with one fallback character.
-                koto?.AddDiagnostic(KimiDiagnostic.UnsupportedEscape_Kd, '\\');
+                koto?.AddDiagnostic(DiagnosticCode.UnsupportedEscape_Kd, '\\');
                 return length + 1;
             }
 
@@ -163,7 +163,7 @@ public static class StringLiteralHelper
                     break;
 
                 default:
-                    koto?.AddDiagnostic(KimiDiagnostic.UnsupportedEscape_Kd, escape);
+                    koto?.AddDiagnostic(DiagnosticCode.UnsupportedEscape_Kd, escape);
                     length++;
                     break;
             }
@@ -274,7 +274,7 @@ public static class StringLiteralHelper
         scalar = 0;
         if (span.IsEmpty || span[0] != '(')
         {
-            koto?.AddDiagnostic(KimiDiagnostic.InvalidUnicodeEscape_Kd);
+            koto?.AddDiagnostic(DiagnosticCode.InvalidUnicodeEscape_Kd);
             return false;
         }
 
@@ -292,7 +292,7 @@ public static class StringLiteralHelper
             {
                 if (digitCount == 0 || !isValid)
                 {
-                    koto?.AddDiagnostic(KimiDiagnostic.InvalidUnicodeEscape_Kd);
+                    koto?.AddDiagnostic(DiagnosticCode.InvalidUnicodeEscape_Kd);
 
                     return false;
                 }
@@ -300,7 +300,7 @@ public static class StringLiteralHelper
                 if (value > 0x10FFFF ||
                     value is >= 0xD800 and <= 0xDFFF)
                 {
-                    koto?.AddDiagnostic(KimiDiagnostic.InvalidUnicodeScalar_Kd);
+                    koto?.AddDiagnostic(DiagnosticCode.InvalidUnicodeScalar_Kd);
 
                     return false;
                 }
@@ -322,7 +322,7 @@ public static class StringLiteralHelper
             digitCount++;
         }
 
-        koto?.AddDiagnostic(KimiDiagnostic.InvalidUnicodeEscape_Kd);
+        koto?.AddDiagnostic(DiagnosticCode.InvalidUnicodeEscape_Kd);
 
         return false;
     }

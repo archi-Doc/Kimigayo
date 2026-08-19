@@ -121,7 +121,7 @@ public static partial class KotoHelper
                 }
                 else
                 {
-                    reader.Diagnostic.Add(token.SourceSpan, KimiDiagnostic.InvalidIdentifier_Kd, span.ToString());
+                    reader.Diagnostic.Add(token.SourceSpan, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
                     break;
                 }
             }
@@ -134,7 +134,7 @@ public static partial class KotoHelper
                 }
                 else
                 {
-                    reader.Diagnostic.Add(token.SourceSpan, KimiDiagnostic.UnexpectedToken_Kd, token.Kind);
+                    reader.Diagnostic.Add(token.SourceSpan, DiagnosticCode.UnexpectedToken_Kd, token.Kind);
                     break;
                 }
             }
@@ -142,7 +142,7 @@ public static partial class KotoHelper
 
         if (flag)
         {
-            reader.Diagnostic.Add(reader.CurrentTokenRange, KimiDiagnostic.IdentifierExpected_Kd);
+            reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.IdentifierExpected_Kd);
         }
 
         return sb.ToString();
@@ -177,7 +177,7 @@ public static partial class KotoHelper
                 }
                 else
                 {
-                    reader.Diagnostic.Add(token.SourceSpan, KimiDiagnostic.InvalidIdentifier_Kd, span.ToString());
+                    reader.Diagnostic.Add(token.SourceSpan, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
                     break;
                 }
             }
@@ -189,7 +189,7 @@ public static partial class KotoHelper
                 }
                 else
                 {
-                    reader.Diagnostic.Add(token.SourceSpan, KimiDiagnostic.UnexpectedToken_Kd, token);
+                    reader.Diagnostic.Add(token.SourceSpan, DiagnosticCode.UnexpectedToken_Kd, token);
                     break;
                 }
             }
@@ -197,7 +197,7 @@ public static partial class KotoHelper
 
         if (flag)
         {
-            reader.Diagnostic.Add(reader.CurrentTokenRange, KimiDiagnostic.IdentifierExpected_Kd);
+            reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.IdentifierExpected_Kd);
         }
 
         return list;

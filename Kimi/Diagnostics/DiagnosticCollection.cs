@@ -22,7 +22,7 @@ public record class DiagnosticCollection
         this.Name = name;
     }
 
-    public void Add(SourceSpan range, KimiDiagnostic kimiDiagnostic, object? obj = null, object? obj2 = null)
+    public void Add(SourceSpan range, DiagnosticCode kimiDiagnostic, object? obj = null, object? obj2 = null)
     {
         if (!DiagnosticEntries.TryGet(kimiDiagnostic, out var entry))
         {

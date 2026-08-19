@@ -29,7 +29,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Diagnostics\KimiDiagnosticEntries.tinyhand" />
+    <EmbeddedResource Include="Diagnostics\DiagnosticCode.tinyhand" />
     <EmbeddedResource Include="Misc\Language\strings-en.tinyhand" />
     <EmbeddedResource Include="Misc\Language\strings-ja.tinyhand" />
   </ItemGroup>

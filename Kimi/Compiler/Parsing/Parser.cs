@@ -22,7 +22,7 @@ public static class Parser
         var arg = attributeKoto.Arguments;
         if (arg.Count != 1)
         {
-            attributeKoto.AddDiagnostic(KimiDiagnostic.InvalidIfAttributeArgumentCount_Kd);
+            attributeKoto.AddDiagnostic(DiagnosticCode.InvalidIfAttributeArgumentCount_Kd);
         }
         else
         {
@@ -36,7 +36,7 @@ public static class Parser
             }
             else
             {
-                arg[0].AddDiagnostic(KimiDiagnostic.ConditionMustBeBool_Kd);
+                arg[0].AddDiagnostic(DiagnosticCode.ConditionMustBeBool_Kd);
             }
         }
 
@@ -240,14 +240,14 @@ public static class Parser
 
         if (methodToken.Kind != TokenKind.Identifier)
         {
-            reader.AddDiagnostic(KimiDiagnostic.IdentifierExpected_Kd);
+            reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
             goto SkipAndExit;
         }
 
         var methodName = reader.GetSpan(methodToken);
         if (!IdentifierHelper.IsValidIdentifier(methodName))
         {
-            reader.AddDiagnostic(KimiDiagnostic.InvalidIdentifier_Kd, methodName.ToString());
+            reader.AddDiagnostic(DiagnosticCode.InvalidIdentifier_Kd, methodName.ToString());
             goto SkipAndExit;
         }
 
@@ -330,7 +330,7 @@ NextParameter:
             }
             else if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
             {
-                reader.AddDiagnostic(KimiDiagnostic.MissingComma_Kd);
+                reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
                 SkipParameter(ref reader);
                 if (reader.CurrentTokenKind == TokenKind.Comma)
                 {
@@ -362,7 +362,7 @@ NextParameter:
             parameters,
             returnType);
 
-        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator, KimiDiagnostic.UnexpectedTrailingToken_Kd);
+        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator, DiagnosticCode.UnexpectedTrailingToken_Kd);
         return functionKoto;
 
 SkipAndExit:
@@ -381,13 +381,13 @@ Exit:
         List<string>? list = default;
         if (!reader.TryRead(out var token))
         {
-            reader.AddDiagnostic(KimiDiagnostic.IncompleteSyntax_Kd);
+            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
             goto Exit;
         }
 
         if (token.Kind != TokenKind.Identifier)
         {
-            reader.AddDiagnostic(KimiDiagnostic.IdentifierExpected_Kd);
+            reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
             goto SkipAndExit;
         }
 
@@ -398,7 +398,7 @@ Exit:
         }
         else
         {
-            reader.AddDiagnostic(KimiDiagnostic.InvalidIdentifier_Kd, span.ToString());
+            reader.AddDiagnostic(DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
         }
 
         while (reader.CanRead)
@@ -420,7 +420,7 @@ Exit:
                 continue;
             }
 
-            reader.AddDiagnostic(KimiDiagnostic.InvalidIdentifier_Kd, reader.GetSpan(reader.CurrentToken).ToString());
+            reader.AddDiagnostic(DiagnosticCode.InvalidIdentifier_Kd, reader.GetSpan(reader.CurrentToken).ToString());
             reader.Advance();
         }
 
@@ -449,7 +449,7 @@ Exit:
             }
             else
             {
-                reader.AddDiagnostic(KimiDiagnostic.IdentifierExpected_Kd);
+                reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
             }
         }
 
@@ -500,7 +500,7 @@ Exit:
 
         var fieldKoto = new FieldKoto(ref reader, ref token, nameKoto, typeKoto, initializerKoto);
 
-        reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, KimiDiagnostic.UnexpectedTrailingToken_Kd);
+        reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, DiagnosticCode.UnexpectedTrailingToken_Kd);
 
         return fieldKoto;
     }
@@ -637,7 +637,7 @@ Exit:
                 case TokenKind.Static:
                     if (reader.ModifierKind.HasFlag(ModifierKind.Static))
                     {// Duplicate
-                        reader.AddDiagnostic(KimiDiagnostic.DuplicateModifier_Kd, ModifierKind.Static.ToString());
+                        reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, ModifierKind.Static.ToString());
                     }
 
                     reader.ModifierKind |= ModifierKind.Static;
@@ -647,7 +647,7 @@ Exit:
                 case TokenKind.Open:
                     if (reader.ModifierKind.HasFlag(ModifierKind.Open))
                     {// Duplicate
-                        reader.AddDiagnostic(KimiDiagnostic.DuplicateModifier_Kd, ModifierKind.Open.ToString());
+                        reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, ModifierKind.Open.ToString());
                     }
 
                     reader.ModifierKind |= ModifierKind.Open;
@@ -702,11 +702,11 @@ Exit:
             {
                 if (acc == kind)
                 {// Duplicate
-                    reader.AddDiagnostic(KimiDiagnostic.DuplicateModifier_Kd, kind.ToText());
+                    reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, kind.ToText());
                 }
                 else
                 {// More than one accessibility modifier
-                    reader.AddDiagnostic(KimiDiagnostic.MultipleAccessibilityModifiers_Kd);
+                    reader.AddDiagnostic(DiagnosticCode.MultipleAccessibilityModifiers_Kd);
                 }
             }
             else
@@ -1249,7 +1249,7 @@ Loop:
                 }
                 else if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
                 {
-                    reader.AddDiagnostic(KimiDiagnostic.MissingComma_Kd);
+                    reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
                     reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
                     if (reader.CurrentTokenKind == TokenKind.Comma)
                     {
@@ -1321,7 +1321,7 @@ Loop:
             }
             else if (reader.CurrentTokenKind != TokenKind.GreaterThan)
             {
-                reader.AddDiagnostic(KimiDiagnostic.MissingComma_Kd);
+                reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
                 reader.SkipUntil(TokenKind.Comma, TokenKind.GreaterThan);
                 if (reader.CurrentTokenKind == TokenKind.Comma)
                 {

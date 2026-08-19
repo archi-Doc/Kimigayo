@@ -134,7 +134,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             {// alias (not supported)
                 reader.Advance();
                 _ = KotoHelper.ValidateAndGetNamespace2(ref reader);
-                reader.Diagnostic.Add(token.SourceSpan, KimiDiagnostic.TopLevelKeywordAfterCode_Kd);
+                reader.Diagnostic.Add(token.SourceSpan, DiagnosticCode.TopLevelKeywordAfterCode_Kd);
             }
             else if (tokenKind == TokenKind.Separator)
             {

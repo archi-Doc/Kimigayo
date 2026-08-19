@@ -6,7 +6,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi;
 
-public enum KimiDiagnostic
+public enum DiagnosticCode
 {
     Template_Kd, // First sentinel
 
@@ -57,12 +57,12 @@ public static class DiagnosticEntries
 
     static DiagnosticEntries()
     {
-        LoadAssembly(Assembly.GetExecutingAssembly(), "Diagnostics.KimiDiagnosticEntries.tinyhand");
+        LoadAssembly(Assembly.GetExecutingAssembly(), "Diagnostics.DiagnosticCode.tinyhand");
     }
 
-    public static bool TryGet(KimiDiagnostic kimiDiagnostic, [MaybeNullWhen(false)] out DiagnosticEntry entry)
+    public static bool TryGet(DiagnosticCode kimiDiagnostic, [MaybeNullWhen(false)] out DiagnosticEntry entry)
     {
-        if (kimiDiagnostic >= KimiDiagnostic.Count)
+        if (kimiDiagnostic >= DiagnosticCode.Count)
         {
             entry = default;
             return false;
@@ -87,13 +87,13 @@ public static class DiagnosticEntries
             var bytes = new byte[stream.Length];
             stream.ReadExactly(bytes);
 
-            table = new DiagnosticEntry[(int)KimiDiagnostic.Count + 1];
+            table = new DiagnosticEntry[(int)DiagnosticCode.Count + 1];
             var entries = TinyhandSerializer.DeserializeFromUtf8<DiagnosticEntry[]>(bytes);
             if (entries is not null)
             {
                 foreach (var e in entries)
                 {
-                    if (Enum.TryParse<KimiDiagnostic>(e.Name, out var kimiDiagnostic))
+                    if (Enum.TryParse<DiagnosticCode>(e.Name, out var kimiDiagnostic))
                     {
                         table[(int)kimiDiagnostic] = e;
                     }
