@@ -2,6 +2,8 @@
 
 namespace Kimi.Compiler;
 
+using Kimi.Diagnostics;
+
 /// <summary>
 /// Owns an immutable source text and provides line-based access to it.
 /// </summary>
@@ -23,6 +25,11 @@ public sealed class SourceDocument
     /// Gets the number of physical lines in the source text.
     /// </summary>
     public int LineCount => this.lineStarts.Length;
+
+    /// <summary>
+    /// Gets the absolute start offset of each physical line.
+    /// </summary>
+    public ReadOnlySpan<int> LineStarts => this.lineStarts;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SourceDocument"/> class.
@@ -67,6 +74,61 @@ public sealed class SourceDocument
         return this.SourceText.AsSpan(start, end - start);
     }
 
+    /// <summary>
+    /// Converts an absolute offset to a line and character position.
+    /// </summary>
+    /// <param name="offset">The zero-based absolute offset.</param>
+    /// <returns>The corresponding source position.</returns>
+    public SourcePosition GetPosition(int offset)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(offset, this.SourceText.Length);
+
+        var line = Array.BinarySearch(this.lineStarts, offset);
+        if (line < 0)
+        {
+            line = ~line - 1;
+        }
+
+        return new(line, offset - this.lineStarts[line]);
+    }
+
+    /// <summary>
+    /// Converts a text span to line and character positions.
+    /// </summary>
+    /// <param name="span">The absolute source span.</param>
+    /// <returns>The corresponding source range.</returns>
+    public SourceRange GetSourceRange(TextSpan span)
+    {
+        this.ValidateSpan(span);
+        return new(this.GetPosition(span.Start), this.GetPosition(span.End));
+    }
+
+    /// <summary>
+    /// Converts a line and character position to an absolute offset.
+    /// </summary>
+    /// <param name="position">The source position.</param>
+    /// <returns>The corresponding absolute offset.</returns>
+    public int GetOffset(SourcePosition position)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(position.Line);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(position.Line, this.lineStarts.Length);
+
+        var lineStart = this.lineStarts[position.Line];
+        var lineLength = this.GetLineSpan(position.Line).Length;
+        ArgumentOutOfRangeException.ThrowIfNegative(position.Character);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(position.Character, lineLength);
+        return lineStart + position.Character;
+    }
+
+    /// <summary>
+    /// Converts line and character positions to an absolute text span.
+    /// </summary>
+    /// <param name="range">The source range.</param>
+    /// <returns>The corresponding absolute text span.</returns>
+    public TextSpan GetTextSpan(SourceRange range)
+        => TextSpan.FromBounds(this.GetOffset(range.Start), this.GetOffset(range.End));
+
     private static int[] CreateLineStarts(ReadOnlySpan<char> sourceText)
     {
         var starts = new List<int> { 0 };
@@ -89,5 +151,12 @@ public sealed class SourceDocument
         }
 
         return starts.ToArray();
+    }
+
+    private void ValidateSpan(TextSpan span)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(span.Start);
+        ArgumentOutOfRangeException.ThrowIfNegative(span.Length);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(span.End, this.SourceText.Length);
     }
 }

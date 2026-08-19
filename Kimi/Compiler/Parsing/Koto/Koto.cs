@@ -175,7 +175,7 @@ public abstract partial class Koto
     public DiagnosticCollection? DiagnosticCollection { get; internal set; }
 
     [IgnoreMember]
-    public SourceRange Range { get; internal set; }
+    public TextSpan Range { get; internal set; }
 
     [IgnoreMember]
     public CodeContext CodeContext { get; internal set; }
@@ -222,7 +222,7 @@ public abstract partial class Koto
     #endregion
 
     [Link(Primary = true, Type = ChainType.LinkedList, Name = "ChildLink")]
-    public Koto(ref TokenReader reader, SourceRange range)
+    public Koto(ref TokenReader reader, TextSpan range)
     {
         this.DiagnosticCollection = reader.Diagnostic;
         this.CodeContext = reader.CodeContext;
@@ -232,7 +232,7 @@ public abstract partial class Koto
         // this.Parent = parent;
     }
 
-    internal Koto(CodeContext codeContext, SourceRange range)
+    internal Koto(CodeContext codeContext, TextSpan range)
     {
         this.CodeContext = codeContext;
         this.Range = range;

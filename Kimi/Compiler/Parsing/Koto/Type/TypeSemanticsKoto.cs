@@ -47,7 +47,7 @@ public partial class TypeSemanticsKoto : Koto
 
     internal TypeSemanticsKoto(
         ref TokenReader reader,
-        SourceRange range,
+        TextSpan range,
         Koto type,
         SemanticsKind semanticsKind,
         string? semanticsParameter)

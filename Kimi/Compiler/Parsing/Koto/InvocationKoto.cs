@@ -2,6 +2,7 @@
 
 using System.Text;
 using Kimi.Compiler.Lexing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
@@ -28,7 +29,7 @@ public partial class InvocationKoto : Koto
         }
         else
         {
-            this.Range = new(method.Range.Start, arguments[^1].Range.End);
+            this.Range = TextSpan.FromBounds(method.Range.Start, arguments[^1].Range.End);
         }
 
         method.Parent = this;

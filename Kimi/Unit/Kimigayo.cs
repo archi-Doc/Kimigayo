@@ -33,7 +33,6 @@ public class Kimigayo
     {
         // this.WriteLine(diagnostic.Entry.Severity, diagnostic.ToString(url));
         var entry = diagnostic.Entry;
-        var start = diagnostic.Range.Start;
         var fixOrNote = entry.Fix is not null || entry.Note is not null;
 
         // Message : Name
@@ -41,13 +40,15 @@ public class Kimigayo
         this.consoleService.Write(" : ");
         this.WriteLine(entry.Severity, entry.Name);
 
-        // --> Path:Line:Character
-        this.consoleService.WriteLine($" --> {url}:{start.Line + 1}:{start.Character + 1}");
-
-        // Code
-        if (diagnostic.Range != default && diagnostic.SourceDocument is not null)
+        if (diagnostic.SourceDocument is { } sourceDocument)
         {
+            var start = sourceDocument.GetPosition(diagnostic.Range.Start);
+            this.consoleService.WriteLine($" --> {url}:{start.Line + 1}:{start.Character + 1}");
             this.WriteSourceRange(diagnostic);
+        }
+        else
+        {
+            this.consoleService.WriteLine($" --> {url}:@{diagnostic.Range.Start}");
         }
 
         if (fixOrNote)
@@ -151,7 +152,7 @@ public class Kimigayo
     private void WriteSourceRange(Diagnostic diagnostic)
     {
         var sourceDocument = diagnostic.SourceDocument!;
-        var range = diagnostic.Range;
+        var range = sourceDocument.GetSourceRange(diagnostic.Range);
         var startLine = range.Start.Line;
 
         if (startLine < 0 || startLine >= sourceDocument.LineCount)

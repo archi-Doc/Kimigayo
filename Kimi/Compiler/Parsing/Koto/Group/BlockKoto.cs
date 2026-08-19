@@ -12,12 +12,12 @@ public abstract partial class BlockKoto : IdentifiableKoto, ITokenParser
     [Key(2)]
     public Koto.GoshujinClass Children { get; protected set; } = new();
 
-    public BlockKoto(ref TokenReader reader, SourceRange range)
+    public BlockKoto(ref TokenReader reader, TextSpan range)
         : base(ref reader, range)
     {
     }
 
-    public BlockKoto(CodeContext codeContext, SourceRange range)
+    public BlockKoto(CodeContext codeContext, TextSpan range)
         : base(codeContext, range)
     {
     }

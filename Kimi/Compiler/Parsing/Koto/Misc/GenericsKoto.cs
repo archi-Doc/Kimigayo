@@ -15,7 +15,7 @@ public partial class GenericsKoto : Koto
 
     private readonly List<Koto> typeList;
 
-    public GenericsKoto(ref TokenReader reader, SourceRange range, Koto identifier, List<Koto> typeList)
+    public GenericsKoto(ref TokenReader reader, TextSpan range, Koto identifier, List<Koto> typeList)
         : base(ref reader, range)
     {
         this.Identifier = identifier;

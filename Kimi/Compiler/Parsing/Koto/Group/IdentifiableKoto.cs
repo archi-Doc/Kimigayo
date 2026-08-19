@@ -43,12 +43,12 @@ public abstract partial class IdentifiableKoto : Koto
 
     public abstract ReadOnlySpan<char> GetIdentifier();
 
-    public IdentifiableKoto(ref TokenReader reader, SourceRange range)
+    public IdentifiableKoto(ref TokenReader reader, TextSpan range)
         : base(ref reader, range)
     {
     }
 
-    public IdentifiableKoto(CodeContext codeContext, SourceRange range)
+    public IdentifiableKoto(CodeContext codeContext, TextSpan range)
         : base(codeContext, range)
     {
     }

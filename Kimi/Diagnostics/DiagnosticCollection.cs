@@ -22,7 +22,7 @@ public record class DiagnosticCollection
         this.Name = name;
     }
 
-    public void Add(SourceRange range, KimiDiagnostic kimiDiagnostic, object? obj = null, object? obj2 = null)
+    public void Add(TextSpan range, KimiDiagnostic kimiDiagnostic, object? obj = null, object? obj2 = null)
     {
         if (!DiagnosticEntries.TryGet(kimiDiagnostic, out var entry))
         {
@@ -56,7 +56,7 @@ public record class DiagnosticCollection
         }
     }
 
-    public bool Remove(SourcePosition startPosition)
+    public bool Remove(int startPosition)
     {
         using (this.diagnostics.LockObject.EnterScope())
         {
@@ -70,6 +70,12 @@ public record class DiagnosticCollection
                 return false;
             }
         }
+    }
+
+    public bool Remove(SourcePosition startPosition)
+    {
+        var sourceDocument = this.SourceDocument;
+        return sourceDocument is not null && this.Remove(sourceDocument.GetOffset(startPosition));
     }
 
     public Diagnostic[] GetArray()

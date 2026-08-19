@@ -22,6 +22,8 @@ public class SourceDocumentAndDiagnosticTest
         Assert.Equal("third", sourceDocument.GetLineSpan(2).ToString());
         Assert.Equal("fourth", sourceDocument.GetLineSpan(3).ToString());
         Assert.Equal(string.Empty, sourceDocument.GetLineSpan(4).ToString());
+        Assert.Equal(new[] { 0, 7, 14, 20, 27 }, sourceDocument.LineStarts.ToArray());
+        Assert.Equal(new SourcePosition(2, 2), sourceDocument.GetPosition(16));
     }
 
     [Fact]
@@ -45,7 +47,7 @@ public class SourceDocumentAndDiagnosticTest
         var kimigayo = new Kimigayo(console);
         var sourceDocument = new SourceDocument("test.kimi", "let x = 1\r\nvar value = bad\n");
         var entry = new DiagnosticEntry("Test_Kd", DiagnosticSeverity.Error, "Bad token");
-        var range = new SourceRange(new(1, 12), new(1, 15));
+        var range = sourceDocument.GetTextSpan(new SourceRange(new(1, 12), new(1, 15)));
         var diagnostic = new Diagnostic(range, entry, sourceDocument);
 
         kimigayo.ReportDiagnostic(sourceDocument.Path, diagnostic);
@@ -68,7 +70,7 @@ public class SourceDocumentAndDiagnosticTest
         var kimigayo = new Kimigayo(console);
         var sourceDocument = new SourceDocument("test.kimi", "abc\ndefg\nhij");
         var entry = new DiagnosticEntry("Test_Kd", DiagnosticSeverity.Error, "Bad range");
-        var range = new SourceRange(new(0, 1), new(2, 2));
+        var range = sourceDocument.GetTextSpan(new SourceRange(new(0, 1), new(2, 2)));
         var diagnostic = new Diagnostic(range, entry, sourceDocument);
 
         kimigayo.ReportDiagnostic(sourceDocument.Path, diagnostic);

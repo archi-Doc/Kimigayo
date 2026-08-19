@@ -33,7 +33,7 @@ public partial class AttributeKoto : UnaryKoto
         }
     }
 
-    public AttributeKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public AttributeKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
         if (operand is InvocationKoto invocationKoto &&
@@ -72,7 +72,7 @@ public partial class MacroKoto : UnaryKoto
 {// $A
     public override KotoKind Akind => KotoKind.Macro;
 
-    public MacroKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public MacroKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -95,7 +95,7 @@ public partial class ReferenceKoto : UnaryKoto
     [Key(2)]
     public ReferenceKind ReferenceKind { get; private set; }
 
-    public ReferenceKoto(ref TokenReader reader, SourceRange range, Koto operand, ReferenceKind referenceKind)
+    public ReferenceKoto(ref TokenReader reader, TextSpan range, Koto operand, ReferenceKind referenceKind)
         : base(ref reader, range, operand)
     {// &, &owner
         this.ReferenceKind = referenceKind;
@@ -116,7 +116,7 @@ public partial class UnwrapKoto : UnaryKoto
 {// *A
     public override KotoKind Akind => KotoKind.Unwrap;
 
-    public UnwrapKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public UnwrapKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -136,7 +136,7 @@ public partial class PrefixCaretKoto : UnaryKoto
 {// ^A
     public override KotoKind Akind => KotoKind.PrefixCaret;
 
-    public PrefixCaretKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public PrefixCaretKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -156,7 +156,7 @@ public partial class PrefixPlusKoto : UnaryKoto
 {// +A
     public override KotoKind Akind => KotoKind.PrefixPlus;
 
-    public PrefixPlusKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public PrefixPlusKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -176,7 +176,7 @@ public partial class PrefixPlusPlusKoto : UnaryKoto
 {// ++A
     public override KotoKind Akind => KotoKind.PrefixPlusPlus;
 
-    public PrefixPlusPlusKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public PrefixPlusPlusKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -197,7 +197,7 @@ public partial class PrefixMinusKoto : UnaryKoto
 {// -A
     public override KotoKind Akind => KotoKind.PrefixMinus;
 
-    public PrefixMinusKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public PrefixMinusKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -217,7 +217,7 @@ public partial class PrefixMinusMinusKoto : UnaryKoto
 {// --A
     public override KotoKind Akind => KotoKind.PrefixMinusMinus;
 
-    public PrefixMinusMinusKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public PrefixMinusMinusKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -238,7 +238,7 @@ public partial class PostfixIncrementKoto : UnaryKoto
 {// A++
     public override KotoKind Akind => KotoKind.PostfixIncrement;
 
-    public PostfixIncrementKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public PostfixIncrementKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -259,7 +259,7 @@ public partial class PostfixDecrementKoto : UnaryKoto
 {// A--
     public override KotoKind Akind => KotoKind.PostfixDecrement;
 
-    public PostfixDecrementKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public PostfixDecrementKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -280,7 +280,7 @@ public partial class NotKoto : UnaryKoto
 {// not A
     public override KotoKind Akind => KotoKind.Not;
 
-    public NotKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public NotKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -300,7 +300,7 @@ public partial class ParenthesizedKoto : UnaryKoto
 {// (A)
     public override KotoKind Akind => KotoKind.Parenthesized;
 
-    public ParenthesizedKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public ParenthesizedKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
@@ -322,7 +322,7 @@ public abstract partial class UnaryKoto : Koto
     [Key(1)]
     public Koto Operand { get; protected set; }
 
-    public UnaryKoto(ref TokenReader reader, SourceRange range, Koto operand)
+    public UnaryKoto(ref TokenReader reader, TextSpan range, Koto operand)
         : base(ref reader, range)
     {
         this.Operand = operand;

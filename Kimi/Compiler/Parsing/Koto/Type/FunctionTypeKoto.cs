@@ -16,7 +16,7 @@ public partial class FunctionTypeKoto : Koto
     [Key(2)]
     public Koto ReturnType { get; private set; }
 
-    public FunctionTypeKoto(ref TokenReader reader, SourceRange range, Koto parameters, Koto returnType)
+    public FunctionTypeKoto(ref TokenReader reader, TextSpan range, Koto parameters, Koto returnType)
         : base(ref reader, range)
     {
         this.Parameters = parameters;

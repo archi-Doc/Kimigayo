@@ -42,14 +42,12 @@ internal ref struct Tokenizer
                 tokenizer.Slice(1);
             }
 
-            tokenizer.NextLine();
             return true;
         };
 
         CharacterHandlerTable[(int)Constants.LfChar] = (ref tokenizer) =>
         {// \n
             tokenizer.Slice(1);
-            tokenizer.NextLine();
             return true;
         };
 
@@ -314,11 +312,7 @@ internal ref struct Tokenizer
             }
             else if (tokenizer.span[1] == Constants.SlashChar)
             {// //
-                if (tokenizer.ReadSingleLineComment())
-                {
-                    tokenizer.NextLine();
-                }
-
+                tokenizer.ReadSingleLineComment();
                 return true;
             }
             else if (tokenizer.span[1] == Constants.AsteriskChar)
@@ -375,12 +369,12 @@ internal ref struct Tokenizer
             }
             else if (result == ScanStringLiteralResult.MultilineString)
             {// """Text"""
-                tokenizer.AddTokenAndSliceWithLineTracking(TokenKind.StringLiteral, stringLiteralLength);
+                tokenizer.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
             }
             else
             {// Invalid
                 tokenizer.diagnostics.Add(tokenizer.NewRange(1), KimiDiagnostic.MissingStringLiteralEnd_Kd);
-                tokenizer.AddTokenAndSliceWithLineTracking(TokenKind.Invalid, stringLiteralLength);
+                tokenizer.Slice(stringLiteralLength);
             }
 
             return false;
@@ -396,9 +390,6 @@ internal ref struct Tokenizer
     private SequenceBuilder<Token> builder;
     private ReadOnlySpan<char> span;
     private int position;
-    private int line;
-    private int character;
-
     private int currentIndentLevel;
     private int blockDepth;
     private int nonBlockDepth;
@@ -408,7 +399,7 @@ internal ref struct Tokenizer
 
     public ReadOnlySpan<char> SourceText => this.sourceText;
 
-    public SourceRange CurrentRange => new(new(this.line, this.character), new(this.line, this.character));
+    public TextSpan CurrentRange => new(this.position, 0);
 
     #endregion
 
@@ -545,7 +536,9 @@ NextLine:
 MeasureIndentation:
 // Indentation is measured once, at the physical line start.
 // Comments that follow do not change it.
+        var indentationStart = this.position;
         var numberOfSpaces = BaseHelper.CountLeadingSpaces(this.span);
+        var indentationLength = numberOfSpaces;
         this.Slice(numberOfSpaces);
 
 LineContent:
@@ -557,29 +550,23 @@ LineContent:
         if (this.span[0] == Constants.LfChar)
         {// Empty line (\n)
             this.Slice(1);
-            this.NextLine();
             goto NextLine;
         }
         else if (this.span[0] == Constants.CrChar)
         {// Empty line (\r\n or \r)
             this.Slice(this.span.Length > 1 && this.span[1] == Constants.LfChar ? 2 : 1);
-            this.NextLine();
             goto NextLine;
         }
         else if (this.span.Length >= 2 && this.span[0] == Constants.SlashChar)
         {// /
             if (this.span[1] == Constants.SlashChar)
             {// // Single line comment
-                if (this.ReadSingleLineComment())
-                {
-                    this.NextLine();
-                }
-
+                this.ReadSingleLineComment();
                 goto NextLine;
             }
             else if (this.span[1] == Constants.AsteriskChar)
             {// /* Multi line comment */
-                _ = this.ReadMultiLineComment();
+                this.ReadMultiLineComment();
 
                 // Skip spaces after the comment WITHOUT counting them as indentation;
                 // the indentation of this line was already measured at the line start
@@ -594,7 +581,7 @@ LineContent:
         var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
         if (unnecessarySpaces > 0)
         {// Invalid indentation
-            this.diagnostics.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), KimiDiagnostic.InvalidIndentation_Kd, Constants.IndentationSpaces);
+            this.diagnostics.Add(new(indentationStart, indentationLength), KimiDiagnostic.InvalidIndentation_Kd, Constants.IndentationSpaces);
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
         }
 
@@ -687,7 +674,7 @@ LineContent:
                         // this.indentStack.Push(indentSource);
                         this.nonBlockDepth--;
 
-                        this.diagnostics.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), KimiDiagnostic.IndentationLevelMismatch_Kd);
+                        this.diagnostics.Add(new(indentationStart, indentationLength), KimiDiagnostic.IndentationLevelMismatch_Kd);
                         break;
                     }
                 }
@@ -698,7 +685,7 @@ LineContent:
                 }
                 else
                 {
-                    this.diagnostics.Add(new(new(this.line, 0), new(this.line, numberOfSpaces)), KimiDiagnostic.IndentationLevelMismatch_Kd);
+                    this.diagnostics.Add(new(indentationStart, indentationLength), KimiDiagnostic.IndentationLevelMismatch_Kd);
                     break;
                 }
             }
@@ -738,42 +725,40 @@ EndOfFile:
         return this.tokenAdded;
     }
 
-    private int ReadMultiLineComment()
+    private void ReadMultiLineComment()
     {
         var length = this.span.IndexOf("*/");
         if (length < 0)
         {
-            this.diagnostics.Add(new(new(this.line, this.character), new(this.line, this.character + 2)), KimiDiagnostic.MissingBlockCommentEnd_Kd);
-
-            return this.AddTokenAndSliceWithLineTracking(TokenKind.Invalid, this.span.Length);
+            this.diagnostics.Add(this.NewRange(Math.Min(2, this.span.Length)), KimiDiagnostic.MissingBlockCommentEnd_Kd);
+            this.Slice(this.span.Length);
+            return;
         }
 
         length += 2;
-        return this.AddTokenAndSliceWithLineTracking(TokenKind.Invalid, length); // TokenKind.MultiLineComment -> TokenKind.Invalid
+        this.Slice(length); // TokenKind.MultiLineComment -> TokenKind.Invalid
     }
 
-    private bool ReadSingleLineComment()
+    private void ReadSingleLineComment()
     {// // Comment\n
         var idx = BaseHelper.IndexOfLfOrCrLf(this.span, out var newLineLength);
         if (idx < 0)
         {
             // this.AddTokenAndSlice(TokenKind.SingleLineComment, span.Length);
             this.Slice(this.span.Length);
-            return false;
         }
         else
         {
             // this.AddTokenAndSlice(TokenKind.SingleLineComment, idx);
             this.Slice(idx);
             this.Slice(newLineLength);
-            return true;
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private Diagnostics.SourceRange NewRange(int length)
+    private TextSpan NewRange(int length)
     {
-        return new(new(this.line, this.character), new(this.line, this.character + length));
+        return new(this.position, length);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -781,7 +766,6 @@ EndOfFile:
     {
         this.span = this.span.Slice(length);
         this.position += length;
-        this.character += length;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -794,67 +778,11 @@ EndOfFile:
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AddTokenAndSlice(TokenKind tokenKind, int length)
     {
-        this.builder.Add(new(tokenKind, this.position, length, this.line, this.character));
+        this.builder.Add(new(tokenKind, this.position, length));
         this.tokenAdded++;
 
         this.span = this.span.Slice(length);
         this.position += length;
-        this.character += length;
-    }
-
-    /// <summary>
-    /// Adds a token that may contain line breaks (\r\n, \n, or a lone \r) and updates
-    /// <see cref="line"/>/<see cref="character"/> accordingly. Returns the number of line breaks consumed.
-    /// </summary>
-    /// <param name="tokenKind">The token kind to add.</param>
-    /// <param name="length">The number of characters to consume.</param>
-    /// <returns>The number of line breaks consumed.</returns>
-    private int AddTokenAndSliceWithLineTracking(TokenKind tokenKind, int length)
-    {
-        SourcePosition start = new(this.line, this.character);
-
-        var consumed = this.span.Slice(0, length);
-        var newLines = 0;
-        var lastNewLineEnd = 0;
-        for (var j = 0; j < consumed.Length; j++)
-        {
-            var c = consumed[j];
-            if (c == Constants.LfChar)
-            {// \n
-                newLines++;
-                lastNewLineEnd = j + 1;
-            }
-            else if (c == Constants.CrChar)
-            {// \r\n or \r
-                if (j + 1 < consumed.Length && consumed[j + 1] == Constants.LfChar)
-                {
-                    j++;
-                }
-
-                newLines++;
-                lastNewLineEnd = j + 1;
-            }
-        }
-
-        if (newLines > 0)
-        {
-            this.line += newLines;
-            this.character = consumed.Length - lastNewLineEnd;
-        }
-        else
-        {
-            this.character += length;
-        }
-
-        if (tokenKind != TokenKind.Invalid)
-        {
-            this.builder.Add(new(tokenKind, this.position, length, new SourceRange(start, new(this.line, this.character))));
-            this.tokenAdded++;
-        }
-
-        this.position += length;
-        this.span = this.span.Slice(length);
-        return newLines;
     }
 
     private void PushIndentSource(IndentSource indentSource)
@@ -1031,12 +959,5 @@ EndOfFile:
         this.indentStack.Clear();
         this.blockDepth = 0;
         this.nonBlockDepth = 0;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void NextLine()
-    {
-        this.line += 1;
-        this.character = 0;
     }
 }

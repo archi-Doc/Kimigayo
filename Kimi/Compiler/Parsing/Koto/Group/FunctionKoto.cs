@@ -30,7 +30,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     [IgnoreMember]
     public bool IsExcluded { get; }
 
-    public FunctionKoto(ref TokenReader reader, TokenContext context, SourceRange range, string name, List<TypeSemanticsKoto>? genericArguments, List<FunctionParameterKoto> parameters, Koto? returnType)
+    public FunctionKoto(ref TokenReader reader, TokenContext context, TextSpan range, string name, List<TypeSemanticsKoto>? genericArguments, List<FunctionParameterKoto> parameters, Koto? returnType)
         : base(ref reader, range)
     {
         this.AttributeChain = context.AttributeKoto;

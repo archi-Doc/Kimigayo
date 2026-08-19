@@ -8,7 +8,7 @@ namespace Kimi.Diagnostics;
 [ValueLinkObject(Isolation = IsolationLevel.Serializable)]
 public sealed partial record class Diagnostic
 {
-    public SourceRange Range { get; init; }
+    public TextSpan Range { get; init; }
 
     public DiagnosticEntry Entry { get; init; }
 
@@ -19,12 +19,12 @@ public sealed partial record class Diagnostic
 
     [Link(Primary = true, Unique = true, Type = ChainType.Ordered)]
     [JsonIgnore]
-    public SourcePosition StartPosition => this.Range.Start;
+    public int StartPosition => this.Range.Start;
 
     [JsonIgnore]
     public partial GoshujinClass? Goshujin { get; set; }
 
-    public Diagnostic(SourceRange range, DiagnosticEntry entry, SourceDocument? sourceDocument = default)
+    public Diagnostic(TextSpan range, DiagnosticEntry entry, SourceDocument? sourceDocument = default)
     {
         this.Range = range;
         this.Entry = entry;
@@ -41,7 +41,8 @@ public sealed partial record class Diagnostic
     {
         if (!string.IsNullOrEmpty(url))
         {
-            return $"[{this.Entry.Severity.ToString()}] {url}{this.Range.ToString()} {this.Message}";
+            var range = this.SourceDocument?.GetSourceRange(this.Range).ToString() ?? this.Range.ToString();
+            return $"[{this.Entry.Severity.ToString()}] {url}{range} {this.Message}";
         }
         else
         {
