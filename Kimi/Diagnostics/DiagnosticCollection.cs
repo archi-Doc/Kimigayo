@@ -47,7 +47,7 @@ public record class DiagnosticCollection
                 }
             }
 
-            var diagnostic = new Diagnostic(range, entry.Severity, entry.Message);
+            var diagnostic = new Diagnostic(range, entry);
             diagnostic.Goshujin = this.diagnostics;
 
             this.kimigayo.ReportDiagnostic(this.Name, diagnostic);

@@ -9,13 +9,9 @@ public sealed partial record class Diagnostic
 {
     public SourceRange Range { get; init; }
 
-    public DiagnosticSeverity Severity { get; init; }
+    public DiagnosticEntry Entry { get; init; }
 
-    public string? Code { get; init; }
-
-    // public string? CodeDescription { get; init; }
-
-    public string? Source { get; init; }
+    // public string? Source { get; init; }
 
     public string Message { get; init; } = string.Empty;
 
@@ -26,11 +22,10 @@ public sealed partial record class Diagnostic
     [JsonIgnore]
     public partial GoshujinClass? Goshujin { get; set; }
 
-    public Diagnostic(SourceRange range, DiagnosticSeverity severity, string message)
+    public Diagnostic(SourceRange range, DiagnosticEntry entry)
     {
         this.Range = range;
-        this.Severity = severity;
-        this.Message = message;
+        this.Entry = entry;
     }
 
     public override string ToString()
@@ -42,11 +37,11 @@ public sealed partial record class Diagnostic
     {
         if (!string.IsNullOrEmpty(url))
         {
-            return $"[{this.Severity.ToString()}] {url}{this.Range.ToString()} {this.Message}";
+            return $"[{this.Entry.Severity.ToString()}] {url}{this.Range.ToString()} {this.Message}";
         }
         else
         {
-            return $"[{this.Severity.ToString()}] {this.Message}";
+            return $"[{this.Entry.Severity.ToString()}] {this.Message}";
         }
     }
 }

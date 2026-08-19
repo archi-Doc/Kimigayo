@@ -57,7 +57,7 @@ public static class DiagnosticEntries
 
     static DiagnosticEntries()
     {
-        LoadAssembly(Assembly.GetExecutingAssembly(), "Misc.Language.diagnostic-entries.tinyhand");
+        LoadAssembly(Assembly.GetExecutingAssembly(), "Diagnostics.KimiDiagnosticEntries.tinyhand");
     }
 
     public static bool TryGet(KimiDiagnostic kimiDiagnostic, [MaybeNullWhen(false)] out DiagnosticEntry entry)

@@ -29,7 +29,7 @@ public class Kimigayo
 
     public void ReportDiagnostic(string url, Diagnostic diagnostic)
     {
-        this.WriteLine(diagnostic.Severity, diagnostic.ToString(url));
+        this.WriteLine(diagnostic.Entry.Severity, diagnostic.ToString(url));
     }
 
     public DiagnosticCollection GetOrAddDiagnosticCollection(string url)
@@ -46,7 +46,7 @@ public class Kimigayo
 
             foreach (var y in x.Value.GetArray())
             {
-                this.WriteLine(y.Severity, JsonSerializer.Serialize(y));
+                this.WriteLine(y.Entry.Severity, JsonSerializer.Serialize(y));
             }
         }
     }
