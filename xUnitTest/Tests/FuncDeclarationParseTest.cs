@@ -41,7 +41,7 @@ public class FuncDeclarationParseTest
         var diagnostics = kotonoha.DiagnosticCollection.GetArray();
         Assert.True(
             diagnostics.Length == 0,
-            string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Range}: {x.Message}")));
+            string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
 
         var builder = default(IndentedStringBuilder);
         try

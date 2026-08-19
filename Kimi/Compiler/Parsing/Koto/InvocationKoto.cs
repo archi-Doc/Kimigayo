@@ -25,11 +25,11 @@ public partial class InvocationKoto : Koto
 
         if (arguments.Count == 0)
         {
-            this.Range = method.Range;
+            this.Span = method.Span;
         }
         else
         {
-            this.Range = SourceSpan.FromBounds(method.Range.Start, arguments[^1].Range.End);
+            this.Span = SourceSpan.FromBounds(method.Span.Start, arguments[^1].Span.End);
         }
 
         method.Parent = this;

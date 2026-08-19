@@ -100,7 +100,7 @@ public ref struct TokenReader
     /// <summary>
     /// Gets the source range of the current token.
     /// </summary>
-    public readonly SourceSpan CurrentTokenRange => this.currentToken.SourceSpan;
+    public readonly SourceSpan CurrentTokenRange => this.currentToken.Span;
 
     /// <summary>
     /// Gets the source length of the current token.
@@ -244,7 +244,7 @@ Loop:
             var token = this.currentToken;
             if (token.Kind == targetKind)
             {
-                range = token.SourceSpan;
+                range = token.Span;
                 this.AdvanceOne();
                 return true;
             }
@@ -258,7 +258,7 @@ Loop:
 
             if (addDiagnostic)
             {
-                this.Diagnostic.Add(token.SourceSpan, DiagnosticCode.TokenMismatch_Kd, targetKind.ToText());
+                this.Diagnostic.Add(token.Span, DiagnosticCode.TokenMismatch_Kd, targetKind.ToText());
                 this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
             }
 
@@ -280,9 +280,9 @@ Loop:
     /// Advances until the specified token kind is reached.
     /// </summary>
     /// <param name="kind1">The token kind at which to stop.</param>
-    /// <param name="kimiDiagnostic">An optional diagnostic hash reported for the first skipped token.</param>
+    /// <param name="code">An optional diagnostic hash reported for the first skipped token.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1, DiagnosticCode kimiDiagnostic)
+    public TokenKind SkipUntil(TokenKind kind1, DiagnosticCode code)
     {
         while (this.CanRead)
         {
@@ -291,10 +291,10 @@ Loop:
                 return this.currentToken.Kind;
             }
 
-            if (kimiDiagnostic != 0)
+            if (code != 0)
             {
-                this.AddDiagnostic(kimiDiagnostic, this.GetSpan(this.currentToken).ToString());
-                kimiDiagnostic = 0;
+                this.AddDiagnostic(code, this.GetSpan(this.currentToken).ToString());
+                code = 0;
             }
 
             this.AdvanceOne();
@@ -308,9 +308,9 @@ Loop:
     /// </summary>
     /// <param name="kind1">The first token kind at which to stop.</param>
     /// <param name="kind2">The second token kind at which to stop.</param>
-    /// <param name="kimiDiagnostic">An optional diagnostic hash reported for the first skipped token.</param>
+    /// <param name="code">An optional diagnostic hash reported for the first skipped token.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, DiagnosticCode kimiDiagnostic = DiagnosticCode.Template_Kd)
+    public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, DiagnosticCode code = DiagnosticCode.Template_Kd)
     {
         while (this.CanRead)
         {
@@ -320,10 +320,10 @@ Loop:
                 return tokenKind;
             }
 
-            if (kimiDiagnostic != 0)
+            if (code != 0)
             {
-                this.AddDiagnostic(kimiDiagnostic, this.GetSpan(this.currentToken).ToString());
-                kimiDiagnostic = 0;
+                this.AddDiagnostic(code, this.GetSpan(this.currentToken).ToString());
+                code = 0;
             }
 
             this.AdvanceOne();
@@ -410,20 +410,20 @@ Loop:
     /// <param name="token">The unexpected token.</param>
     public void ReportUnexpectedToken(Token token)
     {
-        this.Diagnostic.Add(token.SourceSpan, DiagnosticCode.UnmatchedToken_Kd, token.Kind.ToText());
+        this.Diagnostic.Add(token.Span, DiagnosticCode.UnmatchedToken_Kd, token.Kind.ToText());
     }
 
     /// <summary>
     /// Adds a diagnostic for the current token.
     /// </summary>
-    /// <param name="kimiDiagnostic">The diagnostic.</param>
+    /// <param name="code">The diagnostic.</param>
     /// <param name="obj">An optional diagnostic argument.</param>
     /// <param name="obj2">An optional diagnostic argument 2.</param>
-    public void AddDiagnostic(DiagnosticCode kimiDiagnostic, object? obj = null, object? obj2 = null)
+    public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null)
     {
         if (this.CanRead)
         {
-            this.Diagnostic.Add(this.currentToken.SourceSpan, kimiDiagnostic, obj, obj2);
+            this.Diagnostic.Add(this.currentToken.Span, code, obj, obj2);
         }
     }
 
@@ -445,7 +445,7 @@ Loop:
     /// <returns>A new error node.</returns>
     public ErrorKoto NewErrorKoto()
     {
-        return new ErrorKoto(ref this, this.CurrentToken.SourceSpan);
+        return new ErrorKoto(ref this, this.CurrentToken.Span);
     }
 
     /// <summary>

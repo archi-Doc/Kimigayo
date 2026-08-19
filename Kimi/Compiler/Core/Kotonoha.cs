@@ -139,7 +139,7 @@ public sealed partial class Kotonoha
             if (reader.CurrentTokenKind == TokenKind.Alias)
             {// alias
                 reader.Advance();
-                var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
+                var list = KotoHelper.ParseQualifiedNameSegments(ref reader);
                 var aliasKoto = new AliasKoto(ref reader, list);
                 // if (KotoParser.ResolveIfAttribute(ref reader, aliasKoto))
                 if (!reader.IsExcluded)

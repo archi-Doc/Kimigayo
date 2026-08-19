@@ -28,7 +28,7 @@ public sealed partial class StringLiteralKoto : Koto
     }
 
     public StringLiteralKoto(ref TokenReader reader, Token token)
-        : base(ref reader, token.SourceSpan)
+        : base(ref reader, token.Span)
     {
         this.rawLiteral = reader.GetSpan(token).ToString();
     }

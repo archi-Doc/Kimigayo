@@ -64,12 +64,4 @@ public class ParseBenchmark
 
         return kotonoha.RootKoto;
     }
-
-    // [Benchmark]
-    public void Test2()
-    {
-        var kotonoha = this.compilation.Kotonoha;
-        var codeContext = kotonoha.CreateCodeContext();
-        codeContext.Test(kotonoha.RootKoto, this.sourceText);
-    }
 }

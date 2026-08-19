@@ -60,16 +60,16 @@ public static class DiagnosticEntries
         LoadAssembly(Assembly.GetExecutingAssembly(), "Diagnostics.DiagnosticCode.tinyhand");
     }
 
-    public static bool TryGet(DiagnosticCode kimiDiagnostic, [MaybeNullWhen(false)] out DiagnosticEntry entry)
+    public static bool TryGet(DiagnosticCode code, [MaybeNullWhen(false)] out DiagnosticEntry entry)
     {
-        if (kimiDiagnostic >= DiagnosticCode.Count)
+        if (code >= DiagnosticCode.Count)
         {
             entry = default;
             return false;
         }
         else
         {
-            entry = table[(int)kimiDiagnostic];
+            entry = table[(int)code];
             return entry is not null;
         }
     }
@@ -93,9 +93,9 @@ public static class DiagnosticEntries
             {
                 foreach (var e in entries)
                 {
-                    if (Enum.TryParse<DiagnosticCode>(e.Name, out var kimiDiagnostic))
+                    if (Enum.TryParse<DiagnosticCode>(e.Name, out var code))
                     {
-                        table[(int)kimiDiagnostic] = e;
+                        table[(int)code] = e;
                     }
                 }
             }

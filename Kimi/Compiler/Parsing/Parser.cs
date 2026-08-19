@@ -350,13 +350,13 @@ NextParameter:
         {
             reader.Advance();
             returnType = ParseDeclarationType(ref reader);
-            end = returnType.Range.End;
+            end = returnType.Span.End;
         }
 
         var functionKoto = new FunctionKoto(
             ref reader,
             context,
-            SourceSpan.FromBounds(methodToken.SourceSpan.Start, end),
+            SourceSpan.FromBounds(methodToken.Span.Start, end),
             methodName.ToString(),
             genericArguments,
             parameters,
@@ -735,7 +735,7 @@ Exit:
 
                 var accessor = ParseTypeInternal(ref reader);
                 accessor ??= reader.NewErrorKoto();
-                left = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(token.SourceSpan.Start, accessor.Range.End), left, accessor);
+                left = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, accessor.Span.End), left, accessor);
                 continue;
             }
             else if (tokenKind == TokenKind.LessThan)
@@ -756,7 +756,7 @@ Exit:
                 }
 
                 reader.TryConsume(TokenKind.GreaterThan, out var range, true); // >
-                left = new GenericsKoto(ref reader, SourceSpan.FromBounds(token.SourceSpan.Start, range.End), left, typeList);
+                left = new GenericsKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, range.End), left, typeList);
                 continue;
             }
             else
@@ -770,7 +770,7 @@ Exit:
         static Koto? ParseTypeInternal(ref TokenReader reader)
         {
             var token = reader.CurrentToken;
-            var start = token.SourceSpan.Start;
+            var start = token.Span.Start;
             var semanticsKind = SemanticsKind.Owner;
             var hasSemantics = false;
             string? semanticsParameter = default;
@@ -801,7 +801,7 @@ Exit:
                 var type = ParseType(ref reader);
                 var semantics = new TypeSemanticsKoto(
                     ref reader,
-                    SourceSpan.FromBounds(start, type.Range.End),
+                    SourceSpan.FromBounds(start, type.Span.End),
                     type,
                     semanticsKind,
                     semanticsParameter);
@@ -833,7 +833,7 @@ Exit:
             reader.PushAttribute(previousAttribute);
         }
 
-        var attributeKoto = new AttributeKoto(ref reader, attributeToken.SourceSpan, operand);
+        var attributeKoto = new AttributeKoto(ref reader, attributeToken.Span, operand);
         if (attributeKoto.IsIfAttribute)
         {// #If
             reader.IsExcluded = !Parser.ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto);
@@ -874,7 +874,7 @@ Exit:
             {// A@B
                 reader.TryRead(out var token2);
                 var typeKoto = ParseType(ref reader);
-                left = new ConversionKoto(ref reader, token2.SourceSpan, left, typeKoto);
+                left = new ConversionKoto(ref reader, token2.Span, left, typeKoto);
                 continue;
             }
 
@@ -938,7 +938,7 @@ ProcessPrefix:
                     reader.Advance(); // .
 
                     var accessor = ParsePrimaryExpression(ref reader);
-                    left = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(left.Range.Start, accessor.Range.End), left, accessor);
+                    left = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, accessor.Span.End), left, accessor);
                     return true;
                 }
 
@@ -975,7 +975,7 @@ ProcessPrefix:
                     }
 
                     reader.TryConsume(TokenKind.GreaterThan, out var range, true); // >
-                    left = new GenericsKoto(ref reader, SourceSpan.FromBounds(token.SourceSpan.Start, range.End), left, typeList);
+                    left = new GenericsKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, range.End), left, typeList);
                     return true;
                 }
 
@@ -985,21 +985,21 @@ ProcessPrefix:
                     var index = ParseExpression(ref reader);
                     reader.TryConsume(TokenKind.CloseBracket, out var range, true); // ]
 
-                    left = new IndexKoto(ref reader, SourceSpan.FromBounds(token.SourceSpan.Start, range.End), left, index);
+                    left = new IndexKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, range.End), left, index);
                     return true;
                 }
 
             case TokenKind.PlusPlus:
                 {// A++
                     reader.TryRead(out var token);
-                    left = new PostfixIncrementKoto(ref reader, token.SourceSpan, left);
+                    left = new PostfixIncrementKoto(ref reader, token.Span, left);
                     return true;
                 }
 
             case TokenKind.MinusMinus:
                 {// A--
                     reader.TryRead(out var token);
-                    left = new PostfixDecrementKoto(ref reader, token.SourceSpan, left);
+                    left = new PostfixDecrementKoto(ref reader, token.Span, left);
                     return true;
                 }
         }
@@ -1011,7 +1011,7 @@ ProcessPrefix:
     private static bool IsGenericPostfix(ref TokenReader reader, Koto left)
     {
         if (left is not (IdentifierNameKoto or MemberAccessKoto or GenericsKoto) ||
-            reader.CurrentTokenRange.Start != left.Range.End)
+            reader.CurrentTokenRange.Start != left.Span.End)
         {
             return false;
         }
@@ -1135,7 +1135,7 @@ Loop:
                     var expression = ParseExpression(ref reader);
                     reader.TryConsume(TokenKind.CloseParenthesis, out var range, true);
 
-                    return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(token.SourceSpan.Start, range.End), expression);
+                    return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, range.End), expression);
                 }
 
             case TokenKind.Separator:
@@ -1147,7 +1147,7 @@ Loop:
                     reader.TryRead(out var token);
                     reader.ReportUnexpectedToken(token);
 
-                    return new ErrorKoto(ref reader, token.SourceSpan);
+                    return new ErrorKoto(ref reader, token.Span);
                 }
         }
     }
@@ -1279,7 +1279,7 @@ Loop:
         var returnType = ParseDeclarationType(ref reader);
         var functionType = new FunctionTypeKoto(
             ref reader,
-            SourceSpan.FromBounds(type.Range.Start, returnType.Range.End),
+            SourceSpan.FromBounds(type.Span.Start, returnType.Span.End),
             type,
             returnType);
         type.Parent = functionType;

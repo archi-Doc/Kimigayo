@@ -50,21 +50,4 @@ public class CodeContext
             tokenizer.Dispose();
         }
     }
-
-    public void Test(GroupKoto parentKoto, ReadOnlySpan<char> sourceText)
-    {
-        var sourceDocument = new SourceDocument(this.DiagnosticCollection.Name, sourceText.ToString());
-        var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceDocument);
-        try
-        {
-            tokenizer.ReadAll();
-            // var tokenSequence = tokenBuilder.ToReadOnlySequence();
-            // var reader = new TokenReader(this, tokenSequence);
-            // parentKoto.Parse(ref reader);
-        }
-        finally
-        {
-            tokenizer.Dispose();
-        }
-    }
 }

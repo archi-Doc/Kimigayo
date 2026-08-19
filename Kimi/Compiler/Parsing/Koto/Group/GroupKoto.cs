@@ -133,8 +133,8 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             if (tokenKind == TokenKind.Alias)
             {// alias (not supported)
                 reader.Advance();
-                _ = KotoHelper.ValidateAndGetNamespace2(ref reader);
-                reader.Diagnostic.Add(token.SourceSpan, DiagnosticCode.TopLevelKeywordAfterCode_Kd);
+                _ = KotoHelper.ParseQualifiedNameSegments(ref reader);
+                reader.Diagnostic.Add(token.Span, DiagnosticCode.TopLevelKeywordAfterCode_Kd);
             }
             else if (tokenKind == TokenKind.Separator)
             {
@@ -167,7 +167,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 }
 
                 var state = reader.TakeContext();
-                var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, TokenKind.Group, state, token.SourceSpan);
+                var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, TokenKind.Group, state, token.Span);
                 // this.CodeContext.CurrentGroup = groupKoto;
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
@@ -188,7 +188,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 }
 
                 var state = reader.TakeContext();
-                var groupKoto = this.GetOrAddGroup(r.Name, tokenKind, state, token.SourceSpan);
+                var groupKoto = this.GetOrAddGroup(r.Name, tokenKind, state, token.Span);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.Advance();
@@ -206,7 +206,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 }
 
                 var state = reader.TakeContext();
-                var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, tokenKind, state, token.SourceSpan);
+                var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, tokenKind, state, token.Span);
                 if (r.List is not null)
                 {
                     structKoto.BaseList.AddRange(r.List);

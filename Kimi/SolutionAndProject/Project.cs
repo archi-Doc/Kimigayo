@@ -35,7 +35,7 @@ public partial class Project
             project = new(kimigayo);
             project.Directory = Path.GetDirectoryName(path) ?? string.Empty;
             project.Name = Path.GetFileNameWithoutExtension(path);
-            project.File = file;
+            project.ProjectFile = file;
         }
         catch
         {
@@ -58,14 +58,14 @@ public partial class Project
 
     public string Name { get; set; } = string.Empty;
 
-    public ProjectFile File { get; private set; } = new();
+    public ProjectFile ProjectFile { get; private set; } = new();
 
     #endregion
 
     public Project(Kimigayo kimigayo)
     {
         this.kimigayo = kimigayo;
-        this.File = DefaultProjectFile;
+        this.ProjectFile = DefaultProjectFile;
     }
 
     public void AddSource(string url, string text)
@@ -84,7 +84,7 @@ public partial class Project
 
     public async Task<bool> Build()
     {
-        var targets = this.File.Targets.ToArray();
+        var targets = this.ProjectFile.Targets.ToArray();
         foreach (var x in targets)
         {
             await this.BuildTarget(x).ConfigureAwait(false);

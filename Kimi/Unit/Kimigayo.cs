@@ -31,7 +31,6 @@ public class Kimigayo
 
     public void ReportDiagnostic(string url, Diagnostic diagnostic)
     {
-        // this.WriteLine(diagnostic.Entry.Severity, diagnostic.ToString(url));
         var entry = diagnostic.Entry;
         var fixOrNote = entry.Fix is not null || entry.Note is not null;
 
@@ -42,13 +41,13 @@ public class Kimigayo
 
         if (diagnostic.SourceDocument is { } sourceDocument)
         {
-            var start = sourceDocument.GetPosition(diagnostic.Range.Start);
+            var start = sourceDocument.GetPosition(diagnostic.Span.Start);
             this.consoleService.WriteLine($" --> {url}:{start.Line + 1}:{start.Character + 1}");
             this.WriteSourceRange(diagnostic);
         }
         else
         {
-            this.consoleService.WriteLine($" --> {url}:@{diagnostic.Range.Start}");
+            this.consoleService.WriteLine($" --> {url}:@{diagnostic.Span.Start}");
         }
 
         if (fixOrNote)
@@ -152,7 +151,7 @@ public class Kimigayo
     private void WriteSourceRange(Diagnostic diagnostic)
     {
         var sourceDocument = diagnostic.SourceDocument!;
-        var range = sourceDocument.GetSourceRange(diagnostic.Range);
+        var range = sourceDocument.GetSourceRange(diagnostic.Span);
         var startLine = range.Start.Line;
 
         if (startLine < 0 || startLine >= sourceDocument.LineCount)

@@ -175,7 +175,7 @@ public abstract partial class Koto
     public DiagnosticCollection? DiagnosticCollection { get; internal set; }
 
     [IgnoreMember]
-    public SourceSpan Range { get; internal set; }
+    public SourceSpan Span { get; internal set; }
 
     [IgnoreMember]
     public CodeContext CodeContext { get; internal set; }
@@ -226,7 +226,7 @@ public abstract partial class Koto
     {
         this.DiagnosticCollection = reader.Diagnostic;
         this.CodeContext = reader.CodeContext;
-        this.Range = range;
+        this.Span = range;
 
         this.AttributeChain = reader.PopAttribute();
         // this.Parent = parent;
@@ -235,7 +235,7 @@ public abstract partial class Koto
     internal Koto(CodeContext codeContext, SourceSpan range)
     {
         this.CodeContext = codeContext;
-        this.Range = range;
+        this.Span = range;
     }
 
     public override string ToString()
@@ -278,9 +278,9 @@ public abstract partial class Koto
     {
     }
 
-    public void AddDiagnostic(DiagnosticCode kimiDiagnostic, object? obj = null, object? obj2 = null)
+    public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null)
     {
-        this.DiagnosticCollection?.Add(this.Range, kimiDiagnostic, obj, obj2);
+        this.DiagnosticCollection?.Add(this.Span, code, obj, obj2);
     }
 
     public void AddAttribute(AttributeKoto attributeKoto)

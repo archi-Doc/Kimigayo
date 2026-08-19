@@ -16,18 +16,18 @@ public readonly record struct Token
 
     public readonly bool IsMissing; // 1
 
-    public readonly SourceSpan SourceSpan; // 8
+    public readonly SourceSpan Span; // 8
 
-    public int Start => this.SourceSpan.Start;
+    public int Start => this.Span.Start;
 
-    public int Length => this.SourceSpan.Length;
+    public int Length => this.Span.Length;
 
     public bool IsValid => this.Kind != TokenKind.Invalid;
 
     public Token(TokenKind kind, int start, int length)
     {
         this.Kind = kind;
-        this.SourceSpan = new(start, length);
+        this.Span = new(start, length);
     }
 
     public Token(TokenKind kind, bool isMissing = false)
@@ -39,7 +39,7 @@ public readonly record struct Token
     public Token(TokenKind kind, SourceSpan range)
     {
         this.Kind = kind;
-        this.SourceSpan = range;
+        this.Span = range;
     }
 
     public override string ToString()
