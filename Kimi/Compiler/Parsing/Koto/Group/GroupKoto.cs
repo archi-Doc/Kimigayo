@@ -52,12 +52,12 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
     #endregion
 
-    public GroupKoto(ref TokenReader reader, TextSpan range)
+    public GroupKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
     }
 
-    internal GroupKoto(CodeContext codeContext, TokenContext state, TextSpan range)
+    internal GroupKoto(CodeContext codeContext, TokenContext state, SourceSpan range)
         : base(codeContext, range)
     {
         this.AttributeChain = state.AttributeKoto;
@@ -274,7 +274,7 @@ NextToken:
         this.UnparseAllInternal(0, ref builder, false);
     }
 
-    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, TextSpan range)
+    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range)
     {
         var text = qualifiedName;
         var group = this;
@@ -293,7 +293,7 @@ NextToken:
         }
     }
 
-    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, TokenKind kind, TokenContext state, TextSpan range)
+    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, TokenKind kind, TokenContext state, SourceSpan range)
     {
         var parent = group;
         var codeContext = group.CodeContext;
@@ -318,7 +318,7 @@ NextToken:
         }
     }
 
-    private void Merge(TokenContext state, TextSpan range)
+    private void Merge(TokenContext state, SourceSpan range)
     {
     }
 

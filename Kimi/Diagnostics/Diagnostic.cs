@@ -8,7 +8,7 @@ namespace Kimi.Diagnostics;
 [ValueLinkObject(Isolation = IsolationLevel.Serializable)]
 public sealed partial record class Diagnostic
 {
-    public TextSpan Range { get; init; }
+    public SourceSpan Range { get; init; }
 
     public DiagnosticEntry Entry { get; init; }
 
@@ -24,7 +24,7 @@ public sealed partial record class Diagnostic
     [JsonIgnore]
     public partial GoshujinClass? Goshujin { get; set; }
 
-    public Diagnostic(TextSpan range, DiagnosticEntry entry, SourceDocument? sourceDocument = default)
+    public Diagnostic(SourceSpan range, DiagnosticEntry entry, SourceDocument? sourceDocument = default)
     {
         this.Range = range;
         this.Entry = entry;

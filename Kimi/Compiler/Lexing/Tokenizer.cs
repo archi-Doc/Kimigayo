@@ -399,7 +399,7 @@ internal ref struct Tokenizer
 
     public ReadOnlySpan<char> SourceText => this.sourceText;
 
-    public TextSpan CurrentRange => new(this.position, 0);
+    public SourceSpan CurrentRange => new(this.position, 0);
 
     #endregion
 
@@ -756,7 +756,7 @@ EndOfFile:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private TextSpan NewRange(int length)
+    private SourceSpan NewRange(int length)
     {
         return new(this.position, length);
     }

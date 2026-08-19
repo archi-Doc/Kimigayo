@@ -16,7 +16,7 @@ public readonly partial struct Token
 
     public readonly bool IsMissing; // 1
 
-    public readonly TextSpan Range; // 8
+    public readonly SourceSpan Range; // 8
 
     public int Start => this.Range.Start;
 
@@ -36,7 +36,7 @@ public readonly partial struct Token
         this.IsMissing = isMissing;
     }
 
-    public Token(TokenKind kind, TextSpan range)
+    public Token(TokenKind kind, SourceSpan range)
     {
         this.Kind = kind;
         this.Range = range;

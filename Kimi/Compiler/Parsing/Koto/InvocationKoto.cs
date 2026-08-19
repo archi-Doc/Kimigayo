@@ -29,7 +29,7 @@ public partial class InvocationKoto : Koto
         }
         else
         {
-            this.Range = TextSpan.FromBounds(method.Range.Start, arguments[^1].Range.End);
+            this.Range = SourceSpan.FromBounds(method.Range.Start, arguments[^1].Range.End);
         }
 
         method.Parent = this;

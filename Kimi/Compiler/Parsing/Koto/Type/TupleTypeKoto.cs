@@ -13,7 +13,7 @@ public partial class TupleTypeKoto : Koto
     [Key(1)]
     public List<Koto> Elements { get; private set; }
 
-    public TupleTypeKoto(ref TokenReader reader, TextSpan range, List<Koto> elements)
+    public TupleTypeKoto(ref TokenReader reader, SourceSpan range, List<Koto> elements)
         : base(ref reader, range)
     {
         this.Elements = elements;

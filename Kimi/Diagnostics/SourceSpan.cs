@@ -7,7 +7,7 @@ namespace Kimi.Diagnostics;
 /// </summary>
 /// <param name="Start">The zero-based absolute start offset.</param>
 /// <param name="Length">The span length.</param>
-public readonly record struct TextSpan(int Start, int Length) : IComparable<TextSpan>
+public readonly record struct SourceSpan(int Start, int Length) : IComparable<SourceSpan>
 {
     /// <summary>
     /// Gets the exclusive absolute end offset.
@@ -20,13 +20,13 @@ public readonly record struct TextSpan(int Start, int Length) : IComparable<Text
     /// <param name="start">The absolute start offset.</param>
     /// <param name="end">The exclusive absolute end offset.</param>
     /// <returns>The resulting text span.</returns>
-    public static TextSpan FromBounds(int start, int end)
+    public static SourceSpan FromBounds(int start, int end)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(end, start);
         return new(start, checked(end - start));
     }
 
-    public int CompareTo(TextSpan other)
+    public int CompareTo(SourceSpan other)
     {
         var comparison = this.Start.CompareTo(other.Start);
         return comparison != 0 ? comparison : this.Length.CompareTo(other.Length);

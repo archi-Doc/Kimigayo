@@ -109,7 +109,7 @@ public sealed class SourceDocument
     /// </summary>
     /// <param name="span">The absolute source span.</param>
     /// <returns>The corresponding source range.</returns>
-    public SourceRange GetSourceRange(TextSpan span)
+    public SourceRange GetSourceRange(SourceSpan span)
     {
         this.ValidateSpan(span);
         return new(this.GetPosition(span.Start), this.GetPosition(span.End));
@@ -137,8 +137,8 @@ public sealed class SourceDocument
     /// </summary>
     /// <param name="range">The source range.</param>
     /// <returns>The corresponding absolute text span.</returns>
-    public TextSpan GetTextSpan(SourceRange range)
-        => TextSpan.FromBounds(this.GetOffset(range.Start), this.GetOffset(range.End));
+    public SourceSpan GetTextSpan(SourceRange range)
+        => SourceSpan.FromBounds(this.GetOffset(range.Start), this.GetOffset(range.End));
 
     private static int[] CreateLineStarts(ReadOnlySpan<char> sourceText)
     {
@@ -182,7 +182,7 @@ public sealed class SourceDocument
         return starts;
     }
 
-    private void ValidateSpan(TextSpan span)
+    private void ValidateSpan(SourceSpan span)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(span.Start);
         ArgumentOutOfRangeException.ThrowIfNegative(span.Length);

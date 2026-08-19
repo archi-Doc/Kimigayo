@@ -100,7 +100,7 @@ public ref struct TokenReader
     /// <summary>
     /// Gets the source range of the current token.
     /// </summary>
-    public readonly TextSpan CurrentTokenRange => this.currentToken.Range;
+    public readonly SourceSpan CurrentTokenRange => this.currentToken.Range;
 
     /// <summary>
     /// Gets the source length of the current token.
@@ -236,7 +236,7 @@ public ref struct TokenReader
     /// <param name="range">The source range of the consumed token.</param>
     /// <param name="addDiagnostic">Whether to report a diagnostic when the expected token is not found.</param>
     /// <returns><see langword="true"/> if the expected token was consumed; otherwise, <see langword="false"/>.</returns>
-    public bool TryConsume(TokenKind targetKind, out TextSpan range, bool addDiagnostic = true)
+    public bool TryConsume(TokenKind targetKind, out SourceSpan range, bool addDiagnostic = true)
     {
 Loop:
         if (this.CanRead)
