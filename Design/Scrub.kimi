@@ -1,8 +1,8 @@
 alias AliasB
 alias AliasC
 
-func find<s/T, T2>(value?: T, in => collection: Collection<T>, using => comparer: (T, T) -> Bool)
-func Main() -> ()
+func find<s/T, T2>(value?: T, in => collection: Collection<T>, using => comparer: (T, T) -> Bool) -> i32
+public func Main() -> ()
 var x: unsafe/Base.Map<String, Int>
 var count: i32 = #TestAtr 0
 let name: String = abc

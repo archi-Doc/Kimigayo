@@ -239,6 +239,11 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                         reader.Advance();
                         nextParser = functionKoto;
                     }
+                    else
+                    {// Skip tokens up to StartBlock due to a syntax error.
+                        reader.SkipUntil(TokenKind.StartBlock, default);
+                        nextParser = functionKoto;
+                    }
                 }
             }
             else
