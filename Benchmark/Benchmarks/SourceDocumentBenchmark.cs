@@ -16,7 +16,7 @@ public class SourceDocumentBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        this.sourceText = string.Concat(Enumerable.Repeat("let value = 12345\r\nlet st = \"text\"\n", this.LineCount));
+        this.sourceText = string.Concat(Enumerable.Repeat("let value = 12345\r\nlet st = \"public DiagnosticCollection DiagnosticCollection => this.diagnosticCollection ?? this.Kotonoha.DiagnosticCollection;\"\n", this.LineCount));
     }
 
     [Benchmark]
