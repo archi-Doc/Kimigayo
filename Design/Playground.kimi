@@ -1,5 +1,5 @@
 alias AliasB
-var x = 1
+
 #If(os == "windows" and 
     pointerWidth == 64)
 alias AliasC
@@ -11,7 +11,7 @@ private func find<s/T, T2>(
     value?: T,
     in => collection: Collection<T>,
     using => comparer: (T, T) -> Bool
-    ) -> i32
+) -> i32
     where T is Comparable
     return 0
 

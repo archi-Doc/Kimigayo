@@ -29,7 +29,7 @@ public class Kimigayo
         // this.PointerSize = IntPtr.Size;
     }
 
-    public void ReportDiagnostic(string url, Diagnostic diagnostic)
+    public void ReportDiagnostic(string path, Diagnostic diagnostic)
     {
         var entry = diagnostic.Entry;
         var fixOrNote = entry.Fix is not null || entry.Note is not null;
@@ -42,12 +42,12 @@ public class Kimigayo
         if (diagnostic.SourceDocument is { } sourceDocument)
         {
             var start = sourceDocument.GetPosition(diagnostic.Span.Start);
-            this.consoleService.WriteLine($" --> {url}:{start.Line + 1}:{start.Character + 1}");
+            this.consoleService.WriteLine($" --> {path}:{start.Line + 1}:{start.Character + 1}");
             this.WriteSourceRange(diagnostic);
         }
         else
         {
-            this.consoleService.WriteLine($" --> {url}:@{diagnostic.Span.Start}");
+            this.consoleService.WriteLine($" --> {path}:@{diagnostic.Span.Start}");
         }
 
         if (fixOrNote)
