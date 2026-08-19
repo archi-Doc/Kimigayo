@@ -26,34 +26,24 @@ public class CodeContext
     }
 
     public void Parse(GroupKoto parentKoto, ReadOnlySpan<char> sourceText)
+        => this.Parse(parentKoto, new SourceDocument(this.DiagnosticCollection.Name, sourceText.ToString()));
+
+    public void Parse(GroupKoto parentKoto, string sourceText)
+        => this.Parse(parentKoto, new SourceDocument(this.DiagnosticCollection.Name, sourceText));
+
+    public void Parse(GroupKoto parentKoto, SourceDocument sourceDocument)
     {
         if (parentKoto.CodeContext.Compilation != this.Compilation)
         {// Unmatched compilation
             return;
         }
 
-        var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceText);
+        var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceDocument);
         try
         {
             tokenizer.ReadAll();
             var reader = new TokenReader(this, ref tokenizer);
             parentKoto.Parse(ref reader);
-        }
-        finally
-        {
-            tokenizer.Dispose();
-        }
-    }
-
-    public void Test(GroupKoto parentKoto, ReadOnlySpan<char> sourceText)
-    {
-        var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceText);
-        try
-        {
-            tokenizer.ReadAll();
-            // var tokenSequence = tokenBuilder.ToReadOnlySequence();
-            // var reader = new TokenReader(this, tokenSequence);
-            // parentKoto.Parse(ref reader);
         }
         finally
         {

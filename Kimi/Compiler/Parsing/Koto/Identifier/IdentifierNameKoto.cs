@@ -29,7 +29,7 @@ public partial class IdentifierNameKoto : Koto
         }
         else
         {
-            reader.AddDiagnostic(KimiDiagnostic.InvalidIdentifier, identifierName);
+            reader.AddDiagnostic(DiagnosticCode.InvalidIdentifier_Kd, identifierName);
 
             koto = default;
             return false;
@@ -40,7 +40,7 @@ public partial class IdentifierNameKoto : Koto
     public string IdentifierName { get; private set; }
 
     protected IdentifierNameKoto(ref TokenReader reader, Token token, string identifierName)
-        : base(ref reader, token.Range)
+        : base(ref reader, token.Span)
     {
         this.IdentifierName = identifierName;
     }

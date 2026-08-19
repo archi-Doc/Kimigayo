@@ -10,7 +10,7 @@ public partial class ErrorKoto : Koto
 {
     public override KotoKind Akind => KotoKind.Error;
 
-    public ErrorKoto(ref TokenReader reader, SourceRange range)
+    public ErrorKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
     }

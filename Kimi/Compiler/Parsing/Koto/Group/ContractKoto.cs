@@ -11,12 +11,12 @@ public sealed partial class ContractKoto : GroupKoto
 {
     public override KotoKind Akind => KotoKind.Contract;
 
-    public ContractKoto(ref TokenReader reader, SourceRange range)
+    public ContractKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
     }
 
-    internal ContractKoto(CodeContext codeContext, TokenContext state, SourceRange range)
+    internal ContractKoto(CodeContext codeContext, TokenContext state, SourceSpan range)
         : base(codeContext, state, range)
     {
     }

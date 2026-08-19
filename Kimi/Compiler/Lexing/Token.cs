@@ -8,36 +8,26 @@ namespace Kimi.Compiler;
 /// <summary>
 /// Represents a lexical token produced by the lexer.
 /// </summary>
-public readonly partial struct Token
-{// 1 + 1 + 8 + 16 -> 32
+public readonly record struct Token
+{// 1 + 1 + 8 -> 12
     public static readonly Token Invalid = default;
 
     public readonly TokenKind Kind; // 1
 
     public readonly bool IsMissing; // 1
 
-    public readonly int Start; // 4
+    public readonly SourceSpan Span; // 8
 
-    public readonly int Length; // 4
+    public int Start => this.Span.Start;
 
-    public readonly SourceRange Range; // 16
+    public int Length => this.Span.Length;
 
     public bool IsValid => this.Kind != TokenKind.Invalid;
 
-    public Token(TokenKind kind, int start, int length, SourceRange range)
+    public Token(TokenKind kind, int start, int length)
     {
         this.Kind = kind;
-        this.Start = start;
-        this.Length = length;
-        this.Range = range;
-    }
-
-    public Token(TokenKind kind, int start, int length, int line, int character)
-    {
-        this.Kind = kind;
-        this.Start = start;
-        this.Length = length;
-        this.Range = new(new(line, character), new(line, character + length));
+        this.Span = new(start, length);
     }
 
     public Token(TokenKind kind, bool isMissing = false)
@@ -46,24 +36,14 @@ public readonly partial struct Token
         this.IsMissing = isMissing;
     }
 
-    public Token(TokenKind kind, SourceRange range)
+    public Token(TokenKind kind, SourceSpan range)
     {
         this.Kind = kind;
-        this.Range = range;
+        this.Span = range;
     }
 
     public override string ToString()
     {
-        /*if (this.Kind == TokenKind.Identifier ||
-            this.Kind == TokenKind.NumericLiteral ||
-            this.Kind == TokenKind.StringLiteral ||
-            this.Kind == TokenKind.RawStringLiteral ||
-            this.Kind == TokenKind.SingleLineComment ||
-            this.Kind == TokenKind.MultiLineComment)
-        {
-            return $"({this.Kind.ToString()}:'{this.Text}')";
-        }*/
-
         return $"({this.Kind.ToString()})";
     }
 }

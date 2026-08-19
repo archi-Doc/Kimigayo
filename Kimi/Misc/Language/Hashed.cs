@@ -1,0 +1,18 @@
+﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Kimi.Diagnostics;
+
+namespace Kimi;
+
+[TinyhandGenerateHash("strings-en.tinyhand")]
+public static partial class Hashed
+{
+    public static void Write(this LogWriter writer, ulong hash)
+        => writer.Write(HashedString.Get(hash));
+
+    public static void Write(this LogWriter writer, ulong hash, object obj1)
+        => writer.Write(HashedString.Get(hash, obj1));
+
+    public static void Write(this LogWriter writer, ulong hash, object obj1, object obj2)
+        => writer.Write(HashedString.Get(hash, obj1, obj2));
+}

@@ -52,12 +52,12 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
     #endregion
 
-    public GroupKoto(ref TokenReader reader, SourceRange range)
+    public GroupKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
     }
 
-    internal GroupKoto(CodeContext codeContext, TokenContext state, SourceRange range)
+    internal GroupKoto(CodeContext codeContext, TokenContext state, SourceSpan range)
         : base(codeContext, range)
     {
         this.AttributeChain = state.AttributeKoto;
@@ -133,8 +133,8 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             if (tokenKind == TokenKind.Alias)
             {// alias (not supported)
                 reader.Advance();
-                _ = KotoHelper.ValidateAndGetNamespace2(ref reader);
-                reader.Diagnostic.Add(token.Range, KimiDiagnostic.TopLevelKeywordAfterCode);
+                _ = KotoHelper.ParseQualifiedNameSegments(ref reader);
+                reader.Diagnostic.Add(token.Span, DiagnosticCode.TopLevelKeywordAfterCode_Kd);
             }
             else if (tokenKind == TokenKind.Separator)
             {
@@ -167,7 +167,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 }
 
                 var state = reader.TakeContext();
-                var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, TokenKind.Group, state, token.Range);
+                var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, TokenKind.Group, state, token.Span);
                 // this.CodeContext.CurrentGroup = groupKoto;
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
@@ -188,7 +188,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 }
 
                 var state = reader.TakeContext();
-                var groupKoto = this.GetOrAddGroup(r.Name, tokenKind, state, token.Range);
+                var groupKoto = this.GetOrAddGroup(r.Name, tokenKind, state, token.Span);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.Advance();
@@ -206,7 +206,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 }
 
                 var state = reader.TakeContext();
-                var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, tokenKind, state, token.Range);
+                var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, tokenKind, state, token.Span);
                 if (r.List is not null)
                 {
                     structKoto.BaseList.AddRange(r.List);
@@ -237,6 +237,11 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                     if (reader.CurrentTokenKind == TokenKind.StartBlock)
                     {
                         reader.Advance();
+                        nextParser = functionKoto;
+                    }
+                    else
+                    {// Skip tokens up to StartBlock due to a syntax error.
+                        reader.SkipUntil(TokenKind.StartBlock, default);
                         nextParser = functionKoto;
                     }
                 }
@@ -274,7 +279,7 @@ NextToken:
         this.UnparseAllInternal(0, ref builder, false);
     }
 
-    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceRange range)
+    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range)
     {
         var text = qualifiedName;
         var group = this;
@@ -293,7 +298,7 @@ NextToken:
         }
     }
 
-    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, TokenKind kind, TokenContext state, SourceRange range)
+    private static void GetOrAddGroup(ref GroupKoto group, ReadOnlySpan<char> text, TokenKind kind, TokenContext state, SourceSpan range)
     {
         var parent = group;
         var codeContext = group.CodeContext;
@@ -318,7 +323,7 @@ NextToken:
         }
     }
 
-    private void Merge(TokenContext state, SourceRange range)
+    private void Merge(TokenContext state, SourceSpan range)
     {
     }
 

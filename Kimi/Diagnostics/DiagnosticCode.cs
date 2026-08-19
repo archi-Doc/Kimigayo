@@ -1,103 +1,108 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using Kimi.Diagnostics;
 
-namespace Kimi.Diagnostics;
+namespace Kimi;
 
-public static class DiagnosticCode
+public enum DiagnosticCode
 {
-    private readonly struct CodeAndSeverity
-    {
-        public readonly string Code;
-        public readonly DiagnosticSeverity Severity;
+    Template_Kd, // First sentinel
 
-        public CodeAndSeverity(string code, DiagnosticSeverity severity)
-        {
-            this.Code = code;
-            this.Severity = severity;
-        }
+    ConditionMustBeBool_Kd,
+    DivisionByZero_Kd,
+    DuplicateModifier_Kd,
+    IdentifierExpected_Kd,
+    IncompleteEscape_Kd,
+    IncompleteSyntax_Kd,
+    IndentationLevelMismatch_Kd,
+    IndentationLevelMismatchWarning_Kd,
+    InvalidAttributeKoto_Kd,
+    InvalidCharacter_Kd,
+    InvalidCharacterAtEndOfFile_Kd,
+    InvalidIdentifier_Kd,
+    InvalidIfAttributeArgumentCount_Kd,
+    InvalidIndentation_Kd,
+    InvalidNumericLiteral_Kd,
+    InvalidReferenceSyntax_Kd,
+    InvalidUnicodeEscape_Kd,
+    InvalidUnicodeScalar_Kd,
+    IntegerOverflow_Kd,
+    MissingBlockCommentEnd_Kd,
+    MissingComma_Kd,
+    MissingExpectedToken_Kd,
+    MissingStringLiteralEnd_Kd,
+    MultipleAccessibilityModifiers_Kd,
+    TokenMismatch_Kd,
+    TopLevelKeywordAfterCode_Kd,
+    TypeMismatch_Kd,
+    UnexpectedIndent_Kd,
+    UnexpectedToken_Kd,
+    UnexpectedTrailingToken_Kd,
+    UnmatchedEndBlock_Kd,
+    UnmatchedAngleBracket_Kd,
+    UnmatchedBrace_Kd,
+    UnmatchedBracket_Kd,
+    UnmatchedParenthesis_Kd,
+    UnmatchedToken_Kd,
+    UnsupportedIfAttributeConditionType_Kd,
+    UnsupportedEscape_Kd,
+
+    Count, // Last sentinel
+}
+
+public static class DiagnosticEntries
+{
+    private static DiagnosticEntry[] table = [];
+
+    static DiagnosticEntries()
+    {
+        LoadAssembly(Assembly.GetExecutingAssembly(), "Diagnostics.DiagnosticCode.tinyhand");
     }
 
-    private static readonly Dictionary<ulong, string> HashToCode = new();
-    private static readonly ConcurrentDictionary<ulong, CodeAndSeverity> HashToCodeAndSeverity = new();
-
-    static DiagnosticCode()
+    public static bool TryGet(DiagnosticCode code, [MaybeNullWhen(false)] out DiagnosticEntry entry)
     {
-        AddCode(typeof(Hashed), Kimigayo.ErrorPrefix);
-
-        Hashed.SetDiagnosticSeverity(SetSeverity);
-    }
-
-    public static void SetSeverity(ulong diagnosticHash, DiagnosticSeverity severity)
-    {
-        if (HashToCode.TryGetValue(diagnosticHash, out var code))
+        if (code >= DiagnosticCode.Count)
         {
-            HashToCodeAndSeverity[diagnosticHash] = new(code, severity);
-        }
-    }
-
-    public static void GetSeverity(ulong diagnosticHash, out string code, out DiagnosticSeverity severity)
-    {
-        if (HashToCodeAndSeverity.TryGetValue(diagnosticHash, out var v))
-        {
-            code = v.Code;
-            severity = v.Severity;
+            entry = default;
+            return false;
         }
         else
         {
-            code = string.Empty;
-            severity = DiagnosticSeverity.Error;
+            entry = table[(int)code];
+            return entry is not null;
         }
     }
 
-    private static void AddCode(Type type, string? prefix)
+    internal static void LoadAssembly(Assembly assembly, string name)
     {
-        const BindingFlags Flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly;
-
-        foreach (var property in type.GetProperties(Flags))
+        try
         {
-            if (property.PropertyType != typeof(ulong))
+            using Stream? stream = assembly.GetManifestResourceStream(assembly.GetName().Name + "." + name);
+            if (stream == null)
             {
-                continue;
+                throw new FileNotFoundException();
             }
 
-            if (property.GetMethod is null)
+            var bytes = new byte[stream.Length];
+            stream.ReadExactly(bytes);
+
+            table = new DiagnosticEntry[(int)DiagnosticCode.Count + 1];
+            var entries = TinyhandSerializer.DeserializeFromUtf8<DiagnosticEntry[]>(bytes);
+            if (entries is not null)
             {
-                continue;
+                foreach (var e in entries)
+                {
+                    if (Enum.TryParse<DiagnosticCode>(e.Name, out var code))
+                    {
+                        table[(int)code] = e;
+                    }
+                }
             }
-
-            var value = (ulong)property.GetValue(null)!;
-            var name = Combine(prefix, property.Name);
-
-            HashToCode.Add(value, name);
         }
-
-        // public static readonly ulong Field;
-        // public const ulong Field;
-        foreach (var field in type.GetFields(Flags))
+        catch
         {
-            if (field.FieldType != typeof(ulong))
-            {
-                continue;
-            }
-
-            var value = (ulong)field.GetValue(null)!;
-            var name = Combine(prefix, field.Name);
-
-            HashToCode.Add(value, name);
         }
-
-        // nested public classes
-        foreach (var nestedType in type.GetNestedTypes(BindingFlags.Public))
-        {
-            var nestedPrefix = Combine(prefix, nestedType.Name);
-            AddCode(nestedType, nestedPrefix);
-        }
-    }
-
-    private static string Combine(string? prefix, string name)
-    {
-        return prefix is null ? name : $"{prefix}.{name}";
     }
 }

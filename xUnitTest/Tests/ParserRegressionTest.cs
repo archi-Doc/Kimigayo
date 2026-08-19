@@ -48,6 +48,23 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void ContinuesAfterOuterIndentedClosingDelimiterOnSameLine()
+    {
+        var source = """
+            var x = foo(
+                a
+            ) + 1
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.Empty(diagnostics);
+        var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
+        var addition = Assert.IsType<PlusKoto>(field.InitializerKoto);
+        Assert.IsType<InvocationKoto>(addition.Left);
+    }
+
+    [Fact]
     public void ParsesGroupBody()
     {
         var (root, diagnostics) = Parse("group A\n    var x = 1");

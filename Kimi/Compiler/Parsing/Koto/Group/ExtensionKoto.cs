@@ -11,12 +11,12 @@ public sealed partial class ExtensionKoto : GroupKoto
 {
     public override KotoKind Akind => KotoKind.Extension;
 
-    public ExtensionKoto(ref TokenReader reader, SourceRange range)
+    public ExtensionKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
     }
 
-    internal ExtensionKoto(CodeContext codeContext, TokenContext state, SourceRange range)
+    internal ExtensionKoto(CodeContext codeContext, TokenContext state, SourceSpan range)
         : base(codeContext, state, range)
     {
     }

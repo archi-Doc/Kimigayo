@@ -94,17 +94,17 @@ public sealed partial class Kotonoha
         return true;*/
     }
 
-    public void AddSource(PathAndSource pathAndSource)
+    public void AddSource(SourceDocument sourceDocument)
     {
-        var diagnostic = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(pathAndSource.Path);
-        var sourceText = pathAndSource.SourceText.AsSpan();
-        var tokenizer = new Tokenizer(diagnostic, sourceText);
+        var path = sourceDocument.Path;
+        if (!string.IsNullOrEmpty(this.Compilation.Project.Directory))
+        {
+            path = Path.GetRelativePath(this.Compilation.Project.Directory, path);
+        }
 
-        /*var kimiId = this.SourceList.Count;
-        var kimiSource = new KimiSource(pathAndSource.Path, [], default);
-        this.SourceList.Add(kimiSource);*/
-
-        var codeContext = this.CreateCodeContext(diagnostic);
+        var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
+        var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument);
+        var codeContext = this.CreateCodeContext(diagnosticCollection);
 
         // Tokenize
         try
@@ -112,7 +112,7 @@ public sealed partial class Kotonoha
             tokenizer.ReadAll();
             if (this.Compilation.Project.KimiOptions.DumpToken)
             {// Dump token
-                this.DumpToken(pathAndSource.Path, tokenizer.ToReadOnlySequence());
+                this.DumpToken(sourceDocument.Path, tokenizer.ToReadOnlySequence());
             }
 
             // Token to Koto
@@ -139,7 +139,7 @@ public sealed partial class Kotonoha
             if (reader.CurrentTokenKind == TokenKind.Alias)
             {// alias
                 reader.Advance();
-                var list = KotoHelper.ValidateAndGetNamespace2(ref reader);
+                var list = KotoHelper.ParseQualifiedNameSegments(ref reader);
                 var aliasKoto = new AliasKoto(ref reader, list);
                 // if (KotoParser.ResolveIfAttribute(ref reader, aliasKoto))
                 if (!reader.IsExcluded)

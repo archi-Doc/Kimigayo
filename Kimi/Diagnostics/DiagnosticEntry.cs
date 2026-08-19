@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using Tinyhand;
+﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 namespace Kimi.Diagnostics;
 

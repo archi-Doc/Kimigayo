@@ -17,12 +17,12 @@ public sealed partial class StructKoto : GroupKoto
 
     #endregion
 
-    public StructKoto(ref TokenReader reader, SourceRange range)
+    public StructKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
     }
 
-    internal StructKoto(CodeContext codeContext, TokenContext state, SourceRange range)
+    internal StructKoto(CodeContext codeContext, TokenContext state, SourceSpan range)
         : base(codeContext, state, range)
     {
     }

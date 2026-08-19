@@ -1,36 +1,35 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json.Serialization;
+using Kimi.Compiler;
 
 namespace Kimi.Diagnostics;
 
 [ValueLinkObject(Isolation = IsolationLevel.Serializable)]
 public sealed partial record class Diagnostic
 {
-    public SourceRange Range { get; init; }
+    public SourceSpan Span { get; init; }
 
-    public DiagnosticSeverity Severity { get; init; }
+    public DiagnosticEntry Entry { get; init; }
 
-    public string? Code { get; init; }
-
-    // public string? CodeDescription { get; init; }
-
-    public string? Source { get; init; }
+    [JsonIgnore]
+    public SourceDocument? SourceDocument { get; init; }
 
     public string Message { get; init; } = string.Empty;
 
     [Link(Primary = true, Unique = true, Type = ChainType.Ordered)]
     [JsonIgnore]
-    public SourcePosition StartPosition => this.Range.Start;
+    public int StartPosition => this.Span.Start;
 
     [JsonIgnore]
     public partial GoshujinClass? Goshujin { get; set; }
 
-    public Diagnostic(SourceRange range, DiagnosticSeverity severity, string message)
+    public Diagnostic(SourceSpan range, DiagnosticEntry entry, SourceDocument? sourceDocument = default)
     {
-        this.Range = range;
-        this.Severity = severity;
-        this.Message = message;
+        this.Span = range;
+        this.Entry = entry;
+        this.SourceDocument = sourceDocument;
+        this.Message = entry.Message;
     }
 
     public override string ToString()
@@ -42,11 +41,12 @@ public sealed partial record class Diagnostic
     {
         if (!string.IsNullOrEmpty(url))
         {
-            return $"[{this.Severity.ToString()}] {url}{this.Range.ToString()} {this.Message}";
+            var range = this.SourceDocument?.GetSourceRange(this.Span).ToString() ?? this.Span.ToString();
+            return $"[{this.Entry.Severity.ToString()}] {url}{range} {this.Message}";
         }
         else
         {
-            return $"[{this.Severity.ToString()}] {this.Message}";
+            return $"[{this.Entry.Severity.ToString()}] {this.Message}";
         }
     }
 }

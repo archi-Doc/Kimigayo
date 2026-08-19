@@ -11,12 +11,12 @@ public sealed partial class EnumKoto : GroupKoto
 {
     public override KotoKind Akind => KotoKind.Enum;
 
-    public EnumKoto(ref TokenReader reader, SourceRange range)
+    public EnumKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
     }
 
-    internal EnumKoto(CodeContext codeContext, TokenContext state, SourceRange range)
+    internal EnumKoto(CodeContext codeContext, TokenContext state, SourceSpan range)
         : base(codeContext, state, range)
     {
     }
