@@ -35,17 +35,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Arc.Collections" Version="1.40.0" />
-    <PackageReference Include="Arc.Threading" Version="0.49.1" />
-    <PackageReference Include="Arc.Unit" Version="0.41.1" />
-    <PackageReference Include="SimpleCommandLine" Version="0.41.2" />
-    <PackageReference Include="SimplePrompt" Version="0.21.1" />
+    <PackageReference Include="Arc.Collections" Version="1.41.1" />
+    <PackageReference Include="Arc.Threading" Version="0.50.0" />
+    <PackageReference Include="Arc.Unit" Version="0.43.0" />
+    <PackageReference Include="SimpleCommandLine" Version="0.42.0" />
+    <PackageReference Include="SimplePrompt" Version="0.22.0" />
     <PackageReference Include="StyleCop.Analyzers" Version="1.2.0-beta.556">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Tinyhand" Version="0.141.2" />
-    <PackageReference Include="ValueLink" Version="0.116.1" />
+    <PackageReference Include="Tinyhand" Version="0.143.0" />
+    <PackageReference Include="ValueLink" Version="0.117.0" />
   </ItemGroup>
 
 </Project>
