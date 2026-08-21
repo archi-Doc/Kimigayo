@@ -268,11 +268,6 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                     structKoto.AddGenericArguments(r.GenericArguments);
                 }
 
-                if (r.BaseList is not null)
-                {
-                    structKoto.BaseList.AddRange(r.BaseList);
-                }
-
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.Advance();

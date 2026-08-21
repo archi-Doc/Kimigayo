@@ -375,11 +375,10 @@ Exit:
             => reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
     }
 
-    public static (string Name, List<TypeSemanticsKoto>? GenericArguments, List<string>? BaseList) ParseGroupDeclaration(ref TokenReader reader)
+    public static (string Name, List<TypeSemanticsKoto>? GenericArguments) ParseGroupDeclaration(ref TokenReader reader)
     {
         string name = string.Empty;
         List<TypeSemanticsKoto>? genericArguments = default;
-        List<string>? list = default;
         if (!reader.TryRead(out var token))
         {
             reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
@@ -414,12 +413,6 @@ Exit:
                 goto Exit;
             }
 
-            if (reader.CurrentTokenKind == TokenKind.Colon)
-            {
-                reader.Advance();
-                break;
-            }
-
             if (reader.CurrentTokenKind == TokenKind.Separator)
             {
                 reader.Advance();
@@ -430,40 +423,11 @@ Exit:
             reader.Advance();
         }
 
-        while (reader.CanRead)
-        {
-            if (reader.CurrentTokenKind == TokenKind.StartBlock)
-            {
-                goto Exit;
-            }
-
-            if (reader.CurrentTokenKind == TokenKind.Separator)
-            {
-                reader.Advance();
-                continue;
-            }
-
-            reader.TryRead(out token);
-            if (token.Kind == TokenKind.Comma)
-            {
-                continue;
-            }
-            else if (token.Kind == TokenKind.Identifier)
-            {
-                list ??= new();
-                list.Add(reader.GetSpan(token).ToString());
-            }
-            else
-            {
-                reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
-            }
-        }
-
 SkipAndExit:
         reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator, 0);
 
 Exit:
-        return (name, genericArguments, list);
+        return (name, genericArguments);
     }
 
     public static FieldKoto? ParseField(ref TokenReader reader, ref Token token)
