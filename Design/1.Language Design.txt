@@ -7,34 +7,28 @@ Frontend: Tokenizer -> Parser
 Backend: Resolver -> Emitter
 
 ## 文字列リテラル StringLiteral
-文字コードはUTF-8で、"Text" と """Multi-line text""" がある。
+文字コードはUTF-8で、以下の2種類がある。
+"Multi-line string with escape"
+"""Multi-line string without escape"""
 
-"Text": Interpolated string literal. C#における $"" と同じ。
+"Multi-line string with escape"
 一つのダブルクォーテーションで囲まれたもの。
 バックスラッシュ\によるエスケープあり。
 
-"""Text""": Interpolated raw string literal.
+"""Multi-line string without escape"""
 3個以上のダブルクォーテーションで囲まれたもの。
 文字列中に"""が必要なら、さらに外側の引用符の数を増やす。
 エスケープなし。
 
-いずれも文字列補間に対応している。
+文字列補間は、エスケープに対応している"Multi-line string with escape"のみ。
 C#の{}は、'{'を書きたい場合に {{}} とうるさくなるので好みではない。
 Swiftと同様、\()にしたい。1文字増えるが、分かりやすいし、'('を書きやすい。
 C#とSwiftの中間の仕様。
 
-Raw string literalは、エスケープをサポートしない。
-エスケープできるような追加の仕様も考えたが、ルールは可能な限り少なくしたい。
-エスケープシーケンスを使用したい場合は、String literalを使ってもらう。
-
-なので、Swift形式 \() だとエスケープありになり、一貫性に問題がある。
-やっぱりC#の{}が良い。
-ほぼC#と同じ仕様。
 
 ## Escape/Interpolation
 Swift/Rust寄りで、頻用のエスケープのみ。
 \0 \\ \e \t \n \r \" \' \u(...) \(Interpolation)
-
 
 
 ## #If Attribute

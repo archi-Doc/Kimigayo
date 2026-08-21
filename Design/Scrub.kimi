@@ -16,7 +16,11 @@ var movedObj = obj
 var movedObj = obj@unsafe/T
 array.Add(movedObj)
 
-public open struct Test: A, B, 
+public open struct TestStruct<C>: A, B
+    Self is A or B
+    semantics is reference
+    C is comparable
+
     #Test1
     public static var #Test2 x: i32 = #One 1
     private let pi = 1.2
