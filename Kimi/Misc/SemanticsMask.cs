@@ -36,6 +36,53 @@ public enum SemanticsMask : byte
 public static class SemanticsMaskHelper
 {
     /// <summary>
+    /// Parses a name that can be used in a semantics constraint.
+    /// </summary>
+    /// <param name="text">The semantics constraint name.</param>
+    /// <param name="mask">The parsed mask.</param>
+    /// <returns><see langword="true"/> when <paramref name="text"/> is a supported name.</returns>
+    public static bool TryParse(ReadOnlySpan<char> text, out SemanticsMask mask)
+    {
+        if (CompilerHelper.TryParse(text, out var kind))
+        {
+            mask = kind.ToMask();
+            return true;
+        }
+
+        mask = text.Length switch
+        {
+            5 when text.SequenceEqual("value") => SemanticsMask.Value,
+            6 when text.SequenceEqual("owning") => SemanticsMask.Owning,
+            9 when text.SequenceEqual("reference") => SemanticsMask.Reference,
+            _ => SemanticsMask.None,
+        };
+
+        return mask != SemanticsMask.None;
+    }
+
+    /// <summary>
+    /// Returns the canonical name of a semantics constraint mask.
+    /// </summary>
+    /// <param name="mask">The mask to format.</param>
+    /// <returns>The canonical name, or an empty string when the mask is not a named constraint.</returns>
+    public static string ToText(this SemanticsMask mask)
+        => mask switch
+        {
+            SemanticsMask.Owner => "owner",
+            SemanticsMask.Borrow => "borrow",
+            SemanticsMask.Stack => "stack",
+            SemanticsMask.OwnerRef => "ownerref",
+            SemanticsMask.BorrowRef => "borrowref",
+            SemanticsMask.Rc => "rc",
+            SemanticsMask.Arc => "arc",
+            SemanticsMask.Unsafe => "unsafe",
+            SemanticsMask.Value => "value",
+            SemanticsMask.Reference => "reference",
+            SemanticsMask.Owning => "owning",
+            _ => string.Empty,
+        };
+
+    /// <summary>
     /// Converts a concrete semantics kind to its corresponding single-bit mask.
     /// </summary>
     /// <param name="kind">The semantics kind.</param>

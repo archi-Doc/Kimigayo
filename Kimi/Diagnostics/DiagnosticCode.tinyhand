@@ -56,6 +56,9 @@
   + Name="InvalidReferenceSyntax_Kd"
     Message="Reference form &{0} is invalid"
 
+  + Name="InvalidSemanticsConstraint_Kd"
+    Message="'{0}' is not a valid semantics constraint"
+
   + Name="InvalidUnicodeEscape_Kd"
     Message="The Unicode escape sequence must have the form '\\u(...)' and contain one to six hexadecimal digits"
 

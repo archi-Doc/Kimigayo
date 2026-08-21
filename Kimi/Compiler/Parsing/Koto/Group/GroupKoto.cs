@@ -44,6 +44,12 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         _ => TokenKind.Group,
     };
 
+    [IgnoreMember]
+    public List<TypeSemanticsKoto> GenericArguments { get; } = [];
+
+    [IgnoreMember]
+    public List<IsKoto> TypeConstraints { get; } = [];
+
     [Key(5)]
     protected List<Koto> KotoList { get; set; } = [];
 
@@ -73,6 +79,21 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         koto.Parent = this;
     }
 
+    public void AddGenericArguments(IEnumerable<TypeSemanticsKoto> genericArguments)
+    {
+        foreach (var argument in genericArguments)
+        {
+            this.GenericArguments.Add(argument);
+            argument.Parent = this;
+        }
+    }
+
+    public void AddTypeConstraint(IsKoto constraint)
+    {
+        this.TypeConstraints.Add(constraint);
+        constraint.Parent = this;
+    }
+
     public override string ToString()
     {
         if (this.IsRoot)
@@ -100,6 +121,22 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         builder.Append(this.TokenKind.ToText());
         builder.Append(' ');
         builder.Append(this.Name);
+
+        if (this.GenericArguments.Count > 0)
+        {
+            builder.Append('<');
+            for (var i = 0; i < this.GenericArguments.Count; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                this.GenericArguments[i].WriteTo(ref builder);
+            }
+
+            builder.Append('>');
+        }
     }
 
     public void UnparseToRoot(ref IndentedStringBuilder builder)
@@ -118,6 +155,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
     public void Parse(ref TokenReader reader)
     {
+        var acceptsTypeConstraints = true;
         while (reader.CanRead)
         {
             Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
@@ -125,6 +163,19 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             {
                 return;
             }
+
+            if (acceptsTypeConstraints && Parser.IsTypeConstraintStart(ref reader))
+            {
+                var constraint = Parser.ParseTypeConstraint(ref reader);
+                if (constraint is not null)
+                {
+                    this.AddTypeConstraint(constraint);
+                }
+
+                continue;
+            }
+
+            acceptsTypeConstraints = false;
 
             var token = reader.CurrentToken;
             var tokenKind = token.Kind;
@@ -189,6 +240,11 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
                 var state = reader.TakeContext();
                 var groupKoto = this.GetOrAddGroup(r.Name, tokenKind, state, token.Span);
+                if (r.GenericArguments is not null)
+                {
+                    groupKoto.AddGenericArguments(r.GenericArguments);
+                }
+
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.Advance();
@@ -207,9 +263,14 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
                 var state = reader.TakeContext();
                 var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, tokenKind, state, token.Span);
-                if (r.List is not null)
+                if (r.GenericArguments is not null)
                 {
-                    structKoto.BaseList.AddRange(r.List);
+                    structKoto.AddGenericArguments(r.GenericArguments);
+                }
+
+                if (r.BaseList is not null)
+                {
+                    structKoto.BaseList.AddRange(r.BaseList);
                 }
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
@@ -271,6 +332,8 @@ NextToken:
     {
         this.KotoList.Clear(); // TODO
         this.IdentifierToGroupKoto.Clear(); // TODO
+        this.GenericArguments.Clear();
+        this.TypeConstraints.Clear();
     }
 
     public void UnparseAll(ref IndentedStringBuilder builder)
@@ -331,7 +394,7 @@ NextToken:
     {
         var groupDeclared = false;
 
-        if ((!this.IsRoot && this.KotoList.Count > 0)
+        if ((!this.IsRoot && (this.KotoList.Count > 0 || this.TypeConstraints.Count > 0))
             || this.Modifier != 0)
         {
             builder.EnsureTrailingBlankLine();
@@ -350,6 +413,20 @@ NextToken:
             }
 
             groupDeclared = true;
+        }
+
+        if (this.TypeConstraints.Count > 0)
+        {
+            foreach (var constraint in this.TypeConstraints)
+            {
+                constraint.WriteTo(ref builder);
+                builder.AppendLine();
+            }
+
+            if (this.KotoList.Count > 0)
+            {
+                builder.AppendLine();
+            }
         }
 
         if (this.KotoList.Count > 0)

@@ -34,11 +34,14 @@ public sealed partial class StructKoto : GroupKoto
         if (this.BaseList.Count != 0)
         {
             builder.Append(": ");
-
-            foreach (var x in this.BaseList)
+            for (var i = 0; i < this.BaseList.Count; i++)
             {
-                builder.Append(x);
-                builder.Append(", ");
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                builder.Append(this.BaseList[i]);
             }
         }
     }

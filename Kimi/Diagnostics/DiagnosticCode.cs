@@ -26,6 +26,7 @@ public enum DiagnosticCode
     InvalidIndentation_Kd,
     InvalidNumericLiteral_Kd,
     InvalidReferenceSyntax_Kd,
+    InvalidSemanticsConstraint_Kd,
     InvalidUnicodeEscape_Kd,
     InvalidUnicodeScalar_Kd,
     IntegerOverflow_Kd,
