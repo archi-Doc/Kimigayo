@@ -41,46 +41,46 @@ public static partial class TokenHelper
         Set(TokenKind.Invalid, false, string.Empty);
 
         // Keywords (Primitive types)
-        Set(TokenKind.Bool, true, "bool");
-        Set(TokenKind.Isize, true, "isize");
-        Set(TokenKind.Usize, true, "usize");
-        Set(TokenKind.I8, true, "i8");
-        Set(TokenKind.I16, true, "i16");
-        Set(TokenKind.I32, true, "i32");
-        Set(TokenKind.I64, true, "i64");
-        Set(TokenKind.I128, true, "i128");
-        Set(TokenKind.U8, true, "u8");
-        Set(TokenKind.U16, true, "u16");
-        Set(TokenKind.U32, true, "u32");
-        Set(TokenKind.U64, true, "u64");
-        Set(TokenKind.U128, true, "u128");
-        Set(TokenKind.F32, true, "f32");
-        Set(TokenKind.F64, true, "f64");
-        Set(TokenKind.String, true, "string");
+        Set(TokenKind.Bool, true, Constants.BoolKeyword);
+        Set(TokenKind.Isize, true, Constants.IsizeKeyword);
+        Set(TokenKind.Usize, true, Constants.UsizeKeyword);
+        Set(TokenKind.I8, true, Constants.I8Keyword);
+        Set(TokenKind.I16, true, Constants.I16Keyword);
+        Set(TokenKind.I32, true, Constants.I32Keyword);
+        Set(TokenKind.I64, true, Constants.I64Keyword);
+        Set(TokenKind.I128, true, Constants.I128Keyword);
+        Set(TokenKind.U8, true, Constants.U8Keyword);
+        Set(TokenKind.U16, true, Constants.U16Keyword);
+        Set(TokenKind.U32, true, Constants.U32Keyword);
+        Set(TokenKind.U64, true, Constants.U64Keyword);
+        Set(TokenKind.U128, true, Constants.U128Keyword);
+        Set(TokenKind.F32, true, Constants.F32Keyword);
+        Set(TokenKind.F64, true, Constants.F64Keyword);
+        Set(TokenKind.String, true, Constants.StringKeyword);
 
         // Keywords
-        Set(TokenKind.True, true, "true");
-        Set(TokenKind.False, true, "false");
-        Set(TokenKind.Let, true, "let");
-        Set(TokenKind.Var, true, "var");
-        Set(TokenKind.Func, true, "func");
+        Set(TokenKind.True, true, Constants.TrueKeyword);
+        Set(TokenKind.False, true, Constants.FalseKeyword);
+        Set(TokenKind.Let, true, Constants.LetKeyword);
+        Set(TokenKind.Var, true, Constants.VarKeyword);
+        Set(TokenKind.Func, true, Constants.FuncKeyword);
 
         // Expression keyword
-        Set(TokenKind.If, true, "if");
-        Set(TokenKind.Else, true, "else");
+        Set(TokenKind.If, true, Constants.IfKeyword);
+        Set(TokenKind.Else, true, Constants.ElseKeyword);
         // Set(TokenKind.Block, true, "block");
-        Set(TokenKind.As, true, "as");
-        Set(TokenKind.Is, true, "is");
-        Set(TokenKind.Not, true, "not");
-        Set(TokenKind.And, true, "and");
-        Set(TokenKind.Or, true, "or");
-        Set(TokenKind.For, true, "for");
-        Set(TokenKind.Loop, true, "loop");
-        Set(TokenKind.Match, true, "match");
-        Set(TokenKind.Return, true, "return");
-        Set(TokenKind.Break, true, "break");
-        Set(TokenKind.Continue, true, "continue");
-        Set(TokenKind.Yield, true, "yield");
+        Set(TokenKind.As, true, Constants.AsKeyword);
+        Set(TokenKind.Is, true, Constants.IsKeyword);
+        Set(TokenKind.Not, true, Constants.NotKeyword);
+        Set(TokenKind.And, true, Constants.AndKeyword);
+        Set(TokenKind.Or, true, Constants.OrKeyword);
+        Set(TokenKind.For, true, Constants.ForKeyword);
+        Set(TokenKind.Loop, true, Constants.LoopKeyword);
+        Set(TokenKind.Match, true, Constants.MatchKeyword);
+        Set(TokenKind.Return, true, Constants.ReturnKeyword);
+        Set(TokenKind.Break, true, Constants.BreakKeyword);
+        Set(TokenKind.Continue, true, Constants.ContinueKeyword);
+        Set(TokenKind.Yield, true, Constants.YieldKeyword);
 
         // Contextual keyword
         Set(TokenKind.Alias, true, Constants.AliasKeyword);

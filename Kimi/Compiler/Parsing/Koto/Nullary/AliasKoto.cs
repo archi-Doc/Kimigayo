@@ -21,7 +21,7 @@ public sealed partial class AliasKoto : Koto
     public override bool IsToplevel => true;
 
     public override string ToString()
-        => $"alias {string.Join(Constants.DotChar, this.QualifiedName)}";
+        => $"{Constants.AliasKeyword} {string.Join(Constants.DotChar, this.QualifiedName)}";
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
@@ -30,7 +30,8 @@ public sealed partial class AliasKoto : Koto
             Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
         }
 
-        builder.Append("alias ");
+        builder.Append(Constants.AliasKeyword);
+        builder.AppendSpace();
         for (var i = 0; i < this.QualifiedName.Count; i++)
         {
             builder.Append(this.QualifiedName[i]);

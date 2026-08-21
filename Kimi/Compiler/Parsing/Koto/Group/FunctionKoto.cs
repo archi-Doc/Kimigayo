@@ -90,7 +90,8 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
         }
 
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
-        builder.Append("func ");
+        builder.Append(Constants.FuncKeyword);
+        builder.AppendSpace();
         builder.Append(this.Name);
 
         if (this.GenericArguments.Count > 0)

@@ -63,9 +63,6 @@
   + Name="InvalidSemanticsConstraint_Kd"
     Message="'{0}' is not a valid semantics constraint"
 
-  + Name="InvalidTypeConstraintSyntax_Kd"
-    Message="A type constraint must have the form 'identifier is condition'"
-
   + Name="InvalidUnicodeEscape_Kd"
     Message="The Unicode escape sequence must have the form '\\u(...)' and contain one to six hexadecimal digits"
 

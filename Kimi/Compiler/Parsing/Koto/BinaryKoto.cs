@@ -296,11 +296,11 @@ public partial class AsKoto : BinaryKoto
     }
 
     public override string ToString()
-        => $"{this.Left} as {this.Right}";
+        => $"{this.Left} {Constants.AsKeyword} {this.Right}";
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.WriteBinaryKoto(ref builder, " as ");
+        this.WriteBinaryKoto(ref builder, " " + Constants.AsKeyword + " ");
     }
 }
 
@@ -315,11 +315,11 @@ public partial class IsKoto : BinaryKoto
     }
 
     public override string ToString()
-        => $"{this.Left} is {this.Right}";
+        => $"{this.Left} {Constants.IsKeyword} {this.Right}";
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.WriteBinaryKoto(ref builder, " is ");
+        this.WriteBinaryKoto(ref builder, " " + Constants.IsKeyword + " ");
     }
 }
 
@@ -429,11 +429,11 @@ public partial class AndKoto : BinaryKoto
     }
 
     public override string ToString()
-        => $"{this.Left} and {this.Right}";
+        => $"{this.Left} {Constants.AndKeyword} {this.Right}";
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.WriteBinaryKoto(ref builder, " and ");
+        this.WriteBinaryKoto(ref builder, " " + Constants.AndKeyword + " ");
     }
 }
 
@@ -448,11 +448,11 @@ public partial class OrKoto : BinaryKoto
     }
 
     public override string ToString()
-        => $"{this.Left} or {this.Right}";
+        => $"{this.Left} {Constants.OrKeyword} {this.Right}";
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.WriteBinaryKoto(ref builder, " or ");
+        this.WriteBinaryKoto(ref builder, " " + Constants.OrKeyword + " ");
     }
 }
 

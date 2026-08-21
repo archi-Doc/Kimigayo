@@ -51,9 +51,9 @@ public static class SemanticsMaskHelper
 
         mask = text.Length switch
         {
-            5 when text.SequenceEqual("value") => SemanticsMask.Value,
-            6 when text.SequenceEqual("owning") => SemanticsMask.Owning,
-            9 when text.SequenceEqual("reference") => SemanticsMask.Reference,
+            5 when text.SequenceEqual(Constants.ValueKeyword) => SemanticsMask.Value,
+            6 when text.SequenceEqual(Constants.OwningKeyword) => SemanticsMask.Owning,
+            9 when text.SequenceEqual(Constants.ReferenceKeyword) => SemanticsMask.Reference,
             _ => SemanticsMask.None,
         };
 
@@ -68,17 +68,17 @@ public static class SemanticsMaskHelper
     public static string ToText(this SemanticsMask mask)
         => mask switch
         {
-            SemanticsMask.Owner => "owner",
-            SemanticsMask.Borrow => "borrow",
-            SemanticsMask.Stack => "stack",
-            SemanticsMask.OwnerRef => "ownerref",
-            SemanticsMask.BorrowRef => "borrowref",
-            SemanticsMask.Rc => "rc",
-            SemanticsMask.Arc => "arc",
-            SemanticsMask.Unsafe => "unsafe",
-            SemanticsMask.Value => "value",
-            SemanticsMask.Reference => "reference",
-            SemanticsMask.Owning => "owning",
+            SemanticsMask.Owner => Constants.OwnerKeyword,
+            SemanticsMask.Borrow => Constants.BorrowKeyword,
+            SemanticsMask.Stack => Constants.StackKeyword,
+            SemanticsMask.OwnerRef => Constants.OwnerRefKeyword,
+            SemanticsMask.BorrowRef => Constants.BorrowRefKeyword,
+            SemanticsMask.Rc => Constants.RcKeyword,
+            SemanticsMask.Arc => Constants.ArcKeyword,
+            SemanticsMask.Unsafe => Constants.UnsafeKeyword,
+            SemanticsMask.Value => Constants.ValueKeyword,
+            SemanticsMask.Reference => Constants.ReferenceKeyword,
+            SemanticsMask.Owning => Constants.OwningKeyword,
             _ => string.Empty,
         };
 

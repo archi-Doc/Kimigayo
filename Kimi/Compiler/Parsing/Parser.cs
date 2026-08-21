@@ -467,12 +467,12 @@ Exit:
         var acc = kind.ExtractAccessibilityModifiers();
         var accText = acc switch
         {
-            ModifierKind.Public => "public",
-            ModifierKind.Protected => "protected",
-            ModifierKind.Private => "private",
-            ModifierKind.Internal => "internal",
-            ModifierKind.ProtectedOrInternal => "protected_or_internal",
-            ModifierKind.ProtectedAndInternal => "protected_and_internal",
+            ModifierKind.Public => Constants.PublicKeyword,
+            ModifierKind.Protected => Constants.ProtectedKeyword,
+            ModifierKind.Private => Constants.PrivateKeyword,
+            ModifierKind.Internal => Constants.InternalKeyword,
+            ModifierKind.ProtectedOrInternal => Constants.ProtectedOrInternalKeyword,
+            ModifierKind.ProtectedAndInternal => Constants.ProtectedAndInternalKeyword,
             _ => string.Empty,
         };
 
@@ -488,11 +488,13 @@ Exit:
             builder.EnsureTrailingSpace();
             if (kind.HasFlag(ModifierKind.Open))
             {// "public static open "
-                builder.Append("static open");
+                builder.Append(Constants.StaticKeyword);
+                builder.AppendSpace();
+                builder.Append(Constants.OpenKeyword);
             }
             else
             {// "public static "
-                builder.Append("static");
+                builder.Append(Constants.StaticKeyword);
             }
         }
         else
@@ -500,7 +502,7 @@ Exit:
             if (kind.HasFlag(ModifierKind.Open))
             {// public open "
                 builder.EnsureTrailingSpace();
-                builder.Append("open");
+                builder.Append(Constants.OpenKeyword);
             }
             else
             {// "public "
@@ -516,12 +518,12 @@ Exit:
         var acc = kind.ExtractAccessibilityModifiers();
         var accText = acc switch
         {
-            ModifierKind.Public => "public",
-            ModifierKind.Protected => "protected",
-            ModifierKind.Private => "private",
-            ModifierKind.Internal => "internal",
-            ModifierKind.ProtectedOrInternal => "protected_or_internal",
-            ModifierKind.ProtectedAndInternal => "protected_and_internal",
+            ModifierKind.Public => Constants.PublicKeyword,
+            ModifierKind.Protected => Constants.ProtectedKeyword,
+            ModifierKind.Private => Constants.PrivateKeyword,
+            ModifierKind.Internal => Constants.InternalKeyword,
+            ModifierKind.ProtectedOrInternal => Constants.ProtectedOrInternalKeyword,
+            ModifierKind.ProtectedAndInternal => Constants.ProtectedAndInternalKeyword,
             _ => string.Empty,
         };
 
@@ -531,18 +533,18 @@ Exit:
             {// "public static "
                 if (kind.HasFlag(ModifierKind.Open))
                 {// "public static open "
-                    return $"{accText} static open ";
+                    return $"{accText} {Constants.StaticKeyword} {Constants.OpenKeyword} ";
                 }
                 else
                 {// "public static "
-                    return $"{accText} static ";
+                    return $"{accText} {Constants.StaticKeyword} ";
                 }
             }
             else
             {// "public "
                 if (kind.HasFlag(ModifierKind.Open))
                 {// public open "
-                    return $"{accText} open ";
+                    return $"{accText} {Constants.OpenKeyword} ";
                 }
                 else
                 {// "public "
@@ -556,18 +558,18 @@ Exit:
             {// "public static"
                 if (kind.HasFlag(ModifierKind.Open))
                 {// "public static open"
-                    return $"{accText} static open";
+                    return $"{accText} {Constants.StaticKeyword} {Constants.OpenKeyword}";
                 }
                 else
                 {// "public static"
-                    return $"{accText} static";
+                    return $"{accText} {Constants.StaticKeyword}";
                 }
             }
             else
             {// "public"
                 if (kind.HasFlag(ModifierKind.Open))
                 {// public open"
-                    return $"{accText} open";
+                    return $"{accText} {Constants.OpenKeyword}";
                 }
                 else
                 {// "public"
@@ -826,7 +828,7 @@ Exit:
             return null;
         }
 
-        var parsesSemantics = subject.IdentifierName.AsSpan().SequenceEqual("semantics");
+        var parsesSemantics = subject.IdentifierName.AsSpan().SequenceEqual(Constants.SemanticsKeyword);
         var condition = ParseCondition(ref reader, parsesSemantics);
         var constraint = new IsKoto(ref reader, isRange, subject, condition);
 

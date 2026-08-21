@@ -296,22 +296,26 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void DiagnosesIdentifierWithoutIsAndContinuesOnNextLine()
+    public void ParsesIdentifierExpressionInTypeBody()
     {
         var source = """
             struct A
-                Invalid constraint
+                Field1.Method2()
                 var field: i32
             """;
 
         var (root, diagnostics) = Parse(source);
 
-        var diagnostic = Assert.Single(diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.InvalidTypeConstraintSyntax_Kd), diagnostic.Entry.Name);
-        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Entry.Severity);
-
+        Assert.Empty(diagnostics);
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
-        Assert.IsType<FieldKoto>(Assert.Single(GetChildren(type)));
+        Assert.Collection(
+            GetChildren(type),
+            x =>
+            {
+                var invocation = Assert.IsType<InvocationKoto>(x);
+                Assert.IsType<MemberAccessKoto>(invocation.Method);
+            },
+            x => Assert.IsType<FieldKoto>(x));
     }
 
     [Theory]

@@ -286,11 +286,12 @@ public partial class NotKoto : UnaryKoto
     }
 
     public override string ToString()
-        => $"not {this.Operand.ToString()}";
+        => $"{Constants.NotKeyword} {this.Operand.ToString()}";
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append("not ");
+        builder.Append(Constants.NotKeyword);
+        builder.AppendSpace();
         builder.Append(this.Operand.ToString());
     }
 }

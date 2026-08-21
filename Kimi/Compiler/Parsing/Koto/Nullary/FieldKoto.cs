@@ -31,7 +31,7 @@ public partial class FieldKoto : Koto
     [IgnoreMember]
     private Koto? typeKoto;
 
-    public string VariableText => this.VariableKind == VariableKind.Var ? "var" : "let";
+    public string VariableText => this.VariableKind == VariableKind.Var ? Constants.VarKeyword : Constants.LetKeyword;
 
     public FieldKoto(ref TokenReader reader, ref Token token, IdentifierNameKoto nameKoto, Koto? typeKoto, Koto? initializerKoto)
         : base(ref reader, token.Span)

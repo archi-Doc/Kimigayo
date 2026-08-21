@@ -39,14 +39,14 @@ public static class CompilerHelper
     {
         kind = text.Length switch
         {
-            2 when text.SequenceEqual("rc") => SemanticsKind.Rc,
-            3 when text.SequenceEqual("arc") => SemanticsKind.Arc,
-            5 when text.SequenceEqual("owner") => SemanticsKind.Owner,
-            5 when text.SequenceEqual("stack") => SemanticsKind.Stack,
-            6 when text.SequenceEqual("borrow") => SemanticsKind.Borrow,
-            6 when text.SequenceEqual("unsafe") => SemanticsKind.Unsafe,
-            8 when text.SequenceEqual("ownerref") => SemanticsKind.OwnerRef,
-            9 when text.SequenceEqual("borrowref") => SemanticsKind.BorrowRef,
+            2 when text.SequenceEqual(Constants.RcKeyword) => SemanticsKind.Rc,
+            3 when text.SequenceEqual(Constants.ArcKeyword) => SemanticsKind.Arc,
+            5 when text.SequenceEqual(Constants.OwnerKeyword) => SemanticsKind.Owner,
+            5 when text.SequenceEqual(Constants.StackKeyword) => SemanticsKind.Stack,
+            6 when text.SequenceEqual(Constants.BorrowKeyword) => SemanticsKind.Borrow,
+            6 when text.SequenceEqual(Constants.UnsafeKeyword) => SemanticsKind.Unsafe,
+            8 when text.SequenceEqual(Constants.OwnerRefKeyword) => SemanticsKind.OwnerRef,
+            9 when text.SequenceEqual(Constants.BorrowRefKeyword) => SemanticsKind.BorrowRef,
             _ => SemanticsKind.Parameter,
         };
 
@@ -59,14 +59,14 @@ public static class CompilerHelper
     public static string ToText(this SemanticsKind kind)
         => kind switch
         {
-            SemanticsKind.Owner => "owner",
-            SemanticsKind.Borrow => "borrow",
-            SemanticsKind.Stack => "stack",
-            SemanticsKind.OwnerRef => "ownerref",
-            SemanticsKind.BorrowRef => "borrowref",
-            SemanticsKind.Rc => "rc",
-            SemanticsKind.Arc => "arc",
-            SemanticsKind.Unsafe => "unsafe",
+            SemanticsKind.Owner => Constants.OwnerKeyword,
+            SemanticsKind.Borrow => Constants.BorrowKeyword,
+            SemanticsKind.Stack => Constants.StackKeyword,
+            SemanticsKind.OwnerRef => Constants.OwnerRefKeyword,
+            SemanticsKind.BorrowRef => Constants.BorrowRefKeyword,
+            SemanticsKind.Rc => Constants.RcKeyword,
+            SemanticsKind.Arc => Constants.ArcKeyword,
+            SemanticsKind.Unsafe => Constants.UnsafeKeyword,
             _ => string.Empty,
         };
 }
