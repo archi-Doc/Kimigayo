@@ -333,6 +333,37 @@ Loop:
     }
 
     /// <summary>
+    /// Advances to the start of the next block and reports at most one diagnostic
+    /// for non-separator tokens encountered along the way.
+    /// </summary>
+    /// <param name="code">The diagnostic reported for the first trailing token.</param>
+    /// <returns>
+    /// <see cref="TokenKind.StartBlock"/> when a block was found;
+    /// otherwise, the default value.
+    /// </returns>
+    public TokenKind SkipUntilStartBlock(DiagnosticCode code = DiagnosticCode.UnexpectedTrailingToken_Kd)
+    {
+        while (this.CanRead)
+        {
+            var tokenKind = this.currentToken.Kind;
+            if (tokenKind == TokenKind.StartBlock)
+            {
+                return tokenKind;
+            }
+
+            if (tokenKind != TokenKind.Separator && code != 0)
+            {
+                this.AddDiagnostic(code, this.GetSpan(this.currentToken).ToString());
+                code = 0;
+            }
+
+            this.AdvanceOne();
+        }
+
+        return default;
+    }
+
+    /// <summary>
     /// Skips the current block while respecting nested blocks.
     /// </summary>
     /// <param name="isRootGroup">

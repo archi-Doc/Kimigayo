@@ -150,7 +150,7 @@ public class ParserRegressionTest
     public void ParsesHierarchicalTypeConstraints()
     {
         var source = """
-            public open struct A<s/T>: StructB, InterfaceA
+            public open struct A<s/T>
                 Self is StructB and InterfaceA
                 semantics is not value and (owning or borrow)
                 s is reference
@@ -163,9 +163,6 @@ public class ParserRegressionTest
 
         Assert.Empty(diagnostics);
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
-        Assert.Equal(2, type.BaseList.Count);
-        Assert.Equal("StructB", type.BaseList[0]);
-        Assert.Equal("InterfaceA", type.BaseList[1]);
 
         var genericArgument = Assert.Single(type.GenericArguments);
         Assert.Equal("s", genericArgument.SemanticsParameter);
@@ -206,13 +203,31 @@ public class ParserRegressionTest
         {
             root.UnparseAll(ref builder);
             var text = builder.ToString();
-            Assert.Contains("public open struct A<s/T>: StructB, InterfaceA", text);
+            Assert.Contains("public open struct A<s/T>", text);
+            Assert.Contains("Self is StructB and InterfaceA", text);
             Assert.Contains("semantics is not value and (owning or borrow)", text);
         }
         finally
         {
             builder.Dispose();
         }
+    }
+
+    [Fact]
+    public void DiagnosesGroupDeclarationTrailingSyntaxOnce()
+    {
+        var source = """
+            struct A: InterfaceA, InterfaceB
+                Self is InterfaceA
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnexpectedTrailingToken_Kd), diagnostic.Entry.Name);
+
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
+        Assert.Single(type.TypeConstraints);
     }
 
     [Theory]

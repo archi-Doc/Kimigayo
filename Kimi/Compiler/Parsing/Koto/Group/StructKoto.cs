@@ -10,13 +10,6 @@ public sealed partial class StructKoto : GroupKoto
 {
     public override KotoKind Akind => KotoKind.Struct;
 
-    #region FieldAndProperty
-
-    [IgnoreMember]
-    public List<string> BaseList { get; } = [];
-
-    #endregion
-
     public StructKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
@@ -25,24 +18,5 @@ public sealed partial class StructKoto : GroupKoto
     internal StructKoto(CodeContext codeContext, TokenContext state, SourceSpan range)
         : base(codeContext, state, range)
     {
-    }
-
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {// public group A: @B
-        base.WriteTo(ref builder);
-
-        if (this.BaseList.Count != 0)
-        {
-            builder.Append(": ");
-            for (var i = 0; i < this.BaseList.Count; i++)
-            {
-                if (i > 0)
-                {
-                    builder.AppendCommaAndSpace();
-                }
-
-                builder.Append(this.BaseList[i]);
-            }
-        }
     }
 }

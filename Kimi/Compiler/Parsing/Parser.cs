@@ -406,25 +406,11 @@ Exit:
             genericArguments = ParseGenericArguments(ref reader);
         }
 
-        while (reader.CanRead)
-        {
-            if (reader.CurrentTokenKind == TokenKind.StartBlock)
-            {
-                goto Exit;
-            }
-
-            if (reader.CurrentTokenKind == TokenKind.Separator)
-            {
-                reader.Advance();
-                continue;
-            }
-
-            reader.AddDiagnostic(DiagnosticCode.InvalidIdentifier_Kd, reader.GetSpan(reader.CurrentToken).ToString());
-            reader.Advance();
-        }
+        reader.SkipUntilStartBlock();
+        goto Exit;
 
 SkipAndExit:
-        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator, 0);
+        reader.SkipUntilStartBlock(0);
 
 Exit:
         return (name, genericArguments);
