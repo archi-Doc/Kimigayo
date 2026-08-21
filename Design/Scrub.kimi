@@ -1,8 +1,6 @@
 alias AliasB
 alias AliasC
 
-func find<s/T, owner/T2>(value?: T, in => collection: Collection<T>, using => comparer: (s/T, T) -> Bool) -> i32
-public func Main() -> ()
 var x: unsafe/Base.Map<String, Int>
 var count: i32 = #TestAtr 0
 let name: String = abc
@@ -15,8 +13,10 @@ var obj2 = T.new()
 var movedObj = obj
 var movedObj = obj@unsafe/T
 array.Add(movedObj)
+private func find<s/T, owner/T2>(value?: T, in => collection: Collection<T>, using => comparer: (s/T, T) -> Bool) -> i32
+public func Main() -> ()
 
-public open struct TestStruct<C>
+struct TestStruct<C>
     Self is A or B
     semantics is reference
     C is comparable

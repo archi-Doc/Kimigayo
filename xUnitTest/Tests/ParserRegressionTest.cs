@@ -230,6 +230,90 @@ public class ParserRegressionTest
         Assert.Single(type.TypeConstraints);
     }
 
+    [Fact]
+    public void ParsesOrderedTypeDeclarationsWithoutOrderWarning()
+    {
+        var source = """
+            struct Ordered
+                Self is Interface
+
+                struct Nested
+                    var nestedField: i32
+
+                var field: i32
+
+                func Method()
+                    return
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.DoesNotContain(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.DeclarationOrderWarning_Kd));
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("Ordered", TokenKind.Struct, default, default));
+        Assert.Single(type.TypeConstraints);
+        Assert.Collection(
+            GetChildren(type),
+            x => Assert.IsType<FieldKoto>(x),
+            x => Assert.IsType<FunctionKoto>(x));
+
+        var nested = Assert.IsType<StructKoto>(type.GetOrAddGroup("Nested", TokenKind.Struct, default, default));
+        Assert.IsType<FieldKoto>(Assert.Single(GetChildren(nested)));
+    }
+
+    [Fact]
+    public void WarnsForOutOfOrderTypeDeclarationsButParsesThem()
+    {
+        var source = """
+            struct Mixed
+                func Method()
+                    return
+
+                var field: i32
+
+                struct Nested
+                    var nestedField: i32
+
+                Self is Interface
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        var warnings = diagnostics
+            .Where(x => x.Entry.Name == nameof(DiagnosticCode.DeclarationOrderWarning_Kd))
+            .ToArray();
+        Assert.Equal(3, warnings.Length);
+        Assert.All(warnings, x => Assert.Equal(DiagnosticSeverity.Warning, x.Entry.Severity));
+
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("Mixed", TokenKind.Struct, default, default));
+        Assert.Single(type.TypeConstraints);
+        Assert.Collection(
+            GetChildren(type),
+            x => Assert.IsType<FunctionKoto>(x),
+            x => Assert.IsType<FieldKoto>(x));
+
+        var nested = Assert.IsType<StructKoto>(type.GetOrAddGroup("Nested", TokenKind.Struct, default, default));
+        Assert.IsType<FieldKoto>(Assert.Single(GetChildren(nested)));
+    }
+
+    [Fact]
+    public void DiagnosesIdentifierWithoutIsAndContinuesOnNextLine()
+    {
+        var source = """
+            struct A
+                Invalid constraint
+                var field: i32
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.InvalidTypeConstraintSyntax_Kd), diagnostic.Entry.Name);
+        Assert.Equal(DiagnosticSeverity.Error, diagnostic.Entry.Severity);
+
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
+        Assert.IsType<FieldKoto>(Assert.Single(GetChildren(type)));
+    }
+
     [Theory]
     [InlineData("owner", SemanticsMask.Owner)]
     [InlineData("borrow", SemanticsMask.Borrow)]

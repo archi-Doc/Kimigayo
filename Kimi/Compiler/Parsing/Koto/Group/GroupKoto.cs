@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Reflection.Metadata;
+using System.Runtime.CompilerServices;
 using Arc.Collections;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
@@ -14,6 +15,15 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public partial class GroupKoto : IdentifiableKoto, ITokenParser
 {
+    private enum DeclarationOrder : byte
+    {
+        None,
+        TypeConstraint,
+        NestedType,
+        Field,
+        Function,
+    }
+
     public override KotoKind Akind => KotoKind.Group;
 
     // public static readonly TokenState DefaultState = new(default, ModifierKind.Public);
@@ -155,7 +165,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
     public void Parse(ref TokenReader reader)
     {
-        var acceptsTypeConstraints = true;
+        var declarationOrder = DeclarationOrder.None;
         while (reader.CanRead)
         {
             Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
@@ -164,8 +174,9 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 return;
             }
 
-            if (acceptsTypeConstraints && Parser.IsTypeConstraintStart(ref reader))
+            if (Parser.IsTypeConstraintStart(ref reader))
             {
+                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.TypeConstraint);
                 var constraint = Parser.ParseTypeConstraint(ref reader);
                 if (constraint is not null)
                 {
@@ -174,8 +185,6 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
                 continue;
             }
-
-            acceptsTypeConstraints = false;
 
             var token = reader.CurrentToken;
             var tokenKind = token.Kind;
@@ -197,9 +206,9 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 reader.Advance();
                 break;
             }
-            else if (tokenKind == TokenKind.Let ||
-                tokenKind == TokenKind.Var)
+            else if (tokenKind == TokenKind.Let || tokenKind == TokenKind.Var)
             {// let a = 1, var b = 2
+                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Field);
                 reader.Advance();
                 var fieldKoto = Parser.ParseField(ref reader, ref token);
                 if (fieldKoto is not null)
@@ -228,8 +237,9 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
                 nextParser = groupKoto;
             }
-            else if (tokenKind == TokenKind.Group)
-            {// group
+            else if (tokenKind is TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract)
+            {// Nested type declaration
+                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.NestedType);
                 reader.Advance();
                 var r = Parser.ParseGroupDeclaration(ref reader);
                 if (reader.IsExcluded)
@@ -251,31 +261,9 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                     nextParser = groupKoto;
                 }
             }
-            else if (tokenKind == TokenKind.Struct)
-            {// struct
-                reader.Advance();
-                var r = Parser.ParseGroupDeclaration(ref reader);
-                if (reader.IsExcluded)
-                {
-                    reader.SkipCurrentBlock(false);
-                    goto NextToken;
-                }
-
-                var state = reader.TakeContext();
-                var structKoto = (StructKoto)this.GetOrAddGroup(r.Name, tokenKind, state, token.Span);
-                if (r.GenericArguments is not null)
-                {
-                    structKoto.AddGenericArguments(r.GenericArguments);
-                }
-
-                if (reader.CurrentTokenKind == TokenKind.StartBlock)
-                {
-                    reader.Advance();
-                    nextParser = structKoto;
-                }
-            }
             else if (tokenKind == TokenKind.Func)
-            {// public func Main() -> ()
+            {// Function declaration
+                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Function);
                 reader.Advance();
                 var functionKoto = Parser.ParseFuncDeclaration(ref reader);
                 if (functionKoto is not null)
@@ -353,6 +341,20 @@ NextToken:
             var segment = text[..index];
             GetOrAddGroup(ref group, segment, TokenKind.Group, default, default);
             text = text[(index + 1)..];
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void CheckDeclarationOrder(ref TokenReader reader, ref DeclarationOrder current, DeclarationOrder next)
+    {
+        if (next < current)
+        {
+            reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DeclarationOrderWarning_Kd);
+            current = next;
+        }
+        else
+        {
+            current = next;
         }
     }
 
