@@ -1,3 +1,27 @@
+## Type Semantics
+
+Value
+    Owner       T, owner/T
+
+Value Borrow
+    SharedRef   ref/T
+    ExclusiveRef uniq/T
+
+Object
+    Owner       obj/T
+    Rc          rc/T
+    Arc         arc/T
+
+Object Borrow
+    SharedRef   objref/T
+    ExclusiveRef objuniq/T
+
+Unsafe
+    Pointer     unsafe/T
+
+The design is mostly finished, and once again the best time has come to an end.
+
+
 ## Central Dogma (Grand line)
 Source -> Lexing: Token/Tokenizer -> Parsing: Koto/Parser -> Resolution/Generation: LVVM IR/BC
 それぞれSerialize可能。
