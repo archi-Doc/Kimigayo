@@ -26,4 +26,4 @@ public open struct TestStruct<s/C, D>
     #Test1
     public static var #Test2 x: i32 = #One 1
     let pi = 1.2
-    buffer
+    private let buffer: ref/Array<i32>
