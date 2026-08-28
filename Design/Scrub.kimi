@@ -23,4 +23,4 @@ struct TestStruct<C>
 
     #Test1
     public static var #Test2 x: i32 = #One 1
-    private let pi = 1.2
+    let pi = 1.2

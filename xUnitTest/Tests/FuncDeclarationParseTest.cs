@@ -20,16 +20,16 @@ public class FuncDeclarationParseTest
             private func find<s/T, T2>(
                 value?: T,
                 owned: owner/T,
-                borrowed: borrow/T,
-                stacked: stack/T,
-                ownerReference: ownerref/T,
-                borrowReference: /T,
-                longBorrowReference: borrowref/T,
-                shared: rc/T,
-                atomic: arc/T,
+                sharedValue: ref/T,
+                exclusiveValue: uniq/T,
+                object: obj/T,
+                sharedObject: rc/T,
+                atomicObject: arc/T,
+                sharedObjectBorrow: objref/T,
+                exclusiveObjectBorrow: objuniq/T,
                 raw: unsafe/T,
                 in => collection: Collection<s/T>,
-                using => comparer: (s/T, T2) -> borrowref/Bool
+                using => comparer: (s/T, T2) -> ref/Bool
                 ) -> owner/i32
                 return 0
 
@@ -49,7 +49,7 @@ public class FuncDeclarationParseTest
             kotonoha.RootKoto.UnparseAll(ref builder);
             var text = builder.ToString();
             Assert.Contains(
-                "private func find<s/T, T2>(value?: T, owned: owner/T, borrowed: borrow/T, stacked: stack/T, ownerReference: ownerref/T, borrowReference: borrowref/T, longBorrowReference: borrowref/T, shared: rc/T, atomic: arc/T, raw: unsafe/T, in => collection: Collection<s/T>, using => comparer: (s/T, T2) -> borrowref/Bool) -> owner/i32",
+                "private func find<s/T, T2>(value?: T, owned: owner/T, sharedValue: ref/T, exclusiveValue: uniq/T, object: obj/T, sharedObject: rc/T, atomicObject: arc/T, sharedObjectBorrow: objref/T, exclusiveObjectBorrow: objuniq/T, raw: unsafe/T, in => collection: Collection<s/T>, using => comparer: (s/T, T2) -> ref/Bool) -> owner/i32",
                 text);
             Assert.Contains("public func Main() -> ()", text);
         }
@@ -61,19 +61,24 @@ public class FuncDeclarationParseTest
 
     [Theory]
     [InlineData("owner", SemanticsKind.Owner)]
-    [InlineData("borrow", SemanticsKind.Borrow)]
-    [InlineData("stack", SemanticsKind.Stack)]
-    [InlineData("ownerref", SemanticsKind.OwnerRef)]
-    [InlineData("borrowref", SemanticsKind.BorrowRef)]
+    [InlineData("ref", SemanticsKind.Ref)]
+    [InlineData("uniq", SemanticsKind.Uniq)]
+    [InlineData("obj", SemanticsKind.Obj)]
     [InlineData("rc", SemanticsKind.Rc)]
     [InlineData("arc", SemanticsKind.Arc)]
+    [InlineData("objref", SemanticsKind.ObjRef)]
+    [InlineData("objuniq", SemanticsKind.ObjUniq)]
     [InlineData("unsafe", SemanticsKind.Unsafe)]
     public void ClassifiesBuiltInSemantics(string text, SemanticsKind expected)
     {
         Assert.True(CompilerHelper.TryParse(text, out var actual));
         Assert.Equal(expected, actual);
-        Assert.Equal(expected <= SemanticsKind.Stack, actual.IsValue());
-        Assert.Equal(expected >= SemanticsKind.OwnerRef, actual.IsReference());
+        Assert.Equal(text, actual.ToText());
+        Assert.Equal(expected == SemanticsKind.Owner, actual.IsValue());
+        Assert.Equal(expected is >= SemanticsKind.Ref and <= SemanticsKind.Uniq, actual.IsValueBorrow());
+        Assert.Equal(expected is >= SemanticsKind.Obj and <= SemanticsKind.Arc, actual.IsObject());
+        Assert.Equal(expected is >= SemanticsKind.ObjRef and <= SemanticsKind.ObjUniq, actual.IsObjectBorrow());
+        Assert.Equal(expected != SemanticsKind.Owner, actual.IsReference());
     }
 
     [Fact]
@@ -82,17 +87,21 @@ public class FuncDeclarationParseTest
         Assert.False(CompilerHelper.TryParse("s", out var actual));
         Assert.Equal(SemanticsKind.Parameter, actual);
         Assert.False(actual.IsValue());
+        Assert.False(actual.IsValueBorrow());
+        Assert.False(actual.IsObject());
+        Assert.False(actual.IsObjectBorrow());
         Assert.False(actual.IsReference());
     }
 
     [Theory]
     [InlineData(SemanticsKind.Owner, SemanticsMask.Owner)]
-    [InlineData(SemanticsKind.Borrow, SemanticsMask.Borrow)]
-    [InlineData(SemanticsKind.Stack, SemanticsMask.Stack)]
-    [InlineData(SemanticsKind.OwnerRef, SemanticsMask.OwnerRef)]
-    [InlineData(SemanticsKind.BorrowRef, SemanticsMask.BorrowRef)]
+    [InlineData(SemanticsKind.Ref, SemanticsMask.Ref)]
+    [InlineData(SemanticsKind.Uniq, SemanticsMask.Uniq)]
+    [InlineData(SemanticsKind.Obj, SemanticsMask.Obj)]
     [InlineData(SemanticsKind.Rc, SemanticsMask.Rc)]
     [InlineData(SemanticsKind.Arc, SemanticsMask.Arc)]
+    [InlineData(SemanticsKind.ObjRef, SemanticsMask.ObjRef)]
+    [InlineData(SemanticsKind.ObjUniq, SemanticsMask.ObjUniq)]
     [InlineData(SemanticsKind.Unsafe, SemanticsMask.Unsafe)]
     public void ConvertsSemanticsKindToMask(SemanticsKind kind, SemanticsMask expected)
     {
@@ -104,25 +113,37 @@ public class FuncDeclarationParseTest
     public void ProvidesCompositeSemanticsMasks()
     {
         Assert.Equal(
-            SemanticsMask.Owner | SemanticsMask.Borrow | SemanticsMask.Stack,
-            SemanticsMask.Value);
+            SemanticsMask.Ref | SemanticsMask.Uniq,
+            SemanticsMask.ValueBorrow);
         Assert.Equal(
-            SemanticsMask.OwnerRef | SemanticsMask.BorrowRef | SemanticsMask.Rc | SemanticsMask.Arc | SemanticsMask.Unsafe,
+            SemanticsMask.Obj | SemanticsMask.Rc | SemanticsMask.Arc,
+            SemanticsMask.Object);
+        Assert.Equal(
+            SemanticsMask.ObjRef | SemanticsMask.ObjUniq,
+            SemanticsMask.ObjectBorrow);
+        Assert.Equal(
+            SemanticsMask.ValueBorrow | SemanticsMask.ObjectBorrow,
+            SemanticsMask.Borrow);
+        Assert.Equal(
+            SemanticsMask.Value | SemanticsMask.Object,
+            SemanticsMask.Owning);
+        Assert.Equal(
+            SemanticsMask.ValueBorrow | SemanticsMask.Object | SemanticsMask.ObjectBorrow | SemanticsMask.Unsafe,
             SemanticsMask.Reference);
         Assert.Equal(
-            SemanticsMask.Owner | SemanticsMask.OwnerRef | SemanticsMask.Rc | SemanticsMask.Arc | SemanticsMask.Unsafe,
-            SemanticsMask.Owning);
-        Assert.Equal(SemanticsMask.Value | SemanticsMask.Reference, SemanticsMask.All);
+            SemanticsMask.Value | SemanticsMask.ValueBorrow | SemanticsMask.Object | SemanticsMask.ObjectBorrow,
+            SemanticsMask.Safe);
+        Assert.Equal(SemanticsMask.Safe | SemanticsMask.Unsafe, SemanticsMask.All);
     }
 
     [Fact]
     public void MatchesPositiveAndNegatedSemanticsConstraints()
     {
-        var borrowed = SemanticsMask.Borrow | SemanticsMask.BorrowRef;
+        var borrowed = SemanticsMask.ValueBorrow;
 
-        Assert.True(borrowed.IsSatisfiedBy(SemanticsKind.Borrow));
+        Assert.True(borrowed.IsSatisfiedBy(SemanticsKind.Ref));
         Assert.False(borrowed.IsSatisfiedBy(SemanticsKind.Owner));
-        Assert.False(borrowed.IsSatisfiedBy(SemanticsKind.Borrow, isNegated: true));
+        Assert.False(borrowed.IsSatisfiedBy(SemanticsKind.Ref, isNegated: true));
         Assert.True(borrowed.IsSatisfiedBy(SemanticsKind.Owner, isNegated: true));
         Assert.False(borrowed.IsSatisfiedBy(SemanticsKind.Parameter));
         Assert.False(borrowed.IsSatisfiedBy(SemanticsKind.Parameter, isNegated: true));

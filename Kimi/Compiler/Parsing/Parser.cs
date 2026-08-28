@@ -735,12 +735,7 @@ Exit:
 
             reader.Advance();
 
-            if (token.Kind == TokenKind.Slash)
-            {// /T
-                semanticsKind = SemanticsKind.BorrowRef;
-                hasSemantics = true;
-            }
-            else if (token.Kind == TokenKind.Identifier &&
+            if (token.Kind == TokenKind.Identifier &&
                 reader.CurrentTokenKind == TokenKind.Slash)
             {// semantics/
                 var semantics = reader.GetSpan(token);

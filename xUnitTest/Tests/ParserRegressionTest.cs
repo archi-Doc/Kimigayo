@@ -136,14 +136,14 @@ public class ParserRegressionTest
     [Fact]
     public void AppliesSemanticsToCompoundType()
     {
-        var (root, diagnostics) = Parse("func F(value: borrowref/SomeType<List<owner/T>, I>)");
+        var (root, diagnostics) = Parse("func F(value: objref/SomeType<List<owner/T>, I>)");
 
         Assert.Empty(diagnostics);
         var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
         var semantics = Assert.IsType<TypeSemanticsKoto>(function.Parameters.Single().Type);
-        Assert.Equal(SemanticsKind.BorrowRef, semantics.SemanticsKind);
+        Assert.Equal(SemanticsKind.ObjRef, semantics.SemanticsKind);
         Assert.IsType<GenericsKoto>(semantics.Type);
-        Assert.Equal("borrowref/SomeType<List<owner/T>, I>", semantics.ToString());
+        Assert.Equal("objref/SomeType<List<owner/T>, I>", semantics.ToString());
     }
 
     [Fact]
@@ -152,7 +152,7 @@ public class ParserRegressionTest
         var source = """
             public open struct A<s/T>
                 Self is StructB and InterfaceA
-                semantics is not value and (owning or borrow)
+                semantics is not valueborrow and (owning or objectborrow)
                 s is reference
                 T is Comparable and (Equatable or Serializable)
 
@@ -180,11 +180,11 @@ public class ParserRegressionTest
         Assert.Equal("semantics", Assert.IsType<IdentifierNameKoto>(semanticsConstraint.Left).IdentifierName);
         var negation = Assert.IsType<NotKoto>(semanticsConstraint.Right);
         var semanticsAnd = Assert.IsType<AndKoto>(negation.Operand);
-        Assert.Equal(SemanticsMask.Value, Assert.IsType<SemanticsMaskKoto>(semanticsAnd.Left).Mask);
+        Assert.Equal(SemanticsMask.ValueBorrow, Assert.IsType<SemanticsMaskKoto>(semanticsAnd.Left).Mask);
         var parentheses = Assert.IsType<ParenthesizedKoto>(semanticsAnd.Right);
         var semanticsOr = Assert.IsType<OrKoto>(parentheses.Operand);
         Assert.Equal(SemanticsMask.Owning, Assert.IsType<SemanticsMaskKoto>(semanticsOr.Left).Mask);
-        Assert.Equal(SemanticsMask.Borrow, Assert.IsType<SemanticsMaskKoto>(semanticsOr.Right).Mask);
+        Assert.Equal(SemanticsMask.ObjectBorrow, Assert.IsType<SemanticsMaskKoto>(semanticsOr.Right).Mask);
 
         var semanticsParameterConstraint = type.TypeConstraints[2];
         Assert.Equal("s", Assert.IsType<IdentifierNameKoto>(semanticsParameterConstraint.Left).IdentifierName);
@@ -205,7 +205,7 @@ public class ParserRegressionTest
             var text = builder.ToString();
             Assert.Contains("public open struct A<s/T>", text);
             Assert.Contains("Self is StructB and InterfaceA", text);
-            Assert.Contains("semantics is not value and (owning or borrow)", text);
+            Assert.Contains("semantics is not valueborrow and (owning or objectborrow)", text);
         }
         finally
         {
@@ -320,13 +320,18 @@ public class ParserRegressionTest
 
     [Theory]
     [InlineData("owner", SemanticsMask.Owner)]
-    [InlineData("borrow", SemanticsMask.Borrow)]
-    [InlineData("stack", SemanticsMask.Stack)]
-    [InlineData("ownerref", SemanticsMask.OwnerRef)]
-    [InlineData("borrowref", SemanticsMask.BorrowRef)]
+    [InlineData("ref", SemanticsMask.Ref)]
+    [InlineData("uniq", SemanticsMask.Uniq)]
+    [InlineData("obj", SemanticsMask.Obj)]
     [InlineData("rc", SemanticsMask.Rc)]
     [InlineData("arc", SemanticsMask.Arc)]
+    [InlineData("objref", SemanticsMask.ObjRef)]
+    [InlineData("objuniq", SemanticsMask.ObjUniq)]
     [InlineData("unsafe", SemanticsMask.Unsafe)]
+    [InlineData("valueborrow", SemanticsMask.ValueBorrow)]
+    [InlineData("object", SemanticsMask.Object)]
+    [InlineData("objectborrow", SemanticsMask.ObjectBorrow)]
+    [InlineData("borrow", SemanticsMask.Borrow)]
     [InlineData("owning", SemanticsMask.Owning)]
     [InlineData("value", SemanticsMask.Value)]
     [InlineData("reference", SemanticsMask.Reference)]

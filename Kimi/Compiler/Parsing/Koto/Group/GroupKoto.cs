@@ -108,7 +108,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
     {
         if (this.IsRoot)
         {
-            return "Root";
+            return Constants.RootKotoName;
         }
 
         return $"{this.TokenKind.ToText()} {this.Name}";
@@ -123,7 +123,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
         if (this.IsRoot)
         {
-            builder.Append("Root");
+            builder.Append(Constants.RootKotoName);
             return;
         }
 

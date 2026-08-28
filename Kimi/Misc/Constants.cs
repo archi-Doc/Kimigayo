@@ -11,6 +11,7 @@ public static class Constants
     public const string TokenExtension = ".token";
     public const string DefaultNamespace = "Playground";
     public const string ScrubFileName = "Scrub.kimi";
+    public const string RootKotoName = "Root";
 
     // Primitive type keywords
     public const string BoolKeyword = "bool";
@@ -72,14 +73,19 @@ public static class Constants
     public const string SemanticsKeyword = "semantics";
     public const string SelfKeyword = "Self";
     public const string OwnerKeyword = "owner";
+    public const string RefKeyword = "ref";
+    public const string UniqKeyword = "uniq";
+    public const string ObjKeyword = "obj";
+    public const string ObjRefKeyword = "objref";
+    public const string ObjUniqKeyword = "objuniq";
     public const string BorrowKeyword = "borrow";
-    public const string StackKeyword = "stack";
-    public const string OwnerRefKeyword = "ownerref";
-    public const string BorrowRefKeyword = "borrowref";
     public const string RcKeyword = "rc";
     public const string ArcKeyword = "arc";
     public const string UnsafeKeyword = "unsafe";
     public const string ValueKeyword = "value";
+    public const string ValueBorrowKeyword = "valueborrow";
+    public const string ObjectKeyword = "object";
+    public const string ObjectBorrowKeyword = "objectborrow";
     public const string OwningKeyword = "owning";
     public const string ReferenceKeyword = "reference";
 

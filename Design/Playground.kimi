@@ -8,12 +8,14 @@ alias AliasC
 alias AliasD
 
 public open struct TestStruct<C>
-    Self is A or B
     semantics is reference
+    Self is A or B // Implementation
+    origin is a, b
     C is comparable
     
     public static #Test1 var #Test2 x: i32 = #One 1
-    private let pi = 1.2
+    let pi = 1.2
+    private buffer: ref/Array<i32> from a
 
 var x:unsafe/Base.Map<String, Int>
 var count: i32 = #TestAtr 0
@@ -33,11 +35,10 @@ private func find<s/T, owner/T2>(
     in => collection: Collection<T>,
     using => comparer: (s/T, T) -> Bool
     ) -> i32
-    where s is borrow or borrowref
+    where s is valueborrow or objectborrow
     where T is Comparable
 
     return 0
 
 public func Main() -> ()
     return
-

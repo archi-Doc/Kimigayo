@@ -8,26 +8,37 @@ namespace Kimi.Compiler.Parsing;
 /// Represents a set of concrete type semantics used by constraints.
 /// </summary>
 [Flags]
-public enum SemanticsMask : byte
+public enum SemanticsMask : ushort
 {
     None = 0,
 
     Owner = 1 << 0,
-    Borrow = 1 << 1,
-    Stack = 1 << 2,
-    OwnerRef = 1 << 3,
-    BorrowRef = 1 << 4,
-    Rc = 1 << 5,
-    Arc = 1 << 6,
-    Unsafe = 1 << 7,
+    Ref = 1 << 1,
+    Uniq = 1 << 2,
+    Obj = 1 << 3,
+    Rc = 1 << 4,
+    Arc = 1 << 5,
+    ObjRef = 1 << 6,
+    ObjUniq = 1 << 7,
+    Unsafe = 1 << 8,
 
-    Value = Owner | Borrow | Stack,
+    Value = Owner,
 
-    Reference = OwnerRef | BorrowRef | Rc | Arc | Unsafe,
+    ValueBorrow = Ref | Uniq,
 
-    Owning = Owner | OwnerRef | Rc | Arc | Unsafe,
+    Object = Obj | Rc | Arc,
 
-    All = Value | Reference,
+    ObjectBorrow = ObjRef | ObjUniq,
+
+    Borrow = ValueBorrow | ObjectBorrow,
+
+    Owning = Value | Object,
+
+    Reference = ValueBorrow | Object | ObjectBorrow | Unsafe,
+
+    Safe = Value | ValueBorrow | Object | ObjectBorrow,
+
+    All = Safe | Unsafe,
 }
 
 /// <summary>
@@ -52,8 +63,12 @@ public static class SemanticsMaskHelper
         mask = text.Length switch
         {
             5 when text.SequenceEqual(Constants.ValueKeyword) => SemanticsMask.Value,
+            6 when text.SequenceEqual(Constants.BorrowKeyword) => SemanticsMask.Borrow,
+            6 when text.SequenceEqual(Constants.ObjectKeyword) => SemanticsMask.Object,
             6 when text.SequenceEqual(Constants.OwningKeyword) => SemanticsMask.Owning,
             9 when text.SequenceEqual(Constants.ReferenceKeyword) => SemanticsMask.Reference,
+            11 when text.SequenceEqual(Constants.ValueBorrowKeyword) => SemanticsMask.ValueBorrow,
+            12 when text.SequenceEqual(Constants.ObjectBorrowKeyword) => SemanticsMask.ObjectBorrow,
             _ => SemanticsMask.None,
         };
 
@@ -69,16 +84,20 @@ public static class SemanticsMaskHelper
         => mask switch
         {
             SemanticsMask.Owner => Constants.OwnerKeyword,
-            SemanticsMask.Borrow => Constants.BorrowKeyword,
-            SemanticsMask.Stack => Constants.StackKeyword,
-            SemanticsMask.OwnerRef => Constants.OwnerRefKeyword,
-            SemanticsMask.BorrowRef => Constants.BorrowRefKeyword,
+            SemanticsMask.Ref => Constants.RefKeyword,
+            SemanticsMask.Uniq => Constants.UniqKeyword,
+            SemanticsMask.Obj => Constants.ObjKeyword,
             SemanticsMask.Rc => Constants.RcKeyword,
             SemanticsMask.Arc => Constants.ArcKeyword,
+            SemanticsMask.ObjRef => Constants.ObjRefKeyword,
+            SemanticsMask.ObjUniq => Constants.ObjUniqKeyword,
             SemanticsMask.Unsafe => Constants.UnsafeKeyword,
-            SemanticsMask.Value => Constants.ValueKeyword,
-            SemanticsMask.Reference => Constants.ReferenceKeyword,
+            SemanticsMask.ValueBorrow => Constants.ValueBorrowKeyword,
+            SemanticsMask.Object => Constants.ObjectKeyword,
+            SemanticsMask.ObjectBorrow => Constants.ObjectBorrowKeyword,
+            SemanticsMask.Borrow => Constants.BorrowKeyword,
             SemanticsMask.Owning => Constants.OwningKeyword,
+            SemanticsMask.Reference => Constants.ReferenceKeyword,
             _ => string.Empty,
         };
 
@@ -95,12 +114,13 @@ public static class SemanticsMaskHelper
         => kind switch
         {
             SemanticsKind.Owner => SemanticsMask.Owner,
-            SemanticsKind.Borrow => SemanticsMask.Borrow,
-            SemanticsKind.Stack => SemanticsMask.Stack,
-            SemanticsKind.OwnerRef => SemanticsMask.OwnerRef,
-            SemanticsKind.BorrowRef => SemanticsMask.BorrowRef,
+            SemanticsKind.Ref => SemanticsMask.Ref,
+            SemanticsKind.Uniq => SemanticsMask.Uniq,
+            SemanticsKind.Obj => SemanticsMask.Obj,
             SemanticsKind.Rc => SemanticsMask.Rc,
             SemanticsKind.Arc => SemanticsMask.Arc,
+            SemanticsKind.ObjRef => SemanticsMask.ObjRef,
+            SemanticsKind.ObjUniq => SemanticsMask.ObjUniq,
             SemanticsKind.Unsafe => SemanticsMask.Unsafe,
             _ => SemanticsMask.None,
         };
