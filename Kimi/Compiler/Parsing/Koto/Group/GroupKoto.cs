@@ -163,13 +163,59 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         Parser.WriteQualifiedNameTo(this, ref builder);
     }
 
+    public void Clear()
+    {
+        this.KotoList.Clear(); // TODO
+        this.IdentifierToGroupKoto.Clear(); // TODO
+        this.GenericArguments.Clear();
+        this.TypeConstraints.Clear();
+    }
+
+    public void UnparseAll(ref IndentedStringBuilder builder)
+    {
+        GroupKoto? currentGroup = this.IsRoot ? null : this;
+        this.UnparseAllInternal(0, ref builder, false);
+    }
+
+    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range)
+    {
+        var text = qualifiedName;
+        var group = this;
+        while (true)
+        {
+            var index = text.IndexOf(Constants.DotChar);
+            if (index < 0)
+            {
+                GetOrAddGroup(ref group, text, kind, state, range);
+                return group;
+            }
+
+            var segment = text[..index];
+            GetOrAddGroup(ref group, segment, TokenKind.Group, default, default);
+            text = text[(index + 1)..];
+        }
+    }
+
     public void Parse(ref TokenReader reader)
+        => this.Parse(ref reader, false);
+
+    internal void Parse(ref TokenReader reader, bool useCurrentContext)
     {
         var declarationOrder = DeclarationOrder.None;
         var acceptsTypeConstraints = this is not StructKoto || this.TypeConstraints.Count == 0;
         while (reader.CanRead)
         {
-            Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
+            bool isEnd;
+            if (useCurrentContext)
+            {
+                useCurrentContext = false;
+                isEnd = reader.IsEnd;
+            }
+            else
+            {
+                Parser.ConsumeAttributeAndModifier(ref reader, out isEnd);
+            }
+
             if (isEnd)
             {
                 return;
@@ -315,39 +361,6 @@ NextToken:
             {
                 nextParser.Parse(ref reader);
             }
-        }
-    }
-
-    public void Clear()
-    {
-        this.KotoList.Clear(); // TODO
-        this.IdentifierToGroupKoto.Clear(); // TODO
-        this.GenericArguments.Clear();
-        this.TypeConstraints.Clear();
-    }
-
-    public void UnparseAll(ref IndentedStringBuilder builder)
-    {
-        GroupKoto? currentGroup = this.IsRoot ? null : this;
-        this.UnparseAllInternal(0, ref builder, false);
-    }
-
-    public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range)
-    {
-        var text = qualifiedName;
-        var group = this;
-        while (true)
-        {
-            var index = text.IndexOf(Constants.DotChar);
-            if (index < 0)
-            {
-                GetOrAddGroup(ref group, text, kind, state, range);
-                return group;
-            }
-
-            var segment = text[..index];
-            GetOrAddGroup(ref group, segment, TokenKind.Group, default, default);
-            text = text[(index + 1)..];
         }
     }
 

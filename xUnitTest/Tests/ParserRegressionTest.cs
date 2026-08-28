@@ -135,6 +135,44 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void PreservesTopLevelStructModifiersThroughAddSource()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        kotonoha.AddSource(new SourceDocument("modifier.kimi", "public open struct TestStruct<s/C, D>"));
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var type = Assert.IsType<StructKoto>(
+            kotonoha.RootKoto.GetOrAddGroup("TestStruct", TokenKind.Struct, default, default));
+        Assert.True(type.Modifier.HasFlag(ModifierKind.Public));
+        Assert.True(type.Modifier.HasFlag(ModifierKind.Open));
+        Assert.Collection(
+            type.GenericArguments,
+            argument =>
+            {
+                Assert.Equal(SemanticsKind.Parameter, argument.SemanticsKind);
+                Assert.Equal("s", argument.SemanticsParameter);
+                Assert.Equal("C", argument.Identifier);
+            },
+            argument =>
+            {
+                Assert.Equal(SemanticsKind.Owner, argument.SemanticsKind);
+                Assert.Equal("D", argument.Identifier);
+            });
+
+        var builder = default(IndentedStringBuilder);
+        try
+        {
+            kotonoha.RootKoto.UnparseAll(ref builder);
+            Assert.Contains("public open struct TestStruct<s/C, D>", builder.ToString());
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
+
+    [Fact]
     public void AppliesSemanticsToCompoundType()
     {
         var (root, diagnostics) = Parse("func F(value: objref/SomeType<List<owner/T>, I>)");
