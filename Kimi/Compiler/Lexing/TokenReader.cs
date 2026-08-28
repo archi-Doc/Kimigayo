@@ -36,11 +36,11 @@ public ref struct TokenReader
     private readonly ReadOnlySpan<char> sourceText;
     private readonly ReadOnlySequence<Token> sequence;
     private readonly int length;
+
     private SequencePosition nextSegmentPosition;
     private ReadOnlySpan<Token> currentSpan;
     private int currentSpanIndex;
     private Token currentToken;
-    private Token lastToken;
 
     /// <summary>
     /// Gets the current token position.
@@ -114,25 +114,28 @@ public ref struct TokenReader
     /// </summary>
     /// <param name="codeContext">The code context.</param>
     /// <param name="tokenizer">The tokenizer containing the token sequence.</param>
-    internal TokenReader(CodeContext codeContext, scoped ref Tokenizer tokenizer)
+    internal TokenReader(CodeContext codeContext, ref Tokenizer tokenizer)
     {
         this.CodeContext = codeContext;
         this.SourceDocument = tokenizer.SourceDocument;
+
+        var tokenSequence = tokenizer.ToReadOnlySequence();
         this.sourceText = this.SourceDocument.AsSpan();
-        this.sequence = tokenizer.ToReadOnlySequence();
-        this.length = checked((int)this.sequence.Length);
+        this.sequence = tokenSequence;
+        this.length = checked((int)tokenSequence.Length);
+
         this.Position = 0;
+
         this.AttributeKoto = default;
         this.ModifierKind = default;
-        this.IsExcluded = false;
-        this.nextSegmentPosition = this.sequence.Start;
+        this.IsExcluded = default;
+
+        this.nextSegmentPosition = tokenSequence.Start;
         this.currentSpan = default;
         this.currentSpanIndex = 0;
-        this.lastToken = default;
-        if (!this.MoveToNextNonEmptySpan())
-        {// The sequence is empty; keep the sentinel token consistent with the exhausted state.
-            this.currentToken = Token.Invalid;
-        }
+        this.currentToken = default;
+
+        this.MoveToNextNonEmptySpan();
     }
 
     /// <summary>
@@ -154,7 +157,11 @@ public ref struct TokenReader
     public TokenContext TakeContext()
     {
         var context = new TokenContext(this.AttributeKoto, this.ModifierKind, this.IsExcluded);
-        this.ClearContext();
+
+        this.AttributeKoto = default;
+        this.ModifierKind = default;
+        this.IsExcluded = false;
+
         return context;
     }
 
@@ -229,21 +236,7 @@ public ref struct TokenReader
     /// <param name="range">The source range of the consumed token.</param>
     /// <param name="addDiagnostic">Whether to report a diagnostic when the expected token is not found.</param>
     /// <returns><see langword="true"/> if the expected token was consumed; otherwise, <see langword="false"/>.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryConsume(TokenKind targetKind, out SourceSpan range, bool addDiagnostic = true)
-    {
-        // Fast path: the current token matches the expected kind.
-        if (this.CanRead && this.currentToken.Kind == targetKind)
-        {
-            range = this.currentToken.Span;
-            this.AdvanceOne();
-            return true;
-        }
-
-        return this.TryConsumeSlow(targetKind, out range, addDiagnostic);
-    }
-
-    private bool TryConsumeSlow(TokenKind targetKind, out SourceSpan range, bool addDiagnostic)
     {
 Loop:
         if (this.CanRead)
@@ -257,15 +250,10 @@ Loop:
             }
 
             if (token.Kind == TokenKind.Sharp)
-            {// Attributes may appear between the caller and the expected token.
-                var position = this.Position;
+            {
+                // Attributes may appear between the caller and the expected token.
                 _ = Parser.ParseAttributeKoto(ref this);
-                if (this.Position != position)
-                {
-                    goto Loop;
-                }
-
-                // No token was consumed; fall through as a mismatch to guarantee progress.
+                goto Loop;
             }
 
             if (addDiagnostic)
@@ -278,9 +266,10 @@ Loop:
             return false;
         }
 
-        if (addDiagnostic && this.lastToken.Kind != TokenKind.Invalid)
+        if (addDiagnostic && this.IsEnd && this.CurrentTokenKind != TokenKind.Invalid)
         {
-            this.Diagnostic.Add(new(this.lastToken.Span.End, 0), DiagnosticCode.MissingExpectedToken_Kd, targetKind.ToText());
+            var r = this.CurrentTokenRange;
+            this.Diagnostic.Add(new(r.End, 0), DiagnosticCode.MissingExpectedToken_Kd, targetKind.ToText());
         }
 
         range = default;
@@ -291,16 +280,15 @@ Loop:
     /// Advances until the specified token kind is reached.
     /// </summary>
     /// <param name="kind1">The token kind at which to stop.</param>
-    /// <param name="code">An optional diagnostic code reported for the first skipped token.</param>
+    /// <param name="code">An optional diagnostic hash reported for the first skipped token.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
     public TokenKind SkipUntil(TokenKind kind1, DiagnosticCode code)
     {
         while (this.CanRead)
         {
-            var tokenKind = this.currentToken.Kind;
-            if (tokenKind == kind1)
+            if (this.currentToken.Kind == kind1)
             {
-                return tokenKind;
+                return this.currentToken.Kind;
             }
 
             if (code != 0)
@@ -320,7 +308,7 @@ Loop:
     /// </summary>
     /// <param name="kind1">The first token kind at which to stop.</param>
     /// <param name="kind2">The second token kind at which to stop.</param>
-    /// <param name="code">An optional diagnostic code reported for the first skipped token.</param>
+    /// <param name="code">An optional diagnostic hash reported for the first skipped token.</param>
     /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
     public TokenKind SkipUntil(TokenKind kind1, TokenKind kind2, DiagnosticCode code = DiagnosticCode.Template_Kd)
     {
@@ -399,40 +387,45 @@ Loop:
     {
         if (isRootGroup)
         {
-            while (this.CanRead && this.currentToken.Kind != TokenKind.RootGroup)
+            while (this.CanRead)
             {
+                if (this.currentToken.Kind == TokenKind.RootGroup)
+                {
+                    return;
+                }
+
                 this.AdvanceOne();
             }
 
             return;
         }
 
-        if (!this.CanRead || this.currentToken.Kind != TokenKind.StartBlock)
+        if (this.IsEnd || this.currentToken.Kind != TokenKind.StartBlock)
         {
             return;
         }
 
         this.AdvanceOne();
         var depth = 1;
+
         while (this.CanRead)
         {
-            switch (this.currentToken.Kind)
+            if (this.currentToken.Kind == TokenKind.StartBlock)
             {
-                case TokenKind.StartBlock:
-                    depth++;
-                    break;
-
-                case TokenKind.EndBlock:
-                    if (--depth == 0)
-                    {
-                        this.AdvanceOne();
-                        return;
-                    }
-
-                    break;
-
-                case TokenKind.RootGroup:
+                depth++;
+            }
+            else if (this.currentToken.Kind == TokenKind.EndBlock)
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    this.AdvanceOne();
                     return;
+                }
+            }
+            else if (this.currentToken.Kind == TokenKind.RootGroup)
+            {
+                return;
             }
 
             this.AdvanceOne();
@@ -465,8 +458,7 @@ Loop:
     }
 
     /// <summary>
-    /// Adds a diagnostic for the current token, or at the end of the last token
-    /// when all tokens have been consumed.
+    /// Adds a diagnostic for the current token.
     /// </summary>
     /// <param name="code">The diagnostic.</param>
     /// <param name="obj">An optional diagnostic argument.</param>
@@ -476,10 +468,6 @@ Loop:
         if (this.CanRead)
         {
             this.Diagnostic.Add(this.currentToken.Span, code, obj, obj2);
-        }
-        else
-        {// End of stream: report at the position just past the last token.
-            this.Diagnostic.Add(new(this.lastToken.Span.End, 0), code, obj, obj2);
         }
     }
 
@@ -521,6 +509,7 @@ Loop:
     /// <returns>The textual representation of the current token.</returns>
     public readonly override string ToString()
     {
+        // return this.CurrentToken.ToString();
         return this.GetSpan(this.CurrentToken).ToString();
     }
 
@@ -529,30 +518,24 @@ Loop:
     {
         Debug.Assert(this.Position < this.length);
         Debug.Assert(this.currentSpanIndex < this.currentSpan.Length);
+
+        this.currentSpanIndex++;
         this.Position++;
-        var index = this.currentSpanIndex + 1;
-        if ((uint)index < (uint)this.currentSpan.Length)
+
+        if (this.currentSpanIndex < this.currentSpan.Length)
         {
-            this.currentSpanIndex = index;
-            this.currentToken = this.currentSpan[index];
+            this.currentToken = this.currentSpan[this.currentSpanIndex];
             return;
         }
 
-        this.AdvanceSlow();
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void AdvanceSlow()
-    {
         if (this.Position < this.length)
-        {// Keep the current token synchronized when crossing sequence segments.
+        {
+            // Keep the current token synchronized when crossing sequence segments.
             var result = this.MoveToNextNonEmptySpan();
             Debug.Assert(result);
             return;
         }
 
-        // End of stream: remember the last token for end-of-file diagnostics.
-        this.lastToken = this.currentToken;
         this.currentSpan = default;
         this.currentSpanIndex = 0;
         this.currentToken = Token.Invalid;
