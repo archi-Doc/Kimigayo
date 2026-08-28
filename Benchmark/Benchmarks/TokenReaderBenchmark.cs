@@ -48,4 +48,28 @@ public class TokenReaderBenchmark
             tokenizer.Dispose();
         }
     }
+
+    [Benchmark]
+    public int ReadAllTokens_Obs()
+    {
+        var tokenizer = new Tokenizer(this.codeContext.DiagnosticCollection, this.sourceDocument);
+
+        try
+        {
+            tokenizer.ReadAll();
+            var reader = new TokenReaderObsolete(this.codeContext, ref tokenizer);
+            var checksum = 0;
+
+            while (reader.TryRead(out var token, addDiagnostic: false))
+            {
+                checksum = unchecked((checksum * 31) + (int)token.Kind);
+            }
+
+            return checksum;
+        }
+        finally
+        {
+            tokenizer.Dispose();
+        }
+    }
 }
