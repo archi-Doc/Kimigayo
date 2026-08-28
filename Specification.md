@@ -1,16 +1,42 @@
-
-
 # Overview
 
-Consistent, fast, simple, fun, safe, and fast.
+**Kimigayo** is a programming language designed and built from scratch with the goals of being consistent, fast, simple, fun, safe, and fast.
 
-**Kimigayo** is a programming language designed and built from scratch with these goals.
+# Type: semantics/Type from origin
 
+> Types are everything for programming languages, words are everything in design.
 
+Kimigayo represents the essential properties of a value with the following form:
 
-# Type
+```
+semantics/Type from origin
+```
 
-## Primitive Types and Structures
+This notation consists of three fundamental elements: **semantics**, **Type**, and **origin**.
+
+- **Semantics** — Describes how the value is represented, owned, accessed, or used.
+- **Type** — Describes what the value is.
+- **Origin** — Describes where the value derives from and constrains its lifetime or validity.
+
+For example:
+
+```
+ref/Dog from owner
+```
+
+means a value of type `Dog`, accessed with `ref` semantics, whose validity is derived from `owner`.
+
+In short:
+
+```
+Semantics — How
+Type      — What
+Origin    — Whence
+```
+
+These three elements form the core of Kimigayo's type system.
+
+## Types
 
 Kimigayo provides a fixed set of primitive types and user-defined structure types.
 
@@ -59,7 +85,7 @@ Sizes below are storage sizes.
 | ------ | ------------------ |
 | `bool` | 8 bits (1 byte)    |
 
-# Structures
+### Structures
 
 A `struct` defines a composite value type.
 
