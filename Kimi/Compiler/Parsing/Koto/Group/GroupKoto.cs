@@ -60,6 +60,9 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
     [Key(8)]
     public List<IsKoto> TypeConstraints { get; private set; } = [];
 
+    [Key(9)]
+    public List<string> Origins { get; private set; } = [];
+
     [Key(5)]
     protected List<Koto> KotoList { get; set; } = [];
 
@@ -104,6 +107,9 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         constraint.Parent = this;
     }
 
+    public void AddOrigins(IEnumerable<string> origins)
+        => this.Origins.AddRange(origins);
+
     public override string ToString()
     {
         if (this.IsRoot)
@@ -147,6 +153,22 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
             builder.Append('>');
         }
+
+        if (this.Origins.Count > 0)
+        {
+            builder.AppendSpace();
+            builder.Append(Constants.OriginKeyword);
+            builder.AppendSpace();
+            for (var i = 0; i < this.Origins.Count; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                builder.Append(this.Origins[i]);
+            }
+        }
     }
 
     public void UnparseToRoot(ref IndentedStringBuilder builder)
@@ -169,6 +191,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         this.IdentifierToGroupKoto.Clear(); // TODO
         this.GenericArguments.Clear();
         this.TypeConstraints.Clear();
+        this.Origins.Clear();
     }
 
     public void UnparseAll(ref IndentedStringBuilder builder)
@@ -309,6 +332,11 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                     groupKoto.AddGenericArguments(r.GenericArguments);
                 }
 
+                if (r.Origins is not null && groupKoto.Origins.Count == 0)
+                {
+                    groupKoto.AddOrigins(r.Origins);
+                }
+
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
                     reader.Advance();
@@ -436,7 +464,7 @@ NextToken:
     {
         var groupDeclared = false;
 
-        if ((!this.IsRoot && (this.KotoList.Count > 0 || this.TypeConstraints.Count > 0))
+        if ((!this.IsRoot && (this.KotoList.Count > 0 || this.TypeConstraints.Count > 0 || this.Origins.Count > 0))
             || this.Modifier != 0)
         {
             builder.EnsureTrailingBlankLine();

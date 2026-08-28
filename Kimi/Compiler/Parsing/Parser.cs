@@ -375,10 +375,11 @@ Exit:
             => reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
     }
 
-    public static (string Name, List<TypeKoto>? GenericArguments) ParseGroupDeclaration(ref TokenReader reader)
-    {// public open struct TestStruct<s/C, D>
+    public static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins) ParseGroupDeclaration(ref TokenReader reader)
+    {// public open struct TestStruct<s/C, D> origin a, b
         string name = string.Empty;
         List<TypeKoto>? genericArguments = default;
+        List<string>? origins = default;
         if (!reader.TryRead(out var token))
         {
             reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
@@ -406,6 +407,13 @@ Exit:
             genericArguments = ParseGenericArguments(ref reader);
         }
 
+        if (reader.IsIdentifierToken(reader.CurrentToken, Constants.OriginKeyword))
+        {
+            var originRange = reader.CurrentTokenRange;
+            reader.Advance();
+            origins = ParseOrigins(ref reader, originRange);
+        }
+
         reader.SkipUntilStartBlock();
         goto Exit;
 
@@ -413,7 +421,50 @@ SkipAndExit:
         reader.SkipUntilStartBlock(0);
 
 Exit:
-        return (name, genericArguments);
+        return (name, genericArguments, origins);
+
+        static List<string>? ParseOrigins(ref TokenReader reader, SourceSpan originRange)
+        {
+            List<string>? list = default;
+            while (true)
+            {
+                if (!reader.CanRead)
+                {
+                    reader.Diagnostic.Add(originRange, DiagnosticCode.IncompleteSyntax_Kd);
+                    return list;
+                }
+
+                if (reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock)
+                {
+                    reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                    return list;
+                }
+
+                reader.TryRead(out var token);
+                if (!token.Kind.IsIdentifierOrContextualKeyword())
+                {
+                    reader.Diagnostic.Add(token.Span, DiagnosticCode.IdentifierExpected_Kd);
+                    return list;
+                }
+
+                var identifier = reader.GetSpan(token);
+                if (!IdentifierHelper.IsValidIdentifier(identifier))
+                {
+                    reader.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, identifier.ToString());
+                    return list;
+                }
+
+                list ??= [];
+                list.Add(identifier.ToString());
+
+                if (reader.CurrentTokenKind != TokenKind.Comma)
+                {
+                    return list;
+                }
+
+                reader.Advance();
+            }
+        }
     }
 
     public static FieldKoto? ParseField(ref TokenReader reader, ref Token token)
@@ -804,9 +855,8 @@ Exit:
     /// </summary>
     /// <remarks>
     /// The special subject <c>semantics</c> accepts only named
-    /// <see cref="SemanticsMask"/> values. The special subject <c>origin</c> accepts
-    /// one or more identifiers joined by <c>and</c>. Other subjects retain their
-    /// operands as <see cref="IdentifierNameKoto"/> instances for later semantic analysis.
+    /// <see cref="SemanticsMask"/> values. Other subjects retain their operands as
+    /// <see cref="IdentifierNameKoto"/> instances for later semantic analysis.
     /// </remarks>
     /// <param name="reader">The token reader positioned at the constraint subject.</param>
     /// <returns>The parsed constraint, or <see langword="null"/> when its required prefix is invalid.</returns>
@@ -824,49 +874,12 @@ Exit:
             return null;
         }
 
-        var subjectName = subject.IdentifierName.AsSpan();
-        var parsesSemantics = subjectName.SequenceEqual(Constants.SemanticsKeyword);
-        var parsesOrigin = subjectName.SequenceEqual(Constants.OriginKeyword);
-        var condition = parsesOrigin
-            ? ParseOrigin(ref reader)
-            : ParseCondition(ref reader, parsesSemantics);
+        var parsesSemantics = subject.IdentifierName.AsSpan().SequenceEqual(Constants.SemanticsKeyword);
+        var condition = ParseCondition(ref reader, parsesSemantics);
         var constraint = new IsKoto(ref reader, isRange, subject, condition);
 
         reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
         return constraint;
-
-        static Koto ParseOrigin(ref TokenReader reader)
-        {
-            var left = ParseOriginIdentifier(ref reader);
-            while (reader.CurrentTokenKind == TokenKind.And)
-            {
-                reader.TryRead(out var token);
-                var right = ParseOriginIdentifier(ref reader);
-                left = new AndKoto(ref reader, token.Span, left, right);
-            }
-
-            return left;
-        }
-
-        static Koto ParseOriginIdentifier(ref TokenReader reader)
-        {
-            if (reader.CurrentTokenKind is TokenKind.Invalid or
-                TokenKind.Separator or
-                TokenKind.EndBlock)
-            {
-                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
-                return reader.NewErrorKoto();
-            }
-
-            if (!reader.TryRead(out var token))
-            {
-                return reader.NewErrorKoto();
-            }
-
-            return IdentifierNameKoto.TryCreate(ref reader, token, out var identifier)
-                ? identifier
-                : new ErrorKoto(ref reader, token.Span);
-        }
 
         static Koto ParseCondition(ref TokenReader reader, bool parsesSemantics)
         {

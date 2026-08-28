@@ -9,10 +9,9 @@ alias AliasD
 
 public open struct TestStruct<>
 
-public open struct TestStruct<s/C, D>
+public open struct TestStruct<s/C, D> origin a, b
     semantics is reference
     Self is A or B // Implementation
-    origin is a and b
     C is comparable
     s is all
     

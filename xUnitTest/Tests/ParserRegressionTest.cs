@@ -287,11 +287,10 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void ParsesOriginConstraintForSemanticsGenericArgument()
+    public void ParsesOriginDeclarationForSemanticsGenericArgument()
     {
         var source = """
-            public open struct TestStruct<s/C>
-                origin is a and b
+            public open struct TestStruct<s/C> origin a, b
             """;
 
         var (root, diagnostics) = Parse(source);
@@ -303,19 +302,15 @@ public class ParserRegressionTest
         Assert.Equal("s", genericArgument.SemanticsParameter);
         Assert.Equal("C", genericArgument.Identifier);
 
-        var constraint = Assert.Single(type.TypeConstraints);
-        Assert.Equal("origin", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
-        var origins = Assert.IsType<AndKoto>(constraint.Right);
-        Assert.Equal("a", Assert.IsType<IdentifierNameKoto>(origins.Left).IdentifierName);
-        Assert.Equal("b", Assert.IsType<IdentifierNameKoto>(origins.Right).IdentifierName);
+        Assert.Equal(["a", "b"], type.Origins);
+        Assert.Empty(type.TypeConstraints);
 
         var builder = default(IndentedStringBuilder);
         try
         {
             root.UnparseAll(ref builder);
             var text = builder.ToString();
-            Assert.Contains("public open struct TestStruct<s/C>", text);
-            Assert.Contains("origin is a and b", text);
+            Assert.Contains("public open struct TestStruct<s/C> origin a, b", text);
         }
         finally
         {
@@ -327,13 +322,11 @@ public class ParserRegressionTest
     public void DiagnosesAndIgnoresTypeConstraintsFromLaterStructDefinitions()
     {
         var source = """
-            struct A<s/T>
-                origin is first and shared
+            struct A<s/T> origin first, shared
                 T is FirstConstraint
                 var first: i32
 
-            struct A
-                origin is ignored and later
+            struct A origin ignored, later
                 T is IgnoredConstraint
                 semantics is DefinitelyInvalid
                 var second: i32
@@ -341,27 +334,17 @@ public class ParserRegressionTest
 
         var (root, diagnostics) = Parse(source);
 
-        Assert.Equal(3, diagnostics.Length);
+        Assert.Equal(2, diagnostics.Length);
         Assert.All(
             diagnostics,
             diagnostic => Assert.Equal(
                 nameof(DiagnosticCode.DuplicateTypeConstraintDefinition_Kd),
                 diagnostic.Entry.Name));
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
-        Assert.Collection(
-            type.TypeConstraints,
-            constraint =>
-            {
-                Assert.Equal("origin", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
-                var origins = Assert.IsType<AndKoto>(constraint.Right);
-                Assert.Equal("first", Assert.IsType<IdentifierNameKoto>(origins.Left).IdentifierName);
-                Assert.Equal("shared", Assert.IsType<IdentifierNameKoto>(origins.Right).IdentifierName);
-            },
-            constraint =>
-            {
-                Assert.Equal("T", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
-                Assert.Equal("FirstConstraint", Assert.IsType<IdentifierNameKoto>(constraint.Right).IdentifierName);
-            });
+        Assert.Equal(["first", "shared"], type.Origins);
+        var constraint = Assert.Single(type.TypeConstraints);
+        Assert.Equal("T", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
+        Assert.Equal("FirstConstraint", Assert.IsType<IdentifierNameKoto>(constraint.Right).IdentifierName);
         Assert.Equal(2, GetChildren(type).OfType<FieldKoto>().Count());
 
         var builder = default(IndentedStringBuilder);
@@ -369,7 +352,7 @@ public class ParserRegressionTest
         {
             root.UnparseAll(ref builder);
             var text = builder.ToString();
-            Assert.Contains("origin is first and shared", text);
+            Assert.Contains("struct A<s/T> origin first, shared", text);
             Assert.Contains("T is FirstConstraint", text);
             Assert.DoesNotContain("ignored", text);
             Assert.DoesNotContain("IgnoredConstraint", text);
@@ -385,8 +368,7 @@ public class ParserRegressionTest
     public void PreservesKotoSyntaxThroughTinyhandSerialization()
     {
         var source = """
-            public open struct TestStruct<s/C>
-                origin is a and b
+            public open struct TestStruct<s/C> origin a, b
                 C is Comparable
 
                 struct Nested
@@ -424,7 +406,8 @@ public class ParserRegressionTest
                 restored.RootKoto.GetOrAddGroup("TestStruct", TokenKind.Struct, default, default));
             Assert.Same(restored, type.Kotonoha);
             Assert.Single(type.GenericArguments);
-            Assert.Equal(2, type.TypeConstraints.Count);
+            Assert.Equal(["a", "b"], type.Origins);
+            Assert.Single(type.TypeConstraints);
             Assert.All(type.GenericArguments, argument => Assert.Same(type, argument.Parent));
             Assert.All(type.TypeConstraints, constraint => Assert.Same(type, constraint.Parent));
 
