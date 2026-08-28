@@ -18,7 +18,7 @@ public open struct TestStruct<s/C, D>
     
     public static #Test1 var #Test2 x: i32 = #One 1
     let pi = 1.2
-    private buffer: ref/Array<i32> from a
+    private let buffer: ref/Array<i32> from a
 
 var x:unsafe/Base.Map<String, Int>
 var count: i32 = #TestAtr 0

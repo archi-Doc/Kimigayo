@@ -333,8 +333,8 @@ Loop:
     }
 
     /// <summary>
-    /// Advances to the start of the next block and reports at most one diagnostic
-    /// for non-separator tokens encountered along the way.
+    /// Advances to the start of the immediately following block and reports at most one diagnostic
+    /// for trailing tokens on the declaration line. Stops before a subsequent statement.
     /// </summary>
     /// <param name="code">The diagnostic reported for the first trailing token.</param>
     /// <returns>
@@ -343,6 +343,7 @@ Loop:
     /// </returns>
     public TokenKind SkipUntilStartBlock(DiagnosticCode code = DiagnosticCode.UnexpectedTrailingToken_Kd)
     {
+        var reachedNextStatement = false;
         while (this.CanRead)
         {
             var tokenKind = this.currentToken.Kind;
@@ -351,7 +352,19 @@ Loop:
                 return tokenKind;
             }
 
-            if (tokenKind != TokenKind.Separator && code != 0)
+            if (tokenKind == TokenKind.Separator)
+            {
+                reachedNextStatement = true;
+                this.AdvanceOne();
+                continue;
+            }
+
+            if (reachedNextStatement)
+            {
+                return default;
+            }
+
+            if (code != 0)
             {
                 this.AddDiagnostic(code, this.GetSpan(this.currentToken).ToString());
                 code = 0;

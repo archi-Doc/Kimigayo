@@ -304,7 +304,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
                 var state = reader.TakeContext();
                 var groupKoto = this.GetOrAddGroup(r.Name, tokenKind, state, token.Span);
-                if (r.GenericArguments is not null)
+                if (r.GenericArguments is not null && groupKoto.GenericArguments.Count == 0)
                 {
                     groupKoto.AddGenericArguments(r.GenericArguments);
                 }

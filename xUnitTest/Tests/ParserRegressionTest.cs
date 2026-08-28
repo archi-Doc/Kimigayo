@@ -173,6 +173,40 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void ParsesRepeatedStructAfterBodylessDeclaration()
+    {
+        var source = """
+            public open struct TestStruct<s/C, D>
+
+            public open struct TestStruct<s/C, D>
+                semantics is reference
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.Empty(diagnostics);
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("TestStruct", TokenKind.Struct, default, default));
+        Assert.True(type.Modifier.HasFlag(ModifierKind.Public));
+        Assert.True(type.Modifier.HasFlag(ModifierKind.Open));
+        Assert.Collection(
+            type.GenericArguments,
+            argument =>
+            {
+                Assert.Equal(SemanticsKind.Parameter, argument.SemanticsKind);
+                Assert.Equal("s", argument.SemanticsParameter);
+                Assert.Equal("C", argument.Identifier);
+            },
+            argument =>
+            {
+                Assert.Equal(SemanticsKind.Owner, argument.SemanticsKind);
+                Assert.Equal("D", argument.Identifier);
+            });
+        var constraint = Assert.Single(type.TypeConstraints);
+        Assert.Equal("semantics", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
+        Assert.Equal(SemanticsMask.Reference, Assert.IsType<SemanticsMaskKoto>(constraint.Right).Mask);
+    }
+
+    [Fact]
     public void AppliesSemanticsToCompoundType()
     {
         var (root, diagnostics) = Parse("func F(value: objref/SomeType<List<owner/T>, I>)");
