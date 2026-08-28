@@ -73,6 +73,7 @@ public static class Constants
     // Contextual names used by type semantics and constraints
     public const string SemanticsKeyword = "semantics";
     public const string OriginKeyword = "origin";
+    public const string FromKeyword = "from";
     public const string SelfKeyword = "Self";
     public const string OwnerKeyword = "owner";
     public const string RefKeyword = "ref";

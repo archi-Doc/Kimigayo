@@ -25,4 +25,5 @@ public open struct TestStruct<s/C, D> origin a, b
     #Test1
     public static var #Test2 x: i32 = #One 1
     let pi = 1.2
-    private let buffer: ref/Array<i32>
+    private let buffer: ref/Array<i32> from a
+    private let buffer2: ref/Array<ref/C from b> from a

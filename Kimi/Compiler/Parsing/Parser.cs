@@ -10,6 +10,8 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
+#pragma warning disable SA1202
+
 public static class Parser
 {
     private const int PrefixBindingPower = 90;
@@ -728,7 +730,11 @@ Exit:
     }
 
     public static Koto ParseType(ref TokenReader reader)
+        => ParseType(ref reader, true);
+
+    private static Koto ParseType(ref TokenReader reader, bool parseOrigin)
     {// semantics/A.B<C>
+        var start = reader.CurrentTokenRange.Start;
         var left = ParseTypeInternal(ref reader);
         if (left is null)
         {
@@ -774,6 +780,62 @@ Exit:
             }
         }
 
+        if (parseOrigin && reader.IsIdentifierToken(reader.CurrentToken, Constants.FromKeyword))
+        {
+            var fromRange = reader.CurrentTokenRange;
+            reader.Advance();
+
+            if (!reader.CanRead)
+            {
+                reader.Diagnostic.Add(fromRange, DiagnosticCode.IncompleteSyntax_Kd);
+                return left;
+            }
+
+            if (reader.CurrentTokenKind is TokenKind.Separator or
+                TokenKind.EndBlock or
+                TokenKind.Comma or
+                TokenKind.GreaterThan or
+                TokenKind.CloseParenthesis or
+                TokenKind.Equals or
+                TokenKind.MinusGreaterThan)
+            {
+                reader.Diagnostic.Add(fromRange, DiagnosticCode.IncompleteSyntax_Kd);
+                return left;
+            }
+
+            if (!reader.TryRead(out var originToken))
+            {
+                return left;
+            }
+
+            if (!originToken.Kind.IsIdentifierOrContextualKeyword())
+            {
+                reader.Diagnostic.Add(originToken.Span, DiagnosticCode.IdentifierExpected_Kd);
+                return left;
+            }
+
+            var origin = reader.GetSpan(originToken);
+            if (!IdentifierHelper.IsValidIdentifier(origin))
+            {
+                reader.Diagnostic.Add(originToken.Span, DiagnosticCode.InvalidIdentifier_Kd, origin.ToString());
+                return left;
+            }
+
+            var originName = origin.ToString();
+            if (left is TypeKoto typeKoto)
+            {
+                typeKoto.SetOrigin(originName, originToken.Span.End);
+            }
+            else
+            {
+                left = new TypeKoto(
+                    ref reader,
+                    SourceSpan.FromBounds(start, originToken.Span.End),
+                    left,
+                    originName);
+            }
+        }
+
         return left;
 
         static Koto? ParseTypeInternal(ref TokenReader reader)
@@ -802,7 +864,7 @@ Exit:
             if (hasSemantics)
             {
                 var attribute = reader.PopAttribute();
-                var type = ParseType(ref reader);
+                var type = ParseType(ref reader, false);
                 var semantics = new TypeKoto(
                     ref reader,
                     SourceSpan.FromBounds(start, type.Span.End),

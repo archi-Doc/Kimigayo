@@ -28,6 +28,15 @@ public partial class TypeKoto : Koto
     [Key(5)]
     public Koto? Type { get; private set; }
 
+    /// <summary>
+    /// Gets the name of the origin from which this type derives.
+    /// </summary>
+    [Key(6)]
+    public string? OriginName { get; private set; }
+
+    [Key(7)]
+    private bool isOriginWrapper;
+
     public string Identifier
         => this.Type is TypeKoto simpleType
             ? simpleType.Identifier
@@ -63,6 +72,20 @@ public partial class TypeKoto : Koto
         type.Parent = this;
     }
 
+    internal TypeKoto(
+        ref TokenReader reader,
+        SourceSpan range,
+        Koto type,
+        string originName)
+        : base(ref reader, range)
+    {
+        this.SemanticsKind = SemanticsKind.Owner;
+        this.Type = type;
+        this.OriginName = originName;
+        this.isOriginWrapper = true;
+        type.Parent = this;
+    }
+
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         if (this.AttributeChain is not null)
@@ -72,21 +95,40 @@ public partial class TypeKoto : Koto
 
         if (this.Type is not null)
         {
-            if (this.SemanticsKind == SemanticsKind.Parameter)
+            if (!this.isOriginWrapper)
             {
-                builder.Append(this.SemanticsParameter);
-            }
-            else
-            {
-                builder.Append(this.SemanticsKind.ToText());
+                if (this.SemanticsKind == SemanticsKind.Parameter)
+                {
+                    builder.Append(this.SemanticsParameter);
+                }
+                else
+                {
+                    builder.Append(this.SemanticsKind.ToText());
+                }
+
+                builder.Append(Constants.SlashChar);
             }
 
-            builder.Append(Constants.SlashChar);
             this.Type.WriteTo(ref builder);
-            return;
+        }
+        else
+        {
+            builder.Append(this.Identifier);
         }
 
-        builder.Append(this.Identifier);
+        if (this.OriginName is not null)
+        {
+            builder.AppendSpace();
+            builder.Append(Constants.FromKeyword);
+            builder.AppendSpace();
+            builder.Append(this.OriginName);
+        }
+    }
+
+    internal void SetOrigin(string originName, int end)
+    {
+        this.OriginName = originName;
+        this.Span = SourceSpan.FromBounds(this.Span.Start, end);
     }
 
     internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)

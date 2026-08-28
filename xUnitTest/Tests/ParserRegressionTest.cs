@@ -219,6 +219,22 @@ public class ParserRegressionTest
         Assert.Equal("objref/SomeType<List<owner/T>, I>", semantics.ToString());
     }
 
+    [Theory]
+    [InlineData("Dog from owner", "owner")]
+    [InlineData("ref/Dog from source", "source")]
+    [InlineData("ref/SomeType<List<T>, U> from collection", "collection")]
+    [InlineData("SomeType<T> from collection", "collection")]
+    public void ParsesAndWritesTypeOrigin(string typeText, string expectedOrigin)
+    {
+        var (root, diagnostics) = Parse($"func F(value: {typeText})");
+
+        Assert.Empty(diagnostics);
+        var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
+        var type = Assert.IsType<TypeKoto>(function.Parameters.Single().Type);
+        Assert.Equal(expectedOrigin, type.OriginName);
+        Assert.Equal(typeText, type.ToString());
+    }
+
     [Fact]
     public void ParsesHierarchicalTypeConstraints()
     {
