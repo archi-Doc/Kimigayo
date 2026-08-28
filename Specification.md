@@ -2,6 +2,55 @@
 
 **Kimigayo** is a programming language designed and built from scratch with the goals of being consistent, fast, simple, fun, safe, and fast.
 
+# Identifier
+
+Kimigayo uses the following information to identify declarations and their meaning:
+
+| Element     | Meaning                                                               |
+| ----------- | --------------------------------------------------------------------- |
+| `Name`      | The basic human-readable name used to refer to a declaration          |
+| `Signature` | The information that distinguishes declarations in the same scope     |
+| `Type`      | The meaning of a value or invocation within the type system           |
+
+## Name
+
+A Name is the basic name by which a declaration is written and referred to. The same character rules apply to the names of classes, types, functions, fields, properties, parameters, and other named declarations.
+
+A Name is non-empty and consists of a start character followed by zero or more continuation characters.
+
+The start character may be:
+
+- an ASCII letter (`A`–`Z` or `a`–`z`),
+- an underscore (`_`), or
+- a Unicode character in one of the categories Uppercase Letter (`Lu`), Lowercase Letter (`Ll`), Titlecase Letter (`Lt`), Modifier Letter (`Lm`), Other Letter (`Lo`), or Letter Number (`Nl`).
+
+Each continuation character may be any valid start character, or:
+
+- an ASCII digit (`0`–`9`), or
+- a Unicode character in one of the categories Nonspacing Mark (`Mn`), Spacing Combining Mark (`Mc`), Decimal Digit Number (`Nd`), Connector Punctuation (`Pc`), or Format (`Cf`).
+
+Contextual keywords may be used as Names where an identifier is expected. Reserved keywords may not be used as Names.
+
+For example, `Dog`, `_value`, `point2`, `日本語`, and `ǅelta` are valid Names, while `2point`, `has-value`, and the empty string are not.
+
+## Signature
+
+A declaration has a Signature. A Signature consists of the information required to distinguish the declaration from other declarations in the same declaration scope.
+
+The Signature of each declaration kind consists of the following information:
+
+| Declaration kind | Signature information                                                 |
+| ---------------- | --------------------------------------------------------------------- |
+| Type             | Type Semantics, Name, and generic parameter count                     |
+| Function         | Name, generic parameter count, and an ordered list of parameter Signatures |
+| Parameter        | Type                                                                  |
+| Field            | Name                                                                  |
+| Property         | Name                                                                  |
+
+Each function parameter contributes its Type to the function Signature. Parameter names, return types, default values, and declaration modifiers are not part of the function Signature.
+
+Consequently, two functions in the same scope may share a Name when their generic parameter counts or parameter types differ. Two fields or two properties with the same Name in the same scope have the same Signature and therefore cannot be distinguished by Signature alone.
+
 # Type
 
 > Types are everything for programming languages, words are everything in design.
