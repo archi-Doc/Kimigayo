@@ -20,6 +20,9 @@ public open struct TestStruct<s/C, D> origin a, b
     private let buffer: ref/Array<i32> from a
     private let buffer2: ref/Array<ref/C from b> from a
 
+    public func Add(x: i32, y: i32) -> i32
+        return x + (y + 3) * (x - 2)
+
 var x:unsafe/Base.Map<String, Int>
 var count: i32 = #TestAtr 0
 let name: String = "abc"

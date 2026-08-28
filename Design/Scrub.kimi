@@ -27,3 +27,4 @@ public open struct TestStruct<s/C, D> origin a, b
     let pi = 1.2
     private let buffer: ref/Array<i32> from a
     private let buffer2: ref/Array<ref/C from b> from a
+    public func Add(x: i32, y: i32) -> i32
