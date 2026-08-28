@@ -24,7 +24,4 @@ public sealed partial class SemanticsMaskKoto : Koto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
         => builder.Append(this.Mask.ToText());
-
-    public override (string Text, Koto[]? Children) Dump()
-        => ($"{this.GetType().Name}({this.Mask})", default);
 }

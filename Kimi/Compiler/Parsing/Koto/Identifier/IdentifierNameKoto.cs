@@ -57,9 +57,4 @@ public partial class IdentifierNameKoto : Koto
 
         builder.Append(this.IdentifierName);
     }
-
-    public override (string Text, Koto[]? Children) Dump()
-    {
-        return ($"{this.GetType().Name}({this.IdentifierName})", default);
-    }
 }

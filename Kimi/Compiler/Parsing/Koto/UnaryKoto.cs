@@ -339,11 +339,6 @@ public abstract partial class UnaryKoto : Koto
     public override string ToString()
         => $"Unary:{this.Operand.ToString()}";
 
-    public override (string Text, Koto[]? Children) Dump()
-    {
-        return ($"{this.GetType().Name}", [this.Operand,]);
-    }
-
     internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
     {
         if (oldKoto == this.Operand)

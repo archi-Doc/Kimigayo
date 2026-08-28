@@ -169,19 +169,4 @@ public sealed partial class NumberLiteralKoto : Koto
 
         builder.Append(this.Literal);
     }
-
-    public override (string Text, Koto[]? Children) Dump()
-    {
-        return ($"{this.GetType().Name}({this.Literal})", default);
-    }
-
-    /*[MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void PrepareNumericLiteral()
-    {
-        if (this.parseResult == NumberLiteralParseResult.Invalid)
-        {
-            this.parseResult = NumberLiteralHelper.ParseNumberLiteral(this.Literal, out var uv);
-            this.uv = uv;
-        }
-    }*/
 }

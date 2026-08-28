@@ -84,9 +84,4 @@ public partial class TypeSemanticsKoto : Koto
 
         builder.Append(this.Identifier);
     }
-
-    public override (string Text, Koto[]? Children) Dump()
-        => this.Type is null
-            ? ($"{this.GetType().Name}({this.SemanticsKind}, {this.Identifier})", default)
-            : ($"{this.GetType().Name}({this.SemanticsKind})", [this.Type]);
 }

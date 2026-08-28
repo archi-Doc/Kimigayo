@@ -266,11 +266,6 @@ public abstract partial class Koto
         builder.Append("Koto");
     }
 
-    public virtual (string Text, Koto[]? Children) Dump()
-    {
-        return (string.Empty, default);
-    }
-
     public virtual Koto? ResolveIdentifier(ReadOnlySpan<char> identifier)
     {
         return default;

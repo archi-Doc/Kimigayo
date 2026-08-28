@@ -90,11 +90,6 @@ public static partial class KotoHelper
         return false;
     }
 
-    public static void Dump(Koto koto, TextWriter writer)
-    {
-        DumpKoto(koto, writer, indent: "  ", isLast: true, label: null);
-    }
-
     public static string ValidateAndGetNamespace(ref TokenReader reader)
     {
         if (reader.IsEnd)
@@ -201,32 +196,5 @@ public static partial class KotoHelper
         }
 
         return list;
-    }
-
-    private static void DumpKoto(Koto koto, TextWriter writer, string indent, bool isLast, string? label)
-    {
-        writer.Write(indent);
-
-        if (indent.Length > 0)
-        {
-            writer.Write(isLast ? "└─ " : "├─ ");
-        }
-
-        var r = koto.Dump();
-        writer.WriteLine(r.Text);
-
-        var childIndent = indent;
-        if (indent.Length > 0)
-        {
-            childIndent += isLast ? "   " : "│  ";
-        }
-
-        if (r.Children is { } children)
-        {
-            for (var i = 0; i < children.Length; i++)
-            {
-                DumpKoto(children[i], writer, childIndent, i == children.Length - 1, default);
-            }
-        }
     }
 }

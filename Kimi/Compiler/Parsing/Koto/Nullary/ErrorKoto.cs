@@ -22,9 +22,4 @@ public partial class ErrorKoto : Koto
     {
         builder.Append("Error");
     }
-
-    public override (string Text, Koto[]? Children) Dump()
-    {
-        return ($"{this.GetType().Name}", default);
-    }
 }

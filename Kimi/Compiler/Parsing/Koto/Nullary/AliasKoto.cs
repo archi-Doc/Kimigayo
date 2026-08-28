@@ -41,9 +41,4 @@ public sealed partial class AliasKoto : Koto
             }
         }
     }
-
-    public override (string Text, Koto[]? Children) Dump()
-    {
-        return ($"{this.GetType().Name}({string.Join(Constants.DotChar, this.QualifiedName)})", default);
-    }
 }

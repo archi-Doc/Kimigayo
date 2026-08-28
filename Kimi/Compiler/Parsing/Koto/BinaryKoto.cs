@@ -50,11 +50,6 @@ public partial class IndexKoto : BinaryKoto
         this.Right.WriteTo(ref builder);
         builder.Append("]");
     }
-
-    public override (string Text, Koto[]? Children) Dump()
-    {
-        return ($"{this.GetType().Name}", [this.Left, this.Index,]);
-    }
 }
 
 [TinyhandObject]
@@ -698,11 +693,6 @@ public abstract partial class BinaryKoto : Koto
 
     public override string ToString()
         => $"BinaryKoto: {this.Right.ToString()}";
-
-    public override (string Text, Koto[]? Children) Dump()
-    {
-        return ($"{this.GetType().Name}", [this.Left, this.Right,]);
-    }
 
     internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
     {

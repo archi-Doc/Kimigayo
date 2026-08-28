@@ -111,7 +111,7 @@ public sealed partial class Kotonoha
         {
             tokenizer.ReadAll();
             if (this.Compilation.Project.KimiOptions.DumpToken)
-            {// Dump token
+            {
                 this.DumpToken(sourceDocument.Path, tokenizer.ToReadOnlySequence());
             }
 

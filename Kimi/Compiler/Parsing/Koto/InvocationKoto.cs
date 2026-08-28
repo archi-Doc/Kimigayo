@@ -76,9 +76,4 @@ public partial class InvocationKoto : Koto
 
         builder.Append(Constants.CloseParenthesisChar);
     }
-
-    public override (string Text, Koto[]? Children) Dump()
-    {
-        return ($"{this.GetType().Name}", [this.Method, .. this.Arguments]);
-    }
 }

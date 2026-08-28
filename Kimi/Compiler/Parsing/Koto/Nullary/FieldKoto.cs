@@ -69,9 +69,4 @@ public partial class FieldKoto : Koto
             this.InitializerKoto.WriteTo(ref builder);
         }
     }
-
-    public override (string Text, Koto[]? Children) Dump()
-    {
-        return ($"{this.GetType().Name}()", default);
-    }
 }

@@ -45,9 +45,4 @@ public sealed partial class StringLiteralKoto : Koto
 
         builder.Append(this.rawLiteral);
     }
-
-    public override (string Text, Koto[]? Children) Dump()
-    {
-        return ($"{this.GetType().Name}({this.rawLiteral})", default);
-    }
 }
