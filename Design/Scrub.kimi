@@ -17,10 +17,12 @@ private func find<s/T, owner/T2>(value?: T, in => collection: Collection<T>, usi
 public func Main() -> ()
 
 struct TestStruct<C>
-    Self is A or B
     semantics is reference
+    Self is A or B
+    origin is a
     C is comparable
 
     #Test1
     public static var #Test2 x: i32 = #One 1
     let pi = 1.2
+    buffer

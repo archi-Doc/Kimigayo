@@ -175,7 +175,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             }
 
             if (Parser.IsTypeConstraintStart(ref reader))
-            {
+            {// TypeConstraint: semantics is Owning
                 CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.TypeConstraint);
                 var constraint = Parser.ParseTypeConstraint(ref reader);
                 if (constraint is not null)
