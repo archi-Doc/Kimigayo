@@ -67,6 +67,7 @@ public sealed partial class Kotonoha
     {
         this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(this.Name);
         this.Compilation = compilation;
+        this.RootKoto.RestoreAfterDeserialization(new CodeContext(this), default);
     }
 
     public override string ToString()

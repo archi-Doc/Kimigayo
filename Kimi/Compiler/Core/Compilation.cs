@@ -118,6 +118,7 @@ public class Compilation
                 return;
             }
 
+            kotonoha.OnDeserialized(this);
             kotonoha.RootKoto.UnparseAll(ref builder2);
             var path2 = Path.Combine(this.Project.Directory, Constants.Scrub2FileName);
             var st2 = builder2.ToString();

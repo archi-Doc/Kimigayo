@@ -710,6 +710,13 @@ public abstract partial class BinaryKoto : Koto
         return false;
     }
 
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        this.Left.RestoreAfterDeserialization(codeContext, this);
+        this.Right.RestoreAfterDeserialization(codeContext, this);
+    }
+
     protected void WriteBinaryKoto(ref IndentedStringBuilder builder, string infix)
     {
         this.Left.WriteTo(ref builder);

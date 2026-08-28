@@ -69,4 +69,12 @@ public partial class FieldKoto : Koto
             this.InitializerKoto.WriteTo(ref builder);
         }
     }
+
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        this.NameKoto.RestoreAfterDeserialization(codeContext, this);
+        this.TypeKoto?.RestoreAfterDeserialization(codeContext, this);
+        this.InitializerKoto?.RestoreAfterDeserialization(codeContext, this);
+    }
 }

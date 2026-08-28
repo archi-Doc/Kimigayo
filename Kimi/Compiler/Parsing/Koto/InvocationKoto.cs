@@ -76,4 +76,14 @@ public partial class InvocationKoto : Koto
 
         builder.Append(Constants.CloseParenthesisChar);
     }
+
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        this.Method.RestoreAfterDeserialization(codeContext, this);
+        foreach (var argument in this.Arguments)
+        {
+            argument.RestoreAfterDeserialization(codeContext, this);
+        }
+    }
 }

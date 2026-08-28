@@ -2,20 +2,18 @@
 
 **Kimigayo** is a programming language designed and built from scratch with the goals of being consistent, fast, simple, fun, safe, and fast.
 
-# Type: semantics/Type from origin
+# Type
 
 > Types are everything for programming languages, words are everything in design.
 
-Kimigayo represents the essential properties of a value with the following form:
+A Kimigayo type consists of **Type Semantics**, a **Core Type**, and an **Origin**.
 
+```ini
+Type = TypeSemantics/CoreType from Origin
 ```
-semantics/Type from origin
-```
 
-This notation consists of three fundamental elements: **semantics**, **Type**, and **origin**.
-
-- **Semantics** — Describes how the value is represented, owned, accessed, or used.
-- **Type** — Describes what the value is.
+- **Type Semantics** — Describe how the value is represented, owned, accessed, or used.
+- **Core Type** — Describes what the value is.
 - **Origin** — Describes where the value derives from and constrains its lifetime or validity.
 
 For example:
@@ -24,21 +22,23 @@ For example:
 ref/Dog from owner
 ```
 
-means a value of type `Dog`, accessed with `ref` semantics, whose validity is derived from `owner`.
+means a value with the Core Type `Dog`, accessed with `ref` semantics, whose validity derives from `owner`.
+
+Type Semantics and Origin may be omitted from source notation when they are determined by the language or context. The Core Type is always present.
 
 In short:
 
 ```
-Semantics — How
-Type      — What
-Origin    — Whence
+Type Semantics — How
+Core Type      — What
+Origin         — Whence
 ```
 
 These three elements form the core of Kimigayo's type system.
 
-## Types
+## Core Types
 
-Kimigayo provides a fixed set of primitive types and user-defined structure types.
+Kimigayo provides a fixed set of primitive Core Types and user-defined structure Core Types.
 
 ### Primitive Types
 
@@ -89,7 +89,7 @@ Sizes below are storage sizes.
 
 A `struct` defines a composite value type.
 
-A structure may contain fields whose underlying types are:
+A structure may contain fields whose Core Types are:
 
 - primitive types,
 - other structure types, or
@@ -116,7 +116,9 @@ The Type Semantics of a field determines how the referenced or contained value i
 
 Type Semantics specify the ownership, borrowing, layout, and safety properties of a typed value.
 
-The qualified syntax is `semantics/T`, where `T` is the underlying type.
+The qualified syntax is `Semantics/CoreType`. The complete type form adds `from Origin`.
+
+In the syntax below, `T` denotes a Core Type.
 
 | Category      | Semantics    | Syntax                  | Layout or Meaning                     |
 | ------------- | ------------ | ----------------------- | ------------------------------------- |
@@ -250,7 +252,7 @@ struct Parser
     position: usize
 ```
 
-Type Semantics are orthogonal to the underlying type.
+Type Semantics are orthogonal to the Core Type.
 
 For example, given:
 
@@ -273,7 +275,7 @@ objuniq/Data
 unsafe/Data
 ```
 
-Each has the same underlying `Data` type but different ownership, storage, borrowing, or safety semantics.
+Each has the same `Data` Core Type but different ownership, storage, borrowing, or safety semantics.
 
 # Classification
 

@@ -128,6 +128,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.MemberAccess, typeof(MemberAccessKoto))]
 [TinyhandUnion((int)KotoKind.Index, typeof(IndexKoto))]
 [TinyhandUnion((int)KotoKind.Asterisk, typeof(AsteriskKoto))]
+[TinyhandUnion((int)KotoKind.Conversion, typeof(ConversionKoto))]
 [TinyhandUnion((int)KotoKind.Slash, typeof(SlashKoto))]
 [TinyhandUnion((int)KotoKind.Percent, typeof(PercentKoto))]
 [TinyhandUnion((int)KotoKind.Plus, typeof(PlusKoto))]
@@ -320,6 +321,18 @@ public abstract partial class Koto
         }
 
         return false;
+    }
+
+    internal virtual void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        this.CodeContext = codeContext;
+        this.DiagnosticCollection = codeContext.DiagnosticCollection;
+        this.Parent = parent;
+
+        if (this.AttributeChain is not null)
+        {
+            this.AttributeChain.RestoreAfterDeserialization(codeContext, this);
+        }
     }
 
     internal virtual bool ReplaceChild(Koto oldKoto, Koto newKoto)

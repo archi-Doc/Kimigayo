@@ -54,17 +54,17 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         _ => TokenKind.Group,
     };
 
-    [IgnoreMember]
-    public List<TypeSemanticsKoto> GenericArguments { get; } = [];
+    [Key(7)]
+    public List<TypeSemanticsKoto> GenericArguments { get; private set; } = [];
 
-    [IgnoreMember]
-    public List<IsKoto> TypeConstraints { get; } = [];
+    [Key(8)]
+    public List<IsKoto> TypeConstraints { get; private set; } = [];
 
     [Key(5)]
     protected List<Koto> KotoList { get; set; } = [];
 
     [Key(6)]
-    protected Utf16Hashtable<GroupKoto> IdentifierToGroupKoto { get; set; } = new();
+    protected Utf16Hashtable<Koto> IdentifierToGroupKoto { get; set; } = new();
 
     #endregion
 
@@ -351,6 +351,30 @@ NextToken:
         }
     }
 
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        foreach (var argument in this.GenericArguments)
+        {
+            argument.RestoreAfterDeserialization(codeContext, this);
+        }
+
+        foreach (var constraint in this.TypeConstraints)
+        {
+            constraint.RestoreAfterDeserialization(codeContext, this);
+        }
+
+        foreach (var koto in this.KotoList)
+        {
+            koto.RestoreAfterDeserialization(codeContext, this);
+        }
+
+        foreach (var group in this.IdentifierToGroupKoto.ToArray())
+        {
+            group.RestoreAfterDeserialization(codeContext, this);
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void CheckDeclarationOrder(ref TokenReader reader, ref DeclarationOrder current, DeclarationOrder next)
     {
@@ -369,7 +393,7 @@ NextToken:
     {
         var parent = group;
         var codeContext = group.CodeContext;
-        Func<string, GroupKoto> factory = kind switch
+        Func<string, Koto> factory = kind switch
         {
             TokenKind.Struct => x => new StructKoto(codeContext, state, range),
             TokenKind.Enum => x => new EnumKoto(codeContext, state, range),
@@ -458,7 +482,7 @@ NextToken:
             builder.EnsureTrailingBlankLine();
             foreach (var x in groups)
             {
-                x.UnparseAllInternal(indents + 1, ref builder, groupDeclared);
+                ((GroupKoto)x).UnparseAllInternal(indents + 1, ref builder, groupDeclared);
             }
         }
 
@@ -471,5 +495,24 @@ NextToken:
     [TinyhandOnDeserialized]
     private void OnDeserialized()
     {
+        foreach (var argument in this.GenericArguments)
+        {
+            argument.Parent = this;
+        }
+
+        foreach (var constraint in this.TypeConstraints)
+        {
+            constraint.Parent = this;
+        }
+
+        foreach (var koto in this.KotoList)
+        {
+            koto.Parent = this;
+        }
+
+        foreach (var group in this.IdentifierToGroupKoto.ToArray())
+        {
+            group.Parent = this;
+        }
     }
 }

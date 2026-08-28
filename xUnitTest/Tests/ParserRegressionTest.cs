@@ -8,6 +8,7 @@ using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
+using Tinyhand;
 using Xunit;
 
 namespace XunitTest;
@@ -300,6 +301,74 @@ public class ParserRegressionTest
         finally
         {
             builder.Dispose();
+        }
+    }
+
+    [Fact]
+    public void PreservesKotoSyntaxThroughTinyhandSerialization()
+    {
+        var source = """
+            public open struct TestStruct<s/C>
+                origin is a and b
+                C is Comparable
+
+                struct Nested
+                    var value: C
+
+                #Example
+                var item: obj/Container<C> = value
+                var converted = item@unsafe/C
+                var called = transform(item, "text")
+
+                private func map<s/T>(value?: ref/T, fallback: owner/T = defaultValue) -> uniq/T
+                    return
+            """;
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        var context = kotonoha.CreateCodeContext();
+        context.Parse(kotonoha.RootKoto, source);
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+
+        var expectedBuilder = default(IndentedStringBuilder);
+        var actualBuilder = default(IndentedStringBuilder);
+        try
+        {
+            kotonoha.RootKoto.UnparseAll(ref expectedBuilder);
+            var serialized = TinyhandSerializer.Serialize(kotonoha);
+            var deserialized = new Kotonoha(compilation);
+            TinyhandSerializer.DeserializeObject(serialized, ref deserialized);
+            var restored = deserialized ?? throw new InvalidOperationException();
+            restored.OnDeserialized(compilation);
+            restored.RootKoto.UnparseAll(ref actualBuilder);
+
+            Assert.Equal(expectedBuilder.ToString(), actualBuilder.ToString());
+
+            var type = Assert.IsType<StructKoto>(
+                restored.RootKoto.GetOrAddGroup("TestStruct", TokenKind.Struct, default, default));
+            Assert.Same(restored, type.Kotonoha);
+            Assert.Single(type.GenericArguments);
+            Assert.Equal(2, type.TypeConstraints.Count);
+            Assert.All(type.GenericArguments, argument => Assert.Same(type, argument.Parent));
+            Assert.All(type.TypeConstraints, constraint => Assert.Same(type, constraint.Parent));
+
+            var fields = GetChildren(type).OfType<FieldKoto>().ToArray();
+            Assert.All(fields, field => Assert.Same(type, field.Parent));
+            var item = Assert.Single(fields, field => field.NameKoto.IdentifierName == "item");
+            var attribute = Assert.IsType<AttributeKoto>(item.AttributeChain);
+            Assert.Equal("Example", Assert.IsType<IdentifierNameKoto>(attribute.IdentifierKoto).IdentifierName);
+
+            var function = Assert.IsType<FunctionKoto>(GetChildren(type).OfType<FunctionKoto>().Single());
+            Assert.Single(function.GenericArguments);
+            Assert.Equal(2, function.Parameters.Count);
+            var returnType = Assert.IsAssignableFrom<Koto>(function.ReturnType);
+            Assert.All(function.GenericArguments, argument => Assert.Same(function, argument.Parent));
+            Assert.All(function.Parameters, parameter => Assert.Same(function, parameter.Type.Parent));
+            Assert.Same(function, returnType.Parent);
+        }
+        finally
+        {
+            expectedBuilder.Dispose();
+            actualBuilder.Dispose();
         }
     }
 

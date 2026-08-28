@@ -65,6 +65,22 @@ public partial class AttributeKoto : UnaryKoto
         builder.Append(Constants.SharpChar);
         builder.Append(this.Operand.ToString());
     }
+
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        if (this.Operand is InvocationKoto invocationKoto &&
+            invocationKoto.Method is IdentifierNameKoto identifierKoto)
+        {
+            this.IdentifierKoto = identifierKoto;
+            this.Arguments = invocationKoto.Arguments;
+        }
+        else
+        {
+            this.IdentifierKoto = this.Operand;
+            this.Arguments = [];
+        }
+    }
 }
 
 [TinyhandObject]
@@ -350,6 +366,12 @@ public abstract partial class UnaryKoto : Koto
         }
 
         return false;
+    }
+
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        this.Operand.RestoreAfterDeserialization(codeContext, this);
     }
 
     [TinyhandOnDeserialized]

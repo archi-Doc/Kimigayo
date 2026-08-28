@@ -29,4 +29,11 @@ public partial class FunctionTypeKoto : Koto
         builder.Append(" -> ");
         this.ReturnType.WriteTo(ref builder);
     }
+
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        this.Parameters.RestoreAfterDeserialization(codeContext, this);
+        this.ReturnType.RestoreAfterDeserialization(codeContext, this);
+    }
 }

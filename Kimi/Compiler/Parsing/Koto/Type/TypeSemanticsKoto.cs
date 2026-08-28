@@ -88,4 +88,10 @@ public partial class TypeSemanticsKoto : Koto
 
         builder.Append(this.Identifier);
     }
+
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        this.Type?.RestoreAfterDeserialization(codeContext, this);
+    }
 }

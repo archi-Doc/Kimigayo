@@ -34,4 +34,13 @@ public partial class TupleTypeKoto : Koto
 
         builder.Append(')');
     }
+
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        foreach (var element in this.Elements)
+        {
+            element.RestoreAfterDeserialization(codeContext, this);
+        }
+    }
 }

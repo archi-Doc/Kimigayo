@@ -5,7 +5,33 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
-public sealed record FunctionParameterKoto(string ExternalName, string InternalName, bool IsOptional, Koto Type, Koto? DefaultValue);
+[TinyhandObject]
+public sealed partial record class FunctionParameterKoto
+{
+    [Key(0)]
+    public string ExternalName { get; private set; } = string.Empty;
+
+    [Key(1)]
+    public string InternalName { get; private set; } = string.Empty;
+
+    [Key(2)]
+    public bool IsOptional { get; private set; }
+
+    [Key(3)]
+    public Koto Type { get; private set; } = default!;
+
+    [Key(4)]
+    public Koto? DefaultValue { get; private set; }
+
+    public FunctionParameterKoto(string externalName, string internalName, bool isOptional, Koto type, Koto? defaultValue)
+    {
+        this.ExternalName = externalName;
+        this.InternalName = internalName;
+        this.IsOptional = isOptional;
+        this.Type = type;
+        this.DefaultValue = defaultValue;
+    }
+}
 
 [TinyhandObject]
 public partial class FunctionKoto : IdentifiableKoto, ITokenParser
@@ -16,16 +42,22 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     public ModifierKind Modifier { get; private set; }
 
     [Key(3)]
-    public string Name { get; private set; }
+    public string Name { get; private set; } = string.Empty;
+
+    [Key(4)]
+    private List<TypeSemanticsKoto> genericArguments = [];
+
+    [Key(5)]
+    private List<FunctionParameterKoto> parameters = [];
+
+    [Key(6)]
+    public Koto? ReturnType { get; private set; }
 
     [IgnoreMember]
-    public IReadOnlyList<TypeSemanticsKoto> GenericArguments { get; } = [];
+    public IReadOnlyList<TypeSemanticsKoto> GenericArguments => this.genericArguments;
 
     [IgnoreMember]
-    public IReadOnlyList<FunctionParameterKoto> Parameters { get; } = [];
-
-    [IgnoreMember]
-    public Koto? ReturnType { get; }
+    public IReadOnlyList<FunctionParameterKoto> Parameters => this.parameters;
 
     [IgnoreMember]
     public bool IsExcluded { get; }
@@ -37,16 +69,16 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
         this.Modifier = context.ModifierKind;
         this.IsExcluded = context.IsExcluded;
         this.Name = name;
-        this.GenericArguments = genericArguments ?? [];
-        this.Parameters = parameters;
+        this.genericArguments = genericArguments ?? [];
+        this.parameters = parameters;
         this.ReturnType = returnType;
 
-        foreach (var argument in this.GenericArguments)
+        foreach (var argument in this.genericArguments)
         {
             argument.Parent = this;
         }
 
-        foreach (var parameter in parameters)
+        foreach (var parameter in this.parameters)
         {
             parameter.Type.Parent = this;
             if (parameter.DefaultValue is not null)
@@ -145,6 +177,46 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
         {
             builder.Append(" -> ");
             this.ReturnType.WriteTo(ref builder);
+        }
+    }
+
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        foreach (var argument in this.genericArguments)
+        {
+            argument.RestoreAfterDeserialization(codeContext, this);
+        }
+
+        foreach (var parameter in this.parameters)
+        {
+            parameter.Type.RestoreAfterDeserialization(codeContext, this);
+            parameter.DefaultValue?.RestoreAfterDeserialization(codeContext, this);
+        }
+
+        this.ReturnType?.RestoreAfterDeserialization(codeContext, this);
+    }
+
+    [TinyhandOnDeserialized]
+    private void OnDeserialized()
+    {
+        foreach (var argument in this.genericArguments)
+        {
+            argument.Parent = this;
+        }
+
+        foreach (var parameter in this.parameters)
+        {
+            parameter.Type.Parent = this;
+            if (parameter.DefaultValue is not null)
+            {
+                parameter.DefaultValue.Parent = this;
+            }
+        }
+
+        if (this.ReturnType is not null)
+        {
+            this.ReturnType.Parent = this;
         }
     }
 }

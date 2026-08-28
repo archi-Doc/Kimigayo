@@ -41,4 +41,14 @@ public partial class GenericsKoto : Koto
 
         builder.Append(Constants.GreaterThanChar);
     }
+
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        this.Identifier?.RestoreAfterDeserialization(codeContext, this);
+        foreach (var type in this.typeList)
+        {
+            type.RestoreAfterDeserialization(codeContext, this);
+        }
+    }
 }
