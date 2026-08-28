@@ -16,11 +16,12 @@ public class Program
 {
     public static void Main(string[] args)
     {
-        DebugRun<SourceDocumentBenchmark>();
+        DebugRun<TokenReaderBenchmark>();
 
         // var summary = BenchmarkRunner.Run<TestBenchmark>();
         var switcher = new BenchmarkSwitcher(new[]
         {
+            typeof(TokenReaderBenchmark),
             typeof(SourceDocumentBenchmark),
             typeof(HashedStringBenchmark),
             typeof(TargetTripleBenchmark),
