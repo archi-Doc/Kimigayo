@@ -20,6 +20,9 @@
   + Name="DuplicateModifier_Kd"
     Message="Duplicate modifier '{0}'"
 
+  + Name="DuplicateTypeConstraintDefinition_Kd"
+    Message="Type constraints for this struct are already defined in another declaration"
+
   + Name="IdentifierExpected_Kd"
     Message="Identifier expected"
 

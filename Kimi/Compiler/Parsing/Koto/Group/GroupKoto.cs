@@ -222,9 +222,10 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             }
 
             if (Parser.IsTypeConstraintStart(ref reader))
-            {// TypeConstraint: semantics is Owning
+            {// TypeConstraint: semantics is owning
                 if (!acceptsTypeConstraints)
                 {
+                    reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
                     reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                     continue;
                 }

@@ -290,7 +290,7 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void IgnoresTypeConstraintsFromLaterStructDefinitions()
+    public void DiagnosesAndIgnoresTypeConstraintsFromLaterStructDefinitions()
     {
         var source = """
             struct A<s/T>
@@ -307,7 +307,12 @@ public class ParserRegressionTest
 
         var (root, diagnostics) = Parse(source);
 
-        Assert.Empty(diagnostics);
+        Assert.Equal(3, diagnostics.Length);
+        Assert.All(
+            diagnostics,
+            diagnostic => Assert.Equal(
+                nameof(DiagnosticCode.DuplicateTypeConstraintDefinition_Kd),
+                diagnostic.Entry.Name));
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
         Assert.Collection(
             type.TypeConstraints,

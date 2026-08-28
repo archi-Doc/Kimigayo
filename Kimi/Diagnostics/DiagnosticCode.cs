@@ -14,6 +14,7 @@ public enum DiagnosticCode
     DeclarationOrderWarning_Kd,
     DivisionByZero_Kd,
     DuplicateModifier_Kd,
+    DuplicateTypeConstraintDefinition_Kd,
     IdentifierExpected_Kd,
     IncompleteEscape_Kd,
     IncompleteSyntax_Kd,

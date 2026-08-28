@@ -8,6 +8,8 @@ alias AliasC
 alias AliasD
 
 public open struct TestStruct<s/C, D>
+
+public open struct TestStruct<s/C, D>
     semantics is reference
     Self is A or B // Implementation
     origin is a and b
