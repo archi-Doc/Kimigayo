@@ -26,10 +26,10 @@ public partial class FieldKoto : Koto
     public IdentifierNameKoto NameKoto { get; private set; }
 
     [Key(4)]
-    public Koto? InitializerKoto { get; private set; }
+    public Koto? TypeKoto { get; private set; }
 
-    [IgnoreMember]
-    private Koto? typeKoto;
+    [Key(5)]
+    public Koto? InitializerKoto { get; private set; }
 
     public string VariableText => this.VariableKind == VariableKind.Var ? Constants.VarKeyword : Constants.LetKeyword;
 
@@ -38,7 +38,7 @@ public partial class FieldKoto : Koto
     {
         this.Modifier = reader.ModifierKind;
         this.VariableKind = token.Kind == TokenKind.Let ? VariableKind.Let : VariableKind.Var;
-        this.typeKoto = typeKoto;
+        this.TypeKoto = typeKoto;
         this.NameKoto = nameKoto;
         this.InitializerKoto = initializerKoto;
     }
@@ -57,10 +57,10 @@ public partial class FieldKoto : Koto
 
         this.NameKoto.WriteTo(ref builder);
 
-        if (this.typeKoto is not null)
+        if (this.TypeKoto is not null)
         {
             builder.Append(": ");
-            this.typeKoto.WriteTo(ref builder);
+            this.TypeKoto.WriteTo(ref builder);
         }
 
         if (this.InitializerKoto != default)

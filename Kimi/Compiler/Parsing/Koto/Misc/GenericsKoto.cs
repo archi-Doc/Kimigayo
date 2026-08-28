@@ -10,10 +10,11 @@ public partial class GenericsKoto : Koto
 {// A<B, C>
     public override KotoKind Akind => KotoKind.Generics;
 
-    [IgnoreMember]
-    public Koto Identifier { get; private set; }
+    [Key(1)]
+    public Koto? Identifier { get; private set; }
 
-    private readonly List<Koto> typeList;
+    [Key(2)]
+    private readonly List<Koto> typeList = [];
 
     public GenericsKoto(ref TokenReader reader, SourceSpan range, Koto identifier, List<Koto> typeList)
         : base(ref reader, range)
@@ -24,7 +25,7 @@ public partial class GenericsKoto : Koto
 
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.Identifier.WriteTo(ref builder);
+        this.Identifier?.WriteTo(ref builder);
         // builder.Append(this.Identifier);
         builder.Append(Constants.LessThanChar);
 

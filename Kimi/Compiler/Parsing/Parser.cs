@@ -417,7 +417,7 @@ Exit:
     }
 
     public static FieldKoto? ParseField(ref TokenReader reader, ref Token token)
-    {// var x = 1
+    {// var x: i32 = 1
         var variableContext = reader.TakeContext();
 
         // Field name
@@ -804,8 +804,9 @@ Exit:
     /// </summary>
     /// <remarks>
     /// The special subject <c>semantics</c> accepts only named
-    /// <see cref="SemanticsMask"/> values. Other subjects retain their operands as
-    /// <see cref="IdentifierNameKoto"/> instances for later semantic analysis.
+    /// <see cref="SemanticsMask"/> values. The special subject <c>origin</c> accepts
+    /// one or more identifiers joined by <c>and</c>. Other subjects retain their
+    /// operands as <see cref="IdentifierNameKoto"/> instances for later semantic analysis.
     /// </remarks>
     /// <param name="reader">The token reader positioned at the constraint subject.</param>
     /// <returns>The parsed constraint, or <see langword="null"/> when its required prefix is invalid.</returns>
@@ -823,12 +824,49 @@ Exit:
             return null;
         }
 
-        var parsesSemantics = subject.IdentifierName.AsSpan().SequenceEqual(Constants.SemanticsKeyword);
-        var condition = ParseCondition(ref reader, parsesSemantics);
+        var subjectName = subject.IdentifierName.AsSpan();
+        var parsesSemantics = subjectName.SequenceEqual(Constants.SemanticsKeyword);
+        var parsesOrigin = subjectName.SequenceEqual(Constants.OriginKeyword);
+        var condition = parsesOrigin
+            ? ParseOrigin(ref reader)
+            : ParseCondition(ref reader, parsesSemantics);
         var constraint = new IsKoto(ref reader, isRange, subject, condition);
 
         reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
         return constraint;
+
+        static Koto ParseOrigin(ref TokenReader reader)
+        {
+            var left = ParseOriginIdentifier(ref reader);
+            while (reader.CurrentTokenKind == TokenKind.And)
+            {
+                reader.TryRead(out var token);
+                var right = ParseOriginIdentifier(ref reader);
+                left = new AndKoto(ref reader, token.Span, left, right);
+            }
+
+            return left;
+        }
+
+        static Koto ParseOriginIdentifier(ref TokenReader reader)
+        {
+            if (reader.CurrentTokenKind is TokenKind.Invalid or
+                TokenKind.Separator or
+                TokenKind.EndBlock)
+            {
+                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                return reader.NewErrorKoto();
+            }
+
+            if (!reader.TryRead(out var token))
+            {
+                return reader.NewErrorKoto();
+            }
+
+            return IdentifierNameKoto.TryCreate(ref reader, token, out var identifier)
+                ? identifier
+                : new ErrorKoto(ref reader, token.Span);
+        }
 
         static Koto ParseCondition(ref TokenReader reader, bool parsesSemantics)
         {

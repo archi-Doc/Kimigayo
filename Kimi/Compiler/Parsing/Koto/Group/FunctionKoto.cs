@@ -19,10 +19,10 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     public string Name { get; private set; }
 
     [IgnoreMember]
-    public IReadOnlyList<TypeSemanticsKoto> GenericArguments { get; }
+    public IReadOnlyList<TypeSemanticsKoto> GenericArguments { get; } = [];
 
     [IgnoreMember]
-    public IReadOnlyList<FunctionParameterKoto> Parameters { get; }
+    public IReadOnlyList<FunctionParameterKoto> Parameters { get; } = [];
 
     [IgnoreMember]
     public Koto? ReturnType { get; }

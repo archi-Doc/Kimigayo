@@ -108,7 +108,7 @@ public class Compilation
 
             var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
             var st = builder.ToString();
-            File.WriteAllText(path, st, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            // File.WriteAllText(path, st, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
             var bin = TinyhandSerializer.Serialize(this.Kotonoha);
             var kotonoha = new Kotonoha(this);
@@ -116,6 +116,15 @@ public class Compilation
             if (kotonoha is null)
             {
                 return;
+            }
+
+            kotonoha.RootKoto.UnparseAll(ref builder2);
+            var path2 = Path.Combine(this.Project.Directory, Constants.Scrub2FileName);
+            var st2 = builder2.ToString();
+            if (!st.SequenceEqual(st2))
+            {
+                this.Kimigayo.WriteLine(LogLevel.Error, "Data mismatch detected after serialization");
+                File.WriteAllText(path2, st2, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             }
 
             // kotonoha.Root.WriteTo(ref builder2);

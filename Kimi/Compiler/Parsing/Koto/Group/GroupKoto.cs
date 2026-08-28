@@ -166,6 +166,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
     public void Parse(ref TokenReader reader)
     {
         var declarationOrder = DeclarationOrder.None;
+        var acceptsTypeConstraints = this is not StructKoto || this.TypeConstraints.Count == 0;
         while (reader.CanRead)
         {
             Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
@@ -176,6 +177,12 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
             if (Parser.IsTypeConstraintStart(ref reader))
             {// TypeConstraint: semantics is Owning
+                if (!acceptsTypeConstraints)
+                {
+                    reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+                    continue;
+                }
+
                 CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.TypeConstraint);
                 var constraint = Parser.ParseTypeConstraint(ref reader);
                 if (constraint is not null)

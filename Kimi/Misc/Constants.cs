@@ -11,6 +11,7 @@ public static class Constants
     public const string TokenExtension = ".token";
     public const string DefaultNamespace = "Playground";
     public const string ScrubFileName = "Scrub.kimi";
+    public const string Scrub2FileName = "Scrub2.kimi";
     public const string RootKotoName = "Root";
 
     // Primitive type keywords
@@ -71,6 +72,7 @@ public static class Constants
 
     // Contextual names used by type semantics and constraints
     public const string SemanticsKeyword = "semantics";
+    public const string OriginKeyword = "origin";
     public const string SelfKeyword = "Self";
     public const string OwnerKeyword = "owner";
     public const string RefKeyword = "ref";
