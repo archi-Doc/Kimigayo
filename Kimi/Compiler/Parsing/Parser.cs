@@ -251,7 +251,7 @@ public static class Parser
             goto SkipAndExit;
         }
 
-        List<TypeSemanticsKoto>? genericArguments = default;
+        List<TypeKoto>? genericArguments = default;
         if (reader.CurrentTokenKind == TokenKind.LessThan)
         {// <s/T, s/T2>
             genericArguments = ParseGenericArguments(ref reader);
@@ -375,10 +375,10 @@ Exit:
             => reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
     }
 
-    public static (string Name, List<TypeSemanticsKoto>? GenericArguments) ParseGroupDeclaration(ref TokenReader reader)
-    {
+    public static (string Name, List<TypeKoto>? GenericArguments) ParseGroupDeclaration(ref TokenReader reader)
+    {// public open struct TestStruct<s/C, D>
         string name = string.Empty;
-        List<TypeSemanticsKoto>? genericArguments = default;
+        List<TypeKoto>? genericArguments = default;
         if (!reader.TryRead(out var token))
         {
             reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
@@ -752,7 +752,7 @@ Exit:
             {
                 var attribute = reader.PopAttribute();
                 var type = ParseType(ref reader);
-                var semantics = new TypeSemanticsKoto(
+                var semantics = new TypeKoto(
                     ref reader,
                     SourceSpan.FromBounds(start, type.Span.End),
                     type,
@@ -764,7 +764,7 @@ Exit:
 
             if (token.Kind.IsPrimitiveType() || token.Kind == TokenKind.Identifier)
             {
-                return new TypeSemanticsKoto(ref reader, token);
+                return new TypeKoto(ref reader, token);
             }
 
             return null;
@@ -1435,12 +1435,12 @@ Loop:
         return functionType;
     }
 
-    private static List<TypeSemanticsKoto>? ParseGenericArguments(ref TokenReader reader)
+    private static List<TypeKoto>? ParseGenericArguments(ref TokenReader reader)
     {// <s/T, T2>
         Debug.Assert(reader.CurrentTokenKind == TokenKind.LessThan);
         reader.Advance();
 
-        List<TypeSemanticsKoto>? list = default;
+        List<TypeKoto>? list = default;
         while (reader.CanRead)
         {
             if (reader.CurrentTokenKind == TokenKind.GreaterThan)
@@ -1455,7 +1455,7 @@ Loop:
                 continue;
             }
 
-            if (ParseType(ref reader) is not TypeSemanticsKoto typeKoto)
+            if (ParseType(ref reader) is not TypeKoto typeKoto)
             {
                 return list;
             }

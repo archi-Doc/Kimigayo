@@ -6,8 +6,8 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 [TinyhandObject]
-public partial class TypeSemanticsKoto : Koto
-{// semantics/Type from origin
+public partial class TypeKoto : Koto
+{// Type = semantics/CoreType from origin
     public override KotoKind Akind => KotoKind.TypeSemantics;
 
     [Key(1)]
@@ -17,10 +17,10 @@ public partial class TypeSemanticsKoto : Koto
     public string? SemanticsParameter { get; private set; }
 
     [Key(3)]
-    private TokenKind typeToken;
+    private TokenKind coreTypeToken;
 
     [Key(4)]
-    private string? typeName;
+    private string? coreTypeName;
 
     /// <summary>
     /// Gets the type to which the semantics applies when it is a compound type.
@@ -29,27 +29,27 @@ public partial class TypeSemanticsKoto : Koto
     public Koto? Type { get; private set; }
 
     public string Identifier
-        => this.Type is TypeSemanticsKoto simpleType
+        => this.Type is TypeKoto simpleType
             ? simpleType.Identifier
-            : this.typeToken.IsPrimitiveType()
-            ? this.typeToken.ToText()
-            : this.typeName ?? string.Empty;
+            : this.coreTypeToken.IsPrimitiveType()
+            ? this.coreTypeToken.ToText()
+            : this.coreTypeName ?? string.Empty;
 
-    internal TypeSemanticsKoto(
+    internal TypeKoto(
         ref TokenReader reader,
         Token typeToken)
         : base(ref reader, typeToken.Span)
     {
-        this.typeToken = typeToken.Kind;
+        this.coreTypeToken = typeToken.Kind;
         this.SemanticsKind = SemanticsKind.Owner;
 
-        if (!this.typeToken.IsPrimitiveType())
+        if (!this.coreTypeToken.IsPrimitiveType())
         {
-            this.typeName = reader.GetSpan(typeToken).ToString();
+            this.coreTypeName = reader.GetSpan(typeToken).ToString();
         }
     }
 
-    internal TypeSemanticsKoto(
+    internal TypeKoto(
         ref TokenReader reader,
         SourceSpan range,
         Koto type,

@@ -55,7 +55,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
     };
 
     [Key(7)]
-    public List<TypeSemanticsKoto> GenericArguments { get; private set; } = [];
+    public List<TypeKoto> GenericArguments { get; private set; } = [];
 
     [Key(8)]
     public List<IsKoto> TypeConstraints { get; private set; } = [];
@@ -89,7 +89,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         koto.Parent = this;
     }
 
-    public void AddGenericArguments(IEnumerable<TypeSemanticsKoto> genericArguments)
+    public void AddGenericArguments(IEnumerable<TypeKoto> genericArguments)
     {
         foreach (var argument in genericArguments)
         {

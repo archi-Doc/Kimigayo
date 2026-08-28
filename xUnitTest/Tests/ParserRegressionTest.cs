@@ -141,7 +141,7 @@ public class ParserRegressionTest
 
         Assert.Empty(diagnostics);
         var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
-        var semantics = Assert.IsType<TypeSemanticsKoto>(function.Parameters.Single().Type);
+        var semantics = Assert.IsType<TypeKoto>(function.Parameters.Single().Type);
         Assert.Equal(SemanticsKind.ObjRef, semantics.SemanticsKind);
         Assert.IsType<GenericsKoto>(semantics.Type);
         Assert.Equal("objref/SomeType<List<owner/T>, I>", semantics.ToString());

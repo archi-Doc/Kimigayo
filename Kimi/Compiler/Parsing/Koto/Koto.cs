@@ -108,7 +108,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.NumberLiteral, typeof(NumberLiteralKoto))]
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.IdentifierName, typeof(IdentifierNameKoto))]
-[TinyhandUnion((int)KotoKind.TypeSemantics, typeof(TypeSemanticsKoto))]
+[TinyhandUnion((int)KotoKind.TypeSemantics, typeof(TypeKoto))]
 [TinyhandUnion((int)KotoKind.SemanticsMask, typeof(SemanticsMaskKoto))]
 
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]

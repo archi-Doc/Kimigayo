@@ -45,7 +45,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     public string Name { get; private set; } = string.Empty;
 
     [Key(4)]
-    private List<TypeSemanticsKoto> genericArguments = [];
+    private List<TypeKoto> genericArguments = [];
 
     [Key(5)]
     private List<FunctionParameterKoto> parameters = [];
@@ -54,7 +54,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     public Koto? ReturnType { get; private set; }
 
     [IgnoreMember]
-    public IReadOnlyList<TypeSemanticsKoto> GenericArguments => this.genericArguments;
+    public IReadOnlyList<TypeKoto> GenericArguments => this.genericArguments;
 
     [IgnoreMember]
     public IReadOnlyList<FunctionParameterKoto> Parameters => this.parameters;
@@ -62,7 +62,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     [IgnoreMember]
     public bool IsExcluded { get; }
 
-    public FunctionKoto(ref TokenReader reader, TokenContext context, SourceSpan range, string name, List<TypeSemanticsKoto>? genericArguments, List<FunctionParameterKoto> parameters, Koto? returnType)
+    public FunctionKoto(ref TokenReader reader, TokenContext context, SourceSpan range, string name, List<TypeKoto>? genericArguments, List<FunctionParameterKoto> parameters, Koto? returnType)
         : base(ref reader, range)
     {
         this.AttributeChain = context.AttributeKoto;

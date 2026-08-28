@@ -108,9 +108,11 @@ public class Compilation
 
             var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
             var st = builder.ToString();
-            // File.WriteAllText(path, st, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.WriteAllText(path, st, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
             var bin = TinyhandSerializer.Serialize(this.Kotonoha);
+            this.Kimigayo.WriteLine(LogLevel.Information, $"Source: {st.Length * 2} bytes, Binary: {bin.Length} bytes");
+
             var kotonoha = new Kotonoha(this);
             TinyhandSerializer.DeserializeObject(bin, ref kotonoha);
             if (kotonoha is null)

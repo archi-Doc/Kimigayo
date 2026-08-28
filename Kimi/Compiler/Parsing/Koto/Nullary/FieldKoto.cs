@@ -26,7 +26,7 @@ public partial class FieldKoto : Koto
     public IdentifierNameKoto NameKoto { get; private set; }
 
     [Key(4)]
-    public Koto? TypeKoto { get; private set; }
+    public Koto? TypeKoto2 { get; private set; }
 
     [Key(5)]
     public Koto? InitializerKoto { get; private set; }
@@ -38,7 +38,7 @@ public partial class FieldKoto : Koto
     {
         this.Modifier = reader.ModifierKind;
         this.VariableKind = token.Kind == TokenKind.Let ? VariableKind.Let : VariableKind.Var;
-        this.TypeKoto = typeKoto;
+        this.TypeKoto2 = typeKoto;
         this.NameKoto = nameKoto;
         this.InitializerKoto = initializerKoto;
     }
@@ -57,10 +57,10 @@ public partial class FieldKoto : Koto
 
         this.NameKoto.WriteTo(ref builder);
 
-        if (this.TypeKoto is not null)
+        if (this.TypeKoto2 is not null)
         {
             builder.Append(": ");
-            this.TypeKoto.WriteTo(ref builder);
+            this.TypeKoto2.WriteTo(ref builder);
         }
 
         if (this.InitializerKoto != default)
@@ -74,7 +74,7 @@ public partial class FieldKoto : Koto
     {
         base.RestoreAfterDeserialization(codeContext, parent);
         this.NameKoto.RestoreAfterDeserialization(codeContext, this);
-        this.TypeKoto?.RestoreAfterDeserialization(codeContext, this);
+        this.TypeKoto2?.RestoreAfterDeserialization(codeContext, this);
         this.InitializerKoto?.RestoreAfterDeserialization(codeContext, this);
     }
 }

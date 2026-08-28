@@ -9,7 +9,7 @@
 A Kimigayo type consists of **Type Semantics**, a **Core Type**, and an **Origin**.
 
 ```ini
-Type = TypeSemantics/CoreType from Origin
+Type = semantics/CoreType from origin
 ```
 
 - **Type Semantics** — Describe how the value is represented, owned, accessed, or used.

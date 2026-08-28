@@ -16,7 +16,7 @@ array.Add(movedObj)
 private func find<s/T, owner/T2>(value?: T, in => collection: Collection<T>, using => comparer: (s/T, T) -> Bool) -> i32
 public func Main() -> ()
 
-struct TestStruct<s/C>
+struct TestStruct<s/C, D>
     semantics is reference
     Self is A or B
     origin is a and b
