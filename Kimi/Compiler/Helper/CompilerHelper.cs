@@ -5,12 +5,20 @@ using System.Runtime.CompilerServices;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>
-/// Provides helper functions for compiler.
+/// Provides compiler-related helper methods.
 /// </summary>
 public static class CompilerHelper
 {
+    /// <summary>
+    /// The bit mask for accessibility modifiers.
+    /// </summary>
     public const int AccessibilityModifierMask = 15;
 
+    /// <summary>
+    /// Extracts the accessibility modifiers from a modifier set.
+    /// </summary>
+    /// <param name="kind">The modifier set.</param>
+    /// <returns>The accessibility modifiers.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ModifierKind ExtractAccessibilityModifiers(this ModifierKind kind)
     {
