@@ -15,6 +15,9 @@ public static partial class TokenHelper
 {
     private readonly record struct TokenDescriptor(TokenKind Kind, bool IsKeyword, string Text);
 
+    /// <summary>
+    /// The maximum number of token kinds supported by the descriptor table.
+    /// </summary>
     public const int MaxTokens = 256;
     private static readonly TokenDescriptor[] TokenDescriptors;
 
@@ -180,6 +183,11 @@ public static partial class TokenHelper
         }
     }
 
+    /// <summary>
+    /// Gets the source spelling of a token kind.
+    /// </summary>
+    /// <param name="tokenKind">The token kind to convert.</param>
+    /// <returns>The source spelling, or an empty string for synthetic tokens.</returns>
     public static string ToText(this TokenKind tokenKind)
     {
         return TokenDescriptors[(int)tokenKind].Text;
@@ -194,21 +202,36 @@ public static partial class TokenHelper
         => text.IndexOfAny(Separators);
 
     /// <summary>
-    /// NOTE: Relies on TokenKind.Group..TokenKind.Match being a contiguous range.
-    /// Keep this in sync with the TokenKind declaration.
+    /// Determines whether a token starts an indentation block.
     /// </summary>
+    /// <remarks>The check relies on the block token kinds forming a contiguous range.</remarks>
     /// <param name="tokenKind">The token kind to inspect.</param>
     /// <returns><see langword="true"/> if <paramref name="tokenKind"/> is a block-starting token; otherwise, <see langword="false"/>.</returns>
     public static bool IsBlockToken(this TokenKind tokenKind)
         => tokenKind >= TokenKind.Group && tokenKind <= TokenKind.Match;
 
+    /// <summary>
+    /// Determines whether a token represents a primitive type keyword.
+    /// </summary>
+    /// <param name="tokenKind">The token kind to inspect.</param>
+    /// <returns><see langword="true"/> for a primitive type keyword.</returns>
     public static bool IsPrimitiveType(this TokenKind tokenKind)
         => tokenKind >= TokenKind.Bool && tokenKind <= TokenKind.String;
 
+    /// <summary>
+    /// Determines whether a token represents a reserved keyword.
+    /// </summary>
+    /// <param name="tokenKind">The token kind to inspect.</param>
+    /// <returns><see langword="true"/> for a reserved keyword.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsKeyword(this TokenKind tokenKind)
         => tokenKind < TokenKind.Alias;
 
+    /// <summary>
+    /// Determines whether a token can be used as an identifier.
+    /// </summary>
+    /// <param name="tokenKind">The token kind to inspect.</param>
+    /// <returns><see langword="true"/> for an identifier or contextual keyword.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsIdentifierOrContextualKeyword(this TokenKind tokenKind)
         => tokenKind == TokenKind.Identifier ||

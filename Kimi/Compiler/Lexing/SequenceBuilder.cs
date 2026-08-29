@@ -90,6 +90,9 @@ public ref struct SequenceBuilder<T>
         };
     }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="SequenceBuilder{T}"/> struct with the default capacity.
+    /// </summary>
     public SequenceBuilder()
         : this(DefaultInitialCapacity)
     {

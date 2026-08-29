@@ -29,6 +29,7 @@ internal ref struct Tokenizer
 
     static Tokenizer()
     {
+        // Dispatch common leading characters without a large branch chain in the read loop.
         CharacterHandlerTable = new CharacterHandler?[Constants.ExclusiveUpperBound];
 
         CharacterHandlerTable[(int)Constants.CrChar] = (ref tokenizer) =>
@@ -395,14 +396,28 @@ internal ref struct Tokenizer
     private int nonBlockDepth;
     private int tokenAdded;
 
+    /// <summary>
+    /// Gets the source document being tokenized.
+    /// </summary>
     public SourceDocument SourceDocument => this.sourceDocument;
 
+    /// <summary>
+    /// Gets the complete source text.
+    /// </summary>
     public ReadOnlySpan<char> SourceText => this.sourceText;
 
+    /// <summary>
+    /// Gets an empty span at the current source position.
+    /// </summary>
     public SourceSpan CurrentRange => new(this.position, 0);
 
     #endregion
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="Tokenizer"/> struct.
+    /// </summary>
+    /// <param name="diagnostics">The destination for lexical diagnostics.</param>
+    /// <param name="sourceDocument">The source document to tokenize.</param>
     public Tokenizer(DiagnosticCollection diagnostics, SourceDocument sourceDocument)
     {
         ArgumentNullException.ThrowIfNull(sourceDocument);
@@ -416,12 +431,22 @@ internal ref struct Tokenizer
         diagnostics.SetSourceDocument(sourceDocument);
     }
 
+    /// <summary>
+    /// Releases the pooled token storage.
+    /// </summary>
     public void Dispose()
         => this.builder.Dispose();
 
+    /// <summary>
+    /// Finalizes and returns the generated token sequence.
+    /// </summary>
+    /// <returns>The generated tokens.</returns>
     public ReadOnlySequence<Token> ToReadOnlySequence()
         => this.builder.ToReadOnlySequence();
 
+    /// <summary>
+    /// Tokenizes the complete source document.
+    /// </summary>
     public void ReadAll()
     {
         this.currentIndentLevel = 0;
