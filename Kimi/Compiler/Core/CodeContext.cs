@@ -7,14 +7,29 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
+/// <summary>
+/// Provides compilation and diagnostic state while parsing Koto nodes.
+/// </summary>
 public class CodeContext
 {
+    /// <summary>
+    /// Gets the diagnostic destination for this context.
+    /// </summary>
     public DiagnosticCollection DiagnosticCollection => this.diagnosticCollection ?? this.Kotonoha.DiagnosticCollection;
 
+    /// <summary>
+    /// Gets the current compilation.
+    /// </summary>
     public Compilation Compilation => this.Kotonoha.Compilation;
 
+    /// <summary>
+    /// Gets the source unit being parsed.
+    /// </summary>
     public Kotonoha Kotonoha { get; }
 
+    /// <summary>
+    /// Gets the root of the current Koto tree.
+    /// </summary>
     public GroupKoto RootKoto => this.Kotonoha.RootKoto;
 
     private readonly DiagnosticCollection? diagnosticCollection;
@@ -25,16 +40,32 @@ public class CodeContext
         this.diagnosticCollection = customDiagnosticCollection;
     }
 
+    /// <summary>
+    /// Parses source text and appends its nodes to a parent group.
+    /// </summary>
+    /// <param name="parentKoto">The group that receives the parsed nodes.</param>
+    /// <param name="sourceText">The source text to parse.</param>
     public void Parse(GroupKoto parentKoto, ReadOnlySpan<char> sourceText)
         => this.Parse(parentKoto, new SourceDocument(this.DiagnosticCollection.Name, sourceText.ToString()));
 
+    /// <summary>
+    /// Parses source text and appends its nodes to a parent group.
+    /// </summary>
+    /// <param name="parentKoto">The group that receives the parsed nodes.</param>
+    /// <param name="sourceText">The source text to parse.</param>
     public void Parse(GroupKoto parentKoto, string sourceText)
         => this.Parse(parentKoto, new SourceDocument(this.DiagnosticCollection.Name, sourceText));
 
+    /// <summary>
+    /// Parses a source document and appends its nodes to a parent group.
+    /// </summary>
+    /// <param name="parentKoto">The group that receives the parsed nodes.</param>
+    /// <param name="sourceDocument">The source document to parse.</param>
     public void Parse(GroupKoto parentKoto, SourceDocument sourceDocument)
     {
         if (parentKoto.CodeContext.Compilation != this.Compilation)
-        {// Unmatched compilation
+        {
+            // A syntax tree cannot contain nodes from another compilation.
             return;
         }
 
