@@ -1211,14 +1211,14 @@ ProcessPrefix:
                 }
 
             case TokenKind.PlusPlus:
-                {// A++
+                {
                     reader.TryRead(out var token);
                     left = new PostfixIncrementKoto(ref reader, token.Span, left);
                     return true;
                 }
 
             case TokenKind.MinusMinus:
-                {// A--
+                {
                     reader.TryRead(out var token);
                     left = new PostfixDecrementKoto(ref reader, token.Span, left);
                     return true;
