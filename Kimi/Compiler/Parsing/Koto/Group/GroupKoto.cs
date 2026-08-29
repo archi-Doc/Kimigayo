@@ -10,7 +10,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>
-/// namespace, struct, enum, extension, contract.
+/// Represents a namespace-like group or named type declaration.
 /// </summary>
 [TinyhandObject]
 public partial class GroupKoto : IdentifiableKoto, ITokenParser
@@ -24,18 +24,20 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         Function,
     }
 
+    /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Group;
-
-    // public static readonly TokenState DefaultState = new(default, ModifierKind.Public);
 
     #region FieldAndProperty
 
+    /// <summary>Gets the declaration modifiers.</summary>
     [Key(3)]
     public ModifierKind Modifier { get; private set; }
 
+    /// <summary>Gets or sets the group name.</summary>
     [Key(4)]
     public string Name { get; protected set; } = string.Empty;
 
+    /// <summary>Gets the node kind for the concrete group type.</summary>
     public KotoKind KotoKind => this switch
     {
         StructKoto => KotoKind.Struct,
@@ -45,6 +47,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         _ => KotoKind.Group,
     };
 
+    /// <summary>Gets the declaration keyword kind for the concrete group type.</summary>
     public TokenKind TokenKind => this switch
     {
         StructKoto => TokenKind.Struct,
@@ -54,12 +57,15 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         _ => TokenKind.Group,
     };
 
+    /// <summary>Gets the generic parameters.</summary>
     [Key(7)]
     public List<TypeKoto> GenericArguments { get; private set; } = [];
 
+    /// <summary>Gets the type constraints.</summary>
     [Key(8)]
     public List<IsKoto> TypeConstraints { get; private set; } = [];
 
+    /// <summary>Gets the declared origins.</summary>
     [Key(9)]
     public List<string> Origins { get; private set; } = [];
 
@@ -71,6 +77,9 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
     #endregion
 
+    /// <summary>Initializes a new instance of the <see cref="GroupKoto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The declaration source span.</param>
     public GroupKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
@@ -83,15 +92,20 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         this.Modifier = state.ModifierKind;
     }
 
+    /// <inheritdoc/>
     public override ReadOnlySpan<char> GetIdentifier()
         => this.Name;
 
+    /// <summary>Adds a child node to this group.</summary>
+    /// <param name="koto">The child node to add.</param>
     public void AddLast(Koto koto)
     {
         this.KotoList.Add(koto);
         koto.Parent = this;
     }
 
+    /// <summary>Adds generic parameters to this group.</summary>
+    /// <param name="genericArguments">The generic parameters to add.</param>
     public void AddGenericArguments(IEnumerable<TypeKoto> genericArguments)
     {
         foreach (var argument in genericArguments)
@@ -101,15 +115,20 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         }
     }
 
+    /// <summary>Adds a type constraint to this group.</summary>
+    /// <param name="constraint">The constraint to add.</param>
     public void AddTypeConstraint(IsKoto constraint)
     {
         this.TypeConstraints.Add(constraint);
         constraint.Parent = this;
     }
 
+    /// <summary>Adds origin names to this group.</summary>
+    /// <param name="origins">The origin names to add.</param>
     public void AddOrigins(IEnumerable<string> origins)
         => this.Origins.AddRange(origins);
 
+    /// <inheritdoc/>
     public override string ToString()
     {
         if (this.IsRoot)
@@ -120,8 +139,9 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         return $"{this.TokenKind.ToText()} {this.Name}";
     }
 
+    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
-    {// public group A
+    {
         if (this.AttributeChain is not null)
         {
             Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
@@ -171,8 +191,10 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         }
     }
 
+    /// <summary>Writes a root-group declaration for this group.</summary>
+    /// <param name="builder">The destination builder.</param>
     public void UnparseToRoot(ref IndentedStringBuilder builder)
-    {// rootgroup A
+    {
         if (this.AttributeChain is not null)
         {
             Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
@@ -185,21 +207,30 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         Parser.WriteQualifiedNameTo(this, ref builder);
     }
 
+    /// <summary>Removes all declarations and group metadata.</summary>
     public void Clear()
     {
-        this.KotoList.Clear(); // TODO
-        this.IdentifierToGroupKoto.Clear(); // TODO
+        this.KotoList.Clear();
+        this.IdentifierToGroupKoto.Clear();
         this.GenericArguments.Clear();
         this.TypeConstraints.Clear();
         this.Origins.Clear();
     }
 
+    /// <summary>Writes this group and all nested groups as source text.</summary>
+    /// <param name="builder">The destination builder.</param>
     public void UnparseAll(ref IndentedStringBuilder builder)
     {
         GroupKoto? currentGroup = this.IsRoot ? null : this;
         this.UnparseAllInternal(0, ref builder, false);
     }
 
+    /// <summary>Gets or creates a nested group from a qualified name.</summary>
+    /// <param name="qualifiedName">The dot-separated group name.</param>
+    /// <param name="kind">The final group's declaration kind.</param>
+    /// <param name="state">The declaration context.</param>
+    /// <param name="range">The declaration source span.</param>
+    /// <returns>The final group.</returns>
     public GroupKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range)
     {
         var text = qualifiedName;
@@ -219,6 +250,8 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
         }
     }
 
+    /// <summary>Parses declarations into this group.</summary>
+    /// <param name="reader">The token reader.</param>
     public void Parse(ref TokenReader reader)
         => this.Parse(ref reader, false);
 
@@ -245,7 +278,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             }
 
             if (Parser.IsTypeConstraintStart(ref reader))
-            {// TypeConstraint: semantics is owning
+            {
                 if (!acceptsTypeConstraints)
                 {
                     reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
@@ -268,7 +301,8 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
             ITokenParser? nextParser = default;
 
             if (tokenKind == TokenKind.Alias)
-            {// alias (not supported)
+            {
+                // Consume invalid nested aliases so parsing can resume at the next declaration.
                 reader.Advance();
                 _ = KotoHelper.ParseQualifiedNameSegments(ref reader);
                 reader.Diagnostic.Add(token.Span, DiagnosticCode.TopLevelKeywordAfterCode_Kd);
@@ -279,12 +313,12 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 continue;
             }
             else if (tokenKind == TokenKind.EndBlock)
-            {// Exit block
+            {
                 reader.Advance();
                 break;
             }
             else if (tokenKind == TokenKind.Let || tokenKind == TokenKind.Var)
-            {// let a = 1, var b = 2
+            {
                 CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Field);
                 reader.Advance();
                 var fieldKoto = Parser.ParseField(ref reader, ref token);
@@ -294,7 +328,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 }
             }
             else if (tokenKind == TokenKind.RootGroup)
-            {// rootgroup
+            {
                 reader.Advance();
                 var name = KotoHelper.ValidateAndGetNamespace(ref reader);
                 if (reader.IsExcluded)
@@ -305,7 +339,6 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
                 var state = reader.TakeContext();
                 var groupKoto = this.Kotonoha.RootKoto.GetOrAddGroup(name, TokenKind.Group, state, token.Span);
-                // this.CodeContext.CurrentGroup = groupKoto;
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
@@ -315,7 +348,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 nextParser = groupKoto;
             }
             else if (tokenKind is TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract)
-            {// Nested type declaration
+            {
                 CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.NestedType);
                 reader.Advance();
                 var r = Parser.ParseGroupDeclaration(ref reader);
@@ -344,7 +377,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                 }
             }
             else if (tokenKind == TokenKind.Func)
-            {// Function declaration
+            {
                 CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Function);
                 reader.Advance();
                 var functionKoto = Parser.ParseFuncDeclaration(ref reader);
@@ -366,17 +399,18 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
                         nextParser = functionKoto;
                     }
                     else
-                    {// Skip tokens up to StartBlock due to a syntax error.
+                    {
+                        // Recover a malformed signature by resuming at its body.
                         reader.SkipUntilStartBlock(0);
                         nextParser = functionKoto;
                     }
                 }
             }
             else
-            {// Other
+            {
                 var koto = Parser.ParseExpression(ref reader);
                 if (koto is ErrorKoto)
-                {// Error
+                {
                     reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 }
                 else
@@ -446,12 +480,12 @@ NextToken:
 
         group = (GroupKoto)group.IdentifierToGroupKoto.GetOrAdd(text, factory);
         if (string.IsNullOrEmpty(group.Name))
-        {// New
+        {
             group.Parent = parent;
             group.Name = text.ToString();
         }
         else
-        {// Existing
+        {
             group.Merge(state, range);
         }
     }
@@ -469,14 +503,14 @@ NextToken:
         {
             builder.EnsureTrailingBlankLine();
             if (this.KotoKind == KotoKind.Group)
-            {// rootgroup A
+            {
                 builder.SetIndent(0);
                 this.UnparseToRoot(ref builder);
                 builder.AppendLine();
                 builder.IncrementIndent();
             }
             else
-            {// struct A
+            {
                 this.WriteTo(ref builder);
                 builder.AppendLine();
                 builder.IncrementIndent();
@@ -519,8 +553,6 @@ NextToken:
         var groups = this.IdentifierToGroupKoto.ToArray();
         if (groups.Length > 0)
         {
-            // DeclareGroup(builder, ref currentGroup);
-
             builder.EnsureTrailingBlankLine();
             foreach (var x in groups)
             {

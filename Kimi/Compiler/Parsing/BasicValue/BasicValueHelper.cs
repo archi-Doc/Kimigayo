@@ -6,12 +6,25 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>
+/// Evaluates supported Koto expressions as primitive values.
+/// </summary>
 public static class BasicValueHelper
 {
+    /// <summary>Evaluates a Koto node.</summary>
+    /// <param name="compilation">The active compilation.</param>
+    /// <param name="koto">The node to evaluate.</param>
+    /// <returns>The evaluated value.</returns>
     public delegate BasicValue BasicValueHandler(Compilation compilation, Koto koto);
 
     private static readonly BasicValueHandler?[] HandlerTable = CreateHandlerTable();
 
+    /// <summary>
+    /// Evaluates a Koto expression as a primitive value.
+    /// </summary>
+    /// <param name="compilation">The active compilation.</param>
+    /// <param name="koto">The expression to evaluate.</param>
+    /// <returns>The evaluated value, or an invalid value when unsupported.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static BasicValue Evaluate(Compilation compilation, Koto koto)
     {
@@ -26,6 +39,7 @@ public static class BasicValueHelper
 
     private static BasicValueHandler?[] CreateHandlerTable()
     {
+        // Index handlers by Koto kind to keep recursive evaluation dispatch inexpensive.
         var table = new BasicValueHandler?[Koto.MaxKind];
 
         table[(int)KotoKind.BoolLiteral] = EvaluateBoolLiteral;
@@ -58,12 +72,12 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateBoolLiteral(Compilation compilation, Koto koto)
-    {// true, false
+    {
         return new(((BoolLiteralKoto)koto).Value);
     }
 
     private static BasicValue EvaluateNumberLiteral(Compilation compilation, Koto koto)
-    {// long or double
+    {
         var literal = (NumberLiteralKoto)koto;
         if (literal.TryGetBasicValue(out var value))
         {
@@ -74,12 +88,12 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateStringLiteral(Compilation compilation, Koto koto)
-    {// StringLiteral
+    {
         return new(((StringLiteralKoto)koto).Literal);
     }
 
     private static BasicValue EvaluateIdentifierName(Compilation compilation, Koto koto)
-    {// IdentifierName
+    {
         if (compilation.TryResolveValue((IdentifierNameKoto)koto, out var value))
         {
             return value;
@@ -89,15 +103,15 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateParenthesized(Compilation compilation, Koto koto)
-    {// (A)
+    {
         return Evaluate(compilation, ((ParenthesizedKoto)koto).Operand);
     }
 
     private static BasicValue EvaluateNot(Compilation compilation, Koto koto)
-    {// not A
+    {
         var operand = Evaluate(compilation, ((NotKoto)koto).Operand);
         if (operand.Kind == BasicValueKind.Invalid)
-        {// Invalid value already has its diagnostic.
+        {
             return default;
         }
 
@@ -110,10 +124,10 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluatePrefixPlus(Compilation compilation, Koto koto)
-    {// +A
+    {
         var operand = Evaluate(compilation, ((PrefixPlusKoto)koto).Operand);
         if (operand.Kind == BasicValueKind.Invalid)
-        {// Invalid value already has its diagnostic.
+        {
             return default;
         }
 
@@ -126,10 +140,10 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluatePrefixMinus(Compilation compilation, Koto koto)
-    {// -A
+    {
         var operand = Evaluate(compilation, ((PrefixMinusKoto)koto).Operand);
         if (operand.Kind == BasicValueKind.Invalid)
-        {// Invalid value already has its diagnostic.
+        {
             return default;
         }
 
@@ -151,7 +165,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateAsterisk(Compilation compilation, Koto koto)
-    {// A * B
+    {
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
             return default;
@@ -178,7 +192,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateSlash(Compilation compilation, Koto koto)
-    {// A / B
+    {
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
             return default;
@@ -207,7 +221,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluatePercent(Compilation compilation, Koto koto)
-    {// A % B
+    {
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
             return default;
@@ -232,7 +246,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluatePlus(Compilation compilation, Koto koto)
-    {// A + B
+    {
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
             return default;
@@ -259,7 +273,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateMinus(Compilation compilation, Koto koto)
-    {// A - B
+    {
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
             return default;
@@ -286,7 +300,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateLessThan(Compilation compilation, Koto koto)
-    {// A < B
+    {
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
             return default;
@@ -301,7 +315,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateLessThanEquals(Compilation compilation, Koto koto)
-    {// A <= B
+    {
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
             return default;
@@ -316,7 +330,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateGreaterThan(Compilation compilation, Koto koto)
-    {// A > B
+    {
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
             return default;
@@ -331,7 +345,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateGreaterThanEquals(Compilation compilation, Koto koto)
-    {// A >= B
+    {
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
             return default;
@@ -346,7 +360,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateEqualsEquals(Compilation compilation, Koto koto)
-    {// A == B
+    {
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
             return default;
@@ -363,7 +377,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateExclamationEquals(Compilation compilation, Koto koto)
-    {// A != B
+    {
         if (!TryEvaluateBinaryOperands(compilation, (BinaryKoto)koto, out var left, out var right))
         {
             return default;
@@ -380,7 +394,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateAnd(Compilation compilation, Koto koto)
-    {// A and B
+    {
         var binary = (BinaryKoto)koto;
         var left = Evaluate(compilation, binary.Left);
         if (left.Kind == BasicValueKind.Invalid)
@@ -413,7 +427,7 @@ public static class BasicValueHelper
     }
 
     private static BasicValue EvaluateOr(Compilation compilation, Koto koto)
-    {// A or B
+    {
         var binary = (BinaryKoto)koto;
         var left = Evaluate(compilation, binary.Left);
         if (left.Kind == BasicValueKind.Invalid)

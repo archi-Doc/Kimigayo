@@ -5,34 +5,56 @@ using Kimi.Compiler.Lexing;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>
+/// Defines whether a variable binding is mutable.
+/// </summary>
 public enum VariableKind
 {
+    /// <summary>A mutable variable.</summary>
     Var,
+
+    /// <summary>An immutable binding.</summary>
     Let,
 }
 
+/// <summary>
+/// Represents a field or local variable declaration.
+/// </summary>
 [TinyhandObject]
 public partial class FieldKoto : Koto
-{// var x = 1
+{
+    /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Field;
 
+    /// <summary>Gets the declaration modifiers.</summary>
     [Key(1)]
     public ModifierKind Modifier { get; private set; }
 
+    /// <summary>Gets the variable binding kind.</summary>
     [Key(2)]
     public VariableKind VariableKind { get; private set; }
 
+    /// <summary>Gets the declared name.</summary>
     [Key(3)]
     public IdentifierNameKoto NameKoto { get; private set; }
 
+    /// <summary>Gets the declared type, if specified.</summary>
     [Key(4)]
     public Koto? TypeKoto2 { get; private set; }
 
+    /// <summary>Gets the initializer expression, if present.</summary>
     [Key(5)]
     public Koto? InitializerKoto { get; private set; }
 
+    /// <summary>Gets the source keyword for the binding kind.</summary>
     public string VariableText => this.VariableKind == VariableKind.Var ? Constants.VarKeyword : Constants.LetKeyword;
 
+    /// <summary>Initializes a new instance of the <see cref="FieldKoto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="token">The declaration keyword token.</param>
+    /// <param name="nameKoto">The declared name.</param>
+    /// <param name="typeKoto">The declared type, if specified.</param>
+    /// <param name="initializerKoto">The initializer expression, if present.</param>
     public FieldKoto(ref TokenReader reader, ref Token token, IdentifierNameKoto nameKoto, Koto? typeKoto, Koto? initializerKoto)
         : base(ref reader, token.Span)
     {
@@ -43,8 +65,9 @@ public partial class FieldKoto : Koto
         this.InitializerKoto = initializerKoto;
     }
 
+    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
-    {// public let x: i32 = 1
+    {
         if (this.AttributeChain is not null)
         {
             Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
@@ -64,7 +87,7 @@ public partial class FieldKoto : Koto
         }
 
         if (this.InitializerKoto != default)
-        {// "= 1"
+        {
             builder.Append(" = ");
             this.InitializerKoto.WriteTo(ref builder);
         }

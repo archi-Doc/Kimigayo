@@ -6,17 +6,27 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>
+/// Represents a function or method invocation expression.
+/// </summary>
 [TinyhandObject]
 public partial class InvocationKoto : Koto
 {
+    /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Invocation;
 
+    /// <summary>Gets the invoked expression.</summary>
     [Key(1)]
     public Koto Method { get; private set; }
 
+    /// <summary>Gets the invocation arguments.</summary>
     [Key(2)]
     public List<Koto> Arguments { get; private set; }
 
+    /// <summary>Initializes a new instance of the <see cref="InvocationKoto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="method">The expression being invoked.</param>
+    /// <param name="arguments">The invocation arguments.</param>
     public InvocationKoto(ref TokenReader reader, Koto method, List<Koto> arguments)
         : base(ref reader, default)
     {
@@ -39,6 +49,7 @@ public partial class InvocationKoto : Koto
         }
     }
 
+    /// <inheritdoc/>
     public override string ToString()
     {
         var sb = new StringBuilder();
@@ -60,6 +71,7 @@ public partial class InvocationKoto : Koto
         return sb.ToString();
     }
 
+    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         this.Method.WriteTo(ref builder);

@@ -7,9 +7,13 @@ using Tinyhand.Tree;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>
+/// Represents a numeric literal expression.
+/// </summary>
 [TinyhandObject]
 public sealed partial class NumberLiteralKoto : Koto
 {
+    /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.NumberLiteral;
 
     [Key(1)]
@@ -18,6 +22,7 @@ public sealed partial class NumberLiteralKoto : Koto
     [Key(2)]
     private Int128 uv;
 
+    /// <summary>Gets the normalized literal text.</summary>
     public string Literal
     {
         get
@@ -44,6 +49,9 @@ public sealed partial class NumberLiteralKoto : Koto
         }
     }
 
+    /// <summary>Initializes a new instance of the <see cref="NumberLiteralKoto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="token">The numeric literal token.</param>
     public NumberLiteralKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Span)
     {
@@ -51,66 +59,11 @@ public sealed partial class NumberLiteralKoto : Koto
         this.uv = uv;
     }
 
-    /*public bool TryGetI64(out long value)
-    {
-        this.PrepareNumericLiteral();
-
-        if (this.Kind is >= NumericLiteralKind.Integer and <= NumericLiteralKind.USize &&
-            this.uv <= long.MaxValue)
-        {
-            value = (long)this.uv;
-            return true;
-        }
-
-        value = default;
-        return false;
-    }
-
-    public bool TryGetF32(out float value)
-    {
-        this.PrepareNumericLiteral();
-
-        if (this.Kind == NumericLiteralKind.F32)
-        {
-            value = BitConverter.UInt32BitsToSingle((uint)this.uv);
-            return float.IsFinite(value);
-        }
-        else if (this.Kind == NumericLiteralKind.Float ||
-            this.Kind == NumericLiteralKind.F64)
-        {
-            var doubleValue = BitConverter.UInt64BitsToDouble((ulong)this.uv);
-            value = (float)doubleValue;
-            return double.IsFinite(doubleValue) && float.IsFinite(value);
-        }
-
-        value = default;
-        return false;
-    }
-
-    public bool TryGetF64(out double value)
-    {
-        this.PrepareNumericLiteral();
-
-        if (this.Kind == NumericLiteralKind.F32)
-        {
-            value = BitConverter.UInt32BitsToSingle((uint)this.uv);
-            return double.IsFinite(value);
-        }
-        else if (this.Kind == NumericLiteralKind.Float ||
-            this.Kind == NumericLiteralKind.F64)
-        {
-            value = BitConverter.UInt64BitsToDouble((ulong)this.uv);
-            return double.IsFinite(value);
-        }
-
-        value = default;
-        return false;
-    }*/
-
+    /// <summary>Attempts to convert the literal to a compile-time value.</summary>
+    /// <param name="basicValue">The converted value.</param>
+    /// <returns><see langword="true"/> when the literal is supported.</returns>
     public bool TryGetBasicValue(out BasicValue basicValue)
     {
-        // this.PrepareNumericLiteral();
-
         if (this.parseResult == NumberLiteralParseResult.I128)
         {
             if (NumberLiteralHelper.IsInt64(this.uv))
@@ -125,41 +78,15 @@ public sealed partial class NumberLiteralKoto : Koto
             return true;
         }
 
-        /*if (this.Kind is >= NumericLiteralKind.Integer and <= NumericLiteralKind.USize)
-        {// Integer
-            if (this.uv <= long.MaxValue)
-            {
-                basicValue = new((long)this.uv);
-                return true;
-            }
-        }
-        else if (this.Kind == NumericLiteralKind.F32)
-        {
-            var value = BitConverter.UInt32BitsToSingle((uint)this.uv);
-            if (double.IsFinite(value))
-            {
-                basicValue = new(value);
-                return true;
-            }
-        }
-        else if (this.Kind == NumericLiteralKind.Float ||
-            this.Kind == NumericLiteralKind.F64)
-        {
-            var value = BitConverter.UInt64BitsToDouble((ulong)this.uv);
-            if (double.IsFinite(value))
-            {
-                basicValue = new(value);
-                return true;
-            }
-        }*/
-
         basicValue = default;
         return false;
     }
 
+    /// <inheritdoc/>
     public override string ToString()
         => this.Literal;
 
+    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         if (this.AttributeChain is not null)

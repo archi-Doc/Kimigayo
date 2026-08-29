@@ -5,14 +5,20 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>
+/// Represents a type together with ownership semantics and an optional origin.
+/// </summary>
 [TinyhandObject]
 public partial class TypeKoto : Koto
-{// Type = semantics/CoreType from origin
+{
+    /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.TypeSemantics;
 
+    /// <summary>Gets the ownership semantics.</summary>
     [Key(1)]
     public SemanticsKind SemanticsKind { get; private set; }
 
+    /// <summary>Gets the custom semantics parameter, if present.</summary>
     [Key(2)]
     public string? SemanticsParameter { get; private set; }
 
@@ -37,6 +43,7 @@ public partial class TypeKoto : Koto
     [Key(7)]
     private bool isOriginWrapper;
 
+    /// <summary>Gets the underlying type identifier.</summary>
     public string Identifier
         => this.Type is TypeKoto simpleType
             ? simpleType.Identifier
@@ -86,6 +93,7 @@ public partial class TypeKoto : Koto
         type.Parent = this;
     }
 
+    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         if (this.AttributeChain is not null)

@@ -11,13 +11,20 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
+/// <summary>
+/// Creates and manipulates Koto syntax-tree nodes.
+/// </summary>
 public static partial class KotoHelper
 {
+    /// <summary>Creates a unary node for an operator token.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="token">The operator token.</param>
+    /// <param name="operand">The operand.</param>
+    /// <returns>The created unary node.</returns>
     public static Koto NewUnaryKoto(ref TokenReader reader, Token token, Koto operand) => token.Kind switch
     {
         TokenKind.Sharp => new AttributeKoto(ref reader, token.Span, operand),
         TokenKind.Dollar => new MacroKoto(ref reader, token.Span, operand),
-        // TokenKind.Asterisk => new ReferenceKoto(ref reader, token.Range, operand, ReferenceKind.None),
         TokenKind.Plus => new PrefixPlusKoto(ref reader, token.Span, operand),
         TokenKind.Minus => new PrefixMinusKoto(ref reader, token.Span, operand),
         TokenKind.Not => new NotKoto(ref reader, token.Span, operand),
@@ -27,6 +34,12 @@ public static partial class KotoHelper
         _ => throw new InvalidOperationException(),
     };
 
+    /// <summary>Creates a binary node for an operator token.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="token">The operator token.</param>
+    /// <param name="left">The left operand.</param>
+    /// <param name="right">The right operand.</param>
+    /// <returns>The created binary node.</returns>
     public static Koto NewBinaryKoto(ref TokenReader reader, Token token, Koto left, Koto right) => token.Kind switch
     {
         TokenKind.Asterisk => new AsteriskKoto(ref reader, token.Span, left, right),
@@ -65,22 +78,21 @@ public static partial class KotoHelper
         _ => throw new InvalidOperationException(),
     };
 
+    /// <summary>Replaces a child node while preserving its source metadata.</summary>
+    /// <param name="parent">The parent node.</param>
+    /// <param name="oldKoto">The child to replace.</param>
+    /// <param name="newKoto">The replacement child.</param>
+    /// <returns><see langword="true"/> when the child was replaced.</returns>
     public static bool Replace(Koto parent, Koto oldKoto, Koto newKoto)
     {
         if (parent.ReplaceChild(oldKoto, newKoto))
         {
-            // Koto structure
+            // Update both the explicit parent and the intrusive child chain.
             newKoto.Parent = parent;
             newKoto.Goshujin?.ChildLinkChain.UnsafeReplaceInstance(oldKoto, newKoto);
-            /*newKoto.ChildLinkLink.Previous = oldKoto.Previous;
-            newKoto.Next = oldKoto.Next;
-
-            oldKoto.Parent = default;
-            oldKoto.Previous = default;
-            oldKoto.Next = default;*/
             oldKoto.Goshujin = default;
 
-            // Frontend Metadata
+            // Preserve the source metadata associated with the replaced expression.
             newKoto.DiagnosticCollection = oldKoto.DiagnosticCollection;
             newKoto.Span = oldKoto.Span;
             newKoto.CodeContext = oldKoto.CodeContext;
@@ -90,6 +102,9 @@ public static partial class KotoHelper
         return false;
     }
 
+    /// <summary>Parses and validates a dot-separated namespace name.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <returns>The validated namespace name.</returns>
     public static string ValidateAndGetNamespace(ref TokenReader reader)
     {
         if (reader.IsEnd)
@@ -98,6 +113,7 @@ public static partial class KotoHelper
         }
 
         var sb = new StringBuilder();
+        // Qualified names alternate between identifiers and dots.
         var flag = true;
         while (reader.TryRead(out var token))
         {
@@ -107,7 +123,7 @@ public static partial class KotoHelper
             }
 
             if (flag)
-            {// Identifier
+            {
                 flag = false;
                 var span = reader.GetSpan(token);
                 if (IdentifierHelper.IsValidIdentifier(span))
@@ -121,7 +137,7 @@ public static partial class KotoHelper
                 }
             }
             else
-            {// Dot
+            {
                 flag = true;
                 if (token.Kind == TokenKind.Dot)
                 {
@@ -143,6 +159,9 @@ public static partial class KotoHelper
         return sb.ToString();
     }
 
+    /// <summary>Parses a dot-separated qualified name.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <returns>The parsed name segments.</returns>
     public static List<string> ParseQualifiedNameSegments(ref TokenReader reader)
     {
         if (reader.IsEnd)
@@ -151,6 +170,7 @@ public static partial class KotoHelper
         }
 
         var list = new List<string>();
+        // Qualified names alternate between identifiers and dots.
         var flag = true;
         while (reader.CanRead)
         {
@@ -163,7 +183,7 @@ public static partial class KotoHelper
             }
 
             if (flag)
-            {// Identifier
+            {
                 flag = false;
                 var span = reader.GetSpan(token);
                 if (IdentifierHelper.IsValidIdentifier(span))
@@ -177,10 +197,11 @@ public static partial class KotoHelper
                 }
             }
             else
-            {// Dot
+            {
                 flag = true;
                 if (token.Kind == TokenKind.Dot)
                 {
+                    // Separators are implied by the returned list.
                 }
                 else
                 {

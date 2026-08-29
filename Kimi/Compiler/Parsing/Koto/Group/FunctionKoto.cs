@@ -5,24 +5,38 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>
+/// Describes a parsed function parameter.
+/// </summary>
 [TinyhandObject]
 public sealed partial record class FunctionParameterKoto
 {
+    /// <summary>Gets the parameter name used by callers.</summary>
     [Key(0)]
     public string ExternalName { get; private set; } = string.Empty;
 
+    /// <summary>Gets the parameter name used in the function body.</summary>
     [Key(1)]
     public string InternalName { get; private set; } = string.Empty;
 
+    /// <summary>Gets a value indicating whether callers may omit the parameter.</summary>
     [Key(2)]
     public bool IsOptional { get; private set; }
 
+    /// <summary>Gets the parameter type.</summary>
     [Key(3)]
     public Koto Type { get; private set; } = default!;
 
+    /// <summary>Gets the default value, if present.</summary>
     [Key(4)]
     public Koto? DefaultValue { get; private set; }
 
+    /// <summary>Initializes a new instance of the <see cref="FunctionParameterKoto"/> class.</summary>
+    /// <param name="externalName">The caller-facing name.</param>
+    /// <param name="internalName">The body-facing name.</param>
+    /// <param name="isOptional">Whether callers may omit the parameter.</param>
+    /// <param name="type">The parameter type.</param>
+    /// <param name="defaultValue">The default value, if present.</param>
     public FunctionParameterKoto(string externalName, string internalName, bool isOptional, Koto type, Koto? defaultValue)
     {
         this.ExternalName = externalName;
@@ -33,14 +47,20 @@ public sealed partial record class FunctionParameterKoto
     }
 }
 
+/// <summary>
+/// Represents a function declaration.
+/// </summary>
 [TinyhandObject]
 public partial class FunctionKoto : IdentifiableKoto, ITokenParser
 {
+    /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Function;
 
+    /// <summary>Gets the function modifiers.</summary>
     [Key(2)]
     public ModifierKind Modifier { get; private set; }
 
+    /// <summary>Gets the function name.</summary>
     [Key(3)]
     public string Name { get; private set; } = string.Empty;
 
@@ -50,18 +70,30 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     [Key(5)]
     private List<FunctionParameterKoto> parameters = [];
 
+    /// <summary>Gets the return type, if specified.</summary>
     [Key(6)]
     public Koto? ReturnType { get; private set; }
 
+    /// <summary>Gets the generic parameters.</summary>
     [IgnoreMember]
     public IReadOnlyList<TypeKoto> GenericArguments => this.genericArguments;
 
+    /// <summary>Gets the function parameters.</summary>
     [IgnoreMember]
     public IReadOnlyList<FunctionParameterKoto> Parameters => this.parameters;
 
+    /// <summary>Gets a value indicating whether conditional attributes exclude this function.</summary>
     [IgnoreMember]
     public bool IsExcluded { get; }
 
+    /// <summary>Initializes a new instance of the <see cref="FunctionKoto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="context">The declaration context.</param>
+    /// <param name="range">The declaration source span.</param>
+    /// <param name="name">The function name.</param>
+    /// <param name="genericArguments">The generic parameters, if present.</param>
+    /// <param name="parameters">The function parameters.</param>
+    /// <param name="returnType">The return type, if present.</param>
     public FunctionKoto(ref TokenReader reader, TokenContext context, SourceSpan range, string name, List<TypeKoto>? genericArguments, List<FunctionParameterKoto> parameters, Koto? returnType)
         : base(ref reader, range)
     {
@@ -93,11 +125,15 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
         }
     }
 
+    /// <inheritdoc/>
     public override ReadOnlySpan<char> GetIdentifier()
         => this.Name;
 
+    /// <summary>Consumes the function body.</summary>
+    /// <param name="reader">The token reader.</param>
     public void Parse(ref TokenReader reader)
     {
+        // Function bodies are not modeled yet, so consume the balanced block.
         var depth = 1;
         while (reader.CanRead)
         {
@@ -114,6 +150,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
         }
     }
 
+    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         if (this.AttributeChain is not null)

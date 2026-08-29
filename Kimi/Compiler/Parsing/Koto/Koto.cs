@@ -8,91 +8,231 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>
+/// Defines the kinds of nodes in a Koto syntax tree.
+/// </summary>
 public enum KotoKind : byte
 {
+    /// <summary>An invalid node.</summary>
     Invalid,
 
     // Group
+
+    /// <summary>A contract declaration.</summary>
     Contract,
+
+    /// <summary>An enumeration declaration.</summary>
     Enum,
+
+    /// <summary>An extension declaration.</summary>
     Extension,
+
+    /// <summary>A namespace-like group declaration.</summary>
     Group,
+
+    /// <summary>A structure declaration.</summary>
     Struct,
+
+    /// <summary>A function declaration.</summary>
     Function,
 
     // Nullary
+
+    /// <summary>An error-recovery node.</summary>
     Error,
+
+    /// <summary>An alias declaration.</summary>
     Alias,
+
+    /// <summary>A field or variable declaration.</summary>
     Field,
+
+    /// <summary>A Boolean literal.</summary>
     BoolLiteral,
+
+    /// <summary>A numeric literal.</summary>
     NumberLiteral,
+
+    /// <summary>A string literal.</summary>
     StringLiteral,
+
+    /// <summary>An identifier name.</summary>
     IdentifierName,
+
+    /// <summary>A type with ownership semantics.</summary>
     TypeSemantics,
+
+    /// <summary>A semantics mask.</summary>
     SemanticsMask,
 
     // Unary
+
+    /// <summary>An attribute expression.</summary>
     Attribute,
+
+    /// <summary>A macro expression.</summary>
     Macro,
+
+    /// <summary>A reference expression.</summary>
     Reference,
+
+    /// <summary>An unwrap expression.</summary>
     Unwrap,
+
+    /// <summary>A prefix caret expression.</summary>
     PrefixCaret,
+
+    /// <summary>A unary plus expression.</summary>
     PrefixPlus,
+
+    /// <summary>A prefix increment expression.</summary>
     PrefixPlusPlus,
+
+    /// <summary>A unary minus expression.</summary>
     PrefixMinus,
+
+    /// <summary>A prefix decrement expression.</summary>
     PrefixMinusMinus,
+
+    /// <summary>A postfix increment expression.</summary>
     PostfixIncrement,
+
+    /// <summary>A postfix decrement expression.</summary>
     PostfixDecrement,
+
+    /// <summary>A logical negation expression.</summary>
     Not,
+
+    /// <summary>A parenthesized expression.</summary>
     Parenthesized,
 
     // Binary
+
+    /// <summary>A member-access expression.</summary>
     MemberAccess,
+
+    /// <summary>An index expression.</summary>
     Index,
+
+    /// <summary>A multiplication expression.</summary>
     Asterisk,
-    Conversion, // A@B, A@owner/T, A@/
+
+    /// <summary>A conversion expression.</summary>
+    Conversion,
+
+    /// <summary>A division expression.</summary>
     Slash,
+
+    /// <summary>A remainder expression.</summary>
     Percent,
+
+    /// <summary>An addition expression.</summary>
     Plus,
+
+    /// <summary>A subtraction expression.</summary>
     Minus,
+
+    /// <summary>A left-shift expression.</summary>
     LessThanLessThan,
+
+    /// <summary>A right-shift expression.</summary>
     GreaterThanGreaterThan,
+
+    /// <summary>A less-than comparison.</summary>
     LessThan,
+
+    /// <summary>A less-than-or-equal comparison.</summary>
     LessThanEquals,
+
+    /// <summary>A greater-than comparison.</summary>
     GreaterThan,
+
+    /// <summary>A greater-than-or-equal comparison.</summary>
     GreaterThanEquals,
+
+    /// <summary>An <c>as</c> expression.</summary>
     As,
+
+    /// <summary>An <c>is</c> expression.</summary>
     Is,
+
+    /// <summary>An equality comparison.</summary>
     EqualsEquals,
+
+    /// <summary>An inequality comparison.</summary>
     ExclamationEquals,
+
+    /// <summary>A bitwise-and expression.</summary>
     Ampersand,
+
+    /// <summary>A bitwise-exclusive-or expression.</summary>
     Caret,
+
+    /// <summary>A bitwise-or expression.</summary>
     Bar,
+
+    /// <summary>A logical-and expression.</summary>
     And,
+
+    /// <summary>A logical-or expression.</summary>
     Or,
+
+    /// <summary>An assignment expression.</summary>
     Equals,
+
+    /// <summary>An addition-assignment expression.</summary>
     PlusEquals,
+
+    /// <summary>A subtraction-assignment expression.</summary>
     MinusEquals,
+
+    /// <summary>A multiplication-assignment expression.</summary>
     AsteriskEquals,
+
+    /// <summary>A division-assignment expression.</summary>
     SlashEquals,
+
+    /// <summary>A remainder-assignment expression.</summary>
     PercentEquals,
+
+    /// <summary>A bitwise-and-assignment expression.</summary>
     AmpersandEquals,
+
+    /// <summary>A bitwise-exclusive-or-assignment expression.</summary>
     CaretEquals,
+
+    /// <summary>A bitwise-or-assignment expression.</summary>
     BarEquals,
+
+    /// <summary>A left-shift-assignment expression.</summary>
     LessThanLessThanEquals,
+
+    /// <summary>A right-shift-assignment expression.</summary>
     GreaterThanGreaterThanEquals,
 
     // Misc
+
+    /// <summary>An invocation expression.</summary>
     Invocation,
+
+    /// <summary>A generic name.</summary>
     Generics,
 
     // Types
+
+    /// <summary>A tuple type.</summary>
     TupleType,
+
+    /// <summary>A function type.</summary>
     FunctionType,
 
+    /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
 
+/// <summary>
+/// Provides the base representation of a Koto syntax-tree node.
+/// </summary>
 [TinyhandObject(ReservedKeyCount = 1)]
 [TinyhandUnion((int)KotoKind.Contract, typeof(ContractKoto))]
 [TinyhandUnion((int)KotoKind.Enum, typeof(EnumKoto))]
@@ -113,7 +253,6 @@ public enum KotoKind : byte
 
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
 [TinyhandUnion((int)KotoKind.Macro, typeof(MacroKoto))]
-// [TinyhandUnion((int)KotoKind.Reference, typeof(ReferenceKoto))]
 [TinyhandUnion((int)KotoKind.Unwrap, typeof(UnwrapKoto))]
 [TinyhandUnion((int)KotoKind.PrefixCaret, typeof(PrefixCaretKoto))]
 [TinyhandUnion((int)KotoKind.PrefixPlus, typeof(PrefixPlusKoto))]
@@ -167,63 +306,50 @@ public enum KotoKind : byte
 [ValueLinkObject]
 public abstract partial class Koto
 {
+    /// <summary>The size required for a table indexed by <see cref="KotoKind"/>.</summary>
     public const int MaxKind = (int)KotoKind.Omega + 1;
 
     #region FieldAndProperty
 
+    /// <summary>Gets the concrete node kind.</summary>
     public abstract KotoKind Akind { get; }
 
-    // Frontend Metadata
+    // Parser metadata is runtime-only and is restored after deserialization.
+
+    /// <summary>Gets the diagnostic destination associated with this node.</summary>
     [IgnoreMember]
     public DiagnosticCollection? DiagnosticCollection { get; internal set; }
 
+    /// <summary>Gets the node span in the source document.</summary>
     [IgnoreMember]
     public SourceSpan Span { get; internal set; }
 
+    /// <summary>Gets the code context that owns this node.</summary>
     [IgnoreMember]
     public CodeContext CodeContext { get; internal set; }
 
-    // Backend Metadata
+    // Tree links are rebuilt after deserialization.
 
-    // Koto Structure
+    /// <summary>Gets the parent node, or <see langword="null"/> for the root.</summary>
     [IgnoreMember]
     public Koto? Parent { get; internal set; }
 
-    /*[IgnoreMember]
-    public Koto? Previous { get; internal set; }
-
-    [IgnoreMember]
-    public Koto? Next { get; internal set; }*/
-
-    /*[IgnoreMember]
-    public Koto? Previous => this.previous == null || this == this.Parent?.head ? null : this.previous;
-
-    [IgnoreMember]
-    public Koto? Next
-    {//
-        get
-        {
-            if (this is AttributeKoto)
-            {
-                return this.next == this.Parent?.head ? null : this.next;
-            }
-            else
-            {
-                return this.next == this.Parent?.attributeHead ? null : this.next;
-            }
-        }
-    }*/
-
+    /// <summary>Gets the attributes attached to this node.</summary>
     [Key(0)]
     public AttributeKoto? AttributeChain { get; internal set; }
 
+    /// <summary>Gets a value indicating whether this node is the tree root.</summary>
     [MemberNotNullWhen(false, nameof(Parent))]
     public bool IsRoot => this.Parent is null;
 
+    /// <summary>Gets the source unit that owns this node.</summary>
     public Kotonoha Kotonoha => this.CodeContext.Kotonoha;
 
     #endregion
 
+    /// <summary>Initializes a new instance of the <see cref="Koto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The node span.</param>
     [Link(Primary = true, Type = ChainType.LinkedList, Name = "ChildLink")]
     public Koto(ref TokenReader reader, SourceSpan range)
     {
@@ -232,7 +358,6 @@ public abstract partial class Koto
         this.Span = range;
 
         this.AttributeChain = reader.PopAttribute();
-        // this.Parent = parent;
     }
 
     internal Koto(CodeContext codeContext, SourceSpan range)
@@ -241,6 +366,7 @@ public abstract partial class Koto
         this.Span = range;
     }
 
+    /// <inheritdoc/>
     public override string ToString()
     {
         var builder = default(IndentedStringBuilder);
@@ -255,8 +381,11 @@ public abstract partial class Koto
         }
     }
 
+    /// <summary>Gets a value indicating whether the node is a top-level declaration.</summary>
     public virtual bool IsToplevel => false;
 
+    /// <summary>Writes this node as source text.</summary>
+    /// <param name="builder">The destination builder.</param>
     public virtual void WriteTo(ref IndentedStringBuilder builder)
     {
         if (this.AttributeChain is not null)
@@ -267,20 +396,31 @@ public abstract partial class Koto
         builder.Append("Koto");
     }
 
+    /// <summary>Resolves an identifier relative to this node.</summary>
+    /// <param name="identifier">The identifier to resolve.</param>
+    /// <returns>The resolved node, or <see langword="null"/>.</returns>
     public virtual Koto? ResolveIdentifier(ReadOnlySpan<char> identifier)
     {
         return default;
     }
 
+    /// <summary>Binds this node to a compilation.</summary>
+    /// <param name="compilation">The active compilation.</param>
     public virtual void Bind(Compilation compilation)
     {
     }
 
+    /// <summary>Adds a diagnostic for this node.</summary>
+    /// <param name="code">The diagnostic code.</param>
+    /// <param name="obj">The first optional diagnostic argument.</param>
+    /// <param name="obj2">The second optional diagnostic argument.</param>
     public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null)
     {
         this.DiagnosticCollection?.Add(this.Span, code, obj, obj2);
     }
 
+    /// <summary>Adds an attribute to this node.</summary>
+    /// <param name="attributeKoto">The attribute to add.</param>
     public void AddAttribute(AttributeKoto attributeKoto)
     {
         if (attributeKoto.Parent is not null)
@@ -293,6 +433,9 @@ public abstract partial class Koto
         this.AttributeChain = attributeKoto;
     }
 
+    /// <summary>Removes an attribute from this node.</summary>
+    /// <param name="attributeKoto">The attribute to remove.</param>
+    /// <returns><see langword="true"/> when the attribute was removed.</returns>
     public bool RemoveAttribute(AttributeKoto attributeKoto)
     {
         AttributeKoto? previous = default;
