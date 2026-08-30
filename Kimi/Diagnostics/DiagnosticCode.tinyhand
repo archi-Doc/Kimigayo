@@ -12,7 +12,7 @@
 
   + Name="DeclarationOrderWarning_Kd"
     Severity="Warning"
-    Message="Declarations should appear in this order: type constraints, nested types, fields, functions"
+    Message="Declarations should appear in this order: type constraints, fields, functions"
 
   + Name="DivisionByZero_Kd"
     Message="Cannot divide by zero"

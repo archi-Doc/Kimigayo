@@ -63,6 +63,7 @@ public static class Constants
     public const string EnumKeyword = "enum";
     public const string ExtensionKeyword = "extension";
     public const string ContractKeyword = "contract";
+    public const string AssociateKeyword = "associate";
     public const string StaticKeyword = "static";
     public const string PublicKeyword = "public";
     public const string ProtectedKeyword = "protected";

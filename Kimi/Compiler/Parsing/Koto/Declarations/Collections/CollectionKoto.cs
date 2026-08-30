@@ -8,6 +8,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 #pragma warning disable SA1202 // Serialization keys keep related storage together.
+#pragma warning disable SA1204 // Parsing helpers are grouped by responsibility.
 
 /// <summary>
 /// Provides shared storage and parsing for Kimigayo collection declarations.
@@ -15,11 +16,10 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
 {
-    private enum DeclarationOrder : byte
+    protected enum DeclarationOrder : byte
     {
         None,
         TypeConstraint,
-        NestedType,
         Field,
         Function,
     }
@@ -51,6 +51,9 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
 
     /// <summary>Gets a value indicating whether origins are supported.</summary>
     public virtual bool SupportsOrigins => false;
+
+    /// <summary>Gets a value indicating whether type constraints are supported.</summary>
+    public virtual bool SupportsTypeConstraints => false;
 
     /// <summary>Gets the generic parameters.</summary>
     [Key(7)]
@@ -132,6 +135,11 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
     /// <param name="constraint">The constraint to add.</param>
     public void AddTypeConstraint(IsKoto constraint)
     {
+        if (!this.SupportsTypeConstraints)
+        {
+            return;
+        }
+
         this.TypeConstraints.Add(constraint);
         constraint.Parent = this;
     }
@@ -277,10 +285,9 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
     public CollectionKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range)
         => this.GetOrAddCollection(qualifiedName, kind, state, range);
 
-    /// <summary>Parses declarations into this group.</summary>
+    /// <summary>Parses the body supported by this collection kind.</summary>
     /// <param name="reader">The token reader.</param>
-    public void Parse(ref TokenReader reader)
-        => this.Parse(ref reader, false);
+    public abstract void Parse(ref TokenReader reader);
 
     internal static CollectionKoto CreateStandalone(CodeContext codeContext, TokenKind kind, TokenContext state, SourceSpan range, string name)
     {
@@ -312,7 +319,7 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         foreach (var constraint in this.TypeConstraints)
         {
             WriteSeparator(ref builder, ref hasPrevious);
-            constraint.WriteTo(ref builder);
+            this.WriteTypeConstraintTo(constraint, ref builder);
         }
 
         foreach (var koto in this.KotoList)
@@ -342,29 +349,17 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         }
     }
 
-    internal void Parse(ref TokenReader reader, bool useCurrentContext)
+    /// <summary>Parses fields, functions, and optionally ordinary type constraints.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="parseTypeConstraints">Whether ordinary type constraints are accepted.</param>
+    protected void ParseFieldAndFunctionMembers(ref TokenReader reader, bool parseTypeConstraints)
     {
+        ConsumeBlockStart(ref reader);
         var declarationOrder = DeclarationOrder.None;
-        var acceptsTypeConstraints = this.SupportsGenerics && this.TypeConstraints.Count == 0;
-        while (reader.CanRead)
+        var acceptsTypeConstraints = parseTypeConstraints && this.TypeConstraints.Count == 0;
+        while (TryBeginDeclaration(ref reader))
         {
-            bool isEnd;
-            if (useCurrentContext)
-            {
-                useCurrentContext = false;
-                isEnd = reader.IsEnd;
-            }
-            else
-            {
-                Parser.ConsumeAttributeAndModifier(ref reader, out isEnd);
-            }
-
-            if (isEnd)
-            {
-                return;
-            }
-
-            if (Parser.IsTypeConstraintStart(ref reader))
+            if (parseTypeConstraints && Parser.IsTypeConstraintStart(ref reader))
             {
                 if (!acceptsTypeConstraints)
                 {
@@ -384,137 +379,159 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
             }
 
             var token = reader.CurrentToken;
-            var tokenKind = token.Kind;
-            ITokenParser? nextParser = default;
-
-            if (tokenKind == TokenKind.Alias)
+            if (!this.TryParseFieldOrFunction(ref reader, ref declarationOrder))
             {
-                // Consume invalid nested aliases so parsing can resume at the next declaration.
-                reader.Advance();
-                _ = KotoHelper.ParseQualifiedNameSegments(ref reader);
-                reader.Diagnostic.Add(token.Span, DiagnosticCode.TopLevelKeywordAfterCode_Kd);
-            }
-            else if (tokenKind == TokenKind.Separator)
-            {
-                reader.Advance();
-                continue;
-            }
-            else if (tokenKind == TokenKind.EndBlock)
-            {
-                reader.Advance();
-                break;
-            }
-            else if (tokenKind == TokenKind.Let || tokenKind == TokenKind.Var)
-            {
-                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Field);
-                reader.Advance();
-                var fieldKoto = Parser.ParseField(ref reader, ref token);
-                if (fieldKoto is not null)
-                {
-                    this.AddLast(fieldKoto);
-                }
-            }
-            else if (tokenKind == TokenKind.RootGroup)
-            {
-                reader.Advance();
-                var name = KotoHelper.ValidateAndGetNamespace(ref reader);
-                if (reader.IsExcluded)
-                {
-                    reader.SkipCurrentBlock(true);
-                    goto NextToken;
-                }
-
-                var state = reader.TakeContext();
-                var groupKoto = this.Kotonoha.RootKoto.GetOrAddCollection(name, TokenKind.Group, state, token.Span);
-
-                if (reader.CurrentTokenKind == TokenKind.StartBlock)
-                {
-                    reader.Advance();
-                }
-
-                nextParser = groupKoto;
-            }
-            else if (tokenKind is TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract)
-            {
-                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.NestedType);
-                reader.Advance();
-                var r = Parser.ParseGroupDeclaration(ref reader);
-                if (reader.IsExcluded)
-                {
-                    reader.SkipCurrentBlock(false);
-                    goto NextToken;
-                }
-
-                var state = reader.TakeContext();
-                var groupKoto = this.GetOrAddCollection(r.Name, tokenKind, state, token.Span);
-                if (r.GenericArguments is not null && groupKoto.GenericArguments.Count == 0)
-                {
-                    groupKoto.AddGenericArguments(r.GenericArguments);
-                }
-
-                if (r.Origins is not null && groupKoto.Origins.Count == 0)
-                {
-                    groupKoto.AddOrigins(r.Origins);
-                }
-
-                if (reader.CurrentTokenKind == TokenKind.StartBlock)
-                {
-                    reader.Advance();
-                    nextParser = groupKoto;
-                }
-            }
-            else if (tokenKind == TokenKind.Func)
-            {
-                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Function);
-                reader.Advance();
-                var functionKoto = Parser.ParseFuncDeclaration(ref reader);
-                if (functionKoto is not null)
-                {
-                    if (!functionKoto.IsExcluded)
-                    {
-                        this.AddLast(functionKoto);
-                    }
-
-                    while (reader.CurrentTokenKind == TokenKind.Separator)
-                    {
-                        reader.Advance();
-                    }
-
-                    if (reader.CurrentTokenKind == TokenKind.StartBlock)
-                    {
-                        nextParser = functionKoto;
-                    }
-                    else
-                    {
-                        // Recover a malformed signature by resuming at its body.
-                        reader.SkipUntilStartBlock(0);
-                        if (reader.CurrentTokenKind == TokenKind.StartBlock)
-                        {
-                            nextParser = functionKoto;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                var koto = Parser.ParseExpression(ref reader);
-                if (koto is ErrorKoto)
-                {
-                    reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
-                }
-                else
-                {
-                    this.AddLast(koto);
-                }
-            }
-
-NextToken:
-            if (nextParser is not null)
-            {
-                nextParser.Parse(ref reader);
+                SkipUnexpectedDeclaration(ref reader, token);
             }
         }
     }
+
+    /// <summary>Consumes an unimplemented collection body without producing members.</summary>
+    /// <param name="reader">The token reader.</param>
+    protected static void SkipUnimplementedBody(ref TokenReader reader)
+    {
+        if (reader.CurrentTokenKind == TokenKind.StartBlock)
+        {
+            reader.SkipCurrentBlock(false);
+            return;
+        }
+
+        var depth = 0;
+        while (reader.CanRead)
+        {
+            if (reader.CurrentTokenKind == TokenKind.StartBlock)
+            {
+                depth++;
+            }
+            else if (reader.CurrentTokenKind == TokenKind.EndBlock)
+            {
+                if (depth == 0)
+                {
+                    reader.Advance();
+                    return;
+                }
+
+                depth--;
+            }
+
+            reader.Advance();
+        }
+    }
+
+    /// <summary>Consumes the opening block token when the caller left it for the collection parser.</summary>
+    /// <param name="reader">The token reader.</param>
+    protected static void ConsumeBlockStart(ref TokenReader reader)
+    {
+        if (reader.CurrentTokenKind == TokenKind.StartBlock)
+        {
+            reader.Advance();
+        }
+    }
+
+    /// <summary>Consumes declaration trivia and detects the end of the current collection body.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <returns><see langword="true"/> when another declaration is available.</returns>
+    protected static bool TryBeginDeclaration(ref TokenReader reader)
+    {
+        Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
+        if (isEnd)
+        {
+            return false;
+        }
+
+        if (reader.CurrentTokenKind == TokenKind.EndBlock)
+        {
+            reader.Advance();
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Attempts to parse one field or function declaration.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="declarationOrder">The current declaration-order state.</param>
+    /// <returns><see langword="true"/> when a supported member was consumed.</returns>
+    protected bool TryParseFieldOrFunction(ref TokenReader reader, ref DeclarationOrder declarationOrder)
+    {
+        var token = reader.CurrentToken;
+        if (token.Kind is TokenKind.Let or TokenKind.Var)
+        {
+            CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Field);
+            reader.Advance();
+            var fieldKoto = Parser.ParseField(ref reader, ref token);
+            if (fieldKoto is not null)
+            {
+                this.AddLast(fieldKoto);
+            }
+
+            return true;
+        }
+
+        if (token.Kind != TokenKind.Func)
+        {
+            return false;
+        }
+
+        CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Function);
+        reader.Advance();
+        var functionKoto = Parser.ParseFuncDeclaration(ref reader);
+        if (functionKoto is null)
+        {
+            return true;
+        }
+
+        if (!functionKoto.IsExcluded)
+        {
+            this.AddLast(functionKoto);
+        }
+
+        while (reader.CurrentTokenKind == TokenKind.Separator)
+        {
+            reader.Advance();
+        }
+
+        if (reader.CurrentTokenKind != TokenKind.StartBlock)
+        {
+            reader.SkipUntilStartBlock(0);
+        }
+
+        if (reader.CurrentTokenKind == TokenKind.StartBlock)
+        {
+            functionKoto.Parse(ref reader);
+        }
+
+        return true;
+    }
+
+    /// <summary>Reports and skips a declaration unsupported by the current collection kind.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="token">The unsupported declaration's first token.</param>
+    protected static void SkipUnexpectedDeclaration(ref TokenReader reader, Token token)
+    {
+        reader.Diagnostic.Add(
+            token.Span,
+            DiagnosticCode.UnexpectedToken_Kd,
+            reader.GetSpan(token).ToString());
+        reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+        while (reader.CurrentTokenKind == TokenKind.Separator)
+        {
+            reader.Advance();
+        }
+
+        if (reader.CurrentTokenKind == TokenKind.StartBlock)
+        {
+            reader.SkipCurrentBlock(false);
+        }
+
+        reader.ClearContext();
+    }
+
+    /// <summary>Writes one type constraint in the syntax used by this collection kind.</summary>
+    /// <param name="constraint">The constraint to write.</param>
+    /// <param name="builder">The destination builder.</param>
+    protected virtual void WriteTypeConstraintTo(IsKoto constraint, ref IndentedStringBuilder builder)
+        => constraint.WriteTo(ref builder);
 
     protected override IEnumerable<Koto> GetChildNodes()
     {
@@ -591,7 +608,7 @@ NextToken:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void CheckDeclarationOrder(ref TokenReader reader, ref DeclarationOrder current, DeclarationOrder next)
+    protected static void CheckDeclarationOrder(ref TokenReader reader, ref DeclarationOrder current, DeclarationOrder next)
     {
         if (next < current)
         {
@@ -662,7 +679,7 @@ NextToken:
         {
             foreach (var constraint in this.TypeConstraints)
             {
-                constraint.WriteTo(ref builder);
+                this.WriteTypeConstraintTo(constraint, ref builder);
                 builder.AppendLine();
             }
 

@@ -39,4 +39,8 @@ public sealed partial class ExtensionKoto : CollectionKoto
         : base(codeContext, state, range)
     {
     }
+
+    /// <inheritdoc/>
+    public override void Parse(ref TokenReader reader)
+        => SkipUnimplementedBody(ref reader);
 }

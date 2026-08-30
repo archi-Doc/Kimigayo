@@ -400,9 +400,6 @@ public class ParserRegressionTest
             public open struct TestStruct<s/C> origin a, b
                 C is Comparable
 
-                struct Nested
-                    var value: C
-
                 #Example
                 var item: obj/Container<C> = value
                 var converted = item@unsafe/C
@@ -479,14 +476,11 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void ParsesOrderedTypeDeclarationsWithoutOrderWarning()
+    public void ParsesOrderedStructMembersWithoutOrderWarning()
     {
         var source = """
             struct Ordered
                 Self is Interface
-
-                struct Nested
-                    var nestedField: i32
 
                 var field: i32
 
@@ -503,13 +497,10 @@ public class ParserRegressionTest
             GetChildren(type),
             x => Assert.IsType<FieldKoto>(x),
             x => Assert.IsType<FunctionKoto>(x));
-
-        var nested = Assert.IsType<StructKoto>(type.GetOrAddGroup("Nested", TokenKind.Struct, default, default));
-        Assert.IsType<FieldKoto>(Assert.Single(GetChildren(nested)));
     }
 
     [Fact]
-    public void WarnsForOutOfOrderTypeDeclarationsButParsesThem()
+    public void WarnsForOutOfOrderStructMembersButParsesThem()
     {
         var source = """
             struct Mixed
@@ -517,9 +508,6 @@ public class ParserRegressionTest
                     return
 
                 var field: i32
-
-                struct Nested
-                    var nestedField: i32
 
                 Self is Interface
             """;
@@ -529,7 +517,7 @@ public class ParserRegressionTest
         var warnings = diagnostics
             .Where(x => x.Entry.Name == nameof(DiagnosticCode.DeclarationOrderWarning_Kd))
             .ToArray();
-        Assert.Equal(3, warnings.Length);
+        Assert.Equal(2, warnings.Length);
         Assert.All(warnings, x => Assert.Equal(DiagnosticSeverity.Warning, x.Entry.Severity));
 
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("Mixed", TokenKind.Struct, default, default));
@@ -538,13 +526,10 @@ public class ParserRegressionTest
             GetChildren(type),
             x => Assert.IsType<FunctionKoto>(x),
             x => Assert.IsType<FieldKoto>(x));
-
-        var nested = Assert.IsType<StructKoto>(type.GetOrAddGroup("Nested", TokenKind.Struct, default, default));
-        Assert.IsType<FieldKoto>(Assert.Single(GetChildren(nested)));
     }
 
     [Fact]
-    public void ParsesIdentifierExpressionInTypeBody()
+    public void RejectsIdentifierExpressionInStructBody()
     {
         var source = """
             struct A
@@ -554,16 +539,10 @@ public class ParserRegressionTest
 
         var (root, diagnostics) = Parse(source);
 
-        Assert.Empty(diagnostics);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnexpectedToken_Kd), diagnostic.Entry.Name);
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
-        Assert.Collection(
-            GetChildren(type),
-            x =>
-            {
-                var invocation = Assert.IsType<InvocationKoto>(x);
-                Assert.IsType<MemberAccessKoto>(invocation.Method);
-            },
-            x => Assert.IsType<FieldKoto>(x));
+        Assert.IsType<FieldKoto>(Assert.Single(GetChildren(type)));
     }
 
     [Theory]

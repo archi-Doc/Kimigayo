@@ -181,35 +181,7 @@ public sealed partial class Kotonoha
     }
 
     private void Parse(ref TokenReader reader)
-    {
-        while (reader.CanRead)
-        {
-            // Attributes and modifiers belong to the declaration that follows them.
-            Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
-            if (isEnd)
-            {
-                return;
-            }
-
-            if (reader.CurrentTokenKind == TokenKind.Alias)
-            {
-                reader.Advance();
-                var list = KotoHelper.ParseQualifiedNameSegments(ref reader);
-                var aliasKoto = new AliasKoto(ref reader, list);
-                if (!reader.IsExcluded)
-                {
-                    this.RootKoto.AddLast(aliasKoto);
-                }
-
-                continue;
-            }
-            else
-            {
-                // Let the root group handle every other top-level declaration.
-                this.RootKoto.Parse(ref reader, true);
-            }
-        }
-    }
+        => this.RootKoto.Parse(ref reader);
 
     private void DumpToken(string path, ReadOnlySequence<Token> sequence)
     {

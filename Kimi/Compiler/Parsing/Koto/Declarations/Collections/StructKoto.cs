@@ -26,6 +26,9 @@ public sealed partial class StructKoto : CollectionKoto
     /// <inheritdoc/>
     public override bool SupportsOrigins => true;
 
+    /// <inheritdoc/>
+    public override bool SupportsTypeConstraints => true;
+
     /// <summary>Initializes a new instance of the <see cref="StructKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The declaration source span.</param>
@@ -38,4 +41,8 @@ public sealed partial class StructKoto : CollectionKoto
         : base(codeContext, state, range)
     {
     }
+
+    /// <inheritdoc/>
+    public override void Parse(ref TokenReader reader)
+        => this.ParseFieldAndFunctionMembers(ref reader, true);
 }

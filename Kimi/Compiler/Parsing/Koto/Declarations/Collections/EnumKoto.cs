@@ -1,6 +1,5 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
@@ -21,9 +20,6 @@ public sealed partial class EnumKoto : CollectionKoto
     /// <inheritdoc/>
     public override bool IsInstantiable => true;
 
-    /// <summary>Gets the structure variants declared by this enumeration.</summary>
-    public IEnumerable<StructKoto> Structs => this.NestedCollections.OfType<StructKoto>();
-
     /// <summary>Initializes a new instance of the <see cref="EnumKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The declaration source span.</param>
@@ -36,4 +32,8 @@ public sealed partial class EnumKoto : CollectionKoto
         : base(codeContext, state, range)
     {
     }
+
+    /// <inheritdoc/>
+    public override void Parse(ref TokenReader reader)
+        => SkipUnimplementedBody(ref reader);
 }

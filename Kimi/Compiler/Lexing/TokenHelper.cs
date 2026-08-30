@@ -103,6 +103,7 @@ public static partial class TokenHelper
         Set(TokenKind.ProtectedOrInternal, true, Constants.ProtectedOrInternalKeyword);
         Set(TokenKind.ProtectedAndInternal, true, Constants.ProtectedAndInternalKeyword);
         Set(TokenKind.Open, true, Constants.OpenKeyword);
+        Set(TokenKind.Associate, true, Constants.AssociateKeyword);
 
         // Not keyword
         Set(TokenKind.Identifier, false, string.Empty);

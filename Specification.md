@@ -73,17 +73,17 @@ func add(left: i32, right: i32) -> i32
 
 # Collections
 
-A Collection is a named declaration scope that can contain fields, functions, and nested Collections. Collection bodies are delimited by indentation.
+A Collection is a named declaration scope. Collection bodies are delimited by indentation, and each collection kind defines which body declarations it accepts.
 
 | Collection kind | Instantiable | Main characteristics |
 | --------------- | ------------ | -------------------- |
-| `group` | No | All members are static. |
-| `struct` | Yes | Members are kept in declaration order. Generic parameters, Origins, and type constraints are supported. |
-| `enum` | Yes | May contain nested `struct` declarations as variants. |
-| `extension` | No | All members are static, and the declaration Name identifies its target. |
-| `contract` | No | Describes an interface contract; its members are not implicitly static. |
+| `group` | No | Accepts fields and functions. All members are static. Generic parameters and Origins are not supported. |
+| `struct` | Yes | Accepts fields and functions in declaration order. Generic parameters, Origins, and type constraints are supported. |
+| `enum` | Yes | Body parsing is not implemented. |
+| `extension` | No | Its Name identifies the target. Body parsing is not implemented. |
+| `contract` | No | Currently accepts associated-type constraints only. |
 
-A `struct` header may contain generic parameters and an Origin list. Constraint declarations precede nested Collections, fields, and functions.
+A `struct` header may contain generic parameters and an Origin list. Constraint declarations precede fields and functions.
 
 ```kimi
 struct Container<s/T> origin owner, source
@@ -93,24 +93,23 @@ struct Container<s/T> origin owner, source
     var value: s/T
 ```
 
-Each source unit has an implicit root `group`. A `rootgroup` declaration starts at that root and accepts a dot-separated Name. Therefore:
+An associated-type constraint in a `contract` begins with `associate`.
+
+```kimi
+contract Sequence
+    associate Element is Comparable
+```
+
+Each source unit has an implicit root `group`. This root dispatches top-level Collection declarations, fields, and functions. A `rootgroup` declaration starts at that root and accepts a dot-separated Name. For example:
 
 ```kimi
 rootgroup A.B
     var value = 1
 ```
 
-is equivalent to:
-
-```kimi
-group A
-    group B
-        var value = 1
-```
+creates the nested group path `A.B`. Ordinary `group` and `struct` bodies do not accept nested Collection declarations.
 
 An `alias` is a top-level declaration of a qualified Name. Nested aliases are invalid.
-
-Kind-specific member restrictions beyond the capabilities listed above are not currently enforced.
 
 # Type
 

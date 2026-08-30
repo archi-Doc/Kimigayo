@@ -371,6 +371,17 @@ Exit:
     /// <param name="reader">The token reader.</param>
     /// <returns>The name, generic parameters, and origin names.</returns>
     public static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins) ParseGroupDeclaration(ref TokenReader reader)
+        => ParseGroupDeclaration(ref reader, true, true);
+
+    /// <summary>Parses a collection declaration header according to the capabilities of its kind.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="supportsGenerics">Whether generic parameters are accepted.</param>
+    /// <param name="supportsOrigins">Whether an Origin list is accepted.</param>
+    /// <returns>The name, generic parameters, and origin names.</returns>
+    internal static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins) ParseGroupDeclaration(
+        ref TokenReader reader,
+        bool supportsGenerics,
+        bool supportsOrigins)
     {
         string name = string.Empty;
         List<TypeKoto>? genericArguments = default;
@@ -397,12 +408,12 @@ Exit:
             reader.AddDiagnostic(DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
         }
 
-        if (reader.CurrentTokenKind == TokenKind.LessThan)
+        if (supportsGenerics && reader.CurrentTokenKind == TokenKind.LessThan)
         {
             genericArguments = ParseGenericArguments(ref reader);
         }
 
-        if (reader.IsIdentifierToken(reader.CurrentToken, Constants.OriginKeyword))
+        if (supportsOrigins && reader.IsIdentifierToken(reader.CurrentToken, Constants.OriginKeyword))
         {
             var originRange = reader.CurrentTokenRange;
             reader.Advance();
@@ -1230,7 +1241,11 @@ Exit:
             case TokenKind.Contract:
                 isDeclaration = true;
                 reader.Advance();
-                var declaration = ParseGroupDeclaration(ref reader);
+                var supportsGenericHeader = token.Kind == TokenKind.Struct;
+                var declaration = ParseGroupDeclaration(
+                    ref reader,
+                    supportsGenericHeader,
+                    supportsGenericHeader);
                 var state = reader.TakeContext();
                 var group = CollectionKoto.CreateStandalone(
                     reader.CodeContext,
@@ -1250,7 +1265,6 @@ Exit:
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
-                    reader.Advance();
                     group.Parse(ref reader);
                 }
                 else
