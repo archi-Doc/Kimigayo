@@ -12,7 +12,7 @@ namespace XunitTest;
 
 public class FunctionBodyParseTest
 {
-    private static readonly PropertyInfo KotoListProperty = typeof(GroupKoto).GetProperty(
+    private static readonly PropertyInfo KotoListProperty = typeof(CollectionKoto).GetProperty(
         "KotoList",
         BindingFlags.Instance | BindingFlags.NonPublic)!;
 
@@ -240,6 +240,6 @@ public class FunctionBodyParseTest
         return Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
     }
 
-    private static List<Koto> GetChildren(GroupKoto group)
+    private static List<Koto> GetChildren(CollectionKoto group)
         => (List<Koto>)KotoListProperty.GetValue(group)!;
 }

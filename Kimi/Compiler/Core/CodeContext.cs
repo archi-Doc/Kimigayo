@@ -43,25 +43,25 @@ public class CodeContext
     /// <summary>
     /// Parses source text and appends its nodes to a parent group.
     /// </summary>
-    /// <param name="parentKoto">The group that receives the parsed nodes.</param>
+    /// <param name="parentKoto">The collection that receives the parsed nodes.</param>
     /// <param name="sourceText">The source text to parse.</param>
-    public void Parse(GroupKoto parentKoto, ReadOnlySpan<char> sourceText)
+    public void Parse(CollectionKoto parentKoto, ReadOnlySpan<char> sourceText)
         => this.Parse(parentKoto, new SourceDocument(this.DiagnosticCollection.Name, sourceText.ToString()));
 
     /// <summary>
     /// Parses source text and appends its nodes to a parent group.
     /// </summary>
-    /// <param name="parentKoto">The group that receives the parsed nodes.</param>
+    /// <param name="parentKoto">The collection that receives the parsed nodes.</param>
     /// <param name="sourceText">The source text to parse.</param>
-    public void Parse(GroupKoto parentKoto, string sourceText)
+    public void Parse(CollectionKoto parentKoto, string sourceText)
         => this.Parse(parentKoto, new SourceDocument(this.DiagnosticCollection.Name, sourceText));
 
     /// <summary>
     /// Parses a source document and appends its nodes to a parent group.
     /// </summary>
-    /// <param name="parentKoto">The group that receives the parsed nodes.</param>
+    /// <param name="parentKoto">The collection that receives the parsed nodes.</param>
     /// <param name="sourceDocument">The source document to parse.</param>
-    public void Parse(GroupKoto parentKoto, SourceDocument sourceDocument)
+    public void Parse(CollectionKoto parentKoto, SourceDocument sourceDocument)
     {
         if (parentKoto.CodeContext.Compilation != this.Compilation)
         {

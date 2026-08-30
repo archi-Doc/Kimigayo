@@ -3,7 +3,6 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Text;
 using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
@@ -207,47 +206,16 @@ public static class Parser
             return string.Empty;
         }
 
-        var a1 = a0.AttributeChain;
-        if (a1 is null)
+        var builder = default(IndentedStringBuilder);
+        try
         {
-            return $"{a0.ToString()} ";
+            UnparseAttribute(a0, ref builder, KotoWriteOptions.AppendSpace);
+            return builder.ToString();
         }
-
-        var a2 = a1.AttributeChain;
-        if (a2 is null)
+        finally
         {
-            return $"{a1.ToString()} {a0.ToString()} ";
+            builder.Dispose();
         }
-
-        var a3 = a2.AttributeChain;
-        if (a3 is null)
-        {
-            return $"{a2.ToString()} {a1.ToString()} {a0.ToString()} ";
-        }
-
-        var a4 = a3.AttributeChain;
-        if (a4 is null)
-        {
-            return $"{a3.ToString()} {a2.ToString()} {a1.ToString()} {a0.ToString()} ";
-        }
-
-        var list = new List<Koto>();
-        var sb = new StringBuilder();
-        var x = a0;
-        while (x is not null)
-        {
-            list.Add(x);
-            x = x.AttributeChain;
-        }
-
-        list.Reverse();
-        foreach (var y in list)
-        {
-            sb.Append(y.ToString());
-            sb.Append(' ');
-        }
-
-        return sb.ToString();
     }
 
     /// <summary>Parses a function declaration after its keyword.</summary>
@@ -795,16 +763,21 @@ Exit:
             var tokenKind = reader.CurrentTokenKind;
             if (tokenKind == TokenKind.Dot)
             {
-                reader.TryRead(out var token);
+                var operatorRange = reader.CurrentTokenRange;
+                reader.Advance();
 
                 var accessor = ParseTypeInternal(ref reader);
                 accessor ??= reader.NewErrorKoto();
-                left = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, accessor.Span.End), left, accessor);
+                left = new MemberAccessKoto(
+                    ref reader,
+                    SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
+                    left,
+                    accessor);
                 continue;
             }
             else if (tokenKind == TokenKind.LessThan)
             {
-                reader.TryRead(out var token);
+                reader.Advance();
                 var typeList = new List<Koto>();
                 while (ParseType(ref reader) is { } typeKoto)
                 {
@@ -819,14 +792,24 @@ Exit:
                     }
                 }
 
-                reader.TryConsume(TokenKind.GreaterThan, out var range, true);
-                left = new GenericsKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, range.End), left, typeList);
+                var end = typeList.Count == 0 ? left.Span.End : typeList[^1].Span.End;
+                if (reader.TryConsume(TokenKind.GreaterThan, out var range, true))
+                {
+                    end = Math.Max(end, range.End);
+                }
+
+                left = new GenericsKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(left.Span.End, end)), left, typeList);
                 continue;
             }
             else
             {
                 break;
             }
+        }
+
+        if (left is not TypeKoto && left is not ErrorKoto)
+        {
+            left = new TypeSemanticsKoto(ref reader, SourceSpan.FromBounds(start, left.Span.End), left);
         }
 
         if (parseOrigin && reader.IsIdentifierToken(reader.CurrentToken, Constants.FromKeyword))
@@ -871,13 +854,13 @@ Exit:
             }
 
             var originName = origin.ToString();
-            if (left is TypeKoto typeKoto)
+            if (left is TypeSemanticsKoto typeKoto)
             {
                 typeKoto.SetOrigin(originName, originToken.Span.End);
             }
             else
             {
-                left = new TypeKoto(
+                left = new TypeSemanticsKoto(
                     ref reader,
                     SourceSpan.FromBounds(start, originToken.Span.End),
                     left,
@@ -914,19 +897,24 @@ Exit:
             {
                 var attribute = reader.PopAttribute();
                 var type = ParseType(ref reader, false);
-                var semantics = new TypeKoto(
+                if (type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: not null } transparentType)
+                {
+                    type = transparentType.Type;
+                }
+
+                var semantics = new TypeSemanticsKoto(
                     ref reader,
                     SourceSpan.FromBounds(start, type.Span.End),
                     type,
                     semanticsKind,
                     semanticsParameter);
-                semantics.AttributeChain = attribute;
+                semantics.SetAttributeChain(attribute);
                 return semantics;
             }
 
             if (token.Kind.IsPrimitiveType() || token.Kind == TokenKind.Identifier)
             {
-                return new TypeKoto(ref reader, token);
+                return new TypeSemanticsKoto(ref reader, token);
             }
 
             return null;
@@ -944,14 +932,19 @@ Exit:
         reader.TryRead(out var attributeToken);
 
         var operand = ParsePrimaryExpression(ref reader);
-        TryParsePostfixExpression(ref reader, ref operand);
+        while (TryParsePostfixExpression(ref reader, ref operand))
+        {
+        }
 
         if (previousAttribute is not null)
         {
             reader.PushAttribute(previousAttribute);
         }
 
-        var attributeKoto = new AttributeKoto(ref reader, attributeToken.Span, operand);
+        var attributeKoto = new AttributeKoto(
+            ref reader,
+            SourceSpan.FromBounds(attributeToken.Span.Start, Math.Max(attributeToken.Span.End, operand.Span.End)),
+            operand);
         if (attributeKoto.IsIfAttribute)
         {
             reader.IsExcluded = !Parser.ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto);
@@ -1239,7 +1232,7 @@ Exit:
                 reader.Advance();
                 var declaration = ParseGroupDeclaration(ref reader);
                 var state = reader.TakeContext();
-                var group = GroupKoto.CreateStandalone(
+                var group = CollectionKoto.CreateStandalone(
                     reader.CodeContext,
                     token.Kind,
                     state,
@@ -1637,8 +1630,22 @@ Exit:
             if (tokenKind == TokenKind.At)
             {
                 reader.TryRead(out var token2);
-                var typeKoto = ParseType(ref reader);
-                left = new ConversionKoto(ref reader, token2.Span, left, typeKoto);
+                Koto typeKoto;
+                if (IsExpressionBoundary(ref reader))
+                {
+                    reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                    typeKoto = reader.NewErrorKoto();
+                }
+                else
+                {
+                    typeKoto = ParseType(ref reader);
+                }
+
+                left = new ConversionKoto(
+                    ref reader,
+                    SourceSpan.FromBounds(left.Span.Start, Math.Max(token2.Span.End, typeKoto.Span.End)),
+                    left,
+                    typeKoto);
                 continue;
             }
 
@@ -1731,20 +1738,34 @@ ProcessPrefix:
         {
             case TokenKind.Dot:
                 {
+                    var operatorRange = reader.CurrentTokenRange;
                     reader.Advance();
 
                     var accessor = ParsePrimaryExpression(ref reader);
-                    left = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, accessor.Span.End), left, accessor);
+                    left = new MemberAccessKoto(
+                        ref reader,
+                        SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
+                        left,
+                        accessor);
                     return true;
                 }
 
             case TokenKind.OpenParenthesis:
                 {
-                    reader.TryRead(out var token);
+                    var openRange = reader.CurrentTokenRange;
+                    reader.Advance();
                     var arguments = ParseArgumentList(ref reader);
-                    reader.TryConsume(TokenKind.CloseParenthesis, out var range, true);
+                    var end = arguments.Count == 0 ? openRange.End : Math.Max(openRange.End, arguments[^1].Span.End);
+                    if (reader.TryConsume(TokenKind.CloseParenthesis, out var range, true))
+                    {
+                        end = Math.Max(end, range.End);
+                    }
 
-                    left = new InvocationKoto(ref reader, left, arguments);
+                    left = new InvocationKoto(
+                        ref reader,
+                        SourceSpan.FromBounds(left.Span.Start, end),
+                        left,
+                        arguments);
                     return true;
                 }
 
@@ -1755,7 +1776,7 @@ ProcessPrefix:
                         return false;
                     }
 
-                    reader.TryRead(out var token);
+                    reader.Advance();
                     var typeList = new List<Koto>();
                     while (ParseType(ref reader) is { } typeKoto)
                     {
@@ -1770,13 +1791,19 @@ ProcessPrefix:
                         }
                     }
 
-                    reader.TryConsume(TokenKind.GreaterThan, out var range, true);
-                    left = new GenericsKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, range.End), left, typeList);
+                    var end = typeList.Count == 0 ? left.Span.End : typeList[^1].Span.End;
+                    if (reader.TryConsume(TokenKind.GreaterThan, out var range, true))
+                    {
+                        end = Math.Max(end, range.End);
+                    }
+
+                    left = new GenericsKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(left.Span.End, end)), left, typeList);
                     return true;
                 }
 
             case TokenKind.OpenBracket:
                 {
+                    var openRange = reader.CurrentTokenRange;
                     reader.Advance();
                     Koto index;
                     if (IsExpressionBoundary(ref reader))
@@ -1789,23 +1816,33 @@ ProcessPrefix:
                         index = ParseExpression(ref reader);
                     }
 
-                    reader.TryConsume(TokenKind.CloseBracket, out var range, true);
+                    var end = Math.Max(openRange.End, index.Span.End);
+                    if (reader.TryConsume(TokenKind.CloseBracket, out var range, true))
+                    {
+                        end = Math.Max(end, range.End);
+                    }
 
-                    left = new IndexKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, range.End), left, index);
+                    left = new IndexKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, end), left, index);
                     return true;
                 }
 
             case TokenKind.PlusPlus:
                 {
                     reader.TryRead(out var token);
-                    left = new PostfixIncrementKoto(ref reader, token.Span, left);
+                    left = new PostfixIncrementKoto(
+                        ref reader,
+                        SourceSpan.FromBounds(left.Span.Start, token.Span.End),
+                        left);
                     return true;
                 }
 
             case TokenKind.MinusMinus:
                 {
                     reader.TryRead(out var token);
-                    left = new PostfixDecrementKoto(ref reader, token.Span, left);
+                    left = new PostfixDecrementKoto(
+                        ref reader,
+                        SourceSpan.FromBounds(left.Span.Start, token.Span.End),
+                        left);
                     return true;
                 }
         }
@@ -1870,6 +1907,7 @@ ProcessPrefix:
             if (tokenKind == TokenKind.Comma)
             {
                 reader.Advance();
+                tokenKind = reader.CurrentTokenKind;
                 if (tokenKind == TokenKind.CloseParenthesis)
                 {
                     break;
@@ -1970,9 +2008,13 @@ Loop:
                     reader.TryRead(out var token);
 
                     var expression = ParseExpression(ref reader);
-                    reader.TryConsume(TokenKind.CloseParenthesis, out var range, true);
+                    var end = Math.Max(token.Span.End, expression.Span.End);
+                    if (reader.TryConsume(TokenKind.CloseParenthesis, out var range, true))
+                    {
+                        end = Math.Max(end, range.End);
+                    }
 
-                    return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, range.End), expression);
+                    return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, end), expression);
                 }
 
             case TokenKind.Separator:
@@ -2118,12 +2160,13 @@ Loop:
                 }
             }
 
-            reader.TryConsume(TokenKind.CloseParenthesis, out var closeRange, true);
-            type = new TupleTypeKoto(ref reader, SourceSpan.FromBounds(openRange.Start, closeRange.End), elements);
-            foreach (var element in elements)
+            var end = elements.Count == 0 ? openRange.End : Math.Max(openRange.End, elements[^1].Span.End);
+            if (reader.TryConsume(TokenKind.CloseParenthesis, out var closeRange, true))
             {
-                element.Parent = type;
+                end = Math.Max(end, closeRange.End);
             }
+
+            type = new TupleTypeKoto(ref reader, SourceSpan.FromBounds(openRange.Start, end), elements);
         }
         else
         {
@@ -2135,15 +2178,14 @@ Loop:
             return type;
         }
 
+        var arrowRange = reader.CurrentTokenRange;
         reader.Advance();
         var returnType = ParseDeclarationType(ref reader);
         var functionType = new FunctionTypeKoto(
             ref reader,
-            SourceSpan.FromBounds(type.Span.Start, returnType.Span.End),
+            SourceSpan.FromBounds(type.Span.Start, Math.Max(arrowRange.End, returnType.Span.End)),
             type,
             returnType);
-        type.Parent = functionType;
-        returnType.Parent = functionType;
         return functionType;
     }
 

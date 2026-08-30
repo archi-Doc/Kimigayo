@@ -275,7 +275,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.NumberLiteral, typeof(NumberLiteralKoto))]
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.IdentifierName, typeof(IdentifierNameKoto))]
-[TinyhandUnion((int)KotoKind.TypeSemantics, typeof(TypeKoto))]
+[TinyhandUnion((int)KotoKind.TypeSemantics, typeof(TypeSemanticsKoto))]
 [TinyhandUnion((int)KotoKind.SemanticsMask, typeof(SemanticsMaskKoto))]
 
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
@@ -343,7 +343,7 @@ public enum KotoKind : byte
 public abstract partial class Koto
 {
     /// <summary>The size required for a table indexed by <see cref="KotoKind"/>.</summary>
-    public const int MaxKind = (int)KotoKind.Omega + 1;
+    public const int MaxKind = (int)KotoKind.Omega;
 
     #region FieldAndProperty
 
@@ -370,6 +370,24 @@ public abstract partial class Koto
     [IgnoreMember]
     public Koto? Parent { get; internal set; }
 
+    /// <summary>Gets the direct syntax-tree children of this node.</summary>
+    [IgnoreMember]
+    public IEnumerable<Koto> ChildNodes
+    {
+        get
+        {
+            if (this.AttributeChain is not null)
+            {
+                yield return this.AttributeChain;
+            }
+
+            foreach (var child in this.GetChildNodes())
+            {
+                yield return child;
+            }
+        }
+    }
+
     /// <summary>Gets the attributes attached to this node.</summary>
     [Key(0)]
     public AttributeKoto? AttributeChain { get; internal set; }
@@ -393,7 +411,7 @@ public abstract partial class Koto
         this.CodeContext = reader.CodeContext;
         this.Span = range;
 
-        this.AttributeChain = reader.PopAttribute();
+        this.SetAttributeChain(reader.PopAttribute());
     }
 
     internal Koto(CodeContext codeContext, SourceSpan range)
@@ -464,8 +482,14 @@ public abstract partial class Koto
             throw new InvalidOperationException();
         }
 
+        var previous = this.AttributeChain;
         attributeKoto.Parent = this;
-        attributeKoto.AttributeChain = this.AttributeChain;
+        attributeKoto.AttributeChain = previous;
+        if (previous is not null)
+        {
+            previous.Parent = attributeKoto;
+        }
+
         this.AttributeChain = attributeKoto;
     }
 
@@ -485,10 +509,18 @@ public abstract partial class Koto
                 if (previous == null)
                 {
                     this.AttributeChain = next;
+                    if (next is not null)
+                    {
+                        next.Parent = this;
+                    }
                 }
                 else
                 {
                     previous.AttributeChain = next;
+                    if (next is not null)
+                    {
+                        next.Parent = previous;
+                    }
                 }
 
                 current.AttributeChain = default;
@@ -502,19 +534,58 @@ public abstract partial class Koto
         return false;
     }
 
+    internal void SetAttributeChain(AttributeKoto? attributeChain)
+    {
+        this.AttributeChain = attributeChain;
+        Koto parent = this;
+        while (attributeChain is not null)
+        {
+            attributeChain.Parent = parent;
+            parent = attributeChain;
+            attributeChain = attributeChain.AttributeChain;
+        }
+    }
+
     internal virtual void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
     {
         this.CodeContext = codeContext;
         this.DiagnosticCollection = codeContext.DiagnosticCollection;
         this.Parent = parent;
 
-        if (this.AttributeChain is not null)
+        foreach (var child in this.ChildNodes)
         {
-            this.AttributeChain.RestoreAfterDeserialization(codeContext, this);
+            child.RestoreAfterDeserialization(codeContext, this);
         }
     }
 
-    internal virtual bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    internal bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        if (this.AttributeChain == oldKoto && newKoto is AttributeKoto attribute)
+        {
+            this.AttributeChain = attribute;
+        }
+        else if (!this.ReplaceChildCore(oldKoto, newKoto))
+        {
+            return false;
+        }
+
+        oldKoto.Parent = default;
+        newKoto.Parent = this;
+        return true;
+    }
+
+    /// <summary>Enumerates children owned by the concrete node.</summary>
+    /// <returns>The direct child nodes, excluding the attribute chain handled by <see cref="ChildNodes"/>.</returns>
+    protected virtual IEnumerable<Koto> GetChildNodes()
+    {
+        yield break;
+    }
+
+    /// <summary>Replaces a child reference owned by the concrete node.</summary>
+    /// <param name="oldKoto">The current child.</param>
+    /// <param name="newKoto">The replacement child.</param>
+    /// <returns><see langword="true"/> when a child reference was replaced.</returns>
+    protected virtual bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
         return false;
     }

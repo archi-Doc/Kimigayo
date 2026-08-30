@@ -934,32 +934,37 @@ EndOfFile:
 
     private void ClearIndentStack()
     {
+        var missingRange = this.CurrentRange;
         while (this.indentStack.TryPop(out var indentSource))
         {
             switch (indentSource)
             {
                 case IndentSource.Block:
-                    this.AddToken(new(TokenKind.EndBlock, true));
+                    this.AddToken(new(TokenKind.EndBlock, missingRange, true));
                     this.blockDepth--;
                     break;
 
                 case IndentSource.Parenthesis: // ()
-                    this.AddToken(new(TokenKind.CloseParenthesis, true));
+                    this.diagnostics.Add(missingRange, DiagnosticCode.MissingExpectedToken_Kd, TokenKind.CloseParenthesis.ToText());
+                    this.AddToken(new(TokenKind.CloseParenthesis, missingRange, true));
                     this.nonBlockDepth--;
                     break;
 
                 case IndentSource.Bracket: // []
-                    this.AddToken(new(TokenKind.CloseBracket, true));
+                    this.diagnostics.Add(missingRange, DiagnosticCode.MissingExpectedToken_Kd, TokenKind.CloseBracket.ToText());
+                    this.AddToken(new(TokenKind.CloseBracket, missingRange, true));
                     this.nonBlockDepth--;
                     break;
 
                 case IndentSource.AngleBracket: // <>
-                    this.AddToken(new(TokenKind.GreaterThan, true));
+                    this.diagnostics.Add(missingRange, DiagnosticCode.MissingExpectedToken_Kd, TokenKind.GreaterThan.ToText());
+                    this.AddToken(new(TokenKind.GreaterThan, missingRange, true));
                     this.nonBlockDepth--;
                     break;
 
                 case IndentSource.Brace: // {}
-                    this.AddToken(new(TokenKind.CloseBrace, true));
+                    this.diagnostics.Add(missingRange, DiagnosticCode.MissingExpectedToken_Kd, TokenKind.CloseBrace.ToText());
+                    this.AddToken(new(TokenKind.CloseBrace, missingRange, true));
                     this.nonBlockDepth--;
                     break;
 

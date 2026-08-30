@@ -11,7 +11,7 @@ namespace XunitTest;
 
 public class RangeIndexParseTest
 {
-    private static readonly PropertyInfo KotoListProperty = typeof(GroupKoto).GetProperty(
+    private static readonly PropertyInfo KotoListProperty = typeof(CollectionKoto).GetProperty(
         "KotoList",
         BindingFlags.Instance | BindingFlags.NonPublic)!;
 
@@ -174,6 +174,6 @@ public class RangeIndexParseTest
         return range;
     }
 
-    private static List<Koto> GetChildren(GroupKoto group)
+    private static List<Koto> GetChildren(CollectionKoto group)
         => (List<Koto>)KotoListProperty.GetValue(group)!;
 }
