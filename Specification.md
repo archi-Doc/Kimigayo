@@ -134,6 +134,12 @@ Sizes below are storage sizes.
 | ------ | ------------------ |
 | `bool` | 8 bits (1 byte)    |
 
+#### Unit and Never Types
+
+`()` is the Unit type. It has one value and represents the absence of a meaningful result.
+
+Never is the type of an expression that does not complete normally and has no values. `return`, `break`, and `continue` expressions have the Never type.
+
 ### Structures
 
 A `struct` defines a composite value type.
@@ -187,6 +193,64 @@ Applying a Range with `value[range]` produces a Slice over the selected consecut
 After resolving from-end boundaries, an exclusive Range must satisfy `0 <= start <= end <= length`. An inclusive Range must satisfy `0 <= start <= end < length`.
 
 For a value of length six, `value[1..^1]` selects the elements at Indices 1, 2, 3, and 4.
+
+# Control Flow
+
+An indentation-delimited Block is an expression. Its value is its final expression. An empty Block, or a Block ending in a declaration, has the Unit value. Declarations do not produce values.
+
+`break` exits the innermost loop, and `continue` begins its next iteration.
+
+## `for`
+
+A `for` expression evaluates its iterable once and executes its body once for each yielded value. Its value is Unit, and the value of its body is discarded.
+
+```kimi
+for value in values
+    process(value)
+
+for (key, value) in dictionary
+    process(key, value)
+```
+
+A single Name binds each yielded value. A parenthesized, comma-separated binding destructures each yielded value. `in` is a contextual keyword and acts as a delimiter only in a `for` header.
+
+## `while`
+
+A `while` expression evaluates its Boolean condition before each iteration and executes its body while the condition is true. Its value is Unit, and the value of its body is discarded. Parentheses around the condition are optional.
+
+```kimi
+while ready
+    process()
+
+while (ready)
+    process()
+```
+
+## `loop`
+
+A `loop` expression repeatedly executes its body without a condition. The normal value of the body is discarded.
+
+```kimi
+var result = loop
+    if ready
+        break value
+```
+
+The value and type of a `loop` expression are determined by its reachable `break` expressions. `break` without a value supplies Unit, and all reachable breaks must supply compatible values. A `loop` with no reachable `break` has the Never type. A value-bearing `break` is not permitted in a `for` or `while` expression.
+
+## `match`
+
+A `match` expression evaluates its subject once and tests its arms in source order. The first matching arm is evaluated.
+
+```kimi
+match value
+    0 => "zero"
+    1 =>
+        var text = "one"
+        text
+```
+
+An arm body may be an inline expression or an indentation-delimited Block. A `match` must be exhaustive. Its type is the common type of its reachable arm values; a Never-valued arm does not constrain that type.
 
 # Type Semantics
 
