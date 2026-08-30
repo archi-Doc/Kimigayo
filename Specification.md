@@ -1,6 +1,6 @@
 # Overview
 
-**Kimigayo** is a programming language designed and built from scratch with the goals of being consistent, fast, simple, fun, safe, and fast.
+**Kimigayo** is a programming language designed and built from scratch with the goals of being consistent, fast, simple, fun, and safe.
 
 # Identifier
 
@@ -14,7 +14,7 @@ Kimigayo uses the following information to identify declarations and their meani
 
 ## Name
 
-A Name is the basic name by which a declaration is written and referred to. The same character rules apply to the names of classes, types, functions, fields, properties, parameters, and other named declarations.
+A Name is the basic name by which a declaration is written and referred to. The same character rules apply to the names of collections, types, functions, fields, parameters, and other named declarations.
 
 A Name is non-empty and consists of a start character followed by zero or more continuation characters.
 
@@ -29,7 +29,7 @@ Each continuation character may be any valid start character, or:
 - an ASCII digit (`0`–`9`), or
 - a Unicode character in one of the categories Nonspacing Mark (`Mn`), Spacing Combining Mark (`Mc`), Decimal Digit Number (`Nd`), Connector Punctuation (`Pc`), or Format (`Cf`).
 
-Contextual keywords may be used as Names where an identifier is expected. Reserved keywords may not be used as Names.
+Contextual keywords may be used as Names in contexts that accept contextual identifiers. Reserved keywords may not be used as Names. In particular, `in` acts as a delimiter in a `for` header but may be used as a Name in other supported identifier contexts.
 
 For example, `Dog`, `_value`, `point2`, `日本語`, and `ǅelta` are valid Names, while `2point`, `has-value`, and the empty string are not.
 
@@ -50,6 +50,67 @@ The Signature of each declaration kind consists of the following information:
 Each function parameter contributes its Type to the function Signature. Parameter names, return types, default values, and declaration modifiers are not part of the function Signature.
 
 Consequently, two functions in the same scope may share a Name when their generic parameter counts or parameter types differ. Two fields or two properties with the same Name in the same scope have the same Signature and therefore cannot be distinguished by Signature alone.
+
+# Declarations
+
+## Bindings
+
+Fields and local bindings begin with `let` or `var`. `let` declares an immutable binding, while `var` declares a mutable binding. A Type annotation and an initializer are independently optional.
+
+```kimi
+let limit: i32 = 10
+var current = 0
+```
+
+## Functions
+
+A function begins with `func`, followed by its Name, optional generic parameters, and a parenthesized parameter list. An optional return Type follows `->`. A function may have an indentation-delimited body.
+
+```kimi
+func add(left: i32, right: i32) -> i32
+    left + right
+```
+
+# Collections
+
+A Collection is a named declaration scope that can contain fields, functions, and nested Collections. Collection bodies are delimited by indentation.
+
+| Collection kind | Instantiable | Main characteristics |
+| --------------- | ------------ | -------------------- |
+| `group` | No | All members are static. |
+| `struct` | Yes | Members are kept in declaration order. Generic parameters, Origins, and type constraints are supported. |
+| `enum` | Yes | May contain nested `struct` declarations as variants. |
+| `extension` | No | All members are static, and the declaration Name identifies its target. |
+| `contract` | No | Describes an interface contract; its members are not implicitly static. |
+
+A `struct` header may contain generic parameters and an Origin list. Constraint declarations precede nested Collections, fields, and functions.
+
+```kimi
+struct Container<s/T> origin owner, source
+    T is Comparable
+    s is reference
+
+    var value: s/T
+```
+
+Each source unit has an implicit root `group`. A `rootgroup` declaration starts at that root and accepts a dot-separated Name. Therefore:
+
+```kimi
+rootgroup A.B
+    var value = 1
+```
+
+is equivalent to:
+
+```kimi
+group A
+    group B
+        var value = 1
+```
+
+An `alias` is a top-level declaration of a qualified Name. Nested aliases are invalid.
+
+Kind-specific member restrictions beyond the capabilities listed above are not currently enforced.
 
 # Type
 
@@ -87,7 +148,7 @@ These three elements form the core of Kimigayo's type system.
 
 ## Core Types
 
-Kimigayo provides a fixed set of primitive Core Types and user-defined structure Core Types.
+Kimigayo provides a fixed set of primitive Core Types and user-defined named Core Types.
 
 ### Primitive Types
 
@@ -134,11 +195,30 @@ Sizes below are storage sizes.
 | ------ | ------------------ |
 | `bool` | 8 bits (1 byte)    |
 
+#### String Type
+
+`string` is the built-in Core Type for text. Its storage representation is implementation-defined.
+
 #### Unit and Never Types
 
 `()` is the Unit type. It has one value and represents the absence of a meaningful result.
 
 Never is the type of an expression that does not complete normally and has no values. `return`, `break`, and `continue` expressions have the Never type.
+
+### Compound Type Syntax
+
+A named Core Type may be qualified with dots and may have generic arguments.
+
+```kimi
+A.B<T, U>
+```
+
+Tuple types use parentheses and commas. Function types use `->` between the parameter type and return type.
+
+```kimi
+(i32, string)
+(i32, string) -> bool
+```
 
 ### Structures
 
@@ -154,15 +234,15 @@ For example:
 
 ```
 struct Point
-    x: f64
-    y: f64
+    var x: f64
+    var y: f64
 
 struct Node
-    value: i32
-    next: obj/Node
+    var value: i32
+    var next: obj/Node
 
 struct View
-    source: ref/Data
+    var source: ref/Data
 ```
 
 The Type Semantics of a field determines how the referenced or contained value is represented, owned, borrowed, shared, and accessed.
@@ -200,6 +280,19 @@ An indentation-delimited Block is an expression. Its value is its final expressi
 
 `break` exits the innermost loop, and `continue` begins its next iteration.
 
+## `if`
+
+An `if` expression contains one condition and an indentation-delimited body. It may be followed by any number of `else if` branches and one optional `else` body. Parentheses around each condition are optional.
+
+```kimi
+if ready
+    process()
+else if waiting
+    retry()
+else
+    cancel()
+```
+
 ## `for`
 
 A `for` expression evaluates its iterable once and executes its body once for each yielded value. Its value is Unit, and the value of its body is discarded.
@@ -228,15 +321,19 @@ while (ready)
 
 ## `loop`
 
-A `loop` expression repeatedly executes its body without a condition. The normal value of the body is discarded.
+`loop` is reserved for a future unconditional-loop expression. The current implementation does not parse `loop` expressions.
+
+## Jump expressions
+
+`return` and `break` may each have an optional result expression. `continue` does not have a result expression.
 
 ```kimi
-var result = loop
-    if ready
-        break value
+return value
+break
+continue
 ```
 
-The value and type of a `loop` expression are determined by its reachable `break` expressions. `break` without a value supplies Unit, and all reachable breaks must supply compatible values. A `loop` with no reachable `break` has the Never type. A value-bearing `break` is not permitted in a `for` or `while` expression.
+The parser records these expressions, but contextual validation of their enclosing function or loop is not currently performed.
 
 ## `match`
 
@@ -250,13 +347,15 @@ match value
         text
 ```
 
-An arm body may be an inline expression or an indentation-delimited Block. A `match` must be exhaustive. Its type is the common type of its reachable arm values; a Never-valued arm does not constrain that type.
+An arm body may be an inline expression or an indentation-delimited Block. Match arms are stored in source order. Exhaustiveness checking and common result-type validation are not currently performed.
 
 # Type Semantics
 
 Type Semantics specify the ownership, borrowing, layout, and safety properties of a typed value.
 
 The qualified syntax is `Semantics/CoreType`. The complete type form adds `from Origin`.
+
+Within a generic declaration, an identifier in the Semantics position denotes a generic Semantics parameter. For example, `s/T` applies the Semantics parameter `s` to the Core Type parameter `T`.
 
 In the syntax below, `T` denotes a Core Type.
 
@@ -377,19 +476,19 @@ For example:
 
 ```
 struct Header
-    version: u32
-    flags: u16
+    var version: u32
+    var flags: u16
 
 struct Buffer
-    length: usize
-    data: obj/Data
+    var length: usize
+    var data: obj/Data
 
 struct SharedState
-    state: arc/State
+    var state: arc/State
 
 struct Parser
-    input: ref/Input
-    position: usize
+    var input: ref/Input
+    var position: usize
 ```
 
 Type Semantics are orthogonal to the Core Type.
@@ -398,7 +497,7 @@ For example, given:
 
 ```
 struct Data
-    value: i32
+    var value: i32
 ```
 
 the following are distinct types:
