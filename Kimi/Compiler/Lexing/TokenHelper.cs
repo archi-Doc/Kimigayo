@@ -78,6 +78,7 @@ public static partial class TokenHelper
         Set(TokenKind.And, true, Constants.AndKeyword);
         Set(TokenKind.Or, true, Constants.OrKeyword);
         Set(TokenKind.For, true, Constants.ForKeyword);
+        Set(TokenKind.In, true, Constants.InKeyword);
         Set(TokenKind.While, true, Constants.WhileKeyword);
         Set(TokenKind.Loop, true, Constants.LoopKeyword);
         Set(TokenKind.Match, true, Constants.MatchKeyword);

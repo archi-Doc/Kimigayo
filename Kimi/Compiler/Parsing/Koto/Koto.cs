@@ -250,6 +250,9 @@ public enum KotoKind : byte
     /// <summary>A function type.</summary>
     FunctionType,
 
+    /// <summary>A <c>for</c> expression.</summary>
+    For,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
@@ -330,6 +333,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.If, typeof(IfKoto))]
 [TinyhandUnion((int)KotoKind.Match, typeof(MatchKoto))]
 [TinyhandUnion((int)KotoKind.While, typeof(WhileKoto))]
+[TinyhandUnion((int)KotoKind.For, typeof(ForKoto))]
 [TinyhandUnion((int)KotoKind.Return, typeof(ReturnKoto))]
 [TinyhandUnion((int)KotoKind.Break, typeof(BreakKoto))]
 [TinyhandUnion((int)KotoKind.Continue, typeof(ContinueKoto))]

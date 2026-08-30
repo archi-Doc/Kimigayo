@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Kimi.Compiler.Helper;
@@ -1321,6 +1322,128 @@ Exit:
             body);
     }
 
+    private static ForKoto ParseForExpression(ref TokenReader reader)
+    {
+        reader.TryRead(out var forToken);
+        var bindings = new List<IdentifierNameKoto>(2);
+        var isTupleBinding = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
+
+        if (isTupleBinding)
+        {
+            ParseForTupleBindings(ref reader, bindings);
+        }
+        else if (TryParseForBinding(ref reader, out var binding))
+        {
+            bindings.Add(binding);
+        }
+        else
+        {
+            reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+            if (reader.CanRead &&
+                reader.CurrentTokenKind != TokenKind.In &&
+                !IsExpressionBoundary(ref reader))
+            {
+                reader.Advance();
+            }
+        }
+
+        if (reader.CurrentTokenKind == TokenKind.In)
+        {
+            reader.Advance();
+        }
+        else
+        {
+            reader.AddDiagnostic(DiagnosticCode.TokenMismatch_Kd, Constants.InKeyword);
+        }
+
+        var iterable = ParseRequiredExpression(ref reader);
+        var body = ParseRequiredBlock(ref reader);
+        return new ForKoto(
+            ref reader,
+            SourceSpan.FromBounds(forToken.Span.Start, body.Span.End),
+            bindings,
+            iterable,
+            body,
+            isTupleBinding);
+    }
+
+    private static void ParseForTupleBindings(ref TokenReader reader, List<IdentifierNameKoto> bindings)
+    {
+        reader.Advance();
+        var expectsBinding = true;
+
+        while (reader.CanRead)
+        {
+            if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
+            {
+                if (bindings.Count == 0)
+                {
+                    reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+                }
+
+                reader.Advance();
+                return;
+            }
+
+            if (!expectsBinding)
+            {
+                if (reader.CurrentTokenKind == TokenKind.Comma)
+                {
+                    reader.Advance();
+                }
+                else if (reader.CurrentTokenKind == TokenKind.In || IsExpressionBoundary(ref reader))
+                {
+                    reader.AddDiagnostic(
+                        DiagnosticCode.TokenMismatch_Kd,
+                        TokenKind.CloseParenthesis.ToText());
+                    return;
+                }
+                else
+                {
+                    reader.AddDiagnostic(DiagnosticCode.TokenMismatch_Kd, TokenKind.Comma.ToText());
+                }
+
+                expectsBinding = true;
+                continue;
+            }
+
+            if (reader.CurrentTokenKind == TokenKind.In || IsExpressionBoundary(ref reader))
+            {
+                reader.AddDiagnostic(
+                    DiagnosticCode.TokenMismatch_Kd,
+                    TokenKind.CloseParenthesis.ToText());
+                return;
+            }
+
+            if (TryParseForBinding(ref reader, out var binding))
+            {
+                bindings.Add(binding);
+                expectsBinding = false;
+            }
+            else
+            {
+                reader.AddDiagnostic(DiagnosticCode.IdentifierExpected_Kd);
+                reader.Advance();
+            }
+        }
+
+        reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryParseForBinding(ref TokenReader reader, [NotNullWhen(true)] out IdentifierNameKoto? binding)
+    {
+        if (reader.CurrentTokenKind == TokenKind.In ||
+            !reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
+        {
+            binding = default;
+            return false;
+        }
+
+        reader.TryRead(out var token);
+        return IdentifierNameKoto.TryCreate(ref reader, token, out binding);
+    }
+
     private static MatchKoto ParseMatchExpression(ref TokenReader reader)
     {
         reader.TryRead(out var matchToken);
@@ -1780,6 +1903,7 @@ Loop:
         switch (tokenKind)
         {
             case TokenKind.Identifier:
+            case TokenKind.In:
                 {
                     reader.TryRead(out var token);
                     if (IdentifierNameKoto.TryCreate(ref reader, token, out var koto))
@@ -1832,6 +1956,9 @@ Loop:
 
             case TokenKind.While:
                 return ParseWhileExpression(ref reader);
+
+            case TokenKind.For:
+                return ParseForExpression(ref reader);
 
             case TokenKind.Return:
             case TokenKind.Break:

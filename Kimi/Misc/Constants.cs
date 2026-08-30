@@ -46,6 +46,7 @@ public static class Constants
     public const string AndKeyword = "and";
     public const string OrKeyword = "or";
     public const string ForKeyword = "for";
+    public const string InKeyword = "in";
     public const string WhileKeyword = "while";
     public const string LoopKeyword = "loop";
     public const string MatchKeyword = "match";

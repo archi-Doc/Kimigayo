@@ -181,7 +181,7 @@ method Main()
         1,
         2,
     ]
-    for var x in array
+    for x in array
         $Print(x)
     var i = 8
     var j = i++
