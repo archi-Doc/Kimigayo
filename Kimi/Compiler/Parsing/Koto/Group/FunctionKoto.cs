@@ -74,6 +74,10 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     [Key(6)]
     public Koto? ReturnType { get; private set; }
 
+    /// <summary>Gets the function body, if present.</summary>
+    [Key(7)]
+    public CodeBlockKoto? Body { get; private set; }
+
     /// <summary>Gets the generic parameters.</summary>
     [IgnoreMember]
     public IReadOnlyList<TypeKoto> GenericArguments => this.genericArguments;
@@ -133,21 +137,15 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     /// <param name="reader">The token reader.</param>
     public void Parse(ref TokenReader reader)
     {
-        // Function bodies are not modeled yet, so consume the balanced block.
-        var depth = 1;
-        while (reader.CanRead)
+        if (reader.CurrentTokenKind != TokenKind.StartBlock)
         {
-            var kind = reader.CurrentTokenKind;
-            reader.Advance();
-            if (kind == TokenKind.StartBlock)
-            {
-                depth++;
-            }
-            else if (kind == TokenKind.EndBlock && --depth == 0)
-            {
-                return;
-            }
+            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            return;
         }
+
+        this.Body = Parser.ParseBlock(ref reader);
+        this.Body.Parent = this;
+        this.Span = SourceSpan.FromBounds(this.Span.Start, this.Body.Span.End);
     }
 
     /// <inheritdoc/>
@@ -215,6 +213,24 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
             builder.Append(" -> ");
             this.ReturnType.WriteTo(ref builder);
         }
+
+        if (this.Body is not null)
+        {
+            this.Body.WriteIndentedTo(ref builder);
+        }
+    }
+
+    internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        if (this.Body == oldKoto && newKoto is CodeBlockKoto block)
+        {
+            this.Body = block;
+            block.Parent = this;
+            oldKoto.Parent = default;
+            return true;
+        }
+
+        return false;
     }
 
     internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
@@ -232,6 +248,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
         }
 
         this.ReturnType?.RestoreAfterDeserialization(codeContext, this);
+        this.Body?.RestoreAfterDeserialization(codeContext, this);
     }
 
     [TinyhandOnDeserialized]
@@ -254,6 +271,11 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
         if (this.ReturnType is not null)
         {
             this.ReturnType.Parent = this;
+        }
+
+        if (this.Body is not null)
+        {
+            this.Body.Parent = this;
         }
     }
 }

@@ -255,6 +255,66 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
     public void Parse(ref TokenReader reader)
         => this.Parse(ref reader, false);
 
+    internal static GroupKoto CreateStandalone(CodeContext codeContext, TokenKind kind, TokenContext state, SourceSpan range, string name)
+    {
+        GroupKoto group = kind switch
+        {
+            TokenKind.Struct => new StructKoto(codeContext, state, range),
+            TokenKind.Enum => new EnumKoto(codeContext, state, range),
+            TokenKind.Extension => new ExtensionKoto(codeContext, state, range),
+            TokenKind.Contract => new ContractKoto(codeContext, state, range),
+            _ => new GroupKoto(codeContext, state, range),
+        };
+
+        group.Name = name;
+        return group;
+    }
+
+    internal void WriteAsBlockItem(ref IndentedStringBuilder builder)
+    {
+        this.WriteTo(ref builder);
+        var groups = this.IdentifierToGroupKoto.ToArray();
+        if (this.TypeConstraints.Count == 0 && this.KotoList.Count == 0 && groups.Length == 0)
+        {
+            return;
+        }
+
+        builder.AppendLine();
+        builder.IncrementIndent();
+        var hasPrevious = false;
+        foreach (var constraint in this.TypeConstraints)
+        {
+            WriteSeparator(ref builder, ref hasPrevious);
+            constraint.WriteTo(ref builder);
+        }
+
+        foreach (var koto in this.KotoList)
+        {
+            WriteSeparator(ref builder, ref hasPrevious);
+            koto.WriteTo(ref builder);
+        }
+
+        foreach (var nested in groups)
+        {
+            WriteSeparator(ref builder, ref hasPrevious);
+            ((GroupKoto)nested).WriteAsBlockItem(ref builder);
+        }
+
+        builder.DecrementIndent();
+
+        static void WriteSeparator(ref IndentedStringBuilder builder, ref bool hasPrevious)
+        {
+            if (hasPrevious)
+            {
+                builder.AppendLine();
+            }
+            else
+            {
+                hasPrevious = true;
+            }
+        }
+    }
+
     internal void Parse(ref TokenReader reader, bool useCurrentContext)
     {
         var declarationOrder = DeclarationOrder.None;
@@ -395,14 +455,16 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
 
                     if (reader.CurrentTokenKind == TokenKind.StartBlock)
                     {
-                        reader.Advance();
                         nextParser = functionKoto;
                     }
                     else
                     {
                         // Recover a malformed signature by resuming at its body.
                         reader.SkipUntilStartBlock(0);
-                        nextParser = functionKoto;
+                        if (reader.CurrentTokenKind == TokenKind.StartBlock)
+                        {
+                            nextParser = functionKoto;
+                        }
                     }
                 }
             }

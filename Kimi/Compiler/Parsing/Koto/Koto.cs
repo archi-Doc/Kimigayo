@@ -218,6 +218,27 @@ public enum KotoKind : byte
     /// <summary>A generic name.</summary>
     Generics,
 
+    /// <summary>An indentation-delimited expression block.</summary>
+    CodeBlock,
+
+    /// <summary>An <c>if</c> expression.</summary>
+    If,
+
+    /// <summary>A <c>match</c> expression.</summary>
+    Match,
+
+    /// <summary>A <c>while</c> expression.</summary>
+    While,
+
+    /// <summary>A <c>return</c> expression.</summary>
+    Return,
+
+    /// <summary>A <c>break</c> expression.</summary>
+    Break,
+
+    /// <summary>A <c>continue</c> expression.</summary>
+    Continue,
+
     // Types
 
     /// <summary>A tuple type.</summary>
@@ -301,6 +322,13 @@ public enum KotoKind : byte
 
 [TinyhandUnion((int)KotoKind.Invocation, typeof(InvocationKoto))]
 [TinyhandUnion((int)KotoKind.Generics, typeof(GenericsKoto))]
+[TinyhandUnion((int)KotoKind.CodeBlock, typeof(CodeBlockKoto))]
+[TinyhandUnion((int)KotoKind.If, typeof(IfKoto))]
+[TinyhandUnion((int)KotoKind.Match, typeof(MatchKoto))]
+[TinyhandUnion((int)KotoKind.While, typeof(WhileKoto))]
+[TinyhandUnion((int)KotoKind.Return, typeof(ReturnKoto))]
+[TinyhandUnion((int)KotoKind.Break, typeof(BreakKoto))]
+[TinyhandUnion((int)KotoKind.Continue, typeof(ContinueKoto))]
 [TinyhandUnion((int)KotoKind.TupleType, typeof(TupleTypeKoto))]
 [TinyhandUnion((int)KotoKind.FunctionType, typeof(FunctionTypeKoto))]
 [ValueLinkObject]

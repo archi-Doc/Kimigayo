@@ -1,6 +1,6 @@
 alias AliasB
 
-#If(os == "windows" and 
+#If(os == "windows" and
     pointerWidth == 64)
 alias AliasC
 
@@ -14,7 +14,7 @@ public open struct TestStruct<s/C, D> origin a, b
     Self is A or B // Implementation
     C is comparable
     s is all
-    
+
     public static #Test1 var #Test2 x: i32 = #One 1
     let pi = 1.2
     private let buffer: ref/Array<i32> from a
@@ -41,8 +41,8 @@ private func find<s/T, owner/T2>(
     in => collection: Collection<T>,
     using => comparer: (s/T, T) -> Bool
     ) -> i32
-    where s is valueborrow or objectborrow
-    where T is Comparable
+    s is valueborrow or objectborrow
+    T is Comparable
 
     return 0
 

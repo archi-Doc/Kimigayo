@@ -14,7 +14,11 @@ var movedObj = obj
 var movedObj = obj@unsafe/T
 array.Add(movedObj)
 private func find<s/T, owner/T2>(value?: T, in => collection: Collection<T>, using => comparer: (s/T, T) -> Bool) -> i32
+    s is valueborrow or objectborrow
+    T is Comparable
+    return 0
 public func Main() -> ()
+    return
 
 public open struct TestStruct<s/C, D> origin a, b
     semantics is reference
@@ -28,3 +32,4 @@ public open struct TestStruct<s/C, D> origin a, b
     private let buffer: ref/Array<i32> from a
     private let buffer2: ref/Array<ref/C from b> from a
     public func Add(x: i32, y: i32) -> i32
+        return x + (y + 3) * (x - 2)

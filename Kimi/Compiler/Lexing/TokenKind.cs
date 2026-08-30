@@ -48,6 +48,7 @@ public enum TokenKind : byte
     And, // and
     Or, // Or
     For, // for
+    While, // while
     Loop, // loop
     Match, // match
     Return, // method/return
