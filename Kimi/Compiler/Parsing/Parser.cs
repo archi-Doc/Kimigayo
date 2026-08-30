@@ -807,6 +807,11 @@ Exit:
             }
         }
 
+        if (left is not TypeKoto && left is not ErrorKoto)
+        {
+            left = new TypeSemanticsKoto(ref reader, SourceSpan.FromBounds(start, left.Span.End), left);
+        }
+
         if (parseOrigin && reader.IsIdentifierToken(reader.CurrentToken, Constants.FromKeyword))
         {
             var fromRange = reader.CurrentTokenRange;
@@ -849,13 +854,13 @@ Exit:
             }
 
             var originName = origin.ToString();
-            if (left is TypeKoto typeKoto)
+            if (left is TypeSemanticsKoto typeKoto)
             {
                 typeKoto.SetOrigin(originName, originToken.Span.End);
             }
             else
             {
-                left = new TypeKoto(
+                left = new TypeSemanticsKoto(
                     ref reader,
                     SourceSpan.FromBounds(start, originToken.Span.End),
                     left,
@@ -892,7 +897,12 @@ Exit:
             {
                 var attribute = reader.PopAttribute();
                 var type = ParseType(ref reader, false);
-                var semantics = new TypeKoto(
+                if (type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: not null } transparentType)
+                {
+                    type = transparentType.Type;
+                }
+
+                var semantics = new TypeSemanticsKoto(
                     ref reader,
                     SourceSpan.FromBounds(start, type.Span.End),
                     type,
@@ -904,7 +914,7 @@ Exit:
 
             if (token.Kind.IsPrimitiveType() || token.Kind == TokenKind.Identifier)
             {
-                return new TypeKoto(ref reader, token);
+                return new TypeSemanticsKoto(ref reader, token);
             }
 
             return null;
@@ -1222,7 +1232,7 @@ Exit:
                 reader.Advance();
                 var declaration = ParseGroupDeclaration(ref reader);
                 var state = reader.TakeContext();
-                var group = GroupKoto.CreateStandalone(
+                var group = CollectionKoto.CreateStandalone(
                     reader.CodeContext,
                     token.Kind,
                     state,

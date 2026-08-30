@@ -275,7 +275,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.NumberLiteral, typeof(NumberLiteralKoto))]
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.IdentifierName, typeof(IdentifierNameKoto))]
-[TinyhandUnion((int)KotoKind.TypeSemantics, typeof(TypeKoto))]
+[TinyhandUnion((int)KotoKind.TypeSemantics, typeof(TypeSemanticsKoto))]
 [TinyhandUnion((int)KotoKind.SemanticsMask, typeof(SemanticsMaskKoto))]
 
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
@@ -369,6 +369,24 @@ public abstract partial class Koto
     /// <summary>Gets the parent node, or <see langword="null"/> for the root.</summary>
     [IgnoreMember]
     public Koto? Parent { get; internal set; }
+
+    /// <summary>Gets the direct syntax-tree children of this node.</summary>
+    [IgnoreMember]
+    public IEnumerable<Koto> ChildNodes
+    {
+        get
+        {
+            if (this.AttributeChain is not null)
+            {
+                yield return this.AttributeChain;
+            }
+
+            foreach (var child in this.GetChildNodes())
+            {
+                yield return child;
+            }
+        }
+    }
 
     /// <summary>Gets the attributes attached to this node.</summary>
     [Key(0)]
@@ -534,13 +552,40 @@ public abstract partial class Koto
         this.DiagnosticCollection = codeContext.DiagnosticCollection;
         this.Parent = parent;
 
-        if (this.AttributeChain is not null)
+        foreach (var child in this.ChildNodes)
         {
-            this.AttributeChain.RestoreAfterDeserialization(codeContext, this);
+            child.RestoreAfterDeserialization(codeContext, this);
         }
     }
 
-    internal virtual bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    internal bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        if (this.AttributeChain == oldKoto && newKoto is AttributeKoto attribute)
+        {
+            this.AttributeChain = attribute;
+        }
+        else if (!this.ReplaceChildCore(oldKoto, newKoto))
+        {
+            return false;
+        }
+
+        oldKoto.Parent = default;
+        newKoto.Parent = this;
+        return true;
+    }
+
+    /// <summary>Enumerates children owned by the concrete node.</summary>
+    /// <returns>The direct child nodes, excluding the attribute chain handled by <see cref="ChildNodes"/>.</returns>
+    protected virtual IEnumerable<Koto> GetChildNodes()
+    {
+        yield break;
+    }
+
+    /// <summary>Replaces a child reference owned by the concrete node.</summary>
+    /// <param name="oldKoto">The current child.</param>
+    /// <param name="newKoto">The replacement child.</param>
+    /// <returns><see langword="true"/> when a child reference was replaced.</returns>
+    protected virtual bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
         return false;
     }

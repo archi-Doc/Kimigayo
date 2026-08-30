@@ -15,7 +15,7 @@ namespace XunitTest;
 
 public class ParserRegressionTest
 {
-    private static readonly PropertyInfo KotoListProperty = typeof(GroupKoto).GetProperty(
+    private static readonly PropertyInfo KotoListProperty = typeof(CollectionKoto).GetProperty(
         "KotoList",
         BindingFlags.Instance | BindingFlags.NonPublic)!;
 
@@ -226,7 +226,7 @@ public class ParserRegressionTest
 
         Assert.Empty(diagnostics);
         var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
-        var semantics = Assert.IsType<TypeKoto>(function.Parameters.Single().Type);
+        var semantics = Assert.IsType<TypeSemanticsKoto>(function.Parameters.Single().Type);
         Assert.Equal(SemanticsKind.ObjRef, semantics.SemanticsKind);
         Assert.IsType<GenericsKoto>(semantics.Type);
         Assert.Equal("objref/SomeType<List<owner/T>, I>", semantics.ToString());
@@ -243,7 +243,7 @@ public class ParserRegressionTest
 
         Assert.Empty(diagnostics);
         var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
-        var type = Assert.IsType<TypeKoto>(function.Parameters.Single().Type);
+        var type = Assert.IsType<TypeSemanticsKoto>(function.Parameters.Single().Type);
         Assert.Equal(expectedOrigin, type.OriginName);
         Assert.Equal(typeText, type.ToString());
     }
@@ -723,6 +723,6 @@ public class ParserRegressionTest
         return (kotonoha.RootKoto, kotonoha.DiagnosticCollection.GetArray());
     }
 
-    private static List<Koto> GetChildren(GroupKoto group)
+    private static List<Koto> GetChildren(CollectionKoto group)
         => (List<Koto>)KotoListProperty.GetValue(group)!;
 }
