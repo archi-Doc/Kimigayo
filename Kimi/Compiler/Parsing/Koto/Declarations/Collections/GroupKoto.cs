@@ -10,13 +10,19 @@ namespace Kimi.Compiler.Parsing;
 /// share member parsing and qualified <c>rootgroup A.B</c> expansion with ordinary groups.
 /// </summary>
 [TinyhandObject]
-public sealed partial class GroupKoto : StaticCollectionKoto
+public sealed partial class GroupKoto : CollectionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Group;
 
     /// <inheritdoc/>
     public override TokenKind TokenKind => TokenKind.Group;
+
+    /// <inheritdoc/>
+    public override bool IsInstantiable => false;
+
+    /// <inheritdoc/>
+    public override bool HasStaticMembersOnly => true;
 
     /// <summary>Initializes a new instance of the <see cref="GroupKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

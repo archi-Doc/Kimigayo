@@ -10,13 +10,16 @@ namespace Kimi.Compiler.Parsing;
 /// Represents an enumeration declaration.
 /// </summary>
 [TinyhandObject]
-public sealed partial class EnumKoto : InstantiableCollectionKoto
+public sealed partial class EnumKoto : CollectionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Enum;
 
     /// <inheritdoc/>
     public override TokenKind TokenKind => TokenKind.Enum;
+
+    /// <inheritdoc/>
+    public override bool IsInstantiable => true;
 
     /// <summary>Gets the structure variants declared by this enumeration.</summary>
     public IEnumerable<StructKoto> Structs => this.NestedCollections.OfType<StructKoto>();

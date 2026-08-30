@@ -10,7 +10,7 @@ namespace XunitTest;
 public class KotoHierarchyTest
 {
     [Fact]
-    public void ModelsCollectionCapabilitiesInTheHierarchy()
+    public void ModelsCollectionCapabilitiesInTheFlatHierarchy()
     {
         var root = Compilation.CreateForTest().Kotonoha.RootKoto;
         var group = Assert.IsType<GroupKoto>(root.GetOrAddCollection("Group", TokenKind.Group, default, default));
@@ -19,15 +19,18 @@ public class KotoHierarchyTest
         var extension = Assert.IsType<ExtensionKoto>(root.GetOrAddCollection("Target", TokenKind.Extension, default, default));
         var contract = Assert.IsType<ContractKoto>(root.GetOrAddCollection("Contract", TokenKind.Contract, default, default));
 
-        Assert.IsAssignableFrom<StaticCollectionKoto>(group);
-        Assert.IsAssignableFrom<StaticCollectionKoto>(extension);
+        Assert.Equal(typeof(CollectionKoto), typeof(GroupKoto).BaseType);
+        Assert.Equal(typeof(CollectionKoto), typeof(StructKoto).BaseType);
+        Assert.Equal(typeof(CollectionKoto), typeof(EnumKoto).BaseType);
+        Assert.Equal(typeof(CollectionKoto), typeof(ExtensionKoto).BaseType);
+        Assert.Equal(typeof(CollectionKoto), typeof(ContractKoto).BaseType);
+
+        Assert.False(group.IsInstantiable);
         Assert.True(group.HasStaticMembersOnly);
+        Assert.False(extension.IsInstantiable);
         Assert.True(extension.HasStaticMembersOnly);
         Assert.Equal("Target", extension.Target);
 
-        Assert.IsAssignableFrom<InstantiableCollectionKoto>(structure);
-        Assert.IsAssignableFrom<GenericCollectionKoto>(structure);
-        Assert.IsAssignableFrom<InstantiableCollectionKoto>(enumeration);
         Assert.True(structure.IsInstantiable);
         Assert.True(enumeration.IsInstantiable);
         Assert.True(structure.SupportsGenerics);

@@ -26,9 +26,7 @@ public struct Array<s/T>
     capacity: isize
     buffer: ptr
 
-   
-
-var array = Array<owner/StructA}>.new()
+var array = Array<owner/StructA>.new()
 array[1] = StructA.new()
 var x = array[1] // borrow/StructA
 var last = array[^1] // Last element
@@ -137,7 +135,7 @@ public group Helper // namespace - alias
 
 public struct SomeObject
     #Inject
-    IConsoleService& ConsoleService { get; }
+    objref/IConsoleService ConsoleService { get; }
 
     public New() => Self
         var self = Self
