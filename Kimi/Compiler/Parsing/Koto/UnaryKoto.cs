@@ -31,7 +31,7 @@ public partial class AttributeKoto : UnaryKoto
         {
             if (this.IdentifierKoto is IdentifierNameKoto unresolvedKoto)
             {
-                return unresolvedKoto.IdentifierName.SequenceEqual(Constants.IfAttribute) == true;
+                return unresolvedKoto.IdentifierName.AsSpan().SequenceEqual(Constants.IfAttribute);
             }
             else
             {
@@ -68,7 +68,7 @@ public partial class AttributeKoto : UnaryKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append(Constants.SharpChar);
-        builder.Append(this.Operand.ToString());
+        this.Operand.WriteTo(ref builder);
     }
 
     internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
@@ -114,7 +114,7 @@ public partial class MacroKoto : UnaryKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append(Constants.DollarChar);
-        builder.Append(this.Operand.ToString());
+        this.Operand.WriteTo(ref builder);
     }
 }
 
@@ -144,7 +144,7 @@ public partial class UnwrapKoto : UnaryKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append(Constants.AsteriskChar);
-        builder.Append(this.Operand.ToString());
+        this.Operand.WriteTo(ref builder);
     }
 }
 
@@ -181,7 +181,7 @@ public partial class FromEndIndexKoto : UnaryKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append(Constants.CaretChar);
-        builder.Append(this.Operand.ToString());
+        this.Operand.WriteTo(ref builder);
     }
 }
 
@@ -211,7 +211,7 @@ public partial class PrefixPlusKoto : UnaryKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append(Constants.PlusChar);
-        builder.Append(this.Operand.ToString());
+        this.Operand.WriteTo(ref builder);
     }
 }
 
@@ -242,7 +242,7 @@ public partial class PrefixPlusPlusKoto : UnaryKoto
     {
         builder.Append(Constants.PlusChar);
         builder.Append(Constants.PlusChar);
-        builder.Append(this.Operand.ToString());
+        this.Operand.WriteTo(ref builder);
     }
 }
 
@@ -272,7 +272,7 @@ public partial class PrefixMinusKoto : UnaryKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append(Constants.MinusChar);
-        builder.Append(this.Operand.ToString());
+        this.Operand.WriteTo(ref builder);
     }
 }
 
@@ -303,7 +303,7 @@ public partial class PrefixMinusMinusKoto : UnaryKoto
     {
         builder.Append(Constants.MinusChar);
         builder.Append(Constants.MinusChar);
-        builder.Append(this.Operand.ToString());
+        this.Operand.WriteTo(ref builder);
     }
 }
 
@@ -332,7 +332,7 @@ public partial class PostfixIncrementKoto : UnaryKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append(this.Operand.ToString());
+        this.Operand.WriteTo(ref builder);
         builder.Append(Constants.PlusChar);
         builder.Append(Constants.PlusChar);
     }
@@ -363,7 +363,7 @@ public partial class PostfixDecrementKoto : UnaryKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append(this.Operand.ToString());
+        this.Operand.WriteTo(ref builder);
         builder.Append(Constants.MinusChar);
         builder.Append(Constants.MinusChar);
     }
@@ -396,7 +396,7 @@ public partial class NotKoto : UnaryKoto
     {
         builder.Append(Constants.NotKeyword);
         builder.AppendSpace();
-        builder.Append(this.Operand.ToString());
+        this.Operand.WriteTo(ref builder);
     }
 }
 
@@ -426,7 +426,7 @@ public partial class ParenthesizedKoto : UnaryKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append(Constants.OpenParenthesisChar);
-        builder.Append(this.Operand.ToString());
+        this.Operand.WriteTo(ref builder);
         builder.Append(Constants.CloseParenthesisChar);
     }
 }
@@ -461,6 +461,10 @@ public abstract partial class UnaryKoto : Koto
     /// <inheritdoc/>
     public override string ToString()
         => $"Unary:{this.Operand.ToString()}";
+
+    /// <inheritdoc/>
+    public override void Bind(Compilation compilation)
+        => this.Operand.Bind(compilation);
 
     internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
     {

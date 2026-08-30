@@ -1,6 +1,5 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Text;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
@@ -25,22 +24,14 @@ public partial class InvocationKoto : Koto
 
     /// <summary>Initializes a new instance of the <see cref="InvocationKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
+    /// <param name="range">The complete source span.</param>
     /// <param name="method">The expression being invoked.</param>
     /// <param name="arguments">The invocation arguments.</param>
-    public InvocationKoto(ref TokenReader reader, Koto method, List<Koto> arguments)
-        : base(ref reader, default)
+    public InvocationKoto(ref TokenReader reader, SourceSpan range, Koto method, List<Koto> arguments)
+        : base(ref reader, range)
     {
         this.Method = method;
         this.Arguments = arguments;
-
-        if (arguments.Count == 0)
-        {
-            this.Span = method.Span;
-        }
-        else
-        {
-            this.Span = SourceSpan.FromBounds(method.Span.Start, arguments[^1].Span.End);
-        }
 
         method.Parent = this;
         foreach (var x in arguments)
@@ -49,26 +40,29 @@ public partial class InvocationKoto : Koto
         }
     }
 
-    /// <inheritdoc/>
-    public override string ToString()
+    /// <summary>Initializes a new instance of the <see cref="InvocationKoto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="method">The expression being invoked.</param>
+    /// <param name="arguments">The invocation arguments.</param>
+    public InvocationKoto(ref TokenReader reader, Koto method, List<Koto> arguments)
+        : this(
+            ref reader,
+            SourceSpan.FromBounds(
+                method.Span.Start,
+                Math.Max(method.Span.End, arguments.Count == 0 ? 0 : arguments[^1].Span.End)),
+            method,
+            arguments)
     {
-        var sb = new StringBuilder();
+    }
 
-        sb.Append(this.Method.ToString());
-        sb.Append(Constants.OpenParenthesisChar);
-        for (var i = 0; i < this.Arguments.Count; i++)
+    /// <inheritdoc/>
+    public override void Bind(Compilation compilation)
+    {
+        this.Method.Bind(compilation);
+        foreach (var argument in this.Arguments)
         {
-            sb.Append(this.Arguments[i].ToString());
-            if (i < (this.Arguments.Count - 1))
-            {
-                sb.Append(Constants.CommaChar);
-                sb.Append(Constants.SpaceChar);
-            }
+            argument.Bind(compilation);
         }
-
-        sb.Append(Constants.CloseParenthesisChar);
-
-        return sb.ToString();
     }
 
     /// <inheritdoc/>
@@ -87,6 +81,28 @@ public partial class InvocationKoto : Koto
         }
 
         builder.Append(Constants.CloseParenthesisChar);
+    }
+
+    internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        if (this.Method == oldKoto)
+        {
+            this.Method = newKoto;
+        }
+        else
+        {
+            var index = this.Arguments.IndexOf(oldKoto);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            this.Arguments[index] = newKoto;
+        }
+
+        newKoto.Parent = this;
+        oldKoto.Parent = default;
+        return true;
     }
 
     internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)

@@ -1,7 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Text;
 using Kimi.Compiler.Lexing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
@@ -56,13 +56,36 @@ public partial class FieldKoto : Koto
     /// <param name="typeKoto">The declared type, if specified.</param>
     /// <param name="initializerKoto">The initializer expression, if present.</param>
     public FieldKoto(ref TokenReader reader, ref Token token, IdentifierNameKoto nameKoto, Koto? typeKoto, Koto? initializerKoto)
-        : base(ref reader, token.Span)
+        : base(
+            ref reader,
+            SourceSpan.FromBounds(
+                token.Span.Start,
+                Math.Max(
+                    nameKoto.Span.End,
+                    Math.Max(typeKoto?.Span.End ?? 0, initializerKoto?.Span.End ?? 0))))
     {
         this.Modifier = reader.ModifierKind;
         this.VariableKind = token.Kind == TokenKind.Let ? VariableKind.Let : VariableKind.Var;
         this.TypeKoto2 = typeKoto;
         this.NameKoto = nameKoto;
         this.InitializerKoto = initializerKoto;
+        nameKoto.Parent = this;
+        if (typeKoto is not null)
+        {
+            typeKoto.Parent = this;
+        }
+
+        if (initializerKoto is not null)
+        {
+            initializerKoto.Parent = this;
+        }
+    }
+
+    /// <inheritdoc/>
+    public override void Bind(Compilation compilation)
+    {
+        this.TypeKoto2?.Bind(compilation);
+        this.InitializerKoto?.Bind(compilation);
     }
 
     /// <inheritdoc/>
@@ -91,6 +114,30 @@ public partial class FieldKoto : Koto
             builder.Append(" = ");
             this.InitializerKoto.WriteTo(ref builder);
         }
+    }
+
+    internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        if (this.NameKoto == oldKoto && newKoto is IdentifierNameKoto name)
+        {
+            this.NameKoto = name;
+        }
+        else if (this.TypeKoto2 == oldKoto)
+        {
+            this.TypeKoto2 = newKoto;
+        }
+        else if (this.InitializerKoto == oldKoto)
+        {
+            this.InitializerKoto = newKoto;
+        }
+        else
+        {
+            return false;
+        }
+
+        newKoto.Parent = this;
+        oldKoto.Parent = default;
+        return true;
     }
 
     internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)

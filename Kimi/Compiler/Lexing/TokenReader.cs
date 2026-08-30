@@ -100,7 +100,7 @@ public ref struct TokenReader
     /// <summary>
     /// Gets the source range of the current token.
     /// </summary>
-    public readonly SourceSpan CurrentTokenRange => this.currentToken.Span;
+    public readonly SourceSpan CurrentTokenRange => this.CanRead ? this.currentToken.Span : new(this.sourceText.Length, 0);
 
     /// <summary>
     /// Gets the source length of the current token.
@@ -465,10 +465,7 @@ Loop:
     /// <param name="obj2">An optional diagnostic argument 2.</param>
     public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null)
     {
-        if (this.CanRead)
-        {
-            this.Diagnostic.Add(this.currentToken.Span, code, obj, obj2);
-        }
+        this.Diagnostic.Add(this.CurrentTokenRange, code, obj, obj2);
     }
 
     /// <summary>
@@ -489,7 +486,7 @@ Loop:
     /// <returns>A new error node.</returns>
     public ErrorKoto NewErrorKoto()
     {
-        return new ErrorKoto(ref this, this.CurrentToken.Span);
+        return new ErrorKoto(ref this, this.CurrentTokenRange);
     }
 
     /// <summary>

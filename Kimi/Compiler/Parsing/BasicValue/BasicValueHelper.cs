@@ -371,7 +371,7 @@ public static class BasicValueHelper
             BasicValueKind.Bool => new(left.Bool == right.Bool),
             BasicValueKind.I64 => new(left.I64 == right.I64),
             BasicValueKind.F64 => new(left.F64 == right.F64),
-            BasicValueKind.String => new(string.Equals(left.String, right.String, StringComparison.OrdinalIgnoreCase)),
+            BasicValueKind.String => new(string.Equals(left.String, right.String, StringComparison.Ordinal)),
             _ => AddNotSupportedDiagnostic(koto),
         };
     }
@@ -388,7 +388,7 @@ public static class BasicValueHelper
             BasicValueKind.Bool => new(left.Bool != right.Bool),
             BasicValueKind.I64 => new(left.I64 != right.I64),
             BasicValueKind.F64 => new(left.F64 != right.F64),
-            BasicValueKind.String => new(!string.Equals(left.String, right.String, StringComparison.OrdinalIgnoreCase)),
+            BasicValueKind.String => new(!string.Equals(left.String, right.String, StringComparison.Ordinal)),
             _ => AddNotSupportedDiagnostic(koto),
         };
     }
@@ -463,9 +463,14 @@ public static class BasicValueHelper
     private static bool TryEvaluateBinaryOperands(Compilation compilation, BinaryKoto koto, out BasicValue left, out BasicValue right)
     {
         left = Evaluate(compilation, koto.Left);
-        right = Evaluate(compilation, koto.Right);
+        if (left.Kind == BasicValueKind.Invalid)
+        {
+            right = default;
+            return false;
+        }
 
-        if (left.Kind == BasicValueKind.Invalid || right.Kind == BasicValueKind.Invalid)
+        right = Evaluate(compilation, koto.Right);
+        if (right.Kind == BasicValueKind.Invalid)
         {
             return false;
         }

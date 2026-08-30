@@ -21,18 +21,22 @@ public static partial class KotoHelper
     /// <param name="token">The operator token.</param>
     /// <param name="operand">The operand.</param>
     /// <returns>The created unary node.</returns>
-    public static Koto NewUnaryKoto(ref TokenReader reader, Token token, Koto operand) => token.Kind switch
+    public static Koto NewUnaryKoto(ref TokenReader reader, Token token, Koto operand)
     {
-        TokenKind.Sharp => new AttributeKoto(ref reader, token.Span, operand),
-        TokenKind.Dollar => new MacroKoto(ref reader, token.Span, operand),
-        TokenKind.Plus => new PrefixPlusKoto(ref reader, token.Span, operand),
-        TokenKind.Minus => new PrefixMinusKoto(ref reader, token.Span, operand),
-        TokenKind.Not => new NotKoto(ref reader, token.Span, operand),
-        TokenKind.Caret => new FromEndIndexKoto(ref reader, token.Span, operand),
-        TokenKind.PlusPlus => new PrefixPlusPlusKoto(ref reader, token.Span, operand),
-        TokenKind.MinusMinus => new PrefixMinusMinusKoto(ref reader, token.Span, operand),
-        _ => throw new InvalidOperationException(),
-    };
+        var range = SourceSpan.FromBounds(token.Span.Start, Math.Max(token.Span.End, operand.Span.End));
+        return token.Kind switch
+        {
+            TokenKind.Sharp => new AttributeKoto(ref reader, range, operand),
+            TokenKind.Dollar => new MacroKoto(ref reader, range, operand),
+            TokenKind.Plus => new PrefixPlusKoto(ref reader, range, operand),
+            TokenKind.Minus => new PrefixMinusKoto(ref reader, range, operand),
+            TokenKind.Not => new NotKoto(ref reader, range, operand),
+            TokenKind.Caret => new FromEndIndexKoto(ref reader, range, operand),
+            TokenKind.PlusPlus => new PrefixPlusPlusKoto(ref reader, range, operand),
+            TokenKind.MinusMinus => new PrefixMinusMinusKoto(ref reader, range, operand),
+            _ => throw new InvalidOperationException(),
+        };
+    }
 
     /// <summary>Creates a binary node for an operator token.</summary>
     /// <param name="reader">The token reader.</param>
@@ -40,43 +44,49 @@ public static partial class KotoHelper
     /// <param name="left">The left operand.</param>
     /// <param name="right">The right operand.</param>
     /// <returns>The created binary node.</returns>
-    public static Koto NewBinaryKoto(ref TokenReader reader, Token token, Koto left, Koto right) => token.Kind switch
+    public static Koto NewBinaryKoto(ref TokenReader reader, Token token, Koto left, Koto right)
     {
-        TokenKind.Asterisk => new AsteriskKoto(ref reader, token.Span, left, right),
-        TokenKind.At => new ConversionKoto(ref reader, token.Span, left, right),
-        TokenKind.Slash => new SlashKoto(ref reader, token.Span, left, right),
-        TokenKind.Percent => new PercentKoto(ref reader, token.Span, left, right),
-        TokenKind.Plus => new PlusKoto(ref reader, token.Span, left, right),
-        TokenKind.Minus => new MinusKoto(ref reader, token.Span, left, right),
-        TokenKind.LessThanLessThan => new LessThanLessThanKoto(ref reader, token.Span, left, right),
-        TokenKind.GreaterThanGreaterThan => new GreaterThanGreaterThanKoto(ref reader, token.Span, left, right),
-        TokenKind.LessThan => new LessThanKoto(ref reader, token.Span, left, right),
-        TokenKind.LessThanEquals => new LessThanEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.GreaterThan => new GreaterThanKoto(ref reader, token.Span, left, right),
-        TokenKind.GreaterThanEquals => new GreaterThanEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.As => new AsKoto(ref reader, token.Span, left, right),
-        TokenKind.Is => new IsKoto(ref reader, token.Span, left, right),
-        TokenKind.EqualsEquals => new EqualsEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.ExclamationEquals => new ExclamationEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.Ampersand => new AmpersandKoto(ref reader, token.Span, left, right),
-        TokenKind.Caret => new CaretKoto(ref reader, token.Span, left, right),
-        TokenKind.Bar => new BarKoto(ref reader, token.Span, left, right),
-        TokenKind.And => new AndKoto(ref reader, token.Span, left, right),
-        TokenKind.Or => new OrKoto(ref reader, token.Span, left, right),
-        TokenKind.Equals => new EqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.PlusEquals => new PlusEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.MinusEquals => new MinusEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.AsteriskEquals => new AsteriskEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.SlashEquals => new SlashEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.PercentEquals => new PercentEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.AmpersandEquals => new AmpersandEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.CaretEquals => new CaretEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.BarEquals => new BarEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.LessThanLessThanEquals => new LessThanLessThanEqualsKoto(ref reader, token.Span, left, right),
-        TokenKind.GreaterThanGreaterThanEquals => new GreaterThanGreaterThanEqualsKoto(ref reader, token.Span, left, right),
+        var range = SourceSpan.FromBounds(
+            left.Span.Start,
+            Math.Max(Math.Max(left.Span.End, token.Span.End), right.Span.End));
+        return token.Kind switch
+        {
+            TokenKind.Asterisk => new AsteriskKoto(ref reader, range, left, right),
+            TokenKind.At => new ConversionKoto(ref reader, range, left, right),
+            TokenKind.Slash => new SlashKoto(ref reader, range, left, right),
+            TokenKind.Percent => new PercentKoto(ref reader, range, left, right),
+            TokenKind.Plus => new PlusKoto(ref reader, range, left, right),
+            TokenKind.Minus => new MinusKoto(ref reader, range, left, right),
+            TokenKind.LessThanLessThan => new LessThanLessThanKoto(ref reader, range, left, right),
+            TokenKind.GreaterThanGreaterThan => new GreaterThanGreaterThanKoto(ref reader, range, left, right),
+            TokenKind.LessThan => new LessThanKoto(ref reader, range, left, right),
+            TokenKind.LessThanEquals => new LessThanEqualsKoto(ref reader, range, left, right),
+            TokenKind.GreaterThan => new GreaterThanKoto(ref reader, range, left, right),
+            TokenKind.GreaterThanEquals => new GreaterThanEqualsKoto(ref reader, range, left, right),
+            TokenKind.As => new AsKoto(ref reader, range, left, right),
+            TokenKind.Is => new IsKoto(ref reader, range, left, right),
+            TokenKind.EqualsEquals => new EqualsEqualsKoto(ref reader, range, left, right),
+            TokenKind.ExclamationEquals => new ExclamationEqualsKoto(ref reader, range, left, right),
+            TokenKind.Ampersand => new AmpersandKoto(ref reader, range, left, right),
+            TokenKind.Caret => new CaretKoto(ref reader, range, left, right),
+            TokenKind.Bar => new BarKoto(ref reader, range, left, right),
+            TokenKind.And => new AndKoto(ref reader, range, left, right),
+            TokenKind.Or => new OrKoto(ref reader, range, left, right),
+            TokenKind.Equals => new EqualsKoto(ref reader, range, left, right),
+            TokenKind.PlusEquals => new PlusEqualsKoto(ref reader, range, left, right),
+            TokenKind.MinusEquals => new MinusEqualsKoto(ref reader, range, left, right),
+            TokenKind.AsteriskEquals => new AsteriskEqualsKoto(ref reader, range, left, right),
+            TokenKind.SlashEquals => new SlashEqualsKoto(ref reader, range, left, right),
+            TokenKind.PercentEquals => new PercentEqualsKoto(ref reader, range, left, right),
+            TokenKind.AmpersandEquals => new AmpersandEqualsKoto(ref reader, range, left, right),
+            TokenKind.CaretEquals => new CaretEqualsKoto(ref reader, range, left, right),
+            TokenKind.BarEquals => new BarEqualsKoto(ref reader, range, left, right),
+            TokenKind.LessThanLessThanEquals => new LessThanLessThanEqualsKoto(ref reader, range, left, right),
+            TokenKind.GreaterThanGreaterThanEquals => new GreaterThanGreaterThanEqualsKoto(ref reader, range, left, right),
 
-        _ => throw new InvalidOperationException(),
-    };
+            _ => throw new InvalidOperationException(),
+        };
+    }
 
     /// <summary>Replaces a child node while preserving its source metadata.</summary>
     /// <param name="parent">The parent node.</param>
@@ -89,7 +99,7 @@ public static partial class KotoHelper
         {
             // Update both the explicit parent and the intrusive child chain.
             newKoto.Parent = parent;
-            newKoto.Goshujin?.ChildLinkChain.UnsafeReplaceInstance(oldKoto, newKoto);
+            oldKoto.Goshujin?.ChildLinkChain.UnsafeReplaceInstance(oldKoto, newKoto);
             oldKoto.Goshujin = default;
 
             // Preserve the source metadata associated with the replaced expression.

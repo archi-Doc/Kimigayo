@@ -101,7 +101,7 @@ public partial class FunctionKoto : IdentifiableKoto, ITokenParser
     public FunctionKoto(ref TokenReader reader, TokenContext context, SourceSpan range, string name, List<TypeKoto>? genericArguments, List<FunctionParameterKoto> parameters, Koto? returnType)
         : base(ref reader, range)
     {
-        this.AttributeChain = context.AttributeKoto;
+        this.SetAttributeChain(context.AttributeKoto);
         this.Modifier = context.ModifierKind;
         this.IsExcluded = context.IsExcluded;
         this.Name = name;

@@ -343,7 +343,7 @@ public enum KotoKind : byte
 public abstract partial class Koto
 {
     /// <summary>The size required for a table indexed by <see cref="KotoKind"/>.</summary>
-    public const int MaxKind = (int)KotoKind.Omega + 1;
+    public const int MaxKind = (int)KotoKind.Omega;
 
     #region FieldAndProperty
 
@@ -393,7 +393,7 @@ public abstract partial class Koto
         this.CodeContext = reader.CodeContext;
         this.Span = range;
 
-        this.AttributeChain = reader.PopAttribute();
+        this.SetAttributeChain(reader.PopAttribute());
     }
 
     internal Koto(CodeContext codeContext, SourceSpan range)
@@ -464,8 +464,14 @@ public abstract partial class Koto
             throw new InvalidOperationException();
         }
 
+        var previous = this.AttributeChain;
         attributeKoto.Parent = this;
-        attributeKoto.AttributeChain = this.AttributeChain;
+        attributeKoto.AttributeChain = previous;
+        if (previous is not null)
+        {
+            previous.Parent = attributeKoto;
+        }
+
         this.AttributeChain = attributeKoto;
     }
 
@@ -485,10 +491,18 @@ public abstract partial class Koto
                 if (previous == null)
                 {
                     this.AttributeChain = next;
+                    if (next is not null)
+                    {
+                        next.Parent = this;
+                    }
                 }
                 else
                 {
                     previous.AttributeChain = next;
+                    if (next is not null)
+                    {
+                        next.Parent = previous;
+                    }
                 }
 
                 current.AttributeChain = default;
@@ -500,6 +514,18 @@ public abstract partial class Koto
         }
 
         return false;
+    }
+
+    internal void SetAttributeChain(AttributeKoto? attributeChain)
+    {
+        this.AttributeChain = attributeChain;
+        Koto parent = this;
+        while (attributeChain is not null)
+        {
+            attributeChain.Parent = parent;
+            parent = attributeChain;
+            attributeChain = attributeChain.AttributeChain;
+        }
     }
 
     internal virtual void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)

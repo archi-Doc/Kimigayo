@@ -81,6 +81,17 @@ public readonly record struct Token
         this.Span = range;
     }
 
+    /// <summary>Initializes a new instance of the <see cref="Token"/> struct.</summary>
+    /// <param name="kind">The token kind.</param>
+    /// <param name="range">The token span in the source document.</param>
+    /// <param name="isMissing">Whether the parser synthesized the token.</param>
+    public Token(TokenKind kind, SourceSpan range, bool isMissing)
+    {
+        this.Kind = kind;
+        this.Span = range;
+        this.IsMissing = isMissing;
+    }
+
     /// <summary>
     /// Returns the token kind as a display string.
     /// </summary>

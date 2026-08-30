@@ -46,7 +46,7 @@ public sealed partial class RangeKoto : Koto
             ref reader,
             SourceSpan.FromBounds(
                 start?.Span.Start ?? operatorRange.Start,
-                end?.Span.End ?? operatorRange.End))
+                Math.Max(operatorRange.End, end?.Span.End ?? 0)))
     {
         this.Start = start;
         this.End = end;

@@ -133,10 +133,27 @@ public partial class TypeKoto : Koto
         }
     }
 
+    /// <inheritdoc/>
+    public override void Bind(Compilation compilation)
+        => this.Type?.Bind(compilation);
+
     internal void SetOrigin(string originName, int end)
     {
         this.OriginName = originName;
         this.Span = SourceSpan.FromBounds(this.Span.Start, end);
+    }
+
+    internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        if (this.Type != oldKoto)
+        {
+            return false;
+        }
+
+        this.Type = newKoto;
+        newKoto.Parent = this;
+        oldKoto.Parent = default;
+        return true;
     }
 
     internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)

@@ -88,7 +88,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
     internal GroupKoto(CodeContext codeContext, TokenContext state, SourceSpan range)
         : base(codeContext, range)
     {
-        this.AttributeChain = state.AttributeKoto;
+        this.SetAttributeChain(state.AttributeKoto);
         this.Modifier = state.ModifierKind;
     }
 
@@ -221,8 +221,7 @@ public partial class GroupKoto : IdentifiableKoto, ITokenParser
     /// <param name="builder">The destination builder.</param>
     public void UnparseAll(ref IndentedStringBuilder builder)
     {
-        GroupKoto? currentGroup = this.IsRoot ? null : this;
-        this.UnparseAllInternal(0, ref builder, false);
+        this.UnparseAllInternal(ref builder);
     }
 
     /// <summary>Gets or creates a nested group from a qualified name.</summary>
@@ -556,7 +555,7 @@ NextToken:
     {
     }
 
-    private void UnparseAllInternal(int indents, ref IndentedStringBuilder builder, bool parentDeclared)
+    private void UnparseAllInternal(ref IndentedStringBuilder builder)
     {
         var groupDeclared = false;
 
@@ -618,7 +617,7 @@ NextToken:
             builder.EnsureTrailingBlankLine();
             foreach (var x in groups)
             {
-                ((GroupKoto)x).UnparseAllInternal(indents + 1, ref builder, groupDeclared);
+                ((GroupKoto)x).UnparseAllInternal(ref builder);
             }
         }
 

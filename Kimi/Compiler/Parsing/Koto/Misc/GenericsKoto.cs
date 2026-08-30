@@ -31,6 +31,25 @@ public partial class GenericsKoto : Koto
     {
         this.Identifier = identifier;
         this.typeList = typeList;
+        identifier.Parent = this;
+        foreach (var type in typeList)
+        {
+            type.Parent = this;
+        }
+    }
+
+    /// <summary>Gets the generic type arguments.</summary>
+    [IgnoreMember]
+    public IReadOnlyList<Koto> TypeArguments => this.typeList;
+
+    /// <inheritdoc/>
+    public override void Bind(Compilation compilation)
+    {
+        this.Identifier?.Bind(compilation);
+        foreach (var type in this.typeList)
+        {
+            type.Bind(compilation);
+        }
     }
 
     /// <inheritdoc/>
@@ -50,6 +69,28 @@ public partial class GenericsKoto : Koto
         }
 
         builder.Append(Constants.GreaterThanChar);
+    }
+
+    internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        if (this.Identifier == oldKoto)
+        {
+            this.Identifier = newKoto;
+        }
+        else
+        {
+            var index = this.typeList.IndexOf(oldKoto);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            this.typeList[index] = newKoto;
+        }
+
+        newKoto.Parent = this;
+        oldKoto.Parent = default;
+        return true;
     }
 
     internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)

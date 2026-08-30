@@ -1,5 +1,6 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
@@ -34,11 +35,12 @@ public sealed partial class NumberLiteralKoto : Koto
 
             if (this.parseResult == NumberLiteralParseResult.I128)
             {
-                field = this.uv.ToString();
+                field = this.uv.ToString(CultureInfo.InvariantCulture);
             }
             else if (this.parseResult == NumberLiteralParseResult.F64)
             {
-                field = BitConverter.UInt64BitsToDouble((ulong)this.uv).ToString();
+                var literal = BitConverter.UInt64BitsToDouble((ulong)this.uv).ToString("R", CultureInfo.InvariantCulture);
+                field = literal.AsSpan().IndexOfAny('.', 'E', 'e') < 0 ? string.Concat(literal, ".0") : literal;
             }
             else
             {

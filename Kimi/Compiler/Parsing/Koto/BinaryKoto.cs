@@ -1094,15 +1094,19 @@ public abstract partial class BinaryKoto : Koto
         if (oldKoto == this.Left)
         {
             this.Left = newKoto;
-            return true;
         }
         else if (oldKoto == this.Right)
         {
             this.Right = newKoto;
-            return true;
+        }
+        else
+        {
+            return false;
         }
 
-        return false;
+        newKoto.Parent = this;
+        oldKoto.Parent = default;
+        return true;
     }
 
     internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)

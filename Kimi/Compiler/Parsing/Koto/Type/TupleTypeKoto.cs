@@ -26,6 +26,19 @@ public partial class TupleTypeKoto : Koto
         : base(ref reader, range)
     {
         this.Elements = elements;
+        foreach (var element in elements)
+        {
+            element.Parent = this;
+        }
+    }
+
+    /// <inheritdoc/>
+    public override void Bind(Compilation compilation)
+    {
+        foreach (var element in this.Elements)
+        {
+            element.Bind(compilation);
+        }
     }
 
     /// <inheritdoc/>
@@ -43,6 +56,20 @@ public partial class TupleTypeKoto : Koto
         }
 
         builder.Append(')');
+    }
+
+    internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        var index = this.Elements.IndexOf(oldKoto);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        this.Elements[index] = newKoto;
+        newKoto.Parent = this;
+        oldKoto.Parent = default;
+        return true;
     }
 
     internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)

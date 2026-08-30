@@ -27,6 +27,19 @@ public class ParserRegressionTest
         Assert.NotEmpty(diagnostics);
     }
 
+    [Theory]
+    [InlineData("var x = call(")]
+    [InlineData("var x = value[")]
+    [InlineData("var x = (1")]
+    [InlineData("var x = value@")]
+    [InlineData("func F(value: (i32")]
+    public void RecoversFromMissingExpressionDelimiter(string source)
+    {
+        var (_, diagnostics) = Parse(source);
+
+        Assert.NotEmpty(diagnostics);
+    }
+
     [Fact]
     public void ParsesLessThanAsComparison()
     {
@@ -606,6 +619,88 @@ public class ParserRegressionTest
         Assert.Null(tail.Parent);
         Assert.Null(tail.AttributeChain);
         Assert.False(field.RemoveAttribute(tail));
+    }
+
+    [Fact]
+    public void ParsesInvocationWithTrailingComma()
+    {
+        const string Source = "var result = call(value,)";
+
+        var (root, diagnostics) = Parse(Source);
+
+        Assert.Empty(diagnostics);
+        var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
+        var invocation = Assert.IsType<InvocationKoto>(field.InitializerKoto);
+        Assert.Single(invocation.Arguments);
+        Assert.Equal("call(value,)", Source.AsSpan(invocation.Span.Start, invocation.Span.Length).ToString());
+        Assert.Same(field, field.NameKoto.Parent);
+        Assert.Same(field, invocation.Parent);
+        Assert.Same(invocation, invocation.Method.Parent);
+        Assert.Same(invocation, invocation.Arguments[0].Parent);
+    }
+
+    [Fact]
+    public void ExpressionSpansCoverCompleteSyntax()
+    {
+        const string Source = "var result = -a + target.method(value)";
+
+        var (root, diagnostics) = Parse(Source);
+
+        Assert.Empty(diagnostics);
+        var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
+        Assert.Equal(Source, Source.AsSpan(field.Span.Start, field.Span.Length).ToString());
+
+        var addition = Assert.IsType<PlusKoto>(field.InitializerKoto);
+        Assert.Equal("-a + target.method(value)", Source.AsSpan(addition.Span.Start, addition.Span.Length).ToString());
+        var prefix = Assert.IsType<PrefixMinusKoto>(addition.Left);
+        Assert.Equal("-a", Source.AsSpan(prefix.Span.Start, prefix.Span.Length).ToString());
+        var invocation = Assert.IsType<InvocationKoto>(addition.Right);
+        Assert.Equal("target.method(value)", Source.AsSpan(invocation.Span.Start, invocation.Span.Length).ToString());
+        var member = Assert.IsType<MemberAccessKoto>(invocation.Method);
+        Assert.Equal("target.method", Source.AsSpan(member.Span.Start, member.Span.Length).ToString());
+    }
+
+    [Fact]
+    public void ParsesChainedAttributePostfixExpressions()
+    {
+        var (root, diagnostics) = Parse("#Example<T>(value)\nvar result = 0");
+
+        Assert.Empty(diagnostics);
+        var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
+        var attribute = Assert.IsType<AttributeKoto>(field.AttributeChain);
+        var invocation = Assert.IsType<InvocationKoto>(attribute.Operand);
+        var generic = Assert.IsType<GenericsKoto>(invocation.Method);
+        Assert.Single(generic.TypeArguments);
+        Assert.Same(attribute, invocation.Parent);
+        Assert.Same(invocation, generic.Parent);
+        Assert.Same(generic, generic.Identifier!.Parent);
+        Assert.Same(generic, generic.TypeArguments[0].Parent);
+    }
+
+    [Fact]
+    public void CompileTimeStringEqualityIsOrdinal()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        var context = kotonoha.CreateCodeContext();
+        context.Parse(kotonoha.RootKoto, "var result = \"Kimigayo\" == \"kimigayo\"");
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var field = Assert.IsType<FieldKoto>(GetChildren(kotonoha.RootKoto).Single());
+        var value = BasicValueHelper.Evaluate(compilation, field.InitializerKoto!);
+        Assert.Equal(BasicValueKind.Bool, value.Kind);
+        Assert.False(value.Bool);
+    }
+
+    [Fact]
+    public void FloatingPointLiteralKeepsItsNumericCategoryWhenWritten()
+    {
+        var (root, diagnostics) = Parse("var result = 1.0");
+
+        Assert.Empty(diagnostics);
+        var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
+        var literal = Assert.IsType<NumberLiteralKoto>(field.InitializerKoto);
+        Assert.Equal("1.0", literal.ToString());
     }
 
     [Fact]

@@ -32,6 +32,15 @@ public partial class FunctionTypeKoto : Koto
     {
         this.Parameters = parameters;
         this.ReturnType = returnType;
+        parameters.Parent = this;
+        returnType.Parent = this;
+    }
+
+    /// <inheritdoc/>
+    public override void Bind(Compilation compilation)
+    {
+        this.Parameters.Bind(compilation);
+        this.ReturnType.Bind(compilation);
     }
 
     /// <inheritdoc/>
@@ -40,6 +49,26 @@ public partial class FunctionTypeKoto : Koto
         this.Parameters.WriteTo(ref builder);
         builder.Append(" -> ");
         this.ReturnType.WriteTo(ref builder);
+    }
+
+    internal override bool ReplaceChild(Koto oldKoto, Koto newKoto)
+    {
+        if (this.Parameters == oldKoto)
+        {
+            this.Parameters = newKoto;
+        }
+        else if (this.ReturnType == oldKoto)
+        {
+            this.ReturnType = newKoto;
+        }
+        else
+        {
+            return false;
+        }
+
+        newKoto.Parent = this;
+        oldKoto.Parent = default;
+        return true;
     }
 
     internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
