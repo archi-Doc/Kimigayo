@@ -93,6 +93,9 @@ public class SourceDocumentAndDiagnosticTest
         public void Write(string? message, ConsoleColor color = ConsoleColor.Gray)
             => this.output.Append(message);
 
+        public void Write(ReadOnlySpan<char> message, ConsoleColor color = ConsoleColor.Gray)
+            => this.output.Append(message);
+
         public void WriteLine(string? message, ConsoleColor color = ConsoleColor.Gray)
             => this.output.Append(message).Append('\n');
 

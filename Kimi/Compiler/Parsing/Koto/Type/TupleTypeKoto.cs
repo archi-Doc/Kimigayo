@@ -5,20 +5,30 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>
+/// Represents a tuple type.
+/// </summary>
 [TinyhandObject]
 public partial class TupleTypeKoto : Koto
 {
+    /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.TupleType;
 
+    /// <summary>Gets the tuple element types.</summary>
     [Key(1)]
     public List<Koto> Elements { get; private set; }
 
+    /// <summary>Initializes a new instance of the <see cref="TupleTypeKoto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The complete source span.</param>
+    /// <param name="elements">The tuple element types.</param>
     public TupleTypeKoto(ref TokenReader reader, SourceSpan range, List<Koto> elements)
         : base(ref reader, range)
     {
         this.Elements = elements;
     }
 
+    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append('(');
@@ -33,5 +43,14 @@ public partial class TupleTypeKoto : Koto
         }
 
         builder.Append(')');
+    }
+
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        foreach (var element in this.Elements)
+        {
+            element.RestoreAfterDeserialization(codeContext, this);
+        }
     }
 }

@@ -5,12 +5,20 @@ using System.Runtime.CompilerServices;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>
-/// Provides helper functions for compiler.
+/// Provides compiler-related helper methods.
 /// </summary>
 public static class CompilerHelper
 {
+    /// <summary>
+    /// The bit mask for accessibility modifiers.
+    /// </summary>
     public const int AccessibilityModifierMask = 15;
 
+    /// <summary>
+    /// Extracts the accessibility modifiers from a modifier set.
+    /// </summary>
+    /// <param name="kind">The modifier set.</param>
+    /// <returns>The accessibility modifiers.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ModifierKind ExtractAccessibilityModifiers(this ModifierKind kind)
     {
@@ -22,14 +30,35 @@ public static class CompilerHelper
     /// <returns><see langword="true"/> for value semantics; otherwise, <see langword="false"/>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsValue(this SemanticsKind kind)
-        => kind <= SemanticsKind.Stack;
+        => kind == SemanticsKind.Owner;
+
+    /// <summary>Returns whether the kind represents a value borrow.</summary>
+    /// <param name="kind">The kind to classify.</param>
+    /// <returns><see langword="true"/> for value-borrow semantics; otherwise, <see langword="false"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsValueBorrow(this SemanticsKind kind)
+        => kind is >= SemanticsKind.Ref and <= SemanticsKind.Uniq;
+
+    /// <summary>Returns whether the kind represents an owning object.</summary>
+    /// <param name="kind">The kind to classify.</param>
+    /// <returns><see langword="true"/> for object semantics; otherwise, <see langword="false"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsObject(this SemanticsKind kind)
+        => kind is >= SemanticsKind.Obj and <= SemanticsKind.Arc;
+
+    /// <summary>Returns whether the kind represents an object borrow.</summary>
+    /// <param name="kind">The kind to classify.</param>
+    /// <returns><see langword="true"/> for object-borrow semantics; otherwise, <see langword="false"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsObjectBorrow(this SemanticsKind kind)
+        => kind is >= SemanticsKind.ObjRef and <= SemanticsKind.ObjUniq;
 
     /// <summary>Returns whether the kind represents reference semantics.</summary>
     /// <param name="kind">The kind to classify.</param>
     /// <returns><see langword="true"/> for reference semantics; otherwise, <see langword="false"/>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsReference(this SemanticsKind kind)
-        => kind >= SemanticsKind.OwnerRef && kind <= SemanticsKind.Unsafe;
+        => kind is >= SemanticsKind.Ref and <= SemanticsKind.Unsafe;
 
     /// <summary>Parses a built-in semantics name without allocating.</summary>
     /// <param name="text">The semantics name.</param>
@@ -39,14 +68,15 @@ public static class CompilerHelper
     {
         kind = text.Length switch
         {
-            2 when text.SequenceEqual("rc") => SemanticsKind.Rc,
-            3 when text.SequenceEqual("arc") => SemanticsKind.Arc,
-            5 when text.SequenceEqual("owner") => SemanticsKind.Owner,
-            5 when text.SequenceEqual("stack") => SemanticsKind.Stack,
-            6 when text.SequenceEqual("borrow") => SemanticsKind.Borrow,
-            6 when text.SequenceEqual("unsafe") => SemanticsKind.Unsafe,
-            8 when text.SequenceEqual("ownerref") => SemanticsKind.OwnerRef,
-            9 when text.SequenceEqual("borrowref") => SemanticsKind.BorrowRef,
+            2 when text.SequenceEqual(Constants.RcKeyword) => SemanticsKind.Rc,
+            3 when text.SequenceEqual(Constants.RefKeyword) => SemanticsKind.Ref,
+            3 when text.SequenceEqual(Constants.ObjKeyword) => SemanticsKind.Obj,
+            3 when text.SequenceEqual(Constants.ArcKeyword) => SemanticsKind.Arc,
+            4 when text.SequenceEqual(Constants.UniqKeyword) => SemanticsKind.Uniq,
+            5 when text.SequenceEqual(Constants.OwnerKeyword) => SemanticsKind.Owner,
+            6 when text.SequenceEqual(Constants.ObjRefKeyword) => SemanticsKind.ObjRef,
+            6 when text.SequenceEqual(Constants.UnsafeKeyword) => SemanticsKind.Unsafe,
+            7 when text.SequenceEqual(Constants.ObjUniqKeyword) => SemanticsKind.ObjUniq,
             _ => SemanticsKind.Parameter,
         };
 
@@ -59,14 +89,15 @@ public static class CompilerHelper
     public static string ToText(this SemanticsKind kind)
         => kind switch
         {
-            SemanticsKind.Owner => "owner",
-            SemanticsKind.Borrow => "borrow",
-            SemanticsKind.Stack => "stack",
-            SemanticsKind.OwnerRef => "ownerref",
-            SemanticsKind.BorrowRef => "borrowref",
-            SemanticsKind.Rc => "rc",
-            SemanticsKind.Arc => "arc",
-            SemanticsKind.Unsafe => "unsafe",
+            SemanticsKind.Owner => Constants.OwnerKeyword,
+            SemanticsKind.Ref => Constants.RefKeyword,
+            SemanticsKind.Uniq => Constants.UniqKeyword,
+            SemanticsKind.Obj => Constants.ObjKeyword,
+            SemanticsKind.Rc => Constants.RcKeyword,
+            SemanticsKind.Arc => Constants.ArcKeyword,
+            SemanticsKind.ObjRef => Constants.ObjRefKeyword,
+            SemanticsKind.ObjUniq => Constants.ObjUniqKeyword,
+            SemanticsKind.Unsafe => Constants.UnsafeKeyword,
             _ => string.Empty,
         };
 }

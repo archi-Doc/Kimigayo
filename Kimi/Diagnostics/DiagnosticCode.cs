@@ -11,8 +11,10 @@ public enum DiagnosticCode
     Template_Kd, // First sentinel
 
     ConditionMustBeBool_Kd,
+    DeclarationOrderWarning_Kd,
     DivisionByZero_Kd,
     DuplicateModifier_Kd,
+    DuplicateTypeConstraintDefinition_Kd,
     IdentifierExpected_Kd,
     IncompleteEscape_Kd,
     IncompleteSyntax_Kd,
@@ -26,6 +28,7 @@ public enum DiagnosticCode
     InvalidIndentation_Kd,
     InvalidNumericLiteral_Kd,
     InvalidReferenceSyntax_Kd,
+    InvalidSemanticsConstraint_Kd,
     InvalidUnicodeEscape_Kd,
     InvalidUnicodeScalar_Kd,
     IntegerOverflow_Kd,

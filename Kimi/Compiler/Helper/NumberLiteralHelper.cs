@@ -6,6 +6,9 @@ using System.Runtime.CompilerServices;
 
 namespace Kimi.Compiler.Helper;
 
+/// <summary>
+/// Identifies the result of parsing a numeric literal.
+/// </summary>
 public enum NumberLiteralParseResult : byte
 {
     /// <summary>
@@ -26,10 +29,18 @@ public enum NumberLiteralParseResult : byte
     F64,
 }
 
+/// <summary>
+/// Provides methods for scanning and parsing numeric literals.
+/// </summary>
 public static partial class NumberLiteralHelper
 {
     private static readonly SearchValues<char> FloatChars = SearchValues.Create(".eE");
 
+    /// <summary>
+    /// Determines whether a value fits in a signed 64-bit integer.
+    /// </summary>
+    /// <param name="value">The value to test.</param>
+    /// <returns><see langword="true"/> if the value fits; otherwise, <see langword="false"/>.</returns>
     public static bool IsInt64(Int128 value)
         => value >= long.MinValue && value <= long.MaxValue;
 
@@ -78,15 +89,10 @@ public static partial class NumberLiteralHelper
             }
         }
 
-        // The first decimal digit has already been validated.
-        // Therefore, separators are allowed from index 1 onward.
+        // The first decimal digit was validated above.
         var i = ScanDecimalDigitsAndSeparators(text, 1);
 
         // A fractional part requires at least one digit after the decimal point.
-        //
-        // 1.0  => floating-point literal
-        // 1.   => integer literal followed by a dot
-        // 1._2 => integer literal followed by a dot and an identifier
         if ((uint)i < (uint)textLength && text[i] == '.')
         {
             var fractionStart = i + 1;
@@ -94,7 +100,6 @@ public static partial class NumberLiteralHelper
             if ((uint)fractionStart < (uint)textLength &&
                 (uint)(text[fractionStart] - '0') <= 9u)
             {
-                // The first fractional digit has already been validated.
                 i = ScanDecimalDigitsAndSeparators(text, fractionStart + 1);
             }
         }
@@ -120,7 +125,6 @@ public static partial class NumberLiteralHelper
                 return false;
             }
 
-            // The first exponent digit has already been validated.
             i = ScanDecimalDigitsAndSeparators(text, i + 1);
         }
 
@@ -128,13 +132,10 @@ public static partial class NumberLiteralHelper
     }
 
     /// <summary>
-    /// Parses a numeric literal, as recognized by <see cref="NumberLiteralHelper.ScanNumberLiteral"/>, into an
-    /// <see cref="Int128"/> or a <see cref="double"/>.
+    /// Parses a validated numeric literal.
     /// </summary>
     /// <param name="numberLiteral">
-    /// The full text of the literal (e.g. a token's text). The entire span must form a single,
-    /// lexically valid numeric literal; trailing characters are treated as a format error rather
-    /// than being ignored.
+    /// The complete literal text recognized by <see cref="ScanNumberLiteral"/>.
     /// </param>
     /// <param name="value">
     /// When the result is <see cref="NumberLiteralParseResult.I128"/>,
@@ -144,12 +145,8 @@ public static partial class NumberLiteralHelper
     /// <see cref="double"/> in its lower 64 bits.
     /// </param>
     /// <returns>
-    /// The kind of parsed numeric literal, or
-    /// <see cref="NumberLiteralParseResult.Invalid"/> if parsing fails.
+    /// The parsed literal kind, or <see cref="NumberLiteralParseResult.Invalid"/> on failure.
     /// </returns>
-    /// <remarks>
-    /// The input must already have been validated by <see cref="NumberLiteralHelper.ScanNumberLiteral"/>.
-    /// </remarks>
     public static NumberLiteralParseResult ParseNumberLiteral(ReadOnlySpan<char> numberLiteral, out Int128 value)
     {
         if (numberLiteral.Length >= 2 && numberLiteral[0] == '0')
@@ -168,8 +165,8 @@ public static partial class NumberLiteralHelper
         }
 
         return numberLiteral.IndexOfAny(FloatChars) >= 0 ?
-            ParseFloat(numberLiteral, out value) : // Float
-            ParseDecimalInteger(numberLiteral, out value); // Decimal
+            ParseFloat(numberLiteral, out value) :
+            ParseDecimalInteger(numberLiteral, out value);
     }
 
     private static NumberLiteralParseResult ParseFloat(ReadOnlySpan<char> text, out Int128 value)
@@ -301,7 +298,7 @@ public static partial class NumberLiteralHelper
                     continue;
                 }
 
-                // The input has already been validated by ScanNumberLiteral().
+                // Scanning has already validated each digit.
                 var digit = (uint)(c - '0');
                 accumulator = (accumulator << 3) + (accumulator << 1) + digit;
             }
@@ -320,7 +317,7 @@ public static partial class NumberLiteralHelper
                     continue;
                 }
 
-                // The input has already been validated by ScanNumberLiteral().
+                // Scanning has already validated each digit.
                 var digit = (uint)(c - '0');
 
                 if (accumulator > maxBeforeMultiply ||
@@ -330,7 +327,6 @@ public static partial class NumberLiteralHelper
                     return NumberLiteralParseResult.Invalid;
                 }
 
-                // accumulator * 10 + digit
                 accumulator = (accumulator << 3) + (accumulator << 1) + digit;
             }
 
@@ -384,10 +380,7 @@ public static partial class NumberLiteralHelper
         }
     }
 
-    /// <summary>
-    /// Completes a numeric-literal scan and rejects unsupported suffixes and
-    /// other identifier continuations.
-    /// </summary>
+    // Include identifier continuations in a malformed token.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool FinishNumberLiteral(ReadOnlySpan<char> text, int i, out int length)
     {
@@ -402,9 +395,6 @@ public static partial class NumberLiteralHelper
         return true;
     }
 
-    /// <summary>
-    /// Scans binary digits and underscore separators.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ScanBinaryDigitsAndSeparators(ReadOnlySpan<char> text, int i)
     {
@@ -413,10 +403,6 @@ public static partial class NumberLiteralHelper
         {
             var c = text[i];
 
-            // '0', '1' or '_'.
-            //
-            // The digit test is performed first because digits are expected
-            // to be substantially more common than separators.
             if ((uint)(c - '0') > 1u && c != '_')
             {
                 break;
@@ -428,9 +414,6 @@ public static partial class NumberLiteralHelper
         return i;
     }
 
-    /// <summary>
-    /// Scans octal digits and underscore separators.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ScanOctalDigitsAndSeparators(ReadOnlySpan<char> text, int i)
     {
@@ -439,7 +422,6 @@ public static partial class NumberLiteralHelper
         {
             var c = text[i];
 
-            // '0' through '7' or '_'.
             if ((uint)(c - '0') > 7u && c != '_')
             {
                 break;
@@ -451,9 +433,6 @@ public static partial class NumberLiteralHelper
         return i;
     }
 
-    /// <summary>
-    /// Scans decimal digits and underscore separators.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ScanDecimalDigitsAndSeparators(ReadOnlySpan<char> text, int i)
     {
@@ -462,7 +441,6 @@ public static partial class NumberLiteralHelper
         {
             var c = text[i];
 
-            // '0' through '9' or '_'.
             if ((uint)(c - '0') > 9u && c != '_')
             {
                 break;
@@ -474,9 +452,6 @@ public static partial class NumberLiteralHelper
         return i;
     }
 
-    /// <summary>
-    /// Scans hexadecimal digits and underscore separators.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ScanHexadecimalDigitsAndSeparators(ReadOnlySpan<char> text, int i)
     {
@@ -485,9 +460,7 @@ public static partial class NumberLiteralHelper
         {
             var c = text[i];
 
-            // '0' through '9', 'A' through 'F', 'a' through 'f' or '_'.
-            //
-            // OR-ing with 0x20 folds ASCII uppercase letters to lowercase.
+            // Fold ASCII uppercase letters before checking the hexadecimal range.
             if ((uint)(c - '0') > 9u &&
                 (uint)((c | 0x20) - 'a') > 5u &&
                 c != '_')
@@ -501,10 +474,7 @@ public static partial class NumberLiteralHelper
         return i;
     }
 
-    /// <summary>
-    /// Extends <paramref name="i"/> over identifier-continue characters so
-    /// that a malformed numeric literal is reported as a single token.
-    /// </summary>
+    // Consume the remainder of a malformed numeric token.
     private static int ExtendWithIdentifierContinue(ReadOnlySpan<char> text, int i)
     {
         var textLength = text.Length;

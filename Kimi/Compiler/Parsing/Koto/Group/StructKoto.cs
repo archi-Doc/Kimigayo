@@ -5,18 +5,18 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>
+/// Represents a structure declaration.
+/// </summary>
 [TinyhandObject]
 public sealed partial class StructKoto : GroupKoto
 {
+    /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Struct;
 
-    #region FieldAndProperty
-
-    [IgnoreMember]
-    public List<string> BaseList { get; } = [];
-
-    #endregion
-
+    /// <summary>Initializes a new instance of the <see cref="StructKoto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The declaration source span.</param>
     public StructKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
@@ -25,21 +25,5 @@ public sealed partial class StructKoto : GroupKoto
     internal StructKoto(CodeContext codeContext, TokenContext state, SourceSpan range)
         : base(codeContext, state, range)
     {
-    }
-
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {// public group A: @B
-        base.WriteTo(ref builder);
-
-        if (this.BaseList.Count != 0)
-        {
-            builder.Append(": ");
-
-            foreach (var x in this.BaseList)
-            {
-                builder.Append(x);
-                builder.Append(", ");
-            }
-        }
     }
 }

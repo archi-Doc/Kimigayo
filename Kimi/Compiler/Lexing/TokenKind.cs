@@ -48,6 +48,7 @@ public enum TokenKind : byte
     And, // and
     Or, // Or
     For, // for
+    While, // while
     Loop, // loop
     Match, // match
     Return, // method/return
@@ -71,6 +72,7 @@ public enum TokenKind : byte
     ProtectedOrInternal,
     ProtectedAndInternal,
     Open,
+    In, // in; contextual delimiter in a for expression
 
     // Not keyword
     Identifier = 128,

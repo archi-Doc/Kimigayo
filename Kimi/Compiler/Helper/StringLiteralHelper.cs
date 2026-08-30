@@ -7,64 +7,83 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Helper;
 
+/// <summary>
+/// Identifies the result of scanning a string literal.
+/// </summary>
 public enum ScanStringLiteralResult : byte
 {
+    /// <summary>No string literal was found.</summary>
     None,
+
+    /// <summary>The string literal is malformed.</summary>
     Invalid,
+
+    /// <summary>A single-line string literal was found.</summary>
     String,
+
+    /// <summary>A multiline string literal was found.</summary>
     MultilineString,
+
+    /// <summary>A single-line interpolation boundary was found.</summary>
     Interpolation,
+
+    /// <summary>A multiline interpolation boundary was found.</summary>
     MultilineInterpolation,
 }
 
+/// <summary>
+/// Provides methods for scanning and decoding string literals.
+/// </summary>
 public static class StringLiteralHelper
 {
     private const char InvalidEscapeFallbackChar = 'k';
     private static readonly SearchValues<char> BackslashOrDoubleQuote = SearchValues.Create("\\\"");
 
+    /// <summary>
+    /// Scans a string literal at the start of the specified text.
+    /// </summary>
+    /// <param name="text">The text to scan.</param>
+    /// <param name="doubleQuoteCount">The detected opening quote count.</param>
+    /// <param name="stringLiteralLength">The number of characters consumed.</param>
+    /// <returns>The scan result.</returns>
     public static ScanStringLiteralResult ScanStringLiteral(ReadOnlySpan<char> text, out int doubleQuoteCount, out int stringLiteralLength)
     {
         doubleQuoteCount = CountLeadingDoubleQuotes(text);
         if (doubleQuoteCount == 0)
-        {// Not string literal
+        {
             stringLiteralLength = 0;
             return ScanStringLiteralResult.None;
         }
         else if (doubleQuoteCount == 1)
-        {// "Text with escape"
+        {
             return ScanEscapedStringLiteral(text, out stringLiteralLength);
         }
         else if (doubleQuoteCount == 2)
-        {// ""
+        {
             doubleQuoteCount = 1;
             stringLiteralLength = 2;
             return ScanStringLiteralResult.String;
         }
         else
-        {// """Text without escape"""
+        {
             return ScanRawStringLiteral(text, doubleQuoteCount, out stringLiteralLength);
         }
     }
 
     /// <summary>
-    /// Gets the decoded value of a validated string literal.
+    /// Decodes a validated string literal.
     /// </summary>
     /// <param name="rawLiteral">
-    /// For an escaped string literal, the content after its surrounding double
-    /// quotes have already been removed. For a raw string literal, the complete
-    /// literal including its matching delimiters.
+    /// The unquoted content of an escaped literal, or the complete raw literal.
     /// </param>
     /// <param name="koto">
-    /// The syntax node to which diagnostics for invalid escape sequences are added,
-    /// or <see langword="null"/> to suppress diagnostics.
+    /// The node that receives diagnostics, or <see langword="null"/>.
     /// </param>
     /// <returns>
-    /// The decoded string value with escape sequences processed and raw-string
-    /// delimiters removed.
+    /// The decoded string value.
     /// </returns>
     /// <remarks>
-    /// Invalid escape sequences are replaced with fallback characters so that a
-    /// string value can still be produced.
+    /// Invalid escape sequences are replaced with fallback characters.
     /// </remarks>
     public static string GetStringLiteralValue(string rawLiteral, Koto? koto = default)
     {
@@ -96,16 +115,14 @@ public static class StringLiteralHelper
                 });
         }
 
-        // Raw string literal: """Text"""
+        // Count the opening delimiter of a raw string.
         var delimiterLength = 1;
         while (delimiterLength < span.Length && span[delimiterLength] == '"')
         {
             delimiterLength++;
         }
 
-        // An all-quote literal contains two equal delimiters:
-        // """"""   -> 3 + 3
-        // """""""" -> 4 + 4
+        // An all-quote literal consists of two equal delimiters.
         if (delimiterLength == span.Length)
         {
             delimiterLength >>= 1;
@@ -197,7 +214,7 @@ public static class StringLiteralHelper
                 destinationIndex += backslashIndex;
             }
 
-            // Skip '\'.
+            // Skip the escape introducer.
             span = span.Slice(1);
             if (span.IsEmpty)
             {
@@ -345,11 +362,10 @@ public static class StringLiteralHelper
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ScanStringLiteralResult ScanInvalidStringLiteral(ReadOnlySpan<char> span, int quoteCount, out int stringLiteralLength)
     {
-        // Consumes through the first LF, including a preceding CR when present.
-        // If no LF exists, consumes only the opening delimiter.
+        // Include the first line break when one is available.
         var linebreakIndex = span.IndexOf(BaseHelper.LfChar);
         if (linebreakIndex >= 0)
-        {// Lf, CrLf
+        {
             stringLiteralLength = quoteCount + linebreakIndex + 1;
         }
         else
@@ -376,9 +392,10 @@ public static class StringLiteralHelper
         }
 
         if (span[delimiterIndex] == '"')
-        {// Text"
+        {
+            // A multiline closing delimiter must appear on its own line.
             if (isMultiline && !HasValidClosingDelimiterIndent(span[..delimiterIndex]))
-            {// Treated as invalid because the text to the left of the closing delimiter contains non-whitespace characters.
+            {
                 return ScanInvalidStringLiteral(span, 1, out stringLiteralLength);
             }
 
@@ -389,7 +406,7 @@ public static class StringLiteralHelper
                 ScanStringLiteralResult.String;
         }
         else
-        {// text\(
+        {
             stringLiteralLength = delimiterIndex + 3;
 
             return isMultiline ?
@@ -400,7 +417,7 @@ public static class StringLiteralHelper
 
     private static ScanStringLiteralResult ScanRawStringLiteral(ReadOnlySpan<char> text, int doubleQuoteCount, out int stringLiteralLength)
     {
-        var span = text.Slice(doubleQuoteCount); // Text
+        var span = text.Slice(doubleQuoteCount);
         var delimiterIndex = span.IndexOf(text[..doubleQuoteCount]);
         if (delimiterIndex < 0)
         {
@@ -413,6 +430,7 @@ public static class StringLiteralHelper
             return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
         }
 
+        // Treat surplus quotes before the closing delimiter as content.
         var i = delimiterIndex + doubleQuoteCount;
         while (i < span.Length && span[i] == '"')
         {
@@ -420,8 +438,9 @@ public static class StringLiteralHelper
             delimiterIndex++;
         }
 
+        // A multiline closing delimiter must appear on its own line.
         if (isMultiline && !HasValidClosingDelimiterIndent(span[..delimiterIndex]))
-        {// Treated as invalid because the text to the left of the closing delimiter contains non-whitespace characters.
+        {
             return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
         }
 
@@ -453,7 +472,7 @@ public static class StringLiteralHelper
     {
         var offset = 0;
         while ((uint)offset < (uint)text.Length)
-        {// \( or an unescaped "
+        {
             var relativeIndex = text[offset..].IndexOfAny(BackslashOrDoubleQuote);
             if (relativeIndex < 0)
             {
@@ -462,7 +481,7 @@ public static class StringLiteralHelper
 
             var index = offset + relativeIndex;
             if (text[index] == '"')
-            {// A quotation mark without preceding backslashes.
+            {
                 return index;
             }
 
@@ -493,13 +512,13 @@ public static class StringLiteralHelper
                 }
 
                 if (next == '"')
-                {// Escaped quotation mark.
+                {
                     offset = index + 1;
                     continue;
                 }
             }
             else if (next == '"')
-            {// An even number of backslashes leaves the quotation mark unescaped.
+            {
                 return index;
             }
 

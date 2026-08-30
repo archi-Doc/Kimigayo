@@ -8,6 +8,9 @@ namespace Kimi.Compiler.Parsing;
 
 #pragma warning disable SA1202 // Elements should be ordered by access
 
+/// <summary>
+/// Stores a primitive value produced by compile-time evaluation.
+/// </summary>
 [StructLayout(LayoutKind.Explicit)]
 public readonly struct BasicValue : IEquatable<BasicValue>
 {
@@ -23,17 +26,22 @@ public readonly struct BasicValue : IEquatable<BasicValue>
     [FieldOffset(0)]
     private readonly object? tagOrString;
 
+    /// <summary>The Boolean payload.</summary>
     [FieldOffset(8)]
     public readonly bool Bool;
 
+    /// <summary>The signed integer payload.</summary>
     [FieldOffset(8)]
     public readonly long I64;
 
+    /// <summary>The floating-point payload.</summary>
     [FieldOffset(8)]
     public readonly double F64;
 
+    /// <summary>Gets the string payload, or an empty string for another value kind.</summary>
     public string String => (this.tagOrString as string) ?? string.Empty;
 
+    /// <summary>Gets the active value kind.</summary>
     public BasicValueKind Kind
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -64,6 +72,8 @@ public readonly struct BasicValue : IEquatable<BasicValue>
         }
     }
 
+    /// <summary>Initializes a new instance of the <see cref="BasicValue"/> struct.</summary>
+    /// <param name="value">The Boolean payload.</param>
     public BasicValue(bool value)
     {
         this = default;
@@ -71,6 +81,8 @@ public readonly struct BasicValue : IEquatable<BasicValue>
         this.Bool = value;
     }
 
+    /// <summary>Initializes a new instance of the <see cref="BasicValue"/> struct.</summary>
+    /// <param name="value">The integer payload.</param>
     public BasicValue(long value)
     {
         this = default;
@@ -78,6 +90,8 @@ public readonly struct BasicValue : IEquatable<BasicValue>
         this.I64 = value;
     }
 
+    /// <summary>Initializes a new instance of the <see cref="BasicValue"/> struct.</summary>
+    /// <param name="value">The floating-point payload.</param>
     public BasicValue(double value)
     {
         this = default;
@@ -85,6 +99,8 @@ public readonly struct BasicValue : IEquatable<BasicValue>
         this.F64 = value;
     }
 
+    /// <summary>Initializes a new instance of the <see cref="BasicValue"/> struct.</summary>
+    /// <param name="value">The string payload.</param>
     public BasicValue(string value)
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -93,6 +109,7 @@ public readonly struct BasicValue : IEquatable<BasicValue>
         this.tagOrString = value;
     }
 
+    /// <inheritdoc/>
     public bool Equals(BasicValue other)
     {
         var tagOrString = this.tagOrString;
@@ -120,9 +137,11 @@ public readonly struct BasicValue : IEquatable<BasicValue>
             string.Equals((string)tagOrString, otherString, StringComparison.Ordinal);
     }
 
+    /// <inheritdoc/>
     public override bool Equals(object? obj)
         => obj is BasicValue other && this.Equals(other);
 
+    /// <inheritdoc/>
     public override int GetHashCode()
     {
         var tagOrString = this.tagOrString;
@@ -149,12 +168,21 @@ public readonly struct BasicValue : IEquatable<BasicValue>
         return HashCode.Combine(BasicValueKind.String, StringComparer.Ordinal.GetHashCode((string)tagOrString));
     }
 
+    /// <summary>Determines whether two values are equal.</summary>
+    /// <param name="left">The left value.</param>
+    /// <param name="right">The right value.</param>
+    /// <returns><see langword="true"/> when the values are equal.</returns>
     public static bool operator ==(BasicValue left, BasicValue right)
         => left.Equals(right);
 
+    /// <summary>Determines whether two values differ.</summary>
+    /// <param name="left">The left value.</param>
+    /// <param name="right">The right value.</param>
+    /// <returns><see langword="true"/> when the values differ.</returns>
     public static bool operator !=(BasicValue left, BasicValue right)
         => !left.Equals(right);
 
+    /// <inheritdoc/>
     public override string ToString() => this.Kind switch
     {
         BasicValueKind.Bool => this.Bool.ToString(),

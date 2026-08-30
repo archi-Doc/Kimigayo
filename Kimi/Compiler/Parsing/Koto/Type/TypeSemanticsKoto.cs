@@ -5,47 +5,67 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>
+/// Represents a type together with ownership semantics and an optional origin.
+/// </summary>
 [TinyhandObject]
-public partial class TypeSemanticsKoto : Koto
-{// semantics/Type
+public partial class TypeKoto : Koto
+{
+    /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.TypeSemantics;
 
-    private readonly TokenKind tokenKind;
-    private readonly string? identifier;
-
+    /// <summary>Gets the ownership semantics.</summary>
     [Key(1)]
     public SemanticsKind SemanticsKind { get; private set; }
 
-    public string? SemanticsParameter { get; }
+    /// <summary>Gets the custom semantics parameter, if present.</summary>
+    [Key(2)]
+    public string? SemanticsParameter { get; private set; }
+
+    [Key(3)]
+    private TokenKind coreTypeToken;
+
+    [Key(4)]
+    private string? coreTypeName;
 
     /// <summary>
     /// Gets the type to which the semantics applies when it is a compound type.
     /// </summary>
-    [IgnoreMember]
-    public Koto? Type { get; }
+    [Key(5)]
+    public Koto? Type { get; private set; }
 
+    /// <summary>
+    /// Gets the name of the origin from which this type derives.
+    /// </summary>
+    [Key(6)]
+    public string? OriginName { get; private set; }
+
+    [Key(7)]
+    private bool isOriginWrapper;
+
+    /// <summary>Gets the underlying type identifier.</summary>
     public string Identifier
-        => this.Type is TypeSemanticsKoto simpleType
+        => this.Type is TypeKoto simpleType
             ? simpleType.Identifier
-            : this.tokenKind.IsPrimitiveType()
-            ? this.tokenKind.ToText()
-            : this.identifier ?? string.Empty;
+            : this.coreTypeToken.IsPrimitiveType()
+            ? this.coreTypeToken.ToText()
+            : this.coreTypeName ?? string.Empty;
 
-    internal TypeSemanticsKoto(
+    internal TypeKoto(
         ref TokenReader reader,
         Token typeToken)
         : base(ref reader, typeToken.Span)
     {
-        this.tokenKind = typeToken.Kind;
+        this.coreTypeToken = typeToken.Kind;
         this.SemanticsKind = SemanticsKind.Owner;
 
-        if (!this.tokenKind.IsPrimitiveType())
+        if (!this.coreTypeToken.IsPrimitiveType())
         {
-            this.identifier = reader.GetSpan(typeToken).ToString();
+            this.coreTypeName = reader.GetSpan(typeToken).ToString();
         }
     }
 
-    internal TypeSemanticsKoto(
+    internal TypeKoto(
         ref TokenReader reader,
         SourceSpan range,
         Koto type,
@@ -59,6 +79,21 @@ public partial class TypeSemanticsKoto : Koto
         type.Parent = this;
     }
 
+    internal TypeKoto(
+        ref TokenReader reader,
+        SourceSpan range,
+        Koto type,
+        string originName)
+        : base(ref reader, range)
+    {
+        this.SemanticsKind = SemanticsKind.Owner;
+        this.Type = type;
+        this.OriginName = originName;
+        this.isOriginWrapper = true;
+        type.Parent = this;
+    }
+
+    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         if (this.AttributeChain is not null)
@@ -68,25 +103,45 @@ public partial class TypeSemanticsKoto : Koto
 
         if (this.Type is not null)
         {
-            if (this.SemanticsKind == SemanticsKind.Parameter)
+            if (!this.isOriginWrapper)
             {
-                builder.Append(this.SemanticsParameter);
-            }
-            else
-            {
-                builder.Append(this.SemanticsKind.ToText());
+                if (this.SemanticsKind == SemanticsKind.Parameter)
+                {
+                    builder.Append(this.SemanticsParameter);
+                }
+                else
+                {
+                    builder.Append(this.SemanticsKind.ToText());
+                }
+
+                builder.Append(Constants.SlashChar);
             }
 
-            builder.Append(Constants.SlashChar);
             this.Type.WriteTo(ref builder);
-            return;
+        }
+        else
+        {
+            builder.Append(this.Identifier);
         }
 
-        builder.Append(this.Identifier);
+        if (this.OriginName is not null)
+        {
+            builder.AppendSpace();
+            builder.Append(Constants.FromKeyword);
+            builder.AppendSpace();
+            builder.Append(this.OriginName);
+        }
     }
 
-    public override (string Text, Koto[]? Children) Dump()
-        => this.Type is null
-            ? ($"{this.GetType().Name}({this.SemanticsKind}, {this.Identifier})", default)
-            : ($"{this.GetType().Name}({this.SemanticsKind})", [this.Type]);
+    internal void SetOrigin(string originName, int end)
+    {
+        this.OriginName = originName;
+        this.Span = SourceSpan.FromBounds(this.Span.Start, end);
+    }
+
+    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    {
+        base.RestoreAfterDeserialization(codeContext, parent);
+        this.Type?.RestoreAfterDeserialization(codeContext, this);
+    }
 }

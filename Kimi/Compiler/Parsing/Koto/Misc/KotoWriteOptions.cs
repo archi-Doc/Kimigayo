@@ -4,6 +4,9 @@
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>
+/// Controls how Koto nodes are written as source text.
+/// </summary>
 [Flags]
 public enum KotoWriteOptions : byte
 {

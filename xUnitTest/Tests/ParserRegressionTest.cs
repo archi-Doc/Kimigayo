@@ -8,6 +8,7 @@ using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
+using Tinyhand;
 using Xunit;
 
 namespace XunitTest;
@@ -48,6 +49,64 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void ParsesLogicalExpressionsWithCorrectPrecedence()
+    {
+        var source = """
+            var first = A and B
+            var second = not A or B
+            var third = A and not B
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.Empty(diagnostics);
+        var fields = GetChildren(root).Select(Assert.IsType<FieldKoto>).ToArray();
+
+        var first = Assert.IsType<AndKoto>(fields[0].InitializerKoto);
+        Assert.IsType<IdentifierNameKoto>(first.Left);
+        Assert.IsType<IdentifierNameKoto>(first.Right);
+
+        var second = Assert.IsType<OrKoto>(fields[1].InitializerKoto);
+        Assert.IsType<NotKoto>(second.Left);
+        Assert.IsType<IdentifierNameKoto>(second.Right);
+
+        var third = Assert.IsType<AndKoto>(fields[2].InitializerKoto);
+        Assert.IsType<IdentifierNameKoto>(third.Left);
+        Assert.IsType<NotKoto>(third.Right);
+    }
+
+    [Fact]
+    public void ParsesLogicalExpressionsAsIsRightOperand()
+    {
+        var source = """
+            var first = X is A and B
+            var second = X is not A or B
+            var third = X is A and not B
+            var fourth = P or X is A and B
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.Empty(diagnostics);
+        var fields = GetChildren(root).Select(Assert.IsType<FieldKoto>).ToArray();
+
+        var first = Assert.IsType<IsKoto>(fields[0].InitializerKoto);
+        Assert.IsType<AndKoto>(first.Right);
+
+        var second = Assert.IsType<IsKoto>(fields[1].InitializerKoto);
+        var secondCondition = Assert.IsType<NotKoto>(second.Right);
+        Assert.IsType<OrKoto>(secondCondition.Operand);
+
+        var third = Assert.IsType<IsKoto>(fields[2].InitializerKoto);
+        var thirdCondition = Assert.IsType<AndKoto>(third.Right);
+        Assert.IsType<NotKoto>(thirdCondition.Right);
+
+        var fourth = Assert.IsType<OrKoto>(fields[3].InitializerKoto);
+        var fourthCondition = Assert.IsType<IsKoto>(fourth.Right);
+        Assert.IsType<AndKoto>(fourthCondition.Right);
+    }
+
+    [Fact]
     public void ContinuesAfterOuterIndentedClosingDelimiterOnSameLine()
     {
         var source = """
@@ -76,16 +135,460 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void PreservesTopLevelStructModifiersThroughAddSource()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        kotonoha.AddSource(new SourceDocument("modifier.kimi", "public open struct TestStruct<s/C, D>"));
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var type = Assert.IsType<StructKoto>(
+            kotonoha.RootKoto.GetOrAddGroup("TestStruct", TokenKind.Struct, default, default));
+        Assert.True(type.Modifier.HasFlag(ModifierKind.Public));
+        Assert.True(type.Modifier.HasFlag(ModifierKind.Open));
+        Assert.Collection(
+            type.GenericArguments,
+            argument =>
+            {
+                Assert.Equal(SemanticsKind.Parameter, argument.SemanticsKind);
+                Assert.Equal("s", argument.SemanticsParameter);
+                Assert.Equal("C", argument.Identifier);
+            },
+            argument =>
+            {
+                Assert.Equal(SemanticsKind.Owner, argument.SemanticsKind);
+                Assert.Equal("D", argument.Identifier);
+            });
+
+        var builder = default(IndentedStringBuilder);
+        try
+        {
+            kotonoha.RootKoto.UnparseAll(ref builder);
+            Assert.Contains("public open struct TestStruct<s/C, D>", builder.ToString());
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
+
+    [Fact]
+    public void ParsesRepeatedStructAfterBodylessDeclaration()
+    {
+        var source = """
+            public open struct TestStruct<s/C, D>
+
+            public open struct TestStruct<s/C, D>
+                semantics is reference
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.Empty(diagnostics);
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("TestStruct", TokenKind.Struct, default, default));
+        Assert.True(type.Modifier.HasFlag(ModifierKind.Public));
+        Assert.True(type.Modifier.HasFlag(ModifierKind.Open));
+        Assert.Collection(
+            type.GenericArguments,
+            argument =>
+            {
+                Assert.Equal(SemanticsKind.Parameter, argument.SemanticsKind);
+                Assert.Equal("s", argument.SemanticsParameter);
+                Assert.Equal("C", argument.Identifier);
+            },
+            argument =>
+            {
+                Assert.Equal(SemanticsKind.Owner, argument.SemanticsKind);
+                Assert.Equal("D", argument.Identifier);
+            });
+        var constraint = Assert.Single(type.TypeConstraints);
+        Assert.Equal("semantics", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
+        Assert.Equal(SemanticsMask.Reference, Assert.IsType<SemanticsMaskKoto>(constraint.Right).Mask);
+    }
+
+    [Fact]
     public void AppliesSemanticsToCompoundType()
     {
-        var (root, diagnostics) = Parse("func F(value: borrowref/SomeType<List<owner/T>, I>)");
+        var (root, diagnostics) = Parse("func F(value: objref/SomeType<List<owner/T>, I>)");
 
         Assert.Empty(diagnostics);
         var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
-        var semantics = Assert.IsType<TypeSemanticsKoto>(function.Parameters.Single().Type);
-        Assert.Equal(SemanticsKind.BorrowRef, semantics.SemanticsKind);
+        var semantics = Assert.IsType<TypeKoto>(function.Parameters.Single().Type);
+        Assert.Equal(SemanticsKind.ObjRef, semantics.SemanticsKind);
         Assert.IsType<GenericsKoto>(semantics.Type);
-        Assert.Equal("borrowref/SomeType<List<owner/T>, I>", semantics.ToString());
+        Assert.Equal("objref/SomeType<List<owner/T>, I>", semantics.ToString());
+    }
+
+    [Theory]
+    [InlineData("Dog from owner", "owner")]
+    [InlineData("ref/Dog from source", "source")]
+    [InlineData("ref/SomeType<List<T>, U> from collection", "collection")]
+    [InlineData("SomeType<T> from collection", "collection")]
+    public void ParsesAndWritesTypeOrigin(string typeText, string expectedOrigin)
+    {
+        var (root, diagnostics) = Parse($"func F(value: {typeText})");
+
+        Assert.Empty(diagnostics);
+        var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
+        var type = Assert.IsType<TypeKoto>(function.Parameters.Single().Type);
+        Assert.Equal(expectedOrigin, type.OriginName);
+        Assert.Equal(typeText, type.ToString());
+    }
+
+    [Fact]
+    public void ParsesHierarchicalTypeConstraints()
+    {
+        var source = """
+            public open struct A<s/T>
+                Self is StructB and InterfaceA
+                semantics is not valueborrow and (owning or objectborrow)
+                s is reference
+                T is Comparable and (Equatable or Serializable)
+
+                var x: i32
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.Empty(diagnostics);
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
+
+        var genericArgument = Assert.Single(type.GenericArguments);
+        Assert.Equal("s", genericArgument.SemanticsParameter);
+        Assert.Equal("T", genericArgument.Identifier);
+
+        Assert.Equal(4, type.TypeConstraints.Count);
+
+        var selfConstraint = type.TypeConstraints[0];
+        Assert.Equal("Self", Assert.IsType<IdentifierNameKoto>(selfConstraint.Left).IdentifierName);
+        var selfTypes = Assert.IsType<AndKoto>(selfConstraint.Right);
+        Assert.Equal("StructB", Assert.IsType<IdentifierNameKoto>(selfTypes.Left).IdentifierName);
+        Assert.Equal("InterfaceA", Assert.IsType<IdentifierNameKoto>(selfTypes.Right).IdentifierName);
+
+        var semanticsConstraint = type.TypeConstraints[1];
+        Assert.Equal("semantics", Assert.IsType<IdentifierNameKoto>(semanticsConstraint.Left).IdentifierName);
+        var negation = Assert.IsType<NotKoto>(semanticsConstraint.Right);
+        var semanticsAnd = Assert.IsType<AndKoto>(negation.Operand);
+        Assert.Equal(SemanticsMask.ValueBorrow, Assert.IsType<SemanticsMaskKoto>(semanticsAnd.Left).Mask);
+        var parentheses = Assert.IsType<ParenthesizedKoto>(semanticsAnd.Right);
+        var semanticsOr = Assert.IsType<OrKoto>(parentheses.Operand);
+        Assert.Equal(SemanticsMask.Owning, Assert.IsType<SemanticsMaskKoto>(semanticsOr.Left).Mask);
+        Assert.Equal(SemanticsMask.ObjectBorrow, Assert.IsType<SemanticsMaskKoto>(semanticsOr.Right).Mask);
+
+        var semanticsParameterConstraint = type.TypeConstraints[2];
+        Assert.Equal("s", Assert.IsType<IdentifierNameKoto>(semanticsParameterConstraint.Left).IdentifierName);
+        Assert.Equal("reference", Assert.IsType<IdentifierNameKoto>(semanticsParameterConstraint.Right).IdentifierName);
+
+        var typeParameterConstraint = type.TypeConstraints[3];
+        Assert.Equal("T", Assert.IsType<IdentifierNameKoto>(typeParameterConstraint.Left).IdentifierName);
+        var typeAnd = Assert.IsType<AndKoto>(typeParameterConstraint.Right);
+        Assert.IsType<IdentifierNameKoto>(typeAnd.Left);
+        Assert.IsType<ParenthesizedKoto>(typeAnd.Right);
+
+        Assert.IsType<FieldKoto>(GetChildren(type).Single());
+
+        var builder = default(IndentedStringBuilder);
+        try
+        {
+            root.UnparseAll(ref builder);
+            var text = builder.ToString();
+            Assert.Contains("public open struct A<s/T>", text);
+            Assert.Contains("Self is StructB and InterfaceA", text);
+            Assert.Contains("semantics is not valueborrow and (owning or objectborrow)", text);
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
+
+    [Fact]
+    public void ParsesOriginDeclarationForSemanticsGenericArgument()
+    {
+        var source = """
+            public open struct TestStruct<s/C> origin a, b
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.Empty(diagnostics);
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("TestStruct", TokenKind.Struct, default, default));
+
+        var genericArgument = Assert.Single(type.GenericArguments);
+        Assert.Equal("s", genericArgument.SemanticsParameter);
+        Assert.Equal("C", genericArgument.Identifier);
+
+        Assert.Equal(["a", "b"], type.Origins);
+        Assert.Empty(type.TypeConstraints);
+
+        var builder = default(IndentedStringBuilder);
+        try
+        {
+            root.UnparseAll(ref builder);
+            var text = builder.ToString();
+            Assert.Contains("public open struct TestStruct<s/C> origin a, b", text);
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
+
+    [Fact]
+    public void DiagnosesAndIgnoresTypeConstraintsFromLaterStructDefinitions()
+    {
+        var source = """
+            struct A<s/T> origin first, shared
+                T is FirstConstraint
+                var first: i32
+
+            struct A origin ignored, later
+                T is IgnoredConstraint
+                semantics is DefinitelyInvalid
+                var second: i32
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.Equal(2, diagnostics.Length);
+        Assert.All(
+            diagnostics,
+            diagnostic => Assert.Equal(
+                nameof(DiagnosticCode.DuplicateTypeConstraintDefinition_Kd),
+                diagnostic.Entry.Name));
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
+        Assert.Equal(["first", "shared"], type.Origins);
+        var constraint = Assert.Single(type.TypeConstraints);
+        Assert.Equal("T", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
+        Assert.Equal("FirstConstraint", Assert.IsType<IdentifierNameKoto>(constraint.Right).IdentifierName);
+        Assert.Equal(2, GetChildren(type).OfType<FieldKoto>().Count());
+
+        var builder = default(IndentedStringBuilder);
+        try
+        {
+            root.UnparseAll(ref builder);
+            var text = builder.ToString();
+            Assert.Contains("struct A<s/T> origin first, shared", text);
+            Assert.Contains("T is FirstConstraint", text);
+            Assert.DoesNotContain("ignored", text);
+            Assert.DoesNotContain("IgnoredConstraint", text);
+            Assert.DoesNotContain("DefinitelyInvalid", text);
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
+
+    [Fact]
+    public void PreservesKotoSyntaxThroughTinyhandSerialization()
+    {
+        var source = """
+            public open struct TestStruct<s/C> origin a, b
+                C is Comparable
+
+                struct Nested
+                    var value: C
+
+                #Example
+                var item: obj/Container<C> = value
+                var converted = item@unsafe/C
+                var called = transform(item, "text")
+
+                private func map<s/T>(value?: ref/T, fallback: owner/T = defaultValue) -> uniq/T
+                    return
+            """;
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        var context = kotonoha.CreateCodeContext();
+        context.Parse(kotonoha.RootKoto, source);
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+
+        var expectedBuilder = default(IndentedStringBuilder);
+        var actualBuilder = default(IndentedStringBuilder);
+        try
+        {
+            kotonoha.RootKoto.UnparseAll(ref expectedBuilder);
+            var serialized = TinyhandSerializer.Serialize(kotonoha);
+            var deserialized = new Kotonoha(compilation);
+            TinyhandSerializer.DeserializeObject(serialized, ref deserialized);
+            var restored = deserialized ?? throw new InvalidOperationException();
+            restored.OnDeserialized(compilation);
+            restored.RootKoto.UnparseAll(ref actualBuilder);
+
+            Assert.Equal(expectedBuilder.ToString(), actualBuilder.ToString());
+
+            var type = Assert.IsType<StructKoto>(
+                restored.RootKoto.GetOrAddGroup("TestStruct", TokenKind.Struct, default, default));
+            Assert.Same(restored, type.Kotonoha);
+            Assert.Single(type.GenericArguments);
+            Assert.Equal(["a", "b"], type.Origins);
+            Assert.Single(type.TypeConstraints);
+            Assert.All(type.GenericArguments, argument => Assert.Same(type, argument.Parent));
+            Assert.All(type.TypeConstraints, constraint => Assert.Same(type, constraint.Parent));
+
+            var fields = GetChildren(type).OfType<FieldKoto>().ToArray();
+            Assert.All(fields, field => Assert.Same(type, field.Parent));
+            var item = Assert.Single(fields, field => field.NameKoto.IdentifierName == "item");
+            var attribute = Assert.IsType<AttributeKoto>(item.AttributeChain);
+            Assert.Equal("Example", Assert.IsType<IdentifierNameKoto>(attribute.IdentifierKoto).IdentifierName);
+
+            var function = Assert.IsType<FunctionKoto>(GetChildren(type).OfType<FunctionKoto>().Single());
+            Assert.Single(function.GenericArguments);
+            Assert.Equal(2, function.Parameters.Count);
+            var returnType = Assert.IsAssignableFrom<Koto>(function.ReturnType);
+            Assert.All(function.GenericArguments, argument => Assert.Same(function, argument.Parent));
+            Assert.All(function.Parameters, parameter => Assert.Same(function, parameter.Type.Parent));
+            Assert.Same(function, returnType.Parent);
+        }
+        finally
+        {
+            expectedBuilder.Dispose();
+            actualBuilder.Dispose();
+        }
+    }
+
+    [Fact]
+    public void DiagnosesGroupDeclarationTrailingSyntaxOnce()
+    {
+        var source = """
+            struct A: InterfaceA, InterfaceB
+                Self is InterfaceA
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnexpectedTrailingToken_Kd), diagnostic.Entry.Name);
+
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
+        Assert.Single(type.TypeConstraints);
+    }
+
+    [Fact]
+    public void ParsesOrderedTypeDeclarationsWithoutOrderWarning()
+    {
+        var source = """
+            struct Ordered
+                Self is Interface
+
+                struct Nested
+                    var nestedField: i32
+
+                var field: i32
+
+                func Method()
+                    return
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.DoesNotContain(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.DeclarationOrderWarning_Kd));
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("Ordered", TokenKind.Struct, default, default));
+        Assert.Single(type.TypeConstraints);
+        Assert.Collection(
+            GetChildren(type),
+            x => Assert.IsType<FieldKoto>(x),
+            x => Assert.IsType<FunctionKoto>(x));
+
+        var nested = Assert.IsType<StructKoto>(type.GetOrAddGroup("Nested", TokenKind.Struct, default, default));
+        Assert.IsType<FieldKoto>(Assert.Single(GetChildren(nested)));
+    }
+
+    [Fact]
+    public void WarnsForOutOfOrderTypeDeclarationsButParsesThem()
+    {
+        var source = """
+            struct Mixed
+                func Method()
+                    return
+
+                var field: i32
+
+                struct Nested
+                    var nestedField: i32
+
+                Self is Interface
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        var warnings = diagnostics
+            .Where(x => x.Entry.Name == nameof(DiagnosticCode.DeclarationOrderWarning_Kd))
+            .ToArray();
+        Assert.Equal(3, warnings.Length);
+        Assert.All(warnings, x => Assert.Equal(DiagnosticSeverity.Warning, x.Entry.Severity));
+
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("Mixed", TokenKind.Struct, default, default));
+        Assert.Single(type.TypeConstraints);
+        Assert.Collection(
+            GetChildren(type),
+            x => Assert.IsType<FunctionKoto>(x),
+            x => Assert.IsType<FieldKoto>(x));
+
+        var nested = Assert.IsType<StructKoto>(type.GetOrAddGroup("Nested", TokenKind.Struct, default, default));
+        Assert.IsType<FieldKoto>(Assert.Single(GetChildren(nested)));
+    }
+
+    [Fact]
+    public void ParsesIdentifierExpressionInTypeBody()
+    {
+        var source = """
+            struct A
+                Field1.Method2()
+                var field: i32
+            """;
+
+        var (root, diagnostics) = Parse(source);
+
+        Assert.Empty(diagnostics);
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
+        Assert.Collection(
+            GetChildren(type),
+            x =>
+            {
+                var invocation = Assert.IsType<InvocationKoto>(x);
+                Assert.IsType<MemberAccessKoto>(invocation.Method);
+            },
+            x => Assert.IsType<FieldKoto>(x));
+    }
+
+    [Theory]
+    [InlineData("owner", SemanticsMask.Owner)]
+    [InlineData("ref", SemanticsMask.Ref)]
+    [InlineData("uniq", SemanticsMask.Uniq)]
+    [InlineData("obj", SemanticsMask.Obj)]
+    [InlineData("rc", SemanticsMask.Rc)]
+    [InlineData("arc", SemanticsMask.Arc)]
+    [InlineData("objref", SemanticsMask.ObjRef)]
+    [InlineData("objuniq", SemanticsMask.ObjUniq)]
+    [InlineData("unsafe", SemanticsMask.Unsafe)]
+    [InlineData("valueborrow", SemanticsMask.ValueBorrow)]
+    [InlineData("object", SemanticsMask.Object)]
+    [InlineData("objectborrow", SemanticsMask.ObjectBorrow)]
+    [InlineData("borrow", SemanticsMask.Borrow)]
+    [InlineData("owning", SemanticsMask.Owning)]
+    [InlineData("value", SemanticsMask.Value)]
+    [InlineData("reference", SemanticsMask.Reference)]
+    public void ParsesNamedSemanticsConstraints(string text, SemanticsMask expected)
+    {
+        var (root, diagnostics) = Parse($"struct A\n    semantics is {text}");
+
+        Assert.Empty(diagnostics);
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
+        var constraint = Assert.Single(type.TypeConstraints);
+        Assert.Equal(expected, Assert.IsType<SemanticsMaskKoto>(constraint.Right).Mask);
+    }
+
+    [Fact]
+    public void DiagnosesInvalidSemanticsConstraint()
+    {
+        var (root, diagnostics) = Parse("struct A\n    semantics is Comparable");
+
+        Assert.Contains(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.InvalidSemanticsConstraint_Kd));
+        var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
+        var constraint = Assert.Single(type.TypeConstraints);
+        Assert.IsType<ErrorKoto>(constraint.Right);
     }
 
     [Fact]

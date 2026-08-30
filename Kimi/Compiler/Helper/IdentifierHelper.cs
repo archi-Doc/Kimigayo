@@ -7,26 +7,16 @@ using System.Text;
 
 namespace Kimi.Compiler.Helper;
 
-#pragma warning disable SA1611 // Element parameters should be documented
-#pragma warning disable SA1615 // Element return value should be documented
-
 /// <summary>
-/// Provides utility methods for validating C# identifiers according to the language specification.
+/// Provides methods for validating Kimigayo identifiers.
 /// </summary>
 public static class IdentifierHelper
 {
     /// <summary>
-    /// Determines whether the specified text is a valid identifier according to
-    /// the C# identifier character rules.
+    /// Determines whether the specified text is a valid identifier.
     /// </summary>
     /// <param name="identifier">The text to validate as an identifier.</param>
-    /// <returns><c>true</c> if the text is a valid identifier; otherwise, <c>false</c>.</returns>
-    /// <remarks>
-    /// A valid identifier must start with a letter or underscore, and can contain letters,
-    /// digits, underscores, and certain Unicode characters. This method follows the C#
-    /// language specification for identifier validation, including support for Unicode
-    /// categories and surrogate pairs.
-    /// </remarks>
+    /// <returns><see langword="true"/> if the text is valid; otherwise, <see langword="false"/>.</returns>
     public static bool IsValidIdentifier(ReadOnlySpan<char> identifier)
     {
         if (identifier.IsEmpty)

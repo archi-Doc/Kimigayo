@@ -3,10 +3,10 @@
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>
-/// Defines the ownership and reference semantics of a type.
+/// Defines the ownership, borrowing, object, and pointer semantics of a type.
 /// </summary>
 /// <remarks>
-/// Value and reference kinds occupy contiguous ranges for fast classification.
+/// Kinds in the same Type Semantics category occupy contiguous ranges for fast classification.
 /// </remarks>
 public enum SemanticsKind : byte
 {
@@ -16,37 +16,42 @@ public enum SemanticsKind : byte
     Owner,
 
     /// <summary>
-    /// A borrowed value expressed as <c>borrow/T</c>.
+    /// A shared borrowed reference to a value expressed as <c>ref/T</c>.
     /// </summary>
-    Borrow,
+    Ref,
 
     /// <summary>
-    /// A stack-bound value expressed as <c>stack/T</c>.
+    /// An exclusive borrowed reference to a value expressed as <c>uniq/T</c>.
     /// </summary>
-    Stack,
+    Uniq,
 
     /// <summary>
-    /// An owning reference expressed as <c>ownerref/T</c>.
+    /// An owned object expressed as <c>obj/T</c>.
     /// </summary>
-    OwnerRef,
+    Obj,
 
     /// <summary>
-    /// A borrowed reference expressed as <c>/T</c> or <c>borrowref/T</c>.
-    /// </summary>
-    BorrowRef,
-
-    /// <summary>
-    /// A reference-counted reference expressed as <c>rc/T</c>.
+    /// A reference-counted object expressed as <c>rc/T</c>.
     /// </summary>
     Rc,
 
     /// <summary>
-    /// An atomically reference-counted reference expressed as <c>arc/T</c>.
+    /// An atomically reference-counted object expressed as <c>arc/T</c>.
     /// </summary>
     Arc,
 
     /// <summary>
-    /// An unsafe reference expressed as <c>unsafe/T</c>.
+    /// A shared borrowed reference to an object expressed as <c>objref/T</c>.
+    /// </summary>
+    ObjRef,
+
+    /// <summary>
+    /// An exclusive borrowed reference to an object expressed as <c>objuniq/T</c>.
+    /// </summary>
+    ObjUniq,
+
+    /// <summary>
+    /// An unsafe pointer expressed as <c>unsafe/T</c>.
     /// </summary>
     Unsafe,
 

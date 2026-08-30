@@ -10,11 +10,18 @@
   + Name="ConditionMustBeBool_Kd"
     Message="The condition expression must be of type Bool"
 
+  + Name="DeclarationOrderWarning_Kd"
+    Severity="Warning"
+    Message="Declarations should appear in this order: type constraints, nested types, fields, functions"
+
   + Name="DivisionByZero_Kd"
     Message="Cannot divide by zero"
 
   + Name="DuplicateModifier_Kd"
     Message="Duplicate modifier '{0}'"
+
+  + Name="DuplicateTypeConstraintDefinition_Kd"
+    Message="Type constraints for this struct are already defined in another declaration"
 
   + Name="IdentifierExpected_Kd"
     Message="Identifier expected"
@@ -55,6 +62,9 @@
 
   + Name="InvalidReferenceSyntax_Kd"
     Message="Reference form &{0} is invalid"
+
+  + Name="InvalidSemanticsConstraint_Kd"
+    Message="'{0}' is not a valid semantics constraint"
 
   + Name="InvalidUnicodeEscape_Kd"
     Message="The Unicode escape sequence must have the form '\\u(...)' and contain one to six hexadecimal digits"
