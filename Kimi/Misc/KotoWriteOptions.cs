@@ -2,7 +2,7 @@
 
 #pragma warning disable SA1401 // Fields should be private
 
-namespace Kimi.Compiler.Parsing;
+namespace Kimi.Compiler;
 
 /// <summary>
 /// Controls how Koto nodes are written as source text.

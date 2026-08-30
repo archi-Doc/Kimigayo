@@ -2,8 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using Arc.Collections;
-using Kimi.Compiler.Parsing;
-using Tinyhand.Tree;
+using Kimi.Compiler;
 
 namespace Kimi;
 
