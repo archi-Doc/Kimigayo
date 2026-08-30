@@ -18,6 +18,8 @@ namespace Kimi.Compiler;
 public static class Parser
 {
     private const int PrefixBindingPower = 90;
+    private const int RangeLeftBindingPower = 8;
+    private const int RangeRightBindingPower = 9;
 
     /// <summary>Evaluates a conditional attribute.</summary>
     /// <param name="compilation">The active compilation.</param>
@@ -1517,6 +1519,33 @@ Exit:
                 continue;
             }
 
+            if (tokenKind is TokenKind.DotDot or TokenKind.DotDotEquals)
+            {
+                if (minBindingPower > RangeLeftBindingPower)
+                {
+                    break;
+                }
+
+                reader.TryRead(out var rangeToken);
+                var end = ParseRangeEnd(ref reader, rangeToken);
+                if (left is RangeKoto)
+                {
+                    reader.Diagnostic.Add(
+                        rangeToken.Span,
+                        DiagnosticCode.UnexpectedToken_Kd,
+                        rangeToken.Kind.ToText());
+                    continue;
+                }
+
+                left = new RangeKoto(
+                    ref reader,
+                    rangeToken.Span,
+                    left,
+                    end,
+                    rangeToken.Kind == TokenKind.DotDotEquals);
+                continue;
+            }
+
             var bindingPower = GetInfixBindingPower(tokenKind);
             if (bindingPower == default || bindingPower.Left < minBindingPower)
             {
@@ -1625,11 +1654,21 @@ ProcessPrefix:
 
             case TokenKind.OpenBracket:
                 {
-                    reader.TryRead(out var token);
-                    var index = ParseExpression(ref reader);
+                    reader.Advance();
+                    Koto index;
+                    if (IsExpressionBoundary(ref reader))
+                    {
+                        reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                        index = reader.NewErrorKoto();
+                    }
+                    else
+                    {
+                        index = ParseExpression(ref reader);
+                    }
+
                     reader.TryConsume(TokenKind.CloseBracket, out var range, true);
 
-                    left = new IndexKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, range.End), left, index);
+                    left = new IndexKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, range.End), left, index);
                     return true;
                 }
 
@@ -1775,6 +1814,19 @@ Loop:
             case TokenKind.If:
                 return ParseIfExpression(ref reader);
 
+            case TokenKind.DotDot:
+            case TokenKind.DotDotEquals:
+                {
+                    reader.TryRead(out var token);
+                    var end = ParseRangeEnd(ref reader, token);
+                    return new RangeKoto(
+                        ref reader,
+                        token.Span,
+                        default,
+                        end,
+                        token.Kind == TokenKind.DotDotEquals);
+                }
+
             case TokenKind.Match:
                 return ParseMatchExpression(ref reader);
 
@@ -1866,6 +1918,10 @@ Loop:
             TokenKind.And => (20, 21),
             TokenKind.Or => (10, 11),
 
+            // Range (non-associative; parsed specially because either endpoint may be omitted)
+            TokenKind.DotDot => (RangeLeftBindingPower, RangeRightBindingPower),
+            TokenKind.DotDotEquals => (RangeLeftBindingPower, RangeRightBindingPower),
+
             // Assignment
             TokenKind.Equals => (5, 5),
             TokenKind.PlusEquals => (5, 5),
@@ -1881,6 +1937,26 @@ Loop:
 
             _ => default,
         };
+
+    private static Koto? ParseRangeEnd(ref TokenReader reader, Token rangeToken)
+    {
+        if (IsRangeEndBoundary(ref reader))
+        {
+            if (rangeToken.Kind == TokenKind.DotDotEquals)
+            {
+                reader.Diagnostic.Add(rangeToken.Span, DiagnosticCode.IncompleteSyntax_Kd);
+            }
+
+            return default;
+        }
+
+        return ParseExpression(ref reader, RangeRightBindingPower);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsRangeEndBoundary(ref TokenReader reader)
+        => IsExpressionBoundary(ref reader) ||
+            reader.CurrentTokenKind is TokenKind.DotDot or TokenKind.DotDotEquals;
 
     private static Koto ParseDeclarationType(ref TokenReader reader)
     {

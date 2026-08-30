@@ -161,6 +161,33 @@ struct View
 
 The Type Semantics of a field determines how the referenced or contained value is represented, owned, borrowed, shared, and accessed.
 
+# Index, Range, and Slice
+
+An Index is a nonnegative `isize` value. Applying an Index with `value[index]` selects one element. The resolved Index must be less than the length of the indexed value.
+
+A prefix caret denotes an Index measured from the end. `^n` resolves to `length - n`, where `n` is a nonnegative `isize`. Therefore, `^1` selects the last element. `^0` is a valid Range boundary but is not a valid element Index. Infix `^` remains the exclusive-or operator.
+
+A Range is an expression with optional start and end boundaries. Each explicit boundary is either a nonnegative `isize` Index or a from-end Index.
+
+| Form       | Selected boundaries                  |
+| ---------- | ------------------------------------ |
+| `start..end`  | From `start`, excluding `end`     |
+| `start..=end` | From `start`, including `end`     |
+| `start..`     | From `start` to the end            |
+| `..end`       | From the beginning, excluding `end` |
+| `..=end`      | From the beginning, including `end` |
+| `..`          | The entire range                   |
+
+The omitted start boundary is zero. The omitted end boundary is the length of the indexed value and is exclusive. An inclusive Range must have an end boundary.
+
+Range operators bind less tightly than logical operators and more tightly than assignment. Ranges are non-associative; an unparenthesized chained Range such as `a..b..c` is invalid.
+
+Applying a Range with `value[range]` produces a Slice over the selected consecutive elements. A Slice does not copy its elements. Its Origin derives from the indexed value, so it cannot outlive that value.
+
+After resolving from-end boundaries, an exclusive Range must satisfy `0 <= start <= end <= length`. An inclusive Range must satisfy `0 <= start <= end < length`.
+
+For a value of length six, `value[1..^1]` selects the elements at Indices 1, 2, 3, and 4.
+
 # Type Semantics
 
 Type Semantics specify the ownership, borrowing, layout, and safety properties of a typed value.

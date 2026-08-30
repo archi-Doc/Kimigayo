@@ -41,7 +41,7 @@ public partial class MemberAccessKoto : BinaryKoto
 }
 
 /// <summary>
-/// Represents an index expression.
+/// Represents an element-index or slice-subscript expression.
 /// </summary>
 [TinyhandObject]
 public partial class IndexKoto : BinaryKoto
@@ -49,8 +49,16 @@ public partial class IndexKoto : BinaryKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Index;
 
-    /// <summary>Gets the index expression.</summary>
+    /// <summary>
+    /// Gets the nonnegative isize index, from-end index, or range expression inside brackets.
+    /// </summary>
     public Koto Index => this.Right;
+
+    /// <summary>Gets the expression inside brackets.</summary>
+    public Koto Argument => this.Right;
+
+    /// <summary>Gets a value indicating whether this subscript produces a slice.</summary>
+    public bool IsSlice => this.Right is RangeKoto;
 
     /// <summary>Initializes a new instance of the <see cref="IndexKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

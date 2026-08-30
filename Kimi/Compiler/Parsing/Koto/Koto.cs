@@ -79,8 +79,8 @@ public enum KotoKind : byte
     /// <summary>An unwrap expression.</summary>
     Unwrap,
 
-    /// <summary>A prefix caret expression.</summary>
-    PrefixCaret,
+    /// <summary>An index measured backward from the end of a collection.</summary>
+    FromEndIndex,
 
     /// <summary>A unary plus expression.</summary>
     PrefixPlus,
@@ -218,6 +218,9 @@ public enum KotoKind : byte
     /// <summary>A generic name.</summary>
     Generics,
 
+    /// <summary>A half-open or inclusive range expression.</summary>
+    Range,
+
     /// <summary>An indentation-delimited expression block.</summary>
     CodeBlock,
 
@@ -275,7 +278,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
 [TinyhandUnion((int)KotoKind.Macro, typeof(MacroKoto))]
 [TinyhandUnion((int)KotoKind.Unwrap, typeof(UnwrapKoto))]
-[TinyhandUnion((int)KotoKind.PrefixCaret, typeof(PrefixCaretKoto))]
+[TinyhandUnion((int)KotoKind.FromEndIndex, typeof(FromEndIndexKoto))]
 [TinyhandUnion((int)KotoKind.PrefixPlus, typeof(PrefixPlusKoto))]
 [TinyhandUnion((int)KotoKind.PrefixPlusPlus, typeof(PrefixPlusPlusKoto))]
 [TinyhandUnion((int)KotoKind.PrefixMinus, typeof(PrefixMinusKoto))]
@@ -322,6 +325,7 @@ public enum KotoKind : byte
 
 [TinyhandUnion((int)KotoKind.Invocation, typeof(InvocationKoto))]
 [TinyhandUnion((int)KotoKind.Generics, typeof(GenericsKoto))]
+[TinyhandUnion((int)KotoKind.Range, typeof(RangeKoto))]
 [TinyhandUnion((int)KotoKind.CodeBlock, typeof(CodeBlockKoto))]
 [TinyhandUnion((int)KotoKind.If, typeof(IfKoto))]
 [TinyhandUnion((int)KotoKind.Match, typeof(MatchKoto))]

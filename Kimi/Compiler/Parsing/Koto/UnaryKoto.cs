@@ -149,19 +149,26 @@ public partial class UnwrapKoto : UnaryKoto
 }
 
 /// <summary>
-/// Represents a prefix caret expression.
+/// Represents a nonnegative isize index measured backward from the end of a collection.
 /// </summary>
+/// <remarks>
+/// <c>^n</c> resolves to <c>length - n</c>. Consequently, <c>^0</c> is a valid range boundary,
+/// but it is outside the valid positions for an element index.
+/// </remarks>
 [TinyhandObject]
-public partial class PrefixCaretKoto : UnaryKoto
+public partial class FromEndIndexKoto : UnaryKoto
 {
     /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.PrefixCaret;
+    public override KotoKind Akind => KotoKind.FromEndIndex;
 
-    /// <summary>Initializes a new instance of the <see cref="PrefixCaretKoto"/> class.</summary>
+    /// <summary>Gets the nonnegative distance from the end.</summary>
+    public Koto Value => this.Operand;
+
+    /// <summary>Initializes a new instance of the <see cref="FromEndIndexKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
     /// <param name="operand">The operand.</param>
-    public PrefixCaretKoto(ref TokenReader reader, SourceSpan range, Koto operand)
+    public FromEndIndexKoto(ref TokenReader reader, SourceSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }
