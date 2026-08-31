@@ -144,6 +144,28 @@ public class FunctionBodyParseTest
     }
 
     [Fact]
+    public void ParsesInlineIfExpressionAsVariableInitializer()
+    {
+        var function = ParseSingleFunction(
+            """
+            func Select(x: bool)
+                var i = if (x == true) 1 else 0
+                i
+            """);
+
+        var body = Assert.IsType<CodeBlockKoto>(function.Body);
+        var field = Assert.IsType<FieldKoto>(body.Items[0]);
+        var ifExpression = Assert.IsType<IfKoto>(field.InitializerKoto);
+        var branch = Assert.Single(ifExpression.Branches);
+
+        Assert.True(branch.Body.HasTrailingExpression);
+        Assert.IsType<NumberLiteralKoto>(branch.Body.TrailingExpression);
+        Assert.NotNull(ifExpression.ElseBody);
+        Assert.True(ifExpression.ElseBody.HasTrailingExpression);
+        Assert.IsType<NumberLiteralKoto>(ifExpression.ElseBody.TrailingExpression);
+    }
+
+    [Fact]
     public void RecognizesWhileAsAKeyword()
     {
         Assert.True(TokenKind.While.IsKeyword());

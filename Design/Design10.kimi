@@ -32,7 +32,7 @@ var x = array[1] // borrow/StructA
 var last = array[^1] // Last element
 var middle = array[1..^1] // Excludes both element 0 and the last element
 var y = array.remove(at: 1) // owner/StructA
-func Set(index: isize, s/T obj) -> ()
+func Set(index: isize, obj: s/T) -> ()
 func Get(index: isize) -> s/T
 
 var array2 = Array<int>.new()
@@ -72,9 +72,9 @@ public group Kernel32 // shared (no instance)
 
 rootgroup Program
 
-struct $ // :  StandardContext // Compose Context
-    public func T Inject<T>()
-        -> self.GetService<T>() // IServiceProvider
+struct Context // $ // :  StandardContext // Compose Context
+    public func Inject<T>() -> T
+        self.GetService<T>() // IServiceProvider
 
 #Key(0) public let Name = "Test Program"
 #Key(1)
@@ -98,7 +98,7 @@ public group Helper // namespace - alias
     func Method2() ->
         #Condition(Os=="Windows")
         // block Initialize
-            var func = () => 3 // () -> return 4
+            // var func1 = func () => 3 // () -> return 4
             var i = if (x == true) 1 else 0
         var i2 = if (x == true)
             1

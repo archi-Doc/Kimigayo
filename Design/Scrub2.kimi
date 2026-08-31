@@ -8,6 +8,7 @@ var x = array[1]
 var last = array[^1]
 var middle = array[1..^1]
 var y = array.remove(at: 1)
+func Set(index: isize, obj: s/T) -> ()
 func Get(index: isize) -> s/T
 var array2 = Array<int>.new()
 var count: i32 = 0
@@ -20,6 +21,10 @@ var array: Array<owner/T> = new()
 public let Name = "Test Program"
 #Key(1)
 public let Name = "Test Program"
+
+struct Context
+    public func Inject<T>() -> T
+        self.GetService<T>()
 
 public struct Array<s/T>
     Self is all
@@ -40,8 +45,6 @@ public rootgroup Helper
         return 1
     func Method2() -> Error
         Error
-        var i = if (x == true)
-
     var i2 = if (x == true)
         1
     else
@@ -67,7 +70,9 @@ public rootgroup Kernel32
     #LibraryImport(LibraryName)
     func WriteFile(hFile: ptr, lpBuffer: ptr, nNumberOfBytesToWrite: u32, lpNumberOfBytesWritten: ptr, lpOverlapped: ptr) -> i32
     #LibraryImport(LibraryName)
-    func ExitProcess() -> ()
+    func ExitProcess(#Description("Exit code") uExitCode: u32) -> ()
+    public func TestMethod() -> Error
+        return
 
     #Layout(C)
     public struct OVERLAPPED

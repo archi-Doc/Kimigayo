@@ -1,7 +1,10 @@
 alias AliasB
 alias AliasC
 
-var funcA = (Error)
+var i = if (x == true)
+    1
+else
+    0
 var x: unsafe/Base.Map<String, Int>
 var count: i32 = #TestAtr 0
 let name: String = "abc"

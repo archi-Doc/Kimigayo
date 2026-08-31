@@ -1303,7 +1303,7 @@ Exit:
         while (true)
         {
             var condition = ParseRequiredExpression(ref reader);
-            var body = ParseRequiredBlock(ref reader);
+            var body = ParseRequiredConditionalBody(ref reader);
             branches.Add(new ConditionalBranchKoto(condition, body));
             end = body.Span.End;
 
@@ -1318,7 +1318,7 @@ Exit:
                 continue;
             }
 
-            elseBody = ParseRequiredBlock(ref reader);
+            elseBody = ParseRequiredConditionalBody(ref reader);
             end = elseBody.Span.End;
             break;
         }
@@ -1593,6 +1593,17 @@ Exit:
 
         reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
         return new CodeBlockKoto(ref reader, reader.CurrentTokenRange, [], false);
+    }
+
+    private static CodeBlockKoto ParseRequiredConditionalBody(ref TokenReader reader)
+    {
+        if (reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock)
+        {
+            return ParseRequiredBlock(ref reader);
+        }
+
+        var expression = ParseRequiredExpression(ref reader);
+        return new CodeBlockKoto(ref reader, expression.Span, [expression], true);
     }
 
     private static bool TryConsumeElse(ref TokenReader reader)
