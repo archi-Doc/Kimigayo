@@ -488,6 +488,12 @@ Exit:
     /// <param name="token">The declaration keyword token.</param>
     /// <returns>The parsed declaration, or <see langword="null"/> after an error.</returns>
     public static FieldKoto? ParseField(ref TokenReader reader, ref Token token)
+        => ParseField(ref reader, ref token, false);
+
+    private static FieldKoto? ParseField(
+        ref TokenReader reader,
+        ref Token token,
+        bool allowParenthesizedTerminator)
     {
         var variableContext = reader.TakeContext();
 
@@ -530,7 +536,8 @@ Exit:
         {
             reader.Advance();
         }
-        else
+        else if (!allowParenthesizedTerminator ||
+            reader.CurrentTokenKind is not (TokenKind.CloseParenthesis or TokenKind.Yield))
         {
             reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, DiagnosticCode.UnexpectedTrailingToken_Kd);
         }
@@ -1134,6 +1141,7 @@ Exit:
             return new CodeBlockKoto(ref reader, start, [], false);
         }
 
+        var blockContext = reader.TakeContext();
         reader.Advance();
         var items = new List<Koto>();
         var hasTrailingExpression = false;
@@ -1159,6 +1167,7 @@ Exit:
             {
                 var end = reader.CurrentTokenRange.End;
                 reader.Advance();
+                reader.RestoreContext(blockContext);
                 return new CodeBlockKoto(
                     ref reader,
                     SourceSpan.FromBounds(start.Start, end),
@@ -1203,6 +1212,7 @@ Exit:
 
         var eof = reader.CurrentTokenRange.End;
         reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+        reader.RestoreContext(blockContext);
         return new CodeBlockKoto(
             ref reader,
             SourceSpan.FromBounds(start.Start, Math.Max(start.End, eof)),
@@ -2030,6 +2040,9 @@ Loop:
             case TokenKind.If:
                 return ParseIfExpression(ref reader);
 
+            case TokenKind.StartBlock:
+                return ParseBlock(ref reader);
+
             case TokenKind.DotDot:
             case TokenKind.DotDotEquals:
                 {
@@ -2058,18 +2071,7 @@ Loop:
                 return ParseJumpExpression(ref reader);
 
             case TokenKind.OpenParenthesis:
-                {
-                    reader.TryRead(out var token);
-
-                    var expression = ParseExpression(ref reader);
-                    var end = Math.Max(token.Span.End, expression.Span.End);
-                    if (reader.TryConsume(TokenKind.CloseParenthesis, out var range, true))
-                    {
-                        end = Math.Max(end, range.End);
-                    }
-
-                    return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, end), expression);
-                }
+                return ParseParenthesizedExpression(ref reader);
 
             case TokenKind.OpenBracket:
                 return ParseCollectionLiteral(ref reader);
@@ -2086,6 +2088,70 @@ Loop:
                     return new ErrorKoto(ref reader, token.Span);
                 }
         }
+    }
+
+    private static ParenthesizedKoto ParseParenthesizedExpression(ref TokenReader reader)
+    {
+        reader.TryRead(out var openToken);
+
+        Koto operand;
+        if (reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var or TokenKind.Yield)
+        {
+            operand = ParseParenthesizedBlock(ref reader);
+        }
+        else
+        {
+            operand = ParseExpression(ref reader);
+        }
+
+        var end = Math.Max(openToken.Span.End, operand.Span.End);
+        if (reader.TryConsume(TokenKind.CloseParenthesis, out var closeRange, true))
+        {
+            end = Math.Max(end, closeRange.End);
+        }
+
+        return new ParenthesizedKoto(
+            ref reader,
+            SourceSpan.FromBounds(openToken.Span.Start, end),
+            operand);
+    }
+
+    private static CodeBlockKoto ParseParenthesizedBlock(ref TokenReader reader)
+    {
+        var items = new List<Koto>();
+        var hasTrailingExpression = false;
+
+        while (reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var)
+        {
+            reader.TryRead(out var declarationToken);
+            var field = ParseField(
+                ref reader,
+                ref declarationToken,
+                allowParenthesizedTerminator: true);
+            if (field is not null)
+            {
+                items.Add(field);
+            }
+        }
+
+        if (reader.CurrentTokenKind == TokenKind.Yield)
+        {
+            reader.Advance();
+            items.Add(ParseRequiredExpression(ref reader));
+            hasTrailingExpression = true;
+        }
+
+        if (items.Count == 0)
+        {
+            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            return new CodeBlockKoto(ref reader, reader.CurrentTokenRange, [], false);
+        }
+
+        return new CodeBlockKoto(
+            ref reader,
+            SourceSpan.FromBounds(items[0].Span.Start, items[^1].Span.End),
+            items,
+            hasTrailingExpression);
     }
 
     private static Koto ParseCollectionLiteral(ref TokenReader reader)

@@ -166,6 +166,63 @@ public class FunctionBodyParseTest
     }
 
     [Fact]
+    public void ParsesConditionalBlocksAndMatchExpressionsTogether()
+    {
+        const string Source = """
+            public group Helper
+                func Method2() -> i32
+                    #Condition(Os=="Windows")
+                    // block
+                        var i = if (x == true) 1 else 0
+                    var i2 = if (x == true)
+                        1
+                    else
+                        3
+
+                    var i3 = if (
+                        var z = Func()
+                        ) 1 else 0
+                    var j = match x
+                        true => 1
+                        false => 0
+                    var k = match x
+                        true =>
+                            1
+                        false =>
+                            0
+                    return
+            """;
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
+
+        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        Assert.True(
+            diagnostics.Length == 0,
+            string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
+
+        var helper = Assert.IsType<GroupKoto>(
+            kotonoha.RootKoto.GetOrAddGroup("Helper", TokenKind.Group, default, default));
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(helper)));
+        var body = Assert.IsType<CodeBlockKoto>(function.Body);
+
+        var conditionalBlock = Assert.IsType<CodeBlockKoto>(body.Items[0]);
+        Assert.NotNull(conditionalBlock.AttributeChain);
+        Assert.IsType<IfKoto>(Assert.IsType<FieldKoto>(Assert.Single(conditionalBlock.Items)).InitializerKoto);
+
+        Assert.IsType<IfKoto>(Assert.IsType<FieldKoto>(body.Items[1]).InitializerKoto);
+        var conditionWithLocal = Assert.IsType<IfKoto>(
+            Assert.IsType<FieldKoto>(body.Items[2]).InitializerKoto);
+        var parentheses = Assert.IsType<ParenthesizedKoto>(conditionWithLocal.Branches[0].Condition);
+        var conditionBlock = Assert.IsType<CodeBlockKoto>(parentheses.Operand);
+        Assert.IsType<FieldKoto>(Assert.Single(conditionBlock.Items));
+
+        Assert.IsType<MatchKoto>(Assert.IsType<FieldKoto>(body.Items[3]).InitializerKoto);
+        Assert.IsType<MatchKoto>(Assert.IsType<FieldKoto>(body.Items[4]).InitializerKoto);
+        Assert.IsType<ReturnKoto>(body.Items[5]);
+    }
+
+    [Fact]
     public void RecognizesWhileAsAKeyword()
     {
         Assert.True(TokenKind.While.IsKeyword());

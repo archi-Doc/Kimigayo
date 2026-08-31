@@ -103,8 +103,8 @@ public group Helper // namespace - alias
         var i2 = if (x == true)
             1
         else
-            yield 2
-        goto Initialize
+            3 // yield 2
+        // goto Initialize
         var i3 = if (
             var z = Func()
             yield (z > 0)) 1 else 0
@@ -135,13 +135,13 @@ public struct TestStruct // group + field
     public func New() -> Self
         self.id = 11
 
-    public func GetId(&) -> i32 // &, &owner, &rc, &arc
+    public func GetId(self: Self) -> i32
         return self.id
 
-    public func GetText(&, i32 id) -> string
-        return id match
-            1 => "Test",
-            2 => 
+    public func GetText(self: Self, id: i32) -> string
+        return match id
+            1 => "Test"
+            2 => ""
 
 public func TestMethod()
     var st = TestStruct.New()
@@ -153,14 +153,14 @@ public enum TestEnum
 
 $WriteLine("Kimigayo")
 
-method Main()
-    Array<i32> array = 
+func Main()
+    var array: Array<i32> = 
     [
         1,
         2,
     ]
 
-    Array<i32> array = [
+    var array: Array<i32> = [
         1,
         2,
     ]

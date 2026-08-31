@@ -7,7 +7,28 @@ alias AliasC
 #If(windows and 1 == 0x_000)
 alias AliasD
 
-var i = if (x == true) 1 else 0
+public group Helper // namespace - alias
+    func Method2() ->
+        #Condition(Os=="Windows")
+        // block
+            var i = if (x == true) 1 else 0
+        var i2 = if (x == true)
+            1
+        else
+            3
+
+        var i3 = if (
+            var z = Func()
+            ) 1 else 0
+        var j = match x
+            true => 1
+            false => 0
+        var k = match x
+            true =>
+                1
+            false =>
+                0
+        return
 
 /*struct Context // $ // :  StandardContext // Compose Context
     public func Inject<T>() -> T
