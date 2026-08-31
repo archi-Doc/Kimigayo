@@ -2,6 +2,43 @@
 
 **Kimigayo** is a programming language designed and built from scratch with the goals of being consistent, fast, simple, fun, and safe.
 
+# Build Model
+
+Kimigayo separates workspace orchestration, project configuration, library source, and target-specific compilation into the following model:
+
+| Element | Responsibility |
+| ------- | -------------- |
+| Solution | Holds multiple Projects and supplies options shared by their builds. It corresponds to a C# solution. |
+| Project | Defines one application or library build unit. It corresponds to a C# project and is configured by a `.kimiproj` file. |
+| Kotonoha | Defines a named library source unit. It is comparable to a NuGet package boundary and is built from one or more Kimi source files. |
+| Compilation | Compiles one Project for one target OS and architecture. |
+| CodeContext | Carries the source-unit and diagnostic context used while source is parsed, generated, or inserted into a Koto tree. |
+
+A Solution discovers and loads Projects. A Project contains common build settings, target triples, project-wide aliases, and external Kotonoha dependency descriptors. For each configured target, the Project creates a separate Compilation.
+
+Each Compilation owns the application's or library's primary Kotonoha. A Compilation also provides the target triple, LLVM data layout, pointer width, conditional-compilation variables, and lookup by Kotonoha identifier. External Kotonoha descriptors are copied from the Project configuration; fetching and loading those external libraries is a later compilation stage and is not currently implemented.
+
+A Kotonoha merges declarations from multiple `SourceDocument` instances into one root Koto tree. Tokenization and parsing occur per source document. Executable syntax written directly at the root—fields, statements, expressions, and functions—is stored in an implicit generated function owned by the Kotonoha.
+
+A CodeContext belongs to exactly one Kotonoha. It supplies the active Compilation and diagnostic destination to the Tokenizer and Parser. Generated source may be parsed into a selected Collection in that same Kotonoha; inserting nodes into a Collection owned by another Kotonoha is invalid.
+
+The current front-end pipeline is:
+
+```text
+Solution -> Project -> Compilation(target)
+                         |
+                         v
+                 Kotonoha + SourceDocuments
+                         |
+                         v
+                 Tokenizer -> Parser -> Koto tree
+                         |
+                         v
+                 LLVM IR -> binary (planned back-end stages)
+```
+
+After target preparation, the conditional-compilation environment contains `os`, `windows`, `linux`, `macos`, and `pointerWidth`. Unsupported target architectures or targets without an LLVM data layout do not produce a prepared Compilation.
+
 # Identifier
 
 Kimigayo uses the following information to identify declarations and their meaning:
@@ -77,7 +114,7 @@ A Collection is a named declaration scope. Collection bodies are delimited by in
 
 | Collection kind | Instantiable | Main characteristics |
 | --------------- | ------------ | -------------------- |
-| `group` | No | Accepts fields and functions. All members are static. Generic parameters and Origins are not supported. |
+| `group` | No | Accepts fields, functions, and nested Collection declarations. All members are static. Generic parameters and Origins are not supported. |
 | `struct` | Yes | Accepts fields and functions in declaration order. Generic parameters, Origins, and type constraints are supported. |
 | `enum` | Yes | Body parsing is not implemented. |
 | `extension` | No | Its Name identifies the target. Body parsing is not implemented. |
@@ -107,7 +144,7 @@ rootgroup A.B
     var value = 1
 ```
 
-creates the nested group path `A.B`. Ordinary `group` and `struct` bodies do not accept nested Collection declarations.
+creates the nested group path `A.B`. Ordinary `group` bodies accept nested Collection declarations. `struct` bodies do not currently accept nested Collections.
 
 An `alias` is a top-level declaration of a qualified Name. Nested aliases are invalid.
 

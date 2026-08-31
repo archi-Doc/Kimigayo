@@ -22,16 +22,32 @@ public sealed partial class InvocationKoto : ExpressionKoto
     [Key(2)]
     public List<Koto> Arguments { get; private set; }
 
+    /// <summary>Gets the argument labels in argument order. A positional argument has a null label.</summary>
+    [Key(3)]
+    public List<string?> ArgumentLabels { get; private set; }
+
     /// <summary>Initializes a new instance of the <see cref="InvocationKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
     /// <param name="method">The expression being invoked.</param>
     /// <param name="arguments">The invocation arguments.</param>
-    public InvocationKoto(ref TokenReader reader, SourceSpan range, Koto method, List<Koto> arguments)
+    /// <param name="argumentLabels">The optional argument labels in argument order.</param>
+    public InvocationKoto(
+        ref TokenReader reader,
+        SourceSpan range,
+        Koto method,
+        List<Koto> arguments,
+        List<string?>? argumentLabels = null)
         : base(ref reader, range)
     {
+        if (argumentLabels is not null && argumentLabels.Count != arguments.Count)
+        {
+            throw new ArgumentException("The number of argument labels must match the number of arguments.", nameof(argumentLabels));
+        }
+
         this.Method = method;
         this.Arguments = arguments;
+        this.ArgumentLabels = argumentLabels ?? Enumerable.Repeat<string?>(null, arguments.Count).ToList();
 
         method.Parent = this;
         foreach (var x in arguments)
@@ -44,14 +60,20 @@ public sealed partial class InvocationKoto : ExpressionKoto
     /// <param name="reader">The token reader.</param>
     /// <param name="method">The expression being invoked.</param>
     /// <param name="arguments">The invocation arguments.</param>
-    public InvocationKoto(ref TokenReader reader, Koto method, List<Koto> arguments)
+    /// <param name="argumentLabels">The optional argument labels in argument order.</param>
+    public InvocationKoto(
+        ref TokenReader reader,
+        Koto method,
+        List<Koto> arguments,
+        List<string?>? argumentLabels = null)
         : this(
             ref reader,
             SourceSpan.FromBounds(
                 method.Span.Start,
                 Math.Max(method.Span.End, arguments.Count == 0 ? 0 : arguments[^1].Span.End)),
             method,
-            arguments)
+            arguments,
+            argumentLabels)
     {
     }
 
@@ -72,6 +94,13 @@ public sealed partial class InvocationKoto : ExpressionKoto
         builder.Append(Constants.OpenParenthesisChar);
         for (var i = 0; i < this.Arguments.Count; i++)
         {
+            if (this.ArgumentLabels[i] is { } label)
+            {
+                builder.Append(label);
+                builder.Append(Constants.ColonChar);
+                builder.AppendSpace();
+            }
+
             this.Arguments[i].WriteTo(ref builder);
             if (i < (this.Arguments.Count - 1))
             {

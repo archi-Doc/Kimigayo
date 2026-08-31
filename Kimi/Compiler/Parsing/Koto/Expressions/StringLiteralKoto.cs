@@ -54,6 +54,15 @@ public sealed partial class StringLiteralKoto : ExpressionKoto
             Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
         }
 
-        builder.Append(this.rawLiteral);
+        if (this.rawLiteral.Length > 0 && this.rawLiteral[0] == '"')
+        {
+            builder.Append(this.rawLiteral);
+        }
+        else
+        {
+            builder.Append('"');
+            builder.Append(this.rawLiteral);
+            builder.Append('"');
+        }
     }
 }

@@ -6,8 +6,13 @@ using System.Diagnostics.CodeAnalysis;
 using Kimi.Command;
 using Kimi.Compiler;
 
+/// <summary>
+/// Represents one application or library build unit described by a <c>.kimiproj</c> file.
+/// </summary>
+/// <remarks>A project is the Kimigayo equivalent of a C# project.</remarks>
 public partial class Project
 {
+    /// <summary>Gets the default project-file settings used by implicit projects.</summary>
     public static readonly ProjectFile DefaultProjectFile;
 
     static Project()
@@ -19,6 +24,12 @@ public partial class Project
         DefaultProjectFile = projectFile;
     }
 
+    /// <summary>Attempts to load a project from a <c>.kimiproj</c> file.</summary>
+    /// <param name="kimigayo">The owning compiler service.</param>
+    /// <param name="logger">The load logger.</param>
+    /// <param name="path">The project-file path.</param>
+    /// <param name="project">The loaded project.</param>
+    /// <returns><see langword="true"/> when the project was loaded.</returns>
     public static bool TryCreate(Kimigayo kimigayo, ILogger logger, string path, [MaybeNullWhen(false)] out Project project)
     {
         project = default;
@@ -52,36 +63,51 @@ public partial class Project
     private List<SourceDocument> additionalSource = [];
     private HashSet<string> kimiFiles = new();
 
+    /// <summary>Gets or sets the compiler options inherited from the solution.</summary>
     public KimiOptions KimiOptions { get; set; } = new();
 
+    /// <summary>Gets or sets the project base directory.</summary>
     public string Directory { get; set; } = string.Empty;
 
+    /// <summary>Gets or sets the project name.</summary>
     public string Name { get; set; } = string.Empty;
 
+    /// <summary>Gets the project-file settings, including targets and Kotonoha references.</summary>
     public ProjectFile ProjectFile { get; private set; } = new();
 
     #endregion
 
+    /// <summary>Initializes a new instance of the <see cref="Project"/> class.</summary>
+    /// <param name="kimigayo">The owning compiler service.</param>
     public Project(Kimigayo kimigayo)
     {
         this.kimigayo = kimigayo;
         this.ProjectFile = DefaultProjectFile;
     }
 
+    /// <summary>Adds generated or in-memory Kimi source text.</summary>
+    /// <param name="url">The source URL or path.</param>
+    /// <param name="text">The source text.</param>
     public void AddSource(string url, string text)
         => this.AddSource(new SourceDocument(url, text));
 
+    /// <summary>Adds a generated or in-memory source document.</summary>
+    /// <param name="sourceDocument">The source document.</param>
     public void AddSource(SourceDocument sourceDocument)
     {
         ArgumentNullException.ThrowIfNull(sourceDocument);
         this.additionalSource.Add(sourceDocument);
     }
 
+    /// <summary>Adds a Kimi source-file path to this project.</summary>
+    /// <param name="path">The source-file path.</param>
     public void AddKimiFile(string path)
     {
         this.kimiFiles.Add(path);
     }
 
+    /// <summary>Builds this project once for each configured target triple.</summary>
+    /// <returns>A task that completes after all configured targets have been attempted.</returns>
     public async Task<bool> Build()
     {
         var targets = this.ProjectFile.Targets.ToArray();

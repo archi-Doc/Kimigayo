@@ -43,7 +43,7 @@ public sealed partial class GroupKoto : CollectionKoto
     {
         if (!ReferenceEquals(this, this.Kotonoha.RootKoto))
         {
-            this.ParseFieldAndFunctionMembers(ref reader, false);
+            this.ParseMembers(ref reader);
             return;
         }
 
@@ -61,6 +61,65 @@ public sealed partial class GroupKoto : CollectionKoto
         {
             yield return this.Kotonoha.GeneratedFunction;
         }
+    }
+
+    private void ParseMembers(ref TokenReader reader)
+    {
+        ConsumeBlockStart(ref reader);
+        var declarationOrder = DeclarationOrder.None;
+        while (TryBeginDeclaration(ref reader))
+        {
+            var token = reader.CurrentToken;
+            if (this.TryParseCollectionDeclaration(ref reader, token))
+            {
+                continue;
+            }
+
+            if (!this.TryParseFieldOrFunction(ref reader, ref declarationOrder))
+            {
+                SkipUnexpectedDeclaration(ref reader, token);
+            }
+        }
+    }
+
+    private bool TryParseCollectionDeclaration(ref TokenReader reader, Token token)
+    {
+        var tokenKind = token.Kind;
+        if (tokenKind is not (TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract))
+        {
+            return false;
+        }
+
+        reader.Advance();
+        var supportsGenericHeader = tokenKind == TokenKind.Struct;
+        var declaration = Parser.ParseGroupDeclaration(
+            ref reader,
+            supportsGenericHeader,
+            supportsGenericHeader);
+        if (reader.IsExcluded)
+        {
+            reader.SkipCurrentBlock(false);
+            return true;
+        }
+
+        var state = reader.TakeContext();
+        var collection = this.GetOrAddCollection(declaration.Name, tokenKind, state, token.Span);
+        if (declaration.GenericArguments is not null && collection.GenericArguments.Count == 0)
+        {
+            collection.AddGenericArguments(declaration.GenericArguments);
+        }
+
+        if (declaration.Origins is not null && collection.Origins.Count == 0)
+        {
+            collection.AddOrigins(declaration.Origins);
+        }
+
+        if (reader.CurrentTokenKind == TokenKind.StartBlock)
+        {
+            collection.Parse(ref reader);
+        }
+
+        return true;
     }
 
     private void ParseRoot(ref TokenReader reader)
@@ -112,37 +171,8 @@ public sealed partial class GroupKoto : CollectionKoto
                 continue;
             }
 
-            if (tokenKind is TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract)
+            if (this.TryParseCollectionDeclaration(ref reader, token))
             {
-                reader.Advance();
-                var supportsGenericHeader = tokenKind == TokenKind.Struct;
-                var declaration = Parser.ParseGroupDeclaration(
-                    ref reader,
-                    supportsGenericHeader,
-                    supportsGenericHeader);
-                if (reader.IsExcluded)
-                {
-                    reader.SkipCurrentBlock(false);
-                    continue;
-                }
-
-                var state = reader.TakeContext();
-                var collection = this.GetOrAddCollection(declaration.Name, tokenKind, state, token.Span);
-                if (declaration.GenericArguments is not null && collection.GenericArguments.Count == 0)
-                {
-                    collection.AddGenericArguments(declaration.GenericArguments);
-                }
-
-                if (declaration.Origins is not null && collection.Origins.Count == 0)
-                {
-                    collection.AddOrigins(declaration.Origins);
-                }
-
-                if (reader.CurrentTokenKind == TokenKind.StartBlock)
-                {
-                    collection.Parse(ref reader);
-                }
-
                 continue;
             }
 

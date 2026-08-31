@@ -6,8 +6,12 @@ using System.Buffers;
 using Kimi.Diagnostics;
 
 /// <summary>
-/// Owns an immutable source text and provides line-based access to it.
+/// Owns immutable Kimi source text and maps UTF-16 offsets to lines and characters.
 /// </summary>
+/// <remarks>
+/// Offsets and character positions use .NET UTF-16 code units. Line terminators may be
+/// <c>\n</c>, <c>\r</c>, or <c>\r\n</c>; returned line spans exclude those terminators.
+/// </remarks>
 public sealed class SourceDocument
 {
     private static readonly SearchValues<char> LineBreakChars = SearchValues.Create("\r\n");
@@ -90,6 +94,7 @@ public sealed class SourceDocument
     /// </summary>
     /// <param name="offset">The zero-based absolute offset.</param>
     /// <returns>The corresponding source position.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="offset"/> is outside the document.</exception>
     public SourcePosition GetPosition(int offset)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
@@ -120,6 +125,7 @@ public sealed class SourceDocument
     /// </summary>
     /// <param name="position">The source position.</param>
     /// <returns>The corresponding absolute offset.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="position"/> is outside the document text.</exception>
     public int GetOffset(SourcePosition position)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(position.Line);
@@ -142,42 +148,49 @@ public sealed class SourceDocument
 
     private static int[] CreateLineStarts(ReadOnlySpan<char> sourceText)
     {
-        // Collect line starts in a pooled buffer and return an exact-size array.
+        // Start small to avoid renting a buffer proportional to the total character count
+        // for minified/generated documents that contain very few line breaks.
         var pool = ArrayPool<int>.Shared;
-        var buffer = pool.Rent((sourceText.Length / 16) + 8);
-        var count = 0;
-        buffer[count++] = 0;
-
-        var i = 0;
-        while (true)
+        var initialCapacity = Math.Clamp((sourceText.Length / 64) + 1, 4, 256);
+        var buffer = pool.Rent(initialCapacity);
+        try
         {
-            var next = sourceText.Slice(i).IndexOfAny(LineBreakChars);
-            if (next < 0)
-            {
-                break;
-            }
+            var count = 0;
+            buffer[count++] = 0;
 
-            i += next;
-            if (sourceText[i] == '\r' && i + 1 < sourceText.Length && sourceText[i + 1] == '\n')
+            var i = 0;
+            while (true)
             {
+                var next = sourceText[i..].IndexOfAny(LineBreakChars);
+                if (next < 0)
+                {
+                    break;
+                }
+
+                i += next;
+                if (sourceText[i] == '\r' && i + 1 < sourceText.Length && sourceText[i + 1] == '\n')
+                {
+                    i++;
+                }
+
                 i++;
+                if (count == buffer.Length)
+                {
+                    var larger = pool.Rent(buffer.Length * 2);
+                    buffer.AsSpan(0, count).CopyTo(larger);
+                    pool.Return(buffer);
+                    buffer = larger;
+                }
+
+                buffer[count++] = i;
             }
 
-            i++;
-            if (count == buffer.Length)
-            {
-                var larger = pool.Rent(buffer.Length * 2);
-                Array.Copy(buffer, larger, count);
-                pool.Return(buffer);
-                buffer = larger;
-            }
-
-            buffer[count++] = i;
+            return buffer.AsSpan(0, count).ToArray();
         }
-
-        var starts = buffer.AsSpan(0, count).ToArray();
-        pool.Return(buffer);
-        return starts;
+        finally
+        {
+            pool.Return(buffer);
+        }
     }
 
     private void ValidateSpan(SourceSpan span)

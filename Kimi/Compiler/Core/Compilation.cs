@@ -10,10 +10,17 @@ using Kimi.Compiler.Target;
 namespace Kimi.Compiler;
 
 /// <summary>
-/// Holds the target configuration and symbols for a project compilation.
+/// Represents one target-specific compilation of a <see cref="Project"/>.
 /// </summary>
+/// <remarks>
+/// A compilation owns the project's primary <see cref="Kotonoha"/>, records configured
+/// external Kotonoha dependencies, exposes conditional-compilation variables, and carries
+/// the target information used by later LLVM IR and binary-emission stages.
+/// </remarks>
 public class Compilation
 {
+    private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
+
     #region FieldAndProperty
 
     /// <summary>
@@ -25,12 +32,6 @@ public class Compilation
     /// Gets the project being compiled.
     /// </summary>
     public Project Project { get; }
-
-    /*public KimiOptions KimiOptions { get; private set; }
-
-    public ProjectFile ProjectFile { get; }
-
-    public string ProjectName { get; }*/
 
     /// <summary>
     /// Gets the parsed target triple.
@@ -50,7 +51,7 @@ public class Compilation
     /// <summary>
     /// Gets the configured external Kotonoha dependencies.
     /// </summary>
-    public KotonohaIdentifier[] KotonohaArray { get; private set; } = [];
+    public KotonohaIdentifier[] KotonohaArray { get; } = [];
 
     /// <summary>
     /// Gets the primary source unit for the project.
@@ -62,7 +63,7 @@ public class Compilation
     /// </summary>
     public Utf16Hashtable<BasicValue> Variables { get; private set; } = new();
 
-    private UInt32Hashtable<Kotonoha> kotonohaIdToKotonoha = new();
+    private readonly UInt32Hashtable<Kotonoha> kotonohaIdToKotonoha = new();
 
     #endregion
 
@@ -86,32 +87,58 @@ public class Compilation
     /// <param name="project">The project to compile.</param>
     public Compilation(Kimigayo kimigayo, Project project)
     {
+        ArgumentNullException.ThrowIfNull(kimigayo);
+        ArgumentNullException.ThrowIfNull(project);
+
         this.Kimigayo = kimigayo;
         this.Project = project;
+        this.KotonohaArray = project.ProjectFile.KotonohaArray?.ToArray() ?? [];
         this.Kotonoha = new(this, this.Project.Name, string.Empty);
+        this.kotonohaIdToKotonoha.Add(this.Kotonoha.Id, this.Kotonoha);
     }
 
     /// <summary>
     /// Configures the compilation for a target triple.
     /// </summary>
     /// <param name="target">The target triple text.</param>
-    /// <returns><see langword="true"/> when preparation succeeds.</returns>
+    /// <returns>
+    /// <see langword="true"/> when the architecture has a supported pointer width and LLVM data layout;
+    /// otherwise, <see langword="false"/> and the target state is reset to invalid.
+    /// </returns>
+    /// <remarks>
+    /// Successful preparation rebuilds the <c>os</c>, <c>windows</c>, <c>linux</c>,
+    /// <c>macos</c>, and <c>pointerWidth</c> conditional-compilation variables.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="target"/> is empty or whitespace.</exception>
     public bool Prepare(string target)
     {
-        this.TargetTriple = TargetTriple.Parse(target);
-        this.IrTarget = IrTarget.Create(this.TargetTriple);
+        ArgumentException.ThrowIfNullOrWhiteSpace(target);
+
+        var targetTriple = TargetTriple.Parse(target);
+        var irTarget = IrTarget.Create(targetTriple);
+
+        this.Variables.Clear();
+        if (targetTriple.Arch == Architecture.Unknown ||
+            irTarget.PointerWidth == 0 ||
+            irTarget.DataLayout.Length == 0)
+        {
+            this.TargetTriple = TargetTriple.Invalid;
+            this.IrTarget = IrTarget.Invalid;
+            return false;
+        }
+
+        this.TargetTriple = targetTriple;
+        this.IrTarget = irTarget;
 
         // External Kotonoha dependencies will be loaded here.
 
         // Rebuild target-dependent conditional compilation variables.
-        this.Variables.Clear();
-
-        var os = this.TargetTriple.OsName;
+        var os = targetTriple.OsName;
         this.Variables.Add("os", new(os));
-        this.Variables.Add("windows", new(string.Equals(os, "windows", StringComparison.InvariantCultureIgnoreCase)));
-        this.Variables.Add("linux", new(string.Equals(os, "linux", StringComparison.InvariantCultureIgnoreCase)));
-        this.Variables.Add("macos", new(string.Equals(os, "macos", StringComparison.InvariantCultureIgnoreCase)));
-        this.Variables.Add("pointerWidth", new(this.IrTarget.PointerWidth));
+        this.Variables.Add("windows", new(targetTriple.Os == OsType.Win32));
+        this.Variables.Add("linux", new(targetTriple.Os == OsType.Linux));
+        this.Variables.Add("macos", new(targetTriple.Os == OsType.MacOSX));
+        this.Variables.Add("pointerWidth", new(irTarget.PointerWidth));
 
         return true;
     }
@@ -149,11 +176,6 @@ public class Compilation
 
     internal void ScrubForTest()
     {
-        if (this.Kotonoha is null)
-        {
-            return;
-        }
-
         var builder = new IndentedStringBuilder();
         var builder2 = new IndentedStringBuilder();
         try
@@ -163,10 +185,10 @@ public class Compilation
 
             var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
             var st = builder.ToString();
-            File.WriteAllText(path, st, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.WriteAllText(path, st, Utf8WithoutBom);
 
             var bin = TinyhandSerializer.Serialize(this.Kotonoha);
-            this.Kimigayo.WriteLine(LogLevel.Information, $"Source: {st.Length * 2} bytes, Binary: {bin.Length} bytes");
+            this.Kimigayo.WriteLine(LogLevel.Information, $"Source: {(long)st.Length * sizeof(char)} bytes, Binary: {bin.Length} bytes");
 
             var kotonoha = new Kotonoha(this);
             TinyhandSerializer.DeserializeObject(bin, ref kotonoha);
@@ -179,14 +201,11 @@ public class Compilation
             kotonoha.RootKoto.UnparseAll(ref builder2);
             var path2 = Path.Combine(this.Project.Directory, Constants.Scrub2FileName);
             var st2 = builder2.ToString();
-            if (!st.SequenceEqual(st2))
+            if (!string.Equals(st, st2, StringComparison.Ordinal))
             {
                 this.Kimigayo.WriteLine(LogLevel.Error, "Data mismatch detected after serialization");
-                File.WriteAllText(path2, st2, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                File.WriteAllText(path2, st2, Utf8WithoutBom);
             }
-
-            // kotonoha.Root.WriteTo(ref builder2);
-            // var sb2 = builder2.ToString();
         }
         finally
         {

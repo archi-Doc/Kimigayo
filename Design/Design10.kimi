@@ -32,8 +32,8 @@ var x = array[1] // borrow/StructA
 var last = array[^1] // Last element
 var middle = array[1..^1] // Excludes both element 0 and the last element
 var y = array.remove(at: 1) // owner/StructA
-func Set(isize index, s/T obj) -> ()
-func Get(isize index) -> s/T
+func Set(index: isize, s/T obj) -> ()
+func Get(index: isize) -> s/T
 
 var array2 = Array<int>.new()
 
@@ -58,11 +58,11 @@ public group Kernel32 // shared (no instance)
     #LibraryImport(LibraryName) func WriteFile(hFile:ptr, lpBuffer:ptr, nNumberOfBytesToWrite:u32, lpNumberOfBytesWritten:ptr, lpOverlapped:ptr) -> i32
     #LibraryImport(LibraryName) func ExitProcess(
         #Description("Exit code")
-        u32 uExitCode
+        uExitCode: u32
         ) -> ()
 
-    public TestMethod() ->
-        @Macro()
+    public func TestMethod() ->
+        // @Macro()
         return
 
     #Layout(C)
@@ -70,15 +70,15 @@ public group Kernel32 // shared (no instance)
         public var Internal: usize
         public var Pointer: pointer
 
-namespace Program
+rootgroup Program
 
-struct $ :  StandardContext // Compose Context
-    public T Inject<T>()
+struct $ // :  StandardContext // Compose Context
+    public func T Inject<T>()
         -> self.GetService<T>() // IServiceProvider
 
-#Key(0) public let string Name = "Test Program"
+#Key(0) public let Name = "Test Program"
 #Key(1)
-public let string Name = "Test Program"
+public let Name = "Test Program"
 
 // (): Group (collection of values of any type)
 // []: Array (collection of values of the same type)
@@ -97,8 +97,8 @@ public group Helper // namespace - alias
 
     func Method2() ->
         #Condition(Os=="Windows")
-        block Initialize
-            var func = () -> 3 // () -> return 4
+        // block Initialize
+            var func = () => 3 // () -> return 4
             var i = if (x == true) 1 else 0
         var i2 = if (x == true)
             1
@@ -109,12 +109,12 @@ public group Helper // namespace - alias
             var z = Func()
             yield (z > 0)) 1 else 0
         var j = match x
-            true -> 1
-            false -> 0
+            true => 1
+            false => 0
         var k = match x
-            true ->
+            true =>
                 1
-            false ->
+            false =>
                 0
         return
 

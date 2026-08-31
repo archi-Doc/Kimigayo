@@ -148,6 +148,58 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void ParsesAttributedInteropDeclarationsInGroup()
+    {
+        const string Source = """
+            public group Kernel32
+                #LibraryImport(LibraryName) func ExitProcess(
+                    #Description("Exit code")
+                    uExitCode: u32
+                    ) -> ()
+
+                #Layout(C)
+                public struct OVERLAPPED
+            """;
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
+
+        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        Assert.True(
+            diagnostics.Length == 0,
+            string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
+
+        var kernel32 = Assert.IsType<GroupKoto>(
+            Assert.Single(kotonoha.RootKoto.NestedCollections, x => x.Name == "Kernel32"));
+        Assert.True(kernel32.Modifier.HasFlag(ModifierKind.Public));
+
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(kernel32.Members));
+        Assert.Equal("LibraryImport", GetAttributeName(function.AttributeChain));
+        var parameter = Assert.Single(function.Parameters);
+        Assert.Equal("uExitCode", parameter.ExternalName);
+        Assert.Equal("Description", GetAttributeName(parameter.AttributeChain));
+        Assert.Same(function, parameter.AttributeChain?.Parent);
+
+        var structure = Assert.IsType<StructKoto>(
+            Assert.Single(kernel32.NestedCollections, x => x.Name == "OVERLAPPED"));
+        Assert.True(structure.Modifier.HasFlag(ModifierKind.Public));
+        Assert.Equal("Layout", GetAttributeName(structure.AttributeChain));
+
+        var bytes = TinyhandSerializer.Serialize(kotonoha);
+        var restored = new Kotonoha(compilation);
+        TinyhandSerializer.DeserializeObject(bytes, ref restored);
+        var restoredKotonoha = restored ?? throw new InvalidOperationException();
+        restoredKotonoha.OnDeserialized(compilation);
+        var restoredKernel32 = Assert.IsType<GroupKoto>(
+            Assert.Single(restoredKotonoha.RootKoto.NestedCollections, x => x.Name == "Kernel32"));
+        var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(restoredKernel32.Members));
+        Assert.Equal("Description", GetAttributeName(Assert.Single(restoredFunction.Parameters).AttributeChain));
+
+        static string GetAttributeName(AttributeKoto? attribute)
+            => Assert.IsType<IdentifierNameKoto>(Assert.IsType<InvocationKoto>(attribute?.Operand).Method).IdentifierName;
+    }
+
+    [Fact]
     public void PreservesTopLevelStructModifiersThroughAddSource()
     {
         var compilation = Compilation.CreateForTest();
@@ -616,6 +668,56 @@ public class ParserRegressionTest
         Assert.Same(field, invocation.Parent);
         Assert.Same(invocation, invocation.Method.Parent);
         Assert.Same(invocation, invocation.Arguments[0].Parent);
+    }
+
+    [Fact]
+    public void ParsesLabeledAndAttributedInvocationArguments()
+    {
+        const string Source = "var y = array.remove(at: 1, #Attribute(2) \"One\")";
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        AssertInvocation(kotonoha);
+
+        var bytes = TinyhandSerializer.Serialize(kotonoha);
+        var deserialized = new Kotonoha(compilation);
+        TinyhandSerializer.DeserializeObject(bytes, ref deserialized);
+        var restored = deserialized ?? throw new InvalidOperationException();
+        restored.OnDeserialized(compilation);
+        AssertInvocation(restored);
+
+        var builder = default(IndentedStringBuilder);
+        try
+        {
+            restored.RootKoto.UnparseAll(ref builder);
+            Assert.Contains(Source, builder.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+
+        static void AssertInvocation(Kotonoha kotonoha)
+        {
+            var field = Assert.IsType<FieldKoto>(GetChildren(kotonoha.RootKoto).Single());
+            var invocation = Assert.IsType<InvocationKoto>(field.InitializerKoto);
+            Assert.IsType<MemberAccessKoto>(invocation.Method);
+            Assert.Collection(
+                invocation.ArgumentLabels,
+                label => Assert.Equal("at", label),
+                label => Assert.Null(label));
+            Assert.IsType<NumberLiteralKoto>(invocation.Arguments[0]);
+
+            var text = Assert.IsType<StringLiteralKoto>(invocation.Arguments[1]);
+            Assert.Equal("One", text.Literal);
+            var attribute = Assert.IsType<AttributeKoto>(text.AttributeChain);
+            Assert.Equal("Attribute", Assert.IsType<IdentifierNameKoto>(attribute.IdentifierKoto).IdentifierName);
+            Assert.Single(attribute.Arguments);
+            Assert.IsType<NumberLiteralKoto>(attribute.Arguments[0]);
+            Assert.Same(text, attribute.Parent);
+        }
     }
 
     [Fact]

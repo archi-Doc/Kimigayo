@@ -352,6 +352,11 @@ Loop:
                 return tokenKind;
             }
 
+            if (tokenKind == TokenKind.EndBlock)
+            {
+                return default;
+            }
+
             if (tokenKind == TokenKind.Separator)
             {
                 reachedNextStatement = true;

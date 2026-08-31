@@ -94,7 +94,7 @@ public class CollectionLiteralParseTest
     [Fact]
     public void PreservesCollectionLiteralsThroughSerializationAndUnparse()
     {
-        const string Source = "var value = [items: [1, 2], empty: []]";
+        const string Source = "var value = [\"items\": [1, 2], \"empty\": []]";
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
@@ -122,7 +122,7 @@ public class CollectionLiteralParseTest
         {
             restored.RootKoto.UnparseAll(ref builder);
             var text = builder.ToString();
-            Assert.Contains("[items: [1, 2], empty: []]", text, StringComparison.Ordinal);
+            Assert.Contains("[\"items\": [1, 2], \"empty\": []]", text, StringComparison.Ordinal);
 
             var reparsedCompilation = Compilation.CreateForTest();
             var reparsed = reparsedCompilation.Kotonoha;

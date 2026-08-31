@@ -490,18 +490,15 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
             this.AddLast(functionKoto);
         }
 
-        while (reader.CurrentTokenKind == TokenKind.Separator)
+        var functionBodyReader = reader;
+        while (functionBodyReader.CurrentTokenKind == TokenKind.Separator)
         {
-            reader.Advance();
+            functionBodyReader.Advance();
         }
 
-        if (reader.CurrentTokenKind != TokenKind.StartBlock)
+        if (functionBodyReader.CurrentTokenKind == TokenKind.StartBlock)
         {
-            reader.SkipUntilStartBlock(0);
-        }
-
-        if (reader.CurrentTokenKind == TokenKind.StartBlock)
-        {
+            reader = functionBodyReader;
             functionKoto.Parse(ref reader);
         }
 

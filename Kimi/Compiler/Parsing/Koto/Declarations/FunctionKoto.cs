@@ -31,19 +31,31 @@ public sealed partial record class FunctionParameterKoto
     [Key(4)]
     public Koto? DefaultValue { get; internal set; }
 
+    /// <summary>Gets the attributes applied to this parameter.</summary>
+    [Key(5)]
+    public AttributeKoto? AttributeChain { get; internal set; }
+
     /// <summary>Initializes a new instance of the <see cref="FunctionParameterKoto"/> class.</summary>
     /// <param name="externalName">The caller-facing name.</param>
     /// <param name="internalName">The body-facing name.</param>
     /// <param name="isOptional">Whether callers may omit the parameter.</param>
     /// <param name="type">The parameter type.</param>
     /// <param name="defaultValue">The default value, if present.</param>
-    public FunctionParameterKoto(string externalName, string internalName, bool isOptional, Koto type, Koto? defaultValue)
+    /// <param name="attributeChain">The parameter attributes, if present.</param>
+    public FunctionParameterKoto(
+        string externalName,
+        string internalName,
+        bool isOptional,
+        Koto type,
+        Koto? defaultValue,
+        AttributeKoto? attributeChain = null)
     {
         this.ExternalName = externalName;
         this.InternalName = internalName;
         this.IsOptional = isOptional;
         this.Type = type;
         this.DefaultValue = defaultValue;
+        this.AttributeChain = attributeChain;
     }
 }
 
@@ -120,11 +132,7 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
 
         foreach (var parameter in this.parameters)
         {
-            parameter.Type.Parent = this;
-            if (parameter.DefaultValue is not null)
-            {
-                parameter.DefaultValue.Parent = this;
-            }
+            this.AttachParameter(parameter);
         }
 
         if (returnType is not null)
@@ -196,6 +204,11 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
             }
 
             var parameter = this.Parameters[i];
+            if (parameter.AttributeChain is not null)
+            {
+                Parser.UnparseAttribute(parameter.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
+            }
+
             builder.Append(parameter.ExternalName);
             if (parameter.IsOptional)
             {
@@ -264,6 +277,11 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
 
         foreach (var parameter in this.parameters)
         {
+            if (parameter.AttributeChain is not null)
+            {
+                yield return parameter.AttributeChain;
+            }
+
             yield return parameter.Type;
             if (parameter.DefaultValue is not null)
             {
@@ -298,6 +316,12 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
 
         foreach (var parameter in this.parameters)
         {
+            if (parameter.AttributeChain == oldKoto && newKoto is AttributeKoto attribute)
+            {
+                parameter.AttributeChain = attribute;
+                return true;
+            }
+
             if (parameter.Type == oldKoto)
             {
                 parameter.Type = newKoto;
@@ -334,11 +358,7 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
 
         foreach (var parameter in this.parameters)
         {
-            parameter.Type.Parent = this;
-            if (parameter.DefaultValue is not null)
-            {
-                parameter.DefaultValue.Parent = this;
-            }
+            this.AttachParameter(parameter);
         }
 
         if (this.ReturnType is not null)
@@ -349,6 +369,24 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
         if (this.Body is not null)
         {
             this.Body.Parent = this;
+        }
+    }
+
+    private void AttachParameter(FunctionParameterKoto parameter)
+    {
+        Koto parent = this;
+        var attribute = parameter.AttributeChain;
+        while (attribute is not null)
+        {
+            attribute.Parent = parent;
+            parent = attribute;
+            attribute = attribute.AttributeChain;
+        }
+
+        parameter.Type.Parent = this;
+        if (parameter.DefaultValue is not null)
+        {
+            parameter.DefaultValue.Parent = this;
         }
     }
 }

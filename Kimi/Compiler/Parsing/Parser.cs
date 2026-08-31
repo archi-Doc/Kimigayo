@@ -255,13 +255,21 @@ public static class Parser
         }
 
         var parameters = new List<FunctionParameterKoto>();
-        while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseParenthesis)
+        while (reader.CanRead)
         {
-            if (reader.CurrentTokenKind == TokenKind.Separator)
+            ConsumeSeparators(ref reader);
+            while (reader.CurrentTokenKind == TokenKind.Sharp)
             {
-                reader.Advance();
-                continue;
+                _ = ParseAttributeKoto(ref reader);
+                ConsumeSeparators(ref reader);
             }
+
+            if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
+            {
+                break;
+            }
+
+            var parameterAttribute = reader.PopAttribute();
 
             if (!reader.TryRead(out var externalNameToken))
             {
@@ -313,9 +321,11 @@ public static class Parser
                 internalName,
                 isOptional,
                 parameterType,
-                defaultValue));
+                defaultValue,
+                parameterAttribute));
 
 NextParameter:
+            ConsumeSeparators(ref reader);
             if (reader.CurrentTokenKind == TokenKind.Comma)
             {
                 reader.Advance();
@@ -1771,7 +1781,7 @@ ProcessPrefix:
                 {
                     var openRange = reader.CurrentTokenRange;
                     reader.Advance();
-                    var arguments = ParseArgumentList(ref reader);
+                    var (arguments, argumentLabels) = ParseArgumentList(ref reader);
                     var end = arguments.Count == 0 ? openRange.End : Math.Max(openRange.End, arguments[^1].Span.End);
                     if (reader.TryConsume(TokenKind.CloseParenthesis, out var range, true))
                     {
@@ -1782,7 +1792,8 @@ ProcessPrefix:
                         ref reader,
                         SourceSpan.FromBounds(left.Span.Start, end),
                         left,
-                        arguments);
+                        arguments,
+                        argumentLabels);
                     return true;
                 }
 
@@ -1904,21 +1915,36 @@ ProcessPrefix:
         return false;
     }
 
-    private static List<Koto> ParseArgumentList(ref TokenReader reader)
+    private static (List<Koto> Arguments, List<string?> Labels) ParseArgumentList(ref TokenReader reader)
     {// (arg0, arg1, )
         var tokenKind = reader.CurrentTokenKind;
         if (tokenKind == TokenKind.CloseParenthesis)
         {
-            return [];
+            return ([], []);
         }
 
         SourceSpan range;
         var arguments = new List<Koto>();
+        var labels = new List<string?>();
 
         while (tokenKind != TokenKind.Invalid &&
                tokenKind != TokenKind.CloseParenthesis)
         {
+            string? label = default;
+            if (tokenKind.IsIdentifierOrContextualKeyword())
+            {
+                var lookahead = reader;
+                lookahead.Advance();
+                if (lookahead.CurrentTokenKind == TokenKind.Colon)
+                {
+                    label = reader.GetSpan(reader.CurrentToken).ToString();
+                    reader.Advance();
+                    reader.Advance();
+                }
+            }
+
             arguments.Add(ParseExpression(ref reader));
+            labels.Add(label);
 
             tokenKind = reader.CurrentTokenKind;
             if (tokenKind == TokenKind.Comma)
@@ -1948,7 +1974,7 @@ ProcessPrefix:
             break;
         }
 
-        return arguments;
+        return (arguments, labels);
     }
 
     private static Koto ParsePrimaryExpression(ref TokenReader reader)

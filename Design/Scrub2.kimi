@@ -1,22 +1,75 @@
-alias AliasB
-alias AliasC
+alias Kimi.Crypto
+alias Kimi.LowLevelInterface
+alias Kimi.Base.Windows
 
-var x: unsafe/Base.Map<String, Int>
-var count: i32 = #TestAtr 0
-let name: String = abc
-var items: Array<Int>
-var items2
-var map: Map<String, Int>
-var array: Array<owner/T.U> = new()
-var obj = T.new()
-var obj2 = T.new()
-var movedObj = obj
-var movedObj
-array.Add(movedObj)
-private func find()
-public func Main()
+var array = Array<owner/StructA>.new()
+array[1] = StructA.new()
+var x = array[1]
+var last = array[^1]
+var middle = array[1..^1]
+var y = array.remove(at: 1)
+func Get(index: isize) -> s/T
+var array2 = Array<int>.new()
+var count: i32 = 0
+let name: String = "abc"
+var items: Array<Int> = [1, 2, 3]
+var items2 = [1, 2, 3]
+var map: Map<String, Int> = ["A": 1, "B": 2]
+var array: Array<owner/T> = new()
+#Key(0)
+public let Name = "Test Program"
+#Key(1)
+public let Name = "Test Program"
 
-#Test1
-public static var #Test2 x: i32 = #One 1
-let pi = 1.2
-buffer
+public struct Array<s/T>
+    Self is all
+    s is owning
+    T is Comparable
+
+    var count: isize
+    var capacity: isize
+    var buffer: ptr
+
+public contract Comparable
+
+public contract Equatable
+
+public rootgroup Helper
+    public let Id: i32 = 123
+    public func Method1() -> int32
+        return 1
+    func Method2() -> Error
+        Error
+        var i = if (x == true)
+
+    var i2 = if (x == true)
+        1
+    else
+        Error
+    var i3 = if (Error)
+
+    var j = match x
+        true => 1
+        false => 0
+    var k = match x
+        true =>
+            1
+        false =>
+            0
+
+#Description("Kernel32 helper")
+
+public rootgroup Kernel32
+    public let libraryName: string = "Kernel32.dll"
+    public let count = 1
+    #LibraryImport(LibraryName)
+    public func GetStdHandle(nStdHandle: u32) -> ptr
+    #LibraryImport(LibraryName)
+    func WriteFile(hFile: ptr, lpBuffer: ptr, nNumberOfBytesToWrite: u32, lpNumberOfBytesWritten: ptr, lpOverlapped: ptr) -> i32
+    #LibraryImport(LibraryName)
+    func ExitProcess() -> ()
+
+    #Layout(C)
+    public struct OVERLAPPED
+        public var Internal: usize
+        public var Pointer: pointer
