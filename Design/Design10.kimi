@@ -86,7 +86,7 @@ public let Name = "Test Program"
 // {}: Not used
 
 // Group: namespace, group, struct
-// Map: method:return, switch:yield, if:yield, loop:break
+// Map: func:return, switch:yield, if:yield, loop:break
 // Statement: while, for
 // Block
 
@@ -174,77 +174,62 @@ func Main()
     return
 
 public group Example
-    public method Main() -> Task
+    public func Main() -> Task
         $Console.WriteLine("Hello world!")
         context.Console.WriteLine("Hello world!")
-        Example::Example.Test()
+        Example.Example.Test()
         $Panic("")
         self.Method2(32)
-        new Class() -> var x
-        var x = new Class()
-        var y = &x
-        var z = !x
-        var a < new Class()
-        &Class b < &x
-        !Class c <- !x
-classA.x = classB.x
-classA.y <= classB.y
+        var x = Class.new()
+        var y = x@ref
         return
 
-    private static method Test()
-
-    private static method Test() -> Task
+    private static func Test() -> Task
         // Block
         if (context.CancellationToken.IsCancelRequested)
             return
 
         var st = TestStruct.New()
         var st2 = Arc.New(st) // &owner Arc<TestStruct> // TそのものはThread-traversalではない
-        _ = Task.Run(async () -> // Closure -> Block. Require reference analysis
+        /*_ = Task.Run(async () -> // Closure -> Block. Require reference analysis
             var i = 0
             i++
             st.Test() // Error
             st2.Test() // Success
-        )
-
-        _ = Task.Run(async () ->
-            var i = 0
-            i++
-        )
-        .ConfigureAwait(false)
+        )*/
 
 
 
 #Namespace(Kimi.Low.Windows)
 public group Helper
     #LibraryImport("kernel32.dll")
-    public static method HeapAlloc(isize hHeap, uint32 dwFlags, usize dwBytes) -> isize
+    public static func HeapAlloc(hHeap: isize, dwFlags: uint32, dwBytes: usize) -> isize
 
-    public method Method1(int x) -> int
+    public func Method1(x: i32) -> i32
         return x + 4
 
     #Condition(Architecture=="x64")
-    public method ReadTsc() -> i64
+    public func ReadTsc() -> i64
         let low: u32;
         let high: u32;
-        #Assembler(
+        #Assembler("""
             "rdtsc",
             out("eax") low,
             out("edx") high,
             options(nomem, nostack, preserves_flags)
-            )
-        return ((high as u64) << 32) | low as u64
+            """)
+        return ((high@u64) << 32) | low@u64
 
-impl ExampleImpl1
+/*impl ExampleImpl1
     int x
 
-    method Metho2(int x) int
-        return x + 1
+    func Metho2(x: i32) -> i32
+        return x + 1*/
 
-if (a == 1 &&
+if (a == 1 and
     b == 2)
-var x = [1,
-    2,]
+    var x = [1,
+        2,]
 var a = 1 +
     2
 
@@ -253,8 +238,8 @@ var record = Record.New()
     C = Value.New()
         X = 1
     B = "D"
-var func = () ->
-    return
+// var func = () ->
+//     return
 
 chainMethod().Do().IsTrue()
 

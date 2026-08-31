@@ -450,10 +450,16 @@ internal ref struct Tokenizer
     public void ReadAll()
     {
         this.currentIndentLevel = 0;
-        while (this.Read() > 0 &&
+        do
+        {
+            this.Read();
+        }
+        while (this.position < this.sourceText.Length);
+
+        /*while (this.Read() > 0 &&
             this.position < this.sourceText.Length)
         {
-        }
+        }*/
     }
 
     private int Read()

@@ -26,6 +26,29 @@ public func TestMethod()
 $WriteLine("Kimigayo")
 func Main()
     var array: Array<i32> = [1, 2]
+    var array: Array<i32> = [1, 2]
+    for x in array
+        $Print(x)
+    var i = 8
+    var j = i++
+    var st = i.ToString()
+    Error
+    var x = 1
+    return
+if (a == 1 and b == 2)
+    var x = [1, 2]
+var a = 1 + 2
+var record = Record.New()
+A = 3
+C = Value.New()
+X = 1
+B = "D"
+chainMethod().Do().IsTrue()
+complexMethod(A, B, C)
+if (Condition)
+    return 1
+else
+    return 9
 
 public struct Array<s/T>
     Self is all
@@ -58,6 +81,22 @@ public rootgroup Kernel32
     public struct OVERLAPPED
         public var Internal: usize
         public var Pointer: pointer
+
+public rootgroup Example
+    public func Main() -> Task
+        $Console.WriteLine("Hello world!")
+        context.Console.WriteLine("Hello world!")
+        Example.Example.Test()
+        $Panic("")
+        self.Method2(32)
+        var x = Class.new()
+        var y = x@ref
+        return
+    private static func Test() -> Task
+        if (context.CancellationToken.IsCancelRequested)
+            return
+        var st = TestStruct.New()
+        var st2 = Arc.New(st)
 
 struct Context
     public func Inject<T>() -> T
@@ -92,6 +131,20 @@ public rootgroup Helper
             false =>
                 0
         return
+    #LibraryImport("kernel32.dll")
+    public static func HeapAlloc(hHeap: isize, dwFlags: uint32, dwBytes: usize) -> isize
+    public func Method1(x: i32) -> i32
+        return x + 4
+    #Condition(Architecture == "x64")
+    public func ReadTsc() -> i64
+        let low: u32
+        let high: u32
+        return ((#Assembler("""
+                    "rdtsc",
+                    out("eax") low,
+                    out("edx") high,
+                    options(nomem, nostack, preserves_flags)
+                    """) high@u64) << 32) | low@u64
 
 #TinyhandObject
 public struct TestStruct
