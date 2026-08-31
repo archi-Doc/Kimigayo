@@ -56,6 +56,12 @@ public enum KotoKind : byte
     /// <summary>A string literal.</summary>
     StringLiteral,
 
+    /// <summary>An array literal expression.</summary>
+    ArrayLiteral,
+
+    /// <summary>A dictionary literal expression.</summary>
+    DictionaryLiteral,
+
     /// <summary>An identifier name.</summary>
     IdentifierName,
 
@@ -339,6 +345,8 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Continue, typeof(ContinueKoto))]
 [TinyhandUnion((int)KotoKind.TupleType, typeof(TupleTypeKoto))]
 [TinyhandUnion((int)KotoKind.FunctionType, typeof(FunctionTypeKoto))]
+[TinyhandUnion((int)KotoKind.ArrayLiteral, typeof(ArrayLiteralKoto))]
+[TinyhandUnion((int)KotoKind.DictionaryLiteral, typeof(DictionaryLiteralKoto))]
 [ValueLinkObject]
 public abstract partial class Koto
 {

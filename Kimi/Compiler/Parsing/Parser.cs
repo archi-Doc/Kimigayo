@@ -2034,6 +2034,9 @@ Loop:
                     return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, end), expression);
                 }
 
+            case TokenKind.OpenBracket:
+                return ParseCollectionLiteral(ref reader);
+
             case TokenKind.Separator:
                 reader.Advance();
                 goto Loop;
@@ -2045,6 +2048,153 @@ Loop:
 
                     return new ErrorKoto(ref reader, token.Span);
                 }
+        }
+    }
+
+    private static Koto ParseCollectionLiteral(ref TokenReader reader)
+    {
+        var openRange = reader.CurrentTokenRange;
+        reader.Advance();
+        ConsumeSeparators(ref reader);
+
+        if (reader.TryConsume(TokenKind.CloseBracket, out var emptyArrayClose, false))
+        {
+            return new ArrayLiteralKoto(
+                ref reader,
+                SourceSpan.FromBounds(openRange.Start, emptyArrayClose.End),
+                []);
+        }
+
+        if (reader.CurrentTokenKind == TokenKind.Colon)
+        {
+            reader.Advance();
+            ConsumeSeparators(ref reader);
+            var end = openRange.End;
+            if (reader.TryConsume(TokenKind.CloseBracket, out var emptyDictionaryClose, true))
+            {
+                end = emptyDictionaryClose.End;
+            }
+
+            return new DictionaryLiteralKoto(
+                ref reader,
+                SourceSpan.FromBounds(openRange.Start, end),
+                []);
+        }
+
+        var first = ParseLiteralElement(ref reader);
+        ConsumeSeparators(ref reader);
+        return reader.CurrentTokenKind == TokenKind.Colon
+            ? ParseDictionaryLiteral(ref reader, openRange, first)
+            : ParseArrayLiteral(ref reader, openRange, first);
+
+        static ArrayLiteralKoto ParseArrayLiteral(ref TokenReader reader, SourceSpan openRange, Koto first)
+        {
+            var elements = new List<Koto> { first };
+            while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseBracket)
+            {
+                if (reader.CurrentTokenKind != TokenKind.Comma)
+                {
+                    reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
+                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, 0);
+                    if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+                    {
+                        break;
+                    }
+                }
+
+                reader.Advance();
+                ConsumeSeparators(ref reader);
+                if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+                {
+                    break;
+                }
+
+                elements.Add(ParseLiteralElement(ref reader));
+                ConsumeSeparators(ref reader);
+            }
+
+            var end = elements[^1].Span.End;
+            if (reader.TryConsume(TokenKind.CloseBracket, out var closeRange, true))
+            {
+                end = closeRange.End;
+            }
+
+            return new ArrayLiteralKoto(
+                ref reader,
+                SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)),
+                elements);
+        }
+
+        static DictionaryLiteralKoto ParseDictionaryLiteral(ref TokenReader reader, SourceSpan openRange, Koto firstKey)
+        {
+            var entries = new List<DictionaryLiteralEntry>();
+            var key = firstKey;
+            while (reader.CanRead)
+            {
+                if (reader.CurrentTokenKind != TokenKind.Colon)
+                {
+                    reader.Diagnostic.Add(
+                        reader.CurrentTokenRange,
+                        DiagnosticCode.TokenMismatch_Kd,
+                        TokenKind.Colon.ToText());
+                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, 0);
+                }
+                else
+                {
+                    reader.Advance();
+                    ConsumeSeparators(ref reader);
+                    var value = ParseLiteralElement(ref reader);
+                    entries.Add(new(key, value));
+                    ConsumeSeparators(ref reader);
+                }
+
+                if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+                {
+                    break;
+                }
+
+                if (reader.CurrentTokenKind != TokenKind.Comma)
+                {
+                    reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
+                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, 0);
+                    if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+                    {
+                        break;
+                    }
+                }
+
+                reader.Advance();
+                ConsumeSeparators(ref reader);
+                if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+                {
+                    break;
+                }
+
+                key = ParseLiteralElement(ref reader);
+                ConsumeSeparators(ref reader);
+            }
+
+            var end = entries.Count == 0 ? firstKey.Span.End : entries[^1].Value.Span.End;
+            if (reader.TryConsume(TokenKind.CloseBracket, out var closeRange, true))
+            {
+                end = closeRange.End;
+            }
+
+            return new DictionaryLiteralKoto(
+                ref reader,
+                SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)),
+                entries);
+        }
+
+        static Koto ParseLiteralElement(ref TokenReader reader)
+        {
+            if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Comma or TokenKind.CloseBracket)
+            {
+                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                return reader.NewErrorKoto();
+            }
+
+            return ParseExpression(ref reader);
         }
     }
 
