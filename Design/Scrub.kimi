@@ -1,35 +1,63 @@
-alias AliasB
-alias AliasC
+alias Kimi.Crypto
+alias Kimi.LowLevelInterface
+alias Kimi.Base.Windows
 
-var x: unsafe/Base.Map<String, Int>
-var count: i32 = #TestAtr 0
+var array = Array<owner/StructA>.new()
+array[1] = StructA.new()
+var x = array[1]
+var last = array[^1]
+var middle = array[1..^1]
+var y = array.remove(at, s / T)
+var array2 = Array<int>.new()
+var count: i32 = 0
 let name: String = abc
-var items: Array<Int>
-var items2
-var map: Map<String, Int>
-var array: Array<owner/T.U> = new()
-var obj = T.new()
-var obj2 = T.new()
-var movedObj = obj
-var movedObj = obj@unsafe/T
-array.Add(movedObj)
-private func find<s/T, owner/T2>(value?: T, in => collection: Collection<T>, using => comparer: (s/T, T) -> Bool) -> i32
-    s is valueborrow or objectborrow
+var items: Array<Int> = [1, 2, 3]
+var items2 = [1, 2, 3]
+var map: Map<String, Int> = [A: 1, B: 2]
+var array: Array<owner/T> = new()
+namespace
+return
+
+public struct Array<s/T>
+    Self is all
+    s is owning
     T is Comparable
-    return 0
-public func Main() -> ()
-    return
 
-public open struct TestStruct<s/C, D> origin a, b
-    semantics is reference
-    Self is A or B
-    C is comparable
-    s is all
+    var count: isize
+    var capacity: isize
+    var buffer: ptr
 
-    #Test1
-    public static var #Test2 x: i32 = #One 1
-    let pi = 1.2
-    private let buffer: ref/Array<i32> from a
-    private let buffer2: ref/Array<ref/C from b> from a
-    public func Add(x: i32, y: i32) -> i32
-        return x + (y + 3) * (x - 2)
+public contract Comparable
+
+public rootgroup Helper
+    public let Id: i32 = 123
+    public func Method1() -> int32
+        return 1
+    func Method2() -> Error
+        #Condition(Os == Windows) block
+        Error
+        var i = if (x == true)
+
+    var i2 = if (x == true)
+        1
+    else
+        Error
+    var i3 = if (Error)
+
+    var j = match x
+
+    var k = match x
+
+public contract Equatable
+
+#Description(Kernel32 helper)
+
+public rootgroup Kernel32
+    public let libraryName: string = Kernel32.dll
+    public let count = 1
+    #LibraryImport(LibraryName)
+    public func GetStdHandle(nStdHandle: u32) -> ptr
+    #LibraryImport(LibraryName)
+    func ExitProcess()
+        Error
+        return

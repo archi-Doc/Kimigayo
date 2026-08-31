@@ -11,7 +11,7 @@ alias Kimi.Base.Windows
 /* Multi-line
    comment */
 
-roogroup Playground.A // Represents a group that specifies an identifier by its absolute position.
+rootgroup Playground.A // Represents a group that specifies an identifier by its absolute position.
 
 // Type Semantics = s/T
 // owner, borrow, stack, ownerref, borrowref, rc, arc, unsafe,
@@ -22,9 +22,9 @@ public struct Array<s/T>
 
     // Index and Range endpoints are nonnegative isize values.
     // ^n resolves to count - n. ^0 is a valid Range boundary but not an element Index.
-    count: isize
-    capacity: isize
-    buffer: ptr
+    var count: isize
+    var capacity: isize
+    var buffer: ptr
 
 var array = Array<owner/StructA>.new()
 array[1] = StructA.new()
@@ -32,51 +32,36 @@ var x = array[1] // borrow/StructA
 var last = array[^1] // Last element
 var middle = array[1..^1] // Excludes both element 0 and the last element
 var y = array.remove(at: 1) // owner/StructA
-func Set(isize index, s/T obj) => ()
-func Get(isize index) => s/T
+func Set(isize index, s/T obj) -> ()
+func Get(isize index) -> s/T
 
 var array2 = Array<int>.new()
 
-var x = t@T{owner}
-var y = x@{borrow} // T{borrow}
-var i = 3@i32
-var refInt = i@{stack} // ref int 3
+public contract Equatable
+    // static func ==(left: Self, right: Self) -> Bool
 
-public contract @Equatable
-    static function ==(left: Self, right: Self) => Bool
-
-#Attribute() var x = 1
-$Macro
-@Contract
-
-public contract @Comparable
-    static func < (left: Self, right: Self) => bool
+public contract Comparable
+    // static func < (left: Self, right: Self) -> bool
 
 var count: i32 = 0
 let name: String = "abc"
 var items: Array<Int> = [1, 2, 3]
 var items2 = [1, 2, 3, ]
 var map: Map<String, Int> = ["A": 1, "B": 2]
-var array: Array<&owner T> = new()
-var obj = T.New() // T: stack
-var obj2 = &owner T.New() // &owner T: heap
-var movedObj <= &owner obj // obj => movedObj
-var movedObj = &move obj
-&owner obj => var movedObj
-array.Add(movedObj) // movedObj => array
+var array: Array<owner/T> = new()
 
 #Description("Kernel32 helper")
-public namespace Kernel32 // shared (no instance)
+public group Kernel32 // shared (no instance)
     public let libraryName: string = "Kernel32.dll"
     public let count = 1 // readonly
-    #LibraryImport(LibraryName) public GetStdHandle(nStdHandle: u32) => ptr
-    #LibraryImport(LibraryName) WriteFile(hFile:ptr, lpBuffer:ptr, nNumberOfBytesToWrite:u32, lpNumberOfBytesWritten:ptr, lpOverlapped:ptr) => i32
-    #LibraryImport(LibraryName) ExitProcess(
+    #LibraryImport(LibraryName) public func GetStdHandle(nStdHandle: u32) -> ptr
+    #LibraryImport(LibraryName) func WriteFile(hFile:ptr, lpBuffer:ptr, nNumberOfBytesToWrite:u32, lpNumberOfBytesWritten:ptr, lpOverlapped:ptr) -> i32
+    #LibraryImport(LibraryName) func ExitProcess(
         #Description("Exit code")
         u32 uExitCode
-        ) => ()
+        ) -> ()
 
-    public TestMethod() =>
+    public TestMethod() ->
         @Macro()
         return
 
@@ -89,11 +74,11 @@ namespace Program
 
 struct $ :  StandardContext // Compose Context
     public T Inject<T>()
-        => self.GetService<T>() // IServiceProvider
+        -> self.GetService<T>() // IServiceProvider
 
-#Key(0) public const string Name = "Test Program"
+#Key(0) public let string Name = "Test Program"
 #Key(1)
-public const string Name = "Test Program"
+public let string Name = "Test Program"
 
 // (): Group (collection of values of any type)
 // []: Array (collection of values of the same type)
@@ -106,14 +91,14 @@ public const string Name = "Test Program"
 // Block
 
 public group Helper // namespace - alias
-    public const i32 Id = 123
-    public Method1() => int32 // use PackageName, Helper
+    public let Id: i32 = 123
+    public func Method1() -> int32 // use PackageName, Helper
         return 1
 
-    Method2() =>
+    func Method2() ->
         #Condition(Os=="Windows")
         block Initialize
-            var func = () => 3 // () => return 4
+            var func = () -> 3 // () -> return 4
             var i = if (x == true) 1 else 0
         var i2 = if (x == true)
             1
@@ -124,20 +109,20 @@ public group Helper // namespace - alias
             var z = Func()
             yield (z > 0)) 1 else 0
         var j = match x
-            true => 1
-            false => 0
+            true -> 1
+            false -> 0
         var k = match x
-            true =>
+            true ->
                 1
-            false =>
+            false ->
                 0
         return
 
 public struct SomeObject
     #Inject
-    objref/IConsoleService ConsoleService { get; }
+    // objref/IConsoleService ConsoleService { get; }
 
-    public New() => Self
+    public func New() -> Self
         var self = Self
         // self.ConsoleService = $Inject<IConsoleService>() // GetService
         return self
@@ -147,18 +132,18 @@ public struct TestStruct // group + field
     #Key(1)
     var id: i32
 
-    public New() => Self
+    public func New() -> Self
         self.id = 11
 
-    public GetId(&) => i32 // &, &owner, &rc, &arc
+    public func GetId(&) -> i32 // &, &owner, &rc, &arc
         return self.id
 
-    public GetText(&, i32 id) => string
-        return id switch
+    public func GetText(&, i32 id) -> string
+        return id match
             1 => "Test",
             2 => 
 
-TestMethod()
+public func TestMethod()
     var st = TestStruct.New()
     
 
@@ -186,12 +171,10 @@ method Main()
     var st = i.ToString()
     loop
         var x = 1
-    switch ()
-        case ()
     return
 
 public group Example
-    public method Main() => Task
+    public method Main() -> Task
         $Console.WriteLine("Hello world!")
         context.Console.WriteLine("Hello world!")
         Example::Example.Test()
@@ -210,21 +193,21 @@ classA.y <= classB.y
 
     private static method Test()
 
-    private static method Test() => Task
+    private static method Test() -> Task
         // Block
         if (context.CancellationToken.IsCancelRequested)
             return
 
         var st = TestStruct.New()
         var st2 = Arc.New(st) // &owner Arc<TestStruct> // TそのものはThread-traversalではない
-        _ = Task.Run(async () => // Closure -> Block. Require reference analysis
+        _ = Task.Run(async () -> // Closure -> Block. Require reference analysis
             var i = 0
             i++
             st.Test() // Error
             st2.Test() // Success
         )
 
-        _ = Task.Run(async () =>
+        _ = Task.Run(async () ->
             var i = 0
             i++
         )
@@ -264,12 +247,13 @@ var x = [1,
     2,]
 var a = 1 +
     2
+
 var record = Record.New()
     A = 3
     C = Value.New()
         X = 1
     B = "D"
-var func = () =>
+var func = () ->
     return
 
 chainMethod().Do().IsTrue()
