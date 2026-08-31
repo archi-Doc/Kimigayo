@@ -126,7 +126,12 @@ public class RangeIndexParseTest
         var restored = deserialized ?? throw new InvalidOperationException();
         restored.OnDeserialized(compilation);
 
-        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
+        var generatedFunction = Assert.IsType<FunctionKoto>(restored.GeneratedFunction);
+        Assert.True(generatedFunction.IsGenerated);
+        Assert.Same(restored.RootKoto, generatedFunction.Parent);
+        var generatedBody = Assert.IsType<CodeBlockKoto>(generatedFunction.Body);
+        Assert.Same(generatedFunction, generatedBody.Parent);
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(generatedBody.Items));
         var body = Assert.IsType<CodeBlockKoto>(function.Body);
         var field = Assert.IsType<FieldKoto>(body.Items[0]);
         var index = Assert.IsType<IndexKoto>(field.InitializerKoto);
@@ -175,5 +180,7 @@ public class RangeIndexParseTest
     }
 
     private static List<Koto> GetChildren(CollectionKoto group)
-        => (List<Koto>)KotoListProperty.GetValue(group)!;
+        => ReferenceEquals(group, group.Kotonoha.RootKoto)
+            ? group.Kotonoha.GeneratedFunction?.Body?.Items.ToList() ?? []
+            : (List<Koto>)KotoListProperty.GetValue(group)!;
 }

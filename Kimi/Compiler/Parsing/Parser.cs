@@ -1200,7 +1200,10 @@ Exit:
             hasTrailingExpression);
     }
 
-    private static Koto? ParseBlockItem(ref TokenReader reader, out bool isDeclaration)
+    internal static Koto? ParseBlockItem(
+        ref TokenReader reader,
+        out bool isDeclaration,
+        bool requiresFunctionBody = true)
     {
         var token = reader.CurrentToken;
         switch (token.Kind)
@@ -1227,7 +1230,7 @@ Exit:
                     reader = functionBodyReader;
                     function.Parse(ref reader);
                 }
-                else
+                else if (requiresFunctionBody)
                 {
                     reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
                 }

@@ -12,6 +12,7 @@ var obj = T.new()
 var obj2 = T.new()
 var movedObj = obj
 var movedObj = obj@unsafe/T
+array.Add(movedObj)
 private func find<s/T, owner/T2>(value?: T, in => collection: Collection<T>, using => comparer: (s/T, T) -> Bool) -> i32
     s is valueborrow or objectborrow
     T is Comparable

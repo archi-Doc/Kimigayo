@@ -13,6 +13,7 @@ public static class Constants
     public const string ScrubFileName = "Scrub.kimi";
     public const string Scrub2FileName = "Scrub2.kimi";
     public const string RootKotoName = "Root";
+    public const string GeneratedFunctionName = "<Generated>";
 
     // Primitive type keywords
     public const string BoolKeyword = "bool";

@@ -241,6 +241,10 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         this.GenericArguments.Clear();
         this.TypeConstraints.Clear();
         this.Origins.Clear();
+        if (ReferenceEquals(this, this.Kotonoha.RootKoto))
+        {
+            this.Kotonoha.ClearGeneratedFunction();
+        }
     }
 
     /// <summary>Writes this group and all nested groups as source text.</summary>
@@ -704,6 +708,17 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
 
                 previousToplevel = x.IsToplevel;
             }
+        }
+
+        if (this.IsRoot && this.Kotonoha.GeneratedFunction is { Body.Items.Count: > 0 } generatedFunction)
+        {
+            if (this.KotoList.Count > 0)
+            {
+                builder.AppendLine();
+            }
+
+            generatedFunction.WriteTo(ref builder);
+            builder.AppendLine();
         }
 
         var groups = this.IdentifierToCollectionKoto.ToArray();

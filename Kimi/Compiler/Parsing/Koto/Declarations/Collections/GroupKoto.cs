@@ -50,10 +50,22 @@ public sealed partial class GroupKoto : CollectionKoto
         this.ParseRoot(ref reader);
     }
 
+    protected override IEnumerable<Koto> GetChildNodes()
+    {
+        foreach (var child in base.GetChildNodes())
+        {
+            yield return child;
+        }
+
+        if (ReferenceEquals(this, this.Kotonoha.RootKoto) && this.Kotonoha.GeneratedFunction is not null)
+        {
+            yield return this.Kotonoha.GeneratedFunction;
+        }
+    }
+
     private void ParseRoot(ref TokenReader reader)
     {
         ConsumeBlockStart(ref reader);
-        var declarationOrder = DeclarationOrder.None;
         var hasNonAliasDeclaration = false;
         while (TryBeginDeclaration(ref reader))
         {
@@ -134,9 +146,28 @@ public sealed partial class GroupKoto : CollectionKoto
                 continue;
             }
 
-            if (!this.TryParseFieldOrFunction(ref reader, ref declarationOrder))
+            var oldPosition = reader.Position;
+            var item = Parser.ParseBlockItem(ref reader, out var isDeclaration, requiresFunctionBody: false);
+            var hasTrailingExpression = !isDeclaration;
+            if (reader.CurrentTokenKind == TokenKind.Semicolon)
             {
-                SkipUnexpectedDeclaration(ref reader, token);
+                hasTrailingExpression = false;
+                reader.Advance();
+            }
+            else if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
+            {
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+            }
+
+            var isExcluded = item is FunctionKoto function ? function.IsExcluded : reader.IsExcluded;
+            if (item is not null && !isExcluded)
+            {
+                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, item, hasTrailingExpression);
+            }
+
+            if (reader.Position == oldPosition)
+            {
+                reader.Advance();
             }
         }
     }

@@ -241,5 +241,7 @@ public class FunctionBodyParseTest
     }
 
     private static List<Koto> GetChildren(CollectionKoto group)
-        => (List<Koto>)KotoListProperty.GetValue(group)!;
+        => ReferenceEquals(group, group.Kotonoha.RootKoto)
+            ? group.Kotonoha.GeneratedFunction?.Body?.Items.ToList() ?? []
+            : (List<Koto>)KotoListProperty.GetValue(group)!;
 }

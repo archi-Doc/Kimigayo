@@ -68,7 +68,17 @@ public class KotoHierarchyTest
         var root = compilation.Kotonoha.RootKoto;
         compilation.Kotonoha.CreateCodeContext().Parse(root, "var value: i32 = 1 + 2");
 
-        var field = Assert.IsType<FieldKoto>(Assert.Single(root.Members));
+        Assert.Empty(root.Members);
+        var generatedFunction = Assert.IsType<FunctionKoto>(compilation.Kotonoha.GeneratedFunction);
+        Assert.True(generatedFunction.IsGenerated);
+        Assert.Equal(Constants.GeneratedFunctionName, generatedFunction.Name);
+        Assert.Same(root, generatedFunction.Parent);
+        Assert.Contains(generatedFunction, root.ChildNodes);
+
+        var body = Assert.IsType<CodeBlockKoto>(generatedFunction.Body);
+        Assert.Same(generatedFunction, body.Parent);
+        var field = Assert.IsType<FieldKoto>(Assert.Single(body.Items));
+        Assert.Same(body, field.Parent);
         Assert.Collection(
             field.ChildNodes,
             child => Assert.IsType<IdentifierNameKoto>(child),
@@ -78,6 +88,79 @@ public class KotoHierarchyTest
         var addition = Assert.IsType<PlusKoto>(field.InitializerKoto);
         Assert.Equal(2, addition.ChildNodes.Count());
         Assert.All(addition.ChildNodes, child => Assert.Same(addition, child.Parent));
+    }
+
+    [Fact]
+    public void CollectsExecutableTopLevelSyntaxInGeneratedFunction()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            var value = 1
+            value += 2
+            if value > 0
+                value
+            return value
+            func Local()
+                return
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(kotonoha.RootKoto.Members);
+        var generatedFunction = Assert.IsType<FunctionKoto>(kotonoha.GeneratedFunction);
+        var body = Assert.IsType<CodeBlockKoto>(generatedFunction.Body);
+        Assert.Collection(
+            body.Items,
+            item => Assert.IsType<FieldKoto>(item),
+            item => Assert.IsType<PlusEqualsKoto>(item),
+            item => Assert.IsType<IfKoto>(item),
+            item => Assert.IsType<ReturnKoto>(item),
+            item => Assert.IsType<FunctionKoto>(item));
+        Assert.False(body.HasTrailingExpression);
+        Assert.All(body.Items, item => Assert.Same(body, item.Parent));
+
+        var builder = default(IndentedStringBuilder);
+        try
+        {
+            kotonoha.RootKoto.UnparseAll(ref builder);
+            var text = builder.ToString();
+            Assert.Contains("var value = 1", text, StringComparison.Ordinal);
+            Assert.Contains("value += 2", text, StringComparison.Ordinal);
+            Assert.Contains("func Local()", text, StringComparison.Ordinal);
+            Assert.DoesNotContain(Constants.GeneratedFunctionName, text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+    }
+
+    [Fact]
+    public void DoesNotCreateGeneratedFunctionForCollectionDeclarationsOnly()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "struct Value");
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Null(kotonoha.GeneratedFunction);
+        Assert.Single(kotonoha.RootKoto.NestedCollections);
+    }
+
+    [Fact]
+    public void ClearingRootRemovesGeneratedFunction()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "run()");
+        Assert.NotNull(kotonoha.GeneratedFunction);
+
+        kotonoha.RootKoto.Clear();
+
+        Assert.Null(kotonoha.GeneratedFunction);
     }
 
     [Fact]
@@ -146,7 +229,9 @@ public class KotoHierarchyTest
         Assert.Empty(contract.Members);
         Assert.All(contract.TypeConstraints, constraint => Assert.Same(contract, constraint.Parent));
 
-        Assert.IsType<FieldKoto>(Assert.Single(root.Members));
+        Assert.Empty(root.Members);
+        var generatedBody = Assert.IsType<CodeBlockKoto>(compilation.Kotonoha.GeneratedFunction?.Body);
+        Assert.IsType<FieldKoto>(Assert.Single(generatedBody.Items));
         var diagnostics = compilation.Kotonoha.DiagnosticCollection.GetArray();
         Assert.Equal(3, diagnostics.Length);
         Assert.All(

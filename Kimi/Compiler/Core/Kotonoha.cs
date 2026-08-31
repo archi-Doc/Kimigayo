@@ -53,10 +53,13 @@ public sealed partial class Kotonoha
     /// </summary>
     [Key(3)]
     public GroupKoto RootKoto { get; private set; }
-    // public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
 
-    // [Key(4)]
-    // public List<KimiSource> SourceList { get; private set; } = [];
+    /// <summary>
+    /// Gets the generated function that owns executable top-level syntax.
+    /// </summary>
+    [Key(4)]
+    public FunctionKoto? GeneratedFunction { get; private set; }
+    // public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
 
     [IgnoreMember]
     private readonly Utf16Hashtable<GroupKoto> qualifiedNameToGroupKoto = new();
@@ -179,6 +182,21 @@ public sealed partial class Kotonoha
             tokenizer.Dispose();
         }
     }
+
+    /// <summary>Adds executable top-level syntax to the generated function.</summary>
+    /// <param name="codeContext">The parsing context that produced the syntax.</param>
+    /// <param name="item">The syntax node to add.</param>
+    /// <param name="hasTrailingExpression">Whether this item supplies the generated body value.</param>
+    internal void AddGeneratedFunctionItem(CodeContext codeContext, Koto item, bool hasTrailingExpression)
+    {
+        this.GeneratedFunction ??= new FunctionKoto(codeContext, Constants.GeneratedFunctionName);
+        this.GeneratedFunction.Parent = this.RootKoto;
+        this.GeneratedFunction.AddGeneratedItem(item, hasTrailingExpression);
+    }
+
+    /// <summary>Removes the generated function, if present.</summary>
+    internal void ClearGeneratedFunction()
+        => this.GeneratedFunction = default;
 
     private void Parse(ref TokenReader reader)
         => this.RootKoto.Parse(ref reader);

@@ -88,6 +88,23 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
         builder.DecrementIndent();
     }
 
+    /// <summary>Initializes a new instance of the <see cref="CodeBlockKoto"/> class for generated syntax.</summary>
+    /// <param name="codeContext">The owning code context.</param>
+    internal CodeBlockKoto(CodeContext codeContext)
+        : base(codeContext, default)
+    {
+    }
+
+    /// <summary>Adds an item to a compiler-generated block.</summary>
+    /// <param name="item">The item to add.</param>
+    /// <param name="hasTrailingExpression">Whether the item supplies the block value.</param>
+    internal void AddLast(Koto item, bool hasTrailingExpression)
+    {
+        this.items.Add(item);
+        item.Parent = this;
+        this.HasTrailingExpression = hasTrailingExpression;
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
         => this.items;
 

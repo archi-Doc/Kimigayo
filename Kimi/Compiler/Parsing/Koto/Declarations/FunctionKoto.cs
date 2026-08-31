@@ -78,6 +78,10 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
     [Key(7)]
     public CodeBlockKoto? Body { get; private set; }
 
+    /// <summary>Gets a value indicating whether this function was synthesized for top-level syntax.</summary>
+    [Key(8)]
+    public bool IsGenerated { get; private set; }
+
     /// <summary>Gets the generic parameters.</summary>
     [IgnoreMember]
     public IReadOnlyList<TypeKoto> GenericArguments => this.genericArguments;
@@ -151,6 +155,12 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
+        if (this.IsGenerated)
+        {
+            this.Body?.WriteTo(ref builder);
+            return;
+        }
+
         if (this.AttributeChain is not null)
         {
             Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
@@ -218,6 +228,31 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
         {
             this.Body.WriteIndentedTo(ref builder);
         }
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="FunctionKoto"/> class for generated syntax.</summary>
+    /// <param name="codeContext">The owning code context.</param>
+    /// <param name="name">The internal function name.</param>
+    internal FunctionKoto(CodeContext codeContext, string name)
+        : base(codeContext, default)
+    {
+        this.Name = name;
+        this.IsGenerated = true;
+        this.Body = new CodeBlockKoto(codeContext);
+        this.Body.Parent = this;
+    }
+
+    /// <summary>Adds top-level syntax to this generated function.</summary>
+    /// <param name="item">The syntax node to add.</param>
+    /// <param name="hasTrailingExpression">Whether the item supplies the function body's value.</param>
+    internal void AddGeneratedItem(Koto item, bool hasTrailingExpression)
+    {
+        if (!this.IsGenerated || this.Body is null)
+        {
+            throw new InvalidOperationException();
+        }
+
+        this.Body.AddLast(item, hasTrailingExpression);
     }
 
     protected override IEnumerable<Koto> GetChildNodes()
