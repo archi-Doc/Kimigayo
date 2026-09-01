@@ -328,6 +328,21 @@ loop / break, continue
 value-producing construct / yield
 ```
 
+### Construct and keyword correspondence
+
+The control-transfer keywords associated with each construct have the following effects:
+
+| Construct | Control-transfer keyword | Effect on the target construct |
+| --------- | ------------------------ | ------------------------------ |
+| `func` | `return` | Terminates the current function and optionally supplies its result. |
+| `for` | `break` / `continue` | `break` terminates the loop. `continue` advances to the next value from the iterable. |
+| `while` | `break` / `continue` | `break` terminates the loop. `continue` proceeds to the next condition evaluation. |
+| `loop` | `break` / `continue` | `break` terminates the loop and may supply its result when the loop is value-producing. `continue` begins the next iteration. |
+| value-producing `if` | `yield` | Terminates the entire target `if` and supplies its result. |
+| value-producing `match` | `yield` | Terminates the entire target `match` and supplies its result. |
+
+This table identifies the class of construct targeted by each keyword. The actual target is always the nearest enclosing eligible construct according to the boundary-resolution rules below. In particular, `yield` terminates its target `if` or `match`, not merely the branch or arm containing it.
+
 Each control-transfer operation targets the nearest enclosing boundary of its own class. While searching for that target, it may pass boundaries that are strictly weaker than its own class, but it may not pass a boundary of the same or a stronger class. The matching boundary is the target and is terminated or resumed; it is not crossed.
 
 | Operation  | Value boundary | Loop boundary          | Function boundary |
@@ -406,7 +421,7 @@ for (key, value) in dictionary
     process(key, value)
 ```
 
-The value of a `for` expression is Unit, and the value of its body is discarded. A `break` targeting a `for` therefore has no operand.
+The value of a `for` expression is Unit, and the value of its body is discarded. A `break` targeting a `for` therefore has no operand. A `continue` discards the remainder of the current body evaluation and requests the next value from the iterable; if the iterable is exhausted, the loop completes with Unit.
 
 ### `while`
 
@@ -420,7 +435,7 @@ while (ready)
     process()
 ```
 
-The value of a `while` expression is Unit, and the value of its body is discarded. A `break` targeting a `while` therefore has no operand.
+The value of a `while` expression is Unit, and the value of its body is discarded. A `break` targeting a `while` therefore has no operand. A `continue` discards the remainder of the current body evaluation and proceeds directly to the next evaluation of the Boolean condition.
 
 ### `loop`
 
@@ -434,9 +449,9 @@ var result = loop
         break x
 ```
 
-For a `loop` used in a value context, the operand of each reachable `break` targeting that loop contributes to the loop's result type. A bare `break` contributes Unit. All contributing values must have a common type under the normal inference and conversion rules. Thus, a reachable bare `break` is invalid when a non-Unit loop result is required.
+A `loop` used in a value context is a value-producing loop. The operand of each reachable `break` targeting that loop contributes to the loop's result type. A bare `break` contributes Unit. All contributing values must have a common type under the normal inference and conversion rules. Thus, a reachable bare `break` is invalid when a non-Unit loop result is required.
 
-A `continue` does not contribute a result because it does not terminate the loop. A `return`, or another expression of type Never, also does not constrain the loop's result type. A `loop` with no reachable `break` has type Never.
+A `continue` discards the remainder of the current body evaluation and begins the next iteration at the start of the body. It does not contribute a result because it does not terminate the loop. A `return`, or another expression of type Never, also does not constrain the loop's result type. A `loop` with no reachable `break` has type Never.
 
 ```kimi
 var result = loop
@@ -491,6 +506,8 @@ Never has no values and therefore does not constrain this join.
 ### `if`
 
 An `if` contains one condition and a body, followed by zero or more `else if` branches and at most one `else` body. Parentheses around conditions are optional.
+
+A `yield` targeting a value-producing `if` terminates the entire `if` immediately and supplies the result of that `if`. Evaluation does not continue in the remainder of the current branch or in any later branch.
 
 ```kimi
 if ready
@@ -579,6 +596,8 @@ An omitted `else` is an implicit Unit path when every condition is false. Theref
 ### `match`
 
 A `match` evaluates its subject once, tests its arms in source order, and evaluates the first matching arm. An arm body may be an inline expression or an indentation-delimited Block.
+
+A `yield` targeting a value-producing `match` terminates the entire `match` immediately and supplies the result of that `match`. Evaluation does not continue in the remainder of the current arm or in any later arm.
 
 ```kimi
 var x = match value
