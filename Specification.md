@@ -87,6 +87,80 @@ Each function parameter contributes its Type to the function Signature. Paramete
 
 Consequently, two functions in the same scope may share a Name when their generic parameter counts or parameter types differ. Two properties with the same Name in the same scope have the same Signature and therefore conflict.
 
+# Literals
+
+## StringLiteral
+
+A `StringLiteral` produces a value of the built-in `string` Type. Kimigayo source text and string contents use UTF-8. A literal may occupy one line or multiple lines.
+
+There are two forms, distinguished by the number of double quotation marks in their delimiters:
+
+| Form | Delimiter | Backslash escapes | Interpolation |
+| ---- | --------- | ----------------- | ------------- |
+| Escaped string (*Multi-line string with escape*) | One double quotation mark (`"`) on each side | Yes | Yes |
+| Raw string (*Multi-line string without escape*) | The same number of double quotation marks, at least three, on each side | No | No |
+
+### Escaped strings
+
+An escaped string is enclosed by one double quotation mark on each side. A backslash introduces an escape sequence:
+
+```kimi
+"Hello, world"
+"First line\nSecond line"
+"
+First line
+Second line
+"
+```
+
+The opening and closing delimiters are not part of the value. Any line break between them is part of the string content; `\n` may instead be used when an explicit line-feed escape is preferred.
+
+Only the following escape sequences are supported:
+
+| Escape | Result |
+| ------ | ------ |
+| `\0` | Null character, U+0000 |
+| `\\` | Backslash (`\`) |
+| `\e` | Escape character, U+001B |
+| `\t` | Horizontal tab, U+0009 |
+| `\n` | Line feed, U+000A |
+| `\r` | Carriage return, U+000D |
+| `\"` | Double quotation mark (`"`) |
+| `\'` | Apostrophe (`'`) |
+| `\u(H...)` | Unicode scalar value written as one to six hexadecimal digits |
+| `\(expression)` | String interpolation |
+
+For `\u(H...)`, the hexadecimal value must be a valid Unicode scalar value: it must not exceed U+10FFFF and must not be in the surrogate range U+D800–U+DFFF. An unsupported or incomplete escape sequence is invalid.
+
+An interpolation begins with `\(` and ends at its matching `)`. The enclosed text is parsed as a Kimigayo expression, including any nested parentheses, and the expression's string representation is inserted into the surrounding string:
+
+```kimi
+"Hello, \(name)."
+"Total: \(price * quantity)"
+```
+
+Interpolation is available only in escaped strings.
+
+### Raw strings
+
+A raw string is enclosed by matching delimiters of three or more consecutive double quotation marks. Backslashes, line breaks, and interpolation-like text are ordinary content; no escape processing or interpolation occurs.
+
+```kimi
+"""C:\Users\name\file.txt"""
+"""
+First line
+Second line
+"""
+```
+
+If the content must contain a run of double quotation marks that would otherwise match the delimiter, the outer delimiter is lengthened. A delimiter of `N` quotation marks permits any shorter run of quotation marks in the content. For example, four quotation marks allow `"""` to appear literally:
+
+```kimi
+""""The token """ appears here.""""
+```
+
+The opening and closing delimiters must contain the same number of quotation marks and are not part of the value.
+
 # Declarations
 
 ## Bindings
@@ -597,7 +671,7 @@ Sizes below are storage sizes.
 
 #### String Type
 
-`string` is the built-in Core Type for text. Its storage representation is implementation-defined.
+`string` is the built-in Core Type for UTF-8 text. Its exact in-memory container and storage layout are implementation-defined.
 
 #### Unit and Never Types
 
