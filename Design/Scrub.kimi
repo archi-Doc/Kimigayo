@@ -32,8 +32,8 @@ func Main()
     var i = 8
     var j = i++
     var st = i.ToString()
-    Error
-    var x = 1
+    loop
+        var x = 1
     return
 if (a == 1 and b == 2)
     var x = [1, 2]
@@ -118,7 +118,7 @@ public rootgroup Helper
         else
             3
         var i3 = if (var z = Func()
-        (z > 0))
+        yield (z > 0))
             1
         else
             0

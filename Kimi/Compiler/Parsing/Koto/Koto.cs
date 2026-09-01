@@ -259,6 +259,12 @@ public enum KotoKind : byte
     /// <summary>A <c>for</c> expression.</summary>
     For,
 
+    /// <summary>An unconditional <c>loop</c> expression.</summary>
+    Loop,
+
+    /// <summary>A <c>yield</c> expression.</summary>
+    Yield,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
@@ -343,6 +349,8 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Return, typeof(ReturnKoto))]
 [TinyhandUnion((int)KotoKind.Break, typeof(BreakKoto))]
 [TinyhandUnion((int)KotoKind.Continue, typeof(ContinueKoto))]
+[TinyhandUnion((int)KotoKind.Loop, typeof(LoopKoto))]
+[TinyhandUnion((int)KotoKind.Yield, typeof(YieldKoto))]
 [TinyhandUnion((int)KotoKind.TupleType, typeof(TupleTypeKoto))]
 [TinyhandUnion((int)KotoKind.FunctionType, typeof(FunctionTypeKoto))]
 [TinyhandUnion((int)KotoKind.ArrayLiteral, typeof(ArrayLiteralKoto))]

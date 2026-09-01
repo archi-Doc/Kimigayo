@@ -723,7 +723,7 @@ break value
 
 ## Implementation status
 
-The current front end parses `if`, `match`, `for`, `while`, `return`, `break`, and `continue`. The unconditional `loop` expression, `yield` as a general control-transfer expression, exhaustiveness and common-result-type checking, and contextual target validation are not yet fully implemented. The parser currently recognizes `yield` only as a trailing-value marker in its parenthesized Block form; that parser representation does not yet implement the control-transfer semantics specified above.
+The current front end parses `if`, `match`, `for`, `while`, `loop`, `return`, `break`, `continue`, and `yield`, and represents each control-transfer keyword with its own syntax node. Exhaustiveness and common-result-type checking, contextual target validation, and enforcement of target-specific operand restrictions are later semantic-analysis work and are not yet fully implemented.
 
 # Type Semantics
 

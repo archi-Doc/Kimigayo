@@ -1352,6 +1352,16 @@ Exit:
             body);
     }
 
+    private static LoopKoto ParseLoopExpression(ref TokenReader reader)
+    {
+        reader.TryRead(out var token);
+        var body = ParseRequiredBlock(ref reader);
+        return new LoopKoto(
+            ref reader,
+            SourceSpan.FromBounds(token.Span.Start, body.Span.End),
+            body);
+    }
+
     private static ForKoto ParseForExpression(ref TokenReader reader)
     {
         reader.TryRead(out var forToken);
@@ -1561,6 +1571,15 @@ Exit:
         if (token.Kind == TokenKind.Continue)
         {
             return new ContinueKoto(ref reader, token.Span);
+        }
+
+        if (token.Kind == TokenKind.Yield)
+        {
+            var yieldExpression = ParseRequiredExpression(ref reader);
+            return new YieldKoto(
+                ref reader,
+                SourceSpan.FromBounds(token.Span.Start, yieldExpression.Span.End),
+                yieldExpression);
         }
 
         Koto? expression = default;
@@ -2065,9 +2084,13 @@ Loop:
             case TokenKind.For:
                 return ParseForExpression(ref reader);
 
+            case TokenKind.Loop:
+                return ParseLoopExpression(ref reader);
+
             case TokenKind.Return:
             case TokenKind.Break:
             case TokenKind.Continue:
+            case TokenKind.Yield:
                 return ParseJumpExpression(ref reader);
 
             case TokenKind.OpenParenthesis:
@@ -2136,8 +2159,7 @@ Loop:
 
         if (reader.CurrentTokenKind == TokenKind.Yield)
         {
-            reader.Advance();
-            items.Add(ParseRequiredExpression(ref reader));
+            items.Add(ParseJumpExpression(ref reader));
             hasTrailingExpression = true;
         }
 
