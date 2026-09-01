@@ -239,7 +239,7 @@ Sizes below are storage sizes.
 
 `()` is the Unit type. It has one value and represents the absence of a meaningful result.
 
-Never is the type of an expression that does not complete normally and has no values. `return`, `break`, and `continue` expressions have the Never type.
+Never is the type of an expression that does not complete normally and has no values. `return`, `break`, `continue`, and `yield` expressions have the Never type. An operand supplied to a control-transfer expression determines the value delivered to its target; it does not change the type of the control-transfer expression itself.
 
 ### Compound Type Syntax
 
@@ -312,13 +312,185 @@ For a value of length six, `value[1..^1]` selects the elements at Indices 1, 2, 
 
 # Control Flow
 
-An indentation-delimited Block is an expression. Its value is its final expression. An empty Block, or a Block ending in a declaration, has the Unit value. Declarations do not produce values.
+An indentation-delimited Block is a sequence of declarations and expressions. Unless a construct below specifies a different branch-result rule, a Block completes normally with the value of its final expression. An empty Block, a Block ending in a declaration, or a Block whose final expression is followed by a semicolon completes with Unit. Declarations do not produce values.
 
-`break` exits the innermost loop, and `continue` begins its next iteration.
+Control-transfer expressions complete abruptly. Their type is Never, so a path ending in a control transfer does not constrain the type of an enclosing expression. The operand of `return`, `break`, or `yield` is evaluated before control is transferred.
 
-## `if`
+## Control-boundary hierarchy
 
-An `if` expression contains one condition and an indentation-delimited body. It may be followed by any number of `else if` branches and one optional `else` body. Parentheses around each condition are optional.
+Kimigayo has three strengths of control boundary, from strongest to weakest:
+
+```text
+function / return
+    >
+loop / break, continue
+    >
+value-producing construct / yield
+```
+
+Each control-transfer operation targets the nearest enclosing boundary of its own class. While searching for that target, it may pass boundaries that are strictly weaker than its own class, but it may not pass a boundary of the same or a stronger class. The matching boundary is the target and is terminated or resumed; it is not crossed.
+
+| Operation  | Value boundary | Loop boundary          | Function boundary |
+| ---------- | -------------: | ---------------------: | ----------------: |
+| `return`   | Cross          | Cross                  | Target            |
+| `break`    | Cross          | Target: terminate      | Cannot cross      |
+| `continue` | Cross          | Target: next iteration | Cannot cross      |
+| `yield`    | Target         | Cannot cross           | Cannot cross      |
+
+A nested boundary of the same class always becomes the target. Kimigayo has no labelled form that selects a more distant function, loop, or value boundary.
+
+Only the value-producing forms specifically designated by the language establish value boundaries. In this section those forms are value-producing `if` and `match` expressions. An ordinary Block, or an `if` or `match` whose value is discarded, does not establish a value boundary merely because its syntax is nested.
+
+Target resolution is lexical within the executable region governed by each boundary.
+
+## Function boundary and `return`
+
+A function body establishes a function boundary. `return` terminates the nearest enclosing function and optionally supplies its result.
+
+```kimi
+func Test() -> i32
+    return 1
+```
+
+The following rules apply:
+
+1. `return` may pass value and loop boundaries.
+2. A nested named function, anonymous function, or closure establishes a new function boundary. A `return` in that body cannot target an outer function.
+3. `return expression` requires the operand to be compatible with the function's declared or inferred return type.
+4. A bare `return` supplies Unit and is valid only when Unit is compatible with the return type.
+5. Normal completion of the function body supplies the body's value. Consequently, a compatible trailing expression is an implicit function result.
+6. Every reachable path of a function with a non-Unit result type must either complete the function body with a compatible value, execute a compatible `return`, or end in an expression of type Never.
+
+For example, the early `return` exits both the `if` and the `while`; normal completion returns the trailing `0`.
+
+```kimi
+func Find() -> i32
+    while hasNext()
+        if found()
+            return 10
+
+        advance()
+
+    0
+```
+
+A nested function intercepts `return` lookup:
+
+```kimi
+func Outer() -> i32
+    var f = func () -> i32
+        return 1
+
+    f()
+```
+
+The `return 1` belongs to the anonymous function. `Outer` completes normally with the value of `f()`.
+
+## Loop boundaries, `break`, and `continue`
+
+`for`, `while`, and `loop` bodies establish loop boundaries. `break` terminates the nearest enclosing loop. `continue` terminates the current iteration of the nearest enclosing loop and begins its next iteration according to that loop's iteration rules.
+
+Both operations may pass any number of value boundaries. Neither may pass a function boundary, including a function nested inside a loop.
+
+`continue` never has an operand. A `break` operand is permitted only when its target is a value-producing `loop`; otherwise `break` must be bare.
+
+### `for`
+
+A `for` expression evaluates its iterable once and executes its body once for each value produced by the iterable. A single Name binds each value. A parenthesized, comma-separated binding destructures it. `in` is a contextual keyword and acts as a delimiter only in a `for` header.
+
+```kimi
+for value in values
+    process(value)
+
+for (key, value) in dictionary
+    process(key, value)
+```
+
+The value of a `for` expression is Unit, and the value of its body is discarded. A `break` targeting a `for` therefore has no operand.
+
+### `while`
+
+A `while` expression evaluates its Boolean condition before each iteration and executes its body while the condition is true. Parentheses around the condition are optional.
+
+```kimi
+while ready
+    process()
+
+while (ready)
+    process()
+```
+
+The value of a `while` expression is Unit, and the value of its body is discarded. A `break` targeting a `while` therefore has no operand.
+
+### `loop`
+
+`loop` is an unconditional-loop expression. It has no normal fall-through path: it completes only through a control transfer such as `break` or `return`, or it continues indefinitely.
+
+```kimi
+var result = loop
+    var x = next()
+
+    if x > 10
+        break x
+```
+
+For a `loop` used in a value context, the operand of each reachable `break` targeting that loop contributes to the loop's result type. A bare `break` contributes Unit. All contributing values must have a common type under the normal inference and conversion rules. Thus, a reachable bare `break` is invalid when a non-Unit loop result is required.
+
+A `continue` does not contribute a result because it does not terminate the loop. A `return`, or another expression of type Never, also does not constrain the loop's result type. A `loop` with no reachable `break` has type Never.
+
+```kimi
+var result = loop
+    var x = next()
+
+    if invalid(x)
+        break -1
+
+    if found(x)
+        break x
+```
+
+Both `break` expressions target the same `loop` and produce compatible `i32` values. The nested statement-context `if` expressions do not intercept them.
+
+A function boundary stops loop-target lookup:
+
+```kimi
+loop
+    var f = func ()
+        break // Error: no loop in this function
+```
+
+## Value boundaries and `yield`
+
+An `if` or `match` is value-producing when its result is consumed by an initializer, operand, argument, return value, or enclosing result expression. Such a construct establishes a value boundary for its branch or arm bodies. The same syntax in a discard or statement context produces Unit and does not establish a `yield` target.
+
+`yield expression` evaluates its required operand, terminates the nearest enclosing value-producing construct, and supplies the operand as that construct's result. A bare `yield` is invalid; use `yield ()` to supply Unit explicitly.
+
+`yield` may serve as an early exit from its target. It may not cross an intervening loop or function boundary. A value-producing construct nested inside another one intercepts `yield`; a statement-context construct does not.
+
+### Branch result rules
+
+The following rules apply independently to each branch or arm of a value-producing construct:
+
+1. A body containing exactly one top-level expression may complete normally and implicitly supply that expression's value.
+2. A body containing multiple top-level elements must not use its trailing expression implicitly. Every normally completing path must execute `yield` for the target construct.
+3. A path that exits the current value-producing construct through `return`, or through `break` or `continue` targeting an enclosing loop, does not need to produce a value for the current construct. The same is true of a path that does not complete normally for another reason.
+4. A reachable path that reaches the end of a multi-element body without producing a value is invalid.
+
+"Top-level" refers to direct declarations and expressions in that branch or arm. Blank lines and comments are ignored. A nested `if`, `match`, or loop counts as one top-level expression, regardless of how many elements its own body contains.
+
+A transfer caught by a construct nested inside the current branch does not by itself satisfy the current branch. For example, a `yield` caught by a nested value-producing `if`, or a `break` caught by a nested `loop`, produces the result of that nested construct; coverage analysis then continues after that construct.
+
+All explicit and implicit results of one construct participate in the normal type-inference and conversion rules. Conceptually:
+
+```text
+result type = join(reachable branch or arm result types)
+```
+
+Never has no values and therefore does not constrain this join.
+
+### `if`
+
+An `if` contains one condition and a body, followed by zero or more `else if` branches and at most one `else` body. Parentheses around conditions are optional.
 
 ```kimi
 if ready
@@ -329,61 +501,210 @@ else
     cancel()
 ```
 
-## `for`
-
-A `for` expression evaluates its iterable once and executes its body once for each yielded value. Its value is Unit, and the value of its body is discarded.
+Single-expression branches produce their values implicitly:
 
 ```kimi
-for value in values
-    process(value)
-
-for (key, value) in dictionary
-    process(key, value)
+var x = if condition
+    1
+else
+    2
 ```
 
-A single Name binds each yielded value. A parenthesized, comma-separated binding destructures each yielded value. `in` is a contextual keyword and acts as a delimiter only in a `for` header.
-
-## `while`
-
-A `while` expression evaluates its Boolean condition before each iteration and executes its body while the condition is true. Its value is Unit, and the value of its body is discarded. Parentheses around the condition are optional.
+A multi-element branch uses `yield` explicitly:
 
 ```kimi
-while ready
-    process()
-
-while (ready)
-    process()
+var x = if condition
+    log("true")
+    yield 1
+else
+    log("false")
+    yield 2
 ```
 
-## `loop`
-
-`loop` is reserved for a future unconditional-loop expression. The current implementation does not parse `loop` expressions.
-
-## Jump expressions
-
-`return` and `break` may each have an optional result expression. `continue` does not have a result expression.
+The following is invalid because the first branch has multiple top-level elements and therefore cannot use `1` as an implicit trailing result:
 
 ```kimi
-return value
-break
-continue
+var x = if condition
+    log("true")
+    1 // Error: explicit yield required
+else
+    2
 ```
 
-The parser records these expressions, but contextual validation of their enclosing function or loop is not currently performed.
-
-## `match`
-
-A `match` expression evaluates its subject once and tests its arms in source order. The first matching arm is evaluated.
+Every reachable path must be covered:
 
 ```kimi
-match value
-    0 => "zero"
-    1 =>
-        var text = "one"
-        text
+var x = if condition
+    if error
+        yield -1
+
+    doSomething() // Error: this path reaches the branch end
+else
+    0
 ```
 
-An arm body may be an inline expression or an indentation-delimited Block. Match arms are stored in source order. Exhaustiveness checking and common result-type validation are not currently performed.
+An early `yield` makes the intended paths explicit:
+
+```kimi
+var x = if condition
+    if invalid
+        yield -1
+
+    calculate()
+    yield 10
+else
+    0
+```
+
+Here the nested `if` is in statement context, so it does not intercept `yield`; both `yield` expressions target the outer value-producing `if`.
+
+A value-producing nested `if` does intercept it:
+
+```kimi
+var x = if a
+    var y = if b
+        yield 1
+    else
+        yield 2
+
+    yield y + 1
+else
+    0
+```
+
+The first two `yield` expressions target the inner `if`; `yield y + 1` targets the outer `if`.
+
+An omitted `else` is an implicit Unit path when every condition is false. Therefore, an `if` without `else` cannot produce a non-Unit value.
+
+### `match`
+
+A `match` evaluates its subject once, tests its arms in source order, and evaluates the first matching arm. An arm body may be an inline expression or an indentation-delimited Block.
+
+```kimi
+var x = match value
+    A => 1
+    B => 2
+```
+
+Single-expression arms produce their values implicitly. Multi-element arms require `yield` on every normally completing path:
+
+```kimi
+var x = match value
+    A =>
+        log("A")
+        yield 1
+
+    B =>
+        log("B")
+        yield 2
+```
+
+A nested statement-context construct does not intercept `yield`:
+
+```kimi
+var x = match value
+    A =>
+        if special
+            yield 10
+
+        yield 20
+
+    B => 30
+```
+
+Both `yield 10` and `yield 20` target the `match`. If the nested `if` were itself value-producing, it would establish the nearer target instead.
+
+A value-producing `match` must be exhaustive. If the pattern set is not statically exhaustive, the unmatched case is a reachable path that produces no value. All reachable arm results must have a common type; Never-valued arms do not constrain it. Match arms do not fall through to later arms.
+
+### Stronger intervening boundaries
+
+A loop prevents `yield` from targeting a value construct outside that loop:
+
+```kimi
+var x = if condition
+    loop
+        if invalid
+            yield -1 // Error: cannot cross the loop boundary
+else
+    0
+```
+
+The loop must produce its own value with `break`:
+
+```kimi
+var x = if condition
+    loop
+        if invalid
+            break -1
+else
+    0
+```
+
+The `break` result becomes the value of the `loop`; the single-expression branch then supplies that value to the `if` structurally.
+
+## Control-transfer resolution
+
+Conceptually, target lookup walks outward through the active lexical control contexts.
+
+For `yield`:
+
+```text
+value-producing construct -> target
+loop                      -> error
+function                  -> error
+```
+
+For `break` and `continue`:
+
+```text
+value-producing construct -> continue lookup
+loop                      -> target
+function                  -> error
+```
+
+For `return`:
+
+```text
+value-producing construct -> continue lookup
+loop                      -> continue lookup
+function                  -> target
+```
+
+Reaching the end of lookup without finding a target is an error. In particular, `return` outside a function, `break` or `continue` outside a loop in the current function, and `yield` outside a value-producing construct in the current loop and function are invalid.
+
+## Structural value propagation
+
+Kimigayo favors ordinary expression results over non-local transfer across stronger constructs:
+
+```kimi
+var result = if condition
+    loop
+        var x = next()
+
+        if invalid(x)
+            break -1
+
+        if found(x)
+            break x
+else
+    0
+```
+
+The value moves outward one structural level at a time:
+
+```text
+break value
+    -> loop result
+    -> if branch result
+    -> if result
+    -> result
+```
+
+`yield` cannot skip the loop and write directly to the `if`. This restriction gives every transfer keyword one target class and keeps non-local control flow bounded by lexical structure.
+
+## Implementation status
+
+The current front end parses `if`, `match`, `for`, `while`, `return`, `break`, and `continue`. The unconditional `loop` expression, `yield` as a general control-transfer expression, exhaustiveness and common-result-type checking, and contextual target validation are not yet fully implemented. The parser currently recognizes `yield` only as a trailing-value marker in its parenthesized Block form; that parser representation does not yet implement the control-transfer semantics specified above.
 
 # Type Semantics
 
