@@ -18,7 +18,7 @@ A Solution discovers and loads Projects. A Project contains common build setting
 
 Each Compilation owns the application's or library's primary Kotonoha. A Compilation also provides the target triple, LLVM data layout, pointer width, conditional-compilation variables, and lookup by Kotonoha identifier. External Kotonoha descriptors are copied from the Project configuration; fetching and loading those external libraries is a later compilation stage and is not currently implemented.
 
-A Kotonoha merges declarations from multiple `SourceDocument` instances into one root Koto tree. Tokenization and parsing occur per source document. Executable syntax written directly at the root—fields, statements, expressions, and functions—is stored in an implicit generated function owned by the Kotonoha.
+A Kotonoha merges declarations from multiple `SourceDocument` instances into one root Koto tree. Tokenization and parsing occur per source document. Executable syntax written directly at the root—bindings, statements, expressions, and functions—is stored in an implicit generated function owned by the Kotonoha.
 
 A CodeContext belongs to exactly one Kotonoha. It supplies the active Compilation and diagnostic destination to the Tokenizer and Parser. Generated source may be parsed into a selected Collection in that same Kotonoha; inserting nodes into a Collection owned by another Kotonoha is invalid.
 
@@ -51,7 +51,7 @@ Kimigayo uses the following information to identify declarations and their meani
 
 ## Name
 
-A Name is the basic name by which a declaration is written and referred to. The same character rules apply to the names of collections, types, functions, fields, parameters, and other named declarations.
+A Name is the basic name by which a declaration is written and referred to. The same character rules apply to the names of collections, types, functions, properties, local bindings, parameters, and other named declarations.
 
 A Name is non-empty and consists of a start character followed by zero or more continuation characters.
 
@@ -81,23 +81,268 @@ The Signature of each declaration kind consists of the following information:
 | Type             | Type Semantics, Name, and generic parameter count                     |
 | Function         | Name, generic parameter count, and an ordered list of parameter Signatures |
 | Parameter        | Type                                                                  |
-| Field            | Name                                                                  |
 | Property         | Name                                                                  |
 
 Each function parameter contributes its Type to the function Signature. Parameter names, return types, default values, and declaration modifiers are not part of the function Signature.
 
-Consequently, two functions in the same scope may share a Name when their generic parameter counts or parameter types differ. Two fields or two properties with the same Name in the same scope have the same Signature and therefore cannot be distinguished by Signature alone.
+Consequently, two functions in the same scope may share a Name when their generic parameter counts or parameter types differ. Two properties with the same Name in the same scope have the same Signature and therefore conflict.
 
 # Declarations
 
 ## Bindings
 
-Fields and local bindings begin with `let` or `var`. `let` declares an immutable binding, while `var` declares a mutable binding. A Type annotation and an initializer are independently optional.
+Properties and local bindings begin with `let` or `var`. For a local binding, `let` declares an immutable binding and `var` declares a mutable binding. A Type annotation and an initializer are independently optional when the omitted information can be inferred.
 
 ```kimi
 let limit: i32 = 10
 var current = 0
 ```
+
+## Properties
+
+Kimigayo has exactly one kind of value-bearing member: the **Property**. A compiler may lower Property storage to a storage slot, global storage, or another layout entity, but none of these implementation representations constitutes another member kind. A `let` or `var` declared inside an executable Block is a local binding, not a Property.
+
+A Property has a Type, a getter, an optional setter, and optionally owned storage:
+
+```text
+Property
+    Type
+    Storage?
+    Getter
+    Setter?
+```
+
+Every Property is classified semantically as either stored or computed. The classification is derived after omitted accessor behavior has been expanded:
+
+```text
+HasStorage
+    ⇔ the effective Property representation contains a reference
+      bound to the contextual identifier `storage`
+```
+
+A reference counts regardless of whether it occurs in an expression-bodied or Block-bodied accessor. Unreachable-code analysis does not change this structural classification. The spelling `storage` outside a Property accessor is an ordinary Name; only an occurrence bound to the accessor's contextual identifier counts.
+
+During accessor binding, `storage` is available provisionally; this does not presuppose that the Property is stored. If no effective accessor binds a reference to it, no Property-owned storage is created.
+
+The semantic processing order is:
+
+```text
+Property declaration
+    -> expand implicit accessor behavior
+    -> create the effective Property representation
+    -> bind accessor bodies and contextual identifiers
+    -> detect references bound to `storage`
+    -> determine HasStorage
+```
+
+- A **Stored Property** has `HasStorage = true` and owns one storage location.
+- A **Computed Property** has `HasStorage = false` and owns no storage location.
+
+For an instance Property, owned storage participates in the containing instance's layout. For a static member of a `group`, it has static storage instead. A computed Property contributes no storage slot in either case.
+
+### Effective representation
+
+The common declaration forms expand as follows before storage classification:
+
+| Source form | Effective getter | Effective setter | Usual classification |
+| ----------- | ---------------- | ---------------- | -------------------- |
+| `let x: T` | `get => storage` | None | Stored |
+| `var x: T` | `get => storage` | `set { storage = value }` | Stored |
+| `var x: T` with only an explicit `get` | Explicit getter | None | Depends on `storage` use |
+| `var x: T` with only an explicit `set` | `get => storage` | Explicit setter | Stored |
+| `var x: T` with explicit `get` and `set` | Explicit getter | Explicit setter | Depends on `storage` use |
+
+An initializer does not independently select the classification. It is valid only if the resulting effective representation has storage.
+
+For example:
+
+```kimi
+var Count: i32
+```
+
+has the effective representation:
+
+```kimi
+var Count: i32
+    get => storage
+
+    set
+        storage = value
+```
+
+Likewise, an explicit setter does not suppress the default getter:
+
+```kimi
+var Age: i32 = 0
+    set
+        storage = max(value, 0)
+```
+
+is equivalent for classification to:
+
+```kimi
+var Age: i32 = 0
+    get => storage
+
+    set
+        storage = max(value, 0)
+```
+
+By contrast, an explicit getter suppresses the default accessors not written with it. Therefore this is a read-only computed Property:
+
+```kimi
+var Count: i32
+    get => items.Count
+```
+
+It contains no reference to `storage`, so `HasStorage = false`.
+
+`let` is reserved for immutable stored data. Its standard effective representation has the default storage-reading getter and no setter, and it cannot be used for a computed Property. A read-only computed Property uses `var` with an explicit getter.
+
+### Accessors
+
+A getter defines a Property read and must produce a value compatible with the Property Type. It may be expression-bodied or Block-bodied:
+
+```kimi
+var Area: f64
+    get => Width * Height
+
+var LoggedArea: f64
+    get
+        LogRead()
+        return Width * Height
+```
+
+A computed getter must be introduced explicitly with `get`; a bare expression in the Property body is invalid.
+
+A setter defines a Property write. Within it, `value` is the incoming value and has the Property Type:
+
+```kimi
+var Percentage: i32 = 0
+    set
+        storage = clamp(value, 0, 100)
+```
+
+The setter does not declare this parameter in source. For example, evaluating:
+
+```kimi
+obj.Percentage = 120
+```
+
+invokes the setter with `value` bound to `120`; the source form is `set`, not `set value`.
+
+Reading a Property invokes its getter. Assignment after initialization invokes its setter; assigning a Property without a setter is invalid. An accessor body may refer to other state instead of owned storage, so custom accessors do not by themselves make a Property computed or stored:
+
+```kimi
+var Width: f64
+    get => Right - Left
+
+    set
+        Right = Left + value
+```
+
+Neither accessor refers to `storage`, so this is a read-write computed Property.
+
+### Contextual identifiers and receivers
+
+`storage` denotes the actual storage location owned by the current Property, rather than a detached copy. It has the Property Type, and a bound use of it causes that location to exist. `value` is available only in a setter. Neither identifier is globally reserved outside its accessor context.
+
+An instance accessor also has an implicit receiver named `self`:
+
+```text
+get: self: ref/Self
+set: self: uniq/Self, value: PropertyType
+```
+
+Conceptually, the accessors have these signatures:
+
+```text
+get(self: ref/Self) -> PropertyType
+set(self: uniq/Self, value: PropertyType) -> ()
+```
+
+A getter consequently has shared, non-exclusive access to the instance. A setter has exclusive mutable access. The receiver controls access to the containing instance; it does not change the Type of `storage` to `ref/T` or `uniq/T`. Static Properties, including members of a `group`, have no instance receiver.
+
+For owned storage, the receiver permits shared/read access from the getter and exclusive/read-write access from the setter:
+
+```text
+get with self: ref/Self   -> shared/read access to storage
+set with self: uniq/Self  -> exclusive/read-write access to storage
+```
+
+All instance getters currently use `self: ref/Self`, and all instance setters use `self: uniq/Self`. Mutable or exclusive getter receivers are not part of the present language.
+
+### Initialization
+
+An initializer initializes owned storage directly and does not invoke the setter:
+
+```kimi
+var Age: i32 = -1
+    set
+        storage = max(value, 0)
+```
+
+Here the initial stored value is `-1`; a later assignment of `-10` invokes the setter and stores `0`. A Property initializer is invalid when `HasStorage = false`, because no Property-owned location exists to initialize. A stored Property without a declaration initializer must be initialized according to the containing type's definite-initialization rules before it is read. After initialization, a `let` Property cannot be assigned.
+
+For example, this declaration is invalid because its explicit getter does not refer to `storage`, so its effective representation is computed:
+
+```kimi
+var Value: i32 = 10
+    get => CalculateValue()
+```
+
+### Access control
+
+Property access control has two levels: the Property's access and, optionally, a more restrictive access for an accessor. An accessor inherits the Property's access unless it declares a restriction, and it may never be more accessible than the Property.
+
+An access-restricted accessor without a custom body retains its default implementation. For example:
+
+```kimi
+public var Count: i32 = 0
+    private set
+```
+
+has the effective behavior:
+
+```kimi
+public var Count: i32 = 0
+    get => storage
+
+    private set
+        storage = value
+```
+
+The getter is public and the setter is private. The following is invalid because the setter is broader than its Property:
+
+```kimi
+private var Value: i32
+    public set
+```
+
+### Storage, addressability, and result semantics
+
+Owned storage and the value returned by a getter are separate concepts. A computed Property may return a borrowed or reference-like value without acquiring its own storage:
+
+```kimi
+var First: ref/T
+    get => items[0]@ref
+```
+
+Conversely, a stored Property may have custom accessors because any bound `storage` reference is sufficient for `HasStorage = true`:
+
+```kimi
+var Balance: i64 = 0
+    get
+        AuditRead()
+        return storage
+
+    set
+        storage = normalize(value)
+```
+
+A stored Property has an internal addressable location subject to the normal ownership and borrowing rules. Ordinary Property reads and writes still go through its accessors; address formation must not bypass a custom accessor or its access restrictions. A computed Property has no intrinsic location, although its getter may return a reference to storage owned elsewhere.
+
+Indexer declaration syntax and its accessor semantics are specified separately and are not part of this Property model.
 
 ## Functions
 
@@ -114,13 +359,13 @@ A Collection is a named declaration scope. Collection bodies are delimited by in
 
 | Collection kind | Instantiable | Main characteristics |
 | --------------- | ------------ | -------------------- |
-| `group` | No | Accepts fields, functions, and nested Collection declarations. All members are static. Generic parameters and Origins are not supported. |
-| `struct` | Yes | Accepts fields and functions in declaration order. Generic parameters, Origins, and type constraints are supported. |
+| `group` | No | Accepts Properties, functions, and nested Collection declarations. All members are static. Generic parameters and Origins are not supported. |
+| `struct` | Yes | Accepts Properties and functions in declaration order. Generic parameters, Origins, and type constraints are supported. |
 | `enum` | Yes | Body parsing is not implemented. |
 | `extension` | No | Its Name identifies the target. Body parsing is not implemented. |
 | `contract` | No | Currently accepts associated-type constraints only. |
 
-A `struct` header may contain generic parameters and an Origin list. Constraint declarations precede fields and functions.
+A `struct` header may contain generic parameters and an Origin list. Constraint declarations precede Properties and functions.
 
 ```kimi
 struct Container<s/T> origin owner, source
@@ -137,7 +382,7 @@ contract Sequence
     associate Element is Comparable
 ```
 
-Each source unit has an implicit root `group`. This root dispatches top-level Collection declarations, fields, and functions. A `rootgroup` declaration starts at that root and accepts a dot-separated Name. For example:
+Each source unit has an implicit root `group`. This root dispatches top-level Collection declarations, Properties, and functions. A `rootgroup` declaration starts at that root and accepts a dot-separated Name. For example:
 
 ```kimi
 rootgroup A.B
@@ -260,7 +505,7 @@ Tuple types use parentheses and commas. Function types use `->` between the para
 
 A `struct` defines a composite value type.
 
-A structure may contain fields whose Core Types are:
+A structure may contain Properties whose Core Types are:
 
 - primitive types,
 - other structure types, or
@@ -281,7 +526,7 @@ struct View
     var source: ref/Data
 ```
 
-The Type Semantics of a field determines how the referenced or contained value is represented, owned, borrowed, shared, and accessed.
+The Type Semantics of a Property determines how the referenced or contained value is represented, owned, borrowed, shared, and accessed.
 
 # Index, Range, and Slice
 
