@@ -9,6 +9,8 @@ namespace Kimi.Compiler.Parsing;
 [TinyhandObject]
 public sealed partial class PropertyKoto : DeclarationKoto
 {
+    private static readonly PropertyAccessorKoto[] EmptyAccessors = [];
+
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Property;
 
@@ -33,7 +35,7 @@ public sealed partial class PropertyKoto : DeclarationKoto
     public Koto? InitializerKoto { get; private set; }
 
     [Key(6)]
-    private List<PropertyAccessorKoto> accessors = [];
+    private List<PropertyAccessorKoto>? accessors;
 
     /// <summary>Gets a value indicating whether the accessors use the inline <c>has</c> form.</summary>
     [Key(7)]
@@ -41,7 +43,8 @@ public sealed partial class PropertyKoto : DeclarationKoto
 
     /// <summary>Gets the explicit accessors in source order.</summary>
     [IgnoreMember]
-    public IReadOnlyList<PropertyAccessorKoto> Accessors => this.accessors;
+    public IReadOnlyList<PropertyAccessorKoto> Accessors
+        => this.accessors is { } accessors ? accessors : EmptyAccessors;
 
     /// <summary>Gets the source keyword for the binding kind.</summary>
     public string VariableText => this.VariableKind == VariableKind.Var ? Constants.VarKeyword : Constants.LetKeyword;
@@ -94,13 +97,33 @@ public sealed partial class PropertyKoto : DeclarationKoto
     /// <param name="kind">The accessor kind.</param>
     /// <returns>The accessor, or <see langword="null"/> when it is not declared.</returns>
     public PropertyAccessorKoto? GetAccessor(PropertyAccessorKind kind)
-        => this.accessors.FirstOrDefault(x => x.AccessorKind == kind);
+    {
+        if (this.accessors is not { } accessors)
+        {
+            return default;
+        }
+
+        foreach (var accessor in accessors)
+        {
+            if (accessor.AccessorKind == kind)
+            {
+                return accessor;
+            }
+        }
+
+        return default;
+    }
 
     /// <inheritdoc/>
     public override void Bind(Compilation compilation)
     {
         this.TypeKoto?.Bind(compilation);
         this.InitializerKoto?.Bind(compilation);
+        if (this.accessors is null)
+        {
+            return;
+        }
+
         foreach (var accessor in this.accessors)
         {
             accessor.Bind(compilation);
@@ -132,39 +155,39 @@ public sealed partial class PropertyKoto : DeclarationKoto
             this.InitializerKoto.WriteTo(ref builder);
         }
 
+        if (this.accessors is not { Count: > 0 } accessors)
+        {
+            return;
+        }
+
         if (this.HasInlineAccessors)
         {
             builder.AppendSpace();
             builder.Append(Constants.HasKeyword);
             builder.AppendSpace();
-            for (var i = 0; i < this.accessors.Count; i++)
+            for (var i = 0; i < accessors.Count; i++)
             {
                 if (i > 0)
                 {
                     builder.AppendCommaAndSpace();
                 }
 
-                this.accessors[i].WriteTo(ref builder);
+                accessors[i].WriteTo(ref builder);
             }
 
             return;
         }
 
-        if (this.accessors.Count == 0)
-        {
-            return;
-        }
-
         builder.AppendLine();
         builder.IncrementIndent();
-        for (var i = 0; i < this.accessors.Count; i++)
+        for (var i = 0; i < accessors.Count; i++)
         {
             if (i > 0)
             {
                 builder.AppendLine();
             }
 
-            this.accessors[i].WriteTo(ref builder);
+            accessors[i].WriteTo(ref builder);
         }
 
         builder.DecrementIndent();
@@ -180,7 +203,7 @@ public sealed partial class PropertyKoto : DeclarationKoto
             return false;
         }
 
-        this.accessors.Add(accessor);
+        (this.accessors ??= []).Add(accessor);
         accessor.Parent = this;
         this.Span = SourceSpan.FromBounds(this.Span.Start, Math.Max(this.Span.End, accessor.Span.End));
         return true;
@@ -204,9 +227,12 @@ public sealed partial class PropertyKoto : DeclarationKoto
             yield return this.InitializerKoto;
         }
 
-        foreach (var accessor in this.accessors)
+        if (this.accessors is not null)
         {
-            yield return accessor;
+            foreach (var accessor in this.accessors)
+            {
+                yield return accessor;
+            }
         }
     }
 
@@ -230,7 +256,8 @@ public sealed partial class PropertyKoto : DeclarationKoto
             return true;
         }
 
-        if (oldKoto is PropertyAccessorKoto oldAccessor && newKoto is PropertyAccessorKoto newAccessor)
+        if (this.accessors is not null &&
+            oldKoto is PropertyAccessorKoto oldAccessor && newKoto is PropertyAccessorKoto newAccessor)
         {
             var index = this.accessors.IndexOf(oldAccessor);
             if (index >= 0)

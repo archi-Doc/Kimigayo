@@ -363,7 +363,6 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.FunctionType, typeof(FunctionTypeKoto))]
 [TinyhandUnion((int)KotoKind.ArrayLiteral, typeof(ArrayLiteralKoto))]
 [TinyhandUnion((int)KotoKind.DictionaryLiteral, typeof(DictionaryLiteralKoto))]
-[ValueLinkObject]
 public abstract partial class Koto
 {
     /// <summary>The size required for a table indexed by <see cref="KotoKind"/>.</summary>
@@ -378,7 +377,7 @@ public abstract partial class Koto
 
     /// <summary>Gets the diagnostic destination associated with this node.</summary>
     [IgnoreMember]
-    public DiagnosticCollection? DiagnosticCollection { get; internal set; }
+    public DiagnosticCollection? DiagnosticCollection => this.CodeContext?.DiagnosticCollection;
 
     /// <summary>Gets the node span in the source document.</summary>
     [IgnoreMember]
@@ -428,10 +427,8 @@ public abstract partial class Koto
     /// <summary>Initializes a new instance of the <see cref="Koto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The node span.</param>
-    [Link(Primary = true, Type = ChainType.LinkedList, Name = "ChildLink")]
     public Koto(ref TokenReader reader, SourceSpan range)
     {
-        this.DiagnosticCollection = reader.Diagnostic;
         this.CodeContext = reader.CodeContext;
         this.Span = range;
 
@@ -573,7 +570,6 @@ public abstract partial class Koto
     internal virtual void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
     {
         this.CodeContext = codeContext;
-        this.DiagnosticCollection = codeContext.DiagnosticCollection;
         this.Parent = parent;
 
         foreach (var child in this.ChildNodes)

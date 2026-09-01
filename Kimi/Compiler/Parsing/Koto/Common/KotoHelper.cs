@@ -97,12 +97,7 @@ public static partial class KotoHelper
     {
         if (parent.ReplaceChild(oldKoto, newKoto))
         {
-            // Update the intrusive child chain; ReplaceChild owns explicit parent links.
-            oldKoto.Goshujin?.ChildLinkChain.UnsafeReplaceInstance(oldKoto, newKoto);
-            oldKoto.Goshujin = default;
-
             // Preserve the source metadata associated with the replaced expression.
-            newKoto.DiagnosticCollection = oldKoto.DiagnosticCollection;
             newKoto.Span = oldKoto.Span;
             newKoto.CodeContext = oldKoto.CodeContext;
             return true;

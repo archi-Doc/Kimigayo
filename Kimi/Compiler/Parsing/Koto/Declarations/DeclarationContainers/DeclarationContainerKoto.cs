@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Parsing;
 /// Provides shared storage and parsing for Kimigayo Declaration Container nodes.
 /// </summary>
 [TinyhandObject]
-public abstract partial class DeclarationContainerKoto : IdentifiableKoto, ITokenParser
+public abstract partial class DeclarationContainerKoto : IdentifiableKoto
 {
     protected enum DeclarationOrder : byte
     {
@@ -55,20 +55,28 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto, IToke
     /// <summary>Gets a value indicating whether type constraints are supported.</summary>
     public virtual bool SupportsTypeConstraints => false;
 
-    /// <summary>Gets the generic parameters.</summary>
+    [Key(5)]
+    private List<Koto>? kotoList;
+
     [Key(7)]
-    public List<TypeKoto> GenericArguments { get; private set; } = [];
+    private List<TypeKoto>? genericArguments;
+
+    [Key(8)]
+    private List<IsKoto>? typeConstraints;
+
+    /// <summary>Gets the generic parameters.</summary>
+    [IgnoreMember]
+    public List<TypeKoto> GenericArguments => this.genericArguments ??= [];
 
     /// <summary>Gets the type constraints.</summary>
-    [Key(8)]
-    public List<IsKoto> TypeConstraints { get; private set; } = [];
+    [IgnoreMember]
+    public List<IsKoto> TypeConstraints => this.typeConstraints ??= [];
 
     /// <summary>Gets the declared origins.</summary>
     [Key(9)]
     public List<string> Origins { get; private set; } = [];
 
-    [Key(5)]
-    protected List<Koto> KotoList { get; set; } = [];
+    protected List<Koto> KotoList => this.kotoList ??= [];
 
     [Key(6)]
     protected Utf16Hashtable<Koto> IdentifierToDeclarationContainerKoto { get; set; } = new();
@@ -627,26 +635,17 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto, IToke
     private static void GetOrAddDeclarationContainer(ref DeclarationContainerKoto container, ReadOnlySpan<char> text, TokenKind kind, TokenContext state, SourceSpan range)
     {
         var parent = container;
-        var codeContext = container.CodeContext;
-        Func<string, Koto> factory = kind switch
+        if (container.IdentifierToDeclarationContainerKoto.TryGetValue(text, out var existing))
         {
-            TokenKind.Struct => x => new StructKoto(codeContext, state, range),
-            TokenKind.Enum => x => new EnumKoto(codeContext, state, range),
-            TokenKind.Extension => x => new ExtensionKoto(codeContext, state, range),
-            TokenKind.Contract => x => new ContractKoto(codeContext, state, range),
-            _ => x => new GroupKoto(codeContext, state, range),
-        };
-
-        container = (DeclarationContainerKoto)container.IdentifierToDeclarationContainerKoto.GetOrAdd(text, factory);
-        if (string.IsNullOrEmpty(container.Name))
-        {
-            container.Parent = parent;
-            container.Name = text.ToString();
-        }
-        else
-        {
+            container = (DeclarationContainerKoto)existing;
             container.Merge(state, range);
+            return;
         }
+
+        var name = text.ToString();
+        container = CreateStandalone(parent.CodeContext, kind, state, range, name);
+        container.Parent = parent;
+        parent.IdentifierToDeclarationContainerKoto.Add(name, container);
     }
 
     private void Merge(TokenContext state, SourceSpan range)

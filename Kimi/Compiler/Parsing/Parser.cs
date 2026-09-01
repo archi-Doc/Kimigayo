@@ -254,7 +254,7 @@ public static class Parser
             goto Exit;
         }
 
-        var parameters = new List<FunctionParameterKoto>();
+        List<FunctionParameterKoto>? parameters = default;
         while (reader.CanRead)
         {
             ConsumeSeparators(ref reader);
@@ -316,7 +316,7 @@ public static class Parser
                 defaultValue = ParseExpression(ref reader);
             }
 
-            parameters.Add(new(
+            (parameters ??= []).Add(new(
                 externalNameKoto.IdentifierName,
                 internalName,
                 isOptional,

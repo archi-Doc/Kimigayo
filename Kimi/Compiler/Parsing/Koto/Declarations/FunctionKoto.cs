@@ -63,8 +63,11 @@ public sealed partial record class FunctionParameterKoto
 /// Represents a function declaration.
 /// </summary>
 [TinyhandObject]
-public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
+public sealed partial class FunctionKoto : IdentifiableKoto
 {
+    private static readonly TypeKoto[] EmptyGenericArguments = [];
+    private static readonly FunctionParameterKoto[] EmptyParameters = [];
+
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Function;
 
@@ -77,10 +80,10 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
     public string Name { get; private set; } = string.Empty;
 
     [Key(4)]
-    private List<TypeKoto> genericArguments = [];
+    private List<TypeKoto>? genericArguments;
 
     [Key(5)]
-    private List<FunctionParameterKoto> parameters = [];
+    private List<FunctionParameterKoto>? parameters;
 
     /// <summary>Gets the return type, if specified.</summary>
     [Key(6)]
@@ -96,11 +99,13 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
 
     /// <summary>Gets the generic parameters.</summary>
     [IgnoreMember]
-    public IReadOnlyList<TypeKoto> GenericArguments => this.genericArguments;
+    public IReadOnlyList<TypeKoto> GenericArguments
+        => this.genericArguments is { } genericArguments ? genericArguments : EmptyGenericArguments;
 
     /// <summary>Gets the function parameters.</summary>
     [IgnoreMember]
-    public IReadOnlyList<FunctionParameterKoto> Parameters => this.parameters;
+    public IReadOnlyList<FunctionParameterKoto> Parameters
+        => this.parameters is { } parameters ? parameters : EmptyParameters;
 
     /// <summary>Gets a value indicating whether conditional attributes exclude this function.</summary>
     [IgnoreMember]
@@ -114,25 +119,31 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
     /// <param name="genericArguments">The generic parameters, if present.</param>
     /// <param name="parameters">The function parameters.</param>
     /// <param name="returnType">The return type, if present.</param>
-    public FunctionKoto(ref TokenReader reader, TokenContext context, SourceSpan range, string name, List<TypeKoto>? genericArguments, List<FunctionParameterKoto> parameters, Koto? returnType)
+    public FunctionKoto(ref TokenReader reader, TokenContext context, SourceSpan range, string name, List<TypeKoto>? genericArguments, List<FunctionParameterKoto>? parameters, Koto? returnType)
         : base(ref reader, range)
     {
         this.SetAttributeChain(context.AttributeKoto);
         this.Modifier = context.ModifierKind;
         this.IsExcluded = context.IsExcluded;
         this.Name = name;
-        this.genericArguments = genericArguments ?? [];
+        this.genericArguments = genericArguments;
         this.parameters = parameters;
         this.ReturnType = returnType;
 
-        foreach (var argument in this.genericArguments)
+        if (this.genericArguments is not null)
         {
-            argument.Parent = this;
+            foreach (var argument in this.genericArguments)
+            {
+                argument.Parent = this;
+            }
         }
 
-        foreach (var parameter in this.parameters)
+        if (this.parameters is not null)
         {
-            this.AttachParameter(parameter);
+            foreach (var parameter in this.parameters)
+            {
+                this.AttachParameter(parameter);
+            }
         }
 
         if (returnType is not null)
@@ -270,22 +281,28 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
 
     protected override IEnumerable<Koto> GetChildNodes()
     {
-        foreach (var argument in this.genericArguments)
+        if (this.genericArguments is not null)
         {
-            yield return argument;
+            foreach (var argument in this.genericArguments)
+            {
+                yield return argument;
+            }
         }
 
-        foreach (var parameter in this.parameters)
+        if (this.parameters is not null)
         {
-            if (parameter.AttributeChain is not null)
+            foreach (var parameter in this.parameters)
             {
-                yield return parameter.AttributeChain;
-            }
+                if (parameter.AttributeChain is not null)
+                {
+                    yield return parameter.AttributeChain;
+                }
 
-            yield return parameter.Type;
-            if (parameter.DefaultValue is not null)
-            {
-                yield return parameter.DefaultValue;
+                yield return parameter.Type;
+                if (parameter.DefaultValue is not null)
+                {
+                    yield return parameter.DefaultValue;
+                }
             }
         }
 
@@ -314,28 +331,32 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
             return true;
         }
 
-        foreach (var parameter in this.parameters)
+        if (this.parameters is not null)
         {
-            if (parameter.AttributeChain == oldKoto && newKoto is AttributeKoto attribute)
+            foreach (var parameter in this.parameters)
             {
-                parameter.AttributeChain = attribute;
-                return true;
-            }
+                if (parameter.AttributeChain == oldKoto && newKoto is AttributeKoto attribute)
+                {
+                    parameter.AttributeChain = attribute;
+                    return true;
+                }
 
-            if (parameter.Type == oldKoto)
-            {
-                parameter.Type = newKoto;
-                return true;
-            }
+                if (parameter.Type == oldKoto)
+                {
+                    parameter.Type = newKoto;
+                    return true;
+                }
 
-            if (parameter.DefaultValue == oldKoto)
-            {
-                parameter.DefaultValue = newKoto;
-                return true;
+                if (parameter.DefaultValue == oldKoto)
+                {
+                    parameter.DefaultValue = newKoto;
+                    return true;
+                }
             }
         }
 
-        if (oldKoto is TypeKoto oldType && newKoto is TypeKoto newType)
+        if (this.genericArguments is not null &&
+            oldKoto is TypeKoto oldType && newKoto is TypeKoto newType)
         {
             var index = this.genericArguments.IndexOf(oldType);
             if (index >= 0)
@@ -351,14 +372,20 @@ public sealed partial class FunctionKoto : IdentifiableKoto, ITokenParser
     [TinyhandOnDeserialized]
     private void OnDeserialized()
     {
-        foreach (var argument in this.genericArguments)
+        if (this.genericArguments is not null)
         {
-            argument.Parent = this;
+            foreach (var argument in this.genericArguments)
+            {
+                argument.Parent = this;
+            }
         }
 
-        foreach (var parameter in this.parameters)
+        if (this.parameters is not null)
         {
-            this.AttachParameter(parameter);
+            foreach (var parameter in this.parameters)
+            {
+                this.AttachParameter(parameter);
+            }
         }
 
         if (this.ReturnType is not null)
