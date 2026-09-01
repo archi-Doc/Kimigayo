@@ -8,9 +8,9 @@ Kimigayo separates workspace orchestration, project configuration, library sourc
 
 | Element | Responsibility |
 | ------- | -------------- |
-| Solution | Holds multiple Projects and supplies options shared by their builds. It corresponds to a C# solution. |
-| Project | Defines one application or library build unit. It corresponds to a C# project and is configured by a `.kimiproj` file. |
-| Kotonoha | Defines a named library source unit. It is comparable to a NuGet package boundary and is built from one or more Kimi source files. |
+| Solution | Holds multiple Projects and supplies options shared by their builds. |
+| Project | Defines one application or library build unit. It is configured by a `.kimiproj` file. |
+| Kotonoha | Defines a named library source unit. It is is built from one or more Kimi source files. |
 | Compilation | Compiles one Project for one target OS and architecture. |
 | CodeContext | Carries the source-unit and diagnostic context used while source is parsed, generated, or inserted into a Koto tree. |
 
@@ -20,7 +20,7 @@ Each Compilation owns the application's or library's primary Kotonoha. A Compila
 
 A Kotonoha merges declarations from multiple `SourceDocument` instances into one root Koto tree. Tokenization and parsing occur per source document. Executable syntax written directly at the root—bindings, statements, expressions, and functions—is stored in an implicit generated function owned by the Kotonoha.
 
-A CodeContext belongs to exactly one Kotonoha. It supplies the active Compilation and diagnostic destination to the Tokenizer and Parser. Generated source may be parsed into a selected Collection in that same Kotonoha; inserting nodes into a Collection owned by another Kotonoha is invalid.
+A CodeContext belongs to exactly one Kotonoha. It supplies the active Compilation and diagnostic destination to the Tokenizer and Parser. Generated source may be parsed into a selected Declaration Container in that same Kotonoha; inserting nodes into a Declaration Container owned by another Kotonoha is invalid.
 
 The current front-end pipeline is:
 
@@ -51,7 +51,7 @@ Kimigayo uses the following information to identify declarations and their meani
 
 ## Name
 
-A Name is the basic name by which a declaration is written and referred to. The same character rules apply to the names of collections, types, functions, properties, local bindings, parameters, and other named declarations.
+A Name is the basic name by which a declaration is written and referred to. The same character rules apply to the names of Declaration Containers, types, functions, Properties, local bindings, parameters, and other named declarations.
 
 A Name is non-empty and consists of a start character followed by zero or more continuation characters.
 
@@ -353,13 +353,13 @@ func add(left: i32, right: i32) -> i32
     left + right
 ```
 
-# Collections
+# Declaration Containers
 
-A Collection is a named declaration scope. Collection bodies are delimited by indentation, and each collection kind defines which body declarations it accepts.
+A **Declaration Container** is a named declaration scope whose body may contain Properties, functions, constraints, or nested Declaration Containers as permitted by its kind. Its body is delimited by indentation.
 
-| Collection kind | Instantiable | Main characteristics |
+| Declaration Container kind | Instantiable | Main characteristics |
 | --------------- | ------------ | -------------------- |
-| `group` | No | Accepts Properties, functions, and nested Collection declarations. All members are static. Generic parameters and Origins are not supported. |
+| `group` | No | Accepts Properties, functions, and nested Declaration Container declarations. All members are static. Generic parameters and Origins are not supported. |
 | `struct` | Yes | Accepts Properties and functions in declaration order. Generic parameters, Origins, and type constraints are supported. |
 | `enum` | Yes | Body parsing is not implemented. |
 | `extension` | No | Its Name identifies the target. Body parsing is not implemented. |
@@ -382,14 +382,14 @@ contract Sequence
     associate Element is Comparable
 ```
 
-Each source unit has an implicit root `group`. This root dispatches top-level Collection declarations, Properties, and functions. A `rootgroup` declaration starts at that root and accepts a dot-separated Name. For example:
+Each source unit has an implicit root `group`. This root dispatches top-level Declaration Container declarations, Properties, and functions. A `rootgroup` declaration starts at that root and accepts a dot-separated Name. For example:
 
 ```kimi
 rootgroup A.B
     var value = 1
 ```
 
-creates the nested group path `A.B`. Ordinary `group` bodies accept nested Collection declarations. `struct` bodies do not currently accept nested Collections.
+creates the nested group path `A.B`. Ordinary `group` bodies accept nested Declaration Container declarations. `struct` bodies do not currently accept nested Declaration Containers.
 
 An `alias` is a top-level declaration of a qualified Name. Nested aliases are invalid.
 
@@ -528,7 +528,7 @@ struct View
 
 The Type Semantics of a Property determines how the referenced or contained value is represented, owned, borrowed, shared, and accessed.
 
-# Index, Range, and Slice
+### Index, Range, and Slice
 
 An Index is a nonnegative `isize` value. Applying an Index with `value[index]` selects one element. The resolved Index must be less than the length of the indexed value.
 
@@ -554,6 +554,567 @@ Applying a Range with `value[range]` produces a Slice over the selected consecut
 After resolving from-end boundaries, an exclusive Range must satisfy `0 <= start <= end <= length`. An inclusive Range must satisfy `0 <= start <= end < length`.
 
 For a value of length six, `value[1..^1]` selects the elements at Indices 1, 2, 3, and 4.
+
+## Type Semantics
+
+Type Semantics specify the ownership, borrowing, layout, and safety properties of a typed value.
+
+The qualified syntax is `Semantics/CoreType`. The complete type form adds `from Origin`.
+
+Within a generic declaration, an identifier in the Semantics position denotes a generic Semantics parameter. For example, `s/T` applies the Semantics parameter `s` to the Core Type parameter `T`.
+
+In the syntax below, `T` denotes a Core Type.
+
+| Category      | Semantics    | Syntax         | Layout or Meaning                     |
+| ------------- | ------------ | -------------- | ------------------------------------- |
+| Value         | Owner        | `T`, `owner/T` | Data layout                           |
+| Value Borrow  | SharedRef    | `ref/T`        | Shared borrow of a value              |
+| Value Borrow  | ExclusiveRef | `uniq/T`       | Exclusive mutable borrow of a value   |
+| Object        | Owner        | `obj/T`        | Metadata + Data                       |
+| Object        | Rc           | `rc/T`         | Rc metadata + Metadata + Data         |
+| Object        | Arc          | `arc/T`        | Arc metadata + Metadata + Data        |
+| Object Borrow | SharedRef    | `objref/T`     | Shared borrow of an object            |
+| Object Borrow | ExclusiveRef | `objuniq/T`    | Exclusive mutable borrow of an object |
+| Unsafe        | Pointer      | `unsafe/T`     | Unsafe pointer                        |
+
+### Value
+
+`T` and `owner/T` represent a directly owned value with the data layout of `T`.
+
+```
+let x: i32
+let p: owner/Point
+```
+
+`T` is equivalent to `owner/T`.
+
+### Value Borrow
+
+Value borrows provide non-owning access to value data and are subject to lifetime constraints.
+
+#### `ref/T`
+
+`ref/T` is a shared borrowed reference to a value. Multiple shared references may coexist.
+
+```
+func read(value: ref/Data)
+```
+
+#### `uniq/T`
+
+`uniq/T` is an exclusive mutable borrowed reference to a value. No conflicting reference may coexist.
+
+```
+func modify(value: uniq/Data)
+```
+
+### Object
+
+Object semantics represent object metadata followed by the data layout of `T`.
+
+#### `obj/T`
+
+`obj/T` is an exclusively owned object.
+
+```
+let node: obj/Node
+```
+
+#### `rc/T`
+
+`rc/T` is a shared object with non-atomic reference-count metadata. The object remains alive while an owning reference exists.
+
+```
+let object: rc/Object
+```
+
+#### `arc/T`
+
+`arc/T` is a shared object with atomic reference-count metadata. Atomic ownership management does not guarantee safe concurrent mutation of `T`.
+
+```
+let object: arc/Object
+```
+
+### Object Borrow
+
+Object borrows provide non-owning access to an object and are subject to lifetime constraints.
+
+#### `objref/T`
+
+`objref/T` is a shared borrowed reference to an object. Multiple shared references may coexist.
+
+```
+func readObject(value: objref/Data)
+```
+
+#### `objuniq/T`
+
+`objuniq/T` is an exclusive mutable borrowed reference to an object. No conflicting reference may coexist.
+
+```
+func modifyObject(value: objuniq/Data)
+```
+
+### Unsafe
+
+#### `unsafe/T`
+
+```
+unsafe/T
+```
+
+`unsafe/T` represents an unsafe pointer to `T`.
+
+Unlike safe ownership and borrowing semantics, `unsafe/T` is not required to satisfy the normal ownership, lifetime, aliasing, or exclusivity guarantees enforced by the language.
+
+Operations involving `unsafe/T` therefore belong to the unsafe portion of the language and place additional correctness responsibilities on the programmer.
+
+```
+let pointer: unsafe/i32
+```
+
+## Origin-Based Lifetime Management
+
+Kimigayo uses **Origins** instead of lifetime variables. An Origin describes how long a borrow remains valid; a **Loan** records which place is borrowed and whether the borrow is shared or exclusive.
+
+```text
+Type    what the value is
+Origin  how long a borrow may remain valid
+Loan    which place is borrowed, and in which mode
+```
+
+Origin annotations appear in signatures and type declarations. Origins inside function bodies are inferred. When an annotation is omitted, conservative elision rules apply.
+
+### Borrow types and Origins
+
+The safe value-borrow semantics are:
+
+```kimi
+ref/T from o   // shared, immutable, and aliasable
+uniq/T from o  // exclusive and mutable
+```
+
+`uniq/T` is not implicitly copyable and cannot coexist with another overlapping borrow. The corresponding object-borrow semantics, `objref/T` and `objuniq/T`, follow the same shared and exclusive rules. This section uses `ref` and `uniq` in examples.
+
+When `from o` is omitted, §3 determines the Origin.
+
+#### Origin expressions
+
+An Origin is the set of program points at which a borrow is guaranteed to be valid.
+
+| Kind     | Examples                | Meaning                                         |
+| -------- | ----------------------- | ----------------------------------------------- |
+| Concrete | `x`, `self`, `x.source` | Origin supplied by a parameter or receiver      |
+| Abstract | `source`, `left`        | Origin parameter declared by a function or type |
+| Static   | `static`                | Built-in maximum Origin                         |
+
+The syntax is:
+
+```text
+origin-expression := Name
+                   | origin-expression '.' Name
+                   | static
+                   | origin-expression 'and' origin-expression
+```
+
+A borrowed parameter used as an Origin denotes the Origin carried by its value, not the lexical scope of the parameter variable:
+
+```kimi
+func first(x: ref/T) -> ref/T from x
+```
+
+`x.source` denotes the abstract Origin `source` carried by `x`. Qualification is required so that values of the same Origin-bearing type remain distinguishable:
+
+```kimi
+func View.get(self: ref/Self) -> ref/T from self.source
+```
+
+Local values also have compiler-internal Origins, but these cannot be named in a public signature.
+
+#### Ordering and intersection
+
+```text
+o1 : o2
+```
+
+means that `o1` outlives `o2`, or equivalently:
+
+```text
+region(o1) ⊇ region(o2)
+```
+
+The relation is reflexive and transitive. `static` outlives every Origin.
+
+`and` is the meet of two Origins:
+
+```text
+region(o1 and o2) = region(o1) ∩ region(o2)
+```
+
+Consequently, `o1 and o2` never outlives either operand. A result declared `from x and y` is valid only in the region common to both inputs.
+
+#### `static` and `Owned`
+
+```kimi
+func empty() -> ref/string from static
+```
+
+A shared borrow from `static` has no non-static lifetime dependency. Safe code cannot derive `uniq/T from static` from longevity alone: an exclusive borrow also requires a unique Loan anchor. For the same reason, an abstract Origin whose Loan requirement is `uniq` cannot be bound to `static` in safe code.
+
+`static` describes an Origin; it does not mean that a type contains no non-static borrow. The `Owned` capability expresses that condition:
+
+```kimi
+func spawn<F>(f: F)
+    where F: Owned
+```
+
+A type is `Owned` when every reachable Origin dependency is absent or bound to `static`.
+
+### Abstract Origins
+
+Functions and types may declare abstract Origin parameters separately from type parameters:
+
+```kimi
+func unwrap<T> origin s
+    (v: View<T> from (source => s))
+    -> ref/T from s
+
+struct View<T> origin source
+    let value: ref/T from source
+```
+
+Function Origins are universally quantified. Origin parameters occupy a namespace distinct from type parameters.
+
+#### Origin arguments
+
+Named Origin arguments use `from (...)` and `=>`:
+
+```kimi
+struct Pair<A, B> origin left, right
+    let a: ref/A from left
+    let b: ref/B from right
+
+Pair<A, B> from (
+    left => a,
+    right => b)
+```
+
+Parentheses are required for a named argument list, including a one-element list. If a type declares exactly one Origin, this shorthand is allowed:
+
+```kimi
+View<T> from v
+```
+
+It is equivalent to:
+
+```kimi
+View<T> from (source => v)
+```
+
+#### Variance
+
+The compiler infers Origin variance from all occurrences and solves recursive types to a fixed point. Explicit variance annotations are not allowed.
+
+| Position                 | Origin                   | Core Type         |
+| ------------------------ | ------------------------ | ----------------- |
+| `ref/T from o`           | Covariant in `o`         | Covariant in `T`  |
+| `uniq/T from o`          | Covariant in `o`         | Invariant in `T`  |
+| Function parameter       | Reverses polarity        | Contravariant     |
+| Function result          | Preserves polarity       | Covariant         |
+| Interior-mutable storage | Representation-dependent | Usually invariant |
+
+For an Origin parameter `p` of `S`:
+
+- covariance permits `S from (p => o1) <: S from (p => o2)` when `o1 : o2`;
+- contravariance reverses that relation;
+- invariance requires equal Origins.
+
+The direct borrow rules are:
+
+```text
+o1 : o2
+--------------------------------
+ref/T from o1 <: ref/T from o2
+uniq/T from o1 <: uniq/T from o2
+```
+
+`uniq/T` remains invariant in `T`.
+
+#### Loan requirements
+
+Each abstract Origin has an inferred Loan requirement:
+
+```text
+none < ref < uniq
+```
+
+Using an Origin in `ref/T` requires `ref`; using it in `uniq/T` requires `uniq`. Multiple uses take the stronger requirement, and requirements propagate through nested Origin-bearing types.
+
+```kimi
+struct View<T> origin source
+    let value: ref/T from source       // loan(source) = ref
+
+struct MutView<T> origin source
+    let value: uniq/T from source      // loan(source) = uniq
+```
+
+The requirement determines which caller-side Loan must remain active while a returned or stored Origin-bearing value is live. A type carrying an active `uniq` requirement is non-Copy.
+
+### Origin elision and return contracts
+
+When a result Origin is omitted, the compiler applies these rules in order:
+
+1. If the result contains no borrow, no result-Origin constraint is generated.
+2. If there are directly borrowed parameters, each omitted result Origin becomes the meet of all their Origins.
+3. Otherwise, an omitted shared result Origin is `static`. If that would create an exclusive static borrow, an explicit valid Origin is required.
+
+Examples:
+
+```kimi
+func first(x: ref/T) -> ref/T
+// result Origin: x
+
+func choose(x: ref/T, y: ref/T) -> ref/T
+// result Origin: x and y
+
+func empty() -> ref/string
+// result Origin: static
+```
+
+Only direct borrowed parameters participate in rule 2. Origins nested in aggregate inputs must be selected explicitly:
+
+```kimi
+func get(v: View<T>) -> ref/T from v.source
+```
+
+An explicit `from` clause overrides elision. Thus this result depends on `self`, not on the conservative meet `self and key`:
+
+```kimi
+func lookup(self: ref/Self, key: ref/Key)
+    -> ref/V from self
+```
+
+#### Return contracts
+
+A declared return Origin is the maximum dependency visible to callers; it does not require the implementation to borrow from that particular input. Every returned value must be a subtype of the declared result type.
+
+For example, `ref/T from static` may satisfy `ref/T from x` because `static : x`, provided the Origin position is covariant. Invariant positions require equality, while contravariant positions reverse the subtype direction.
+
+`from x and y` is deliberately conservative in two ways:
+
+- the result region is `region(x) ∩ region(y)`;
+- Loans for both possible sources remain active while the result is live.
+
+```kimi
+let r = choose(a, b)
+b.mutate()       // Error: the Loan on b is still active.
+use(r)
+```
+
+The caller cannot rely on which argument the implementation actually selected. An Origin-bearing result type with distinct Origin parameters can preserve more precision.
+
+### Exclusive Origins
+
+An exclusive borrow requires both a valid Origin and a unique Loan anchor. An Origin proves longevity but not uniqueness.
+
+A shared borrow may be returned from a stored Origin:
+
+```kimi
+func View.get(self: ref/Self)
+    -> ref/T from self.source
+```
+
+Returning `uniq/T from self.source` from `self: uniq/Self` is invalid because detaching the result from the current `self` Loan could allow a second exclusive borrow:
+
+```kimi
+func View.bad(self: uniq/Self)
+    -> uniq/T from self.source       // Error
+```
+
+There are two valid forms.
+
+Consume the Origin-bearing owner:
+
+```kimi
+func View.into_uniq(self: Self)
+    -> uniq/T from self.source
+```
+
+Moving `self` prevents reuse of the capability.
+
+Alternatively, reborrow through the current exclusive receiver:
+
+```kimi
+func View.get_uniq(self: uniq/Self)
+    -> uniq/T from self
+```
+
+The parent Loan remains active, and access through it is suspended, while the returned reborrow is live.
+
+### Borrow checking
+
+Function bodies are lowered to a control-flow graph. A **program point** is a position immediately before or after an operation. A **place** is an assignable location:
+
+```text
+place := local
+       | place '.' Name
+       | '*' place
+       | place '[' _ ']'
+```
+
+A **region** is a set of program points. Local regions are inferred; Origins in signatures introduce universal regions; `static` is the maximum region.
+
+A Loan is:
+
+```text
+Loan = (place, mode, region)
+mode = ref | uniq
+```
+
+It is active at program point `P` exactly when `P` belongs to its region. Regions follow actual uses rather than lexical scope, providing non-lexical lifetimes:
+
+```kimi
+let r = ref/x
+use(r)
+x.mutate()       // Allowed: r is no longer live.
+```
+
+#### Constraints
+
+Type checking generates these constraints:
+
+| Constraint      | Rule                                                         |
+| --------------- | ------------------------------------------------------------ |
+| Subtyping       | Assignment and argument passing require `type(value) <: type(destination)`. |
+| Liveness        | If a value containing `o` may be used after `P`, then `P` belongs to `region(o)`. |
+| Outlives        | `where a : b` requires `region(a) ⊇ region(b)`.              |
+| Well-formedness | Every Origin in `T` observable through `ref/T from o` or `uniq/T from o` must outlive `o`. |
+| Calls           | Origin arguments and result Loan requirements are instantiated as described in §5.4. |
+
+The well-formedness rule prevents borrowed contents from expiring before the outer borrow.
+
+#### Place overlap and conflicts
+
+Two places overlap when an operation on one may affect the other.
+
+| Places                               | Overlap                                          |
+| ------------------------------------ | ------------------------------------------------ |
+| `x`, `x` or `x.Property`             | Yes                                              |
+| `x.a`, `x.b` for distinct Properties | No                                               |
+| Two array elements                   | Conservatively yes unless disjointness is proven |
+| Dereferences                         | Yes when their Loan provenance may overlap       |
+| Unrelated locals                     | No                                               |
+
+Different Properties of a structure may therefore be borrowed exclusively at the same time.
+
+Each operation is checked against every active Loan on an overlapping place:
+
+| Operation               | Existing `ref` | Existing `uniq` |
+| ----------------------- | -------------- | --------------- |
+| Read                    | Allowed        | Forbidden       |
+| Write or move           | Forbidden      | Forbidden       |
+| Create `ref`            | Allowed        | Forbidden       |
+| Create `uniq`           | Forbidden      | Forbidden       |
+| Drop the borrowed place | Forbidden      | Forbidden       |
+
+This enforces shared aliasing or mutation, but never both simultaneously.
+
+#### Reborrowing
+
+Borrowing through an exclusive borrow creates a child Loan. While the child is live, the parent remains live but access through it is suspended. Overlapping access is rejected by the normal conflict rules.
+
+```kimi
+func bump(n: uniq/i32)
+
+var v = 0
+bump(v@uniq)
+bump(v@uniq)
+```
+
+Each call creates a temporary reborrow; the first ends before the second starts.
+
+#### Calls and Origin propagation
+
+For a call, the compiler:
+
+1. creates fresh regions for the callee's abstract Origins;
+2. instantiates parameter types and checks argument subtyping;
+3. applies declared outlives constraints;
+4. instantiates the return type;
+5. recursively collects its Origin dependencies and Loan requirements;
+6. creates the required caller-side Loans and keeps them active for the corresponding result regions.
+
+This applies to direct borrow results and nested aggregate results:
+
+```kimi
+func make(a: ref/A, b: ref/B)
+    -> Pair<A, B> from (
+        left => a,
+        right => b)
+```
+
+While the returned `Pair` is live, shared Loans on both `a` and `b` remain active. A dependency requiring `uniq` propagates an exclusive Loan. `static` creates no caller-side Loan.
+
+#### Universal regions
+
+Every Origin in a function signature is universally quantified. The implementation must work for every legal caller instantiation, so a local region cannot be widened to satisfy a universal return Origin:
+
+```kimi
+func bad(x: ref/T) -> ref/T from x
+    let local = T.new()
+    return ref/local       // Error
+```
+
+#### Drop checking
+
+Dropping storage requires an Origin to remain live only when destruction may observe a value carrying that Origin.
+
+```text
+DestructorUsePoints(value, origin) ⊆ region(origin)
+```
+
+Trivial destruction adds no constraint. Until the language provides a `may_dangle`-style mechanism, a user-defined destructor is conservatively assumed to observe every reachable Origin.
+
+```kimi
+struct Logger origin sink
+    let out: uniq/Writer from sink
+
+    deinit
+        self.out.flush()
+```
+
+Here `sink` must remain valid throughout the destructor.
+
+#### Reference algorithm
+
+A conforming borrow checker may proceed as follows:
+
+```text
+1. Type-check and generate subtype constraints.
+2. Build the control-flow graph and compute liveness.
+3. Generate Origin and well-formedness constraints.
+4. Instantiate call-site Origins and propagate result Loan requirements.
+5. Solve region constraints to a fixed point.
+6. Reject local-to-universal region flows.
+7. Compute active Loans and check overlap conflicts.
+8. Check reborrows and destructor observations.
+```
+
+The region and Loan analyses may be implemented using Datalog or an equivalent fixed-point solver.
+
+### Deferred features
+
+This revision does not define:
+
+- Origins on contracts or trait-like abstractions;
+- default Origins for trait objects;
+- higher-ranked Origins;
+- borrow escape into heap or global storage;
+- lending iterators;
+- destructor dangling relaxation.
+
+These features require extensions to the core rules above and must not be inferred from this revision.
 
 # Control Flow
 
@@ -969,125 +1530,6 @@ break value
 ## Implementation status
 
 The current front end parses `if`, `match`, `for`, `while`, `loop`, `return`, `break`, `continue`, and `yield`, and represents each control-transfer keyword with its own syntax node. Exhaustiveness and common-result-type checking, contextual target validation, and enforcement of target-specific operand restrictions are later semantic-analysis work and are not yet fully implemented.
-
-# Type Semantics
-
-Type Semantics specify the ownership, borrowing, layout, and safety properties of a typed value.
-
-The qualified syntax is `Semantics/CoreType`. The complete type form adds `from Origin`.
-
-Within a generic declaration, an identifier in the Semantics position denotes a generic Semantics parameter. For example, `s/T` applies the Semantics parameter `s` to the Core Type parameter `T`.
-
-In the syntax below, `T` denotes a Core Type.
-
-| Category      | Semantics    | Syntax                  | Layout or Meaning                     |
-| ------------- | ------------ | ----------------------- | ------------------------------------- |
-| Value         | Owner        | `T`, `owner/T`          | Data layout                           |
-| Value Borrow  | SharedRef    | `ref/T`                 | Shared borrow of a value              |
-| Value Borrow  | ExclusiveRef | `uniq/T`                | Exclusive mutable borrow of a value   |
-| Object        | Owner        | `obj/T`                 | Metadata + Data                       |
-| Object        | Rc           | `rc/T`                  | Rc metadata + Metadata + Data         |
-| Object        | Arc          | `arc/T`                 | Arc metadata + Metadata + Data        |
-| Object Borrow | SharedRef    | `objref/T`              | Shared borrow of an object            |
-| Object Borrow | ExclusiveRef | `objuniq/T`             | Exclusive mutable borrow of an object |
-| Unsafe        | Pointer      | `unsafe/T`              | Unsafe pointer                        |
-
-## Value
-
-`T` and `owner/T` represent a directly owned value with the data layout of `T`.
-
-```
-let x: i32
-let p: owner/Point
-```
-
-`T` is equivalent to `owner/T`.
-
-## Value Borrow
-
-Value borrows provide non-owning access to value data and are subject to lifetime constraints.
-
-### `ref/T`
-
-`ref/T` is a shared borrowed reference to a value. Multiple shared references may coexist.
-
-```
-func read(value: ref/Data)
-```
-
-### `uniq/T`
-
-`uniq/T` is an exclusive mutable borrowed reference to a value. No conflicting reference may coexist.
-
-```
-func modify(value: uniq/Data)
-```
-
-## Object
-
-Object semantics represent object metadata followed by the data layout of `T`.
-
-### `obj/T`
-
-`obj/T` is an exclusively owned object.
-
-```
-let node: obj/Node
-```
-
-### `rc/T`
-
-`rc/T` is a shared object with non-atomic reference-count metadata. The object remains alive while an owning reference exists.
-
-```
-let object: rc/Object
-```
-
-### `arc/T`
-
-`arc/T` is a shared object with atomic reference-count metadata. Atomic ownership management does not guarantee safe concurrent mutation of `T`.
-
-```
-let object: arc/Object
-```
-
-## Object Borrow
-
-Object borrows provide non-owning access to an object and are subject to lifetime constraints.
-
-### `objref/T`
-
-`objref/T` is a shared borrowed reference to an object. Multiple shared references may coexist.
-
-```
-func readObject(value: objref/Data)
-```
-
-### `objuniq/T`
-
-`objuniq/T` is an exclusive mutable borrowed reference to an object. No conflicting reference may coexist.
-
-```
-func modifyObject(value: objuniq/Data)
-```
-
-## Unsafe
-
-### `unsafe/T`
-
-```
-unsafe/T
-```
-
-`unsafe/T` represents an unsafe pointer to `T`.
-
-Unlike safe ownership and borrowing semantics, `unsafe/T` is not required to satisfy the normal ownership, lifetime, aliasing, or exclusivity guarantees enforced by the language.
-
-Operations involving `unsafe/T` therefore belong to the unsafe portion of the language and place additional correctness responsibilities on the programmer.
-
-```
-let pointer: unsafe/i32
-```
 
 # Composition
 

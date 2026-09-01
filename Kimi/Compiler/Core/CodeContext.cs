@@ -49,36 +49,36 @@ public sealed class CodeContext
     }
 
     /// <summary>
-    /// Parses source text and appends its nodes to a parent group.
+    /// Parses source text and appends its nodes to a parent Declaration Container.
     /// </summary>
-    /// <param name="parentKoto">The collection that receives the parsed nodes.</param>
+    /// <param name="parentKoto">The Declaration Container that receives the parsed nodes.</param>
     /// <param name="sourceText">The source text to parse.</param>
     /// <exception cref="ArgumentNullException"><paramref name="parentKoto"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="parentKoto"/> belongs to another Kotonoha.</exception>
-    public void Parse(CollectionKoto parentKoto, ReadOnlySpan<char> sourceText)
+    public void Parse(DeclarationContainerKoto parentKoto, ReadOnlySpan<char> sourceText)
         => this.Parse(parentKoto, new SourceDocument(this.DiagnosticCollection.Name, sourceText.ToString()));
 
     /// <summary>
-    /// Parses source text and appends its nodes to a parent group.
+    /// Parses source text and appends its nodes to a parent Declaration Container.
     /// </summary>
-    /// <param name="parentKoto">The collection that receives the parsed nodes.</param>
+    /// <param name="parentKoto">The Declaration Container that receives the parsed nodes.</param>
     /// <param name="sourceText">The source text to parse.</param>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="parentKoto"/> belongs to another Kotonoha.</exception>
-    public void Parse(CollectionKoto parentKoto, string sourceText)
+    public void Parse(DeclarationContainerKoto parentKoto, string sourceText)
     {
         ArgumentNullException.ThrowIfNull(sourceText);
         this.Parse(parentKoto, new SourceDocument(this.DiagnosticCollection.Name, sourceText));
     }
 
     /// <summary>
-    /// Parses a source document and appends its nodes to a parent group.
+    /// Parses a source document and appends its nodes to a parent Declaration Container.
     /// </summary>
-    /// <param name="parentKoto">The collection that receives the parsed nodes.</param>
+    /// <param name="parentKoto">The Declaration Container that receives the parsed nodes.</param>
     /// <param name="sourceDocument">The source document to parse.</param>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="parentKoto"/> belongs to another Kotonoha.</exception>
-    public void Parse(CollectionKoto parentKoto, SourceDocument sourceDocument)
+    public void Parse(DeclarationContainerKoto parentKoto, SourceDocument sourceDocument)
     {
         ArgumentNullException.ThrowIfNull(parentKoto);
         ArgumentNullException.ThrowIfNull(sourceDocument);
@@ -86,7 +86,7 @@ public sealed class CodeContext
         if (!ReferenceEquals(parentKoto.Kotonoha, this.Kotonoha))
         {
             throw new ArgumentException(
-                "The destination collection must belong to the CodeContext's Kotonoha.",
+                "The destination Declaration Container must belong to the CodeContext's Kotonoha.",
                 nameof(parentKoto));
         }
 

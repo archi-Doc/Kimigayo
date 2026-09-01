@@ -17,7 +17,7 @@ public class CoreModelTest
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "struct Value");
         var structure = Assert.IsType<StructKoto>(
-            Assert.Single(kotonoha.RootKoto.NestedCollections, x => x.Name == "Value"));
+            Assert.Single(kotonoha.RootKoto.NestedDeclarationContainers, x => x.Name == "Value"));
 
         Assert.True(compilation.TryGetKotonoha(kotonoha.Id, out var resolvedKotonoha));
         Assert.Same(kotonoha, resolvedKotonoha);
@@ -26,7 +26,7 @@ public class CoreModelTest
     }
 
     [Fact]
-    public void CodeContextRejectsACollectionOwnedByAnotherKotonoha()
+    public void CodeContextRejectsADeclarationContainerOwnedByAnotherKotonoha()
     {
         var compilation = Compilation.CreateForTest();
         var context = compilation.Kotonoha.CreateCodeContext();

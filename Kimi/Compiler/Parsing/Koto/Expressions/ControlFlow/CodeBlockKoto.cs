@@ -69,9 +69,9 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
                 builder.AppendLine();
             }
 
-            if (this.items[i] is CollectionKoto group)
+            if (this.items[i] is DeclarationContainerKoto container)
             {
-                group.WriteAsBlockItem(ref builder);
+                container.WriteAsBlockItem(ref builder);
             }
             else
             {

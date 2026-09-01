@@ -377,18 +377,18 @@ Exit:
             => reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
     }
 
-    /// <summary>Parses the header of a group or type declaration.</summary>
+    /// <summary>Parses a Declaration Container header.</summary>
     /// <param name="reader">The token reader.</param>
     /// <returns>The name, generic parameters, and origin names.</returns>
-    public static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins) ParseGroupDeclaration(ref TokenReader reader)
-        => ParseGroupDeclaration(ref reader, true, true);
+    public static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins) ParseDeclarationContainerHeader(ref TokenReader reader)
+        => ParseDeclarationContainerHeader(ref reader, true, true);
 
-    /// <summary>Parses a collection declaration header according to the capabilities of its kind.</summary>
+    /// <summary>Parses a Declaration Container header according to the capabilities of its kind.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="supportsGenerics">Whether generic parameters are accepted.</param>
     /// <param name="supportsOrigins">Whether an Origin list is accepted.</param>
     /// <returns>The name, generic parameters, and origin names.</returns>
-    internal static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins) ParseGroupDeclaration(
+    internal static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins) ParseDeclarationContainerHeader(
         ref TokenReader reader,
         bool supportsGenerics,
         bool supportsOrigins)
@@ -1265,12 +1265,12 @@ Exit:
                 isDeclaration = true;
                 reader.Advance();
                 var supportsGenericHeader = token.Kind == TokenKind.Struct;
-                var declaration = ParseGroupDeclaration(
+                var declaration = ParseDeclarationContainerHeader(
                     ref reader,
                     supportsGenericHeader,
                     supportsGenericHeader);
                 var state = reader.TakeContext();
-                var group = CollectionKoto.CreateStandalone(
+                var container = DeclarationContainerKoto.CreateStandalone(
                     reader.CodeContext,
                     token.Kind,
                     state,
@@ -1278,24 +1278,24 @@ Exit:
                     declaration.Name);
                 if (declaration.GenericArguments is not null)
                 {
-                    group.AddGenericArguments(declaration.GenericArguments);
+                    container.AddGenericArguments(declaration.GenericArguments);
                 }
 
                 if (declaration.Origins is not null)
                 {
-                    group.AddOrigins(declaration.Origins);
+                    container.AddOrigins(declaration.Origins);
                 }
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
-                    group.Parse(ref reader);
+                    container.Parse(ref reader);
                 }
                 else
                 {
                     reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
                 }
 
-                return group;
+                return container;
 
             default:
                 isDeclaration = false;

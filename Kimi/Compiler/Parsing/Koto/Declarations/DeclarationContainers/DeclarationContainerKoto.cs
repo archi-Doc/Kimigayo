@@ -11,10 +11,10 @@ namespace Kimi.Compiler.Parsing;
 #pragma warning disable SA1204 // Parsing helpers are grouped by responsibility.
 
 /// <summary>
-/// Provides shared storage and parsing for Kimigayo collection declarations.
+/// Provides shared storage and parsing for Kimigayo Declaration Container nodes.
 /// </summary>
 [TinyhandObject]
-public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
+public abstract partial class DeclarationContainerKoto : IdentifiableKoto, ITokenParser
 {
     protected enum DeclarationOrder : byte
     {
@@ -33,14 +33,14 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
     [Key(3)]
     public ModifierKind Modifier { get; private set; }
 
-    /// <summary>Gets or sets the group name.</summary>
+    /// <summary>Gets or sets the Declaration Container name.</summary>
     [Key(4)]
     public string Name { get; protected set; } = string.Empty;
 
-    /// <summary>Gets the declaration keyword kind for the concrete collection type.</summary>
+    /// <summary>Gets the declaration keyword kind for the concrete Declaration Container type.</summary>
     public abstract TokenKind TokenKind { get; }
 
-    /// <summary>Gets a value indicating whether the collection can be instantiated.</summary>
+    /// <summary>Gets a value indicating whether the Declaration Container can be instantiated.</summary>
     public abstract bool IsInstantiable { get; }
 
     /// <summary>Gets a value indicating whether every member is static.</summary>
@@ -71,32 +71,32 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
     protected List<Koto> KotoList { get; set; } = [];
 
     [Key(6)]
-    protected Utf16Hashtable<Koto> IdentifierToCollectionKoto { get; set; } = new();
+    protected Utf16Hashtable<Koto> IdentifierToDeclarationContainerKoto { get; set; } = new();
 
-    /// <summary>Gets fields and functions in declaration order.</summary>
+    /// <summary>Gets Properties and functions in declaration order.</summary>
     [IgnoreMember]
     public IReadOnlyList<Koto> Members => this.KotoList;
 
-    /// <summary>Gets nested group and type declarations.</summary>
+    /// <summary>Gets nested Declaration Containers.</summary>
     [IgnoreMember]
-    public IEnumerable<CollectionKoto> NestedCollections
-        => this.IdentifierToCollectionKoto.ToArray().Cast<CollectionKoto>();
+    public IEnumerable<DeclarationContainerKoto> NestedDeclarationContainers
+        => this.IdentifierToDeclarationContainerKoto.ToArray().Cast<DeclarationContainerKoto>();
 
     #endregion
 
-    /// <summary>Initializes a new instance of the <see cref="CollectionKoto"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="DeclarationContainerKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The declaration source span.</param>
-    protected CollectionKoto(ref TokenReader reader, SourceSpan range)
+    protected DeclarationContainerKoto(ref TokenReader reader, SourceSpan range)
         : base(ref reader, range)
     {
     }
 
-    /// <summary>Initializes a new instance of the <see cref="CollectionKoto"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="DeclarationContainerKoto"/> class.</summary>
     /// <param name="codeContext">The owning code context.</param>
     /// <param name="state">The declaration context.</param>
     /// <param name="range">The declaration source span.</param>
-    protected CollectionKoto(CodeContext codeContext, TokenContext state, SourceSpan range)
+    protected DeclarationContainerKoto(CodeContext codeContext, TokenContext state, SourceSpan range)
         : base(codeContext, range)
     {
         this.SetAttributeChain(state.AttributeKoto);
@@ -107,7 +107,7 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
     public override ReadOnlySpan<char> GetIdentifier()
         => this.Name;
 
-    /// <summary>Adds a child node to this group.</summary>
+    /// <summary>Adds a child node to this Declaration Container.</summary>
     /// <param name="koto">The child node to add.</param>
     public void AddLast(Koto koto)
     {
@@ -115,7 +115,7 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         koto.Parent = this;
     }
 
-    /// <summary>Adds generic parameters to this group.</summary>
+    /// <summary>Adds generic parameters to this Declaration Container.</summary>
     /// <param name="genericArguments">The generic parameters to add.</param>
     public void AddGenericArguments(IEnumerable<TypeKoto> genericArguments)
     {
@@ -131,7 +131,7 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         }
     }
 
-    /// <summary>Adds a type constraint to this group.</summary>
+    /// <summary>Adds a type constraint to this Declaration Container.</summary>
     /// <param name="constraint">The constraint to add.</param>
     public void AddTypeConstraint(IsKoto constraint)
     {
@@ -144,7 +144,7 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         constraint.Parent = this;
     }
 
-    /// <summary>Adds origin names to this group.</summary>
+    /// <summary>Adds Origin names to this Declaration Container.</summary>
     /// <param name="origins">The origin names to add.</param>
     public void AddOrigins(IEnumerable<string> origins)
     {
@@ -233,11 +233,11 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         Parser.WriteQualifiedNameTo(this, ref builder);
     }
 
-    /// <summary>Removes all declarations and group metadata.</summary>
+    /// <summary>Removes all declarations and Declaration Container metadata.</summary>
     public void Clear()
     {
         this.KotoList.Clear();
-        this.IdentifierToCollectionKoto.Clear();
+        this.IdentifierToDeclarationContainerKoto.Clear();
         this.GenericArguments.Clear();
         this.TypeConstraints.Clear();
         this.Origins.Clear();
@@ -247,55 +247,55 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         }
     }
 
-    /// <summary>Writes this group and all nested groups as source text.</summary>
+    /// <summary>Writes this Declaration Container and all nested Declaration Containers as source text.</summary>
     /// <param name="builder">The destination builder.</param>
     public void UnparseAll(ref IndentedStringBuilder builder)
     {
         this.UnparseAllInternal(ref builder);
     }
 
-    /// <summary>Gets or creates a nested collection from a qualified name.</summary>
-    /// <param name="qualifiedName">The dot-separated collection name.</param>
-    /// <param name="kind">The final collection's declaration kind.</param>
+    /// <summary>Gets or creates a nested Declaration Container from a qualified name.</summary>
+    /// <param name="qualifiedName">The dot-separated Declaration Container name.</param>
+    /// <param name="kind">The final Declaration Container's declaration kind.</param>
     /// <param name="state">The declaration context.</param>
     /// <param name="range">The declaration source span.</param>
-    /// <returns>The final collection.</returns>
-    public CollectionKoto GetOrAddCollection(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range)
+    /// <returns>The final Declaration Container.</returns>
+    public DeclarationContainerKoto GetOrAddDeclarationContainer(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range)
     {
         var text = qualifiedName;
-        var group = this;
+        var container = this;
         while (true)
         {
             var index = text.IndexOf(Constants.DotChar);
             if (index < 0)
             {
-                GetOrAddCollection(ref group, text, kind, state, range);
-                return group;
+                GetOrAddDeclarationContainer(ref container, text, kind, state, range);
+                return container;
             }
 
             var segment = text[..index];
-            GetOrAddCollection(ref group, segment, TokenKind.Group, default, default);
+            GetOrAddDeclarationContainer(ref container, segment, TokenKind.Group, default, default);
             text = text[(index + 1)..];
         }
     }
 
-    /// <summary>Gets or creates a collection from a qualified name.</summary>
-    /// <remarks>Retained as a source-compatible alias for <c>GetOrAddCollection</c>.</remarks>
-    /// <param name="qualifiedName">The dot-separated collection name.</param>
-    /// <param name="kind">The final collection's declaration kind.</param>
+    /// <summary>Gets or creates a Declaration Container from a qualified name.</summary>
+    /// <remarks>Retained as a source-compatible alias for <c>GetOrAddDeclarationContainer</c>.</remarks>
+    /// <param name="qualifiedName">The dot-separated Declaration Container name.</param>
+    /// <param name="kind">The final Declaration Container's declaration kind.</param>
     /// <param name="state">The declaration context.</param>
     /// <param name="range">The declaration source span.</param>
-    /// <returns>The final collection.</returns>
-    public CollectionKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range)
-        => this.GetOrAddCollection(qualifiedName, kind, state, range);
+    /// <returns>The final Declaration Container.</returns>
+    public DeclarationContainerKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range)
+        => this.GetOrAddDeclarationContainer(qualifiedName, kind, state, range);
 
-    /// <summary>Parses the body supported by this collection kind.</summary>
+    /// <summary>Parses the body supported by this Declaration Container kind.</summary>
     /// <param name="reader">The token reader.</param>
     public abstract void Parse(ref TokenReader reader);
 
-    internal static CollectionKoto CreateStandalone(CodeContext codeContext, TokenKind kind, TokenContext state, SourceSpan range, string name)
+    internal static DeclarationContainerKoto CreateStandalone(CodeContext codeContext, TokenKind kind, TokenContext state, SourceSpan range, string name)
     {
-        CollectionKoto group = kind switch
+        DeclarationContainerKoto container = kind switch
         {
             TokenKind.Struct => new StructKoto(codeContext, state, range),
             TokenKind.Enum => new EnumKoto(codeContext, state, range),
@@ -304,15 +304,15 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
             _ => new GroupKoto(codeContext, state, range),
         };
 
-        group.Name = name;
-        return group;
+        container.Name = name;
+        return container;
     }
 
     internal void WriteAsBlockItem(ref IndentedStringBuilder builder)
     {
         this.WriteTo(ref builder);
-        var groups = this.IdentifierToCollectionKoto.ToArray();
-        if (this.TypeConstraints.Count == 0 && this.KotoList.Count == 0 && groups.Length == 0)
+        var containers = this.IdentifierToDeclarationContainerKoto.ToArray();
+        if (this.TypeConstraints.Count == 0 && this.KotoList.Count == 0 && containers.Length == 0)
         {
             return;
         }
@@ -332,10 +332,10 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
             koto.WriteTo(ref builder);
         }
 
-        foreach (var nested in groups)
+        foreach (var nested in containers)
         {
             WriteSeparator(ref builder, ref hasPrevious);
-            ((CollectionKoto)nested).WriteAsBlockItem(ref builder);
+            ((DeclarationContainerKoto)nested).WriteAsBlockItem(ref builder);
         }
 
         builder.DecrementIndent();
@@ -390,7 +390,7 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         }
     }
 
-    /// <summary>Consumes an unimplemented collection body without producing members.</summary>
+    /// <summary>Consumes an unimplemented Declaration Container body without producing members.</summary>
     /// <param name="reader">The token reader.</param>
     protected static void SkipUnimplementedBody(ref TokenReader reader)
     {
@@ -422,7 +422,7 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         }
     }
 
-    /// <summary>Consumes the opening block token when the caller left it for the collection parser.</summary>
+    /// <summary>Consumes the opening block token when the caller left it for the Declaration Container parser.</summary>
     /// <param name="reader">The token reader.</param>
     protected static void ConsumeBlockStart(ref TokenReader reader)
     {
@@ -432,7 +432,7 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         }
     }
 
-    /// <summary>Consumes declaration trivia and detects the end of the current collection body.</summary>
+    /// <summary>Consumes declaration trivia and detects the end of the current Declaration Container body.</summary>
     /// <param name="reader">The token reader.</param>
     /// <returns><see langword="true"/> when another declaration is available.</returns>
     protected static bool TryBeginDeclaration(ref TokenReader reader)
@@ -505,7 +505,7 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         return true;
     }
 
-    /// <summary>Reports and skips a declaration unsupported by the current collection kind.</summary>
+    /// <summary>Reports and skips a declaration unsupported by the current Declaration Container kind.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="token">The unsupported declaration's first token.</param>
     protected static void SkipUnexpectedDeclaration(ref TokenReader reader, Token token)
@@ -528,7 +528,7 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         reader.ClearContext();
     }
 
-    /// <summary>Writes one type constraint in the syntax used by this collection kind.</summary>
+    /// <summary>Writes one type constraint in the syntax used by this Declaration Container kind.</summary>
     /// <param name="constraint">The constraint to write.</param>
     /// <param name="builder">The destination builder.</param>
     protected virtual void WriteTypeConstraintTo(IsKoto constraint, ref IndentedStringBuilder builder)
@@ -551,9 +551,9 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
             yield return koto;
         }
 
-        foreach (var group in this.IdentifierToCollectionKoto.ToArray())
+        foreach (var container in this.IdentifierToDeclarationContainerKoto.ToArray())
         {
-            yield return group;
+            yield return container;
         }
     }
 
@@ -586,23 +586,23 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
             }
         }
 
-        if (oldKoto is CollectionKoto oldCollection && newKoto is CollectionKoto newCollection &&
-            this.IdentifierToCollectionKoto.TryGetValue(oldCollection.Name, out var registered) &&
-            ReferenceEquals(registered, oldCollection))
+        if (oldKoto is DeclarationContainerKoto oldContainer && newKoto is DeclarationContainerKoto newContainer &&
+            this.IdentifierToDeclarationContainerKoto.TryGetValue(oldContainer.Name, out var registered) &&
+            ReferenceEquals(registered, oldContainer))
         {
-            if (!oldCollection.Name.Equals(newCollection.Name, StringComparison.Ordinal) &&
-                this.IdentifierToCollectionKoto.TryGetValue(newCollection.Name, out _))
+            if (!oldContainer.Name.Equals(newContainer.Name, StringComparison.Ordinal) &&
+                this.IdentifierToDeclarationContainerKoto.TryGetValue(newContainer.Name, out _))
             {
                 return false;
             }
 
-            if (this.IdentifierToCollectionKoto.TryRemove(oldCollection.Name) &&
-                this.IdentifierToCollectionKoto.TryAdd(newCollection.Name, newCollection))
+            if (this.IdentifierToDeclarationContainerKoto.TryRemove(oldContainer.Name) &&
+                this.IdentifierToDeclarationContainerKoto.TryAdd(newContainer.Name, newContainer))
             {
                 return true;
             }
 
-            this.IdentifierToCollectionKoto.TryAdd(oldCollection.Name, oldCollection);
+            this.IdentifierToDeclarationContainerKoto.TryAdd(oldContainer.Name, oldContainer);
         }
 
         return false;
@@ -622,10 +622,10 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
         }
     }
 
-    private static void GetOrAddCollection(ref CollectionKoto group, ReadOnlySpan<char> text, TokenKind kind, TokenContext state, SourceSpan range)
+    private static void GetOrAddDeclarationContainer(ref DeclarationContainerKoto container, ReadOnlySpan<char> text, TokenKind kind, TokenContext state, SourceSpan range)
     {
-        var parent = group;
-        var codeContext = group.CodeContext;
+        var parent = container;
+        var codeContext = container.CodeContext;
         Func<string, Koto> factory = kind switch
         {
             TokenKind.Struct => x => new StructKoto(codeContext, state, range),
@@ -635,15 +635,15 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
             _ => x => new GroupKoto(codeContext, state, range),
         };
 
-        group = (CollectionKoto)group.IdentifierToCollectionKoto.GetOrAdd(text, factory);
-        if (string.IsNullOrEmpty(group.Name))
+        container = (DeclarationContainerKoto)container.IdentifierToDeclarationContainerKoto.GetOrAdd(text, factory);
+        if (string.IsNullOrEmpty(container.Name))
         {
-            group.Parent = parent;
-            group.Name = text.ToString();
+            container.Parent = parent;
+            container.Name = text.ToString();
         }
         else
         {
-            group.Merge(state, range);
+            container.Merge(state, range);
         }
     }
 
@@ -653,7 +653,7 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
 
     private void UnparseAllInternal(ref IndentedStringBuilder builder)
     {
-        var groupDeclared = false;
+        var containerDeclared = false;
 
         if ((!this.IsRoot && (this.KotoList.Count > 0 || this.TypeConstraints.Count > 0 || this.Origins.Count > 0))
             || this.Modifier != 0)
@@ -673,7 +673,7 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
                 builder.IncrementIndent();
             }
 
-            groupDeclared = true;
+            containerDeclared = true;
         }
 
         if (this.TypeConstraints.Count > 0)
@@ -718,17 +718,17 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
             builder.AppendLine();
         }
 
-        var groups = this.IdentifierToCollectionKoto.ToArray();
-        if (groups.Length > 0)
+        var containers = this.IdentifierToDeclarationContainerKoto.ToArray();
+        if (containers.Length > 0)
         {
             builder.EnsureTrailingBlankLine();
-            foreach (var x in groups)
+            foreach (var x in containers)
             {
-                ((CollectionKoto)x).UnparseAllInternal(ref builder);
+                ((DeclarationContainerKoto)x).UnparseAllInternal(ref builder);
             }
         }
 
-        if (groupDeclared)
+        if (containerDeclared)
         {
             builder.DecrementIndent();
         }
@@ -752,9 +752,9 @@ public abstract partial class CollectionKoto : IdentifiableKoto, ITokenParser
             koto.Parent = this;
         }
 
-        foreach (var group in this.IdentifierToCollectionKoto.ToArray())
+        foreach (var container in this.IdentifierToDeclarationContainerKoto.ToArray())
         {
-            group.Parent = this;
+            container.Parent = this;
         }
     }
 }

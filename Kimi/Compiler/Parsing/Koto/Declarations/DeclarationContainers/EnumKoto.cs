@@ -9,7 +9,7 @@ namespace Kimi.Compiler.Parsing;
 /// Represents an enumeration declaration.
 /// </summary>
 [TinyhandObject]
-public sealed partial class EnumKoto : CollectionKoto
+public sealed partial class EnumKoto : DeclarationContainerKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Enum;

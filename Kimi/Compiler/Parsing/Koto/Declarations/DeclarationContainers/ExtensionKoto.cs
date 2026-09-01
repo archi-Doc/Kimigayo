@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Parsing;
 /// Represents an extension declaration.
 /// </summary>
 [TinyhandObject]
-public sealed partial class ExtensionKoto : CollectionKoto
+public sealed partial class ExtensionKoto : DeclarationContainerKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Extension;

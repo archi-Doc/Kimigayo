@@ -11,20 +11,20 @@ namespace XunitTest;
 public class KotoHierarchyTest
 {
     [Fact]
-    public void ModelsCollectionCapabilitiesInTheFlatHierarchy()
+    public void ModelsDeclarationContainerCapabilitiesInTheFlatHierarchy()
     {
         var root = Compilation.CreateForTest().Kotonoha.RootKoto;
-        var group = Assert.IsType<GroupKoto>(root.GetOrAddCollection("Group", TokenKind.Group, default, default));
-        var structure = Assert.IsType<StructKoto>(root.GetOrAddCollection("Struct", TokenKind.Struct, default, default));
-        var enumeration = Assert.IsType<EnumKoto>(root.GetOrAddCollection("Enum", TokenKind.Enum, default, default));
-        var extension = Assert.IsType<ExtensionKoto>(root.GetOrAddCollection("Target", TokenKind.Extension, default, default));
-        var contract = Assert.IsType<ContractKoto>(root.GetOrAddCollection("Contract", TokenKind.Contract, default, default));
+        var group = Assert.IsType<GroupKoto>(root.GetOrAddDeclarationContainer("Group", TokenKind.Group, default, default));
+        var structure = Assert.IsType<StructKoto>(root.GetOrAddDeclarationContainer("Struct", TokenKind.Struct, default, default));
+        var enumeration = Assert.IsType<EnumKoto>(root.GetOrAddDeclarationContainer("Enum", TokenKind.Enum, default, default));
+        var extension = Assert.IsType<ExtensionKoto>(root.GetOrAddDeclarationContainer("Target", TokenKind.Extension, default, default));
+        var contract = Assert.IsType<ContractKoto>(root.GetOrAddDeclarationContainer("Contract", TokenKind.Contract, default, default));
 
-        Assert.Equal(typeof(CollectionKoto), typeof(GroupKoto).BaseType);
-        Assert.Equal(typeof(CollectionKoto), typeof(StructKoto).BaseType);
-        Assert.Equal(typeof(CollectionKoto), typeof(EnumKoto).BaseType);
-        Assert.Equal(typeof(CollectionKoto), typeof(ExtensionKoto).BaseType);
-        Assert.Equal(typeof(CollectionKoto), typeof(ContractKoto).BaseType);
+        Assert.Equal(typeof(DeclarationContainerKoto), typeof(GroupKoto).BaseType);
+        Assert.Equal(typeof(DeclarationContainerKoto), typeof(StructKoto).BaseType);
+        Assert.Equal(typeof(DeclarationContainerKoto), typeof(EnumKoto).BaseType);
+        Assert.Equal(typeof(DeclarationContainerKoto), typeof(ExtensionKoto).BaseType);
+        Assert.Equal(typeof(DeclarationContainerKoto), typeof(ContractKoto).BaseType);
 
         Assert.False(group.IsInstantiable);
         Assert.True(group.HasStaticMembersOnly);
@@ -42,7 +42,7 @@ public class KotoHierarchyTest
     }
 
     [Fact]
-    public void ExpandsQualifiedRootGroupUsingCommonCollectionParsing()
+    public void ExpandsQualifiedRootGroupUsingCommonDeclarationContainerParsing()
     {
         var compilation = Compilation.CreateForTest();
         var root = compilation.Kotonoha.RootKoto;
@@ -52,8 +52,8 @@ public class KotoHierarchyTest
             "rootgroup A.B\n    var value = 1");
 
         Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        var groupA = Assert.IsType<GroupKoto>(root.GetOrAddCollection("A", TokenKind.Group, default, default));
-        var groupB = Assert.IsType<GroupKoto>(root.GetOrAddCollection("A.B", TokenKind.Group, default, default));
+        var groupA = Assert.IsType<GroupKoto>(root.GetOrAddDeclarationContainer("A", TokenKind.Group, default, default));
+        var groupB = Assert.IsType<GroupKoto>(root.GetOrAddDeclarationContainer("A.B", TokenKind.Group, default, default));
         Assert.Same(root, groupA.Parent);
         Assert.Same(groupA, groupB.Parent);
         Assert.IsType<FieldKoto>(Assert.Single(groupB.Members));
@@ -138,7 +138,7 @@ public class KotoHierarchyTest
     }
 
     [Fact]
-    public void DoesNotCreateGeneratedFunctionForCollectionDeclarationsOnly()
+    public void DoesNotCreateGeneratedFunctionForDeclarationContainerDeclarationsOnly()
     {
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
@@ -147,7 +147,7 @@ public class KotoHierarchyTest
 
         Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
         Assert.Null(kotonoha.GeneratedFunction);
-        Assert.Single(kotonoha.RootKoto.NestedCollections);
+        Assert.Single(kotonoha.RootKoto.NestedDeclarationContainers);
     }
 
     [Fact]
@@ -164,7 +164,7 @@ public class KotoHierarchyTest
     }
 
     [Fact]
-    public void ParsesOnlyMembersSupportedByEachCollectionKind()
+    public void ParsesOnlyMembersSupportedByEachDeclarationContainerKind()
     {
         var compilation = Compilation.CreateForTest();
         var root = compilation.Kotonoha.RootKoto;
@@ -201,15 +201,15 @@ public class KotoHierarchyTest
 
         compilation.Kotonoha.CreateCodeContext().Parse(root, source);
 
-        var group = Assert.IsType<GroupKoto>(GetCollection(root, "Utilities"));
+        var group = Assert.IsType<GroupKoto>(GetDeclarationContainer(root, "Utilities"));
         Assert.Collection(
             group.Members,
             member => Assert.IsType<FieldKoto>(member),
             member => Assert.IsType<FunctionKoto>(member));
-        var nestedStructure = Assert.IsType<StructKoto>(GetCollection(group, "Rejected"));
+        var nestedStructure = Assert.IsType<StructKoto>(GetDeclarationContainer(group, "Rejected"));
         Assert.IsType<FieldKoto>(Assert.Single(nestedStructure.Members));
 
-        var structure = Assert.IsType<StructKoto>(GetCollection(root, "Container"));
+        var structure = Assert.IsType<StructKoto>(GetDeclarationContainer(root, "Container"));
         Assert.Single(structure.GenericArguments);
         Assert.Equal(["source"], structure.Origins);
         Assert.Single(structure.TypeConstraints);
@@ -217,15 +217,15 @@ public class KotoHierarchyTest
             structure.Members,
             member => Assert.IsType<FieldKoto>(member),
             member => Assert.IsType<FunctionKoto>(member));
-        Assert.Empty(structure.NestedCollections);
+        Assert.Empty(structure.NestedDeclarationContainers);
 
-        var enumeration = Assert.IsType<EnumKoto>(GetCollection(root, "Choice"));
+        var enumeration = Assert.IsType<EnumKoto>(GetDeclarationContainer(root, "Choice"));
         Assert.Empty(enumeration.Members);
 
-        var extension = Assert.IsType<ExtensionKoto>(GetCollection(root, "Target"));
+        var extension = Assert.IsType<ExtensionKoto>(GetDeclarationContainer(root, "Target"));
         Assert.Empty(extension.Members);
 
-        var contract = Assert.IsType<ContractKoto>(GetCollection(root, "ComparableContract"));
+        var contract = Assert.IsType<ContractKoto>(GetDeclarationContainer(root, "ComparableContract"));
         Assert.Equal(2, contract.TypeConstraints.Count);
         Assert.Empty(contract.Members);
         Assert.All(contract.TypeConstraints, constraint => Assert.Same(contract, constraint.Parent));
@@ -250,7 +250,7 @@ public class KotoHierarchyTest
             "contract C\n    associate A is Comparable");
 
         Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        var contract = Assert.IsType<ContractKoto>(GetCollection(root, "C"));
+        var contract = Assert.IsType<ContractKoto>(GetDeclarationContainer(root, "C"));
         var constraint = Assert.Single(contract.TypeConstraints);
         Assert.Equal("A", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
         Assert.Equal("Comparable", Assert.IsType<IdentifierNameKoto>(constraint.Right).IdentifierName);
@@ -275,6 +275,6 @@ public class KotoHierarchyTest
         Assert.Equal(Constants.AssociateKeyword, TokenKind.Associate.ToText());
     }
 
-    private static CollectionKoto GetCollection(CollectionKoto parent, string name)
-        => Assert.Single(parent.NestedCollections, collection => collection.Name == name);
+    private static DeclarationContainerKoto GetDeclarationContainer(DeclarationContainerKoto parent, string name)
+        => Assert.Single(parent.NestedDeclarationContainers, container => container.Name == name);
 }

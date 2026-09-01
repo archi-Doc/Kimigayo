@@ -15,7 +15,7 @@ namespace XunitTest;
 
 public class ParserRegressionTest
 {
-    private static readonly PropertyInfo KotoListProperty = typeof(CollectionKoto).GetProperty(
+    private static readonly PropertyInfo KotoListProperty = typeof(DeclarationContainerKoto).GetProperty(
         "KotoList",
         BindingFlags.Instance | BindingFlags.NonPublic)!;
 
@@ -170,7 +170,7 @@ public class ParserRegressionTest
             string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
 
         var kernel32 = Assert.IsType<GroupKoto>(
-            Assert.Single(kotonoha.RootKoto.NestedCollections, x => x.Name == "Kernel32"));
+            Assert.Single(kotonoha.RootKoto.NestedDeclarationContainers, x => x.Name == "Kernel32"));
         Assert.True(kernel32.Modifier.HasFlag(ModifierKind.Public));
 
         var function = Assert.IsType<FunctionKoto>(Assert.Single(kernel32.Members));
@@ -181,7 +181,7 @@ public class ParserRegressionTest
         Assert.Same(function, parameter.AttributeChain?.Parent);
 
         var structure = Assert.IsType<StructKoto>(
-            Assert.Single(kernel32.NestedCollections, x => x.Name == "OVERLAPPED"));
+            Assert.Single(kernel32.NestedDeclarationContainers, x => x.Name == "OVERLAPPED"));
         Assert.True(structure.Modifier.HasFlag(ModifierKind.Public));
         Assert.Equal("Layout", GetAttributeName(structure.AttributeChain));
 
@@ -191,7 +191,7 @@ public class ParserRegressionTest
         var restoredKotonoha = restored ?? throw new InvalidOperationException();
         restoredKotonoha.OnDeserialized(compilation);
         var restoredKernel32 = Assert.IsType<GroupKoto>(
-            Assert.Single(restoredKotonoha.RootKoto.NestedCollections, x => x.Name == "Kernel32"));
+            Assert.Single(restoredKotonoha.RootKoto.NestedDeclarationContainers, x => x.Name == "Kernel32"));
         var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(restoredKernel32.Members));
         Assert.Equal("Description", GetAttributeName(Assert.Single(restoredFunction.Parameters).AttributeChain));
 
@@ -804,7 +804,7 @@ public class ParserRegressionTest
         return (kotonoha.RootKoto, kotonoha.DiagnosticCollection.GetArray());
     }
 
-    private static List<Koto> GetChildren(CollectionKoto group)
+    private static List<Koto> GetChildren(DeclarationContainerKoto group)
         => ReferenceEquals(group, group.Kotonoha.RootKoto)
             ? group.Kotonoha.GeneratedFunction?.Body?.Items.ToList() ?? []
             : (List<Koto>)KotoListProperty.GetValue(group)!;

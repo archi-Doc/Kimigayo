@@ -12,7 +12,7 @@ namespace XunitTest;
 
 public class ForParseTest
 {
-    private static readonly PropertyInfo KotoListProperty = typeof(CollectionKoto).GetProperty(
+    private static readonly PropertyInfo KotoListProperty = typeof(DeclarationContainerKoto).GetProperty(
         "KotoList",
         BindingFlags.Instance | BindingFlags.NonPublic)!;
 
@@ -153,7 +153,7 @@ public class ForParseTest
         return Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
     }
 
-    private static List<Koto> GetChildren(CollectionKoto group)
+    private static List<Koto> GetChildren(DeclarationContainerKoto group)
         => ReferenceEquals(group, group.Kotonoha.RootKoto)
             ? group.Kotonoha.GeneratedFunction?.Body?.Items.ToList() ?? []
             : (List<Koto>)KotoListProperty.GetValue(group)!;
