@@ -22,6 +22,9 @@ namespace Kimi.Compiler;
 [TinyhandObject]
 public sealed partial class Kotonoha
 {
+    /// <summary>The initial depth reserved by the Koto index walk.</summary>
+    private const int DefaultKotoIndexCapacity = 64;
+
     /// <summary>
     /// Gets the diagnostics associated with this source unit.
     /// </summary>
@@ -168,9 +171,10 @@ public sealed partial class Kotonoha
         ArgumentNullException.ThrowIfNull(sourceDocument);
 
         var path = sourceDocument.Path;
-        if (!string.IsNullOrEmpty(this.Compilation.Project.Directory))
-        {
-            path = Path.GetRelativePath(this.Compilation.Project.Directory, path);
+        var directory = this.Compilation.Project.Directory;
+        if (path.Length > 0 && directory.Length > 0)
+        {// Path.GetRelativePath rejects an empty path.
+            path = Path.GetRelativePath(directory, path);
         }
 
         var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
@@ -183,12 +187,12 @@ public sealed partial class Kotonoha
             tokenizer.ReadAll();
             if (this.Compilation.Project.KimiOptions.DumpToken)
             {
-                this.DumpToken(sourceDocument.Path, tokenizer.ToReadOnlySequence());
+                DumpToken(sourceDocument.Path, tokenizer.ToReadOnlySequence());
             }
 
             // Token to Koto
             var tokenReader = new TokenReader(codeContext, ref tokenizer);
-            this.Parse(ref tokenReader);
+            this.RootKoto.Parse(ref tokenReader);
         }
         finally
         {
@@ -202,17 +206,48 @@ public sealed partial class Kotonoha
     /// <param name="hasTrailingExpression">Whether this item supplies the generated body value.</param>
     internal void AddGeneratedFunctionItem(CodeContext codeContext, Koto item, bool hasTrailingExpression)
     {
-        this.GeneratedFunction ??= new FunctionKoto(codeContext, Constants.GeneratedFunctionName);
-        this.GeneratedFunction.Parent = this.RootKoto;
-        this.GeneratedFunction.AddGeneratedItem(item, hasTrailingExpression);
+        var generatedFunction = this.GeneratedFunction;
+        if (generatedFunction is null)
+        {
+            generatedFunction = new FunctionKoto(codeContext, Constants.GeneratedFunctionName) { Parent = this.RootKoto, };
+            this.GeneratedFunction = generatedFunction;
+        }
+
+        generatedFunction.AddGeneratedItem(item, hasTrailingExpression);
     }
 
     /// <summary>Removes the generated function, if present.</summary>
     internal void ClearGeneratedFunction()
         => this.GeneratedFunction = default;
 
-    private void Parse(ref TokenReader reader)
-        => this.RootKoto.Parse(ref reader);
+    private static void DumpToken(string path, ReadOnlySequence<Token> sequence)
+    {
+        // Enum.ToString() returns the cached member name, so only the builder grows here.
+        var sb = new StringBuilder((int)Math.Min(sequence.Length * 12, 1 << 16));
+        foreach (var memory in sequence)
+        {
+            foreach (var token in memory.Span)
+            {
+                if (token.Kind == TokenKind.Separator)
+                {
+                    sb.AppendLf();
+                }
+                else
+                {
+                    sb.Append('(').Append(token.Kind.ToString()).Append(')');
+                }
+            }
+        }
+
+        try
+        {
+            File.WriteAllText(Path.ChangeExtension(path, Constants.TokenExtension), sb.ToString());
+        }
+        catch
+        {
+            // Token dumps are diagnostic aids and must not stop compilation.
+        }
+    }
 
     private bool IsAttachedToRoot(Koto koto)
     {
@@ -228,54 +263,21 @@ public sealed partial class Kotonoha
     {
         // Koto IDs depend on the completed parent chain. Build the index lazily after parsing
         // and rebuild on a miss so generated or edited declarations become discoverable.
-        this.kotoIdToKoto.Clear();
-        var stack = new Stack<Koto>();
+        var table = this.kotoIdToKoto;
+        table.Clear();
+        var stack = new Stack<Koto>(DefaultKotoIndexCapacity);
         stack.Push(this.RootKoto);
         while (stack.TryPop(out var koto))
         {
             if (koto is IdentifiableKoto identifiable)
             {
-                this.kotoIdToKoto.TryAdd(identifiable.KotoId, identifiable);
+                table.TryAdd(identifiable.KotoId, identifiable);
             }
 
             foreach (var child in koto.ChildNodes)
             {
                 stack.Push(child);
             }
-        }
-    }
-
-    private void DumpToken(string path, ReadOnlySequence<Token> sequence)
-    {
-        var tokenPath = Path.ChangeExtension(path, Constants.TokenExtension);
-        if (tokenPath is null)
-        {
-            return;
-        }
-
-        var sb = new StringBuilder();
-        foreach (var y in sequence)
-        {
-            foreach (var x in y.Span)
-            {
-                if (x.Kind == TokenKind.Separator)
-                {
-                    sb.AppendLf();
-                }
-                else
-                {
-                    sb.Append(x.ToString());
-                }
-            }
-        }
-
-        try
-        {
-            File.WriteAllText(tokenPath, sb.ToString());
-        }
-        catch
-        {
-            // Token dumps are diagnostic aids and must not stop compilation.
         }
     }
 }

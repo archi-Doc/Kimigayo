@@ -22,4 +22,12 @@ public class SourceDocumentBenchmark
     [Benchmark]
     public SourceDocument Create()
         => new("benchmark.kimi", this.sourceText);
+
+    [Benchmark]
+    public int CreateAndMapLines()
+    {
+        // SourceDocument builds its line table on first use, so touch it explicitly.
+        var sourceDocument = new SourceDocument("benchmark.kimi", this.sourceText);
+        return sourceDocument.LineCount;
+    }
 }

@@ -51,17 +51,17 @@ public class Compilation
     /// <summary>
     /// Gets the configured external Kotonoha dependencies.
     /// </summary>
-    public KotonohaIdentifier[] KotonohaArray { get; } = [];
+    public KotonohaIdentifier[] KotonohaArray { get; }
 
     /// <summary>
     /// Gets the primary source unit for the project.
     /// </summary>
-    public Kotonoha Kotonoha { get; private set; }
+    public Kotonoha Kotonoha { get; }
 
     /// <summary>
     /// Gets the variables available to conditional compilation.
     /// </summary>
-    public Utf16Hashtable<BasicValue> Variables { get; private set; } = new();
+    public Utf16Hashtable<BasicValue> Variables { get; } = new();
 
     private readonly UInt32Hashtable<Kotonoha> kotonohaIdToKotonoha = new();
 
@@ -176,41 +176,49 @@ public class Compilation
 
     internal void ScrubForTest()
     {
+        string source;
         var builder = new IndentedStringBuilder();
-        var builder2 = new IndentedStringBuilder();
         try
         {
             // Round-trip the syntax tree and compare its textual representation.
             this.Kotonoha.RootKoto.UnparseAll(ref builder);
-
-            var path = Path.Combine(this.Project.Directory, Constants.ScrubFileName);
-            var st = builder.ToString();
-            File.WriteAllText(path, st, Utf8WithoutBom);
-
-            var bin = TinyhandSerializer.Serialize(this.Kotonoha);
-            this.Kimigayo.WriteLine(LogLevel.Information, $"Source: {(long)st.Length * sizeof(char)} bytes, Binary: {bin.Length} bytes");
-
-            var kotonoha = new Kotonoha(this);
-            TinyhandSerializer.DeserializeObject(bin, ref kotonoha);
-            if (kotonoha is null)
-            {
-                return;
-            }
-
-            kotonoha.OnDeserialized(this);
-            kotonoha.RootKoto.UnparseAll(ref builder2);
-            var path2 = Path.Combine(this.Project.Directory, Constants.Scrub2FileName);
-            var st2 = builder2.ToString();
-            if (!string.Equals(st, st2, StringComparison.Ordinal))
-            {
-                this.Kimigayo.WriteLine(LogLevel.Error, "Data mismatch detected after serialization");
-                File.WriteAllText(path2, st2, Utf8WithoutBom);
-            }
+            source = builder.ToString();
         }
         finally
         {
             builder.Dispose();
+        }
+
+        File.WriteAllText(Path.Combine(this.Project.Directory, Constants.ScrubFileName), source, Utf8WithoutBom);
+
+        var binary = TinyhandSerializer.Serialize(this.Kotonoha);
+        this.Kimigayo.WriteLine(LogLevel.Information, $"Source: {(long)source.Length * sizeof(char)} bytes, Binary: {binary.Length} bytes");
+
+        var kotonoha = new Kotonoha(this);
+        TinyhandSerializer.DeserializeObject(binary, ref kotonoha);
+        if (kotonoha is null)
+        {
+            return;
+        }
+
+        kotonoha.OnDeserialized(this);
+
+        string restored;
+        var builder2 = new IndentedStringBuilder();
+        try
+        {
+            kotonoha.RootKoto.UnparseAll(ref builder2);
+            restored = builder2.ToString();
+        }
+        finally
+        {
             builder2.Dispose();
+        }
+
+        if (!string.Equals(source, restored, StringComparison.Ordinal))
+        {
+            this.Kimigayo.WriteLine(LogLevel.Error, "Data mismatch detected after serialization");
+            File.WriteAllText(Path.Combine(this.Project.Directory, Constants.Scrub2FileName), restored, Utf8WithoutBom);
         }
     }
 

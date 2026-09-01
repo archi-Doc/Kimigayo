@@ -15,17 +15,15 @@ namespace Kimi.Compiler;
 /// the context is attached to that source unit, so parsing into a tree owned by another
 /// source unit is rejected even when both source units belong to the same compilation.
 /// </remarks>
-public class CodeContext
+public sealed class CodeContext
 {
     /// <summary>
     /// Gets the diagnostic destination for this context.
     /// </summary>
-    public DiagnosticCollection DiagnosticCollection => this.diagnosticCollection ?? this.Kotonoha.DiagnosticCollection;
-
-    /// <summary>
-    /// Gets the current compilation.
-    /// </summary>
-    public Compilation Compilation => this.Kotonoha.Compilation;
+    /// <remarks>
+    /// Resolved once, because it is read for every node the parser creates.
+    /// </remarks>
+    public DiagnosticCollection DiagnosticCollection { get; }
 
     /// <summary>
     /// Gets the source unit being parsed.
@@ -33,18 +31,21 @@ public class CodeContext
     public Kotonoha Kotonoha { get; }
 
     /// <summary>
+    /// Gets the current compilation.
+    /// </summary>
+    public Compilation Compilation => this.Kotonoha.Compilation;
+
+    /// <summary>
     /// Gets the root of the current Koto tree.
     /// </summary>
     public GroupKoto RootKoto => this.Kotonoha.RootKoto;
-
-    private readonly DiagnosticCollection? diagnosticCollection;
 
     internal CodeContext(Kotonoha kotonoha, DiagnosticCollection? customDiagnosticCollection = default)
     {
         ArgumentNullException.ThrowIfNull(kotonoha);
 
         this.Kotonoha = kotonoha;
-        this.diagnosticCollection = customDiagnosticCollection;
+        this.DiagnosticCollection = customDiagnosticCollection ?? kotonoha.DiagnosticCollection;
     }
 
     /// <summary>
@@ -52,6 +53,7 @@ public class CodeContext
     /// </summary>
     /// <param name="parentKoto">The collection that receives the parsed nodes.</param>
     /// <param name="sourceText">The source text to parse.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="parentKoto"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="parentKoto"/> belongs to another Kotonoha.</exception>
     public void Parse(CollectionKoto parentKoto, ReadOnlySpan<char> sourceText)
         => this.Parse(parentKoto, new SourceDocument(this.DiagnosticCollection.Name, sourceText.ToString()));
@@ -61,7 +63,7 @@ public class CodeContext
     /// </summary>
     /// <param name="parentKoto">The collection that receives the parsed nodes.</param>
     /// <param name="sourceText">The source text to parse.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="sourceText"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="parentKoto"/> belongs to another Kotonoha.</exception>
     public void Parse(CollectionKoto parentKoto, string sourceText)
     {

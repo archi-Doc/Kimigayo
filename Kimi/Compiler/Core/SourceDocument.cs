@@ -3,6 +3,8 @@
 namespace Kimi.Compiler;
 
 using System.Buffers;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using Kimi.Diagnostics;
 
 /// <summary>
@@ -14,9 +16,7 @@ using Kimi.Diagnostics;
 /// </remarks>
 public sealed class SourceDocument
 {
-    private static readonly SearchValues<char> LineBreakChars = SearchValues.Create("\r\n");
-
-    private readonly int[] lineStarts;
+    private int[]? lineStarts;
 
     /// <summary>
     /// Gets the source path.
@@ -31,12 +31,12 @@ public sealed class SourceDocument
     /// <summary>
     /// Gets the number of physical lines in the source text.
     /// </summary>
-    public int LineCount => this.lineStarts.Length;
+    public int LineCount => this.GetLineStarts().Length;
 
     /// <summary>
     /// Gets the absolute start offset of each physical line.
     /// </summary>
-    public ReadOnlySpan<int> LineStarts => this.lineStarts;
+    public ReadOnlySpan<int> LineStarts => this.GetLineStarts();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="SourceDocument"/> class.
@@ -50,7 +50,6 @@ public sealed class SourceDocument
 
         this.Path = path;
         this.SourceText = sourceText;
-        this.lineStarts = CreateLineStarts(sourceText.AsSpan());
     }
 
     /// <summary>
@@ -65,28 +64,15 @@ public sealed class SourceDocument
     /// </summary>
     /// <param name="line">The zero-based line number.</param>
     /// <returns>The requested source line.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="line"/> is outside the document.</exception>
     public ReadOnlySpan<char> GetLineSpan(int line)
     {
-        var starts = this.lineStarts;
+        var starts = this.GetLineStarts();
         ArgumentOutOfRangeException.ThrowIfNegative(line);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(line, starts.Length);
 
         var text = this.SourceText.AsSpan();
-        var start = starts[line];
-        var end = line + 1 < starts.Length ? starts[line + 1] : text.Length;
-
-        // A line ends with exactly one terminator: "\n", "\r", or "\r\n".
-        if (end > start && text[end - 1] == '\n')
-        {
-            end--;
-        }
-
-        if (end > start && text[end - 1] == '\r')
-        {
-            end--;
-        }
-
-        return text[start..end];
+        return text[starts[line]..GetLineEnd(text, starts, line)];
     }
 
     /// <summary>
@@ -100,13 +86,9 @@ public sealed class SourceDocument
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(offset, this.SourceText.Length);
 
-        var line = Array.BinarySearch(this.lineStarts, offset);
-        if (line < 0)
-        {
-            line = ~line - 1;
-        }
-
-        return new(line, offset - this.lineStarts[line]);
+        var starts = this.GetLineStarts();
+        var line = FindLine(starts, offset);
+        return new(line, offset - starts[line]);
     }
 
     /// <summary>
@@ -114,10 +96,22 @@ public sealed class SourceDocument
     /// </summary>
     /// <param name="span">The absolute source span.</param>
     /// <returns>The corresponding source range.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="span"/> is outside the document.</exception>
     public SourceRange GetSourceRange(SourceSpan span)
     {
-        this.ValidateSpan(span);
-        return new(this.GetPosition(span.Start), this.GetPosition(span.End));
+        var start = span.Start;
+        ArgumentOutOfRangeException.ThrowIfNegative(start, nameof(span));
+        ArgumentOutOfRangeException.ThrowIfNegative(span.Length, nameof(span));
+        var end = span.End; // Throws when the end offset overflows.
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(end, this.SourceText.Length, nameof(span));
+
+        // The end never precedes the start, so the second search only scans the remaining lines.
+        var starts = this.GetLineStarts();
+        var startLine = FindLine(starts, start);
+        var endLine = startLine + FindLine(starts.AsSpan(startLine), end);
+        return new(
+            new(startLine, start - starts[startLine]),
+            new(endLine, end - starts[endLine]));
     }
 
     /// <summary>
@@ -128,14 +122,17 @@ public sealed class SourceDocument
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="position"/> is outside the document text.</exception>
     public int GetOffset(SourcePosition position)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(position.Line);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(position.Line, this.lineStarts.Length);
+        var starts = this.GetLineStarts();
+        var line = position.Line;
+        var character = position.Character;
+        ArgumentOutOfRangeException.ThrowIfNegative(line, nameof(position));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(line, starts.Length, nameof(position));
+        ArgumentOutOfRangeException.ThrowIfNegative(character, nameof(position));
 
-        var lineStart = this.lineStarts[position.Line];
-        var lineLength = this.GetLineSpan(position.Line).Length;
-        ArgumentOutOfRangeException.ThrowIfNegative(position.Character);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(position.Character, lineLength);
-        return lineStart + position.Character;
+        var text = this.SourceText.AsSpan();
+        var lineStart = starts[line];
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(character, GetLineEnd(text, starts, line) - lineStart, nameof(position));
+        return lineStart + character;
     }
 
     /// <summary>
@@ -146,43 +143,99 @@ public sealed class SourceDocument
     public SourceSpan GetTextSpan(SourceRange range)
         => SourceSpan.FromBounds(this.GetOffset(range.Start), this.GetOffset(range.End));
 
+    /// <summary>
+    /// Gets the exclusive end offset of a line, excluding its terminator.
+    /// </summary>
+    /// <param name="text">The complete source text.</param>
+    /// <param name="lineStarts">The line start table.</param>
+    /// <param name="line">The zero-based line number.</param>
+    /// <returns>The exclusive end offset.</returns>
+    private static int GetLineEnd(ReadOnlySpan<char> text, ReadOnlySpan<int> lineStarts, int line)
+    {
+        var start = lineStarts[line];
+        var next = line + 1;
+        var end = next < lineStarts.Length ? lineStarts[next] : text.Length;
+
+        // A line ends with exactly one terminator: "\n", "\r", or "\r\n".
+        if (end > start && text[end - 1] == Constants.LfChar)
+        {
+            end--;
+        }
+
+        if (end > start && text[end - 1] == Constants.CrChar)
+        {
+            end--;
+        }
+
+        return end;
+    }
+
+    /// <summary>
+    /// Finds the line that contains an offset.
+    /// </summary>
+    /// <param name="lineStarts">The line start table; never empty and always starting at zero.</param>
+    /// <param name="offset">The non-negative absolute offset.</param>
+    /// <returns>The highest index whose line start does not exceed <paramref name="offset"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int FindLine(ReadOnlySpan<int> lineStarts, int offset)
+    {
+        var low = 0;
+        var high = lineStarts.Length - 1;
+        while (low < high)
+        {// Bias the midpoint upward so that the range always narrows.
+            var middle = (int)(((uint)low + (uint)high + 1) >> 1);
+            if (lineStarts[middle] <= offset)
+            {
+                low = middle;
+            }
+            else
+            {
+                high = middle - 1;
+            }
+        }
+
+        return low;
+    }
+
     private static int[] CreateLineStarts(ReadOnlySpan<char> sourceText)
     {
         // Start small to avoid renting a buffer proportional to the total character count
         // for minified/generated documents that contain very few line breaks.
         var pool = ArrayPool<int>.Shared;
-        var initialCapacity = Math.Clamp((sourceText.Length / 64) + 1, 4, 256);
-        var buffer = pool.Rent(initialCapacity);
+        var buffer = pool.Rent(Math.Clamp((sourceText.Length >> 6) + 1, 4, 256));
         try
         {
-            var count = 0;
-            buffer[count++] = 0;
-
-            var i = 0;
+            buffer[0] = 0;
+            var count = 1;
+            var index = 0;
             while (true)
             {
-                var next = sourceText[i..].IndexOfAny(LineBreakChars);
+                // The two-value overload is vectorized and measures the same as a cached
+                // SearchValues here, so the scan runs at memory bandwidth without one.
+                var next = sourceText[index..].IndexOfAny(Constants.CrChar, Constants.LfChar);
                 if (next < 0)
                 {
                     break;
                 }
 
-                i += next;
-                if (sourceText[i] == '\r' && i + 1 < sourceText.Length && sourceText[i + 1] == '\n')
+                index += next;
+                if (sourceText[index] == Constants.CrChar &&
+                    (uint)(index + 1) < (uint)sourceText.Length &&
+                    sourceText[index + 1] == Constants.LfChar)
                 {
-                    i++;
+                    index++;
                 }
 
-                i++;
+                index++;
                 if (count == buffer.Length)
                 {
-                    var larger = pool.Rent(buffer.Length * 2);
+                    var larger = pool.Rent(count * 2);
                     buffer.AsSpan(0, count).CopyTo(larger);
                     pool.Return(buffer);
                     buffer = larger;
                 }
 
-                buffer[count++] = i;
+                buffer[count++] = index;
             }
 
             return buffer.AsSpan(0, count).ToArray();
@@ -193,10 +246,24 @@ public sealed class SourceDocument
         }
     }
 
-    private void ValidateSpan(SourceSpan span)
+    /// <summary>
+    /// Gets the line start table, building it on first use.
+    /// </summary>
+    /// <returns>The absolute start offset of each physical line.</returns>
+    /// <remarks>
+    /// Only diagnostics and editor services map offsets to positions, so a clean compilation
+    /// never pays for the table. Racing callers compute identical tables, so the loser of the
+    /// race simply discards its copy.
+    /// </remarks>
+    private int[] GetLineStarts()
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(span.Start);
-        ArgumentOutOfRangeException.ThrowIfNegative(span.Length);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(span.End, this.SourceText.Length);
+        var starts = Volatile.Read(ref this.lineStarts);
+        if (starts is null)
+        {
+            starts = CreateLineStarts(this.SourceText.AsSpan());
+            Volatile.Write(ref this.lineStarts, starts);
+        }
+
+        return starts;
     }
 }
