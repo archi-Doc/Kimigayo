@@ -424,6 +424,7 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto, IToke
 
     /// <summary>Consumes the opening block token when the caller left it for the Declaration Container parser.</summary>
     /// <param name="reader">The token reader.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     protected static void ConsumeBlockStart(ref TokenReader reader)
     {
         if (reader.CurrentTokenKind == TokenKind.StartBlock)
@@ -435,6 +436,7 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto, IToke
     /// <summary>Consumes declaration trivia and detects the end of the current Declaration Container body.</summary>
     /// <param name="reader">The token reader.</param>
     /// <returns><see langword="true"/> when another declaration is available.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     protected static bool TryBeginDeclaration(ref TokenReader reader)
     {
         Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);

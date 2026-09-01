@@ -89,6 +89,58 @@ Consequently, two functions in the same scope may share a Name when their generi
 
 # Literals
 
+## NumberLiteral
+
+A `NumberLiteral` begins with an ASCII decimal digit. A leading `+` or `-` is an operator and is not part of the literal. The sign characters may occur inside a decimal exponent.
+
+Kimigayo supports decimal integers, binary integers, octal integers, hexadecimal integers, and decimal floating-point literals:
+
+| Form | Prefix or syntax | Digits |
+| ---- | ---------------- | ------ |
+| Decimal integer | None | `0`-`9` |
+| Binary integer | `0b` or `0B` | `0`, `1` |
+| Octal integer | `0o` or `0O` | `0`-`7` |
+| Hexadecimal integer | `0x` or `0X` | `0`-`9`, `a`-`f`, `A`-`F` |
+| Decimal floating point | Decimal fraction, exponent, or both | `0`-`9` |
+
+The lexical grammar is:
+
+```text
+number-literal       := decimal-literal
+                      | binary-literal
+                      | octal-literal
+                      | hexadecimal-literal
+
+decimal-literal      := decimal-sequence fraction? exponent?
+fraction             := '.' decimal-digit decimal-tail
+exponent             := ('e' | 'E') ('+' | '-')? decimal-digit decimal-tail
+
+binary-literal       := '0' ('b' | 'B') binary-tail
+octal-literal        := '0' ('o' | 'O') octal-tail
+hexadecimal-literal  := '0' ('x' | 'X') hexadecimal-tail
+
+decimal-sequence     := decimal-digit decimal-tail
+decimal-tail         := (decimal-digit | '_')*
+binary-tail          := (binary-digit | '_')*
+octal-tail           := (octal-digit | '_')*
+hexadecimal-tail     := (hexadecimal-digit | '_')*
+
+decimal-digit        := '0' .. '9'
+binary-digit         := '0' | '1'
+octal-digit          := '0' .. '7'
+hexadecimal-digit    := decimal-digit | 'a' .. 'f' | 'A' .. 'F'
+```
+
+An underscore (`_`) is a digit separator and has no effect on the value. Consecutive separators are permitted, as are separators immediately after a base prefix and at the end of a digit sequence. Consequently, `1__000`, `123_`, `0x_FF`, and `0b__101__` are valid. A base prefix followed by no digits, or only separators, has the integer value zero; for example, `0x` and `0o___` are valid zero literals. The one stricter position is the start of an exponent: a decimal digit must immediately follow `e` or `E` and its optional sign, so `1e_2` and `1e+_2` are invalid.
+
+A decimal point belongs to a `NumberLiteral` only when it is immediately followed by a decimal digit. Thus `1.0` is a floating-point literal, but `1.` is the integer literal `1` followed by a dot token. Fractions and exponents are supported only for decimal literals; `0xFF.0`, for example, begins with the hexadecimal integer literal `0xFF` rather than forming a hexadecimal floating-point literal.
+
+A decimal literal containing a recognized fraction or exponent is interpreted as an IEEE 754 `f64` value. Separators are removed before conversion. A finite result is valid; a value that converts to positive or negative infinity is invalid. A decimal literal containing neither a fraction nor an exponent, and every base-prefixed literal, is an integer. Integer magnitudes from zero through `2^128 - 1` are accepted and stored as a 128-bit bit pattern; a larger magnitude is invalid.
+
+`NumberLiteral` currently has no type suffix. Internally, integer literals are retained as `i128` and floating-point literals as `f64`; their resulting Types are inferred appropriately from context. To specify a Type, use an explicit conversion expression, such as `123@i32`.
+
+The parsed syntax tree stores a canonical representation rather than the original spelling. Integer literals are rendered as decimal from their signed 128-bit bit pattern. Floating-point literals are rendered with a round-trip `f64` representation and retain a decimal marker when necessary; for example, an integral floating-point value is rendered as `1.0`. Compile-time basic-value evaluation currently supports integer representations that fit in `i64` and all valid `f64` literals.
+
 ## StringLiteral
 
 A `StringLiteral` produces a value of the built-in `string` Type. Kimigayo source text and string contents use UTF-8. A literal may occupy one line or multiple lines.
