@@ -96,7 +96,7 @@ public class ParseBenchmark
 
     public ParseBenchmark()
     {
-        this.compilation = Compilation.CreateForTest();
+        this.compilation = Compilation.CreateForTest(true);
     }
 
     [GlobalSetup]
@@ -111,7 +111,7 @@ public class ParseBenchmark
 
     [Benchmark]
     public Koto Test1()
-    {
+    {// 9.6 us
         var kotonoha = this.compilation.Kotonoha;
         var codeContext = kotonoha.CreateCodeContext();
         codeContext.Parse(kotonoha.RootKoto, this.sourceText);

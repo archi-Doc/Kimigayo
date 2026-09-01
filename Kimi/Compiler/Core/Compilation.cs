@@ -70,10 +70,15 @@ public class Compilation
     /// <summary>
     /// Creates a compilation with an empty test project.
     /// </summary>
+    /// <param name="useConsoleService">
+    /// <see langword="true"/> to use <see cref="ConsoleService"/>;
+    /// otherwise, use <see cref="EmptyConsole"/>.
+    /// </param>
     /// <returns>A compilation configured for tests.</returns>
-    public static Compilation CreateForTest()
+    public static Compilation CreateForTest(bool useConsoleService = false)
     {
-        var kimigayo = new Kimigayo(new ConsoleService());
+        IConsoleService consoleService = useConsoleService ? new ConsoleService() : new EmptyConsole();
+        var kimigayo = new Kimigayo(consoleService);
         var project = new Project(kimigayo);
         var compilation = new Compilation(kimigayo, project);
 
