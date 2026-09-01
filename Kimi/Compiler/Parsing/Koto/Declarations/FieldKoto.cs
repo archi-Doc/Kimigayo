@@ -18,7 +18,7 @@ public enum VariableKind
 }
 
 /// <summary>
-/// Represents a field or local variable declaration.
+/// Represents a local binding declaration.
 /// </summary>
 [TinyhandObject]
 public sealed partial class FieldKoto : DeclarationKoto

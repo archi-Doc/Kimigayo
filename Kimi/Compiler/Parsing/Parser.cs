@@ -483,7 +483,7 @@ Exit:
         }
     }
 
-    /// <summary>Parses a field or local variable declaration.</summary>
+    /// <summary>Parses a local binding declaration.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="token">The declaration keyword token.</param>
     /// <returns>The parsed declaration, or <see langword="null"/> after an error.</returns>
@@ -543,6 +543,252 @@ Exit:
         }
 
         return fieldKoto;
+    }
+
+    /// <summary>Parses a Property declaration and its optional accessor list.</summary>
+    /// <param name="reader">The token reader positioned after <c>let</c> or <c>var</c>.</param>
+    /// <param name="token">The Property declaration keyword token.</param>
+    /// <returns>The parsed Property, or <see langword="null"/> after an error.</returns>
+    public static PropertyKoto? ParseProperty(ref TokenReader reader, ref Token token)
+    {
+        var propertyContext = reader.TakeContext();
+        var nameToken = reader.CurrentToken;
+        reader.Advance();
+        if (!IdentifierNameKoto.TryCreate(ref reader, nameToken, out var nameKoto))
+        {
+            return default;
+        }
+
+        Koto? typeKoto = default;
+        if (reader.TryConsume(TokenKind.Colon, out _, false))
+        {
+            typeKoto = ParseType(ref reader);
+        }
+
+        Koto? initializerKoto = default;
+        if (reader.TryConsume(TokenKind.Equals, out _, false))
+        {
+            initializerKoto = ParseExpression(ref reader);
+        }
+
+        var hasInlineAccessors = reader.CurrentTokenKind == TokenKind.Has;
+        if (hasInlineAccessors)
+        {
+            reader.Advance();
+        }
+
+        var property = new PropertyKoto(
+            ref reader,
+            propertyContext,
+            ref token,
+            nameKoto,
+            typeKoto,
+            initializerKoto,
+            hasInlineAccessors);
+
+        if (hasInlineAccessors)
+        {
+            ParseInlinePropertyAccessors(ref reader, property);
+        }
+
+        if (reader.CurrentTokenKind == TokenKind.Semicolon)
+        {
+            reader.Advance();
+            return property;
+        }
+
+        var bodyReader = reader;
+        ConsumeSeparators(ref bodyReader);
+        if (bodyReader.CurrentTokenKind == TokenKind.StartBlock)
+        {
+            reader = bodyReader;
+            if (hasInlineAccessors)
+            {
+                reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.UnexpectedToken_Kd, TokenKind.StartBlock.ToText());
+                reader.SkipCurrentBlock(false);
+            }
+            else
+            {
+                ParsePropertyAccessorBlock(ref reader, property);
+            }
+
+            return property;
+        }
+
+        if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
+        {
+            reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, DiagnosticCode.UnexpectedTrailingToken_Kd);
+        }
+
+        return property;
+    }
+
+    private static void ParseInlinePropertyAccessors(ref TokenReader reader, PropertyKoto property)
+    {
+        var parsedAny = false;
+        while (reader.CanRead)
+        {
+            var start = reader.CurrentTokenRange.Start;
+            var modifier = ParseAccessorAccessibility(ref reader);
+            var accessorToken = reader.CurrentToken;
+            if (!TryGetPropertyAccessorKind(accessorToken.Kind, out var accessorKind))
+            {
+                reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, reader.GetSpan(accessorToken).ToString());
+                reader.SkipUntil(TokenKind.Comma, TokenKind.Separator, 0);
+                break;
+            }
+
+            reader.Advance();
+            parsedAny = true;
+            var accessor = new PropertyAccessorKoto(
+                ref reader,
+                SourceSpan.FromBounds(start, accessorToken.Span.End),
+                modifier,
+                accessorKind,
+                default);
+            AddPropertyAccessor(ref reader, property, accessor, accessorToken);
+
+            if (reader.CurrentTokenKind != TokenKind.Comma)
+            {
+                break;
+            }
+
+            reader.Advance();
+            if (reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock)
+            {
+                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                break;
+            }
+        }
+
+        if (!parsedAny)
+        {
+            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+        }
+    }
+
+    private static void ParsePropertyAccessorBlock(ref TokenReader reader, PropertyKoto property)
+    {
+        var blockStart = reader.CurrentTokenRange;
+        reader.Advance();
+        while (reader.CanRead)
+        {
+            while (reader.CurrentTokenKind == TokenKind.Separator)
+            {
+                reader.Advance();
+            }
+
+            if (reader.CurrentTokenKind == TokenKind.EndBlock)
+            {
+                var blockEnd = reader.CurrentTokenRange.End;
+                reader.Advance();
+                property.CompleteSpan(blockEnd);
+                return;
+            }
+
+            var start = reader.CurrentTokenRange.Start;
+            var modifier = ParseAccessorAccessibility(ref reader);
+            var accessorToken = reader.CurrentToken;
+            if (!TryGetPropertyAccessorKind(accessorToken.Kind, out var accessorKind))
+            {
+                reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, reader.GetSpan(accessorToken).ToString());
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+                continue;
+            }
+
+            reader.Advance();
+            Koto? body = default;
+            if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
+            {
+                reader.Advance();
+                body = ParseExpression(ref reader);
+            }
+            else
+            {
+                var bodyReader = reader;
+                ConsumeSeparators(ref bodyReader);
+                if (bodyReader.CurrentTokenKind == TokenKind.StartBlock)
+                {
+                    reader = bodyReader;
+                    body = ParseBlock(ref reader);
+                }
+            }
+
+            var end = Math.Max(accessorToken.Span.End, body?.Span.End ?? 0);
+            var accessor = new PropertyAccessorKoto(
+                ref reader,
+                SourceSpan.FromBounds(start, end),
+                modifier,
+                accessorKind,
+                body);
+            AddPropertyAccessor(ref reader, property, accessor, accessorToken);
+
+            if (body is not CodeBlockKoto &&
+                reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) &&
+                reader.CanRead)
+            {
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+            }
+        }
+
+        property.CompleteSpan(Math.Max(property.Span.End, blockStart.End));
+        reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+    }
+
+    private static ModifierKind ParseAccessorAccessibility(ref TokenReader reader)
+    {
+        var modifier = reader.CurrentTokenKind switch
+        {
+            TokenKind.Public => ModifierKind.Public,
+            TokenKind.Protected => ModifierKind.Protected,
+            TokenKind.Private => ModifierKind.Private,
+            TokenKind.Internal => ModifierKind.Internal,
+            TokenKind.ProtectedOrInternal => ModifierKind.ProtectedOrInternal,
+            TokenKind.ProtectedAndInternal => ModifierKind.ProtectedAndInternal,
+            _ => ModifierKind.NoModifier,
+        };
+
+        if (modifier != ModifierKind.NoModifier)
+        {
+            reader.Advance();
+        }
+
+        return modifier;
+    }
+
+    private static bool TryGetPropertyAccessorKind(TokenKind tokenKind, out PropertyAccessorKind accessorKind)
+    {
+        if (tokenKind == TokenKind.Get)
+        {
+            accessorKind = PropertyAccessorKind.Get;
+            return true;
+        }
+
+        if (tokenKind == TokenKind.Set)
+        {
+            accessorKind = PropertyAccessorKind.Set;
+            return true;
+        }
+
+        accessorKind = default;
+        return false;
+    }
+
+    private static void AddPropertyAccessor(
+        ref TokenReader reader,
+        PropertyKoto property,
+        PropertyAccessorKoto accessor,
+        Token accessorToken)
+    {
+        if (property.VariableKind == VariableKind.Let && accessor.AccessorKind == PropertyAccessorKind.Set)
+        {
+            reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.LetPropertyCannotHaveSetter_Kd);
+        }
+
+        if (!property.TryAddAccessor(accessor))
+        {
+            reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.DuplicatePropertyAccessor_Kd, accessor.AccessorText);
+        }
     }
 
     /// <summary>Writes declaration modifiers as source text.</summary>

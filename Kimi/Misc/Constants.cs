@@ -65,6 +65,9 @@ public static class Constants
     public const string ExtensionKeyword = "extension";
     public const string ContractKeyword = "contract";
     public const string AssociateKeyword = "associate";
+    public const string GetKeyword = "get";
+    public const string SetKeyword = "set";
+    public const string HasKeyword = "has";
     public const string StaticKeyword = "static";
     public const string PublicKeyword = "public";
     public const string ProtectedKeyword = "protected";

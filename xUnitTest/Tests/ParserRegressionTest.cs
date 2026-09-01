@@ -144,7 +144,7 @@ public class ParserRegressionTest
         Assert.Empty(diagnostics);
         var group = root.GetOrAddGroup("A", TokenKind.Group, default, default);
         Assert.Equal("A", group.Name);
-        Assert.IsType<FieldKoto>(GetChildren(group).Single());
+        Assert.IsType<PropertyKoto>(GetChildren(group).Single());
     }
 
     [Fact]
@@ -350,7 +350,7 @@ public class ParserRegressionTest
         Assert.IsType<IdentifierNameKoto>(typeAnd.Left);
         Assert.IsType<ParenthesizedKoto>(typeAnd.Right);
 
-        Assert.IsType<FieldKoto>(GetChildren(type).Single());
+        Assert.IsType<PropertyKoto>(GetChildren(type).Single());
 
         var builder = default(IndentedStringBuilder);
         try
@@ -426,7 +426,7 @@ public class ParserRegressionTest
         var constraint = Assert.Single(type.TypeConstraints);
         Assert.Equal("T", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
         Assert.Equal("FirstConstraint", Assert.IsType<IdentifierNameKoto>(constraint.Right).IdentifierName);
-        Assert.Equal(2, GetChildren(type).OfType<FieldKoto>().Count());
+        Assert.Equal(2, GetChildren(type).OfType<PropertyKoto>().Count());
 
         var builder = default(IndentedStringBuilder);
         try
@@ -489,9 +489,9 @@ public class ParserRegressionTest
             Assert.All(type.GenericArguments, argument => Assert.Same(type, argument.Parent));
             Assert.All(type.TypeConstraints, constraint => Assert.Same(type, constraint.Parent));
 
-            var fields = GetChildren(type).OfType<FieldKoto>().ToArray();
-            Assert.All(fields, field => Assert.Same(type, field.Parent));
-            var item = Assert.Single(fields, field => field.NameKoto.IdentifierName == "item");
+            var properties = GetChildren(type).OfType<PropertyKoto>().ToArray();
+            Assert.All(properties, property => Assert.Same(type, property.Parent));
+            var item = Assert.Single(properties, property => property.NameKoto.IdentifierName == "item");
             var attribute = Assert.IsType<AttributeKoto>(item.AttributeChain);
             Assert.Equal("Example", Assert.IsType<IdentifierNameKoto>(attribute.IdentifierKoto).IdentifierName);
 
@@ -547,7 +547,7 @@ public class ParserRegressionTest
         Assert.Single(type.TypeConstraints);
         Assert.Collection(
             GetChildren(type),
-            x => Assert.IsType<FieldKoto>(x),
+            x => Assert.IsType<PropertyKoto>(x),
             x => Assert.IsType<FunctionKoto>(x));
     }
 
@@ -577,7 +577,7 @@ public class ParserRegressionTest
         Assert.Collection(
             GetChildren(type),
             x => Assert.IsType<FunctionKoto>(x),
-            x => Assert.IsType<FieldKoto>(x));
+            x => Assert.IsType<PropertyKoto>(x));
     }
 
     [Fact]
@@ -594,7 +594,7 @@ public class ParserRegressionTest
         var diagnostic = Assert.Single(diagnostics);
         Assert.Equal(nameof(DiagnosticCode.UnexpectedToken_Kd), diagnostic.Entry.Name);
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
-        Assert.IsType<FieldKoto>(Assert.Single(GetChildren(type)));
+        Assert.IsType<PropertyKoto>(Assert.Single(GetChildren(type)));
     }
 
     [Theory]

@@ -44,7 +44,7 @@ public enum KotoKind : byte
     /// <summary>An alias declaration.</summary>
     Alias,
 
-    /// <summary>A field or variable declaration.</summary>
+    /// <summary>A local binding declaration.</summary>
     Field,
 
     /// <summary>A Boolean literal.</summary>
@@ -265,6 +265,12 @@ public enum KotoKind : byte
     /// <summary>A <c>yield</c> expression.</summary>
     Yield,
 
+    /// <summary>A Property declaration.</summary>
+    Property,
+
+    /// <summary>A Property accessor declaration.</summary>
+    PropertyAccessor,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
@@ -284,6 +290,8 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.BoolLiteral, typeof(BoolLiteralKoto))]
 [TinyhandUnion((int)KotoKind.Error, typeof(ErrorKoto))]
 [TinyhandUnion((int)KotoKind.Field, typeof(FieldKoto))]
+[TinyhandUnion((int)KotoKind.Property, typeof(PropertyKoto))]
+[TinyhandUnion((int)KotoKind.PropertyAccessor, typeof(PropertyAccessorKoto))]
 [TinyhandUnion((int)KotoKind.NumberLiteral, typeof(NumberLiteralKoto))]
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.IdentifierName, typeof(IdentifierNameKoto))]

@@ -12,13 +12,16 @@
 
   + Name="DeclarationOrderWarning_Kd"
     Severity="Warning"
-    Message="Declarations should appear in this order: type constraints, fields, functions"
+    Message="Declarations should appear in this order: type constraints, Properties, functions"
 
   + Name="DivisionByZero_Kd"
     Message="Cannot divide by zero"
 
   + Name="DuplicateModifier_Kd"
     Message="Duplicate modifier '{0}'"
+
+  + Name="DuplicatePropertyAccessor_Kd"
+    Message="A Property may declare the '{0}' accessor at most once"
 
   + Name="DuplicateTypeConstraintDefinition_Kd"
     Message="Type constraints for this struct are already defined in another declaration"
@@ -74,6 +77,9 @@
 
   + Name="IntegerOverflow_Kd"
     Message="The integer operation exceeds the supported range"
+
+  + Name="LetPropertyCannotHaveSetter_Kd"
+    Message="A let Property cannot declare a setter"
 
   + Name="MissingBlockCommentEnd_Kd"
     Message="Reached end-of-file. Missing '*/'"

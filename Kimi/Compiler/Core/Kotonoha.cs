@@ -163,7 +163,7 @@ public sealed partial class Kotonoha
     /// <param name="sourceDocument">The source document to add.</param>
     /// <exception cref="ArgumentNullException"><paramref name="sourceDocument"/> is <see langword="null"/>.</exception>
     /// <remarks>
-    /// Declarations are merged into <see cref="RootKoto"/>. Executable top-level fields,
+    /// Declarations are merged into <see cref="RootKoto"/>. Executable top-level local bindings,
     /// statements, expressions, and functions are placed in <see cref="GeneratedFunction"/>.
     /// </remarks>
     public void AddSource(SourceDocument sourceDocument)

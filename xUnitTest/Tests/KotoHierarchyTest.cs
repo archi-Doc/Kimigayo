@@ -56,7 +56,7 @@ public class KotoHierarchyTest
         var groupB = Assert.IsType<GroupKoto>(root.GetOrAddDeclarationContainer("A.B", TokenKind.Group, default, default));
         Assert.Same(root, groupA.Parent);
         Assert.Same(groupA, groupB.Parent);
-        Assert.IsType<FieldKoto>(Assert.Single(groupB.Members));
+        Assert.IsType<PropertyKoto>(Assert.Single(groupB.Members));
         Assert.Contains(groupA, root.ChildNodes);
         Assert.Contains(groupB, groupA.ChildNodes);
     }
@@ -204,10 +204,10 @@ public class KotoHierarchyTest
         var group = Assert.IsType<GroupKoto>(GetDeclarationContainer(root, "Utilities"));
         Assert.Collection(
             group.Members,
-            member => Assert.IsType<FieldKoto>(member),
+            member => Assert.IsType<PropertyKoto>(member),
             member => Assert.IsType<FunctionKoto>(member));
         var nestedStructure = Assert.IsType<StructKoto>(GetDeclarationContainer(group, "Rejected"));
-        Assert.IsType<FieldKoto>(Assert.Single(nestedStructure.Members));
+        Assert.IsType<PropertyKoto>(Assert.Single(nestedStructure.Members));
 
         var structure = Assert.IsType<StructKoto>(GetDeclarationContainer(root, "Container"));
         Assert.Single(structure.GenericArguments);
@@ -215,7 +215,7 @@ public class KotoHierarchyTest
         Assert.Single(structure.TypeConstraints);
         Assert.Collection(
             structure.Members,
-            member => Assert.IsType<FieldKoto>(member),
+            member => Assert.IsType<PropertyKoto>(member),
             member => Assert.IsType<FunctionKoto>(member));
         Assert.Empty(structure.NestedDeclarationContainers);
 

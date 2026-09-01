@@ -20,7 +20,7 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto, IToke
     {
         None,
         TypeConstraint,
-        Field,
+        Property,
         Function,
     }
 
@@ -353,10 +353,10 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto, IToke
         }
     }
 
-    /// <summary>Parses fields, functions, and optionally ordinary type constraints.</summary>
+    /// <summary>Parses Properties, functions, and optionally ordinary type constraints.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="parseTypeConstraints">Whether ordinary type constraints are accepted.</param>
-    protected void ParseFieldAndFunctionMembers(ref TokenReader reader, bool parseTypeConstraints)
+    protected void ParsePropertyAndFunctionMembers(ref TokenReader reader, bool parseTypeConstraints)
     {
         ConsumeBlockStart(ref reader);
         var declarationOrder = DeclarationOrder.None;
@@ -383,7 +383,7 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto, IToke
             }
 
             var token = reader.CurrentToken;
-            if (!this.TryParseFieldOrFunction(ref reader, ref declarationOrder))
+            if (!this.TryParsePropertyOrFunction(ref reader, ref declarationOrder))
             {
                 SkipUnexpectedDeclaration(ref reader, token);
             }
@@ -452,21 +452,21 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto, IToke
         return true;
     }
 
-    /// <summary>Attempts to parse one field or function declaration.</summary>
+    /// <summary>Attempts to parse one Property or function declaration.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="declarationOrder">The current declaration-order state.</param>
     /// <returns><see langword="true"/> when a supported member was consumed.</returns>
-    protected bool TryParseFieldOrFunction(ref TokenReader reader, ref DeclarationOrder declarationOrder)
+    protected bool TryParsePropertyOrFunction(ref TokenReader reader, ref DeclarationOrder declarationOrder)
     {
         var token = reader.CurrentToken;
         if (token.Kind is TokenKind.Let or TokenKind.Var)
         {
-            CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Field);
+            CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Property);
             reader.Advance();
-            var fieldKoto = Parser.ParseField(ref reader, ref token);
-            if (fieldKoto is not null)
+            var propertyKoto = Parser.ParseProperty(ref reader, ref token);
+            if (propertyKoto is not null)
             {
-                this.AddLast(fieldKoto);
+                this.AddLast(propertyKoto);
             }
 
             return true;

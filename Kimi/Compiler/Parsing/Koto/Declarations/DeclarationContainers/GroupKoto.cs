@@ -75,7 +75,7 @@ public sealed partial class GroupKoto : DeclarationContainerKoto
                 continue;
             }
 
-            if (!this.TryParseFieldOrFunction(ref reader, ref declarationOrder))
+            if (!this.TryParsePropertyOrFunction(ref reader, ref declarationOrder))
             {
                 SkipUnexpectedDeclaration(ref reader, token);
             }

@@ -104,6 +104,9 @@ public static partial class TokenHelper
         Set(TokenKind.ProtectedAndInternal, true, Constants.ProtectedAndInternalKeyword);
         Set(TokenKind.Open, true, Constants.OpenKeyword);
         Set(TokenKind.Associate, true, Constants.AssociateKeyword);
+        Set(TokenKind.Get, true, Constants.GetKeyword);
+        Set(TokenKind.Set, true, Constants.SetKeyword);
+        Set(TokenKind.Has, true, Constants.HasKeyword);
 
         // Not keyword
         Set(TokenKind.Identifier, false, string.Empty);

@@ -74,6 +74,9 @@ public enum TokenKind : byte
     Open,
     In, // in; contextual delimiter in a for expression
     Associate,
+    Get,
+    Set,
+    Has,
 
     // Not keyword
     Identifier = 128,

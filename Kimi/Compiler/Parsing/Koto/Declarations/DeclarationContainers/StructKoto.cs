@@ -44,5 +44,5 @@ public sealed partial class StructKoto : DeclarationContainerKoto
 
     /// <inheritdoc/>
     public override void Parse(ref TokenReader reader)
-        => this.ParseFieldAndFunctionMembers(ref reader, true);
+        => this.ParsePropertyAndFunctionMembers(ref reader, true);
 }
