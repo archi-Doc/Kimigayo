@@ -73,7 +73,7 @@ public class Compilation
     /// <returns>A compilation configured for tests.</returns>
     public static Compilation CreateForTest()
     {
-        var kimigayo = new Kimigayo(new EmptyConsole());
+        var kimigayo = new Kimigayo(new ConsoleService());
         var project = new Project(kimigayo);
         var compilation = new Compilation(kimigayo, project);
 

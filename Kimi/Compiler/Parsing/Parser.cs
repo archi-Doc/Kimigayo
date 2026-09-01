@@ -364,11 +364,15 @@ NextParameter:
             parameters,
             returnType);
 
-        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator, DiagnosticCode.UnexpectedTrailingToken_Kd);
+        reader.SkipUntil(
+            TokenKind.StartBlock,
+            TokenKind.Separator,
+            TokenKind.EndBlock,
+            DiagnosticCode.UnexpectedTrailingToken_Kd);
         return functionKoto;
 
 SkipAndExit:
-        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator);
+        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator, TokenKind.EndBlock);
 
 Exit:
         return default;

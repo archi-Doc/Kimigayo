@@ -28,11 +28,6 @@ internal class Program
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         var codeContext = kotonoha.CreateCodeContext();
-        codeContext.Parse(kotonoha.RootKoto, $"""
-            #If (true)
-            public struct TestStruct: @Ia
-                let x = 1
-            """);
 
         /*var unit = new KimiUnit.Builder().Build();
         var serviceProvider = unit.Context.ServiceProvider;

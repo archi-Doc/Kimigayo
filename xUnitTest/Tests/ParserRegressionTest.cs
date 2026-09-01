@@ -200,6 +200,30 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void ParsesBodylessFunctionAtEndOfGroupBeforeNextGroup()
+    {
+        const string Source = """
+            public group Kernel32 // shared (no instance)
+                #LibraryImport(LibraryName) public func GetStdHandle(nStdHandle: u32) -> ptr
+
+            public group Helper // namespace - alias
+                public let Id: i32 = 123
+            """;
+
+        var (root, diagnostics) = Parse(Source);
+
+        Assert.Empty(diagnostics);
+
+        var kernel32 = Assert.IsType<GroupKoto>(
+            Assert.Single(root.NestedDeclarationContainers, x => x.Name == "Kernel32"));
+        Assert.IsType<FunctionKoto>(Assert.Single(kernel32.Members));
+
+        var helper = Assert.IsType<GroupKoto>(
+            Assert.Single(root.NestedDeclarationContainers, x => x.Name == "Helper"));
+        Assert.IsType<PropertyKoto>(Assert.Single(helper.Members));
+    }
+
+    [Fact]
     public void PreservesTopLevelStructModifiersThroughAddSource()
     {
         var compilation = Compilation.CreateForTest();

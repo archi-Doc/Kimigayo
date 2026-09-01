@@ -333,6 +333,40 @@ Loop:
     }
 
     /// <summary>
+    /// Advances until any of the specified token kinds is reached.
+    /// </summary>
+    /// <param name="kind1">The first token kind at which to stop.</param>
+    /// <param name="kind2">The second token kind at which to stop.</param>
+    /// <param name="kind3">The third token kind at which to stop.</param>
+    /// <param name="code">An optional diagnostic hash reported for the first skipped token.</param>
+    /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
+    public TokenKind SkipUntil(
+        TokenKind kind1,
+        TokenKind kind2,
+        TokenKind kind3,
+        DiagnosticCode code = DiagnosticCode.Template_Kd)
+    {
+        while (this.CanRead)
+        {
+            var tokenKind = this.currentToken.Kind;
+            if (tokenKind == kind1 || tokenKind == kind2 || tokenKind == kind3)
+            {
+                return tokenKind;
+            }
+
+            if (code != 0)
+            {
+                this.AddDiagnostic(code, this.GetSpan(this.currentToken).ToString());
+                code = 0;
+            }
+
+            this.AdvanceOne();
+        }
+
+        return default;
+    }
+
+    /// <summary>
     /// Advances to the start of the immediately following block and reports at most one diagnostic
     /// for trailing tokens on the declaration line. Stops before a subsequent statement.
     /// </summary>
