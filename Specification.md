@@ -66,7 +66,7 @@ Each continuation character may be any valid start character, or:
 - an ASCII digit (`0`–`9`), or
 - a Unicode character in one of the categories Nonspacing Mark (`Mn`), Spacing Combining Mark (`Mc`), Decimal Digit Number (`Nd`), Connector Punctuation (`Pc`), or Format (`Cf`).
 
-Contextual keywords may be used as Names in contexts that accept contextual identifiers. Reserved keywords may not be used as Names. In particular, `in` acts as a delimiter in a `for` header but may be used as a Name in other supported identifier contexts.
+Contextual keywords may be used as Names in contexts that accept contextual identifiers. Reserved keywords may not be used as Names. In particular, `in` acts as a delimiter in a `for` header, and `has` introduces an inline Property accessor list; both may be used as Names outside those contexts.
 
 For example, `Dog`, `_value`, `point2`, `日本語`, and `ǅelta` are valid Names, while `2point`, `has-value`, and the empty string are not.
 
@@ -112,7 +112,7 @@ Property
     Setter?
 ```
 
-Every Property is classified semantically as either stored or computed. The classification is derived after omitted accessor behavior has been expanded:
+Every concrete Property is classified semantically as either stored or computed. The classification is derived after inline, bodyless, and omitted accessor behavior has been expanded:
 
 ```text
 HasStorage
@@ -128,7 +128,8 @@ The semantic processing order is:
 
 ```text
 Property declaration
-    -> expand implicit accessor behavior
+    -> expand an inline `has` clause, if present
+    -> expand bodyless and implicit accessor behavior
     -> create the effective Property representation
     -> bind accessor bodies and contextual identifiers
     -> detect references bound to `storage`
@@ -243,6 +244,117 @@ var Width: f64
 
 Neither accessor refers to `storage`, so this is a read-write computed Property.
 
+### Inline accessor declarations
+
+A Property may declare bodyless accessors inline with a `has` clause:
+
+```kimi
+var Count: i32 has get, private set
+```
+
+The clause follows the Property initializer when one is present:
+
+```kimi
+var Count: i32 = 0 has get, private set
+```
+
+The grammar is:
+
+```text
+inline-accessors := has accessor-declaration (',' accessor-declaration)*
+
+accessor-declaration := access-restriction? get
+                      | access-restriction? set
+```
+
+The list must contain at least one accessor. `get` and `set` may each appear at most once. Their order has no semantic effect, although `get` followed by `set` is conventional. Access restrictions follow the same rules as accessors written in a Property body.
+
+#### Concrete Properties
+
+For a concrete Property, `has` expands to the corresponding bodyless accessor declarations before the effective representation is created:
+
+```kimi
+var Count: i32 has get, private set
+```
+
+is equivalent to:
+
+```kimi
+var Count: i32
+    get
+    private set
+```
+
+A bodyless getter and setter have these default implementations:
+
+```kimi
+get => storage
+
+set
+    storage = value
+```
+
+The example therefore has this effective representation:
+
+```kimi
+var Count: i32
+    get => storage
+
+    private set
+        storage = value
+```
+
+`has` does not introduce a separate storage rule. After expansion, `HasStorage` is determined from references bound to `storage` in the normal way. For example, `var Value: i32 has get` expands to `get => storage` with no setter and is therefore a stored, read-only Property.
+
+Inline and indentation-delimited accessor lists cannot be combined in one Property declaration. An accessor that needs a custom body must use the indentation-delimited form:
+
+```kimi
+var Percentage: i32
+    get => storage
+
+    private set
+        storage = clamp(value, 0, 100)
+```
+
+The normal `let` restrictions continue to apply; in particular, a `let` Property cannot declare a setter.
+
+#### Contract Property Requirements
+
+Inside a `contract`, `has` declares the accessor capabilities that a conforming Property must provide:
+
+```kimi
+contract Collection
+    var Count: i32 has get
+
+contract MutableCollection
+    var Count: i32 has get, set
+```
+
+The first requirement is readable; the second is both readable and writable. A conforming Property must have a compatible Type and provide every required accessor with sufficient accessibility.
+
+In this context, `has` introduces no accessor implementation, effective storage representation, or Property storage. A contract Property requirement therefore has no `HasStorage` classification. A conforming Property may be stored or computed:
+
+```kimi
+// Stored implementation
+var Count: i32 has get
+
+// Computed implementation
+var Count: i32
+    get => items.Count
+```
+
+Both may satisfy `var Count: i32 has get` in a contract. Thus the declaration context determines the meaning of the shared syntax:
+
+```text
+Concrete Property
+    has ... -> bodyless accessor declarations
+            -> default behavior and HasStorage analysis
+
+Contract Property requirement
+    has ... -> required accessor availability only
+            -> no implementation or storage semantics
+```
+
 ### Contextual identifiers and receivers
 
 `storage` denotes the actual storage location owned by the current Property, rather than a detached copy. It has the Property Type, and a bound use of it causes that location to exist. `value` is available only in a setter. Neither identifier is globally reserved outside its accessor context.
@@ -295,11 +407,10 @@ var Value: i32 = 10
 
 Property access control has two levels: the Property's access and, optionally, a more restrictive access for an accessor. An accessor inherits the Property's access unless it declares a restriction, and it may never be more accessible than the Property.
 
-An access-restricted accessor without a custom body retains its default implementation. For example:
+An access-restricted bodyless accessor retains its default implementation whether written inline or in the Property body. For example:
 
 ```kimi
-public var Count: i32 = 0
-    private set
+public var Count: i32 = 0 has get, private set
 ```
 
 has the effective behavior:
@@ -363,7 +474,7 @@ A **Declaration Container** is a named declaration scope whose body may contain 
 | `struct` | Yes | Accepts Properties and functions in declaration order. Generic parameters, Origins, and type constraints are supported. |
 | `enum` | Yes | Body parsing is not implemented. |
 | `extension` | No | Its Name identifies the target. Body parsing is not implemented. |
-| `contract` | No | Currently accepts associated-type constraints only. |
+| `contract` | No | Accepts associated-type constraints and Property requirements. |
 
 A `struct` header may contain generic parameters and an Origin list. Constraint declarations precede Properties and functions.
 
@@ -380,6 +491,14 @@ An associated-type constraint in a `contract` begins with `associate`.
 ```kimi
 contract Sequence
     associate Element is Comparable
+```
+
+A Property requirement in a `contract` uses `has` to declare its required accessor capabilities, as specified under Inline accessor declarations.
+
+```kimi
+contract Sequence
+    associate Element is Comparable
+    var Count: i32 has get
 ```
 
 Each source unit has an implicit root `group`. This root dispatches top-level Declaration Container declarations, Properties, and functions. A `rootgroup` declaration starts at that root and accepts a dot-separated Name. For example:
