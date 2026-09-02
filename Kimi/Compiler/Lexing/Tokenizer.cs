@@ -23,8 +23,299 @@ internal ref struct Tokenizer
         LineContinuation, // Implicit continuation, such as a method chain line starting with ".".
     }
 
+    private delegate bool CharacterHandler(ref Tokenizer tokenizer);
+
     private const int InitialIndentStackCapacity = 32;
     private const int MinimumTokenCapacity = 256;
+
+    /// <summary>
+    /// Dispatches common leading characters without a large branch chain in the read loop.
+    /// A handler returns <see langword="true"/> when the logical line ends.
+    /// Characters without a handler fall back to the single-char, literal, and identifier path.
+    /// </summary>
+    private static readonly CharacterHandler?[] CharacterHandlerTable;
+
+    static Tokenizer()
+    {
+        CharacterHandlerTable = new CharacterHandler?[Constants.ExclusiveUpperBound];
+
+        CharacterHandlerTable[Constants.CrChar] = (ref tokenizer) =>
+        {// \r \r\n
+            tokenizer.Slice(tokenizer.NextChar == Constants.LfChar ? 2 : 1);
+            return true;
+        };
+
+        CharacterHandlerTable[Constants.LfChar] = (ref tokenizer) =>
+        {// \n
+            tokenizer.Slice(1);
+            return true;
+        };
+
+        CharacterHandlerTable[Constants.AmpersandChar] = (ref tokenizer) =>
+        {// & && &=
+            var next = tokenizer.NextChar;
+            if (next == Constants.AmpersandChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.AmpersandAmpersand, 2);
+            }
+            else if (next == Constants.EqualsChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.AmpersandEquals, 2);
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.Ampersand, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.AsteriskChar] = (ref tokenizer) =>
+        {// * *=
+            if (tokenizer.NextChar == Constants.EqualsChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.AsteriskEquals, 2);
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.Asterisk, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.BarChar] = (ref tokenizer) =>
+        {// | || |=
+            var next = tokenizer.NextChar;
+            if (next == Constants.BarChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.BarBar, 2);
+            }
+            else if (next == Constants.EqualsChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.BarEquals, 2);
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.Bar, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.CaretChar] = (ref tokenizer) =>
+        {// ^ ^=
+            if (tokenizer.NextChar == Constants.EqualsChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.CaretEquals, 2);
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.Caret, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.DotChar] = (ref tokenizer) =>
+        {// . .. ..=
+            if (tokenizer.NextChar == Constants.DotChar)
+            {
+                if (tokenizer.span.Length >= 3 && tokenizer.span[2] == Constants.EqualsChar)
+                {
+                    tokenizer.AddTokenAndSlice(TokenKind.DotDotEquals, 3);
+                }
+                else
+                {
+                    tokenizer.AddTokenAndSlice(TokenKind.DotDot, 2);
+                }
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.Dot, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.EqualsChar] = (ref tokenizer) =>
+        {// = == =>
+            var next = tokenizer.NextChar;
+            if (next == Constants.EqualsChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.EqualsEquals, 2);
+            }
+            else if (next == Constants.GreaterThanChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.EqualsGreaterThan, 2);
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.Equals, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.ExclamationChar] = (ref tokenizer) =>
+        {// ! !=
+            if (tokenizer.NextChar == Constants.EqualsChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.ExclamationEquals, 2);
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.Exclamation, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.GreaterThanChar] = (ref tokenizer) =>
+        {// > >= >> >>=
+            var next = tokenizer.NextChar;
+            if (next == Constants.EqualsChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.GreaterThanEquals, 2);
+            }
+            else if (next == Constants.GreaterThanChar)
+            {
+                if (tokenizer.span.Length >= 3 && tokenizer.span[2] == Constants.EqualsChar)
+                {
+                    tokenizer.AddTokenAndSlice(TokenKind.GreaterThanGreaterThanEquals, 3);
+                }
+                else
+                {
+                    tokenizer.AddTokenAndSlice(TokenKind.GreaterThanGreaterThan, 2);
+                }
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.GreaterThan, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.LessThanChar] = (ref tokenizer) =>
+        {// < <= << <<=
+            var next = tokenizer.NextChar;
+            if (next == Constants.EqualsChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.LessThanEquals, 2);
+            }
+            else if (next == Constants.LessThanChar)
+            {
+                if (tokenizer.span.Length >= 3 && tokenizer.span[2] == Constants.EqualsChar)
+                {
+                    tokenizer.AddTokenAndSlice(TokenKind.LessThanLessThanEquals, 3);
+                }
+                else
+                {
+                    tokenizer.AddTokenAndSlice(TokenKind.LessThanLessThan, 2);
+                }
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.LessThan, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.MinusChar] = (ref tokenizer) =>
+        {// - -- -= ->
+            var next = tokenizer.NextChar;
+            if (next == Constants.MinusChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.MinusMinus, 2);
+            }
+            else if (next == Constants.EqualsChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.MinusEquals, 2);
+            }
+            else if (next == Constants.GreaterThanChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.MinusGreaterThan, 2);
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.Minus, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.PercentChar] = (ref tokenizer) =>
+        {// % %=
+            if (tokenizer.NextChar == Constants.EqualsChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.PercentEquals, 2);
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.Percent, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.PlusChar] = (ref tokenizer) =>
+        {// + ++ +=
+            var next = tokenizer.NextChar;
+            if (next == Constants.PlusChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.PlusPlus, 2);
+            }
+            else if (next == Constants.EqualsChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.PlusEquals, 2);
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.Plus, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.SlashChar] = (ref tokenizer) =>
+        {// / // /* /=
+            var next = tokenizer.NextChar;
+            if (next == Constants.SlashChar)
+            {// Single line comment
+                tokenizer.ReadSingleLineComment();
+                return true;
+            }
+
+            if (next == Constants.AsteriskChar)
+            {// Multi line comment
+                tokenizer.ReadMultiLineComment();
+            }
+            else if (next == Constants.EqualsChar)
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.SlashEquals, 2);
+            }
+            else
+            {
+                tokenizer.AddTokenAndSlice(TokenKind.Slash, 1);
+            }
+
+            return false;
+        };
+
+        CharacterHandlerTable[Constants.AtChar] = (ref tokenizer) =>
+        {// @
+            tokenizer.AddTokenAndSlice(TokenKind.At, 1);
+            return false;
+        };
+
+        CharacterHandlerTable['"'] = (ref tokenizer) =>
+        {// "Text" or """Text"""
+            tokenizer.ReadStringLiteral();
+            return false;
+        };
+    }
 
     #region FieldAndProperty
 
@@ -61,6 +352,11 @@ internal ref struct Tokenizer
     /// Gets the generated tokens. The span is valid until <see cref="Dispose"/> is called.
     /// </summary>
     public ReadOnlySpan<Token> Tokens => this.tokens.AsSpan(0, this.tokenCount);
+
+    /// <summary>
+    /// Gets the character following the current one, or NUL at the end of the source.
+    /// </summary>
+    private readonly char NextChar => this.span.Length > 1 ? this.span[1] : '\0';
 
     #endregion
 
@@ -164,300 +460,31 @@ Loop:
             }
 
             // span.Length >= 1
-            var next = this.span.Length > 1 ? this.span[1] : '\0';
-            switch (this.span[0])
+            var c = this.span[0];
+            if (c < Constants.ExclusiveUpperBound &&
+                CharacterHandlerTable[c] is { } handler)
             {
-                case Constants.CrChar: // \r \r\n
-                    this.Slice(next == Constants.LfChar ? 2 : 1);
+                if (handler(ref this))
+                {// The logical line ended.
                     goto NextLine;
+                }
+            }
+            else if (TokenHelper.TryGetSingleCharTokenKind(c, out var tokenKind, out var groupingDepth))
+            {// Single char token
+                if (groupingDepth > 0)
+                {
+                    this.PushIndentSource(tokenKind);
+                }
+                else if (groupingDepth < 0)
+                {
+                    this.PopIndentSource(tokenKind);
+                }
 
-                case Constants.LfChar: // \n
-                    this.Slice(1);
-                    goto NextLine;
-
-                case Constants.AmpersandChar: // & && &=
-                    if (next == Constants.AmpersandChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.AmpersandAmpersand, 2);
-                    }
-                    else if (next == Constants.EqualsChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.AmpersandEquals, 2);
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.Ampersand, 1);
-                    }
-
-                    continue;
-
-                case Constants.AsteriskChar: // * *=
-                    if (next == Constants.EqualsChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.AsteriskEquals, 2);
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.Asterisk, 1);
-                    }
-
-                    continue;
-
-                case Constants.BarChar: // | || |=
-                    if (next == Constants.BarChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.BarBar, 2);
-                    }
-                    else if (next == Constants.EqualsChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.BarEquals, 2);
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.Bar, 1);
-                    }
-
-                    continue;
-
-                case Constants.CaretChar: // ^ ^=
-                    if (next == Constants.EqualsChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.CaretEquals, 2);
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.Caret, 1);
-                    }
-
-                    continue;
-
-                case Constants.DotChar: // . .. ..=
-                    if (next == Constants.DotChar)
-                    {
-                        if (this.span.Length >= 3 && this.span[2] == Constants.EqualsChar)
-                        {
-                            this.AddTokenAndSlice(TokenKind.DotDotEquals, 3);
-                        }
-                        else
-                        {
-                            this.AddTokenAndSlice(TokenKind.DotDot, 2);
-                        }
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.Dot, 1);
-                    }
-
-                    continue;
-
-                case Constants.EqualsChar: // = == =>
-                    if (next == Constants.EqualsChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.EqualsEquals, 2);
-                    }
-                    else if (next == Constants.GreaterThanChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.EqualsGreaterThan, 2);
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.Equals, 1);
-                    }
-
-                    continue;
-
-                case Constants.ExclamationChar: // ! !=
-                    if (next == Constants.EqualsChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.ExclamationEquals, 2);
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.Exclamation, 1);
-                    }
-
-                    continue;
-
-                case Constants.GreaterThanChar: // > >= >> >>=
-                    if (next == Constants.EqualsChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.GreaterThanEquals, 2);
-                    }
-                    else if (next == Constants.GreaterThanChar)
-                    {
-                        if (this.span.Length >= 3 && this.span[2] == Constants.EqualsChar)
-                        {
-                            this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThanEquals, 3);
-                        }
-                        else
-                        {
-                            this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThan, 2);
-                        }
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.GreaterThan, 1);
-                    }
-
-                    continue;
-
-                case Constants.LessThanChar: // < <= << <<=
-                    if (next == Constants.EqualsChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.LessThanEquals, 2);
-                    }
-                    else if (next == Constants.LessThanChar)
-                    {
-                        if (this.span.Length >= 3 && this.span[2] == Constants.EqualsChar)
-                        {
-                            this.AddTokenAndSlice(TokenKind.LessThanLessThanEquals, 3);
-                        }
-                        else
-                        {
-                            this.AddTokenAndSlice(TokenKind.LessThanLessThan, 2);
-                        }
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.LessThan, 1);
-                    }
-
-                    continue;
-
-                case Constants.MinusChar: // - -- -= ->
-                    if (next == Constants.MinusChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.MinusMinus, 2);
-                    }
-                    else if (next == Constants.EqualsChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.MinusEquals, 2);
-                    }
-                    else if (next == Constants.GreaterThanChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.MinusGreaterThan, 2);
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.Minus, 1);
-                    }
-
-                    continue;
-
-                case Constants.PercentChar: // % %=
-                    if (next == Constants.EqualsChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.PercentEquals, 2);
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.Percent, 1);
-                    }
-
-                    continue;
-
-                case Constants.PlusChar: // + ++ +=
-                    if (next == Constants.PlusChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.PlusPlus, 2);
-                    }
-                    else if (next == Constants.EqualsChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.PlusEquals, 2);
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.Plus, 1);
-                    }
-
-                    continue;
-
-                case Constants.SlashChar: // / // /* /=
-                    if (next == Constants.SlashChar)
-                    {
-                        this.ReadSingleLineComment();
-                        goto NextLine;
-                    }
-                    else if (next == Constants.AsteriskChar)
-                    {
-                        this.ReadMultiLineComment();
-                    }
-                    else if (next == Constants.EqualsChar)
-                    {
-                        this.AddTokenAndSlice(TokenKind.SlashEquals, 2);
-                    }
-                    else
-                    {
-                        this.AddTokenAndSlice(TokenKind.Slash, 1);
-                    }
-
-                    continue;
-
-                case '"':
-                    this.ReadStringLiteral();
-                    continue;
-
-                case Constants.AtChar:
-                    this.AddTokenAndSlice(TokenKind.At, 1);
-                    continue;
-
-                case Constants.SharpChar:
-                    this.AddTokenAndSlice(TokenKind.Sharp, 1);
-                    continue;
-
-                case Constants.DollarChar:
-                    this.AddTokenAndSlice(TokenKind.Dollar, 1);
-                    continue;
-
-                case Constants.CommaChar:
-                    this.AddTokenAndSlice(TokenKind.Comma, 1);
-                    continue;
-
-                case Constants.ColonChar:
-                    this.AddTokenAndSlice(TokenKind.Colon, 1);
-                    continue;
-
-                case Constants.SemicolonChar:
-                    this.AddTokenAndSlice(TokenKind.Semicolon, 1);
-                    continue;
-
-                case Constants.QuestionChar:
-                    this.AddTokenAndSlice(TokenKind.Question, 1);
-                    continue;
-
-                case Constants.OpenParenthesisChar:
-                    this.PushIndentSource(IndentSource.Parenthesis);
-                    this.AddTokenAndSlice(TokenKind.OpenParenthesis, 1);
-                    continue;
-
-                case Constants.CloseParenthesisChar:
-                    this.PopIndentSource(TokenKind.CloseParenthesis);
-                    this.AddTokenAndSlice(TokenKind.CloseParenthesis, 1);
-                    continue;
-
-                case Constants.OpenBracketChar:
-                    this.PushIndentSource(IndentSource.Bracket);
-                    this.AddTokenAndSlice(TokenKind.OpenBracket, 1);
-                    continue;
-
-                case Constants.CloseBracketChar:
-                    this.PopIndentSource(TokenKind.CloseBracket);
-                    this.AddTokenAndSlice(TokenKind.CloseBracket, 1);
-                    continue;
-
-                case Constants.OpenBraceChar:
-                    this.PushIndentSource(IndentSource.Brace);
-                    this.AddTokenAndSlice(TokenKind.OpenBrace, 1);
-                    continue;
-
-                case Constants.CloseBraceChar:
-                    this.PopIndentSource(TokenKind.CloseBrace);
-                    this.AddTokenAndSlice(TokenKind.CloseBrace, 1);
-                    continue;
-
-                default:
-                    this.ReadLiteralKeywordOrIdentifier();
-                    continue;
+                this.AddTokenAndSlice(tokenKind, 1);
+            }
+            else
+            {// Number literal, keyword, or identifier
+                this.ReadLiteralKeywordOrIdentifier();
             }
         }
 
@@ -818,6 +845,17 @@ EndOfFile:
         this.tokens = larger;
         return larger;
     }
+
+    private void PushIndentSource(TokenKind tokenKind)
+        => this.PushIndentSource(tokenKind switch
+        {
+            TokenKind.StartBlock => IndentSource.Block,
+            TokenKind.OpenParenthesis => IndentSource.Parenthesis,
+            TokenKind.OpenBracket => IndentSource.Bracket,
+            TokenKind.LessThan => IndentSource.AngleBracket,
+            TokenKind.OpenBrace => IndentSource.Brace,
+            _ => throw new UnreachableException(),
+        });
 
     private void PushIndentSource(IndentSource indentSource)
     {
