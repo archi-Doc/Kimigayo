@@ -99,7 +99,6 @@ public static class Constants
     public const string OwningKeyword = "owning";
     public const string ReferenceKeyword = "reference";
 
-    public const int ExclusiveUpperBound = 126; // '}' + 1
     public const char LfChar = '\n';
     public const char CrChar = '\r';
 

@@ -41,13 +41,14 @@ public sealed partial class GroupKoto : DeclarationContainerKoto
     /// <inheritdoc/>
     public override void Parse(ref TokenReader reader)
     {
-        if (!ReferenceEquals(this, this.Kotonoha.RootKoto))
+        if (ReferenceEquals(this, this.Kotonoha.RootKoto))
         {
-            this.ParseMembers(ref reader);
-            return;
+            this.ParseRoot(ref reader);
         }
-
-        this.ParseRoot(ref reader);
+        else
+        {
+            this.ParseMembers(ref reader, parseTypeConstraints: false, parseDeclarationContainers: true);
+        }
     }
 
     protected override IEnumerable<Koto> GetChildNodes()
@@ -57,69 +58,10 @@ public sealed partial class GroupKoto : DeclarationContainerKoto
             yield return child;
         }
 
-        if (ReferenceEquals(this, this.Kotonoha.RootKoto) && this.Kotonoha.GeneratedFunction is not null)
+        if (ReferenceEquals(this, this.Kotonoha.RootKoto) && this.Kotonoha.GeneratedFunction is { } generatedFunction)
         {
-            yield return this.Kotonoha.GeneratedFunction;
+            yield return generatedFunction;
         }
-    }
-
-    private void ParseMembers(ref TokenReader reader)
-    {
-        ConsumeBlockStart(ref reader);
-        var declarationOrder = DeclarationOrder.None;
-        while (TryBeginDeclaration(ref reader))
-        {
-            var token = reader.CurrentToken;
-            if (this.TryParseDeclarationContainer(ref reader, token))
-            {
-                continue;
-            }
-
-            if (!this.TryParsePropertyOrFunction(ref reader, ref declarationOrder))
-            {
-                SkipUnexpectedDeclaration(ref reader, token);
-            }
-        }
-    }
-
-    private bool TryParseDeclarationContainer(ref TokenReader reader, Token token)
-    {
-        var tokenKind = token.Kind;
-        if (tokenKind is not (TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract))
-        {
-            return false;
-        }
-
-        reader.Advance();
-        var supportsGenericHeader = tokenKind == TokenKind.Struct;
-        var declaration = Parser.ParseDeclarationContainerHeader(
-            ref reader,
-            supportsGenericHeader,
-            supportsGenericHeader);
-        if (reader.IsExcluded)
-        {
-            reader.SkipCurrentBlock(false);
-            return true;
-        }
-
-        var state = reader.TakeContext();
-        var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span);
-        if (declaration.GenericArguments is not null && container.GenericArguments.Count == 0)
-        {
-            container.AddGenericArguments(declaration.GenericArguments);
-        }
-
-        if (declaration.Origins is not null && container.Origins.Count == 0)
-        {
-            container.AddOrigins(declaration.Origins);
-        }
-
-        if (reader.CurrentTokenKind == TokenKind.StartBlock)
-        {
-            container.Parse(ref reader);
-        }
-
-        return true;
     }
 
     private void ParseRoot(ref TokenReader reader)

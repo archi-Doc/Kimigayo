@@ -26,19 +26,7 @@ public sealed partial class TupleTypeKoto : TypeKoto
         : base(ref reader, range)
     {
         this.Elements = elements;
-        foreach (var element in elements)
-        {
-            element.Parent = this;
-        }
-    }
-
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        foreach (var element in this.Elements)
-        {
-            element.Bind(compilation);
-        }
+        this.Adopt(elements);
     }
 
     /// <inheritdoc/>
@@ -62,14 +50,5 @@ public sealed partial class TupleTypeKoto : TypeKoto
         => this.Elements;
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        var index = this.Elements.IndexOf(oldKoto);
-        if (index < 0)
-        {
-            return false;
-        }
-
-        this.Elements[index] = newKoto;
-        return true;
-    }
+        => ReplaceInList(this.Elements, oldKoto, newKoto);
 }

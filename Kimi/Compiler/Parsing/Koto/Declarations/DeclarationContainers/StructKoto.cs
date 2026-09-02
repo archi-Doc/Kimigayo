@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
@@ -44,5 +44,5 @@ public sealed partial class StructKoto : DeclarationContainerKoto
 
     /// <inheritdoc/>
     public override void Parse(ref TokenReader reader)
-        => this.ParsePropertyAndFunctionMembers(ref reader, true);
+        => this.ParseMembers(ref reader, parseTypeConstraints: true, parseDeclarationContainers: false);
 }

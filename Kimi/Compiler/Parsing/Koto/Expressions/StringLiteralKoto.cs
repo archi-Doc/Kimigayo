@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
@@ -22,14 +22,8 @@ public sealed partial class StringLiteralKoto : ExpressionKoto
     {
         get
         {
-            if (field is not null)
-            {
-                return field;
-            }
-
             // Decode lazily and cache the result because diagnostics are reported during decoding.
-            field = StringLiteralHelper.GetStringLiteralValue(this.rawLiteral, this);
-            return field;
+            return field ??= StringLiteralHelper.GetStringLiteralValue(this.rawLiteral, this);
         }
     }
 
@@ -43,16 +37,9 @@ public sealed partial class StringLiteralKoto : ExpressionKoto
     }
 
     /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.rawLiteral}";
-
-    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        if (this.AttributeChain is not null)
-        {
-            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
-        }
+        this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendSpace);
 
         if (this.rawLiteral.Length > 0 && this.rawLiteral[0] == '"')
         {

@@ -1,6 +1,5 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Arc.Collections;
@@ -187,7 +186,7 @@ public sealed partial class Kotonoha
             tokenizer.ReadAll();
             if (this.Compilation.Project.KimiOptions.DumpToken)
             {
-                DumpToken(sourceDocument.Path, tokenizer.ToReadOnlySequence());
+                DumpToken(sourceDocument.Path, tokenizer.Tokens);
             }
 
             // Token to Koto
@@ -220,22 +219,19 @@ public sealed partial class Kotonoha
     internal void ClearGeneratedFunction()
         => this.GeneratedFunction = default;
 
-    private static void DumpToken(string path, ReadOnlySequence<Token> sequence)
+    private static void DumpToken(string path, ReadOnlySpan<Token> tokens)
     {
         // Enum.ToString() returns the cached member name, so only the builder grows here.
-        var sb = new StringBuilder((int)Math.Min(sequence.Length * 12, 1 << 16));
-        foreach (var memory in sequence)
+        var sb = new StringBuilder(Math.Min(tokens.Length * 12, 1 << 16));
+        foreach (var token in tokens)
         {
-            foreach (var token in memory.Span)
+            if (token.Kind == TokenKind.Separator)
             {
-                if (token.Kind == TokenKind.Separator)
-                {
-                    sb.AppendLf();
-                }
-                else
-                {
-                    sb.Append('(').Append(token.Kind.ToString()).Append(')');
-                }
+                sb.AppendLf();
+            }
+            else
+            {
+                sb.Append('(').Append(token.Kind.ToString()).Append(')');
             }
         }
 

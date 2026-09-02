@@ -1,10 +1,8 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
-using Tinyhand.Tree;
 
 namespace Kimi.Compiler.Parsing;
 
@@ -57,8 +55,7 @@ public sealed partial class NumberLiteralKoto : ExpressionKoto
     public NumberLiteralKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Span)
     {
-        this.parseResult = NumberLiteralHelper.ParseNumberLiteral(reader.GetSpan(token), out var uv);
-        this.uv = uv;
+        this.parseResult = NumberLiteralHelper.ParseNumberLiteral(reader.GetSpan(token), out this.uv);
     }
 
     /// <summary>Attempts to convert the literal to a compile-time value.</summary>
@@ -85,17 +82,9 @@ public sealed partial class NumberLiteralKoto : ExpressionKoto
     }
 
     /// <inheritdoc/>
-    public override string ToString()
-        => this.Literal;
-
-    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        if (this.AttributeChain is not null)
-        {
-            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
-        }
-
+        this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendSpace);
         builder.Append(this.Literal);
     }
 }

@@ -39,7 +39,7 @@ public sealed partial class MatchKoto : ExpressionKoto
     public Koto Expression { get; private set; }
 
     [Key(2)]
-    private List<MatchArmKoto> arms = [];
+    private List<MatchArmKoto> arms;
 
     /// <summary>Gets the match arms.</summary>
     [IgnoreMember]
@@ -55,17 +55,12 @@ public sealed partial class MatchKoto : ExpressionKoto
     {
         this.Expression = expression;
         this.arms = arms;
-        this.SetParents();
-    }
 
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        this.Expression.Bind(compilation);
-        foreach (var arm in this.arms)
+        expression.Parent = this;
+        foreach (var arm in arms)
         {
-            arm.Pattern.Bind(compilation);
-            arm.Body.Bind(compilation);
+            arm.Pattern.Parent = this;
+            arm.Body.Parent = this;
         }
     }
 
@@ -135,19 +130,5 @@ public sealed partial class MatchKoto : ExpressionKoto
         }
 
         return false;
-    }
-
-    [TinyhandOnDeserialized]
-    private void OnDeserialized()
-        => this.SetParents();
-
-    private void SetParents()
-    {
-        this.Expression.Parent = this;
-        foreach (var arm in this.arms)
-        {
-            arm.Pattern.Parent = this;
-            arm.Body.Parent = this;
-        }
     }
 }

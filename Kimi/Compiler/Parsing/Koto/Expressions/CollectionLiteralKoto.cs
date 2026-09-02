@@ -24,19 +24,7 @@ public sealed partial class ArrayLiteralKoto : ExpressionKoto
         : base(ref reader, range)
     {
         this.Elements = elements;
-        foreach (var element in elements)
-        {
-            element.Parent = this;
-        }
-    }
-
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        foreach (var element in this.Elements)
-        {
-            element.Bind(compilation);
-        }
+        this.Adopt(elements);
     }
 
     /// <inheritdoc/>
@@ -60,16 +48,7 @@ public sealed partial class ArrayLiteralKoto : ExpressionKoto
         => this.Elements;
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        var index = this.Elements.IndexOf(oldKoto);
-        if (index < 0)
-        {
-            return false;
-        }
-
-        this.Elements[index] = newKoto;
-        return true;
-    }
+        => ReplaceInList(this.Elements, oldKoto, newKoto);
 }
 
 /// <summary>Represents one key-value pair in a dictionary literal.</summary>
@@ -117,16 +96,6 @@ public sealed partial class DictionaryLiteralKoto : ExpressionKoto
         {
             entry.Key.Parent = this;
             entry.Value.Parent = this;
-        }
-    }
-
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        foreach (var entry in this.Entries)
-        {
-            entry.Key.Bind(compilation);
-            entry.Value.Bind(compilation);
         }
     }
 

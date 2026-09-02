@@ -65,6 +65,10 @@ public class Compilation
 
     private readonly UInt32Hashtable<Kotonoha> kotonohaIdToKotonoha = new();
 
+    // Identifier text repeats heavily across a compilation; sharing one string per spelling
+    // keeps the syntax tree small. The table is thread-safe for concurrent parsing.
+    private readonly IdentifierTable identifiers = new();
+
     #endregion
 
     /// <summary>
@@ -101,6 +105,14 @@ public class Compilation
         this.Kotonoha = new(this, this.Project.Name, string.Empty);
         this.kotonohaIdToKotonoha.Add(this.Kotonoha.Id, this.Kotonoha);
     }
+
+    /// <summary>
+    /// Returns the shared string instance for identifier text, creating it on first use.
+    /// </summary>
+    /// <param name="text">The identifier text.</param>
+    /// <returns>A string equal to <paramref name="text"/> shared across this compilation.</returns>
+    public string Intern(ReadOnlySpan<char> text)
+        => this.identifiers.Intern(text);
 
     /// <summary>
     /// Configures the compilation for a target triple.

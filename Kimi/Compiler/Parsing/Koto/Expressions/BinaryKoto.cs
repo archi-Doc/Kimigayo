@@ -1,13 +1,131 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+#pragma warning disable SA1402 // File may only contain a single type
+#pragma warning disable SA1649 // File name should match first type name
+
 /// <summary>
-/// Represents a member-access expression.
+/// Provides the base representation of a binary expression.
 /// </summary>
+/// <remarks>
+/// Concrete operators only contribute their <see cref="KotoKind"/>; the infix spelling is looked up
+/// from a table so every operator shares the same writing and child-management code.
+/// </remarks>
+[TinyhandObject(ReservedKeyCount = 3)]
+public abstract partial class BinaryKoto : ExpressionKoto
+{
+    private static readonly string[] InfixTexts = new string[MaxKind];
+
+    static BinaryKoto()
+    {
+        Set(KotoKind.MemberAccess, ".");
+        Set(KotoKind.Conversion, "@");
+        Set(KotoKind.Asterisk, " * ");
+        Set(KotoKind.Slash, " / ");
+        Set(KotoKind.Percent, " % ");
+        Set(KotoKind.Plus, " + ");
+        Set(KotoKind.Minus, " - ");
+        Set(KotoKind.LessThanLessThan, " << ");
+        Set(KotoKind.GreaterThanGreaterThan, " >> ");
+        Set(KotoKind.LessThan, " < ");
+        Set(KotoKind.LessThanEquals, " <= ");
+        Set(KotoKind.GreaterThan, " > ");
+        Set(KotoKind.GreaterThanEquals, " >= ");
+        Set(KotoKind.As, " " + Constants.AsKeyword + " ");
+        Set(KotoKind.Is, " " + Constants.IsKeyword + " ");
+        Set(KotoKind.EqualsEquals, " == ");
+        Set(KotoKind.ExclamationEquals, " != ");
+        Set(KotoKind.Ampersand, " & ");
+        Set(KotoKind.Caret, " ^ ");
+        Set(KotoKind.Bar, " | ");
+        Set(KotoKind.And, " " + Constants.AndKeyword + " ");
+        Set(KotoKind.Or, " " + Constants.OrKeyword + " ");
+        Set(KotoKind.Equals, " = ");
+        Set(KotoKind.PlusEquals, " += ");
+        Set(KotoKind.MinusEquals, " -= ");
+        Set(KotoKind.AsteriskEquals, " *= ");
+        Set(KotoKind.SlashEquals, " /= ");
+        Set(KotoKind.PercentEquals, " %= ");
+        Set(KotoKind.AmpersandEquals, " &= ");
+        Set(KotoKind.CaretEquals, " ^= ");
+        Set(KotoKind.BarEquals, " |= ");
+        Set(KotoKind.LessThanLessThanEquals, " <<= ");
+        Set(KotoKind.GreaterThanGreaterThanEquals, " >>= ");
+
+        static void Set(KotoKind kind, string text)
+            => InfixTexts[(int)kind] = text;
+    }
+
+    /// <summary>Gets the left operand.</summary>
+    [Key(1)]
+    public Koto Left { get; private set; }
+
+    /// <summary>Gets the right operand.</summary>
+    [Key(2)]
+    public Koto Right { get; private set; }
+
+    /// <summary>Gets the infix operator spelling, including surrounding spaces.</summary>
+    public string InfixText => InfixTexts[(int)this.Akind] ?? string.Empty;
+
+    /// <summary>Initializes a new instance of the <see cref="BinaryKoto"/> class for deserialization.</summary>
+    /// <param name="codeContext">The owning code context.</param>
+    internal BinaryKoto(CodeContext codeContext)
+        : base(codeContext, default)
+    {
+        this.Left = default!;
+        this.Right = default!;
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="BinaryKoto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The complete source span.</param>
+    /// <param name="left">The left operand.</param>
+    /// <param name="right">The right operand.</param>
+    protected BinaryKoto(ref TokenReader reader, SourceSpan range, Koto left, Koto right)
+        : base(ref reader, range)
+    {
+        this.Left = left;
+        this.Right = right;
+        left.Parent = this;
+        right.Parent = this;
+    }
+
+    /// <inheritdoc/>
+    public override void WriteTo(ref IndentedStringBuilder builder)
+    {
+        this.Left.WriteTo(ref builder);
+        this.WriteAttributeChainTo(ref builder, KotoWriteOptions.None);
+        builder.Append(this.InfixText);
+        this.Right.WriteTo(ref builder);
+    }
+
+    protected override IEnumerable<Koto> GetChildNodes()
+        => [this.Left, this.Right];
+
+    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
+    {
+        if (oldKoto == this.Left)
+        {
+            this.Left = newKoto;
+        }
+        else if (oldKoto == this.Right)
+        {
+            this.Right = newKoto;
+        }
+        else
+        {
+            return false;
+        }
+
+        return true;
+    }
+}
+
+/// <summary>Represents a member-access expression.</summary>
 [TinyhandObject]
 public sealed partial class MemberAccessKoto : BinaryKoto
 {
@@ -28,10 +146,6 @@ public sealed partial class MemberAccessKoto : BinaryKoto
     }
 
     /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left.ToString()}{Constants.DotChar}{this.Accessor.ToString()}";
-
-    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         this.Left.WriteTo(ref builder);
@@ -40,18 +154,14 @@ public sealed partial class MemberAccessKoto : BinaryKoto
     }
 }
 
-/// <summary>
-/// Represents an element-index or slice-subscript expression.
-/// </summary>
+/// <summary>Represents an element-index or slice-subscript expression.</summary>
 [TinyhandObject]
 public sealed partial class IndexKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Index;
 
-    /// <summary>
-    /// Gets the nonnegative isize index, from-end index, or range expression inside brackets.
-    /// </summary>
+    /// <summary>Gets the nonnegative isize index, from-end index, or range expression inside brackets.</summary>
     public Koto Index => this.Right;
 
     /// <summary>Gets the expression inside brackets.</summary>
@@ -71,22 +181,16 @@ public sealed partial class IndexKoto : BinaryKoto
     }
 
     /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left.ToString()}[{this.Index.ToString()}]";
-
-    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         this.Left.WriteTo(ref builder);
-        builder.Append("[");
+        builder.Append(Constants.OpenBracketChar);
         this.Right.WriteTo(ref builder);
-        builder.Append("]");
+        builder.Append(Constants.CloseBracketChar);
     }
 }
 
-/// <summary>
-/// Represents a multiplication expression.
-/// </summary>
+/// <summary>Represents a multiplication expression.</summary>
 [TinyhandObject]
 public sealed partial class AsteriskKoto : BinaryKoto
 {
@@ -102,21 +206,9 @@ public sealed partial class AsteriskKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} * {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " * ");
-    }
 }
 
-/// <summary>
-/// Represents a conversion expression.
-/// </summary>
+/// <summary>Represents a conversion expression.</summary>
 [TinyhandObject]
 public sealed partial class ConversionKoto : BinaryKoto
 {
@@ -132,21 +224,9 @@ public sealed partial class ConversionKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left}@{this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, "@");
-    }
 }
 
-/// <summary>
-/// Represents a division expression.
-/// </summary>
+/// <summary>Represents a division expression.</summary>
 [TinyhandObject]
 public sealed partial class SlashKoto : BinaryKoto
 {
@@ -162,21 +242,9 @@ public sealed partial class SlashKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} / {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " / ");
-    }
 }
 
-/// <summary>
-/// Represents a remainder expression.
-/// </summary>
+/// <summary>Represents a remainder expression.</summary>
 [TinyhandObject]
 public sealed partial class PercentKoto : BinaryKoto
 {
@@ -192,21 +260,9 @@ public sealed partial class PercentKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} % {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " % ");
-    }
 }
 
-/// <summary>
-/// Represents an addition expression.
-/// </summary>
+/// <summary>Represents an addition expression.</summary>
 [TinyhandObject]
 public sealed partial class PlusKoto : BinaryKoto
 {
@@ -222,21 +278,9 @@ public sealed partial class PlusKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} + {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " + ");
-    }
 }
 
-/// <summary>
-/// Represents a subtraction expression.
-/// </summary>
+/// <summary>Represents a subtraction expression.</summary>
 [TinyhandObject]
 public sealed partial class MinusKoto : BinaryKoto
 {
@@ -252,21 +296,9 @@ public sealed partial class MinusKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} - {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " - ");
-    }
 }
 
-/// <summary>
-/// Represents a left-shift expression.
-/// </summary>
+/// <summary>Represents a left-shift expression.</summary>
 [TinyhandObject]
 public sealed partial class LessThanLessThanKoto : BinaryKoto
 {
@@ -282,21 +314,9 @@ public sealed partial class LessThanLessThanKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} << {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " << ");
-    }
 }
 
-/// <summary>
-/// Represents a right-shift expression.
-/// </summary>
+/// <summary>Represents a right-shift expression.</summary>
 [TinyhandObject]
 public sealed partial class GreaterThanGreaterThanKoto : BinaryKoto
 {
@@ -312,21 +332,9 @@ public sealed partial class GreaterThanGreaterThanKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} >> {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " >> ");
-    }
 }
 
-/// <summary>
-/// Represents a less-than expression.
-/// </summary>
+/// <summary>Represents a less-than expression.</summary>
 [TinyhandObject]
 public sealed partial class LessThanKoto : BinaryKoto
 {
@@ -342,21 +350,9 @@ public sealed partial class LessThanKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} < {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " < ");
-    }
 }
 
-/// <summary>
-/// Represents a less-than-or-equal expression.
-/// </summary>
+/// <summary>Represents a less-than-or-equal expression.</summary>
 [TinyhandObject]
 public sealed partial class LessThanEqualsKoto : BinaryKoto
 {
@@ -372,21 +368,9 @@ public sealed partial class LessThanEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} <= {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " <= ");
-    }
 }
 
-/// <summary>
-/// Represents a greater-than expression.
-/// </summary>
+/// <summary>Represents a greater-than expression.</summary>
 [TinyhandObject]
 public sealed partial class GreaterThanKoto : BinaryKoto
 {
@@ -402,21 +386,9 @@ public sealed partial class GreaterThanKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} > {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " > ");
-    }
 }
 
-/// <summary>
-/// Represents a greater-than-or-equal expression.
-/// </summary>
+/// <summary>Represents a greater-than-or-equal expression.</summary>
 [TinyhandObject]
 public sealed partial class GreaterThanEqualsKoto : BinaryKoto
 {
@@ -432,21 +404,9 @@ public sealed partial class GreaterThanEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} >= {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " >= ");
-    }
 }
 
-/// <summary>
-/// Represents an <c>as</c> expression.
-/// </summary>
+/// <summary>Represents an <c>as</c> expression.</summary>
 [TinyhandObject]
 public sealed partial class AsKoto : BinaryKoto
 {
@@ -462,21 +422,9 @@ public sealed partial class AsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} {Constants.AsKeyword} {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " " + Constants.AsKeyword + " ");
-    }
 }
 
-/// <summary>
-/// Represents an <c>is</c> expression.
-/// </summary>
+/// <summary>Represents an <c>is</c> expression.</summary>
 [TinyhandObject]
 public sealed partial class IsKoto : BinaryKoto
 {
@@ -492,21 +440,9 @@ public sealed partial class IsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} {Constants.IsKeyword} {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " " + Constants.IsKeyword + " ");
-    }
 }
 
-/// <summary>
-/// Represents an equality expression.
-/// </summary>
+/// <summary>Represents an equality expression.</summary>
 [TinyhandObject]
 public sealed partial class EqualsEqualsKoto : BinaryKoto
 {
@@ -522,21 +458,9 @@ public sealed partial class EqualsEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} == {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " == ");
-    }
 }
 
-/// <summary>
-/// Represents an inequality expression.
-/// </summary>
+/// <summary>Represents an inequality expression.</summary>
 [TinyhandObject]
 public sealed partial class ExclamationEqualsKoto : BinaryKoto
 {
@@ -552,21 +476,9 @@ public sealed partial class ExclamationEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} != {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " != ");
-    }
 }
 
-/// <summary>
-/// Represents a bitwise-and expression.
-/// </summary>
+/// <summary>Represents a bitwise-and expression.</summary>
 [TinyhandObject]
 public sealed partial class AmpersandKoto : BinaryKoto
 {
@@ -582,21 +494,9 @@ public sealed partial class AmpersandKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} & {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " & ");
-    }
 }
 
-/// <summary>
-/// Represents a bitwise-exclusive-or expression.
-/// </summary>
+/// <summary>Represents a bitwise-exclusive-or expression.</summary>
 [TinyhandObject]
 public sealed partial class CaretKoto : BinaryKoto
 {
@@ -612,21 +512,9 @@ public sealed partial class CaretKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} ^ {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " ^ ");
-    }
 }
 
-/// <summary>
-/// Represents a bitwise-or expression.
-/// </summary>
+/// <summary>Represents a bitwise-or expression.</summary>
 [TinyhandObject]
 public sealed partial class BarKoto : BinaryKoto
 {
@@ -642,21 +530,9 @@ public sealed partial class BarKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} | {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " | ");
-    }
 }
 
-/// <summary>
-/// Represents a logical-and expression.
-/// </summary>
+/// <summary>Represents a logical-and expression.</summary>
 [TinyhandObject]
 public sealed partial class AndKoto : BinaryKoto
 {
@@ -672,21 +548,9 @@ public sealed partial class AndKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} {Constants.AndKeyword} {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " " + Constants.AndKeyword + " ");
-    }
 }
 
-/// <summary>
-/// Represents a logical-or expression.
-/// </summary>
+/// <summary>Represents a logical-or expression.</summary>
 [TinyhandObject]
 public sealed partial class OrKoto : BinaryKoto
 {
@@ -702,21 +566,9 @@ public sealed partial class OrKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} {Constants.OrKeyword} {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " " + Constants.OrKeyword + " ");
-    }
 }
 
-/// <summary>
-/// Represents an assignment expression.
-/// </summary>
+/// <summary>Represents an assignment expression.</summary>
 [TinyhandObject]
 public sealed partial class EqualsKoto : BinaryKoto
 {
@@ -732,21 +584,9 @@ public sealed partial class EqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} = {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " = ");
-    }
 }
 
-/// <summary>
-/// Represents an addition-assignment expression.
-/// </summary>
+/// <summary>Represents an addition-assignment expression.</summary>
 [TinyhandObject]
 public sealed partial class PlusEqualsKoto : BinaryKoto
 {
@@ -762,21 +602,9 @@ public sealed partial class PlusEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} += {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " += ");
-    }
 }
 
-/// <summary>
-/// Represents a subtraction-assignment expression.
-/// </summary>
+/// <summary>Represents a subtraction-assignment expression.</summary>
 [TinyhandObject]
 public sealed partial class MinusEqualsKoto : BinaryKoto
 {
@@ -792,21 +620,9 @@ public sealed partial class MinusEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} -= {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " -= ");
-    }
 }
 
-/// <summary>
-/// Represents a multiplication-assignment expression.
-/// </summary>
+/// <summary>Represents a multiplication-assignment expression.</summary>
 [TinyhandObject]
 public sealed partial class AsteriskEqualsKoto : BinaryKoto
 {
@@ -822,21 +638,9 @@ public sealed partial class AsteriskEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} *= {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " *= ");
-    }
 }
 
-/// <summary>
-/// Represents a division-assignment expression.
-/// </summary>
+/// <summary>Represents a division-assignment expression.</summary>
 [TinyhandObject]
 public sealed partial class SlashEqualsKoto : BinaryKoto
 {
@@ -852,21 +656,9 @@ public sealed partial class SlashEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} /= {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " /= ");
-    }
 }
 
-/// <summary>
-/// Represents a remainder-assignment expression.
-/// </summary>
+/// <summary>Represents a remainder-assignment expression.</summary>
 [TinyhandObject]
 public sealed partial class PercentEqualsKoto : BinaryKoto
 {
@@ -882,21 +674,9 @@ public sealed partial class PercentEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} %= {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " %= ");
-    }
 }
 
-/// <summary>
-/// Represents a bitwise-and-assignment expression.
-/// </summary>
+/// <summary>Represents a bitwise-and-assignment expression.</summary>
 [TinyhandObject]
 public sealed partial class AmpersandEqualsKoto : BinaryKoto
 {
@@ -912,21 +692,9 @@ public sealed partial class AmpersandEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} &= {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " &= ");
-    }
 }
 
-/// <summary>
-/// Represents a bitwise-exclusive-or-assignment expression.
-/// </summary>
+/// <summary>Represents a bitwise-exclusive-or-assignment expression.</summary>
 [TinyhandObject]
 public sealed partial class CaretEqualsKoto : BinaryKoto
 {
@@ -942,21 +710,9 @@ public sealed partial class CaretEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} ^= {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " ^= ");
-    }
 }
 
-/// <summary>
-/// Represents a bitwise-or-assignment expression.
-/// </summary>
+/// <summary>Represents a bitwise-or-assignment expression.</summary>
 [TinyhandObject]
 public sealed partial class BarEqualsKoto : BinaryKoto
 {
@@ -972,21 +728,9 @@ public sealed partial class BarEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} |= {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " |= ");
-    }
 }
 
-/// <summary>
-/// Represents a left-shift-assignment expression.
-/// </summary>
+/// <summary>Represents a left-shift-assignment expression.</summary>
 [TinyhandObject]
 public sealed partial class LessThanLessThanEqualsKoto : BinaryKoto
 {
@@ -1002,21 +746,9 @@ public sealed partial class LessThanLessThanEqualsKoto : BinaryKoto
         : base(ref reader, range, left, right)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} <<= {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " <<= ");
-    }
 }
 
-/// <summary>
-/// Represents a right-shift-assignment expression.
-/// </summary>
+/// <summary>Represents a right-shift-assignment expression.</summary>
 [TinyhandObject]
 public sealed partial class GreaterThanGreaterThanEqualsKoto : BinaryKoto
 {
@@ -1031,109 +763,5 @@ public sealed partial class GreaterThanGreaterThanEqualsKoto : BinaryKoto
     public GreaterThanGreaterThanEqualsKoto(ref TokenReader reader, SourceSpan range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
-    }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Left} >>= {this.Right}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.WriteBinaryKoto(ref builder, " >>= ");
-    }
-}
-
-/// <summary>
-/// Provides the base representation of a binary expression.
-/// </summary>
-[TinyhandObject(ReservedKeyCount = 3)]
-public abstract partial class BinaryKoto : ExpressionKoto
-{
-    /// <summary>Gets the left operand.</summary>
-    [Key(1)]
-    public Koto Left { get; private set; }
-
-    /// <summary>Gets the right operand.</summary>
-    [Key(2)]
-    public Koto Right { get; private set; }
-
-    /// <summary>Initializes a new instance of the <see cref="BinaryKoto"/> class.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete source span.</param>
-    /// <param name="left">The left operand.</param>
-    /// <param name="right">The right operand.</param>
-    public BinaryKoto(ref TokenReader reader, SourceSpan range, Koto left, Koto right)
-        : base(ref reader, range)
-    {
-        this.Left = left;
-        this.Right = right;
-        this.Left.Parent = this;
-        this.Right.Parent = this;
-    }
-
-    internal BinaryKoto(CodeContext codeContext)
-        : base(codeContext, default)
-    {
-        this.Left = default!;
-        this.Right = default!;
-    }
-
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        this.Left.Bind(compilation);
-        this.Right.Bind(compilation);
-    }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"BinaryKoto: {this.Right.ToString()}";
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        yield return this.Left;
-        yield return this.Right;
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (oldKoto == this.Left)
-        {
-            this.Left = newKoto;
-        }
-        else if (oldKoto == this.Right)
-        {
-            this.Right = newKoto;
-        }
-        else
-        {
-            return false;
-        }
-
-        return true;
-    }
-
-    protected void WriteBinaryKoto(ref IndentedStringBuilder builder, string infix)
-    {
-        this.Left.WriteTo(ref builder);
-
-        if (this.AttributeChain is not null)
-        {
-            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.None);
-        }
-
-        builder.Append(infix);
-
-        this.Right.WriteTo(ref builder);
-    }
-
-    [TinyhandOnDeserialized]
-    protected void OnDeserialized()
-    {
-        this.Left.Parent = this;
-        this.Left.CodeContext = this.CodeContext;
-        this.Right.Parent = this;
-        this.Right.CodeContext = this.CodeContext;
     }
 }

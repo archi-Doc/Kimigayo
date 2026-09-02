@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
@@ -23,12 +23,6 @@ public sealed partial class ErrorKoto : ExpressionKoto
     }
 
     /// <inheritdoc/>
-    public override string ToString()
-        => $"Error";
-
-    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        builder.Append("Error");
-    }
+        => builder.Append("Error");
 }

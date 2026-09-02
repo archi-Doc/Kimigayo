@@ -35,13 +35,6 @@ public sealed partial class WhileKoto : ExpressionKoto
     }
 
     /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        this.Condition.Bind(compilation);
-        this.Body.Bind(compilation);
-    }
-
-    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append(Constants.WhileKeyword);
@@ -51,10 +44,7 @@ public sealed partial class WhileKoto : ExpressionKoto
     }
 
     protected override IEnumerable<Koto> GetChildNodes()
-    {
-        yield return this.Condition;
-        yield return this.Body;
-    }
+        => [this.Condition, this.Body];
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
@@ -71,12 +61,5 @@ public sealed partial class WhileKoto : ExpressionKoto
         }
 
         return false;
-    }
-
-    [TinyhandOnDeserialized]
-    private void OnDeserialized()
-    {
-        this.Condition.Parent = this;
-        this.Body.Parent = this;
     }
 }

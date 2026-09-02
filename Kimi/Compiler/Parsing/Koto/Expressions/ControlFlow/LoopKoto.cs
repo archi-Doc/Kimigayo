@@ -28,10 +28,6 @@ public sealed partial class LoopKoto : ExpressionKoto
     }
 
     /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-        => this.Body.Bind(compilation);
-
-    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append(Constants.LoopKeyword);
@@ -39,9 +35,7 @@ public sealed partial class LoopKoto : ExpressionKoto
     }
 
     protected override IEnumerable<Koto> GetChildNodes()
-    {
-        yield return this.Body;
-    }
+        => [this.Body];
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
@@ -53,8 +47,4 @@ public sealed partial class LoopKoto : ExpressionKoto
         this.Body = block;
         return true;
     }
-
-    [TinyhandOnDeserialized]
-    private void OnDeserialized()
-        => this.Body.Parent = this;
 }

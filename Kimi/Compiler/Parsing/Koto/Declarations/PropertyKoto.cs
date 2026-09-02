@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
@@ -7,32 +7,10 @@ namespace Kimi.Compiler.Parsing;
 
 /// <summary>Represents a source-level Property declaration.</summary>
 [TinyhandObject]
-public sealed partial class PropertyKoto : DeclarationKoto
+public sealed partial class PropertyKoto : VariableKoto
 {
-    private static readonly PropertyAccessorKoto[] EmptyAccessors = [];
-
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Property;
-
-    /// <summary>Gets the declaration modifiers.</summary>
-    [Key(1)]
-    public ModifierKind Modifier { get; private set; }
-
-    /// <summary>Gets the Property binding kind.</summary>
-    [Key(2)]
-    public VariableKind VariableKind { get; private set; }
-
-    /// <summary>Gets the declared name.</summary>
-    [Key(3)]
-    public IdentifierNameKoto NameKoto { get; private set; }
-
-    /// <summary>Gets the declared Type, if specified.</summary>
-    [Key(4)]
-    public Koto? TypeKoto { get; private set; }
-
-    /// <summary>Gets the initializer expression, if present.</summary>
-    [Key(5)]
-    public Koto? InitializerKoto { get; private set; }
 
     [Key(6)]
     private List<PropertyAccessorKoto>? accessors;
@@ -44,14 +22,11 @@ public sealed partial class PropertyKoto : DeclarationKoto
     /// <summary>Gets the explicit accessors in source order.</summary>
     [IgnoreMember]
     public IReadOnlyList<PropertyAccessorKoto> Accessors
-        => this.accessors is { } accessors ? accessors : EmptyAccessors;
-
-    /// <summary>Gets the source keyword for the binding kind.</summary>
-    public string VariableText => this.VariableKind == VariableKind.Var ? Constants.VarKeyword : Constants.LetKeyword;
+        => (IReadOnlyList<PropertyAccessorKoto>?)this.accessors ?? [];
 
     /// <summary>Initializes a new instance of the <see cref="PropertyKoto"/> class.</summary>
+    /// <remarks>The modifiers and attribute chain are taken from the reader's current context.</remarks>
     /// <param name="reader">The token reader.</param>
-    /// <param name="context">The declaration attributes and modifiers.</param>
     /// <param name="token">The <c>let</c> or <c>var</c> token.</param>
     /// <param name="nameKoto">The declared name.</param>
     /// <param name="typeKoto">The declared Type, if specified.</param>
@@ -59,38 +34,14 @@ public sealed partial class PropertyKoto : DeclarationKoto
     /// <param name="hasInlineAccessors">Whether the declaration uses the inline <c>has</c> form.</param>
     public PropertyKoto(
         ref TokenReader reader,
-        TokenContext context,
-        ref Token token,
+        Token token,
         IdentifierNameKoto nameKoto,
         Koto? typeKoto,
         Koto? initializerKoto,
         bool hasInlineAccessors)
-        : base(
-            ref reader,
-            SourceSpan.FromBounds(
-                token.Span.Start,
-                Math.Max(
-                    nameKoto.Span.End,
-                    Math.Max(typeKoto?.Span.End ?? 0, initializerKoto?.Span.End ?? 0))))
+        : base(ref reader, token, nameKoto, typeKoto, initializerKoto)
     {
-        this.SetAttributeChain(context.AttributeKoto);
-        this.Modifier = context.ModifierKind;
-        this.VariableKind = token.Kind == TokenKind.Let ? VariableKind.Let : VariableKind.Var;
-        this.NameKoto = nameKoto;
-        this.TypeKoto = typeKoto;
-        this.InitializerKoto = initializerKoto;
         this.HasInlineAccessors = hasInlineAccessors;
-
-        nameKoto.Parent = this;
-        if (typeKoto is not null)
-        {
-            typeKoto.Parent = this;
-        }
-
-        if (initializerKoto is not null)
-        {
-            initializerKoto.Parent = this;
-        }
     }
 
     /// <summary>Gets the explicit accessor of the requested kind, if present.</summary>
@@ -98,16 +49,14 @@ public sealed partial class PropertyKoto : DeclarationKoto
     /// <returns>The accessor, or <see langword="null"/> when it is not declared.</returns>
     public PropertyAccessorKoto? GetAccessor(PropertyAccessorKind kind)
     {
-        if (this.accessors is not { } accessors)
+        if (this.accessors is { } accessors)
         {
-            return default;
-        }
-
-        foreach (var accessor in accessors)
-        {
-            if (accessor.AccessorKind == kind)
+            foreach (var accessor in accessors)
             {
-                return accessor;
+                if (accessor.AccessorKind == kind)
+                {
+                    return accessor;
+                }
             }
         }
 
@@ -115,45 +64,9 @@ public sealed partial class PropertyKoto : DeclarationKoto
     }
 
     /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        this.TypeKoto?.Bind(compilation);
-        this.InitializerKoto?.Bind(compilation);
-        if (this.accessors is null)
-        {
-            return;
-        }
-
-        foreach (var accessor in this.accessors)
-        {
-            accessor.Bind(compilation);
-        }
-    }
-
-    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        if (this.AttributeChain is not null)
-        {
-            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
-        }
-
-        this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
-        builder.Append(this.VariableText);
-        builder.AppendSpace();
-        this.NameKoto.WriteTo(ref builder);
-
-        if (this.TypeKoto is not null)
-        {
-            builder.Append(": ");
-            this.TypeKoto.WriteTo(ref builder);
-        }
-
-        if (this.InitializerKoto is not null)
-        {
-            builder.Append(" = ");
-            this.InitializerKoto.WriteTo(ref builder);
-        }
+        base.WriteTo(ref builder);
 
         if (this.accessors is not { Count: > 0 } accessors)
         {
@@ -205,7 +118,7 @@ public sealed partial class PropertyKoto : DeclarationKoto
 
         (this.accessors ??= []).Add(accessor);
         accessor.Parent = this;
-        this.Span = SourceSpan.FromBounds(this.Span.Start, Math.Max(this.Span.End, accessor.Span.End));
+        this.CompleteSpan(accessor.Span.End);
         return true;
     }
 
@@ -216,15 +129,9 @@ public sealed partial class PropertyKoto : DeclarationKoto
 
     protected override IEnumerable<Koto> GetChildNodes()
     {
-        yield return this.NameKoto;
-        if (this.TypeKoto is not null)
+        foreach (var child in base.GetChildNodes())
         {
-            yield return this.TypeKoto;
-        }
-
-        if (this.InitializerKoto is not null)
-        {
-            yield return this.InitializerKoto;
+            yield return child;
         }
 
         if (this.accessors is not null)
@@ -237,36 +144,6 @@ public sealed partial class PropertyKoto : DeclarationKoto
     }
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.NameKoto == oldKoto && newKoto is IdentifierNameKoto name)
-        {
-            this.NameKoto = name;
-            return true;
-        }
-
-        if (this.TypeKoto == oldKoto)
-        {
-            this.TypeKoto = newKoto;
-            return true;
-        }
-
-        if (this.InitializerKoto == oldKoto)
-        {
-            this.InitializerKoto = newKoto;
-            return true;
-        }
-
-        if (this.accessors is not null &&
-            oldKoto is PropertyAccessorKoto oldAccessor && newKoto is PropertyAccessorKoto newAccessor)
-        {
-            var index = this.accessors.IndexOf(oldAccessor);
-            if (index >= 0)
-            {
-                this.accessors[index] = newAccessor;
-                return true;
-            }
-        }
-
-        return false;
-    }
+        => base.ReplaceChildCore(oldKoto, newKoto) ||
+            (oldKoto is PropertyAccessorKoto && ReplaceInList(this.accessors, oldKoto, newKoto));
 }

@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
@@ -22,50 +22,52 @@ public sealed partial class InvocationKoto : ExpressionKoto
     [Key(2)]
     public List<Koto> Arguments { get; private set; }
 
-    /// <summary>Gets the argument labels in argument order. A positional argument has a null label.</summary>
+    // Allocated only when at least one argument is labeled.
     [Key(3)]
-    public List<string?> ArgumentLabels { get; private set; }
+    private string?[]? argumentLabels;
+
+    /// <summary>Gets the argument labels in argument order. A positional argument has a null label.</summary>
+    [IgnoreMember]
+    public IReadOnlyList<string?> ArgumentLabels
+        => this.argumentLabels ??= new string?[this.Arguments.Count];
 
     /// <summary>Initializes a new instance of the <see cref="InvocationKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
     /// <param name="method">The expression being invoked.</param>
     /// <param name="arguments">The invocation arguments.</param>
-    /// <param name="argumentLabels">The optional argument labels in argument order.</param>
+    /// <param name="argumentLabels">The argument labels in argument order, or <see langword="null"/> when no argument is labeled.</param>
     public InvocationKoto(
         ref TokenReader reader,
         SourceSpan range,
         Koto method,
         List<Koto> arguments,
-        List<string?>? argumentLabels = null)
+        string?[]? argumentLabels = null)
         : base(ref reader, range)
     {
-        if (argumentLabels is not null && argumentLabels.Count != arguments.Count)
+        if (argumentLabels is not null && argumentLabels.Length != arguments.Count)
         {
             throw new ArgumentException("The number of argument labels must match the number of arguments.", nameof(argumentLabels));
         }
 
         this.Method = method;
         this.Arguments = arguments;
-        this.ArgumentLabels = argumentLabels ?? Enumerable.Repeat<string?>(null, arguments.Count).ToList();
+        this.argumentLabels = argumentLabels;
 
         method.Parent = this;
-        foreach (var x in arguments)
-        {
-            x.Parent = this;
-        }
+        this.Adopt(arguments);
     }
 
     /// <summary>Initializes a new instance of the <see cref="InvocationKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="method">The expression being invoked.</param>
     /// <param name="arguments">The invocation arguments.</param>
-    /// <param name="argumentLabels">The optional argument labels in argument order.</param>
+    /// <param name="argumentLabels">The argument labels in argument order, or <see langword="null"/> when no argument is labeled.</param>
     public InvocationKoto(
         ref TokenReader reader,
         Koto method,
         List<Koto> arguments,
-        List<string?>? argumentLabels = null)
+        string?[]? argumentLabels = null)
         : this(
             ref reader,
             SourceSpan.FromBounds(
@@ -77,15 +79,11 @@ public sealed partial class InvocationKoto : ExpressionKoto
     {
     }
 
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        this.Method.Bind(compilation);
-        foreach (var argument in this.Arguments)
-        {
-            argument.Bind(compilation);
-        }
-    }
+    /// <summary>Gets the label of an argument, or <see langword="null"/> for a positional argument.</summary>
+    /// <param name="index">The argument index.</param>
+    /// <returns>The label, or <see langword="null"/>.</returns>
+    public string? GetArgumentLabel(int index)
+        => this.argumentLabels?[index];
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
@@ -94,7 +92,12 @@ public sealed partial class InvocationKoto : ExpressionKoto
         builder.Append(Constants.OpenParenthesisChar);
         for (var i = 0; i < this.Arguments.Count; i++)
         {
-            if (this.ArgumentLabels[i] is { } label)
+            if (i > 0)
+            {
+                builder.AppendCommaAndSpace();
+            }
+
+            if (this.GetArgumentLabel(i) is { } label)
             {
                 builder.Append(label);
                 builder.Append(Constants.ColonChar);
@@ -102,11 +105,6 @@ public sealed partial class InvocationKoto : ExpressionKoto
             }
 
             this.Arguments[i].WriteTo(ref builder);
-            if (i < (this.Arguments.Count - 1))
-            {
-                builder.Append(Constants.CommaChar);
-                builder.Append(Constants.SpaceChar);
-            }
         }
 
         builder.Append(Constants.CloseParenthesisChar);
@@ -126,18 +124,9 @@ public sealed partial class InvocationKoto : ExpressionKoto
         if (this.Method == oldKoto)
         {
             this.Method = newKoto;
-        }
-        else
-        {
-            var index = this.Arguments.IndexOf(oldKoto);
-            if (index < 0)
-            {
-                return false;
-            }
-
-            this.Arguments[index] = newKoto;
+            return true;
         }
 
-        return true;
+        return ReplaceInList(this.Arguments, oldKoto, newKoto);
     }
 }

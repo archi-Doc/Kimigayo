@@ -14,7 +14,6 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.TypeSemantics;
 
-    /// <summary>Gets the ownership semantics.</summary>
     [Key(1)]
     private SemanticsKind semanticsKind;
 
@@ -22,7 +21,6 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
     [IgnoreMember]
     public override SemanticsKind SemanticsKind => this.semanticsKind;
 
-    /// <summary>Gets the custom semantics parameter, if present.</summary>
     [Key(2)]
     private string? semanticsParameter;
 
@@ -42,9 +40,6 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
     [Key(5)]
     public Koto? Type { get; private set; }
 
-    /// <summary>
-    /// Gets the name of the origin from which this type derives.
-    /// </summary>
     [Key(6)]
     private string? originName;
 
@@ -66,9 +61,10 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
 
     internal bool IsTransparentWrapper => this.isTransparentWrapper;
 
-    internal TypeSemanticsKoto(
-        ref TokenReader reader,
-        Token typeToken)
+    /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for a simple named or primitive type with owner semantics.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="typeToken">The type name token.</param>
+    internal TypeSemanticsKoto(ref TokenReader reader, Token typeToken)
         : base(ref reader, typeToken.Span)
     {
         this.coreTypeToken = typeToken.Kind;
@@ -76,10 +72,16 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
 
         if (!this.coreTypeToken.IsPrimitiveType())
         {
-            this.coreTypeName = reader.GetSpan(typeToken).ToString();
+            this.coreTypeName = reader.GetIdentifier(typeToken);
         }
     }
 
+    /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for a compound type with explicit semantics.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The complete source span.</param>
+    /// <param name="type">The type to which the semantics applies.</param>
+    /// <param name="semanticsKind">The ownership semantics.</param>
+    /// <param name="semanticsParameter">The custom semantics parameter, if present.</param>
     internal TypeSemanticsKoto(
         ref TokenReader reader,
         SourceSpan range,
@@ -94,11 +96,12 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
         type.Parent = this;
     }
 
-    internal TypeSemanticsKoto(
-        ref TokenReader reader,
-        SourceSpan range,
-        Koto type,
-        string originName)
+    /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class as a transparent wrapper that only carries an origin or a compound type.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The complete source span.</param>
+    /// <param name="type">The wrapped type.</param>
+    /// <param name="originName">The origin name, if present.</param>
+    internal TypeSemanticsKoto(ref TokenReader reader, SourceSpan range, Koto type, string? originName = null)
         : base(ref reader, range)
     {
         this.semanticsKind = SemanticsKind.Owner;
@@ -108,36 +111,16 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
         type.Parent = this;
     }
 
-    internal TypeSemanticsKoto(ref TokenReader reader, SourceSpan range, Koto type)
-        : base(ref reader, range)
-    {
-        this.semanticsKind = SemanticsKind.Owner;
-        this.Type = type;
-        this.isTransparentWrapper = true;
-        type.Parent = this;
-    }
-
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        if (this.AttributeChain is not null)
-        {
-            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
-        }
+        this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendSpace);
 
         if (this.Type is not null)
         {
             if (!this.isTransparentWrapper)
             {
-                if (this.SemanticsKind == SemanticsKind.Parameter)
-                {
-                    builder.Append(this.SemanticsParameter);
-                }
-                else
-                {
-                    builder.Append(this.SemanticsKind.ToText());
-                }
-
+                builder.Append(this.SemanticsKind == SemanticsKind.Parameter ? this.SemanticsParameter : this.SemanticsKind.ToText());
                 builder.Append(Constants.SlashChar);
             }
 
@@ -157,10 +140,6 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
         }
     }
 
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-        => this.Type?.Bind(compilation);
-
     internal void SetOrigin(string originName, int end)
     {
         this.originName = originName;
@@ -168,12 +147,7 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
     }
 
     protected override IEnumerable<Koto> GetChildNodes()
-    {
-        if (this.Type is not null)
-        {
-            yield return this.Type;
-        }
-    }
+        => this.Type is null ? [] : [this.Type];
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {

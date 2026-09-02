@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
@@ -57,15 +57,8 @@ public sealed partial class PropertyAccessorKoto : Koto
         this.Modifier = modifier;
         this.AccessorKind = accessorKind;
         this.Body = body;
-        if (body is not null)
-        {
-            body.Parent = this;
-        }
+        this.Adopt(body);
     }
-
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-        => this.Body?.Bind(compilation);
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
@@ -85,12 +78,7 @@ public sealed partial class PropertyAccessorKoto : Koto
     }
 
     protected override IEnumerable<Koto> GetChildNodes()
-    {
-        if (this.Body is not null)
-        {
-            yield return this.Body;
-        }
-    }
+        => this.Body is null ? [] : [this.Body];
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {

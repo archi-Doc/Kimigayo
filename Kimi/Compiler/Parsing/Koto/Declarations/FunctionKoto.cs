@@ -65,9 +65,6 @@ public sealed partial record class FunctionParameterKoto
 [TinyhandObject]
 public sealed partial class FunctionKoto : IdentifiableKoto
 {
-    private static readonly TypeKoto[] EmptyGenericArguments = [];
-    private static readonly FunctionParameterKoto[] EmptyParameters = [];
-
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Function;
 
@@ -100,12 +97,12 @@ public sealed partial class FunctionKoto : IdentifiableKoto
     /// <summary>Gets the generic parameters.</summary>
     [IgnoreMember]
     public IReadOnlyList<TypeKoto> GenericArguments
-        => this.genericArguments is { } genericArguments ? genericArguments : EmptyGenericArguments;
+        => (IReadOnlyList<TypeKoto>?)this.genericArguments ?? [];
 
     /// <summary>Gets the function parameters.</summary>
     [IgnoreMember]
     public IReadOnlyList<FunctionParameterKoto> Parameters
-        => this.parameters is { } parameters ? parameters : EmptyParameters;
+        => (IReadOnlyList<FunctionParameterKoto>?)this.parameters ?? [];
 
     /// <summary>Gets a value indicating whether conditional attributes exclude this function.</summary>
     [IgnoreMember]
@@ -130,26 +127,28 @@ public sealed partial class FunctionKoto : IdentifiableKoto
         this.parameters = parameters;
         this.ReturnType = returnType;
 
-        if (this.genericArguments is not null)
+        this.Adopt(genericArguments);
+        if (parameters is not null)
         {
-            foreach (var argument in this.genericArguments)
-            {
-                argument.Parent = this;
-            }
-        }
-
-        if (this.parameters is not null)
-        {
-            foreach (var parameter in this.parameters)
+            foreach (var parameter in parameters)
             {
                 this.AttachParameter(parameter);
             }
         }
 
-        if (returnType is not null)
-        {
-            returnType.Parent = this;
-        }
+        this.Adopt(returnType);
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="FunctionKoto"/> class for generated syntax.</summary>
+    /// <param name="codeContext">The owning code context.</param>
+    /// <param name="name">The internal function name.</param>
+    internal FunctionKoto(CodeContext codeContext, string name)
+        : base(codeContext, default)
+    {
+        this.Name = name;
+        this.IsGenerated = true;
+        this.Body = new CodeBlockKoto(codeContext);
+        this.Body.Parent = this;
     }
 
     /// <inheritdoc/>
@@ -180,64 +179,63 @@ public sealed partial class FunctionKoto : IdentifiableKoto
             return;
         }
 
-        if (this.AttributeChain is not null)
-        {
-            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
-        }
-
+        this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendLineFeed);
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
         builder.Append(Constants.FuncKeyword);
         builder.AppendSpace();
         builder.Append(this.Name);
 
-        if (this.GenericArguments.Count > 0)
+        if (this.genericArguments is { Count: > 0 } genericArguments)
         {
             builder.Append('<');
-            for (var i = 0; i < this.GenericArguments.Count; i++)
+            for (var i = 0; i < genericArguments.Count; i++)
             {
                 if (i > 0)
                 {
                     builder.AppendCommaAndSpace();
                 }
 
-                this.GenericArguments[i].WriteTo(ref builder);
+                genericArguments[i].WriteTo(ref builder);
             }
 
             builder.Append('>');
         }
 
         builder.Append('(');
-        for (var i = 0; i < this.Parameters.Count; i++)
+        if (this.parameters is { } parameters)
         {
-            if (i > 0)
+            for (var i = 0; i < parameters.Count; i++)
             {
-                builder.AppendCommaAndSpace();
-            }
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
 
-            var parameter = this.Parameters[i];
-            if (parameter.AttributeChain is not null)
-            {
-                Parser.UnparseAttribute(parameter.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
-            }
+                var parameter = parameters[i];
+                if (parameter.AttributeChain is not null)
+                {
+                    Parser.UnparseAttribute(parameter.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
+                }
 
-            builder.Append(parameter.ExternalName);
-            if (parameter.IsOptional)
-            {
-                builder.Append('?');
-            }
+                builder.Append(parameter.ExternalName);
+                if (parameter.IsOptional)
+                {
+                    builder.Append('?');
+                }
 
-            if (!parameter.ExternalName.Equals(parameter.InternalName, StringComparison.Ordinal))
-            {
-                builder.Append(" => ");
-                builder.Append(parameter.InternalName);
-            }
+                if (!parameter.ExternalName.Equals(parameter.InternalName, StringComparison.Ordinal))
+                {
+                    builder.Append(" => ");
+                    builder.Append(parameter.InternalName);
+                }
 
-            builder.Append(": ");
-            parameter.Type.WriteTo(ref builder);
-            if (parameter.DefaultValue is not null)
-            {
-                builder.Append(" = ");
-                parameter.DefaultValue.WriteTo(ref builder);
+                builder.Append(": ");
+                parameter.Type.WriteTo(ref builder);
+                if (parameter.DefaultValue is not null)
+                {
+                    builder.Append(" = ");
+                    parameter.DefaultValue.WriteTo(ref builder);
+                }
             }
         }
 
@@ -248,22 +246,7 @@ public sealed partial class FunctionKoto : IdentifiableKoto
             this.ReturnType.WriteTo(ref builder);
         }
 
-        if (this.Body is not null)
-        {
-            this.Body.WriteIndentedTo(ref builder);
-        }
-    }
-
-    /// <summary>Initializes a new instance of the <see cref="FunctionKoto"/> class for generated syntax.</summary>
-    /// <param name="codeContext">The owning code context.</param>
-    /// <param name="name">The internal function name.</param>
-    internal FunctionKoto(CodeContext codeContext, string name)
-        : base(codeContext, default)
-    {
-        this.Name = name;
-        this.IsGenerated = true;
-        this.Body = new CodeBlockKoto(codeContext);
-        this.Body.Parent = this;
+        this.Body?.WriteIndentedTo(ref builder);
     }
 
     /// <summary>Adds top-level syntax to this generated function.</summary>
@@ -355,48 +338,7 @@ public sealed partial class FunctionKoto : IdentifiableKoto
             }
         }
 
-        if (this.genericArguments is not null &&
-            oldKoto is TypeKoto oldType && newKoto is TypeKoto newType)
-        {
-            var index = this.genericArguments.IndexOf(oldType);
-            if (index >= 0)
-            {
-                this.genericArguments[index] = newType;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    [TinyhandOnDeserialized]
-    private void OnDeserialized()
-    {
-        if (this.genericArguments is not null)
-        {
-            foreach (var argument in this.genericArguments)
-            {
-                argument.Parent = this;
-            }
-        }
-
-        if (this.parameters is not null)
-        {
-            foreach (var parameter in this.parameters)
-            {
-                this.AttachParameter(parameter);
-            }
-        }
-
-        if (this.ReturnType is not null)
-        {
-            this.ReturnType.Parent = this;
-        }
-
-        if (this.Body is not null)
-        {
-            this.Body.Parent = this;
-        }
+        return oldKoto is TypeKoto && ReplaceInList(this.genericArguments, oldKoto, newKoto);
     }
 
     private void AttachParameter(FunctionParameterKoto parameter)
@@ -411,9 +353,6 @@ public sealed partial class FunctionKoto : IdentifiableKoto
         }
 
         parameter.Type.Parent = this;
-        if (parameter.DefaultValue is not null)
-        {
-            parameter.DefaultValue.Parent = this;
-        }
+        this.Adopt(parameter.DefaultValue);
     }
 }
