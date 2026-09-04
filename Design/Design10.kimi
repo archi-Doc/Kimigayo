@@ -1,11 +1,28 @@
 alias Kimi.Crypto
 alias Kimi.LowLevelInterface
 
-#If(os=="Linux") // Attribute-next rule.
-alias Kimi.Base.Linux
-
-#If(windows)
+#if windows
 alias Kimi.Base.Windows
+
+#if os == "windows"
+let windows = true
+
+#if windows
+    let linux = false
+    #OsAttribute let osId = 1
+
+func FuncA<s/T>(value: s/T)
+    #case s is ref and T is Comparable
+        ProcessComparableReference(value)
+
+    #case s is ref
+        ProcessReference(value)
+
+    #case s is obj
+        ProcessObject(value)
+
+    #case _
+        ProcessOther(value)
 
 // Single-line comment
 /* Multi-line
