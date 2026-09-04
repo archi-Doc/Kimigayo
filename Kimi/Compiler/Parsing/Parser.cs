@@ -59,38 +59,6 @@ public static class Parser
         }
     }
 
-    /// <summary>Evaluates a conditional attribute.</summary>
-    /// <param name="compilation">The active compilation.</param>
-    /// <param name="attributeKoto">The attribute to evaluate.</param>
-    /// <returns><see langword="true"/> when the attributed declaration is included.</returns>
-    public static bool ResolveIfAttribute(Compilation compilation, AttributeKoto attributeKoto)
-    {
-        Debug.Assert(attributeKoto.IsIfAttribute);
-
-        var arg = attributeKoto.Arguments;
-        if (arg.Count != 1)
-        {
-            attributeKoto.AddDiagnostic(DiagnosticCode.InvalidIfAttributeArgumentCount_Kd);
-        }
-        else
-        {
-            var basicValue = BasicValueHelper.Evaluate(compilation, arg[0]);
-            if (basicValue.Kind == BasicValueKind.Bool)
-            {
-                if (!basicValue.Bool)
-                {
-                    return false;
-                }
-            }
-            else
-            {
-                arg[0].AddDiagnostic(DiagnosticCode.ConditionMustBeBool_Kd);
-            }
-        }
-
-        return true;
-    }
-
     /// <summary>Writes the qualified name of an identifiable node.</summary>
     /// <param name="koto">The innermost identifiable node.</param>
     /// <param name="builder">The destination builder.</param>
@@ -748,10 +716,14 @@ Exit:
         }
     }
 
-    /// <summary>Consumes attributes and modifiers before a declaration.</summary>
+    /// <summary>Consumes attributes, modifiers, and optional compile-time directives before a declaration.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="isEnd">Whether the declaration sequence has ended.</param>
-    public static void ConsumeAttributeAndModifier(ref TokenReader reader, out bool isEnd)
+    /// <param name="allowCompileTimeDirectives">Whether lowercase compile-time directives are accepted.</param>
+    public static void ConsumeAttributeAndModifier(
+        ref TokenReader reader,
+        out bool isEnd,
+        bool allowCompileTimeDirectives = false)
     {
         reader.ClearContext();
 
@@ -782,6 +754,12 @@ Exit:
                     continue;
 
                 case TokenKind.Sharp:
+                    if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.If)
+                    {
+                        ParseCompileTimeIfPrefix(ref reader);
+                        continue;
+                    }
+
                     _ = ParseAttributeKoto(ref reader);
                     continue;
 
@@ -1008,14 +986,95 @@ Exit:
             ref reader,
             SourceSpan.FromBounds(attributeToken.Span.Start, Math.Max(attributeToken.Span.End, operand.Span.End)),
             operand);
-        if (attributeKoto.IsIfAttribute)
-        {
-            reader.IsExcluded = !ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto);
-            return null;
-        }
-
         reader.PushAttribute(attributeKoto);
         return attributeKoto;
+    }
+
+    private static void ParseCompileTimeIfPrefix(ref TokenReader reader)
+    {
+        var attributes = reader.PopAttribute();
+        var sharp = reader.Read();
+        _ = reader.TryConsume(TokenKind.If, out _, true);
+        var condition = ParseRequiredExpression(ref reader);
+        if (attributes is not null)
+        {
+            reader.PushAttribute(attributes);
+        }
+
+        var span = SourceSpan.FromBounds(sharp.Span.Start, Math.Max(sharp.Span.End, condition.Span.End));
+
+        switch (CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition))
+        {
+            case CompileTimeConditionResult.True:
+                break;
+
+            case CompileTimeConditionResult.False:
+            case CompileTimeConditionResult.Error:
+                reader.IsExcluded = true;
+                reader.ClearCompileTimeIfPrefixes();
+                break;
+
+            case CompileTimeConditionResult.Deferred:
+                if (!reader.IsExcluded)
+                {
+                    reader.AddCompileTimeIfPrefix(new CompileTimeIfPrefix(span, condition));
+                }
+
+                break;
+        }
+    }
+
+    /// <summary>Wraps a syntax node in deferred compile-time directives, innermost first.</summary>
+    /// <param name="codeContext">The owning code context.</param>
+    /// <param name="prefixes">The deferred directive prefixes.</param>
+    /// <param name="target">The controlled syntax node.</param>
+    /// <returns>The outermost directive, or <paramref name="target"/> when no directive was deferred.</returns>
+    internal static Koto ApplyCompileTimeIfPrefixes(
+        CodeContext codeContext,
+        List<CompileTimeIfPrefix>? prefixes,
+        Koto target)
+    {
+        if (prefixes is null)
+        {
+            return target;
+        }
+
+        for (var i = prefixes.Count - 1; i >= 0; i--)
+        {
+            var prefix = prefixes[i];
+            target = new CompileTimeIfKoto(
+                codeContext,
+                SourceSpan.FromBounds(prefix.Span.Start, Math.Max(prefix.Span.End, target.Span.End)),
+                prefix.Condition,
+                target);
+        }
+
+        return target;
+    }
+
+    /// <summary>Consumes one syntax node controlled by an early-false directive without constructing Koto nodes.</summary>
+    /// <param name="reader">The token reader positioned at the controlled syntax.</param>
+    internal static void SkipExcludedSyntax(ref TokenReader reader)
+    {
+        if (reader.CurrentTokenKind == TokenKind.StartBlock)
+        {
+            reader.SkipCurrentBlock(false);
+            return;
+        }
+
+        var startsWithPrefix = reader.CurrentTokenKind == TokenKind.Sharp;
+        _ = reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+        if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        {
+            reader.SkipCurrentBlock(false);
+            return;
+        }
+
+        reader.SkipSeparators();
+        if (startsWithPrefix && reader.CanRead && reader.CurrentTokenKind != TokenKind.EndBlock)
+        {
+            SkipExcludedSyntax(ref reader);
+        }
     }
 
     /// <summary>
@@ -1191,7 +1250,7 @@ Exit:
                     hasTrailingExpression);
             }
 
-            ConsumeAttributeAndModifier(ref reader, out var isEnd);
+            ConsumeAttributeAndModifier(ref reader, out var isEnd, allowCompileTimeDirectives: true);
             if (isEnd)
             {
                 break;
@@ -1202,10 +1261,19 @@ Exit:
                 continue;
             }
 
+            var isExcluded = reader.IsExcluded;
+            var compileTimeIfPrefixes = reader.TakeCompileTimeIfPrefixes();
+            if (isExcluded)
+            {
+                SkipExcludedSyntax(ref reader);
+                continue;
+            }
+
             var oldPosition = reader.Position;
             var item = ParseBlockItem(ref reader, out var isDeclaration);
             if (item is not null)
             {
+                item = ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, item);
                 items.Add(item);
                 hasTrailingExpression = !isDeclaration;
             }

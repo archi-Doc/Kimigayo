@@ -501,7 +501,7 @@ public static class BasicValueHelper
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static BasicValue AddNotSupportedDiagnostic(Koto koto)
     {
-        koto.AddDiagnostic(DiagnosticCode.UnsupportedIfAttributeConditionType_Kd);
+        koto.AddDiagnostic(DiagnosticCode.UnsupportedCompileTimeConditionType_Kd);
         return default;
     }
 }

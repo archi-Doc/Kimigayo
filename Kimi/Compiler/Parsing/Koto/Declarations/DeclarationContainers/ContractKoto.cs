@@ -43,6 +43,14 @@ public sealed partial class ContractKoto : DeclarationContainerKoto
         ConsumeBlockStart(ref reader);
         while (TryBeginDeclaration(ref reader))
         {
+            var isExcluded = reader.IsExcluded;
+            var compileTimeIfPrefixes = reader.TakeCompileTimeIfPrefixes();
+            if (isExcluded)
+            {
+                Parser.SkipExcludedSyntax(ref reader);
+                continue;
+            }
+
             var token = reader.CurrentToken;
             if (token.Kind != TokenKind.Associate)
             {
@@ -59,9 +67,16 @@ public sealed partial class ContractKoto : DeclarationContainerKoto
             }
 
             var constraint = Parser.ParseTypeConstraint(ref reader);
-            if (constraint is not null)
+            if (constraint is not null && !isExcluded)
             {
-                this.AddTypeConstraint(constraint);
+                if (compileTimeIfPrefixes is null)
+                {
+                    this.AddTypeConstraint(constraint);
+                }
+                else
+                {
+                    this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, constraint));
+                }
             }
         }
     }

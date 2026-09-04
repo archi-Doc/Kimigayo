@@ -484,6 +484,14 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
         var acceptsTypeConstraints = parseTypeConstraints && this.typeConstraints is not { Count: > 0 };
         while (TryBeginDeclaration(ref reader))
         {
+            var isExcluded = reader.IsExcluded;
+            var compileTimeIfPrefixes = reader.TakeCompileTimeIfPrefixes();
+            if (isExcluded)
+            {
+                Parser.SkipExcludedSyntax(ref reader);
+                continue;
+            }
+
             if (parseTypeConstraints && Parser.IsTypeConstraintStart(ref reader))
             {
                 if (!acceptsTypeConstraints)
@@ -495,21 +503,33 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
 
                 CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.TypeConstraint);
                 var constraint = Parser.ParseTypeConstraint(ref reader);
-                if (constraint is not null)
+                if (constraint is not null && !isExcluded)
                 {
-                    this.AddTypeConstraint(constraint);
+                    if (compileTimeIfPrefixes is null)
+                    {
+                        this.AddTypeConstraint(constraint);
+                    }
+                    else
+                    {
+                        this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, constraint));
+                    }
                 }
 
                 continue;
             }
 
             var token = reader.CurrentToken;
-            if (parseDeclarationContainers && this.TryParseDeclarationContainer(ref reader, token))
+            if (parseDeclarationContainers &&
+                this.TryParseDeclarationContainer(ref reader, token, compileTimeIfPrefixes, isExcluded))
             {
                 continue;
             }
 
-            if (!this.TryParsePropertyOrFunction(ref reader, ref declarationOrder))
+            if (!this.TryParsePropertyOrFunction(
+                ref reader,
+                ref declarationOrder,
+                compileTimeIfPrefixes,
+                isExcluded))
             {
                 SkipUnexpectedDeclaration(ref reader, token);
             }
@@ -560,7 +580,7 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     protected static bool TryBeginDeclaration(ref TokenReader reader)
     {
-        Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
+        Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd, allowCompileTimeDirectives: true);
         if (isEnd)
         {
             return false;
@@ -572,8 +592,14 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
     /// <summary>Attempts to parse a nested Declaration Container declaration.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="token">The declaration keyword token.</param>
+    /// <param name="compileTimeIfPrefixes">Deferred directives controlling the declaration.</param>
+    /// <param name="isExcluded">Whether an early condition excludes the declaration.</param>
     /// <returns><see langword="true"/> when a Declaration Container keyword was consumed.</returns>
-    protected bool TryParseDeclarationContainer(ref TokenReader reader, Token token)
+    protected bool TryParseDeclarationContainer(
+        ref TokenReader reader,
+        Token token,
+        List<CompileTimeIfPrefix>? compileTimeIfPrefixes = null,
+        bool isExcluded = false)
     {
         var tokenKind = token.Kind;
         if (tokenKind is not (TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract))
@@ -587,13 +613,26 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
             ref reader,
             supportsGenericHeader,
             supportsGenericHeader);
-        if (reader.IsExcluded)
+        if (isExcluded || reader.IsExcluded)
         {
             reader.SkipCurrentBlock(false);
             return true;
         }
 
         var state = reader.TakeContext();
+        if (compileTimeIfPrefixes is not null)
+        {
+            var standalone = CreateStandalone(reader.CodeContext, tokenKind, state, token.Span, declaration.Name);
+            standalone.AddHeader(declaration.GenericArguments, declaration.Origins);
+            if (reader.CurrentTokenKind == TokenKind.StartBlock)
+            {
+                standalone.Parse(ref reader);
+            }
+
+            this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, standalone));
+            return true;
+        }
+
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span);
         container.AddHeader(declaration.GenericArguments, declaration.Origins);
 
@@ -608,8 +647,14 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
     /// <summary>Attempts to parse one Property or function declaration.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="declarationOrder">The current declaration-order state.</param>
+    /// <param name="compileTimeIfPrefixes">Deferred directives controlling the declaration.</param>
+    /// <param name="isExcluded">Whether an early condition excludes the declaration.</param>
     /// <returns><see langword="true"/> when a supported member was consumed.</returns>
-    protected bool TryParsePropertyOrFunction(ref TokenReader reader, ref DeclarationOrder declarationOrder)
+    protected bool TryParsePropertyOrFunction(
+        ref TokenReader reader,
+        ref DeclarationOrder declarationOrder,
+        List<CompileTimeIfPrefix>? compileTimeIfPrefixes,
+        bool isExcluded)
     {
         var token = reader.CurrentToken;
         if (token.Kind is TokenKind.Let or TokenKind.Var)
@@ -617,9 +662,9 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
             CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Property);
             reader.Advance();
             var propertyKoto = Parser.ParseProperty(ref reader, ref token);
-            if (propertyKoto is not null)
+            if (propertyKoto is not null && !isExcluded)
             {
-                this.AddLast(propertyKoto);
+                this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, propertyKoto));
             }
 
             return true;
@@ -638,14 +683,14 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
             return true;
         }
 
-        if (!functionKoto.IsExcluded)
-        {
-            this.AddLast(functionKoto);
-        }
-
         if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             functionKoto.Parse(ref reader);
+        }
+
+        if (!isExcluded && !functionKoto.IsExcluded)
+        {
+            this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, functionKoto));
         }
 
         return true;

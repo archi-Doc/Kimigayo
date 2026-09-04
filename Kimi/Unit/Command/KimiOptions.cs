@@ -11,4 +11,7 @@ public class KimiOptions
 
     [SimpleOption("DumpToken")]
     public bool DumpToken { get; set; } = false;
+
+    [SimpleOption("Debug")]
+    public bool Debug { get; set; } = false;
 }

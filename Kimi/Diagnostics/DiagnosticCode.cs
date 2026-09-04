@@ -25,7 +25,6 @@ public enum DiagnosticCode
     InvalidCharacter_Kd,
     InvalidCharacterAtEndOfFile_Kd,
     InvalidIdentifier_Kd,
-    InvalidIfAttributeArgumentCount_Kd,
     InvalidIndentation_Kd,
     InvalidNumericLiteral_Kd,
     InvalidReferenceSyntax_Kd,
@@ -51,7 +50,7 @@ public enum DiagnosticCode
     UnmatchedBracket_Kd,
     UnmatchedParenthesis_Kd,
     UnmatchedToken_Kd,
-    UnsupportedIfAttributeConditionType_Kd,
+    UnsupportedCompileTimeConditionType_Kd,
     UnsupportedEscape_Kd,
 
     Count, // Last sentinel

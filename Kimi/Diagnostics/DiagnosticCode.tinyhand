@@ -54,9 +54,6 @@
   + Name="InvalidIdentifier_Kd"
     Message="'{0}' is not a valid identifier"
 
-  + Name="InvalidIfAttributeArgumentCount_Kd"
-    Message="#If attribute must have exactly one argument"
-
   + Name="InvalidIndentation_Kd"
     Message="Invalid indentation. Insert {0} spaces for each indentation level"
 
@@ -133,8 +130,8 @@
   + Name="UnmatchedToken_Kd"
     Message="Unmatched token {0}"
 
-  + Name="UnsupportedIfAttributeConditionType_Kd"
-    Message="This type is not supported in an If attribute condition expression"
+  + Name="UnsupportedCompileTimeConditionType_Kd"
+    Message="This type is not supported in a compile-time condition expression"
 
   + Name="UnsupportedEscape_Kd"
     Message="The escape sequence '{0}' is not supported"

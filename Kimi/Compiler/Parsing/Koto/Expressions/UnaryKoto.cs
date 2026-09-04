@@ -109,14 +109,6 @@ public sealed partial class AttributeKoto : UnaryKoto
     [IgnoreMember]
     public List<Koto> Arguments { get; private set; }
 
-    /// <summary>Gets a value indicating whether this is an <c>#if</c> attribute.</summary>
-    public bool IsIfAttribute
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => this.IdentifierKoto is IdentifierNameKoto identifier &&
-            identifier.IdentifierName.AsSpan().SequenceEqual(Constants.IfAttribute);
-    }
-
     /// <summary>Initializes a new instance of the <see cref="AttributeKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>

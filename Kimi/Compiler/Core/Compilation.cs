@@ -124,7 +124,7 @@ public class Compilation
     /// </returns>
     /// <remarks>
     /// Successful preparation rebuilds the <c>os</c>, <c>windows</c>, <c>linux</c>,
-    /// <c>macos</c>, and <c>pointerWidth</c> conditional-compilation variables.
+    /// <c>macos</c>, <c>pointerWidth</c>, and <c>debug</c> conditional-compilation variables.
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="target"/> is empty or whitespace.</exception>
     public bool Prepare(string target)
@@ -156,6 +156,8 @@ public class Compilation
         this.Variables.Add("linux", new(targetTriple.Os == OsType.Linux));
         this.Variables.Add("macos", new(targetTriple.Os == OsType.MacOSX));
         this.Variables.Add("pointerWidth", new(irTarget.PointerWidth));
+        this.Variables.Add("debug", new(this.Project.KimiOptions.Debug));
+        this.Variables.Add("release", new(!this.Project.KimiOptions.Debug));
 
         return true;
     }

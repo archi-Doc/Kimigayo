@@ -234,6 +234,9 @@ public enum KotoKind : byte
     /// <summary>An <c>if</c> expression.</summary>
     If,
 
+    /// <summary>A deferred compile-time <c>#if</c> directive.</summary>
+    CompileTimeIf,
+
     /// <summary>A <c>match</c> expression.</summary>
     Match,
 
@@ -357,6 +360,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Range, typeof(RangeKoto))]
 [TinyhandUnion((int)KotoKind.CodeBlock, typeof(CodeBlockKoto))]
 [TinyhandUnion((int)KotoKind.If, typeof(IfKoto))]
+[TinyhandUnion((int)KotoKind.CompileTimeIf, typeof(CompileTimeIfKoto))]
 [TinyhandUnion((int)KotoKind.Match, typeof(MatchKoto))]
 [TinyhandUnion((int)KotoKind.While, typeof(WhileKoto))]
 [TinyhandUnion((int)KotoKind.For, typeof(ForKoto))]

@@ -36,6 +36,7 @@ public ref struct TokenReader
     private readonly ReadOnlySpan<Token> tokens;
     private readonly Token endToken;
     private Token currentToken;
+    private List<CompileTimeIfPrefix>? compileTimeIfPrefixes;
 
     /// <summary>
     /// Gets the current token position.
@@ -128,6 +129,7 @@ public ref struct TokenReader
         this.AttributeKoto = default;
         this.ModifierKind = default;
         this.IsExcluded = false;
+        this.compileTimeIfPrefixes = default;
     }
 
     /// <summary>
@@ -559,6 +561,24 @@ Loop:
     /// <returns>The textual representation of the current token.</returns>
     public readonly override string ToString()
         => this.GetSpan(this.currentToken).ToString();
+
+    /// <summary>Adds a deferred compile-time directive to the current syntax prefix.</summary>
+    /// <param name="prefix">The directive and its parsed condition.</param>
+    internal void AddCompileTimeIfPrefix(CompileTimeIfPrefix prefix)
+        => (this.compileTimeIfPrefixes ??= []).Add(prefix);
+
+    /// <summary>Detaches the deferred compile-time directives for the current syntax node.</summary>
+    /// <returns>The detached directives, or <see langword="null"/> when none were deferred.</returns>
+    internal List<CompileTimeIfPrefix>? TakeCompileTimeIfPrefixes()
+    {
+        var prefixes = this.compileTimeIfPrefixes;
+        this.compileTimeIfPrefixes = default;
+        return prefixes;
+    }
+
+    /// <summary>Discards deferred directives when an outer condition excludes the syntax.</summary>
+    internal void ClearCompileTimeIfPrefixes()
+        => this.compileTimeIfPrefixes = default;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AdvanceOne()

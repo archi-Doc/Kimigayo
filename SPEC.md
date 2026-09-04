@@ -79,7 +79,7 @@ Solution -> Project -> Compilation(target)
                  LLVM IR -> binary (planned back-end stages)
 ```
 
-After target preparation, the conditional-compilation environment contains `os`, `windows`, `linux`, `macos`, and `pointerWidth`. Unsupported target architectures or targets without an LLVM data layout do not produce a prepared Compilation.
+After target preparation, the conditional-compilation environment contains `os`, `windows`, `linux`, `macos`, `pointerWidth`, and `debug`. The OS flags and `debug` are Boolean values; `os` is a string. Unsupported target architectures or targets without an LLVM data layout do not produce a prepared Compilation.
 
 # Compile-time Directives
 
@@ -120,7 +120,7 @@ func useImplementation<T>(value: T) -> ()
 
 A Case Group must be exhaustive. The final `#case _` may be omitted only when the compiler can prove that the preceding arms cover every permitted compile-time environment. If every condition is resolved and no arm matches, compilation fails.
 
-The selected Block occupies the structural position of the Case Group. Normal Block, result-Type, scope, and control-transfer rules apply after selection. An excluded `#if` target and unselected `#case` arms are parsed but do not undergo ordinary Binding, Lowering, or code generation.
+The selected Block occupies the structural position of the Case Group. Normal Block, result-Type, scope, and control-transfer rules apply after selection. An early-false `#if` target is consumed without creating Koto nodes. Unselected `#case` arms do not undergo ordinary Binding, Lowering, or code generation.
 
 ## Staged condition evaluation
 
@@ -149,12 +149,13 @@ For example, `#case windows` may be resolved before ordinary Binding. A generic 
 The evaluation and Syntax-processing sequence is:
 
 ```text
-Parse every directive and its controlled Syntax
-    -> bind directive Conditions
-    -> attempt early evaluation before ordinary Syntax Binding
-        -> resolved: include, exclude, or select Syntax
-        -> Deferred: retain the directive Koto
+Parse a directive Condition
+    -> attempt evaluation from the prepared compile-time environment
+        -> True: parse the controlled Syntax without a directive Koto
+        -> False: consume the controlled Syntax without creating Koto nodes
+        -> Deferred: parse the controlled Syntax and retain a directive Koto
         -> Error: report a diagnostic
+    -> bind retained directive Conditions separately from controlled Syntax
     -> re-evaluate retained Koto when generic Binding adds information
     -> re-evaluate for each specialization when necessary
     -> require a final result before the controlled Syntax must be finalized
@@ -169,6 +170,8 @@ A Condition is a Boolean compile-time expression. It may inspect Compilation val
 
 ```kimi
 windows
+windows or linux
+os == "windows" or os == "linux"
 pointerWidth == 64
 s is ref
 T is i32
@@ -197,9 +200,9 @@ CompileTimeCaseGroupKoto
         Block
 ```
 
-Every directive is initially represented by a Koto, even when its Condition can be resolved early. A resolution pass may replace it with selected Syntax in a Compilation-specific tree or view. Resolving one generic specialization must not destructively alter the shared generic Koto used by other specializations.
+Only a Deferred directive is represented by a directive Koto. An early-true `#if` contributes its Target directly, and an early-false `#if` contributes no Koto. Resolving one generic specialization must not destructively alter the shared generic Koto used by other specializations.
 
-The lowercase `#if` directive, Case Groups, Deferred evaluation, and these Koto forms are planned and are not yet fully implemented.
+The Parser implements early `#if` evaluation and `CompileTimeIfKoto` retention. Case Groups and later Binding/specialization evaluation are planned.
 
 # Identifier
 

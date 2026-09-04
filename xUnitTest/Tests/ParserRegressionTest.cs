@@ -798,6 +798,116 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void EarlyCompileTimeIfSelectsKnownTargetConditions()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            #if windows
+            var byOsFlag = 1
+            #if windows or linux
+            var byCombinedFlags = 2
+            #if os == "windows" or os == "linux"
+            var byOsName = 3
+            #if windows and pointerWidth == 64
+            var byPointerWidth = 4
+            #if linux
+            var excluded = 5
+            #if debug
+            var debugOnly = 6
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var names = GetChildren(kotonoha.RootKoto)
+            .OfType<FieldKoto>()
+            .Select(x => x.NameKoto.IdentifierName)
+            .ToArray();
+        Assert.Equal(["byOsFlag", "byCombinedFlags", "byOsName", "byPointerWidth"], names);
+    }
+
+    [Fact]
+    public void DebugCompileTimeVariableComesFromBuildOptions()
+    {
+        var compilation = Compilation.CreateForTest();
+        compilation.Project.KimiOptions.Debug = true;
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#if debug\nvar debugOnly = 1");
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Equal("debugOnly", Assert.IsType<FieldKoto>(Assert.Single(GetChildren(kotonoha.RootKoto))).NameKoto.IdentifierName);
+    }
+
+    [Fact]
+    public void DeferredCompileTimeIfIsKeptAsDedicatedKoto()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#if genericCondition\nvar specialized = 1");
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var directive = Assert.IsType<CompileTimeIfKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
+        Assert.Equal("genericCondition", Assert.IsType<IdentifierNameKoto>(directive.Condition).IdentifierName);
+        Assert.Equal("specialized", Assert.IsType<FieldKoto>(directive.Target).NameKoto.IdentifierName);
+    }
+
+    [Fact]
+    public void PascalCaseIfRemainsAnOrdinaryAttribute()
+    {
+        var (root, diagnostics) = Parse("#If(false)\nvar attributed = 1");
+
+        Assert.Empty(diagnostics);
+        var field = Assert.IsType<FieldKoto>(Assert.Single(GetChildren(root)));
+        var attribute = Assert.IsType<AttributeKoto>(field.AttributeChain);
+        Assert.Equal("If", Assert.IsType<IdentifierNameKoto>(attribute.IdentifierKoto).IdentifierName);
+        Assert.Single(attribute.Arguments);
+    }
+
+    [Fact]
+    public void EarlyFalseCompileTimeIfDoesNotParseItsTargetKoto()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            #if linux
+            var incomplete =
+            var retained = 1
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Equal("retained", Assert.IsType<FieldKoto>(Assert.Single(GetChildren(kotonoha.RootKoto))).NameKoto.IdentifierName);
+    }
+
+    [Fact]
+    public void CompileTimeIfSelectsDeclarationContainerMembers()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            struct TargetSpecific
+                #if windows
+                var retained: i32
+                #if linux
+                var excluded: i32
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var structure = Assert.Single(kotonoha.RootKoto.NestedDeclarationContainers);
+        Assert.Equal("retained", Assert.IsType<PropertyKoto>(Assert.Single(structure.Members)).NameKoto.IdentifierName);
+    }
+
+    [Fact]
     public void FloatingPointLiteralKeepsItsNumericCategoryWhenWritten()
     {
         var (root, diagnostics) = Parse("var result = 1.0");
