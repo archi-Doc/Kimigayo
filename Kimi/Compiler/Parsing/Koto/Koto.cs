@@ -1,6 +1,7 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
@@ -44,7 +45,7 @@ public enum KotoKind : byte
     /// <summary>An alias declaration.</summary>
     Alias,
 
-    /// <summary>A field or variable declaration.</summary>
+    /// <summary>A local binding declaration.</summary>
     Field,
 
     /// <summary>A Boolean literal.</summary>
@@ -55,6 +56,12 @@ public enum KotoKind : byte
 
     /// <summary>A string literal.</summary>
     StringLiteral,
+
+    /// <summary>An array literal expression.</summary>
+    ArrayLiteral,
+
+    /// <summary>A dictionary literal expression.</summary>
+    DictionaryLiteral,
 
     /// <summary>An identifier name.</summary>
     IdentifierName,
@@ -227,6 +234,12 @@ public enum KotoKind : byte
     /// <summary>An <c>if</c> expression.</summary>
     If,
 
+    /// <summary>A deferred compile-time <c>#if</c> directive.</summary>
+    CompileTimeIf,
+
+    /// <summary>A deferred compile-time <c>#case</c> group.</summary>
+    CompileTimeCaseGroup,
+
     /// <summary>A <c>match</c> expression.</summary>
     Match,
 
@@ -253,6 +266,18 @@ public enum KotoKind : byte
     /// <summary>A <c>for</c> expression.</summary>
     For,
 
+    /// <summary>An unconditional <c>loop</c> expression.</summary>
+    Loop,
+
+    /// <summary>A <c>yield</c> expression.</summary>
+    Yield,
+
+    /// <summary>A Property declaration.</summary>
+    Property,
+
+    /// <summary>A Property accessor declaration.</summary>
+    PropertyAccessor,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
@@ -260,6 +285,11 @@ public enum KotoKind : byte
 /// <summary>
 /// Provides the base representation of a Koto syntax-tree node.
 /// </summary>
+/// <remarks>
+/// Tree links (<see cref="Parent"/>, <see cref="CodeContext"/>) are runtime-only. They are set by
+/// the constructors during parsing and rebuilt by <see cref="RestoreAfterDeserialization"/> using
+/// <see cref="ChildNodes"/>, so concrete nodes only need to enumerate their children.
+/// </remarks>
 [TinyhandObject(ReservedKeyCount = 1)]
 [TinyhandUnion((int)KotoKind.Contract, typeof(ContractKoto))]
 [TinyhandUnion((int)KotoKind.Enum, typeof(EnumKoto))]
@@ -272,6 +302,8 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.BoolLiteral, typeof(BoolLiteralKoto))]
 [TinyhandUnion((int)KotoKind.Error, typeof(ErrorKoto))]
 [TinyhandUnion((int)KotoKind.Field, typeof(FieldKoto))]
+[TinyhandUnion((int)KotoKind.Property, typeof(PropertyKoto))]
+[TinyhandUnion((int)KotoKind.PropertyAccessor, typeof(PropertyAccessorKoto))]
 [TinyhandUnion((int)KotoKind.NumberLiteral, typeof(NumberLiteralKoto))]
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
 [TinyhandUnion((int)KotoKind.IdentifierName, typeof(IdentifierNameKoto))]
@@ -331,15 +363,20 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Range, typeof(RangeKoto))]
 [TinyhandUnion((int)KotoKind.CodeBlock, typeof(CodeBlockKoto))]
 [TinyhandUnion((int)KotoKind.If, typeof(IfKoto))]
+[TinyhandUnion((int)KotoKind.CompileTimeIf, typeof(CompileTimeIfKoto))]
+[TinyhandUnion((int)KotoKind.CompileTimeCaseGroup, typeof(CompileTimeCaseGroupKoto))]
 [TinyhandUnion((int)KotoKind.Match, typeof(MatchKoto))]
 [TinyhandUnion((int)KotoKind.While, typeof(WhileKoto))]
 [TinyhandUnion((int)KotoKind.For, typeof(ForKoto))]
 [TinyhandUnion((int)KotoKind.Return, typeof(ReturnKoto))]
 [TinyhandUnion((int)KotoKind.Break, typeof(BreakKoto))]
 [TinyhandUnion((int)KotoKind.Continue, typeof(ContinueKoto))]
+[TinyhandUnion((int)KotoKind.Loop, typeof(LoopKoto))]
+[TinyhandUnion((int)KotoKind.Yield, typeof(YieldKoto))]
 [TinyhandUnion((int)KotoKind.TupleType, typeof(TupleTypeKoto))]
 [TinyhandUnion((int)KotoKind.FunctionType, typeof(FunctionTypeKoto))]
-[ValueLinkObject]
+[TinyhandUnion((int)KotoKind.ArrayLiteral, typeof(ArrayLiteralKoto))]
+[TinyhandUnion((int)KotoKind.DictionaryLiteral, typeof(DictionaryLiteralKoto))]
 public abstract partial class Koto
 {
     /// <summary>The size required for a table indexed by <see cref="KotoKind"/>.</summary>
@@ -350,11 +387,9 @@ public abstract partial class Koto
     /// <summary>Gets the concrete node kind.</summary>
     public abstract KotoKind Akind { get; }
 
-    // Parser metadata is runtime-only and is restored after deserialization.
-
     /// <summary>Gets the diagnostic destination associated with this node.</summary>
     [IgnoreMember]
-    public DiagnosticCollection? DiagnosticCollection { get; internal set; }
+    public DiagnosticCollection? DiagnosticCollection => this.CodeContext?.DiagnosticCollection;
 
     /// <summary>Gets the node span in the source document.</summary>
     [IgnoreMember]
@@ -363,8 +398,6 @@ public abstract partial class Koto
     /// <summary>Gets the code context that owns this node.</summary>
     [IgnoreMember]
     public CodeContext CodeContext { get; internal set; }
-
-    // Tree links are rebuilt after deserialization.
 
     /// <summary>Gets the parent node, or <see langword="null"/> for the root.</summary>
     [IgnoreMember]
@@ -399,18 +432,18 @@ public abstract partial class Koto
     /// <summary>Gets the source unit that owns this node.</summary>
     public Kotonoha Kotonoha => this.CodeContext.Kotonoha;
 
+    /// <summary>Gets a value indicating whether the node is a top-level declaration.</summary>
+    public virtual bool IsToplevel => false;
+
     #endregion
 
-    /// <summary>Initializes a new instance of the <see cref="Koto"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="Koto"/> class and takes the pending attribute chain from the reader.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The node span.</param>
-    [Link(Primary = true, Type = ChainType.LinkedList, Name = "ChildLink")]
     public Koto(ref TokenReader reader, SourceSpan range)
     {
-        this.DiagnosticCollection = reader.Diagnostic;
         this.CodeContext = reader.CodeContext;
         this.Span = range;
-
         this.SetAttributeChain(reader.PopAttribute());
     }
 
@@ -420,7 +453,8 @@ public abstract partial class Koto
         this.Span = range;
     }
 
-    /// <inheritdoc/>
+    /// <summary>Returns the source text of this node.</summary>
+    /// <returns>The source text.</returns>
     public override string ToString()
     {
         var builder = default(IndentedStringBuilder);
@@ -435,18 +469,11 @@ public abstract partial class Koto
         }
     }
 
-    /// <summary>Gets a value indicating whether the node is a top-level declaration.</summary>
-    public virtual bool IsToplevel => false;
-
     /// <summary>Writes this node as source text.</summary>
     /// <param name="builder">The destination builder.</param>
     public virtual void WriteTo(ref IndentedStringBuilder builder)
     {
-        if (this.AttributeChain is not null)
-        {
-            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
-        }
-
+        this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendSpace);
         builder.Append("Koto");
     }
 
@@ -454,14 +481,16 @@ public abstract partial class Koto
     /// <param name="identifier">The identifier to resolve.</param>
     /// <returns>The resolved node, or <see langword="null"/>.</returns>
     public virtual Koto? ResolveIdentifier(ReadOnlySpan<char> identifier)
-    {
-        return default;
-    }
+        => default;
 
-    /// <summary>Binds this node to a compilation.</summary>
+    /// <summary>Binds this node and its children to a compilation.</summary>
     /// <param name="compilation">The active compilation.</param>
     public virtual void Bind(Compilation compilation)
     {
+        foreach (var child in this.GetChildNodes())
+        {
+            child.Bind(compilation);
+        }
     }
 
     /// <summary>Adds a diagnostic for this node.</summary>
@@ -469,9 +498,7 @@ public abstract partial class Koto
     /// <param name="obj">The first optional diagnostic argument.</param>
     /// <param name="obj2">The second optional diagnostic argument.</param>
     public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null)
-    {
-        this.DiagnosticCollection?.Add(this.Span, code, obj, obj2);
-    }
+        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2);
 
     /// <summary>Adds an attribute to this node.</summary>
     /// <param name="attributeKoto">The attribute to add.</param>
@@ -498,31 +525,28 @@ public abstract partial class Koto
     /// <returns><see langword="true"/> when the attribute was removed.</returns>
     public bool RemoveAttribute(AttributeKoto attributeKoto)
     {
-        AttributeKoto? previous = default;
+        Koto previous = this;
         var current = this.AttributeChain;
         while (current is not null)
         {
             if (current == attributeKoto)
             {
                 var next = current.AttributeChain;
-                current.Parent = default;
-                if (previous == null)
+                if (previous == this)
                 {
                     this.AttributeChain = next;
-                    if (next is not null)
-                    {
-                        next.Parent = this;
-                    }
                 }
                 else
                 {
                     previous.AttributeChain = next;
-                    if (next is not null)
-                    {
-                        next.Parent = previous;
-                    }
                 }
 
+                if (next is not null)
+                {
+                    next.Parent = previous;
+                }
+
+                current.Parent = default;
                 current.AttributeChain = default;
                 return true;
             }
@@ -534,6 +558,8 @@ public abstract partial class Koto
         return false;
     }
 
+    /// <summary>Attaches an attribute chain and links its parents.</summary>
+    /// <param name="attributeChain">The attribute chain, or <see langword="null"/>.</param>
     internal void SetAttributeChain(AttributeKoto? attributeChain)
     {
         this.AttributeChain = attributeChain;
@@ -549,7 +575,6 @@ public abstract partial class Koto
     internal virtual void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
     {
         this.CodeContext = codeContext;
-        this.DiagnosticCollection = codeContext.DiagnosticCollection;
         this.Parent = parent;
 
         foreach (var child in this.ChildNodes)
@@ -574,19 +599,79 @@ public abstract partial class Koto
         return true;
     }
 
+    /// <summary>Replaces an element of a list in place.</summary>
+    /// <typeparam name="T">The element type.</typeparam>
+    /// <param name="list">The list to update.</param>
+    /// <param name="oldKoto">The current element.</param>
+    /// <param name="newKoto">The replacement element.</param>
+    /// <returns><see langword="true"/> when the element was replaced.</returns>
+    protected static bool ReplaceInList<T>(List<T>? list, Koto oldKoto, Koto newKoto)
+        where T : Koto
+    {
+        if (list is null || oldKoto is not T current || newKoto is not T replacement)
+        {
+            return false;
+        }
+
+        var index = list.IndexOf(current);
+        if (index < 0)
+        {
+            return false;
+        }
+
+        list[index] = replacement;
+        return true;
+    }
+
+    /// <summary>Writes the attribute chain, if any, followed by the requested trailing text.</summary>
+    /// <param name="builder">The destination builder.</param>
+    /// <param name="options">The trailing text option.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    protected void WriteAttributeChainTo(ref IndentedStringBuilder builder, KotoWriteOptions options)
+    {
+        if (this.AttributeChain is not null)
+        {
+            Parser.UnparseAttribute(this.AttributeChain, ref builder, options);
+        }
+    }
+
+    /// <summary>Sets this node as the parent of a child.</summary>
+    /// <param name="child">The child node, or <see langword="null"/>.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    protected void Adopt(Koto? child)
+    {
+        if (child is not null)
+        {
+            child.Parent = this;
+        }
+    }
+
+    /// <summary>Sets this node as the parent of each child in a list.</summary>
+    /// <typeparam name="T">The child node type.</typeparam>
+    /// <param name="children">The child nodes, or <see langword="null"/>.</param>
+    protected void Adopt<T>(List<T>? children)
+        where T : Koto
+    {
+        if (children is null)
+        {
+            return;
+        }
+
+        foreach (var child in children)
+        {
+            child.Parent = this;
+        }
+    }
+
     /// <summary>Enumerates children owned by the concrete node.</summary>
     /// <returns>The direct child nodes, excluding the attribute chain handled by <see cref="ChildNodes"/>.</returns>
     protected virtual IEnumerable<Koto> GetChildNodes()
-    {
-        yield break;
-    }
+        => [];
 
     /// <summary>Replaces a child reference owned by the concrete node.</summary>
     /// <param name="oldKoto">The current child.</param>
     /// <param name="newKoto">The replacement child.</param>
     /// <returns><see langword="true"/> when a child reference was replaced.</returns>
     protected virtual bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        return false;
-    }
+        => false;
 }

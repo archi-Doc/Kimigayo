@@ -11,9 +11,12 @@ public enum DiagnosticCode
     Template_Kd, // First sentinel
 
     ConditionMustBeBool_Kd,
+    CompileTimeCaseFallbackMustBeLast_Kd,
+    DuplicateCompileTimeCaseFallback_Kd,
     DeclarationOrderWarning_Kd,
     DivisionByZero_Kd,
     DuplicateModifier_Kd,
+    DuplicatePropertyAccessor_Kd,
     DuplicateTypeConstraintDefinition_Kd,
     IdentifierExpected_Kd,
     IncompleteEscape_Kd,
@@ -24,7 +27,6 @@ public enum DiagnosticCode
     InvalidCharacter_Kd,
     InvalidCharacterAtEndOfFile_Kd,
     InvalidIdentifier_Kd,
-    InvalidIfAttributeArgumentCount_Kd,
     InvalidIndentation_Kd,
     InvalidNumericLiteral_Kd,
     InvalidReferenceSyntax_Kd,
@@ -32,11 +34,13 @@ public enum DiagnosticCode
     InvalidUnicodeEscape_Kd,
     InvalidUnicodeScalar_Kd,
     IntegerOverflow_Kd,
+    LetPropertyCannotHaveSetter_Kd,
     MissingBlockCommentEnd_Kd,
     MissingComma_Kd,
     MissingExpectedToken_Kd,
     MissingStringLiteralEnd_Kd,
     MultipleAccessibilityModifiers_Kd,
+    NonExhaustiveCompileTimeCase_Kd,
     TokenMismatch_Kd,
     TopLevelKeywordAfterCode_Kd,
     TypeMismatch_Kd,
@@ -49,7 +53,7 @@ public enum DiagnosticCode
     UnmatchedBracket_Kd,
     UnmatchedParenthesis_Kd,
     UnmatchedToken_Kd,
-    UnsupportedIfAttributeConditionType_Kd,
+    UnsupportedCompileTimeConditionType_Kd,
     UnsupportedEscape_Kd,
 
     Count, // Last sentinel

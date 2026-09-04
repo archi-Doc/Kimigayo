@@ -15,7 +15,7 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
     public override KotoKind Akind => KotoKind.CodeBlock;
 
     [Key(1)]
-    private List<Koto> items = [];
+    private List<Koto> items;
 
     /// <summary>
     /// Gets a value indicating whether the final item is the block's trailing expression.
@@ -43,20 +43,15 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
     {
         this.items = items;
         this.HasTrailingExpression = hasTrailingExpression;
-
-        foreach (var item in items)
-        {
-            item.Parent = this;
-        }
+        this.Adopt(items);
     }
 
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
+    /// <summary>Initializes a new instance of the <see cref="CodeBlockKoto"/> class for generated syntax.</summary>
+    /// <param name="codeContext">The owning code context.</param>
+    internal CodeBlockKoto(CodeContext codeContext)
+        : base(codeContext, default)
     {
-        foreach (var item in this.items)
-        {
-            item.Bind(compilation);
-        }
+        this.items = [];
     }
 
     /// <inheritdoc/>
@@ -69,9 +64,9 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
                 builder.AppendLine();
             }
 
-            if (this.items[i] is CollectionKoto group)
+            if (this.items[i] is DeclarationContainerKoto container)
             {
-                group.WriteAsBlockItem(ref builder);
+                container.WriteAsBlockItem(ref builder);
             }
             else
             {
@@ -88,29 +83,19 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
         builder.DecrementIndent();
     }
 
+    /// <summary>Adds an item to a compiler-generated block.</summary>
+    /// <param name="item">The item to add.</param>
+    /// <param name="hasTrailingExpression">Whether the item supplies the block value.</param>
+    internal void AddLast(Koto item, bool hasTrailingExpression)
+    {
+        this.items.Add(item);
+        item.Parent = this;
+        this.HasTrailingExpression = hasTrailingExpression;
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
         => this.items;
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        for (var i = 0; i < this.items.Count; i++)
-        {
-            if (this.items[i] == oldKoto)
-            {
-                this.items[i] = newKoto;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    [TinyhandOnDeserialized]
-    private void OnDeserialized()
-    {
-        foreach (var item in this.items)
-        {
-            item.Parent = this;
-        }
-    }
+        => ReplaceInList(this.items, oldKoto, newKoto);
 }

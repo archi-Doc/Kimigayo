@@ -12,7 +12,7 @@ namespace XunitTest;
 
 public class FunctionBodyParseTest
 {
-    private static readonly PropertyInfo KotoListProperty = typeof(CollectionKoto).GetProperty(
+    private static readonly PropertyInfo KotoListProperty = typeof(DeclarationContainerKoto).GetProperty(
         "KotoList",
         BindingFlags.Instance | BindingFlags.NonPublic)!;
 
@@ -144,6 +144,85 @@ public class FunctionBodyParseTest
     }
 
     [Fact]
+    public void ParsesInlineIfExpressionAsVariableInitializer()
+    {
+        var function = ParseSingleFunction(
+            """
+            func Select(x: bool)
+                var i = if (x == true) 1 else 0
+                i
+            """);
+
+        var body = Assert.IsType<CodeBlockKoto>(function.Body);
+        var field = Assert.IsType<FieldKoto>(body.Items[0]);
+        var ifExpression = Assert.IsType<IfKoto>(field.InitializerKoto);
+        var branch = Assert.Single(ifExpression.Branches);
+
+        Assert.True(branch.Body.HasTrailingExpression);
+        Assert.IsType<NumberLiteralKoto>(branch.Body.TrailingExpression);
+        Assert.NotNull(ifExpression.ElseBody);
+        Assert.True(ifExpression.ElseBody.HasTrailingExpression);
+        Assert.IsType<NumberLiteralKoto>(ifExpression.ElseBody.TrailingExpression);
+    }
+
+    [Fact]
+    public void ParsesConditionalBlocksAndMatchExpressionsTogether()
+    {
+        const string Source = """
+            public group Helper
+                func Method2() -> i32
+                    #Condition(Os=="Windows")
+                    // block
+                        var i = if (x == true) 1 else 0
+                    var i2 = if (x == true)
+                        1
+                    else
+                        3
+
+                    var i3 = if (
+                        var z = Func()
+                        ) 1 else 0
+                    var j = match x
+                        true => 1
+                        false => 0
+                    var k = match x
+                        true =>
+                            1
+                        false =>
+                            0
+                    return
+            """;
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
+
+        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        Assert.True(
+            diagnostics.Length == 0,
+            string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
+
+        var helper = Assert.IsType<GroupKoto>(
+            kotonoha.RootKoto.GetOrAddGroup("Helper", TokenKind.Group, default, default));
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(helper)));
+        var body = Assert.IsType<CodeBlockKoto>(function.Body);
+
+        var conditionalBlock = Assert.IsType<CodeBlockKoto>(body.Items[0]);
+        Assert.NotNull(conditionalBlock.AttributeChain);
+        Assert.IsType<IfKoto>(Assert.IsType<FieldKoto>(Assert.Single(conditionalBlock.Items)).InitializerKoto);
+
+        Assert.IsType<IfKoto>(Assert.IsType<FieldKoto>(body.Items[1]).InitializerKoto);
+        var conditionWithLocal = Assert.IsType<IfKoto>(
+            Assert.IsType<FieldKoto>(body.Items[2]).InitializerKoto);
+        var parentheses = Assert.IsType<ParenthesizedKoto>(conditionWithLocal.Branches[0].Condition);
+        var conditionBlock = Assert.IsType<CodeBlockKoto>(parentheses.Operand);
+        Assert.IsType<FieldKoto>(Assert.Single(conditionBlock.Items));
+
+        Assert.IsType<MatchKoto>(Assert.IsType<FieldKoto>(body.Items[3]).InitializerKoto);
+        Assert.IsType<MatchKoto>(Assert.IsType<FieldKoto>(body.Items[4]).InitializerKoto);
+        Assert.IsType<ReturnKoto>(body.Items[5]);
+    }
+
+    [Fact]
     public void RecognizesWhileAsAKeyword()
     {
         Assert.True(TokenKind.While.IsKeyword());
@@ -240,6 +319,8 @@ public class FunctionBodyParseTest
         return Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
     }
 
-    private static List<Koto> GetChildren(CollectionKoto group)
-        => (List<Koto>)KotoListProperty.GetValue(group)!;
+    private static List<Koto> GetChildren(DeclarationContainerKoto group)
+        => ReferenceEquals(group, group.Kotonoha.RootKoto)
+            ? group.Kotonoha.GeneratedFunction?.Body?.Items.ToList() ?? []
+            : (List<Koto>)KotoListProperty.GetValue(group)!;
 }

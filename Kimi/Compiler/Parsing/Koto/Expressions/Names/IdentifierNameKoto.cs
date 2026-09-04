@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Helper;
@@ -16,12 +16,7 @@ public sealed partial class IdentifierNameKoto : ExpressionKoto
     public override KotoKind Akind => KotoKind.IdentifierName;
 
     /// <summary>An invalid identifier node used during error recovery.</summary>
-    public static readonly IdentifierNameKoto Error;
-
-    static IdentifierNameKoto()
-    {
-        Error = IdentifierNameKoto.UnsafeConstructor();
-    }
+    public static readonly IdentifierNameKoto Error = UnsafeConstructor();
 
     /// <summary>Attempts to create an identifier node from a token.</summary>
     /// <param name="reader">The token reader.</param>
@@ -30,20 +25,17 @@ public sealed partial class IdentifierNameKoto : ExpressionKoto
     /// <returns><see langword="true"/> when the token contains a valid identifier.</returns>
     public static bool TryCreate(ref TokenReader reader, Token token, [MaybeNullWhen(false)] out IdentifierNameKoto koto)
     {
-        var identifierName = reader.GetSpan(token).ToString();
+        var span = reader.GetSpan(token);
         if (token.Kind.IsIdentifierOrContextualKeyword() &&
-            IdentifierHelper.IsValidIdentifier(identifierName))
+            IdentifierHelper.IsValidIdentifier(span))
         {
-            koto = new(ref reader, token, identifierName);
+            koto = new(ref reader, token, reader.GetIdentifier(token));
             return true;
         }
-        else
-        {
-            reader.AddDiagnostic(DiagnosticCode.InvalidIdentifier_Kd, identifierName);
 
-            koto = default;
-            return false;
-        }
+        reader.AddDiagnostic(DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
+        koto = default;
+        return false;
     }
 
     /// <summary>Gets the identifier text.</summary>
@@ -57,17 +49,9 @@ public sealed partial class IdentifierNameKoto : ExpressionKoto
     }
 
     /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.IdentifierName}";
-
-    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        if (this.AttributeChain is not null)
-        {
-            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
-        }
-
+        this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendSpace);
         builder.Append(this.IdentifierName);
     }
 }

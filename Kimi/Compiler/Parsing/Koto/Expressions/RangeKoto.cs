@@ -51,23 +51,8 @@ public sealed partial class RangeKoto : ExpressionKoto
         this.Start = start;
         this.End = end;
         this.IsInclusive = isInclusive;
-
-        if (start is not null)
-        {
-            start.Parent = this;
-        }
-
-        if (end is not null)
-        {
-            end.Parent = this;
-        }
-    }
-
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        this.Start?.Bind(compilation);
-        this.End?.Bind(compilation);
+        this.Adopt(start);
+        this.Adopt(end);
     }
 
     /// <inheritdoc/>
@@ -106,19 +91,5 @@ public sealed partial class RangeKoto : ExpressionKoto
         }
 
         return false;
-    }
-
-    [TinyhandOnDeserialized]
-    private void OnDeserialized()
-    {
-        if (this.Start is not null)
-        {
-            this.Start.Parent = this;
-        }
-
-        if (this.End is not null)
-        {
-            this.End.Parent = this;
-        }
     }
 }

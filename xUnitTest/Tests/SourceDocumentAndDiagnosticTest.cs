@@ -26,6 +26,81 @@ public class SourceDocumentAndDiagnosticTest
         Assert.Equal(new SourcePosition(2, 2), sourceDocument.GetPosition(16));
     }
 
+    [Theory]
+    [InlineData("", 1)]
+    [InlineData("a", 1)]
+    [InlineData("\n", 2)]
+    [InlineData("\r", 2)]
+    [InlineData("\r\n", 2)]
+    [InlineData("\n\r", 3)] // Two separate terminators, not a pair.
+    [InlineData("x\n\r\ny", 3)]
+    public void MapsEveryOffsetOfAnEdgeCaseDocument(string sourceText, int expectedLineCount)
+    {
+        var sourceDocument = new SourceDocument("test.kimi", sourceText);
+        Assert.Equal(expectedLineCount, sourceDocument.LineCount);
+
+        var lineStarts = sourceDocument.LineStarts.ToArray();
+        for (var offset = 0; offset <= sourceText.Length; offset++)
+        {
+            var position = sourceDocument.GetPosition(offset);
+
+            // The reported line is the last one that starts at or before the offset.
+            var expectedLine = 0;
+            while (expectedLine + 1 < lineStarts.Length && lineStarts[expectedLine + 1] <= offset)
+            {
+                expectedLine++;
+            }
+
+            Assert.Equal(expectedLine, position.Line);
+            Assert.Equal(offset - lineStarts[expectedLine], position.Character);
+        }
+    }
+
+    [Fact]
+    public void SourceRangeMatchesTheIndividualPositions()
+    {
+        var sourceText = "first\r\nsecond\nthird\rfourth\n";
+        var sourceDocument = new SourceDocument("test.kimi", sourceText);
+
+        for (var start = 0; start <= sourceText.Length; start++)
+        {
+            for (var end = start; end <= sourceText.Length; end++)
+            {
+                var range = sourceDocument.GetSourceRange(SourceSpan.FromBounds(start, end));
+
+                Assert.Equal(sourceDocument.GetPosition(start), range.Start);
+                Assert.Equal(sourceDocument.GetPosition(end), range.End);
+            }
+        }
+    }
+
+    [Fact]
+    public void OffsetRoundTripsThroughEveryPositionOnEveryLine()
+    {
+        var sourceText = "first\r\nsecond\nthird\rfourth\n";
+        var sourceDocument = new SourceDocument("test.kimi", sourceText);
+
+        for (var line = 0; line < sourceDocument.LineCount; line++)
+        {
+            var lineStart = sourceDocument.LineStarts[line];
+            var lineLength = sourceDocument.GetLineSpan(line).Length;
+            for (var character = 0; character <= lineLength; character++)
+            {
+                var position = new SourcePosition(line, character);
+                Assert.Equal(lineStart + character, sourceDocument.GetOffset(position));
+            }
+
+            // A character past the end of the line is rejected.
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => sourceDocument.GetOffset(new SourcePosition(line, lineLength + 1)));
+        }
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => sourceDocument.GetOffset(new SourcePosition(sourceDocument.LineCount, 0)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => sourceDocument.GetPosition(sourceText.Length + 1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => sourceDocument.GetPosition(-1));
+    }
+
     [Fact]
     public void ParserDiagnosticReferencesSourceDocument()
     {

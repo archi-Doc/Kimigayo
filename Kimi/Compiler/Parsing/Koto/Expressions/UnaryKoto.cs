@@ -1,14 +1,100 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+#pragma warning disable SA1402 // File may only contain a single type
+#pragma warning disable SA1649 // File name should match first type name
+
 /// <summary>
-/// Represents an attribute expression.
+/// Provides the base representation of a unary expression.
 /// </summary>
+/// <remarks>
+/// Concrete operators only contribute their <see cref="KotoKind"/>; the prefix and postfix
+/// spellings are looked up from a table so every operator shares the same writing code.
+/// </remarks>
+[TinyhandObject(ReservedKeyCount = 2)]
+public abstract partial class UnaryKoto : ExpressionKoto
+{
+    private static readonly string?[] PrefixTexts = new string?[MaxKind];
+    private static readonly string?[] PostfixTexts = new string?[MaxKind];
+
+    static UnaryKoto()
+    {
+        PrefixTexts[(int)KotoKind.Attribute] = "#";
+        PrefixTexts[(int)KotoKind.Macro] = "$";
+        PrefixTexts[(int)KotoKind.Unwrap] = "*";
+        PrefixTexts[(int)KotoKind.FromEndIndex] = "^";
+        PrefixTexts[(int)KotoKind.PrefixPlus] = "+";
+        PrefixTexts[(int)KotoKind.PrefixPlusPlus] = "++";
+        PrefixTexts[(int)KotoKind.PrefixMinus] = "-";
+        PrefixTexts[(int)KotoKind.PrefixMinusMinus] = "--";
+        PrefixTexts[(int)KotoKind.Not] = Constants.NotKeyword + " ";
+        PrefixTexts[(int)KotoKind.Parenthesized] = "(";
+        PostfixTexts[(int)KotoKind.Parenthesized] = ")";
+        PostfixTexts[(int)KotoKind.PostfixIncrement] = "++";
+        PostfixTexts[(int)KotoKind.PostfixDecrement] = "--";
+    }
+
+    /// <summary>Gets or sets the operand.</summary>
+    [Key(1)]
+    public Koto Operand { get; protected set; }
+
+    /// <summary>Initializes a new instance of the <see cref="UnaryKoto"/> class for deserialization.</summary>
+    /// <param name="codeContext">The owning code context.</param>
+    internal UnaryKoto(CodeContext codeContext)
+        : base(codeContext, default)
+    {
+        this.Operand = default!;
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="UnaryKoto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The complete source span.</param>
+    /// <param name="operand">The operand.</param>
+    protected UnaryKoto(ref TokenReader reader, SourceSpan range, Koto operand)
+        : base(ref reader, range)
+    {
+        this.Operand = operand;
+        operand.Parent = this;
+    }
+
+    /// <inheritdoc/>
+    public override void WriteTo(ref IndentedStringBuilder builder)
+    {
+        if (PrefixTexts[(int)this.Akind] is { } prefix)
+        {
+            builder.Append(prefix);
+        }
+
+        this.Operand.WriteTo(ref builder);
+
+        if (PostfixTexts[(int)this.Akind] is { } postfix)
+        {
+            builder.Append(postfix);
+        }
+    }
+
+    protected override IEnumerable<Koto> GetChildNodes()
+        => [this.Operand];
+
+    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
+    {
+        if (oldKoto != this.Operand)
+        {
+            return false;
+        }
+
+        this.Operand = newKoto;
+        return true;
+    }
+}
+
+/// <summary>Represents an attribute expression.</summary>
 [TinyhandObject]
 public sealed partial class AttributeKoto : UnaryKoto
 {
@@ -21,24 +107,7 @@ public sealed partial class AttributeKoto : UnaryKoto
 
     /// <summary>Gets the attribute arguments.</summary>
     [IgnoreMember]
-    public List<Koto> Arguments { get; private set; } = [];
-
-    /// <summary>Gets a value indicating whether this is an <c>#if</c> attribute.</summary>
-    public bool IsIfAttribute
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get
-        {
-            if (this.IdentifierKoto is IdentifierNameKoto unresolvedKoto)
-            {
-                return unresolvedKoto.IdentifierName.AsSpan().SequenceEqual(Constants.IfAttribute);
-            }
-            else
-            {
-                return false;
-            }
-        }
-    }
+    public List<Koto> Arguments { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="AttributeKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
@@ -47,38 +116,23 @@ public sealed partial class AttributeKoto : UnaryKoto
     public AttributeKoto(ref TokenReader reader, SourceSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
-        // Expose invocation components for efficient attribute evaluation.
-        if (operand is InvocationKoto invocationKoto &&
-            invocationKoto.Method is IdentifierNameKoto unresolvedKoto)
-        {
-            this.IdentifierKoto = unresolvedKoto;
-            this.Arguments = invocationKoto.Arguments;
-        }
-        else
-        {
-            this.IdentifierKoto = operand;
-        }
-    }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"#{this.Operand.ToString()}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        builder.Append(Constants.SharpChar);
-        this.Operand.WriteTo(ref builder);
+        this.ExposeInvocation();
     }
 
     internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
     {
         base.RestoreAfterDeserialization(codeContext, parent);
-        if (this.Operand is InvocationKoto invocationKoto &&
-            invocationKoto.Method is IdentifierNameKoto identifierKoto)
+        this.ExposeInvocation();
+    }
+
+    [MemberNotNull(nameof(IdentifierKoto), nameof(Arguments))]
+    private void ExposeInvocation()
+    {
+        // Expose invocation components for efficient attribute evaluation.
+        if (this.Operand is InvocationKoto { Method: IdentifierNameKoto identifier } invocation)
         {
-            this.IdentifierKoto = identifierKoto;
-            this.Arguments = invocationKoto.Arguments;
+            this.IdentifierKoto = identifier;
+            this.Arguments = invocation.Arguments;
         }
         else
         {
@@ -88,9 +142,7 @@ public sealed partial class AttributeKoto : UnaryKoto
     }
 }
 
-/// <summary>
-/// Represents a macro expression.
-/// </summary>
+/// <summary>Represents a macro expression.</summary>
 [TinyhandObject]
 public sealed partial class MacroKoto : UnaryKoto
 {
@@ -105,22 +157,9 @@ public sealed partial class MacroKoto : UnaryKoto
         : base(ref reader, range, operand)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"${this.Operand.ToString()}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        builder.Append(Constants.DollarChar);
-        this.Operand.WriteTo(ref builder);
-    }
 }
 
-/// <summary>
-/// Represents an unwrap expression.
-/// </summary>
+/// <summary>Represents an unwrap expression.</summary>
 [TinyhandObject]
 public sealed partial class UnwrapKoto : UnaryKoto
 {
@@ -134,17 +173,6 @@ public sealed partial class UnwrapKoto : UnaryKoto
     public UnwrapKoto(ref TokenReader reader, SourceSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
-    }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"*{this.Operand.ToString()}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        builder.Append(Constants.AsteriskChar);
-        this.Operand.WriteTo(ref builder);
     }
 }
 
@@ -172,22 +200,9 @@ public sealed partial class FromEndIndexKoto : UnaryKoto
         : base(ref reader, range, operand)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"^{this.Operand.ToString()}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        builder.Append(Constants.CaretChar);
-        this.Operand.WriteTo(ref builder);
-    }
 }
 
-/// <summary>
-/// Represents a unary plus expression.
-/// </summary>
+/// <summary>Represents a unary plus expression.</summary>
 [TinyhandObject]
 public sealed partial class PrefixPlusKoto : UnaryKoto
 {
@@ -202,22 +217,9 @@ public sealed partial class PrefixPlusKoto : UnaryKoto
         : base(ref reader, range, operand)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"+{this.Operand.ToString()}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        builder.Append(Constants.PlusChar);
-        this.Operand.WriteTo(ref builder);
-    }
 }
 
-/// <summary>
-/// Represents a prefix increment expression.
-/// </summary>
+/// <summary>Represents a prefix increment expression.</summary>
 [TinyhandObject]
 public sealed partial class PrefixPlusPlusKoto : UnaryKoto
 {
@@ -232,23 +234,9 @@ public sealed partial class PrefixPlusPlusKoto : UnaryKoto
         : base(ref reader, range, operand)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"++{this.Operand.ToString()}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        builder.Append(Constants.PlusChar);
-        builder.Append(Constants.PlusChar);
-        this.Operand.WriteTo(ref builder);
-    }
 }
 
-/// <summary>
-/// Represents a unary minus expression.
-/// </summary>
+/// <summary>Represents a unary minus expression.</summary>
 [TinyhandObject]
 public sealed partial class PrefixMinusKoto : UnaryKoto
 {
@@ -263,22 +251,9 @@ public sealed partial class PrefixMinusKoto : UnaryKoto
         : base(ref reader, range, operand)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"-{this.Operand.ToString()}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        builder.Append(Constants.MinusChar);
-        this.Operand.WriteTo(ref builder);
-    }
 }
 
-/// <summary>
-/// Represents a prefix decrement expression.
-/// </summary>
+/// <summary>Represents a prefix decrement expression.</summary>
 [TinyhandObject]
 public sealed partial class PrefixMinusMinusKoto : UnaryKoto
 {
@@ -293,23 +268,9 @@ public sealed partial class PrefixMinusMinusKoto : UnaryKoto
         : base(ref reader, range, operand)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"--{this.Operand.ToString()}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        builder.Append(Constants.MinusChar);
-        builder.Append(Constants.MinusChar);
-        this.Operand.WriteTo(ref builder);
-    }
 }
 
-/// <summary>
-/// Represents a postfix increment expression.
-/// </summary>
+/// <summary>Represents a postfix increment expression.</summary>
 [TinyhandObject]
 public sealed partial class PostfixIncrementKoto : UnaryKoto
 {
@@ -324,23 +285,9 @@ public sealed partial class PostfixIncrementKoto : UnaryKoto
         : base(ref reader, range, operand)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Operand.ToString()}++";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.Operand.WriteTo(ref builder);
-        builder.Append(Constants.PlusChar);
-        builder.Append(Constants.PlusChar);
-    }
 }
 
-/// <summary>
-/// Represents a postfix decrement expression.
-/// </summary>
+/// <summary>Represents a postfix decrement expression.</summary>
 [TinyhandObject]
 public sealed partial class PostfixDecrementKoto : UnaryKoto
 {
@@ -355,23 +302,9 @@ public sealed partial class PostfixDecrementKoto : UnaryKoto
         : base(ref reader, range, operand)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{this.Operand.ToString()}--";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.Operand.WriteTo(ref builder);
-        builder.Append(Constants.MinusChar);
-        builder.Append(Constants.MinusChar);
-    }
 }
 
-/// <summary>
-/// Represents a logical negation expression.
-/// </summary>
+/// <summary>Represents a logical negation expression.</summary>
 [TinyhandObject]
 public sealed partial class NotKoto : UnaryKoto
 {
@@ -386,23 +319,9 @@ public sealed partial class NotKoto : UnaryKoto
         : base(ref reader, range, operand)
     {
     }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"{Constants.NotKeyword} {this.Operand.ToString()}";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        builder.Append(Constants.NotKeyword);
-        builder.AppendSpace();
-        this.Operand.WriteTo(ref builder);
-    }
 }
 
-/// <summary>
-/// Represents a parenthesized expression.
-/// </summary>
+/// <summary>Represents a parenthesized expression.</summary>
 [TinyhandObject]
 public sealed partial class ParenthesizedKoto : UnaryKoto
 {
@@ -416,76 +335,5 @@ public sealed partial class ParenthesizedKoto : UnaryKoto
     public ParenthesizedKoto(ref TokenReader reader, SourceSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
-    }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"({this.Operand.ToString()})";
-
-    /// <inheritdoc/>
-    public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        builder.Append(Constants.OpenParenthesisChar);
-        this.Operand.WriteTo(ref builder);
-        builder.Append(Constants.CloseParenthesisChar);
-    }
-}
-
-/// <summary>
-/// Provides the base representation of a unary expression.
-/// </summary>
-[TinyhandObject(ReservedKeyCount = 2)]
-public abstract partial class UnaryKoto : ExpressionKoto
-{
-    /// <summary>Gets or sets the operand.</summary>
-    [Key(1)]
-    public Koto Operand { get; protected set; }
-
-    /// <summary>Initializes a new instance of the <see cref="UnaryKoto"/> class.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete source span.</param>
-    /// <param name="operand">The operand.</param>
-    public UnaryKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range)
-    {
-        this.Operand = operand;
-        operand.Parent = this;
-    }
-
-    internal UnaryKoto(CodeContext codeContext)
-        : base(codeContext, default)
-    {
-        this.Operand = default!;
-    }
-
-    /// <inheritdoc/>
-    public override string ToString()
-        => $"Unary:{this.Operand.ToString()}";
-
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-        => this.Operand.Bind(compilation);
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        yield return this.Operand;
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (oldKoto == this.Operand)
-        {
-            this.Operand = newKoto;
-            return true;
-        }
-
-        return false;
-    }
-
-    [TinyhandOnDeserialized]
-    protected void OnDeserialized()
-    {
-        this.Operand.Parent = this;
-        this.Operand.CodeContext = this.CodeContext;
     }
 }

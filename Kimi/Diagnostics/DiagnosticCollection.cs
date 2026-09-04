@@ -12,7 +12,9 @@ public record class DiagnosticCollection
 
     public string Name { get; init; } = string.Empty;
 
-    public SourceDocument? SourceDocument { get; private set; }
+    private SourceDocument? sourceDocument;
+
+    public SourceDocument? SourceDocument => Volatile.Read(ref this.sourceDocument);
 
     public bool IsGlobal => this.Name == string.Empty || this.Name == Kimigayo.GlobalName;
 
@@ -96,9 +98,7 @@ public record class DiagnosticCollection
 
     internal void SetSourceDocument(SourceDocument sourceDocument)
     {
-        using (this.diagnostics.LockObject.EnterScope())
-        {
-            this.SourceDocument = sourceDocument;
-        }
+        // A reference store is atomic; the parse hot path must not pay for the lock.
+        Volatile.Write(ref this.sourceDocument, sourceDocument);
     }
 }

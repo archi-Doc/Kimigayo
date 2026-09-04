@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Lexing;
 
@@ -23,27 +23,13 @@ public sealed partial class BoolLiteralKoto : ExpressionKoto
     public BoolLiteralKoto(ref TokenReader reader, Token token)
         : base(ref reader, token.Span)
     {
-        if (token.Kind == TokenKind.True)
-        {
-            this.Value = true;
-        }
+        this.Value = token.Kind == TokenKind.True;
     }
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        if (this.AttributeChain is not null)
-        {
-            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
-        }
-
-        if (this.Value)
-        {
-            builder.Append(TokenKind.True.ToText());
-        }
-        else
-        {
-            builder.Append(TokenKind.False.ToText());
-        }
+        this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendSpace);
+        builder.Append(this.Value ? Constants.TrueKeyword : Constants.FalseKeyword);
     }
 }

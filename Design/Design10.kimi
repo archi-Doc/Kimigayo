@@ -1,17 +1,34 @@
 alias Kimi.Crypto
 alias Kimi.LowLevelInterface
 
-#If(os=="Linux") // Attribute-next rule.
-alias Kimi.Base.Linux
-
-#If(windows)
+#if windows
 alias Kimi.Base.Windows
+
+#if os == "windows"
+let windows = true
+
+#if windows
+    let linux = false
+    #OsAttribute let osId = 1
+
+func FuncA<s/T>(value: s/T)
+    #case s is ref and T is Comparable
+        ProcessComparableReference(value)
+
+    #case s is ref
+        ProcessReference(value)
+
+    #case s is obj
+        ProcessObject(value)
+
+    #case _
+        ProcessOther(value)
 
 // Single-line comment
 /* Multi-line
    comment */
 
-roogroup Playground.A // Represents a group that specifies an identifier by its absolute position.
+rootgroup Playground.A // Represents a group that specifies an identifier by its absolute position.
 
 // Type Semantics = s/T
 // owner, borrow, stack, ownerref, borrowref, rc, arc, unsafe,
@@ -22,64 +39,47 @@ public struct Array<s/T>
 
     // Index and Range endpoints are nonnegative isize values.
     // ^n resolves to count - n. ^0 is a valid Range boundary but not an element Index.
-    count: isize
-    capacity: isize
-    buffer: ptr
+    var count: isize
+    var capacity: isize
+    var buffer: ptr
 
-   
-
-var array = Array<owner/StructA}>.new()
+var array = Array<owner/StructA>.new()
 array[1] = StructA.new()
 var x = array[1] // borrow/StructA
 var last = array[^1] // Last element
 var middle = array[1..^1] // Excludes both element 0 and the last element
 var y = array.remove(at: 1) // owner/StructA
-func Set(isize index, s/T obj) => ()
-func Get(isize index) => s/T
+func Set(index: isize, obj: s/T) -> ()
+func Get(index: isize) -> s/T
 
 var array2 = Array<int>.new()
 
-var x = t@T{owner}
-var y = x@{borrow} // T{borrow}
-var i = 3@i32
-var refInt = i@{stack} // ref int 3
+public contract Equatable
+    // static func ==(left: Self, right: Self) -> Bool
 
-public contract @Equatable
-    static function ==(left: Self, right: Self) => Bool
-
-#Attribute() var x = 1
-$Macro
-@Contract
-
-public contract @Comparable
-    static func < (left: Self, right: Self) => bool
+public contract Comparable
+    // static func < (left: Self, right: Self) -> bool
 
 var count: i32 = 0
 let name: String = "abc"
 var items: Array<Int> = [1, 2, 3]
 var items2 = [1, 2, 3, ]
 var map: Map<String, Int> = ["A": 1, "B": 2]
-var array: Array<&owner T> = new()
-var obj = T.New() // T: stack
-var obj2 = &owner T.New() // &owner T: heap
-var movedObj <= &owner obj // obj => movedObj
-var movedObj = &move obj
-&owner obj => var movedObj
-array.Add(movedObj) // movedObj => array
+var array: Array<owner/T> = new()
 
 #Description("Kernel32 helper")
-public namespace Kernel32 // shared (no instance)
+public group Kernel32 // shared (no instance)
     public let libraryName: string = "Kernel32.dll"
     public let count = 1 // readonly
-    #LibraryImport(LibraryName) public GetStdHandle(nStdHandle: u32) => ptr
-    #LibraryImport(LibraryName) WriteFile(hFile:ptr, lpBuffer:ptr, nNumberOfBytesToWrite:u32, lpNumberOfBytesWritten:ptr, lpOverlapped:ptr) => i32
-    #LibraryImport(LibraryName) ExitProcess(
+    #LibraryImport(LibraryName) public func GetStdHandle(nStdHandle: u32) -> ptr
+    #LibraryImport(LibraryName) func WriteFile(hFile:ptr, lpBuffer:ptr, nNumberOfBytesToWrite:u32, lpNumberOfBytesWritten:ptr, lpOverlapped:ptr) -> i32
+    #LibraryImport(LibraryName) func ExitProcess(
         #Description("Exit code")
-        u32 uExitCode
-        ) => ()
+        uExitCode: u32
+        ) -> ()
 
-    public TestMethod() =>
-        @Macro()
+    public func TestMethod() ->
+        // @Macro()
         return
 
     #Layout(C)
@@ -87,15 +87,15 @@ public namespace Kernel32 // shared (no instance)
         public var Internal: usize
         public var Pointer: pointer
 
-namespace Program
+rootgroup Program
 
-struct $ :  StandardContext // Compose Context
-    public T Inject<T>()
-        => self.GetService<T>() // IServiceProvider
+struct Context // $ // :  StandardContext // Compose Context
+    public func Inject<T>() -> T
+        self.GetService<T>() // IServiceProvider
 
-#Key(0) public const string Name = "Test Program"
+#Key(0) public let Name = "Test Program"
 #Key(1)
-public const string Name = "Test Program"
+public let Name = "Test Program"
 
 // (): Group (collection of values of any type)
 // []: Array (collection of values of the same type)
@@ -103,25 +103,25 @@ public const string Name = "Test Program"
 // {}: Not used
 
 // Group: namespace, group, struct
-// Map: method:return, switch:yield, if:yield, loop:break
+// Map: func:return, switch:yield, if:yield, loop:break
 // Statement: while, for
 // Block
 
 public group Helper // namespace - alias
-    public const i32 Id = 123
-    public Method1() => int32 // use PackageName, Helper
+    public let Id: i32 = 123
+    public func Method1() -> int32 // use PackageName, Helper
         return 1
 
-    Method2() =>
+    func Method2() ->
         #Condition(Os=="Windows")
-        block Initialize
-            var func = () => 3 // () => return 4
+        // block Initialize
+            // var func1 = func () => 3 // () -> return 4
             var i = if (x == true) 1 else 0
         var i2 = if (x == true)
             1
         else
-            yield 2
-        goto Initialize
+            3 // yield 2
+        // goto Initialize
         var i3 = if (
             var z = Func()
             yield (z > 0)) 1 else 0
@@ -137,9 +137,9 @@ public group Helper // namespace - alias
 
 public struct SomeObject
     #Inject
-    IConsoleService& ConsoleService { get; }
+    // objref/IConsoleService ConsoleService { get; }
 
-    public New() => Self
+    public func New() -> Self
         var self = Self
         // self.ConsoleService = $Inject<IConsoleService>() // GetService
         return self
@@ -149,18 +149,18 @@ public struct TestStruct // group + field
     #Key(1)
     var id: i32
 
-    public New() => Self
+    public func New() -> Self
         self.id = 11
 
-    public GetId(&) => i32 // &, &owner, &rc, &arc
+    public func GetId(self: Self) -> i32
         return self.id
 
-    public GetText(&, i32 id) => string
-        return id switch
-            1 => "Test",
-            2 => 
+    public func GetText(self: Self, id: i32) -> string
+        return match id
+            1 => "Test"
+            2 => ""
 
-TestMethod()
+public func TestMethod()
     var st = TestStruct.New()
     
 
@@ -170,14 +170,14 @@ public enum TestEnum
 
 $WriteLine("Kimigayo")
 
-method Main()
-    Array<i32> array = 
+func Main()
+    var array: Array<i32> = 
     [
         1,
         2,
     ]
 
-    Array<i32> array = [
+    var array: Array<i32> = [
         1,
         2,
     ]
@@ -188,91 +188,75 @@ method Main()
     var st = i.ToString()
     loop
         var x = 1
-    switch ()
-        case ()
     return
 
 public group Example
-    public method Main() => Task
+    public func Main() -> Task
         $Console.WriteLine("Hello world!")
         context.Console.WriteLine("Hello world!")
-        Example::Example.Test()
+        Example.Example.Test()
         $Panic("")
         self.Method2(32)
-        new Class() -> var x
-        var x = new Class()
-        var y = &x
-        var z = !x
-        var a < new Class()
-        &Class b < &x
-        !Class c <- !x
-classA.x = classB.x
-classA.y <= classB.y
+        var x = Class.new()
+        var y = x@ref
         return
 
-    private static method Test()
-
-    private static method Test() => Task
+    private static func Test() -> Task
         // Block
         if (context.CancellationToken.IsCancelRequested)
             return
 
         var st = TestStruct.New()
         var st2 = Arc.New(st) // &owner Arc<TestStruct> // TそのものはThread-traversalではない
-        _ = Task.Run(async () => // Closure -> Block. Require reference analysis
+        /*_ = Task.Run(async () -> // Closure -> Block. Require reference analysis
             var i = 0
             i++
             st.Test() // Error
             st2.Test() // Success
-        )
-
-        _ = Task.Run(async () =>
-            var i = 0
-            i++
-        )
-        .ConfigureAwait(false)
+        )*/
 
 
 
 #Namespace(Kimi.Low.Windows)
 public group Helper
     #LibraryImport("kernel32.dll")
-    public static method HeapAlloc(isize hHeap, uint32 dwFlags, usize dwBytes) -> isize
+    public static func HeapAlloc(hHeap: isize, dwFlags: uint32, dwBytes: usize) -> isize
 
-    public method Method1(int x) -> int
+    public func Method1(x: i32) -> i32
         return x + 4
 
     #Condition(Architecture=="x64")
-    public method ReadTsc() -> i64
+    public func ReadTsc() -> i64
         let low: u32;
         let high: u32;
-        #Assembler(
+        #Assembler("""
             "rdtsc",
             out("eax") low,
             out("edx") high,
             options(nomem, nostack, preserves_flags)
-            )
-        return ((high as u64) << 32) | low as u64
+            """)
+        return ((high@u64) << 32) | low@u64
 
-impl ExampleImpl1
+/*impl ExampleImpl1
     int x
 
-    method Metho2(int x) int
-        return x + 1
+    func Metho2(x: i32) -> i32
+        return x + 1*/
 
-if (a == 1 &&
+if (a == 1 and
     b == 2)
-var x = [1,
-    2,]
+    var x = [1,
+        2,]
 var a = 1 +
     2
+
 var record = Record.New()
     A = 3
     C = Value.New()
         X = 1
     B = "D"
-var func = () =>
-    return
+// var func = () ->
+//     return
 
 chainMethod().Do().IsTrue()
 

@@ -37,13 +37,6 @@ public sealed partial class FunctionTypeKoto : TypeKoto
     }
 
     /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        this.Parameters.Bind(compilation);
-        this.ReturnType.Bind(compilation);
-    }
-
-    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         this.Parameters.WriteTo(ref builder);
@@ -52,10 +45,7 @@ public sealed partial class FunctionTypeKoto : TypeKoto
     }
 
     protected override IEnumerable<Koto> GetChildNodes()
-    {
-        yield return this.Parameters;
-        yield return this.ReturnType;
-    }
+        => [this.Parameters, this.ReturnType];
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {

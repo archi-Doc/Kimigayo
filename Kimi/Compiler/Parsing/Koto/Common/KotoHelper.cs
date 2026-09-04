@@ -1,8 +1,5 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Diagnostics;
-using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Text;
 using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
@@ -97,12 +94,7 @@ public static partial class KotoHelper
     {
         if (parent.ReplaceChild(oldKoto, newKoto))
         {
-            // Update the intrusive child chain; ReplaceChild owns explicit parent links.
-            oldKoto.Goshujin?.ChildLinkChain.UnsafeReplaceInstance(oldKoto, newKoto);
-            oldKoto.Goshujin = default;
-
             // Preserve the source metadata associated with the replaced expression.
-            newKoto.DiagnosticCollection = oldKoto.DiagnosticCollection;
             newKoto.Span = oldKoto.Span;
             newKoto.CodeContext = oldKoto.CodeContext;
             return true;
@@ -112,60 +104,84 @@ public static partial class KotoHelper
     }
 
     /// <summary>Parses and validates a dot-separated namespace name.</summary>
+    /// <remarks>
+    /// When the name is written without interior whitespace, the returned span aliases the
+    /// source text and no string is allocated.
+    /// </remarks>
     /// <param name="reader">The token reader.</param>
     /// <returns>The validated namespace name.</returns>
-    public static string ValidateAndGetNamespace(ref TokenReader reader)
+    public static ReadOnlySpan<char> ValidateAndGetNamespace(ref TokenReader reader)
     {
         if (reader.IsEnd)
         {
-            return string.Empty;
+            return default;
         }
 
-        var sb = new StringBuilder();
         // Qualified names alternate between identifiers and dots.
-        var flag = true;
-        while (reader.TryRead(out var token))
+        var expectsIdentifier = true;
+        var isContiguous = true;
+        Token first = default;
+        Token last = default;
+        StringBuilder? fallback = default;
+        while (reader.CanRead && reader.CurrentTokenKind != TokenKind.Separator)
         {
-            if (token.Kind == TokenKind.Separator)
+            var token = reader.Read();
+            if (expectsIdentifier)
             {
-                break;
-            }
-
-            if (flag)
-            {
-                flag = false;
                 var span = reader.GetSpan(token);
-                if (IdentifierHelper.IsValidIdentifier(span))
-                {
-                    sb.Append(span);
-                }
-                else
+                if (!IdentifierHelper.IsValidIdentifier(span))
                 {
                     reader.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
                     break;
                 }
+
+                fallback?.Append(span);
+            }
+            else if (token.Kind == TokenKind.Dot)
+            {
+                fallback?.Append(Constants.DotChar);
             }
             else
             {
-                flag = true;
-                if (token.Kind == TokenKind.Dot)
-                {
-                    sb.Append(Constants.DotChar);
-                }
-                else
-                {
-                    reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token.Kind);
-                    break;
-                }
+                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token.Kind);
+                break;
             }
+
+            if (first.Kind == TokenKind.Invalid)
+            {
+                first = token;
+            }
+            else if (isContiguous && token.Start != last.Span.End)
+            {
+                // Whitespace inside the name: materialize the text collected so far.
+                isContiguous = false;
+                fallback = new StringBuilder();
+                fallback.Append(reader.GetSpan(new(TokenKind.Identifier, SourceSpan.FromBounds(first.Start, last.Span.End))));
+                fallback.Append(reader.GetSpan(token));
+            }
+
+            last = token;
+            expectsIdentifier = !expectsIdentifier;
         }
 
-        if (flag)
+        if (expectsIdentifier)
         {
             reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.IdentifierExpected_Kd);
         }
 
-        return sb.ToString();
+        if (reader.CurrentTokenKind == TokenKind.Separator)
+        {
+            reader.Advance();
+        }
+
+        if (fallback is not null)
+        {
+            return fallback.ToString();
+        }
+
+        return first.Kind == TokenKind.Invalid
+            ? default
+            : reader.GetSpan(new(TokenKind.Identifier, SourceSpan.FromBounds(first.Start, last.Span.End)));
     }
 
     /// <summary>Parses a dot-separated qualified name.</summary>
@@ -173,54 +189,43 @@ public static partial class KotoHelper
     /// <returns>The parsed name segments.</returns>
     public static List<string> ParseQualifiedNameSegments(ref TokenReader reader)
     {
+        var list = new List<string>();
         if (reader.IsEnd)
         {
-            return [];
+            return list;
         }
 
-        var list = new List<string>();
         // Qualified names alternate between identifiers and dots.
-        var flag = true;
+        var expectsIdentifier = true;
         while (reader.CanRead)
         {
-            var token = reader.CurrentToken;
-            reader.Advance();
-
+            var token = reader.Read();
             if (token.Kind == TokenKind.Separator)
             {
                 break;
             }
 
-            if (flag)
+            if (expectsIdentifier)
             {
-                flag = false;
                 var span = reader.GetSpan(token);
-                if (IdentifierHelper.IsValidIdentifier(span))
-                {
-                    list.Add(span.ToString());
-                }
-                else
+                if (!IdentifierHelper.IsValidIdentifier(span))
                 {
                     reader.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
                     break;
                 }
+
+                list.Add(reader.GetIdentifier(token));
             }
-            else
+            else if (token.Kind != TokenKind.Dot)
             {
-                flag = true;
-                if (token.Kind == TokenKind.Dot)
-                {
-                    // Separators are implied by the returned list.
-                }
-                else
-                {
-                    reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token);
-                    break;
-                }
+                reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, token);
+                break;
             }
+
+            expectsIdentifier = !expectsIdentifier;
         }
 
-        if (flag)
+        if (expectsIdentifier)
         {
             reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.IdentifierExpected_Kd);
         }

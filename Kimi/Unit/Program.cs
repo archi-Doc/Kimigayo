@@ -39,7 +39,7 @@ public class Program
         SuppressConsoleOutput = args.StartsWith($"{LspCommand.Name}", StringComparison.OrdinalIgnoreCase);
         var builder = new CommandUnit.Builder();
         var unit = builder.Build();
-        root = unit.Context.Root;
+        root = unit.Context.ExecutionRoot;
 
         await unit.RunAsync(new(args));
 

@@ -5,23 +5,37 @@ using Kimi.Command;
 
 namespace Kimi;
 
+/// <summary>
+/// Represents a build solution containing one or more Kimigayo projects.
+/// </summary>
+/// <remarks>A solution is the Kimigayo equivalent of a C# solution.</remarks>
 public class Solution
 {
     private readonly Kimigayo kimigayo;
 
+    /// <summary>Gets the deserialized solution-file settings.</summary>
     public SolutionFile SolutionFile { get; private set; } = new();
 
+    /// <summary>Gets the command-line options shared by projects in this solution.</summary>
     public KimiOptions KimiOptions { get; private set; } = new();
 
+    /// <summary>Gets the standalone Kimi source selected for an implicit project.</summary>
     public string SingleFile { get; private set; } = string.Empty;
 
+    /// <summary>Gets the loaded projects keyed by project-file path.</summary>
     public Dictionary<string, Project> Projects { get; private set; } = new();
 
+    /// <summary>Initializes a new instance of the <see cref="Solution"/> class.</summary>
+    /// <param name="kimigayo">The owning compiler service.</param>
     public Solution(Kimigayo kimigayo)
     {
         this.kimigayo = kimigayo;
     }
 
+    /// <summary>Attempts to read a <c>.kimisln</c> file.</summary>
+    /// <param name="path">The solution-file path.</param>
+    /// <param name="logger">The optional load logger.</param>
+    /// <returns><see langword="true"/> when the file was loaded.</returns>
     public bool TryReadFile(string path, ILogger? logger = default)
     {
         byte[] utf8;
@@ -60,6 +74,8 @@ public class Solution
         return true;
     }
 
+    /// <summary>Builds every loaded project using the solution options.</summary>
+    /// <returns>A task whose result indicates whether build dispatch completed.</returns>
     public async Task<bool> Build()
     {
         foreach (var x in this.Projects.Values)
@@ -71,6 +87,10 @@ public class Solution
         return true;
     }
 
+    /// <summary>Discovers solution and project files for a build command.</summary>
+    /// <param name="logger">The command logger.</param>
+    /// <param name="options">The shared compiler options.</param>
+    /// <param name="args">Command-line paths.</param>
     public void LoadForBuild(ILogger logger, KimiOptions options, string[] args)
     {
         var projectList = new List<string>();
@@ -160,6 +180,10 @@ SolutionLoaed:
         return;
     }
 
+    /// <summary>Discovers a project or standalone Kimi source for a run command.</summary>
+    /// <param name="logger">The command logger.</param>
+    /// <param name="options">The shared compiler options.</param>
+    /// <param name="args">Command-line paths.</param>
     public void LoadForRun(ILogger logger, KimiOptions options, string[] args)
     {
         string kimiFile = string.Empty;
@@ -236,6 +260,8 @@ SolutionLoaed:
         return;
     }
 
+    /// <summary>Loads discovered projects and creates an implicit project for a standalone source.</summary>
+    /// <param name="logger">The project-load logger.</param>
     public void PrepareProject(ILogger logger)
     {
         foreach (var x in this.SolutionFile.Projects)

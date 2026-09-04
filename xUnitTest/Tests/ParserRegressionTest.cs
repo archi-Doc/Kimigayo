@@ -15,7 +15,7 @@ namespace XunitTest;
 
 public class ParserRegressionTest
 {
-    private static readonly PropertyInfo KotoListProperty = typeof(CollectionKoto).GetProperty(
+    private static readonly PropertyInfo KotoListProperty = typeof(DeclarationContainerKoto).GetProperty(
         "KotoList",
         BindingFlags.Instance | BindingFlags.NonPublic)!;
 
@@ -144,7 +144,83 @@ public class ParserRegressionTest
         Assert.Empty(diagnostics);
         var group = root.GetOrAddGroup("A", TokenKind.Group, default, default);
         Assert.Equal("A", group.Name);
-        Assert.IsType<FieldKoto>(GetChildren(group).Single());
+        Assert.IsType<PropertyKoto>(GetChildren(group).Single());
+    }
+
+    [Fact]
+    public void ParsesAttributedInteropDeclarationsInGroup()
+    {
+        const string Source = """
+            public group Kernel32
+                #LibraryImport(LibraryName) func ExitProcess(
+                    #Description("Exit code")
+                    uExitCode: u32
+                    ) -> ()
+
+                #Layout(C)
+                public struct OVERLAPPED
+            """;
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
+
+        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        Assert.True(
+            diagnostics.Length == 0,
+            string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
+
+        var kernel32 = Assert.IsType<GroupKoto>(
+            Assert.Single(kotonoha.RootKoto.NestedDeclarationContainers, x => x.Name == "Kernel32"));
+        Assert.True(kernel32.Modifier.HasFlag(ModifierKind.Public));
+
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(kernel32.Members));
+        Assert.Equal("LibraryImport", GetAttributeName(function.AttributeChain));
+        var parameter = Assert.Single(function.Parameters);
+        Assert.Equal("uExitCode", parameter.ExternalName);
+        Assert.Equal("Description", GetAttributeName(parameter.AttributeChain));
+        Assert.Same(function, parameter.AttributeChain?.Parent);
+
+        var structure = Assert.IsType<StructKoto>(
+            Assert.Single(kernel32.NestedDeclarationContainers, x => x.Name == "OVERLAPPED"));
+        Assert.True(structure.Modifier.HasFlag(ModifierKind.Public));
+        Assert.Equal("Layout", GetAttributeName(structure.AttributeChain));
+
+        var bytes = TinyhandSerializer.Serialize(kotonoha);
+        var restored = new Kotonoha(compilation);
+        TinyhandSerializer.DeserializeObject(bytes, ref restored);
+        var restoredKotonoha = restored ?? throw new InvalidOperationException();
+        restoredKotonoha.OnDeserialized(compilation);
+        var restoredKernel32 = Assert.IsType<GroupKoto>(
+            Assert.Single(restoredKotonoha.RootKoto.NestedDeclarationContainers, x => x.Name == "Kernel32"));
+        var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(restoredKernel32.Members));
+        Assert.Equal("Description", GetAttributeName(Assert.Single(restoredFunction.Parameters).AttributeChain));
+
+        static string GetAttributeName(AttributeKoto? attribute)
+            => Assert.IsType<IdentifierNameKoto>(Assert.IsType<InvocationKoto>(attribute?.Operand).Method).IdentifierName;
+    }
+
+    [Fact]
+    public void ParsesBodylessFunctionAtEndOfGroupBeforeNextGroup()
+    {
+        const string Source = """
+            public group Kernel32 // shared (no instance)
+                #LibraryImport(LibraryName) public func GetStdHandle(nStdHandle: u32) -> ptr
+
+            public group Helper // namespace - alias
+                public let Id: i32 = 123
+            """;
+
+        var (root, diagnostics) = Parse(Source);
+
+        Assert.Empty(diagnostics);
+
+        var kernel32 = Assert.IsType<GroupKoto>(
+            Assert.Single(root.NestedDeclarationContainers, x => x.Name == "Kernel32"));
+        Assert.IsType<FunctionKoto>(Assert.Single(kernel32.Members));
+
+        var helper = Assert.IsType<GroupKoto>(
+            Assert.Single(root.NestedDeclarationContainers, x => x.Name == "Helper"));
+        Assert.IsType<PropertyKoto>(Assert.Single(helper.Members));
     }
 
     [Fact]
@@ -298,7 +374,7 @@ public class ParserRegressionTest
         Assert.IsType<IdentifierNameKoto>(typeAnd.Left);
         Assert.IsType<ParenthesizedKoto>(typeAnd.Right);
 
-        Assert.IsType<FieldKoto>(GetChildren(type).Single());
+        Assert.IsType<PropertyKoto>(GetChildren(type).Single());
 
         var builder = default(IndentedStringBuilder);
         try
@@ -374,7 +450,7 @@ public class ParserRegressionTest
         var constraint = Assert.Single(type.TypeConstraints);
         Assert.Equal("T", Assert.IsType<IdentifierNameKoto>(constraint.Left).IdentifierName);
         Assert.Equal("FirstConstraint", Assert.IsType<IdentifierNameKoto>(constraint.Right).IdentifierName);
-        Assert.Equal(2, GetChildren(type).OfType<FieldKoto>().Count());
+        Assert.Equal(2, GetChildren(type).OfType<PropertyKoto>().Count());
 
         var builder = default(IndentedStringBuilder);
         try
@@ -399,9 +475,6 @@ public class ParserRegressionTest
         var source = """
             public open struct TestStruct<s/C> origin a, b
                 C is Comparable
-
-                struct Nested
-                    var value: C
 
                 #Example
                 var item: obj/Container<C> = value
@@ -440,9 +513,9 @@ public class ParserRegressionTest
             Assert.All(type.GenericArguments, argument => Assert.Same(type, argument.Parent));
             Assert.All(type.TypeConstraints, constraint => Assert.Same(type, constraint.Parent));
 
-            var fields = GetChildren(type).OfType<FieldKoto>().ToArray();
-            Assert.All(fields, field => Assert.Same(type, field.Parent));
-            var item = Assert.Single(fields, field => field.NameKoto.IdentifierName == "item");
+            var properties = GetChildren(type).OfType<PropertyKoto>().ToArray();
+            Assert.All(properties, property => Assert.Same(type, property.Parent));
+            var item = Assert.Single(properties, property => property.NameKoto.IdentifierName == "item");
             var attribute = Assert.IsType<AttributeKoto>(item.AttributeChain);
             Assert.Equal("Example", Assert.IsType<IdentifierNameKoto>(attribute.IdentifierKoto).IdentifierName);
 
@@ -479,14 +552,11 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void ParsesOrderedTypeDeclarationsWithoutOrderWarning()
+    public void ParsesOrderedStructMembersWithoutOrderWarning()
     {
         var source = """
             struct Ordered
                 Self is Interface
-
-                struct Nested
-                    var nestedField: i32
 
                 var field: i32
 
@@ -501,15 +571,12 @@ public class ParserRegressionTest
         Assert.Single(type.TypeConstraints);
         Assert.Collection(
             GetChildren(type),
-            x => Assert.IsType<FieldKoto>(x),
+            x => Assert.IsType<PropertyKoto>(x),
             x => Assert.IsType<FunctionKoto>(x));
-
-        var nested = Assert.IsType<StructKoto>(type.GetOrAddGroup("Nested", TokenKind.Struct, default, default));
-        Assert.IsType<FieldKoto>(Assert.Single(GetChildren(nested)));
     }
 
     [Fact]
-    public void WarnsForOutOfOrderTypeDeclarationsButParsesThem()
+    public void WarnsForOutOfOrderStructMembersButParsesThem()
     {
         var source = """
             struct Mixed
@@ -517,9 +584,6 @@ public class ParserRegressionTest
                     return
 
                 var field: i32
-
-                struct Nested
-                    var nestedField: i32
 
                 Self is Interface
             """;
@@ -529,7 +593,7 @@ public class ParserRegressionTest
         var warnings = diagnostics
             .Where(x => x.Entry.Name == nameof(DiagnosticCode.DeclarationOrderWarning_Kd))
             .ToArray();
-        Assert.Equal(3, warnings.Length);
+        Assert.Equal(2, warnings.Length);
         Assert.All(warnings, x => Assert.Equal(DiagnosticSeverity.Warning, x.Entry.Severity));
 
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("Mixed", TokenKind.Struct, default, default));
@@ -537,14 +601,11 @@ public class ParserRegressionTest
         Assert.Collection(
             GetChildren(type),
             x => Assert.IsType<FunctionKoto>(x),
-            x => Assert.IsType<FieldKoto>(x));
-
-        var nested = Assert.IsType<StructKoto>(type.GetOrAddGroup("Nested", TokenKind.Struct, default, default));
-        Assert.IsType<FieldKoto>(Assert.Single(GetChildren(nested)));
+            x => Assert.IsType<PropertyKoto>(x));
     }
 
     [Fact]
-    public void ParsesIdentifierExpressionInTypeBody()
+    public void RejectsIdentifierExpressionInStructBody()
     {
         var source = """
             struct A
@@ -554,16 +615,10 @@ public class ParserRegressionTest
 
         var (root, diagnostics) = Parse(source);
 
-        Assert.Empty(diagnostics);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnexpectedToken_Kd), diagnostic.Entry.Name);
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
-        Assert.Collection(
-            GetChildren(type),
-            x =>
-            {
-                var invocation = Assert.IsType<InvocationKoto>(x);
-                Assert.IsType<MemberAccessKoto>(invocation.Method);
-            },
-            x => Assert.IsType<FieldKoto>(x));
+        Assert.IsType<PropertyKoto>(Assert.Single(GetChildren(type)));
     }
 
     [Theory]
@@ -640,6 +695,56 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void ParsesLabeledAndAttributedInvocationArguments()
+    {
+        const string Source = "var y = array.remove(at: 1, #Attribute(2) \"One\")";
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        AssertInvocation(kotonoha);
+
+        var bytes = TinyhandSerializer.Serialize(kotonoha);
+        var deserialized = new Kotonoha(compilation);
+        TinyhandSerializer.DeserializeObject(bytes, ref deserialized);
+        var restored = deserialized ?? throw new InvalidOperationException();
+        restored.OnDeserialized(compilation);
+        AssertInvocation(restored);
+
+        var builder = default(IndentedStringBuilder);
+        try
+        {
+            restored.RootKoto.UnparseAll(ref builder);
+            Assert.Contains(Source, builder.ToString(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+
+        static void AssertInvocation(Kotonoha kotonoha)
+        {
+            var field = Assert.IsType<FieldKoto>(GetChildren(kotonoha.RootKoto).Single());
+            var invocation = Assert.IsType<InvocationKoto>(field.InitializerKoto);
+            Assert.IsType<MemberAccessKoto>(invocation.Method);
+            Assert.Collection(
+                invocation.ArgumentLabels,
+                label => Assert.Equal("at", label),
+                label => Assert.Null(label));
+            Assert.IsType<NumberLiteralKoto>(invocation.Arguments[0]);
+
+            var text = Assert.IsType<StringLiteralKoto>(invocation.Arguments[1]);
+            Assert.Equal("One", text.Literal);
+            var attribute = Assert.IsType<AttributeKoto>(text.AttributeChain);
+            Assert.Equal("Attribute", Assert.IsType<IdentifierNameKoto>(attribute.IdentifierKoto).IdentifierName);
+            Assert.Single(attribute.Arguments);
+            Assert.IsType<NumberLiteralKoto>(attribute.Arguments[0]);
+            Assert.Same(text, attribute.Parent);
+        }
+    }
+
+    [Fact]
     public void ExpressionSpansCoverCompleteSyntax()
     {
         const string Source = "var result = -a + target.method(value)";
@@ -693,6 +798,250 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void EarlyCompileTimeIfSelectsKnownTargetConditions()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            #if windows
+            var byOsFlag = 1
+            #if windows or linux
+            var byCombinedFlags = 2
+            #if os == "windows" or os == "linux"
+            var byOsName = 3
+            #if windows and pointerWidth == 64
+            var byPointerWidth = 4
+            #if linux
+            var excluded = 5
+            #if debug
+            var debugOnly = 6
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var names = GetChildren(kotonoha.RootKoto)
+            .OfType<FieldKoto>()
+            .Select(x => x.NameKoto.IdentifierName)
+            .ToArray();
+        Assert.Equal(["byOsFlag", "byCombinedFlags", "byOsName", "byPointerWidth"], names);
+    }
+
+    [Fact]
+    public void DebugCompileTimeVariableComesFromBuildOptions()
+    {
+        var compilation = Compilation.CreateForTest();
+        compilation.Project.KimiOptions.Debug = true;
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#if debug\nvar debugOnly = 1");
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Equal("debugOnly", Assert.IsType<FieldKoto>(Assert.Single(GetChildren(kotonoha.RootKoto))).NameKoto.IdentifierName);
+    }
+
+    [Fact]
+    public void DeferredCompileTimeIfIsKeptAsDedicatedKoto()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#if genericCondition\nvar specialized = 1");
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var directive = Assert.IsType<CompileTimeIfKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
+        Assert.Equal("genericCondition", Assert.IsType<IdentifierNameKoto>(directive.Condition).IdentifierName);
+        Assert.Equal("specialized", Assert.IsType<FieldKoto>(directive.Target).NameKoto.IdentifierName);
+    }
+
+    [Fact]
+    public void PascalCaseIfRemainsAnOrdinaryAttribute()
+    {
+        var (root, diagnostics) = Parse("#If(false)\nvar attributed = 1");
+
+        Assert.Empty(diagnostics);
+        var field = Assert.IsType<FieldKoto>(Assert.Single(GetChildren(root)));
+        var attribute = Assert.IsType<AttributeKoto>(field.AttributeChain);
+        Assert.Equal("If", Assert.IsType<IdentifierNameKoto>(attribute.IdentifierKoto).IdentifierName);
+        Assert.Single(attribute.Arguments);
+    }
+
+    [Fact]
+    public void EarlyFalseCompileTimeIfDoesNotParseItsTargetKoto()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            #if linux
+            var incomplete =
+            var retained = 1
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Equal("retained", Assert.IsType<FieldKoto>(Assert.Single(GetChildren(kotonoha.RootKoto))).NameKoto.IdentifierName);
+    }
+
+    [Fact]
+    public void CompileTimeIfSelectsDeclarationContainerMembers()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            struct TargetSpecific
+                #if windows
+                var retained: i32
+                #if linux
+                var excluded: i32
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var structure = Assert.Single(kotonoha.RootKoto.NestedDeclarationContainers);
+        Assert.Equal("retained", Assert.IsType<PropertyKoto>(Assert.Single(structure.Members)).NameKoto.IdentifierName);
+    }
+
+    [Fact]
+    public void CompileTimeCaseSelectsFirstKnownMatchingArm()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            func select()
+                #case linux
+                    var excluded = 1
+                #case windows
+                    var selected = 2
+                #case _
+                    var fallback = 3
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
+        var selectedBody = Assert.IsType<CodeBlockKoto>(Assert.Single(function.Body!.Items));
+        Assert.Equal("selected", Assert.IsType<FieldKoto>(Assert.Single(selectedBody.Items)).NameKoto.IdentifierName);
+    }
+
+    [Fact]
+    public void CompileTimeCaseRetainsDeferredGenericSelection()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            func select<s/T>()
+                #case T is i32
+                    var specialized = 1
+                #case _
+                    var fallback = 2
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
+        var group = Assert.IsType<CompileTimeCaseGroupKoto>(Assert.Single(function.Body!.Items));
+        Assert.Collection(
+            group.Arms,
+            arm =>
+            {
+                var condition = Assert.IsType<IsKoto>(arm.Condition);
+                Assert.Equal("T", Assert.IsType<IdentifierNameKoto>(condition.Left).IdentifierName);
+                Assert.Equal("i32", Assert.IsType<TypeSemanticsKoto>(condition.Right).Identifier);
+            },
+            arm => Assert.Null(arm.Condition));
+
+        var bytes = TinyhandSerializer.Serialize(kotonoha);
+        var restored = new Kotonoha(compilation);
+        TinyhandSerializer.DeserializeObject(bytes, ref restored);
+        restored!.OnDeserialized(compilation);
+        var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
+        var restoredGroup = Assert.IsType<CompileTimeCaseGroupKoto>(Assert.Single(restoredFunction.Body!.Items));
+        Assert.Equal(2, restoredGroup.Arms.Count);
+        Assert.All(restoredGroup.ChildNodes, child => Assert.Same(restoredGroup, child.Parent));
+    }
+
+    [Fact]
+    public void CompileTimeCaseDiagnosesInvalidFallbackAndExhaustiveness()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            func invalidFallback()
+                #case _
+                    return
+                #case _
+                    return
+
+            func nonExhaustive()
+                #case linux
+                    return
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        var names = kotonoha.DiagnosticCollection.GetArray().Select(x => x.Entry.Name).ToArray();
+        Assert.Contains(nameof(DiagnosticCode.CompileTimeCaseFallbackMustBeLast_Kd), names);
+        Assert.Contains(nameof(DiagnosticCode.DuplicateCompileTimeCaseFallback_Kd), names);
+        Assert.Contains(nameof(DiagnosticCode.NonExhaustiveCompileTimeCase_Kd), names);
+    }
+
+    [Fact]
+    public void CompileTimeCaseEvaluatesConditionsAfterSelectedArm()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            func select()
+                #case windows
+                    return
+                #case 1
+                    return
+                #case _
+                    return
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        var diagnostic = Assert.Single(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Equal(nameof(DiagnosticCode.ConditionMustBeBool_Kd), diagnostic.Entry.Name);
+    }
+
+    [Fact]
+    public void EarlyFalseCompileTimeIfSkipsAnEntireCaseGroup()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            func select()
+                #if linux
+                #case windows
+                    var firstExcluded =
+                #case _
+                    var fallbackExcluded =
+                var retained = 1
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
+        Assert.Equal("retained", Assert.IsType<FieldKoto>(Assert.Single(function.Body!.Items)).NameKoto.IdentifierName);
+    }
+
+    [Fact]
     public void FloatingPointLiteralKeepsItsNumericCategoryWhenWritten()
     {
         var (root, diagnostics) = Parse("var result = 1.0");
@@ -723,6 +1072,8 @@ public class ParserRegressionTest
         return (kotonoha.RootKoto, kotonoha.DiagnosticCollection.GetArray());
     }
 
-    private static List<Koto> GetChildren(CollectionKoto group)
-        => (List<Koto>)KotoListProperty.GetValue(group)!;
+    private static List<Koto> GetChildren(DeclarationContainerKoto group)
+        => ReferenceEquals(group, group.Kotonoha.RootKoto)
+            ? group.Kotonoha.GeneratedFunction?.Body?.Items.ToList() ?? []
+            : (List<Koto>)KotoListProperty.GetValue(group)!;
 }

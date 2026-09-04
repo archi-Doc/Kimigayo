@@ -3,7 +3,7 @@
 namespace Kimi.Compiler;
 
 /// <summary>
-/// Identifies a Kotonoha dependency by name and version.
+/// Identifies an external Kotonoha library dependency requested by a project.
 /// </summary>
 [TinyhandObject(ImplicitMemberNameAsKey = true)]
 public partial record class KotonohaIdentifier
@@ -14,7 +14,7 @@ public partial record class KotonohaIdentifier
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets the requested dependency version.
+    /// Gets or sets the requested dependency version or version constraint.
     /// </summary>
     public string Version { get; set; } = string.Empty;
 }

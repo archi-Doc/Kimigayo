@@ -1,10 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using System.Text;
-using System.Xml.Linq;
 using Arc.Collections;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
@@ -13,11 +10,20 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler;
 
 /// <summary>
-/// Represents a named source unit and its parsed Koto tree.
+/// Represents a named library source unit built from one or more Kimi source documents.
 /// </summary>
+/// <remarks>
+/// A Kotonoha is the compiler's library boundary. It owns one merged Koto syntax tree,
+/// diagnostics, and any generated function used to contain executable top-level syntax.
+/// A project's application output is represented by its primary Kotonoha; referenced
+/// libraries are represented by additional Kotonoha instances.
+/// </remarks>
 [TinyhandObject]
 public sealed partial class Kotonoha
 {
+    /// <summary>The initial depth reserved by the Koto index walk.</summary>
+    private const int DefaultKotoIndexCapacity = 64;
+
     /// <summary>
     /// Gets the diagnostics associated with this source unit.
     /// </summary>
@@ -53,17 +59,18 @@ public sealed partial class Kotonoha
     /// </summary>
     [Key(3)]
     public GroupKoto RootKoto { get; private set; }
-    // public Utf16Hashtable<NamespaceKoto> Namespaces { get; private set; } = new();
 
-    // [Key(4)]
-    // public List<KimiSource> SourceList { get; private set; } = [];
-
-    [IgnoreMember]
-    private readonly Utf16Hashtable<GroupKoto> qualifiedNameToGroupKoto = new();
+    /// <summary>
+    /// Gets the generated function that owns executable top-level syntax.
+    /// </summary>
+    [Key(4)]
+    public FunctionKoto? GeneratedFunction { get; private set; }
 
     [IgnoreMember]
     private readonly UInt64Hashtable<Koto> kotoIdToKoto = new();
-    // private Koto[] kotoArray = [];
+
+    [IgnoreMember]
+    private readonly object kotoIndexLock = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Kotonoha"/> class.
@@ -71,8 +78,13 @@ public sealed partial class Kotonoha
     /// <param name="compilation">The owning compilation.</param>
     /// <param name="name">The source unit name.</param>
     /// <param name="url">The source unit URL or path.</param>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     public Kotonoha(Compilation compilation, string name, string url)
     {
+        ArgumentNullException.ThrowIfNull(compilation);
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(url);
+
         this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(name);
         this.Compilation = compilation;
         this.Name = name;
@@ -81,8 +93,6 @@ public sealed partial class Kotonoha
 
         var codeContext = new CodeContext(this);
         this.RootKoto = new(codeContext, default, default);
-
-        // codeContext.CurrentGroup = this.Root;
     }
 
     /// <summary>
@@ -100,9 +110,15 @@ public sealed partial class Kotonoha
     /// <param name="compilation">The compilation that will own the restored source unit.</param>
     public void OnDeserialized(Compilation compilation)
     {
+        ArgumentNullException.ThrowIfNull(compilation);
+
         this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(this.Name);
         this.Compilation = compilation;
         this.RootKoto.RestoreAfterDeserialization(new CodeContext(this), default);
+        lock (this.kotoIndexLock)
+        {
+            this.kotoIdToKoto.Clear();
+        }
     }
 
     /// <summary>
@@ -118,9 +134,7 @@ public sealed partial class Kotonoha
     /// <param name="diagnosticCollection">An optional diagnostic destination.</param>
     /// <returns>A new code context.</returns>
     public CodeContext CreateCodeContext(DiagnosticCollection? diagnosticCollection = null)
-    {
-        return new(this, diagnosticCollection);
-    }
+        => new(this, diagnosticCollection);
 
     /// <summary>
     /// Attempts to find a Koto node by its identifier.
@@ -128,33 +142,38 @@ public sealed partial class Kotonoha
     /// <param name="kotoId">The Koto identifier.</param>
     /// <param name="koto">The matching node, if found.</param>
     /// <returns><see langword="true"/> when a matching node is found.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryGetKoto(ulong kotoId, [MaybeNullWhen(false)] out Koto koto)
     {
-        return this.kotoIdToKoto.TryGetValue(kotoId, out koto);
-
-        /*var kotoId = (uint)id;
-        if (this.Id != (uint)(id >> 32) ||
-            kotoId >= this.kotoArray.Length)
+        lock (this.kotoIndexLock)
         {
-            koto = default;
-            return false;
-        }
+            if (this.kotoIdToKoto.TryGetValue(kotoId, out koto) && this.IsAttachedToRoot(koto))
+            {
+                return true;
+            }
 
-        koto = this.kotoArray[kotoId];
-        return true;*/
+            this.RebuildKotoIndex();
+            return this.kotoIdToKoto.TryGetValue(kotoId, out koto);
+        }
     }
 
     /// <summary>
     /// Tokenizes and parses a source document into this source unit.
     /// </summary>
     /// <param name="sourceDocument">The source document to add.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="sourceDocument"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// Declarations are merged into <see cref="RootKoto"/>. Executable top-level local bindings,
+    /// statements, expressions, and functions are placed in <see cref="GeneratedFunction"/>.
+    /// </remarks>
     public void AddSource(SourceDocument sourceDocument)
     {
+        ArgumentNullException.ThrowIfNull(sourceDocument);
+
         var path = sourceDocument.Path;
-        if (!string.IsNullOrEmpty(this.Compilation.Project.Directory))
-        {
-            path = Path.GetRelativePath(this.Compilation.Project.Directory, path);
+        var directory = this.Compilation.Project.Directory;
+        if (path.Length > 0 && directory.Length > 0)
+        {// Path.GetRelativePath rejects an empty path.
+            path = Path.GetRelativePath(directory, path);
         }
 
         var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
@@ -167,12 +186,12 @@ public sealed partial class Kotonoha
             tokenizer.ReadAll();
             if (this.Compilation.Project.KimiOptions.DumpToken)
             {
-                this.DumpToken(sourceDocument.Path, tokenizer.ToReadOnlySequence());
+                DumpToken(sourceDocument.Path, tokenizer.Tokens);
             }
 
             // Token to Koto
             var tokenReader = new TokenReader(codeContext, ref tokenizer);
-            this.Parse(ref tokenReader);
+            this.RootKoto.Parse(ref tokenReader);
         }
         finally
         {
@@ -180,68 +199,81 @@ public sealed partial class Kotonoha
         }
     }
 
-    private void Parse(ref TokenReader reader)
+    /// <summary>Adds executable top-level syntax to the generated function.</summary>
+    /// <param name="codeContext">The parsing context that produced the syntax.</param>
+    /// <param name="item">The syntax node to add.</param>
+    /// <param name="hasTrailingExpression">Whether this item supplies the generated body value.</param>
+    internal void AddGeneratedFunctionItem(CodeContext codeContext, Koto item, bool hasTrailingExpression)
     {
-        while (reader.CanRead)
+        var generatedFunction = this.GeneratedFunction;
+        if (generatedFunction is null)
         {
-            // Attributes and modifiers belong to the declaration that follows them.
-            Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
-            if (isEnd)
-            {
-                return;
-            }
+            generatedFunction = new FunctionKoto(codeContext, Constants.GeneratedFunctionName) { Parent = this.RootKoto, };
+            this.GeneratedFunction = generatedFunction;
+        }
 
-            if (reader.CurrentTokenKind == TokenKind.Alias)
-            {
-                reader.Advance();
-                var list = KotoHelper.ParseQualifiedNameSegments(ref reader);
-                var aliasKoto = new AliasKoto(ref reader, list);
-                if (!reader.IsExcluded)
-                {
-                    this.RootKoto.AddLast(aliasKoto);
-                }
+        generatedFunction.AddGeneratedItem(item, hasTrailingExpression);
+    }
 
-                continue;
+    /// <summary>Removes the generated function, if present.</summary>
+    internal void ClearGeneratedFunction()
+        => this.GeneratedFunction = default;
+
+    private static void DumpToken(string path, ReadOnlySpan<Token> tokens)
+    {
+        // Enum.ToString() returns the cached member name, so only the builder grows here.
+        var sb = new StringBuilder(Math.Min(tokens.Length * 12, 1 << 16));
+        foreach (var token in tokens)
+        {
+            if (token.Kind == TokenKind.Separator)
+            {
+                sb.AppendLf();
             }
             else
             {
-                // Let the root group handle every other top-level declaration.
-                this.RootKoto.Parse(ref reader, true);
-            }
-        }
-    }
-
-    private void DumpToken(string path, ReadOnlySequence<Token> sequence)
-    {
-        var tokenPath = Path.ChangeExtension(path, Constants.TokenExtension);
-        if (tokenPath is null)
-        {
-            return;
-        }
-
-        var sb = new StringBuilder();
-        foreach (var y in sequence)
-        {
-            foreach (var x in y.Span)
-            {
-                if (x.Kind == TokenKind.Separator)
-                {
-                    sb.AppendLf();
-                }
-                else
-                {
-                    sb.Append(x.ToString());
-                }
+                sb.Append('(').Append(token.Kind.ToString()).Append(')');
             }
         }
 
         try
         {
-            File.WriteAllText(tokenPath, sb.ToString());
+            File.WriteAllText(Path.ChangeExtension(path, Constants.TokenExtension), sb.ToString());
         }
         catch
         {
             // Token dumps are diagnostic aids and must not stop compilation.
+        }
+    }
+
+    private bool IsAttachedToRoot(Koto koto)
+    {
+        while (koto.Parent is { } parent)
+        {
+            koto = parent;
+        }
+
+        return ReferenceEquals(koto, this.RootKoto);
+    }
+
+    private void RebuildKotoIndex()
+    {
+        // Koto IDs depend on the completed parent chain. Build the index lazily after parsing
+        // and rebuild on a miss so generated or edited declarations become discoverable.
+        var table = this.kotoIdToKoto;
+        table.Clear();
+        var stack = new Stack<Koto>(DefaultKotoIndexCapacity);
+        stack.Push(this.RootKoto);
+        while (stack.TryPop(out var koto))
+        {
+            if (koto is IdentifiableKoto identifiable)
+            {
+                table.TryAdd(identifiable.KotoId, identifiable);
+            }
+
+            foreach (var child in koto.ChildNodes)
+            {
+                stack.Push(child);
+            }
         }
     }
 }

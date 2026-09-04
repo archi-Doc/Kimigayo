@@ -4,7 +4,7 @@ using SimpleCommandLine;
 
 namespace Kimi.Command;
 
-[SimpleCommand("Default", Default = true)]
+[SimpleCommand("Default", IsDefault = true)]
 public class DefaultCommand : ISimpleCommand
 {
     private readonly UnitContext unitContext;

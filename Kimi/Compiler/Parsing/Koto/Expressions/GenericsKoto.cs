@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
@@ -19,7 +19,11 @@ public sealed partial class GenericsKoto : ExpressionKoto
     public Koto? Identifier { get; private set; }
 
     [Key(2)]
-    private readonly List<Koto> typeList = [];
+    private List<Koto> typeList;
+
+    /// <summary>Gets the generic type arguments.</summary>
+    [IgnoreMember]
+    public IReadOnlyList<Koto> TypeArguments => this.typeList;
 
     /// <summary>Initializes a new instance of the <see cref="GenericsKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
@@ -32,24 +36,7 @@ public sealed partial class GenericsKoto : ExpressionKoto
         this.Identifier = identifier;
         this.typeList = typeList;
         identifier.Parent = this;
-        foreach (var type in typeList)
-        {
-            type.Parent = this;
-        }
-    }
-
-    /// <summary>Gets the generic type arguments.</summary>
-    [IgnoreMember]
-    public IReadOnlyList<Koto> TypeArguments => this.typeList;
-
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        this.Identifier?.Bind(compilation);
-        foreach (var type in this.typeList)
-        {
-            type.Bind(compilation);
-        }
+        this.Adopt(typeList);
     }
 
     /// <inheritdoc/>
@@ -60,12 +47,12 @@ public sealed partial class GenericsKoto : ExpressionKoto
 
         for (var i = 0; i < this.typeList.Count; i++)
         {
-            this.typeList[i].WriteTo(ref builder);
-
-            if (i != (this.typeList.Count - 1))
+            if (i > 0)
             {
                 builder.AppendCommaAndSpace();
             }
+
+            this.typeList[i].WriteTo(ref builder);
         }
 
         builder.Append(Constants.GreaterThanChar);
@@ -89,18 +76,9 @@ public sealed partial class GenericsKoto : ExpressionKoto
         if (this.Identifier == oldKoto)
         {
             this.Identifier = newKoto;
-        }
-        else
-        {
-            var index = this.typeList.IndexOf(oldKoto);
-            if (index < 0)
-            {
-                return false;
-            }
-
-            this.typeList[index] = newKoto;
+            return true;
         }
 
-        return true;
+        return ReplaceInList(this.typeList, oldKoto, newKoto);
     }
 }

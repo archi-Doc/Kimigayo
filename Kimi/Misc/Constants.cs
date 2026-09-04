@@ -13,6 +13,7 @@ public static class Constants
     public const string ScrubFileName = "Scrub.kimi";
     public const string Scrub2FileName = "Scrub2.kimi";
     public const string RootKotoName = "Root";
+    public const string GeneratedFunctionName = "<Generated>";
 
     // Primitive type keywords
     public const string BoolKeyword = "bool";
@@ -40,6 +41,7 @@ public static class Constants
     public const string FuncKeyword = "func";
     public const string IfKeyword = "if";
     public const string ElseKeyword = "else";
+    public const string CaseKeyword = "case";
     public const string AsKeyword = "as";
     public const string IsKeyword = "is";
     public const string NotKeyword = "not";
@@ -63,6 +65,10 @@ public static class Constants
     public const string EnumKeyword = "enum";
     public const string ExtensionKeyword = "extension";
     public const string ContractKeyword = "contract";
+    public const string AssociateKeyword = "associate";
+    public const string GetKeyword = "get";
+    public const string SetKeyword = "set";
+    public const string HasKeyword = "has";
     public const string StaticKeyword = "static";
     public const string PublicKeyword = "public";
     public const string ProtectedKeyword = "protected";
@@ -131,8 +137,6 @@ public static class Constants
     public static ReadOnlySpan<char> Map => "=>";
 
     public static ReadOnlySpan<char> NamespaceKeyword => "namespace";
-
-    public static ReadOnlySpan<char> IfAttribute => "If";
 
     public static ReadOnlySpan<char> CommaAndSpace => ", ";
 }

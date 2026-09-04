@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Lexing;
 
@@ -30,26 +30,19 @@ public sealed partial class AliasKoto : DeclarationKoto
     public override bool IsToplevel => true;
 
     /// <inheritdoc/>
-    public override string ToString()
-        => $"{Constants.AliasKeyword} {string.Join(Constants.DotChar, this.QualifiedName)}";
-
-    /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        if (this.AttributeChain is not null)
-        {
-            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
-        }
-
+        this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendLineFeed);
         builder.Append(Constants.AliasKeyword);
         builder.AppendSpace();
         for (var i = 0; i < this.QualifiedName.Count; i++)
         {
-            builder.Append(this.QualifiedName[i]);
-            if (i < (this.QualifiedName.Count - 1))
+            if (i > 0)
             {
                 builder.Append(Constants.DotChar);
             }
+
+            builder.Append(this.QualifiedName[i]);
         }
     }
 }

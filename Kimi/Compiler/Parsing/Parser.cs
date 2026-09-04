@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
@@ -21,187 +21,95 @@ public static class Parser
     private const int RangeLeftBindingPower = 8;
     private const int RangeRightBindingPower = 9;
 
-    /// <summary>Evaluates a conditional attribute.</summary>
-    /// <param name="compilation">The active compilation.</param>
-    /// <param name="attributeKoto">The attribute to evaluate.</param>
-    /// <returns><see langword="true"/> when the attributed declaration is included.</returns>
-    public static bool ResolveIfAttribute(Compilation compilation, AttributeKoto attributeKoto)
+    // Per-token-kind tables replace switch chains on the expression hot path.
+    private static readonly byte[] InfixLeftBindingPower = new byte[TokenHelper.MaxTokens];
+    private static readonly byte[] InfixRightBindingPower = new byte[TokenHelper.MaxTokens];
+    private static readonly bool[] IsPrefixOperator = new bool[TokenHelper.MaxTokens];
+    private static readonly bool[] IsExpressionBoundaryKind = new bool[TokenHelper.MaxTokens];
+
+    static Parser()
     {
-        Debug.Assert(attributeKoto.IsIfAttribute);
-
-        var arg = attributeKoto.Arguments;
-        if (arg.Count != 1)
+        for (var i = 0; i < TokenHelper.MaxTokens; i++)
         {
-            attributeKoto.AddDiagnostic(DiagnosticCode.InvalidIfAttributeArgumentCount_Kd);
-        }
-        else
-        {
-            var basicValue = BasicValueHelper.Evaluate(compilation, arg[0]);
-            if (basicValue.Kind == BasicValueKind.Bool)
-            {
-                if (!basicValue.Bool)
-                {
-                    return false;
-                }
-            }
-            else
-            {
-                arg[0].AddDiagnostic(DiagnosticCode.ConditionMustBeBool_Kd);
-            }
+            var (left, right) = GetInfixBindingPower((TokenKind)i);
+            InfixLeftBindingPower[i] = (byte)left;
+            InfixRightBindingPower[i] = (byte)right;
         }
 
-        return true;
+        Mark(
+            IsPrefixOperator,
+            [
+                TokenKind.Sharp, TokenKind.Dollar, TokenKind.Ampersand, TokenKind.Asterisk, TokenKind.Plus,
+                TokenKind.Minus, TokenKind.Not, TokenKind.Caret, TokenKind.PlusPlus, TokenKind.MinusMinus,
+            ]);
+
+        Mark(
+            IsExpressionBoundaryKind,
+            [
+                TokenKind.Separator, TokenKind.Semicolon, TokenKind.StartBlock, TokenKind.EndBlock, TokenKind.Else,
+                TokenKind.EqualsGreaterThan, TokenKind.Comma, TokenKind.CloseParenthesis, TokenKind.CloseBracket,
+            ]);
+
+        static void Mark(bool[] table, ReadOnlySpan<TokenKind> kinds)
+        {
+            foreach (var kind in kinds)
+            {
+                table[(int)kind] = true;
+            }
+        }
     }
 
     /// <summary>Writes the qualified name of an identifiable node.</summary>
-    /// <param name="a0">The innermost identifiable node.</param>
+    /// <param name="koto">The innermost identifiable node.</param>
     /// <param name="builder">The destination builder.</param>
-    public static void WriteQualifiedNameTo(IdentifiableKoto? a0, ref IndentedStringBuilder builder)
+    public static void WriteQualifiedNameTo(IdentifiableKoto? koto, ref IndentedStringBuilder builder)
     {
-        if (a0 is null)
+        if (koto is null || koto.IsRoot)
         {
             return;
         }
 
-        var a1 = a0.Parent as IdentifiableKoto;
-        if (a1 is null || a1.IsRoot)
+        if (koto.Parent is IdentifiableKoto parent && !parent.IsRoot)
         {
-            builder.Append(a0.GetIdentifier());
-            return;
+            WriteQualifiedNameTo(parent, ref builder);
+            builder.Append(Constants.DotChar);
         }
 
-        var a2 = a1.Parent as IdentifiableKoto;
-        if (a2 is null || a2.IsRoot)
-        {
-            builder.Append(a1.GetIdentifier());
-            builder.Append(Constants.DotChar);
-            builder.Append(a0.GetIdentifier());
-            return;
-        }
-
-        var a3 = a2.Parent as IdentifiableKoto;
-        if (a3 is null || a3.IsRoot)
-        {
-            builder.Append(a2.GetIdentifier());
-            builder.Append(Constants.DotChar);
-            builder.Append(a1.GetIdentifier());
-            builder.Append(Constants.DotChar);
-            builder.Append(a0.GetIdentifier());
-            return;
-        }
-
-        var a4 = a3.Parent as IdentifiableKoto;
-        if (a4 is null || a4.IsRoot)
-        {
-            builder.Append(a3.GetIdentifier());
-            builder.Append(Constants.DotChar);
-            builder.Append(a2.GetIdentifier());
-            builder.Append(Constants.DotChar);
-            builder.Append(a1.GetIdentifier());
-            builder.Append(Constants.DotChar);
-            builder.Append(a0.GetIdentifier());
-            return;
-        }
-
-        var list = new List<IdentifiableKoto>();
-        var x = a0;
-        while (x is not null && !x.IsRoot)
-        {
-            list.Add(x);
-            x = x.Parent as IdentifiableKoto;
-        }
-
-        for (var i = list.Count - 1; i >= 0; i--)
-        {
-            builder.Append(list[i].GetIdentifier());
-            if (i != 0)
-            {
-                builder.Append(Constants.DotChar);
-            }
-        }
+        builder.Append(koto.GetIdentifier());
     }
 
-    /// <summary>Writes an attribute chain as source text.</summary>
-    /// <param name="a0">The first attribute in the chain.</param>
+    /// <summary>Writes an attribute chain as source text, outermost attribute first.</summary>
+    /// <param name="attribute">The first attribute in the chain.</param>
     /// <param name="builder">The destination builder.</param>
     /// <param name="options">The output options.</param>
-    public static void UnparseAttribute(AttributeKoto? a0, ref IndentedStringBuilder builder, KotoWriteOptions options)
+    public static void UnparseAttribute(AttributeKoto? attribute, ref IndentedStringBuilder builder, KotoWriteOptions options)
     {
-        if (a0 is null)
+        if (attribute is null)
         {
             return;
         }
 
-        var a1 = a0.AttributeChain;
-        if (a1 is null)
-        {
-            a0.WriteTo(ref builder);
-            builder.AppendTrailingSpaceOrLineFeed(options);
-            return;
-        }
+        WriteChain(attribute, ref builder);
+        builder.AppendTrailingSpaceOrLineFeed(options);
 
-        var a2 = a1.AttributeChain;
-        if (a2 is null)
+        static void WriteChain(AttributeKoto attribute, ref IndentedStringBuilder builder)
         {
-            a1.WriteTo(ref builder);
-            builder.Append(' ');
-            a0.WriteTo(ref builder);
-            builder.AppendTrailingSpaceOrLineFeed(options);
-            return;
-        }
-
-        var a3 = a2.AttributeChain;
-        if (a3 is null)
-        {
-            a2.WriteTo(ref builder);
-            builder.Append(' ');
-            a1.WriteTo(ref builder);
-            builder.Append(' ');
-            a0.WriteTo(ref builder);
-            builder.AppendTrailingSpaceOrLineFeed(options);
-            return;
-        }
-
-        var a4 = a3.AttributeChain;
-        if (a4 is null)
-        {
-            a3.WriteTo(ref builder);
-            builder.Append(' ');
-            a2.WriteTo(ref builder);
-            builder.Append(' ');
-            a1.WriteTo(ref builder);
-            builder.Append(' ');
-            a0.WriteTo(ref builder);
-            builder.AppendTrailingSpaceOrLineFeed(options);
-            return;
-        }
-
-        var list = new List<Koto>();
-        var x = a0;
-        while (x is not null)
-        {
-            list.Add(x);
-            x = x.AttributeChain;
-        }
-
-        for (var i = list.Count - 1; i >= 0; i--)
-        {
-            list[i].WriteTo(ref builder);
-            if (i != 0)
+            if (attribute.AttributeChain is { } previous)
             {
+                WriteChain(previous, ref builder);
                 builder.Append(' ');
             }
-        }
 
-        builder.AppendTrailingSpaceOrLineFeed(options);
+            attribute.WriteTo(ref builder);
+        }
     }
 
     /// <summary>Writes an attribute chain to a string.</summary>
-    /// <param name="a0">The first attribute in the chain.</param>
+    /// <param name="attribute">The first attribute in the chain.</param>
     /// <returns>The attribute source text.</returns>
-    public static string UnparseAttribute(AttributeKoto? a0)
+    public static string UnparseAttribute(AttributeKoto? attribute)
     {
-        if (a0 is null)
+        if (attribute is null)
         {
             return string.Empty;
         }
@@ -209,7 +117,7 @@ public static class Parser
         var builder = default(IndentedStringBuilder);
         try
         {
-            UnparseAttribute(a0, ref builder, KotoWriteOptions.AppendSpace);
+            UnparseAttribute(attribute, ref builder, KotoWriteOptions.AppendSpace);
             return builder.ToString();
         }
         finally
@@ -254,14 +162,22 @@ public static class Parser
             goto Exit;
         }
 
-        var parameters = new List<FunctionParameterKoto>();
-        while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseParenthesis)
+        List<FunctionParameterKoto>? parameters = default;
+        while (reader.CanRead)
         {
-            if (reader.CurrentTokenKind == TokenKind.Separator)
+            reader.SkipSeparators();
+            while (reader.CurrentTokenKind == TokenKind.Sharp)
             {
-                reader.Advance();
-                continue;
+                _ = ParseAttributeKoto(ref reader);
+                reader.SkipSeparators();
             }
+
+            if (reader.CurrentTokenKind == TokenKind.CloseParenthesis)
+            {
+                break;
+            }
+
+            var parameterAttribute = reader.PopAttribute();
 
             if (!reader.TryRead(out var externalNameToken))
             {
@@ -274,17 +190,11 @@ public static class Parser
                 goto NextParameter;
             }
 
-            var isOptional = reader.CurrentTokenKind == TokenKind.Question;
-            if (isOptional)
-            {
-                reader.Advance();
-            }
+            var isOptional = reader.TryConsume(TokenKind.Question);
 
             var internalName = externalNameKoto.IdentifierName;
-            if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
+            if (reader.TryConsume(TokenKind.EqualsGreaterThan))
             {
-                reader.Advance();
-
                 if (!reader.TryRead(out var internalNameToken) ||
                     !IdentifierNameKoto.TryCreate(ref reader, internalNameToken, out var internalNameKoto))
                 {
@@ -302,20 +212,21 @@ public static class Parser
 
             var parameterType = ParseDeclarationType(ref reader);
             Koto? defaultValue = default;
-            if (reader.CurrentTokenKind == TokenKind.Equals)
+            if (reader.TryConsume(TokenKind.Equals))
             {
-                reader.Advance();
                 defaultValue = ParseExpression(ref reader);
             }
 
-            parameters.Add(new(
+            (parameters ??= []).Add(new(
                 externalNameKoto.IdentifierName,
                 internalName,
                 isOptional,
                 parameterType,
-                defaultValue));
+                defaultValue,
+                parameterAttribute));
 
 NextParameter:
+            reader.SkipSeparators();
             if (reader.CurrentTokenKind == TokenKind.Comma)
             {
                 reader.Advance();
@@ -324,10 +235,7 @@ NextParameter:
             {
                 reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
                 SkipParameter(ref reader);
-                if (reader.CurrentTokenKind == TokenKind.Comma)
-                {
-                    reader.Advance();
-                }
+                reader.TryConsume(TokenKind.Comma);
             }
         }
 
@@ -338,9 +246,8 @@ NextParameter:
 
         Koto? returnType = default;
         var end = closeParenthesisRange.End;
-        if (reader.CurrentTokenKind == TokenKind.MinusGreaterThan)
+        if (reader.TryConsume(TokenKind.MinusGreaterThan))
         {
-            reader.Advance();
             returnType = ParseDeclarationType(ref reader);
             end = returnType.Span.End;
         }
@@ -349,16 +256,20 @@ NextParameter:
             ref reader,
             context,
             SourceSpan.FromBounds(methodToken.Span.Start, end),
-            methodName.ToString(),
+            reader.GetIdentifier(methodToken),
             genericArguments,
             parameters,
             returnType);
 
-        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator, DiagnosticCode.UnexpectedTrailingToken_Kd);
+        reader.SkipUntil(
+            TokenKind.StartBlock,
+            TokenKind.Separator,
+            TokenKind.EndBlock,
+            DiagnosticCode.UnexpectedTrailingToken_Kd);
         return functionKoto;
 
 SkipAndExit:
-        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator);
+        reader.SkipUntil(TokenKind.StartBlock, TokenKind.Separator, TokenKind.EndBlock);
 
 Exit:
         return default;
@@ -367,10 +278,21 @@ Exit:
             => reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
     }
 
-    /// <summary>Parses the header of a group or type declaration.</summary>
+    /// <summary>Parses a Declaration Container header.</summary>
     /// <param name="reader">The token reader.</param>
     /// <returns>The name, generic parameters, and origin names.</returns>
-    public static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins) ParseGroupDeclaration(ref TokenReader reader)
+    public static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins) ParseDeclarationContainerHeader(ref TokenReader reader)
+        => ParseDeclarationContainerHeader(ref reader, true, true);
+
+    /// <summary>Parses a Declaration Container header according to the capabilities of its kind.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="supportsGenerics">Whether generic parameters are accepted.</param>
+    /// <param name="supportsOrigins">Whether an Origin list is accepted.</param>
+    /// <returns>The name, generic parameters, and origin names.</returns>
+    internal static (string Name, List<TypeKoto>? GenericArguments, List<string>? Origins) ParseDeclarationContainerHeader(
+        ref TokenReader reader,
+        bool supportsGenerics,
+        bool supportsOrigins)
     {
         string name = string.Empty;
         List<TypeKoto>? genericArguments = default;
@@ -390,19 +312,19 @@ Exit:
         var span = reader.GetSpan(token);
         if (IdentifierHelper.IsValidIdentifier(span))
         {
-            name = span.ToString();
+            name = reader.GetIdentifier(token);
         }
         else
         {
             reader.AddDiagnostic(DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
         }
 
-        if (reader.CurrentTokenKind == TokenKind.LessThan)
+        if (supportsGenerics && reader.CurrentTokenKind == TokenKind.LessThan)
         {
             genericArguments = ParseGenericArguments(ref reader);
         }
 
-        if (reader.IsIdentifierToken(reader.CurrentToken, Constants.OriginKeyword))
+        if (supportsOrigins && reader.IsCurrentIdentifier(Constants.OriginKeyword))
         {
             var originRange = reader.CurrentTokenRange;
             reader.Advance();
@@ -435,7 +357,7 @@ Exit:
                     return list;
                 }
 
-                reader.TryRead(out var token);
+                var token = reader.Read();
                 if (!token.Kind.IsIdentifierOrContextualKeyword())
                 {
                     reader.Diagnostic.Add(token.Span, DiagnosticCode.IdentifierExpected_Kd);
@@ -449,35 +371,34 @@ Exit:
                     return list;
                 }
 
-                list ??= [];
-                list.Add(identifier.ToString());
+                (list ??= []).Add(reader.GetIdentifier(token));
 
-                if (reader.CurrentTokenKind != TokenKind.Comma)
+                if (!reader.TryConsume(TokenKind.Comma))
                 {
                     return list;
                 }
-
-                reader.Advance();
             }
         }
     }
 
-    /// <summary>Parses a field or local variable declaration.</summary>
+    /// <summary>Parses a local binding declaration.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="token">The declaration keyword token.</param>
     /// <returns>The parsed declaration, or <see langword="null"/> after an error.</returns>
     public static FieldKoto? ParseField(ref TokenReader reader, ref Token token)
+        => ParseField(ref reader, token, false);
+
+    private static FieldKoto? ParseField(ref TokenReader reader, Token token, bool allowParenthesizedTerminator)
     {
         var variableContext = reader.TakeContext();
 
-        Parser.ConsumeAttributeAndModifier(ref reader, out var isEnd);
+        ConsumeAttributeAndModifier(ref reader, out var isEnd);
         if (isEnd)
         {
             return default;
         }
 
-        var nameToken = reader.CurrentToken;
-        reader.Advance();
+        var nameToken = reader.Read();
         if (!IdentifierNameKoto.TryCreate(ref reader, nameToken, out var nameKoto))
         {
             return default;
@@ -486,7 +407,7 @@ Exit:
         Koto? typeKoto = default;
         if (reader.TryConsume(TokenKind.Colon, out _, false))
         {
-            Parser.ConsumeAttributeAndModifier(ref reader, out isEnd);
+            ConsumeAttributeAndModifier(ref reader, out isEnd);
             if (isEnd)
             {
                 return default;
@@ -503,13 +424,14 @@ Exit:
 
         reader.RestoreContext(variableContext);
 
-        var fieldKoto = new FieldKoto(ref reader, ref token, nameKoto, typeKoto, initializerKoto);
+        var fieldKoto = new FieldKoto(ref reader, token, nameKoto, typeKoto, initializerKoto);
 
         if (reader.CurrentTokenKind == TokenKind.Semicolon)
         {
             reader.Advance();
         }
-        else
+        else if (!allowParenthesizedTerminator ||
+            reader.CurrentTokenKind is not (TokenKind.CloseParenthesis or TokenKind.Yield))
         {
             reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, DiagnosticCode.UnexpectedTrailingToken_Kd);
         }
@@ -517,56 +439,244 @@ Exit:
         return fieldKoto;
     }
 
+    /// <summary>Parses a Property declaration and its optional accessor list.</summary>
+    /// <param name="reader">The token reader positioned after <c>let</c> or <c>var</c>.</param>
+    /// <param name="token">The Property declaration keyword token.</param>
+    /// <returns>The parsed Property, or <see langword="null"/> after an error.</returns>
+    public static PropertyKoto? ParseProperty(ref TokenReader reader, ref Token token)
+    {
+        var propertyContext = reader.TakeContext();
+        var nameToken = reader.Read();
+        if (!IdentifierNameKoto.TryCreate(ref reader, nameToken, out var nameKoto))
+        {
+            return default;
+        }
+
+        Koto? typeKoto = default;
+        if (reader.TryConsume(TokenKind.Colon, out _, false))
+        {
+            typeKoto = ParseType(ref reader);
+        }
+
+        Koto? initializerKoto = default;
+        if (reader.TryConsume(TokenKind.Equals, out _, false))
+        {
+            initializerKoto = ParseExpression(ref reader);
+        }
+
+        var hasInlineAccessors = reader.TryConsume(TokenKind.Has);
+
+        reader.RestoreContext(propertyContext);
+        var property = new PropertyKoto(ref reader, token, nameKoto, typeKoto, initializerKoto, hasInlineAccessors);
+
+        if (hasInlineAccessors)
+        {
+            ParseInlinePropertyAccessors(ref reader, property);
+        }
+
+        if (reader.TryConsume(TokenKind.Semicolon))
+        {
+            return property;
+        }
+
+        if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        {
+            if (hasInlineAccessors)
+            {
+                reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.UnexpectedToken_Kd, TokenKind.StartBlock.ToText());
+                reader.SkipCurrentBlock(false);
+            }
+            else
+            {
+                ParsePropertyAccessorBlock(ref reader, property);
+            }
+
+            return property;
+        }
+
+        if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
+        {
+            reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, DiagnosticCode.UnexpectedTrailingToken_Kd);
+        }
+
+        return property;
+    }
+
+    private static void ParseInlinePropertyAccessors(ref TokenReader reader, PropertyKoto property)
+    {
+        var parsedAny = false;
+        while (reader.CanRead)
+        {
+            var start = reader.CurrentTokenRange.Start;
+            var modifier = ParseAccessorAccessibility(ref reader);
+            var accessorToken = reader.CurrentToken;
+            if (!TryGetPropertyAccessorKind(accessorToken.Kind, out var accessorKind))
+            {
+                reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, reader.GetSpan(accessorToken).ToString());
+                reader.SkipUntil(TokenKind.Comma, TokenKind.Separator, 0);
+                break;
+            }
+
+            reader.Advance();
+            parsedAny = true;
+            var accessor = new PropertyAccessorKoto(
+                ref reader,
+                SourceSpan.FromBounds(start, accessorToken.Span.End),
+                modifier,
+                accessorKind,
+                default);
+            AddPropertyAccessor(ref reader, property, accessor, accessorToken);
+
+            if (!reader.TryConsume(TokenKind.Comma))
+            {
+                break;
+            }
+
+            if (reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock)
+            {
+                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                break;
+            }
+        }
+
+        if (!parsedAny)
+        {
+            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+        }
+    }
+
+    private static void ParsePropertyAccessorBlock(ref TokenReader reader, PropertyKoto property)
+    {
+        var blockStart = reader.CurrentTokenRange;
+        reader.Advance();
+        while (reader.CanRead)
+        {
+            reader.SkipSeparators();
+
+            if (reader.CurrentTokenKind == TokenKind.EndBlock)
+            {
+                var blockEnd = reader.CurrentTokenRange.End;
+                reader.Advance();
+                property.CompleteSpan(blockEnd);
+                return;
+            }
+
+            var start = reader.CurrentTokenRange.Start;
+            var modifier = ParseAccessorAccessibility(ref reader);
+            var accessorToken = reader.CurrentToken;
+            if (!TryGetPropertyAccessorKind(accessorToken.Kind, out var accessorKind))
+            {
+                reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.UnexpectedToken_Kd, reader.GetSpan(accessorToken).ToString());
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+                continue;
+            }
+
+            reader.Advance();
+            Koto? body = default;
+            if (reader.TryConsume(TokenKind.EqualsGreaterThan))
+            {
+                body = ParseExpression(ref reader);
+            }
+            else if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+            {
+                body = ParseBlock(ref reader);
+            }
+
+            var end = Math.Max(accessorToken.Span.End, body?.Span.End ?? 0);
+            var accessor = new PropertyAccessorKoto(
+                ref reader,
+                SourceSpan.FromBounds(start, end),
+                modifier,
+                accessorKind,
+                body);
+            AddPropertyAccessor(ref reader, property, accessor, accessorToken);
+
+            if (body is not CodeBlockKoto &&
+                reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) &&
+                reader.CanRead)
+            {
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+            }
+        }
+
+        property.CompleteSpan(Math.Max(property.Span.End, blockStart.End));
+        reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+    }
+
+    private static ModifierKind ParseAccessorAccessibility(ref TokenReader reader)
+    {
+        var modifier = GetAccessibilityModifier(reader.CurrentTokenKind);
+        if (modifier != ModifierKind.NoModifier)
+        {
+            reader.Advance();
+        }
+
+        return modifier;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ModifierKind GetAccessibilityModifier(TokenKind tokenKind)
+        => tokenKind switch
+        {
+            TokenKind.Public => ModifierKind.Public,
+            TokenKind.Protected => ModifierKind.Protected,
+            TokenKind.Private => ModifierKind.Private,
+            TokenKind.Internal => ModifierKind.Internal,
+            TokenKind.ProtectedOrInternal => ModifierKind.ProtectedOrInternal,
+            TokenKind.ProtectedAndInternal => ModifierKind.ProtectedAndInternal,
+            _ => ModifierKind.NoModifier,
+        };
+
+    private static bool TryGetPropertyAccessorKind(TokenKind tokenKind, out PropertyAccessorKind accessorKind)
+    {
+        accessorKind = tokenKind == TokenKind.Get ? PropertyAccessorKind.Get : PropertyAccessorKind.Set;
+        return tokenKind is TokenKind.Get or TokenKind.Set;
+    }
+
+    private static void AddPropertyAccessor(
+        ref TokenReader reader,
+        PropertyKoto property,
+        PropertyAccessorKoto accessor,
+        Token accessorToken)
+    {
+        if (property.VariableKind == VariableKind.Let && accessor.AccessorKind == PropertyAccessorKind.Set)
+        {
+            reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.LetPropertyCannotHaveSetter_Kd);
+        }
+
+        if (!property.TryAddAccessor(accessor))
+        {
+            reader.Diagnostic.Add(accessorToken.Span, DiagnosticCode.DuplicatePropertyAccessor_Kd, accessor.AccessorText);
+        }
+    }
+
     /// <summary>Writes declaration modifiers as source text.</summary>
     /// <param name="kind">The modifiers to write.</param>
     /// <param name="builder">The destination builder.</param>
     /// <param name="writeOptions">The output options.</param>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void WriteTo(this ModifierKind kind, ref IndentedStringBuilder builder, KotoWriteOptions writeOptions)
     {
-        var acc = kind.ExtractAccessibilityModifiers();
-        var accText = acc switch
-        {
-            ModifierKind.Public => Constants.PublicKeyword,
-            ModifierKind.Protected => Constants.ProtectedKeyword,
-            ModifierKind.Private => Constants.PrivateKeyword,
-            ModifierKind.Internal => Constants.InternalKeyword,
-            ModifierKind.ProtectedOrInternal => Constants.ProtectedOrInternalKeyword,
-            ModifierKind.ProtectedAndInternal => Constants.ProtectedAndInternalKeyword,
-            _ => string.Empty,
-        };
-
-        if (string.IsNullOrEmpty(accText))
+        if (kind == ModifierKind.NoModifier)
         {
             return;
         }
 
-        builder.Append(accText);
+        var accText = kind.ExtractAccessibilityModifiers().ToText();
+        if (accText.Length > 0)
+        {
+            builder.Append(accText);
+        }
 
         if (kind.HasFlag(ModifierKind.Static))
         {
             builder.EnsureTrailingSpace();
-            if (kind.HasFlag(ModifierKind.Open))
-            {
-                builder.Append(Constants.StaticKeyword);
-                builder.AppendSpace();
-                builder.Append(Constants.OpenKeyword);
-            }
-            else
-            {
-                builder.Append(Constants.StaticKeyword);
-            }
+            builder.Append(Constants.StaticKeyword);
         }
-        else
+
+        if (kind.HasFlag(ModifierKind.Open))
         {
-            if (kind.HasFlag(ModifierKind.Open))
-            {
-                builder.EnsureTrailingSpace();
-                builder.Append(Constants.OpenKeyword);
-            }
-            else
-            {
-            }
+            builder.EnsureTrailingSpace();
+            builder.Append(Constants.OpenKeyword);
         }
 
         builder.AppendTrailingSpaceOrLineFeed(writeOptions);
@@ -576,11 +686,9 @@ Exit:
     /// <param name="kind">The modifiers to convert.</param>
     /// <param name="addSpace">Whether to append a trailing space.</param>
     /// <returns>The modifier source text.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static string ToText(this ModifierKind kind, bool addSpace = false)
     {
-        var acc = kind.ExtractAccessibilityModifiers();
-        var accText = acc switch
+        var accText = kind.ExtractAccessibilityModifiers() switch
         {
             ModifierKind.Public => Constants.PublicKeyword,
             ModifierKind.Protected => Constants.ProtectedKeyword,
@@ -591,62 +699,31 @@ Exit:
             _ => string.Empty,
         };
 
-        if (addSpace)
+        if ((kind & (ModifierKind.Static | ModifierKind.Open)) == 0)
         {
-            if (kind.HasFlag(ModifierKind.Static))
-            {
-                if (kind.HasFlag(ModifierKind.Open))
-                {
-                    return $"{accText} {Constants.StaticKeyword} {Constants.OpenKeyword} ";
-                }
-                else
-                {
-                    return $"{accText} {Constants.StaticKeyword} ";
-                }
-            }
-            else
-            {
-                if (kind.HasFlag(ModifierKind.Open))
-                {
-                    return $"{accText} {Constants.OpenKeyword} ";
-                }
-                else
-                {
-                    return $"{accText} ";
-                }
-            }
+            return addSpace && accText.Length > 0 ? accText + " " : accText;
         }
-        else
+
+        var builder = default(IndentedStringBuilder);
+        try
         {
-            if (kind.HasFlag(ModifierKind.Static))
-            {
-                if (kind.HasFlag(ModifierKind.Open))
-                {
-                    return $"{accText} {Constants.StaticKeyword} {Constants.OpenKeyword}";
-                }
-                else
-                {
-                    return $"{accText} {Constants.StaticKeyword}";
-                }
-            }
-            else
-            {
-                if (kind.HasFlag(ModifierKind.Open))
-                {
-                    return $"{accText} {Constants.OpenKeyword}";
-                }
-                else
-                {
-                    return $"{accText}";
-                }
-            }
+            kind.WriteTo(ref builder, addSpace ? KotoWriteOptions.AppendSpace : KotoWriteOptions.None);
+            return builder.ToString();
+        }
+        finally
+        {
+            builder.Dispose();
         }
     }
 
-    /// <summary>Consumes attributes and modifiers before a declaration.</summary>
+    /// <summary>Consumes attributes, modifiers, and optional compile-time directives before a declaration.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="isEnd">Whether the declaration sequence has ended.</param>
-    public static void ConsumeAttributeAndModifier(ref TokenReader reader, out bool isEnd)
+    /// <param name="allowCompileTimeDirectives">Whether lowercase compile-time directives are accepted.</param>
+    public static void ConsumeAttributeAndModifier(
+        ref TokenReader reader,
+        out bool isEnd,
+        bool allowCompileTimeDirectives = false)
     {
         reader.ClearContext();
 
@@ -660,83 +737,71 @@ Exit:
                     continue;
 
                 case TokenKind.Static:
-                    if (reader.ModifierKind.HasFlag(ModifierKind.Static))
-                    {
-                        reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, ModifierKind.Static.ToString());
-                    }
-
-                    reader.ModifierKind |= ModifierKind.Static;
-                    reader.Advance();
+                    ReadFlag(ref reader, ModifierKind.Static);
                     continue;
 
                 case TokenKind.Open:
-                    if (reader.ModifierKind.HasFlag(ModifierKind.Open))
-                    {
-                        reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, ModifierKind.Open.ToString());
-                    }
-
-                    reader.ModifierKind |= ModifierKind.Open;
-                    reader.Advance();
+                    ReadFlag(ref reader, ModifierKind.Open);
                     continue;
 
                 case TokenKind.Public:
-                    ReadAccessibility(ref reader, ModifierKind.Public);
-                    continue;
-
                 case TokenKind.Protected:
-                    ReadAccessibility(ref reader, ModifierKind.Protected);
-                    continue;
-
                 case TokenKind.Private:
-                    ReadAccessibility(ref reader, ModifierKind.Private);
-                    continue;
-
                 case TokenKind.Internal:
-                    ReadAccessibility(ref reader, ModifierKind.Internal);
-                    continue;
-
                 case TokenKind.ProtectedOrInternal:
-                    ReadAccessibility(ref reader, ModifierKind.ProtectedOrInternal);
-                    continue;
-
                 case TokenKind.ProtectedAndInternal:
-                    ReadAccessibility(ref reader, ModifierKind.ProtectedAndInternal);
+                    ReadAccessibility(ref reader, GetAccessibilityModifier(tokenKind));
                     continue;
-            }
 
-            if (tokenKind != TokenKind.Sharp)
-            {
-                isEnd = reader.IsEnd;
-                return;
-            }
+                case TokenKind.Sharp:
+                    if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.If)
+                    {
+                        ParseCompileTimeIfPrefix(ref reader);
+                        continue;
+                    }
 
-            _ = ParseAttributeKoto(ref reader);
-            /*attributeKoto = ParseAttributeKoto(ref reader);
-            if (!ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto))
-            {
-                reader.IsExcluded = true;
-            }*/
+                    if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.Case)
+                    {
+                        isEnd = false;
+                        return;
+                    }
+
+                    _ = ParseAttributeKoto(ref reader);
+                    continue;
+
+                default:
+                    isEnd = false;
+                    return;
+            }
         }
 
         isEnd = true;
 
-        void ReadAccessibility(ref TokenReader reader, ModifierKind kind)
+        static void ReadFlag(ref TokenReader reader, ModifierKind flag)
+        {
+            if (reader.ModifierKind.HasFlag(flag))
+            {
+                reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, flag.ToString());
+            }
+
+            reader.ModifierKind |= flag;
+            reader.Advance();
+        }
+
+        static void ReadAccessibility(ref TokenReader reader, ModifierKind kind)
         {
             var acc = reader.ModifierKind.ExtractAccessibilityModifiers();
-            if (acc != default)
+            if (acc == default)
             {
-                if (acc == kind)
-                {
-                    reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, kind.ToText());
-                }
-                else
-                {
-                    reader.AddDiagnostic(DiagnosticCode.MultipleAccessibilityModifiers_Kd);
-                }
+                reader.ModifierKind |= kind;
+            }
+            else if (acc == kind)
+            {
+                reader.AddDiagnostic(DiagnosticCode.DuplicateModifier_Kd, kind.ToText());
             }
             else
             {
-                reader.ModifierKind = reader.ModifierKind | kind;
+                reader.AddDiagnostic(DiagnosticCode.MultipleAccessibilityModifiers_Kd);
             }
 
             reader.Advance();
@@ -766,40 +831,16 @@ Exit:
                 var operatorRange = reader.CurrentTokenRange;
                 reader.Advance();
 
-                var accessor = ParseTypeInternal(ref reader);
-                accessor ??= reader.NewErrorKoto();
+                var accessor = ParseTypeInternal(ref reader) ?? reader.NewErrorKoto();
                 left = new MemberAccessKoto(
                     ref reader,
                     SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
                     left,
                     accessor);
-                continue;
             }
             else if (tokenKind == TokenKind.LessThan)
             {
-                reader.Advance();
-                var typeList = new List<Koto>();
-                while (ParseType(ref reader) is { } typeKoto)
-                {
-                    typeList.Add(typeKoto);
-                    if (reader.CurrentTokenKind != TokenKind.Comma)
-                    {
-                        break;
-                    }
-                    else
-                    {
-                        reader.Advance();
-                    }
-                }
-
-                var end = typeList.Count == 0 ? left.Span.End : typeList[^1].Span.End;
-                if (reader.TryConsume(TokenKind.GreaterThan, out var range, true))
-                {
-                    end = Math.Max(end, range.End);
-                }
-
-                left = new GenericsKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(left.Span.End, end)), left, typeList);
-                continue;
+                left = ParseGenericsPostfix(ref reader, left);
             }
             else
             {
@@ -812,18 +853,13 @@ Exit:
             left = new TypeSemanticsKoto(ref reader, SourceSpan.FromBounds(start, left.Span.End), left);
         }
 
-        if (parseOrigin && reader.IsIdentifierToken(reader.CurrentToken, Constants.FromKeyword))
+        if (parseOrigin && reader.IsCurrentIdentifier(Constants.FromKeyword))
         {
             var fromRange = reader.CurrentTokenRange;
             reader.Advance();
 
-            if (!reader.CanRead)
-            {
-                reader.Diagnostic.Add(fromRange, DiagnosticCode.IncompleteSyntax_Kd);
-                return left;
-            }
-
-            if (reader.CurrentTokenKind is TokenKind.Separator or
+            if (!reader.CanRead ||
+                reader.CurrentTokenKind is TokenKind.Separator or
                 TokenKind.EndBlock or
                 TokenKind.Comma or
                 TokenKind.GreaterThan or
@@ -835,11 +871,7 @@ Exit:
                 return left;
             }
 
-            if (!reader.TryRead(out var originToken))
-            {
-                return left;
-            }
-
+            var originToken = reader.Read();
             if (!originToken.Kind.IsIdentifierOrContextualKeyword())
             {
                 reader.Diagnostic.Add(originToken.Span, DiagnosticCode.IdentifierExpected_Kd);
@@ -853,7 +885,7 @@ Exit:
                 return left;
             }
 
-            var originName = origin.ToString();
+            var originName = reader.GetIdentifier(originToken);
             if (left is TypeSemanticsKoto typeKoto)
             {
                 typeKoto.SetOrigin(originName, originToken.Span.End);
@@ -873,28 +905,20 @@ Exit:
         static Koto? ParseTypeInternal(ref TokenReader reader)
         {
             var token = reader.CurrentToken;
-            var start = token.Span.Start;
-            var semanticsKind = SemanticsKind.Owner;
-            var hasSemantics = false;
-            string? semanticsParameter = default;
-
             reader.Advance();
 
             if (token.Kind == TokenKind.Identifier &&
                 reader.CurrentTokenKind == TokenKind.Slash)
-            {
+            {// semantics/Type
                 var semantics = reader.GetSpan(token);
-                if (!CompilerHelper.TryParse(semantics, out semanticsKind))
+                string? semanticsParameter = default;
+                if (!CompilerHelper.TryParse(semantics, out var semanticsKind))
                 {
-                    semanticsParameter = semantics.ToString();
+                    semanticsParameter = reader.GetIdentifier(token);
                 }
 
-                hasSemantics = true;
                 reader.Advance();
-            }
 
-            if (hasSemantics)
-            {
                 var attribute = reader.PopAttribute();
                 var type = ParseType(ref reader, false);
                 if (type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: not null } transparentType)
@@ -902,14 +926,14 @@ Exit:
                     type = transparentType.Type;
                 }
 
-                var semantics = new TypeSemanticsKoto(
+                var result = new TypeSemanticsKoto(
                     ref reader,
-                    SourceSpan.FromBounds(start, type.Span.End),
+                    SourceSpan.FromBounds(token.Span.Start, type.Span.End),
                     type,
                     semanticsKind,
                     semanticsParameter);
-                semantics.SetAttributeChain(attribute);
-                return semantics;
+                result.SetAttributeChain(attribute);
+                return result;
             }
 
             if (token.Kind.IsPrimitiveType() || token.Kind == TokenKind.Identifier)
@@ -921,10 +945,33 @@ Exit:
         }
     }
 
+    /// <summary>Parses <c>&lt;T1, T2&gt;</c> after an identifier and wraps the identifier in a generic node.</summary>
+    private static GenericsKoto ParseGenericsPostfix(ref TokenReader reader, Koto left)
+    {
+        Debug.Assert(reader.CurrentTokenKind == TokenKind.LessThan);
+        reader.Advance();
+        var typeList = new List<Koto>();
+        while (true)
+        {
+            typeList.Add(ParseType(ref reader));
+            if (!reader.TryConsume(TokenKind.Comma))
+            {
+                break;
+            }
+        }
+
+        var end = typeList[^1].Span.End;
+        if (reader.TryConsume(TokenKind.GreaterThan, out var range, true))
+        {
+            end = Math.Max(end, range.End);
+        }
+
+        return new GenericsKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(left.Span.End, end)), left, typeList);
+    }
+
     /// <summary>Parses an attribute expression.</summary>
     /// <param name="reader">The token reader.</param>
     /// <returns>The parsed attribute, or <see langword="null"/> after an error.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static AttributeKoto? ParseAttributeKoto(ref TokenReader reader)
     {
         var previousAttribute = reader.PopAttribute();
@@ -945,15 +992,238 @@ Exit:
             ref reader,
             SourceSpan.FromBounds(attributeToken.Span.Start, Math.Max(attributeToken.Span.End, operand.Span.End)),
             operand);
-        if (attributeKoto.IsIfAttribute)
+        reader.PushAttribute(attributeKoto);
+        return attributeKoto;
+    }
+
+    private static void ParseCompileTimeIfPrefix(ref TokenReader reader)
+    {
+        var attributes = reader.PopAttribute();
+        var sharp = reader.Read();
+        _ = reader.TryConsume(TokenKind.If, out _, true);
+        var condition = ParseRequiredCompileTimeCondition(ref reader);
+        if (attributes is not null)
         {
-            reader.IsExcluded = !Parser.ResolveIfAttribute(reader.CodeContext.Compilation, attributeKoto);
-            return null;
+            reader.PushAttribute(attributes);
         }
-        else
+
+        var span = SourceSpan.FromBounds(sharp.Span.Start, Math.Max(sharp.Span.End, condition.Span.End));
+
+        switch (CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition))
         {
-            reader.PushAttribute(attributeKoto);
-            return attributeKoto;
+            case CompileTimeConditionResult.True:
+                break;
+
+            case CompileTimeConditionResult.False:
+            case CompileTimeConditionResult.Error:
+                reader.IsExcluded = true;
+                reader.ClearCompileTimeIfPrefixes();
+                break;
+
+            case CompileTimeConditionResult.Deferred:
+                if (!reader.IsExcluded)
+                {
+                    reader.AddCompileTimeIfPrefix(new CompileTimeIfPrefix(span, condition));
+                }
+
+                break;
+        }
+    }
+
+    /// <summary>Parses consecutive compile-time Case Group arms.</summary>
+    /// <param name="reader">The token reader positioned at the first <c>#case</c>.</param>
+    /// <returns>The selected body or a deferred Case Group.</returns>
+    internal static Koto ParseCompileTimeCaseGroup(ref TokenReader reader)
+    {
+        var groupStart = reader.CurrentTokenRange.Start;
+        var groupEnd = reader.CurrentTokenRange.End;
+        var arms = new List<CompileTimeCaseArmKoto>();
+        var results = new List<CompileTimeConditionResult>();
+        var fallbackSeen = false;
+        var fallbackMustBeLastReported = false;
+        var fallbackSpan = default(SourceSpan);
+
+        while (IsCompileTimeCaseStart(ref reader))
+        {
+            if (fallbackSeen && !fallbackMustBeLastReported)
+            {
+                reader.Diagnostic.Add(fallbackSpan, DiagnosticCode.CompileTimeCaseFallbackMustBeLast_Kd);
+                fallbackMustBeLastReported = true;
+            }
+
+            var sharp = reader.Read();
+            _ = reader.TryConsume(TokenKind.Case, out _, true);
+
+            Koto? condition;
+            CompileTimeConditionResult result;
+            if (reader.IsCurrentIdentifier("_"))
+            {
+                var fallbackToken = reader.Read();
+                if (fallbackSeen)
+                {
+                    reader.Diagnostic.Add(fallbackToken.Span, DiagnosticCode.DuplicateCompileTimeCaseFallback_Kd);
+                }
+                else
+                {
+                    fallbackSeen = true;
+                    fallbackSpan = SourceSpan.FromBounds(sharp.Span.Start, fallbackToken.Span.End);
+                }
+
+                condition = null;
+                result = CompileTimeConditionResult.True;
+            }
+            else
+            {
+                condition = ParseRequiredCompileTimeCondition(ref reader);
+                result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);
+            }
+
+            var body = ParseRequiredConditionalBody(ref reader);
+            arms.Add(new CompileTimeCaseArmKoto(condition, body));
+            results.Add(result);
+            groupEnd = Math.Max(groupEnd, body.Span.End);
+
+            if (!TrySkipSeparatorsToCompileTimeCase(ref reader))
+            {
+                break;
+            }
+        }
+
+        var selectionBlocked = false;
+        var selectedIndex = -1;
+        for (var i = 0; i < arms.Count; i++)
+        {
+            if (selectedIndex >= 0)
+            {
+                continue;
+            }
+
+            if (arms[i].Condition is null)
+            {
+                if (!selectionBlocked)
+                {
+                    selectedIndex = i;
+                }
+
+                continue;
+            }
+
+            switch (results[i])
+            {
+                case CompileTimeConditionResult.True when !selectionBlocked:
+                    selectedIndex = i;
+                    break;
+                case CompileTimeConditionResult.Deferred:
+                case CompileTimeConditionResult.Error:
+                    selectionBlocked = true;
+                    break;
+            }
+        }
+
+        if (selectedIndex >= 0)
+        {
+            return arms[selectedIndex].Body;
+        }
+
+        var group = new CompileTimeCaseGroupKoto(
+            ref reader,
+            SourceSpan.FromBounds(groupStart, groupEnd),
+            arms);
+        if (!selectionBlocked && !fallbackSeen)
+        {
+            group.AddDiagnostic(DiagnosticCode.NonExhaustiveCompileTimeCase_Kd);
+        }
+
+        return group;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsCompileTimeCaseStart(ref TokenReader reader)
+        => reader.CurrentTokenKind == TokenKind.Sharp && reader.PeekKind(1) == TokenKind.Case;
+
+    private static bool TrySkipSeparatorsToCompileTimeCase(ref TokenReader reader)
+    {
+        var offset = 0;
+        while (reader.PeekKind(offset) == TokenKind.Separator)
+        {
+            offset++;
+        }
+
+        if (reader.PeekKind(offset) != TokenKind.Sharp || reader.PeekKind(offset + 1) != TokenKind.Case)
+        {
+            return false;
+        }
+
+        reader.Advance(offset);
+        return true;
+    }
+
+    /// <summary>Wraps a syntax node in deferred compile-time directives, innermost first.</summary>
+    /// <param name="codeContext">The owning code context.</param>
+    /// <param name="prefixes">The deferred directive prefixes.</param>
+    /// <param name="target">The controlled syntax node.</param>
+    /// <returns>The outermost directive, or <paramref name="target"/> when no directive was deferred.</returns>
+    internal static Koto ApplyCompileTimeIfPrefixes(
+        CodeContext codeContext,
+        List<CompileTimeIfPrefix>? prefixes,
+        Koto target)
+    {
+        if (prefixes is null)
+        {
+            return target;
+        }
+
+        for (var i = prefixes.Count - 1; i >= 0; i--)
+        {
+            var prefix = prefixes[i];
+            target = new CompileTimeIfKoto(
+                codeContext,
+                SourceSpan.FromBounds(prefix.Span.Start, Math.Max(prefix.Span.End, target.Span.End)),
+                prefix.Condition,
+                target);
+        }
+
+        return target;
+    }
+
+    /// <summary>Consumes one syntax node controlled by an early-false directive without constructing Koto nodes.</summary>
+    /// <param name="reader">The token reader positioned at the controlled syntax.</param>
+    internal static void SkipExcludedSyntax(ref TokenReader reader)
+    {
+        if (IsCompileTimeCaseStart(ref reader))
+        {
+            do
+            {
+                reader.Advance(2);
+                _ = reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+                if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                {
+                    reader.SkipCurrentBlock(false);
+                }
+            }
+            while (TrySkipSeparatorsToCompileTimeCase(ref reader));
+
+            return;
+        }
+
+        if (reader.CurrentTokenKind == TokenKind.StartBlock)
+        {
+            reader.SkipCurrentBlock(false);
+            return;
+        }
+
+        var startsWithPrefix = reader.CurrentTokenKind == TokenKind.Sharp;
+        _ = reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+        if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        {
+            reader.SkipCurrentBlock(false);
+            return;
+        }
+
+        reader.SkipSeparators();
+        if (startsWithPrefix && reader.CanRead && reader.CurrentTokenKind != TokenKind.EndBlock)
+        {
+            SkipExcludedSyntax(ref reader);
         }
     }
 
@@ -990,17 +1260,13 @@ Exit:
 
         static Koto ParseCondition(ref TokenReader reader, bool parsesSemantics)
         {
-            Token? notToken = default;
             if (reader.CurrentTokenKind == TokenKind.Not)
             {
-                reader.TryRead(out var token);
-                notToken = token;
+                var notToken = reader.Read();
+                return new NotKoto(ref reader, notToken.Span, ParseOr(ref reader, parsesSemantics));
             }
 
-            var expression = ParseOr(ref reader, parsesSemantics);
-            return notToken is { } token2
-                ? new NotKoto(ref reader, token2.Span, expression)
-                : expression;
+            return ParseOr(ref reader, parsesSemantics);
         }
 
         static Koto ParseOr(ref TokenReader reader, bool parsesSemantics)
@@ -1008,9 +1274,8 @@ Exit:
             var left = ParseAnd(ref reader, parsesSemantics);
             while (reader.CurrentTokenKind == TokenKind.Or)
             {
-                reader.TryRead(out var token);
-                var right = ParseAnd(ref reader, parsesSemantics);
-                left = new OrKoto(ref reader, token.Span, left, right);
+                var token = reader.Read();
+                left = new OrKoto(ref reader, token.Span, left, ParseAnd(ref reader, parsesSemantics));
             }
 
             return left;
@@ -1021,9 +1286,8 @@ Exit:
             var left = ParsePrimary(ref reader, parsesSemantics);
             while (reader.CurrentTokenKind == TokenKind.And)
             {
-                reader.TryRead(out var token);
-                var right = ParsePrimary(ref reader, parsesSemantics);
-                left = new AndKoto(ref reader, token.Span, left, right);
+                var token = reader.Read();
+                left = new AndKoto(ref reader, token.Span, left, ParsePrimary(ref reader, parsesSemantics));
             }
 
             return left;
@@ -1033,7 +1297,7 @@ Exit:
         {
             if (reader.CurrentTokenKind == TokenKind.Not)
             {
-                reader.TryRead(out var token);
+                var token = reader.Read();
                 return new NotKoto(ref reader, token.Span, ParsePrimary(ref reader, parsesSemantics));
             }
 
@@ -1051,7 +1315,8 @@ Exit:
                 return new ParenthesizedKoto(ref reader, range, operand);
             }
 
-            if (reader.CurrentTokenKind is TokenKind.Invalid or
+            if (!reader.CanRead ||
+                reader.CurrentTokenKind is TokenKind.Invalid or
                 TokenKind.Separator or
                 TokenKind.EndBlock or
                 TokenKind.CloseParenthesis)
@@ -1060,11 +1325,7 @@ Exit:
                 return reader.NewErrorKoto();
             }
 
-            if (!reader.TryRead(out var token2))
-            {
-                return reader.NewErrorKoto();
-            }
-
+            var token2 = reader.Read();
             if (parsesSemantics)
             {
                 var text = reader.GetSpan(token2);
@@ -1090,16 +1351,8 @@ Exit:
     /// <param name="reader">The token reader to inspect.</param>
     /// <returns><see langword="true"/> for an identifier followed by <c>is</c>.</returns>
     public static bool IsTypeConstraintStart(ref TokenReader reader)
-    {
-        if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
-        {
-            return false;
-        }
-
-        var lookahead = reader;
-        lookahead.Advance();
-        return lookahead.CurrentTokenKind == TokenKind.Is;
-    }
+        => reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() &&
+            reader.PeekKind(1) == TokenKind.Is;
 
     /// <summary>Parses an indentation-delimited expression block.</summary>
     /// <param name="reader">The token reader positioned at <see cref="TokenKind.StartBlock"/>.</param>
@@ -1113,6 +1366,7 @@ Exit:
             return new CodeBlockKoto(ref reader, start, [], false);
         }
 
+        var blockContext = reader.TakeContext();
         reader.Advance();
         var items = new List<Koto>();
         var hasTrailingExpression = false;
@@ -1138,6 +1392,7 @@ Exit:
             {
                 var end = reader.CurrentTokenRange.End;
                 reader.Advance();
+                reader.RestoreContext(blockContext);
                 return new CodeBlockKoto(
                     ref reader,
                     SourceSpan.FromBounds(start.Start, end),
@@ -1145,7 +1400,7 @@ Exit:
                     hasTrailingExpression);
             }
 
-            ConsumeAttributeAndModifier(ref reader, out var isEnd);
+            ConsumeAttributeAndModifier(ref reader, out var isEnd, allowCompileTimeDirectives: true);
             if (isEnd)
             {
                 break;
@@ -1156,10 +1411,27 @@ Exit:
                 continue;
             }
 
+            var isExcluded = reader.IsExcluded;
+            var compileTimeIfPrefixes = reader.TakeCompileTimeIfPrefixes();
+            if (isExcluded)
+            {
+                SkipExcludedSyntax(ref reader);
+                continue;
+            }
+
+            if (IsCompileTimeCaseStart(ref reader))
+            {
+                var caseGroup = ParseCompileTimeCaseGroup(ref reader);
+                items.Add(ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup));
+                hasTrailingExpression = true;
+                continue;
+            }
+
             var oldPosition = reader.Position;
             var item = ParseBlockItem(ref reader, out var isDeclaration);
             if (item is not null)
             {
+                item = ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, item);
                 items.Add(item);
                 hasTrailingExpression = !isDeclaration;
             }
@@ -1182,6 +1454,7 @@ Exit:
 
         var eof = reader.CurrentTokenRange.End;
         reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+        reader.RestoreContext(blockContext);
         return new CodeBlockKoto(
             ref reader,
             SourceSpan.FromBounds(start.Start, Math.Max(start.End, eof)),
@@ -1189,7 +1462,10 @@ Exit:
             hasTrailingExpression);
     }
 
-    private static Koto? ParseBlockItem(ref TokenReader reader, out bool isDeclaration)
+    internal static Koto? ParseBlockItem(
+        ref TokenReader reader,
+        out bool isDeclaration,
+        bool requiresFunctionBody = true)
     {
         var token = reader.CurrentToken;
         switch (token.Kind)
@@ -1198,7 +1474,7 @@ Exit:
             case TokenKind.Var:
                 isDeclaration = true;
                 reader.Advance();
-                return ParseField(ref reader, ref token);
+                return ParseField(ref reader, token, false);
 
             case TokenKind.Func:
                 isDeclaration = true;
@@ -1209,14 +1485,11 @@ Exit:
                     return null;
                 }
 
-                var functionBodyReader = reader;
-                ConsumeSeparators(ref functionBodyReader);
-                if (functionBodyReader.CurrentTokenKind == TokenKind.StartBlock)
+                if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
-                    reader = functionBodyReader;
                     function.Parse(ref reader);
                 }
-                else
+                else if (requiresFunctionBody)
                 {
                     reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
                 }
@@ -1230,35 +1503,30 @@ Exit:
             case TokenKind.Contract:
                 isDeclaration = true;
                 reader.Advance();
-                var declaration = ParseGroupDeclaration(ref reader);
+                var supportsGenericHeader = token.Kind == TokenKind.Struct;
+                var declaration = ParseDeclarationContainerHeader(
+                    ref reader,
+                    supportsGenericHeader,
+                    supportsGenericHeader);
                 var state = reader.TakeContext();
-                var group = CollectionKoto.CreateStandalone(
+                var container = DeclarationContainerKoto.CreateStandalone(
                     reader.CodeContext,
                     token.Kind,
                     state,
                     token.Span,
                     declaration.Name);
-                if (declaration.GenericArguments is not null)
-                {
-                    group.AddGenericArguments(declaration.GenericArguments);
-                }
-
-                if (declaration.Origins is not null)
-                {
-                    group.AddOrigins(declaration.Origins);
-                }
+                container.AddHeader(declaration.GenericArguments, declaration.Origins);
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
-                    reader.Advance();
-                    group.Parse(ref reader);
+                    container.Parse(ref reader);
                 }
                 else
                 {
                     reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
                 }
 
-                return group;
+                return container;
 
             default:
                 isDeclaration = false;
@@ -1268,30 +1536,30 @@ Exit:
 
     private static IfKoto ParseIfExpression(ref TokenReader reader)
     {
-        reader.TryRead(out var ifToken);
+        var ifToken = reader.Read();
         var branches = new List<ConditionalBranchKoto>();
         CodeBlockKoto? elseBody = null;
-        var end = ifToken.Span.End;
+        int end;
 
         while (true)
         {
             var condition = ParseRequiredExpression(ref reader);
-            var body = ParseRequiredBlock(ref reader);
+            var body = ParseRequiredConditionalBody(ref reader);
             branches.Add(new ConditionalBranchKoto(condition, body));
             end = body.Span.End;
 
-            if (!TryConsumeElse(ref reader))
+            if (!reader.TrySkipSeparatorsTo(TokenKind.Else))
             {
                 break;
             }
 
-            if (reader.CurrentTokenKind == TokenKind.If)
+            reader.Advance();
+            if (reader.TryConsume(TokenKind.If))
             {
-                reader.Advance();
                 continue;
             }
 
-            elseBody = ParseRequiredBlock(ref reader);
+            elseBody = ParseRequiredConditionalBody(ref reader);
             end = elseBody.Span.End;
             break;
         }
@@ -1305,7 +1573,7 @@ Exit:
 
     private static WhileKoto ParseWhileExpression(ref TokenReader reader)
     {
-        reader.TryRead(out var token);
+        var token = reader.Read();
         var condition = ParseRequiredExpression(ref reader);
         var body = ParseRequiredBlock(ref reader);
         return new WhileKoto(
@@ -1315,9 +1583,19 @@ Exit:
             body);
     }
 
+    private static LoopKoto ParseLoopExpression(ref TokenReader reader)
+    {
+        var token = reader.Read();
+        var body = ParseRequiredBlock(ref reader);
+        return new LoopKoto(
+            ref reader,
+            SourceSpan.FromBounds(token.Span.Start, body.Span.End),
+            body);
+    }
+
     private static ForKoto ParseForExpression(ref TokenReader reader)
     {
-        reader.TryRead(out var forToken);
+        var forToken = reader.Read();
         var bindings = new List<IdentifierNameKoto>(2);
         var isTupleBinding = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
 
@@ -1340,11 +1618,7 @@ Exit:
             }
         }
 
-        if (reader.CurrentTokenKind == TokenKind.In)
-        {
-            reader.Advance();
-        }
-        else
+        if (!reader.TryConsume(TokenKind.In))
         {
             reader.AddDiagnostic(DiagnosticCode.TokenMismatch_Kd, Constants.InKeyword);
         }
@@ -1433,18 +1707,18 @@ Exit:
             return false;
         }
 
-        reader.TryRead(out var token);
+        var token = reader.Read();
         return IdentifierNameKoto.TryCreate(ref reader, token, out binding);
     }
 
     private static MatchKoto ParseMatchExpression(ref TokenReader reader)
     {
-        reader.TryRead(out var matchToken);
+        var matchToken = reader.Read();
         var expression = ParseRequiredExpression(ref reader);
         var arms = new List<MatchArmKoto>();
         var end = expression.Span.End;
 
-        ConsumeSeparators(ref reader);
+        reader.SkipSeparators();
         if (reader.CurrentTokenKind != TokenKind.StartBlock)
         {
             reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
@@ -1458,7 +1732,7 @@ Exit:
         reader.Advance();
         while (reader.CanRead)
         {
-            ConsumeSeparators(ref reader);
+            reader.SkipSeparators();
             if (!reader.CanRead)
             {
                 break;
@@ -1485,24 +1759,15 @@ Exit:
             else
             {
                 reader.Advance();
-                Koto body;
-                if (reader.CurrentTokenKind == TokenKind.Separator)
-                {
-                    body = ParseRequiredBlock(ref reader);
-                }
-                else
-                {
-                    body = ParseRequiredExpression(ref reader);
-                }
+                var body = reader.CurrentTokenKind == TokenKind.Separator
+                    ? ParseRequiredBlock(ref reader)
+                    : ParseRequiredExpression(ref reader);
 
                 arms.Add(new MatchArmKoto(pattern, body));
                 end = body.Span.End;
             }
 
-            if (reader.CurrentTokenKind == TokenKind.Semicolon)
-            {
-                reader.Advance();
-            }
+            reader.TryConsume(TokenKind.Semicolon);
 
             if (reader.Position == oldPosition)
             {
@@ -1520,10 +1785,19 @@ Exit:
 
     private static Koto ParseJumpExpression(ref TokenReader reader)
     {
-        reader.TryRead(out var token);
+        var token = reader.Read();
         if (token.Kind == TokenKind.Continue)
         {
             return new ContinueKoto(ref reader, token.Span);
+        }
+
+        if (token.Kind == TokenKind.Yield)
+        {
+            var yieldExpression = ParseRequiredExpression(ref reader);
+            return new YieldKoto(
+                ref reader,
+                SourceSpan.FromBounds(token.Span.Start, yieldExpression.Span.End),
+                yieldExpression);
         }
 
         Koto? expression = default;
@@ -1554,13 +1828,24 @@ Exit:
         return ParseExpression(ref reader);
     }
 
+    private static Koto ParseRequiredCompileTimeCondition(ref TokenReader reader)
+    {
+        var previous = reader.IsParsingCompileTimeCondition;
+        reader.IsParsingCompileTimeCondition = true;
+        try
+        {
+            return ParseRequiredExpression(ref reader);
+        }
+        finally
+        {
+            reader.IsParsingCompileTimeCondition = previous;
+        }
+    }
+
     private static CodeBlockKoto ParseRequiredBlock(ref TokenReader reader)
     {
-        var lookahead = reader;
-        ConsumeSeparators(ref lookahead);
-        if (lookahead.CurrentTokenKind == TokenKind.StartBlock)
+        if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
-            reader = lookahead;
             return ParseBlock(ref reader);
         }
 
@@ -1568,41 +1853,20 @@ Exit:
         return new CodeBlockKoto(ref reader, reader.CurrentTokenRange, [], false);
     }
 
-    private static bool TryConsumeElse(ref TokenReader reader)
+    private static CodeBlockKoto ParseRequiredConditionalBody(ref TokenReader reader)
     {
-        var lookahead = reader;
-        ConsumeSeparators(ref lookahead);
-        if (lookahead.CurrentTokenKind != TokenKind.Else)
+        if (reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock)
         {
-            return false;
+            return ParseRequiredBlock(ref reader);
         }
 
-        lookahead.Advance();
-        reader = lookahead;
-        return true;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ConsumeSeparators(ref TokenReader reader)
-    {
-        while (reader.CurrentTokenKind == TokenKind.Separator)
-        {
-            reader.Advance();
-        }
+        var expression = ParseRequiredExpression(ref reader);
+        return new CodeBlockKoto(ref reader, expression.Span, [expression], true);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsExpressionBoundary(ref TokenReader reader)
-        => !reader.CanRead || reader.CurrentTokenKind is
-            TokenKind.Separator or
-            TokenKind.Semicolon or
-            TokenKind.StartBlock or
-            TokenKind.EndBlock or
-            TokenKind.Else or
-            TokenKind.EqualsGreaterThan or
-            TokenKind.Comma or
-            TokenKind.CloseParenthesis or
-            TokenKind.CloseBracket;
+        => !reader.CanRead || IsExpressionBoundaryKind[(byte)reader.CurrentTokenKind];
 
     /// <summary>Parses an expression using the requested minimum binding power.</summary>
     /// <param name="reader">The token reader.</param>
@@ -1623,13 +1887,12 @@ Exit:
             {
                 // Attributes following an expression are attached to the next parsed node.
                 _ = ParseAttributeKoto(ref reader);
-
                 continue;
             }
 
             if (tokenKind == TokenKind.At)
             {
-                reader.TryRead(out var token2);
+                var token2 = reader.Read();
                 Koto typeKoto;
                 if (IsExpressionBoundary(ref reader))
                 {
@@ -1656,7 +1919,7 @@ Exit:
                     break;
                 }
 
-                reader.TryRead(out var rangeToken);
+                var rangeToken = reader.Read();
                 var end = ParseRangeEnd(ref reader, rangeToken);
                 if (left is RangeKoto)
                 {
@@ -1676,23 +1939,24 @@ Exit:
                 continue;
             }
 
-            var bindingPower = GetInfixBindingPower(tokenKind);
-            if (bindingPower == default || bindingPower.Left < minBindingPower)
+            var leftBindingPower = InfixLeftBindingPower[(byte)tokenKind];
+            if (leftBindingPower == 0 || leftBindingPower < minBindingPower)
             {
                 break;
             }
 
-            reader.TryRead(out var token);
+            var rightBindingPower = InfixRightBindingPower[(byte)tokenKind];
+            var token = reader.Read();
             Koto right;
             if (token.Kind == TokenKind.Is && reader.CurrentTokenKind == TokenKind.Not)
             {
-                reader.TryRead(out var notToken);
-                var condition = ParseExpression(ref reader, bindingPower.Right);
+                var notToken = reader.Read();
+                var condition = ParseExpression(ref reader, rightBindingPower);
                 right = KotoHelper.NewUnaryKoto(ref reader, notToken, condition);
             }
             else
             {
-                right = ParseExpression(ref reader, bindingPower.Right);
+                right = ParseExpression(ref reader, rightBindingPower);
             }
 
             left = KotoHelper.NewBinaryKoto(ref reader, token, left, right);
@@ -1708,15 +1972,13 @@ ProcessPrefix:
         if (tokenKind == TokenKind.Sharp)
         {
             _ = ParseAttributeKoto(ref reader);
-
             goto ProcessPrefix;
         }
 
-        var bindingPower = GetPrefixBindingPower(tokenKind);
-        if (bindingPower > 0)
+        if (IsPrefixOperator[(byte)tokenKind] && reader.CanRead)
         {
-            reader.TryRead(out var token);
-            var operand = ParseExpression(ref reader, bindingPower);
+            var token = reader.Read();
+            var operand = ParseExpression(ref reader, PrefixBindingPower);
             var koto = KotoHelper.NewUnaryKoto(ref reader, token, operand);
 
             if (koto is AttributeKoto attributeKoto)
@@ -1733,8 +1995,7 @@ ProcessPrefix:
 
     private static bool TryParsePostfixExpression(ref TokenReader reader, ref Koto left)
     {
-        var tokenKind = reader.CurrentTokenKind;
-        switch (tokenKind)
+        switch (reader.CurrentTokenKind)
         {
             case TokenKind.Dot:
                 {
@@ -1754,7 +2015,7 @@ ProcessPrefix:
                 {
                     var openRange = reader.CurrentTokenRange;
                     reader.Advance();
-                    var arguments = ParseArgumentList(ref reader);
+                    var arguments = ParseArgumentList(ref reader, out var argumentLabels);
                     var end = arguments.Count == 0 ? openRange.End : Math.Max(openRange.End, arguments[^1].Span.End);
                     if (reader.TryConsume(TokenKind.CloseParenthesis, out var range, true))
                     {
@@ -1765,7 +2026,8 @@ ProcessPrefix:
                         ref reader,
                         SourceSpan.FromBounds(left.Span.Start, end),
                         left,
-                        arguments);
+                        arguments,
+                        argumentLabels);
                     return true;
                 }
 
@@ -1776,28 +2038,7 @@ ProcessPrefix:
                         return false;
                     }
 
-                    reader.Advance();
-                    var typeList = new List<Koto>();
-                    while (ParseType(ref reader) is { } typeKoto)
-                    {
-                        typeList.Add(typeKoto);
-                        if (reader.CurrentTokenKind != TokenKind.Comma)
-                        {
-                            break;
-                        }
-                        else
-                        {
-                            reader.Advance();
-                        }
-                    }
-
-                    var end = typeList.Count == 0 ? left.Span.End : typeList[^1].Span.End;
-                    if (reader.TryConsume(TokenKind.GreaterThan, out var range, true))
-                    {
-                        end = Math.Max(end, range.End);
-                    }
-
-                    left = new GenericsKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(left.Span.End, end)), left, typeList);
+                    left = ParseGenericsPostfix(ref reader, left);
                     return true;
                 }
 
@@ -1828,7 +2069,7 @@ ProcessPrefix:
 
             case TokenKind.PlusPlus:
                 {
-                    reader.TryRead(out var token);
+                    var token = reader.Read();
                     left = new PostfixIncrementKoto(
                         ref reader,
                         SourceSpan.FromBounds(left.Span.Start, token.Span.End),
@@ -1838,7 +2079,7 @@ ProcessPrefix:
 
             case TokenKind.MinusMinus:
                 {
-                    reader.TryRead(out var token);
+                    var token = reader.Read();
                     left = new PostfixDecrementKoto(
                         ref reader,
                         SourceSpan.FromBounds(left.Span.Start, token.Span.End),
@@ -1850,7 +2091,6 @@ ProcessPrefix:
         return false;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsGenericPostfix(ref TokenReader reader, Koto left)
     {
         if (left is not (IdentifierNameKoto or MemberAccessKoto or GenericsKoto) ||
@@ -1860,11 +2100,10 @@ ProcessPrefix:
         }
 
         // Require adjacent, balanced angle brackets to distinguish generics from comparisons.
-        var lookahead = reader;
         var depth = 0;
-        while (lookahead.CanRead)
+        for (var offset = 0; ; offset++)
         {
-            switch (lookahead.CurrentTokenKind)
+            switch (reader.PeekKind(offset))
             {
                 case TokenKind.LessThan:
                     depth++;
@@ -1878,29 +2117,44 @@ ProcessPrefix:
                     break;
                 case TokenKind.Separator:
                 case TokenKind.EndBlock:
+                case TokenKind.Invalid:
                     return false;
             }
-
-            lookahead.Advance();
         }
-
-        return false;
     }
 
-    private static List<Koto> ParseArgumentList(ref TokenReader reader)
+    private static List<Koto> ParseArgumentList(ref TokenReader reader, out string?[]? argumentLabels)
     {// (arg0, arg1, )
-        var tokenKind = reader.CurrentTokenKind;
-        if (tokenKind == TokenKind.CloseParenthesis)
-        {
-            return [];
-        }
-
-        SourceSpan range;
         var arguments = new List<Koto>();
+        List<string?>? labels = default;
+        argumentLabels = default;
 
+        var tokenKind = reader.CurrentTokenKind;
         while (tokenKind != TokenKind.Invalid &&
                tokenKind != TokenKind.CloseParenthesis)
         {
+            if (tokenKind.IsIdentifierOrContextualKeyword() &&
+                reader.PeekKind(1) == TokenKind.Colon)
+            {
+                var label = reader.GetIdentifier(reader.CurrentToken);
+                reader.Advance(2);
+
+                if (labels is null)
+                {
+                    labels = new(arguments.Count + 1);
+                    for (var i = 0; i < arguments.Count; i++)
+                    {
+                        labels.Add(null);
+                    }
+                }
+
+                labels.Add(label);
+            }
+            else
+            {
+                labels?.Add(null);
+            }
+
             arguments.Add(ParseExpression(ref reader));
 
             tokenKind = reader.CurrentTokenKind;
@@ -1918,17 +2172,22 @@ ProcessPrefix:
 
             if (tokenKind != TokenKind.CloseParenthesis)
             {
-                reader.TryConsume(TokenKind.Comma, out range);
+                reader.TryConsume(TokenKind.Comma, out _);
                 reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
 
-                if (reader.CurrentTokenKind == TokenKind.Comma)
+                if (reader.TryConsume(TokenKind.Comma))
                 {
-                    reader.Advance();
+                    tokenKind = reader.CurrentTokenKind;
                     continue;
                 }
             }
 
             break;
+        }
+
+        if (labels is not null)
+        {
+            argumentLabels = labels.ToArray();
         }
 
         return arguments;
@@ -1938,48 +2197,45 @@ ProcessPrefix:
     {
 Loop:
         var tokenKind = reader.CurrentTokenKind;
+        if (reader.IsParsingCompileTimeCondition && tokenKind.IsPrimitiveType())
+        {
+            return new TypeSemanticsKoto(ref reader, reader.Read());
+        }
+
         switch (tokenKind)
         {
             case TokenKind.Identifier:
             case TokenKind.In:
                 {
-                    reader.TryRead(out var token);
+                    var token = reader.Read();
                     if (IdentifierNameKoto.TryCreate(ref reader, token, out var koto))
                     {
                         return koto;
                     }
-                    else
-                    {
-                        return reader.NewErrorKoto();
-                    }
+
+                    return reader.NewErrorKoto();
                 }
 
             case TokenKind.NumericLiteral:
-                {
-                    reader.TryRead(out var token);
-                    return new NumberLiteralKoto(ref reader, token);
-                }
+                return new NumberLiteralKoto(ref reader, reader.Read());
 
             case TokenKind.StringLiteral:
-                {
-                    reader.TryRead(out var token);
-                    return new StringLiteralKoto(ref reader, token);
-                }
+                return new StringLiteralKoto(ref reader, reader.Read());
 
             case TokenKind.True:
             case TokenKind.False:
-                {
-                    reader.TryRead(out var token);
-                    return new BoolLiteralKoto(ref reader, token);
-                }
+                return new BoolLiteralKoto(ref reader, reader.Read());
 
             case TokenKind.If:
                 return ParseIfExpression(ref reader);
 
+            case TokenKind.StartBlock:
+                return ParseBlock(ref reader);
+
             case TokenKind.DotDot:
             case TokenKind.DotDotEquals:
                 {
-                    reader.TryRead(out var token);
+                    var token = reader.Read();
                     var end = ParseRangeEnd(ref reader, token);
                     return new RangeKoto(
                         ref reader,
@@ -1998,24 +2254,20 @@ Loop:
             case TokenKind.For:
                 return ParseForExpression(ref reader);
 
+            case TokenKind.Loop:
+                return ParseLoopExpression(ref reader);
+
             case TokenKind.Return:
             case TokenKind.Break:
             case TokenKind.Continue:
+            case TokenKind.Yield:
                 return ParseJumpExpression(ref reader);
 
             case TokenKind.OpenParenthesis:
-                {
-                    reader.TryRead(out var token);
+                return ParseParenthesizedExpression(ref reader);
 
-                    var expression = ParseExpression(ref reader);
-                    var end = Math.Max(token.Span.End, expression.Span.End);
-                    if (reader.TryConsume(TokenKind.CloseParenthesis, out var range, true))
-                    {
-                        end = Math.Max(end, range.End);
-                    }
-
-                    return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, end), expression);
-                }
+            case TokenKind.OpenBracket:
+                return ParseCollectionLiteral(ref reader);
 
             case TokenKind.Separator:
                 reader.Advance();
@@ -2031,21 +2283,205 @@ Loop:
         }
     }
 
-    private static int GetPrefixBindingPower(TokenKind kind)
-        => kind switch
+    private static ParenthesizedKoto ParseParenthesizedExpression(ref TokenReader reader)
+    {
+        var openToken = reader.Read();
+
+        var operand = reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var or TokenKind.Yield
+            ? ParseParenthesizedBlock(ref reader)
+            : ParseExpression(ref reader);
+
+        var end = Math.Max(openToken.Span.End, operand.Span.End);
+        if (reader.TryConsume(TokenKind.CloseParenthesis, out var closeRange, true))
         {
-            TokenKind.Sharp => PrefixBindingPower,
-            TokenKind.Dollar => PrefixBindingPower,
-            TokenKind.Ampersand => PrefixBindingPower,
-            TokenKind.Asterisk => PrefixBindingPower,
-            TokenKind.Plus => PrefixBindingPower,
-            TokenKind.Minus => PrefixBindingPower,
-            TokenKind.Not => PrefixBindingPower,
-            TokenKind.Caret => PrefixBindingPower,
-            TokenKind.PlusPlus => PrefixBindingPower,
-            TokenKind.MinusMinus => PrefixBindingPower,
-            _ => 0,
-        };
+            end = Math.Max(end, closeRange.End);
+        }
+
+        return new ParenthesizedKoto(
+            ref reader,
+            SourceSpan.FromBounds(openToken.Span.Start, end),
+            operand);
+    }
+
+    private static CodeBlockKoto ParseParenthesizedBlock(ref TokenReader reader)
+    {
+        var items = new List<Koto>();
+        var hasTrailingExpression = false;
+
+        while (reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var)
+        {
+            var declarationToken = reader.Read();
+            var field = ParseField(ref reader, declarationToken, allowParenthesizedTerminator: true);
+            if (field is not null)
+            {
+                items.Add(field);
+            }
+        }
+
+        if (reader.CurrentTokenKind == TokenKind.Yield)
+        {
+            items.Add(ParseJumpExpression(ref reader));
+            hasTrailingExpression = true;
+        }
+
+        if (items.Count == 0)
+        {
+            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            return new CodeBlockKoto(ref reader, reader.CurrentTokenRange, items, false);
+        }
+
+        return new CodeBlockKoto(
+            ref reader,
+            SourceSpan.FromBounds(items[0].Span.Start, items[^1].Span.End),
+            items,
+            hasTrailingExpression);
+    }
+
+    private static Koto ParseCollectionLiteral(ref TokenReader reader)
+    {
+        var openRange = reader.CurrentTokenRange;
+        reader.Advance();
+        reader.SkipSeparators();
+
+        if (reader.TryConsume(TokenKind.CloseBracket, out var emptyArrayClose, false))
+        {
+            return new ArrayLiteralKoto(
+                ref reader,
+                SourceSpan.FromBounds(openRange.Start, emptyArrayClose.End),
+                []);
+        }
+
+        if (reader.TryConsume(TokenKind.Colon))
+        {
+            reader.SkipSeparators();
+            var end = openRange.End;
+            if (reader.TryConsume(TokenKind.CloseBracket, out var emptyDictionaryClose, true))
+            {
+                end = emptyDictionaryClose.End;
+            }
+
+            return new DictionaryLiteralKoto(
+                ref reader,
+                SourceSpan.FromBounds(openRange.Start, end),
+                []);
+        }
+
+        var first = ParseLiteralElement(ref reader);
+        reader.SkipSeparators();
+        return reader.CurrentTokenKind == TokenKind.Colon
+            ? ParseDictionaryLiteral(ref reader, openRange, first)
+            : ParseArrayLiteral(ref reader, openRange, first);
+
+        static ArrayLiteralKoto ParseArrayLiteral(ref TokenReader reader, SourceSpan openRange, Koto first)
+        {
+            var elements = new List<Koto> { first };
+            while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseBracket)
+            {
+                if (reader.CurrentTokenKind != TokenKind.Comma)
+                {
+                    reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
+                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, 0);
+                    if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+                    {
+                        break;
+                    }
+                }
+
+                reader.Advance();
+                reader.SkipSeparators();
+                if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+                {
+                    break;
+                }
+
+                elements.Add(ParseLiteralElement(ref reader));
+                reader.SkipSeparators();
+            }
+
+            var end = elements[^1].Span.End;
+            if (reader.TryConsume(TokenKind.CloseBracket, out var closeRange, true))
+            {
+                end = closeRange.End;
+            }
+
+            return new ArrayLiteralKoto(
+                ref reader,
+                SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)),
+                elements);
+        }
+
+        static DictionaryLiteralKoto ParseDictionaryLiteral(ref TokenReader reader, SourceSpan openRange, Koto firstKey)
+        {
+            var entries = new List<DictionaryLiteralEntry>();
+            var key = firstKey;
+            while (reader.CanRead)
+            {
+                if (reader.CurrentTokenKind != TokenKind.Colon)
+                {
+                    reader.Diagnostic.Add(
+                        reader.CurrentTokenRange,
+                        DiagnosticCode.TokenMismatch_Kd,
+                        TokenKind.Colon.ToText());
+                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, 0);
+                }
+                else
+                {
+                    reader.Advance();
+                    reader.SkipSeparators();
+                    var value = ParseLiteralElement(ref reader);
+                    entries.Add(new(key, value));
+                    reader.SkipSeparators();
+                }
+
+                if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+                {
+                    break;
+                }
+
+                if (reader.CurrentTokenKind != TokenKind.Comma)
+                {
+                    reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
+                    reader.SkipUntil(TokenKind.Comma, TokenKind.CloseBracket, 0);
+                    if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+                    {
+                        break;
+                    }
+                }
+
+                reader.Advance();
+                reader.SkipSeparators();
+                if (reader.CurrentTokenKind == TokenKind.CloseBracket)
+                {
+                    break;
+                }
+
+                key = ParseLiteralElement(ref reader);
+                reader.SkipSeparators();
+            }
+
+            var end = entries.Count == 0 ? firstKey.Span.End : entries[^1].Value.Span.End;
+            if (reader.TryConsume(TokenKind.CloseBracket, out var closeRange, true))
+            {
+                end = closeRange.End;
+            }
+
+            return new DictionaryLiteralKoto(
+                ref reader,
+                SourceSpan.FromBounds(openRange.Start, Math.Max(openRange.End, end)),
+                entries);
+        }
+
+        static Koto ParseLiteralElement(ref TokenReader reader)
+        {
+            if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Comma or TokenKind.CloseBracket)
+            {
+                reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+                return reader.NewErrorKoto();
+            }
+
+            return ParseExpression(ref reader);
+        }
+    }
 
     private static (int Left, int Right) GetInfixBindingPower(TokenKind kind)
         => kind switch
@@ -2109,7 +2545,8 @@ Loop:
 
     private static Koto? ParseRangeEnd(ref TokenReader reader, Token rangeToken)
     {
-        if (IsRangeEndBoundary(ref reader))
+        if (IsExpressionBoundary(ref reader) ||
+            reader.CurrentTokenKind is TokenKind.DotDot or TokenKind.DotDotEquals)
         {
             if (rangeToken.Kind == TokenKind.DotDotEquals)
             {
@@ -2121,11 +2558,6 @@ Loop:
 
         return ParseExpression(ref reader, RangeRightBindingPower);
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsRangeEndBoundary(ref TokenReader reader)
-        => IsExpressionBoundary(ref reader) ||
-            reader.CurrentTokenKind is TokenKind.DotDot or TokenKind.DotDotEquals;
 
     private static Koto ParseDeclarationType(ref TokenReader reader)
     {
@@ -2153,10 +2585,7 @@ Loop:
                 {
                     reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
                     reader.SkipUntil(TokenKind.Comma, TokenKind.CloseParenthesis);
-                    if (reader.CurrentTokenKind == TokenKind.Comma)
-                    {
-                        reader.Advance();
-                    }
+                    reader.TryConsume(TokenKind.Comma);
                 }
             }
 
@@ -2181,12 +2610,11 @@ Loop:
         var arrowRange = reader.CurrentTokenRange;
         reader.Advance();
         var returnType = ParseDeclarationType(ref reader);
-        var functionType = new FunctionTypeKoto(
+        return new FunctionTypeKoto(
             ref reader,
             SourceSpan.FromBounds(type.Span.Start, Math.Max(arrowRange.End, returnType.Span.End)),
             type,
             returnType);
-        return functionType;
     }
 
     private static List<TypeKoto>? ParseGenericArguments(ref TokenReader reader)
@@ -2214,8 +2642,7 @@ Loop:
                 return list;
             }
 
-            list ??= new();
-            list.Add(typeKoto);
+            (list ??= []).Add(typeKoto);
 
             if (reader.CurrentTokenKind == TokenKind.Comma)
             {
@@ -2225,10 +2652,7 @@ Loop:
             {
                 reader.AddDiagnostic(DiagnosticCode.MissingComma_Kd);
                 reader.SkipUntil(TokenKind.Comma, TokenKind.GreaterThan);
-                if (reader.CurrentTokenKind == TokenKind.Comma)
-                {
-                    reader.Advance();
-                }
+                reader.TryConsume(TokenKind.Comma);
             }
         }
 

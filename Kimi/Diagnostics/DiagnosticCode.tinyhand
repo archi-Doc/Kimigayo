@@ -10,15 +10,24 @@
   + Name="ConditionMustBeBool_Kd"
     Message="The condition expression must be of type Bool"
 
+  + Name="CompileTimeCaseFallbackMustBeLast_Kd"
+    Message="#case _ must be the final arm in a Case Group"
+
+  + Name="DuplicateCompileTimeCaseFallback_Kd"
+    Message="A Case Group may contain at most one #case _ arm"
+
   + Name="DeclarationOrderWarning_Kd"
     Severity="Warning"
-    Message="Declarations should appear in this order: type constraints, nested types, fields, functions"
+    Message="Declarations should appear in this order: type constraints, Properties, functions"
 
   + Name="DivisionByZero_Kd"
     Message="Cannot divide by zero"
 
   + Name="DuplicateModifier_Kd"
     Message="Duplicate modifier '{0}'"
+
+  + Name="DuplicatePropertyAccessor_Kd"
+    Message="A Property may declare the '{0}' accessor at most once"
 
   + Name="DuplicateTypeConstraintDefinition_Kd"
     Message="Type constraints for this struct are already defined in another declaration"
@@ -51,9 +60,6 @@
   + Name="InvalidIdentifier_Kd"
     Message="'{0}' is not a valid identifier"
 
-  + Name="InvalidIfAttributeArgumentCount_Kd"
-    Message="#If attribute must have exactly one argument"
-
   + Name="InvalidIndentation_Kd"
     Message="Invalid indentation. Insert {0} spaces for each indentation level"
 
@@ -75,6 +81,9 @@
   + Name="IntegerOverflow_Kd"
     Message="The integer operation exceeds the supported range"
 
+  + Name="LetPropertyCannotHaveSetter_Kd"
+    Message="A let Property cannot declare a setter"
+
   + Name="MissingBlockCommentEnd_Kd"
     Message="Reached end-of-file. Missing '*/'"
 
@@ -89,6 +98,9 @@
 
   + Name="MultipleAccessibilityModifiers_Kd"
     Message="Only one accessibility modifier is allowed"
+
+  + Name="NonExhaustiveCompileTimeCase_Kd"
+    Message="No compile-time Case Group arm matches and no fallback arm is present"
 
   + Name="TokenMismatch_Kd"
     Message="The token does not match the expected token. Expected: {0}"
@@ -127,8 +139,8 @@
   + Name="UnmatchedToken_Kd"
     Message="Unmatched token {0}"
 
-  + Name="UnsupportedIfAttributeConditionType_Kd"
-    Message="This type is not supported in an If attribute condition expression"
+  + Name="UnsupportedCompileTimeConditionType_Kd"
+    Message="This type is not supported in a compile-time condition expression"
 
   + Name="UnsupportedEscape_Kd"
     Message="The escape sequence '{0}' is not supported"

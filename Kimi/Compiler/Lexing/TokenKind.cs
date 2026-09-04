@@ -5,9 +5,9 @@ namespace Kimi.Compiler.Lexing;
 /// <summary>
 /// Represents the lexical token kinds produced by the lexer.<br/>
 /// When adding a new TokenKind, remember to do the following:<br/>
-/// Add the corresponding descriptor to TokenHelper.TokenDescriptors.<br/>
+/// Add the spelling to TokenHelper (the text table and, for keywords, GetKeywordOrIdentifierKind).<br/>
 /// Add the necessary handling to Tokenizer.<br/>
-/// Add it to TokenHelper.Separator if necessary.
+/// Add it to TokenHelper.Separators if necessary.
 /// </summary>
 public enum TokenKind : byte
 {
@@ -41,6 +41,7 @@ public enum TokenKind : byte
     // Expression keyword
     If, // if
     Else, // else
+    Case, // case
     // Block, // block
     As, // as
     Is, // is
@@ -73,6 +74,10 @@ public enum TokenKind : byte
     ProtectedAndInternal,
     Open,
     In, // in; contextual delimiter in a for expression
+    Associate,
+    Get,
+    Set,
+    Has,
 
     // Not keyword
     Identifier = 128,

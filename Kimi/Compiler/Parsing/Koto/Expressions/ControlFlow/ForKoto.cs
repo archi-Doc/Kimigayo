@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Parsing;
 public sealed partial class ForKoto : ExpressionKoto
 {
     [Key(1)]
-    private List<IdentifierNameKoto> bindings = [];
+    private List<IdentifierNameKoto> bindings;
 
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.For;
@@ -51,14 +51,10 @@ public sealed partial class ForKoto : ExpressionKoto
         this.Iterable = iterable;
         this.Body = body;
         this.IsTupleBinding = isTupleBinding;
-        this.SetParents();
-    }
 
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        this.Iterable.Bind(compilation);
-        this.Body.Bind(compilation);
+        this.Adopt(bindings);
+        iterable.Parent = this;
+        body.Parent = this;
     }
 
     /// <inheritdoc/>
@@ -106,13 +102,9 @@ public sealed partial class ForKoto : ExpressionKoto
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
-        for (var i = 0; i < this.bindings.Count; i++)
+        if (oldKoto is IdentifierNameKoto && ReplaceInList(this.bindings, oldKoto, newKoto))
         {
-            if (this.bindings[i] == oldKoto && newKoto is IdentifierNameKoto binding)
-            {
-                this.bindings[i] = binding;
-                return true;
-            }
+            return true;
         }
 
         if (this.Iterable == oldKoto)
@@ -128,20 +120,5 @@ public sealed partial class ForKoto : ExpressionKoto
         }
 
         return false;
-    }
-
-    [TinyhandOnDeserialized]
-    private void OnDeserialized()
-        => this.SetParents();
-
-    private void SetParents()
-    {
-        foreach (var binding in this.bindings)
-        {
-            binding.Parent = this;
-        }
-
-        this.Iterable.Parent = this;
-        this.Body.Parent = this;
     }
 }

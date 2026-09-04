@@ -35,7 +35,7 @@ public sealed partial class IfKoto : ExpressionKoto
     public override KotoKind Akind => KotoKind.If;
 
     [Key(1)]
-    private List<ConditionalBranchKoto> branches = [];
+    private List<ConditionalBranchKoto> branches;
 
     /// <summary>Gets the conditional branches.</summary>
     [IgnoreMember]
@@ -55,19 +55,14 @@ public sealed partial class IfKoto : ExpressionKoto
     {
         this.branches = branches;
         this.ElseBody = elseBody;
-        this.SetParents();
-    }
 
-    /// <inheritdoc/>
-    public override void Bind(Compilation compilation)
-    {
-        foreach (var branch in this.branches)
+        foreach (var branch in branches)
         {
-            branch.Condition.Bind(compilation);
-            branch.Body.Bind(compilation);
+            branch.Condition.Parent = this;
+            branch.Body.Parent = this;
         }
 
-        this.ElseBody?.Bind(compilation);
+        this.Adopt(elseBody);
     }
 
     /// <inheritdoc/>
@@ -138,23 +133,5 @@ public sealed partial class IfKoto : ExpressionKoto
         }
 
         return false;
-    }
-
-    [TinyhandOnDeserialized]
-    private void OnDeserialized()
-        => this.SetParents();
-
-    private void SetParents()
-    {
-        foreach (var branch in this.branches)
-        {
-            branch.Condition.Parent = this;
-            branch.Body.Parent = this;
-        }
-
-        if (this.ElseBody is not null)
-        {
-            this.ElseBody.Parent = this;
-        }
     }
 }
