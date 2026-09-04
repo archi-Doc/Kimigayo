@@ -26,7 +26,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 KimiUnit.ConfigureBase(context);
 
                 context.AddSingleton<CommandUnit>();
-                context.RegisterDefaultInstantiableType<CommandUnit>();
+                context.RegisterInstanceCreation<CommandUnit>();
                 context.AddSingleton<LspServer>();
 
                 // Command
@@ -98,7 +98,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
             };
 
             // Main
-            await SimpleParser.ParseAndExecute(this.Context.Commands, param.Args, parserOptions, this.Context.Root.CancellationToken);
+            await SimpleParser.ParseAndExecute(this.Context.Commands, param.Args, parserOptions, this.Context.ExecutionRoot.CancellationToken);
 
             await this.Context.SendStop();
             await this.Context.SendTerminate();

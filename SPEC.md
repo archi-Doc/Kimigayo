@@ -18,9 +18,9 @@ public group Program
         s is ref or obj
         T is Comparable
 
-        #case value is ref/i32 x
-            return (x + 1)@string
-        #case value is ref/_
+        #case s is ref and T is i32
+            return "ref/i32"
+        #case s is ref
             return "ref"
         #case _
             return "other"
@@ -40,7 +40,7 @@ public group Program
 - `=>` Represents a mapping or correspondence. It associates the element on the left with the value or expression on the right in Property accessor expression bodies, match arms, named Origin arguments, and similar constructs.
 - `:` Represents a structural association. It is primarily used to associate a Name with a Type, or a key with a value.
 - Naming Convention; Types and Declaration Containers use PascalCase. Functions, Properties, local bindings, parameters, and other value names generally use camelCase.
-- Compile-time Directive; A construct beginning with # is a Compile-time Directive and is evaluated or processed during compilation. This category includes #if, #case, and Attribute Directives.
+- Compile-time Construct; A construct beginning with `#` is evaluated or processed during compilation. Built-in directives such as `#if` and `#case` use lowercase reserved names and are distinct from PascalCase Attributes such as `#Inline`.
 
 # Build Model
 
@@ -80,6 +80,126 @@ Solution -> Project -> Compilation(target)
 ```
 
 After target preparation, the conditional-compilation environment contains `os`, `windows`, `linux`, `macos`, and `pointerWidth`. Unsupported target architectures or targets without an LLVM data layout do not produce a prepared Compilation.
+
+# Compile-time Directives
+
+Compile-time Directives select Syntax during compilation and do not produce runtime control flow. Built-in directives use lowercase reserved names and are distinct from PascalCase Attributes:
+
+| Form | Purpose |
+| --- | --- |
+| `#if` | Independently includes or excludes one Syntax node. |
+| `#case` | Selects one arm from an ordered Case Group. |
+| `#Name` | Attaches an Attribute; it is not a Compile-time Directive. |
+
+The former `#If(...)` form is an Attribute. The lowercase `#if` form specified here is a separate language construct.
+
+## Syntax and selection
+
+`#if` controls either the next Syntax node at the same indentation or one indented Block:
+
+```kimi
+#if windows
+alias Kimi.Windows
+
+#if debug
+    let logging = true
+    let assertions = true
+```
+
+Consecutive `#case` arms at the same indentation form one Case Group. Blank lines and comments do not end the group; any other Syntax node does. Conditions are considered in source order, and the first matching arm is selected. `#case _` matches every remaining case, may occur at most once, and must be the final arm.
+
+```kimi
+func useImplementation<T>(value: T) -> ()
+    #case windows
+        useWindowsImplementation(value)
+    #case T is i32
+        useIntegerImplementation(value)
+    #case _
+        useGenericImplementation(value)
+```
+
+A Case Group must be exhaustive. The final `#case _` may be omitted only when the compiler can prove that the preceding arms cover every permitted compile-time environment. If every condition is resolved and no arm matches, compilation fails.
+
+The selected Block occupies the structural position of the Case Group. Normal Block, result-Type, scope, and control-transfer rules apply after selection. An excluded `#if` target and unselected `#case` arms are parsed but do not undergo ordinary Binding, Lowering, or code generation.
+
+## Staged condition evaluation
+
+`#if` and `#case` use the same staged evaluator. Directive Binding first resolves the Names used by a Condition against the current compile-time environment. This is separate from ordinary Binding of the controlled Syntax.
+
+An evaluation attempt produces exactly one of these results:
+
+| Result | Meaning |
+| --- | --- |
+| **True** | The Condition is satisfied. |
+| **False** | The Condition is not satisfied. |
+| **Deferred** | The Condition has a valid compile-time dependency whose value is not yet available. |
+| **Error** | The Condition is invalid, non-Boolean, or refers to an unavailable Name. |
+
+An unbound but declared generic parameter produces **Deferred**. An unknown Name produces **Error**, not **Deferred**. `and`, `or`, and `not` preserve these distinctions and use normal short-circuit reasoning; for example, `false and Deferred` is **False**, while `true and Deferred` is **Deferred**.
+
+Each pass attempts the single Condition of a `#if` and every explicit Condition of a Case Group. Every arm Condition is checked, and an **Error** is reported even when an earlier arm determines the selection. A Case Group is selected as soon as its first-match result is certain:
+
+- a **False** arm is skipped;
+- a **True** arm is selected when every preceding arm is **False**;
+- a preceding **Deferred** arm prevents selection of a later **True** arm or `#case _`;
+- Conditions after an already selectable **True** arm cannot change the selection.
+
+For example, `#case windows` may be resolved before ordinary Binding. A generic Condition such as `T is i32` remains **Deferred** until `T` is bound. In a mixed Case Group, a true `#case windows` arm may be selected immediately, even when a later generic arm is still Deferred.
+
+The evaluation and Syntax-processing sequence is:
+
+```text
+Parse every directive and its controlled Syntax
+    -> bind directive Conditions
+    -> attempt early evaluation before ordinary Syntax Binding
+        -> resolved: include, exclude, or select Syntax
+        -> Deferred: retain the directive Koto
+        -> Error: report a diagnostic
+    -> re-evaluate retained Koto when generic Binding adds information
+    -> re-evaluate for each specialization when necessary
+    -> require a final result before the controlled Syntax must be finalized
+    -> bind and lower only the selected Syntax
+```
+
+A still-Deferred Condition is an error when its containing declaration, layout, specialization, or executable body must be finalized. Deferral is valid only when a later compilation phase can provide the missing dependency before that point.
+
+## Conditions and narrowing
+
+A Condition is a Boolean compile-time expression. It may inspect Compilation values, Project settings, generic Core Type parameters, Type Semantics parameters, declared constraints, and other information available in its evaluation environment.
+
+```kimi
+windows
+pointerWidth == 64
+s is ref
+T is i32
+T is Comparable
+s is ref and T is Comparable
+```
+
+A concrete Type or Type Semantics on the right of `is` tests identity. A contract or named category tests constraint satisfaction.
+
+Within a selected `#case` arm, its Condition and the negation of each preceding arm are available as additional constraints. Narrowing preserves the concrete Core Type; `T is Comparable` does not replace `T` with `Comparable`.
+
+Compile-time Conditions do not evaluate runtime values. The initial design does not destructure values or introduce pattern bindings. For example, `#case value is ref/i32 x` is invalid; use `#case s is ref and T is i32` to narrow a value of Type `s/T` to `ref/i32`.
+
+## Koto representation
+
+The Parser represents directives explicitly rather than evaluating them as Attributes:
+
+```text
+CompileTimeIfKoto
+    Condition
+    Target
+
+CompileTimeCaseGroupKoto
+    CompileTimeCaseArmKoto[]
+        Condition or fallback
+        Block
+```
+
+Every directive is initially represented by a Koto, even when its Condition can be resolved early. A resolution pass may replace it with selected Syntax in a Compilation-specific tree or view. Resolving one generic specialization must not destructively alter the shared generic Koto used by other specializations.
+
+The lowercase `#if` directive, Case Groups, Deferred evaluation, and these Koto forms are planned and are not yet fully implemented.
 
 # Identifier
 
