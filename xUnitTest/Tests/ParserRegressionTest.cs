@@ -908,6 +908,140 @@ public class ParserRegressionTest
     }
 
     [Fact]
+    public void CompileTimeCaseSelectsFirstKnownMatchingArm()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            func select()
+                #case linux
+                    var excluded = 1
+                #case windows
+                    var selected = 2
+                #case _
+                    var fallback = 3
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
+        var selectedBody = Assert.IsType<CodeBlockKoto>(Assert.Single(function.Body!.Items));
+        Assert.Equal("selected", Assert.IsType<FieldKoto>(Assert.Single(selectedBody.Items)).NameKoto.IdentifierName);
+    }
+
+    [Fact]
+    public void CompileTimeCaseRetainsDeferredGenericSelection()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            func select<s/T>()
+                #case T is i32
+                    var specialized = 1
+                #case _
+                    var fallback = 2
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
+        var group = Assert.IsType<CompileTimeCaseGroupKoto>(Assert.Single(function.Body!.Items));
+        Assert.Collection(
+            group.Arms,
+            arm =>
+            {
+                var condition = Assert.IsType<IsKoto>(arm.Condition);
+                Assert.Equal("T", Assert.IsType<IdentifierNameKoto>(condition.Left).IdentifierName);
+                Assert.Equal("i32", Assert.IsType<TypeSemanticsKoto>(condition.Right).Identifier);
+            },
+            arm => Assert.Null(arm.Condition));
+
+        var bytes = TinyhandSerializer.Serialize(kotonoha);
+        var restored = new Kotonoha(compilation);
+        TinyhandSerializer.DeserializeObject(bytes, ref restored);
+        restored!.OnDeserialized(compilation);
+        var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
+        var restoredGroup = Assert.IsType<CompileTimeCaseGroupKoto>(Assert.Single(restoredFunction.Body!.Items));
+        Assert.Equal(2, restoredGroup.Arms.Count);
+        Assert.All(restoredGroup.ChildNodes, child => Assert.Same(restoredGroup, child.Parent));
+    }
+
+    [Fact]
+    public void CompileTimeCaseDiagnosesInvalidFallbackAndExhaustiveness()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            func invalidFallback()
+                #case _
+                    return
+                #case _
+                    return
+
+            func nonExhaustive()
+                #case linux
+                    return
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        var names = kotonoha.DiagnosticCollection.GetArray().Select(x => x.Entry.Name).ToArray();
+        Assert.Contains(nameof(DiagnosticCode.CompileTimeCaseFallbackMustBeLast_Kd), names);
+        Assert.Contains(nameof(DiagnosticCode.DuplicateCompileTimeCaseFallback_Kd), names);
+        Assert.Contains(nameof(DiagnosticCode.NonExhaustiveCompileTimeCase_Kd), names);
+    }
+
+    [Fact]
+    public void CompileTimeCaseEvaluatesConditionsAfterSelectedArm()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            func select()
+                #case windows
+                    return
+                #case 1
+                    return
+                #case _
+                    return
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        var diagnostic = Assert.Single(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Equal(nameof(DiagnosticCode.ConditionMustBeBool_Kd), diagnostic.Entry.Name);
+    }
+
+    [Fact]
+    public void EarlyFalseCompileTimeIfSkipsAnEntireCaseGroup()
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+        var kotonoha = compilation.Kotonoha;
+        var source = """
+            func select()
+                #if linux
+                #case windows
+                    var firstExcluded =
+                #case _
+                    var fallbackExcluded =
+                var retained = 1
+            """;
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
+        Assert.Equal("retained", Assert.IsType<FieldKoto>(Assert.Single(function.Body!.Items)).NameKoto.IdentifierName);
+    }
+
+    [Fact]
     public void FloatingPointLiteralKeepsItsNumericCategoryWhenWritten()
     {
         var (root, diagnostics) = Parse("var result = 1.0");

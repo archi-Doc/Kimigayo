@@ -562,6 +562,9 @@ Loop:
     public readonly override string ToString()
         => this.GetSpan(this.currentToken).ToString();
 
+    /// <summary>Gets or sets a value indicating whether primitive type names are accepted in a directive condition.</summary>
+    internal bool IsParsingCompileTimeCondition { get; set; }
+
     /// <summary>Adds a deferred compile-time directive to the current syntax prefix.</summary>
     /// <param name="prefix">The directive and its parsed condition.</param>
     internal void AddCompileTimeIfPrefix(CompileTimeIfPrefix prefix)

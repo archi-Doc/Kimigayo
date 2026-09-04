@@ -78,6 +78,15 @@ public sealed partial class GroupKoto : DeclarationContainerKoto
                 continue;
             }
 
+            if (Parser.IsCompileTimeCaseStart(ref reader))
+            {
+                hasNonAliasDeclaration = true;
+                var caseGroup = Parser.ParseCompileTimeCaseGroup(ref reader);
+                caseGroup = Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup);
+                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, caseGroup, true);
+                continue;
+            }
+
             var token = reader.CurrentToken;
             var tokenKind = token.Kind;
             if (tokenKind == TokenKind.Alias)

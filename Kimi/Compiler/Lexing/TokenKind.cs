@@ -41,6 +41,7 @@ public enum TokenKind : byte
     // Expression keyword
     If, // if
     Else, // else
+    Case, // case
     // Block, // block
     As, // as
     Is, // is

@@ -51,6 +51,13 @@ public sealed partial class ContractKoto : DeclarationContainerKoto
                 continue;
             }
 
+            if (Parser.IsCompileTimeCaseStart(ref reader))
+            {
+                var caseGroup = Parser.ParseCompileTimeCaseGroup(ref reader);
+                this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup));
+                continue;
+            }
+
             var token = reader.CurrentToken;
             if (token.Kind != TokenKind.Associate)
             {

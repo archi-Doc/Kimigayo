@@ -760,6 +760,12 @@ Exit:
                         continue;
                     }
 
+                    if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.Case)
+                    {
+                        isEnd = false;
+                        return;
+                    }
+
                     _ = ParseAttributeKoto(ref reader);
                     continue;
 
@@ -995,7 +1001,7 @@ Exit:
         var attributes = reader.PopAttribute();
         var sharp = reader.Read();
         _ = reader.TryConsume(TokenKind.If, out _, true);
-        var condition = ParseRequiredExpression(ref reader);
+        var condition = ParseRequiredCompileTimeCondition(ref reader);
         if (attributes is not null)
         {
             reader.PushAttribute(attributes);
@@ -1022,6 +1028,134 @@ Exit:
 
                 break;
         }
+    }
+
+    /// <summary>Parses consecutive compile-time Case Group arms.</summary>
+    /// <param name="reader">The token reader positioned at the first <c>#case</c>.</param>
+    /// <returns>The selected body or a deferred Case Group.</returns>
+    internal static Koto ParseCompileTimeCaseGroup(ref TokenReader reader)
+    {
+        var groupStart = reader.CurrentTokenRange.Start;
+        var groupEnd = reader.CurrentTokenRange.End;
+        var arms = new List<CompileTimeCaseArmKoto>();
+        var results = new List<CompileTimeConditionResult>();
+        var fallbackSeen = false;
+        var fallbackMustBeLastReported = false;
+        var fallbackSpan = default(SourceSpan);
+
+        while (IsCompileTimeCaseStart(ref reader))
+        {
+            if (fallbackSeen && !fallbackMustBeLastReported)
+            {
+                reader.Diagnostic.Add(fallbackSpan, DiagnosticCode.CompileTimeCaseFallbackMustBeLast_Kd);
+                fallbackMustBeLastReported = true;
+            }
+
+            var sharp = reader.Read();
+            _ = reader.TryConsume(TokenKind.Case, out _, true);
+
+            Koto? condition;
+            CompileTimeConditionResult result;
+            if (reader.IsCurrentIdentifier("_"))
+            {
+                var fallbackToken = reader.Read();
+                if (fallbackSeen)
+                {
+                    reader.Diagnostic.Add(fallbackToken.Span, DiagnosticCode.DuplicateCompileTimeCaseFallback_Kd);
+                }
+                else
+                {
+                    fallbackSeen = true;
+                    fallbackSpan = SourceSpan.FromBounds(sharp.Span.Start, fallbackToken.Span.End);
+                }
+
+                condition = null;
+                result = CompileTimeConditionResult.True;
+            }
+            else
+            {
+                condition = ParseRequiredCompileTimeCondition(ref reader);
+                result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);
+            }
+
+            var body = ParseRequiredConditionalBody(ref reader);
+            arms.Add(new CompileTimeCaseArmKoto(condition, body));
+            results.Add(result);
+            groupEnd = Math.Max(groupEnd, body.Span.End);
+
+            if (!TrySkipSeparatorsToCompileTimeCase(ref reader))
+            {
+                break;
+            }
+        }
+
+        var selectionBlocked = false;
+        var selectedIndex = -1;
+        for (var i = 0; i < arms.Count; i++)
+        {
+            if (selectedIndex >= 0)
+            {
+                continue;
+            }
+
+            if (arms[i].Condition is null)
+            {
+                if (!selectionBlocked)
+                {
+                    selectedIndex = i;
+                }
+
+                continue;
+            }
+
+            switch (results[i])
+            {
+                case CompileTimeConditionResult.True when !selectionBlocked:
+                    selectedIndex = i;
+                    break;
+                case CompileTimeConditionResult.Deferred:
+                case CompileTimeConditionResult.Error:
+                    selectionBlocked = true;
+                    break;
+            }
+        }
+
+        if (selectedIndex >= 0)
+        {
+            return arms[selectedIndex].Body;
+        }
+
+        var group = new CompileTimeCaseGroupKoto(
+            ref reader,
+            SourceSpan.FromBounds(groupStart, groupEnd),
+            arms);
+        if (!selectionBlocked && !fallbackSeen)
+        {
+            group.AddDiagnostic(DiagnosticCode.NonExhaustiveCompileTimeCase_Kd);
+        }
+
+        return group;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsCompileTimeCaseStart(ref TokenReader reader)
+        => reader.CurrentTokenKind == TokenKind.Sharp && reader.PeekKind(1) == TokenKind.Case;
+
+    private static bool TrySkipSeparatorsToCompileTimeCase(ref TokenReader reader)
+    {
+        var offset = 0;
+        while (reader.PeekKind(offset) == TokenKind.Separator)
+        {
+            offset++;
+        }
+
+        if (reader.PeekKind(offset) != TokenKind.Sharp || reader.PeekKind(offset + 1) != TokenKind.Case)
+        {
+            return false;
+        }
+
+        reader.Advance(offset);
+        return true;
     }
 
     /// <summary>Wraps a syntax node in deferred compile-time directives, innermost first.</summary>
@@ -1056,6 +1190,22 @@ Exit:
     /// <param name="reader">The token reader positioned at the controlled syntax.</param>
     internal static void SkipExcludedSyntax(ref TokenReader reader)
     {
+        if (IsCompileTimeCaseStart(ref reader))
+        {
+            do
+            {
+                reader.Advance(2);
+                _ = reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+                if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                {
+                    reader.SkipCurrentBlock(false);
+                }
+            }
+            while (TrySkipSeparatorsToCompileTimeCase(ref reader));
+
+            return;
+        }
+
         if (reader.CurrentTokenKind == TokenKind.StartBlock)
         {
             reader.SkipCurrentBlock(false);
@@ -1266,6 +1416,14 @@ Exit:
             if (isExcluded)
             {
                 SkipExcludedSyntax(ref reader);
+                continue;
+            }
+
+            if (IsCompileTimeCaseStart(ref reader))
+            {
+                var caseGroup = ParseCompileTimeCaseGroup(ref reader);
+                items.Add(ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup));
+                hasTrailingExpression = true;
                 continue;
             }
 
@@ -1670,6 +1828,20 @@ Exit:
         return ParseExpression(ref reader);
     }
 
+    private static Koto ParseRequiredCompileTimeCondition(ref TokenReader reader)
+    {
+        var previous = reader.IsParsingCompileTimeCondition;
+        reader.IsParsingCompileTimeCondition = true;
+        try
+        {
+            return ParseRequiredExpression(ref reader);
+        }
+        finally
+        {
+            reader.IsParsingCompileTimeCondition = previous;
+        }
+    }
+
     private static CodeBlockKoto ParseRequiredBlock(ref TokenReader reader)
     {
         if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
@@ -2025,6 +2197,11 @@ ProcessPrefix:
     {
 Loop:
         var tokenKind = reader.CurrentTokenKind;
+        if (reader.IsParsingCompileTimeCondition && tokenKind.IsPrimitiveType())
+        {
+            return new TypeSemanticsKoto(ref reader, reader.Read());
+        }
+
         switch (tokenKind)
         {
             case TokenKind.Identifier:

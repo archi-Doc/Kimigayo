@@ -10,6 +10,12 @@
   + Name="ConditionMustBeBool_Kd"
     Message="The condition expression must be of type Bool"
 
+  + Name="CompileTimeCaseFallbackMustBeLast_Kd"
+    Message="#case _ must be the final arm in a Case Group"
+
+  + Name="DuplicateCompileTimeCaseFallback_Kd"
+    Message="A Case Group may contain at most one #case _ arm"
+
   + Name="DeclarationOrderWarning_Kd"
     Severity="Warning"
     Message="Declarations should appear in this order: type constraints, Properties, functions"
@@ -92,6 +98,9 @@
 
   + Name="MultipleAccessibilityModifiers_Kd"
     Message="Only one accessibility modifier is allowed"
+
+  + Name="NonExhaustiveCompileTimeCase_Kd"
+    Message="No compile-time Case Group arm matches and no fallback arm is present"
 
   + Name="TokenMismatch_Kd"
     Message="The token does not match the expected token. Expected: {0}"

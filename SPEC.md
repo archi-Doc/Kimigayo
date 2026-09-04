@@ -202,7 +202,7 @@ CompileTimeCaseGroupKoto
 
 Only a Deferred directive is represented by a directive Koto. An early-true `#if` contributes its Target directly, and an early-false `#if` contributes no Koto. Resolving one generic specialization must not destructively alter the shared generic Koto used by other specializations.
 
-The Parser implements early `#if` evaluation and `CompileTimeIfKoto` retention. Case Groups and later Binding/specialization evaluation are planned.
+The Parser implements early `#if` and `#case` evaluation and retains Deferred directives as dedicated Koto nodes. Later Binding/specialization evaluation and constraint narrowing are planned.
 
 # Identifier
 

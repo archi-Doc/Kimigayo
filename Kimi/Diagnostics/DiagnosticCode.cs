@@ -11,6 +11,8 @@ public enum DiagnosticCode
     Template_Kd, // First sentinel
 
     ConditionMustBeBool_Kd,
+    CompileTimeCaseFallbackMustBeLast_Kd,
+    DuplicateCompileTimeCaseFallback_Kd,
     DeclarationOrderWarning_Kd,
     DivisionByZero_Kd,
     DuplicateModifier_Kd,
@@ -38,6 +40,7 @@ public enum DiagnosticCode
     MissingExpectedToken_Kd,
     MissingStringLiteralEnd_Kd,
     MultipleAccessibilityModifiers_Kd,
+    NonExhaustiveCompileTimeCase_Kd,
     TokenMismatch_Kd,
     TopLevelKeywordAfterCode_Kd,
     TypeMismatch_Kd,

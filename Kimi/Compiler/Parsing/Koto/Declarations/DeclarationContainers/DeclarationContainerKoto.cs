@@ -492,6 +492,13 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
                 continue;
             }
 
+            if (Parser.IsCompileTimeCaseStart(ref reader))
+            {
+                var caseGroup = Parser.ParseCompileTimeCaseGroup(ref reader);
+                this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup));
+                continue;
+            }
+
             if (parseTypeConstraints && Parser.IsTypeConstraintStart(ref reader))
             {
                 if (!acceptsTypeConstraints)

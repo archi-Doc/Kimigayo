@@ -76,6 +76,7 @@ public static partial class TokenHelper
         // Expression keyword
         Set(TokenKind.If, Constants.IfKeyword);
         Set(TokenKind.Else, Constants.ElseKeyword);
+        Set(TokenKind.Case, Constants.CaseKeyword);
         Set(TokenKind.As, Constants.AsKeyword);
         Set(TokenKind.Is, Constants.IsKeyword);
         Set(TokenKind.Not, Constants.NotKeyword);
@@ -316,6 +317,7 @@ public static partial class TokenHelper
             4 => c0 switch
             {
                 'b' => Match(text, Constants.BoolKeyword, TokenKind.Bool),
+                'c' => Match(text, Constants.CaseKeyword, TokenKind.Case),
                 'i' => Match(text, Constants.I128Keyword, TokenKind.I128),
                 'u' => Match(text, Constants.U128Keyword, TokenKind.U128),
                 't' => Match(text, Constants.TrueKeyword, TokenKind.True),

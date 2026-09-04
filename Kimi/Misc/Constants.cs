@@ -41,6 +41,7 @@ public static class Constants
     public const string FuncKeyword = "func";
     public const string IfKeyword = "if";
     public const string ElseKeyword = "else";
+    public const string CaseKeyword = "case";
     public const string AsKeyword = "as";
     public const string IsKeyword = "is";
     public const string NotKeyword = "not";
