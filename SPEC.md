@@ -2,6 +2,8 @@
 
 **Kimigayo** is a programming language designed and built from scratch with the goals of being consistent, fast, simple, fun, and safe.
 
+> **Pre-alpha status:** This document defines the intended language. The current implementation mainly covers project loading, target setup, tokenization, parsing, diagnostics, and Koto serialization. Binding, overload and type checking, generic specialization, ownership and Origin analysis, lowering, and code generation are planned unless a section says otherwise.
+
 ```kimi
 alias Kimi.Base
 
@@ -54,15 +56,15 @@ Kimigayo separates workspace orchestration, project configuration, library sourc
 | Compilation | Compiles one Project for one target OS and architecture. |
 | CodeContext | Carries the source-unit and diagnostic context used while source is parsed, generated, or inserted into a Koto tree. |
 
-A Solution discovers and loads Projects. A Project contains common build settings, target triples, project-wide aliases, and external Kotonoha dependency descriptors. For each configured target, the Project creates a separate Compilation.
+A Solution discovers and loads Projects. A Project stores target triples, aliases, and external Kotonoha descriptors, and creates one Compilation for each target.
 
-Each Project specifies the Kimigayo language version used to interpret its source files. This preserves reproducible builds even though compatibility between language versions is not guaranteed. Language-version selection in `.kimiproj` is planned but not yet implemented; until it is implemented, a Project is interpreted using the compiler's current language version.
+Project language-version selection is planned but not implemented. For now, every Project uses the compiler's current language version.
 
-Each Compilation owns the application's or library's primary Kotonoha. A Compilation also provides the target triple, LLVM data layout, pointer width, conditional-compilation variables, and lookup by Kotonoha identifier. External Kotonoha descriptors are copied from the Project configuration; fetching and loading those external libraries is a later compilation stage and is not currently implemented.
+Each Compilation owns the primary Kotonoha and provides target information and compile-time variables. Loading external Kotonoha libraries is planned.
 
 A Kotonoha merges declarations from multiple `SourceDocument` instances into one root Koto tree. Tokenization and parsing occur per source document. Executable syntax written directly at the root—bindings, statements, expressions, and functions—is stored in an implicit generated function owned by the Kotonoha.
 
-A CodeContext belongs to exactly one Kotonoha. It supplies the active Compilation and diagnostic destination to the Tokenizer and Parser. Generated source may be parsed into a selected Declaration Container in that same Kotonoha; inserting nodes into a Declaration Container owned by another Kotonoha is invalid.
+A CodeContext belongs to one Kotonoha. It supplies the Compilation and diagnostic destination to the Tokenizer and Parser. A node cannot be inserted into a Declaration Container owned by another Kotonoha.
 
 The current front-end pipeline is:
 
@@ -79,7 +81,7 @@ Solution -> Project -> Compilation(target)
                  LLVM IR -> binary (planned back-end stages)
 ```
 
-After target preparation, the conditional-compilation environment contains `os`, `windows`, `linux`, `macos`, `pointerWidth`, and `debug`. The OS flags and `debug` are Boolean values; `os` is a string. Unsupported target architectures or targets without an LLVM data layout do not produce a prepared Compilation.
+After target preparation, the conditional-compilation environment contains `os`, `windows`, `linux`, `macos`, `pointerWidth`, `debug`, and `release`. The OS and build-mode flags are Boolean values; `os` is a string. Unsupported target architectures or targets without an LLVM data layout do not produce a prepared Compilation.
 
 # Compile-time Directives
 
@@ -118,13 +120,13 @@ func useImplementation<T>(value: T) -> ()
         useGenericImplementation(value)
 ```
 
-A Case Group must be exhaustive. The final `#case _` may be omitted only when the compiler can prove that the preceding arms cover every permitted compile-time environment. If every condition is resolved and no arm matches, compilation fails.
+A Case Group must select an arm in every final evaluation context. The final `#case _` may be omitted when the compiler can prove that the explicit arms are exhaustive. If all Conditions are resolved and no arm matches, compilation fails.
 
 The selected Block occupies the structural position of the Case Group. Normal Block, result-Type, scope, and control-transfer rules apply after selection. An early-false `#if` target is consumed without creating Koto nodes. Unselected `#case` arms do not undergo ordinary Binding, Lowering, or code generation.
 
 ## Staged condition evaluation
 
-`#if` and `#case` use the same staged evaluator. Directive Binding first resolves the Names used by a Condition against the current compile-time environment. This is separate from ordinary Binding of the controlled Syntax.
+`#if` and `#case` use the same staged evaluator. The Parser first evaluates Conditions from the prepared compile-time environment, before ordinary Binding. Later Directive Binding resolves remaining Names without binding excluded Syntax.
 
 An evaluation attempt produces exactly one of these results:
 
@@ -135,7 +137,9 @@ An evaluation attempt produces exactly one of these results:
 | **Deferred** | The Condition has a valid compile-time dependency whose value is not yet available. |
 | **Error** | The Condition is invalid, non-Boolean, or refers to an unavailable Name. |
 
-An unbound but declared generic parameter produces **Deferred**. An unknown Name produces **Error**, not **Deferred**. `and`, `or`, and `not` preserve these distinctions and use normal short-circuit reasoning; for example, `false and Deferred` is **False**, while `true and Deferred` is **Deferred**.
+After Directive Binding, an unbound declared generic parameter produces **Deferred**, while an unknown Name produces **Error**. `and`, `or`, and `not` use short-circuit reasoning; for example, `false and Deferred` is **False**, while `true and Deferred` is **Deferred**.
+
+The current Parser cannot yet distinguish an unknown Name from a declared generic parameter. It provisionally treats unresolved Names and unsupported expressions as **Deferred**. Later Directive Binding must classify them and report unknown Names.
 
 Each pass attempts the single Condition of a `#if` and every explicit Condition of a Case Group. Every arm Condition is checked, and an **Error** is reported even when an earlier arm determines the selection. A Case Group is selected as soon as its first-match result is certain:
 
@@ -144,21 +148,20 @@ Each pass attempts the single Condition of a `#if` and every explicit Condition 
 - a preceding **Deferred** arm prevents selection of a later **True** arm or `#case _`;
 - Conditions after an already selectable **True** arm cannot change the selection.
 
-For example, `#case windows` may be resolved before ordinary Binding. A generic Condition such as `T is i32` remains **Deferred** until `T` is bound. In a mixed Case Group, a true `#case windows` arm may be selected immediately, even when a later generic arm is still Deferred.
+For example, `#case windows` may be resolved during parsing. A generic Condition such as `T is i32` remains **Deferred** until `T` is bound. A true arm may be selected immediately when every earlier arm is false; later Deferred arms cannot change that choice.
 
 The evaluation and Syntax-processing sequence is:
 
 ```text
 Parse a directive Condition
-    -> attempt evaluation from the prepared compile-time environment
+    -> evaluate known target and Project values
         -> True: parse the controlled Syntax without a directive Koto
         -> False: consume the controlled Syntax without creating Koto nodes
         -> Deferred: parse the controlled Syntax and retain a directive Koto
-        -> Error: report a diagnostic
-    -> bind retained directive Conditions separately from controlled Syntax
-    -> re-evaluate retained Koto when generic Binding adds information
-    -> re-evaluate for each specialization when necessary
-    -> require a final result before the controlled Syntax must be finalized
+        -> Error: report a diagnostic and discard the controlled Syntax
+    -> resolve Names in retained Conditions
+    -> re-evaluate after generic Binding and for each specialization
+    -> require a final result before finalization
     -> bind and lower only the selected Syntax
 ```
 
@@ -200,7 +203,7 @@ CompileTimeCaseGroupKoto
         Block
 ```
 
-Only a Deferred directive is represented by a directive Koto. An early-true `#if` contributes its Target directly, and an early-false `#if` contributes no Koto. Resolving one generic specialization must not destructively alter the shared generic Koto used by other specializations.
+Only a Deferred directive normally needs a directive Koto. An early-true `#if` contributes its Target directly, and an early-false `#if` contributes no Koto. An invalid Case Group may remain as Koto for error recovery. Resolving one specialization must not alter Koto shared by other specializations.
 
 The Parser implements early `#if` and `#case` evaluation and retains Deferred directives as dedicated Koto nodes. Later Binding/specialization evaluation and constraint narrowing are planned.
 
@@ -251,6 +254,8 @@ The Signature of each declaration kind consists of the following information:
 Each function parameter contributes its Type to the function Signature. Parameter names, return types, default values, and declaration modifiers are not part of the function Signature.
 
 Consequently, two functions in the same scope may share a Name when their generic parameter counts or parameter types differ. Two properties with the same Name in the same scope have the same Signature and therefore conflict.
+
+The current code defines these Signature shapes, but duplicate-declaration checks and overload Binding are not implemented.
 
 # Literals
 
@@ -378,6 +383,8 @@ If the content must contain a run of double quotation marks that would otherwise
 
 The opening and closing delimiters must contain the same number of quotation marks and are not part of the value.
 
+The current front end parses escaped and raw strings. String interpolation is specified above but is not yet accepted as a complete expression.
+
 # Declarations
 
 ## Bindings
@@ -392,6 +399,8 @@ var current = 0
 ## Properties
 
 Kimigayo has exactly one kind of value-bearing member: the **Property**. A compiler may lower Property storage to a storage slot, global storage, or another layout entity, but none of these implementation representations constitutes another member kind. A `let` or `var` declared inside an executable Block is a local binding, not a Property.
+
+The current Parser records Properties, inline and block accessors, and basic syntax errors. Accessor expansion, contextual binding of `self`, `storage`, and `value`, `HasStorage`, access checks, initialization checks, and accessor type checking are planned semantic work.
 
 A Property has a Type, a getter, an optional setter, and optionally owned storage:
 
@@ -748,7 +757,7 @@ Indexer declaration syntax and its accessor semantics are specified separately a
 
 ## Functions
 
-A function begins with `func`, followed by its Name, optional generic parameters, and a parenthesized parameter list. An optional return Type follows `->`. A function may have an indentation-delimited body.
+A function begins with `func`, followed by its Name, optional generic parameters, optional Origin parameters, and a parenthesized parameter list. An optional return Type follows `->`. A function may have an indentation-delimited body.
 
 ```kimi
 func add(left: i32, right: i32) -> i32
@@ -771,6 +780,8 @@ The left operand of a function constraint must name one of the function's generi
 
 At a call site, every explicit or inferred generic argument must satisfy its corresponding constraints. Within the function body, those constraints are available during type checking and compile-time specialization. Function constraints are not part of the function Signature; two declarations that differ only in constraints therefore conflict.
 
+The current Parser reads these constraint lines as ordinary body expressions. Separating them from executable statements and enforcing them during Binding and specialization are planned.
+
 # Declaration Containers
 
 A **Declaration Container** is a named declaration scope whose body may contain Properties, functions, constraints, or nested Declaration Containers as permitted by its kind. Its body is delimited by indentation.
@@ -781,7 +792,7 @@ A **Declaration Container** is a named declaration scope whose body may contain 
 | `struct` | Yes | Accepts Properties and functions in declaration order. Generic parameters, Origins, and type constraints are supported. |
 | `enum` | Yes | Body parsing is not implemented. |
 | `extension` | No | Its Name identifies the target. Body parsing is not implemented. |
-| `contract` | No | Accepts associated-type constraints and Property requirements. |
+| `contract` | No | Specifies associated-type constraints and Property requirements. The current Parser accepts only associated-type constraints. |
 
 A `struct` header may contain generic parameters and an Origin list. Constraint declarations precede Properties and functions.
 
@@ -808,7 +819,7 @@ contract Sequence
     var count: i32 has get
 ```
 
-Each source unit has an implicit root `group`. This root dispatches top-level Declaration Container declarations, Properties, and functions. A `rootgroup` declaration starts at that root and accepts a dot-separated Name. For example:
+Each source unit has an implicit root `group`. Named Declaration Containers are stored there. Top-level executable syntax, including `let`, `var`, expressions, and functions, is stored in an implicit generated function. A `rootgroup` declaration starts at the root and accepts a dot-separated Name. For example:
 
 ```kimi
 rootgroup A.B
@@ -852,6 +863,8 @@ Origin         — Whence
 ```
 
 These three elements form the core of Kimigayo's type system.
+
+The current front end parses much of this Type syntax. Type resolution, layout validation, subtyping, ownership rules, and most Type semantics are not implemented.
 
 ## Core Types
 
@@ -1104,6 +1117,8 @@ let pointer: unsafe/i32
 
 Kimigayo uses **Origins** instead of lifetime variables. An Origin describes how long a borrow remains valid; a **Loan** records which place is borrowed and whether the borrow is shared or exclusive.
 
+The current Parser supports Origin lists on structures and simple `from Name` annotations. Function Origin parameters, qualified and intersected Origin expressions, named Origin arguments, inference, and borrow checking are not implemented.
+
 ```text
 Type    what the value is
 Origin  how long a borrow may remain valid
@@ -1123,7 +1138,7 @@ uniq/T from o  // exclusive and mutable
 
 `uniq/T` is not implicitly copyable and cannot coexist with another overlapping borrow. The corresponding object-borrow semantics, `objref/T` and `objuniq/T`, follow the same shared and exclusive rules. This section uses `ref` and `uniq` in examples.
 
-When `from o` is omitted, §3 determines the Origin.
+When `from o` is omitted, the Origin elision rules below determine the Origin.
 
 #### Origin expressions
 
@@ -1192,7 +1207,7 @@ A shared borrow from `static` has no non-static lifetime dependency. Safe code c
 
 ```kimi
 func spawn<F>(f: F)
-    where F: Owned
+    F is Owned
 ```
 
 A type is `Owned` when every reachable Origin dependency is absent or bound to `static`.
@@ -1202,8 +1217,7 @@ A type is `Owned` when every reachable Origin dependency is absent or bound to `
 Functions and types may declare abstract Origin parameters separately from type parameters:
 
 ```kimi
-func unwrap<T> origin s
-    (v: View<T> from (source => s))
+func unwrap<T> origin s(v: View<T> from (source => s))
     -> ref/T from s
 
 struct View<T> origin source
@@ -1414,9 +1428,9 @@ Type checking generates these constraints:
 | --------------- | ------------------------------------------------------------ |
 | Subtyping       | Assignment and argument passing require `type(value) <: type(destination)`. |
 | Liveness        | If a value containing `o` may be used after `P`, then `P` belongs to `region(o)`. |
-| Outlives        | `where a : b` requires `region(a) ⊇ region(b)`.              |
+| Outlives        | `a : b` requires `region(a) ⊇ region(b)`.                    |
 | Well-formedness | Every Origin in `T` observable through `ref/T from o` or `uniq/T from o` must outlive `o`. |
-| Calls           | Origin arguments and result Loan requirements are instantiated as described in §5.4. |
+| Calls           | Origin arguments and result Loan requirements are instantiated as described under Calls and Origin propagation. |
 
 The well-formedness rule prevents borrowed contents from expiring before the outer borrow.
 
@@ -1956,91 +1970,3 @@ break value
 ## Implementation status
 
 The current front end parses `if`, `match`, `for`, `while`, `loop`, `return`, `break`, `continue`, and `yield`, and represents each control-transfer keyword with its own syntax node. Exhaustiveness and common-result-type checking, contextual target validation, and enforcement of target-specific operand restrictions are later semantic-analysis work and are not yet fully implemented.
-
-# Composition
-
-Structures may freely compose primitive types, structures, and Type Semantics where permitted by the rules of the corresponding semantics.
-
-For example:
-
-```
-struct Header
-    var version: u32
-    var flags: u16
-
-struct Buffer
-    var length: usize
-    var data: obj/Data
-
-struct SharedState
-    var state: arc/State
-
-struct Parser
-    var input: ref/Input
-    var position: usize
-```
-
-Type Semantics are orthogonal to the Core Type.
-
-For example, given:
-
-```
-struct Data
-    var value: i32
-```
-
-the following are distinct types:
-
-```
-owner/Data
-ref/Data
-uniq/Data
-obj/Data
-rc/Data
-arc/Data
-objref/Data
-objuniq/Data
-unsafe/Data
-```
-
-Each has the same `Data` Core Type but different ownership, storage, borrowing, or safety semantics.
-
-# Classification
-
-The Type Semantics hierarchy is:
-
-```
-Type Semantics
-├─ Value
-│  └─ Owner          T, owner/T
-│
-├─ Value Borrow
-│  ├─ SharedRef      ref/T
-│  └─ ExclusiveRef   uniq/T
-│
-├─ Object
-│  ├─ Owner          obj/T
-│  ├─ Rc             rc/T
-│  └─ Arc            arc/T
-│
-├─ Object Borrow
-│  ├─ SharedRef      objref/T
-│  └─ ExclusiveRef   objuniq/T
-│
-└─ Unsafe
-   └─ Pointer        unsafe/T
-```
-
-This classification separates five usage models:
-
-- **Value** — direct ownership of a value.
-- **Value Borrow** — non-owning access to value data.
-- **Object** — ownership of metadata and data.
-- **Object Borrow** — non-owning access to an object.
-- **Unsafe** — access outside the guarantees of the safe Type Semantics system.
-
-
-
-```
-// The design is mostly finished, and once again the best time has come to an end.
-```
