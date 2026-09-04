@@ -2,6 +2,46 @@
 
 **Kimigayo** is a programming language designed and built from scratch with the goals of being consistent, fast, simple, fun, and safe.
 
+```kimi
+alias Kimi.Base
+
+#if windows
+alias Kimi.Windows
+
+public group Program
+    public func main(arg: string) -> ()
+        var array = [0, 1, 2,]
+        var map = [0:"Zero", 1:"One", ]
+        return
+
+    func getString<s/T>(value: s/T) -> string
+        s is ref or obj
+        T is Comparable
+
+        #case value is ref/i32 x
+            return (x + 1)@string
+        #case value is ref/_
+            return "ref"
+        #case _
+            return "other"
+```
+
+**Principles**
+
+- Backward Compatibility; Kimigayo does not guarantee backward compatibility between language versions. To preserve room for future language evolution, and because AI-assisted development has made source migration easier, Kimigayo prioritizes consistency and language quality over compatibility with existing code.
+- Indentation; Four spaces are used for indentation. Indentation represents nesting, that is, the syntactic containment relationship between constructs.
+- `[]` Represents a sequence of elements with the same Type and access to its elements. It is used for array construction and index access.
+- `()` Represents ordered grouping of values or Types. It is used for function parameter and argument lists, Tuples, Unit, Function Types, and grouping of conditions or operator precedence.
+- `<>` Represents Generic parameters and Generic arguments. It is used for compile-time parameters and arguments that construct Types.
+- `{}` Currently unused. It is reserved for future language evolution.
+- Type; The conceptual complete form of a Kimigayo Type is `semantics/CoreType from origin`. Type Semantics describe how a value is handled, Core Type describes what the value is, and Origin describes where the value derives from and how long it remains valid. Type Semantics and Origin may be omitted when determined by the language or context.
+- `=` Represents assignment. Under Kimigayo's ownership rules, the effective operation may be either Copy or Move depending on the Type and context. Precise Copy/Move classification, use-after-move checking, and related enforcement are not yet implemented.
+- `->` Represents a Result Type. In function declarations and Function Types, it denotes the result Type associated with the input side.
+- `=>` Represents a mapping or correspondence. It associates the element on the left with the value or expression on the right in Property accessor expression bodies, match arms, named Origin arguments, and similar constructs.
+- `:` Represents a structural association. It is primarily used to associate a Name with a Type, or a key with a value.
+- Naming Convention; Types and Declaration Containers use PascalCase. Functions, Properties, local bindings, parameters, and other value names generally use camelCase.
+- Compile-time Directive; A construct beginning with # is a Compile-time Directive and is evaluated or processed during compilation. This category includes #if, #case, and Attribute Directives.
+
 # Build Model
 
 Kimigayo separates workspace orchestration, project configuration, library source, and target-specific compilation into the following model:
@@ -10,11 +50,13 @@ Kimigayo separates workspace orchestration, project configuration, library sourc
 | ------- | -------------- |
 | Solution | Holds multiple Projects and supplies options shared by their builds. |
 | Project | Defines one application or library build unit. It is configured by a `.kimiproj` file. |
-| Kotonoha | Defines a named library source unit. It is is built from one or more Kimi source files. |
+| Kotonoha | Defines a named library source unit. It is built from one or more Kimi source files. |
 | Compilation | Compiles one Project for one target OS and architecture. |
 | CodeContext | Carries the source-unit and diagnostic context used while source is parsed, generated, or inserted into a Koto tree. |
 
 A Solution discovers and loads Projects. A Project contains common build settings, target triples, project-wide aliases, and external Kotonoha dependency descriptors. For each configured target, the Project creates a separate Compilation.
+
+Each Project specifies the Kimigayo language version used to interpret its source files. This preserves reproducible builds even though compatibility between language versions is not guaranteed. Language-version selection in `.kimiproj` is planned but not yet implemented; until it is implemented, a Project is interpreted using the compiler's current language version.
 
 Each Compilation owns the application's or library's primary Kotonoha. A Compilation also provides the target triple, LLVM data layout, pointer width, conditional-compilation variables, and lookup by Kotonoha identifier. External Kotonoha descriptors are copied from the Project configuration; fetching and loading those external libraries is a later compilation stage and is not currently implemented.
 
@@ -284,13 +326,13 @@ An initializer does not independently select the classification. It is valid onl
 For example:
 
 ```kimi
-var Count: i32
+var count: i32
 ```
 
 has the effective representation:
 
 ```kimi
-var Count: i32
+var count: i32
     get => storage
 
     set
@@ -300,7 +342,7 @@ var Count: i32
 Likewise, an explicit setter does not suppress the default getter:
 
 ```kimi
-var Age: i32 = 0
+var age: i32 = 0
     set
         storage = max(value, 0)
 ```
@@ -308,7 +350,7 @@ var Age: i32 = 0
 is equivalent for classification to:
 
 ```kimi
-var Age: i32 = 0
+var age: i32 = 0
     get => storage
 
     set
@@ -318,8 +360,8 @@ var Age: i32 = 0
 By contrast, an explicit getter suppresses the default accessors not written with it. Therefore this is a read-only computed Property:
 
 ```kimi
-var Count: i32
-    get => items.Count
+var count: i32
+    get => items.count
 ```
 
 It contains no reference to `storage`, so `HasStorage = false`.
@@ -331,13 +373,13 @@ It contains no reference to `storage`, so `HasStorage = false`.
 A getter defines a Property read and must produce a value compatible with the Property Type. It may be expression-bodied or Block-bodied:
 
 ```kimi
-var Area: f64
-    get => Width * Height
+var area: f64
+    get => width * height
 
-var LoggedArea: f64
+var loggedArea: f64
     get
-        LogRead()
-        return Width * Height
+        logRead()
+        return width * height
 ```
 
 A computed getter must be introduced explicitly with `get`; a bare expression in the Property body is invalid.
@@ -345,7 +387,7 @@ A computed getter must be introduced explicitly with `get`; a bare expression in
 A setter defines a Property write. Within it, `value` is the incoming value and has the Property Type:
 
 ```kimi
-var Percentage: i32 = 0
+var percentage: i32 = 0
     set
         storage = clamp(value, 0, 100)
 ```
@@ -353,7 +395,7 @@ var Percentage: i32 = 0
 The setter does not declare this parameter in source. For example, evaluating:
 
 ```kimi
-obj.Percentage = 120
+obj.percentage = 120
 ```
 
 invokes the setter with `value` bound to `120`; the source form is `set`, not `set value`.
@@ -361,11 +403,11 @@ invokes the setter with `value` bound to `120`; the source form is `set`, not `s
 Reading a Property invokes its getter. Assignment after initialization invokes its setter; assigning a Property without a setter is invalid. An accessor body may refer to other state instead of owned storage, so custom accessors do not by themselves make a Property computed or stored:
 
 ```kimi
-var Width: f64
-    get => Right - Left
+var width: f64
+    get => right - left
 
     set
-        Right = Left + value
+        right = left + value
 ```
 
 Neither accessor refers to `storage`, so this is a read-write computed Property.
@@ -375,13 +417,13 @@ Neither accessor refers to `storage`, so this is a read-write computed Property.
 A Property may declare bodyless accessors inline with a `has` clause:
 
 ```kimi
-var Count: i32 has get, private set
+var count: i32 has get, private set
 ```
 
 The clause follows the Property initializer when one is present:
 
 ```kimi
-var Count: i32 = 0 has get, private set
+var count: i32 = 0 has get, private set
 ```
 
 The grammar is:
@@ -400,13 +442,13 @@ The list must contain at least one accessor. `get` and `set` may each appear at 
 For a concrete Property, `has` expands to the corresponding bodyless accessor declarations before the effective representation is created:
 
 ```kimi
-var Count: i32 has get, private set
+var count: i32 has get, private set
 ```
 
 is equivalent to:
 
 ```kimi
-var Count: i32
+var count: i32
     get
     private set
 ```
@@ -423,19 +465,19 @@ set
 The example therefore has this effective representation:
 
 ```kimi
-var Count: i32
+var count: i32
     get => storage
 
     private set
         storage = value
 ```
 
-`has` does not introduce a separate storage rule. After expansion, `HasStorage` is determined from references bound to `storage` in the normal way. For example, `var Value: i32 has get` expands to `get => storage` with no setter and is therefore a stored, read-only Property.
+`has` does not introduce a separate storage rule. After expansion, `HasStorage` is determined from references bound to `storage` in the normal way. For example, `var value: i32 has get` expands to `get => storage` with no setter and is therefore a stored, read-only Property.
 
 Inline and indentation-delimited accessor lists cannot be combined in one Property declaration. An accessor that needs a custom body must use the indentation-delimited form:
 
 ```kimi
-var Percentage: i32
+var percentage: i32
     get => storage
 
     private set
@@ -450,10 +492,10 @@ Inside a `contract`, `has` declares the accessor capabilities that a conforming 
 
 ```kimi
 contract Collection
-    var Count: i32 has get
+    var count: i32 has get
 
 contract MutableCollection
-    var Count: i32 has get, set
+    var count: i32 has get, set
 ```
 
 The first requirement is readable; the second is both readable and writable. A conforming Property must have a compatible Type and provide every required accessor with sufficient accessibility.
@@ -462,14 +504,14 @@ In this context, `has` introduces no accessor implementation, effective storage 
 
 ```kimi
 // Stored implementation
-var Count: i32 has get
+var count: i32 has get
 
 // Computed implementation
-var Count: i32
-    get => items.Count
+var count: i32
+    get => items.count
 ```
 
-Both may satisfy `var Count: i32 has get` in a contract. Thus the declaration context determines the meaning of the shared syntax:
+Both may satisfy `var count: i32 has get` in a contract. Thus the declaration context determines the meaning of the shared syntax:
 
 ```text
 Concrete Property
@@ -515,7 +557,7 @@ All instance getters currently use `self: ref/Self`, and all instance setters us
 An initializer initializes owned storage directly and does not invoke the setter:
 
 ```kimi
-var Age: i32 = -1
+var age: i32 = -1
     set
         storage = max(value, 0)
 ```
@@ -525,8 +567,8 @@ Here the initial stored value is `-1`; a later assignment of `-10` invokes the s
 For example, this declaration is invalid because its explicit getter does not refer to `storage`, so its effective representation is computed:
 
 ```kimi
-var Value: i32 = 10
-    get => CalculateValue()
+var value: i32 = 10
+    get => calculateValue()
 ```
 
 ### Access control
@@ -536,13 +578,13 @@ Property access control has two levels: the Property's access and, optionally, a
 An access-restricted bodyless accessor retains its default implementation whether written inline or in the Property body. For example:
 
 ```kimi
-public var Count: i32 = 0 has get, private set
+public var count: i32 = 0 has get, private set
 ```
 
 has the effective behavior:
 
 ```kimi
-public var Count: i32 = 0
+public var count: i32 = 0
     get => storage
 
     private set
@@ -552,7 +594,7 @@ public var Count: i32 = 0
 The getter is public and the setter is private. The following is invalid because the setter is broader than its Property:
 
 ```kimi
-private var Value: i32
+private var value: i32
     public set
 ```
 
@@ -561,16 +603,16 @@ private var Value: i32
 Owned storage and the value returned by a getter are separate concepts. A computed Property may return a borrowed or reference-like value without acquiring its own storage:
 
 ```kimi
-var First: ref/T
+var first: ref/T
     get => items[0]@ref
 ```
 
 Conversely, a stored Property may have custom accessors because any bound `storage` reference is sufficient for `HasStorage = true`:
 
 ```kimi
-var Balance: i64 = 0
+var balance: i64 = 0
     get
-        AuditRead()
+        auditRead()
         return storage
 
     set
@@ -589,6 +631,22 @@ A function begins with `func`, followed by its Name, optional generic parameters
 func add(left: i32, right: i32) -> i32
     left + right
 ```
+
+### Generic constraints
+
+A generic function may begin its body with constraint declarations. Constraint declarations must precede every executable body item and are processed at compile time; they are not executable expressions.
+
+```kimi
+func inspect<s/T>(value: s/T) -> ()
+    s is ref or obj
+    T is Comparable
+
+    return
+```
+
+The left operand of a function constraint must name one of the function's generic parameters. A Core Type parameter may be constrained by contracts or other compile-time type capabilities. A Type Semantics parameter may be constrained by concrete semantics such as `ref` and `obj`, or by a named semantics category. `and`, `or`, `not`, and parentheses combine constraint requirements.
+
+At a call site, every explicit or inferred generic argument must satisfy its corresponding constraints. Within the function body, those constraints are available during type checking and compile-time specialization. Function constraints are not part of the function Signature; two declarations that differ only in constraints therefore conflict.
 
 # Declaration Containers
 
@@ -624,7 +682,7 @@ A Property requirement in a `contract` uses `has` to declare its required access
 ```kimi
 contract Sequence
     associate Element is Comparable
-    var Count: i32 has get
+    var count: i32 has get
 ```
 
 Each source unit has an implicit root `group`. This root dispatches top-level Declaration Container declarations, Properties, and functions. A `rootgroup` declaration starts at that root and accepts a dot-separated Name. For example:
@@ -1245,7 +1303,7 @@ Two places overlap when an operation on one may affect the other.
 
 | Places                               | Overlap                                          |
 | ------------------------------------ | ------------------------------------------------ |
-| `x`, `x` or `x.Property`             | Yes                                              |
+| `x`, `x` or `x.property`             | Yes                                              |
 | `x.a`, `x.b` for distinct Properties | No                                               |
 | Two array elements                   | Conservatively yes unless disjointness is proven |
 | Dereferences                         | Yes when their Loan provenance may overlap       |
@@ -1414,7 +1472,7 @@ Target resolution is lexical within the executable region governed by each bound
 A function body establishes a function boundary. `return` terminates the nearest enclosing function and optionally supplies its result.
 
 ```kimi
-func Test() -> i32
+func test() -> i32
     return 1
 ```
 
@@ -1430,7 +1488,7 @@ The following rules apply:
 For example, the early `return` exits both the `if` and the `while`; normal completion returns the trailing `0`.
 
 ```kimi
-func Find() -> i32
+func find() -> i32
     while hasNext()
         if found()
             return 10
@@ -1443,14 +1501,14 @@ func Find() -> i32
 A nested function intercepts `return` lookup:
 
 ```kimi
-func Outer() -> i32
+func outer() -> i32
     var f = func () -> i32
         return 1
 
     f()
 ```
 
-The `return 1` belongs to the anonymous function. `Outer` completes normally with the value of `f()`.
+The `return 1` belongs to the anonymous function. `outer` completes normally with the value of `f()`.
 
 ## Loop boundaries, `break`, and `continue`
 
@@ -1857,3 +1915,9 @@ This classification separates five usage models:
 - **Object** — ownership of metadata and data.
 - **Object Borrow** — non-owning access to an object.
 - **Unsafe** — access outside the guarantees of the safe Type Semantics system.
+
+
+
+```
+// The design is mostly finished, and once again the best time has come to an end.
+```
