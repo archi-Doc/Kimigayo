@@ -29,6 +29,7 @@ public enum TokenKind : byte
     U128,
     F32,
     F64,
+    Char,
     String,
 
     // Keywords

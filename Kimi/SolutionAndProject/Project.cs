@@ -3,8 +3,10 @@
 namespace Kimi;
 
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using Kimi.Command;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 
 /// <summary>
 /// Represents one application or library build unit described by a <c>.kimiproj</c> file.
@@ -135,9 +137,13 @@ public partial class Project
         {
             try
             {
-                var sourceText = System.IO.File.ReadAllText(path);
-                var sourceDocument = new SourceDocument(path, sourceText);
+                var sourceDocument = SourceDocument.FromUtf8(path, System.IO.File.ReadAllBytes(path));
                 projectKotonoha.AddSource(sourceDocument);
+            }
+            catch (DecoderFallbackException)
+            {
+                this.kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.InvalidSourceEncoding_Kd);
+                return false;
             }
             catch
             {
@@ -168,6 +174,7 @@ public partial class Project
 
         // Link
 
-        return controlFlow.Issues.Count == 0;
+        return controlFlow.Issues.Count == 0 && !projectKotonoha.HasSourceErrors &&
+            !projectKotonoha.DiagnosticCollection.GetArray().Any(x => x.Entry.Severity == DiagnosticSeverity.Error);
     }
 }

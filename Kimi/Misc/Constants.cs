@@ -29,6 +29,7 @@ public static class Constants
     public const string U128Keyword = "u128";
     public const string F32Keyword = "f32";
     public const string F64Keyword = "f64";
+    public const string CharKeyword = "char";
     public const string StringKeyword = "string";
 
     // Language keywords

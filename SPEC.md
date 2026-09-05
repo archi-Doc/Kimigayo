@@ -259,6 +259,8 @@ The current code defines these Signature shapes, but duplicate-declaration check
 
 # Literals
 
+Kimigayo source text uses UTF-8. Invalid UTF-8 source byte sequences are compile-time errors.
+
 ## NumberLiteral
 
 A `NumberLiteral` begins with an ASCII decimal digit. A leading `+` or `-` is an operator and is not part of the literal. The sign characters may occur inside a decimal exponent.
@@ -311,9 +313,89 @@ A decimal literal containing a recognized fraction or exponent is interpreted as
 
 The parsed syntax tree stores a canonical representation rather than the original spelling. Integer literals are rendered as decimal from their signed 128-bit bit pattern. Floating-point literals are rendered with a round-trip `f64` representation and retain a decimal marker when necessary; for example, an integral floating-point value is rendered as `1.0`. Compile-time basic-value evaluation currently supports integer representations that fit in `i64` and all valid `f64` literals.
 
+## Character Escapes
+
+Char Literals and escaped String Literals share the following Character Escapes. Each escape produces exactly one Unicode scalar value.
+
+| Escape | Result |
+| ------ | ------ |
+| `\0` | Null, U+0000 |
+| `\\` | Backslash, U+005C |
+| `\e` | Escape, U+001B |
+| `\t` | Horizontal tab, U+0009 |
+| `\n` | Line feed, U+000A |
+| `\r` | Carriage return, U+000D |
+| `\"` | Double quotation mark, U+0022 |
+| `\'` | Apostrophe, U+0027 |
+| `\u(H...)` | The specified Unicode scalar value |
+
+The parentheses in `\u(H...)` must contain one to six ASCII hexadecimal digits (`0–9`, `A–F`, or `a–f`). Leading zeros are allowed; whitespace, signs, digit separators, and a `0x` prefix are not. The value must not exceed U+10FFFF or lie in U+D800..U+DFFF. Each escape is validated independently; surrogate escapes are never combined into a surrogate pair. Unsupported or incomplete escapes are compile-time errors.
+
+```kimi
+'\u(41)'            // A
+'\u(000041)'        // A
+'\u(1f600)'         // 😀
+'\u()'              // Error: no digits
+'\u(0000041)'       // Error: seven digits
+'\u(0x41)'          // Error: prefix
+'\u(D800)'          // Error: surrogate
+'\u(110000)'        // Error: outside the Unicode range
+'\u(D83D)\u(DE00)'  // Error: each escape is a surrogate
+```
+
+String interpolation is defined separately under [Escaped strings](#escaped-strings).
+
+## CharLiteral
+
+A `CharLiteral` has Type `char`. It encloses one directly written Unicode scalar value or one [Character Escape](#character-escapes) in single quotation marks. Delimiters are not part of the value.
+
+```text
+CharLiteral = "'" (DirectScalar | CharacterEscape) "'"
+```
+
+### Content and validation
+
+After escape processing, the content must be exactly one Unicode scalar value. `DirectScalar` is any scalar value except the following, which must be escaped:
+
+| Excluded direct content | Code points |
+| --- | --- |
+| Apostrophe and backslash | U+0027, U+005C |
+| Controls | U+0000..U+001F, U+007F..U+009F |
+| Line and paragraph separators | U+2028, U+2029 |
+
+A Char Literal cannot contain a physical line break or tab and does not support string interpolation. Violations are compile-time errors.
+
+```kimi
+let letter: char = 'A'       // U+0041
+let hiragana: char = 'あ'    // U+3042
+let emoji: char = '😀'       // U+1F600
+let quote: char = '\''
+let slash: char = '\\'
+let tab: char = '\t'
+let line: char = '\n'
+let separator: char = '\u(2028)'
+let empty = ''              // Error: no scalar value
+let pair = 'ab'             // Error: two scalar values
+let flag = '🇯🇵'            // Error: two scalar values
+let interpolation = '\(letter)' // Error: interpolation is not supported
+```
+
+### Normalization and displayed characters
+
+The compiler does not normalize Char Literal content. Validation uses the content after escape processing. A `char` represents a scalar value, not a grapheme cluster or a displayed character; a combining mark alone is valid.
+
+```kimi
+'é'           // Valid: U+00E9
+'\u(E9)'      // Valid: U+00E9
+'e\u(301)'    // Error: U+0065 and U+0301
+'\u(301)'     // Valid: one combining mark
+```
+
+The front end parses and validates Char Literals and preserves their original spelling when writing the syntax tree.
+
 ## StringLiteral
 
-A `StringLiteral` produces a value of the built-in `string` Type. Kimigayo source text and string contents use UTF-8. A literal may occupy one line or multiple lines.
+A `StringLiteral` produces a value of the built-in `string` Type. String contents use UTF-8. A String Literal may occupy one line or multiple lines.
 
 There are two forms, distinguished by the number of double quotation marks in their delimiters:
 
@@ -337,22 +419,7 @@ Second line
 
 The opening and closing delimiters are not part of the value. Any line break between them is part of the string content; `\n` may instead be used when an explicit line-feed escape is preferred.
 
-Only the following escape sequences are supported:
-
-| Escape | Result |
-| ------ | ------ |
-| `\0` | Null character, U+0000 |
-| `\\` | Backslash (`\`) |
-| `\e` | Escape character, U+001B |
-| `\t` | Horizontal tab, U+0009 |
-| `\n` | Line feed, U+000A |
-| `\r` | Carriage return, U+000D |
-| `\"` | Double quotation mark (`"`) |
-| `\'` | Apostrophe (`'`) |
-| `\u(H...)` | Unicode scalar value written as one to six hexadecimal digits |
-| `\(expression)` | String interpolation |
-
-For `\u(H...)`, the hexadecimal value must be a valid Unicode scalar value: it must not exceed U+10FFFF and must not be in the surrogate range U+D800–U+DFFF. An unsupported or incomplete escape sequence is invalid.
+Escaped strings support the shared [Character Escapes](#character-escapes) and string interpolation with `\(expression)`.
 
 An interpolation begins with `\(` and ends at its matching `)`. The enclosed text is parsed as a Kimigayo expression, including any nested parentheses, and the expression's string representation is inserted into the surrounding string:
 
@@ -945,6 +1012,52 @@ Sizes below are storage sizes.
 | Type   | Size               |
 | ------ | ------------------ |
 | `bool` | 8 bits (1 byte)    |
+
+#### Char Type
+
+`char` represents one Unicode scalar value and has a fixed storage size of 32 bits (4 bytes). Its valid ranges are U+0000..U+D7FF and U+E000..U+10FFFF, inclusive. Surrogates (U+D800..U+DFFF) and values above U+10FFFF are invalid.
+
+Every value in these ranges is valid, including unassigned code points, private-use characters, noncharacters, controls, and combining marks. Assignment to a character or displayability is not required. Direct spelling in a literal has the additional restrictions defined under [CharLiteral](#charliteral).
+
+The size guarantee does not guarantee the same internal representation as `u32`. Alignment and byte order are not specified here.
+
+##### UTF-8 and strings
+
+`char` is neither a UTF-8 code unit nor a byte sequence. Each scalar value decoded from UTF-8 text can be represented by a `char`.
+
+| Type | Meaning |
+| --- | --- |
+| `u8` | An 8-bit unsigned integer; it can store a byte or UTF-8 code unit |
+| `char` | One Unicode scalar value, stored in 4 bytes |
+| `string` | UTF-8 Unicode text |
+
+Single quotation marks produce `char`; double quotation marks produce `string`.
+
+```kimi
+'A'     // char
+"A"     // string
+'😀'    // char
+"😀"    // string
+'🇯🇵'   // Error: two scalar values
+"🇯🇵"   // string
+```
+
+Encoding one `char` as UTF-8 produces one to four bytes:
+
+| Unicode scalar value | UTF-8 length |
+| --- | --- |
+| U+0000..U+007F | 1 byte |
+| U+0080..U+07FF | 2 bytes |
+| U+0800..U+D7FF, U+E000..U+FFFF | 3 bytes |
+| U+10000..U+10FFFF | 4 bytes |
+
+| Literal | Scalar value | UTF-8 bytes of the value |
+| --- | --- | --- |
+| `'A'` | U+0041 | `41` |
+| `'あ'` | U+3042 | `E3 81 82` |
+| `'😀'` | U+1F600 | `F0 9F 98 80` |
+
+In a source file, the content `あ` occupies three UTF-8 bytes; the complete literal `'あ'` occupies five (`27 E3 81 82 27`). Its value is U+3042 and its `char` storage size is four bytes. Storage size and UTF-8 encoded length are separate concepts.
 
 #### String Type
 

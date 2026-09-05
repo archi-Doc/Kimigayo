@@ -76,6 +76,7 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
     {
         UnitLiteralKoto => ControlFlowType.Unit,
         BoolLiteralKoto => ControlFlowType.Boolean,
+        CharLiteralKoto { Value: not null } => new("char"),
         StringLiteralKoto or InterpolatedStringKoto => new("string"),
         NumberLiteralKoto number => new(number.Literal.Contains('.') || number.Literal.Contains('E') ? "float literal" : "integer literal"),
         ParenthesizedKoto p => this.GetExpressionType(p.Operand),
@@ -89,7 +90,7 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
         TupleTypeKoto t when t.Elements.Count == 0 => ControlFlowType.Unit,
         TypeSemanticsKoto t when t.SemanticsKind == SemanticsKind.Owner && t.SemanticsParameter is null &&
             t.Type is null && t.OriginName is null && t.OriginExpression is null && t.OriginArguments is null &&
-            t.Identifier is "bool" or "string" or "Never" or "i8" or "i16" or "i32" or "i64" or "i128" or
+            t.Identifier is "bool" or "char" or "string" or "Never" or "i8" or "i16" or "i32" or "i64" or "i128" or
                 "u8" or "u16" or "u32" or "u64" or "u128" or "f32" or "f64" => new(t.Identifier),
         _ => null,
     };

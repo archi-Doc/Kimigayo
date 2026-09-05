@@ -51,6 +51,9 @@ public enum KotoKind : byte
     /// <summary>A Boolean literal.</summary>
     BoolLiteral,
 
+    /// <summary>A Unicode scalar literal.</summary>
+    CharLiteral,
+
     /// <summary>A numeric literal.</summary>
     NumberLiteral,
 

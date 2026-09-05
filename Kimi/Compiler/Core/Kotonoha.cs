@@ -72,6 +72,10 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     public IReadOnlyList<SourceDocument> SourceDocuments => this.sourceDocuments;
 
+    // Source parsing uses a separate diagnostic collection for each file.
+    [IgnoreMember]
+    internal bool HasSourceErrors { get; private set; }
+
     [IgnoreMember]
     private readonly UInt64Hashtable<Koto> kotoIdToKoto = new();
 
@@ -119,6 +123,7 @@ public sealed partial class Kotonoha
     /// <param name="compilation">The compilation that will own the restored source unit.</param>
     public void OnDeserialized(Compilation compilation)
     {
+        this.HasSourceErrors = false;
         ArgumentNullException.ThrowIfNull(compilation);
 
         this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(this.Name);
@@ -249,6 +254,7 @@ public sealed partial class Kotonoha
         }
 
         var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
+        diagnosticCollection.ClearDiagnostic();
         var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument);
         var codeContext = this.CreateCodeContext(diagnosticCollection);
 
@@ -264,6 +270,7 @@ public sealed partial class Kotonoha
             // Token to Koto
             var tokenReader = new TokenReader(codeContext, ref tokenizer);
             this.RootKoto.Parse(ref tokenReader);
+            this.HasSourceErrors |= diagnosticCollection.GetArray().Any(x => x.Entry.Severity == DiagnosticSeverity.Error);
         }
         finally
         {

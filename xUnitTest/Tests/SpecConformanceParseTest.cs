@@ -12,6 +12,8 @@ public class SpecConformanceParseTest
 {
     [Theory]
     [InlineData("(i32, string)")]
+    [InlineData("char")]
+    [InlineData("List<char>")]
     [InlineData("()")]
     [InlineData("(i32, string) -> bool")]
     [InlineData("ref/(i32, string) from owner")]
@@ -106,6 +108,28 @@ public class SpecConformanceParseTest
         var field = Assert.IsType<FieldKoto>(Assert.Single(parsed.GeneratedFunction!.Body!.Items));
         Assert.Equal(expected, Assert.IsType<StringLiteralKoto>(field.InitializerKoto).Literal);
         RoundTrip(parsed);
+    }
+
+    [Theory]
+    [InlineData("u()")]
+    [InlineData("u(0000041)")]
+    [InlineData("u(0x41)")]
+    [InlineData("u( 41)")]
+    [InlineData("u(+41)")]
+    [InlineData("u(4_1)")]
+    [InlineData("u(４１)")]
+    [InlineData("u(D800)")]
+    [InlineData("u(DFFF)")]
+    [InlineData("u(110000)")]
+    [InlineData("u(D83D)\\u(DE00)")]
+    [InlineData("x41")]
+    public void CharAndStringLiteralsRejectTheSameInvalidCharacterEscapes(string escape)
+    {
+        var character = Parse("let value = '\\" + escape + "'");
+        var text = Parse("let value = \"\\" + escape + "\"");
+        var charError = Assert.Single(character.DiagnosticCollection.GetArray());
+        var stringError = Assert.Single(text.DiagnosticCollection.GetArray());
+        Assert.Equal(charError.Entry.Name, stringError.Entry.Name);
     }
 
     [Theory]

@@ -173,6 +173,15 @@ public static class StringLiteralHelper
 
                 i += length - 1;
             }
+            else if (text[i] == '\'')
+            {
+                if (!CharLiteralHelper.Scan(text[i..], out var length))
+                {
+                    return -1;
+                }
+
+                i += length - 1;
+            }
             else if (text[i] == '/' && i + 1 < text.Length)
             {
                 if (text[i + 1] == '/')
@@ -201,54 +210,61 @@ public static class StringLiteralHelper
         return -1;
     }
 
+    // Input begins immediately after a backslash. Shared by char and escaped string
+    // literals; interpolation is deliberately handled only by the string parser.
+    internal static bool TryReadCharacterEscape(ref ReadOnlySpan<char> span, Koto? koto, out uint scalar)
+    {
+        scalar = 0;
+        if (span.IsEmpty)
+        {
+            koto?.AddDiagnostic(DiagnosticCode.UnsupportedEscape_Kd, '\\');
+            return false;
+        }
+
+        var escape = span[0];
+        span = span[1..];
+        if (escape == 'u')
+        {
+            return TryReadUnicodeEscape(ref span, koto, out scalar);
+        }
+
+        var value = escape switch
+        {
+            '0' => 0,
+            '\\' => '\\',
+            'e' => 0x1B,
+            't' => '\t',
+            'n' => '\n',
+            'r' => '\r',
+            '"' => '"',
+            '\'' => '\'',
+            _ => -1,
+        };
+        if (value < 0)
+        {
+            koto?.AddDiagnostic(DiagnosticCode.UnsupportedEscape_Kd, escape);
+            return false;
+        }
+
+        scalar = (uint)value;
+        return true;
+    }
+
     private static int GetDecodedLength(ReadOnlySpan<char> span, Koto? koto)
     {
         var length = 0;
-
         while (!span.IsEmpty)
         {
             var backslashIndex = span.IndexOf('\\');
-
             if (backslashIndex < 0)
             {
                 return length + span.Length;
             }
 
             length += backslashIndex;
-            span = span.Slice(backslashIndex + 1);
-            if (span.IsEmpty)
-            {
-                // A trailing backslash is replaced with one fallback character.
-                koto?.AddDiagnostic(DiagnosticCode.UnsupportedEscape_Kd, '\\');
-                return length + 1;
-            }
-
-            var escape = span[0];
-            span = span.Slice(1);
-            switch (escape)
-            {
-                case '0':
-                case '\\':
-                case 'e':
-                case 't':
-                case 'n':
-                case 'r':
-                case '"':
-                case '\'':
-                    length++;
-                    break;
-
-                case 'u':
-                    var succeeded = TryReadUnicodeEscape(ref span, koto, out var scalar);
-                    length += succeeded && scalar > 0xFFFF ? 2 : 1;
-
-                    break;
-
-                default:
-                    koto?.AddDiagnostic(DiagnosticCode.UnsupportedEscape_Kd, escape);
-                    length++;
-                    break;
-            }
+            span = span[(backslashIndex + 1)..];
+            var succeeded = TryReadCharacterEscape(ref span, koto, out var scalar);
+            length += succeeded && scalar > 0xFFFF ? 2 : 1;
         }
 
         return length;
@@ -258,97 +274,34 @@ public static class StringLiteralHelper
     {
         var span = source.AsSpan();
         var destinationIndex = firstBackslash;
-
-        span.Slice(0, firstBackslash).CopyTo(destination);
-
-        span = span.Slice(firstBackslash);
+        span[..firstBackslash].CopyTo(destination);
+        span = span[firstBackslash..];
         while (!span.IsEmpty)
         {
             var backslashIndex = span.IndexOf('\\');
             if (backslashIndex < 0)
             {
-                span.CopyTo(destination.Slice(destinationIndex));
+                span.CopyTo(destination[destinationIndex..]);
                 destinationIndex += span.Length;
                 break;
             }
 
-            if (backslashIndex > 0)
-            {
-                span.Slice(0, backslashIndex).CopyTo(destination.Slice(destinationIndex));
-                span = span.Slice(backslashIndex);
-                destinationIndex += backslashIndex;
-            }
-
-            // Skip the escape introducer.
-            span = span.Slice(1);
-            if (span.IsEmpty)
+            span[..backslashIndex].CopyTo(destination[destinationIndex..]);
+            destinationIndex += backslashIndex;
+            span = span[(backslashIndex + 1)..];
+            if (!TryReadCharacterEscape(ref span, default, out var scalar))
             {
                 destination[destinationIndex++] = InvalidEscapeFallbackChar;
-
-                break;
             }
-
-            var escape = span[0];
-            span = span.Slice(1);
-            switch (escape)
+            else if (scalar <= 0xFFFF)
             {
-                case '0':
-                    destination[destinationIndex++] = '\0';
-                    break;
-
-                case '\\':
-                    destination[destinationIndex++] = '\\';
-                    break;
-
-                case 'e':
-                    destination[destinationIndex++] = '\u001b';
-                    break;
-
-                case 't':
-                    destination[destinationIndex++] = '\t';
-                    break;
-
-                case 'n':
-                    destination[destinationIndex++] = '\n';
-                    break;
-
-                case 'r':
-                    destination[destinationIndex++] = '\r';
-                    break;
-
-                case '"':
-                    destination[destinationIndex++] = '"';
-                    break;
-
-                case '\'':
-                    destination[destinationIndex++] = '\'';
-                    break;
-
-                case 'u':
-                    if (!TryReadUnicodeEscape(ref span, default, out var scalar))
-                    {
-                        destination[destinationIndex++] = InvalidEscapeFallbackChar;
-
-                        break;
-                    }
-
-                    if (scalar <= 0xFFFF)
-                    {
-                        destination[destinationIndex++] = (char)scalar;
-                    }
-                    else
-                    {
-                        scalar -= 0x10000;
-                        destination[destinationIndex++] = (char)(0xD800 + (scalar >> 10));
-                        destination[destinationIndex++] = (char)(0xDC00 + (scalar & 0x3FF));
-                    }
-
-                    break;
-
-                default:
-                    destination[destinationIndex++] = InvalidEscapeFallbackChar;
-
-                    break;
+                destination[destinationIndex++] = (char)scalar;
+            }
+            else
+            {
+                scalar -= 0x10000;
+                destination[destinationIndex++] = (char)(0xD800 + (scalar >> 10));
+                destination[destinationIndex++] = (char)(0xDC00 + (scalar & 0x3FF));
             }
         }
 

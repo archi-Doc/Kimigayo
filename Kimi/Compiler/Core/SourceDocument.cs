@@ -4,6 +4,7 @@ namespace Kimi.Compiler;
 
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using Kimi.Diagnostics;
 
@@ -17,6 +18,23 @@ using Kimi.Diagnostics;
 [TinyhandObject]
 public sealed partial class SourceDocument
 {
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
+    /// <summary>Decodes UTF-8 source without replacing malformed byte sequences.</summary>
+    /// <param name="path">The source path.</param>
+    /// <param name="utf8">The source bytes, optionally beginning with a UTF-8 BOM.</param>
+    /// <returns>The decoded source document.</returns>
+    /// <exception cref="DecoderFallbackException">The source is not valid UTF-8.</exception>
+    public static SourceDocument FromUtf8(string path, ReadOnlySpan<byte> utf8)
+    {
+        if (utf8.StartsWith("\uFEFF"u8))
+        {
+            utf8 = utf8[3..];
+        }
+
+        return new(path, StrictUtf8.GetString(utf8));
+    }
+
     [IgnoreMember]
     private int[]? lineStarts;
 

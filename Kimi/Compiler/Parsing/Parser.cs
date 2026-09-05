@@ -2538,6 +2538,9 @@ Loop:
             case TokenKind.NumericLiteral:
                 return new NumberLiteralKoto(ref reader, reader.Read());
 
+            case TokenKind.CharLiteral:
+                return new CharLiteralKoto(ref reader, reader.Read());
+
             case TokenKind.StringLiteral:
                 {
                     var literal = new StringLiteralKoto(ref reader, reader.Read());

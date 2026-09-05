@@ -58,6 +58,15 @@
   + Name="InvalidCharacter_Kd"
     Message="Unexpected character '{0}'"
 
+  + Name="InvalidCharLiteral_Kd"
+    Message="A char literal must contain exactly one Unicode scalar value; quotes, backslashes, controls, and line separators must be escaped"
+
+  + Name="InvalidSourceEncoding_Kd"
+    Message="Source text must be valid Unicode encoded as UTF-8"
+
+  + Name="MissingCharLiteralEnd_Kd"
+    Message="Char literal is not terminated on the same line. Expected closing '"
+
   + Name="InvalidCharacterAtEndOfFile_Kd"
     Message="Invalid character at end of file"
 

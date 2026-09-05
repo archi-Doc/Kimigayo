@@ -33,7 +33,7 @@ public static partial class TokenHelper
 
     static TokenHelper()
     {
-        foreach (var c in " \t\r\n(){}[].,;:?+-*/%&|^!~=<>#$@")
+        foreach (var c in " \t\r\n(){}[].,;:?+-*/%&|^!~=<>#$@'\"")
         {
             if (c < 64)
             {
@@ -64,6 +64,7 @@ public static partial class TokenHelper
         Set(TokenKind.U128, Constants.U128Keyword);
         Set(TokenKind.F32, Constants.F32Keyword);
         Set(TokenKind.F64, Constants.F64Keyword);
+        Set(TokenKind.Char, Constants.CharKeyword);
         Set(TokenKind.String, Constants.StringKeyword);
 
         // Keywords
@@ -317,7 +318,7 @@ public static partial class TokenHelper
             4 => c0 switch
             {
                 'b' => Match(text, Constants.BoolKeyword, TokenKind.Bool),
-                'c' => Match(text, Constants.CaseKeyword, TokenKind.Case),
+                'c' => Match(text, Constants.CaseKeyword, TokenKind.Case, Constants.CharKeyword, TokenKind.Char),
                 'i' => Match(text, Constants.I128Keyword, TokenKind.I128),
                 'u' => Match(text, Constants.U128Keyword, TokenKind.U128),
                 't' => Match(text, Constants.TrueKeyword, TokenKind.True),

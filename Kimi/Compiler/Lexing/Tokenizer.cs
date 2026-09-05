@@ -315,6 +315,12 @@ internal ref struct Tokenizer
             tokenizer.ReadStringLiteral();
             return false;
         };
+
+        CharacterHandlerTable['\''] = (ref tokenizer) =>
+        {
+            tokenizer.ReadCharLiteral();
+            return false;
+        };
     }
 
     #region FieldAndProperty
@@ -425,6 +431,28 @@ internal ref struct Tokenizer
     /// </summary>
     public void ReadAll()
     {
+        // .NET hosts source as UTF-16. Reject unpaired surrogates even in comments
+        // and raw strings; they cannot originate from valid UTF-8 source.
+        var offset = this.position;
+        while (offset < this.sourceText.Length)
+        {
+            var relative = this.sourceText[offset..].IndexOfAnyInRange('\uD800', '\uDFFF');
+            if (relative < 0)
+            {
+                break;
+            }
+
+            offset += relative;
+            if (!char.IsHighSurrogate(this.sourceText[offset]) ||
+                offset + 1 == this.sourceText.Length || !char.IsLowSurrogate(this.sourceText[offset + 1]))
+            {
+                this.diagnostics.Add(new SourceSpan(offset, 1), DiagnosticCode.InvalidSourceEncoding_Kd);
+                return;
+            }
+
+            offset += 2;
+        }
+
         this.currentIndentLevel = 0;
         do
         {
@@ -752,6 +780,19 @@ EndOfFile:
         }
 
         this.AddTokenAndSlice(TokenHelper.GetKeywordOrIdentifierKind(this.span.Slice(0, length)), length);
+    }
+
+    private void ReadCharLiteral()
+    {
+        if (CharLiteralHelper.Scan(this.span, out var length))
+        {
+            this.AddTokenAndSlice(TokenKind.CharLiteral, length);
+        }
+        else
+        {
+            this.diagnostics.Add(this.NewRange(length), DiagnosticCode.MissingCharLiteralEnd_Kd);
+            this.AddTokenAndSlice(TokenKind.Invalid, length);
+        }
     }
 
     private void ReadStringLiteral()
