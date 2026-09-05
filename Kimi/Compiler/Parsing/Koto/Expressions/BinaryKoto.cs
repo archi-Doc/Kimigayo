@@ -431,6 +431,10 @@ public sealed partial class IsKoto : BinaryKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Is;
 
+    /// <summary>Gets a value indicating whether this is an associated-type constraint.</summary>
+    [Key(3)]
+    public bool IsAssociatedConstraint { get; internal set; }
+
     /// <summary>Initializes a new instance of the <see cref="IsKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
@@ -439,6 +443,17 @@ public sealed partial class IsKoto : BinaryKoto
     public IsKoto(ref TokenReader reader, SourceSpan range, Koto left, Koto right)
         : base(ref reader, range, left, right)
     {
+    }
+
+    /// <inheritdoc/>
+    public override void WriteTo(ref IndentedStringBuilder builder)
+    {
+        if (this.IsAssociatedConstraint)
+        {
+            builder.Append("associate ");
+        }
+
+        base.WriteTo(ref builder);
     }
 }
 

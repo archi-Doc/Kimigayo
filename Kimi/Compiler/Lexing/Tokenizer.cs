@@ -322,6 +322,7 @@ internal ref struct Tokenizer
     private readonly DiagnosticCollection diagnostics;
     private readonly SourceDocument sourceDocument;
     private readonly ReadOnlySpan<char> sourceText;
+    private readonly int indentationOffset;
     private Token[] tokens;
     private int tokenCount;
     private IndentSource[] indentStack;
@@ -366,16 +367,29 @@ internal ref struct Tokenizer
     /// <param name="diagnostics">The destination for lexical diagnostics.</param>
     /// <param name="sourceDocument">The source document to tokenize.</param>
     public Tokenizer(DiagnosticCollection diagnostics, SourceDocument sourceDocument)
+        : this(diagnostics, sourceDocument, new SourceSpan(0, (sourceDocument ?? throw new ArgumentNullException(nameof(sourceDocument))).SourceText.Length))
+    {
+    }
+
+    // A bounded view retains original source offsets for interpolation diagnostics and Koto spans.
+    internal Tokenizer(DiagnosticCollection diagnostics, SourceDocument sourceDocument, SourceSpan range)
     {
         ArgumentNullException.ThrowIfNull(sourceDocument);
 
         this.diagnostics = diagnostics;
         this.sourceDocument = sourceDocument;
-        this.sourceText = sourceDocument.AsSpan();
+        this.sourceText = sourceDocument.AsSpan()[..range.End];
+        this.position = range.Start;
+        if (range.Start > 0)
+        {
+            var line = sourceDocument.GetPosition(range.Start).Line;
+            this.indentationOffset = BaseHelper.CountLeadingSpaces(sourceDocument.GetLineSpan(line)) / Constants.IndentationSpaces;
+        }
+
         this.indentStack = ArrayPool<IndentSource>.Shared.Rent(InitialIndentStackCapacity);
 
         // Typical source yields roughly one token per four characters; the array grows on demand.
-        this.tokens = ArrayPool<Token>.Shared.Rent(Math.Max(MinimumTokenCapacity, (this.sourceText.Length >> 2) + 64));
+        this.tokens = ArrayPool<Token>.Shared.Rent(Math.Max(MinimumTokenCapacity, (range.Length >> 2) + 64));
 
         diagnostics.SetSourceDocument(sourceDocument);
     }
@@ -550,7 +564,7 @@ LineContent:
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
         }
 
-        var indentLevel = numberOfSpaces / Constants.IndentationSpaces;
+        var indentLevel = (numberOfSpaces / Constants.IndentationSpaces) - this.indentationOffset;
         if (this.currentIndentLevel < 0)
         {
             this.currentIndentLevel = indentLevel;
@@ -743,7 +757,7 @@ EndOfFile:
     private void ReadStringLiteral()
     {
         var result = StringLiteralHelper.ScanStringLiteral(this.span, out var doubleQuoteCount, out var stringLiteralLength);
-        if (result == ScanStringLiteralResult.String)
+        if (result is ScanStringLiteralResult.String or ScanStringLiteralResult.MultilineString)
         {// "Text" -> Text
             if (doubleQuoteCount == 1)
             {
@@ -757,9 +771,9 @@ EndOfFile:
                 this.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
             }
         }
-        else if (result == ScanStringLiteralResult.MultilineString)
-        {// """Text"""
-            this.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
+        else if (result is ScanStringLiteralResult.Interpolation or ScanStringLiteralResult.MultilineInterpolation)
+        {
+            this.AddTokenAndSlice(TokenKind.InterpolatedStringLiteral, stringLiteralLength);
         }
         else
         {// Invalid

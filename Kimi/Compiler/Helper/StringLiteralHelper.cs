@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
 using System.Diagnostics;
@@ -24,10 +24,10 @@ public enum ScanStringLiteralResult : byte
     /// <summary>A multiline string literal was found.</summary>
     MultilineString,
 
-    /// <summary>A single-line interpolation boundary was found.</summary>
+    /// <summary>A single-line string containing interpolation was found.</summary>
     Interpolation,
 
-    /// <summary>A multiline interpolation boundary was found.</summary>
+    /// <summary>A multiline string containing interpolation was found.</summary>
     MultilineInterpolation,
 }
 
@@ -137,6 +137,70 @@ public static class StringLiteralHelper
         return rawLiteral.Substring(delimiterLength, contentLength);
     }
 
+    // The input starts with the interpolation's opening parenthesis. Quotes and comments
+    // are scanned as units, so their parentheses do not affect the nesting depth.
+    internal static int FindInterpolationEnd(ReadOnlySpan<char> text, int depth = 0)
+    {
+        if (depth >= 128)
+        {
+            return -1;
+        }
+
+        var parentheses = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '(')
+            {
+                parentheses++;
+            }
+            else if (text[i] == ')' && --parentheses == 0)
+            {
+                return i;
+            }
+            else if (text[i] == '"')
+            {
+                var quotes = CountLeadingDoubleQuotes(text[i..]);
+                int length;
+                var result = quotes >= 3
+                    ? ScanRawStringLiteral(text[i..], quotes, out length)
+                    : quotes == 2
+                        ? ScanStringLiteral(text[i..], out _, out length)
+                        : ScanEscapedStringLiteral(text[i..], out length, depth + 1);
+                if (result == ScanStringLiteralResult.Invalid)
+                {
+                    return -1;
+                }
+
+                i += length - 1;
+            }
+            else if (text[i] == '/' && i + 1 < text.Length)
+            {
+                if (text[i + 1] == '/')
+                {
+                    var end = text[(i + 2)..].IndexOfAny('\r', '\n');
+                    if (end < 0)
+                    {
+                        return -1;
+                    }
+
+                    i += end + 1;
+                }
+                else if (text[i + 1] == '*')
+                {
+                    var end = text[(i + 2)..].IndexOf("*/");
+                    if (end < 0)
+                    {
+                        return -1;
+                    }
+
+                    i += end + 3;
+                }
+            }
+        }
+
+        return -1;
+    }
+
     private static int GetDecodedLength(ReadOnlySpan<char> span, Koto? koto)
     {
         var length = 0;
@@ -168,6 +232,7 @@ public static class StringLiteralHelper
                 case 'e':
                 case 't':
                 case 'n':
+                case 'r':
                 case '"':
                 case '\'':
                     length++;
@@ -245,6 +310,10 @@ public static class StringLiteralHelper
 
                 case 'n':
                     destination[destinationIndex++] = '\n';
+                    break;
+
+                case 'r':
+                    destination[destinationIndex++] = '\r';
                     break;
 
                 case '"':
@@ -376,43 +445,39 @@ public static class StringLiteralHelper
         return ScanStringLiteralResult.Invalid;
     }
 
-    private static ScanStringLiteralResult ScanEscapedStringLiteral(ReadOnlySpan<char> text, out int stringLiteralLength)
+    private static ScanStringLiteralResult ScanEscapedStringLiteral(ReadOnlySpan<char> text, out int stringLiteralLength, int depth = 0)
     {
-        var span = text.Slice(1);
-        var delimiterIndex = IndexOfInterpolationOrUnescapedQuote(span);
-        if (delimiterIndex < 0)
+        var offset = 1;
+        var interpolated = false;
+        while (offset < text.Length)
         {
-            return ScanInvalidStringLiteral(span, 1, out stringLiteralLength);
-        }
-
-        var isMultiline = StartsWithLineBreak(span);
-        if (!isMultiline && span[..delimiterIndex].Contains(BaseHelper.LfChar))
-        {
-            return ScanInvalidStringLiteral(span, 1, out stringLiteralLength);
-        }
-
-        if (span[delimiterIndex] == '"')
-        {
-            // A multiline closing delimiter must appear on its own line.
-            if (isMultiline && !HasValidClosingDelimiterIndent(span[..delimiterIndex]))
+            var relative = IndexOfInterpolationOrUnescapedQuote(text[offset..]);
+            if (relative < 0)
             {
-                return ScanInvalidStringLiteral(span, 1, out stringLiteralLength);
+                break;
             }
 
-            stringLiteralLength = delimiterIndex + 2;
+            var delimiter = offset + relative;
+            if (text[delimiter] == '"')
+            {
+                stringLiteralLength = delimiter + 1;
+                var multiline = text[..delimiter].IndexOfAny('\r', '\n') >= 0;
+                return interpolated
+                    ? (multiline ? ScanStringLiteralResult.MultilineInterpolation : ScanStringLiteralResult.Interpolation)
+                    : (multiline ? ScanStringLiteralResult.MultilineString : ScanStringLiteralResult.String);
+            }
 
-            return isMultiline ?
-                ScanStringLiteralResult.MultilineString :
-                ScanStringLiteralResult.String;
-        }
-        else
-        {
-            stringLiteralLength = delimiterIndex + 3;
+            var close = FindInterpolationEnd(text[(delimiter + 1)..], depth + 1);
+            if (close < 0)
+            {
+                break;
+            }
 
-            return isMultiline ?
-                ScanStringLiteralResult.MultilineInterpolation :
-                ScanStringLiteralResult.Interpolation;
+            interpolated = true;
+            offset = delimiter + close + 2;
         }
+
+        return ScanInvalidStringLiteral(text[1..], 1, out stringLiteralLength);
     }
 
     private static ScanStringLiteralResult ScanRawStringLiteral(ReadOnlySpan<char> text, int doubleQuoteCount, out int stringLiteralLength)
@@ -424,11 +489,7 @@ public static class StringLiteralHelper
             return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
         }
 
-        var isMultiline = StartsWithLineBreak(span);
-        if (!isMultiline && span[..delimiterIndex].Contains(BaseHelper.LfChar))
-        {
-            return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
-        }
+        var isMultiline = span[..delimiterIndex].IndexOfAny('\r', '\n') >= 0;
 
         // Treat surplus quotes before the closing delimiter as content.
         var i = delimiterIndex + doubleQuoteCount;
@@ -438,34 +499,10 @@ public static class StringLiteralHelper
             delimiterIndex++;
         }
 
-        // A multiline closing delimiter must appear on its own line.
-        if (isMultiline && !HasValidClosingDelimiterIndent(span[..delimiterIndex]))
-        {
-            return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
-        }
-
         stringLiteralLength = doubleQuoteCount + delimiterIndex + doubleQuoteCount;
         return isMultiline ?
             ScanStringLiteralResult.MultilineString :
             ScanStringLiteralResult.String;
-    }
-
-    private static bool HasValidClosingDelimiterIndent(ReadOnlySpan<char> text)
-    {
-        var index = text.Length - 1;
-        while (index >= 0)
-        {
-            var c = text[index];
-            if (c == Constants.SpaceChar)
-            {
-                index--;
-                continue;
-            }
-
-            return c == BaseHelper.LfChar;
-        }
-
-        return false;
     }
 
     private static int IndexOfInterpolationOrUnescapedQuote(ReadOnlySpan<char> text)
@@ -539,14 +576,6 @@ public static class StringLiteralHelper
         }
 
         return index;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool StartsWithLineBreak(ReadOnlySpan<char> text)
-    {
-        return !text.IsEmpty &&
-            (text[0] == BaseHelper.LfChar ||
-            (text[0] == BaseHelper.CrChar && text.Length >= 2 && text[1] == BaseHelper.LfChar));
     }
 
     private readonly struct DecodeState

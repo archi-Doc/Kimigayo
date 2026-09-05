@@ -383,7 +383,7 @@ If the content must contain a run of double quotation marks that would otherwise
 
 The opening and closing delimiters must contain the same number of quotation marks and are not part of the value.
 
-The current front end parses escaped and raw strings. String interpolation is specified above but is not yet accepted as a complete expression.
+The current front end parses escaped strings, raw strings, and string interpolation, including nested expressions. Escape sequences are validated during parsing; evaluating interpolated strings is deferred to later compilation stages.
 
 # Declarations
 
@@ -811,7 +811,7 @@ The left operand of a function constraint must name one of the function's generi
 
 At a call site, every explicit or inferred generic argument must satisfy its corresponding constraints. Within the function body, those constraints are available during type checking and compile-time specialization. Function constraints are not part of the function Signature; two declarations that differ only in constraints therefore conflict.
 
-The current Parser reads these constraint lines as ordinary body expressions. Separating them from executable statements and enforcing them during Binding and specialization are planned.
+The current Parser stores leading function constraints separately from executable body items and preserves deferred directives on them. It checks constraint subjects against the declared generic parameters and diagnoses constraints placed after executable items. Constraint satisfaction during Binding and specialization is planned.
 
 # Declaration Containers
 
@@ -823,7 +823,7 @@ A **Declaration Container** is a named declaration scope whose body may contain 
 | `struct` | Yes | Accepts Properties and functions in declaration order. Generic parameters, Origins, and type constraints are supported. |
 | `enum` | Yes | Body parsing is not implemented. |
 | `extension` | No | Its Name identifies the target. Body parsing is not implemented. |
-| `contract` | No | Specifies associated-type constraints and Property requirements. The current Parser accepts only associated-type constraints. |
+| `contract` | No | Specifies associated-type constraints and Property requirements. The Parser preserves required accessors without generating implementations or storage. |
 
 A `struct` header may contain generic parameters and an Origin list. Constraint declarations precede Properties and functions.
 
@@ -1148,7 +1148,7 @@ let pointer: unsafe/i32
 
 Kimigayo uses **Origins** instead of lifetime variables. An Origin describes how long a borrow remains valid; a **Loan** records which place is borrowed and whether the borrow is shared or exclusive.
 
-The current Parser supports Origin lists on structures and simple `from Name` annotations. Function Origin parameters, qualified and intersected Origin expressions, named Origin arguments, inference, and borrow checking are not implemented.
+The current Parser supports Origin lists on structures and functions, simple and qualified Origin annotations, Origin intersections, and named Origin arguments. Origin name resolution, inference, variance analysis, and borrow checking are not implemented.
 
 ```text
 Type    what the value is

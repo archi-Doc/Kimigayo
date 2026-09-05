@@ -148,4 +148,7 @@ public enum TokenKind : byte
     PlusPlus, // ++
     Slash, // /
     SlashEquals, // /=
+
+    // An escaped string containing embedded expressions.
+    InterpolatedStringLiteral,
 }

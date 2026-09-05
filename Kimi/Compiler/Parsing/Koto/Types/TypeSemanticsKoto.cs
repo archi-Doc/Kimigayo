@@ -50,6 +50,14 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
     [Key(7)]
     private bool isTransparentWrapper;
 
+    /// <summary>Gets the qualified or intersected Origin expression.</summary>
+    [Key(8)]
+    public Koto? OriginExpression { get; private set; }
+
+    /// <summary>Gets named Origin arguments, or null for an ordinary Origin annotation.</summary>
+    [Key(9)]
+    public OriginArgument[]? OriginArguments { get; private set; }
+
     /// <summary>Gets the underlying type identifier.</summary>
     [IgnoreMember]
     public override string Identifier
@@ -131,7 +139,29 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
             builder.Append(this.Identifier);
         }
 
-        if (this.originName is not null)
+        if (this.OriginArguments is { } arguments)
+        {
+            builder.Append(" from (");
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                builder.Append(arguments[i].Name);
+                builder.Append(" => ");
+                arguments[i].Value.WriteTo(ref builder);
+            }
+
+            builder.Append(')');
+        }
+        else if (this.OriginExpression is not null)
+        {
+            builder.Append(" from ");
+            this.OriginExpression.WriteTo(ref builder);
+        }
+        else if (this.originName is not null)
         {
             builder.AppendSpace();
             builder.Append(Constants.FromKeyword);
@@ -146,11 +176,65 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
         this.Span = SourceSpan.FromBounds(this.Span.Start, end);
     }
 
+    internal void SetOrigin(Koto? expression, OriginArgument[]? arguments, int end)
+    {
+        this.OriginExpression = expression;
+        this.OriginArguments = arguments;
+        this.originName = (expression as IdentifierNameKoto)?.IdentifierName;
+        this.Adopt(expression);
+        if (arguments is not null)
+        {
+            foreach (var argument in arguments)
+            {
+                this.Adopt(argument.Value);
+            }
+        }
+
+        this.Span = SourceSpan.FromBounds(this.Span.Start, Math.Max(this.Span.End, end));
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
-        => this.Type is null ? [] : [this.Type];
+    {
+        if (this.Type is not null)
+        {
+            yield return this.Type;
+        }
+
+        if (this.OriginExpression is not null)
+        {
+            yield return this.OriginExpression;
+        }
+
+        if (this.OriginArguments is not null)
+        {
+            foreach (var argument in this.OriginArguments)
+            {
+                yield return argument.Value;
+            }
+        }
+    }
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
+        if (this.OriginExpression == oldKoto)
+        {
+            this.OriginExpression = newKoto;
+            this.originName = (newKoto as IdentifierNameKoto)?.IdentifierName;
+            return true;
+        }
+
+        if (this.OriginArguments is not null)
+        {
+            foreach (var argument in this.OriginArguments)
+            {
+                if (argument.Value == oldKoto)
+                {
+                    argument.Value = newKoto;
+                    return true;
+                }
+            }
+        }
+
         if (this.Type != oldKoto)
         {
             return false;
@@ -158,5 +242,27 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
 
         this.Type = newKoto;
         return true;
+    }
+}
+
+/// <summary>Represents a named Origin argument.</summary>
+[TinyhandObject]
+public sealed partial class OriginArgument
+{
+    /// <summary>Gets the declared Origin parameter name.</summary>
+    [Key(0)]
+    public string Name { get; private set; } = string.Empty;
+
+    /// <summary>Gets the supplied Origin expression.</summary>
+    [Key(1)]
+    public Koto Value { get; internal set; } = default!;
+
+    /// <summary>Initializes a new instance of the <see cref="OriginArgument"/> class.</summary>
+    /// <param name="name">The Origin parameter name.</param>
+    /// <param name="value">The Origin expression.</param>
+    public OriginArgument(string name, Koto value)
+    {
+        this.Name = name;
+        this.Value = value;
     }
 }

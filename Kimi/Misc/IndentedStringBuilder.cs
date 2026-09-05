@@ -26,6 +26,7 @@ public ref struct IndentedStringBuilder
     public static readonly char[] SpaceBuffer;
 
     private readonly int spacesPerIndent;
+    private readonly bool hasExplicitIndentWidth;
     private PooledStringBuilder builder;
     private int indentLevel;
     private bool hasLineContent;
@@ -55,6 +56,7 @@ public ref struct IndentedStringBuilder
         ArgumentOutOfRangeException.ThrowIfNegative(spacesPerIndent);
 
         this.spacesPerIndent = spacesPerIndent;
+        this.hasExplicitIndentWidth = true;
     }
 
     /// <summary>
@@ -70,7 +72,7 @@ public ref struct IndentedStringBuilder
     /// <summary>
     /// Gets the number of spaces per indentation level.
     /// </summary>
-    public readonly int SpacesPerIndent => this.spacesPerIndent;
+    public readonly int SpacesPerIndent => this.hasExplicitIndentWidth ? this.spacesPerIndent : DefaultSpacesPerIndent;
 
     /// <summary>
     /// Increases the indentation level by one.
@@ -383,6 +385,16 @@ public ref struct IndentedStringBuilder
     public void Dispose()
         => this.builder.Dispose();
 
+    // Literal contents must preserve physical newlines and spaces exactly.
+    internal void AppendVerbatim(ReadOnlySpan<char> value)
+    {
+        if (!value.IsEmpty)
+        {
+            this.builder.Append(value);
+            this.hasLineContent = value[^1] is not ('\r' or '\n');
+        }
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AppendIndentIfRequired()
     {
@@ -393,12 +405,12 @@ public ref struct IndentedStringBuilder
 
         this.hasLineContent = true;
 
-        if (this.indentLevel == 0 || this.spacesPerIndent == 0)
+        if (this.indentLevel == 0 || this.SpacesPerIndent == 0)
         {
             return;
         }
 
-        var remaining = this.spacesPerIndent * this.indentLevel;
+        var remaining = this.SpacesPerIndent * this.indentLevel;
         while (remaining > 0)
         {
             var length = Math.Min(SpaceBufferLength, remaining);

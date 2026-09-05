@@ -43,13 +43,16 @@ public sealed partial class StringLiteralKoto : ExpressionKoto
 
         if (this.rawLiteral.Length > 0 && this.rawLiteral[0] == '"')
         {
-            builder.Append(this.rawLiteral);
+            builder.Append('"');
+            builder.AppendVerbatim(this.rawLiteral.AsSpan(1));
         }
         else
         {
             builder.Append('"');
-            builder.Append(this.rawLiteral);
-            builder.Append('"');
+            builder.AppendVerbatim(this.rawLiteral);
+            builder.AppendVerbatim("\"");
         }
     }
+
+    internal void WriteContentTo(ref IndentedStringBuilder builder) => builder.AppendVerbatim(this.rawLiteral);
 }

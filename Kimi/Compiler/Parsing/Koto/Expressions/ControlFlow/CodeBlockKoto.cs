@@ -24,6 +24,10 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
     [Key(3)]
     public bool HasTrailingSemicolon { get; private set; }
 
+    /// <summary>Gets the declaration context of a compile-time directive body.</summary>
+    [Key(4)]
+    public TokenKind DeclarationContext { get; internal set; }
+
     /// <summary>Gets a value indicating whether this is a single-expression value branch with an implicit result.</summary>
     [IgnoreMember]
     public bool HasTrailingExpression => this.hasUnterminatedExpression && this.items.Count == 1 &&
@@ -72,7 +76,11 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
                 builder.AppendLine();
             }
 
-            if (this.items[i] is DeclarationContainerKoto container)
+            if (this.items[i] is CodeBlockKoto nested)
+            {
+                nested.WriteIndentedTo(ref builder);
+            }
+            else if (this.items[i] is DeclarationContainerKoto container)
             {
                 container.WriteAsBlockItem(ref builder);
             }

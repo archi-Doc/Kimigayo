@@ -98,6 +98,48 @@ public sealed partial class FunctionKoto : IdentifiableKoto
     [Key(9)]
     public Koto? ExpressionBody { get; private set; }
 
+    [Key(10)]
+    private List<string>? origins;
+
+    [Key(11)]
+    private List<Koto>? typeConstraints;
+
+    /// <summary>Gets compile-time constraints declared before executable body items.</summary>
+    [IgnoreMember]
+    public IReadOnlyList<Koto> TypeConstraints => (IReadOnlyList<Koto>?)this.typeConstraints ?? [];
+
+    /// <summary>Gets a value indicating whether this function is a destructor body.</summary>
+    [Key(12)]
+    public bool IsDestructor { get; internal set; }
+
+    /// <summary>Gets the abstract Origin parameters.</summary>
+    [IgnoreMember]
+    public IReadOnlyList<string> Origins => (IReadOnlyList<string>?)this.origins ?? [];
+
+    internal void SetOrigins(List<string>? origins) => this.origins = origins;
+
+    internal void AddTypeConstraint(Koto constraint)
+    {
+        (this.typeConstraints ??= []).Add(constraint);
+        this.Adopt(constraint);
+    }
+
+    internal bool IsGenericParameter(string name)
+    {
+        if (this.genericArguments is not null)
+        {
+            foreach (var parameter in this.genericArguments)
+            {
+                if (parameter.Identifier == name || parameter.SemanticsParameter == name)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Gets the generic parameters.</summary>
     [IgnoreMember]
     public IReadOnlyList<TypeKoto> GenericArguments
@@ -178,7 +220,7 @@ public sealed partial class FunctionKoto : IdentifiableKoto
             return;
         }
 
-        this.Body = Parser.ParseBlock(ref reader);
+        this.Body = Parser.ParseFunctionBlock(ref reader, this);
         this.Body.Parent = this;
         this.Span = SourceSpan.FromBounds(this.Span.Start, this.Body.Span.End);
     }
@@ -194,9 +236,28 @@ public sealed partial class FunctionKoto : IdentifiableKoto
 
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendLineFeed);
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
-        builder.Append(Constants.FuncKeyword);
-        builder.AppendSpace();
+        if (!this.IsDestructor)
+        {
+            builder.Append(Constants.FuncKeyword);
+            builder.AppendSpace();
+        }
+
         builder.Append(this.Name);
+
+        if (this.IsDestructor)
+        {
+            if (this.ExpressionBody is not null)
+            {
+                builder.Append(" => ");
+                this.ExpressionBody.WriteTo(ref builder);
+            }
+            else
+            {
+                this.Body?.WriteIndentedTo(ref builder);
+            }
+
+            return;
+        }
 
         if (this.genericArguments is { Count: > 0 } genericArguments)
         {
@@ -212,6 +273,20 @@ public sealed partial class FunctionKoto : IdentifiableKoto
             }
 
             builder.Append('>');
+        }
+
+        if (this.origins is { Count: > 0 })
+        {
+            builder.Append(" origin ");
+            for (var i = 0; i < this.origins.Count; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                builder.Append(this.origins[i]);
+            }
         }
 
         builder.Append('(');
@@ -264,6 +339,19 @@ public sealed partial class FunctionKoto : IdentifiableKoto
             builder.Append(" => ");
             this.ExpressionBody.WriteTo(ref builder);
         }
+        else if (this.typeConstraints is { Count: > 0 })
+        {
+            builder.AppendLine();
+            builder.IncrementIndent();
+            foreach (var constraint in this.typeConstraints)
+            {
+                constraint.WriteTo(ref builder);
+                builder.AppendLine();
+            }
+
+            this.Body?.WriteTo(ref builder);
+            builder.DecrementIndent();
+        }
         else
         {
             this.Body?.WriteIndentedTo(ref builder);
@@ -285,6 +373,14 @@ public sealed partial class FunctionKoto : IdentifiableKoto
 
     protected override IEnumerable<Koto> GetChildNodes()
     {
+        if (this.typeConstraints is not null)
+        {
+            foreach (var constraint in this.typeConstraints)
+            {
+                yield return constraint;
+            }
+        }
+
         if (this.genericArguments is not null)
         {
             foreach (var argument in this.genericArguments)
@@ -370,7 +466,8 @@ public sealed partial class FunctionKoto : IdentifiableKoto
             }
         }
 
-        return oldKoto is TypeKoto && ReplaceInList(this.genericArguments, oldKoto, newKoto);
+        return ReplaceInList(this.typeConstraints, oldKoto, newKoto) ||
+            (oldKoto is TypeKoto && newKoto is TypeKoto && ReplaceInList(this.genericArguments, oldKoto, newKoto));
     }
 
     private void AttachParameter(FunctionParameterKoto parameter)

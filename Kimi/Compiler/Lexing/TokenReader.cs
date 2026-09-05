@@ -131,6 +131,7 @@ public ref struct TokenReader
         this.ModifierKind = default;
         this.IsExcluded = false;
         this.compileTimeIfPrefixes = default;
+        this.HasCompileTimeIfPrefix = false;
     }
 
     /// <summary>
@@ -273,6 +274,11 @@ public ref struct TokenReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly TokenKind PeekKind(int offset = 1)
     {
+        if (offset == 0)
+        {
+            return this.currentToken.Kind;
+        }
+
         var index = this.Position + offset;
         return (uint)index < (uint)this.tokens.Length ? this.tokens[index].Kind : TokenKind.Invalid;
     }
@@ -285,6 +291,16 @@ public ref struct TokenReader
     /// <returns><see langword="true"/> when the reader now points at a token of the specified kind.</returns>
     public bool TrySkipSeparatorsTo(TokenKind kind)
     {
+        if (this.currentToken.Kind == kind)
+        {
+            return true;
+        }
+
+        if (this.currentToken.Kind != TokenKind.Separator)
+        {
+            return false;
+        }
+
         var index = this.Position;
         var tokens = this.tokens;
         while ((uint)index < (uint)tokens.Length && tokens[index].Kind == TokenKind.Separator)
@@ -555,7 +571,7 @@ public ref struct TokenReader
             return true;
         }
 
-        this.Diagnostic.Add(this.CurrentTokenRange, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
+        this.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
         identifier = null;
         return false;
     }
@@ -567,8 +583,31 @@ public ref struct TokenReader
     public readonly override string ToString()
         => this.GetSpan(this.currentToken).ToString();
 
+    internal bool HasCompileTimeIfPrefix { get; set; }
+
     /// <summary>Gets or sets a value indicating whether primitive type names are accepted in a directive condition.</summary>
     internal bool IsParsingCompileTimeCondition { get; set; }
+
+    // Split compound operators only in type context; shift/comparison expressions keep
+    // their original tokens. The shared token buffer remains immutable.
+    internal bool TryConsumeTypeClose(out SourceSpan range)
+    {
+        var remainingKind = this.currentToken.Kind switch
+        {
+            TokenKind.GreaterThanGreaterThan => TokenKind.GreaterThan,
+            TokenKind.GreaterThanEquals => TokenKind.Equals,
+            TokenKind.GreaterThanGreaterThanEquals => TokenKind.GreaterThanEquals,
+            _ => TokenKind.Invalid,
+        };
+        if (remainingKind == TokenKind.Invalid)
+        {
+            return this.TryConsume(TokenKind.GreaterThan, out range, true);
+        }
+
+        range = new SourceSpan(this.currentToken.Span.Start, 1);
+        this.currentToken = new Token(remainingKind, SourceSpan.FromBounds(range.End, this.currentToken.Span.End));
+        return true;
+    }
 
     /// <summary>Adds a deferred compile-time directive to the current syntax prefix.</summary>
     /// <param name="prefix">The directive and its parsed condition.</param>

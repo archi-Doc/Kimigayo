@@ -343,7 +343,7 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
                     builder.AppendLine();
                 }
 
-                x.WriteTo(ref builder);
+                WriteMemberTo(x, ref builder);
                 builder.AppendLine();
 
                 previousToplevel = x.IsToplevel;
@@ -464,7 +464,7 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
             foreach (var koto in this.kotoList)
             {
                 WriteSeparator(ref builder, ref hasPrevious);
-                koto.WriteTo(ref builder);
+                WriteMemberTo(koto, ref builder);
             }
         }
 
@@ -489,6 +489,19 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
         }
     }
 
+    private static void WriteMemberTo(Koto member, ref IndentedStringBuilder builder)
+    {
+        if (member is CodeBlockKoto block)
+        {
+            builder.Append("#if true");
+            block.WriteIndentedTo(ref builder);
+        }
+        else
+        {
+            member.WriteTo(ref builder);
+        }
+    }
+
     /// <summary>Parses the member declarations of a block body.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="parseTypeConstraints">Whether ordinary type constraints are accepted.</param>
@@ -510,8 +523,15 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
 
             if (Parser.IsCompileTimeCaseStart(ref reader))
             {
-                var caseGroup = Parser.ParseCompileTimeCaseGroup(ref reader);
+                var caseGroup = Parser.ParseCompileTimeCaseGroup(ref reader, this);
                 this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup));
+                continue;
+            }
+
+            if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock)
+            {
+                var body = Parser.ParseDeclarationDirectiveBody(ref reader, this);
+                this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, body));
                 continue;
             }
 
@@ -609,6 +629,11 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
             return false;
         }
 
+        if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.EndBlock)
+        {
+            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+        }
+
         return !reader.TryConsume(TokenKind.EndBlock);
     }
 
@@ -690,6 +715,19 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
                 this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, propertyKoto));
             }
 
+            return true;
+        }
+
+        if (this is StructKoto && reader.IsCurrentIdentifier("deinit"))
+        {
+            var context = reader.TakeContext();
+            reader.Advance();
+            var destructor = new FunctionKoto(ref reader, context, token.Span, "deinit", null, null, new TupleTypeKoto(ref reader, token.Span, []))
+            {
+                IsDestructor = true,
+            };
+            destructor.Parse(ref reader);
+            this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, destructor));
             return true;
         }
 

@@ -34,7 +34,13 @@ public sealed partial class CompileTimeIfKoto : Koto
         builder.Append("#if ");
         this.Condition.WriteTo(ref builder);
         builder.AppendLine();
-        if (this.Target is DeclarationContainerKoto container)
+        if (this.Target is CodeBlockKoto block)
+        {
+            builder.IncrementIndent();
+            block.WriteTo(ref builder);
+            builder.DecrementIndent();
+        }
+        else if (this.Target is DeclarationContainerKoto container)
         {
             container.WriteAsBlockItem(ref builder);
         }

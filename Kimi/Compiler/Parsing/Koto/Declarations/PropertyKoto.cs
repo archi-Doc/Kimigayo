@@ -19,6 +19,10 @@ public sealed partial class PropertyKoto : VariableKoto
     [Key(7)]
     public bool HasInlineAccessors { get; private set; }
 
+    /// <summary>Gets a value indicating whether this is a contract accessor requirement.</summary>
+    [Key(8)]
+    public bool IsContractRequirement { get; internal set; }
+
     /// <summary>Gets the explicit accessors in source order.</summary>
     [IgnoreMember]
     public IReadOnlyList<PropertyAccessorKoto> Accessors

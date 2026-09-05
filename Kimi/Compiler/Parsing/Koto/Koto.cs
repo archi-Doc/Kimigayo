@@ -284,6 +284,12 @@ public enum KotoKind : byte
     /// <summary>The Unit value ().</summary>
     UnitLiteral,
 
+    /// <summary>A string containing embedded expressions.</summary>
+    InterpolatedString,
+
+    /// <summary>A tuple value expression.</summary>
+    TupleLiteral,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
@@ -312,6 +318,8 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.PropertyAccessor, typeof(PropertyAccessorKoto))]
 [TinyhandUnion((int)KotoKind.NumberLiteral, typeof(NumberLiteralKoto))]
 [TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
+[TinyhandUnion((int)KotoKind.InterpolatedString, typeof(InterpolatedStringKoto))]
+[TinyhandUnion((int)KotoKind.TupleLiteral, typeof(TupleLiteralKoto))]
 [TinyhandUnion((int)KotoKind.IdentifierName, typeof(IdentifierNameKoto))]
 [TinyhandUnion((int)KotoKind.TypeSemantics, typeof(TypeSemanticsKoto))]
 [TinyhandUnion((int)KotoKind.SemanticsMask, typeof(SemanticsMaskKoto))]
