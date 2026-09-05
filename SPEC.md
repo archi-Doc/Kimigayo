@@ -30,19 +30,19 @@ public group Program
 
 **Principles**
 
-- Backward Compatibility; Kimigayo does not guarantee backward compatibility between language versions. To preserve room for future language evolution, and because AI-assisted development has made source migration easier, Kimigayo prioritizes consistency and language quality over compatibility with existing code.
-- Indentation; Four spaces are used for indentation. Indentation represents nesting, that is, the syntactic containment relationship between constructs.
-- `[]` Represents a sequence of elements with the same Type and access to its elements. It is used for array construction and index access.
-- `()` Represents ordered grouping of values or Types. It is used for function parameter and argument lists, Tuples, Unit, Function Types, and grouping of conditions or operator precedence.
-- `<>` Represents Generic parameters and Generic arguments. It is used for compile-time parameters and arguments that construct Types.
-- `{}` Currently unused. It is reserved for future language evolution.
-- Type; The conceptual complete form of a Kimigayo Type is `semantics/CoreType from origin`. Type Semantics describe how a value is handled, Core Type describes what the value is, and Origin describes where the value derives from and how long it remains valid. Type Semantics and Origin may be omitted when determined by the language or context.
-- `=` Represents assignment. Under Kimigayo's ownership rules, the effective operation may be either Copy or Move depending on the Type and context. Precise Copy/Move classification, use-after-move checking, and related enforcement are not yet implemented.
-- `->` Represents a Result Type. In function declarations and Function Types, it denotes the result Type associated with the input side.
-- `=>` Represents a mapping or correspondence. It introduces function and Property accessor expression bodies, match arms, named Origin arguments, and similar constructs.
-- `:` Represents a structural association: a Name with a Type, a key with a value, or a Label with a Block or Loop.
-- Naming Convention; Types and Declaration Containers use PascalCase. Functions, Properties, local bindings, parameters, and other value names generally use camelCase.
-- Compile-time Construct; A construct beginning with `#` is evaluated or processed during compilation. Built-in directives such as `#if` and `#case` use lowercase reserved names and are distinct from PascalCase Attributes such as `#Inline`.
+- Backward Compatibility: Kimigayo does not guarantee backward compatibility between language versions. To preserve room for future language evolution, and because AI-assisted development has made source migration easier, Kimigayo prioritizes consistency and language quality over compatibility with existing code.
+- Indentation: Four spaces are used for indentation. Indentation represents nesting, that is, the syntactic containment relationship between constructs.
+- `[]` represents a sequence of elements with the same Type and access to its elements. It is used for array construction and index access.
+- `()` represents ordered grouping of values or Types. It is used for function parameter and argument lists, Tuples, Unit, Function Types, grouping conditions, and controlling operator precedence.
+- `<>` represents Generic parameters and Generic arguments. It is used for compile-time parameters and arguments that construct Types.
+- `{}` is currently unused. It is reserved for future language evolution.
+- Type: The complete conceptual form of a Kimigayo Type is `semantics/CoreType from origin`. Type Semantics describe how a value is handled, the Core Type describes what the value is, and the Origin describes where the value derives from and how long it remains valid. Type Semantics and Origin may be omitted when determined by the language or context.
+- `=` represents assignment. Under Kimigayo's ownership rules, the effective operation may be either Copy or Move depending on the Type and context. Precise Copy/Move classification, use-after-move checking, and related enforcement are not yet implemented.
+- `->` represents a Result Type. In function declarations and Function Types, it denotes the result Type associated with the input side.
+- `=>` represents a mapping or correspondence. It introduces function and Property accessor expression bodies, match arms, named Origin arguments, and similar constructs.
+- `:` represents a structural association: a Name with a Type, a key with a value, or a Label with a Block or Loop.
+- Naming Convention: Types and Declaration Containers use PascalCase. Functions, Properties, local bindings, parameters, and other value names generally use camelCase.
+- Compile-time Construct: A construct beginning with `#` is evaluated or processed during compilation. Built-in directives such as `#if` and `#case` use lowercase reserved names and are distinct from PascalCase Attributes such as `#Inline`.
 
 # Build Model
 
@@ -319,8 +319,8 @@ There are two forms, distinguished by the number of double quotation marks in th
 
 | Form | Delimiter | Backslash escapes | Interpolation |
 | ---- | --------- | ----------------- | ------------- |
-| Escaped string (*Multi-line string with escape*) | One double quotation mark (`"`) on each side | Yes | Yes |
-| Raw string (*Multi-line string without escape*) | The same number of double quotation marks, at least three, on each side | No | No |
+| Escaped string (*Multi-line string with escape sequences*) | One double quotation mark (`"`) on each side | Yes | Yes |
+| Raw string (*Multi-line string without escape sequences*) | The same number of double quotation marks, at least three, on each side | No | No |
 
 ### Escaped strings
 
@@ -532,7 +532,7 @@ obj.percentage = 120
 
 invokes the setter with `value` bound to `120`; the source form is `set`, not `set value`.
 
-Reading a Property invokes its getter. Assignment after initialization invokes its setter; assigning a Property without a setter is invalid. An accessor body may refer to other state instead of owned storage, so custom accessors do not by themselves make a Property computed or stored:
+Reading a Property invokes its getter. Assignment after initialization invokes its setter; assigning to a Property without a setter is invalid. An accessor body may refer to other state instead of owned storage, so custom accessors do not by themselves make a Property computed or stored:
 
 ```kimi
 var width: f64
@@ -863,7 +863,7 @@ An `alias` is a top-level declaration of a qualified Name. Nested aliases are in
 
 # Type
 
-> Types are everything for programming languages, words are everything in design.
+> Types are everything for programming languages; words are everything in design.
 
 A Kimigayo type consists of **Type Semantics**, a **Core Type**, and an **Origin**.
 
@@ -996,7 +996,7 @@ struct View
     var source: ref/Data
 ```
 
-The Type Semantics of a Property determines how the referenced or contained value is represented, owned, borrowed, shared, and accessed.
+The Type Semantics of a Property determine how the referenced or contained value is represented, owned, borrowed, shared, and accessed.
 
 ### Index, Range, and Slice
 
@@ -1675,7 +1675,7 @@ var result = outer: loop
             exit value from outer
 ```
 
-Labels follow the character rules for [Names](#name) and have a namespace separate from variables and Types. Same-name Labels with overlapping scopes in one function are invalid.
+Labels follow the character rules for [Names](#name) and have a namespace separate from those of variables and Types. Labels with the same Name and overlapping scopes in one function are invalid.
 
 A Label is visible only inside its construct's body, excluding its `for` iterable or `while` condition. It may identify only an enclosing construct in the same Function Boundary. Sibling, inner, and other-function Labels are inaccessible. A Label names a construct, not an instruction address: jumping into a body or back to a completed construct is not supported.
 
@@ -1714,7 +1714,7 @@ Resolve targets by walking outward through lexical containment. Resolve the targ
 | `continue` | Nearest Loop | Enclosing Loop named by `Label` | Error at a Function Boundary. |
 | `yield` | First enclosing `if` / `match`, which must be value-producing | Not allowed | Error at a statement-context `if` / `match`, Loop, or Function Boundary. |
 
-Failure to find a target is an error. A named target must be the required kind; `continue work` is invalid if `work` names a Block.
+Failure to find a target is an error. A named target must be of the required kind; `continue work` is invalid if `work` names a Block.
 
 A construct acts as a target or lookup stop only inside its body. Its own condition, iterable expression, or `match` subject does not acquire that construct's boundary.
 
@@ -1809,7 +1809,7 @@ Both constructs discard body results and produce Unit on completion. Neither acc
 
 ### `loop`
 
-`loop` repeats unconditionally. It discards body values and starts the next iteration at the body beginning after body fall-through or a self-targeted `continue`.
+`loop` repeats unconditionally. It discards body values and starts the next iteration at the beginning of the body after body fall-through or a self-targeted `continue`.
 
 Only an `exit` targeting that `loop` supplies its normal result. `return`, exits to outer constructs, and exits caught by inner constructs supply no result to it. A self-targeted operandless `exit` supplies Unit. Result operands are permitted only in value context.
 
@@ -1904,7 +1904,7 @@ else
     0
 ```
 
-Both yields target the inner `if`, whose result becomes the outer branch's result. Adding a direct statement makes the inner `if` statement-context and makes those yields invalid:
+Both yields target the inner `if`, whose result becomes the outer branch's result. Adding a direct statement places the inner `if` in statement context and makes those yields invalid:
 
 ```kimi
 var result = if a
