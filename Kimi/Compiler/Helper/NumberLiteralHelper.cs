@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
 using System.Globalization;
@@ -149,6 +149,26 @@ public static partial class NumberLiteralHelper
     /// </returns>
     public static NumberLiteralParseResult ParseNumberLiteral(ReadOnlySpan<char> numberLiteral, out Int128 value)
     {
+        // Short decimal integers need neither a floating-point marker scan nor 128-bit arithmetic.
+        if ((uint)(numberLiteral.Length - 1) < 9)
+        {
+            uint accumulator = 0;
+            foreach (var c in numberLiteral)
+            {
+                var digit = (uint)(c - '0');
+                if (digit > 9)
+                {
+                    goto GeneralLiteral;
+                }
+
+                accumulator = (accumulator * 10) + digit;
+            }
+
+            value = accumulator;
+            return NumberLiteralParseResult.I128;
+        }
+
+GeneralLiteral:
         if (numberLiteral.Length >= 2 && numberLiteral[0] == '0')
         {
             switch ((char)(numberLiteral[1] | 0x20))

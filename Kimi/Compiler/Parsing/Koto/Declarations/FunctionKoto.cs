@@ -94,6 +94,10 @@ public sealed partial class FunctionKoto : IdentifiableKoto
     [Key(8)]
     public bool IsGenerated { get; private set; }
 
+    /// <summary>Gets the expression after =>, if this function is expression-bodied.</summary>
+    [Key(9)]
+    public Koto? ExpressionBody { get; private set; }
+
     /// <summary>Gets the generic parameters.</summary>
     [IgnoreMember]
     public IReadOnlyList<TypeKoto> GenericArguments
@@ -159,6 +163,15 @@ public sealed partial class FunctionKoto : IdentifiableKoto
     /// <param name="reader">The token reader.</param>
     public void Parse(ref TokenReader reader)
     {
+        if (reader.TryConsume(TokenKind.EqualsGreaterThan))
+        {
+            this.ExpressionBody = Parser.ParseRequiredExpression(ref reader);
+            this.Adopt(this.ExpressionBody);
+            this.Span = SourceSpan.FromBounds(this.Span.Start, this.ExpressionBody.Span.End);
+            return;
+        }
+
+        reader.TrySkipSeparatorsTo(TokenKind.StartBlock);
         if (reader.CurrentTokenKind != TokenKind.StartBlock)
         {
             reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
@@ -246,12 +259,20 @@ public sealed partial class FunctionKoto : IdentifiableKoto
             this.ReturnType.WriteTo(ref builder);
         }
 
-        this.Body?.WriteIndentedTo(ref builder);
+        if (this.ExpressionBody is not null)
+        {
+            builder.Append(" => ");
+            this.ExpressionBody.WriteTo(ref builder);
+        }
+        else
+        {
+            this.Body?.WriteIndentedTo(ref builder);
+        }
     }
 
     /// <summary>Adds top-level syntax to this generated function.</summary>
     /// <param name="item">The syntax node to add.</param>
-    /// <param name="hasTrailingExpression">Whether the item supplies the function body's value.</param>
+    /// <param name="hasTrailingExpression">Whether the item is an expression without a semicolon.</param>
     internal void AddGeneratedItem(Koto item, bool hasTrailingExpression)
     {
         if (!this.IsGenerated || this.Body is null)
@@ -298,10 +319,21 @@ public sealed partial class FunctionKoto : IdentifiableKoto
         {
             yield return this.Body;
         }
+
+        if (this.ExpressionBody is not null)
+        {
+            yield return this.ExpressionBody;
+        }
     }
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
+        if (this.ExpressionBody == oldKoto)
+        {
+            this.ExpressionBody = newKoto;
+            return true;
+        }
+
         if (this.Body == oldKoto && newKoto is CodeBlockKoto block)
         {
             this.Body = block;

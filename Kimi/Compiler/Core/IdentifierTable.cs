@@ -1,6 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Kimi.Compiler.Helper;
 
 namespace Kimi.Compiler;
 
@@ -20,6 +23,10 @@ internal sealed class IdentifierTable
     private readonly Lock writeLock = new();
     private string?[] slots = new string?[InitialCapacity];
     private int count;
+
+    // Most compilations contain only valid spellings. Store only the exceptions so that
+    // caching validation does not enlarge every hash-table slot or allocate a second table.
+    private ConcurrentDictionary<string, byte>? invalidIdentifiers;
 
     /// <summary>
     /// Returns the shared string instance for the specified text, creating it on first use.
@@ -58,6 +65,23 @@ internal sealed class IdentifierTable
         return this.Add(text, hash);
     }
 
+    /// <summary>Interns a valid identifier, reusing validation cached with its spelling.</summary>
+    /// <param name="text">The identifier spelling.</param>
+    /// <param name="identifier">The shared spelling when validation succeeds.</param>
+    /// <returns>Whether the spelling is a valid identifier.</returns>
+    public bool TryGetIdentifier(ReadOnlySpan<char> text, [NotNullWhen(true)] out string? identifier)
+    {
+        if (text.IsEmpty || text.Length > MaxCachedLength)
+        {
+            identifier = IdentifierHelper.IsValidIdentifier(text) ? text.ToString() : null;
+            return identifier is not null;
+        }
+
+        var spelling = this.Intern(text);
+        identifier = Volatile.Read(ref this.invalidIdentifiers)?.ContainsKey(spelling) == true ? null : spelling;
+        return identifier is not null;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int Hash(ReadOnlySpan<char> text)
     {
@@ -89,6 +113,19 @@ internal sealed class IdentifierTable
                 if (candidate is null)
                 {
                     var created = text.ToString();
+                    if (!IdentifierHelper.IsValidIdentifier(text))
+                    {
+                        var invalid = this.invalidIdentifiers;
+                        if (invalid is null)
+                        {
+                            invalid = new(StringComparer.Ordinal);
+                            Volatile.Write(ref this.invalidIdentifiers, invalid);
+                        }
+
+                        invalid.TryAdd(created, 0);
+                    }
+
+                    // Publish after validation so readers cannot accept an invalid spelling.
                     Volatile.Write(ref slots[index], created);
                     this.count++;
                     return created;

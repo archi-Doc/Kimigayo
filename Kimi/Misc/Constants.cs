@@ -53,7 +53,7 @@ public static class Constants
     public const string LoopKeyword = "loop";
     public const string MatchKeyword = "match";
     public const string ReturnKeyword = "return";
-    public const string BreakKeyword = "break";
+    public const string ExitKeyword = "exit";
     public const string ContinueKeyword = "continue";
     public const string YieldKeyword = "yield";
 

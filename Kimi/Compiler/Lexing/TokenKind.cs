@@ -53,7 +53,7 @@ public enum TokenKind : byte
     Loop, // loop
     Match, // match
     Return, // method/return
-    Break, // loop/break
+    Exit, // loop/exit
     Continue, // continue
     Yield, // yield
 

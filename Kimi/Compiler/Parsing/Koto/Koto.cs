@@ -249,8 +249,8 @@ public enum KotoKind : byte
     /// <summary>A <c>return</c> expression.</summary>
     Return,
 
-    /// <summary>A <c>break</c> expression.</summary>
-    Break,
+    /// <summary>A <c>exit</c> expression.</summary>
+    Exit,
 
     /// <summary>A <c>continue</c> expression.</summary>
     Continue,
@@ -277,6 +277,12 @@ public enum KotoKind : byte
 
     /// <summary>A Property accessor declaration.</summary>
     PropertyAccessor,
+
+    /// <summary>A labeled Block or Loop.</summary>
+    Labeled,
+
+    /// <summary>The Unit value ().</summary>
+    UnitLiteral,
 
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
@@ -362,6 +368,8 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Generics, typeof(GenericsKoto))]
 [TinyhandUnion((int)KotoKind.Range, typeof(RangeKoto))]
 [TinyhandUnion((int)KotoKind.CodeBlock, typeof(CodeBlockKoto))]
+[TinyhandUnion((int)KotoKind.Labeled, typeof(LabeledKoto))]
+[TinyhandUnion((int)KotoKind.UnitLiteral, typeof(UnitLiteralKoto))]
 [TinyhandUnion((int)KotoKind.If, typeof(IfKoto))]
 [TinyhandUnion((int)KotoKind.CompileTimeIf, typeof(CompileTimeIfKoto))]
 [TinyhandUnion((int)KotoKind.CompileTimeCaseGroup, typeof(CompileTimeCaseGroupKoto))]
@@ -369,7 +377,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.While, typeof(WhileKoto))]
 [TinyhandUnion((int)KotoKind.For, typeof(ForKoto))]
 [TinyhandUnion((int)KotoKind.Return, typeof(ReturnKoto))]
-[TinyhandUnion((int)KotoKind.Break, typeof(BreakKoto))]
+[TinyhandUnion((int)KotoKind.Exit, typeof(ExitKoto))]
 [TinyhandUnion((int)KotoKind.Continue, typeof(ContinueKoto))]
 [TinyhandUnion((int)KotoKind.Loop, typeof(LoopKoto))]
 [TinyhandUnion((int)KotoKind.Yield, typeof(YieldKoto))]
@@ -605,22 +613,26 @@ public abstract partial class Koto
     /// <param name="oldKoto">The current element.</param>
     /// <param name="newKoto">The replacement element.</param>
     /// <returns><see langword="true"/> when the element was replaced.</returns>
-    protected static bool ReplaceInList<T>(List<T>? list, Koto oldKoto, Koto newKoto)
+    protected static bool ReplaceInList<T>(IReadOnlyList<T>? list, Koto oldKoto, Koto newKoto)
         where T : Koto
     {
-        if (list is null || oldKoto is not T current || newKoto is not T replacement)
+        if (list is not IList<T> mutable ||
+            (mutable.IsReadOnly && list is not T[]) ||
+            oldKoto is not T current || newKoto is not T replacement)
         {
             return false;
         }
 
-        var index = list.IndexOf(current);
-        if (index < 0)
+        for (var index = 0; index < list.Count; index++)
         {
-            return false;
+            if (ReferenceEquals(list[index], current))
+            {
+                mutable[index] = replacement;
+                return true;
+            }
         }
 
-        list[index] = replacement;
-        return true;
+        return false;
     }
 
     /// <summary>Writes the attribute chain, if any, followed by the requested trailing text.</summary>
@@ -660,6 +672,30 @@ public abstract partial class Koto
         foreach (var child in children)
         {
             child.Parent = this;
+        }
+    }
+
+    /// <summary>Sets this node as the parent of an array or list of child nodes.</summary>
+    /// <param name="children">The child nodes.</param>
+    protected void Adopt(IReadOnlyList<Koto>? children)
+    {
+        if (children is Koto[] array)
+        {
+            foreach (var child in array)
+            {
+                child.Parent = this;
+            }
+        }
+        else if (children is List<Koto> list)
+        {
+            this.Adopt(list);
+        }
+        else if (children is not null)
+        {
+            for (var i = 0; i < children.Count; i++)
+            {
+                children[i].Parent = this;
+            }
         }
     }
 

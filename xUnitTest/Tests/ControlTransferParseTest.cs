@@ -27,13 +27,13 @@ public class ControlTransferParseTest
 
                 for item in values
                     if done(item)
-                        break
+                        exit
 
                     continue
 
                 while ready()
                     if done()
-                        break
+                        exit
 
                     continue
 
@@ -41,7 +41,7 @@ public class ControlTransferParseTest
                     if retry()
                         continue
 
-                    break 10
+                    exit 10
 
                 var ifResult = if flag()
                     trace()
@@ -67,20 +67,20 @@ public class ControlTransferParseTest
 
         var forExpression = Assert.IsType<ForKoto>(body.Items[1]);
         var forIf = Assert.IsType<IfKoto>(forExpression.Body.Items[0]);
-        Assert.IsType<BreakKoto>(Assert.Single(forIf.Branches[0].Body.Items));
+        Assert.IsType<ExitKoto>(Assert.Single(forIf.Branches[0].Body.Items));
         Assert.IsType<ContinueKoto>(forExpression.Body.Items[1]);
 
         var whileExpression = Assert.IsType<WhileKoto>(body.Items[2]);
         var whileIf = Assert.IsType<IfKoto>(whileExpression.Body.Items[0]);
-        Assert.IsType<BreakKoto>(Assert.Single(whileIf.Branches[0].Body.Items));
+        Assert.IsType<ExitKoto>(Assert.Single(whileIf.Branches[0].Body.Items));
         Assert.IsType<ContinueKoto>(whileExpression.Body.Items[1]);
 
         var loopField = Assert.IsType<FieldKoto>(body.Items[3]);
         var loopExpression = Assert.IsType<LoopKoto>(loopField.InitializerKoto);
         var loopIf = Assert.IsType<IfKoto>(loopExpression.Body.Items[0]);
         Assert.IsType<ContinueKoto>(Assert.Single(loopIf.Branches[0].Body.Items));
-        var valueBreak = Assert.IsType<BreakKoto>(loopExpression.Body.Items[1]);
-        Assert.IsType<NumberLiteralKoto>(valueBreak.Expression);
+        var valueExit = Assert.IsType<ExitKoto>(loopExpression.Body.Items[1]);
+        Assert.IsType<NumberLiteralKoto>(valueExit.Expression);
 
         var ifField = Assert.IsType<FieldKoto>(body.Items[4]);
         var valueIf = Assert.IsType<IfKoto>(ifField.InitializerKoto);
@@ -113,11 +113,11 @@ public class ControlTransferParseTest
                         if retry()
                             continue
 
-                        break 1
+                        exit 1
                 else
                     0
 
-                match value
+                return match value
                     0 =>
                         yield selected
                     1 => 2
@@ -140,7 +140,7 @@ public class ControlTransferParseTest
         var loop = Assert.IsType<LoopKoto>(valueIf.Branches[0].Body.TrailingExpression);
         Assert.Same(loop, loop.Body.Parent);
 
-        var valueMatch = Assert.IsType<MatchKoto>(body.TrailingExpression);
+        var valueMatch = Assert.IsType<MatchKoto>(Assert.IsType<ReturnKoto>(body.Items[^1]).Expression);
         var firstArm = Assert.IsType<CodeBlockKoto>(valueMatch.Arms[0].Body);
         var yield = Assert.IsType<YieldKoto>(Assert.Single(firstArm.Items));
         Assert.Same(yield, yield.Expression.Parent);

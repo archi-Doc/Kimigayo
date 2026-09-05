@@ -25,7 +25,7 @@ public class FunctionBodyParseTest
                 var x = 0
                 while x < 10
                     if (x == 5)
-                        break
+                        exit
                     else if flag
                         x += 2
                     else
@@ -38,7 +38,7 @@ public class FunctionBodyParseTest
 
         var body = Assert.IsType<CodeBlockKoto>(function.Body);
         Assert.Equal(3, body.Items.Count);
-        Assert.True(body.HasTrailingExpression);
+        Assert.False(body.HasTrailingExpression);
 
         Assert.IsType<FieldKoto>(body.Items[0]);
         var whileExpression = Assert.IsType<WhileKoto>(body.Items[1]);
@@ -47,13 +47,14 @@ public class FunctionBodyParseTest
         var loopIf = Assert.IsType<IfKoto>(Assert.Single(whileExpression.Body.Items));
         Assert.Equal(2, loopIf.Branches.Count);
         Assert.NotNull(loopIf.ElseBody);
-        Assert.IsType<BreakKoto>(Assert.Single(loopIf.Branches[0].Body.Items));
+        Assert.IsType<ExitKoto>(Assert.Single(loopIf.Branches[0].Body.Items));
 
-        var resultIf = Assert.IsType<IfKoto>(body.TrailingExpression);
+        var resultIf = Assert.IsType<IfKoto>(body.Items[^1]);
         Assert.Single(resultIf.Branches);
         Assert.NotNull(resultIf.ElseBody);
         Assert.IsType<ReturnKoto>(Assert.Single(resultIf.Branches[0].Body.Items));
-        Assert.IsType<IdentifierNameKoto>(resultIf.ElseBody.TrailingExpression);
+        Assert.False(resultIf.ElseBody.HasTrailingExpression);
+        Assert.IsType<IdentifierNameKoto>(Assert.Single(resultIf.ElseBody.Items));
 
         Assert.Same(function, body.Parent);
         Assert.All(body.Items, item => Assert.Same(body, item.Parent));
@@ -73,19 +74,19 @@ public class FunctionBodyParseTest
             """);
 
         var body = Assert.IsType<CodeBlockKoto>(function.Body);
-        var match = Assert.IsType<MatchKoto>(body.TrailingExpression);
+        var match = Assert.IsType<MatchKoto>(Assert.Single(body.Items));
         Assert.IsType<ParenthesizedKoto>(match.Expression);
         Assert.Equal(2, match.Arms.Count);
         Assert.IsType<StringLiteralKoto>(match.Arms[0].Body);
 
         var blockArm = Assert.IsType<CodeBlockKoto>(match.Arms[1].Body);
         Assert.Equal(2, blockArm.Items.Count);
-        Assert.True(blockArm.HasTrailingExpression);
-        Assert.IsType<IdentifierNameKoto>(blockArm.TrailingExpression);
+        Assert.False(blockArm.HasTrailingExpression);
+        Assert.IsType<IdentifierNameKoto>(blockArm.Items[^1]);
     }
 
     [Fact]
-    public void DistinguishesUnitAndImplicitReturnBlockEndings()
+    public void DiscardsAllBlockFunctionTailExpressions()
     {
         var declarationTail = ParseSingleFunction(
             """
@@ -101,8 +102,8 @@ public class FunctionBodyParseTest
                 var value = 1
                 value = 2
             """);
-        Assert.True(assignmentTail.Body!.HasTrailingExpression);
-        Assert.IsType<EqualsKoto>(assignmentTail.Body.TrailingExpression);
+        Assert.False(assignmentTail.Body!.HasTrailingExpression);
+        Assert.IsType<EqualsKoto>(assignmentTail.Body.Items[^1]);
 
         var semicolonTail = ParseSingleFunction(
             """
@@ -237,7 +238,7 @@ public class FunctionBodyParseTest
                 struct Local
                     var value: i32
                 while x < 0
-                    break 0
+                    exit 0
                 match x
                     0 => 10
                     1 =>
@@ -261,7 +262,8 @@ public class FunctionBodyParseTest
         var restoredBody = Assert.IsType<CodeBlockKoto>(restoredFunction.Body);
         Assert.IsType<StructKoto>(restoredBody.Items[0]);
         Assert.IsType<WhileKoto>(restoredBody.Items[1]);
-        Assert.IsType<MatchKoto>(restoredBody.TrailingExpression);
+        Assert.False(restoredBody.HasTrailingExpression);
+        Assert.IsType<MatchKoto>(restoredBody.Items[^1]);
 
         var builder = new IndentedStringBuilder();
         try

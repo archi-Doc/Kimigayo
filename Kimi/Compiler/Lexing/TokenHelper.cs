@@ -88,7 +88,7 @@ public static partial class TokenHelper
         Set(TokenKind.Loop, Constants.LoopKeyword);
         Set(TokenKind.Match, Constants.MatchKeyword);
         Set(TokenKind.Return, Constants.ReturnKeyword);
-        Set(TokenKind.Break, Constants.BreakKeyword);
+        Set(TokenKind.Exit, Constants.ExitKeyword);
         Set(TokenKind.Continue, Constants.ContinueKeyword);
         Set(TokenKind.Yield, Constants.YieldKeyword);
 
@@ -322,7 +322,7 @@ public static partial class TokenHelper
                 'u' => Match(text, Constants.U128Keyword, TokenKind.U128),
                 't' => Match(text, Constants.TrueKeyword, TokenKind.True),
                 'f' => Match(text, Constants.FuncKeyword, TokenKind.Func),
-                'e' => Match(text, Constants.ElseKeyword, TokenKind.Else, Constants.EnumKeyword, TokenKind.Enum),
+                'e' => Match(text, Constants.ElseKeyword, TokenKind.Else, Constants.EnumKeyword, TokenKind.Enum, Constants.ExitKeyword, TokenKind.Exit),
                 'l' => Match(text, Constants.LoopKeyword, TokenKind.Loop),
                 'o' => Match(text, Constants.OpenKeyword, TokenKind.Open),
                 _ => TokenKind.Identifier,
@@ -334,7 +334,6 @@ public static partial class TokenHelper
                 'f' => Match(text, Constants.FalseKeyword, TokenKind.False),
                 'w' => Match(text, Constants.WhileKeyword, TokenKind.While),
                 'm' => Match(text, Constants.MatchKeyword, TokenKind.Match),
-                'b' => Match(text, Constants.BreakKeyword, TokenKind.Break),
                 'y' => Match(text, Constants.YieldKeyword, TokenKind.Yield),
                 'a' => Match(text, Constants.AliasKeyword, TokenKind.Alias),
                 'g' => Match(text, Constants.GroupKeyword, TokenKind.Group),

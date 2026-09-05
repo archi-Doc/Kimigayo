@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -240,6 +240,9 @@ public class Compilation
             File.WriteAllText(Path.Combine(this.Project.Directory, Constants.Scrub2FileName), restored, Utf8WithoutBom);
         }
     }
+
+    internal bool TryGetIdentifier(ReadOnlySpan<char> text, [NotNullWhen(true)] out string? identifier)
+        => this.identifiers.TryGetIdentifier(text, out identifier);
 
     internal bool TryResolveValue(IdentifierNameKoto koto, out BasicValue basicValue)
     {

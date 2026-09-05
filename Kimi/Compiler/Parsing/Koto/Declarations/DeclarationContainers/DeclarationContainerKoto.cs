@@ -177,14 +177,30 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
     /// <param name="origins">The origin names, if declared.</param>
     internal void AddHeader(List<TypeKoto>? genericArguments, List<string>? origins)
     {
-        if (genericArguments is not null && this.genericArguments is not { Count: > 0 })
+        if (this.SupportsGenerics && genericArguments is not null && this.genericArguments is not { Count: > 0 })
         {
-            this.AddGenericArguments(genericArguments);
+            if (this.genericArguments is null)
+            {
+                this.genericArguments = genericArguments;
+            }
+            else
+            {
+                this.genericArguments.AddRange(genericArguments);
+            }
+
+            this.Adopt(genericArguments);
         }
 
-        if (origins is not null && this.OriginList is not { Count: > 0 })
+        if (this.SupportsOrigins && origins is not null && this.OriginList is not { Count: > 0 })
         {
-            this.AddOrigins(origins);
+            if (this.OriginList is null)
+            {
+                this.OriginList = origins;
+            }
+            else
+            {
+                this.OriginList.AddRange(origins);
+            }
         }
     }
 
@@ -690,7 +706,7 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
             return true;
         }
 
-        if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             functionKoto.Parse(ref reader);
         }
