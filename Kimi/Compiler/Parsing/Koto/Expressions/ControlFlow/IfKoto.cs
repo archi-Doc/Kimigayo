@@ -84,14 +84,14 @@ public sealed partial class IfKoto : ExpressionKoto
 
             builder.AppendSpace();
             this.branches[i].Condition.WriteTo(ref builder);
-            this.branches[i].Body.WriteIndentedTo(ref builder);
+            this.branches[i].Body.WriteBranchTo(ref builder);
         }
 
         if (this.ElseBody is not null)
         {
             builder.AppendLine();
             builder.Append(Constants.ElseKeyword);
-            this.ElseBody.WriteIndentedTo(ref builder);
+            this.ElseBody.WriteBranchTo(ref builder);
         }
     }
 

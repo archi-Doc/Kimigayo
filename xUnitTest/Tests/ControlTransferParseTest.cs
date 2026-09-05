@@ -109,7 +109,7 @@ public class ControlTransferParseTest
         const string Source = """
             func Preserve(value: i32) -> i32
                 var selected = if value > 0
-                    loop
+                    yield loop
                         if retry()
                             continue
 
@@ -137,7 +137,7 @@ public class ControlTransferParseTest
         var body = Assert.IsType<CodeBlockKoto>(function.Body);
         var selected = Assert.IsType<FieldKoto>(body.Items[0]);
         var valueIf = Assert.IsType<IfKoto>(selected.InitializerKoto);
-        var loop = Assert.IsType<LoopKoto>(valueIf.Branches[0].Body.TrailingExpression);
+        var loop = Assert.IsType<LoopKoto>(Assert.IsType<YieldKoto>(Assert.Single(valueIf.Branches[0].Body.Items)).Expression);
         Assert.Same(loop, loop.Body.Parent);
 
         var valueMatch = Assert.IsType<MatchKoto>(Assert.IsType<ReturnKoto>(body.Items[^1]).Expression);

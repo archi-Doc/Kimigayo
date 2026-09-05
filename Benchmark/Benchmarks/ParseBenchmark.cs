@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
@@ -62,7 +62,7 @@ public class ParseBenchmark
 
                 func Method2() ->
                     #Condition(Os=="Windows")
-                    var i = if (x == true) 1 else 0
+                    var i = if (x == true) => 1 else => 0
                     var i2 = if (x == true)
                         1
                     else

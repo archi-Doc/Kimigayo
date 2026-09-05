@@ -150,7 +150,7 @@ public class FunctionBodyParseTest
         var function = ParseSingleFunction(
             """
             func Select(x: bool)
-                var i = if (x == true) 1 else 0
+                var i = if (x == true) => 1 else => 0
                 i
             """);
 
@@ -174,7 +174,7 @@ public class FunctionBodyParseTest
                 func Method2() -> i32
                     #Condition(Os=="Windows")
                     // block
-                        var i = if (x == true) 1 else 0
+                        var i = if (x == true) => 1 else => 0
                     var i2 = if (x == true)
                         1
                     else
@@ -182,7 +182,7 @@ public class FunctionBodyParseTest
 
                     var i3 = if (
                         var z = Func()
-                        ) 1 else 0
+                        ) => 1 else => 0
                     var j = match x
                         true => 1
                         false => 0

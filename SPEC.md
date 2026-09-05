@@ -1669,7 +1669,7 @@ A boundary handles a Completion directed at itself and propagates other Completi
 
 ## Blocks and evaluation contexts
 
-A **Block** is an indentation-delimited sequence of declarations and expressions evaluated in order. An ordinary Block discards expression values, including the last, and produces Unit on reaching its end. Empty Blocks and Blocks ending in a declaration behave the same way. Nesting an ordinary Block adds no control-transfer target. Constructs with their own result rules, such as value-producing branches, apply those rules instead. Function bodies follow [Functions](#function-bodies-and-results).
+A **Block** is an indentation-delimited sequence of declarations and expressions evaluated in order. An ordinary Block discards expression values, including the last, and produces Unit on reaching its end. Empty Blocks and Blocks ending in a declaration behave the same way. Nesting an ordinary Block adds no control-transfer target. Constructs with their own result rules, such as result-requiring branches, apply those rules instead. Function bodies follow [Functions](#function-bodies-and-results).
 
 A **Labeled Block** produces Unit when it reaches its end or catches an `exit from Label` directed at itself. It discards its trailing expression and never accepts an `exit` operand, including `()`. Paths that leave for an outer target or never finish produce no result for that Block.
 
@@ -1677,7 +1677,7 @@ A **Value Context** is a syntactic position that uses an expression's value: an 
 
 A **Discard Context** evaluates an expression and discards its normal result. It does not impose Unit as the expression's result Type, suppress Type checking, or remove ownership and destruction responsibilities for the discarded result. Direct expressions in ordinary Blocks, Labeled Blocks, Iteration Construct bodies, Block-bodied branches, and Block-bodied functions use this context, including the final expression. Nested Value Contexts remain intact.
 
-An expression determines its result; its Evaluation Context determines whether that result is consumed or discarded. A `loop` accepts result operands in either context. An `if` or `match` with an Expression-bodied branch or a `yield` targeting itself is value-producing even in Discard Context, and must satisfy the same exhaustiveness, result coverage, and Type rules there. A selection used in Value Context must also satisfy those rules; placing it in an initializer does not make a Block's final expression an implicit result. See [branch results](#branch-results).
+An expression determines its result; its Evaluation Context determines whether that result is consumed or discarded. A `loop` accepts result operands in either context. Selections follow the unified [Result-requiring Selection](#branch-results) rules.
 
 A trailing semicolon does not change an expression's Evaluation Context or whether an Expression body supplies an implicit result. Body form, not the number of direct expressions or declarations, determines the branch result rule.
 
@@ -1731,7 +1731,7 @@ Brackets indicate optional syntax. `exit name` uses `name` as a result expressio
 | `exit` to a Labeled Block, `for`, or `while` | Forbidden; the target completes with Unit. |
 | `exit` to a `loop` in either Evaluation Context | Optional; omission supplies Unit. |
 | `continue` to an Iteration Construct | Forbidden. |
-| `yield` to a value-producing `if` or `match` | Required; use `yield ()` for Unit. |
+| `yield` to a Result-requiring Selection | Required; use `yield ()` for Unit. |
 
 Operands are evaluated before transfer. If operand evaluation leaves by another transfer or never completes, the original transfer does not occur. Otherwise, its result is secured by Copy or Move before [scope-exit destruction](#scope-exit-destruction) and delivery to the target. Each transfer expression itself has type [Never](#unit-and-never-types).
 
@@ -1750,7 +1750,7 @@ Failure to find a target is an error. A named target must be of the required kin
 
 A construct acts as a target or lookup stop only inside its body. Its own condition, iterable expression, or `match` subject does not acquire that construct's boundary.
 
-Ordinary Blocks never stop lookup. A Labeled Block is an `exit` target only when explicitly named; otherwise it is transparent to every transfer. An `if` / `match` never stops `return`, `exit`, or `continue` lookup. A `yield` targets the first encountered Selection Boundary and makes that selection value-producing, even in Discard Context. It never retargets an outer selection because the inner selection lacks `else`, fails coverage, or has an incompatible result Type.
+Ordinary Blocks never stop lookup. A Labeled Block is an `exit` target only when explicitly named; otherwise it is transparent to every transfer. An `if` / `match` never stops `return`, `exit`, or `continue` lookup. A `yield` targets the first encountered Selection Boundary and makes that selection result-requiring, even in Discard Context. It never retargets an outer selection because the inner selection lacks `else`, fails coverage, or has an incompatible result Type.
 
 Named `exit` and `continue` may cross intervening Iteration Constructs and Blocks within the same function. No transfer searches beyond a Function Boundary.
 
@@ -1856,7 +1856,7 @@ var result = loop
         exit value
 ```
 
-Only reachable self-targeted exits contribute candidates to this `loop`'s result Type inference; unreachable exits must still be compatible with the determined result Type. Nested `if` expressions do not intercept `exit`.
+Only reachable self-targeted exits contribute candidates to this `loop`'s result inference. Unreachable exits must still be compatible with its Target Result Type when one is available; see [result validation](#result-validation). Nested `if` expressions do not intercept `exit`.
 
 ```kimi
 loop
@@ -1886,13 +1886,21 @@ Each `if` branch and `match` arm has an **Expression body** or a **Block body**.
 
 For `if`, the Expression body follows the condition or `else` on the same line; a Block body starts on the next line at a greater indentation. For `match`, `=>` also separates the pattern from its body: an expression follows it on the same line, or an indented Block follows it on the next line. Different branches of the same selection may use different body forms.
 
-A selection is **value-producing** if any branch has an Expression body or any `yield` resolves to that selection. Determine this from syntax and lexical target lookup before reachability analysis, independently of Evaluation Context. Only the selection's own branch body forms and yields targeting it count; a nested construct's body does not change the outer classification. An `else if` chain is one selection, so any Expression body or self-targeted `yield` in the chain makes the whole chain value-producing.
+A **Result-requiring Selection** is an `if` or `match` that meets any of these conditions:
 
-A value-producing selection must be exhaustive and must supply its own result on every path that completes normally. These requirements apply even in Discard Context. A selection in Value Context must satisfy the same requirements, including when Unit is expected or every branch leaves for an outer target. An empty Block, a Block ending in a declaration, and a Block containing only a discarded expression do not implicitly supply Unit to satisfy a required branch result; use `yield ()` or an Expression body such as `=> ()`.
+- It occurs in Value Context, including when Unit is expected.
+- One of its own branches has an Expression body.
+- A `yield` lexically resolves to that selection.
 
-A selection with only Block bodies and no self-targeted `yield` may be used in Discard Context without supplying an explicit result. In that case, reaching a selected Block's end or selecting no branch supplies Unit. Paths that leave for an outer target or never finish still supply no result to the selection.
+Resolve transfer targets before this classification, without using reachability. Nested constructs' branch forms and yields targeting them do not count for the outer selection. An `else if` chain is one selection.
 
-**Exhaustiveness** ensures that every condition outcome or subject value selects a branch. **Result coverage** ensures that a selected branch cannot reach an end requiring a result without supplying one. A path leaving for an outer target or never finishing needs no branch result. A transfer caught by an inner construct does not satisfy the outer branch: analysis continues after that construct. [Result validation](#result-validation) checks coverage and Types.
+Every Result-requiring Selection follows three common requirements:
+
+- **Exhaustiveness:** `if` requires a final `else`; `match` must cover all subject values through its patterns or a catch-all arm. Literal conditions, unreachable branches, and paths that never complete do not waive this requirement.
+- **Result coverage:** every reachable path that completes normally must supply a result. A Block must use `yield`, including `yield ()` for Unit; empty Blocks, declarations, and discarded expressions do not supply implicit branch results. A path leaving for an outer target or never finishing needs no result. After a transfer caught internally, analysis follows the continuation.
+- **Result compatibility:** explicit and implicit results obey the shared [result validation](#result-validation) rules, even when the selection's result is discarded.
+
+A selection that does not require a result has only Block bodies, no self-targeted `yield`, and occurs in Discard Context. Reaching a selected Block's end or selecting no branch supplies Unit. Paths that leave for an outer target or never finish supply no result to that selection.
 
 ### `if`
 
@@ -1917,7 +1925,7 @@ if condition => 1;
 else => 2;                      // Valid: the integer result is discarded; semicolons do not change it.
 ```
 
-`yield` ends the whole target `if`, skipping the rest of its branch. A value-producing `if`, or any `if` used in Value Context, requires a final `else`. This is a structural requirement: `true` conditions, unreachable branches, Unit results, and paths that never complete do not waive it. An `else if` without a final `else` is insufficient.
+`yield` ends the whole target `if`, skipping the rest of its branch. When the `if` requires a result, an `else if` without a final `else` is insufficient for exhaustiveness.
 
 ```kimi
 if condition => 1               // Error: else is required even in Discard Context.
@@ -1933,7 +1941,7 @@ if condition
     process()                   // Valid: an ordinary selection in Discard Context.
 ```
 
-An `if` with only Block bodies and no self-targeted `yield` in Discard Context may omit `else`. If all its conditions are false, it completes with Unit.
+An `if` that does not require a result may omit `else`.
 
 ### `match`
 
@@ -1948,9 +1956,7 @@ var result = match value
     B => 2
 ```
 
-`yield` ends the whole target `match`. A value-producing `match`, or any `match` used in Value Context, must be exhaustive; this example assumes `A` and `B` cover every case. Exhaustiveness may be established by the patterns themselves or by a catch-all arm. It is still required if the `match` result is discarded or no arm completes normally.
-
-A `match` with only Block bodies and no self-targeted `yield` in Discard Context may be non-exhaustive. An unmatched subject then executes no arm and the `match` completes with Unit.
+`yield` ends the whole target `match`. This example assumes `A` and `B` cover every case. A `match` that does not require a result may be non-exhaustive.
 
 ### Nested `yield` targets
 
@@ -2003,7 +2009,7 @@ A conditional `yield` inside another `if` targets that inner `if`; it does not i
 ```kimi
 var result = if a
     if invalid()
-        yield -1                // Error: the inner value-producing if needs else.
+        yield -1                // Error: the inner result-requiring if needs else.
 
     yield calculate()
 else => 0
@@ -2034,19 +2040,43 @@ Adding direct expressions before the `yield` does not change this result rule or
 
 A transfer supplies a result only to its resolved target. Function results follow [Functions](#function-bodies-and-results); Blocks, Iteration Constructs, and branches use their result sources defined above. Discard Context does not exempt a construct from result validation.
 
+**Implementation status:** The Parser preserves explicit branch body forms. Control-flow analysis resolves lexical transfers, classifies Result-requiring Selections, follows reachability, and checks coverage and available result Types. The default type provider handles primitive literals and simple declared Types. General name/overload resolution, numeric conversions, pattern Binding, and Origin compatibility still require Binding; unresolved checks are exposed as pending obligations, not accepted as valid. Bodies containing deferred compile-time directives await directive selection before analysis.
+
 Validate results in this order:
 
-1. Determine Evaluation Contexts and body forms, resolve transfer targets, and check syntax, Names, operand presence, and local Type correctness without excluding unreachable code. Determine which selections are value-producing and enforce their exhaustiveness requirements; apply the same requirements to selections used in Value Context.
+1. Determine Evaluation Contexts and body forms, resolve transfer targets, and check syntax, Names, operand presence, and local Type correctness without excluding unreachable code. Classify Result-requiring Selections and enforce their exhaustiveness requirements.
 2. Apply [reachability](#reachability) analysis to result sources and paths leaving each construct. Collect result candidates only from reachable paths. A transfer whose operand cannot complete normally supplies no result to its original target.
 3. Check result coverage: reject any reachable path that reaches an end requiring a result without supplying one. Where a construct implicitly supplies Unit, include that Unit as a candidate only when the path is reachable. A non-Unit Block-bodied function may not fall through.
-4. Determine the result Type from its declaration or other required Type, or infer it from reachable explicit and implicit result candidates using normal type-inference and conversion rules. Unreachable result sources do not contribute candidates or constraints to this inference.
-5. Check every explicit result operand and every implicit Expression-body result against its target's determined result Type, including in unreachable code. This includes operandless `return` and `exit`, which supply Unit. Apply normal conversion and Origin compatibility rules. A source that cannot itself complete normally supplies no value to compare; its local operations and any transfers inside it are still checked.
+4. Determine the Target Result Type as described below, independently of whether the construct's Expression Type is Never. Unreachable result sources do not contribute candidates or constraints to inference.
+5. When a Target Result Type is available, check every explicit result operand and implicit Expression-body result against it, including in unreachable code. Operandless `return` and `exit` supply Unit. Apply normal conversion and Origin compatibility rules. A source that cannot itself complete normally supplies no value to compare; its local operations and any transfers inside it are still checked.
 
 Paths that leave a construct for an outer target or never complete supply no result candidate for that construct. Transfers caught internally may let evaluation continue and must be followed to their continuation.
 
-A `loop` or value-producing `if` / `match` with no path completing with its own result has type Never. Missing required results are errors, not a reason to infer Never. A function with no result-producing paths retains its declared result Type; if its result Type is inferred and there are no candidates, infer Never.
+### Expression Type and Target Result Type
 
-The same no-result rule applies to a selection used in Value Context whose branches all leave for outer targets or never finish. If an inferred target result Type is Never, an unreachable result source that can produce a value must still be compatible with Never and is therefore an error. A function with an explicit result Type checks unreachable results against that declared Type instead. Unreachable fall-through is a coverage matter and does not manufacture a Unit result for this compatibility check.
+The **Expression Type** describes the value of a normally completing expression. A `loop` or selection with no reachable path completing with its own result has Expression Type Never. Missing required results are errors, not a reason to infer Never.
+
+The **Target Result Type** constrains results supplied to a control boundary. Determine it from an explicit declaration or an expected Type, or infer it from reachable result candidates using normal type-inference and conversion rules. Expected Types must propagate to result sources even when the construct's Expression Type is Never.
+
+| Source of Target Result Type | Compatibility checking, including unreachable results |
+| --- | --- |
+| Explicit declaration or expected Type | Check against that Type. |
+| Type inferred from reachable result candidates | Check against the inferred Type. |
+| No Type supplied and no reachable result candidates | No Target Result Type is available; omit only the comparison against it. |
+
+Never inferred solely from the absence of reachable results does not become a Target Result Type. An explicitly specified Never still constrains results. Unreachable fall-through does not manufacture a Unit result for compatibility checking.
+
+A function retains its declared return Type. Without a declared or expected return Type, infer its return Type from reachable function results; if there are no candidates, expose Never as its inferred return Type without using that fallback as a Target Result Type for unreachable `return` operands. A function value itself has a Function Type.
+
+```kimi
+loop
+    if false
+        exit 1                  // Valid: no Target Result Type; the loop's Expression Type is Never.
+
+let x: i32 = loop
+    if false
+        exit "text"             // Error: the expected Target Result Type is i32.
+```
 
 ```kimi
 func choose(flag: bool) -> i32
@@ -2070,7 +2100,7 @@ Reachability is determined statically within each Function Boundary. Treat a pat
 
 Reachability affects **result candidate collection**, **result inference**, and **result coverage**. It does not affect **local Type correctness** or **transfer target compatibility**. The same compatibility rule applies to implicit Expression-body results, so replacing `yield expression` with `=> expression` does not bypass Type checking.
 
-Unreachable code is still checked for syntax, Names, transfer targets, operand presence, and valid operations. Its explicit and Expression-body results must satisfy the target's declared or inferred result Type, even though they do not participate in inferring that Type. Exhaustiveness requirements and the syntactic classification of a value-producing selection also remain in force.
+The compatibility rules above apply whenever a Target Result Type is available. Without one, syntax, Names, transfer targets, operand presence, local Type correctness, and Result-requiring Selection classification are still checked.
 
 ```kimi
 var result = loop
@@ -2104,7 +2134,7 @@ For a transfer with a result operand:
 3. Destroy values in departing scopes.
 4. Deliver the result and complete the target's termination or continuation.
 
-Without an operand, omit the first two steps. A moved result is not destroyed again at its source; a copied result leaves the source's destruction responsibility intact. Implicit results from `=>` bodies and value-producing branches are also secured before scope destruction.
+Without an operand, omit the first two steps. A moved result is not destroyed again at its source; a copied result leaves the source's destruction responsibility intact. Implicit results from Expression bodies are also secured before scope destruction.
 
 The original transfer completes only if all required destruction completes normally. Nonterminating destruction prevents completion even when a result has been secured. If exceptions or abnormal termination are provided, common abnormal-exit rules govern remaining destruction and the secured result.
 

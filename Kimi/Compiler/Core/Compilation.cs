@@ -193,6 +193,12 @@ public class Compilation
         return false;
     }
 
+    /// <summary>Analyzes control flow after parsing and compile-time directive selection.</summary>
+    /// <param name="types">Type facts supplied by Binding, or syntax-only facts when omitted.</param>
+    /// <returns>Definite errors, inferred contracts, and obligations pending further Binding.</returns>
+    public ControlFlowAnalysis AnalyzeControlFlow(ControlFlowTypeSystem? types = null)
+        => ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto, types);
+
     internal void ScrubForTest()
     {
         string source;

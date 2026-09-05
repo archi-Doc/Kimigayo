@@ -111,12 +111,13 @@ public partial class Project
     public async Task<bool> Build()
     {
         var targets = this.ProjectFile.Targets.ToArray();
+        var success = true;
         foreach (var x in targets)
         {
-            await this.BuildTarget(x).ConfigureAwait(false);
+            success &= await this.BuildTarget(x).ConfigureAwait(false);
         }
 
-        return true;
+        return success;
     }
 
     private async Task<bool> BuildTarget(string target)
@@ -158,7 +159,10 @@ public partial class Project
 
         // Mods
 
-        // Validate
+        // Validate control flow using facts available before general Binding.
+        // Pending obligations are retained by the analysis API for later Binding passes.
+        var controlFlow = compilation.AnalyzeControlFlow();
+        controlFlow.ReportDiagnostics();
 
         // Emit
 
@@ -166,6 +170,6 @@ public partial class Project
 
         // Link
 
-        return true;
+        return controlFlow.Issues.Count == 0;
     }
 }

@@ -28,10 +28,13 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
     [Key(4)]
     public TokenKind DeclarationContext { get; internal set; }
 
-    /// <summary>Gets a value indicating whether this is a single-expression value branch with an implicit result.</summary>
+    /// <summary>Gets a value indicating whether this node wraps an explicitly introduced branch Expression body.</summary>
+    [Key(5)]
+    public bool IsExpressionBody { get; internal set; }
+
+    /// <summary>Gets a value indicating whether this explicit Expression body supplies an implicit result.</summary>
     [IgnoreMember]
-    public bool HasTrailingExpression => this.hasUnterminatedExpression && this.items.Count == 1 &&
-        this.Parent is IfKoto or MatchKoto && KotoHelper.IsValueContext(this);
+    public bool HasTrailingExpression => this.IsExpressionBody && this.items.Count == 1;
 
     /// <summary>Gets the block items in source order.</summary>
     [IgnoreMember]
@@ -109,6 +112,19 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
         builder.IncrementIndent();
         this.WriteTo(ref builder);
         builder.DecrementIndent();
+    }
+
+    internal void WriteBranchTo(ref IndentedStringBuilder builder)
+    {
+        if (this.IsExpressionBody)
+        {
+            builder.Append(" => ");
+            this.WriteTo(ref builder);
+        }
+        else
+        {
+            this.WriteIndentedTo(ref builder);
+        }
     }
 
     /// <summary>Adds an item to a compiler-generated block.</summary>

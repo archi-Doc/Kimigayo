@@ -56,6 +56,8 @@ public enum DiagnosticCode
     UnsupportedCompileTimeConditionType_Kd,
     UnsupportedEscape_Kd,
 
+    ControlFlow_Kd,
+
     Count, // Last sentinel
 }
 

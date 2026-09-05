@@ -135,14 +135,14 @@ public sealed partial class ContinueKoto : JumpKoto
     }
 }
 
-/// <summary>Represents a Never-valued <c>yield</c> expression that supplies a value to the enclosing value-producing construct.</summary>
+/// <summary>Represents a Never-valued <c>yield</c> expression that supplies a value to its Result-requiring Selection.</summary>
 [TinyhandObject]
 public sealed partial class YieldKoto : JumpKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Yield;
 
-    /// <summary>Gets the value supplied to the target value-producing construct.</summary>
+    /// <summary>Gets the value supplied to the target Result-requiring Selection.</summary>
     public new Koto Expression => base.Expression!;
 
     /// <summary>Initializes a new instance of the <see cref="YieldKoto"/> class.</summary>

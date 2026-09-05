@@ -112,6 +112,9 @@
   + Name="TypeMismatch_Kd"
     Message="Values must be of the same type"
 
+  + Name="ControlFlow_Kd"
+    Message="{0}"
+
   + Name="UnexpectedIndent_Kd"
     Message="Unexpected indentation"
 

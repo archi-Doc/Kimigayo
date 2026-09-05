@@ -2091,6 +2091,11 @@ Exit:
             return ParseRequiredBlock(ref reader);
         }
 
+        if (!reader.TryConsume(TokenKind.EqualsGreaterThan))
+        {
+            reader.AddDiagnostic(DiagnosticCode.TokenMismatch_Kd, TokenKind.EqualsGreaterThan.ToText());
+        }
+
         var expression = ParseRequiredExpression(ref reader);
         // An inline branch owns a semicolon only before else. A semicolon
         // after the entire if belongs to its surrounding statement or match arm.
@@ -2102,7 +2107,10 @@ Exit:
 
         var hasSemicolon = reader.CurrentTokenKind == TokenKind.Semicolon &&
             reader.PeekKind(lookahead) == TokenKind.Else && reader.TryConsume(TokenKind.Semicolon);
-        return new CodeBlockKoto(ref reader, expression.Span, [expression], !hasSemicolon, hasSemicolon);
+        return new CodeBlockKoto(ref reader, expression.Span, [expression], !hasSemicolon, hasSemicolon)
+        {
+            IsExpressionBody = true,
+        };
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
