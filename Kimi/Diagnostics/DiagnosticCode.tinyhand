@@ -41,6 +41,10 @@
   + Name="IncompleteSyntax_Kd"
     Message="The syntax is incomplete"
 
+  + Name="MissingReturnType_Kd"
+    Message="A return type is required after '->'. Specify a type such as '()' or 'i32', or remove '->' to omit the return type annotation."
+    Label="Missing return type after this arrow"
+
   + Name="IndentationLevelMismatch_Kd"
     Message="The indentation level does not match the expected level"
 

@@ -1906,6 +1906,8 @@ A selection that does not require a result has only Block bodies, no self-target
 
 `if` tests Boolean conditions in order and executes the first selected branch. It may have subsequent `else if` branches and one final `else`. Condition parentheses are optional. Each branch independently chooses an Expression body or a Block body.
 
+A parenthesized condition containing a single initialized `let` or `var` binding tests the bound value. For example, `if (var z = Func()) => 1 else => 0` requires the Type of `z` to be Boolean. The initializer is evaluated once, and an explicit binding Type still constrains the initializer. This also applies to `while` conditions. It does not make declarations in ordinary Blocks produce a result.
+
 ```kimi
 var compact = if condition => 1
 else => 2

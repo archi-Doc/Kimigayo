@@ -99,6 +99,28 @@ public sealed class ControlFlowAnalysis
         => node is CompileTimeIfKoto or CompileTimeCaseGroupKoto ||
             node.ChildNodes.Any(child => child is not (FunctionKoto or PropertyAccessorKoto) && HasDeferredDirective(child));
 
+    private static FieldKoto? GetConditionBinding(ParenthesizedKoto node)
+    {
+        if (node.Operand is not CodeBlockKoto { Items.Count: 1 } block ||
+            block.Items[0] is not FieldKoto { InitializerKoto: not null } field)
+        {
+            return null;
+        }
+
+        Koto condition = node;
+        while (condition.Parent is ParenthesizedKoto outer)
+        {
+            condition = outer;
+        }
+
+        return condition.Parent switch
+        {
+            IfKoto selection when selection.Branches.Any(x => x.Condition == condition) => field,
+            WhileKoto iteration when iteration.Condition == condition => field,
+            _ => null,
+        };
+    }
+
     private static HashSet<JumpKoto>? Union(HashSet<JumpKoto>? left, HashSet<JumpKoto>? right)
     {
         if (right is null)
@@ -182,7 +204,17 @@ public sealed class ControlFlowAnalysis
                 flow = this.VisitSequence(block.Items, reachable);
                 break;
             case ParenthesizedKoto p:
-                flow = this.Visit(p.Operand, reachable, expected);
+                if (GetConditionBinding(p) is { } binding)
+                {
+                    // The declaration still produces Unit; the condition tests its bound value.
+                    flow = this.Visit(p.Operand, reachable);
+                    flow = flow with { Type = this.names.GetValueOrDefault(binding.NameKoto) };
+                }
+                else
+                {
+                    flow = this.Visit(p.Operand, reachable, expected);
+                }
+
                 break;
             case IdentifierNameKoto name:
                 var nameType = this.types.GetExpressionType(name) ?? this.ResolveNameType(name);
@@ -563,7 +595,7 @@ public sealed class ControlFlowAnalysis
 
     private void Constrain(Koto node, ControlFlowType type)
     {
-        if (node is ParenthesizedKoto p)
+        if (node is ParenthesizedKoto p && GetConditionBinding(p) is null)
         {
             this.Constrain(p.Operand, type);
         }

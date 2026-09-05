@@ -275,9 +275,18 @@ NextParameter:
 
         Koto? returnType = default;
         var end = closeParenthesisRange.End;
-        if (reader.TryConsume(TokenKind.MinusGreaterThan))
+        if (reader.TryConsume(TokenKind.MinusGreaterThan, out var returnArrowRange, false))
         {
-            returnType = ParseDeclarationType(ref reader);
+            if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock or TokenKind.EqualsGreaterThan or TokenKind.Semicolon)
+            {
+                reader.Diagnostic.Add(returnArrowRange, DiagnosticCode.MissingReturnType_Kd);
+                returnType = new ErrorKoto(ref reader, returnArrowRange);
+            }
+            else
+            {
+                returnType = ParseDeclarationType(ref reader);
+            }
+
             end = returnType.Span.End;
         }
 
@@ -486,6 +495,11 @@ Exit:
     public static PropertyKoto? ParseProperty(ref TokenReader reader, ref Token token)
     {
         var propertyContext = reader.TakeContext();
+        while (reader.CurrentTokenKind == TokenKind.Sharp)
+        {
+            _ = ParseAttributeKoto(ref reader);
+        }
+
         var nameToken = reader.Read();
         if (!IdentifierNameKoto.TryCreate(ref reader, nameToken, out var nameKoto))
         {
@@ -495,6 +509,11 @@ Exit:
         Koto? typeKoto = default;
         if (reader.TryConsume(TokenKind.Colon, out _, false))
         {
+            while (reader.CurrentTokenKind == TokenKind.Sharp)
+            {
+                _ = ParseAttributeKoto(ref reader);
+            }
+
             typeKoto = ParseType(ref reader);
         }
 

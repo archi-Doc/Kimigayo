@@ -26,6 +26,8 @@ public open struct TestStruct<s/C, D> origin a, b
     C is comparable
     s is all
 
+    #Test1
+    public static var #Test2 x: i32 = #One 1
     let pi = 1.2
     private let buffer: ref/Array<i32> from a
     private let buffer2: ref/Array<ref/C from b> from a
@@ -33,21 +35,15 @@ public open struct TestStruct<s/C, D> origin a, b
         return x + (y + 3) * (x - 2)
 
 public rootgroup Helper
-    func Method2() -> Error
-        var i2 = if (x == true)
-            1
-        else
-            3
-        var i3 = if (var z = Func())
-            1
-        else
-            0
+    func Method2() -> ()
+        var i2 = if (x == true) => 1
+        else => 3
+        var i3 = if (var z = Func()) => 1
+        else => 0
         var j = match x
             true => 1
             false => 0
         var k = match x
-            true =>
-                1
-            false =>
-                0
+            true => 1
+            false => 0
         return

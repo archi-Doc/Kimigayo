@@ -10,6 +10,43 @@ namespace XunitTest;
 public class ControlFlowAnalysisTest
 {
     [Theory]
+    [InlineData("bool", false)]
+    [InlineData("i32", true)]
+    [InlineData("Never", false)]
+    [InlineData(null, false)]
+    public void TestsBoundValueOfParenthesizedConditionDeclaration(string? returnType, bool hasError)
+    {
+        var compilation = Compilation.CreateForTest();
+        var tree = compilation.Kotonoha;
+        tree.CreateCodeContext().Parse(tree.RootKoto, "var i3 = if (\n    var z = Func()\n    ) => 1 else => 0");
+        Assert.Empty(tree.DiagnosticCollection.GetArray());
+        var analysis = compilation.AnalyzeControlFlow(new ConditionCallTypes(returnType));
+        Assert.Equal(hasError, analysis.Issues.Count > 0);
+        var condition = analysis.Nodes.Single(x => x.Key is ParenthesizedKoto);
+        Assert.Equal(returnType, condition.Value.ExpressionType?.Name);
+        if (returnType is null)
+        {
+            Assert.Contains(condition.Key, analysis.PendingBinding);
+        }
+    }
+
+    [Theory]
+    [InlineData("if (let z = true) => 1 else => 0", false)]
+    [InlineData("if ((var z = false)) => 1 else => 0", false)]
+    [InlineData("while (var z = true)\n    exit", false)]
+    [InlineData("if (var z: bool = 1) => 1 else => 0", true)]
+    [InlineData("var ordinary = (var z = true)", false)]
+    public void ChecksConditionBindingTypes(string source, bool hasError)
+    {
+        var analysis = Analyze(source);
+        Assert.Equal(hasError, analysis.Issues.Count > 0);
+        if (source.StartsWith("var ordinary", StringComparison.Ordinal))
+        {
+            Assert.Equal(ControlFlowType.Unit, analysis.Nodes.Single(x => x.Key is ParenthesizedKoto).Value.ExpressionType);
+        }
+    }
+
+    [Theory]
     [InlineData("loop\n    if false\n        exit 1")]
     [InlineData("func f()\n    if false\n        return 1\n    loop\n        continue")]
     [InlineData("func f() -> i32\n    if false\n        return 1\n    loop\n        continue")]
@@ -213,6 +250,22 @@ public class ControlFlowAnalysisTest
         compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
         Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
         return compilation.AnalyzeControlFlow();
+    }
+
+    private sealed class ConditionCallTypes(string? returnType) : ControlFlowTypeSystem
+    {
+        private readonly SyntaxControlFlowTypes fallback = new();
+
+        public override ControlFlowType? GetExpressionType(Koto expression)
+            => expression is InvocationKoto
+                ? returnType is null ? null : new(returnType)
+                : this.fallback.GetExpressionType(expression);
+
+        public override ControlFlowType? GetDeclaredType(Koto? syntax) => this.fallback.GetDeclaredType(syntax);
+
+        public override bool? IsCompatible(ControlFlowResultSource source, ControlFlowType target) => this.fallback.IsCompatible(source, target);
+
+        public override bool? IsExhaustive(MatchKoto match) => this.fallback.IsExhaustive(match);
     }
 
     private sealed class BoundTestTypes : ControlFlowTypeSystem

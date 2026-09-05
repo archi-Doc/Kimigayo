@@ -58,6 +58,8 @@ public enum DiagnosticCode
 
     ControlFlow_Kd,
 
+    MissingReturnType_Kd,
+
     Count, // Last sentinel
 }
 
