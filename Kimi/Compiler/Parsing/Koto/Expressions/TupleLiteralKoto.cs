@@ -6,14 +6,12 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Represents an tuple literal expression.</summary>
-[TinyhandObject]
-public sealed partial class TupleLiteralKoto : ExpressionKoto
+public sealed class TupleLiteralKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.TupleLiteral;
 
     /// <summary>Gets the tuple elements in source order.</summary>
-    [Key(1)]
     public List<Koto> Elements { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="TupleLiteralKoto"/> class.</summary>

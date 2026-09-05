@@ -20,39 +20,25 @@ public enum VariableKind
 /// <summary>
 /// Provides the shared <c>let</c>/<c>var</c> declaration storage for local bindings and Properties.
 /// </summary>
-[TinyhandObject(ReservedKeyCount = 6)]
-public abstract partial class VariableKoto : DeclarationKoto
+public abstract class VariableKoto : DeclarationKoto
 {
     /// <summary>Gets the declaration modifiers.</summary>
-    [Key(1)]
     public ModifierKind Modifier { get; private set; }
 
     /// <summary>Gets the variable binding kind.</summary>
-    [Key(2)]
     public VariableKind VariableKind { get; private set; }
 
     /// <summary>Gets the declared name.</summary>
-    [Key(3)]
     public IdentifierNameKoto NameKoto { get; private set; }
 
     /// <summary>Gets the declared type, if specified.</summary>
-    [Key(4)]
     public Koto? TypeKoto { get; private set; }
 
     /// <summary>Gets the initializer expression, if present.</summary>
-    [Key(5)]
     public Koto? InitializerKoto { get; private set; }
 
     /// <summary>Gets the source keyword for the binding kind.</summary>
     public string VariableText => this.VariableKind == VariableKind.Var ? Constants.VarKeyword : Constants.LetKeyword;
-
-    /// <summary>Initializes a new instance of the <see cref="VariableKoto"/> class for deserialization.</summary>
-    /// <param name="codeContext">The owning code context.</param>
-    internal VariableKoto(CodeContext codeContext)
-        : base(codeContext, default)
-    {
-        this.NameKoto = default!;
-    }
 
     /// <summary>Initializes a new instance of the <see cref="VariableKoto"/> class.</summary>
     /// <remarks>The modifiers and attribute chain are taken from the reader's current context.</remarks>

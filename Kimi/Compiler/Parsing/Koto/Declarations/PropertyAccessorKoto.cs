@@ -16,22 +16,18 @@ public enum PropertyAccessorKind : byte
 }
 
 /// <summary>Represents a Property accessor declaration.</summary>
-[TinyhandObject]
-public sealed partial class PropertyAccessorKoto : Koto
+public sealed class PropertyAccessorKoto : Koto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.PropertyAccessor;
 
     /// <summary>Gets the accessor access restriction.</summary>
-    [Key(1)]
     public ModifierKind Modifier { get; private set; }
 
     /// <summary>Gets the accessor kind.</summary>
-    [Key(2)]
     public PropertyAccessorKind AccessorKind { get; private set; }
 
     /// <summary>Gets the custom accessor body, or <see langword="null"/> for a bodyless accessor.</summary>
-    [Key(3)]
     public Koto? Body { get; private set; }
 
     /// <summary>Gets a value indicating whether the accessor has no custom body.</summary>

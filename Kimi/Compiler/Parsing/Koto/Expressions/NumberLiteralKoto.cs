@@ -9,16 +9,13 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a numeric literal expression.
 /// </summary>
-[TinyhandObject]
-public sealed partial class NumberLiteralKoto : ExpressionKoto
+public sealed class NumberLiteralKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.NumberLiteral;
 
-    [Key(1)]
     private NumberLiteralParseResult parseResult;
 
-    [Key(2)]
     private Int128 uv;
 
     /// <summary>Gets the normalized literal text.</summary>

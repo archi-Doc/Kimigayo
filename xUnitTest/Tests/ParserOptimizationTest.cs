@@ -64,7 +64,7 @@ public class ParserOptimizationTest
     [InlineData(4)]
     [InlineData(5)]
     [InlineData(20)]
-    public void PreservesCompactArgumentsAndBlocksThroughSerialization(int count)
+    public void RebuildsCompactArgumentsAndBlocksFromSerializedSources(int count)
     {
         var arguments = string.Join(", ", Enumerable.Range(0, count).Select(i => i == count / 2 ? $"label: {i}" : i.ToString()));
         var types = string.Join(", ", Enumerable.Range(0, Math.Max(1, count)).Select(i => $"T{i}"));
@@ -74,7 +74,7 @@ public class ParserOptimizationTest
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
         Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
 
-        // Serialize before accessing mutable Arguments, while the parser's compact storage is intact.
+        // Restore the saved sources before accessing mutable Arguments, preserving compact parser storage.
         var bytes = TinyhandSerializer.Serialize(kotonoha);
         var restored = new Kotonoha(compilation);
         TinyhandSerializer.DeserializeObject(bytes, ref restored);

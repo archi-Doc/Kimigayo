@@ -76,6 +76,7 @@ public sealed class CodeContext
     /// </summary>
     /// <param name="parentKoto">The Declaration Container that receives the parsed nodes.</param>
     /// <param name="sourceDocument">The source document to parse.</param>
+    /// <remarks>Documents parsed into the root are retained for Kotonoha serialization.</remarks>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="parentKoto"/> belongs to another Kotonoha.</exception>
     public void Parse(DeclarationContainerKoto parentKoto, SourceDocument sourceDocument)
@@ -88,6 +89,11 @@ public sealed class CodeContext
             throw new ArgumentException(
                 "The destination Declaration Container must belong to the CodeContext's Kotonoha.",
                 nameof(parentKoto));
+        }
+
+        if (ReferenceEquals(parentKoto, this.RootKoto))
+        {
+            this.Kotonoha.RecordSource(sourceDocument);
         }
 
         var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceDocument);

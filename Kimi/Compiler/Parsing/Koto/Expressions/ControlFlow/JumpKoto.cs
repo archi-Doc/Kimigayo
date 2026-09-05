@@ -11,15 +11,12 @@ namespace Kimi.Compiler.Parsing;
 /// Provides the shared representation of the Never-valued control-transfer expressions
 /// <c>return</c>, <c>exit</c>, <c>continue</c>, and <c>yield</c>.
 /// </summary>
-[TinyhandObject(ReservedKeyCount = 3)]
-public abstract partial class JumpKoto : ExpressionKoto
+public abstract class JumpKoto : ExpressionKoto
 {
     /// <summary>Gets the transferred value, if present.</summary>
-    [Key(1)]
     public Koto? Expression { get; private set; }
 
     /// <summary>Gets the explicit target Label of an exit or continue, if present.</summary>
-    [Key(2)]
     public string? Label { get; private set; }
 
     /// <summary>Gets the source keyword for this expression.</summary>
@@ -30,13 +27,6 @@ public abstract partial class JumpKoto : ExpressionKoto
         KotoKind.Continue => Constants.ContinueKeyword,
         _ => Constants.YieldKeyword,
     };
-
-    /// <summary>Initializes a new instance of the <see cref="JumpKoto"/> class for deserialization.</summary>
-    /// <param name="codeContext">The owning code context.</param>
-    internal JumpKoto(CodeContext codeContext)
-        : base(codeContext, default)
-    {
-    }
 
     /// <summary>Initializes a new instance of the <see cref="JumpKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
@@ -84,8 +74,7 @@ public abstract partial class JumpKoto : ExpressionKoto
 }
 
 /// <summary>Represents a Never-valued <c>return</c> expression.</summary>
-[TinyhandObject]
-public sealed partial class ReturnKoto : JumpKoto
+public sealed class ReturnKoto : JumpKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Return;
@@ -101,8 +90,7 @@ public sealed partial class ReturnKoto : JumpKoto
 }
 
 /// <summary>Represents a Never-valued <c>exit</c> expression.</summary>
-[TinyhandObject]
-public sealed partial class ExitKoto : JumpKoto
+public sealed class ExitKoto : JumpKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Exit;
@@ -119,8 +107,7 @@ public sealed partial class ExitKoto : JumpKoto
 }
 
 /// <summary>Represents a Never-valued <c>continue</c> expression.</summary>
-[TinyhandObject]
-public sealed partial class ContinueKoto : JumpKoto
+public sealed class ContinueKoto : JumpKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Continue;
@@ -136,8 +123,7 @@ public sealed partial class ContinueKoto : JumpKoto
 }
 
 /// <summary>Represents a Never-valued <c>yield</c> expression that supplies a value to its Result-requiring Selection.</summary>
-[TinyhandObject]
-public sealed partial class YieldKoto : JumpKoto
+public sealed class YieldKoto : JumpKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Yield;

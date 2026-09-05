@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
@@ -17,6 +17,8 @@ namespace Kimi.Compiler;
 /// diagnostics, and any generated function used to contain executable top-level syntax.
 /// A project's application output is represented by its primary Kotonoha; referenced
 /// libraries are represented by additional Kotonoha instances.
+/// Serialization stores the original source documents, including their paths and text.
+/// Syntax-tree edits are not persisted; <see cref="OnDeserialized"/> reparses the documents.
 /// </remarks>
 [TinyhandObject]
 public sealed partial class Kotonoha
@@ -57,20 +59,27 @@ public sealed partial class Kotonoha
     /// <summary>
     /// Gets the root of the parsed Koto tree.
     /// </summary>
-    [Key(3)]
+    [IgnoreMember]
     public GroupKoto RootKoto { get; private set; }
 
     /// <summary>
     /// Gets the generated function that owns executable top-level syntax.
     /// </summary>
-    [Key(4)]
+    [IgnoreMember]
     public FunctionKoto? GeneratedFunction { get; private set; }
+
+    /// <summary>Gets the original source documents in parsing order.</summary>
+    [IgnoreMember]
+    public IReadOnlyList<SourceDocument> SourceDocuments => this.sourceDocuments;
 
     [IgnoreMember]
     private readonly UInt64Hashtable<Koto> kotoIdToKoto = new();
 
     [IgnoreMember]
     private readonly object kotoIndexLock = new();
+
+    [Key(3)]
+    private List<SourceDocument> sourceDocuments = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Kotonoha"/> class.
@@ -105,7 +114,7 @@ public sealed partial class Kotonoha
     }
 
     /// <summary>
-    /// Restores runtime-only state after deserialization.
+    /// Rebuilds the syntax tree from the saved source documents using the supplied compilation.
     /// </summary>
     /// <param name="compilation">The compilation that will own the restored source unit.</param>
     public void OnDeserialized(Compilation compilation)
@@ -114,10 +123,16 @@ public sealed partial class Kotonoha
 
         this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(this.Name);
         this.Compilation = compilation;
-        this.RootKoto.RestoreAfterDeserialization(new CodeContext(this), default);
+        this.RootKoto = new(new CodeContext(this), default, default);
+        this.GeneratedFunction = null;
         lock (this.kotoIndexLock)
         {
             this.kotoIdToKoto.Clear();
+        }
+
+        foreach (var sourceDocument in this.sourceDocuments)
+        {
+            this.ParseSource(sourceDocument);
         }
     }
 
@@ -169,35 +184,14 @@ public sealed partial class Kotonoha
     {
         ArgumentNullException.ThrowIfNull(sourceDocument);
 
-        var path = sourceDocument.Path;
-        var directory = this.Compilation.Project.Directory;
-        if (path.Length > 0 && directory.Length > 0)
-        {// Path.GetRelativePath rejects an empty path.
-            path = Path.GetRelativePath(directory, path);
-        }
-
-        var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
-        var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument);
-        var codeContext = this.CreateCodeContext(diagnosticCollection);
-
-        // Tokenize
-        try
-        {
-            tokenizer.ReadAll();
-            if (this.Compilation.Project.KimiOptions.DumpToken)
-            {
-                DumpToken(sourceDocument.Path, tokenizer.Tokens);
-            }
-
-            // Token to Koto
-            var tokenReader = new TokenReader(codeContext, ref tokenizer);
-            this.RootKoto.Parse(ref tokenReader);
-        }
-        finally
-        {
-            tokenizer.Dispose();
-        }
+        this.RecordSource(sourceDocument);
+        this.ParseSource(sourceDocument);
     }
+
+    /// <summary>Records a document parsed into the root for subsequent serialization.</summary>
+    /// <param name="sourceDocument">The original source document.</param>
+    internal void RecordSource(SourceDocument sourceDocument)
+        => this.sourceDocuments.Add(sourceDocument);
 
     /// <summary>Adds executable top-level syntax to the generated function.</summary>
     /// <param name="codeContext">The parsing context that produced the syntax.</param>
@@ -242,6 +236,38 @@ public sealed partial class Kotonoha
         catch
         {
             // Token dumps are diagnostic aids and must not stop compilation.
+        }
+    }
+
+    private void ParseSource(SourceDocument sourceDocument)
+    {
+        var path = sourceDocument.Path;
+        var directory = this.Compilation.Project.Directory;
+        if (path.Length > 0 && directory.Length > 0)
+        {// Path.GetRelativePath rejects an empty path.
+            path = Path.GetRelativePath(directory, path);
+        }
+
+        var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
+        var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument);
+        var codeContext = this.CreateCodeContext(diagnosticCollection);
+
+        // Tokenize
+        try
+        {
+            tokenizer.ReadAll();
+            if (this.Compilation.Project.KimiOptions.DumpToken)
+            {
+                DumpToken(sourceDocument.Path, tokenizer.Tokens);
+            }
+
+            // Token to Koto
+            var tokenReader = new TokenReader(codeContext, ref tokenizer);
+            this.RootKoto.Parse(ref tokenReader);
+        }
+        finally
+        {
+            tokenizer.Dispose();
         }
     }
 

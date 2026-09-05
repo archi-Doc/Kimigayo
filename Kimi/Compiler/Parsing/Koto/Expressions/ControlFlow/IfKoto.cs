@@ -6,15 +6,12 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Describes one conditional branch of an <see cref="IfKoto"/>.</summary>
-[TinyhandObject]
-public sealed partial class ConditionalBranchKoto
+public sealed class ConditionalBranchKoto
 {
     /// <summary>Gets the branch condition.</summary>
-    [Key(0)]
     public Koto Condition { get; internal set; } = default!;
 
     /// <summary>Gets the branch body.</summary>
-    [Key(1)]
     public CodeBlockKoto Body { get; internal set; } = default!;
 
     /// <summary>Initializes a new instance of the <see cref="ConditionalBranchKoto"/> class.</summary>
@@ -28,21 +25,17 @@ public sealed partial class ConditionalBranchKoto
 }
 
 /// <summary>Represents an <c>if</c> expression.</summary>
-[TinyhandObject]
-public sealed partial class IfKoto : ExpressionKoto
+public sealed class IfKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.If;
 
-    [Key(1)]
     private List<ConditionalBranchKoto> branches;
 
     /// <summary>Gets the conditional branches.</summary>
-    [IgnoreMember]
     public IReadOnlyList<ConditionalBranchKoto> Branches => this.branches;
 
     /// <summary>Gets the final else body, if present.</summary>
-    [Key(2)]
     public CodeBlockKoto? ElseBody { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="IfKoto"/> class.</summary>

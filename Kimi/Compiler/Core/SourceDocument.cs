@@ -14,28 +14,34 @@ using Kimi.Diagnostics;
 /// Offsets and character positions use .NET UTF-16 code units. Line terminators may be
 /// <c>\n</c>, <c>\r</c>, or <c>\r\n</c>; returned line spans exclude those terminators.
 /// </remarks>
-public sealed class SourceDocument
+[TinyhandObject]
+public sealed partial class SourceDocument
 {
+    [IgnoreMember]
     private int[]? lineStarts;
 
     /// <summary>
     /// Gets the source path.
     /// </summary>
-    public string Path { get; }
+    [Key(0)]
+    public string Path { get; private set; } = string.Empty;
 
     /// <summary>
     /// Gets the complete source text.
     /// </summary>
-    public string SourceText { get; }
+    [Key(1)]
+    public string SourceText { get; private set; } = string.Empty;
 
     /// <summary>
     /// Gets the number of physical lines in the source text.
     /// </summary>
+    [IgnoreMember]
     public int LineCount => this.GetLineStarts().Length;
 
     /// <summary>
     /// Gets the absolute start offset of each physical line.
     /// </summary>
+    [IgnoreMember]
     public ReadOnlySpan<int> LineStarts => this.GetLineStarts();
 
     /// <summary>
@@ -245,6 +251,10 @@ public sealed class SourceDocument
             pool.Return(buffer);
         }
     }
+
+    [TinyhandOnDeserialized]
+    private void OnDeserialized()
+        => this.lineStarts = null;
 
     /// <summary>
     /// Gets the line start table, building it on first use.

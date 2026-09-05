@@ -6,18 +6,15 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Represents escaped text alternating with embedded expressions.</summary>
-[TinyhandObject]
-public sealed partial class InterpolatedStringKoto : ExpressionKoto
+public sealed class InterpolatedStringKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.InterpolatedString;
 
     /// <summary>Gets the text segments, including the leading and trailing segments.</summary>
-    [Key(1)]
     public StringLiteralKoto[] Segments { get; private set; }
 
     /// <summary>Gets the embedded expressions in evaluation order.</summary>
-    [Key(2)]
     public Koto[] Expressions { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="InterpolatedStringKoto"/> class.</summary>

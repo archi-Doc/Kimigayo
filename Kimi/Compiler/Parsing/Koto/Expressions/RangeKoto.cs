@@ -13,26 +13,21 @@ namespace Kimi.Compiler.Parsing;
 /// An omitted start means the beginning and an omitted end means the end of the indexed value.
 /// Exclusive ranges use <c>..</c>; inclusive ranges use <c>..=</c> and require an end expression.
 /// </remarks>
-[TinyhandObject]
-public sealed partial class RangeKoto : ExpressionKoto
+public sealed class RangeKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Range;
 
     /// <summary>Gets the start endpoint, or <see langword="null"/> for the beginning.</summary>
-    [Key(1)]
     public Koto? Start { get; private set; }
 
     /// <summary>Gets the end endpoint, or <see langword="null"/> for the end of the indexed value.</summary>
-    [Key(2)]
     public Koto? End { get; private set; }
 
     /// <summary>Gets a value indicating whether the end endpoint is included.</summary>
-    [Key(3)]
     public bool IsInclusive { get; private set; }
 
     /// <summary>Gets a value indicating whether neither endpoint was specified.</summary>
-    [IgnoreMember]
     public bool IsFull => this.Start is null && this.End is null;
 
     /// <summary>Initializes a new instance of the <see cref="RangeKoto"/> class.</summary>

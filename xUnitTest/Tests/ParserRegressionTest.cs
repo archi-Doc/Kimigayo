@@ -470,7 +470,7 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void PreservesKotoSyntaxThroughTinyhandSerialization()
+    public void RebuildsKotoSyntaxFromSerializedSources()
     {
         var source = """
             public open struct TestStruct<s/C> origin a, b

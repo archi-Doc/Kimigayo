@@ -6,25 +6,20 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Represents a source-level Property declaration.</summary>
-[TinyhandObject]
-public sealed partial class PropertyKoto : VariableKoto
+public sealed class PropertyKoto : VariableKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Property;
 
-    [Key(6)]
     private List<PropertyAccessorKoto>? accessors;
 
     /// <summary>Gets a value indicating whether the accessors use the inline <c>has</c> form.</summary>
-    [Key(7)]
     public bool HasInlineAccessors { get; private set; }
 
     /// <summary>Gets a value indicating whether this is a contract accessor requirement.</summary>
-    [Key(8)]
     public bool IsContractRequirement { get; internal set; }
 
     /// <summary>Gets the explicit accessors in source order.</summary>
-    [IgnoreMember]
     public IReadOnlyList<PropertyAccessorKoto> Accessors
         => (IReadOnlyList<PropertyAccessorKoto>?)this.accessors ?? [];
 

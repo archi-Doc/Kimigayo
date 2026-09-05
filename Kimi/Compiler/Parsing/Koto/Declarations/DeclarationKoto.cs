@@ -6,8 +6,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Provides the base representation of a declaration node.</summary>
-[TinyhandObject]
-public abstract partial class DeclarationKoto : Koto
+public abstract class DeclarationKoto : Koto
 {
     /// <summary>Initializes a new instance of the <see cref="DeclarationKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

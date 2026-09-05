@@ -8,42 +8,33 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents an indentation-delimited expression block.
 /// </summary>
-[TinyhandObject]
-public sealed partial class CodeBlockKoto : ExpressionKoto
+public sealed class CodeBlockKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.CodeBlock;
 
-    [Key(1)]
     private IReadOnlyList<Koto> items;
 
-    [Key(2)]
     private bool hasUnterminatedExpression;
 
     /// <summary>Gets a value indicating whether the last item has an explicit semicolon.</summary>
-    [Key(3)]
     public bool HasTrailingSemicolon { get; private set; }
 
     /// <summary>Gets the declaration context of a compile-time directive body.</summary>
-    [Key(4)]
     public TokenKind DeclarationContext { get; internal set; }
 
     /// <summary>Gets a value indicating whether this node wraps an explicitly introduced branch Expression body.</summary>
-    [Key(5)]
     public bool IsExpressionBody { get; internal set; }
 
     /// <summary>Gets a value indicating whether this explicit Expression body supplies an implicit result.</summary>
-    [IgnoreMember]
     public bool HasTrailingExpression => this.IsExpressionBody && this.items.Count == 1;
 
     /// <summary>Gets the block items in source order.</summary>
-    [IgnoreMember]
     public IReadOnlyList<Koto> Items => this.items;
 
     /// <summary>
     /// Gets the implicit branch result, or <see langword="null"/> when there is no implicit result.
     /// </summary>
-    [IgnoreMember]
     public Koto? TrailingExpression => this.HasTrailingExpression && this.items.Count > 0 ? this.items[^1] : null;
 
     /// <summary>Initializes a new instance of the <see cref="CodeBlockKoto"/> class.</summary>

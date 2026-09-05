@@ -15,8 +15,7 @@ namespace Kimi.Compiler.Parsing;
 /// Concrete operators only contribute their <see cref="KotoKind"/>; the infix spelling is looked up
 /// from a table so every operator shares the same writing and child-management code.
 /// </remarks>
-[TinyhandObject(ReservedKeyCount = 3)]
-public abstract partial class BinaryKoto : ExpressionKoto
+public abstract class BinaryKoto : ExpressionKoto
 {
     private static readonly string[] InfixTexts = new string[MaxKind];
 
@@ -61,24 +60,13 @@ public abstract partial class BinaryKoto : ExpressionKoto
     }
 
     /// <summary>Gets the left operand.</summary>
-    [Key(1)]
     public Koto Left { get; private set; }
 
     /// <summary>Gets the right operand.</summary>
-    [Key(2)]
     public Koto Right { get; private set; }
 
     /// <summary>Gets the infix operator spelling, including surrounding spaces.</summary>
     public string InfixText => InfixTexts[(int)this.Akind] ?? string.Empty;
-
-    /// <summary>Initializes a new instance of the <see cref="BinaryKoto"/> class for deserialization.</summary>
-    /// <param name="codeContext">The owning code context.</param>
-    internal BinaryKoto(CodeContext codeContext)
-        : base(codeContext, default)
-    {
-        this.Left = default!;
-        this.Right = default!;
-    }
 
     /// <summary>Initializes a new instance of the <see cref="BinaryKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
@@ -126,8 +114,7 @@ public abstract partial class BinaryKoto : ExpressionKoto
 }
 
 /// <summary>Represents a member-access expression.</summary>
-[TinyhandObject]
-public sealed partial class MemberAccessKoto : BinaryKoto
+public sealed class MemberAccessKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.MemberAccess;
@@ -155,8 +142,7 @@ public sealed partial class MemberAccessKoto : BinaryKoto
 }
 
 /// <summary>Represents an element-index or slice-subscript expression.</summary>
-[TinyhandObject]
-public sealed partial class IndexKoto : BinaryKoto
+public sealed class IndexKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Index;
@@ -191,8 +177,7 @@ public sealed partial class IndexKoto : BinaryKoto
 }
 
 /// <summary>Represents a multiplication expression.</summary>
-[TinyhandObject]
-public sealed partial class AsteriskKoto : BinaryKoto
+public sealed class AsteriskKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Asterisk;
@@ -209,8 +194,7 @@ public sealed partial class AsteriskKoto : BinaryKoto
 }
 
 /// <summary>Represents a conversion expression.</summary>
-[TinyhandObject]
-public sealed partial class ConversionKoto : BinaryKoto
+public sealed class ConversionKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Conversion;
@@ -227,8 +211,7 @@ public sealed partial class ConversionKoto : BinaryKoto
 }
 
 /// <summary>Represents a division expression.</summary>
-[TinyhandObject]
-public sealed partial class SlashKoto : BinaryKoto
+public sealed class SlashKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Slash;
@@ -245,8 +228,7 @@ public sealed partial class SlashKoto : BinaryKoto
 }
 
 /// <summary>Represents a remainder expression.</summary>
-[TinyhandObject]
-public sealed partial class PercentKoto : BinaryKoto
+public sealed class PercentKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Percent;
@@ -263,8 +245,7 @@ public sealed partial class PercentKoto : BinaryKoto
 }
 
 /// <summary>Represents an addition expression.</summary>
-[TinyhandObject]
-public sealed partial class PlusKoto : BinaryKoto
+public sealed class PlusKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Plus;
@@ -281,8 +262,7 @@ public sealed partial class PlusKoto : BinaryKoto
 }
 
 /// <summary>Represents a subtraction expression.</summary>
-[TinyhandObject]
-public sealed partial class MinusKoto : BinaryKoto
+public sealed class MinusKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Minus;
@@ -299,8 +279,7 @@ public sealed partial class MinusKoto : BinaryKoto
 }
 
 /// <summary>Represents a left-shift expression.</summary>
-[TinyhandObject]
-public sealed partial class LessThanLessThanKoto : BinaryKoto
+public sealed class LessThanLessThanKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.LessThanLessThan;
@@ -317,8 +296,7 @@ public sealed partial class LessThanLessThanKoto : BinaryKoto
 }
 
 /// <summary>Represents a right-shift expression.</summary>
-[TinyhandObject]
-public sealed partial class GreaterThanGreaterThanKoto : BinaryKoto
+public sealed class GreaterThanGreaterThanKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.GreaterThanGreaterThan;
@@ -335,8 +313,7 @@ public sealed partial class GreaterThanGreaterThanKoto : BinaryKoto
 }
 
 /// <summary>Represents a less-than expression.</summary>
-[TinyhandObject]
-public sealed partial class LessThanKoto : BinaryKoto
+public sealed class LessThanKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.LessThan;
@@ -353,8 +330,7 @@ public sealed partial class LessThanKoto : BinaryKoto
 }
 
 /// <summary>Represents a less-than-or-equal expression.</summary>
-[TinyhandObject]
-public sealed partial class LessThanEqualsKoto : BinaryKoto
+public sealed class LessThanEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.LessThanEquals;
@@ -371,8 +347,7 @@ public sealed partial class LessThanEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents a greater-than expression.</summary>
-[TinyhandObject]
-public sealed partial class GreaterThanKoto : BinaryKoto
+public sealed class GreaterThanKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.GreaterThan;
@@ -389,8 +364,7 @@ public sealed partial class GreaterThanKoto : BinaryKoto
 }
 
 /// <summary>Represents a greater-than-or-equal expression.</summary>
-[TinyhandObject]
-public sealed partial class GreaterThanEqualsKoto : BinaryKoto
+public sealed class GreaterThanEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.GreaterThanEquals;
@@ -407,8 +381,7 @@ public sealed partial class GreaterThanEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents an <c>as</c> expression.</summary>
-[TinyhandObject]
-public sealed partial class AsKoto : BinaryKoto
+public sealed class AsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.As;
@@ -425,14 +398,12 @@ public sealed partial class AsKoto : BinaryKoto
 }
 
 /// <summary>Represents an <c>is</c> expression.</summary>
-[TinyhandObject]
-public sealed partial class IsKoto : BinaryKoto
+public sealed class IsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Is;
 
     /// <summary>Gets a value indicating whether this is an associated-type constraint.</summary>
-    [Key(3)]
     public bool IsAssociatedConstraint { get; internal set; }
 
     /// <summary>Initializes a new instance of the <see cref="IsKoto"/> class.</summary>
@@ -458,8 +429,7 @@ public sealed partial class IsKoto : BinaryKoto
 }
 
 /// <summary>Represents an equality expression.</summary>
-[TinyhandObject]
-public sealed partial class EqualsEqualsKoto : BinaryKoto
+public sealed class EqualsEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.EqualsEquals;
@@ -476,8 +446,7 @@ public sealed partial class EqualsEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents an inequality expression.</summary>
-[TinyhandObject]
-public sealed partial class ExclamationEqualsKoto : BinaryKoto
+public sealed class ExclamationEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.ExclamationEquals;
@@ -494,8 +463,7 @@ public sealed partial class ExclamationEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents a bitwise-and expression.</summary>
-[TinyhandObject]
-public sealed partial class AmpersandKoto : BinaryKoto
+public sealed class AmpersandKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Ampersand;
@@ -512,8 +480,7 @@ public sealed partial class AmpersandKoto : BinaryKoto
 }
 
 /// <summary>Represents a bitwise-exclusive-or expression.</summary>
-[TinyhandObject]
-public sealed partial class CaretKoto : BinaryKoto
+public sealed class CaretKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Caret;
@@ -530,8 +497,7 @@ public sealed partial class CaretKoto : BinaryKoto
 }
 
 /// <summary>Represents a bitwise-or expression.</summary>
-[TinyhandObject]
-public sealed partial class BarKoto : BinaryKoto
+public sealed class BarKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Bar;
@@ -548,8 +514,7 @@ public sealed partial class BarKoto : BinaryKoto
 }
 
 /// <summary>Represents a logical-and expression.</summary>
-[TinyhandObject]
-public sealed partial class AndKoto : BinaryKoto
+public sealed class AndKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.And;
@@ -566,8 +531,7 @@ public sealed partial class AndKoto : BinaryKoto
 }
 
 /// <summary>Represents a logical-or expression.</summary>
-[TinyhandObject]
-public sealed partial class OrKoto : BinaryKoto
+public sealed class OrKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Or;
@@ -584,8 +548,7 @@ public sealed partial class OrKoto : BinaryKoto
 }
 
 /// <summary>Represents an assignment expression.</summary>
-[TinyhandObject]
-public sealed partial class EqualsKoto : BinaryKoto
+public sealed class EqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Equals;
@@ -602,8 +565,7 @@ public sealed partial class EqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents an addition-assignment expression.</summary>
-[TinyhandObject]
-public sealed partial class PlusEqualsKoto : BinaryKoto
+public sealed class PlusEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.PlusEquals;
@@ -620,8 +582,7 @@ public sealed partial class PlusEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents a subtraction-assignment expression.</summary>
-[TinyhandObject]
-public sealed partial class MinusEqualsKoto : BinaryKoto
+public sealed class MinusEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.MinusEquals;
@@ -638,8 +599,7 @@ public sealed partial class MinusEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents a multiplication-assignment expression.</summary>
-[TinyhandObject]
-public sealed partial class AsteriskEqualsKoto : BinaryKoto
+public sealed class AsteriskEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.AsteriskEquals;
@@ -656,8 +616,7 @@ public sealed partial class AsteriskEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents a division-assignment expression.</summary>
-[TinyhandObject]
-public sealed partial class SlashEqualsKoto : BinaryKoto
+public sealed class SlashEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.SlashEquals;
@@ -674,8 +633,7 @@ public sealed partial class SlashEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents a remainder-assignment expression.</summary>
-[TinyhandObject]
-public sealed partial class PercentEqualsKoto : BinaryKoto
+public sealed class PercentEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.PercentEquals;
@@ -692,8 +650,7 @@ public sealed partial class PercentEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents a bitwise-and-assignment expression.</summary>
-[TinyhandObject]
-public sealed partial class AmpersandEqualsKoto : BinaryKoto
+public sealed class AmpersandEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.AmpersandEquals;
@@ -710,8 +667,7 @@ public sealed partial class AmpersandEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents a bitwise-exclusive-or-assignment expression.</summary>
-[TinyhandObject]
-public sealed partial class CaretEqualsKoto : BinaryKoto
+public sealed class CaretEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.CaretEquals;
@@ -728,8 +684,7 @@ public sealed partial class CaretEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents a bitwise-or-assignment expression.</summary>
-[TinyhandObject]
-public sealed partial class BarEqualsKoto : BinaryKoto
+public sealed class BarEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.BarEquals;
@@ -746,8 +701,7 @@ public sealed partial class BarEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents a left-shift-assignment expression.</summary>
-[TinyhandObject]
-public sealed partial class LessThanLessThanEqualsKoto : BinaryKoto
+public sealed class LessThanLessThanEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.LessThanLessThanEquals;
@@ -764,8 +718,7 @@ public sealed partial class LessThanLessThanEqualsKoto : BinaryKoto
 }
 
 /// <summary>Represents a right-shift-assignment expression.</summary>
-[TinyhandObject]
-public sealed partial class GreaterThanGreaterThanEqualsKoto : BinaryKoto
+public sealed class GreaterThanGreaterThanEqualsKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.GreaterThanGreaterThanEquals;

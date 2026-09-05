@@ -16,8 +16,7 @@ namespace Kimi.Compiler.Parsing;
 /// Concrete operators only contribute their <see cref="KotoKind"/>; the prefix and postfix
 /// spellings are looked up from a table so every operator shares the same writing code.
 /// </remarks>
-[TinyhandObject(ReservedKeyCount = 2)]
-public abstract partial class UnaryKoto : ExpressionKoto
+public abstract class UnaryKoto : ExpressionKoto
 {
     private static readonly string?[] PrefixTexts = new string?[MaxKind];
     private static readonly string?[] PostfixTexts = new string?[MaxKind];
@@ -40,16 +39,7 @@ public abstract partial class UnaryKoto : ExpressionKoto
     }
 
     /// <summary>Gets or sets the operand.</summary>
-    [Key(1)]
     public Koto Operand { get; protected set; }
-
-    /// <summary>Initializes a new instance of the <see cref="UnaryKoto"/> class for deserialization.</summary>
-    /// <param name="codeContext">The owning code context.</param>
-    internal UnaryKoto(CodeContext codeContext)
-        : base(codeContext, default)
-    {
-        this.Operand = default!;
-    }
 
     /// <summary>Initializes a new instance of the <see cref="UnaryKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
@@ -94,19 +84,16 @@ public abstract partial class UnaryKoto : ExpressionKoto
 }
 
 /// <summary>Represents an attribute expression.</summary>
-[TinyhandObject]
-public sealed partial class AttributeKoto : UnaryKoto
+public sealed class AttributeKoto : UnaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Attribute;
 
     /// <summary>Gets the attribute identifier.</summary>
-    [IgnoreMember]
     public Koto IdentifierKoto
         => this.Operand is InvocationKoto { Method: IdentifierNameKoto identifier } ? identifier : this.Operand;
 
     /// <summary>Gets the attribute arguments.</summary>
-    [IgnoreMember]
     public List<Koto> Arguments
         => this.Operand is InvocationKoto { Method: IdentifierNameKoto } invocation ? invocation.Arguments : field ??= [];
 
@@ -121,8 +108,7 @@ public sealed partial class AttributeKoto : UnaryKoto
 }
 
 /// <summary>Represents a macro expression.</summary>
-[TinyhandObject]
-public sealed partial class MacroKoto : UnaryKoto
+public sealed class MacroKoto : UnaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Macro;
@@ -138,8 +124,7 @@ public sealed partial class MacroKoto : UnaryKoto
 }
 
 /// <summary>Represents an unwrap expression.</summary>
-[TinyhandObject]
-public sealed partial class UnwrapKoto : UnaryKoto
+public sealed class UnwrapKoto : UnaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Unwrap;
@@ -161,8 +146,7 @@ public sealed partial class UnwrapKoto : UnaryKoto
 /// <c>^n</c> resolves to <c>length - n</c>. Consequently, <c>^0</c> is a valid range boundary,
 /// but it is outside the valid positions for an element index.
 /// </remarks>
-[TinyhandObject]
-public sealed partial class FromEndIndexKoto : UnaryKoto
+public sealed class FromEndIndexKoto : UnaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.FromEndIndex;
@@ -181,8 +165,7 @@ public sealed partial class FromEndIndexKoto : UnaryKoto
 }
 
 /// <summary>Represents a unary plus expression.</summary>
-[TinyhandObject]
-public sealed partial class PrefixPlusKoto : UnaryKoto
+public sealed class PrefixPlusKoto : UnaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.PrefixPlus;
@@ -198,8 +181,7 @@ public sealed partial class PrefixPlusKoto : UnaryKoto
 }
 
 /// <summary>Represents a prefix increment expression.</summary>
-[TinyhandObject]
-public sealed partial class PrefixPlusPlusKoto : UnaryKoto
+public sealed class PrefixPlusPlusKoto : UnaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.PrefixPlusPlus;
@@ -215,8 +197,7 @@ public sealed partial class PrefixPlusPlusKoto : UnaryKoto
 }
 
 /// <summary>Represents a unary minus expression.</summary>
-[TinyhandObject]
-public sealed partial class PrefixMinusKoto : UnaryKoto
+public sealed class PrefixMinusKoto : UnaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.PrefixMinus;
@@ -232,8 +213,7 @@ public sealed partial class PrefixMinusKoto : UnaryKoto
 }
 
 /// <summary>Represents a prefix decrement expression.</summary>
-[TinyhandObject]
-public sealed partial class PrefixMinusMinusKoto : UnaryKoto
+public sealed class PrefixMinusMinusKoto : UnaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.PrefixMinusMinus;
@@ -249,8 +229,7 @@ public sealed partial class PrefixMinusMinusKoto : UnaryKoto
 }
 
 /// <summary>Represents a postfix increment expression.</summary>
-[TinyhandObject]
-public sealed partial class PostfixIncrementKoto : UnaryKoto
+public sealed class PostfixIncrementKoto : UnaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.PostfixIncrement;
@@ -266,8 +245,7 @@ public sealed partial class PostfixIncrementKoto : UnaryKoto
 }
 
 /// <summary>Represents a postfix decrement expression.</summary>
-[TinyhandObject]
-public sealed partial class PostfixDecrementKoto : UnaryKoto
+public sealed class PostfixDecrementKoto : UnaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.PostfixDecrement;
@@ -283,8 +261,7 @@ public sealed partial class PostfixDecrementKoto : UnaryKoto
 }
 
 /// <summary>Represents a logical negation expression.</summary>
-[TinyhandObject]
-public sealed partial class NotKoto : UnaryKoto
+public sealed class NotKoto : UnaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Not;
@@ -300,8 +277,7 @@ public sealed partial class NotKoto : UnaryKoto
 }
 
 /// <summary>Represents a parenthesized expression.</summary>
-[TinyhandObject]
-public sealed partial class ParenthesizedKoto : UnaryKoto
+public sealed class ParenthesizedKoto : UnaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Parenthesized;

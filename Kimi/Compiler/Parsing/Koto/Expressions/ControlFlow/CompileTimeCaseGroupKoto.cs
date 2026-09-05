@@ -6,15 +6,12 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Represents one arm of a deferred compile-time Case Group.</summary>
-[TinyhandObject]
-public sealed partial class CompileTimeCaseArmKoto
+public sealed class CompileTimeCaseArmKoto
 {
     /// <summary>Gets the arm condition, or <see langword="null"/> for <c>#case _</c>.</summary>
-    [Key(0)]
     public Koto? Condition { get; private set; }
 
     /// <summary>Gets the syntax controlled by the arm.</summary>
-    [Key(1)]
     public CodeBlockKoto Body { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="CompileTimeCaseArmKoto"/> class.</summary>
@@ -45,17 +42,14 @@ public sealed partial class CompileTimeCaseArmKoto
 }
 
 /// <summary>Stores a compile-time Case Group whose selected arm is not yet certain.</summary>
-[TinyhandObject]
-public sealed partial class CompileTimeCaseGroupKoto : ExpressionKoto
+public sealed class CompileTimeCaseGroupKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.CompileTimeCaseGroup;
 
-    [Key(1)]
     private List<CompileTimeCaseArmKoto> arms;
 
     /// <summary>Gets the arms in source order.</summary>
-    [IgnoreMember]
     public IReadOnlyList<CompileTimeCaseArmKoto> Arms => this.arms;
 
     /// <summary>Initializes a new instance of the <see cref="CompileTimeCaseGroupKoto"/> class.</summary>

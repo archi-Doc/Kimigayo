@@ -6,29 +6,23 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Represents a <c>for</c> expression whose value is Unit.</summary>
-[TinyhandObject]
-public sealed partial class ForKoto : ExpressionKoto
+public sealed class ForKoto : ExpressionKoto
 {
-    [Key(1)]
     private List<IdentifierNameKoto> bindings;
 
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.For;
 
     /// <summary>Gets the iteration bindings in source order.</summary>
-    [IgnoreMember]
     public IReadOnlyList<IdentifierNameKoto> Bindings => this.bindings;
 
     /// <summary>Gets the expression that supplies the values to iterate.</summary>
-    [Key(2)]
     public Koto Iterable { get; private set; }
 
     /// <summary>Gets the loop body.</summary>
-    [Key(3)]
     public CodeBlockKoto Body { get; private set; }
 
     /// <summary>Gets a value indicating whether the bindings use tuple syntax.</summary>
-    [Key(4)]
     public bool IsTupleBinding { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="ForKoto"/> class.</summary>

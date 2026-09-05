@@ -7,7 +7,7 @@ using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
-#pragma warning disable SA1202 // Serialization keys keep related storage together.
+#pragma warning disable SA1202 // Related storage is grouped together.
 #pragma warning disable SA1204 // Parsing helpers are grouped by responsibility.
 
 /// <summary>
@@ -17,8 +17,7 @@ namespace Kimi.Compiler.Parsing;
 /// Member collections are allocated on first use because most containers only hold a few
 /// of the possible member kinds.
 /// </remarks>
-[TinyhandObject]
-public abstract partial class DeclarationContainerKoto : IdentifiableKoto
+public abstract class DeclarationContainerKoto : IdentifiableKoto
 {
     protected enum DeclarationOrder : byte
     {
@@ -34,11 +33,9 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
     #region FieldAndProperty
 
     /// <summary>Gets the declaration modifiers.</summary>
-    [Key(3)]
     public ModifierKind Modifier { get; private set; }
 
     /// <summary>Gets or sets the Declaration Container name.</summary>
-    [Key(4)]
     public string Name { get; protected set; } = string.Empty;
 
     /// <summary>Gets the declaration keyword kind for the concrete Declaration Container type.</summary>
@@ -59,44 +56,34 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
     /// <summary>Gets a value indicating whether type constraints are supported.</summary>
     public virtual bool SupportsTypeConstraints => false;
 
-    [Key(5)]
     private List<Koto>? kotoList;
 
     /// <summary>Gets or sets the nested Declaration Containers keyed by name, or <see langword="null"/> when none exist.</summary>
-    [Key(6)]
     protected Utf16Hashtable<Koto>? NestedContainerTable { get; set; }
 
-    [Key(7)]
     private List<TypeKoto>? genericArguments;
 
-    [Key(8)]
     private List<IsKoto>? typeConstraints;
 
     /// <summary>Gets or sets the declared origins, or <see langword="null"/> when none exist.</summary>
-    [Key(9)]
     protected List<string>? OriginList { get; set; }
 
     /// <summary>Gets the generic parameters.</summary>
-    [IgnoreMember]
     public List<TypeKoto> GenericArguments => this.genericArguments ??= [];
 
     /// <summary>Gets the type constraints.</summary>
-    [IgnoreMember]
     public List<IsKoto> TypeConstraints => this.typeConstraints ??= [];
 
     /// <summary>Gets the declared origins.</summary>
-    [IgnoreMember]
     public List<string> Origins => this.OriginList ??= [];
 
     /// <summary>Gets Properties and functions in declaration order.</summary>
-    [IgnoreMember]
     public IReadOnlyList<Koto> Members => (IReadOnlyList<Koto>?)this.kotoList ?? [];
 
     /// <summary>Gets the mutable member list, creating it on first use.</summary>
     protected List<Koto> KotoList => this.kotoList ??= [];
 
     /// <summary>Gets nested Declaration Containers.</summary>
-    [IgnoreMember]
     public IEnumerable<DeclarationContainerKoto> NestedDeclarationContainers
         => this.NestedContainerTable?.ToArray().Cast<DeclarationContainerKoto>() ?? [];
 

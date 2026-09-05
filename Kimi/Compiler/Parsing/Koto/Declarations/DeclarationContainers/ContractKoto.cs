@@ -9,8 +9,7 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a contract declaration.
 /// </summary>
-[TinyhandObject]
-public sealed partial class ContractKoto : DeclarationContainerKoto
+public sealed class ContractKoto : DeclarationContainerKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Contract;

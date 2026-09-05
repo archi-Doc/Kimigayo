@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 namespace Kimi;
 
@@ -148,8 +148,6 @@ public partial class Project
         {
             projectKotonoha.AddSource(y);
         }
-
-        compilation.ScrubForTest();
 
         // Resolve shared let & @Attribute
 

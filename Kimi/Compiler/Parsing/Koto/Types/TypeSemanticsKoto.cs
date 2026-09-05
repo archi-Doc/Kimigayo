@@ -8,58 +8,44 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a type together with ownership semantics and an optional origin.
 /// </summary>
-[TinyhandObject]
-public sealed partial class TypeSemanticsKoto : TypeKoto
+public sealed class TypeSemanticsKoto : TypeKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.TypeSemantics;
 
-    [Key(1)]
     private SemanticsKind semanticsKind;
 
     /// <inheritdoc/>
-    [IgnoreMember]
     public override SemanticsKind SemanticsKind => this.semanticsKind;
 
-    [Key(2)]
     private string? semanticsParameter;
 
     /// <inheritdoc/>
-    [IgnoreMember]
     public override string? SemanticsParameter => this.semanticsParameter;
 
-    [Key(3)]
     private TokenKind coreTypeToken;
 
-    [Key(4)]
     private string? coreTypeName;
 
     /// <summary>
     /// Gets the type to which the semantics applies when it is a compound type.
     /// </summary>
-    [Key(5)]
     public Koto? Type { get; private set; }
 
-    [Key(6)]
     private string? originName;
 
     /// <inheritdoc/>
-    [IgnoreMember]
     public override string? OriginName => this.originName;
 
-    [Key(7)]
     private bool isTransparentWrapper;
 
     /// <summary>Gets the qualified or intersected Origin expression.</summary>
-    [Key(8)]
     public Koto? OriginExpression { get; private set; }
 
     /// <summary>Gets named Origin arguments, or null for an ordinary Origin annotation.</summary>
-    [Key(9)]
     public OriginArgument[]? OriginArguments { get; private set; }
 
     /// <summary>Gets the underlying type identifier.</summary>
-    [IgnoreMember]
     public override string Identifier
         => this.Type is TypeSemanticsKoto simpleType
             ? simpleType.Identifier
@@ -254,7 +240,7 @@ public sealed partial class OriginArgument
     public string Name { get; private set; } = string.Empty;
 
     /// <summary>Gets the supplied Origin expression.</summary>
-    [Key(1)]
+    [IgnoreMember]
     public Koto Value { get; internal set; } = default!;
 
     /// <summary>Initializes a new instance of the <see cref="OriginArgument"/> class.</summary>

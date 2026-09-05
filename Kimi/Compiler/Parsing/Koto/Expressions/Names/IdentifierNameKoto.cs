@@ -8,14 +8,13 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents an identifier expression.
 /// </summary>
-[TinyhandObject]
-public sealed partial class IdentifierNameKoto : ExpressionKoto
+public sealed class IdentifierNameKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.IdentifierName;
 
     /// <summary>An invalid identifier node used during error recovery.</summary>
-    public static readonly IdentifierNameKoto Error = UnsafeConstructor();
+    public static readonly IdentifierNameKoto Error = new();
 
     /// <summary>Attempts to create an identifier node from a token.</summary>
     /// <param name="reader">The token reader.</param>
@@ -35,8 +34,13 @@ public sealed partial class IdentifierNameKoto : ExpressionKoto
     }
 
     /// <summary>Gets the identifier text.</summary>
-    [Key(1)]
     public string IdentifierName { get; private set; }
+
+    private IdentifierNameKoto()
+        : base(null!, default)
+    {
+        this.IdentifierName = string.Empty;
+    }
 
     private IdentifierNameKoto(ref TokenReader reader, Token token, string identifierName)
         : base(ref reader, token.Span)

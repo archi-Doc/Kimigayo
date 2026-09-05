@@ -8,31 +8,24 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Describes a parsed function parameter.
 /// </summary>
-[TinyhandObject]
-public sealed partial record class FunctionParameterKoto
+public sealed record class FunctionParameterKoto
 {
     /// <summary>Gets the parameter name used by callers.</summary>
-    [Key(0)]
     public string ExternalName { get; private set; } = string.Empty;
 
     /// <summary>Gets the parameter name used in the function body.</summary>
-    [Key(1)]
     public string InternalName { get; private set; } = string.Empty;
 
     /// <summary>Gets a value indicating whether callers may omit the parameter.</summary>
-    [Key(2)]
     public bool IsOptional { get; private set; }
 
     /// <summary>Gets the parameter type.</summary>
-    [Key(3)]
     public Koto Type { get; internal set; } = default!;
 
     /// <summary>Gets the default value, if present.</summary>
-    [Key(4)]
     public Koto? DefaultValue { get; internal set; }
 
     /// <summary>Gets the attributes applied to this parameter.</summary>
-    [Key(5)]
     public AttributeKoto? AttributeChain { get; internal set; }
 
     /// <summary>Initializes a new instance of the <see cref="FunctionParameterKoto"/> class.</summary>
@@ -62,58 +55,44 @@ public sealed partial record class FunctionParameterKoto
 /// <summary>
 /// Represents a function declaration.
 /// </summary>
-[TinyhandObject]
-public sealed partial class FunctionKoto : IdentifiableKoto
+public sealed class FunctionKoto : IdentifiableKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Function;
 
     /// <summary>Gets the function modifiers.</summary>
-    [Key(2)]
     public ModifierKind Modifier { get; private set; }
 
     /// <summary>Gets the function name.</summary>
-    [Key(3)]
     public string Name { get; private set; } = string.Empty;
 
-    [Key(4)]
     private List<TypeKoto>? genericArguments;
 
-    [Key(5)]
     private List<FunctionParameterKoto>? parameters;
 
     /// <summary>Gets the return type, if specified.</summary>
-    [Key(6)]
     public Koto? ReturnType { get; private set; }
 
     /// <summary>Gets the function body, if present.</summary>
-    [Key(7)]
     public CodeBlockKoto? Body { get; private set; }
 
     /// <summary>Gets a value indicating whether this function was synthesized for top-level syntax.</summary>
-    [Key(8)]
     public bool IsGenerated { get; private set; }
 
     /// <summary>Gets the expression after =>, if this function is expression-bodied.</summary>
-    [Key(9)]
     public Koto? ExpressionBody { get; private set; }
 
-    [Key(10)]
     private List<string>? origins;
 
-    [Key(11)]
     private List<Koto>? typeConstraints;
 
     /// <summary>Gets compile-time constraints declared before executable body items.</summary>
-    [IgnoreMember]
     public IReadOnlyList<Koto> TypeConstraints => (IReadOnlyList<Koto>?)this.typeConstraints ?? [];
 
     /// <summary>Gets a value indicating whether this function is a destructor body.</summary>
-    [Key(12)]
     public bool IsDestructor { get; internal set; }
 
     /// <summary>Gets the abstract Origin parameters.</summary>
-    [IgnoreMember]
     public IReadOnlyList<string> Origins => (IReadOnlyList<string>?)this.origins ?? [];
 
     internal void SetOrigins(List<string>? origins) => this.origins = origins;
@@ -141,17 +120,14 @@ public sealed partial class FunctionKoto : IdentifiableKoto
     }
 
     /// <summary>Gets the generic parameters.</summary>
-    [IgnoreMember]
     public IReadOnlyList<TypeKoto> GenericArguments
         => (IReadOnlyList<TypeKoto>?)this.genericArguments ?? [];
 
     /// <summary>Gets the function parameters.</summary>
-    [IgnoreMember]
     public IReadOnlyList<FunctionParameterKoto> Parameters
         => (IReadOnlyList<FunctionParameterKoto>?)this.parameters ?? [];
 
     /// <summary>Gets a value indicating whether conditional attributes exclude this function.</summary>
-    [IgnoreMember]
     public bool IsExcluded { get; }
 
     /// <summary>Initializes a new instance of the <see cref="FunctionKoto"/> class.</summary>

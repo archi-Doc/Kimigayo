@@ -10,8 +10,7 @@ namespace Kimi.Compiler.Parsing;
 /// Represents a static group. The root syntax tree is also represented by this type so it can
 /// share member parsing and qualified <c>rootgroup A.B</c> expansion with ordinary groups.
 /// </summary>
-[TinyhandObject]
-public sealed partial class GroupKoto : DeclarationContainerKoto
+public sealed class GroupKoto : DeclarationContainerKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Group;

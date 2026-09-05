@@ -2,7 +2,6 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Text;
 using Arc.Collections;
 using Kimi.Compiler.Parsing;
 using Kimi.Compiler.Target;
@@ -19,8 +18,6 @@ namespace Kimi.Compiler;
 /// </remarks>
 public class Compilation
 {
-    private static readonly UTF8Encoding Utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
-
     #region FieldAndProperty
 
     /// <summary>
@@ -198,54 +195,6 @@ public class Compilation
     /// <returns>Definite errors, inferred contracts, and obligations pending further Binding.</returns>
     public ControlFlowAnalysis AnalyzeControlFlow(ControlFlowTypeSystem? types = null)
         => ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto, types);
-
-    internal void ScrubForTest()
-    {
-        string source;
-        var builder = new IndentedStringBuilder();
-        try
-        {
-            // Round-trip the syntax tree and compare its textual representation.
-            this.Kotonoha.RootKoto.UnparseAll(ref builder);
-            source = builder.ToString();
-        }
-        finally
-        {
-            builder.Dispose();
-        }
-
-        File.WriteAllText(Path.Combine(this.Project.Directory, Constants.ScrubFileName), source, Utf8WithoutBom);
-
-        var binary = TinyhandSerializer.Serialize(this.Kotonoha);
-        this.Kimigayo.WriteLine(LogLevel.Information, $"Source: {(long)source.Length * sizeof(char)} bytes, Binary: {binary.Length} bytes");
-
-        var kotonoha = new Kotonoha(this);
-        TinyhandSerializer.DeserializeObject(binary, ref kotonoha);
-        if (kotonoha is null)
-        {
-            return;
-        }
-
-        kotonoha.OnDeserialized(this);
-
-        string restored;
-        var builder2 = new IndentedStringBuilder();
-        try
-        {
-            kotonoha.RootKoto.UnparseAll(ref builder2);
-            restored = builder2.ToString();
-        }
-        finally
-        {
-            builder2.Dispose();
-        }
-
-        if (!string.Equals(source, restored, StringComparison.Ordinal))
-        {
-            this.Kimigayo.WriteLine(LogLevel.Error, "Data mismatch detected after serialization");
-            File.WriteAllText(Path.Combine(this.Project.Directory, Constants.Scrub2FileName), restored, Utf8WithoutBom);
-        }
-    }
 
     internal bool TryGetIdentifier(ReadOnlySpan<char> text, [NotNullWhen(true)] out string? identifier)
         => this.identifiers.TryGetIdentifier(text, out identifier);

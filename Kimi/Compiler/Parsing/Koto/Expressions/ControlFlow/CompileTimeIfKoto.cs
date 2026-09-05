@@ -5,18 +5,15 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Stores a compile-time <c>#if</c> whose condition must be evaluated after parsing.</summary>
-[TinyhandObject]
-public sealed partial class CompileTimeIfKoto : Koto
+public sealed class CompileTimeIfKoto : Koto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.CompileTimeIf;
 
     /// <summary>Gets the compile-time condition.</summary>
-    [Key(1)]
     public Koto Condition { get; private set; }
 
     /// <summary>Gets the controlled syntax node.</summary>
-    [Key(2)]
     public Koto Target { get; private set; }
 
     internal CompileTimeIfKoto(CodeContext codeContext, SourceSpan range, Koto condition, Koto target)

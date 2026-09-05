@@ -7,14 +7,12 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents an alias declaration.
 /// </summary>
-[TinyhandObject]
-public sealed partial class AliasKoto : DeclarationKoto
+public sealed class AliasKoto : DeclarationKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Alias;
 
     /// <summary>Gets the segments of the aliased qualified name.</summary>
-    [Key(1)]
     public List<string> QualifiedName { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="AliasKoto"/> class.</summary>
