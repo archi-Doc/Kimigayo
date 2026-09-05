@@ -1731,7 +1731,7 @@ Brackets indicate optional syntax. `exit name` uses `name` as a result expressio
 | `exit` to a Labeled Block, `for`, or `while` | Forbidden; the target completes with Unit. |
 | `exit` to a `loop` in either Evaluation Context | Optional; omission supplies Unit. |
 | `continue` to an Iteration Construct | Forbidden. |
-| `yield` to a Result-requiring Selection | Required; use `yield ()` for Unit. |
+| `yield` to a Selection Boundary | Required; use `yield ()` for Unit. |
 
 Operands are evaluated before transfer. If operand evaluation leaves by another transfer or never completes, the original transfer does not occur. Otherwise, its result is secured by Copy or Move before [scope-exit destruction](#scope-exit-destruction) and delivery to the target. Each transfer expression itself has type [Never](#unit-and-never-types).
 
@@ -1750,7 +1750,7 @@ Failure to find a target is an error. A named target must be of the required kin
 
 A construct acts as a target or lookup stop only inside its body. Its own condition, iterable expression, or `match` subject does not acquire that construct's boundary.
 
-Ordinary Blocks never stop lookup. A Labeled Block is an `exit` target only when explicitly named; otherwise it is transparent to every transfer. An `if` / `match` never stops `return`, `exit`, or `continue` lookup. A `yield` targets the first encountered Selection Boundary and makes that selection result-requiring, even in Discard Context. It never retargets an outer selection because the inner selection lacks `else`, fails coverage, or has an incompatible result Type.
+Ordinary Blocks never stop lookup. A Labeled Block is an `exit` target only when explicitly named; otherwise it is transparent to every transfer. An `if` / `match` never stops `return`, `exit`, or `continue` lookup. A `yield` targets the first encountered Selection Boundary. A `yield` resolving to a Selection Boundary makes that selection Result-requiring, regardless of reachability or Evaluation Context. It never retargets an outer selection because the inner selection lacks `else`, fails coverage, or has an incompatible result Type.
 
 Named `exit` and `continue` may cross intervening Iteration Constructs and Blocks within the same function. No transfer searches beyond a Function Boundary.
 
@@ -2071,8 +2071,17 @@ A function retains its declared return Type. Without a declared or expected retu
 ```kimi
 loop
     if false
-        exit 1                  // Valid: no Target Result Type; the loop's Expression Type is Never.
+        exit 1
 
+    if false
+        exit "text"
+
+    continue
+```
+
+This loop has no declared or expected Type and no reachable result candidates, so no Target Result Type is available and its Expression Type is Never. Both exits are valid. When no Target Result Type is available, unreachable result sources for that boundary need not be mutually compatible. Their operands must still satisfy local Type correctness.
+
+```kimi
 let x: i32 = loop
     if false
         exit "text"             // Error: the expected Target Result Type is i32.
@@ -2098,7 +2107,7 @@ Reachability is determined statically within each Function Boundary. Treat a pat
 - Do not prune additional paths through constant propagation, analysis of called function bodies, or general constant folding.
 - Do not prune `for` paths using iterable values or `match` arms using constant subjects. Analyze each arm; pattern exhaustiveness determines whether an unmatched path exists.
 
-Reachability affects **result candidate collection**, **result inference**, and **result coverage**. It does not affect **local Type correctness** or **transfer target compatibility**. The same compatibility rule applies to implicit Expression-body results, so replacing `yield expression` with `=> expression` does not bypass Type checking.
+Reachability affects **result candidate collection**, **result inference**, and **result coverage**. It does not exempt code from **local Type correctness** checks. When a Target Result Type is available, unreachable result sources are checked against it under the same compatibility rules as reachable result sources. This also applies to implicit Expression-body results, so replacing `yield expression` with `=> expression` does not bypass Type checking.
 
 The compatibility rules above apply whenever a Target Result Type is available. Without one, syntax, Names, transfer targets, operand presence, local Type correctness, and Result-requiring Selection classification are still checked.
 
