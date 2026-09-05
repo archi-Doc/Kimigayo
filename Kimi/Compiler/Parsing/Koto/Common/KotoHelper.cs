@@ -25,7 +25,7 @@ public static partial class KotoHelper
         {
             TokenKind.Sharp => new AttributeKoto(ref reader, range, operand),
             TokenKind.Dollar => new MacroKoto(ref reader, range, operand),
-            TokenKind.Asterisk => new UnwrapKoto(ref reader, range, operand),
+            TokenKind.Asterisk => new DereferenceKoto(ref reader, range, operand),
             TokenKind.Plus => new PrefixPlusKoto(ref reader, range, operand),
             TokenKind.Minus => new PrefixMinusKoto(ref reader, range, operand),
             TokenKind.Not => new NotKoto(ref reader, range, operand),

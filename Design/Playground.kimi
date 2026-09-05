@@ -1,6 +1,7 @@
 alias AliasB
 
-#if os == "windows" and pointerWidth == 64
+#if (os == "windows" and 
+    pointerWidth == 64)
 alias AliasC
 
 #if windows and 1 == 0x_000

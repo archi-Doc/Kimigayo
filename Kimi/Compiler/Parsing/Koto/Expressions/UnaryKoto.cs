@@ -25,7 +25,7 @@ public abstract class UnaryKoto : ExpressionKoto
     {
         PrefixTexts[(int)KotoKind.Attribute] = "#";
         PrefixTexts[(int)KotoKind.Macro] = "$";
-        PrefixTexts[(int)KotoKind.Unwrap] = "*";
+        PrefixTexts[(int)KotoKind.Dereference] = "*";
         PrefixTexts[(int)KotoKind.FromEndIndex] = "^";
         PrefixTexts[(int)KotoKind.PrefixPlus] = "+";
         PrefixTexts[(int)KotoKind.PrefixPlusPlus] = "++";
@@ -123,17 +123,17 @@ public sealed class MacroKoto : UnaryKoto
     }
 }
 
-/// <summary>Represents an unwrap expression.</summary>
-public sealed class UnwrapKoto : UnaryKoto
+/// <summary>Represents a dereference expression.</summary>
+public sealed class DereferenceKoto : UnaryKoto
 {
     /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.Unwrap;
+    public override KotoKind Akind => KotoKind.Dereference;
 
-    /// <summary>Initializes a new instance of the <see cref="UnwrapKoto"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="DereferenceKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
     /// <param name="operand">The operand.</param>
-    public UnwrapKoto(ref TokenReader reader, SourceSpan range, Koto operand)
+    public DereferenceKoto(ref TokenReader reader, SourceSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
     }

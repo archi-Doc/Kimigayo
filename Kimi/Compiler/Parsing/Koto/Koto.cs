@@ -86,8 +86,8 @@ public enum KotoKind : byte
     /// <summary>A reference expression.</summary>
     Reference,
 
-    /// <summary>An unwrap expression.</summary>
-    Unwrap,
+    /// <summary>A dereference expression.</summary>
+    Dereference,
 
     /// <summary>An index measured backward from the end of a collection.</summary>
     FromEndIndex,

@@ -78,7 +78,7 @@ public group Kernel32 // shared (no instance)
         uExitCode: u32
         ) -> ()
 
-    public func TestMethod() ->
+    public func TestMethod()
         // @Macro()
         return
 
@@ -112,19 +112,19 @@ public group Helper // namespace - alias
     public func Method1() -> int32 // use PackageName, Helper
         return 1
 
-    func Method2() ->
-        #Condition(Os=="Windows")
+    func Method2() -> ()
+        #if (Os=="Windows")
         // block Initialize
             // var func1 = func () => 3 // () -> return 4
-            var i = if (x == true) 1 else 0
+            var i = if (x == true) => 1 else => 0
         var i2 = if (x == true)
-            1
+            => 1
         else
-            3 // yield 2
+            => 3 // yield 2
         // goto Initialize
         var i3 = if (
             var z = Func()
-            yield (z > 0)) 1 else 0
+            yield (z > 0)) => 1 else => 0
         var j = match x
             true => 1
             false => 0
@@ -247,8 +247,8 @@ if (a == 1 and
     b == 2)
     var x = [1,
         2,]
-var a = 1 +
-    2
+var a = (1 +
+    2)
 
 var record = Record.New()
     A = 3

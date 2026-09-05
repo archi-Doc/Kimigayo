@@ -258,7 +258,7 @@ public class SpecConformanceParseTest
         var parsed = Parse("var value = *pointer");
         AssertValid(parsed);
         var field = Assert.IsType<FieldKoto>(Assert.Single(parsed.GeneratedFunction!.Body!.Items));
-        Assert.IsType<UnwrapKoto>(field.InitializerKoto);
+        Assert.IsType<DereferenceKoto>(field.InitializerKoto);
         RoundTrip(parsed);
     }
 
