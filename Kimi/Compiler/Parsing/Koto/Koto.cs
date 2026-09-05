@@ -605,22 +605,26 @@ public abstract partial class Koto
     /// <param name="oldKoto">The current element.</param>
     /// <param name="newKoto">The replacement element.</param>
     /// <returns><see langword="true"/> when the element was replaced.</returns>
-    protected static bool ReplaceInList<T>(List<T>? list, Koto oldKoto, Koto newKoto)
+    protected static bool ReplaceInList<T>(IReadOnlyList<T>? list, Koto oldKoto, Koto newKoto)
         where T : Koto
     {
-        if (list is null || oldKoto is not T current || newKoto is not T replacement)
+        if (list is not IList<T> mutable ||
+            (mutable.IsReadOnly && list is not T[]) ||
+            oldKoto is not T current || newKoto is not T replacement)
         {
             return false;
         }
 
-        var index = list.IndexOf(current);
-        if (index < 0)
+        for (var index = 0; index < list.Count; index++)
         {
-            return false;
+            if (ReferenceEquals(list[index], current))
+            {
+                mutable[index] = replacement;
+                return true;
+            }
         }
 
-        list[index] = replacement;
-        return true;
+        return false;
     }
 
     /// <summary>Writes the attribute chain, if any, followed by the requested trailing text.</summary>
@@ -660,6 +664,30 @@ public abstract partial class Koto
         foreach (var child in children)
         {
             child.Parent = this;
+        }
+    }
+
+    /// <summary>Sets this node as the parent of an array or list of child nodes.</summary>
+    /// <param name="children">The child nodes.</param>
+    protected void Adopt(IReadOnlyList<Koto>? children)
+    {
+        if (children is Koto[] array)
+        {
+            foreach (var child in array)
+            {
+                child.Parent = this;
+            }
+        }
+        else if (children is List<Koto> list)
+        {
+            this.Adopt(list);
+        }
+        else if (children is not null)
+        {
+            for (var i = 0; i < children.Count; i++)
+            {
+                children[i].Parent = this;
+            }
         }
     }
 

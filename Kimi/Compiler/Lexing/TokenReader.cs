@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -228,36 +229,23 @@ public ref struct TokenReader
     /// <param name="range">The source range of the consumed token.</param>
     /// <param name="addDiagnostic">Whether to report a diagnostic when the expected token is not found.</param>
     /// <returns><see langword="true"/> if the expected token was consumed; otherwise, <see langword="false"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryConsume(TokenKind targetKind, out SourceSpan range, bool addDiagnostic = true)
     {
-Loop:
-        if (this.CanRead)
+        if (this.currentToken.Kind == targetKind && this.CanRead)
         {
-            var token = this.currentToken;
-            if (token.Kind == targetKind)
-            {
-                range = token.Span;
-                this.AdvanceOne();
-                return true;
-            }
-
-            if (token.Kind == TokenKind.Sharp)
-            {
-                // Attributes may appear between the caller and the expected token.
-                _ = Parser.ParseAttributeKoto(ref this);
-                goto Loop;
-            }
-
-            if (addDiagnostic)
-            {
-                this.Diagnostic.Add(token.Span, DiagnosticCode.TokenMismatch_Kd, targetKind.ToText());
-                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
-            }
+            range = this.currentToken.Span;
+            this.AdvanceOne();
+            return true;
         }
 
-        // At the end of the sequence the tokenizer has already reported the missing closers.
-        range = default;
-        return false;
+        if (!addDiagnostic && this.currentToken.Kind != TokenKind.Sharp)
+        {
+            range = default;
+            return false;
+        }
+
+        return this.TryConsumeWithRecovery(targetKind, out range, addDiagnostic);
     }
 
     /// <summary>
@@ -555,6 +543,23 @@ Loop:
     public readonly string GetIdentifier(Token token)
         => this.compilation.Intern(this.GetSpan(token));
 
+    /// <summary>Validates and interns an identifier without allocating a syntax node.</summary>
+    /// <param name="token">The identifier token.</param>
+    /// <param name="identifier">The validated identifier text.</param>
+    /// <returns>Whether the token contains a valid identifier.</returns>
+    public readonly bool TryGetIdentifier(Token token, [NotNullWhen(true)] out string? identifier)
+    {
+        var span = this.GetSpan(token);
+        if (token.Kind.IsIdentifierOrContextualKeyword() && this.compilation.TryGetIdentifier(span, out identifier))
+        {
+            return true;
+        }
+
+        this.Diagnostic.Add(this.CurrentTokenRange, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
+        identifier = null;
+        return false;
+    }
+
     /// <summary>
     /// Returns the textual representation of the current token.
     /// </summary>
@@ -582,6 +587,38 @@ Loop:
     /// <summary>Discards deferred directives when an outer condition excludes the syntax.</summary>
     internal void ClearCompileTimeIfPrefixes()
         => this.compileTimeIfPrefixes = default;
+
+    private bool TryConsumeWithRecovery(TokenKind targetKind, out SourceSpan range, bool addDiagnostic)
+    {
+Loop:
+        if (this.CanRead)
+        {
+            var token = this.currentToken;
+            if (token.Kind == targetKind)
+            {
+                range = token.Span;
+                this.AdvanceOne();
+                return true;
+            }
+
+            if (token.Kind == TokenKind.Sharp)
+            {
+                // Attributes may appear between the caller and the expected token.
+                _ = Parser.ParseAttributeKoto(ref this);
+                goto Loop;
+            }
+
+            if (addDiagnostic)
+            {
+                this.Diagnostic.Add(token.Span, DiagnosticCode.TokenMismatch_Kd, targetKind.ToText());
+                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, 0);
+            }
+        }
+
+        // At the end of the sequence the tokenizer has already reported the missing closers.
+        range = default;
+        return false;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void AdvanceOne()

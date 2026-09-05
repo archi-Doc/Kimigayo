@@ -3,6 +3,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using Arc.Collections;
 using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
@@ -25,6 +26,7 @@ public static class Parser
     private static readonly byte[] InfixLeftBindingPower = new byte[TokenHelper.MaxTokens];
     private static readonly byte[] InfixRightBindingPower = new byte[TokenHelper.MaxTokens];
     private static readonly bool[] IsPrefixOperator = new bool[TokenHelper.MaxTokens];
+    private static readonly bool[] IsPostfixOperator = new bool[TokenHelper.MaxTokens];
     private static readonly bool[] IsExpressionBoundaryKind = new bool[TokenHelper.MaxTokens];
 
     static Parser()
@@ -37,9 +39,16 @@ public static class Parser
         }
 
         Mark(
+            IsPostfixOperator,
+            [
+                TokenKind.Dot, TokenKind.OpenParenthesis, TokenKind.LessThan,
+                TokenKind.OpenBracket, TokenKind.PlusPlus, TokenKind.MinusMinus,
+            ]);
+
+        Mark(
             IsPrefixOperator,
             [
-                TokenKind.Sharp, TokenKind.Dollar, TokenKind.Ampersand, TokenKind.Asterisk, TokenKind.Plus,
+                TokenKind.Dollar, TokenKind.Ampersand, TokenKind.Asterisk, TokenKind.Plus,
                 TokenKind.Minus, TokenKind.Not, TokenKind.Caret, TokenKind.PlusPlus, TokenKind.MinusMinus,
             ]);
 
@@ -144,10 +153,8 @@ public static class Parser
             goto SkipAndExit;
         }
 
-        var methodName = reader.GetSpan(methodToken);
-        if (!IdentifierHelper.IsValidIdentifier(methodName))
+        if (!reader.TryGetIdentifier(methodToken, out var methodName))
         {
-            reader.AddDiagnostic(DiagnosticCode.InvalidIdentifier_Kd, methodName.ToString());
             goto SkipAndExit;
         }
 
@@ -184,7 +191,7 @@ public static class Parser
                 goto Exit;
             }
 
-            if (!IdentifierNameKoto.TryCreate(ref reader, externalNameToken, out var externalNameKoto))
+            if (!reader.TryGetIdentifier(externalNameToken, out var externalName))
             {
                 SkipParameter(ref reader);
                 goto NextParameter;
@@ -192,17 +199,15 @@ public static class Parser
 
             var isOptional = reader.TryConsume(TokenKind.Question);
 
-            var internalName = externalNameKoto.IdentifierName;
+            var internalName = externalName;
             if (reader.TryConsume(TokenKind.EqualsGreaterThan))
             {
                 if (!reader.TryRead(out var internalNameToken) ||
-                    !IdentifierNameKoto.TryCreate(ref reader, internalNameToken, out var internalNameKoto))
+                    !reader.TryGetIdentifier(internalNameToken, out internalName))
                 {
                     SkipParameter(ref reader);
                     goto NextParameter;
                 }
-
-                internalName = internalNameKoto.IdentifierName;
             }
 
             if (!reader.TryConsume(TokenKind.Colon, out _, true))
@@ -218,7 +223,7 @@ public static class Parser
             }
 
             (parameters ??= []).Add(new(
-                externalNameKoto.IdentifierName,
+                externalName,
                 internalName,
                 isOptional,
                 parameterType,
@@ -256,7 +261,7 @@ NextParameter:
             ref reader,
             context,
             SourceSpan.FromBounds(methodToken.Span.Start, end),
-            reader.GetIdentifier(methodToken),
+            methodName,
             genericArguments,
             parameters,
             returnType);
@@ -309,14 +314,9 @@ Exit:
             goto SkipAndExit;
         }
 
-        var span = reader.GetSpan(token);
-        if (IdentifierHelper.IsValidIdentifier(span))
+        if (reader.TryGetIdentifier(token, out var identifier))
         {
-            name = reader.GetIdentifier(token);
-        }
-        else
-        {
-            reader.AddDiagnostic(DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
+            name = identifier;
         }
 
         if (supportsGenerics && reader.CurrentTokenKind == TokenKind.LessThan)
@@ -950,23 +950,25 @@ Exit:
     {
         Debug.Assert(reader.CurrentTokenKind == TokenKind.LessThan);
         reader.Advance();
-        var typeList = new List<Koto>();
+        var typeList = default(TemporaryList<Koto>);
+        var end = reader.CurrentTokenRange.End;
         while (true)
         {
-            typeList.Add(ParseType(ref reader));
+            var type = ParseType(ref reader);
+            typeList.Add(type);
+            end = type.Span.End;
             if (!reader.TryConsume(TokenKind.Comma))
             {
                 break;
             }
         }
 
-        var end = typeList[^1].Span.End;
         if (reader.TryConsume(TokenKind.GreaterThan, out var range, true))
         {
             end = Math.Max(end, range.End);
         }
 
-        return new GenericsKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(left.Span.End, end)), left, typeList);
+        return new GenericsKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(left.Span.End, end)), left, typeList.ToArray());
     }
 
     /// <summary>Parses an attribute expression.</summary>
@@ -1368,7 +1370,7 @@ Exit:
 
         var blockContext = reader.TakeContext();
         reader.Advance();
-        var items = new List<Koto>();
+        var items = default(TemporaryList<Koto>);
         var hasTrailingExpression = false;
 
         while (reader.CanRead)
@@ -1396,7 +1398,7 @@ Exit:
                 return new CodeBlockKoto(
                     ref reader,
                     SourceSpan.FromBounds(start.Start, end),
-                    items,
+                    items.ToArray(),
                     hasTrailingExpression);
             }
 
@@ -1458,7 +1460,7 @@ Exit:
         return new CodeBlockKoto(
             ref reader,
             SourceSpan.FromBounds(start.Start, Math.Max(start.End, eof)),
-            items,
+            items.ToArray(),
             hasTrailingExpression);
     }
 
@@ -1877,12 +1879,12 @@ Exit:
         var left = ParsePrefixExpression(ref reader);
         while (true)
         {
-            if (TryParsePostfixExpression(ref reader, ref left))
+            var tokenKind = reader.CurrentTokenKind;
+            if (IsPostfixOperator[(byte)tokenKind] && TryParsePostfixExpression(ref reader, ref left))
             {
                 continue;
             }
 
-            var tokenKind = reader.CurrentTokenKind;
             if (tokenKind == TokenKind.Sharp)
             {
                 // Attributes following an expression are attached to the next parsed node.
@@ -1979,15 +1981,7 @@ ProcessPrefix:
         {
             var token = reader.Read();
             var operand = ParseExpression(ref reader, PrefixBindingPower);
-            var koto = KotoHelper.NewUnaryKoto(ref reader, token, operand);
-
-            if (koto is AttributeKoto attributeKoto)
-            {
-                reader.PushAttribute(attributeKoto);
-                goto ProcessPrefix;
-            }
-
-            return koto;
+            return KotoHelper.NewUnaryKoto(ref reader, token, operand);
         }
 
         return ParsePrimaryExpression(ref reader);
@@ -2016,7 +2010,7 @@ ProcessPrefix:
                     var openRange = reader.CurrentTokenRange;
                     reader.Advance();
                     var arguments = ParseArgumentList(ref reader, out var argumentLabels);
-                    var end = arguments.Count == 0 ? openRange.End : Math.Max(openRange.End, arguments[^1].Span.End);
+                    var end = arguments.Length == 0 ? openRange.End : Math.Max(openRange.End, arguments[^1].Span.End);
                     if (reader.TryConsume(TokenKind.CloseParenthesis, out var range, true))
                     {
                         end = Math.Max(end, range.End);
@@ -2123,10 +2117,11 @@ ProcessPrefix:
         }
     }
 
-    private static List<Koto> ParseArgumentList(ref TokenReader reader, out string?[]? argumentLabels)
+    private static Koto[] ParseArgumentList(ref TokenReader reader, out string?[]? argumentLabels)
     {// (arg0, arg1, )
-        var arguments = new List<Koto>();
-        List<string?>? labels = default;
+        var arguments = default(TemporaryList<Koto>);
+        var labels = default(TemporaryList<string?>);
+        var hasLabels = false;
         argumentLabels = default;
 
         var tokenKind = reader.CurrentTokenKind;
@@ -2139,9 +2134,9 @@ ProcessPrefix:
                 var label = reader.GetIdentifier(reader.CurrentToken);
                 reader.Advance(2);
 
-                if (labels is null)
+                if (!hasLabels)
                 {
-                    labels = new(arguments.Count + 1);
+                    hasLabels = true;
                     for (var i = 0; i < arguments.Count; i++)
                     {
                         labels.Add(null);
@@ -2150,9 +2145,9 @@ ProcessPrefix:
 
                 labels.Add(label);
             }
-            else
+            else if (hasLabels)
             {
-                labels?.Add(null);
+                labels.Add(null);
             }
 
             arguments.Add(ParseExpression(ref reader));
@@ -2185,12 +2180,12 @@ ProcessPrefix:
             break;
         }
 
-        if (labels is not null)
+        if (hasLabels)
         {
             argumentLabels = labels.ToArray();
         }
 
-        return arguments;
+        return arguments.ToArray();
     }
 
     private static Koto ParsePrimaryExpression(ref TokenReader reader)

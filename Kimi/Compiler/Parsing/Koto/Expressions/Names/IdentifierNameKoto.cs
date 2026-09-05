@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
-using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
 
 namespace Kimi.Compiler.Parsing;
@@ -25,15 +24,12 @@ public sealed partial class IdentifierNameKoto : ExpressionKoto
     /// <returns><see langword="true"/> when the token contains a valid identifier.</returns>
     public static bool TryCreate(ref TokenReader reader, Token token, [MaybeNullWhen(false)] out IdentifierNameKoto koto)
     {
-        var span = reader.GetSpan(token);
-        if (token.Kind.IsIdentifierOrContextualKeyword() &&
-            IdentifierHelper.IsValidIdentifier(span))
+        if (reader.TryGetIdentifier(token, out var identifier))
         {
-            koto = new(ref reader, token, reader.GetIdentifier(token));
+            koto = new(ref reader, token, identifier);
             return true;
         }
 
-        reader.AddDiagnostic(DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
         koto = default;
         return false;
     }

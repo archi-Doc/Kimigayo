@@ -15,7 +15,7 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
     public override KotoKind Akind => KotoKind.CodeBlock;
 
     [Key(1)]
-    private List<Koto> items;
+    private IReadOnlyList<Koto> items;
 
     /// <summary>
     /// Gets a value indicating whether the final item is the block's trailing expression.
@@ -38,7 +38,7 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
     /// <param name="range">The complete block span.</param>
     /// <param name="items">The parsed block items.</param>
     /// <param name="hasTrailingExpression">Whether the final item supplies the block value.</param>
-    public CodeBlockKoto(ref TokenReader reader, SourceSpan range, List<Koto> items, bool hasTrailingExpression)
+    public CodeBlockKoto(ref TokenReader reader, SourceSpan range, IReadOnlyList<Koto> items, bool hasTrailingExpression)
         : base(ref reader, range)
     {
         this.items = items;
@@ -88,7 +88,13 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
     /// <param name="hasTrailingExpression">Whether the item supplies the block value.</param>
     internal void AddLast(Koto item, bool hasTrailingExpression)
     {
-        this.items.Add(item);
+        if (this.items is not List<Koto> list)
+        {
+            list = new List<Koto>(this.items);
+            this.items = list;
+        }
+
+        list.Add(item);
         item.Parent = this;
         this.HasTrailingExpression = hasTrailingExpression;
     }

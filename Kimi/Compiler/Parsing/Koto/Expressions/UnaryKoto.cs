@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
@@ -103,11 +102,13 @@ public sealed partial class AttributeKoto : UnaryKoto
 
     /// <summary>Gets the attribute identifier.</summary>
     [IgnoreMember]
-    public Koto IdentifierKoto { get; private set; }
+    public Koto IdentifierKoto
+        => this.Operand is InvocationKoto { Method: IdentifierNameKoto identifier } ? identifier : this.Operand;
 
     /// <summary>Gets the attribute arguments.</summary>
     [IgnoreMember]
-    public List<Koto> Arguments { get; private set; }
+    public List<Koto> Arguments
+        => this.Operand is InvocationKoto { Method: IdentifierNameKoto } invocation ? invocation.Arguments : field ??= [];
 
     /// <summary>Initializes a new instance of the <see cref="AttributeKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
@@ -116,29 +117,6 @@ public sealed partial class AttributeKoto : UnaryKoto
     public AttributeKoto(ref TokenReader reader, SourceSpan range, Koto operand)
         : base(ref reader, range, operand)
     {
-        this.ExposeInvocation();
-    }
-
-    internal override void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
-    {
-        base.RestoreAfterDeserialization(codeContext, parent);
-        this.ExposeInvocation();
-    }
-
-    [MemberNotNull(nameof(IdentifierKoto), nameof(Arguments))]
-    private void ExposeInvocation()
-    {
-        // Expose invocation components for efficient attribute evaluation.
-        if (this.Operand is InvocationKoto { Method: IdentifierNameKoto identifier } invocation)
-        {
-            this.IdentifierKoto = identifier;
-            this.Arguments = invocation.Arguments;
-        }
-        else
-        {
-            this.IdentifierKoto = this.Operand;
-            this.Arguments = [];
-        }
     }
 }
 
