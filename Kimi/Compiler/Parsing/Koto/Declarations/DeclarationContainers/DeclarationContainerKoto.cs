@@ -706,7 +706,7 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
             return true;
         }
 
-        if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             functionKoto.Parse(ref reader);
         }

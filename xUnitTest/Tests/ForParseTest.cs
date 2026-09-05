@@ -67,7 +67,7 @@ public class ForParseTest
         Assert.Equal("in", Assert.Single(function.Parameters).InternalName);
         Assert.Equal(
             "in",
-            Assert.IsType<IdentifierNameKoto>(function.Body!.TrailingExpression).IdentifierName);
+            Assert.IsType<IdentifierNameKoto>(Assert.Single(function.Body!.Items)).IdentifierName);
     }
 
     [Fact]

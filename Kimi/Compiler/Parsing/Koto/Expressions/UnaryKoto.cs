@@ -314,4 +314,30 @@ public sealed partial class ParenthesizedKoto : UnaryKoto
         : base(ref reader, range, operand)
     {
     }
+
+    /// <inheritdoc/>
+    public override void WriteTo(ref IndentedStringBuilder builder)
+        => WriteGroupedTo(this.Operand, ref builder);
+
+    internal static bool NeedsMultilineGrouping(Koto operand)
+        => operand is IfKoto or MatchKoto or ForKoto or WhileKoto or LoopKoto or LabeledKoto or FunctionKoto;
+
+    internal static void WriteGroupedTo(Koto operand, ref IndentedStringBuilder builder)
+    {
+        if (!NeedsMultilineGrouping(operand))
+        {
+            builder.Append('(');
+            operand.WriteTo(ref builder);
+            builder.Append(')');
+            return;
+        }
+
+        builder.Append('(');
+        builder.AppendLine();
+        builder.IncrementIndent();
+        operand.WriteTo(ref builder);
+        builder.AppendLine();
+        builder.Append(')');
+        builder.DecrementIndent();
+    }
 }

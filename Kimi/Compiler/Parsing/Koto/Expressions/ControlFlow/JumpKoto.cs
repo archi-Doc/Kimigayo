@@ -9,20 +9,24 @@ namespace Kimi.Compiler.Parsing;
 
 /// <summary>
 /// Provides the shared representation of the Never-valued control-transfer expressions
-/// <c>return</c>, <c>break</c>, <c>continue</c>, and <c>yield</c>.
+/// <c>return</c>, <c>exit</c>, <c>continue</c>, and <c>yield</c>.
 /// </summary>
-[TinyhandObject(ReservedKeyCount = 2)]
+[TinyhandObject(ReservedKeyCount = 3)]
 public abstract partial class JumpKoto : ExpressionKoto
 {
     /// <summary>Gets the transferred value, if present.</summary>
     [Key(1)]
     public Koto? Expression { get; private set; }
 
+    /// <summary>Gets the explicit target Label of an exit or continue, if present.</summary>
+    [Key(2)]
+    public string? Label { get; private set; }
+
     /// <summary>Gets the source keyword for this expression.</summary>
     public string Keyword => this.Akind switch
     {
         KotoKind.Return => Constants.ReturnKeyword,
-        KotoKind.Break => Constants.BreakKeyword,
+        KotoKind.Exit => Constants.ExitKeyword,
         KotoKind.Continue => Constants.ContinueKeyword,
         _ => Constants.YieldKeyword,
     };
@@ -38,10 +42,12 @@ public abstract partial class JumpKoto : ExpressionKoto
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete expression span.</param>
     /// <param name="expression">The transferred value, if present.</param>
-    protected JumpKoto(ref TokenReader reader, SourceSpan range, Koto? expression)
+    /// <param name="label">The explicit target Label, if present.</param>
+    protected JumpKoto(ref TokenReader reader, SourceSpan range, Koto? expression, string? label = null)
         : base(ref reader, range)
     {
         this.Expression = expression;
+        this.Label = label;
         this.Adopt(expression);
     }
 
@@ -53,6 +59,12 @@ public abstract partial class JumpKoto : ExpressionKoto
         {
             builder.AppendSpace();
             this.Expression.WriteTo(ref builder);
+        }
+
+        if (this.Label is not null)
+        {
+            builder.Append(this is ExitKoto ? " from " : " ");
+            builder.Append(this.Label);
         }
     }
 
@@ -88,19 +100,20 @@ public sealed partial class ReturnKoto : JumpKoto
     }
 }
 
-/// <summary>Represents a Never-valued <c>break</c> expression.</summary>
+/// <summary>Represents a Never-valued <c>exit</c> expression.</summary>
 [TinyhandObject]
-public sealed partial class BreakKoto : JumpKoto
+public sealed partial class ExitKoto : JumpKoto
 {
     /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.Break;
+    public override KotoKind Akind => KotoKind.Exit;
 
-    /// <summary>Initializes a new instance of the <see cref="BreakKoto"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="ExitKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete expression span.</param>
-    /// <param name="expression">The break value, if present.</param>
-    public BreakKoto(ref TokenReader reader, SourceSpan range, Koto? expression)
-        : base(ref reader, range, expression)
+    /// <param name="expression">The exit value, if present.</param>
+    /// <param name="label">The explicit target Label, if present.</param>
+    public ExitKoto(ref TokenReader reader, SourceSpan range, Koto? expression, string? label = null)
+        : base(ref reader, range, expression, label)
     {
     }
 }
@@ -115,8 +128,9 @@ public sealed partial class ContinueKoto : JumpKoto
     /// <summary>Initializes a new instance of the <see cref="ContinueKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The keyword span.</param>
-    public ContinueKoto(ref TokenReader reader, SourceSpan range)
-        : base(ref reader, range, default)
+    /// <param name="label">The explicit target Label, if present.</param>
+    public ContinueKoto(ref TokenReader reader, SourceSpan range, string? label = null)
+        : base(ref reader, range, default, label)
     {
     }
 }

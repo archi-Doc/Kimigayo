@@ -17,13 +17,19 @@ public sealed partial class MatchArmKoto
     [Key(1)]
     public Koto Body { get; internal set; } = default!;
 
+    /// <summary>Gets a value indicating whether an inline arm ends with a semicolon.</summary>
+    [Key(2)]
+    public bool HasTrailingSemicolon { get; private set; }
+
     /// <summary>Initializes a new instance of the <see cref="MatchArmKoto"/> class.</summary>
     /// <param name="pattern">The arm pattern.</param>
     /// <param name="body">The arm body.</param>
-    public MatchArmKoto(Koto pattern, Koto body)
+    /// <param name="hasTrailingSemicolon">Whether an inline arm has a trailing semicolon.</param>
+    public MatchArmKoto(Koto pattern, Koto body, bool hasTrailingSemicolon = false)
     {
         this.Pattern = pattern;
         this.Body = body;
+        this.HasTrailingSemicolon = hasTrailingSemicolon;
     }
 }
 
@@ -89,7 +95,19 @@ public sealed partial class MatchKoto : ExpressionKoto
             else
             {
                 builder.AppendSpace();
-                arm.Body.WriteTo(ref builder);
+                if (arm.HasTrailingSemicolon && ParenthesizedKoto.NeedsMultilineGrouping(arm.Body))
+                {
+                    ParenthesizedKoto.WriteGroupedTo(arm.Body, ref builder);
+                }
+                else
+                {
+                    arm.Body.WriteTo(ref builder);
+                }
+
+                if (arm.HasTrailingSemicolon)
+                {
+                    builder.Append(';');
+                }
             }
         }
 

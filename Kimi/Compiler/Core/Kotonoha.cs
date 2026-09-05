@@ -202,7 +202,7 @@ public sealed partial class Kotonoha
     /// <summary>Adds executable top-level syntax to the generated function.</summary>
     /// <param name="codeContext">The parsing context that produced the syntax.</param>
     /// <param name="item">The syntax node to add.</param>
-    /// <param name="hasTrailingExpression">Whether this item supplies the generated body value.</param>
+    /// <param name="hasTrailingExpression">Whether this item is an expression without a semicolon.</param>
     internal void AddGeneratedFunctionItem(CodeContext codeContext, Koto item, bool hasTrailingExpression)
     {
         var generatedFunction = this.GeneratedFunction;

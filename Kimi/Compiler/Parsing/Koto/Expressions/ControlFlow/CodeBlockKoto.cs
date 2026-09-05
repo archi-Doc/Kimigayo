@@ -17,18 +17,24 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
     [Key(1)]
     private IReadOnlyList<Koto> items;
 
-    /// <summary>
-    /// Gets a value indicating whether the final item is the block's trailing expression.
-    /// </summary>
     [Key(2)]
-    public bool HasTrailingExpression { get; private set; }
+    private bool hasUnterminatedExpression;
+
+    /// <summary>Gets a value indicating whether the last item has an explicit semicolon.</summary>
+    [Key(3)]
+    public bool HasTrailingSemicolon { get; private set; }
+
+    /// <summary>Gets a value indicating whether this is a single-expression value branch with an implicit result.</summary>
+    [IgnoreMember]
+    public bool HasTrailingExpression => this.hasUnterminatedExpression && this.items.Count == 1 &&
+        this.Parent is IfKoto or MatchKoto && KotoHelper.IsValueContext(this);
 
     /// <summary>Gets the block items in source order.</summary>
     [IgnoreMember]
     public IReadOnlyList<Koto> Items => this.items;
 
     /// <summary>
-    /// Gets the trailing expression, or <see langword="null"/> when this block evaluates to Unit.
+    /// Gets the implicit branch result, or <see langword="null"/> when there is no implicit result.
     /// </summary>
     [IgnoreMember]
     public Koto? TrailingExpression => this.HasTrailingExpression && this.items.Count > 0 ? this.items[^1] : null;
@@ -37,12 +43,14 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete block span.</param>
     /// <param name="items">The parsed block items.</param>
-    /// <param name="hasTrailingExpression">Whether the final item supplies the block value.</param>
-    public CodeBlockKoto(ref TokenReader reader, SourceSpan range, IReadOnlyList<Koto> items, bool hasTrailingExpression)
+    /// <param name="hasTrailingExpression">Whether the final item is an expression without a semicolon.</param>
+    /// <param name="hasTrailingSemicolon">Whether the final item has an explicit semicolon.</param>
+    public CodeBlockKoto(ref TokenReader reader, SourceSpan range, IReadOnlyList<Koto> items, bool hasTrailingExpression, bool hasTrailingSemicolon = false)
         : base(ref reader, range)
     {
         this.items = items;
-        this.HasTrailingExpression = hasTrailingExpression;
+        this.hasUnterminatedExpression = hasTrailingExpression;
+        this.HasTrailingSemicolon = hasTrailingSemicolon;
         this.Adopt(items);
     }
 
@@ -70,7 +78,19 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
             }
             else
             {
-                this.items[i].WriteTo(ref builder);
+                if (i == this.items.Count - 1 && this.HasTrailingSemicolon && ParenthesizedKoto.NeedsMultilineGrouping(this.items[i]))
+                {
+                    ParenthesizedKoto.WriteGroupedTo(this.items[i], ref builder);
+                }
+                else
+                {
+                    this.items[i].WriteTo(ref builder);
+                }
+            }
+
+            if (i == this.items.Count - 1 && this.HasTrailingSemicolon)
+            {
+                builder.Append(';');
             }
         }
     }
@@ -85,7 +105,7 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
 
     /// <summary>Adds an item to a compiler-generated block.</summary>
     /// <param name="item">The item to add.</param>
-    /// <param name="hasTrailingExpression">Whether the item supplies the block value.</param>
+    /// <param name="hasTrailingExpression">Whether the item is an expression without a semicolon.</param>
     internal void AddLast(Koto item, bool hasTrailingExpression)
     {
         if (this.items is not List<Koto> list)
@@ -96,7 +116,7 @@ public sealed partial class CodeBlockKoto : ExpressionKoto
 
         list.Add(item);
         item.Parent = this;
-        this.HasTrailingExpression = hasTrailingExpression;
+        this.hasUnterminatedExpression = hasTrailingExpression;
     }
 
     protected override IEnumerable<Koto> GetChildNodes()

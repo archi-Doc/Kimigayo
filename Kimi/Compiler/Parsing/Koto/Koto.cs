@@ -249,8 +249,8 @@ public enum KotoKind : byte
     /// <summary>A <c>return</c> expression.</summary>
     Return,
 
-    /// <summary>A <c>break</c> expression.</summary>
-    Break,
+    /// <summary>A <c>exit</c> expression.</summary>
+    Exit,
 
     /// <summary>A <c>continue</c> expression.</summary>
     Continue,
@@ -277,6 +277,12 @@ public enum KotoKind : byte
 
     /// <summary>A Property accessor declaration.</summary>
     PropertyAccessor,
+
+    /// <summary>A labeled Block or Loop.</summary>
+    Labeled,
+
+    /// <summary>The Unit value ().</summary>
+    UnitLiteral,
 
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
@@ -362,6 +368,8 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.Generics, typeof(GenericsKoto))]
 [TinyhandUnion((int)KotoKind.Range, typeof(RangeKoto))]
 [TinyhandUnion((int)KotoKind.CodeBlock, typeof(CodeBlockKoto))]
+[TinyhandUnion((int)KotoKind.Labeled, typeof(LabeledKoto))]
+[TinyhandUnion((int)KotoKind.UnitLiteral, typeof(UnitLiteralKoto))]
 [TinyhandUnion((int)KotoKind.If, typeof(IfKoto))]
 [TinyhandUnion((int)KotoKind.CompileTimeIf, typeof(CompileTimeIfKoto))]
 [TinyhandUnion((int)KotoKind.CompileTimeCaseGroup, typeof(CompileTimeCaseGroupKoto))]
@@ -369,7 +377,7 @@ public enum KotoKind : byte
 [TinyhandUnion((int)KotoKind.While, typeof(WhileKoto))]
 [TinyhandUnion((int)KotoKind.For, typeof(ForKoto))]
 [TinyhandUnion((int)KotoKind.Return, typeof(ReturnKoto))]
-[TinyhandUnion((int)KotoKind.Break, typeof(BreakKoto))]
+[TinyhandUnion((int)KotoKind.Exit, typeof(ExitKoto))]
 [TinyhandUnion((int)KotoKind.Continue, typeof(ContinueKoto))]
 [TinyhandUnion((int)KotoKind.Loop, typeof(LoopKoto))]
 [TinyhandUnion((int)KotoKind.Yield, typeof(YieldKoto))]
