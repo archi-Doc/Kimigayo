@@ -467,13 +467,14 @@ var current = 0
 
 Kimigayo has exactly one kind of value-bearing member: the **Property**. A compiler may lower Property storage to a storage slot, global storage, or another layout entity, but none of these implementation representations constitutes another member kind. A `let` or `var` declared inside an executable Block is a local binding, not a Property.
 
-The current Parser records Properties, inline and block accessors, and basic syntax errors. Accessor expansion, contextual binding of `self`, `storage`, and `value`, `HasStorage`, access checks, initialization checks, and accessor type checking are planned semantic work.
+The current Parser records Properties, inline and block accessors, and basic syntax errors. Explicit getter result annotations, accessor expansion, contextual binding of `self`, `storage`, and `value`, `HasStorage`, access checks, initialization checks, and accessor type checking are planned work.
 
-A Property has a Type, a getter, an optional setter, and optionally owned storage:
+A Property has a Property Type, a Getter Result Type, a getter, an optional setter, and optionally owned storage. The Property Type determines the Type of owned storage, when present, and the setter's incoming value. A Property read has the Getter Result Type, which need not equal the Property Type. A computed Property retains a Property Type even though it has no storage.
 
 ```text
 Property
-    Type
+    PropertyType
+    GetterResultType
     Storage?
     Getter
     Setter?
@@ -514,11 +515,13 @@ The common declaration forms expand as follows before storage classification:
 
 | Source form | Effective getter | Effective setter | Usual classification |
 | ----------- | ---------------- | ---------------- | -------------------- |
-| `let x: T` | `get => storage` | None | Stored |
-| `var x: T` | `get => storage` | `set { storage = value }` | Stored |
+| `let x: T` | Default storage read | None | Stored |
+| `var x: T` | Default storage read | `set { storage = value }` | Stored |
 | `var x: T` with only an explicit `get` | Explicit getter | None | Depends on `storage` use |
-| `var x: T` with only an explicit `set` | `get => storage` | Explicit setter | Stored |
+| `var x: T` with only an explicit `set` | Default storage read | Explicit setter | Stored |
 | `var x: T` with explicit `get` and `set` | Explicit getter | Explicit setter | Depends on `storage` use |
+
+A default storage read is the Copy or shared-borrow operation defined under [Default getter results](#default-getter-results). It contains a bound reference to `storage` and therefore establishes `HasStorage`. It is equivalent to `get => storage` only when reading the storage value by Copy is permitted; it is not a Move from storage.
 
 An initializer does not independently select the classification. It is valid only if the resulting effective representation has storage.
 
@@ -567,9 +570,51 @@ It contains no reference to `storage`, so `HasStorage = false`.
 
 `let` is reserved for immutable stored data. Its standard effective representation has the default storage-reading getter and no setter, and it cannot be used for a computed Property. A read-only computed Property uses `var` with an explicit getter.
 
+### Default getter results
+
+An omitted or bodyless getter copies a Copy value and otherwise returns shared access to the stored value. It never moves a value out of the containing instance, implicitly duplicates an owning object reference, or returns an exclusive borrow. Copy capability is defined under [Copy and Move](#copy-and-move).
+
+The default Getter Result Type and operation are determined by the complete Property Type, including its Type Semantics:
+
+| Property Type | Default Getter Result Type | Operation |
+| --- | --- | --- |
+| Copy `owner/T` (also written `T`) | `T` | Copy the stored value |
+| Non-Copy `owner/T` | `ref/T` | Shared borrow of the stored value |
+| `obj/T` | `objref/T` | Shared borrow of the owned object |
+| `rc/T`, `arc/T` | `objref/T` | Shared borrow without incrementing a reference count |
+| `ref/T` | `ref/T` | Copy the shared reference |
+| `objref/T` | `objref/T` | Copy the shared object reference |
+| `uniq/T` | `ref/T` | Shared reborrow through the stored exclusive reference |
+| `objuniq/T` | `objref/T` | Shared reborrow through the stored exclusive object reference |
+| `unsafe/T` | `unsafe/T` | Copy the pointer value; dereference remains unsafe |
+
+For a default instance getter that creates a borrow or reborrow, the result Origin is `from self`. It is tied to the current receiver Loan, even when the stored value carries a longer-lived Origin. Shared reborrowing of an exclusive reference suspends conflicting access through that reference while the result remains live. Copying a value instead preserves all Origin dependencies already carried by that value; it does not extend them or replace them with `self`.
+
+A default static getter that creates a borrow anchors it to the Property's storage and its current stored value. Static allocation alone does not permit replacement or destruction of that value while the borrow is live. Normal Origin and Loan rules still apply; this does not add support for the deferred feature of borrow escape into global storage.
+
+For example:
+
+```kimi
+struct Parent
+    var child: obj/Node
+```
+
+has these conceptual accessor signatures:
+
+```text
+get(self: ref/Parent) -> objref/Node from self
+set(self: uniq/Parent, value: obj/Node) -> ()
+```
+
+Reading `parent.child` borrows the object. Assigning a new `obj/Node` invokes the setter with an owning value. The default read cannot be used to extract ownership. Ownership extraction requires a separate operation, such as a function consuming the containing value or an explicitly defined replacement operation, subject to the normal Move rules. No extraction syntax is introduced here.
+
+Likewise, a stored `let value: uniq/T from source` has a default getter returning `ref/T from self`. The exclusive reference remains in storage; neither its ownership nor an exclusive capability is returned. This permits shared inspection of an exclusive-borrow-bearing structure without making that structure Copy.
+
+For generic Properties, the default result rule remains dependent on unresolved Type Semantics or Copy capability. Binding must not assume that an unconstrained Core Type parameter is Copy. It may use a result Type only when the constraints or concrete specialization establish the applicable row, and must resolve the operation before finalizing a specialization. This section does not define new syntax for generic Copy constraints.
+
 ### Accessors
 
-A getter defines a Property read. It follows the [function body and result rules](#function-bodies-and-results), with its result Type defined under [Function Boundaries](#function-boundaries). It may be expression-bodied or Block-bodied:
+A getter defines a Property read. It follows the [function body and result rules](#function-bodies-and-results), using the Getter Result Type as its declared Target Result Type. It may be expression-bodied or Block-bodied:
 
 ```kimi
 var area: f64
@@ -582,6 +627,21 @@ var loggedArea: f64
 ```
 
 A computed getter must be introduced explicitly with `get`; a bare expression in the Property body is invalid.
+
+A getter may specify its result Type with `get -> ResultType`, including an Origin annotation as part of that Type. Without this annotation, its Getter Result Type is determined by the default result rules above, including for a custom getter. The getter body is checked against that Type; it does not independently infer a different result Type. An explicit result annotation overrides the default result rule. Omitted result Origins on a custom getter follow the normal function Origin elision rules.
+
+```kimi
+var child: obj/Node
+    get -> objref/Node from self => storage@objref
+
+// A computed getter may explicitly return a newly owned value.
+var freshNode: obj/Node
+    get -> obj/Node => Node.new()
+```
+
+The second example assumes `Node.new()` returns `obj/Node`. The annotation does not grant permission to move from borrowed storage: `get -> obj/Node => storage` is invalid for stored `obj/Node` because the getter has only `ref/Self` access. A custom body must perform any required borrow or reborrow explicitly; the default storage-read operation is synthesized only for omitted or bodyless getters.
+
+A bodyless concrete getter with an explicit result annotation still performs the default storage read. Its result must satisfy the annotated Type and Origin without moving storage or implicitly duplicating ownership; an incompatible annotation is an error. A `let` Property retains its immutable-storage restrictions regardless of a getter result annotation.
 
 A setter defines a Property write. Within it, `value` is the incoming value and has the Property Type:
 
@@ -630,7 +690,7 @@ The grammar is:
 ```text
 inline-accessors := has accessor-declaration (',' accessor-declaration)*
 
-accessor-declaration := access-restriction? get
+accessor-declaration := access-restriction? get ('->' ResultType)?
                       | access-restriction? set
 ```
 
@@ -652,7 +712,7 @@ var count: i32
     private set
 ```
 
-A bodyless getter and setter have these default implementations:
+A bodyless getter performs the default storage read, and a bodyless setter assigns `value` to `storage`. For a Copy Property such as `i32`, these operations have the following effective implementations:
 
 ```kimi
 get => storage
@@ -697,7 +757,9 @@ contract MutableCollection
     var count: i32 has get, set
 ```
 
-The first requirement is readable; the second is both readable and writable. A conforming Property must have a compatible Type and provide every required accessor with sufficient accessibility.
+The first requirement is readable; the second is both readable and writable. A conforming Property must have a compatible Property Type and provide every required accessor with sufficient accessibility. Getter conformance additionally checks its Getter Result Type and Origin contract; equality of Property Types alone is insufficient. A required setter accepts the required Property Type under the normal parameter compatibility rules.
+
+A contract getter requirement may specify a result Type, for example `var child: obj/Node has get -> objref/Node from self`. Without an annotation, the required Getter Result Type follows the same default result rules as a concrete Property, but no storage read or Loan is generated by the requirement itself. Here `self` denotes the required shared receiver. A conforming getter must provide a result compatible with the required result Type for every legal receiver Origin; it cannot impose a shorter lifetime than the requirement promises. Generic requirements retain unresolved default result rules until the applicable constraints or specialization determine them.
 
 In this context, `has` introduces no accessor implementation, effective storage representation, or Property storage. A contract Property requirement therefore has no `HasStorage` classification. A conforming Property may be stored or computed:
 
@@ -736,11 +798,11 @@ set: self: uniq/Self, value: PropertyType
 Conceptually, the accessors have these signatures:
 
 ```text
-get(self: ref/Self) -> PropertyType
+get(self: ref/Self) -> GetterResultType
 set(self: uniq/Self, value: PropertyType) -> ()
 ```
 
-A getter consequently has shared, non-exclusive access to the instance. A setter has exclusive mutable access. The receiver controls access to the containing instance; it does not change the Type of `storage` to `ref/T` or `uniq/T`. Static Properties, including members of a `group`, have no instance receiver.
+A getter consequently has shared, non-exclusive access to the instance. A setter has exclusive mutable access. The receiver controls access to the containing instance; it does not change the Type of `storage` to `ref/T` or `uniq/T`. The Getter Result Type describes the result of reading or borrowing that storage and is separate from its Type. Static Properties, including members of a `group`, have no instance receiver.
 
 For owned storage, the receiver permits shared/read access from the getter and exclusive/read-write access from the setter:
 
@@ -1761,10 +1823,10 @@ struct Logger origin sink
     let out: uniq/Writer from sink
 
     deinit
-        self.out.flush()
+        observe(self.out)
 ```
 
-Here `sink` must remain valid throughout the destructor.
+Here `observe` is assumed to accept `ref/Writer`. Reading `self.out` creates a shared reborrow through its stored `uniq/Writer`; it does not extract an exclusive reference. `sink` must remain valid throughout the destructor.
 
 #### Reference algorithm
 
@@ -1787,7 +1849,7 @@ The region and Loan analyses may be implemented using Datalog or an equivalent f
 
 This revision does not define:
 
-- Origins on contracts or trait-like abstractions;
+- abstract Origin parameters on contracts or trait-like abstractions (the Property getter receiver/result contracts above do not introduce contract-level Origin parameters);
 - default Origins for trait objects;
 - higher-ranked Origins;
 - borrow escape into heap or global storage;
@@ -1980,7 +2042,7 @@ Each of these bodies establishes an independent **Function Boundary**:
 
 In these control-flow rules, "function" includes all of these bodies. A `return` ends only its own function. Other transfers cannot target an outer function's Labels, Iteration Constructs, or selections.
 
-A getter's result Type is the Property Type; setters and `deinit` return Unit. Each body follows the [function body and result rules](#function-bodies-and-results). Normal completion of `deinit`, including through `return`, still performs any automatic field destruction required by the Type's destruction rules.
+A getter's result Type is its Getter Result Type, determined by the default Property read rules or an explicit getter result annotation; it need not equal the Property Type. Setters and `deinit` return Unit. Each body follows the [function body and result rules](#function-bodies-and-results). Normal completion of `deinit`, including through `return`, still performs any automatic field destruction required by the Type's destruction rules.
 
 ```kimi
 func outer() -> i32
