@@ -126,6 +126,8 @@ A Case Group must select an arm in every final evaluation context. The final `#c
 
 The selected Block occupies the structural position of the Case Group. Normal Block, result-Type, scope, and control-transfer rules apply after selection. An early-false `#if` target is consumed without creating Koto nodes. Unselected `#case` arms do not undergo ordinary Binding, Lowering, or code generation.
 
+The [Empty Executable Block](#empty-executable-block) check uses source structure before directive selection, not the number of retained Koto nodes. Removing all executable Syntax from a syntactically nonempty Block is not itself an empty-Block error.
+
 ## Staged condition evaluation
 
 `#if` and `#case` use the same staged evaluator. The Parser first evaluates Conditions from the prepared compile-time environment, before ordinary Binding. Later Directive Binding resolves remaining Names without binding excluded Syntax.
@@ -2086,7 +2088,62 @@ A boundary handles a Completion directed at itself and propagates other valid Co
 
 ## Blocks and evaluation contexts
 
-A **Block** is an indentation-delimited sequence of declarations, expressions, and statements evaluated in order. An ordinary Block completes with Unit on reaching its end; empty Blocks and Blocks ending in a declaration behave the same way. Nesting an ordinary Block adds no control-transfer target. Constructs with their own result rules apply those rules instead. Function bodies follow [Functions](#function-bodies-and-results).
+A **Block** is an indentation-delimited sequence of declarations, expressions, and statements evaluated in order. An ordinary Block completes with Unit on reaching its end, including when its last item is a declaration or conditional compilation removes all its items. Source-level executable bodies must satisfy the nonempty rule below. Nesting an ordinary Block adds no control-transfer target. Constructs with their own result rules apply those rules instead. Function bodies follow [Functions](#function-bodies-and-results).
+
+### Empty Executable Block
+
+An executable Block cannot be empty in source. Its indented body must contain at least one syntactically complete **Syntax item**: a declaration, expression, statement, or compile-time directive. Blank lines, comments, and separators alone do not count. A directive must itself have valid syntax, including its required condition, target, and body.
+
+The Parser reports an empty or missing executable body as an error. If no body item appears before a same- or shallower-indentation item, or before the end of the source, it must not silently accept an empty body or treat the following item as part of that body.
+
+```kimi
+defer: // Parse error: no indented body.
+closeConnection()
+
+defer:
+    // Cleanup is currently unnecessary.
+nextOperation() // Parse error: the defer body contains only a comment.
+```
+
+Indent the intended body. To explicitly do nothing, use the Unit expression `()`:
+
+```kimi
+defer:
+    closeConnection()
+
+if condition
+    ()
+
+defer:
+    ()
+```
+
+This rule applies to executable bodies of branches, `match` arms, iterations, Labeled Blocks, Unsafe Blocks, Deferred Blocks, functions, and accessors. It does not define emptiness rules for a `match` arm list or a Declaration Container body. Single-line forms already require one complete InlineStatement.
+
+#### Conditional compilation and results
+
+Check emptiness against source structure **before conditional-compilation selection**, independently of reachability. A syntactically valid `#if` or `#case` makes its containing Block nonempty even if selection later removes all executable Syntax. This does not waive the directive's own syntax or Case Group selection requirements.
+
+```kimi
+defer:
+    #if windows
+        closeHandle()
+```
+
+When `windows` is false, the Deferred Block has no executable content but remains valid. The Parser must check source items even when early directive selection does not create Koto nodes for them.
+
+Nonempty syntax does not imply a valid result. After selection, normal Type, result-coverage, and control-transfer rules still apply. In particular, `()` placed directly in a Block is discarded; it does not implicitly supply that Block's result.
+
+```kimi
+let result = if condition
+    () // Error: nonempty, but this branch must explicitly yield its result.
+else
+    yield ()
+```
+
+Likewise, removing a required `yield` or result-bearing `exit` through conditional compilation may cause a result-coverage error, even though the source Block passes the emptiness check.
+
+### Evaluation contexts
 
 A **Value Context** is a syntactic position that uses an expression's value: an initializer, operand, argument, condition, `match` subject, `return` / `exit` / `yield` operand, or Expression body introduced by `=>`. It remains a Value Context even when the expected Type is Unit or the result is subsequently unused. Reachability, constant evaluation, and optimization do not change it.
 
@@ -2520,7 +2577,7 @@ Resolve transfer targets before this classification, without using reachability.
 Every Result-requiring Selection follows three common requirements:
 
 - **Exhaustiveness:** `if` requires a final `else`; `match` must cover all subject values through its patterns or a catch-all arm. Literal conditions, unreachable branches, and paths that never complete do not waive this requirement.
-- **Result coverage:** every reachable path that completes normally must supply a result. A Block must use `yield`, including `yield ()` for Unit; empty Blocks, declarations, and discarded expressions do not supply implicit branch results. A path leaving for an outer target or never finishing needs no result. After a transfer caught internally, analysis follows the continuation.
+- **Result coverage:** every reachable path that completes normally must supply a result. A Block must use `yield`, including `yield ()` for Unit; declarations, discarded expressions, and bodies emptied by conditional compilation do not supply implicit branch results. Source-level empty executable Blocks are parse errors under the [nonempty rule](#empty-executable-block). A path leaving for an outer target or never finishing needs no result. After a transfer caught internally, analysis follows the continuation.
 - **Result compatibility:** explicit and implicit results obey the shared [result validation](#result-validation) rules, even when the selection's result is discarded.
 
 A selection that does not require a result has only Block bodies, no self-targeted `yield`, and occurs in Discard Context. Reaching a selected Block's end or selecting no branch supplies Unit. Paths that leave for an outer target or never finish supply no result to that selection.
