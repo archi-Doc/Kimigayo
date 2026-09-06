@@ -41,8 +41,9 @@ public class ParseBenchmark
             var last = array[^1] // Last element
             var middle = array[1..^1] // Excludes both element 0 and the last element
             var y = array.remove(at: 1) // owner/StructA
-            func Set(index: isize, obj: s/T) -> ()
+            func Set(index: isize, obj: s/T) -> () => ()
             func Get(index: isize) -> s/T
+                return
 
             var items: Array<Int> = [1, 2, 3]
             var items2 = [1, 2, 3, ]
