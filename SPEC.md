@@ -37,7 +37,7 @@ public group Program
 - `<>` represents Generic parameters and Generic arguments. It is used for compile-time parameters and arguments that construct Types.
 - `{}` is currently unused. It is reserved for future language evolution.
 - Type: The complete conceptual form of a Kimigayo Type is `semantics/CoreType from origin`. Type Semantics describe how a value is handled, the Core Type describes what the value is, and the Origin describes where the value derives from and how long it remains valid. Type Semantics and Origin may be omitted when determined by the language or context.
-- `=` represents assignment. Under Kimigayo's ownership rules, the effective operation may be either Copy or Move depending on the Type and context. Precise Copy/Move classification, use-after-move checking, and related enforcement are not yet implemented.
+- `=` represents assignment. Values are transferred according to the [Copy and Move](#copy-and-move) rules. Copy/Move checking and related enforcement are not yet implemented.
 - `->` represents a Result Type. In function declarations and Function Types, it denotes the result Type associated with the input side.
 - `=>` represents a mapping or correspondence. It introduces function, Property accessor, and `if` branch expression bodies, `match` arms, named Origin arguments, and similar constructs.
 - `:` represents a structural association: a Name with a Type, a key with a value, or a Label with a Block or Iteration Construct.
@@ -1284,6 +1284,74 @@ Operations involving `unsafe/T` therefore belong to the unsafe portion of the la
 ```
 let pointer: unsafe/i32
 ```
+
+## Copy and Move
+
+Copy and Move govern taking a value from a storage location for use as a value. A Copy Type is copied; any other Type is moved if the source permits it, or rejected otherwise. This applies to initialization, assignment sources, by-value arguments, and result transfers, including `return`, `exit`, `yield`, and implicit results. Borrow creation and reborrowing follow their own rules; merely naming a location does not always consume its value.
+
+These rules follow Rust's ownership model. Here, **Copy** names a Type capability, without requiring a particular trait system. Ownership checking is planned, not implemented.
+
+### Operation semantics
+
+**Copy** duplicates a value while leaving the source initialized and usable, with its destruction responsibility unchanged. It requires only duplication of the value representation: it invokes no user-defined operation, deep allocation copy, reference-count increment, or resource acquisition. Copying a reference copies the reference, not its referent.
+
+**Move** transfers a value and its associated ownership and destruction responsibility. The source becomes uninitialized and cannot be read, borrowed, copied, or moved again until reinitialized. Moving a borrow transfers its access capability, not ownership of its referent. Move invokes no user-defined move operation and does not require clearing the source memory.
+
+Neither operation requires an actual memory transfer when optimization can eliminate it. Copy capability is independent of binding mutability: `let` and `var` do not change it.
+
+```kimi
+let a: i32 = 10
+let b = a                    // Copy
+let c = a                    // valid: a remains initialized
+```
+
+In the following example, `makeNode()` returns `obj/Node`:
+
+```kimi
+var a: obj/Node = makeNode()
+let b = a                    // Move: b now owns the object
+let c = a                    // error: a is uninitialized
+a = makeNode()               // reinitialize a with a new object
+let d = a                    // valid Move after reinitialization
+```
+
+### Copy classification
+
+Copy capability depends on Type Semantics and stored components, including active Loan requirements, rather than on the Core Type alone.
+
+| Type or semantics | Classification |
+| ----------------- | -------------- |
+| Owned integers, floating-point values, `bool`, `char`, and Unit | Copy |
+| `ref/T`, `objref/T` | Copy regardless of whether the referent `T` is Copy |
+| `uniq/T`, `objuniq/T` | Non-Copy |
+| `obj/T`, `rc/T`, `arc/T` | Non-Copy even when `T` is Copy |
+| `unsafe/T` | The pointer value is Copy |
+| Owned Tuples and fixed-length arrays | Copy exactly when every component Type is Copy |
+| Owned user-defined structures | Non-Copy by default; explicit opt-in is required |
+
+A user-defined Type may opt into Copy only when every stored component is Copy, it has no custom destruction operation, it carries no active `uniq` Loan requirement, and representation duplication preserves ownership and borrowing guarantees. All-Copy components establish eligibility, not automatic opt-in. Computed Properties without storage do not contribute components to this check.
+
+The Copy classification of owned `string` remains open until its ownership representation is settled; an owning, self-releasing UTF-8 buffer is non-Copy. Slice classification follows its borrowing representation: sharing elements does not itself establish Copy capability.
+
+### Borrowing and initialization
+
+Copy is a read of the source and must satisfy the active Loan rules. Move cannot take a value from a place overlapped by an active Loan. Neither operation bypasses borrowing restrictions.
+
+A non-Copy referent cannot be moved out through `ref/T`, `uniq/T`, `objref/T`, or `objuniq/T`, leaving the borrowed place uninitialized. A separate replacement operation may provide extraction while leaving a valid replacement. Such an operation is not defined here.
+
+Copied or moved borrow values retain their Origin constraints; neither operation extends the referent's lifetime. Reborrowing is distinct from Copy and does not make an exclusive borrow Copy.
+
+A moved place may be reinitialized when ordinary write rules permit it. At a control-flow join, a subsequent use requires initialization on every incoming path that reaches the use.
+
+Partial Move support remains open. If permitted, initialization and destruction responsibility must be tracked per part. Ordinary Property reads invoke accessors and are not direct Moves from backing storage.
+
+### Destruction and explicit duplication
+
+Assignment first secures its source value, then discharges destruction responsibility for the destination's old value before storing the new value. An uninitialized destination has no old value to destroy. [Scope-exit destruction](#scope-exit-destruction) destroys only initialized values for which the scope retains responsibility; a moved value is not destroyed again at its source.
+
+Duplication requiring additional work must be explicit. In particular, duplicating an owning `rc/T` or `arc/T` reference increments a reference count and is not Copy; ordinary by-value transfer uses Move.
+
+The syntax for Copy opt-in, automatic derivation, generic Copy constraints, and explicit duplication remains open. A future trait system may express these capabilities, but its design and the relationship between Copy and a duplication trait are not specified here.
 
 ## Origin-Based Lifetime Management
 
