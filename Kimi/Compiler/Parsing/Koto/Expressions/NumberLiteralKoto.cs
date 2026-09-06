@@ -18,6 +18,18 @@ public sealed class NumberLiteralKoto : ExpressionKoto
 
     private Int128 uv;
 
+    /// <summary>Gets a value indicating whether the literal has an integer representation.</summary>
+    public bool IsInteger => this.parseResult == NumberLiteralParseResult.I128;
+
+    /// <summary>Gets the unsigned source magnitude without formatting its signed storage bit pattern.</summary>
+    /// <param name="magnitude">The original magnitude, including values above Int128.MaxValue.</param>
+    /// <returns>Whether this is an integer literal.</returns>
+    public bool TryGetIntegerMagnitude(out UInt128 magnitude)
+    {
+        magnitude = unchecked((UInt128)this.uv);
+        return this.IsInteger;
+    }
+
     /// <summary>Gets the normalized literal text.</summary>
     public string Literal
     {
@@ -30,7 +42,7 @@ public sealed class NumberLiteralKoto : ExpressionKoto
 
             if (this.parseResult == NumberLiteralParseResult.I128)
             {
-                field = this.uv.ToString(CultureInfo.InvariantCulture);
+                field = unchecked((UInt128)this.uv).ToString(CultureInfo.InvariantCulture);
             }
             else if (this.parseResult == NumberLiteralParseResult.F64)
             {
@@ -62,7 +74,7 @@ public sealed class NumberLiteralKoto : ExpressionKoto
     {
         if (this.parseResult == NumberLiteralParseResult.I128)
         {
-            if (NumberLiteralHelper.IsInt64(this.uv))
+            if (this.uv >= 0 && this.uv <= long.MaxValue)
             {
                 basicValue = new((long)this.uv);
                 return true;

@@ -578,12 +578,14 @@ Exit:
 
             reader.Advance();
             parsedAny = true;
+            var returnType = ParseAccessorReturnType(ref reader, accessorKind);
             var accessor = new PropertyAccessorKoto(
                 ref reader,
-                SourceSpan.FromBounds(start, accessorToken.Span.End),
+                SourceSpan.FromBounds(start, Math.Max(accessorToken.Span.End, returnType?.Span.End ?? 0)),
                 modifier,
                 accessorKind,
-                default);
+                default,
+                returnType);
             AddPropertyAccessor(ref reader, property, accessor, accessorToken);
 
             if (!reader.TryConsume(TokenKind.Comma))
@@ -591,7 +593,7 @@ Exit:
                 break;
             }
 
-            if (reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock)
+            if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock)
             {
                 reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
                 break;
@@ -631,6 +633,7 @@ Exit:
             }
 
             reader.Advance();
+            var returnType = ParseAccessorReturnType(ref reader, accessorKind);
             Koto? body = default;
             if (reader.TryConsume(TokenKind.EqualsGreaterThan))
             {
@@ -641,16 +644,17 @@ Exit:
                 body = ParseBlock(ref reader);
             }
 
-            var end = Math.Max(accessorToken.Span.End, body?.Span.End ?? 0);
+            var end = Math.Max(Math.Max(accessorToken.Span.End, returnType?.Span.End ?? 0), body?.Span.End ?? 0);
             var accessor = new PropertyAccessorKoto(
                 ref reader,
                 SourceSpan.FromBounds(start, end),
                 modifier,
                 accessorKind,
-                body);
+                body,
+                returnType);
             AddPropertyAccessor(ref reader, property, accessor, accessorToken);
 
-            if (body is not CodeBlockKoto &&
+            if (body is not CodeBlockKoto && !reader.TryConsume(TokenKind.Semicolon) &&
                 reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) &&
                 reader.CanRead)
             {
@@ -660,6 +664,27 @@ Exit:
 
         property.CompleteSpan(Math.Max(property.Span.End, blockStart.End));
         reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+    }
+
+    private static Koto? ParseAccessorReturnType(ref TokenReader reader, PropertyAccessorKind kind)
+    {
+        if (!reader.TryConsume(TokenKind.MinusGreaterThan, out var arrow, false))
+        {
+            return null;
+        }
+
+        if (kind != PropertyAccessorKind.Get)
+        {
+            reader.Diagnostic.Add(arrow, DiagnosticCode.UnexpectedToken_Kd, "->");
+        }
+
+        if (IsExpressionBoundary(ref reader))
+        {
+            reader.Diagnostic.Add(arrow, DiagnosticCode.MissingReturnType_Kd);
+            return new ErrorKoto(ref reader, arrow);
+        }
+
+        return ParseDeclarationType(ref reader);
     }
 
     private static ModifierKind ParseAccessorAccessibility(ref TokenReader reader)
@@ -2771,6 +2796,9 @@ Loop:
 
             case TokenKind.NumericLiteral:
                 return new NumberLiteralKoto(ref reader, reader.Read());
+
+            case TokenKind.Null:
+                return new NullLiteralKoto(ref reader, reader.Read().Span);
 
             case TokenKind.CharLiteral:
                 return new CharLiteralKoto(ref reader, reader.Read());

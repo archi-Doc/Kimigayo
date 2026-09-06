@@ -56,6 +56,7 @@ public enum TokenKind : byte
     Exit, // loop,for,while/exit
     Continue, // loop,for,while/continue
     Yield, // if/yield
+    Null, // contextually typed raw-pointer literal
 
     // Contextual keyword
     Alias = 96,

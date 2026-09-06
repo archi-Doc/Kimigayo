@@ -92,6 +92,7 @@ public static partial class TokenHelper
         Set(TokenKind.Exit, Constants.ExitKeyword);
         Set(TokenKind.Continue, Constants.ContinueKeyword);
         Set(TokenKind.Yield, Constants.YieldKeyword);
+        Set(TokenKind.Null, "null");
 
         // Contextual keyword
         Set(TokenKind.Alias, Constants.AliasKeyword);
@@ -317,6 +318,7 @@ public static partial class TokenHelper
             },
             4 => c0 switch
             {
+                'n' => Match(text, "null", TokenKind.Null),
                 'b' => Match(text, Constants.BoolKeyword, TokenKind.Bool),
                 'c' => Match(text, Constants.CaseKeyword, TokenKind.Case, Constants.CharKeyword, TokenKind.Char),
                 'i' => Match(text, Constants.I128Keyword, TokenKind.I128),

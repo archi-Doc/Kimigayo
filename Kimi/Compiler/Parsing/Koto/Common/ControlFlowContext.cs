@@ -15,6 +15,11 @@ public static partial class KotoHelper
         Koto child = jump;
         for (var parent = child.Parent; parent is not null; child = parent, parent = parent.Parent)
         {
+            if (parent is DeferredBlockKoto deferred && child == deferred.Body)
+            {
+                return jump is ExitKoto { Label: null } ? deferred : null;
+            }
+
             if ((parent is FunctionKoto function && (child == function.Body || child == function.ExpressionBody)) ||
                 (parent is PropertyAccessorKoto accessor && child == accessor.Body))
             {
@@ -62,6 +67,36 @@ public static partial class KotoHelper
         return null;
     }
 
+    /// <summary>Classifies a Labeled Block before reachability is considered.</summary>
+    /// <param name="labeled">The attached label and its Block.</param>
+    /// <returns>Whether explicit self-targeted results are required.</returns>
+    public static bool IsResultRequiringLabeledBlock(LabeledKoto labeled)
+        => labeled.Target is CodeBlockKoto &&
+            (IsValueContext(labeled) || ContainsResult(labeled.Target));
+
+    /// <summary>Tests lexical unsafe permission without inheriting it across function bodies.</summary>
+    /// <param name="node">The operation to inspect.</param>
+    /// <returns>Whether an enclosing Unsafe Block grants permission.</returns>
+    public static bool IsUnsafeContext(Koto node)
+    {
+        Koto child = node;
+        for (var parent = child.Parent; parent is not null; child = parent, parent = parent.Parent)
+        {
+            if ((parent is FunctionKoto function && (child == function.Body || child == function.ExpressionBody)) ||
+                (parent is PropertyAccessorKoto accessor && child == accessor.Body))
+            {
+                return false;
+            }
+
+            if (parent is UnsafeBlockKoto)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Classifies selections using context, explicit body forms, and lexically targeted yields.</summary>
     /// <param name="selection">An attached if or match node.</param>
     /// <returns>Whether the selection requires a result.</returns>
@@ -89,7 +124,7 @@ public static partial class KotoHelper
             }
 
             // Deferred directives must be selected before their syntax participates.
-            if (node is CompileTimeIfKoto or CompileTimeCaseGroupKoto)
+            if (node is CompileTimeIfKoto or CompileTimeCaseGroupKoto or DeferredBlockKoto)
             {
                 return false;
             }
@@ -140,6 +175,7 @@ public static partial class KotoHelper
             case WhileKoto loop:
                 return loop.Condition == expression;
             case LoopKoto:
+            case BlockStatementKoto:
                 return false;
             default:
                 return true; // Initializers, arguments, and ordinary operands.
@@ -165,5 +201,35 @@ public static partial class KotoHelper
         }
 
         return false;
+    }
+
+    internal static Koto UnwrapParentheses(Koto node)
+    {
+        while (node is ParenthesizedKoto parentheses)
+        {
+            node = parentheses.Operand;
+        }
+
+        return node;
+    }
+
+    private static bool ContainsResult(Koto node)
+    {
+        return Contains(node, node);
+
+        static bool Contains(Koto current, Koto target)
+        {
+            if (current is ExitKoto { Expression: not null } exit && ResolveTransferTarget(exit) == target)
+            {
+                return true;
+            }
+
+            if (current is CompileTimeIfKoto or CompileTimeCaseGroupKoto or DeferredBlockKoto or FunctionKoto or PropertyAccessorKoto)
+            {
+                return false;
+            }
+
+            return current.ChildNodes.Any(child => Contains(child, target));
+        }
     }
 }

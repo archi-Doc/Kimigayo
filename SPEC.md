@@ -61,7 +61,7 @@
 
 **Kimigayo** is a programming language built from scratch to be consistent, fast, simple, fun, and safe.
 
-> **Pre-alpha status:** This document specifies the intended language. The implementation mainly supports project loading, target setup, tokenization, parsing, and diagnostics. Unless stated otherwise, Binding, overload resolution, type checking, generic specialization, ownership and Origin analysis, lowering, and code generation are planned. Unsafe functions, Unsafe and Deferred Blocks, and value-producing Labeled Blocks are also planned.
+> **Pre-alpha status:** This document specifies the intended language. The implementation supports project loading, target setup, tokenization, parsing, diagnostics, and basic control-flow analysis, including Unsafe and Deferred Blocks and value-producing Labeled Blocks. Unless stated otherwise, general Binding, overload resolution, type checking, generic specialization, ownership and Origin analysis, lowering, and code generation are planned.
 
 ```kimi
 alias Kimi.Base
@@ -1026,7 +1026,7 @@ Expand inline has declarations
 - A **Stored Property** has `HasStorage = true` and owns one location: part of the instance layout for an instance Property, or static storage for a static member of a `group`.
 - A **Computed Property** has `HasStorage = false` and contributes no storage slot.
 
-The Parser records Properties, inline and block accessors, and basic syntax errors. Explicit getter result annotations, accessor expansion, contextual binding of `self`, `storage`, and `value`, storage classification, access and initialization checks, and accessor type checking are planned.
+The Parser records Properties, inline and block accessors, explicit getter result annotations, and basic syntax errors. Control-flow analysis checks known accessor result Types. Accessor expansion, contextual binding of `self`, `storage`, and `value`, storage classification, access and initialization checks, and general accessor type checking are planned.
 
 ### 6.1. Effective representation
 
@@ -2325,7 +2325,7 @@ else => 0
 
 A transfer supplies a result only to its resolved target. Function results follow [Functions](#551-function-bodies-and-results); Blocks, Iteration Constructs, and branches use their result sources defined above. Discard Context does not exempt a construct from result validation.
 
-**Implementation status:** The current Parser preserves explicit branch body forms, and control-flow analysis checks existing selections and loops. Value-producing Labeled Blocks, Unsafe and Deferred Blocks, and their extended target and cleanup rules are planned. The default type provider handles primitive literals and simple declared Types. General name/overload resolution, numeric conversions, pattern Binding, and Origin compatibility still require Binding; unresolved checks are exposed as pending obligations, not accepted as valid. Bodies containing deferred compile-time directives await directive selection before analysis.
+**Implementation status:** The Parser preserves explicit branch body forms. Control-flow analysis checks selections, loops, value-producing Labeled Blocks, lexical transfer targets, and the completion effects of explicitly registered Deferred Blocks. It also checks lexical Unsafe permission for known operations and binder-selected function references. The default type provider handles primitive literals, simple declared Types, and basic raw-pointer and contextual `null` checks. General name/overload resolution, conversions, pattern Binding, ownership, automatic destruction, Origin compatibility, and runtime cleanup generation remain planned; unresolved checks are exposed as pending obligations. Bodies containing deferred compile-time directives await directive selection before analysis.
 
 Validate results in this order:
 

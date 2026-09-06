@@ -101,7 +101,20 @@ public sealed class CodeBlockKoto : ExpressionKoto
     {
         builder.AppendLine();
         builder.IncrementIndent();
-        this.WriteTo(ref builder);
+        if (this.items.Count == 0 && this.DeclarationContext == TokenKind.Invalid)
+        {
+            // Preserve a body emptied by directive selection without emitting invalid source.
+            builder.Append("#if false");
+            builder.AppendLine();
+            builder.IncrementIndent();
+            builder.Append("()");
+            builder.DecrementIndent();
+        }
+        else
+        {
+            this.WriteTo(ref builder);
+        }
+
         builder.DecrementIndent();
     }
 

@@ -50,11 +50,39 @@ public abstract class ControlFlowTypeSystem
     /// <returns>The expected return type, or null.</returns>
     public virtual ControlFlowType? GetExpectedResultType(Koto boundary) => null;
 
+    /// <summary>Resolves a Property's default getter result from its semantics and Copy capability.</summary>
+    /// <param name="property">The Property declaration.</param>
+    /// <returns>The default read result, or null until Binding determines the applicable rule.</returns>
+    public virtual ControlFlowType? GetDefaultGetterResultType(PropertyKoto property) => null;
+
+    /// <summary>Gets the function chosen by Binding, without performing or filtering overload resolution.</summary>
+    /// <param name="expression">The function-reference expression, including a direct call's callee.</param>
+    /// <returns>The selected declaration, or null when unresolved.</returns>
+    public virtual FunctionKoto? GetReferencedFunction(Koto expression) => null;
+
+    /// <summary>Determines whether a bound operation requires lexical unsafe permission.</summary>
+    /// <param name="expression">The operation to check.</param>
+    /// <returns>The requirement, or null when operand Types or overloads remain unresolved.</returns>
+    public virtual bool? RequiresUnsafeContext(Koto expression) => null;
+
     /// <summary>Infers a common result type from reachable candidates only.</summary>
     /// <param name="sources">The reachable result sources.</param>
     /// <returns>The inferred type, or null if inference requires further Binding.</returns>
     public virtual ControlFlowType? InferResultType(IReadOnlyList<ControlFlowResultSource> sources)
-        => sources.Count == 0 || sources.Any(x => x.Type is null) ? null : sources[0].Type;
+    {
+        ControlFlowType? result = null;
+        foreach (var source in sources)
+        {
+            if (source.Type is null && KotoHelper.UnwrapParentheses(source.Node) is not NullLiteralKoto)
+            {
+                return null;
+            }
+
+            result ??= source.Type;
+        }
+
+        return result;
+    }
 
     /// <summary>Checks conversion and Origin compatibility.</summary>
     /// <param name="source">The supplied result.</param>
@@ -72,13 +100,29 @@ public abstract class ControlFlowTypeSystem
 public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
 {
     /// <inheritdoc/>
+    public override bool? RequiresUnsafeContext(Koto expression) => expression switch
+    {
+        DereferenceKoto => true,
+        ConversionKoto { Right: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe } } => true,
+        _ => null,
+    };
+
+    /// <inheritdoc/>
+    public override ControlFlowType? GetDefaultGetterResultType(PropertyKoto property)
+    {
+        var type = this.GetDeclaredType(property.TypeKoto);
+        // String ownership and generic/user-defined Copy capabilities remain unresolved.
+        return type is { Name: not ("string" or "Never") } ? type : null;
+    }
+
+    /// <inheritdoc/>
     public override ControlFlowType? GetExpressionType(Koto expression) => expression switch
     {
         UnitLiteralKoto => ControlFlowType.Unit,
         BoolLiteralKoto => ControlFlowType.Boolean,
         CharLiteralKoto { Value: not null } => new("char"),
         StringLiteralKoto or InterpolatedStringKoto => new("string"),
-        NumberLiteralKoto number => new(number.Literal.Contains('.') || number.Literal.Contains('E') ? "float literal" : "integer literal"),
+        NumberLiteralKoto number => new(number.IsInteger ? "integer literal" : "float literal"),
         ParenthesizedKoto p => this.GetExpressionType(p.Operand),
         ConversionKoto c => this.GetDeclaredType(c.Right),
         _ => null,
@@ -88,16 +132,24 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
     public override ControlFlowType? GetDeclaredType(Koto? syntax) => syntax switch
     {
         TupleTypeKoto t when t.Elements.Count == 0 => ControlFlowType.Unit,
+        TypeSemanticsKoto { Type: not null, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } t
+            when t.SemanticsKind is SemanticsKind.Unsafe or SemanticsKind.Owner && this.GetDeclaredType(t.Type) is { } core
+            => t.SemanticsKind == SemanticsKind.Unsafe ? new("unsafe/" + core.Name) : core,
         TypeSemanticsKoto t when t.SemanticsKind == SemanticsKind.Owner && t.SemanticsParameter is null &&
             t.Type is null && t.OriginName is null && t.OriginExpression is null && t.OriginArguments is null &&
             t.Identifier is "bool" or "char" or "string" or "Never" or "i8" or "i16" or "i32" or "i64" or "i128" or
-                "u8" or "u16" or "u32" or "u64" or "u128" or "f32" or "f64" => new(t.Identifier),
+                "u8" or "u16" or "u32" or "u64" or "u128" or "isize" or "usize" or "f32" or "f64" => new(t.Identifier),
         _ => null,
     };
 
     /// <inheritdoc/>
     public override bool? IsCompatible(ControlFlowResultSource source, ControlFlowType target)
     {
+        if (KotoHelper.UnwrapParentheses(source.Node) is NullLiteralKoto)
+        {
+            return target.Name.StartsWith("unsafe/", StringComparison.Ordinal);
+        }
+
         if (source.Type is null)
         {
             return null;
@@ -108,16 +160,15 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
             return true;
         }
 
+        if (source.Type.Name.StartsWith("unsafe/", StringComparison.Ordinal) || target.Name.StartsWith("unsafe/", StringComparison.Ordinal))
+        {
+            return false; // Pointer Type changes require an explicit conversion.
+        }
+
         if (source.Type.Name == "integer literal" && target.Name.Length > 1 && target.Name[0] is 'i' or 'u' &&
             int.TryParse(target.Name.AsSpan(1), out var bits))
         {
-            var text = source.Node.ToString().Replace(" ", string.Empty);
-            while (text.StartsWith('(') && text.EndsWith(')'))
-            {
-                text = text[1..^1];
-            }
-
-            if (!System.Numerics.BigInteger.TryParse(text, out var value))
+            if (!TryGetIntegerValue(source.Node, out var value))
             {
                 return null;
             }
@@ -156,5 +207,29 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
         }
 
         return null;
+    }
+
+    private static bool TryGetIntegerValue(Koto node, out System.Numerics.BigInteger value)
+    {
+        var negative = false;
+        while (node is ParenthesizedKoto or PrefixPlusKoto or PrefixMinusKoto)
+        {
+            negative ^= node is PrefixMinusKoto;
+            node = ((UnaryKoto)node).Operand;
+        }
+
+        if (node is NumberLiteralKoto literal && literal.TryGetIntegerMagnitude(out var magnitude))
+        {
+            value = (System.Numerics.BigInteger)magnitude;
+            if (negative)
+            {
+                value = -value;
+            }
+
+            return true;
+        }
+
+        value = default;
+        return false;
     }
 }

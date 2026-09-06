@@ -299,6 +299,9 @@ public enum KotoKind : byte
     /// <summary>A deferred cleanup statement with a scoped body.</summary>
     DeferredBlock,
 
+    /// <summary>A contextually typed raw-pointer null literal.</summary>
+    NullLiteral,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
