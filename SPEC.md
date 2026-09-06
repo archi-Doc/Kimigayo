@@ -2,7 +2,9 @@
 
 **Kimigayo** is a programming language designed and built from scratch with the goals of being consistent, fast, simple, fun, and safe.
 
-> **Pre-alpha status:** This document defines the intended language. The current implementation mainly covers project loading, target setup, tokenization, parsing, diagnostics, and Koto serialization. Binding, overload and type checking, generic specialization, ownership and Origin analysis, lowering, and code generation are planned unless a section says otherwise.
+> **Pre-alpha status:** This document defines the intended language. The current implementation mainly covers project loading, target setup, tokenization, parsing, and diagnostics. Binding, overload and type checking, generic specialization, ownership and Origin analysis, lowering, and code generation are planned unless a section says otherwise. Unsafe functions, Unsafe and Deferred Blocks, and value-producing Labeled Blocks specified here are planned extensions.
+
+Serialization uses SourceCode or binary artifacts, not Koto serialization. SourceCode preserves declarations for reconstruction; binary interfaces must preserve information needed by callers, including whether a function is unsafe. Artifact formats are specified separately.
 
 ```kimi
 alias Kimi.Base
@@ -942,6 +944,34 @@ At a call site, every explicit or inferred generic argument must satisfy the cor
 
 The current Parser stores leading Contract Clauses separately from executable body items and preserves deferred directives on them. It checks clause subjects against the declared generic parameters and diagnoses clauses placed after executable items. Type Contract validation during Binding and specialization is planned.
 
+### Unsafe functions
+
+An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. Calling it requires an [Unsafe Block](#unsafe-block); violating its safety contract is undefined behavior. This runtime safety contract is distinct from a Type Contract and its Contract Clauses.
+
+```kimi
+// Safety: pointer must refer to a live, initialized i32 throughout the call,
+// with valid range, alignment, provenance, and read permission.
+// Access must obey reference, aliasing, and data-race rules.
+unsafe func read(pointer: unsafe/i32) -> i32
+    unsafe: return *pointer
+
+// Safety: the same requirements as read.
+unsafe func forward(pointer: unsafe/i32) -> i32
+    unsafe:
+        return read(pointer)
+
+unsafe func invalidRead(pointer: unsafe/i32) -> i32
+    return *pointer // Error: unsafe func does not make its body an unsafe context.
+```
+
+The `unsafe` modifier is not part of the function Signature and cannot distinguish overloads. Resolve overloads normally, without filtering by the caller's unsafe context; then check whether the selected call requires that context. Never choose another overload merely because the selected function is unsafe.
+
+Initially, unsafe functions support direct calls only. Taking a function value, assigning it to a variable, passing it as an argument, or converting it to an ordinary Function Type is forbidden. Unsafe Function Types are specified separately.
+
+```kimi
+let reader = read // Error: an unsafe function cannot be taken as a function value.
+```
+
 # Declaration Containers
 
 A **Declaration Container** is a named declaration scope whose body may contain Properties, functions, Contract Clauses, or nested Declaration Containers as permitted by its kind. Its body is delimited by indentation.
@@ -1203,6 +1233,8 @@ The Type Semantics of a Property determine how the referenced or contained value
 
 ### Index, Range, and Slice
 
+This section describes indexing values with a length. [Raw pointer indexing](#pointer-arithmetic-and-indexing) instead uses signed offsets, has no implicit bounds check, and forbids from-end and Range indexing.
+
 An Index is a nonnegative `isize` value. Applying an Index with `value[index]` selects one element. The resolved Index must be less than the length of the indexed value.
 
 A prefix caret denotes an Index measured from the end. `^n` resolves to `length - n`, where `n` is a nonnegative `isize`. Therefore, `^1` selects the last element. `^0` is a valid Range boundary but is not a valid element Index. Infix `^` remains the exclusive-or operator.
@@ -1333,19 +1365,132 @@ func modifyObject(value: objuniq/Data)
 
 #### `unsafe/T`
 
-```
-unsafe/T
+`unsafe/T` is a non-owning raw pointer to storage for Core Type `T`. The pointee Type controls access and element-sized address arithmetic. The pointer is Copy regardless of whether `T` is Copy: copying or destroying a pointer neither copies nor destroys its pointee, and does not free storage.
+
+```kimi
+let first: unsafe/Foo = obtainPointer()
+let second = first // Copy the pointer, not Foo.
 ```
 
-`unsafe/T` represents an unsafe pointer to `T`.
+Holding a raw pointer does not guarantee pointee lifetime, initialization, alignment, or access permission. Safe ownership, Loan, Origin, reference, aliasing, and data-race rules remain in force, including when raw pointers access the same storage. Unsafe context permits operations the compiler cannot fully verify; it does not waive those obligations.
 
-Unlike safe ownership and borrowing semantics, `unsafe/T` is not required to satisfy the normal ownership, lifetime, aliasing, or exclusivity guarantees enforced by the language.
+Missing required unsafe context, invalid Types, and unsupported operations are compile-time errors. Violating runtime memory-safety requirements is undefined behavior; detection and runtime checks are not guaranteed.
 
-Operations involving `unsafe/T` therefore belong to the unsafe portion of the language and place additional correctness responsibilities on the programmer.
+| Operation | Unsafe Block required |
+| --- | --- |
+| Declare, hold, Copy, pass, or destroy a raw pointer | No |
+| Create a contextually typed `null` | No |
+| Equality of same-Type pointers, or a pointer and `null` | No |
+| Call an unsafe function | Yes |
+| Dereference or index a raw pointer | Yes |
+| Pointer arithmetic | Yes |
+| Pointer-to-pointer or pointer/integer conversion | Yes |
 
+#### Null and equality
+
+`unsafe/T` permits null. A `null` literal requires an expected Type that determines `unsafe/T`; otherwise it is a compile-time error. Safe references `ref/T`, `uniq/T`, `objref/T`, and `objuniq/T` are non-null. Being non-null alone does not establish raw pointer validity.
+
+```kimi
+let pointer: unsafe/i32 = null
+let unknown = null // Error: no pointer Type can be determined.
+let empty = pointer == null
 ```
-let pointer: unsafe/i32
+
+`==` and `!=` compare the addresses of two pointers with the same Type and return `bool`, without reading pointees. A comparison with `null` gives the literal the other operand's pointer Type. Null equals null and never equals a non-null pointer.
+
+Initialized pointer values may be compared even if null or dangling. Equal addresses do not imply equal provenance, ownership, or access permission. Different pointer Types require an explicit conversion to a common Type, which itself requires unsafe context. Pointer ordering comparisons are not defined.
+
+#### Dereference and ownership
+
+`*pointer` denotes a memory place of Type `T`. Forming it requires live storage covering the required range, valid alignment, and provenance; null and one-past-the-end pointers cannot be dereferenced. **Provenance** records the allocation a pointer derives from and the basis for its accesses.
+
+Actual reads require initialized, valid `T` values and read permission. Writes require write permission and must obey initialization and replacement rules. All accesses must respect reference, aliasing, and data-race rules.
+
+```kimi
+let pointer: unsafe/i32 = obtainPointer()
+unsafe:
+    let value = *pointer
+    *pointer = 10
+pointer = other // Error: the let binding cannot be reassigned.
 ```
+
+Binding mutability and pointee write permission are independent. Copy, Move, and assignment follow their normal Type rules. Moving a non-Copy pointee is allowed and leaves its source storage uninitialized. The programmer must prevent subsequent reads and double destruction through other pointers or the original owner; the compiler does not guarantee identifying that owner or suppressing its automatic destruction.
+
+```kimi
+// Foo is non-Copy; pointer refers to an initialized Foo.
+unsafe:
+    let value = *pointer // Move Foo.
+    use(value)
+    // The programmer must prevent destruction of the moved source by its old owner.
+```
+
+Replacing an initialized pointee uses normal destruction rules. Initializing uninitialized raw storage requires a separately specified operation; ordinary assignment is not a substitute.
+
+#### Pointer arithmetic and indexing
+
+For `p: unsafe/T` and `n: isize`, including negative `n`, only these arithmetic and indexing forms are supported:
+
+| Form | Meaning |
+| --- | --- |
+| `p + n` | Pointer displaced by `n * sizeof(T)` bytes. |
+| `p - n` | Pointer displaced by `-n * sizeof(T)` bytes. |
+| `p[n]` | The same memory place as `*(p + n)`. |
+
+Here `sizeof(T)` denotes storage size including padding. Arithmetic requires known layout and positive size. Compute displacement mathematically; a displacement not representable in `isize`, or address wraparound, is undefined behavior.
+
+Zero displacement returns the original pointer, including null, but still requires known layout and positive size. For nonzero displacement, the source must have valid provenance for a live allocation, and both source and result must lie within that allocation or one past its end. The result preserves provenance; coincidentally matching an address is insufficient.
+
+Arithmetic alone requires neither pointee initialization nor alignment. One-past pointers may be held and used in permitted arithmetic, but not dereferenced. Pointer indexing has no length or implicit bounds check and must meet both arithmetic and dereference requirements.
+
+```kimi
+unsafe:
+    let next = pointer + 1
+    let prev = pointer[-1]
+    pointer[10] = 123
+    pointer[^1]   // Error: no from-end indexing.
+    pointer[0..4] // Error: no Range indexing.
+```
+
+Pointer subtraction from another pointer, integer-left addition, and other pointer arithmetic are forbidden.
+
+#### Pointer conversions
+
+The `@` operator supports `unsafe/T -> unsafe/U`, `unsafe/T -> usize`, and `usize -> unsafe/T` in unsafe context. Pointer-to-pointer conversion within one address space preserves address and provenance; it does not change memory, initialization, or alignment, and does not establish permission to access the result as `U`.
+
+```kimi
+unsafe:
+    let bytes = pointer@unsafe/u8
+    let shifted = bytes + 13
+    let typed = shifted@unsafe/i32
+    // Access through typed still requires i32 alignment and a valid i32.
+```
+
+`unsafe/u8` permits byte-sized arithmetic, not reads of uninitialized memory. A cast itself does not read a pointee or require a valid, aligned value of the destination pointee Type; dereference and access do.
+
+##### Target and round-trip guarantees
+
+Initially, pointer/integer conversion is supported only for targets whose ordinary data addresses fit losslessly in `usize`, whose pointer address width, address-index width, `usize`, and `isize` widths agree, and which implement the guarantees below. Multiple address spaces and integer conversion of pointers requiring additional state, such as capabilities, are outside this initial model. Unsupported conversions are compile-time errors; concrete CPU/OS support is defined per target.
+
+Null converts to integer zero, and integer zero converts to null, without requiring an all-zero internal pointer representation. These explicit conversions still require unsafe context.
+
+A pointer-to-`usize`-to-original-pointer-Type round trip preserves its address and provenance when the integer obtained from that pointer is unchanged within the same execution and the originating allocation remains live throughout. Copying, storing, or passing that integer is allowed.
+
+```kimi
+unsafe:
+    let address = pointer@usize
+    let saved = address
+    let restored = saved@unsafe/i32
+    // Preserves address and provenance under the round-trip conditions.
+    // Initialization and access permissions must still hold when accessing memory.
+```
+
+Conversion does not extend lifetime or restore lost access permissions. Integers changed by arithmetic, coincidentally equal integers, and addresses loaded from another execution have no such provenance guarantee. Arbitrary integer-to-pointer conversion is allowed on supported targets, but its result cannot be used where valid provenance is required unless the target provides an additional applicable guarantee.
+
+##### Backend and separately specified operations
+
+`ptr` is not a Primitive Type. LLVM `ptr` is a backend representation; instructions supply the Types needed for memory access and arithmetic. Lowering must preserve this specification and use properties such as `inbounds` only when their premises hold. Language undefined behavior and LLVM poison are distinct concepts.
+
+Raw pointer acquisition APIs, allocation and deallocation, initialization of raw storage, conversion to or from safe references, ownership acquisition, and Unsafe Function Types are specified separately. Example functions such as `obtainPointer` and `use` are illustrative, not standard API declarations.
 
 ## Copy and Move
 
@@ -1870,6 +2015,7 @@ Evaluation Context
 Control Boundary
     Function Boundary
     Labeled Block Boundary
+    Deferred Control Boundary
     Iteration Boundary
         for
         while
@@ -1897,11 +2043,11 @@ The collective term **Iteration Construct** means `for`, `while`, or `loop`; an 
 | Control Transfer | Role |
 | --- | --- |
 | `return` | End the current function and supply its result. |
-| `exit` | End the nearest Iteration Construct, or the enclosing Block or Iteration Construct named by `from Label`. |
+| `exit` | End the nearest Iteration Construct or Deferred Block, or the enclosing Labeled Block or Iteration Construct named by `from Label`. |
 | `continue` | Start the next iteration of the nearest Iteration Construct, or the one named by `Label`. |
 | `yield` | End the nearest enclosing selection and supply its result. |
 
-An unlabeled `exit` skips Labeled Blocks. Of the possible `exit` targets, only `loop` accepts a result operand, in both Value Context and Discard Context. The language uses `exit` for iteration termination; `break` is not used.
+An unlabeled `exit` skips Labeled Blocks. A `loop` or explicitly named Labeled Block can receive a result operand in either Evaluation Context. A Deferred Block accepts only operandless `exit` directed at itself. No transfer may cross a Deferred Control Boundary. The language uses `exit` for iteration termination; `break` is not used.
 
 ```kimi
 func calculate() -> i32
@@ -1930,27 +2076,231 @@ func calculate() -> i32
 
 ## Completions
 
-**Normal completion**, represented by `Normal(result)`, means that an expression or construct produces a result and returns control to its evaluator. **Abrupt completion** is a `Return`, `Exit`, `Continue`, or `Yield` directed at a resolved lexical target. A transfer expression does not complete normally, even when its target subsequently does.
+**Normal completion**, represented by `Normal(result)`, means that an expression or construct finishes and returns control to its evaluator. A statement's normal Completion uses Unit without making that statement a value-producing expression. **Abrupt completion** is a `Return`, `Exit`, `Continue`, or `Yield` directed at a resolved lexical target. A transfer expression does not complete normally, even when its target subsequently does.
 
 An operandless `return` or `exit` supplies Unit, so the corresponding Completion always contains a result. Whether a source-level operand is required or forbidden is checked separately. `Continue` has no result.
 
-A boundary handles a Completion directed at itself and propagates other Completions after the required [scope-exit destruction](#scope-exit-destruction). For example, a `loop` handles `Exit(self, result)` by completing with `Normal(result)`, and a selection handles `Yield(self, result)` in the same way. An Iteration Construct handles `Continue(self)` by proceeding to its next iteration. A Function Boundary handles `Return(self, result)` by delivering the secured function result to its caller. These rules apply only to valid transfer targets.
+A boundary handles a Completion directed at itself and propagates other valid Completions after the required [Scope Exit](#scope-exit-destruction) processing. A `loop` or Labeled Block handles `Exit(self, result)` by completing with `Normal(result)`; a selection similarly handles `Yield(self, result)`. A Deferred Block catches its own `Exit(self, ())`, finishes its body's cleanup, and resumes the pending Scope Exit. An Iteration Construct handles `Continue(self)` by proceeding to its next iteration. A Function Boundary handles `Return(self, result)` by delivering the secured result to its caller. These rules apply only to valid transfer targets.
 
 **Divergence** means that evaluation never finishes and produces no Completion. Under the broader term **Evaluation Outcome**, Completion and divergence are distinct cases. Never is a static Type describing the absence of normal completion; it is neither a Completion variant nor a synonym for divergence.
 
 ## Blocks and evaluation contexts
 
-A **Block** is an indentation-delimited sequence of declarations and expressions evaluated in order. An ordinary Block discards expression values, including the last, and produces Unit on reaching its end. Empty Blocks and Blocks ending in a declaration behave the same way. Nesting an ordinary Block adds no control-transfer target. Constructs with their own result rules, such as result-requiring branches, apply those rules instead. Function bodies follow [Functions](#function-bodies-and-results).
-
-A **Labeled Block** produces Unit when it reaches its end or catches an `exit from Label` directed at itself. It discards its trailing expression and never accepts an `exit` operand, including `()`. Paths that leave for an outer target or never finish produce no result for that Block.
+A **Block** is an indentation-delimited sequence of declarations, expressions, and statements evaluated in order. An ordinary Block completes with Unit on reaching its end; empty Blocks and Blocks ending in a declaration behave the same way. Nesting an ordinary Block adds no control-transfer target. Constructs with their own result rules apply those rules instead. Function bodies follow [Functions](#function-bodies-and-results).
 
 A **Value Context** is a syntactic position that uses an expression's value: an initializer, operand, argument, condition, `match` subject, `return` / `exit` / `yield` operand, or Expression body introduced by `=>`. It remains a Value Context even when the expected Type is Unit or the result is subsequently unused. Reachability, constant evaluation, and optimization do not change it.
 
-A **Discard Context** evaluates an expression and discards its normal result. It does not impose Unit as the expression's result Type, suppress Type checking, or remove ownership and destruction responsibilities for the discarded result. Direct expressions in ordinary Blocks, Labeled Blocks, Iteration Construct bodies, Block-bodied branches, and Block-bodied functions use this context, including the final expression. Nested Value Contexts remain intact.
+A **Discard Context** evaluates an expression and discards its normal result. It does not impose Unit as the expression's result Type, suppress Type checking, or remove ownership and destruction responsibilities for the discarded result. Expressions placed directly in ordinary, Labeled, Unsafe, or Deferred Block bodies, Iteration Construct bodies, Block-bodied branches, and Block-bodied functions use this context, including the final expression. Initializers, arguments, operands, and other nested positions retain their normal Evaluation Contexts.
 
 An expression determines its result; its Evaluation Context determines whether that result is consumed or discarded. A `loop` accepts result operands in either context. Selections follow the unified [Result-requiring Selection](#branch-results) rules.
 
 A trailing semicolon does not change an expression's Evaluation Context or whether an Expression body supplies an implicit result. Body form, not the number of direct expressions or declarations, determines the branch result rule.
+
+### Block constructs
+
+The following constructs give a Block a name, an unsafe context, or deferred execution:
+
+```text
+Block
+    Labeled Block    Label:
+    Unsafe Block    unsafe:
+    Deferred Block  defer:
+```
+
+| Construct | Category | Execution and result |
+| --- | --- | --- |
+| Labeled Block | Expression; also usable in Discard Context | Execute now; receive a result through `exit value from Label`. |
+| Unsafe Block | Block Statement | Execute now with unsafe permission; no expression result. |
+| Deferred Block | Block Statement | Register now and execute at Scope Exit; no expression result. |
+
+A **Block Statement** is a statement with a scoped body, not an expression. Unsafe and Deferred Blocks are allowed only in executable bodies, not directly in Declaration Containers. Both have an indented multiline form and a single-line form containing one [InlineStatement](#inlinestatement). Both forms create an independent body scope and have the same evaluation and cleanup rules.
+
+At statement start, contextual keywords `unsafe:` and `defer:` take precedence over Label parsing. Neither declares a Label. `unsafe/T` remains Type Semantics syntax and `unsafe func` a function declaration modifier; outside their special contexts these spellings follow normal Name rules.
+
+### InlineStatement
+
+An **InlineStatement** is one statement completed on a single line without a following indented Block.
+
+| Form | Requirement |
+| --- | --- |
+| An expression used as a statement, such as a call or assignment | The complete expression fits on that line. |
+| A local `let` or `var` declaration | The complete declaration fits on that line. |
+| `return`, `exit`, `continue`, or `yield` | Normal target, operand, and boundary rules apply. |
+| Single-line `unsafe:` or `defer:` | Its body is recursively an InlineStatement. |
+
+Function and Declaration Container declarations, Labeled Blocks, and constructs requiring a following indented Block are excluded. A trailing semicolon follows normal rules, but multiple semicolon-separated statements are not allowed in one inline body. In nested forms, the right-hand statement is the body of the immediately preceding colon.
+
+```kimi
+unsafe: unsafeOperation()
+defer: close()
+defer: unsafe: releaseRaw(pointer)
+defer: defer: log("nested")
+defer: exit // Valid: end this Deferred Block when it executes.
+
+let result = unsafe: unsafeOperation() // Error: not an expression.
+let result = defer: close()           // Error: not an expression.
+defer: close(); log("done")           // Error: two statements.
+defer: return                        // Error: crosses the Deferred Control Boundary.
+defer: if condition                  // Error: requires a following Block.
+    cleanup()
+```
+
+Use the multiline form for such a branch. `defer: unsafe: releaseRaw(pointer)` is equivalent to a Deferred Block containing an Unsafe Block whose body calls `releaseRaw(pointer)`.
+
+### Labeled Block
+
+A Labeled Block begins with `Label:` followed by its indented body on the next line. It receives a result only from an `exit` explicitly targeting that Label. Its trailing expression never implicitly supplies a result, and unlabeled exits still skip it.
+
+A **Result-requiring Labeled Block** either occurs in Value Context, including when Unit is expected, or has a result-bearing `exit` lexically targeting it. Classify it after target lookup and before reachability analysis. Only exits whose resolved target is this Block count, including those written inside nested constructs; results supplied to other targets do not count.
+
+Every reachable path completing that Block must supply an explicit `exit expression from Label`. Use `exit () from Label` for Unit. Falling through is an error, and an operandless self-targeted exit is forbidden, including in unreachable code. Paths leaving for an outer target or never completing need no result for this Block. Follow the common [result validation](#result-validation) rules for Type inference and compatibility, including in Discard Context.
+
+```kimi
+let result = resolve:
+    if cached()
+        exit cachedValue() from resolve
+    let value = calculate()
+    if acceptable(value)
+        exit value from resolve
+    exit fallback() from resolve
+
+let missing = work:
+    if ready()
+        exit 1 from work
+    // Error: reachable fall-through has no result.
+
+let unit: () = work:
+    process()
+    exit () from work
+
+work:
+    exit 1 from work
+    exit "text" from work // Error: incompatible even though unreachable and discarded.
+```
+
+A Labeled Block that does not require a result occurs in Discard Context and has no result-bearing self-targeted exit. It completes with Unit on fall-through or `exit from Label`. A Labeled Block with no reachable normal completion has Expression Type Never; missing required results are errors, not a reason to infer Never.
+
+### Unsafe Block
+
+An **Unsafe Block** executes its body immediately with permission for [unsafe operations](#unsafe). It is a statement and cannot appear as an initializer, argument, or other expression operand, in either body form. It creates no Control Boundary and does not intercept transfer lookup. Its body follows ordinary Evaluation Context and Scope Exit rules.
+
+```kimi
+work:
+    unsafe:
+        if finished()
+            exit from work
+        unsafeOperation()
+```
+
+The implementer must establish safety through runtime checks, internal invariants, or the enclosing unsafe function's documented contract. An Unsafe Block adds no conditions to a safe caller. A safe function must not silently require its caller to meet unchecked memory-safety conditions; a raw address or null check alone cannot establish safe access.
+
+Unsafe permission extends lexically into nested Blocks, including Deferred Blocks, but not across a Function Boundary. Normal Type, ownership, and borrowing checks still apply.
+
+```kimi
+unsafe:
+    func inner(pointer: unsafe/i32) -> i32
+        return *pointer // Error: inner needs its own Unsafe Block.
+```
+
+### Deferred Block
+
+A **Deferred Block** registers cleanup when execution reaches `defer`, without evaluating its body, arguments, conditions, or initializers. It has no result value and returns no value to the outside. Expressions within it use their normal positional Evaluation Contexts.
+
+The registration belongs to the innermost executable scope directly containing the statement: a function body, branch or arm Block, current iteration body, Labeled or Unsafe Block, or executing Deferred Block body. It is not automatically function-wide. Unreached registrations do not run; each iteration registers and cleans up independently. Cancellation and manual invocation of a registration are not provided.
+
+```kimi
+func process(flag: bool)
+    defer: log("function end")
+    if flag
+        defer: log("branch end")
+        work()
+    log("after branch")
+```
+
+For true `flag`, output is `branch end`, `after branch`, then `function end`. Deferred execution and automatic destruction share the [Scope Exit ordering](#scope-exit-destruction).
+
+#### Deferred Control Boundary
+
+Each Deferred Block establishes a **Deferred Control Boundary**. Transfer lookup cannot cross it. Unlike a Function Boundary, it accepts only operandless `exit` directed at itself, including through nested ordinary or Unsafe Blocks. Result operands, including `()`, are forbidden for this target.
+
+An unlabeled `exit` targets the nearest Iteration Construct or Deferred Block. Consequently, exits and continues of an inner loop retain their normal meaning, as do results of inner selections and Labeled Blocks. A `return` to an outer function, a named transfer to an outer construct, or a `yield` to an outer selection is an error. A separate nested function retains its own Function Boundary and normal returns.
+
+```kimi
+defer:
+    defer: log("cleanup body end")
+    if alreadyClosed()
+        exit // Ends this body; its nested defer and remaining outer cleanup still run.
+    close()
+
+defer:
+    for value in values
+        if skip(value)
+            continue // Targets the inner for.
+        if done(value)
+            exit     // Targets the inner for, not the Deferred Block.
+    let message = if failed()
+        yield "failed"
+    else
+        yield "done"
+    log(message)
+```
+
+Early `exit` finishes the current body's cleanup and then resumes the pending outer Scope Exit; it neither cancels other registrations nor replaces a pending return value or transfer. Nested Deferred Blocks cannot transfer across their own boundary to a target in an outer Deferred Block. These restrictions apply even in unreachable code.
+
+```kimi
+defer:
+    exit () // Error: a Deferred Block accepts no result operand.
+```
+
+#### Deferred evaluation and ownership
+
+Resolve Names in the lexical scope at the registration's source position. Later local declarations are not visible and cannot change an earlier binding. Registration does not implicitly Copy or Move referenced locals or create a closure value; accesses occur when the body executes and observe the then-current bindings.
+
+```kimi
+var count: i32 = 1
+let saved = count
+defer: log(saved) // Explicit snapshot: prints 1.
+defer: log(count) // Reads at execution: prints 2 first.
+count = 2
+```
+
+Check initialization, Copy/Move, Loan, Origin, and destruction responsibility on every applicable exit path, including deferred uses in borrow lifetimes. Registration alone does not borrow all referenced values. Later operations are allowed if they remain compatible with the eventual cleanup.
+
+```kimi
+// Resource is non-Copy; inspect borrows, consume moves.
+let resource = makeResource()
+defer: inspect(resource)
+consume(resource) // Error: cleanup would access a moved value.
+
+let other = makeResource()
+defer: inspect(other)
+defer: consume(other) // Error: executes before inspect and moves its input.
+```
+
+A valid Move during cleanup removes subsequent automatic destruction responsibility. Raw pointer operations retain their programmer-managed obligations; `defer` does not repair double destruction or extend raw pointer validity. Secured result borrows must remain valid after all cleanup.
+
+#### Nested and unsafe cleanup
+
+An inner `defer` registers while its enclosing Deferred Block executes and runs when that body exits, before the original scope's remaining cleanup. It cannot add a registration to an outer scope already being exited.
+
+```kimi
+defer:
+    defer: log("inner end")
+    log("outer body") // Prints before inner end.
+
+defer: unsafe: releaseRaw(pointer) // Runs at the directly containing scope's exit.
+unsafe:
+    defer: releaseRaw(other)      // Runs at this Unsafe Block's exit.
+    useRaw(other)
+```
+
+A Deferred Block does not itself grant unsafe permission. Permission follows the operation's lexical context, never its later caller, and does not cross Function Boundaries. Safety conditions must hold when the delayed operation executes.
+
+#### Implementation model
+
+Keep registration and body execution distinct in control-flow analysis. A non-completing body does not make the statement immediately after its registration unreachable; analyze its completion on actual cleanup paths. Lower registration and destruction into a common exit sequence, retaining registration state only where needed. A dynamic closure, function value, or heap cleanup stack is not required.
+
+For `if condition` containing only `defer: cleanup()`, a true branch registers and runs cleanup before leaving that branch; false registers nothing. No registration flag is needed in this simple case, and Lowering must not move cleanup into the surrounding scope. Example cleanup functions are illustrative, not standard API declarations.
 
 ## Labels
 
@@ -1970,7 +2320,7 @@ search: loop
     process()
 ```
 
-A Labeled Block places its indented body after `Label:` on the next line. A labeled Iteration Construct uses `Label: for ...`, `Label: while ...`, or `Label: loop`. Labels do not change an Iteration Construct's result rules; a labeled `loop` may appear in Value Context:
+A labeled Iteration Construct uses `Label: for ...`, `Label: while ...`, or `Label: loop`. Unlike a [Labeled Block](#labeled-block), adding a Label to an Iteration Construct does not change its result rules; a labeled `loop` may appear in Value Context:
 
 ```kimi
 var result = outer: loop
@@ -1981,7 +2331,7 @@ var result = outer: loop
 
 Labels follow the character rules for [Names](#name) and have a namespace separate from those of variables and Types. Labels with the same Name and overlapping scopes in one function are invalid.
 
-A Label is visible only inside its construct's body, excluding its `for` iterable or `while` condition. It may identify only an enclosing construct in the same Function Boundary. Sibling, inner, and other-function Labels are inaccessible. A Label names a construct, not an instruction address: jumping into a body or back to a completed construct is not supported.
+A Label is visible only inside its construct's body, excluding its `for` iterable or `while` condition. A transfer may identify only an enclosing construct in the same Function Boundary without crossing a Deferred Control Boundary. Sibling, inner, and other-function Labels are inaccessible. A Label names a construct, not an instruction address: jumping into a body or back to a completed construct is not supported.
 
 ## Control transfers
 
@@ -1999,7 +2349,9 @@ Brackets indicate optional syntax. `exit name` uses `name` as a result expressio
 | Operation and target | Result operand |
 | --- | --- |
 | `return` to a function | Optional; omission supplies Unit. |
-| `exit` to a Labeled Block, `for`, or `while` | Forbidden; the target completes with Unit. |
+| `exit` to a Result-requiring Labeled Block | Required; use `exit () from Label` for Unit. |
+| `exit` to another Labeled Block | Omitted; an explicit operand makes the Block Result-requiring. |
+| `exit` to `for`, `while`, or a Deferred Block | Forbidden, including `()`; the target completes with Unit. |
 | `exit` to a `loop` in either Evaluation Context | Optional; omission supplies Unit. |
 | `continue` to an Iteration Construct | Forbidden. |
 | `yield` to a Selection Boundary | Required; use `yield ()` for Unit. |
@@ -2012,18 +2364,18 @@ Resolve targets by walking outward through lexical containment. Resolve the targ
 
 | Operation | Target without a Label | Named target | Stop before finding a target |
 | --- | --- | --- | --- |
-| `return` | Nearest Function Boundary | Not allowed | Error if none exists. |
-| `exit` | Nearest Iteration Construct | Enclosing Labeled Block or Iteration Construct named by `from Label` | Error at a Function Boundary. |
-| `continue` | Nearest Iteration Construct | Enclosing Iteration Construct named by `Label` | Error at a Function Boundary. |
-| `yield` | First enclosing Selection Boundary (`if` / `match`) | Not allowed | Error at an Iteration Boundary or Function Boundary. |
+| `return` | Nearest Function Boundary | Not allowed | Error at a Deferred Control Boundary or if no function exists. |
+| `exit` | Nearest Iteration Construct or Deferred Block | Enclosing Labeled Block or Iteration Construct named by `from Label` | Error at a Function Boundary; a named lookup also stops at a Deferred Control Boundary. |
+| `continue` | Nearest Iteration Construct | Enclosing Iteration Construct named by `Label` | Error at a Function or Deferred Control Boundary. |
+| `yield` | First enclosing Selection Boundary (`if` / `match`) | Not allowed | Error at an Iteration, Function, or Deferred Control Boundary. |
 
 Failure to find a target is an error. A named target must be of the required kind; `continue work` is invalid if `work` names a Block.
 
 A construct acts as a target or lookup stop only inside its body. Its own condition, iterable expression, or `match` subject does not acquire that construct's boundary.
 
-Ordinary Blocks never stop lookup. A Labeled Block is an `exit` target only when explicitly named; otherwise it is transparent to every transfer. An `if` / `match` never stops `return`, `exit`, or `continue` lookup. A `yield` targets the first encountered Selection Boundary. A `yield` resolving to a Selection Boundary makes that selection Result-requiring, regardless of reachability or Evaluation Context. It never retargets an outer selection because the inner selection lacks `else`, fails coverage, or has an incompatible result Type.
+Ordinary and Unsafe Blocks never stop lookup. A Labeled Block is an `exit` target only when explicitly named; otherwise it is transparent to every transfer. An `if` / `match` never stops `return`, `exit`, or `continue` lookup. A `yield` targets the first encountered Selection Boundary. A `yield` resolving to a Selection Boundary makes that selection Result-requiring, regardless of reachability or Evaluation Context. It never retargets an outer selection because the inner selection lacks `else`, fails coverage, or has an incompatible result Type.
 
-Named `exit` and `continue` may cross intervening Iteration Constructs and Blocks within the same function. No transfer searches beyond a Function Boundary.
+Named `exit` and `continue` may cross intervening Iteration Constructs and ordinary, Labeled, or Unsafe Blocks within the same function. No transfer searches beyond a Function Boundary or across a Deferred Control Boundary. Operand checks never change the selected target: `exit 1` directed at a Deferred Block is an error, not an exit to an outer loop.
 
 ```kimi
 var result = loop
@@ -2313,12 +2665,12 @@ Adding direct expressions before the `yield` does not change this result rule or
 
 A transfer supplies a result only to its resolved target. Function results follow [Functions](#function-bodies-and-results); Blocks, Iteration Constructs, and branches use their result sources defined above. Discard Context does not exempt a construct from result validation.
 
-**Implementation status:** The Parser preserves explicit branch body forms. Control-flow analysis resolves lexical transfers, classifies Result-requiring Selections, follows reachability, and checks coverage and available result Types. The default type provider handles primitive literals and simple declared Types. General name/overload resolution, numeric conversions, pattern Binding, and Origin compatibility still require Binding; unresolved checks are exposed as pending obligations, not accepted as valid. Bodies containing deferred compile-time directives await directive selection before analysis.
+**Implementation status:** The current Parser preserves explicit branch body forms, and control-flow analysis checks existing selections and loops. Value-producing Labeled Blocks, Unsafe and Deferred Blocks, and their extended target and cleanup rules are planned. The default type provider handles primitive literals and simple declared Types. General name/overload resolution, numeric conversions, pattern Binding, and Origin compatibility still require Binding; unresolved checks are exposed as pending obligations, not accepted as valid. Bodies containing deferred compile-time directives await directive selection before analysis.
 
 Validate results in this order:
 
-1. Determine Evaluation Contexts and body forms, resolve transfer targets, and check syntax, Names, operand presence, and local Type correctness without excluding unreachable code. Classify Result-requiring Selections and enforce their exhaustiveness requirements.
-2. Apply [reachability](#reachability) analysis to result sources and paths leaving each construct. Collect result candidates only from reachable paths. A transfer whose operand cannot complete normally supplies no result to its original target.
+1. Determine Evaluation Contexts and body forms, resolve transfer targets, and classify Result-requiring Selections and Labeled Blocks without excluding unreachable code. Check syntax, Names, operand presence, and local Type correctness. Enforce selection exhaustiveness requirements.
+2. Apply [reachability](#reachability) analysis to result sources, required Scope Exit processing, and paths leaving each construct. Collect result candidates only from reachable result-delivery paths. A transfer whose operand or required cleanup cannot complete normally supplies no result to its original target.
 3. Check result coverage: reject any reachable path that reaches an end requiring a result without supplying one. Where a construct implicitly supplies Unit, include that Unit as a candidate only when the path is reachable. A non-Unit Block-bodied function may not fall through.
 4. Determine the Target Result Type as described below, independently of whether the construct's Expression Type is Never. Unreachable result sources do not contribute candidates or constraints to inference.
 5. When a Target Result Type is available, check every explicit result operand and implicit Expression-body result against it, including in unreachable code. Operandless `return` and `exit` supply Unit. Apply normal conversion and Origin compatibility rules. A source that cannot itself complete normally supplies no value to compare; its local operations and any transfers inside it are still checked.
@@ -2327,7 +2679,7 @@ Paths that leave a construct for an outer target or never complete supply no res
 
 ### Expression Type and Target Result Type
 
-The **Expression Type** describes the value of a normally completing expression. A `loop` or selection with no reachable path completing with its own result has Expression Type Never. Missing required results are errors, not a reason to infer Never.
+The **Expression Type** describes the value of a normally completing expression. A `loop`, selection, or Labeled Block with no reachable path completing with its own result has Expression Type Never. Missing required results are errors, not a reason to infer Never. Unsafe and Deferred Blocks are statements and have no Expression Type; their body completion is analyzed separately.
 
 The **Target Result Type** constrains results supplied to a control boundary. Determine it from an explicit declaration or an expected Type, or infer it from reachable result candidates using normal type-inference and conversion rules. Expected Types must propagate to result sources even when the construct's Expression Type is Never.
 
@@ -2376,13 +2728,14 @@ Reachability is determined statically within each Function Boundary. Treat a pat
 
 - Follow evaluation order, branches, Iteration Constructs, and resolved transfers. A statically non-completing expression has no edge to the next sequential element.
 - Follow the continuation of a construct that catches a transfer, such as the code after a Labeled Block ended by `exit`, or an expression consuming a yielded result.
+- A `defer` registration does not execute its body. Analyze registered bodies on the Scope Exit paths that reach them; a non-completing cleanup prevents subsequent cleanup and delivery of the pending transfer or result. An exit caught by the Deferred Block finishes that body's cleanup before resuming the pending Scope Exit.
 - Prune condition outcomes only for Boolean literals `true` and `false`, optionally parenthesized, in `if`, `else if`, and `while`. Otherwise, consider both outcomes when condition evaluation completes normally.
 - Do not prune additional paths through constant propagation, analysis of called function bodies, or general constant folding.
 - Do not prune `for` paths using iterable values or `match` arms using constant subjects. Analyze each arm; pattern exhaustiveness determines whether an unmatched path exists.
 
 Reachability affects **result candidate collection**, **result inference**, and **result coverage**. It does not exempt code from **local Type correctness** checks. When a Target Result Type is available, unreachable result sources are checked against it under the same compatibility rules as reachable result sources. This also applies to implicit Expression-body results, so replacing `yield expression` with `=> expression` does not bypass Type checking.
 
-The compatibility rules above apply whenever a Target Result Type is available. Without one, syntax, Names, transfer targets, operand presence, local Type correctness, and Result-requiring Selection classification are still checked.
+The compatibility rules above apply whenever a Target Result Type is available. Without one, syntax, Names, transfer targets, operand presence, local Type correctness, and Result-requiring classification are still checked.
 
 ```kimi
 var result = loop
@@ -2405,23 +2758,68 @@ In each example, the unreachable expression or transfer is locally valid, but it
 
 ## Scope-exit destruction
 
-When `return`, `exit`, `continue`, or `yield` leaves lexical scopes, destroy each initialized owned value for which a departing scope still has destruction responsibility. Skip moved, uninitialized, and already destroyed values. Responsibility is independent of future-use liveness: a value whose last use has passed must still be destroyed if its scope retains responsibility.
+**Scope Exit** combines registered Deferred Blocks and automatic destruction. It applies both to ordinary scope completion and to scopes left by `return`, `exit`, `continue`, or `yield`.
 
 Ownership, temporary-lifetime, and construct-lifetime rules determine each value's owning scope and destruction point. These rules also govern temporaries, `for` iterables and iterators, iteration bindings, `match` subjects, and owned function parameters. A transfer uses those scopes to determine what it leaves.
 
-For a transfer with a result operand:
+### Cleanup order
+
+Process departing scopes from inner to outer, completing one scope's cleanup before the next. Within one scope, combine local declaration positions and `defer` statement positions into a single lexical order, then process it in reverse. Later initialization or reassignment does not change a binding's original position.
+
+At each position, execute a Deferred Block only if registered; destroy a value only if initialized and the scope still owns its destruction responsibility. Skip moved and already destroyed values. Responsibility is independent of future-use liveness: a value still owned by the scope must be destroyed even after its last use.
+
+```kimi
+let first = makeResource("first")
+defer: log("A")
+let second = makeResource("second")
+defer: log("B")
+```
+
+Cleanup order is `B`, destruction of `second`, `A`, destruction of `first`. Deferred Blocks therefore run in reverse registration order.
+
+Bindings introduced at scope entry, such as parameters, `self`, iteration bindings, and pattern bindings, precede the body's statements. Explicit bindings in one parameter list or pattern are ordered left to right and destroyed in reverse order. Explicit `self` follows its written position; individual construct specifications place implicit bindings. These positions do not confer ownership or change the bindings' owning scopes.
+
+```kimi
+func process(first: Resource, second: Resource)
+    defer: log("end")
+```
+
+If both parameters retain owned values, cleanup is `end`, destruction of `second`, then destruction of `first`. Borrowed bindings do not cause destruction of their pointees. Similarly, a defer inspecting an iteration binding runs before that binding's remaining owned value is destroyed.
+
+### Results and transfers
+
+For a transfer with a result operand, or an implicit Expression-body result:
 
 1. Evaluate the operand.
 2. Secure the result using normal Copy / Move rules.
-3. Destroy values in departing scopes.
-4. Deliver the result and complete the target's termination or continuation.
+3. Destroy temporaries whose normal lifetime ends at completion of that result expression.
+4. Run Deferred Blocks and automatic destruction in departing scopes, in the common cleanup order.
+5. Deliver the secured result and complete the target's termination or continuation.
 
-Without an operand, omit the first two steps. A moved result is not destroyed again at its source; a copied result leaves the source's destruction responsibility intact. Implicit results from Expression bodies are also secured before scope destruction.
+Other temporaries are processed at the scopes and positions set by normal lifetime rules; merely being absent from the result is not a reason for earlier destruction. Without a result operand, omit result-related work. If evaluating the operand causes another transfer, process that actual transfer instead of completing the original one.
 
-The original transfer completes only if all required destruction completes normally. Nonterminating destruction prevents completion even when a result has been secured. If exceptions or abnormal termination are provided, common abnormal-exit rules govern remaining destruction and the secured result.
+A moved result is not destroyed again at its source; a copied result leaves the source's destruction responsibility intact. Deferred execution cannot replace the secured result, although ordinary effects on shared objects remain possible.
 
-Destroy departing scopes from inner to outer. Within one scope, process local bindings in reverse declaration order, skipping values without remaining responsibility. Later initialization does not change that order. The same ordering applies to ordinary scope completion.
+```kimi
+func answer() -> i32
+    var value: i32 = 1
+    defer: value = 2
+    return value // Returns the already copied 1.
 
-Destroy only values in scopes actually left. A `continue` leaves the current iteration's departing scopes but preserves values in scopes retained for the target Iteration Construct's continuation. Named transfers apply the same rules to every intervening scope they leave.
+func take() -> Resource
+    let resource = makeResource()
+    defer: inspect(resource) // inspect borrows; Resource is non-Copy.
+    return resource // Error: cleanup would access the moved source.
+```
 
-Normal ownership, borrowing, and [Drop checking](#drop-checking) apply at every destruction point. Securing a result first does not permit a borrow of a destroyed local to escape its valid lifetime. If partial initialization or partial Move is permitted by the ownership rules, destroy the parts with remaining responsibility under those rules; do not simply exclude the whole aggregate.
+Process only scopes actually left. A `continue` cleans up the departing scopes of the current iteration before the next iteration, while retaining outer scopes needed for continuation. Named transfers apply the same rule to all intervening scopes they leave. An exit from a Deferred Block performs its body's nested cleanup and resumes the pending outer cleanup sequence.
+
+Normal ownership, borrowing, and [Drop checking](#drop-checking) apply throughout cleanup. Securing a result first does not permit a borrow of a destroyed local to escape. If partial initialization or partial Move is permitted, destroy parts with remaining responsibility rather than excluding the whole aggregate. Raw pointer access does not guarantee automatic tracking of the original owner's destruction responsibility.
+
+### Completion and abnormal termination
+
+Consume a Deferred Block's registration when its execution starts. Each registration executes once if cleanup reaches it; an inner defer registers in the executing body's own scope, never in an outer scope already being exited.
+
+The pending transfer or result delivery completes only after all required cleanup completes normally. Nonterminating deferred execution or destruction prevents remaining cleanup and the original transfer from completing; general termination proofs are not required.
+
+Forced process termination and undefined behavior provide no cleanup guarantee. Exceptions, panic, cancellation, and stack unwinding, if introduced, require separately defined common rules for Deferred Blocks, destruction, and secured results. This specification does not by itself guarantee cleanup under those mechanisms.
