@@ -10,6 +10,16 @@
   + Name="ConditionMustBeBool_Kd"
     Message="The condition expression must be of type Bool"
 
+  + Name="EmptyExecutableBlock_Kd"
+    Message="An executable Block requires at least one Syntax item"
+    Fix="Indent the intended body, or write () to explicitly do nothing"
+
+  + Name="BlockStatementInExpression_Kd"
+    Message="Unsafe and Deferred Blocks are statements and cannot be used as expressions"
+
+  + Name="InvalidInlineStatement_Kd"
+    Message="An inline body requires one complete statement on the same line, without a following Block"
+
   + Name="CompileTimeCaseFallbackMustBeLast_Kd"
     Message="#case _ must be the final arm in a Case Group"
 

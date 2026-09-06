@@ -293,6 +293,12 @@ public enum KotoKind : byte
     /// <summary>A tuple value expression.</summary>
     TupleLiteral,
 
+    /// <summary>An unsafe statement with a scoped body.</summary>
+    UnsafeBlock,
+
+    /// <summary>A deferred cleanup statement with a scoped body.</summary>
+    DeferredBlock,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }

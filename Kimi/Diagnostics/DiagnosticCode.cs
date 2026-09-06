@@ -63,6 +63,10 @@ public enum DiagnosticCode
 
     MissingReturnType_Kd,
 
+    EmptyExecutableBlock_Kd,
+    BlockStatementInExpression_Kd,
+    InvalidInlineStatement_Kd,
+
     Count, // Last sentinel
 }
 

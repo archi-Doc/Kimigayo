@@ -298,7 +298,7 @@ public class ParserRegressionTest
     [Fact]
     public void AppliesSemanticsToCompoundType()
     {
-        var (root, diagnostics) = Parse("func F(value: objref/SomeType<List<owner/T>, I>)");
+        var (root, diagnostics) = Parse("func F(value: objref/SomeType<List<owner/T>, I>) => ()");
 
         Assert.Empty(diagnostics);
         var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
@@ -315,7 +315,7 @@ public class ParserRegressionTest
     [InlineData("SomeType<T> from collection", "collection")]
     public void ParsesAndWritesTypeOrigin(string typeText, string expectedOrigin)
     {
-        var (root, diagnostics) = Parse($"func F(value: {typeText})");
+        var (root, diagnostics) = Parse($"func F(value: {typeText}) => ()");
 
         Assert.Empty(diagnostics);
         var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());

@@ -192,7 +192,7 @@ public sealed class FunctionKoto : IdentifiableKoto
         reader.TrySkipSeparatorsTo(TokenKind.StartBlock);
         if (reader.CurrentTokenKind != TokenKind.StartBlock)
         {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            reader.Diagnostic.Add(this.Span, DiagnosticCode.EmptyExecutableBlock_Kd);
             return;
         }
 

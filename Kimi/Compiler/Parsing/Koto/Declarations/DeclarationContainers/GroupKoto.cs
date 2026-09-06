@@ -73,7 +73,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
             var compileTimeIfPrefixes = reader.TakeCompileTimeIfPrefixes();
             if (isExcluded)
             {
-                Parser.SkipExcludedSyntax(ref reader);
+                Parser.SkipExcludedSyntax(ref reader, executableContext: true);
                 continue;
             }
 
@@ -152,7 +152,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
             }
 
             var oldPosition = reader.Position;
-            var item = Parser.ParseBlockItem(ref reader, out var isDeclaration, requiresFunctionBody: false);
+            var item = Parser.ParseBlockItem(ref reader, out var isDeclaration);
             var hasTrailingExpression = !isDeclaration;
             if (reader.CurrentTokenKind == TokenKind.Semicolon)
             {

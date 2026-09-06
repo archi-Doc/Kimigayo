@@ -144,7 +144,7 @@ public class ParserOptimizationTest
     {
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
-        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#First(1) func Run()\n#Second(2) func Other()");
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#First(1) func Run() => ()\n#Second(2) func Other() => ()");
         Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
         var functions = kotonoha.GeneratedFunction!.Body!.Items.Cast<FunctionKoto>().ToArray();
         var attribute = functions[0].AttributeChain!;

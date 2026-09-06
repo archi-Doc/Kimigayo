@@ -2,7 +2,7 @@
 
 **Kimigayo** is a programming language designed and built from scratch with the goals of being consistent, fast, simple, fun, and safe.
 
-> **Pre-alpha status:** This document defines the intended language. The current implementation mainly covers project loading, target setup, tokenization, parsing, and diagnostics. Binding, overload and type checking, generic specialization, ownership and Origin analysis, lowering, and code generation are planned unless a section says otherwise. Unsafe functions, Unsafe and Deferred Blocks, and value-producing Labeled Blocks specified here are planned extensions.
+> **Pre-alpha status:** This document defines the intended language. The current implementation mainly covers project loading, target setup, tokenization, parsing, and diagnostics. Binding, overload and type checking, generic specialization, ownership and Origin analysis, lowering, and code generation are planned unless a section says otherwise. The Parser supports unsafe function declarations, Unsafe and Deferred Blocks, and the syntax of value-producing Labeled Blocks. Their extended semantic and cleanup rules remain planned.
 
 Serialization uses SourceCode or binary artifacts, not Koto serialization. SourceCode preserves declarations for reconstruction; binary interfaces must preserve information needed by callers, including whether a function is unsafe. Artifact formats are specified separately.
 
@@ -2120,6 +2120,8 @@ defer:
 
 This rule applies to executable bodies of branches, `match` arms, iterations, Labeled Blocks, Unsafe Blocks, Deferred Blocks, functions, and accessors. It does not define emptiness rules for a `match` arm list or a Declaration Container body. Single-line forms already require one complete InlineStatement.
 
+**Parser status:** Empty and missing executable bodies are diagnosed, including bodies in early-excluded source. Ordinary function declarations require a body; existing `#LibraryImport` declarations may omit it because their implementation is external. Bodyless accessors retain their specified implicit behavior.
+
 #### Conditional compilation and results
 
 Check emptiness against source structure **before conditional-compilation selection**, independently of reachability. A syntactically valid `#if` or `#case` makes its containing Block nonempty even if selection later removes all executable Syntax. This does not waive the directive's own syntax or Case Group selection requirements.
@@ -2722,7 +2724,7 @@ Adding direct expressions before the `yield` does not change this result rule or
 
 A transfer supplies a result only to its resolved target. Function results follow [Functions](#function-bodies-and-results); Blocks, Iteration Constructs, and branches use their result sources defined above. Discard Context does not exempt a construct from result validation.
 
-**Implementation status:** The current Parser preserves explicit branch body forms, and control-flow analysis checks existing selections and loops. Value-producing Labeled Blocks, Unsafe and Deferred Blocks, and their extended target and cleanup rules are planned. The default type provider handles primitive literals and simple declared Types. General name/overload resolution, numeric conversions, pattern Binding, and Origin compatibility still require Binding; unresolved checks are exposed as pending obligations, not accepted as valid. Bodies containing deferred compile-time directives await directive selection before analysis.
+**Implementation status:** The Parser preserves explicit branch body forms, labeled result operands, and distinct Unsafe and Deferred Block statements with inline or indented bodies. It rejects these statements in expression positions and checks executable bodies for source-level emptiness. Control-flow analysis checks existing selections and loops; value-producing Labeled Block validation, Deferred Control Boundaries, unsafe permission checks, and cleanup behavior remain planned. The default type provider handles primitive literals and simple declared Types. General name/overload resolution, numeric conversions, pattern Binding, and Origin compatibility still require Binding; unresolved checks are exposed as pending obligations, not accepted as valid. Bodies containing deferred compile-time directives await directive selection before analysis.
 
 Validate results in this order:
 

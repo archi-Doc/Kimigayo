@@ -735,6 +735,10 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
         {
             functionKoto.Parse(ref reader);
         }
+        else
+        {
+            Parser.ReportMissingFunctionBody(ref reader, functionKoto);
+        }
 
         if (!isExcluded && !functionKoto.IsExcluded)
         {
