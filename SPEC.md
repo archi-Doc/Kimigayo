@@ -169,7 +169,7 @@ A still-Deferred Condition is an error when its containing declaration, layout, 
 
 ## Conditions and narrowing
 
-A Condition is a Boolean compile-time expression. It may inspect Compilation values, Project settings, generic Core Type parameters, Type Semantics parameters, declared constraints, and other information available in its evaluation environment.
+A Condition is a Boolean compile-time expression. It may inspect Compilation values, Project settings, generic Core Type parameters, Type Semantics parameters, declared Contract Clauses, and other information available in its evaluation environment.
 
 ```kimi
 windows
@@ -182,9 +182,9 @@ T is Comparable
 s is ref and T is Comparable
 ```
 
-A concrete Type or Type Semantics on the right of `is` tests identity. A contract or named category tests constraint satisfaction.
+A concrete Type or Type Semantics on the right of `is` tests identity. A named capability declared with `contract` or a named category tests satisfaction of its requirements.
 
-Within a selected `#case` arm, its Condition and the negation of each preceding arm are available as additional constraints. Narrowing preserves the concrete Core Type; `T is Comparable` does not replace `T` with `Comparable`.
+Within a selected `#case` arm, its Condition and the negation of each preceding arm are available as additional facts alongside the declared Type Contract. These inferred facts are not themselves Contract Clauses. Narrowing preserves the concrete Core Type; `T is Comparable` does not replace `T` with `Comparable`.
 
 Compile-time Conditions do not evaluate runtime values. The initial design does not destructure values or introduce pattern bindings. For example, `#case value is ref/i32 x` is invalid; use `#case s is ref and T is i32` to narrow a value of Type `s/T` to `ref/i32`.
 
@@ -862,9 +862,9 @@ func add(left: i32, right: i32) -> i32 => left + right
 
 Both forms follow the shared [result validation](#result-validation), [reachability](#reachability), and [scope-exit destruction](#scope-exit-destruction) rules. [Function Boundaries](#function-boundaries) lists the other bodies to which these rules apply.
 
-### Generic constraints
+### Function Type Contract
 
-A generic Block-bodied function may begin its body with constraint declarations. Constraint declarations must precede every executable body item and are processed at compile time; they are not executable expressions.
+A generic Block-bodied function may begin its body with a [Type Contract](#type-contract). Its Contract Clauses must precede every executable body item and are processed at compile time; they are not executable expressions.
 
 ```kimi
 func inspect<s/T>(value: s/T) -> ()
@@ -874,25 +874,33 @@ func inspect<s/T>(value: s/T) -> ()
     return
 ```
 
-The left operand of a function constraint must name one of the function's generic parameters. A Core Type parameter may be constrained by contracts or other compile-time type capabilities. A Type Semantics parameter may be constrained by concrete semantics such as `ref` and `obj`, or by a named semantics category. `and`, `or`, `not`, and parentheses combine constraint requirements.
+The subject of a function's Contract Clause must name one of the function's generic parameters. A clause about a Core Type parameter may require a named capability declared with `contract` or another compile-time type capability. A clause about a Type Semantics parameter may name concrete semantics such as `ref` and `obj`, or a named semantics category. `and`, `or`, `not`, and parentheses combine requirements within a clause. In the example, `s is ref or obj` and `T is Comparable` are two Contract Clauses that together form the function's Type Contract.
 
-At a call site, every explicit or inferred generic argument must satisfy its corresponding constraints. Within the function body, those constraints are available during type checking and compile-time specialization. Function constraints are not part of the function Signature; two declarations that differ only in constraints therefore conflict.
+At a call site, every explicit or inferred generic argument must satisfy the corresponding Contract Clauses. Within the function body, the Type Contract supplies the conditions on which type checking and compile-time specialization may rely, including the capabilities available for operations on those arguments. A function's Type Contract is not part of its Signature; two declarations that differ only in their Type Contracts therefore conflict.
 
-The current Parser stores leading function constraints separately from executable body items and preserves deferred directives on them. It checks constraint subjects against the declared generic parameters and diagnoses constraints placed after executable items. Constraint satisfaction during Binding and specialization is planned.
+The current Parser stores leading Contract Clauses separately from executable body items and preserves deferred directives on them. It checks clause subjects against the declared generic parameters and diagnoses clauses placed after executable items. Type Contract validation during Binding and specialization is planned.
 
 # Declaration Containers
 
-A **Declaration Container** is a named declaration scope whose body may contain Properties, functions, constraints, or nested Declaration Containers as permitted by its kind. Its body is delimited by indentation.
+A **Declaration Container** is a named declaration scope whose body may contain Properties, functions, Contract Clauses, or nested Declaration Containers as permitted by its kind. Its body is delimited by indentation.
 
 | Declaration Container kind | Instantiable | Main characteristics |
 | --------------- | ------------ | -------------------- |
 | `group` | No | Accepts Properties, functions, and nested Declaration Container declarations. All members are static. Generic parameters and Origins are not supported. |
-| `struct` | Yes | Accepts Properties and functions in declaration order. Generic parameters, Origins, and type constraints are supported. |
+| `struct` | Yes | Accepts Properties and functions in declaration order. Generic parameters, Origins, and a Type Contract are supported. |
 | `enum` | Yes | Body parsing is not implemented. |
 | `extension` | No | Its Name identifies the target. Body parsing is not implemented. |
-| `contract` | No | Specifies associated-type constraints and Property requirements. The Parser preserves required accessors without generating implementations or storage. |
+| `contract` | No | Specifies associated-type Contract Clauses and Property requirements. The Parser preserves required accessors without generating implementations or storage. |
 
-A `struct` header may contain generic parameters and an Origin list. Constraint declarations precede Properties and functions.
+### Type Contract
+
+A **Type Contract** declares conditions that Types, Type Semantics, and `Self` must satisfy, and establishes the operations and capabilities available within the implementation on the basis of those conditions. The entire section is called a Type Contract; each individual condition declaration is a **Contract Clause**.
+
+A Contract Clause has the form `subject is requirement`. All clauses in a Type Contract must hold. The declaration's user fulfills the applicable requirements, and its implementation may rely on the resulting capabilities. For example, `T is Comparable` establishes that the implementation may use the comparison capabilities specified by `Comparable` for `T`. The Type Contract is therefore both an obligation to fulfill and a basis for the operations the implementation can perform.
+
+The term is not limited to generic parameters: a clause may also describe `Self`, the enclosing Type. Each declaration kind determines which subjects it permits, as described for [functions](#function-type-contract). Type Semantics are part of Kimigayo's Type model and are also covered by the term Type Contract.
+
+A `struct` header may contain generic parameters and an Origin list. Its Type Contract precedes Properties and functions.
 
 ```kimi
 struct Container<s/T> origin owner, source
@@ -902,7 +910,25 @@ struct Container<s/T> origin owner, source
     var value: s/T
 ```
 
-An associated-type constraint in a `contract` begins with `associate`.
+Here, the two Contract Clauses form the Type Contract of `Container`: one describes the Core Type parameter `T`, and the other describes the Type Semantics parameter `s`.
+
+The following example illustrates a Type Contract that also includes a requirement on the enclosing Type:
+
+```kimi
+struct ComparableContainer<T>
+    T is Comparable
+    Self is Comparable
+
+    var value: T
+```
+
+`T is Comparable` supplies comparison capabilities for the stored value's Type. `Self is Comparable` requires `ComparableContainer<T>` itself to fulfill `Comparable`; it does not automatically derive an implementation from the clause on `T`. The members needed to fulfill that requirement are omitted from this example. Semantic validation of these requirements is planned.
+
+Type Contract names the section of conditions, independently of the current `contract` Declaration Container keyword. A named capability such as `Comparable` can be referenced by a Contract Clause; the clause and the declaration it references are distinct concepts.
+
+### Associated Types and Property requirements
+
+An associated-type Contract Clause in a `contract` begins with `associate`.
 
 ```kimi
 contract Sequence
@@ -916,6 +942,8 @@ contract Sequence
     associate Element is Comparable
     var count: i32 has get
 ```
+
+### Root and nested Declaration Containers
 
 Each source unit has an implicit root `group`. Named Declaration Containers are stored there. Top-level executable syntax, including `let`, `var`, expressions, and functions, is stored in an implicit generated function. A `rootgroup` declaration starts at the root and accepts a dot-separated Name. For example:
 
