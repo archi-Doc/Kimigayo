@@ -6,7 +6,7 @@ Kimigayo は、値の取得、配置、破棄を **Value Lifetime** として扱
 
 本書では **借用（borrow）**、**所有権（ownership）**、**集合値（aggregate）** と表記する。例中の API は説明用であり、`place`・`storage` を使う状態遷移の記述は概念表記であってソース構文ではない。
 
-Property の具体的な Move out と標準アクセスによる再初期化は、[Property Move Access（暫定仕様）](Property%20Move%20Access.md) で定義する。本書はその共通となる状態・所有権・破棄規則を定める。
+Property の具体的な Move out と標準アクセスによる再初期化は、[Property Move Access](Property%20Move%20Access.md) で定義する。本書はその共通となる状態・所有権・破棄規則を定める。
 
 ## 1. 基本モデル
 
@@ -14,15 +14,17 @@ Property の具体的な Move out と標準アクセスによる再初期化は�
 
 **Storage** は値を保持する領域、**place** はその中の位置を表す。Compiler は place ごとに初期化状態と破棄責任を追跡する。
 
-| 状態 | 意味 | 読み取り・借用・Copy・Move | `let` の初期化 | `var` の書き込み |
+| 状態 | 意味 | 読み取り・借用・Copy・Move | `let` の書き込み | `var` の書き込み |
 | --- | --- | --- | --- | --- |
-| Uninitialized | 初期化済みの値を保持していない | 不可 | 可（初回） | 可（Initialization） |
+| Uninitialized | 現在、初期化済みの値を保持していない | 不可 | 初回初期化をまだ行っていない場合だけ可 | 可（Initialization） |
 | Initialized | 初期化済みの値を保持している | 型とアクセス規則に従う | 不可 | 可（Replacement） |
-| Moved | Move によって未初期化になった | 不可 | **不可** | 可（再初期化） |
+| Moved | 以前の値と破棄責任を Move によって失い、現在は値を保持していない | 不可 | **不可** | 可（再初期化） |
 
-Uninitialized と Moved は、読み取り側から見た可否が同じであり、`let` の初期化可否だけが異なる。`Moved` は値が移動先で生存していることを表し、初回初期化を済ませた事実を保持する。
+Uninitialized と Moved は、読み取り側から見た可否は同じだが、初期化履歴が異なる。`Moved` は、この place が以前 Initialized であり、その値またはアクセス能力と破棄責任を Move によって保持しなくなったことを表す。**移動先の値が現在も生存していることは意味しない。**
 
-Initialization は空の place を Initialized にする。Destruction は値の lifetime と破棄責任を終了させ、正常完了後も storage が存続する場合はその place を Uninitialized にする。
+`let` の一度だけの初期化は place の現在状態とは別の履歴として追跡する。したがって、内部的な Destruction の後に storage が Uninitialized へ戻っても、既に初回初期化を終えた `let` に二度目の初期化権限は生じない。現在の仕様は、ユーザーコードから任意の place を明示 Destruction してこの履歴をリセットする操作を定義しない。
+
+Initialization は空の place を Initialized にする。Destruction は値の lifetime と破棄責任を終了させ、正常完了後も storage が存続する場合はその place を Uninitialized にする。ただし、上記の初期化履歴はリセットしない。
 
 Storage の有効期間が終わると、初期化状態にかかわらずその place にアクセスできない。
 
@@ -42,7 +44,7 @@ Storage の有効期間が終わると、初期化状態にかかわらずその
 
 通常の Property 読み取りは getter、初期化後の代入は setter を通す。標準 getter は Copy または共有借用を行い、storage から Move しない。したがって `value.field` と書くだけでは、その field は Moved にならない。
 
-明示的な `move receiver.property` は getter を呼ばず、宣言された Move access を使う。静的に特定できる所有 place の標準 getter / setter は、Property Move Access の条件に従って field 単位で処理できる。
+明示的な `move receiver.property` は getter を呼ばず、宣言された Move access を使う。初期仕様では Move access と Custom getter / setter を併用せず、Property getter を経由した nested Move も許可しない。静的に特定できる所有 place の標準 getter / setter は、Property Move Access の条件に従って field 単位で処理できる。
 
 ```text
 struct Person
@@ -79,7 +81,7 @@ if condition
 print(other)               // Error：condition が false の経路で Uninitialized。
 ```
 
-初期化状態は書き込み権限を与えない。Local binding の生存期間中、`let` は各実行経路で初回の初期化だけを許可し、`var` は通常のアクセス規則に従って再初期化・再代入できる。
+初期化状態は書き込み権限を与えない。Local binding の生存期間中、`let` は各実行経路で一度だけ初回初期化を許可し、その履歴は Move や内部的な Destruction で消えない。`var` は通常のアクセス規則に従って再初期化・再代入できる。
 
 ```text
 let a: Resource
@@ -435,9 +437,9 @@ Complete value は次の順で破棄する。
 1. ユーザー定義 `deinit` があれば実行する。開始時にはすべての stored field が Initialized である。
 2. Body とその Scope Exit が正常完了した後、stored field を宣言の逆順に破棄する。通常の `return` も、この field cleanup を省略しない。
 
-**構築が完了していない集合値では、その集合値自身のユーザー定義 `deinit` を実行せず、初期化済みの stored field だけを通常の field 規則で破棄する。**
+**構築が完了していない集合値では、その型がユーザー定義 `deinit` を宣言していても、その集合値自身の `deinit` は実行しない。** これは Partial Initialization の cleanup であり、初期化済みの stored field だけを宣言の逆順に通常の field 規則で破棄する。Uninitialized な field は破棄しない。残る field の型自身が `deinit` を持つ場合、その field の Destruction では通常どおり実行し得る。
 
-Partial initialization / Move の cleanup では、残る部分の破棄責任を宣言の逆順に処理する。**この状態にある集合値は、§3.3.2 と Property Move Access の宣言時検査により、自身にもいずれの祖先にもユーザー定義 `deinit` を持たない。したがってこの cleanup で `deinit` を実行することはない。** 各 field に再帰的に適用し、Uninitialized / Moved な部分は破棄しない。配列や tuple の部分は、それぞれの型が定める順序に従う。
+**構築完了後の Partial Move** は別に扱う。§3.3.2 と Property Move Access により、Partial Move で incomplete になる集合値自身、または完全性を前提とする包含祖先にユーザー定義 `deinit` がある場合、その Partial Move 自体を禁止する。したがって合法な post-construction Partial Move の cleanup では、incomplete になった集合値自身の `deinit` は実行せず、残る Initialized な field だけを宣言の逆順に破棄する。Moved な field は破棄しない。残る field の Destruction には通常の規則を再帰的に適用し、その field 型の `deinit` は実行し得る。配列や tuple の部分は、それぞれの型が定める順序に従う。
 
 ```text
 // 宣言順は a, b, c。
@@ -539,5 +541,5 @@ Copy / Move の具体的なメモリ操作と、一時結果の物理的な配�
 | Bindings・初期化 | `let` の初回初期化、構築完了点の既定、集合値の完全性 |
 | 式・Assignment | 単純代入の右辺先行とその根拠、複合代入との評価順序の差、Property setter の引数評価順、自己代入、途中終了、Origin / Loan 検査 |
 | Ownership・交換 API | Move Path の到達手段、Partial Move 制限、交換時の Loan 開始、排他借用を利用した重なりの静的判定 |
-| Property Move Access（暫定） | 明示 move、Copy 型の強制 Move、標準アクセスの field 単位の状態検査と再初期化、`deinit` を持つ型での `move` 宣言禁止 |
+| Property Move Access | 明示 move、Copy 型の強制 Move、Custom accessor との併用禁止、nested Property getter 経由の Move 禁止、標準アクセスの field 単位の状態検査と再初期化、`deinit` を持つ型での `move` 宣言禁止 |
 | Destruction・Scope Exit | deinit の明示呼び出し禁止、特別な receiver、全体置換の禁止、Destruction lifetime checking の名称と参照 |
