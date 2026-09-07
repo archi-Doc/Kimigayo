@@ -42,18 +42,30 @@
   - [7.5. Exclusive Origins](#75-exclusive-origins)
   - [7.6. Borrow checking](#76-borrow-checking)
   - [7.7. Deferred lifetime features](#77-deferred-lifetime-features)
-- [8. Control flow](#8-control-flow)
-  - [8.1. Completions](#81-completions)
-  - [8.2. Blocks and evaluation contexts](#82-blocks-and-evaluation-contexts)
-  - [8.3. Block constructs](#83-block-constructs)
-  - [8.4. Labels](#84-labels)
-  - [8.5. Control transfers](#85-control-transfers)
-  - [8.6. Iteration Constructs](#86-iteration-constructs)
-  - [8.7. Selections: if, match, and yield](#87-selections-if-match-and-yield)
-  - [8.8. Result validation](#88-result-validation)
-- [9. Scope exit and cleanup](#9-scope-exit-and-cleanup)
-  - [9.1. Deferred Blocks](#91-deferred-blocks)
-  - [9.2. Scope-exit destruction](#92-scope-exit-destruction)
+  - [7.8. Temporary lifetimes](#78-temporary-lifetimes)
+- [8. Expressions and operators](#8-expressions-and-operators)
+  - [8.1. Classification and contexts](#81-classification-and-contexts)
+  - [8.2. Evaluation order](#82-evaluation-order)
+  - [8.3. Primary expressions](#83-primary-expressions)
+  - [8.4. Access and application](#84-access-and-application)
+  - [8.5. Precedence and associativity](#85-precedence-and-associativity)
+  - [8.6. Operator semantics](#86-operator-semantics)
+  - [8.7. Assignment](#87-assignment)
+  - [8.8. Extension boundaries and reserved syntax](#88-extension-boundaries-and-reserved-syntax)
+  - [8.9. Implementation status](#89-implementation-status)
+- [9. Control flow](#9-control-flow)
+  - [9.1. Completions](#91-completions)
+  - [9.2. Blocks and evaluation contexts](#92-blocks-and-evaluation-contexts)
+  - [9.3. Block constructs](#93-block-constructs)
+  - [9.4. Labels](#94-labels)
+  - [9.5. Control transfers](#95-control-transfers)
+  - [9.6. Iteration Constructs](#96-iteration-constructs)
+  - [9.7. Selections: if, match, and yield](#97-selections-if-match-and-yield)
+  - [9.8. Result validation](#98-result-validation)
+- [10. Scope exit, cleanup, and termination](#10-scope-exit-cleanup-and-termination)
+  - [10.1. Deferred Blocks](#101-deferred-blocks)
+  - [10.2. Scope-exit destruction](#102-scope-exit-destruction)
+  - [10.3. Panic Termination](#103-panic-termination)
 
 ## 1. Overview
 
@@ -79,7 +91,7 @@ public group Program
         s is ref or obj
         T is Comparable
 
-        #case s is ref and T is i32
+        #case (s is ref) and (T is i32)
             return "ref/i32"
         #case s is ref
             return "ref"
@@ -196,7 +208,7 @@ Every final evaluation context must select an arm. A catch-all may be omitted if
 
 The selected Block occupies the structural position of the Case Group. Normal Block, result-Type, scope, and control-transfer rules apply after selection. An early-false `#if` target is consumed without creating Koto nodes. Unselected `#case` arms do not undergo ordinary Binding, Lowering, or code generation.
 
-The [nonempty Block rule](#821-nonempty-executable-blocks) checks source structure before selection. Removing all executable Syntax does not itself make a Block invalid.
+The [nonempty Block rule](#921-nonempty-executable-blocks) checks source structure before selection. Removing all executable Syntax does not itself make a Block invalid.
 
 #### 2.2.2. Staged condition evaluation
 
@@ -253,14 +265,14 @@ pointerWidth == 64
 s is ref
 T is i32
 T is Comparable
-s is ref and T is Comparable
+(s is ref) and (T is Comparable)
 ```
 
 A concrete Type or Type Semantics on the right of `is` tests identity. A named capability declared with `contract` or a named category tests satisfaction of its requirements.
 
 A selected `#case` arm adds its Condition and the negation of every earlier Condition to the facts available from the Type Contract. These facts are not Contract Clauses. Narrowing preserves the concrete Core Type: `T is Comparable` does not replace `T` with `Comparable`.
 
-Compile-time Conditions do not evaluate runtime values. The initial design does not destructure values or introduce pattern bindings. For example, `#case value is ref/i32 x` is invalid; use `#case s is ref and T is i32` to narrow a value of Type `s/T` to `ref/i32`.
+Compile-time Conditions do not evaluate runtime values. The initial design does not destructure values or introduce pattern bindings. For example, `#case value is ref/i32 x` is invalid; use `#case (s is ref) and (T is i32)` to narrow a value of Type `s/T` to `ref/i32`. Parentheses separate each [requirement expression](#532-requirement-expressions) from the surrounding condition.
 
 #### 2.2.4. Koto representation
 
@@ -352,7 +364,7 @@ A decimal point belongs to the literal only when followed immediately by a decim
 
 After removing separators, a decimal literal with a fraction or exponent converts to IEEE 754 `f64`. Finite results are valid; conversion to either infinity is an error. Other decimal literals and all base-prefixed literals are integers. Magnitudes `0` through `2^128 - 1` are stored as 128-bit bit patterns; larger magnitudes are invalid.
 
-`NumberLiteral` currently has no type suffix. Internally, integer literals are retained as `i128` and floating-point literals as `f64`; their resulting Types are inferred appropriately from context. To specify a Type, use an explicit conversion expression, such as `123@i32`.
+`NumberLiteral` currently has no type suffix. The internal `i128` / `f64` representations do not determine a literal's language Type; [expression type inference](#831-type-inference) defines contextual Types and defaults. To specify a Type, use a declaration annotation or an explicit conversion such as `123@i32`.
 
 The syntax tree canonicalizes spelling: integers render as signed 128-bit decimal values; floating-point values use round-trip `f64` notation with a decimal marker when needed (for example, `1.0`). Compile-time basic-value evaluation currently supports integer representations fitting `i64` and all valid `f64` literals.
 
@@ -577,7 +589,7 @@ The source literal `'あ'` occupies five bytes (`27 E3 81 82 27`), including its
 
 `()` is the Unit type. It has one value and represents the absence of a meaningful result.
 
-Never is the type of an expression that does not complete normally and has no values. `return`, `exit`, `continue`, and `yield` expressions have the Never type. Their operands supply results to their targets without changing the types of the transfer expressions themselves. Never is a Type, not a Completion: a completed transfer has an abrupt Completion, whereas divergence produces no Completion. See [Completions](#81-completions) and [result validation](#88-result-validation).
+An expression with no reachable path that completes normally has Type Never, which has no values. `return`, `exit`, `continue`, `yield`, and `$panic(...)` have Type Never. Transfer operands supply results to their targets without changing the Types of the transfer expressions themselves. Never is a Type, not a Completion: a completed transfer has an abrupt Completion, whereas divergence produces no Completion. Missing required results are errors, not Never. See [Completions](#91-completions), [result validation](#98-result-validation), and [Panic Termination](#103-panic-termination).
 
 ### 4.2. Compound Type syntax
 
@@ -615,7 +627,7 @@ struct View
 
 This section describes indexing values with a length. [Raw pointer indexing](#463-pointer-arithmetic-and-indexing) instead uses signed offsets, has no implicit bounds check, and forbids from-end and Range indexing.
 
-An Index is a nonnegative `isize` value. Applying an Index with `value[index]` selects one element. The resolved Index must be less than the length of the indexed value.
+An element Index may be a nonnegative `isize` or a From-end Index `^n`. Applying it with `value[index]` selects one element; the resolved Index must satisfy `0 <= index < length`.
 
 A prefix caret denotes an Index measured from the end. `^n` resolves to `length - n`, where `n` is a nonnegative `isize`. Therefore, `^1` selects the last element. `^0` is a valid Range boundary but is not a valid element Index. Infix `^` remains the exclusive-or operator.
 
@@ -630,15 +642,23 @@ A Range is an expression with optional start and end boundaries. Each explicit b
 | `..=end`      | From the beginning, including `end` |
 | `..`          | The entire range                   |
 
-The omitted start boundary is zero. The omitted end boundary is the length of the indexed value and is exclusive. An inclusive Range must have an end boundary.
+The omitted start boundary is zero. The omitted end boundary is the length of the indexed value and is exclusive. An inclusive Range must have an end boundary. A Range retains its boundary information until application to a sequence resolves length-dependent boundaries.
 
-Range operators bind less tightly than logical operators and more tightly than assignment. Ranges are non-associative; an unparenthesized chained Range such as `a..b..c` is invalid.
+Ranges are non-associative; an unparenthesized chained Range such as `a..b..c` is invalid. Parentheses do not make a Range a valid numeric boundary of another Range. See the [precedence table](#85-precedence-and-associativity).
 
 Applying a Range with `value[range]` produces a Slice over the selected consecutive elements. A Slice does not copy its elements. Its Origin derives from the indexed value, so it cannot outlive that value.
 
-After resolving from-end boundaries, an exclusive Range must satisfy `0 <= start <= end <= length`. An inclusive Range must satisfy `0 <= start <= end < length`.
+After resolving from-end boundaries, an exclusive Range must satisfy `0 <= start <= end <= length`. An inclusive Range must satisfy `0 <= start <= end < length`. An exclusive Range with equal boundaries is empty.
 
-For a value of length six, `value[1..^1]` selects the elements at Indices 1, 2, 3, and 4.
+Invalid Indices or boundaries, including negative `n` in `^n`, are check failures under [Panic Termination](#103-panic-termination). Safe sequence access may omit a check only when safety is proven.
+
+```kimi
+let values = [10, 20, 30, 40]
+let last = values[^1]       // 40
+let middle = values[1..^1]  // Slice referring to 20 and 30.
+let all = values[..]
+let empty = values[2..2]
+```
 
 ### 4.5. Type Semantics
 
@@ -765,6 +785,8 @@ For `p: unsafe/T` and `n: isize`, including negative `n`, only these arithmetic 
 | `p - n` | Pointer displaced by `-n * sizeof(T)` bytes. |
 | `p[n]` | The same memory place as `*(p + n)`. |
 
+`p += n` and `p -= n` combine these displacements with [compound assignment](#872-compound-assignment) and require the same unsafe conditions. Pointer increment and decrement are not supported.
+
 `sizeof(T)` includes padding. Arithmetic requires known layout and positive size. Mathematical displacement outside `isize`, or address wraparound, is undefined behavior.
 
 Zero displacement preserves the pointer, including null, but still requires known layout and positive size. Nonzero displacement requires source provenance for a live allocation, with both source and result inside it or one past its end. The result preserves provenance; a coincidentally matching address is insufficient.
@@ -875,7 +897,7 @@ An `alias` is a top-level declaration of a qualified Name. Nested aliases are in
 
 A **Type Contract** is a set of **Contract Clauses** of the form `subject is requirement`. All clauses must hold. They constrain Core Types, Type Semantics, or `Self` (the enclosing Type) and establish capabilities the implementation may use. Each declaration kind restricts the permitted subjects; see [function Type Contracts](#552-function-type-contract).
 
-Core Type requirements may name a capability declared with `contract` or another compile-time type capability. Type Semantics requirements may name concrete semantics, such as `ref` or `obj`, or a semantics category. Requirements combine with `and`, `or`, `not`, and parentheses.
+Core Type requirements may name a capability declared with `contract` or another compile-time type capability. Type Semantics requirements may name concrete semantics, such as `ref` or `obj`, or a semantics category. Requirements combine with `and`, `or`, `not`, and parentheses under the [requirement-expression rules](#532-requirement-expressions).
 
 A `struct` header may contain generic parameters and an Origin list. Its Type Contract precedes Properties and functions.
 
@@ -912,6 +934,21 @@ contract Sequence
 ```
 
 See [contract Property requirements](#642-contract-property-requirements) for accessor conformance.
+
+#### 5.3.2. Requirement expressions
+
+`subject is requirement` tests requirements on a Type or Type Semantics. Its result is a compile-time `bool`; unresolved requirements must not be deferred to runtime. Type Contracts and compile-time directives apply their own subject and narrowing rules. Runtime `value is T`, pattern bindings, and runtime type narrowing are not defined.
+
+`is` binds on its left at comparison precedence. Its right side consumes a requirement expression through `or` precedence. An immediately following `not` negates that entire right side:
+
+| Form | Meaning |
+| --- | --- |
+| `T is A and B` | T satisfies both A and B. |
+| `T is A or B` | T satisfies A or B. |
+| `T is not A or B` | T does not satisfy `(A or B)`. |
+| `T is A and not B` | T satisfies A and does not satisfy B. |
+
+Use `(T is A) and enabled` to combine a complete test with another condition. Use `T is (not A) or B` to limit negation to A. Value equality uses `==`.
 
 ### 5.4. Bindings
 
@@ -960,7 +997,7 @@ An **Expression-bodied function** evaluates the expression after `=>` in Value C
 func add(left: i32, right: i32) -> i32 => left + right
 ```
 
-Both forms follow the shared [result validation](#88-result-validation), [reachability](#882-reachability), and [scope-exit destruction](#92-scope-exit-destruction) rules. [Function Boundaries](#853-function-boundaries) lists the other bodies to which these rules apply.
+Both forms follow the shared [result validation](#98-result-validation), [reachability](#982-reachability), and [scope-exit destruction](#102-scope-exit-destruction) rules. [Function Boundaries](#953-function-boundaries) lists the other bodies to which these rules apply.
 
 #### 5.5.2. Function Type Contract
 
@@ -982,7 +1019,7 @@ The current Parser stores leading Contract Clauses separately from executable bo
 
 #### 5.5.3. Unsafe functions
 
-An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. Calling it requires an [Unsafe Block](#833-unsafe-block); violating its safety contract is undefined behavior. This runtime safety contract is distinct from a Type Contract and its Contract Clauses.
+An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. Calling it requires an [Unsafe Block](#933-unsafe-block); violating its safety contract is undefined behavior. This runtime safety contract is distinct from a Type Contract and its Contract Clauses.
 
 ```kimi
 // Safety: pointer must refer to a live, initialized i32 throughout the call,
@@ -1007,6 +1044,23 @@ Initially, unsafe functions support direct calls only. Taking a function value, 
 ```kimi
 let reader = read // Error: an unsafe function cannot be taken as a function value.
 ```
+
+#### 5.5.4. Parameter names and defaults
+
+A parameter may separate its external argument name from its local name with `external => internal: T`. An optional parameter uses `name?: T = defaultExpression`. The `?` requires a default and means argument omission, not a nullable Type; a default alone does not make a parameter optional.
+
+At each call, evaluate omitted defaults once in parameter declaration order, after all explicit arguments. Resolve default expressions in the declaration's scope. They may refer to preceding parameters, but not later parameters or caller-local bindings.
+
+```kimi
+func scale(value: i32, by => factor: i32) -> i32 => value * factor
+let result = scale(3, by: 4)
+
+func offset(value: i32, by?: i32 = 1) -> i32 => value + by
+let next = offset(3)
+let adjusted = offset(3, by: 5)
+```
+
+Function Types retain neither argument names nor defaults. Calls through function values supply all arguments positionally. See [invocation](#842-invocation-and-generic-application) for argument matching and evaluation.
 
 ## 6. Properties
 
@@ -1297,7 +1351,7 @@ Indexer declaration syntax and its accessor semantics are specified separately a
 
 Taking a stored value copies it if its Type is Copy; otherwise it moves the value if permitted, or is rejected. This applies to initialization, assignment sources, by-value arguments, and explicit or implicit result transfers (`return`, `exit`, and `yield`). Borrow creation and reborrowing have separate rules; naming a location does not always consume it.
 
-These rules follow Rust's ownership model. Here, **Copy** names a Type capability, without requiring a particular trait system. Ownership checking is planned, not implemented.
+**Copy** names a Type capability, without requiring a particular trait system. Ownership checking is planned, not implemented.
 
 #### 7.1.1. Operation semantics
 
@@ -1355,7 +1409,7 @@ Partial Move support remains open. If permitted, initialization and destruction 
 
 #### 7.1.4. Destruction and explicit duplication
 
-Assignment first secures its source value, then discharges destruction responsibility for the destination's old value before storing the new value. An uninitialized destination has no old value to destroy. [Scope-exit destruction](#92-scope-exit-destruction) destroys only initialized values for which the scope retains responsibility; a moved value is not destroyed again at its source.
+[Assignment](#87-assignment) resolves its destination before securing its source value, and destroys the destination's initialized old value before storing the replacement. An uninitialized destination has no old value to destroy. [Scope-exit destruction](#102-scope-exit-destruction) destroys only initialized values for which the scope retains responsibility; a moved value is not destroyed again at its source.
 
 Duplication requiring additional work must be explicit. In particular, duplicating an owning `rc/T` or `arc/T` reference increments a reference count and is not Copy; ordinary by-value transfer uses Move.
 
@@ -1559,7 +1613,7 @@ func lookup(self: ref/Self, key: ref/Key)
 
 #### 7.4.1. Return contracts
 
-A declared return Origin limits the dependency visible to callers without requiring a borrow from that specific input. Every explicit or implicit result, including unreachable ones, must subtype the declared result Type under [result validation](#88-result-validation) and [reachability](#882-reachability).
+A declared return Origin limits the dependency visible to callers without requiring a borrow from that specific input. Every explicit or implicit result, including unreachable ones, must subtype the declared result Type under [result validation](#98-result-validation) and [reachability](#982-reachability).
 
 For example, `ref/T from static` may satisfy `ref/T from x` because `static : x`, provided the Origin position is covariant. Invariant positions require equality, while contravariant positions reverse the subtype direction.
 
@@ -1614,14 +1668,17 @@ The parent Loan remains active, and access through it is suspended, while the re
 
 ### 7.6. Borrow checking
 
-Function bodies are lowered to a control-flow graph. A **program point** is a position immediately before or after an operation. A **place** is an assignable location:
+Function bodies are lowered to a control-flow graph. A **program point** is a position immediately before or after an operation. A **place** is a memory location holding a value; being a place does not itself grant write permission. The lowered representation uses these projections:
 
 ```text
 place := local
        | place '.' Name
+       | place '.' TupleIndex
        | '*' place
        | place '[' _ ']'
 ```
+
+These projections describe storage, including lowered slots, rather than granting direct access to source-level Property storage. [Properties](#68-storage-addressability-and-result-semantics) use accessors. Parentheses preserve a place. Reading a place copies, moves, or borrows according to the required Type and access permissions.
 
 A **region** is a set of program points. Local regions are inferred; Origins in signatures introduce universal regions; `static` is the maximum region.
 
@@ -1635,7 +1692,7 @@ mode = ref | uniq
 It is active at program point `P` exactly when `P` belongs to its region. Regions follow actual uses rather than lexical scope, providing non-lexical lifetimes:
 
 ```kimi
-let r = ref/x
+let r = x@ref
 use(r)
 x.mutate()       // Allowed: r is no longer live.
 ```
@@ -1728,7 +1785,7 @@ func bad(x: ref/T) -> ref/T from x
 
 #### 7.6.6. Drop checking
 
-The [scope-exit destruction rules](#92-scope-exit-destruction) determine which values are destroyed and in what order. At each destruction point, an Origin must remain live only when destruction may observe a value carrying that Origin.
+The [scope-exit destruction rules](#102-scope-exit-destruction) determine which values are destroyed and in what order. At each destruction point, an Origin must remain live only when destruction may observe a value carrying that Origin.
 
 ```text
 DestructorUsePoints(value, origin) ⊆ region(origin)
@@ -1776,7 +1833,384 @@ This revision does not define:
 
 These features require extensions to the core rules above and must not be inferred from this revision.
 
-## 8. Control flow
+### 7.8. Temporary lifetimes
+
+Unless a construct needs a longer lifetime, an owned temporary lasts until evaluation of the outermost expression that created it ends. Destroy remaining temporaries in reverse creation order. Argument temporaries last through the call. Values moved into bindings or results follow the destination's lifetime. Iteration sources and `match` subjects last for their required use by the construct.
+
+A borrow does not extend its source's lifetime. A Slice of a temporary array cannot survive destruction of that array. Transfers secure results before [scope-exit cleanup](#102-scope-exit-destruction); [Panic Termination](#103-panic-termination) provides no cleanup guarantee.
+
+## 8. Expressions and operators
+
+This chapter defines expression syntax and intended semantics. Parsing a form does not imply that its name resolution, type checking, or runtime behavior is implemented; see [implementation status](#89-implementation-status).
+
+### 8.1. Classification and contexts
+
+This source-language classification is independent of the internal Koto inheritance hierarchy:
+
+```text
+Expressions
+├─ Primary Expression
+│  ├─ Name
+│  ├─ Literal
+│  │  ├─ Number / Boolean / Character / String / Null / Unit
+│  │  ├─ Interpolated String
+│  │  └─ Tuple / Array / Dictionary
+│  ├─ Parenthesized Expression
+│  └─ Function Expression
+├─ Member Access
+├─ Application
+│  ├─ Invocation (including $panic(...))
+│  └─ Generic Application
+├─ Index / Slice Expression
+├─ Conversion Expression
+├─ Unary Expression
+│  ├─ Sign / Logical Negation / Dereference / From-end Index
+│  └─ Prefix / Postfix Increment and Decrement
+├─ Binary Expression
+│  ├─ Arithmetic / Shift / Bitwise
+│  ├─ Comparison / Logical
+│  └─ Type Requirement Test
+├─ Range Expression
+├─ Assignment Expression
+│  ├─ Simple Assignment
+│  └─ Compound Assignment
+├─ Selection Expression: if / match
+├─ Iteration / Labeled Block Expression: for / while / loop / Label:
+└─ Control Transfer Expression: return / exit / continue / yield
+
+Related Syntax
+├─ Block Statement: unsafe: / defer:
+├─ Compile-time Directive: #if / #case
+├─ Attribute: #Name
+└─ Composition Root: $
+```
+
+A normally completing expression produces a typed result, including [Unit](#415-unit-and-never-types). [Value and Discard Contexts](#92-blocks-and-evaluation-contexts) determine how that result is used. Discarding it preserves side effects and type, ownership, and destruction checks. Assignment requires a writable [place](#76-borrow-checking) or an accessible Property setter; a readable Property need not expose borrowable storage.
+
+An ordinary indented Block is a syntax container, not an arbitrary value expression. Use a selection or Labeled Block to obtain a value from several operations. `unsafe:` and `defer:` are statements and cannot be initializers or arguments. `let` / `var` declarations are not general expressions; their use in `if` / `while` conditions follows the dedicated [condition syntax](#972-if).
+
+#### 8.1.1. Delimiters and line breaks
+
+Newlines and `;` separate expressions; commas separate arguments or elements and are not binary operators. Indentation rules still apply within `()` and `[]`: indent continued arguments and elements one level, and optionally align the closing delimiter with the opening line. A method-chain continuation starting with `.` also uses one extra indentation level.
+
+This specification does not allow arbitrary binary operators at the start of a line to continue the previous line. `:`, `=>`, `->`, and `in` are delimiters for their respective constructs, not general binary operators. A trailing semicolon does not change result or evaluation-context rules.
+
+### 8.2. Evaluation order
+
+Evaluate operands once, from left to right, unless a construct specifies conditional evaluation. Precedence determines grouping; evaluation order determines the order of effects.
+
+| Expression | Evaluation order |
+| --- | --- |
+| `a() + b() * c()` | a, b, c, multiplication, addition. |
+| `receiver().method(a(), b())` | Receiver, resolve callee, a, b, call. |
+| `array()[index()]` | Target, index, element access. |
+| `(a(), b())` / `[a(), b()]` | Elements in source order. |
+| `[key(): value(), ...]` | Per entry: key, duplicate check, value, insertion. |
+| `start()..end()` | Start boundary, end boundary. |
+| `"\(a()) / \(b())"` | Evaluate and stringify each interpolation in source order. |
+
+`and`, `or`, and selections evaluate only the required operands or branches. [Assignment](#87-assignment) resolves its target before evaluating its source. Type arguments and conversion target Types are not evaluated at runtime.
+
+An abrupt Completion, divergence, or Panic prevents evaluation of later operands and the enclosing operation. Unevaluated syntax still undergoes name, Type, and transfer-target checks; syntax excluded by `#if` / `#case` follows [conditional compilation](#22-compile-time-directives). [Temporary lifetimes](#78-temporary-lifetimes) and scope-exit rules govern retained values.
+
+### 8.3. Primary expressions
+
+#### 8.3.1. Type inference
+
+Expected Types from declarations, parameters, and results propagate into expressions. Otherwise infer from operands. Ordinary numeric operations require the same numeric Type; integer widths, signedness, and integer/floating-point Types do not mix implicitly.
+
+An untyped integer literal adopts an expected integer Type if its value fits. Without one, it defaults to `i32`; a value outside that range requires an explicit Type. A floating-point literal adopts an expected `f32` or `f64`, defaulting to `f64`. Check a directly negated integer literal as a signed value, allowing the minimum of a signed Type.
+
+```kimi
+let a: i64 = 10
+let b = a + 20          // 20 adopts i64.
+let c: i32 = 3
+let d = a + c@i64       // Convert an already typed operand explicitly.
+let minimum: i8 = -128
+```
+
+There are no implicit conversions between `bool`, `char`, and numbers. Conditions require `bool`, not an integer or pointer. Borrowing and reborrowing are separate adaptations governed by ownership rules.
+
+#### 8.3.2. Names, literals, and grouping
+
+| Form | Meaning |
+| --- | --- |
+| `name` | Reference to a visible binding, function, or other named entity. |
+| `123`, `0xff`, `1.5`, `true`, `'あ'`, `"text"` | Scalar literals; see [lexical structure](#3-lexical-structure). |
+| `"value = \(value)"` | Interpolated string; the embedded Type must support stringification. |
+| `null` | Contextually typed [raw null pointer](#461-null-and-equality). |
+| `()` | Unit value. |
+| `(value)` | Grouped expression; preserves a place. |
+| `(value,)`, `(a, b)` | One-element or multi-element Tuple. |
+| `[a, b]`, `[]` | Array literal. |
+| `[key: value]`, `[:]` | Dictionary literal. |
+
+Tuples may have different Types at each position. An array has one element Type; a dictionary has one key Type and one value Type. Empty collection literals need an expected Type. Concrete collection Types and storage are defined by the library; ambiguity does not fall back to a universal object Type.
+
+```kimi
+let pair = (10, "ten")
+let single = (10,)
+let values = [10, 20, 30,]
+let names = [1: "one", 2: "two",]
+let message = "first = \(values[0])"
+```
+
+#### 8.3.3. Dictionary construction and duplicate keys
+
+Equivalent duplicate keys are errors. A duplicate detectable as a constant is a compile-time error. Otherwise, process each entry in source order:
+
+1. Evaluate its key once and retain it.
+2. Check for an equivalent key among entries already inserted.
+3. On a duplicate, initiate implicit Panic Termination before evaluating this entry's value or any later entry.
+4. Otherwise evaluate its value once.
+5. Insert the retained key and resulting value.
+
+Equivalence follows dictionary key equality; matching hash values alone do not make keys duplicates. The key Type must guarantee that the logical equality and hash value of a stored key remain unchanged while the dictionary holds it. Later entries never overwrite existing values.
+
+A candidate key's logical equality and hash value must also remain unchanged from the start of duplicate checking through completion of insertion, including evaluation of its value expression.
+
+```kimi
+let x: i32 = getKey()
+let map = [x: first(), x: second()]
+```
+
+When checked at runtime, the first entry is evaluated and inserted before checking the second key. That check fails, so `second()` is not called.
+
+If key evaluation, duplicate checking, or value evaluation does not complete normally, do not insert that entry or process later entries. No partially constructed dictionary is returned, and completed side effects are not rolled back. The duplicate's diagnostic location is the later key expression. Termination and cleanup follow [Panic Termination](#103-panic-termination).
+
+### 8.4. Access and application
+
+#### 8.4.1. Member access
+
+`expression.name` selects a member. Name resolution distinguishes a Declaration Container qualification such as `Group.name` from value access such as `object.name`. The right side of `.` must be a member Name or an in-range decimal integer literal selecting a Tuple element; `pair.0` selects its first element. Dynamic member lookup with an arbitrary expression is not defined.
+
+Check accesses using the [Property](#6-properties) getter result Type, setter availability, and receiver permissions. Raw pointers do not dereference automatically: write `(*pointer).name` in an Unsafe Block.
+
+```kimi
+let count = collection.count
+collection.count = 10   // Requires a setter and write permission.
+let first = pair.0
+```
+
+#### 8.4.2. Invocation and generic application
+
+`callee(arg1, arg2)` invokes a function, method, or function value. Zero arguments and a trailing comma are allowed. `callee<T, U>(args)` applies explicit type arguments before calling.
+
+Match positional arguments first, then named arguments written `name: expression` using external parameter names. Named arguments may appear in any order, but evaluate in source order. Unknown names, duplicate bindings to a parameter, and missing or excess arguments are errors. Omitted optional arguments follow [parameter defaults](#554-parameter-names-and-defaults).
+
+Arguments, type arguments, and constraints must select a unique overload; declaration order never breaks a tie. Return Types alone do not distinguish overloads. Function values use the positional calling rules in the parameter section, and unsafe calls retain their [additional restrictions](#553-unsafe-functions).
+
+In an expression, `<` introducing type arguments must be adjacent to the target name and have a matching `>`. Thus `f<T>(x)` applies type arguments while `a < b` compares values. Nested type arguments may split `>>` into two closing delimiters. Use spaces around comparison operators to avoid ambiguity.
+
+Type-argument inference and specialization, constant type arguments, and user-defined construction conventions require further implementation or specification. This syntax does not automatically make every `T(args)` a valid construction.
+
+#### 8.4.3. Function expressions
+
+An anonymous function uses `func (parameters) -> Result => expression` or an indented body. Creating it does not execute its body; invocation does. Results follow [function body rules](#551-function-bodies-and-results).
+
+```kimi
+let twice = func (value: i32) -> i32 => value * 2
+let result = twice(5)
+```
+
+Initially, function values cannot capture outer local bindings. Diagnose capture until capture lists, Copy/Move behavior, borrow lifetimes, and calling capabilities are specified together. Do not implicitly copy captured bindings or extend their lifetimes.
+
+#### 8.4.4. Indexing and slicing
+
+`value[index]` selects an element; `value[range]` produces a Slice. [Index, Range, and Slice](#44-index-range-and-slice) defines sequence boundaries and lifetimes. [Raw pointer indexing](#463-pointer-arithmetic-and-indexing) instead uses signed `isize` displacements, permits negative offsets, and has no length check; From-end Indices and Ranges are forbidden.
+
+Dictionary indexing is a separate operation: reading `dictionary[key]` requires an existing key and initiates implicit Panic if it is absent. Fallible lookup, insertion, and user-defined indexer declarations require separate library rules. Integer indexing into a `string` does not yet select a character; the specification must first choose byte, Unicode scalar, or grapheme indexing.
+
+### 8.5. Precedence and associativity
+
+Earlier rows bind more tightly. Left associativity groups `a op b op c` as `(a op b) op c`; right associativity groups it as `a op (b op c)`. Grouping does not guarantee type correctness or change evaluation order.
+
+| Level | Operators or syntax | Association |
+| --- | --- | --- |
+| 1 | `.name`, `(...)`, `<Types>`, `[...]`, postfix `++` `--` | Postfix chain, left to right |
+| 2 | Prefix `+` `-` `not` `*` `^` `++` `--` | Right |
+| 3 | `@Type` | Left |
+| 4 | `*` `/` `%` | Left |
+| 5 | `+` `-` | Left |
+| 6 | `<<` `>>` | Left |
+| 7 | `&` | Left |
+| 8 | `^` | Left |
+| 9 | `\|` | Left |
+| 10 | `<` `<=` `>` `>=` `==` `!=` | Non-associative |
+| 11 | `and` | Left |
+| 12 | `or` | Left |
+| 13 | `..` `..=` | Non-associative |
+| 14 | `=`, compound assignments | Right |
+
+`is` has the asymmetric [requirement-expression rule](#532-requirement-expressions): comparison strength on the left, and a requirement through `or` on the right. It is separate from the six value comparisons above. `as` is reserved.
+
+Unparenthesized comparison chains such as `a < b < c`, `a == b == c`, and `a < b == flag` are syntax errors. Write `a < b and b < c` or `(a < b) == flag`; each comparison still requires valid operand Types.
+
+`@` takes a Type and binds less tightly than prefix operators: `-x@i64` means `(-x)@i64`; use `-(x@i64)` to negate after conversion. In particular, `-128@i8` converts the complete negative value. Because a target Type may contain qualified names, access a converted value's member as `(x@T).name`.
+
+Conversion type arguments follow the same adjacent-`<` and matching-`>` rule as generic application: `value@Box<i32>` contains a type argument, whereas `value@i64 < limit` compares the converted value. Selections, iterations, and Labeled Blocks have their own body syntax. `return`, `exit`, and `yield` consume a full result expression, so `return a + b` returns the sum.
+
+| Written form | Grouping |
+| --- | --- |
+| `flags & mask == 0` | `(flags & mask) == 0` |
+| `a \| b ^ c & d` | `a \| (b ^ (c & d))` |
+| `1 << n + 1` | `1 << (n + 1)` |
+| `a + b << count` | `(a + b) << count` |
+| `a + b@i64 * c` | `a + ((b@i64) * c)` |
+| `value@i64@f64` | `(value@i64)@f64` |
+| `not ready and flags & mask != 0` | `(not ready) and ((flags & mask) != 0)` |
+| `a < b and b <= c or done` | `((a < b) and (b <= c)) or done` |
+| `start + 1..end - 1` | `(start + 1)..(end - 1)` |
+| `target = flags & mask == 0` | `target = ((flags & mask) == 0)` |
+
+### 8.6. Operator semantics
+
+#### 8.6.1. Unary operators
+
+| Operator | Operand and result |
+| --- | --- |
+| `+value` | Numeric value, unchanged Type and value. |
+| `-value` | Negated signed integer or floating-point value. |
+| `not value` | Negated `bool`. |
+| `*pointer` | Raw-pointer place under [unsafe dereference rules](#462-dereference-and-ownership). |
+| `^value` | From-end Index formed from a nonnegative `isize`. |
+| `++target` / `--target` | Increment or decrement an integer; return the updated value. |
+| `target++` / `target--` | Increment or decrement an integer; return the old value. |
+
+Increment and decrement require a readable, writable integer place or Property; they do not apply to floats, raw pointers, or arbitrary Types. Resolve, read, and write the target once each. Overflow prevents the write. A prefix operation returns its computed value without reading the Property again. These operations follow the target-validity and ownership requirements of [compound assignment](#872-compound-assignment).
+
+```kimi
+var count: i32 = 1
+let before = count++  // before = 1, count = 2
+let after = ++count   // after = 3, count = 3
+```
+
+`not` binds more tightly than comparison; negate a comparison as `not (a == b)`. Explicit dereference of non-pointer Types is not defined by this operator.
+
+#### 8.6.2. Arithmetic, bitwise, and shift operators
+
+`+ - * /` take operands of the same numeric Type and return that Type. `%` accepts integers only. Integer division truncates toward zero. On mathematical integers, the remainder satisfies `a = (a / b) * b + a % b`; a nonzero remainder has the dividend's sign.
+
+```kimi
+let quotient = -7 / 3       // -2
+let remainder = -7 % 3      // -1
+let bits: u32 = 0b1010
+let masked = bits & 0b0110  // 0b0010
+let shifted = bits << 1     // 0b10100
+```
+
+Check integer `+ - *`, unary `-`, increment/decrement, and the arithmetic part of compound assignment for overflow. Integer division or remainder by zero is invalid. Signed minimum divided by `-1`, including `% -1`, is also invalid. These failures follow [Panic Termination](#103-panic-termination), including its constant-evaluation rule.
+
+`& | ^` perform bitwise AND, OR, and XOR on the same integer Type; they do not accept `bool`. `<< >>` return the left operand's integer Type and accept any integer Type on the right, requiring `0 <= shift < bit width of left operand`. An invalid count is a check failure. Left shift discards high bits and inserts zero low bits; right shift sign-extends signed integers and zero-extends unsigned integers. Discarded shift bits are not arithmetic overflow.
+
+Floating-point operations follow IEEE 754 for `f32` / `f64`, using round-to-nearest, ties-to-even. They support infinity, NaN, and signed zero; floating-point division by zero does not use integer failure rules. Do not implicitly reassociate or fuse ordinary operations when rounding or NaN results would change.
+
+`string + string` concatenates without implicit numeric stringification. Raw-pointer arithmetic is limited to the forms and unsafe conditions in [pointer arithmetic](#463-pointer-arithmetic-and-indexing); its undefined-behavior rules are distinct from checked integer arithmetic.
+
+#### 8.6.3. Comparison and logical operators
+
+`== != < <= > >=` return `bool`. Numeric operands must have the same Type. `bool` and Unit support equality only. `char` compares Unicode scalar values. `string` uses UTF-8 byte equality and lexicographic order without normalization or locale processing.
+
+Floating-point `+0.0 == -0.0` is true. With a NaN operand, `== < <= > >=` are false and `!=` is true; floating-point ordering is not total.
+
+Comparisons may borrow their operands and do not Move non-Copy owned values solely to compare them. User-defined comparison requires an explicit Type capability. Safe borrows compare referent values of the same Type using that Type's comparison capability. Tuples support elementwise equality and lexicographic ordering when all corresponding elements support the required comparison.
+
+Value equality and object identity are separate operations; `==` does not implicitly become an address comparison for object Types. Raw-pointer `== !=` are the explicit exception, following [pointer equality](#461-null-and-equality).
+
+| Logical operation | Evaluation |
+| --- | --- |
+| `left and right` | If left is false, return false; otherwise evaluate right. |
+| `left or right` | If left is true, return true; otherwise evaluate right. |
+| `not value` | Reverse true and false. |
+
+All logical operands and results are `bool`. User code cannot change short-circuit behavior.
+
+```kimi
+let valid = index >= 0 and index < count
+let found = valid and matches(values[index])
+let clear = flags & mask == 0
+```
+
+#### 8.6.4. Explicit conversion
+
+`expression@Type` explicitly converts a value. A Type-Semantics-only target, such as `value@ref`, retains the source Core Type. Infer Origins in runtime expressions; do not write `from origin` here.
+
+| Conversion | Rule |
+| --- | --- |
+| Integer to integer | Check that the value fits; no truncation or wrapping. |
+| Integer to float; float to float | Round to nearest, ties to even. A finite value rounding to infinity fails. Float-to-float preserves NaN and infinity, without guaranteeing NaN payloads. |
+| Float to integer | Truncate toward zero, then check that the mathematical integer fits. NaN and infinity fail. |
+| Value to a borrow such as `ref` / `uniq` | Require a valid place, access permissions, and Origin; do not extend lifetime. |
+| Raw pointer to raw pointer; raw pointer to/from `usize` | Follow [pointer conversion and provenance](#464-pointer-conversions) rules in an Unsafe Block. |
+
+Check failures follow [Panic Termination](#103-panic-termination). Built-in numeric conversions exclude `bool` / `char`, string parsing, and arbitrary bit reinterpretation. Conversion does not acquire ownership from a safe borrow, upgrade shared access to exclusive access, or implicitly increase a reference count.
+
+```kimi
+let wide = value@i64
+let truncated = 3.9@i32  // 3
+let negative = -128@i8
+let shared = data@ref
+```
+
+`as` is reserved, even though an internal binary node exists. It is neither an alias of `@` nor a defined dynamic cast. Fallible dynamic conversion requires a separately specified result Type.
+
+### 8.7. Assignment
+
+#### 8.7.1. Simple assignment
+
+`target = value` updates its destination and returns Unit, not the assigned value:
+
+1. Evaluate the left receiver and indices from left to right and resolve the destination once. Do not call a Property getter.
+2. Evaluate the right side and secure a result of the destination Type by Copy or Move.
+3. For a place, destroy its initialized old value and store the new one. For a Property, pass the new value to its setter.
+4. Return Unit after the write completes normally.
+
+If the right side does not complete normally, do not write; preceding side effects remain. The destination must remain valid from resolution through writing. Borrow checking rejects conflicting mutations or Moves from the right side. Initialization of an uninitialized local follows definite-initialization rules and is distinct from writing raw uninitialized memory.
+
+```kimi
+var count: i32 = 0
+count = 10
+let done: () = (count = 20)
+// A condition such as `if count = 30` fails: assignment returns Unit, not bool.
+```
+
+Right associativity parses `a = b = c` as `a = (b = c)`. The inner Unit result makes ordinary chained numeric assignment a type error; use separate assignments. Destructuring and whole-Slice assignment require separate rules.
+
+#### 8.7.2. Compound assignment
+
+`+= -= *= /= %= &= |= ^= <<= >>=` perform the corresponding binary operation and return Unit. Resolve the destination once, read its old value once, evaluate the right side, compute, and write once. This is not a textual replacement with `target = target op value`; receivers and indices are not repeated.
+
+A Property uses one getter and one setter. Its getter result must support the operation, and the computed result must fit the Property Type. Do not insert hidden Moves or duplication to supply missing capabilities. Destination validity and ownership follow simple assignment.
+
+```kimi
+values[nextIndex()] += amount() // Index, old value, amount, addition, write.
+```
+
+If the right side or operation does not complete normally, do not write; getter and operand effects already performed remain. Compound assignment is not atomic and does not provide synchronization. Raw-pointer `+=` / `-=` use only the permitted displacement operations and their unsafe conditions; other pointer compound assignments are forbidden.
+
+### 8.8. Extension boundaries and reserved syntax
+
+Operator symbols, precedence, and associativity are fixed by the language. User-defined arithmetic and comparison may be supplied through explicit Type Contracts once their declaration syntax, required members, and resolution rules are specified. Such extensions must preserve evaluation order and counts, comparison's `bool` result, and assignment's Unit result.
+
+`and`, `or`, `not`, `=`, `@`, `is`, Ranges, and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined. Neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.`, or ternary `?:`; use logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref` / `@uniq`. Recognition by the lexer alone does not make a token a usable operator.
+
+`#Name` is an Attribute and `#if` / `#case` are compile-time directives, not runtime unary operators. `$` denotes the Composition Root; `$panic(...)` follows [Panic Termination](#103-panic-termination). Other Composition Root operations, dependency resolution, lifetimes, and failure rules remain separately specified. The internal name `MacroKoto` does not define language semantics.
+
+### 8.9. Implementation status
+
+As of 2026-09-07, the Parser implements the precedence table, diagnoses unparenthesized value-comparison and Range chains, and distinguishes generic type arguments from comparisons. Basic expressions, argument labels/defaults, collections, and anonymous functions have syntax-tree support. The `is` right-side rule has regression coverage. Member-name restrictions still need additional validation.
+
+General type inference, overload and argument matching, function-value execution, numeric checks, dictionary duplicate detection, evaluation order during execution, and single-access Property updates require semantic analysis and runtime implementation. Panic name/type validation, diagnostics, and common termination handling are also planned. Control-flow and unsafe checks are partial; ownership, Origins, and runtime cleanup remain planned. Examples using application-specific functions or Types illustrate semantics rather than promise standard-library APIs.
+
+Implementation references:
+
+- [Parser.cs](Kimi/Compiler/Parsing/Parser.cs) and [expression Koto nodes](Kimi/Compiler/Parsing/Koto/Expressions): syntax and precedence.
+- [ControlFlowAnalysis.cs](Kimi/Compiler/Analysis/ControlFlowAnalysis.cs): results, transfers, short-circuit paths, and partial unsafe checks.
+- [ExpressionPrecedenceTest.cs](xUnitTest/Tests/ExpressionPrecedenceTest.cs), [ParserRegressionTest.cs](xUnitTest/Tests/ParserRegressionTest.cs), and [SpecConformanceParseTest.cs](xUnitTest/Tests/SpecConformanceParseTest.cs): grouping, diagnostics, generic boundaries, and expression syntax.
+- [CollectionLiteralParseTest.cs](xUnitTest/Tests/CollectionLiteralParseTest.cs) and [RangeIndexParseTest.cs](xUnitTest/Tests/RangeIndexParseTest.cs): collection and boundary syntax.
+- [ControlFlowAnalysisTest.cs](xUnitTest/Tests/ControlFlowAnalysisTest.cs) and [ControlFlowRevisionParseTest.cs](xUnitTest/Tests/ControlFlowRevisionParseTest.cs): control constructs and result checks.
+
+## 9. Control flow
 
 Control flow distinguishes four concepts:
 
@@ -1787,7 +2221,7 @@ Control flow distinguishes four concepts:
 | **Control Transfer** | A requested change in control. | `return`, `exit`, `continue`, `yield` |
 | **Completion** | How evaluation finishes. | `Normal(result)`, `Return(target, result)`, `Exit(target, result)`, `Continue(target)`, `Yield(target, result)` |
 
-An **Iteration Construct** is a `for`, `while`, or `loop`; an **iteration** is one execution of its body. Each construct establishes an Iteration Boundary. Every `if` and `match` establishes a Selection Boundary regardless of its result or context. Boundaries may accept, stop, or pass through a transfer lookup, as specified under [target lookup](#852-target-lookup).
+An **Iteration Construct** is a `for`, `while`, or `loop`; an **iteration** is one execution of its body. Each construct establishes an Iteration Boundary. Every `if` and `match` establishes a Selection Boundary regardless of its result or context. Boundaries may accept, stop, or pass through a transfer lookup, as specified under [target lookup](#952-target-lookup).
 
 | Transfer | Role |
 | --- | --- |
@@ -1798,13 +2232,13 @@ An **Iteration Construct** is a `for`, `while`, or `loop`; an **iteration** is o
 
 Unlabeled `exit` skips Labeled Blocks. A `loop` or explicitly named Labeled Block can receive a result in either Evaluation Context. Deferred Blocks accept only operandless self-targeted `exit`; no transfer may cross their boundary. Kimigayo uses `exit`, not `break`, for iteration termination.
 
-### 8.1. Completions
+### 9.1. Completions
 
 **Normal completion**, represented by `Normal(result)`, means that an expression or construct finishes and returns control to its evaluator. A statement's normal Completion uses Unit without making that statement a value-producing expression. **Abrupt completion** is a `Return`, `Exit`, `Continue`, or `Yield` directed at a resolved lexical target. A transfer expression does not complete normally, even when its target subsequently does.
 
 An operandless `return` or `exit` supplies Unit, so the corresponding Completion always contains a result. Whether a source-level operand is required or forbidden is checked separately. `Continue` has no result.
 
-After required [Scope Exit](#92-scope-exit-destruction) processing, a boundary handles its own valid Completion or propagates one targeting an outer boundary:
+After required [Scope Exit](#102-scope-exit-destruction) processing, a boundary handles its own valid Completion or propagates one targeting an outer boundary:
 
 | Boundary | Self-targeted Completion | Action |
 | --- | --- | --- |
@@ -1814,9 +2248,9 @@ After required [Scope Exit](#92-scope-exit-destruction) processing, a boundary h
 | Iteration Construct | `Continue(self)` | Proceed to the next iteration. |
 | Function | `Return(self, result)` | Deliver the secured result to the caller. |
 
-**Divergence** means that evaluation never finishes and produces no Completion. Under the broader term **Evaluation Outcome**, Completion and divergence are distinct cases. Never is a static Type describing the absence of normal completion; it is neither a Completion variant nor a synonym for divergence.
+**Divergence** means that evaluation never finishes and produces no Completion. Under the broader term **Evaluation Outcome**, Completion, divergence, and [Panic Termination](#103-panic-termination) are distinct cases. Panic ends the program without a Completion delivered to a lexical target. Never describes the absence of normal completion; it is neither a Completion variant nor a synonym for divergence.
 
-### 8.2. Blocks and evaluation contexts
+### 9.2. Blocks and evaluation contexts
 
 A **Block** is an indentation-delimited sequence of declarations, expressions, and statements evaluated in order. An ordinary Block completes with Unit on reaching its end, including when its last item is a declaration or conditional compilation removes all its items. Source-level executable bodies must satisfy the nonempty rule below. Nesting an ordinary Block adds no control-transfer target. Constructs with their own result rules apply those rules instead. Function bodies follow [Functions](#551-function-bodies-and-results).
 
@@ -1824,11 +2258,11 @@ A **Value Context** is a syntactic position that uses an expression's value: an 
 
 A **Discard Context** discards an expression's normal result without imposing Unit or suppressing Type, ownership, or destruction checks. Every direct expression, including the last, in an ordinary, Labeled, Unsafe, Deferred, iteration, branch, or function Block body uses this context. Nested initializers, arguments, and operands retain their positional contexts.
 
-An expression determines its result; its Evaluation Context determines whether that result is consumed or discarded. A `loop` accepts result operands in either context. Selections follow the unified [Result-requiring Selection](#871-branch-results) rules.
+An expression determines its result; its Evaluation Context determines whether that result is consumed or discarded. A `loop` accepts result operands in either context. Selections follow the unified [Result-requiring Selection](#971-branch-results) rules.
 
 A trailing semicolon does not change an expression's Evaluation Context or whether an Expression body supplies an implicit result. Body form, not the number of direct expressions or declarations, determines the branch result rule.
 
-#### 8.2.1. Nonempty executable Blocks
+#### 9.2.1. Nonempty executable Blocks
 
 An executable Block requires at least one complete source **Syntax item**: a declaration, expression, statement, or compile-time directive. Blank lines, comments, and separators do not count. Directives must include their required condition, target, and body.
 
@@ -1858,7 +2292,7 @@ defer:
 
 This rule applies to executable bodies of branches, `match` arms, iterations, Labeled Blocks, Unsafe Blocks, Deferred Blocks, functions, and accessors. It does not define emptiness rules for a `match` arm list or a Declaration Container body. Single-line forms already require one complete InlineStatement.
 
-#### 8.2.2. Conditional compilation and results
+#### 9.2.2. Conditional compilation and results
 
 Check source emptiness **before directive selection**, independently of reachability. A valid `#if` or `#case` counts even when selection removes all executable Syntax; its own syntax and selection requirements still apply.
 
@@ -1879,19 +2313,19 @@ else
 
 Likewise, removing a required `yield` or result-bearing `exit` through conditional compilation may cause a result-coverage error, even though the source Block passes the emptiness check.
 
-### 8.3. Block constructs
+### 9.3. Block constructs
 
 | Construct | Category | Execution and result |
 | --- | --- | --- |
 | Labeled Block (`Label:`) | Expression; also usable in Discard Context | Execute now; receive a result through `exit value from Label`. |
 | Unsafe Block (`unsafe:`) | Block Statement | Execute now with unsafe permission; no expression result. |
-| [Deferred Block](#91-deferred-blocks) (`defer:`) | Block Statement | Register now and execute at Scope Exit; no expression result. |
+| [Deferred Block](#101-deferred-blocks) (`defer:`) | Block Statement | Register now and execute at Scope Exit; no expression result. |
 
-A **Block Statement** is a statement with a scoped body, not an expression. Unsafe and Deferred Blocks are allowed only in executable bodies, not directly in Declaration Containers. Both have an indented multiline form and a single-line form containing one [InlineStatement](#831-inlinestatement). Both forms create an independent body scope and have the same evaluation and cleanup rules.
+A **Block Statement** is a statement with a scoped body, not an expression. Unsafe and Deferred Blocks are allowed only in executable bodies, not directly in Declaration Containers. Both have an indented multiline form and a single-line form containing one [InlineStatement](#931-inlinestatement). Both forms create an independent body scope and have the same evaluation and cleanup rules.
 
 At statement start, contextual keywords `unsafe:` and `defer:` take precedence over Label parsing. Neither declares a Label. `unsafe/T` remains Type Semantics syntax and `unsafe func` a function declaration modifier; outside their special contexts these spellings follow normal Name rules.
 
-#### 8.3.1. InlineStatement
+#### 9.3.1. InlineStatement
 
 An **InlineStatement** is one statement completed on a single line without a following indented Block.
 
@@ -1921,13 +2355,13 @@ defer: if condition                  // Error: requires a following Block.
 
 Use the multiline form for such a branch. `defer: unsafe: releaseRaw(pointer)` is equivalent to a Deferred Block containing an Unsafe Block whose body calls `releaseRaw(pointer)`.
 
-#### 8.3.2. Labeled Block
+#### 9.3.2. Labeled Block
 
 A Labeled Block begins with `Label:` followed by its indented body on the next line. It receives a result only from an `exit` explicitly targeting that Label. Its trailing expression never implicitly supplies a result, and unlabeled exits still skip it.
 
 A **Result-requiring Labeled Block** occurs in Value Context (even with expected Unit) or has a result-bearing self-targeted `exit`. Classify after target lookup, before reachability analysis. Count resolved self-targeted exits even inside nested constructs, but not results sent elsewhere.
 
-Every reachable completing path must use `exit expression from Label`, including `exit () from Label` for Unit. Fall-through is an error; operandless self-targeted exits are forbidden even if unreachable. Paths transferring outward or never completing need no Block result. Shared [result validation](#88-result-validation) applies in both contexts.
+Every reachable completing path must use `exit expression from Label`, including `exit () from Label` for Unit. Fall-through is an error; operandless self-targeted exits are forbidden even if unreachable. Paths transferring outward or never completing need no Block result. Shared [result validation](#98-result-validation) applies in both contexts.
 
 ```kimi
 let result = resolve:
@@ -1954,7 +2388,7 @@ work:
 
 A Labeled Block that does not require a result occurs in Discard Context and has no result-bearing self-targeted exit. It completes with Unit on fall-through or `exit from Label`. A Labeled Block with no reachable normal completion has Expression Type Never; missing required results are errors, not a reason to infer Never.
 
-#### 8.3.3. Unsafe Block
+#### 9.3.3. Unsafe Block
 
 An **Unsafe Block** executes its body immediately with permission for [unsafe operations](#46-raw-pointers-and-unsafe-operations). It is a statement and cannot appear as an initializer, argument, or other expression operand, in either body form. It creates no Control Boundary and does not intercept transfer lookup. Its body follows ordinary Evaluation Context and Scope Exit rules.
 
@@ -1976,7 +2410,7 @@ unsafe:
         return *pointer // Error: inner needs its own Unsafe Block.
 ```
 
-### 8.4. Labels
+### 9.4. Labels
 
 Labels may be attached to Blocks, `for`, `while`, and `loop`:
 
@@ -1994,7 +2428,7 @@ search: loop
     process()
 ```
 
-A labeled Iteration Construct uses `Label: for ...`, `Label: while ...`, or `Label: loop`. Unlike a [Labeled Block](#832-labeled-block), adding a Label to an Iteration Construct does not change its result rules; a labeled `loop` may appear in Value Context:
+A labeled Iteration Construct uses `Label: for ...`, `Label: while ...`, or `Label: loop`. Unlike a [Labeled Block](#932-labeled-block), adding a Label to an Iteration Construct does not change its result rules; a labeled `loop` may appear in Value Context:
 
 ```kimi
 var result = outer: loop
@@ -2007,9 +2441,9 @@ Labels follow the character rules for [Names](#31-names) and have a namespace se
 
 A Label is visible only inside its construct's body, excluding its `for` iterable or `while` condition. A transfer may identify only an enclosing construct in the same Function Boundary without crossing a Deferred Control Boundary. Sibling, inner, and other-function Labels are inaccessible. A Label names a construct, not an instruction address: jumping into a body or back to a completed construct is not supported.
 
-### 8.5. Control transfers
+### 9.5. Control transfers
 
-#### 8.5.1. Syntax and operands
+#### 9.5.1. Syntax and operands
 
 ```text
 return [expression]
@@ -2030,9 +2464,9 @@ Brackets indicate optional syntax. `exit name` uses `name` as a result expressio
 | `continue` to an Iteration Construct | Forbidden. |
 | `yield` to a Selection Boundary | Required; use `yield ()` for Unit. |
 
-Operands are evaluated before transfer. If operand evaluation leaves by another transfer or never completes, the original transfer does not occur. Otherwise, its result is secured by Copy or Move before [scope-exit destruction](#92-scope-exit-destruction) and delivery to the target. Each transfer expression itself has type [Never](#415-unit-and-never-types).
+Operands are evaluated before transfer. If operand evaluation leaves by another transfer or never completes, the original transfer does not occur. Otherwise, its result is secured by Copy or Move before [scope-exit destruction](#102-scope-exit-destruction) and delivery to the target. Each transfer expression itself has type [Never](#415-unit-and-never-types).
 
-#### 8.5.2. Target lookup
+#### 9.5.2. Target lookup
 
 Resolve targets by walking outward through lexical containment. Resolve the target first, then check operand presence and Type; an unsuitable operand never causes lookup to skip a target.
 
@@ -2057,12 +2491,12 @@ var result = loop
         exit 10 // Error: the nearest Iteration Construct is for, which forbids an operand.
 ```
 
-#### 8.5.3. Function Boundaries
+#### 9.5.3. Function Boundaries
 
 Each of these bodies establishes an independent **Function Boundary**:
 
 - Named functions, including methods and nested functions.
-- Anonymous functions and closures.
+- Anonymous functions. Capturing closures remain deferred under [function expressions](#843-function-expressions).
 - Property getters and setters.
 - Destructors (`deinit`).
 
@@ -2078,7 +2512,7 @@ func outer() -> i32
     return f()
 ```
 
-#### 8.5.4. Label and nesting examples
+#### 9.5.4. Label and nesting examples
 
 Adding a Labeled Block does not change the target of an unlabeled `exit` or `continue`:
 
@@ -2115,9 +2549,9 @@ outer: for x in xs
         process(x, y)
 ```
 
-### 8.6. Iteration Constructs
+### 9.6. Iteration Constructs
 
-#### 8.6.1. `for` and `while`
+#### 9.6.1. `for` and `while`
 
 `for` evaluates its iterable once and executes its body for each supplied value. A single Name binds the value; a parenthesized, comma-separated binding destructures it. `while` evaluates a Boolean condition before each iteration and executes its body while that condition is true. Condition parentheses are optional.
 
@@ -2136,7 +2570,7 @@ Both constructs discard body results and produce Unit on completion. Neither acc
 | Body end or self-targeted `continue` | Request the next value; finish if exhausted. | Reevaluate the condition; finish if false. |
 | Self-targeted `exit` | End the Iteration Construct. | End the Iteration Construct. |
 
-#### 8.6.2. `loop`
+#### 9.6.2. `loop`
 
 `loop` repeats unconditionally. It discards body values and starts the next iteration at the beginning of the body after body fall-through or a self-targeted `continue`.
 
@@ -2153,7 +2587,7 @@ var result = loop
         exit value
 ```
 
-Only reachable self-targeted exits contribute to inference. Unreachable exits are checked against any available Target Result Type under [result validation](#88-result-validation). Nested selections do not intercept `exit`.
+Only reachable self-targeted exits contribute to inference. Unreachable exits are checked against any available Target Result Type under [result validation](#98-result-validation). Nested selections do not intercept `exit`.
 
 ```kimi
 loop
@@ -2166,11 +2600,11 @@ outer: loop
         exit from outer
 ```
 
-The inner `loop` has no result-producing path and has type Never. The outer `loop` completes with Unit. See [result validation](#88-result-validation) for the common rules.
+The inner `loop` has no result-producing path and has type Never. The outer `loop` completes with Unit. See [result validation](#98-result-validation) for the common rules.
 
-### 8.7. Selections: if, match, and yield
+### 9.7. Selections: if, match, and yield
 
-#### 8.7.1. Branch results
+#### 9.7.1. Branch results
 
 Each `if` branch and `match` arm explicitly chooses an **Expression body** or **Block body**, regardless of its item count:
 
@@ -2192,12 +2626,12 @@ Resolve transfer targets before this classification, without using reachability.
 Every Result-requiring Selection follows three common requirements:
 
 - **Exhaustiveness:** `if` requires a final `else`; `match` must cover all subject values through its patterns or a catch-all arm. Literal conditions, unreachable branches, and paths that never complete do not waive this requirement.
-- **Result coverage:** every reachable path that completes normally must supply a result. A Block must use `yield`, including `yield ()` for Unit; declarations, discarded expressions, and bodies emptied by conditional compilation do not supply implicit branch results. Source-level empty executable Blocks are parse errors under the [nonempty rule](#821-nonempty-executable-blocks). A path leaving for an outer target or never finishing needs no result. After a transfer caught internally, analysis follows the continuation.
-- **Result compatibility:** explicit and implicit results obey the shared [result validation](#88-result-validation) rules, even when the selection's result is discarded.
+- **Result coverage:** every reachable path that completes normally must supply a result. A Block must use `yield`, including `yield ()` for Unit; declarations, discarded expressions, and bodies emptied by conditional compilation do not supply implicit branch results. Source-level empty executable Blocks are parse errors under the [nonempty rule](#921-nonempty-executable-blocks). A path leaving for an outer target or never finishing needs no result. After a transfer caught internally, analysis follows the continuation.
+- **Result compatibility:** explicit and implicit results obey the shared [result validation](#98-result-validation) rules, even when the selection's result is discarded.
 
 A selection that does not require a result has only Block bodies, no self-targeted `yield`, and occurs in Discard Context. Reaching a selected Block's end or selecting no branch supplies Unit. Paths that leave for an outer target or never finish supply no result to that selection.
 
-#### 8.7.2. `if`
+#### 9.7.2. `if`
 
 `if` tests Boolean conditions in order and executes the first selected branch. It may have subsequent `else if` branches and one final `else`. Condition parentheses are optional. Each branch independently chooses an Expression body or a Block body.
 
@@ -2240,7 +2674,7 @@ if condition
 
 An `if` that does not require a result may omit `else`.
 
-#### 8.7.3. `match`
+#### 9.7.3. `match`
 
 `match` evaluates its subject once, tests arms in source order, and executes the first matching arm. Every arm uses `pattern => Expression` or `pattern =>` followed by an indented Block. There is no fall-through to another arm.
 
@@ -2255,7 +2689,7 @@ var result = match value
 
 `yield` ends the whole target `match`. This example assumes `A` and `B` cover every case. A `match` that does not require a result may be non-exhaustive.
 
-#### 8.7.4. Nested `yield` targets
+#### 9.7.4. Nested `yield` targets
 
 A Labeled Block does not stop `yield` lookup:
 
@@ -2324,7 +2758,7 @@ var result = if condition
 else => 0
 ```
 
-### 8.8. Result validation
+### 9.8. Result validation
 
 A transfer supplies a result only to its resolved target. Function results follow [Functions](#551-function-bodies-and-results); Blocks, Iteration Constructs, and branches use their result sources defined above. Discard Context does not exempt a construct from result validation.
 
@@ -2333,16 +2767,16 @@ A transfer supplies a result only to its resolved target. Function results follo
 Validate results in this order:
 
 1. Determine Evaluation Contexts and body forms, resolve transfer targets, and classify Result-requiring Selections and Labeled Blocks without excluding unreachable code. Check syntax, Names, operand presence, and local Type correctness. Enforce selection exhaustiveness requirements.
-2. Apply [reachability](#882-reachability) analysis to result sources, required Scope Exit processing, and paths leaving each construct. Collect result candidates only from reachable result-delivery paths. A transfer whose operand or required cleanup cannot complete normally supplies no result to its original target.
+2. Apply [reachability](#982-reachability) analysis to result sources, required Scope Exit processing, and paths leaving each construct. Collect result candidates only from reachable result-delivery paths. A transfer whose operand or required cleanup cannot complete normally supplies no result to its original target.
 3. Check result coverage: reject any reachable path that reaches an end requiring a result without supplying one. Where a construct implicitly supplies Unit, include that Unit as a candidate only when the path is reachable. A non-Unit Block-bodied function may not fall through.
 4. Determine the Target Result Type as described below, independently of whether the construct's Expression Type is Never. Unreachable result sources do not contribute candidates or constraints to inference.
 5. When a Target Result Type is available, check every explicit result operand and implicit Expression-body result against it, including in unreachable code. Operandless `return` and `exit` supply Unit. Apply normal conversion and Origin compatibility rules. A source that cannot itself complete normally supplies no value to compare; its local operations and any transfers inside it are still checked.
 
 Paths that leave a construct for an outer target or never complete supply no result candidate for that construct. Transfers caught internally may let evaluation continue and must be followed to their continuation.
 
-#### 8.8.1. Expression Type and Target Result Type
+#### 9.8.1. Expression Type and Target Result Type
 
-The **Expression Type** describes a normally completing expression's value. A `loop`, selection, or Labeled Block with no reachable path delivering its own result has Type Never. Missing required results are errors, not Never. Unsafe and Deferred Blocks are statements with no Expression Type; analyze their body completion separately.
+The **Expression Type** describes a normally completing expression's value. An expression, including a `loop`, selection, or Labeled Block, with no reachable path that completes normally has Type Never. Missing required results are errors, not Never. Unsafe and Deferred Blocks are statements with no Expression Type; analyze their body completion separately.
 
 The **Target Result Type** constrains results supplied to a boundary. Use a declared or expected Type, or infer it from reachable result candidates under normal inference and conversion rules. Propagate expected Types to result sources even if the Expression Type is Never.
 
@@ -2385,7 +2819,7 @@ func choose(flag: bool) -> i32
 
 The `if` has type Never: neither `result` initialization nor function-body fall-through occurs. Both returns supply integer function results. In contrast, `yield` itself has type Never but supplies a result to its target `if` / `match`.
 
-#### 8.8.2. Reachability
+#### 9.8.2. Reachability
 
 Reachability is determined statically within each Function Boundary. Treat a path as reachable unless the following analysis proves otherwise. Optimization settings must not change type-checking results.
 
@@ -2417,9 +2851,9 @@ else => 1
 
 In each example, the unreachable expression or transfer is locally valid, but its result is incompatible with the target. Undefined Names or Labels, invalid operand operations, and value-bearing exits targeting `for` are also errors in unreachable code. These rules concern runtime control flow; Syntax excluded by [conditional compilation](#22-compile-time-directives) follows its separate Binding rules.
 
-## 9. Scope exit and cleanup
+## 10. Scope exit, cleanup, and termination
 
-### 9.1. Deferred Blocks
+### 10.1. Deferred Blocks
 
 A **Deferred Block** registers cleanup when execution reaches `defer`. Registration evaluates none of its body, arguments, conditions, or initializers. The statement has no result; expressions inside retain their positional Evaluation Contexts.
 
@@ -2434,9 +2868,9 @@ func process(flag: bool)
     log("after branch")
 ```
 
-For true `flag`, output is `branch end`, `after branch`, then `function end`. Deferred execution and automatic destruction share the [Scope Exit ordering](#92-scope-exit-destruction).
+For true `flag`, output is `branch end`, `after branch`, then `function end`. Deferred execution and automatic destruction share the [Scope Exit ordering](#102-scope-exit-destruction).
 
-#### 9.1.1. Deferred Control Boundary
+#### 10.1.1. Deferred Control Boundary
 
 Each Deferred Block establishes a **Deferred Control Boundary** that no transfer lookup may cross. It accepts only operandless self-targeted `exit`, including through nested ordinary or Unsafe Blocks; even `()` is forbidden as an operand.
 
@@ -2469,7 +2903,7 @@ defer:
     exit () // Error: a Deferred Block accepts no result operand.
 ```
 
-#### 9.1.2. Deferred evaluation and ownership
+#### 10.1.2. Deferred evaluation and ownership
 
 Resolve Names at the registration's lexical position; later declarations are invisible and cannot change those bindings. Registration neither Copies nor Moves referenced locals and creates no closure value. Execution accesses the then-current bindings.
 
@@ -2496,7 +2930,7 @@ defer: consume(other) // Error: executes before inspect and moves its input.
 
 A valid Move during cleanup removes subsequent automatic destruction responsibility. Raw pointer operations retain their programmer-managed obligations; `defer` does not repair double destruction or extend raw pointer validity. Secured result borrows must remain valid after all cleanup.
 
-#### 9.1.3. Nested and unsafe cleanup
+#### 10.1.3. Nested and unsafe cleanup
 
 An inner `defer` registers while its enclosing Deferred Block executes and runs when that body exits, before the original scope's remaining cleanup. It cannot add a registration to an outer scope already being exited.
 
@@ -2513,19 +2947,19 @@ unsafe:
 
 A Deferred Block does not itself grant unsafe permission. Permission follows the operation's lexical context, never its later caller, and does not cross Function Boundaries. Safety conditions must hold when the delayed operation executes.
 
-#### 9.1.4. Implementation model
+#### 10.1.4. Implementation model
 
 Analyze registration separately from execution: a non-completing deferred body affects actual cleanup paths, not reachability immediately after registration. Lower defers and destruction into one exit sequence, retaining registration state only as needed. No dynamic closure, function value, or heap cleanup stack is required.
 
 For `if condition` containing only `defer: cleanup()`, a true branch registers and runs cleanup before leaving that branch; false registers nothing. No registration flag is needed in this simple case, and Lowering must not move cleanup into the surrounding scope. Example cleanup functions are illustrative, not standard API declarations.
 
-### 9.2. Scope-exit destruction
+### 10.2. Scope-exit destruction
 
 **Scope Exit** combines registered Deferred Blocks and automatic destruction. It applies both to ordinary scope completion and to scopes left by `return`, `exit`, `continue`, or `yield`.
 
 Ownership, temporary-lifetime, and construct-lifetime rules determine each value's owning scope and destruction point. These rules also govern temporaries, `for` iterables and iterators, iteration bindings, `match` subjects, and owned function parameters. A transfer uses those scopes to determine what it leaves.
 
-#### 9.2.1. Cleanup order
+#### 10.2.1. Cleanup order
 
 Clean departing scopes from inner to outer, finishing each before the next. Within a scope, process local declarations and `defer` statements in reverse combined lexical order. Later initialization or reassignment does not change a binding's position.
 
@@ -2549,7 +2983,7 @@ func process(first: Resource, second: Resource)
 
 If both parameters retain owned values, cleanup is `end`, destruction of `second`, then destruction of `first`. Borrowed bindings do not cause destruction of their pointees. Similarly, a defer inspecting an iteration binding runs before that binding's remaining owned value is destroyed.
 
-#### 9.2.2. Results and transfers
+#### 10.2.2. Results and transfers
 
 For a transfer with a result operand, or an implicit Expression-body result:
 
@@ -2579,10 +3013,53 @@ Clean only scopes actually left. `continue` cleans the current iteration's depar
 
 Normal ownership, borrowing, and [Drop checking](#766-drop-checking) apply throughout cleanup. Securing a result first does not permit a borrow of a destroyed local to escape. If partial initialization or partial Move is permitted, destroy parts with remaining responsibility rather than excluding the whole aggregate. Raw pointer access does not guarantee automatic tracking of the original owner's destruction responsibility.
 
-#### 9.2.3. Completion and abnormal termination
+#### 10.2.3. Completion and abnormal termination
 
 Consume a Deferred Block's registration when its execution starts. Each registration executes once if cleanup reaches it; an inner defer registers in the executing body's own scope, never in an outer scope already being exited.
 
 Deliver a pending transfer or result only after all required cleanup completes normally. Nonterminating cleanup prevents remaining cleanup and delivery; general termination proofs are not required.
 
-Forced process termination and undefined behavior provide no cleanup guarantee. Exceptions, panic, cancellation, and stack unwinding, if introduced, require separately defined common rules for Deferred Blocks, destruction, and secured results. This specification does not by itself guarantee cleanup under those mechanisms.
+Forced process termination and undefined behavior provide no cleanup guarantee. Panic follows [Panic Termination](#103-panic-termination). Exceptions, cancellation, and stack unwinding, if introduced, require separate common rules for Deferred Blocks, destruction, and secured results; this specification provides no cleanup guarantee for them.
+
+### 10.3. Panic Termination
+
+**Panic Termination** abnormally ends the entire program when execution cannot continue normally. Explicit requests and implicit runtime check failures share this rule:
+
+```text
+Panic Termination
+├─ explicit
+│  └─ $panic(...)
+└─ implicit runtime check failure
+   ├─ integer overflow
+   ├─ integer division or remainder by zero
+   ├─ out-of-range index or invalid Range boundary
+   ├─ invalid conversion
+   ├─ invalid shift count
+   ├─ duplicate dictionary key
+   └─ missing dictionary key on indexed read
+```
+
+Every runtime check failure specified by this document initiates implicit Panic. Each operation defines its invalid values; IEEE 754 floating-point division by zero is not an integer division failure.
+
+#### 10.3.1. Explicit Panic
+
+`$panic(message)` is a Composition Root termination operation with a `string` argument. Evaluate the argument once as in an ordinary call. If it completes normally, initiate Panic Termination. The call has Type Never and never returns normally.
+
+```kimi
+func requirePositive(value: i32) -> i32
+    if value <= 0
+        $panic("value must be positive")
+    return value
+```
+
+#### 10.3.2. Common termination rules
+
+Panic diagnostics carry a reason and source location: the failed operation for implicit Panic, or the `$panic(...)` call for explicit Panic. A duplicate dictionary key uses the later key expression. The runtime chooses the diagnostic format and destination; successful output is not a prerequisite for termination.
+
+Panic is unrecoverable and terminates the program, not only the current thread. It delivers no result to a normal control target and guarantees no stack unwinding, Deferred Block execution, or destruction. Panic during cleanup also provides no guarantee of remaining cleanup or delivery of a secured result.
+
+Panic conditions and termination behavior are identical in Debug and Release builds. An implicit check failure is a language-guaranteed termination operation, not merely a rewrite to a replaceable function call. Replacing `$panic` or diagnostic handling cannot make a Panic return normally.
+
+Invalid operations found during required compile-time constant evaluation are compile-time errors. A runtime operation initiates Panic only if it is actually evaluated and its check fails. Optimization must not introduce Panic from an operation skipped by short-circuit or conditional evaluation. Undefined behavior from an unsafe contract violation is not guaranteed to be detected as Panic.
+
+Panic Termination defines language behavior independently of implementation mechanisms such as a `trap` instruction. Operations that return failure as a value, and wrapping or saturating integer arithmetic, require separate explicit library APIs.
