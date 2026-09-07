@@ -62,10 +62,14 @@
   - [9.6. Iteration Constructs](#96-iteration-constructs)
   - [9.7. Selections: if, match, and yield](#97-selections-if-match-and-yield)
   - [9.8. Result validation](#98-result-validation)
-- [10. Scope exit, cleanup, and termination](#10-scope-exit-cleanup-and-termination)
+- [10. Scope exit and cleanup](#10-scope-exit-and-cleanup)
   - [10.1. Deferred Blocks](#101-deferred-blocks)
   - [10.2. Scope-exit destruction](#102-scope-exit-destruction)
-  - [10.3. Panic Termination](#103-panic-termination)
+- [11. Error handling](#11-error-handling)
+  - [11.1. Policy and status](#111-policy-and-status)
+  - [11.2. Absence and failure as values](#112-absence-and-failure-as-values)
+  - [11.3. Panic Termination](#113-panic-termination)
+  - [11.4. Warnings](#114-warnings)
 
 ## 1. Overview
 
@@ -589,7 +593,7 @@ The source literal `'あ'` occupies five bytes (`27 E3 81 82 27`), including its
 
 `()` is the Unit type. It has one value and represents the absence of a meaningful result.
 
-An expression with no reachable path that completes normally has Type Never, which has no values. `return`, `exit`, `continue`, `yield`, and `$panic(...)` have Type Never. Transfer operands supply results to their targets without changing the Types of the transfer expressions themselves. Never is a Type, not a Completion: a completed transfer has an abrupt Completion, whereas divergence produces no Completion. Missing required results are errors, not Never. See [Completions](#91-completions), [result validation](#98-result-validation), and [Panic Termination](#103-panic-termination).
+An expression with no reachable path that completes normally has Type Never, which has no values. `return`, `exit`, `continue`, `yield`, and `$panic(...)` have Type Never. Transfer operands supply results to their targets without changing the Types of the transfer expressions themselves. Never is a Type, not a Completion: a completed transfer has an abrupt Completion, whereas divergence produces no Completion. Missing required results are errors, not Never. See [Completions](#91-completions), [result validation](#98-result-validation), and [Panic Termination](#113-panic-termination).
 
 ### 4.2. Compound Type syntax
 
@@ -650,7 +654,7 @@ Applying a Range with `value[range]` produces a Slice over the selected consecut
 
 After resolving from-end boundaries, an exclusive Range must satisfy `0 <= start <= end <= length`. An inclusive Range must satisfy `0 <= start <= end < length`. An exclusive Range with equal boundaries is empty.
 
-Invalid Indices or boundaries, including negative `n` in `^n`, are check failures under [Panic Termination](#103-panic-termination). Safe sequence access may omit a check only when safety is proven.
+Invalid Indices or boundaries, including negative `n` in `^n`, are check failures under [Panic Termination](#113-panic-termination). Safe sequence access may omit a check only when safety is proven.
 
 ```kimi
 let values = [10, 20, 30, 40]
@@ -1837,7 +1841,7 @@ These features require extensions to the core rules above and must not be inferr
 
 Unless a construct needs a longer lifetime, an owned temporary lasts until evaluation of the outermost expression that created it ends. Destroy remaining temporaries in reverse creation order. Argument temporaries last through the call. Values moved into bindings or results follow the destination's lifetime. Iteration sources and `match` subjects last for their required use by the construct.
 
-A borrow does not extend its source's lifetime. A Slice of a temporary array cannot survive destruction of that array. Transfers secure results before [scope-exit cleanup](#102-scope-exit-destruction); [Panic Termination](#103-panic-termination) provides no cleanup guarantee.
+A borrow does not extend its source's lifetime. A Slice of a temporary array cannot survive destruction of that array. Transfers secure results before [scope-exit cleanup](#102-scope-exit-destruction); [Panic Termination](#113-panic-termination) skips or aborts cleanup.
 
 ## 8. Expressions and operators
 
@@ -1976,7 +1980,7 @@ let map = [x: first(), x: second()]
 
 When checked at runtime, the first entry is evaluated and inserted before checking the second key. That check fails, so `second()` is not called.
 
-If key evaluation, duplicate checking, or value evaluation does not complete normally, do not insert that entry or process later entries. No partially constructed dictionary is returned, and completed side effects are not rolled back. The duplicate's diagnostic location is the later key expression. Termination and cleanup follow [Panic Termination](#103-panic-termination).
+If key evaluation, duplicate checking, or value evaluation does not complete normally, do not insert that entry or process later entries. No partially constructed dictionary is returned, and completed side effects are not rolled back. The duplicate's diagnostic location is the later key expression. Termination and cleanup follow [Panic Termination](#113-panic-termination).
 
 ### 8.4. Access and application
 
@@ -2099,7 +2103,7 @@ let masked = bits & 0b0110  // 0b0010
 let shifted = bits << 1     // 0b10100
 ```
 
-Check integer `+ - *`, unary `-`, increment/decrement, and the arithmetic part of compound assignment for overflow. Integer division or remainder by zero is invalid. Signed minimum divided by `-1`, including `% -1`, is also invalid. These failures follow [Panic Termination](#103-panic-termination), including its constant-evaluation rule.
+Check integer `+ - *`, unary `-`, increment/decrement, and the arithmetic part of compound assignment for overflow. Integer division or remainder by zero is invalid. Signed minimum divided by `-1`, including `% -1`, is also invalid. These failures follow [Panic Termination](#113-panic-termination), including its constant-evaluation rule.
 
 `& | ^` perform bitwise AND, OR, and XOR on the same integer Type; they do not accept `bool`. `<< >>` return the left operand's integer Type and accept any integer Type on the right, requiring `0 <= shift < bit width of left operand`. An invalid count is a check failure. Left shift discards high bits and inserts zero low bits; right shift sign-extends signed integers and zero-extends unsigned integers. Discarded shift bits are not arithmetic overflow.
 
@@ -2143,7 +2147,7 @@ let clear = flags & mask == 0
 | Value to a borrow such as `ref` / `uniq` | Require a valid place, access permissions, and Origin; do not extend lifetime. |
 | Raw pointer to raw pointer; raw pointer to/from `usize` | Follow [pointer conversion and provenance](#464-pointer-conversions) rules in an Unsafe Block. |
 
-Check failures follow [Panic Termination](#103-panic-termination). Built-in numeric conversions exclude `bool` / `char`, string parsing, and arbitrary bit reinterpretation. Conversion does not acquire ownership from a safe borrow, upgrade shared access to exclusive access, or implicitly increase a reference count.
+Check failures follow [Panic Termination](#113-panic-termination). Built-in numeric conversions exclude `bool` / `char`, string parsing, and arbitrary bit reinterpretation. Conversion does not acquire ownership from a safe borrow, upgrade shared access to exclusive access, or implicitly increase a reference count.
 
 ```kimi
 let wide = value@i64
@@ -2194,7 +2198,7 @@ Operator symbols, precedence, and associativity are fixed by the language. User-
 
 `and`, `or`, `not`, `=`, `@`, `is`, Ranges, and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined. Neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.`, or ternary `?:`; use logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref` / `@uniq`. Recognition by the lexer alone does not make a token a usable operator.
 
-`#Name` is an Attribute and `#if` / `#case` are compile-time directives, not runtime unary operators. `$` denotes the Composition Root; `$panic(...)` follows [Panic Termination](#103-panic-termination). Other Composition Root operations, dependency resolution, lifetimes, and failure rules remain separately specified. The internal name `MacroKoto` does not define language semantics.
+`#Name` is an Attribute and `#if` / `#case` are compile-time directives, not runtime unary operators. `$` denotes the Composition Root; `$panic(...)` follows [Panic Termination](#113-panic-termination). Other Composition Root operations, dependency resolution, lifetimes, and failure rules remain separately specified. The internal name `MacroKoto` does not define language semantics.
 
 ### 8.9. Implementation status
 
@@ -2248,7 +2252,7 @@ After required [Scope Exit](#102-scope-exit-destruction) processing, a boundary 
 | Iteration Construct | `Continue(self)` | Proceed to the next iteration. |
 | Function | `Return(self, result)` | Deliver the secured result to the caller. |
 
-**Divergence** means that evaluation never finishes and produces no Completion. Under the broader term **Evaluation Outcome**, Completion, divergence, and [Panic Termination](#103-panic-termination) are distinct cases. Panic ends the program without a Completion delivered to a lexical target. Never describes the absence of normal completion; it is neither a Completion variant nor a synonym for divergence.
+**Divergence** means that evaluation never finishes and produces no Completion. Under the broader term **Evaluation Outcome**, Completion, divergence, and [Panic Termination](#113-panic-termination) are distinct cases. Panic ends the entire process without a Completion delivered to a lexical target. Never describes the absence of normal completion; it is neither a Completion variant nor a synonym for divergence.
 
 ### 9.2. Blocks and evaluation contexts
 
@@ -2256,7 +2260,7 @@ A **Block** is an indentation-delimited sequence of declarations, expressions, a
 
 A **Value Context** is a syntactic position that uses an expression's value: an initializer, operand, argument, condition, `match` subject, `return` / `exit` / `yield` operand, or Expression body introduced by `=>`. It remains a Value Context even when the expected Type is Unit or the result is subsequently unused. Reachability, constant evaluation, and optimization do not change it.
 
-A **Discard Context** discards an expression's normal result without imposing Unit or suppressing Type, ownership, or destruction checks. Every direct expression, including the last, in an ordinary, Labeled, Unsafe, Deferred, iteration, branch, or function Block body uses this context. Nested initializers, arguments, and operands retain their positional contexts.
+A **Discard Context** discards an expression's normal result without imposing Unit or suppressing Type, ownership, or destruction checks. Every direct expression, including the last, in an ordinary, Labeled, Unsafe, Deferred, iteration, branch, or function Block body uses this context. Nested initializers, arguments, and operands retain their positional contexts. Discarding a `Result` produces a [compile-time warning](#1123-handling-propagation-and-discarding).
 
 An expression determines its result; its Evaluation Context determines whether that result is consumed or discarded. A `loop` accepts result operands in either context. Selections follow the unified [Result-requiring Selection](#971-branch-results) rules.
 
@@ -2851,7 +2855,7 @@ else => 1
 
 In each example, the unreachable expression or transfer is locally valid, but its result is incompatible with the target. Undefined Names or Labels, invalid operand operations, and value-bearing exits targeting `for` are also errors in unreachable code. These rules concern runtime control flow; Syntax excluded by [conditional compilation](#22-compile-time-directives) follows its separate Binding rules.
 
-## 10. Scope exit, cleanup, and termination
+## 10. Scope exit and cleanup
 
 ### 10.1. Deferred Blocks
 
@@ -3019,47 +3023,175 @@ Consume a Deferred Block's registration when its execution starts. Each registra
 
 Deliver a pending transfer or result only after all required cleanup completes normally. Nonterminating cleanup prevents remaining cleanup and delivery; general termination proofs are not required.
 
-Forced process termination and undefined behavior provide no cleanup guarantee. Panic follows [Panic Termination](#103-panic-termination). Exceptions, cancellation, and stack unwinding, if introduced, require separate common rules for Deferred Blocks, destruction, and secured results; this specification provides no cleanup guarantee for them.
+Forced process termination and undefined behavior provide no cleanup guarantee. Panic skips or aborts cleanup under [Panic Termination](#113-panic-termination). Cancellation, if introduced, requires separate common rules for Deferred Blocks, destruction, and secured results; this specification provides no cleanup guarantee for it.
 
-### 10.3. Panic Termination
+## 11. Error handling
 
-**Panic Termination** abnormally ends the entire program when execution cannot continue normally. Explicit requests and implicit runtime check failures share this rule:
+### 11.1. Policy and status
 
-```text
-Panic Termination
-├─ explicit
-│  └─ $panic(...)
-└─ implicit runtime check failure
-   ├─ integer overflow
-   ├─ integer division or remainder by zero
-   ├─ out-of-range index or invalid Range boundary
-   ├─ invalid conversion
-   ├─ invalid shift count
-   ├─ duplicate dictionary key
-   └─ missing dictionary key on indexed read
-```
+Kimigayo represents ordinary failures as values and uses Panic Termination only when normal execution cannot continue. It provides no exception throwing or catching mechanism.
 
-Every runtime check failure specified by this document initiates implicit Panic. Each operation defines its invalid values; IEEE 754 floating-point division by zero is not an integer division failure.
+Runtime problems fall into three categories:
 
-#### 10.3.1. Explicit Panic
+| Category | Meaning | Representation |
+| --- | --- | --- |
+| Recoverable Failure | Expected failure that the caller can handle. | `Option<T>` / `Result<T, E>` |
+| Unrecoverable Failure | Normal execution cannot continue. | `$panic(...)` or implicit Panic |
+| Warning | Processing can continue successfully, but a condition merits notice. | Diagnostic |
 
-`$panic(message)` is a Composition Root termination operation with a `string` argument. Evaluate the argument once as in an ordinary call. If it completes normally, initiate Panic Termination. The call has Type Never and never returns normally.
+These are not a simple severity ranking: `None` represents expected absence, `Err` an operation failure, Panic process termination, and Warning a diagnostic independent of control flow.
+
+**Design status:** `Option<T>`, `Result<T, E>`, and `$panic(...)` are not yet implemented. Enum payloads, construction, and patterns below are conceptual; their syntax belongs to the corresponding Type and pattern specifications. Example APIs are illustrative, not standard-library declarations.
+
+Dedicated failure propagation syntax is not defined. Future syntax, such as `?` or `else return`, must follow normal Scope Exit rules; its details belong to that syntax's specification.
+
+### 11.2. Absence and failure as values
+
+Use `Option` for a contract representing normal absence and `Result` for a contract representing failure with a reason. The API contract determines the choice, regardless of whether an individual caller uses the reason.
+
+#### 11.2.1. Option
+
+`Option<T>` represents a value or normal absence without an absence reason.
 
 ```kimi
-func requirePositive(value: i32) -> i32
-    if value <= 0
-        $panic("value must be positive")
-    return value
+enum Option<T>
+    Some(T)
+    None
+
+func findUser(id: UserId) -> Option<User>
 ```
 
-#### 10.3.2. Common termination rules
+```kimi
+match findUser(id)
+    Some(user) => use(user)
+    None => useDefault()
+```
 
-Panic diagnostics carry a reason and source location: the failed operation for implicit Panic, or the `$panic(...)` call for explicit Panic. A duplicate dictionary key uses the later key expression. The runtime chooses the diagnostic format and destination; successful output is not a prerequisite for termination.
+#### 11.2.2. Result
 
-Panic is unrecoverable and terminates the program, not only the current thread. It delivers no result to a normal control target and guarantees no stack unwinding, Deferred Block execution, or destruction. Panic during cleanup also provides no guarantee of remaining cleanup or delivery of a secured result.
+`Result<T, E>` represents success or failure with a reason. `E` is an ordinary Type; no exception object hierarchy is required.
+
+```kimi
+enum Result<T, E>
+    Ok(T)
+    Err(E)
+
+enum FileError
+    NotFound
+    PermissionDenied
+    InvalidData
+    IoFailure
+
+func readFile(path: string) -> Result<Data, FileError>
+```
+
+```kimi
+match readFile(path)
+    Ok(data) => process(data)
+    Err(FileError.NotFound) => createFile(path)
+    Err(error) => report(error)
+```
+
+Combine the Types when an API distinguishes normal absence from operation failure:
+
+```kimi
+func lookupUser(id: UserId) -> Result<Option<User>, LookupError>
+```
+
+Here, `Ok(Some(user))` means a successful lookup with a value, `Ok(None)` normal absence, and `Err(error)` a failed lookup operation.
+
+#### 11.2.3. Handling, propagation, and discarding
+
+Recoverable failures are ordinary values: they neither throw exceptions nor propagate implicitly. Handle them with ordinary control flow such as `match`, and propagate them explicitly with `return`:
+
+```kimi
+func loadSize(path: string) -> Result<usize, FileError>
+    return match readFile(path)
+        Ok(data) => Ok(data.count)
+        Err(error) => Err(error)
+```
+
+The return Type describes contractual absence or recoverable failure; a function returning `Result` may still Panic on an invariant violation or unrecoverable condition.
+
+Discarding a `Result` expression in Discard Context is allowed but produces a compile-time warning, regardless of its runtime `Ok` / `Err` state. The warning does not change control flow. A caller can explicitly handle both variants with `match` to ignore the outcome intentionally. This section defines no special warning for discarding `Option`.
+
+Returning a recoverable failure follows normal [Scope Exit](#102-scope-exit-destruction) rules, including their requirement that earlier cleanup complete normally before remaining cleanup or result delivery proceeds. Use this path for ordinary failures requiring resource cleanup.
+
+### 11.3. Panic Termination
+
+**Panic Termination** abnormally terminates the entire process executing the program when normal execution cannot continue. Explicit requests and implicit runtime check failures share the termination rules below.
+
+#### 11.3.1. Causes and API contracts
+
+Panic is a termination mechanism, not a classification of causes. It may represent a programming defect, such as an invariant violation or unexpected state, or an unrecoverable external condition, such as allocation failure or an unavailable required runtime resource. Bug classification belongs to diagnostics and does not introduce different control flow.
+
+Every runtime check failure specified by this document initiates implicit Panic. These include integer overflow, invalid integer division or remainder, invalid indices or Range boundaries, invalid conversions or shift counts, duplicate dictionary keys, and missing keys on indexed reads. Each operation defines its invalid values; IEEE 754 floating-point division by zero is not an integer division failure.
+
+The same cause can instead be recoverable under a different API contract:
+
+```kimi
+func tryAllocate(size: usize) -> Option<Buffer>
+
+func allocateRequired(size: usize) -> Buffer
+    return match tryAllocate(size)
+        Some(buffer) => buffer
+        None => $panic("Required memory could not be allocated")
+```
+
+`tryAllocate` returns absence when allocation is unavailable; `allocateRequired` treats that outcome as fatal.
+
+#### 11.3.2. Explicit Panic and argument evaluation
+
+`$panic(expression)` is a Composition Root termination operation. Evaluate its argument once under ordinary expression rules with expected Type `string`. On normal completion, use that string as diagnostic information and initiate Panic Termination. If evaluation instead transfers control, diverges, or initiates another Panic, follow that outcome without initiating this call's Panic. Failures while dynamically constructing a message follow the same argument-evaluation rules.
+
+The `$panic(...)` expression has Type Never and never completes normally. Apply the ordinary [Never](#415-unit-and-never-types) and [result validation](#98-result-validation) rules:
+
+```kimi
+func requireValue(value: Option<i32>) -> i32
+    return match value
+        Some(x) => x
+        None => $panic("Required value is missing")
+```
+
+Panic itself is not a Control Transfer and produces no Completion; distinguish it from a transfer during argument evaluation. The [Evaluation Outcomes](#91-completions) are Completion, Divergence, and Panic Termination.
+
+#### 11.3.3. Termination, diagnostics, and cleanup
+
+Immediate termination applies once Panic Termination begins: do not resume ordinary program execution or perform Scope Exit before terminating the entire process. This rule sets no wall-clock bound on argument evaluation or termination. Panic cannot be caught, recovered from, or resumed, and performs no Stack Unwinding.
+
+Panic does not start Scope Exit processing. If it begins during Scope Exit, abort that processing immediately: do not execute remaining Deferred Blocks, automatic destruction, or the rest of an executing Deferred Block or `deinit`. Completed cleanup effects are not rolled back. Abort pending `return`, `exit`, `continue`, and `yield`; do not deliver secured results or perform additional cleanup to destroy them.
+
+```kimi
+func process()
+    let resource = makeResource()
+    defer: close(resource)
+    $panic("Fatal condition")
+```
+
+Here, neither the registered `close(resource)` nor scope-exit destruction of `resource` runs.
+
+Panic diagnostics carry a reason and source location: the failed operation for implicit Panic, or the `$panic(...)` call for explicit Panic. A duplicate dictionary key uses the later key expression. The runtime chooses the format and destination and attempts to emit available information; successful or complete output is not guaranteed. Failure to emit diagnostics must not prevent termination.
+
+#### 11.3.4. Checks, builds, and constant evaluation
 
 Panic conditions and termination behavior are identical in Debug and Release builds. An implicit check failure is a language-guaranteed termination operation, not merely a rewrite to a replaceable function call. Replacing `$panic` or diagnostic handling cannot make a Panic return normally.
 
 Invalid operations found during required compile-time constant evaluation are compile-time errors. A runtime operation initiates Panic only if it is actually evaluated and its check fails. Optimization must not introduce Panic from an operation skipped by short-circuit or conditional evaluation. Undefined behavior from an unsafe contract violation is not guaranteed to be detected as Panic.
 
-Panic Termination defines language behavior independently of implementation mechanisms such as a `trap` instruction. Operations that return failure as a value, and wrapping or saturating integer arithmetic, require separate explicit library APIs.
+These rules are independent of implementation mechanisms such as a `trap` instruction. APIs returning failures as values use the contracts above; wrapping or saturating integer arithmetic requires separate explicit library APIs.
+
+### 11.4. Warnings
+
+A Warning is diagnostic information about a condition worth reporting while processing can continue and its result remains usable. Examples include deprecated configuration, ignored optional metadata, fallback encoding, and a failed cache update after the primary operation succeeds.
+
+A Warning does not itself change control flow or implicitly produce `None`, `Err`, or Panic. It is not a third state of `Result`. Return warnings to callers as ordinary values when needed:
+
+```kimi
+struct ParseReport<T>
+    let value: T
+    let warnings: Array<ParseWarning>
+
+func parse(source: string) -> Result<ParseReport<Syntax>, ParseError>
+```
+
+This API returns warnings with successful results. An API that must preserve warnings on failure includes them in its error value or in an outer report containing the `Result`.
