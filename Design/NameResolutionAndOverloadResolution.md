@@ -48,9 +48,14 @@ Name Resolution / Overload Resolution — 設計原案。作成日: 2026-09-07�
 
 ```text
 Name Resolution
-    → Candidate Applicability
-    → Best Candidate Selection
-    → Usage Legality
+    ├─ Type Name
+    │    → Type Name Selection
+    │    → Type Legality
+    │
+    └─ Function Call
+         → Candidate Applicability
+         → Best Candidate Selection
+         → Usage Legality
 ```
 
 | 段階 | 決めること | 本書 | 例 |

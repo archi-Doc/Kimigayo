@@ -1,6 +1,8 @@
+> **設計仕様**：本書は値の取得・配置・破棄を定める現時点の仕様である。実装済みであることを意味しない。
+
 # Value Lifetime
 
-Kimigayo は、値の取得、配置、破棄を **Value Lifetime** として扱う。本書はその仕様追加案である。
+Kimigayo は、値の取得、配置、破棄を **Value Lifetime** として扱う。
 
 取得は Copy / Move、配置は Initialization / Replacement、破棄は Destruction で表す。一つの代入が Move と Replacement を含むこともある。
 
@@ -101,7 +103,7 @@ Stored `let` Property も初回初期化後の再設定を許可しない。初�
 | 構築完了 | その値の初期化処理が成功し、完了点に到達した事実 |
 | 現在の完全性 | すべての stored field が Initialized であること |
 
-両方を満たす集合値を **complete value** と呼ぶ。全 field の設定だけでは、構築完了とは限らない。本改訂ではすべての stored field を完全性の対象とし、初期化を省略できる field は導入しない。
+両方を満たす集合値を **complete value** と呼ぶ。全 field の設定だけでは、構築完了とは限らない。初期仕様ではすべての stored field を完全性の対象とし、初期化を省略できる field は導入しない。
 
 Constructor や段階的初期化には完了点を設ける。必要な初期化と成功条件を確認し、構築完了を確定してから値全体を使用・転送する。Constructor の成功結果もこの順で確保し、その後は通常の Scope Exit に従う。失敗出口では完了を確定しない。
 
@@ -188,7 +190,7 @@ let c = a                  // Move。以降 a は使用不可。
 
 **Move Path** は、初期化状態と破棄責任を独立して静的に追跡できる place の経路である。Partial Move は、そのような経路に対してのみ許可する。
 
-本案で認める部分の経路は、stored field、tuple element、固定長配列の定数 index、およびこれらの組み合わせである。定数 index は意味解析時に言語の定数評価で確定するものとし、実行時変数の最適化による定数伝播には依存しない。
+初期仕様で認める部分の経路は、stored field、tuple element、固定長配列の定数 index、およびこれらの組み合わせである。定数 index は意味解析時に言語の定数評価で確定するものとし、実行時変数の最適化による定数伝播には依存しない。
 
 Runtime index は認めない。動的 container やユーザー定義 indexer は、index が数値リテラルでも自動的には含めない。追加の経路は Type 仕様で明示し、いずれも §1.3 のアクセス制限に従う。
 
@@ -198,6 +200,8 @@ Runtime index は認めない。動的 container やユーザー定義 indexer �
 | --- | --- |
 | tuple element、固定長配列の定数 index | 直接 place へアクセスするため、通常の値取得がそのまま Partial Move になる |
 | struct の stored Property | `value.field` は getter 呼び出しであり Move しない。`move value.field` を使う（Property Move Access） |
+
+Move Path であることは、その経路を Move できることを保証しない。Property では `move` の宣言とアクセス権が必要であり、receiver への経路が借用を経由する場合や receiver 自体が Property access の場合は、Move Path であっても `move` を書けない。条件は Property Move Access が定める。
 
 所有する集合値の一部を Move すると、その部分は Moved になる。残る初期化済み部分は使用できるが、全体は §2.2 に従って complete に戻るまで使用できない。
 
@@ -219,15 +223,19 @@ let both = pair          // OK：complete に戻っている。
 通常の Move out ができない対象の取り出しには、§4.3 の交換操作か型固有の操作を使う。交換は初期化状態を維持するが、型固有 invariant は実装側で維持し、必要に応じて storage へのアクセスを制限する。
 
 ```text
-struct Connection
-    var socket: Socket
-    deinit
-        close(socket)
+struct Buffer
+    var data: Array<u8> has get, move, set
 
-func Connection.detach(self: uniq/Self, replacement: Socket) -> Socket
-    return self.socket                              // Error：借用先からの Move out。
-    return Exchange(self.socket, with: replacement)  // OK：常に Initialized を保つ。
+func Buffer.detachInvalid(self: uniq/Self) -> Array<u8>
+    return move self.data
+    // Error：receiver への経路が借用（uniq/Self）を経由する。
+
+func Buffer.detach(self: uniq/Self, replacement: Array<u8>) -> Array<u8>
+    return Exchange(self.data, with: replacement)
+    // OK：対象を常に Initialized に保つ。
 ```
+
+`deinit` を持つ型ではさらに強く、その型の Property に `move` を宣言すること自体を禁止する。取り出しが必要なら `Exchange` か型固有の操作を使う。
 
 ## 4. 代入と交換
 
@@ -357,7 +365,7 @@ let next = p + 1
 Exchange(p, with: next)     // OK：借用開始前に計算する。
 ```
 
-Loan の開始を全引数の評価後へ遅らせる緩和（reservation 方式）はこの形を許容できるが、本改訂では採用しない。必要になった場合は Ownership 仕様の拡張として別途検討する。
+Loan の開始を全引数の評価後へ遅らせる緩和（reservation 方式）はこの形を許容できるが、初期仕様では採用しない。必要になった場合は Ownership 仕様の拡張として別途検討する。
 
 引数評価が正常完了しなければ交換せず、一時値を通常の規則で cleanup する。結果の Origin / Loan の依存も維持する。ここでの不可分性は単一スレッド内の観測についての規定であり、スレッド間の atomicity は保証しない。
 
@@ -383,7 +391,7 @@ Exchange(x, with: x)        // Error：対象が一時的に空になる。
 
 #### 4.3.3. 重なりの静的判定
 
-重なりがないことは、言語仕様で定める静的な place analysis で証明できなければならない。本案では、次の構造規則を適用する。「内部の部分」は storage に直接含まれる field・要素を指し、pointer / reference の参照先は逆参照の規則で別に判定する。
+重なりがないことは、言語仕様で定める静的な place analysis で証明できなければならない。初期仕様では、次の構造規則を適用する。「内部の部分」は storage に直接含まれる field・要素を指し、pointer / reference の参照先は逆参照の規則で別に判定する。
 
 | 対象の関係 | 判定 |
 | --- | --- |
@@ -437,9 +445,16 @@ Complete value は次の順で破棄する。
 1. ユーザー定義 `deinit` があれば実行する。開始時にはすべての stored field が Initialized である。
 2. Body とその Scope Exit が正常完了した後、stored field を宣言の逆順に破棄する。通常の `return` も、この field cleanup を省略しない。
 
-**構築が完了していない集合値では、その型がユーザー定義 `deinit` を宣言していても、その集合値自身の `deinit` は実行しない。** これは Partial Initialization の cleanup であり、初期化済みの stored field だけを宣言の逆順に通常の field 規則で破棄する。Uninitialized な field は破棄しない。残る field の型自身が `deinit` を持つ場合、その field の Destruction では通常どおり実行し得る。
+Incomplete な集合値では、**その型がユーザー定義 `deinit` を宣言していても、その集合値自身の `deinit` は実行しない**。
 
-**構築完了後の Partial Move** は別に扱う。§3.3.2 と Property Move Access により、Partial Move で incomplete になる集合値自身、または完全性を前提とする包含祖先にユーザー定義 `deinit` がある場合、その Partial Move 自体を禁止する。したがって合法な post-construction Partial Move の cleanup では、incomplete になった集合値自身の `deinit` は実行せず、残る Initialized な field だけを宣言の逆順に破棄する。Moved な field は破棄しない。残る field の Destruction には通常の規則を再帰的に適用し、その field 型の `deinit` は実行し得る。配列や tuple の部分は、それぞれの型が定める順序に従う。
+| incomplete の理由 | 自身の `deinit` | 破棄する部分 |
+| --- | --- | --- |
+| 構築未完了（Partial Initialization） | 実行しない | 初期化済みの stored field だけ |
+| 構築完了後の Partial Move | 実行しない | 残る Initialized な field だけ |
+
+いずれも宣言の逆順に破棄し、Uninitialized / Moved な field は破棄しない。残る field の Destruction には通常の規則を再帰的に適用するので、その field の型自身が `deinit` を持てば実行する。配列や tuple の部分は、それぞれの型が定める順序に従う。
+
+構築完了後の Partial Move で自身の `deinit` を実行しないのは、そもそもその状況が生じないためである。§3.3.2 と Property Move Access により、Partial Move で incomplete になる集合値自身、または完全性を前提とする包含祖先にユーザー定義 `deinit` があれば、その Partial Move を禁止する。
 
 ```text
 // 宣言順は a, b, c。
@@ -470,7 +485,7 @@ struct Silent origin sink
         ()                     // body は参照しないが、検査は省略しない。
 ```
 
-どちらの型でも、Origin `sink` は Destruction 位置まで有効でなければならない。この保守的近似を緩和する仕組みは本改訂では定義しない。
+どちらの型でも、Origin `sink` は Destruction 位置まで有効でなければならない。この保守的近似を緩和する仕組みは初期仕様では定義しない。
 
 ### 5.4. Scope Exit
 
@@ -488,7 +503,7 @@ first = makeResource()
 
 `return`・`exit`・`continue`・`yield` は実際に離れる scope だけを cleanup し、転送結果は先に Copy / Move で確保する。一時値の終了、`defer` の実行と借用検査、結果配送は Scope Exit の共通規則に従う。
 
-### 5.5. 一度だけの破棄と異常終了
+### 5.5. 一度だけの破棄
 
 通常の cleanup が破棄位置に到達した場合、残る破棄責任を一度だけ実行する。Move は責任を移し、元の place での二重破棄を防ぐ。先行処理で cleanup が停止する場合まで、全値の破棄完了を保証するものではない。
 
@@ -515,9 +530,9 @@ Copy / Move の具体的なメモリ操作と、一時結果の物理的な配�
 
 経路ごとの状態や破棄責任の違いは、制御フローの分割や必要な実行時 flag で条件付き cleanup を実装できる。全値への flag 付加は要求せず、安全性は静的に検証する。Move Path の許可範囲を最適化設定によって変えてはならない。
 
-## 7. 本改訂で定義しないもの
+## 7. 初期仕様で定義しないもの
 
-次は本書の規則から推測してはならない。それぞれ別仕様または将来の改訂で定める。
+次は本書の規則から推測してはならない。それぞれ別仕様または将来の改訂で定める。Property の Move access に固有の未定義項目は、[Property Move Access](Property%20Move%20Access.md) の同名の節に列挙する。
 
 - `Exchange`・`Swap` の最終的な綴りと解決手順。本書は意味規則だけを定義する。
 - 対象を引数式の中で読み直せるようにする Loan 開始の緩和（reservation 方式）。

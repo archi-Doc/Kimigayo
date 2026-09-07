@@ -38,9 +38,11 @@ let ownedName = move person.name
 // person: incomplete
 
 print(person.age)             // 標準 get：残る field を読める
-person.name = "Alice"         // 標準 set：旧値を破棄せず再初期化
-use(person)                  // person は再び complete
+person.name = "Alice"         // 標準 set：旧値を破棄せず再初期化。person は再び complete
+use(person)
 ```
+
+`age` は Copy 型だが `move` を宣言していないので、`move person.age` はできない。宣言した場合でも `move` は Copy 型に対して Move を行い、その field を Moved にする（§3.1）。
 
 例中の API は説明用である。初期化状態、Move Path、Loan、Origin、破棄の共通規則は [Value Lifetime](Value%20Lifetime.md) に従う。
 
@@ -81,9 +83,9 @@ var item: Resource has get, move  // set は提供しない
 
 ### 2.2. Storage とアクセス制御
 
-`move` は Compiler 提供の storage 操作である。その有効表現は contextual `storage` に結び付くため、既存の `HasStorage` 判定では Stored Property になる。追加の storage を複製して持つわけではない。
+`move` は Compiler 提供の storage 操作である。その有効表現は contextual `storage` に結び付くため、`has move` だけを宣言した Property も既存の `HasStorage` 判定で Stored Property になる。追加の storage を複製して持つわけではない。
 
-`move` を宣言できるのは実 storage を持つ Stored Property に限る。Storage を持たない Computed Property に Move access は存在しない。`get` を併記する場合は Compiler 提供の bodyless な標準 getter に限り、Custom getter は §2.3 により禁止する。
+`move` は実 storage からの取り出しなので、Move access を持つ Property は必ず Stored Property である。Storage を持たない Computed Property に Move access は存在しない。
 
 各 accessor は独立したアクセス制限を持ち、Property より公開範囲を広くできない。
 
@@ -118,8 +120,6 @@ var score: i32
 
 独自の検証・変換を伴う取得・再設定が必要なら Move access を公開せず、complete な instance に対する `Exchange` や型固有の操作を使用する。
 
-初期仕様では、instance を持つ struct の Stored Property に適用する。Static Property、indexer 自体、`contract` 内の `move` requirement、仮想・動的な Move access は定義しない。
-
 ## 3. Move 式
 
 ### 3.1. 構文と結果型
@@ -133,11 +133,19 @@ consume(move person.name)
 return move person.name
 ```
 
-`move` は accessor 宣言と前置式の位置でのみキーワードとして扱う contextual keyword であり、予約語にはしない。それ以外の位置では通常の Name として使用できる。式の operand は **括弧で全体を包んでいない Property access** でなければならず、本書は任意の local に対する `move x` を導入しない。
+`move` は accessor 宣言と前置式の位置でのみキーワードとして扱う contextual keyword であり、予約語にはしない。それ以外の位置では通常の Name として使用できる。式の operand は Property access でなければならず、本書は任意の local に対する `move x` を導入しない。
 
 優先順位は前置単項演算子に従い、member access・call・index はそれより強く結合する。`move p.field + other` は `(move p.field) + other` と解釈する。結果の member を使う場合は `(move p.field).method()` と書く。`move p.field.method()` は operand が call なので、この構文としては不正である。式の優先順位表には、他の前置単項演算子と同じ段に `move` を追加する。
 
-**Move 式では `move` の直後に `(` を置かない。** `move(p.field)` および `move (p.field)` は Move 式として認識せず、`move` を通常の Name とした call 構文として解析する。Move 式そのものを括弧で囲む場合は `(move p.field)` と書く。所有一時値の Property を対象にする場合も `move makeHolder().item` のように書き、`move (makeHolder()).item` は使用しない。これにより contextual keyword と通常の `move(...)` 呼び出しの構文を一意に分ける。
+**Move 式では `move` の直後に `(` を置かない。** `move(p.field)` と `move (p.field)` は Move 式として認識せず、`move` を通常の Name とした call 構文として解析する。これにより contextual keyword と通常の `move(...)` 呼び出しを一意に分ける。
+
+| 書き方 | 解釈 |
+| --- | --- |
+| `move p.field` | Move 式 |
+| `(move p.field)` | Move 式を括弧で囲んだもの |
+| `move makeHolder().item` | Move 式。receiver は所有一時値 |
+| `move (p.field)` | Move 式ではない。`move` の呼び出し |
+| `move(p.field)` | Move 式ではない。`move` の呼び出し |
 
 結果型は、Origin を含む対象 Property の完全な Type とする。Getter Result Type や期待型によって変更せず、その後の結果の型適合は通常の規則で検査する。
 
@@ -152,7 +160,7 @@ return move person.name
 
 `move` は **Copy 型でも Move を強制する**。これは通常の値取得時の Copy / Move 選択に対する明示的な例外であり、型の Copy capability 自体は変更しない。**Property Type や generic 引数の Copy 性によって `move` 式の意味が変わらないようにするためである。**
 
-Copy 型の Property を読むだけなら標準 `get` で足りる。`move` を使うと instance が incomplete になり復旧が必要になるため、Copy 型への `move` は意図がある場合に限る。なお、`contract` に `move` requirement を導入するまで（§2.3）、generic なコードからこの統一性を利用することはできない。
+Copy 型の Property を読むだけなら標準 `get` で足りる。`move` を使うと instance が incomplete になり復旧が必要になるため、Copy 型への `move` は意図がある場合に限る。なお、`contract` に `move` requirement を導入するまで（§6）、generic なコードからこの統一性を利用することはできない。
 
 「所有値を取り出す」とは、所有型の Property では所有権を得るという意味である。借用・raw pointer 型の Property から、その参照先の所有権を取得することはない。
 
@@ -178,6 +186,10 @@ Receiver への経路が借用を経由する場合は、`uniq/Self` であっ�
 
 Move は値の消費なので、所有する `let` local や `let` Property にも明示的な Move access を許可する。ただし再初期化の権限を与えない。
 
+`var` Property でも、所有する local が `let` で書き込み不可なら再初期化できない。再利用を意図する場合は、所有する binding と対象 Property の両方を書き込み可能にし、標準 `set` を提供する。
+
+**再初期化が許可されない Property から `move` した instance は、二度と complete に戻らない。** 全体としての使用・借用・転送はできず、scope 終了時に残る field だけを破棄する。`let` Property、および標準 `set` を提供しない Property（§2.1 の `var item: Resource has get, move` など）が該当する。
+
 ```text
 struct Holder
     let item: Resource has get, move
@@ -185,14 +197,6 @@ struct Holder
 var holder = makeHolder()
 let item = move holder.item    // OK
 holder.item = makeResource()   // Error：let Property は再初期化不可
-```
-
-`var` Property でも、所有する local が `let` で書き込み不可なら再初期化できない。再利用を意図する場合は、所有する binding と対象 Property の両方を書き込み可能にし、標準 `set` を提供する。
-
-**再初期化が許可されない Property から `move` した instance は、二度と complete に戻らない。** 全体としての使用・借用・転送はできず、scope 終了時に残る field だけを破棄する。`let` Property、および標準 `set` を提供しない Property（§2.1 の `var item: Resource has get, move` など）が該当する。
-
-```text
-let item = move holder.item    // OK
 // holder は以後 permanently incomplete。
 use(holder)                    // Error：complete でない。
 let moved = holder             // Error：全体の Move もできない。
@@ -239,11 +243,13 @@ person.name = createName()
 // 右辺の結果確保 -> 対象 field の確定 -> 残る旧値の破棄 -> 配置
 ```
 
-| 対象 storage | 標準 set の処理 |
-| --- | --- |
-| Initialized | 旧値を破棄して配置する |
-| Moved / 初期化を許可された Uninitialized | 旧値を破棄せず初期化する |
-| 一部だけが初期化済みの集合値 | 残る部分を破棄して新しい値を配置する |
+次は Value Lifetime の Initialization / Replacement を、対象 field の状態ごとに具体化したものである。
+
+| 対象 storage | 標準 set の処理 | Value Lifetime の操作 |
+| --- | --- | --- |
+| Initialized | 旧値を破棄して配置する | Replacement |
+| Moved / 初期化を許可された Uninitialized | 旧値を破棄せず初期化する | Initialization |
+| 一部だけが初期化済みの集合値 | 残る部分を破棄して新しい値を配置する | Replacement |
 
 全 field が Initialized に戻れば instance は complete に戻り、constructor は再実行しない。分岐によって旧値の有無が異なる場合も、同じ規則を経路ごとに適用する。
 
@@ -258,10 +264,10 @@ person.name = move person.name // OK：右辺で取り出し、同じ field を�
 対象が `var`、`move` と標準 `set` が利用可能で、他のアクセス規則を満たす場合に許可する。この例では取り出した旧値の `deinit` を実行しない。
 
 ```text
-person.name = person.name
+person.name = person.name // Error：右辺は get であり、所有値を得られない
 ```
 
-こちらは右辺の get を使う。`string` の標準 getter は `ref/string` を返すため、所有する `string` が必要な setter へ暗黙に Move して渡すことはできない。
+右辺に `move` がなければ標準 get を使う。`string` の標準 getter は `ref/string` を返すため、所有する `string` を要求する setter へ暗黙に Move して渡すことはできない。
 
 ## 5. 借用・経路・破棄との関係
 
@@ -302,7 +308,20 @@ outer.inner = inner
 
 `Exchange`・`Swap` は値を残したまま交換する別操作である。Move access の宣言だけでは、それらへ backing storage の排他的参照を渡す一般的な権限は追加しない。
 
-## 6. Compiler 要件と統合
+## 6. 初期仕様で定義しないもの
+
+次は本書の規則から推測してはならない。それぞれ別仕様または将来の改訂で定める。値の状態・所有権・破棄に共通する未定義項目は、[Value Lifetime](Value%20Lifetime.md) の同名の節に列挙する。
+
+- Custom getter / setter と Move access の併用（§2.3）。
+- Static Property、indexer 自体、仮想・動的な Move access。
+- `contract` の `move` requirement と、generic なコードからの Move access の利用。
+- Receiver が Property access になる nested Move と、複数の Property を直接辿る projection 構文（§5.2）。
+- `obj/Self`・`rc/Self`・`arc/Self`・raw pointer の参照先からの field Move。
+- 借用 receiver からの Move と、動的 dispatch への拡張。
+
+初期仕様の適用範囲は、instance を持つ struct の Stored Property である。
+
+## 7. Compiler 要件と統合
 
 Compiler は次を検査・記録する。
 
@@ -316,4 +335,4 @@ Compiler は次を検査・記録する。
 
 部分状態に応じた cleanup の flag と最適化は Value Lifetime に従う。Move access はユーザー定義関数への通常の呼び出しではなく、必要な所有場所の状態変化を Compiler が直接表す操作とする。
 
-既存仕様への統合では、Property の accessor 文法・`HasStorage`・標準 receiver の説明、式の前置 `move`、Value Lifetime の明示 Move と再初期化の入口を更新する。Custom getter / setter との併用、借用 receiver、object receiver、contract、動的 dispatch の拡張は初期仕様の対象外とする。
+既存仕様への統合では、Property の accessor 文法・`HasStorage`・標準 receiver の説明、式の前置 `move`、Value Lifetime の明示 Move と再初期化の入口を更新する。初期仕様の対象外は §6 に列挙する。
