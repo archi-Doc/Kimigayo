@@ -86,6 +86,9 @@ public group Program
         #case _
             return "other"
 ```
+> **Design Note (Do not modify this text!)**
+>
+> * `$` is not a macro. It is the Composition Root.
 
 ### 1.2. Conventions and notation
 
