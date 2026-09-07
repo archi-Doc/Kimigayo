@@ -251,11 +251,50 @@ Parse a directive Condition
         -> Error: report a diagnostic and discard the controlled Syntax
     -> resolve Names in retained Conditions
     -> re-evaluate after generic Binding and for each specialization
+    -> resolve selections that change a scope's lookup environment before ordinary Name resolution using that environment begins
     -> require a final result before finalization
     -> bind and lower only the selected Syntax
 ```
 
 A still-Deferred Condition is an error when its containing declaration, layout, specialization, or executable body must be finalized. Deferral is valid only when a later compilation phase can provide the missing dependency before that point.
+
+**Scope lookup environments.** A Condition that changes a scope's lookup environment must have its selection resolved before ordinary Name resolution using that environment begins. Until then, do not begin that resolution. The environment includes declarations and overload candidates, as well as applicable alias and extension imports; a later selection must not add, remove, or replace candidates in an environment already in use.
+
+Resolve and evaluate such Conditions using an already established environment independent of the conditional declarations in the affected scope. This preparatory Directive Binding may resolve condition Names before ordinary Name resolution begins. A Condition must not depend on a declaration whose availability it controls, directly or through a cycle.
+
+This boundary applies per scope, not once to the entire program. Conditions that select only expressions or statements without changing a lookup environment may remain Deferred until specialization. A selected branch may also contain local declarations if Name resolution using that branch's environment starts only after selection. Follow normal scope rules: a declaration introduced into an enclosing scope must be selected before resolution using that enclosing environment begins. A directive does not create an extra scope merely to defer this requirement.
+
+| Controlled Syntax | Required selection point |
+| --- | --- |
+| Declarations or imports that change an enclosing lookup environment | Before ordinary Name resolution using that environment begins. |
+| Expressions and statements that do not change a lookup environment | May wait for specialization, subject to the finalization deadline. |
+| Local declarations inside a branch first analyzed after specialization | Before ordinary Name resolution using the selected branch's environment begins. |
+
+```kimi
+#if windows
+func Test() -> () => ()
+```
+
+The target setting selects whether `Test` is present before Name resolution using its containing environment begins.
+
+```kimi
+func kind<T>() -> i32
+    #case T is i32
+        return 32
+    #case _
+        return 0
+
+func example<T>() -> i32
+    #case T is i32
+        let result = 32
+        return result
+    #case _
+        return 0
+```
+
+Both functions may defer selection until `T` is known. In `example`, select the branch and establish its local declarations before resolving `result`. This does not change an enclosing lookup environment that has already been used.
+
+Scopes with established environments may proceed independently. An affected scope must wait if later Binding or specialization can establish its environment; otherwise, diagnose the unresolved dependency when that scope must be analyzed or finalized. Never begin with a provisional candidate set and revise resolved Names later. This rule fixes conditional membership in the lookup environment; ordinary declaration-order visibility rules still apply.
 
 #### 2.2.3. Conditions and narrowing
 
@@ -295,7 +334,7 @@ CompileTimeCaseGroupKoto
 
 Normally only Deferred directives retain directive Koto nodes: an early-true `#if` contributes its Target directly; an early-false one contributes none. Invalid Case Groups may remain for error recovery. Resolving a specialization must not mutate Koto shared with others.
 
-The Parser implements early `#if` and `#case` evaluation and retains Deferred directives as dedicated Koto nodes. Later Binding/specialization evaluation and constraint narrowing are planned.
+The Parser implements early `#if` and `#case` evaluation and retains Deferred directives as dedicated Koto nodes. Later Binding/specialization evaluation, enforcement of scope lookup-environment boundaries, and constraint narrowing are planned.
 
 ## 3. Lexical structure
 
@@ -627,6 +666,26 @@ struct View
     var source: ref/Data
 ```
 
+#### 4.3.1. Split structures and storage order
+
+A `struct` may be split into compatible declaration fragments, including fragments produced by a Source Generator. Multiple fragments may contribute Stored Properties. Merge fragments for the same declaration, validate their headers and member uniqueness, and classify storage using the normal Property rules, including implicit accessors and `has` expansion. No primary fragment is required. Detailed declaration identity and header checks follow the [Container integration rules](Design/NameResolutionAndOverloadResolution.md#231-どの宣言を統合するか).
+
+Define a **logical declaration order** independently of physical memory layout:
+
+1. Ordinary source documents precede generated source documents. Order ordinary documents by their stable logical source identifiers.
+2. Order generated documents by stable Generator identifier, then by the Generator's logical output identifier.
+3. Within each document, use source declaration order, including the written order of multiple fragments of the same structure.
+
+Source identifiers are build metadata independent of absolute checkout paths, temporary output paths, and processing order. Ordinary sources use normalized project-relative logical paths; sources outside the project directory require an assigned stable project-relative logical name. Generated output identifiers are logical names assigned by the Generator. Normalize path separators to `/` and remove redundant path segments; compare identifiers ordinally without host-specific case folding or locale rules. Require unique ordinary source identifiers, unique Generator identifiers within a build, and unique output identifiers within each Generator; identifier collisions are build errors.
+
+Apply this order to the selected declarations of each specialization. Only Stored Properties contribute storage slots. File enumeration, parser completion, and Generator completion order must not affect the result. Renaming a source or generated output may change logical order and therefore initializer side-effect order.
+
+The compiler derives physical layout from the selected storage declarations, their Types, the target, and the applicable layout mode. Default layout must be reproducible for identical build inputs, compiler, and configuration, but need not use logical declaration order for physical offsets. It must preserve the observable initialization order defined under [Initialization](#66-initialization). Ordinary structs do not guarantee a stable ABI across source or toolchain changes. An explicit fixed-layout facility for FFI or other binary interfaces is specified separately; default layout must not be treated as that facility.
+
+Collect Source Generator outputs and resolve environment-changing selections before ordinary Name resolution using the affected scope begins, following [scope lookup-environment boundaries](#222-staged-condition-evaluation). Do not begin consuming a provisional type and append generated Storage later. Finalize layout only after the complete selected fragment set and storage classification are known. Generated documents retain their own source context and logical identifiers. Generator APIs and scheduling are not yet specified; generator dependencies that prevent establishing the required environment are errors, not permission to revise resolved Names.
+
+Split-structure integration, generated-source integration, and layout generation are planned, not implemented.
+
 ### 4.4. Index, Range, and Slice
 
 This section describes indexing values with a length. [Raw pointer indexing](#463-pointer-arithmetic-and-indexing) instead uses signed offsets, has no implicit bounds check, and forbids from-end and Range indexing.
@@ -861,16 +920,18 @@ Kimigayo uses the following information to identify declarations and their meani
 
 A **Signature** distinguishes declarations in the same scope:
 
-| Declaration kind | Signature information                                                 |
-| ---------------- | --------------------------------------------------------------------- |
-| Type             | Type Semantics, Name, and generic parameter count                     |
+| Declaration kind | Signature information                                                    |
+| ---------------- | ------------------------------------------------------------------------ |
+| Type             | Type Semantics, Name, and generic parameter count                         |
 | Function         | Name, generic parameter count, and an ordered list of parameter Signatures |
-| Parameter        | Type                                                                  |
-| Property         | Name                                                                  |
+| Parameter        | Type Semantics and Type                                                  |
+| Property         | Name                                                                     |
 
-Parameter names, return Types, default values, and declaration modifiers do not affect a function Signature. Same-name functions in one scope must differ in generic parameter count or parameter Types. Same-name Properties in one scope conflict.
+Type Semantics are listed explicitly for Parameters to emphasize that the semantics component of a parameter Type participates in its Signature; they are the [Type Semantics](#45-type-semantics) defined above, not a separate parameter modifier. Parameters of Types `ref/i32` and `uniq/i32` have different Signatures. Equivalent spellings such as `i32` and `owner/i32` have the same Signature.
 
-The current code defines these Signature shapes, but duplicate-declaration checks and overload Binding are not implemented.
+Parameter names, return Types, default values, and declaration modifiers do not affect a function Signature. Same-name functions in one scope must differ in generic parameter count or their ordered lists of parameter Signatures, including parameter Type Semantics. Same-name Properties in one scope conflict.
+
+The current code defines Signature data structures and retains parameter Type Semantics through the parameter's type-syntax node, but duplicate-declaration checks and overload Binding are not implemented.
 
 ### 5.2. Declaration Containers
 
@@ -1304,6 +1365,12 @@ var age: i32 = -1
 ```
 
 Here the initial stored value is `-1`; a later assignment of `-10` invokes the setter and stores `0`. A Property initializer is invalid when `HasStorage = false`, because no Property-owned location exists to initialize. A stored Property without a declaration initializer must be initialized according to the containing type's definite-initialization rules before it is read. After initialization, a `let` Property cannot be assigned.
+
+For a structure, evaluate declaration initializers once in [logical declaration order](#431-split-structures-and-storage-order), preserving their observable side effects regardless of physical layout or parallel compilation. A Property becomes initialized only after its initializer completes normally and its result has been secured in that Property's storage. This does not implicitly initialize Properties that have no declaration initializer.
+
+An instance Property declaration initializer must not access the partially constructed `self`, including by reading, borrowing, or writing another Property of that instance, invoking a member on `self`, or passing or otherwise exposing `self` to another operation. This restriction also applies to earlier Properties of that instance that have already been initialized. Cross-Property dependencies must be expressed in explicit construction or generated initialization code governed by definite-initialization rules; constructor syntax, that code's permitted accesses, and verification of complete initialization are specified separately. Ordinary independent calls and accesses to other fully initialized values remain allowed under normal Type and lifetime rules and run in logical order.
+
+If construction exits with a recoverable failure under normal Scope Exit, destroy only the successfully initialized Storage values still owned by the construction, in reverse initialization order. Do not destroy an uninitialized slot or treat the containing value as fully constructed. Cleanup does not undo initializer side effects. These rules follow normal [cleanup completion and abnormal termination](#1023-completion-and-abnormal-termination): Panic does not unwind, and divergence or forced termination provides no additional cleanup guarantee. This rule does not introduce an exception or constructor-failure syntax.
 
 For example, this declaration is invalid because its explicit getter does not refer to `storage`, so its effective representation is computed:
 
