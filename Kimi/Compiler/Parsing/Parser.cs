@@ -18,7 +18,7 @@ namespace Kimi.Compiler;
 /// </summary>
 public static class Parser
 {
-    private const int PrefixBindingPower = 90;
+    private const int PrefixBindingPower = 100;
     private const int RangeLeftBindingPower = 8;
     private const int RangeRightBindingPower = 9;
 
@@ -916,10 +916,10 @@ Exit:
     public static Koto ParseType(ref TokenReader reader)
         => ParseDeclarationType(ref reader);
 
-    private static Koto ParseType(ref TokenReader reader, bool parseOrigin)
+    private static Koto ParseType(ref TokenReader reader, bool parseOrigin, bool disambiguateGenerics = false)
     {
         var start = reader.CurrentTokenRange.Start;
-        var left = ParseTypeInternal(ref reader);
+        var left = ParseTypeInternal(ref reader, disambiguateGenerics);
         if (left is null)
         {
             return reader.NewErrorKoto();
@@ -933,7 +933,7 @@ Exit:
                 var operatorRange = reader.CurrentTokenRange;
                 reader.Advance();
 
-                var accessor = ParseTypeInternal(ref reader) ?? reader.NewErrorKoto();
+                var accessor = ParseTypeInternal(ref reader, disambiguateGenerics) ?? reader.NewErrorKoto();
                 left = new MemberAccessKoto(
                     ref reader,
                     SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
@@ -942,6 +942,13 @@ Exit:
             }
             else if (tokenKind == TokenKind.LessThan)
             {
+                // In a conversion, a following '<' may start a comparison.
+                // Type declarations and nested type arguments have no such ambiguity.
+                if (disambiguateGenerics && !HasAdjacentGenericArguments(ref reader, left.Span))
+                {
+                    break;
+                }
+
                 left = ParseGenericsPostfix(ref reader, left);
             }
             else
@@ -962,7 +969,7 @@ Exit:
 
         return left;
 
-        static Koto? ParseTypeInternal(ref TokenReader reader)
+        static Koto? ParseTypeInternal(ref TokenReader reader, bool disambiguateGenerics)
         {
             if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock or TokenKind.StartBlock or TokenKind.Comma or TokenKind.CloseParenthesis or TokenKind.GreaterThan or TokenKind.GreaterThanGreaterThan or TokenKind.Equals)
             {
@@ -991,7 +998,7 @@ Exit:
                 reader.Advance();
 
                 var attribute = reader.PopAttribute();
-                var type = ParseType(ref reader, false);
+                var type = ParseType(ref reader, parseOrigin: false, disambiguateGenerics: disambiguateGenerics);
                 if (type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: not null } transparentType)
                 {
                     type = transparentType.Type;
@@ -2420,6 +2427,13 @@ Exit:
 
             if (tokenKind == TokenKind.At)
             {
+                // A conversion takes a Type, but still obeys infix precedence:
+                // -value@T -> (-value)@T, value * other@T -> value * (other@T).
+                if (minBindingPower > InfixLeftBindingPower[(byte)tokenKind])
+                {
+                    break;
+                }
+
                 var token2 = reader.Read();
                 Koto typeKoto;
                 if (IsExpressionBoundary(ref reader))
@@ -2431,7 +2445,7 @@ Exit:
                 {
                     // Origins in executable expressions are inferred. A following
                     // "from Label" belongs to an enclosing exit expression.
-                    typeKoto = ParseType(ref reader, parseOrigin: false);
+                    typeKoto = ParseType(ref reader, parseOrigin: false, disambiguateGenerics: true);
                 }
 
                 left = new ConversionKoto(
@@ -2477,6 +2491,16 @@ Exit:
 
             var rightBindingPower = InfixRightBindingPower[(byte)tokenKind];
             var token = reader.Read();
+            if ((tokenKind is TokenKind.LessThan or TokenKind.LessThanEquals or TokenKind.GreaterThan or
+                TokenKind.GreaterThanEquals or TokenKind.EqualsEquals or TokenKind.ExclamationEquals) &&
+                left is LessThanKoto or LessThanEqualsKoto or GreaterThanKoto or
+                    GreaterThanEqualsKoto or EqualsEqualsKoto or ExclamationEqualsKoto)
+            {
+                // Keep parsing for recovery, but require explicit parentheses for
+                // all combinations of ordering and equality comparisons.
+                reader.Diagnostic.Add(token.Span, DiagnosticCode.ChainedComparison_Kd);
+            }
+
             Koto right;
             if (IsExpressionBoundary(ref reader))
             {
@@ -2661,9 +2685,12 @@ ProcessPrefix:
     }
 
     private static bool IsGenericPostfix(ref TokenReader reader, Koto left)
+        => left is IdentifierNameKoto or MemberAccessKoto or GenericsKoto &&
+            HasAdjacentGenericArguments(ref reader, left.Span);
+
+    private static bool HasAdjacentGenericArguments(ref TokenReader reader, SourceSpan targetSpan)
     {
-        if (left is not (IdentifierNameKoto or MemberAccessKoto or GenericsKoto) ||
-            reader.CurrentTokenRange.Start != left.Span.End)
+        if (reader.CurrentTokenRange.Start != targetSpan.End)
         {
             return false;
         }
@@ -3191,38 +3218,40 @@ Loop:
     private static (int Left, int Right) GetInfixBindingPower(TokenKind kind)
         => kind switch
         {
+            // Conversion (below prefix operators, above multiplication).
+            // "@" parses its right operand as a Type in ParseExpression.
+            TokenKind.At => (90, 91),
+            TokenKind.As => (90, 91), // Legacy syntax; its semantics remain reserved.
+
             // Multiplicative
             TokenKind.Asterisk => (80, 81),
             TokenKind.Slash => (80, 81),
             TokenKind.Percent => (80, 81),
-            TokenKind.At => (80, 81),
 
             // Additive
             TokenKind.Plus => (70, 71),
             TokenKind.Minus => (70, 71),
 
             // Shift
-            TokenKind.LessThanLessThan => (65, 66),
-            TokenKind.GreaterThanGreaterThan => (65, 66),
-
-            // Relational
-            TokenKind.LessThan => (60, 61),
-            TokenKind.LessThanEquals => (60, 61),
-            TokenKind.GreaterThan => (60, 61),
-            TokenKind.GreaterThanEquals => (60, 61),
-            TokenKind.As => (60, 61),
-            // Keep "is" relational on its left, but allow its right operand to be
-            // a logical condition: X is not A or B -> X is not (A or B).
-            TokenKind.Is => (60, 10),
-
-            // Equality
-            TokenKind.EqualsEquals => (50, 51),
-            TokenKind.ExclamationEquals => (50, 51),
+            TokenKind.LessThanLessThan => (60, 61),
+            TokenKind.GreaterThanGreaterThan => (60, 61),
 
             // Bitwise
-            TokenKind.Ampersand => (40, 41),
-            TokenKind.Caret => (35, 36),
-            TokenKind.Bar => (30, 31),
+            TokenKind.Ampersand => (50, 51),
+            TokenKind.Caret => (45, 46),
+            TokenKind.Bar => (40, 41),
+
+            // Comparisons share one non-associative level. ParseExpression
+            // diagnoses chains while retaining their nodes for error recovery.
+            TokenKind.LessThan => (30, 31),
+            TokenKind.LessThanEquals => (30, 31),
+            TokenKind.GreaterThan => (30, 31),
+            TokenKind.GreaterThanEquals => (30, 31),
+            TokenKind.EqualsEquals => (30, 31),
+            TokenKind.ExclamationEquals => (30, 31),
+            // "is" takes a requirement expression through logical "or":
+            // X is not A or B -> X is not (A or B).
+            TokenKind.Is => (30, 10),
 
             // Logical
             TokenKind.And => (20, 21),

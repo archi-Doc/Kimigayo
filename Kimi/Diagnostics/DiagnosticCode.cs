@@ -67,6 +67,8 @@ public enum DiagnosticCode
     BlockStatementInExpression_Kd,
     InvalidInlineStatement_Kd,
 
+    ChainedComparison_Kd,
+
     Count, // Last sentinel
 }
 

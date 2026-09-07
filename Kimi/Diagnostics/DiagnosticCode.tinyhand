@@ -10,6 +10,11 @@
   + Name="ConditionMustBeBool_Kd"
     Message="The condition expression must be of type Bool"
 
+  + Name="ChainedComparison_Kd"
+    Message="Comparison operators cannot be chained without parentheses"
+    Label="This comparison requires explicit grouping"
+    Fix="Use parentheses for a nested comparison, or combine separate comparisons with and"
+
   + Name="EmptyExecutableBlock_Kd"
     Message="An executable Block requires at least one Syntax item"
     Fix="Indent the intended body, or write () to explicitly do nothing"
