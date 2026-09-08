@@ -112,3 +112,18 @@ This documentation revision changes no compiler implementation. New recommendati
 | D-5, D-6 | Directive placement is enumerated without expanding the accepted item categories. The former Appendix C snapshot is preserved in this file, with a link remaining in SPEC.md. |
 
 Open design remains for concurrency/memory ordering/thread transfer, extension declarations, user-defined arithmetic, general Attribute semantics other than LibraryImport, and the FFI extensions listed in SPEC §14.12. These are explicit boundaries, not missing permissions supplied by parser acceptance. Previously deferred features outside this review remain deferred.
+
+### C.9. Follow-up specification review (items 1–6)
+
+This revision changes documentation only. The settled language rules below do not establish compiler support. Earlier snapshot entries describe the implementation observed at that review.
+
+| Item | Implementation evidence and specification decision |
+| --- | --- |
+| 1. Qualified enum Cases | Parser.TryParsePostfixExpression already constructs MemberAccessKoto and InvocationKoto without Case/Type lookup. Qualified expressions now have exactly that syntax; only leading-dot expressions have dedicated inferred-Case grammar. Binding classification and enum validation remain unimplemented. |
+| 2. Generic body verification | ControlFlowTypeSystem exposes pending Type/getter facts; SyntaxControlFlowTypes leaves generic/user Copy and getter semantics unresolved. These hooks do not prove universal generic validity. Adopt definition-time universal verification, proved symbolic effect/getter families, and no hidden body capability conditions. General Binding, symbolic ownership proofs, and concrete finalization still require implementation. |
+| 3. Static fixed-array indices | No fixed-array Move Path or overlap analyzer is implemented. Adopt integer-literal/grouping-only recognition; keep bounds failure and literal fitting distinct from static path eligibility. General constant folding must not expand accepted paths. |
+| 4. static | Parser.ConsumeAttributeAndModifier and WriteModifier recognize/preserve ModifierKind.Static; PropertyParseTest covers this permissive syntax. There is no completed semantic model for struct static Properties. Adopt Origin-only contextual use of static and reject declaration modifiers; parser acceptance must be tightened accordingly. |
+| 5. Pipeline | Compilation exposes front-end/control-flow analysis; the recorded Build API does not emit a binary. Correct the reference pipeline so concrete effects and cleanup precede lowering and shared executable code generation. This is a scheduling requirement, not completed backend work. |
+| 6. Contract fragments | ContractKoto parses a declaration body; this does not establish merged Contract identity validation. Specify duplicate selected Contract declarations as errors and retain fragments only as a future feature. |
+
+No unresolved design decision remains for these six items. General constant evaluation, struct static-member modifiers, and future Contract fragments are not introduced; existing unrelated deferred designs retain their previous status.
