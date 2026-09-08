@@ -8,14 +8,12 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a named set of semantics in a type-constraint expression.
 /// </summary>
-[TinyhandObject]
-public sealed partial class SemanticsMaskKoto : ExpressionKoto
+public sealed class SemanticsMaskKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.SemanticsMask;
 
     /// <summary>Gets the represented semantics mask.</summary>
-    [Key(1)]
     public SemanticsMask Mask { get; private set; }
 
     internal SemanticsMaskKoto(ref TokenReader reader, SourceSpan range, SemanticsMask mask)

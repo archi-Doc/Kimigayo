@@ -65,7 +65,7 @@ public composition Example : ExampleImpl1
         $Console.WriteLine("Hello world!")
         context.Console.WriteLine("Hello world!")
         Example::Example.Test()
-        $Panic("")
+        $abort("")
         self.Method2(32)
         return
 

@@ -1,7 +1,7 @@
-#Namespace(Test::Program) // KimiError.NamespaceMustBeFirst
+#Namespace(Test.Program) // KimiError.NamespaceMustBeFirst, KimiError.CannotDefineGlobalNamespace
 
 #Condition(Os=="Linux") // Attribute-next rule.
-#Use(Kimi::Base::Linux)
+#Use(Kimi.Base.Linux)
 
 #Use(Kimi.Crypto)
 
@@ -46,7 +46,7 @@ public composition Example : ExampleImpl1
         $Console.WriteLine("Hello world!")
         context.Console.WriteLine("Hello world!")
         Example::Example.Test()
-        $Panic("")
+        $abort("")
         self.Method2(32)
         new Class() -> var x
         var x = new Class()
@@ -72,11 +72,12 @@ classA.y <= classB.y
 
 
 
+#Namespace(Kimi.Low.Windows)
 public group Helper
     #LibraryImport("kernel32.dll")
     public static method HeapAlloc(isize hHeap, uint32 dwFlags, usize dwBytes) -> isize
 
-    public method Method1(int x) int
+    public method Method1(int x) -> int
         return x + 4
 
     #Condition(Architecture=="x64")

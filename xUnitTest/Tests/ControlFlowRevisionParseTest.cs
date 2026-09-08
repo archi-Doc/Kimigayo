@@ -109,7 +109,7 @@ public class ControlFlowRevisionParseTest
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void DerivesNestedValueContextFromDirectBranchElements(bool addStatement)
+    public void BlockBranchesDiscardNestedExpressionsRegardlessOfItemCount(bool addStatement)
     {
         var source = "func run()\n    let result = if a\n        if b\n            yield 1\n        else\n            yield 2\n" +
             (addStatement ? "        log()\n        yield 3\n" : string.Empty) + "    else\n        0";
@@ -119,14 +119,15 @@ public class ControlFlowRevisionParseTest
             var branch = outer.Branches[0].Body;
             var inner = Assert.IsType<IfKoto>(branch.Items[0]);
             Assert.True(KotoHelper.IsValueContext(outer));
-            Assert.Equal(!addStatement, KotoHelper.IsValueContext(inner));
-            Assert.Equal(!addStatement, branch.HasTrailingExpression);
-            Assert.Equal(!addStatement, inner.Branches[0].Body.HasTrailingExpression);
+            Assert.False(KotoHelper.IsValueContext(inner));
+            Assert.False(branch.HasTrailingExpression);
+            Assert.False(inner.Branches[0].Body.HasTrailingExpression);
+            Assert.True(KotoHelper.IsResultRequiringSelection(inner));
         }
     }
 
     [Fact]
-    public void PreservesBranchSemicolonsThroughSerializationAndUnparse()
+    public void PreservesBranchBodyFormsThroughSerializationAndUnparse()
     {
         var parsed = Parse(
             """
@@ -135,44 +136,40 @@ public class ControlFlowRevisionParseTest
                     if b
                         1
                     else
-                        2;
+                        2
                 else
-                    3;
+                    3
                 let second = match a
-                    A => if b 1 else 2;
+                    A => if b => 1 else => 2
                     B =>
-                        3;
+                        3
                 return ()
             """);
         foreach (var tree in Versions(parsed))
         {
             var body = Function(tree).Body!;
             var first = Assert.IsType<IfKoto>(Assert.IsType<FieldKoto>(body.Items[0]).InitializerKoto);
-            Assert.True(first.ElseBody!.HasTrailingSemicolon);
-            Assert.False(first.ElseBody.HasTrailingExpression);
+            Assert.False(first.ElseBody!.HasTrailingExpression);
             var nested = Assert.IsType<IfKoto>(first.Branches[0].Body.Items[0]);
-            Assert.True(nested.ElseBody!.HasTrailingSemicolon);
+            Assert.False(nested.ElseBody!.HasTrailingExpression);
             var second = Assert.IsType<MatchKoto>(Assert.IsType<FieldKoto>(body.Items[1]).InitializerKoto);
             Assert.IsType<IfKoto>(second.Arms[0].Body is ParenthesizedKoto grouped ? grouped.Operand : second.Arms[0].Body);
-            Assert.True(second.Arms[0].HasTrailingSemicolon);
-            Assert.False(KotoHelper.IsValueContext(second.Arms[0].Body));
+            Assert.True(KotoHelper.IsValueContext(second.Arms[0].Body));
             var blockArm = Assert.IsType<CodeBlockKoto>(second.Arms[1].Body);
-            Assert.True(blockArm.HasTrailingSemicolon);
             Assert.False(blockArm.HasTrailingExpression);
             Assert.IsType<UnitLiteralKoto>(Assert.IsType<ReturnKoto>(body.Items[2]).Expression);
         }
     }
 
     [Fact]
-    public void InlineMatchSemicolonDiscardsNestedConstructResult()
+    public void InlineMatchPreservesNestedExpressionResult()
     {
-        foreach (var tree in Versions(Parse("func run() => match x\n    A => (if b 1 else 2);\n    B => ()")))
+        foreach (var tree in Versions(Parse("func run() => match x\n    A => (if b => 1 else => 2)\n    B => ()")))
         {
             var match = Assert.IsType<MatchKoto>(Function(tree).ExpressionBody);
-            Assert.True(match.Arms[0].HasTrailingSemicolon);
             var inner = Assert.IsType<IfKoto>(Assert.IsType<ParenthesizedKoto>(match.Arms[0].Body).Operand);
-            Assert.False(KotoHelper.IsValueContext(inner));
-            Assert.False(inner.Branches[0].Body.HasTrailingExpression);
+            Assert.True(KotoHelper.IsValueContext(inner));
+            Assert.True(inner.Branches[0].Body.HasTrailingExpression);
         }
     }
 
@@ -196,7 +193,7 @@ public class ControlFlowRevisionParseTest
     [InlineData("exit 1 from")]
     [InlineData("continue 10")]
     [InlineData("yield")]
-    [InlineData("work: if a 1 else 2")]
+    [InlineData("work: if a => 1 else => 2")]
     [InlineData("work:")]
     [InlineData("func nested() =>")]
     public void ReportsMalformedSyntaxAndPreservesFollowingStatement(string malformed)
@@ -211,12 +208,12 @@ public class ControlFlowRevisionParseTest
     [Fact]
     public void ParsesExplicitUnitTransferOperands()
     {
-        foreach (var tree in Versions(Parse("func run()\n    let result = if a\n        yield ()\n    else\n        loop\n            exit ()\n    return ()")))
+        foreach (var tree in Versions(Parse("func run()\n    let result = if a\n        yield ()\n    else\n        yield loop\n            exit ()\n    return ()")))
         {
             var body = Function(tree).Body!;
             var conditional = Assert.IsType<IfKoto>(Assert.IsType<FieldKoto>(body.Items[0]).InitializerKoto);
             Assert.IsType<UnitLiteralKoto>(Assert.IsType<YieldKoto>(Assert.Single(conditional.Branches[0].Body.Items)).Expression);
-            var loop = Assert.IsType<LoopKoto>(conditional.ElseBody!.TrailingExpression);
+            var loop = Assert.IsType<LoopKoto>(Assert.IsType<YieldKoto>(Assert.Single(conditional.ElseBody!.Items)).Expression);
             Assert.IsType<UnitLiteralKoto>(Assert.IsType<ExitKoto>(Assert.Single(loop.Body.Items)).Expression);
         }
     }
@@ -224,7 +221,7 @@ public class ControlFlowRevisionParseTest
     [Fact]
     public void PreservesExplicitLabelAfterACompoundOperand()
     {
-        foreach (var tree in Versions(Parse("func run() => outer: loop\n    exit (if flag 1 else 2) from outer")))
+        foreach (var tree in Versions(Parse("func run() => outer: loop\n    exit (if flag => 1 else => 2) from outer")))
         {
             var labeled = Assert.IsType<LabeledKoto>(Function(tree).ExpressionBody);
             var loop = Assert.IsType<LoopKoto>(labeled.Target);
@@ -236,13 +233,12 @@ public class ControlFlowRevisionParseTest
     }
 
     [Fact]
-    public void PreservesSemicolonOnAWholeNestedIf()
+    public void DiscardsAWholeNestedIfInABlockBody()
     {
-        foreach (var tree in Versions(Parse("func run() => if flag\n    if other 1 else 2;\nelse\n    ()")))
+        foreach (var tree in Versions(Parse("func run() => if flag\n    if other => 1 else => 2\nelse\n    ()")))
         {
             var outer = Assert.IsType<IfKoto>(Function(tree).ExpressionBody);
             var branch = outer.Branches[0].Body;
-            Assert.True(branch.HasTrailingSemicolon);
             Assert.False(branch.HasTrailingExpression);
             var inner = branch.Items[0] is ParenthesizedKoto parentheses ? parentheses.Operand : branch.Items[0];
             Assert.False(KotoHelper.IsValueContext(Assert.IsType<IfKoto>(inner)));
@@ -250,15 +246,15 @@ public class ControlFlowRevisionParseTest
     }
 
     [Fact]
-    public void KeepsLoopBodiesInStatementContext()
+    public void KeepsIterationBodiesInDiscardContext()
     {
-        var tree = Parse("func run()\n    loop\n        if flag 1 else 2\n    let result = loop\n        exit 1");
+        var tree = Parse("func run()\n    loop\n        if flag => 1 else => 2\n    let result = loop\n        exit 1");
         var body = Function(tree).Body!;
         var loop = Assert.IsType<LoopKoto>(body.Items[0]);
         Assert.False(KotoHelper.IsValueContext(loop));
         var conditional = Assert.IsType<IfKoto>(Assert.Single(loop.Body.Items));
         Assert.False(KotoHelper.IsValueContext(conditional));
-        Assert.False(conditional.Branches[0].Body.HasTrailingExpression);
+        Assert.True(conditional.Branches[0].Body.HasTrailingExpression);
         var valueLoop = Assert.IsType<LoopKoto>(Assert.IsType<FieldKoto>(body.Items[1]).InitializerKoto);
         Assert.True(KotoHelper.IsValueContext(valueLoop));
         Assert.False(valueLoop.Body.HasTrailingExpression);

@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
@@ -6,11 +6,9 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Shares target and argument storage for invocations and generic applications.</summary>
-[TinyhandObject(ReservedKeyCount = 3)]
-public abstract partial class ApplicationKoto : ExpressionKoto
+public abstract class ApplicationKoto : ExpressionKoto
 {
     /// <summary>Gets the mutable arguments, materializing a list only when requested.</summary>
-    [IgnoreMember]
     public List<Koto> Arguments
     {
         get
@@ -27,24 +25,13 @@ public abstract partial class ApplicationKoto : ExpressionKoto
     }
 
     /// <summary>Gets the arguments without materializing a mutable list.</summary>
-    [IgnoreMember]
     public IReadOnlyList<Koto> ArgumentNodes => this.ArgumentStorage ?? [];
 
     /// <summary>Gets the expression to which the arguments apply.</summary>
-    [Key(1)]
     protected Koto Target { get; private set; }
 
-    /// <summary>Gets or sets the serialized argument storage.</summary>
-    [Key(2)]
+    /// <summary>Gets or sets the compact argument storage.</summary>
     protected IReadOnlyList<Koto>? ArgumentStorage { get; set; }
-
-    /// <summary>Initializes a new instance of the <see cref="ApplicationKoto"/> class for deserialization.</summary>
-    /// <param name="codeContext">The owning code context.</param>
-    internal ApplicationKoto(CodeContext codeContext)
-        : base(codeContext, default)
-    {
-        this.Target = default!;
-    }
 
     /// <summary>Initializes a new instance of the <see cref="ApplicationKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

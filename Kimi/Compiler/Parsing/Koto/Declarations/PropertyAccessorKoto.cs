@@ -16,23 +16,22 @@ public enum PropertyAccessorKind : byte
 }
 
 /// <summary>Represents a Property accessor declaration.</summary>
-[TinyhandObject]
-public sealed partial class PropertyAccessorKoto : Koto
+public sealed class PropertyAccessorKoto : Koto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.PropertyAccessor;
 
     /// <summary>Gets the accessor access restriction.</summary>
-    [Key(1)]
     public ModifierKind Modifier { get; private set; }
 
     /// <summary>Gets the accessor kind.</summary>
-    [Key(2)]
     public PropertyAccessorKind AccessorKind { get; private set; }
 
     /// <summary>Gets the custom accessor body, or <see langword="null"/> for a bodyless accessor.</summary>
-    [Key(3)]
     public Koto? Body { get; private set; }
+
+    /// <summary>Gets the explicitly declared getter result Type and Origin, if present.</summary>
+    public Koto? ReturnType { get; private set; }
 
     /// <summary>Gets a value indicating whether the accessor has no custom body.</summary>
     public bool IsBodyless => this.Body is null;
@@ -46,17 +45,21 @@ public sealed partial class PropertyAccessorKoto : Koto
     /// <param name="modifier">The accessor access restriction.</param>
     /// <param name="accessorKind">The accessor kind.</param>
     /// <param name="body">The custom body, if present.</param>
+    /// <param name="returnType">The explicit getter result Type, if present.</param>
     public PropertyAccessorKoto(
         ref TokenReader reader,
         SourceSpan range,
         ModifierKind modifier,
         PropertyAccessorKind accessorKind,
-        Koto? body)
+        Koto? body,
+        Koto? returnType = null)
         : base(ref reader, range)
     {
         this.Modifier = modifier;
         this.AccessorKind = accessorKind;
         this.Body = body;
+        this.ReturnType = returnType;
+        this.Adopt(returnType);
         this.Adopt(body);
     }
 
@@ -65,6 +68,12 @@ public sealed partial class PropertyAccessorKoto : Koto
     {
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
         builder.Append(this.AccessorText);
+
+        if (this.ReturnType is { } returnType)
+        {
+            builder.Append(" -> ");
+            returnType.WriteTo(ref builder);
+        }
 
         if (this.Body is CodeBlockKoto block)
         {
@@ -78,10 +87,26 @@ public sealed partial class PropertyAccessorKoto : Koto
     }
 
     protected override IEnumerable<Koto> GetChildNodes()
-        => this.Body is null ? [] : [this.Body];
+    {
+        if (this.ReturnType is { } returnType)
+        {
+            yield return returnType;
+        }
+
+        if (this.Body is { } body)
+        {
+            yield return body;
+        }
+    }
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
+        if (this.ReturnType == oldKoto)
+        {
+            this.ReturnType = newKoto;
+            return true;
+        }
+
         if (this.Body != oldKoto)
         {
             return false;

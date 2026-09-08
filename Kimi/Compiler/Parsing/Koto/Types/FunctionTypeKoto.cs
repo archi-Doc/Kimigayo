@@ -8,18 +8,15 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a function type.
 /// </summary>
-[TinyhandObject]
-public sealed partial class FunctionTypeKoto : TypeKoto
+public sealed class FunctionTypeKoto : TypeKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.FunctionType;
 
     /// <summary>Gets the parameter type expression.</summary>
-    [Key(1)]
     public Koto Parameters { get; private set; }
 
     /// <summary>Gets the return type.</summary>
-    [Key(2)]
     public Koto ReturnType { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="FunctionTypeKoto"/> class.</summary>

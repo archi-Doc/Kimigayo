@@ -7,7 +7,7 @@ using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
-#pragma warning disable SA1202 // Serialization keys keep related storage together.
+#pragma warning disable SA1202 // Related storage is grouped together.
 #pragma warning disable SA1204 // Parsing helpers are grouped by responsibility.
 
 /// <summary>
@@ -17,8 +17,7 @@ namespace Kimi.Compiler.Parsing;
 /// Member collections are allocated on first use because most containers only hold a few
 /// of the possible member kinds.
 /// </remarks>
-[TinyhandObject]
-public abstract partial class DeclarationContainerKoto : IdentifiableKoto
+public abstract class DeclarationContainerKoto : IdentifiableKoto
 {
     protected enum DeclarationOrder : byte
     {
@@ -34,11 +33,9 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
     #region FieldAndProperty
 
     /// <summary>Gets the declaration modifiers.</summary>
-    [Key(3)]
     public ModifierKind Modifier { get; private set; }
 
     /// <summary>Gets or sets the Declaration Container name.</summary>
-    [Key(4)]
     public string Name { get; protected set; } = string.Empty;
 
     /// <summary>Gets the declaration keyword kind for the concrete Declaration Container type.</summary>
@@ -59,44 +56,34 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
     /// <summary>Gets a value indicating whether type constraints are supported.</summary>
     public virtual bool SupportsTypeConstraints => false;
 
-    [Key(5)]
     private List<Koto>? kotoList;
 
     /// <summary>Gets or sets the nested Declaration Containers keyed by name, or <see langword="null"/> when none exist.</summary>
-    [Key(6)]
     protected Utf16Hashtable<Koto>? NestedContainerTable { get; set; }
 
-    [Key(7)]
     private List<TypeKoto>? genericArguments;
 
-    [Key(8)]
     private List<IsKoto>? typeConstraints;
 
     /// <summary>Gets or sets the declared origins, or <see langword="null"/> when none exist.</summary>
-    [Key(9)]
     protected List<string>? OriginList { get; set; }
 
     /// <summary>Gets the generic parameters.</summary>
-    [IgnoreMember]
     public List<TypeKoto> GenericArguments => this.genericArguments ??= [];
 
     /// <summary>Gets the type constraints.</summary>
-    [IgnoreMember]
     public List<IsKoto> TypeConstraints => this.typeConstraints ??= [];
 
     /// <summary>Gets the declared origins.</summary>
-    [IgnoreMember]
     public List<string> Origins => this.OriginList ??= [];
 
     /// <summary>Gets Properties and functions in declaration order.</summary>
-    [IgnoreMember]
     public IReadOnlyList<Koto> Members => (IReadOnlyList<Koto>?)this.kotoList ?? [];
 
     /// <summary>Gets the mutable member list, creating it on first use.</summary>
     protected List<Koto> KotoList => this.kotoList ??= [];
 
     /// <summary>Gets nested Declaration Containers.</summary>
-    [IgnoreMember]
     public IEnumerable<DeclarationContainerKoto> NestedDeclarationContainers
         => this.NestedContainerTable?.ToArray().Cast<DeclarationContainerKoto>() ?? [];
 
@@ -343,7 +330,7 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
                     builder.AppendLine();
                 }
 
-                x.WriteTo(ref builder);
+                WriteMemberTo(x, ref builder);
                 builder.AppendLine();
 
                 previousToplevel = x.IsToplevel;
@@ -464,7 +451,7 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
             foreach (var koto in this.kotoList)
             {
                 WriteSeparator(ref builder, ref hasPrevious);
-                koto.WriteTo(ref builder);
+                WriteMemberTo(koto, ref builder);
             }
         }
 
@@ -489,11 +476,39 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
         }
     }
 
+    private static void WriteMemberTo(Koto member, ref IndentedStringBuilder builder)
+    {
+        if (member is CodeBlockKoto block)
+        {
+            builder.Append("#if true");
+            block.WriteIndentedTo(ref builder);
+        }
+        else
+        {
+            member.WriteTo(ref builder);
+        }
+    }
+
     /// <summary>Parses the member declarations of a block body.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="parseTypeConstraints">Whether ordinary type constraints are accepted.</param>
     /// <param name="parseDeclarationContainers">Whether nested Declaration Containers are accepted.</param>
     protected void ParseMembers(ref TokenReader reader, bool parseTypeConstraints, bool parseDeclarationContainers)
+    {
+        var enclosingConditions = reader.PendingDirectiveConditions;
+        reader.PendingDirectiveConditions = null;
+        try
+        {
+            this.ParseMembersCore(ref reader, parseTypeConstraints, parseDeclarationContainers);
+            this.AddPendingDirectiveConditions(reader.PendingDirectiveConditions);
+        }
+        finally
+        {
+            reader.PendingDirectiveConditions = enclosingConditions;
+        }
+    }
+
+    private void ParseMembersCore(ref TokenReader reader, bool parseTypeConstraints, bool parseDeclarationContainers)
     {
         ConsumeBlockStart(ref reader);
         var declarationOrder = DeclarationOrder.None;
@@ -508,10 +523,17 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
                 continue;
             }
 
-            if (Parser.IsCompileTimeCaseStart(ref reader))
+            if (Parser.IsCompileTimeMatchStart(ref reader))
             {
-                var caseGroup = Parser.ParseCompileTimeCaseGroup(ref reader);
+                var caseGroup = Parser.ParseCompileTimeMatch(ref reader, this);
                 this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup));
+                continue;
+            }
+
+            if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock)
+            {
+                var body = Parser.ParseDeclarationDirectiveBody(ref reader, this);
+                this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, body));
                 continue;
             }
 
@@ -609,6 +631,11 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
             return false;
         }
 
+        if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.EndBlock)
+        {
+            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+        }
+
         return !reader.TryConsume(TokenKind.EndBlock);
     }
 
@@ -693,6 +720,19 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
             return true;
         }
 
+        if (this is StructKoto && reader.IsCurrentIdentifier("deinit"))
+        {
+            var context = reader.TakeContext();
+            reader.Advance();
+            var destructor = new FunctionKoto(ref reader, context, token.Span, "deinit", null, null, new TupleTypeKoto(ref reader, token.Span, []))
+            {
+                IsDestructor = true,
+            };
+            destructor.Parse(ref reader);
+            this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, destructor));
+            return true;
+        }
+
         if (token.Kind != TokenKind.Func)
         {
             return false;
@@ -706,10 +746,7 @@ public abstract partial class DeclarationContainerKoto : IdentifiableKoto
             return true;
         }
 
-        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-        {
-            functionKoto.Parse(ref reader);
-        }
+        Parser.ParseNamedFunctionBody(ref reader, functionKoto);
 
         if (!isExcluded && !functionKoto.IsExcluded)
         {

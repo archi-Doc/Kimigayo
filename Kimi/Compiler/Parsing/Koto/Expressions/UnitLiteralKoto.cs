@@ -6,8 +6,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Represents the Unit value ().</summary>
-[TinyhandObject]
-public sealed partial class UnitLiteralKoto : ExpressionKoto
+public sealed class UnitLiteralKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.UnitLiteral;

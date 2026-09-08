@@ -6,14 +6,12 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Represents an array literal expression.</summary>
-[TinyhandObject]
-public sealed partial class ArrayLiteralKoto : ExpressionKoto
+public sealed class ArrayLiteralKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.ArrayLiteral;
 
     /// <summary>Gets the array elements in source order.</summary>
-    [Key(1)]
     public List<Koto> Elements { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="ArrayLiteralKoto"/> class.</summary>
@@ -56,11 +54,11 @@ public sealed partial class ArrayLiteralKoto : ExpressionKoto
 public sealed partial class DictionaryLiteralEntry
 {
     /// <summary>Gets the key expression.</summary>
-    [Key(0)]
+    [IgnoreMember]
     public Koto Key { get; internal set; }
 
     /// <summary>Gets the value expression.</summary>
-    [Key(1)]
+    [IgnoreMember]
     public Koto Value { get; internal set; }
 
     /// <summary>Initializes a new instance of the <see cref="DictionaryLiteralEntry"/> class.</summary>
@@ -74,14 +72,12 @@ public sealed partial class DictionaryLiteralEntry
 }
 
 /// <summary>Represents a dictionary literal expression.</summary>
-[TinyhandObject]
-public sealed partial class DictionaryLiteralKoto : ExpressionKoto
+public sealed class DictionaryLiteralKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.DictionaryLiteral;
 
     /// <summary>Gets the dictionary entries in source order.</summary>
-    [Key(1)]
     public List<DictionaryLiteralEntry> Entries { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="DictionaryLiteralKoto"/> class.</summary>

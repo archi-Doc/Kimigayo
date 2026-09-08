@@ -6,26 +6,18 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Provides the base representation of a type-syntax node.</summary>
-[TinyhandObject]
-[TinyhandUnion(0, typeof(TypeSemanticsKoto))]
-[TinyhandUnion(1, typeof(TupleTypeKoto))]
-[TinyhandUnion(2, typeof(FunctionTypeKoto))]
-public abstract partial class TypeKoto : Koto
+public abstract class TypeKoto : Koto
 {
     /// <summary>Gets the ownership semantics applied to this type.</summary>
-    [IgnoreMember]
     public virtual SemanticsKind SemanticsKind => SemanticsKind.Owner;
 
     /// <summary>Gets the custom semantics parameter, if present.</summary>
-    [IgnoreMember]
     public virtual string? SemanticsParameter => default;
 
     /// <summary>Gets the type identifier when this node has a simple name.</summary>
-    [IgnoreMember]
     public virtual string Identifier => string.Empty;
 
     /// <summary>Gets the origin associated with this type, if present.</summary>
-    [IgnoreMember]
     public virtual string? OriginName => default;
 
     /// <summary>Initializes a new instance of the <see cref="TypeKoto"/> class.</summary>

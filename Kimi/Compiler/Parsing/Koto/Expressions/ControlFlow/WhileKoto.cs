@@ -6,18 +6,15 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Represents a <c>while</c> expression whose value is Unit.</summary>
-[TinyhandObject]
-public sealed partial class WhileKoto : ExpressionKoto
+public sealed class WhileKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.While;
 
     /// <summary>Gets the loop condition.</summary>
-    [Key(1)]
     public Koto Condition { get; private set; }
 
     /// <summary>Gets the loop body.</summary>
-    [Key(2)]
     public CodeBlockKoto Body { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="WhileKoto"/> class.</summary>

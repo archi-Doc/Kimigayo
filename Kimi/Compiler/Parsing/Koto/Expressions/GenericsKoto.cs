@@ -8,18 +8,15 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a generic name with type arguments.
 /// </summary>
-[TinyhandObject]
-public sealed partial class GenericsKoto : ApplicationKoto
+public sealed class GenericsKoto : ApplicationKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Generics;
 
     /// <summary>Gets the generic identifier.</summary>
-    [IgnoreMember]
     public Koto? Identifier => this.Target;
 
     /// <summary>Gets the generic type arguments.</summary>
-    [IgnoreMember]
     public IReadOnlyList<Koto> TypeArguments => this.ArgumentNodes;
 
     /// <summary>Initializes a new instance of the <see cref="GenericsKoto"/> class.</summary>

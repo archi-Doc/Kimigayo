@@ -34,7 +34,7 @@ public readonly partial record struct FunctionSignature(
 /// <param name="TypeKoto">The parameter type.</param>
 [TinyhandObject]
 public readonly partial record struct ParameterSignature(
-    [property: Key(0)] TypeKoto TypeKoto);
+    [property: IgnoreMember] TypeKoto TypeKoto);
 
 /// <summary>
 /// Describes a field for signature comparison.

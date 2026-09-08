@@ -6,18 +6,15 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Attaches a lexical Label to a Block or Loop.</summary>
-[TinyhandObject]
-public sealed partial class LabeledKoto : ExpressionKoto
+public sealed class LabeledKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Labeled;
 
     /// <summary>Gets the Label name.</summary>
-    [Key(1)]
     public string Label { get; private set; }
 
     /// <summary>Gets the labeled Block or Loop.</summary>
-    [Key(2)]
     public Koto Target { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="LabeledKoto"/> class.</summary>

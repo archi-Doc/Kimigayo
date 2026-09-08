@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
@@ -59,16 +59,6 @@ public class HexToIntBenchmark
     }
 
     public HexToIntBenchmark()
-    {
-    }
-
-    [GlobalSetup]
-    public void Setup()
-    {
-    }
-
-    [GlobalCleanup]
-    public void Cleanup()
     {
     }
 

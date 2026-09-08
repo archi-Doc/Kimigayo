@@ -11,6 +11,12 @@ public enum DiagnosticCode
     Template_Kd, // First sentinel
 
     ConditionMustBeBool_Kd,
+    InvalidCompileTimeCondition_Kd,
+    InvalidCompileTimeSetting_Kd,
+    UnsupportedLanguageVersion_Kd,
+    CompileTimeCaseOutsideMatch_Kd,
+    EmptyCompileTimeMatch_Kd,
+    InvalidCompileTimeMatchItem_Kd,
     CompileTimeCaseFallbackMustBeLast_Kd,
     DuplicateCompileTimeCaseFallback_Kd,
     DeclarationOrderWarning_Kd,
@@ -25,6 +31,9 @@ public enum DiagnosticCode
     IndentationLevelMismatchWarning_Kd,
     InvalidAttributeKoto_Kd,
     InvalidCharacter_Kd,
+    SemicolonNotAllowed_Kd,
+    InvalidCharLiteral_Kd,
+    InvalidSourceEncoding_Kd,
     InvalidCharacterAtEndOfFile_Kd,
     InvalidIdentifier_Kd,
     InvalidIndentation_Kd,
@@ -36,9 +45,11 @@ public enum DiagnosticCode
     IntegerOverflow_Kd,
     LetPropertyCannotHaveSetter_Kd,
     MissingBlockCommentEnd_Kd,
+    CodeAfterMultilineComment_Kd,
     MissingComma_Kd,
     MissingExpectedToken_Kd,
     MissingStringLiteralEnd_Kd,
+    MissingCharLiteralEnd_Kd,
     MultipleAccessibilityModifiers_Kd,
     NonExhaustiveCompileTimeCase_Kd,
     TokenMismatch_Kd,
@@ -55,6 +66,16 @@ public enum DiagnosticCode
     UnmatchedToken_Kd,
     UnsupportedCompileTimeConditionType_Kd,
     UnsupportedEscape_Kd,
+
+    ControlFlow_Kd,
+
+    MissingReturnType_Kd,
+
+    EmptyExecutableBlock_Kd,
+    BlockStatementInExpression_Kd,
+    InvalidInlineStatement_Kd,
+
+    ChainedComparison_Kd,
 
     Count, // Last sentinel
 }

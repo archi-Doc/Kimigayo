@@ -8,31 +8,24 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Describes a parsed function parameter.
 /// </summary>
-[TinyhandObject]
-public sealed partial record class FunctionParameterKoto
+public sealed record class FunctionParameterKoto
 {
     /// <summary>Gets the parameter name used by callers.</summary>
-    [Key(0)]
     public string ExternalName { get; private set; } = string.Empty;
 
     /// <summary>Gets the parameter name used in the function body.</summary>
-    [Key(1)]
     public string InternalName { get; private set; } = string.Empty;
 
     /// <summary>Gets a value indicating whether callers may omit the parameter.</summary>
-    [Key(2)]
     public bool IsOptional { get; private set; }
 
     /// <summary>Gets the parameter type.</summary>
-    [Key(3)]
     public Koto Type { get; internal set; } = default!;
 
     /// <summary>Gets the default value, if present.</summary>
-    [Key(4)]
     public Koto? DefaultValue { get; internal set; }
 
     /// <summary>Gets the attributes applied to this parameter.</summary>
-    [Key(5)]
     public AttributeKoto? AttributeChain { get; internal set; }
 
     /// <summary>Initializes a new instance of the <see cref="FunctionParameterKoto"/> class.</summary>
@@ -62,54 +55,79 @@ public sealed partial record class FunctionParameterKoto
 /// <summary>
 /// Represents a function declaration.
 /// </summary>
-[TinyhandObject]
-public sealed partial class FunctionKoto : IdentifiableKoto
+public sealed class FunctionKoto : IdentifiableKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Function;
 
     /// <summary>Gets the function modifiers.</summary>
-    [Key(2)]
     public ModifierKind Modifier { get; private set; }
 
     /// <summary>Gets the function name.</summary>
-    [Key(3)]
     public string Name { get; private set; } = string.Empty;
 
-    [Key(4)]
     private List<TypeKoto>? genericArguments;
 
-    [Key(5)]
     private List<FunctionParameterKoto>? parameters;
 
     /// <summary>Gets the return type, if specified.</summary>
-    [Key(6)]
     public Koto? ReturnType { get; private set; }
 
     /// <summary>Gets the function body, if present.</summary>
-    [Key(7)]
     public CodeBlockKoto? Body { get; private set; }
 
     /// <summary>Gets a value indicating whether this function was synthesized for top-level syntax.</summary>
-    [Key(8)]
     public bool IsGenerated { get; private set; }
 
     /// <summary>Gets the expression after =>, if this function is expression-bodied.</summary>
-    [Key(9)]
     public Koto? ExpressionBody { get; private set; }
 
+    private List<string>? origins;
+
+    private List<Koto>? typeConstraints;
+
+    /// <summary>Gets compile-time constraints declared before executable body items.</summary>
+    public IReadOnlyList<Koto> TypeConstraints => (IReadOnlyList<Koto>?)this.typeConstraints ?? [];
+
+    /// <summary>Gets a value indicating whether this function is a destructor body.</summary>
+    public bool IsDestructor { get; internal set; }
+
+    /// <summary>Gets the abstract Origin parameters.</summary>
+    public IReadOnlyList<string> Origins => (IReadOnlyList<string>?)this.origins ?? [];
+
+    internal void SetOrigins(List<string>? origins) => this.origins = origins;
+
+    internal void AddTypeConstraint(Koto constraint)
+    {
+        (this.typeConstraints ??= []).Add(constraint);
+        this.Adopt(constraint);
+    }
+
+    internal bool IsGenericParameter(string name)
+    {
+        if (this.genericArguments is not null)
+        {
+            foreach (var parameter in this.genericArguments)
+            {
+                if (parameter.Identifier == name || parameter.SemanticsParameter == name)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Gets the generic parameters.</summary>
-    [IgnoreMember]
     public IReadOnlyList<TypeKoto> GenericArguments
         => (IReadOnlyList<TypeKoto>?)this.genericArguments ?? [];
 
     /// <summary>Gets the function parameters.</summary>
-    [IgnoreMember]
     public IReadOnlyList<FunctionParameterKoto> Parameters
         => (IReadOnlyList<FunctionParameterKoto>?)this.parameters ?? [];
 
     /// <summary>Gets a value indicating whether conditional attributes exclude this function.</summary>
-    [IgnoreMember]
     public bool IsExcluded { get; }
 
     /// <summary>Initializes a new instance of the <see cref="FunctionKoto"/> class.</summary>
@@ -174,11 +192,11 @@ public sealed partial class FunctionKoto : IdentifiableKoto
         reader.TrySkipSeparatorsTo(TokenKind.StartBlock);
         if (reader.CurrentTokenKind != TokenKind.StartBlock)
         {
-            reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+            reader.Diagnostic.Add(this.Span, DiagnosticCode.EmptyExecutableBlock_Kd);
             return;
         }
 
-        this.Body = Parser.ParseBlock(ref reader);
+        this.Body = Parser.ParseFunctionBlock(ref reader, this);
         this.Body.Parent = this;
         this.Span = SourceSpan.FromBounds(this.Span.Start, this.Body.Span.End);
     }
@@ -194,9 +212,28 @@ public sealed partial class FunctionKoto : IdentifiableKoto
 
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendLineFeed);
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
-        builder.Append(Constants.FuncKeyword);
-        builder.AppendSpace();
+        if (!this.IsDestructor)
+        {
+            builder.Append(Constants.FuncKeyword);
+            builder.AppendSpace();
+        }
+
         builder.Append(this.Name);
+
+        if (this.IsDestructor)
+        {
+            if (this.ExpressionBody is not null)
+            {
+                builder.Append(" => ");
+                this.ExpressionBody.WriteTo(ref builder);
+            }
+            else
+            {
+                this.Body?.WriteIndentedTo(ref builder);
+            }
+
+            return;
+        }
 
         if (this.genericArguments is { Count: > 0 } genericArguments)
         {
@@ -212,6 +249,20 @@ public sealed partial class FunctionKoto : IdentifiableKoto
             }
 
             builder.Append('>');
+        }
+
+        if (this.origins is { Count: > 0 })
+        {
+            builder.Append(" origin ");
+            for (var i = 0; i < this.origins.Count; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                builder.Append(this.origins[i]);
+            }
         }
 
         builder.Append('(');
@@ -264,6 +315,19 @@ public sealed partial class FunctionKoto : IdentifiableKoto
             builder.Append(" => ");
             this.ExpressionBody.WriteTo(ref builder);
         }
+        else if (this.typeConstraints is { Count: > 0 })
+        {
+            builder.AppendLine();
+            builder.IncrementIndent();
+            foreach (var constraint in this.typeConstraints)
+            {
+                constraint.WriteTo(ref builder);
+                builder.AppendLine();
+            }
+
+            this.Body?.WriteTo(ref builder);
+            builder.DecrementIndent();
+        }
         else
         {
             this.Body?.WriteIndentedTo(ref builder);
@@ -272,19 +336,26 @@ public sealed partial class FunctionKoto : IdentifiableKoto
 
     /// <summary>Adds top-level syntax to this generated function.</summary>
     /// <param name="item">The syntax node to add.</param>
-    /// <param name="hasTrailingExpression">Whether the item is an expression without a semicolon.</param>
-    internal void AddGeneratedItem(Koto item, bool hasTrailingExpression)
+    internal void AddGeneratedItem(Koto item)
     {
         if (!this.IsGenerated || this.Body is null)
         {
             throw new InvalidOperationException();
         }
 
-        this.Body.AddLast(item, hasTrailingExpression);
+        this.Body.AddLast(item);
     }
 
     protected override IEnumerable<Koto> GetChildNodes()
     {
+        if (this.typeConstraints is not null)
+        {
+            foreach (var constraint in this.typeConstraints)
+            {
+                yield return constraint;
+            }
+        }
+
         if (this.genericArguments is not null)
         {
             foreach (var argument in this.genericArguments)
@@ -370,7 +441,8 @@ public sealed partial class FunctionKoto : IdentifiableKoto
             }
         }
 
-        return oldKoto is TypeKoto && ReplaceInList(this.genericArguments, oldKoto, newKoto);
+        return ReplaceInList(this.typeConstraints, oldKoto, newKoto) ||
+            (oldKoto is TypeKoto && newKoto is TypeKoto && ReplaceInList(this.genericArguments, oldKoto, newKoto));
     }
 
     private void AttachParameter(FunctionParameterKoto parameter)

@@ -10,8 +10,45 @@
   + Name="ConditionMustBeBool_Kd"
     Message="The condition expression must be of type Bool"
 
+  + Name="InvalidCompileTimeCondition_Kd"
+    Message="This expression is outside the compile-time Condition grammar (integer literals must fit i64)"
+
+  + Name="InvalidCompileTimeSetting_Kd"
+    Message="Invalid compile-time setting '{0}': use a non-reserved Name and exactly one Bool, Integer, or String value"
+
+  + Name="UnsupportedLanguageVersion_Kd"
+    Message="Unsupported language version '{0}'; this compiler supports '{1}'"
+
+  + Name="ChainedComparison_Kd"
+    Message="Comparison operators cannot be chained without parentheses"
+    Label="This comparison requires explicit grouping"
+    Fix="Use parentheses for a nested comparison, or combine separate comparisons with and"
+
+  + Name="EmptyExecutableBlock_Kd"
+    Message="An executable Block requires at least one Syntax item"
+    Fix="Indent the intended body, or write () to explicitly do nothing"
+
+  + Name="BlockStatementInExpression_Kd"
+    Message="Unsafe and Deferred Blocks are statements and cannot be used as expressions"
+
+  + Name="InvalidInlineStatement_Kd"
+    Message="An inline body requires one complete statement on the same line, without a following Block"
+
+  + Name="SemicolonNotAllowed_Kd"
+    Message="Semicolons are not allowed"
+    Fix="Remove the semicolon, or use a newline to separate syntax items"
+
   + Name="CompileTimeCaseFallbackMustBeLast_Kd"
     Message="#case _ must be the final arm in a Case Group"
+
+  + Name="CompileTimeCaseOutsideMatch_Kd"
+    Message="#case must be a direct arm of a #match body"
+
+  + Name="EmptyCompileTimeMatch_Kd"
+    Message="#match requires an indented body containing at least one #case arm"
+
+  + Name="InvalidCompileTimeMatchItem_Kd"
+    Message="A #match body may contain only #case arms, blank lines, and comments"
 
   + Name="DuplicateCompileTimeCaseFallback_Kd"
     Message="A Case Group may contain at most one #case _ arm"
@@ -41,6 +78,10 @@
   + Name="IncompleteSyntax_Kd"
     Message="The syntax is incomplete"
 
+  + Name="MissingReturnType_Kd"
+    Message="A return type is required after '->'. Specify a type such as '()' or 'i32', or remove '->' to omit the return type annotation."
+    Label="Missing return type after this arrow"
+
   + Name="IndentationLevelMismatch_Kd"
     Message="The indentation level does not match the expected level"
 
@@ -54,11 +95,21 @@
   + Name="InvalidCharacter_Kd"
     Message="Unexpected character '{0}'"
 
+  + Name="InvalidCharLiteral_Kd"
+    Message="A char literal must contain exactly one Unicode scalar value; quotes, backslashes, controls, and line separators must be escaped"
+
+  + Name="InvalidSourceEncoding_Kd"
+    Message="Source text must be valid Unicode encoded as UTF-8"
+
+  + Name="MissingCharLiteralEnd_Kd"
+    Message="Char literal is not terminated on the same line. Expected closing '"
+
   + Name="InvalidCharacterAtEndOfFile_Kd"
     Message="Invalid character at end of file"
 
   + Name="InvalidIdentifier_Kd"
     Message="'{0}' is not a valid identifier"
+    Fix="Use an NFC name with valid identifier characters and no Unicode Format (Cf) characters"
 
   + Name="InvalidIndentation_Kd"
     Message="Invalid indentation. Insert {0} spaces for each indentation level"
@@ -87,6 +138,10 @@
   + Name="MissingBlockCommentEnd_Kd"
     Message="Reached end-of-file. Missing '*/'"
 
+  + Name="CodeAfterMultilineComment_Kd"
+    Message="Code cannot follow a multiline block comment's closing delimiter on the same physical line"
+    Fix="Move the code to the next line and use ordinary indentation"
+
   + Name="MissingComma_Kd"
     Message="A comma is required to separate syntax elements"
 
@@ -111,6 +166,9 @@
 
   + Name="TypeMismatch_Kd"
     Message="Values must be of the same type"
+
+  + Name="ControlFlow_Kd"
+    Message="{0}"
 
   + Name="UnexpectedIndent_Kd"
     Message="Unexpected indentation"

@@ -14,6 +14,8 @@ namespace Kimi.Compiler;
 /// Lookups are lock-free and allocation-free; only the insertion of a new spelling takes a lock.
 /// The table is an open-addressing hash set whose slots are published atomically, and a
 /// reader that misses a concurrently inserted entry simply falls through to the locked path.
+/// Spellings use exact UTF-16 equality (equivalent to scalar-sequence equality for valid
+/// names), without normalization or case folding. Validation requires NFC separately.
 /// </remarks>
 internal sealed class IdentifierTable
 {

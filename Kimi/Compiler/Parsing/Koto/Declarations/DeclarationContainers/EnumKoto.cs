@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
@@ -8,8 +8,7 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents an enumeration declaration.
 /// </summary>
-[TinyhandObject]
-public sealed partial class EnumKoto : DeclarationContainerKoto
+public sealed class EnumKoto : DeclarationContainerKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Enum;

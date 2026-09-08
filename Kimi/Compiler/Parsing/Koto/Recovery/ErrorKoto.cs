@@ -8,8 +8,7 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents an invalid expression created during parser recovery.
 /// </summary>
-[TinyhandObject]
-public sealed partial class ErrorKoto : ExpressionKoto
+public sealed class ErrorKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Error;

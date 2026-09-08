@@ -1,20 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Tinyhand;
 using Xunit;
+using static XunitTest.ParseTestHelper;
 
 namespace XunitTest;
 
 public class RangeIndexParseTest
 {
-    private static readonly PropertyInfo KotoListProperty = typeof(DeclarationContainerKoto).GetProperty(
-        "KotoList",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-
     [Fact]
     public void ParsesElementAndFromEndIndexes()
     {
@@ -154,19 +150,9 @@ public class RangeIndexParseTest
     }
 
     private static Dictionary<string, FieldKoto> ParseFields(string source)
-    {
-        var compilation = Compilation.CreateForTest();
-        var kotonoha = compilation.Kotonoha;
-        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
-        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
-        Assert.True(
-            diagnostics.Length == 0,
-            string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
-
-        return GetChildren(kotonoha.RootKoto)
+        => GetChildren(ParseSuccess(source).RootKoto)
             .OfType<FieldKoto>()
             .ToDictionary(x => x.NameKoto.IdentifierName);
-    }
 
     private static RangeKoto AssertRange(FieldKoto field, bool hasStart, bool hasEnd, bool isInclusive)
     {
@@ -178,9 +164,4 @@ public class RangeIndexParseTest
         Assert.Equal(isInclusive, range.IsInclusive);
         return range;
     }
-
-    private static List<Koto> GetChildren(DeclarationContainerKoto group)
-        => ReferenceEquals(group, group.Kotonoha.RootKoto)
-            ? group.Kotonoha.GeneratedFunction?.Body?.Items.ToList() ?? []
-            : (List<Koto>)KotoListProperty.GetValue(group)!;
 }

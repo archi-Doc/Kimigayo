@@ -51,6 +51,15 @@ internal ref struct Tokenizer
             return true;
         };
 
+        CharacterHandlerTable[Constants.SemicolonChar] = (ref tokenizer) =>
+        {
+            tokenizer.diagnostics.Add(tokenizer.NewRange(1), DiagnosticCode.SemicolonNotAllowed_Kd);
+            // Recover as a separator so the parser can still inspect following syntax.
+            // This does not end the physical line or alter indentation.
+            tokenizer.AddTokenAndSlice(TokenKind.Separator, 1);
+            return false;
+        };
+
         CharacterHandlerTable[Constants.AmpersandChar] = (ref tokenizer) =>
         {// & && &=
             var next = tokenizer.NextChar;
@@ -290,7 +299,7 @@ internal ref struct Tokenizer
 
             if (next == Constants.AsteriskChar)
             {// Multi line comment
-                tokenizer.ReadMultiLineComment();
+                return tokenizer.ReadMultiLineComment();
             }
             else if (next == Constants.EqualsChar)
             {
@@ -315,6 +324,12 @@ internal ref struct Tokenizer
             tokenizer.ReadStringLiteral();
             return false;
         };
+
+        CharacterHandlerTable['\''] = (ref tokenizer) =>
+        {
+            tokenizer.ReadCharLiteral();
+            return false;
+        };
     }
 
     #region FieldAndProperty
@@ -322,6 +337,7 @@ internal ref struct Tokenizer
     private readonly DiagnosticCollection diagnostics;
     private readonly SourceDocument sourceDocument;
     private readonly ReadOnlySpan<char> sourceText;
+    private readonly int indentationOffset;
     private Token[] tokens;
     private int tokenCount;
     private IndentSource[] indentStack;
@@ -366,16 +382,29 @@ internal ref struct Tokenizer
     /// <param name="diagnostics">The destination for lexical diagnostics.</param>
     /// <param name="sourceDocument">The source document to tokenize.</param>
     public Tokenizer(DiagnosticCollection diagnostics, SourceDocument sourceDocument)
+        : this(diagnostics, sourceDocument, new SourceSpan(0, (sourceDocument ?? throw new ArgumentNullException(nameof(sourceDocument))).SourceText.Length))
+    {
+    }
+
+    // A bounded view retains original source offsets for interpolation diagnostics and Koto spans.
+    internal Tokenizer(DiagnosticCollection diagnostics, SourceDocument sourceDocument, SourceSpan range)
     {
         ArgumentNullException.ThrowIfNull(sourceDocument);
 
         this.diagnostics = diagnostics;
         this.sourceDocument = sourceDocument;
-        this.sourceText = sourceDocument.AsSpan();
+        this.sourceText = sourceDocument.AsSpan()[..range.End];
+        this.position = range.Start;
+        if (range.Start > 0)
+        {
+            var line = sourceDocument.GetPosition(range.Start).Line;
+            this.indentationOffset = BaseHelper.CountLeadingSpaces(sourceDocument.GetLineSpan(line)) / Constants.IndentationSpaces;
+        }
+
         this.indentStack = ArrayPool<IndentSource>.Shared.Rent(InitialIndentStackCapacity);
 
         // Typical source yields roughly one token per four characters; the array grows on demand.
-        this.tokens = ArrayPool<Token>.Shared.Rent(Math.Max(MinimumTokenCapacity, (this.sourceText.Length >> 2) + 64));
+        this.tokens = ArrayPool<Token>.Shared.Rent(Math.Max(MinimumTokenCapacity, (range.Length >> 2) + 64));
 
         diagnostics.SetSourceDocument(sourceDocument);
     }
@@ -411,6 +440,28 @@ internal ref struct Tokenizer
     /// </summary>
     public void ReadAll()
     {
+        // .NET hosts source as UTF-16. Reject unpaired surrogates even in comments
+        // and raw strings; they cannot originate from valid UTF-8 source.
+        var offset = this.position;
+        while (offset < this.sourceText.Length)
+        {
+            var relative = this.sourceText[offset..].IndexOfAnyInRange('\uD800', '\uDFFF');
+            if (relative < 0)
+            {
+                break;
+            }
+
+            offset += relative;
+            if (!char.IsHighSurrogate(this.sourceText[offset]) ||
+                offset + 1 == this.sourceText.Length || !char.IsLowSurrogate(this.sourceText[offset + 1]))
+            {
+                this.diagnostics.Add(new SourceSpan(offset, 1), DiagnosticCode.InvalidSourceEncoding_Kd);
+                return;
+            }
+
+            offset += 2;
+        }
+
         this.currentIndentLevel = 0;
         do
         {
@@ -531,13 +582,14 @@ LineContent:
             }
             else if (this.span[1] == Constants.AsteriskChar)
             {// /* Multi line comment */
-                this.ReadMultiLineComment();
+                if (this.ReadMultiLineComment())
+                {
+                    goto NextLine;
+                }
 
                 // Skip spaces after the comment WITHOUT counting them as indentation;
                 // the indentation of this line was already measured at the line start
                 // (this prevents a bogus InvalidIndentation diagnostic for "/* c */ foo").
-                // If the comment spanned multiple physical lines, code following the
-                // closing "*/" inherits the indentation of the line that opened it.
                 this.Slice(BaseHelper.CountLeadingSpaces(this.span));
                 goto LineContent;
             }
@@ -550,7 +602,7 @@ LineContent:
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
         }
 
-        var indentLevel = numberOfSpaces / Constants.IndentationSpaces;
+        var indentLevel = (numberOfSpaces / Constants.IndentationSpaces) - this.indentationOffset;
         if (this.currentIndentLevel < 0)
         {
             this.currentIndentLevel = indentLevel;
@@ -740,10 +792,23 @@ EndOfFile:
         this.AddTokenAndSlice(TokenHelper.GetKeywordOrIdentifierKind(this.span.Slice(0, length)), length);
     }
 
+    private void ReadCharLiteral()
+    {
+        if (CharLiteralHelper.Scan(this.span, out var length))
+        {
+            this.AddTokenAndSlice(TokenKind.CharLiteral, length);
+        }
+        else
+        {
+            this.diagnostics.Add(this.NewRange(length), DiagnosticCode.MissingCharLiteralEnd_Kd);
+            this.AddTokenAndSlice(TokenKind.Invalid, length);
+        }
+    }
+
     private void ReadStringLiteral()
     {
         var result = StringLiteralHelper.ScanStringLiteral(this.span, out var doubleQuoteCount, out var stringLiteralLength);
-        if (result == ScanStringLiteralResult.String)
+        if (result is ScanStringLiteralResult.String or ScanStringLiteralResult.MultilineString)
         {// "Text" -> Text
             if (doubleQuoteCount == 1)
             {
@@ -757,9 +822,9 @@ EndOfFile:
                 this.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
             }
         }
-        else if (result == ScanStringLiteralResult.MultilineString)
-        {// """Text"""
-            this.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
+        else if (result is ScanStringLiteralResult.Interpolation or ScanStringLiteralResult.MultilineInterpolation)
+        {
+            this.AddTokenAndSlice(TokenKind.InterpolatedStringLiteral, stringLiteralLength);
         }
         else
         {// Invalid
@@ -768,28 +833,56 @@ EndOfFile:
         }
     }
 
-    private void ReadMultiLineComment()
+    // Returns true when a comment crosses a physical line and ends the current line.
+    private bool ReadMultiLineComment()
     {
-        var length = this.span.IndexOf("*/");
-        if (length < 0)
+        var crossedLine = false;
+        while (true)
         {
-            this.diagnostics.Add(this.NewRange(Math.Min(2, this.span.Length)), DiagnosticCode.MissingBlockCommentEnd_Kd);
-            this.Slice(this.span.Length);
-            return;
-        }
+            var length = this.span.IndexOf("*/");
+            if (length < 0)
+            {
+                this.diagnostics.Add(this.NewRange(Math.Min(2, this.span.Length)), DiagnosticCode.MissingBlockCommentEnd_Kd);
+                this.Slice(this.span.Length);
+                return true;
+            }
 
-        this.Slice(length + 2);
+            crossedLine |= this.span[..length].IndexOfAny('\r', '\n') >= 0;
+            this.Slice(length + 2);
+            if (!crossedLine)
+            {
+                return false;
+            }
+
+            // Only spaces and comments may follow a multiline comment's terminator.
+            this.Slice(BaseHelper.CountLeadingSpaces(this.span));
+            if (this.span.StartsWith("/*"))
+            {
+                continue;
+            }
+
+            if (!this.span.IsEmpty && this.span[0] is not ('\r' or '\n') && !this.span.StartsWith("//"))
+            {
+                this.diagnostics.Add(this.NewRange(1), DiagnosticCode.CodeAfterMultilineComment_Kd);
+            }
+
+            // Consume the closing line (including invalid trailing code for recovery).
+            // The next physical line is processed with ordinary indentation rules.
+            this.ReadSingleLineComment();
+            return true;
+        }
     }
 
     private void ReadSingleLineComment()
     {// // Comment\n
-        var idx = BaseHelper.IndexOfLfOrCrLf(this.span, out var newLineLength);
+        var idx = this.span.IndexOfAny('\r', '\n');
         if (idx < 0)
         {
             this.Slice(this.span.Length);
         }
         else
         {
+            var newLineLength = this.span[idx] == '\r' && idx + 1 < this.span.Length && this.span[idx + 1] == '\n' ? 2 : 1;
             this.Slice(idx + newLineLength);
         }
     }

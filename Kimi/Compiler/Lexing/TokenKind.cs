@@ -29,6 +29,7 @@ public enum TokenKind : byte
     U128,
     F32,
     F64,
+    Char,
     String,
 
     // Keywords
@@ -42,7 +43,6 @@ public enum TokenKind : byte
     If, // if
     Else, // else
     Case, // case
-    // Block, // block
     As, // as
     Is, // is
     Not, // not
@@ -52,10 +52,11 @@ public enum TokenKind : byte
     While, // while
     Loop, // loop
     Match, // match
-    Return, // method/return
-    Exit, // loop/exit
-    Continue, // continue
-    Yield, // yield
+    Return, // function/return
+    Exit, // loop,for,while/exit
+    Continue, // loop,for,while/continue
+    Yield, // if/yield
+    Null, // contextually typed raw-pointer literal
 
     // Contextual keyword
     Alias = 96,
@@ -90,11 +91,6 @@ public enum TokenKind : byte
     RawStringLiteral, // """text"""
     SingleLineComment, // // comment
     MultiLineComment, // /* comment */
-    // LineFeed, // \n or \r\n
-
-    // Move, // <=
-    // Map, // =>
-    // Reference, // &
 
     // Single token
     At, // @
@@ -107,7 +103,6 @@ public enum TokenKind : byte
     OpenBrace, // {
     CloseBrace, // }
     Colon, // :
-    Semicolon, // ;
     Dollar, // $
     Question, // ?
 
@@ -148,4 +143,7 @@ public enum TokenKind : byte
     PlusPlus, // ++
     Slash, // /
     SlashEquals, // /=
+
+    // An escaped string containing embedded expressions.
+    InterpolatedStringLiteral,
 }

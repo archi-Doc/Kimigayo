@@ -12,17 +12,18 @@ let windows = true
     #OsAttribute let osId = 1
 
 func FuncA<s/T>(value: s/T)
-    #case s is ref and T is Comparable
-        ProcessComparableReference(value)
+    #match
+        #case (s is ref) and (T is Comparable)
+            ProcessComparableReference(value)
 
-    #case s is ref
-        ProcessReference(value)
+        #case s is ref
+            ProcessReference(value)
 
-    #case s is obj
-        ProcessObject(value)
+        #case s is obj
+            ProcessObject(value)
 
-    #case _
-        ProcessOther(value)
+        #case _
+            ProcessOther(value)
 
 // Single-line comment
 /* Multi-line
@@ -49,8 +50,9 @@ var x = array[1] // borrow/StructA
 var last = array[^1] // Last element
 var middle = array[1..^1] // Excludes both element 0 and the last element
 var y = array.remove(at: 1) // owner/StructA
-func Set(index: isize, obj: s/T) -> ()
+func Set(index: isize, obj: s/T) -> () => ()
 func Get(index: isize) -> s/T
+    return
 
 var array2 = Array<int>.new()
 
@@ -78,7 +80,7 @@ public group Kernel32 // shared (no instance)
         uExitCode: u32
         ) -> ()
 
-    public func TestMethod() ->
+    public func TestMethod()
         // @Macro()
         return
 
@@ -112,19 +114,19 @@ public group Helper // namespace - alias
     public func Method1() -> int32 // use PackageName, Helper
         return 1
 
-    func Method2() ->
-        #Condition(Os=="Windows")
+    func Method2() -> ()
+        #if (Os=="Windows")
         // block Initialize
             // var func1 = func () => 3 // () -> return 4
-            var i = if (x == true) 1 else 0
+            var i = if (x == true) => 1 else => 0
         var i2 = if (x == true)
-            1
+            => 1
         else
-            3 // yield 2
+            => 3 // yield 2
         // goto Initialize
         var i3 = if (
             var z = Func()
-            yield (z > 0)) 1 else 0
+            yield (z > 0)) => 1 else => 0
         var j = match x
             true => 1
             false => 0
@@ -171,8 +173,7 @@ public enum TestEnum
 $WriteLine("Kimigayo")
 
 func Main()
-    var array: Array<i32> = 
-    [
+    var array: Array<i32> = [
         1,
         2,
     ]
@@ -195,7 +196,7 @@ public group Example
         $Console.WriteLine("Hello world!")
         context.Console.WriteLine("Hello world!")
         Example.Example.Test()
-        $Panic("")
+        $abort("")
         self.Method2(32)
         var x = Class.new()
         var y = x@ref
@@ -247,8 +248,8 @@ if (a == 1 and
     b == 2)
     var x = [1,
         2,]
-var a = 1 +
-    2
+var a = (1 +
+    2)
 
 var record = Record.New()
     A = 3

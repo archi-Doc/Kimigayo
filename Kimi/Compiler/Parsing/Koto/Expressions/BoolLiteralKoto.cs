@@ -7,14 +7,12 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a Boolean literal expression.
 /// </summary>
-[TinyhandObject]
-public sealed partial class BoolLiteralKoto : ExpressionKoto
+public sealed class BoolLiteralKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.BoolLiteral;
 
     /// <summary>Gets a value indicating whether the literal is <see langword="true"/>.</summary>
-    [Key(1)]
     public bool Value { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="BoolLiteralKoto"/> class.</summary>

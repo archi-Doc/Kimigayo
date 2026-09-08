@@ -6,14 +6,12 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Represents an unconditional <c>loop</c> expression.</summary>
-[TinyhandObject]
-public sealed partial class LoopKoto : ExpressionKoto
+public sealed class LoopKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Loop;
 
     /// <summary>Gets the loop body.</summary>
-    [Key(1)]
     public CodeBlockKoto Body { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="LoopKoto"/> class.</summary>

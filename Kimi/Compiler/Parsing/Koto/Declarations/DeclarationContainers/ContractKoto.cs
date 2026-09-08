@@ -9,8 +9,7 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a contract declaration.
 /// </summary>
-[TinyhandObject]
-public sealed partial class ContractKoto : DeclarationContainerKoto
+public sealed class ContractKoto : DeclarationContainerKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Contract;
@@ -40,6 +39,32 @@ public sealed partial class ContractKoto : DeclarationContainerKoto
     /// <inheritdoc/>
     public override void Parse(ref TokenReader reader)
     {
+        var enclosingConditions = reader.PendingDirectiveConditions;
+        reader.PendingDirectiveConditions = null;
+        try
+        {
+            this.ParseBody(ref reader);
+            this.AddPendingDirectiveConditions(reader.PendingDirectiveConditions);
+        }
+        finally
+        {
+            reader.PendingDirectiveConditions = enclosingConditions;
+        }
+    }
+
+    /// <inheritdoc/>
+    protected override void WriteTypeConstraintTo(IsKoto constraint, ref IndentedStringBuilder builder)
+    {
+        if (!constraint.IsAssociatedConstraint)
+        {
+            builder.Append("associate ");
+        }
+
+        constraint.WriteTo(ref builder);
+    }
+
+    private void ParseBody(ref TokenReader reader)
+    {
         ConsumeBlockStart(ref reader);
         while (TryBeginDeclaration(ref reader))
         {
@@ -51,14 +76,40 @@ public sealed partial class ContractKoto : DeclarationContainerKoto
                 continue;
             }
 
-            if (Parser.IsCompileTimeCaseStart(ref reader))
+            if (Parser.IsCompileTimeMatchStart(ref reader))
             {
-                var caseGroup = Parser.ParseCompileTimeCaseGroup(ref reader);
+                var caseGroup = Parser.ParseCompileTimeMatch(ref reader, this);
                 this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup));
                 continue;
             }
 
+            if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock)
+            {
+                var body = Parser.ParseDeclarationDirectiveBody(ref reader, this);
+                this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, body));
+                continue;
+            }
+
             var token = reader.CurrentToken;
+            if (token.Kind is TokenKind.Let or TokenKind.Var)
+            {
+                reader.Advance();
+                var property = Parser.ParseProperty(ref reader, ref token);
+                if (property is not null)
+                {
+                    property.IsContractRequirement = true;
+                    if (!property.HasInlineAccessors || property.InitializerKoto is not null)
+                    {
+                        property.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, token.Kind.ToText());
+                        continue;
+                    }
+
+                    this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, property));
+                }
+
+                continue;
+            }
+
             if (token.Kind != TokenKind.Associate)
             {
                 SkipUnexpectedDeclaration(ref reader, token);
@@ -76,6 +127,7 @@ public sealed partial class ContractKoto : DeclarationContainerKoto
             var constraint = Parser.ParseTypeConstraint(ref reader);
             if (constraint is not null && !isExcluded)
             {
+                constraint.IsAssociatedConstraint = true;
                 if (compileTimeIfPrefixes is null)
                 {
                     this.AddTypeConstraint(constraint);
@@ -86,13 +138,5 @@ public sealed partial class ContractKoto : DeclarationContainerKoto
                 }
             }
         }
-    }
-
-    /// <inheritdoc/>
-    protected override void WriteTypeConstraintTo(IsKoto constraint, ref IndentedStringBuilder builder)
-    {
-        builder.Append(Constants.AssociateKeyword);
-        builder.AppendSpace();
-        constraint.WriteTo(ref builder);
     }
 }

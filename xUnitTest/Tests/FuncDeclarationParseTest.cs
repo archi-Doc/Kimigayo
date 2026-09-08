@@ -9,6 +9,29 @@ namespace XunitTest;
 
 public class FuncDeclarationParseTest
 {
+    [Theory]
+    [InlineData("func Method2() ->")]
+    [InlineData("func Method2() ->\n    return\nfunc Next() => 1")]
+    [InlineData("func Method2() -> => 1\nfunc Next() => 2")]
+    [InlineData("public group Helper\n    func Method2() ->\n        #if os==\"Windows\"\n        // block\n            var i = if (x == true) => 1 else => 0\n        var i2 = if (x == true)\n            => 1\n        else\n            => 3")]
+    public void ReportsMissingReturnTypeAtArrow(string source)
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+
+        var diagnostic = Assert.Single(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Equal(nameof(DiagnosticCode.MissingReturnType_Kd), diagnostic.Entry.Name);
+        Assert.Equal(source.IndexOf("->", StringComparison.Ordinal), diagnostic.Span.Start);
+        Assert.Equal(2, diagnostic.Span.Length);
+        Assert.Contains("remove '->'", diagnostic.Message);
+        if (source.Contains("func Next", StringComparison.Ordinal))
+        {
+            var body = Assert.IsType<CodeBlockKoto>(kotonoha.GeneratedFunction?.Body);
+            Assert.Contains(body.Items, x => x is FunctionKoto function && function.Name == "Next");
+        }
+    }
+
     [Fact]
     public void ParsesCompleteFunctionDeclaration()
     {

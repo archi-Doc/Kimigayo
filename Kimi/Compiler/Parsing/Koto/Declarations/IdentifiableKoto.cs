@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Arc.Collections;
 using Kimi.Compiler.Lexing;
@@ -9,11 +9,9 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Provides a stable identifier for a named Koto node.
 /// </summary>
-[TinyhandObject(ReservedKeyCount = 2)]
-public abstract partial class IdentifiableKoto : DeclarationKoto
+public abstract class IdentifiableKoto : DeclarationKoto
 {
-    /// <summary>Gets or sets the identifier derived from this node and its containing declarations.</summary>
-    [Key(1)]
+    /// <summary>Gets the identifier derived from this node and its containing declarations.</summary>
     public ulong KotoId
     {
         get
@@ -38,11 +36,6 @@ public abstract partial class IdentifiableKoto : DeclarationKoto
             }
 
             return field;
-        }
-
-        protected set
-        {
-            field = value;
         }
     }
 

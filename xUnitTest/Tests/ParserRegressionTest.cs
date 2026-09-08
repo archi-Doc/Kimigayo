@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Reflection;
 using System.Text.Json;
 using Kimi;
 using Kimi.Compiler;
@@ -10,15 +9,12 @@ using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Tinyhand;
 using Xunit;
+using static XunitTest.ParseTestHelper;
 
 namespace XunitTest;
 
 public class ParserRegressionTest
 {
-    private static readonly PropertyInfo KotoListProperty = typeof(DeclarationContainerKoto).GetProperty(
-        "KotoList",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-
     [Fact]
     public void StopsAtEndOfIncompleteExpression()
     {
@@ -298,7 +294,7 @@ public class ParserRegressionTest
     [Fact]
     public void AppliesSemanticsToCompoundType()
     {
-        var (root, diagnostics) = Parse("func F(value: objref/SomeType<List<owner/T>, I>)");
+        var (root, diagnostics) = Parse("func F(value: objref/SomeType<List<owner/T>, I>) => ()");
 
         Assert.Empty(diagnostics);
         var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
@@ -315,7 +311,7 @@ public class ParserRegressionTest
     [InlineData("SomeType<T> from collection", "collection")]
     public void ParsesAndWritesTypeOrigin(string typeText, string expectedOrigin)
     {
-        var (root, diagnostics) = Parse($"func F(value: {typeText})");
+        var (root, diagnostics) = Parse($"func F(value: {typeText}) => ()");
 
         Assert.Empty(diagnostics);
         var function = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
@@ -470,7 +466,7 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void PreservesKotoSyntaxThroughTinyhandSerialization()
+    public void RebuildsKotoSyntaxFromSerializedSources()
     {
         var source = """
             public open struct TestStruct<s/C> origin a, b
@@ -915,12 +911,13 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         var source = """
             func select()
-                #case linux
-                    var excluded = 1
-                #case windows
-                    var selected = 2
-                #case _
-                    var fallback = 3
+                #match
+                    #case linux
+                        var excluded = 1
+                    #case windows
+                        var selected = 2
+                    #case _
+                        var fallback = 3
             """;
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
@@ -932,40 +929,33 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void CompileTimeCaseRetainsDeferredGenericSelection()
+    public void CompileTimeCaseRejectsTypeSelectionIncludingAfterSerialization()
     {
         var compilation = Compilation.CreateForTest();
         Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
         var kotonoha = compilation.Kotonoha;
         var source = """
             func select<s/T>()
-                #case T is i32
-                    var specialized = 1
-                #case _
-                    var fallback = 2
+                #match
+                    #case T is i32
+                        var specialized = 1
+                    #case _
+                        var fallback = 2
             """;
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Contains(kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
-        var group = Assert.IsType<CompileTimeCaseGroupKoto>(Assert.Single(function.Body!.Items));
-        Assert.Collection(
-            group.Arms,
-            arm =>
-            {
-                var condition = Assert.IsType<IsKoto>(arm.Condition);
-                Assert.Equal("T", Assert.IsType<IdentifierNameKoto>(condition.Left).IdentifierName);
-                Assert.Equal("i32", Assert.IsType<TypeSemanticsKoto>(condition.Right).Identifier);
-            },
-            arm => Assert.Null(arm.Condition));
+        Assert.Empty(function.Body!.PendingDirectiveConditions);
 
         var bytes = TinyhandSerializer.Serialize(kotonoha);
         var restored = new Kotonoha(compilation);
         TinyhandSerializer.DeserializeObject(bytes, ref restored);
         restored!.OnDeserialized(compilation);
+        Assert.Contains(restored.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
-        var restoredGroup = Assert.IsType<CompileTimeCaseGroupKoto>(Assert.Single(restoredFunction.Body!.Items));
+        var restoredGroup = Assert.IsType<CompileTimeMatchKoto>(Assert.Single(restoredFunction.Body!.Items));
         Assert.Equal(2, restoredGroup.Arms.Count);
         Assert.All(restoredGroup.ChildNodes, child => Assert.Same(restoredGroup, child.Parent));
     }
@@ -978,14 +968,16 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         var source = """
             func invalidFallback()
-                #case _
-                    return
-                #case _
-                    return
+                #match
+                    #case _
+                        return
+                    #case _
+                        return
 
             func nonExhaustive()
-                #case linux
-                    return
+                #match
+                    #case linux
+                        return
             """;
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
@@ -1004,12 +996,13 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         var source = """
             func select()
-                #case windows
-                    return
-                #case 1
-                    return
-                #case _
-                    return
+                #match
+                    #case windows
+                        return
+                    #case 1
+                        return
+                    #case _
+                        return
             """;
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
@@ -1027,10 +1020,11 @@ public class ParserRegressionTest
         var source = """
             func select()
                 #if linux
-                #case windows
-                    var firstExcluded =
-                #case _
-                    var fallbackExcluded =
+                #match
+                    #case windows
+                        var firstExcluded =
+                    #case _
+                        var fallbackExcluded =
                 var retained = 1
             """;
 
@@ -1065,15 +1059,7 @@ public class ParserRegressionTest
 
     private static (GroupKoto Root, Diagnostic[] Diagnostics) Parse(string source)
     {
-        var compilation = Compilation.CreateForTest();
-        var kotonoha = compilation.Kotonoha;
-        var context = kotonoha.CreateCodeContext();
-        context.Parse(kotonoha.RootKoto, source);
+        var kotonoha = ParseTestHelper.Parse(source);
         return (kotonoha.RootKoto, kotonoha.DiagnosticCollection.GetArray());
     }
-
-    private static List<Koto> GetChildren(DeclarationContainerKoto group)
-        => ReferenceEquals(group, group.Kotonoha.RootKoto)
-            ? group.Kotonoha.GeneratedFunction?.Body?.Items.ToList() ?? []
-            : (List<Koto>)KotoListProperty.GetValue(group)!;
 }

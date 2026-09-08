@@ -1,10 +1,12 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 namespace Kimi;
 
 using System.Diagnostics.CodeAnalysis;
+using System.Text;
 using Kimi.Command;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 
 /// <summary>
 /// Represents one application or library build unit described by a <c>.kimiproj</c> file.
@@ -60,8 +62,12 @@ public partial class Project
     #region FieldAndProperty
 
     private readonly Kimigayo kimigayo;
+    private readonly List<CompilationBuildMetadata> buildMetadata = new();
     private List<SourceDocument> additionalSource = [];
     private HashSet<string> kimiFiles = new();
+
+    /// <summary>Gets the prepared input metadata from the most recent build attempt.</summary>
+    public IReadOnlyList<CompilationBuildMetadata> BuildMetadata => this.buildMetadata;
 
     /// <summary>Gets or sets the compiler options inherited from the solution.</summary>
     public KimiOptions KimiOptions { get; set; } = new();
@@ -75,6 +81,8 @@ public partial class Project
     /// <summary>Gets the project-file settings, including targets and Kotonoha references.</summary>
     public ProjectFile ProjectFile { get; private set; } = new();
 
+    internal string? SolutionLanguageVersion { get; set; }
+
     #endregion
 
     /// <summary>Initializes a new instance of the <see cref="Project"/> class.</summary>
@@ -82,7 +90,12 @@ public partial class Project
     public Project(Kimigayo kimigayo)
     {
         this.kimigayo = kimigayo;
-        this.ProjectFile = DefaultProjectFile;
+        this.ProjectFile = new()
+        {
+            Targets = DefaultProjectFile.Targets.ToArray(),
+            Alias = DefaultProjectFile.Alias.ToArray(),
+            KotonohaArray = DefaultProjectFile.KotonohaArray.ToArray(),
+        };
     }
 
     /// <summary>Adds generated or in-memory Kimi source text.</summary>
@@ -110,13 +123,15 @@ public partial class Project
     /// <returns>A task that completes after all configured targets have been attempted.</returns>
     public async Task<bool> Build()
     {
+        this.buildMetadata.Clear();
         var targets = this.ProjectFile.Targets.ToArray();
+        var success = true;
         foreach (var x in targets)
         {
-            await this.BuildTarget(x).ConfigureAwait(false);
+            success &= await this.BuildTarget(x).ConfigureAwait(false);
         }
 
-        return true;
+        return success;
     }
 
     private async Task<bool> BuildTarget(string target)
@@ -128,15 +143,21 @@ public partial class Project
             return false;
         }
 
+        this.buildMetadata.Add(compilation.BuildMetadata!);
+
         var projectKotonoha = compilation.Kotonoha;
 
         foreach (var path in this.kimiFiles)
         {
             try
             {
-                var sourceText = System.IO.File.ReadAllText(path);
-                var sourceDocument = new SourceDocument(path, sourceText);
+                var sourceDocument = SourceDocument.FromUtf8(path, System.IO.File.ReadAllBytes(path));
                 projectKotonoha.AddSource(sourceDocument);
+            }
+            catch (DecoderFallbackException)
+            {
+                this.kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.InvalidSourceEncoding_Kd);
+                return false;
             }
             catch
             {
@@ -148,24 +169,18 @@ public partial class Project
             projectKotonoha.AddSource(y);
         }
 
-        compilation.ScrubForTest();
+        // Planned: establish scope environments through Directive Binding; bind declarations,
+        // names, types and overloads; specialize generics and select remaining directives.
 
-        // Resolve shared let & @Attribute
+        // Validate control flow using facts available before general Binding.
+        // Pending obligations are retained by the analysis API for later Binding passes.
+        var controlFlow = compilation.AnalyzeControlFlow();
+        controlFlow.ReportDiagnostics();
 
-        // Prepare CodeContext
+        // Planned: ownership/lifetime/Origin analysis, lowering, backend IR, emission and linking.
+        // This result certifies only the implemented front-end checks, not finalization or a binary.
 
-        // Resolve
-
-        // Mods
-
-        // Validate
-
-        // Emit
-
-        // Compile
-
-        // Link
-
-        return true;
+        return controlFlow.Issues.Count == 0 && !projectKotonoha.HasSourceErrors &&
+            !projectKotonoha.DiagnosticCollection.GetArray().Any(x => x.Entry.Severity == DiagnosticSeverity.Error);
     }
 }

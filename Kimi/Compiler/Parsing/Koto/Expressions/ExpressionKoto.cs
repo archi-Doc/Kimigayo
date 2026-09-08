@@ -6,8 +6,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Provides the base representation of an expression node.</summary>
-[TinyhandObject]
-public abstract partial class ExpressionKoto : Koto
+public abstract class ExpressionKoto : Koto
 {
     /// <summary>Initializes a new instance of the <see cref="ExpressionKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

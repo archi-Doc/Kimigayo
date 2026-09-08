@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
@@ -17,6 +17,8 @@ namespace Kimi.Compiler;
 /// diagnostics, and any generated function used to contain executable top-level syntax.
 /// A project's application output is represented by its primary Kotonoha; referenced
 /// libraries are represented by additional Kotonoha instances.
+/// Serialization stores the original source documents, including their paths and text.
+/// Syntax-tree edits are not persisted; <see cref="OnDeserialized"/> reparses the documents.
 /// </remarks>
 [TinyhandObject]
 public sealed partial class Kotonoha
@@ -57,20 +59,31 @@ public sealed partial class Kotonoha
     /// <summary>
     /// Gets the root of the parsed Koto tree.
     /// </summary>
-    [Key(3)]
+    [IgnoreMember]
     public GroupKoto RootKoto { get; private set; }
 
     /// <summary>
     /// Gets the generated function that owns executable top-level syntax.
     /// </summary>
-    [Key(4)]
+    [IgnoreMember]
     public FunctionKoto? GeneratedFunction { get; private set; }
+
+    /// <summary>Gets the original source documents in parsing order.</summary>
+    [IgnoreMember]
+    public IReadOnlyList<SourceDocument> SourceDocuments => this.sourceDocuments;
+
+    // Source parsing uses a separate diagnostic collection for each file.
+    [IgnoreMember]
+    internal bool HasSourceErrors { get; private set; }
 
     [IgnoreMember]
     private readonly UInt64Hashtable<Koto> kotoIdToKoto = new();
 
     [IgnoreMember]
     private readonly object kotoIndexLock = new();
+
+    [Key(3)]
+    private List<SourceDocument> sourceDocuments = new();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Kotonoha"/> class.
@@ -105,19 +118,26 @@ public sealed partial class Kotonoha
     }
 
     /// <summary>
-    /// Restores runtime-only state after deserialization.
+    /// Rebuilds the syntax tree from the saved source documents using the supplied compilation.
     /// </summary>
     /// <param name="compilation">The compilation that will own the restored source unit.</param>
     public void OnDeserialized(Compilation compilation)
     {
+        this.HasSourceErrors = false;
         ArgumentNullException.ThrowIfNull(compilation);
 
         this.DiagnosticCollection = compilation.Kimigayo.GetOrAddDiagnosticCollection(this.Name);
         this.Compilation = compilation;
-        this.RootKoto.RestoreAfterDeserialization(new CodeContext(this), default);
+        this.RootKoto = new(new CodeContext(this), default, default);
+        this.GeneratedFunction = null;
         lock (this.kotoIndexLock)
         {
             this.kotoIdToKoto.Clear();
+        }
+
+        foreach (var sourceDocument in this.sourceDocuments)
+        {
+            this.ParseSource(sourceDocument);
         }
     }
 
@@ -169,41 +189,19 @@ public sealed partial class Kotonoha
     {
         ArgumentNullException.ThrowIfNull(sourceDocument);
 
-        var path = sourceDocument.Path;
-        var directory = this.Compilation.Project.Directory;
-        if (path.Length > 0 && directory.Length > 0)
-        {// Path.GetRelativePath rejects an empty path.
-            path = Path.GetRelativePath(directory, path);
-        }
-
-        var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
-        var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument);
-        var codeContext = this.CreateCodeContext(diagnosticCollection);
-
-        // Tokenize
-        try
-        {
-            tokenizer.ReadAll();
-            if (this.Compilation.Project.KimiOptions.DumpToken)
-            {
-                DumpToken(sourceDocument.Path, tokenizer.Tokens);
-            }
-
-            // Token to Koto
-            var tokenReader = new TokenReader(codeContext, ref tokenizer);
-            this.RootKoto.Parse(ref tokenReader);
-        }
-        finally
-        {
-            tokenizer.Dispose();
-        }
+        this.RecordSource(sourceDocument);
+        this.ParseSource(sourceDocument);
     }
+
+    /// <summary>Records a document parsed into the root for subsequent serialization.</summary>
+    /// <param name="sourceDocument">The original source document.</param>
+    internal void RecordSource(SourceDocument sourceDocument)
+        => this.sourceDocuments.Add(sourceDocument);
 
     /// <summary>Adds executable top-level syntax to the generated function.</summary>
     /// <param name="codeContext">The parsing context that produced the syntax.</param>
     /// <param name="item">The syntax node to add.</param>
-    /// <param name="hasTrailingExpression">Whether this item is an expression without a semicolon.</param>
-    internal void AddGeneratedFunctionItem(CodeContext codeContext, Koto item, bool hasTrailingExpression)
+    internal void AddGeneratedFunctionItem(CodeContext codeContext, Koto item)
     {
         var generatedFunction = this.GeneratedFunction;
         if (generatedFunction is null)
@@ -212,36 +210,39 @@ public sealed partial class Kotonoha
             this.GeneratedFunction = generatedFunction;
         }
 
-        generatedFunction.AddGeneratedItem(item, hasTrailingExpression);
+        generatedFunction.AddGeneratedItem(item);
     }
 
     /// <summary>Removes the generated function, if present.</summary>
     internal void ClearGeneratedFunction()
         => this.GeneratedFunction = default;
 
-    private static void DumpToken(string path, ReadOnlySpan<Token> tokens)
+    private void ParseSource(SourceDocument sourceDocument)
     {
-        // Enum.ToString() returns the cached member name, so only the builder grows here.
-        var sb = new StringBuilder(Math.Min(tokens.Length * 12, 1 << 16));
-        foreach (var token in tokens)
-        {
-            if (token.Kind == TokenKind.Separator)
-            {
-                sb.AppendLf();
-            }
-            else
-            {
-                sb.Append('(').Append(token.Kind.ToString()).Append(')');
-            }
+        this.Compilation.BeginSourceParsing();
+        var path = sourceDocument.Path;
+        var directory = this.Compilation.Project.Directory;
+        if (path.Length > 0 && directory.Length > 0)
+        {// Path.GetRelativePath rejects an empty path.
+            path = Path.GetRelativePath(directory, path);
         }
 
+        var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
+        diagnosticCollection.ClearDiagnostic();
+        var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument);
+        var codeContext = new CodeContext(this, diagnosticCollection, sourceDocument);
+
+        // Tokenize and parse
         try
         {
-            File.WriteAllText(Path.ChangeExtension(path, Constants.TokenExtension), sb.ToString());
+            tokenizer.ReadAll();
+            var tokenReader = new TokenReader(codeContext, ref tokenizer);
+            this.RootKoto.Parse(ref tokenReader);
+            this.HasSourceErrors |= diagnosticCollection.GetArray().Any(x => x.Entry.Severity == DiagnosticSeverity.Error);
         }
-        catch
+        finally
         {
-            // Token dumps are diagnostic aids and must not stop compilation.
+            tokenizer.Dispose();
         }
     }
 

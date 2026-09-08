@@ -8,8 +8,7 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a structure declaration.
 /// </summary>
-[TinyhandObject]
-public sealed partial class StructKoto : DeclarationContainerKoto
+public sealed class StructKoto : DeclarationContainerKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Struct;

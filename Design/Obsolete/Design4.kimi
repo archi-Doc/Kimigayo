@@ -1,13 +1,12 @@
 namespace Program // namespace = module without identation.
 // KimiError.NamespaceMustBeFirst, KimiError.CannotDefineGlobalNamespace
 
-alias Kimi.Crypto
+use Kimi.Crypto
 
-{Condition(Os=="Linux")} // Attribute-next rule.
-alias Kimi.Base.Linux
+#Condition(Os=="Linux") // Attribute-next rule.
+use Kimi.Base.Linux
 
-{Key(1)} public const string Name = "Test Program"
-#Key(2) public const int Id = 12
+public const string Name = "Test Program"
 
 // {}: Attribute
 // []: Array
@@ -18,7 +17,7 @@ alias Kimi.Base.Linux
 // Statement: while, for
 // Block
 
-public group Helper // namespace - alias
+public group Helper // namespace - use
     public const i32 Id = 123
     public Method1() => int32 // use PackageName, Helper
         return 1
@@ -43,9 +42,9 @@ public group Helper // namespace - alias
                 0
         return
 
-{TinyhandObject}
+#TinyhandObject
 public struct TestStruct // module + field
-    {Key(1)}
+    #Key(1)
     i32 id
 
     public New() => Self
@@ -72,10 +71,10 @@ $WriteLine("Kimigayo")
 // Comment
 /* Comment2 */
 
-{Test}
+#Test
 method Test1() -> bool
 
-{Test}
+#Test
 method Main()
     Array<i32> array = 
     [
@@ -103,7 +102,7 @@ public group Example
         $Console.WriteLine("Hello world!")
         context.Console.WriteLine("Hello world!")
         Example::Example.Test()
-        $Panic("")
+        $abort("")
         self.Method2(32)
         new Class() -> var x
         var x = new Class()
@@ -182,12 +181,16 @@ var func = () =>
 
 chainMethod().Do().IsTrue()
 
-(chainMethod()
+chainMethod()
     .Do()
-    .IsTrue())
+    .IsTrue()
 
 complexMethod(
     A,
     B,
     C)
+
+// ; がないと繋げられない。。。元々好きな書き方ではないが。
+// Indentableを検出して、次の行を見て処理するか（NextLine.NoIndent, Indentable, IndentRequired）。
+// とゆーか、()があったらIndentableかな。
 

@@ -51,6 +51,9 @@ public enum KotoKind : byte
     /// <summary>A Boolean literal.</summary>
     BoolLiteral,
 
+    /// <summary>A Unicode scalar literal.</summary>
+    CharLiteral,
+
     /// <summary>A numeric literal.</summary>
     NumberLiteral,
 
@@ -83,8 +86,8 @@ public enum KotoKind : byte
     /// <summary>A reference expression.</summary>
     Reference,
 
-    /// <summary>An unwrap expression.</summary>
-    Unwrap,
+    /// <summary>A dereference expression.</summary>
+    Dereference,
 
     /// <summary>An index measured backward from the end of a collection.</summary>
     FromEndIndex,
@@ -237,8 +240,8 @@ public enum KotoKind : byte
     /// <summary>A deferred compile-time <c>#if</c> directive.</summary>
     CompileTimeIf,
 
-    /// <summary>A deferred compile-time <c>#case</c> group.</summary>
-    CompileTimeCaseGroup,
+    /// <summary>A deferred compile-time <c>#match</c> group.</summary>
+    CompileTimeMatch,
 
     /// <summary>A <c>match</c> expression.</summary>
     Match,
@@ -284,6 +287,24 @@ public enum KotoKind : byte
     /// <summary>The Unit value ().</summary>
     UnitLiteral,
 
+    /// <summary>A string containing embedded expressions.</summary>
+    InterpolatedString,
+
+    /// <summary>A tuple value expression.</summary>
+    TupleLiteral,
+
+    /// <summary>An unsafe statement with a scoped body.</summary>
+    UnsafeBlock,
+
+    /// <summary>A deferred cleanup statement with a scoped body.</summary>
+    DeferredBlock,
+
+    /// <summary>A contextually typed raw-pointer null literal.</summary>
+    NullLiteral,
+
+    /// <summary>A parenthesized type, distinct from a one-element tuple.</summary>
+    ParenthesizedType,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
@@ -292,100 +313,10 @@ public enum KotoKind : byte
 /// Provides the base representation of a Koto syntax-tree node.
 /// </summary>
 /// <remarks>
-/// Tree links (<see cref="Parent"/>, <see cref="CodeContext"/>) are runtime-only. They are set by
-/// the constructors during parsing and rebuilt by <see cref="RestoreAfterDeserialization"/> using
-/// <see cref="ChildNodes"/>, so concrete nodes only need to enumerate their children.
+/// Tree links (<see cref="Parent"/>, <see cref="CodeContext"/>) are set during parsing.
+/// Concrete nodes enumerate their children through <see cref="ChildNodes"/>.
 /// </remarks>
-[TinyhandObject(ReservedKeyCount = 1)]
-[TinyhandUnion((int)KotoKind.Contract, typeof(ContractKoto))]
-[TinyhandUnion((int)KotoKind.Enum, typeof(EnumKoto))]
-[TinyhandUnion((int)KotoKind.Extension, typeof(ExtensionKoto))]
-[TinyhandUnion((int)KotoKind.Group, typeof(GroupKoto))]
-[TinyhandUnion((int)KotoKind.Struct, typeof(StructKoto))]
-[TinyhandUnion((int)KotoKind.Function, typeof(FunctionKoto))]
-
-[TinyhandUnion((int)KotoKind.Alias, typeof(AliasKoto))]
-[TinyhandUnion((int)KotoKind.BoolLiteral, typeof(BoolLiteralKoto))]
-[TinyhandUnion((int)KotoKind.Error, typeof(ErrorKoto))]
-[TinyhandUnion((int)KotoKind.Field, typeof(FieldKoto))]
-[TinyhandUnion((int)KotoKind.Property, typeof(PropertyKoto))]
-[TinyhandUnion((int)KotoKind.PropertyAccessor, typeof(PropertyAccessorKoto))]
-[TinyhandUnion((int)KotoKind.NumberLiteral, typeof(NumberLiteralKoto))]
-[TinyhandUnion((int)KotoKind.StringLiteral, typeof(StringLiteralKoto))]
-[TinyhandUnion((int)KotoKind.IdentifierName, typeof(IdentifierNameKoto))]
-[TinyhandUnion((int)KotoKind.TypeSemantics, typeof(TypeSemanticsKoto))]
-[TinyhandUnion((int)KotoKind.SemanticsMask, typeof(SemanticsMaskKoto))]
-
-[TinyhandUnion((int)KotoKind.Attribute, typeof(AttributeKoto))]
-[TinyhandUnion((int)KotoKind.Macro, typeof(MacroKoto))]
-[TinyhandUnion((int)KotoKind.Unwrap, typeof(UnwrapKoto))]
-[TinyhandUnion((int)KotoKind.FromEndIndex, typeof(FromEndIndexKoto))]
-[TinyhandUnion((int)KotoKind.PrefixPlus, typeof(PrefixPlusKoto))]
-[TinyhandUnion((int)KotoKind.PrefixPlusPlus, typeof(PrefixPlusPlusKoto))]
-[TinyhandUnion((int)KotoKind.PrefixMinus, typeof(PrefixMinusKoto))]
-[TinyhandUnion((int)KotoKind.PrefixMinusMinus, typeof(PrefixMinusMinusKoto))]
-[TinyhandUnion((int)KotoKind.PostfixIncrement, typeof(PostfixIncrementKoto))]
-[TinyhandUnion((int)KotoKind.PostfixDecrement, typeof(PostfixDecrementKoto))]
-[TinyhandUnion((int)KotoKind.Not, typeof(NotKoto))]
-[TinyhandUnion((int)KotoKind.Parenthesized, typeof(ParenthesizedKoto))]
-
-[TinyhandUnion((int)KotoKind.MemberAccess, typeof(MemberAccessKoto))]
-[TinyhandUnion((int)KotoKind.Index, typeof(IndexKoto))]
-[TinyhandUnion((int)KotoKind.Asterisk, typeof(AsteriskKoto))]
-[TinyhandUnion((int)KotoKind.Conversion, typeof(ConversionKoto))]
-[TinyhandUnion((int)KotoKind.Slash, typeof(SlashKoto))]
-[TinyhandUnion((int)KotoKind.Percent, typeof(PercentKoto))]
-[TinyhandUnion((int)KotoKind.Plus, typeof(PlusKoto))]
-[TinyhandUnion((int)KotoKind.Minus, typeof(MinusKoto))]
-[TinyhandUnion((int)KotoKind.LessThanLessThan, typeof(LessThanLessThanKoto))]
-[TinyhandUnion((int)KotoKind.GreaterThanGreaterThan, typeof(GreaterThanGreaterThanKoto))]
-[TinyhandUnion((int)KotoKind.LessThan, typeof(LessThanKoto))]
-[TinyhandUnion((int)KotoKind.LessThanEquals, typeof(LessThanEqualsKoto))]
-[TinyhandUnion((int)KotoKind.GreaterThan, typeof(GreaterThanKoto))]
-[TinyhandUnion((int)KotoKind.GreaterThanEquals, typeof(GreaterThanEqualsKoto))]
-[TinyhandUnion((int)KotoKind.As, typeof(AsKoto))]
-[TinyhandUnion((int)KotoKind.Is, typeof(IsKoto))]
-[TinyhandUnion((int)KotoKind.EqualsEquals, typeof(EqualsEqualsKoto))]
-[TinyhandUnion((int)KotoKind.ExclamationEquals, typeof(ExclamationEqualsKoto))]
-[TinyhandUnion((int)KotoKind.Ampersand, typeof(AmpersandKoto))]
-[TinyhandUnion((int)KotoKind.Caret, typeof(CaretKoto))]
-[TinyhandUnion((int)KotoKind.Bar, typeof(BarKoto))]
-[TinyhandUnion((int)KotoKind.And, typeof(AndKoto))]
-[TinyhandUnion((int)KotoKind.Or, typeof(OrKoto))]
-[TinyhandUnion((int)KotoKind.Equals, typeof(EqualsKoto))]
-[TinyhandUnion((int)KotoKind.PlusEquals, typeof(PlusEqualsKoto))]
-[TinyhandUnion((int)KotoKind.MinusEquals, typeof(MinusEqualsKoto))]
-[TinyhandUnion((int)KotoKind.AsteriskEquals, typeof(AsteriskEqualsKoto))]
-[TinyhandUnion((int)KotoKind.SlashEquals, typeof(SlashEqualsKoto))]
-[TinyhandUnion((int)KotoKind.PercentEquals, typeof(PercentEqualsKoto))]
-[TinyhandUnion((int)KotoKind.AmpersandEquals, typeof(AmpersandEqualsKoto))]
-[TinyhandUnion((int)KotoKind.CaretEquals, typeof(CaretEqualsKoto))]
-[TinyhandUnion((int)KotoKind.BarEquals, typeof(BarEqualsKoto))]
-[TinyhandUnion((int)KotoKind.LessThanLessThanEquals, typeof(LessThanLessThanEqualsKoto))]
-[TinyhandUnion((int)KotoKind.GreaterThanGreaterThanEquals, typeof(GreaterThanGreaterThanEqualsKoto))]
-
-[TinyhandUnion((int)KotoKind.Invocation, typeof(InvocationKoto))]
-[TinyhandUnion((int)KotoKind.Generics, typeof(GenericsKoto))]
-[TinyhandUnion((int)KotoKind.Range, typeof(RangeKoto))]
-[TinyhandUnion((int)KotoKind.CodeBlock, typeof(CodeBlockKoto))]
-[TinyhandUnion((int)KotoKind.Labeled, typeof(LabeledKoto))]
-[TinyhandUnion((int)KotoKind.UnitLiteral, typeof(UnitLiteralKoto))]
-[TinyhandUnion((int)KotoKind.If, typeof(IfKoto))]
-[TinyhandUnion((int)KotoKind.CompileTimeIf, typeof(CompileTimeIfKoto))]
-[TinyhandUnion((int)KotoKind.CompileTimeCaseGroup, typeof(CompileTimeCaseGroupKoto))]
-[TinyhandUnion((int)KotoKind.Match, typeof(MatchKoto))]
-[TinyhandUnion((int)KotoKind.While, typeof(WhileKoto))]
-[TinyhandUnion((int)KotoKind.For, typeof(ForKoto))]
-[TinyhandUnion((int)KotoKind.Return, typeof(ReturnKoto))]
-[TinyhandUnion((int)KotoKind.Exit, typeof(ExitKoto))]
-[TinyhandUnion((int)KotoKind.Continue, typeof(ContinueKoto))]
-[TinyhandUnion((int)KotoKind.Loop, typeof(LoopKoto))]
-[TinyhandUnion((int)KotoKind.Yield, typeof(YieldKoto))]
-[TinyhandUnion((int)KotoKind.TupleType, typeof(TupleTypeKoto))]
-[TinyhandUnion((int)KotoKind.FunctionType, typeof(FunctionTypeKoto))]
-[TinyhandUnion((int)KotoKind.ArrayLiteral, typeof(ArrayLiteralKoto))]
-[TinyhandUnion((int)KotoKind.DictionaryLiteral, typeof(DictionaryLiteralKoto))]
-public abstract partial class Koto
+public abstract class Koto
 {
     /// <summary>The size required for a table indexed by <see cref="KotoKind"/>.</summary>
     public const int MaxKind = (int)KotoKind.Omega;
@@ -396,23 +327,25 @@ public abstract partial class Koto
     public abstract KotoKind Akind { get; }
 
     /// <summary>Gets the diagnostic destination associated with this node.</summary>
-    [IgnoreMember]
     public DiagnosticCollection? DiagnosticCollection => this.CodeContext?.DiagnosticCollection;
 
     /// <summary>Gets the node span in the source document.</summary>
-    [IgnoreMember]
     public SourceSpan Span { get; internal set; }
 
     /// <summary>Gets the code context that owns this node.</summary>
-    [IgnoreMember]
     public CodeContext CodeContext { get; internal set; }
 
     /// <summary>Gets the parent node, or <see langword="null"/> for the root.</summary>
-    [IgnoreMember]
     public Koto? Parent { get; internal set; }
 
+    private List<PendingDirectiveCondition>? pendingDirectiveConditions;
+
+    /// <summary>Gets conditions awaiting Directive Binding in this scope, independently of branch selection.</summary>
+    /// <remarks>These validation obligations are separate from <see cref="ChildNodes"/> and ordinary Binding.</remarks>
+    public IReadOnlyList<PendingDirectiveCondition> PendingDirectiveConditions
+        => (IReadOnlyList<PendingDirectiveCondition>?)this.pendingDirectiveConditions ?? [];
+
     /// <summary>Gets the direct syntax-tree children of this node.</summary>
-    [IgnoreMember]
     public IEnumerable<Koto> ChildNodes
     {
         get
@@ -430,7 +363,6 @@ public abstract partial class Koto
     }
 
     /// <summary>Gets the attributes attached to this node.</summary>
-    [Key(0)]
     public AttributeKoto? AttributeChain { get; internal set; }
 
     /// <summary>Gets a value indicating whether this node is the tree root.</summary>
@@ -506,7 +438,7 @@ public abstract partial class Koto
     /// <param name="obj">The first optional diagnostic argument.</param>
     /// <param name="obj2">The second optional diagnostic argument.</param>
     public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null)
-        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2);
+        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument);
 
     /// <summary>Adds an attribute to this node.</summary>
     /// <param name="attributeKoto">The attribute to add.</param>
@@ -580,14 +512,16 @@ public abstract partial class Koto
         }
     }
 
-    internal virtual void RestoreAfterDeserialization(CodeContext codeContext, Koto? parent)
+    internal void AddPendingDirectiveConditions(IEnumerable<Koto>? conditions)
     {
-        this.CodeContext = codeContext;
-        this.Parent = parent;
-
-        foreach (var child in this.ChildNodes)
+        if (conditions is null)
         {
-            child.RestoreAfterDeserialization(codeContext, this);
+            return;
+        }
+
+        foreach (var condition in conditions)
+        {
+            (this.pendingDirectiveConditions ??= []).Add(new(condition, this));
         }
     }
 

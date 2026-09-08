@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 namespace Kimi;
 
@@ -10,8 +10,6 @@ public static class Constants
     public const string KimiProjectExtension = ".kimiproj";
     public const string TokenExtension = ".token";
     public const string DefaultNamespace = "Playground";
-    public const string ScrubFileName = "Scrub.kimi";
-    public const string Scrub2FileName = "Scrub2.kimi";
     public const string RootKotoName = "Root";
     public const string GeneratedFunctionName = "<Generated>";
 
@@ -31,6 +29,7 @@ public static class Constants
     public const string U128Keyword = "u128";
     public const string F32Keyword = "f32";
     public const string F64Keyword = "f64";
+    public const string CharKeyword = "char";
     public const string StringKeyword = "string";
 
     // Language keywords

@@ -1,42 +1,17 @@
-alias Kimi.Crypto
-alias Kimi.LowInterface
+namespace Program // namespace = module without identation.
+// KimiError.NamespaceMustBeFirst, KimiError.CannotDefineGlobalNamespace
 
-#Condition(Os=="Linux") // Attribute-next rule.
+alias Kimi.Crypto
+
+{Condition(Os=="Linux")} // Attribute-next rule.
 alias Kimi.Base.Linux
 
-// Single-line comment
-/* Multi-line
-   comment */
+{Key(1)} public const string Name = "Test Program"
+#Key(2) public const int Id = 12
 
-namespace Kimi.LowInterface
-
-public group Kernel32
-    public const string LibraryName = "Kernel32.dll"
-    #LibraryImport(LibraryName) GetStdHandle(u32 nStdHandle) => ptr
-    #LibraryImport(LibraryName) WriteFile(ptr hFile, ptr lpBuffer, u32 nNumberOfBytesToWrite, ptr lpNumberOfBytesWritten, ptr lpOverlapped) => i32
-    #LibraryImport(LibraryName) ExitProcess(u32 uExitCode) => ()
-
-    #Layout(C)
-    public struct OVERLAPPED
-        public usize Internal
-        public pointer Pointer
-
-namespace Program // Represents a group that specifies an identifier by its absolute position.
-// Kimi.CannotDefineGlobalNamespace
-
-
-struct $ :  StandardContext // Compose Context
-    public T Inject<T>()
-        => self.GetService<T>() // IServiceProvider
-
-#Key(0) public const string Name = "Test Program"
-#Key(1)
-public const string Name = "Test Program"
-
-// (): Group (collection of values of any type)
-// []: Array (collection of values of the same type)
-// <>: Generics (collection of types)
-// {}: Not used
+// {}: Attribute
+// []: Array
+// (): Group
 
 // Group: namespace, group, struct
 // Map: method:return, switch:yield, if:yield, loop:break
@@ -49,18 +24,15 @@ public group Helper // namespace - alias
         return 1
 
     Method2() =>
-        #Condition(Os=="Windows")
-        block Initialize
-            var func = () => 3 // () => return 4
-            var i = if (x == true) 1 else 0
+        var func = () => 3 // () => return 4
+        var i = if (x == true) 1 else 0
         var i2 = if (x == true)
             1
         else
             yield 2
-        goto Initialize
         var i3 = if (
             var z = Func()
-            yield (z > 0)) 1 else 0
+            yield z > 0) 1 else 0
         var j = match x
             true => 1
             false => 0
@@ -71,18 +43,9 @@ public group Helper // namespace - alias
                 0
         return
 
-public struct SomeObject
-    #Inject
-    IConsoleService& ConsoleService { get; }
-
-    public New() => Self
-        var self = Self
-        // self.ConsoleService = $Inject<IConsoleService>() // GetService
-        return self
-
-#TinyhandObject
-public struct TestStruct // group + field
-    #Key(1)
+{TinyhandObject}
+public struct TestStruct // module + field
+    {Key(1)}
     i32 id
 
     public New() => Self
@@ -106,6 +69,13 @@ public enum TestEnum
 
 $WriteLine("Kimigayo")
 
+// Comment
+/* Comment2 */
+
+{Test}
+method Test1() -> bool
+
+{Test}
 method Main()
     Array<i32> array = 
     [
@@ -133,7 +103,7 @@ public group Example
         $Console.WriteLine("Hello world!")
         context.Console.WriteLine("Hello world!")
         Example::Example.Test()
-        $Panic("")
+        $abort("")
         self.Method2(32)
         new Class() -> var x
         var x = new Class()
@@ -212,12 +182,12 @@ var func = () =>
 
 chainMethod().Do().IsTrue()
 
+(chainMethod()
+    .Do()
+    .IsTrue())
+
 complexMethod(
     A,
     B,
     C)
 
-if (Condition)
-    return 1
-else
-    return 9

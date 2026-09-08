@@ -78,13 +78,15 @@ public class Solution
     /// <returns>A task whose result indicates whether build dispatch completed.</returns>
     public async Task<bool> Build()
     {
+        var success = true;
         foreach (var x in this.Projects.Values)
         {
             x.KimiOptions = this.KimiOptions;
-            await x.Build();
+            x.SolutionLanguageVersion = this.SolutionFile.Configuration.LangVersion;
+            success &= await x.Build();
         }
 
-        return true;
+        return success;
     }
 
     /// <summary>Discovers solution and project files for a build command.</summary>

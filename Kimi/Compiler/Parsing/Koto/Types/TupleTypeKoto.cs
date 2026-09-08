@@ -8,14 +8,12 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a tuple type.
 /// </summary>
-[TinyhandObject]
-public sealed partial class TupleTypeKoto : TypeKoto
+public sealed class TupleTypeKoto : TypeKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.TupleType;
 
     /// <summary>Gets the tuple element types.</summary>
-    [Key(1)]
     public List<Koto> Elements { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="TupleTypeKoto"/> class.</summary>
@@ -41,6 +39,11 @@ public sealed partial class TupleTypeKoto : TypeKoto
             }
 
             this.Elements[i].WriteTo(ref builder);
+        }
+
+        if (this.Elements.Count == 1)
+        {
+            builder.Append(',');
         }
 
         builder.Append(')');

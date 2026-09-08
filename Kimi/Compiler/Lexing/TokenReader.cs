@@ -121,6 +121,16 @@ public ref struct TokenReader
         this.currentToken = this.tokens.Length > 0 ? this.tokens[0] : this.endToken;
     }
 
+    private TokenReader(CodeContext codeContext, ReadOnlySpan<char> sourceText, ReadOnlySpan<Token> tokens, int end)
+    {
+        this.CodeContext = codeContext;
+        this.compilation = codeContext.Compilation;
+        this.sourceText = sourceText;
+        this.tokens = tokens;
+        this.endToken = new Token(TokenKind.Invalid, new SourceSpan(end, 0));
+        this.currentToken = tokens.Length > 0 ? tokens[0] : this.endToken;
+    }
+
     /// <summary>
     /// Clears the current parser context.
     /// </summary>
@@ -131,6 +141,7 @@ public ref struct TokenReader
         this.ModifierKind = default;
         this.IsExcluded = false;
         this.compileTimeIfPrefixes = default;
+        this.HasCompileTimeIfPrefix = false;
     }
 
     /// <summary>
@@ -273,6 +284,11 @@ public ref struct TokenReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly TokenKind PeekKind(int offset = 1)
     {
+        if (offset == 0)
+        {
+            return this.currentToken.Kind;
+        }
+
         var index = this.Position + offset;
         return (uint)index < (uint)this.tokens.Length ? this.tokens[index].Kind : TokenKind.Invalid;
     }
@@ -285,6 +301,16 @@ public ref struct TokenReader
     /// <returns><see langword="true"/> when the reader now points at a token of the specified kind.</returns>
     public bool TrySkipSeparatorsTo(TokenKind kind)
     {
+        if (this.currentToken.Kind == kind)
+        {
+            return true;
+        }
+
+        if (this.currentToken.Kind != TokenKind.Separator)
+        {
+            return false;
+        }
+
         var index = this.Position;
         var tokens = this.tokens;
         while ((uint)index < (uint)tokens.Length && tokens[index].Kind == TokenKind.Separator)
@@ -541,7 +567,16 @@ public ref struct TokenReader
     /// <returns>The shared string for the token text.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly string GetIdentifier(Token token)
-        => this.compilation.Intern(this.GetSpan(token));
+    {
+        var span = this.GetSpan(token);
+        if (this.compilation.TryGetIdentifier(span, out var identifier))
+        {
+            return identifier;
+        }
+
+        this.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
+        return this.compilation.Intern(span); // Preserve the spelling for error recovery.
+    }
 
     /// <summary>Validates and interns an identifier without allocating a syntax node.</summary>
     /// <param name="token">The identifier token.</param>
@@ -555,7 +590,7 @@ public ref struct TokenReader
             return true;
         }
 
-        this.Diagnostic.Add(this.CurrentTokenRange, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
+        this.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
         identifier = null;
         return false;
     }
@@ -567,8 +602,60 @@ public ref struct TokenReader
     public readonly override string ToString()
         => this.GetSpan(this.currentToken).ToString();
 
+    internal bool HasCompileTimeIfPrefix { get; set; }
+
     /// <summary>Gets or sets a value indicating whether primitive type names are accepted in a directive condition.</summary>
     internal bool IsParsingCompileTimeCondition { get; set; }
+
+    /// <summary>Gets or sets validation obligations for the scope currently being parsed.</summary>
+    internal List<Koto>? PendingDirectiveConditions { get; set; }
+
+    internal void RetainDirectiveCondition(Koto condition)
+        => (this.PendingDirectiveConditions ??= []).Add(condition);
+
+    /// <summary>Creates a bounded reader that cannot consume a following physical line or Block.</summary>
+    /// <param name="tokenCount">The number of tokens owned by the inline body.</param>
+    /// <returns>An independent reader over the same source and diagnostic destination.</returns>
+    internal readonly TokenReader CreateInlineReader(out int tokenCount)
+    {
+        var start = this.CurrentTokenRange.Start;
+        var newline = this.sourceText[start..].IndexOfAny('\r', '\n');
+        var end = newline < 0 ? this.sourceText.Length : start + newline;
+        tokenCount = 0;
+        while (this.Position + tokenCount < this.tokens.Length)
+        {
+            var token = this.tokens[this.Position + tokenCount];
+            if (token.Kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock || token.Span.End > end)
+            {
+                break;
+            }
+
+            tokenCount++;
+        }
+
+        return new TokenReader(this.CodeContext, this.sourceText, this.tokens.Slice(this.Position, tokenCount), Math.Min(end, this.endToken.Start));
+    }
+
+    // Split compound operators only in type context; shift/comparison expressions keep
+    // their original tokens. The shared token buffer remains immutable.
+    internal bool TryConsumeTypeClose(out SourceSpan range)
+    {
+        var remainingKind = this.currentToken.Kind switch
+        {
+            TokenKind.GreaterThanGreaterThan => TokenKind.GreaterThan,
+            TokenKind.GreaterThanEquals => TokenKind.Equals,
+            TokenKind.GreaterThanGreaterThanEquals => TokenKind.GreaterThanEquals,
+            _ => TokenKind.Invalid,
+        };
+        if (remainingKind == TokenKind.Invalid)
+        {
+            return this.TryConsume(TokenKind.GreaterThan, out range, true);
+        }
+
+        range = new SourceSpan(this.currentToken.Span.Start, 1);
+        this.currentToken = new Token(remainingKind, SourceSpan.FromBounds(range.End, this.currentToken.Span.End));
+        return true;
+    }
 
     /// <summary>Adds a deferred compile-time directive to the current syntax prefix.</summary>
     /// <param name="prefix">The directive and its parsed condition.</param>

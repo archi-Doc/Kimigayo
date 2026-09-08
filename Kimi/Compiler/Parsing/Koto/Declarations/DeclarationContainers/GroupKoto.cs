@@ -10,8 +10,7 @@ namespace Kimi.Compiler.Parsing;
 /// Represents a static group. The root syntax tree is also represented by this type so it can
 /// share member parsing and qualified <c>rootgroup A.B</c> expansion with ordinary groups.
 /// </summary>
-[TinyhandObject]
-public sealed partial class GroupKoto : DeclarationContainerKoto
+public sealed class GroupKoto : DeclarationContainerKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Group;
@@ -66,6 +65,21 @@ public sealed partial class GroupKoto : DeclarationContainerKoto
 
     private void ParseRoot(ref TokenReader reader)
     {
+        var enclosingConditions = reader.PendingDirectiveConditions;
+        reader.PendingDirectiveConditions = null;
+        try
+        {
+            this.ParseRootCore(ref reader);
+            this.AddPendingDirectiveConditions(reader.PendingDirectiveConditions);
+        }
+        finally
+        {
+            reader.PendingDirectiveConditions = enclosingConditions;
+        }
+    }
+
+    private void ParseRootCore(ref TokenReader reader)
+    {
         ConsumeBlockStart(ref reader);
         var hasNonAliasDeclaration = false;
         while (TryBeginDeclaration(ref reader))
@@ -74,16 +88,16 @@ public sealed partial class GroupKoto : DeclarationContainerKoto
             var compileTimeIfPrefixes = reader.TakeCompileTimeIfPrefixes();
             if (isExcluded)
             {
-                Parser.SkipExcludedSyntax(ref reader);
+                Parser.SkipExcludedSyntax(ref reader, executableContext: true);
                 continue;
             }
 
-            if (Parser.IsCompileTimeCaseStart(ref reader))
+            if (Parser.IsCompileTimeMatchStart(ref reader))
             {
                 hasNonAliasDeclaration = true;
-                var caseGroup = Parser.ParseCompileTimeCaseGroup(ref reader);
+                var caseGroup = Parser.ParseCompileTimeMatch(ref reader);
                 caseGroup = Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup);
-                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, caseGroup, true);
+                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, caseGroup);
                 continue;
             }
 
@@ -153,14 +167,8 @@ public sealed partial class GroupKoto : DeclarationContainerKoto
             }
 
             var oldPosition = reader.Position;
-            var item = Parser.ParseBlockItem(ref reader, out var isDeclaration, requiresFunctionBody: false);
-            var hasTrailingExpression = !isDeclaration;
-            if (reader.CurrentTokenKind == TokenKind.Semicolon)
-            {
-                hasTrailingExpression = false;
-                reader.Advance();
-            }
-            else if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
+            var item = Parser.ParseBlockItem(ref reader);
+            if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
             {
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
             }
@@ -168,7 +176,7 @@ public sealed partial class GroupKoto : DeclarationContainerKoto
             if (item is not null && !isExcluded)
             {
                 item = Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, item);
-                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, item, hasTrailingExpression);
+                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, item);
             }
 
             if (reader.Position == oldPosition)

@@ -1,21 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Tinyhand;
 using Xunit;
+using static XunitTest.ParseTestHelper;
 
 namespace XunitTest;
 
 public class FunctionBodyParseTest
 {
-    private static readonly PropertyInfo KotoListProperty = typeof(DeclarationContainerKoto).GetProperty(
-        "KotoList",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-
     [Fact]
     public void ParsesNestedIfElseIfElseAndWhileExpressions()
     {
@@ -105,12 +101,12 @@ public class FunctionBodyParseTest
         Assert.False(assignmentTail.Body!.HasTrailingExpression);
         Assert.IsType<EqualsKoto>(assignmentTail.Body.Items[^1]);
 
-        var semicolonTail = ParseSingleFunction(
+        var expressionTail = ParseSingleFunction(
             """
-            func SemicolonTail()
-                1;
+            func ExpressionTail()
+                1
             """);
-        Assert.False(semicolonTail.Body!.HasTrailingExpression);
+        Assert.False(expressionTail.Body!.HasTrailingExpression);
 
         var localDeclarationTail = ParseSingleFunction(
             """
@@ -150,7 +146,7 @@ public class FunctionBodyParseTest
         var function = ParseSingleFunction(
             """
             func Select(x: bool)
-                var i = if (x == true) 1 else 0
+                var i = if (x == true) => 1 else => 0
                 i
             """);
 
@@ -174,7 +170,7 @@ public class FunctionBodyParseTest
                 func Method2() -> i32
                     #Condition(Os=="Windows")
                     // block
-                        var i = if (x == true) 1 else 0
+                        var i = if (x == true) => 1 else => 0
                     var i2 = if (x == true)
                         1
                     else
@@ -182,7 +178,7 @@ public class FunctionBodyParseTest
 
                     var i3 = if (
                         var z = Func()
-                        ) 1 else 0
+                        ) => 1 else => 0
                     var j = match x
                         true => 1
                         false => 0
@@ -305,24 +301,4 @@ public class FunctionBodyParseTest
         Assert.IsType<FieldKoto>(body.Items[1]);
         Assert.IsType<IdentifierNameKoto>(body.Items[2]);
     }
-
-    private static FunctionKoto ParseSingleFunction(string source)
-    {
-        var compilation = Compilation.CreateForTest();
-        var kotonoha = compilation.Kotonoha;
-        var context = kotonoha.CreateCodeContext();
-        context.Parse(kotonoha.RootKoto, source);
-
-        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
-        Assert.True(
-            diagnostics.Length == 0,
-            string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
-
-        return Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
-    }
-
-    private static List<Koto> GetChildren(DeclarationContainerKoto group)
-        => ReferenceEquals(group, group.Kotonoha.RootKoto)
-            ? group.Kotonoha.GeneratedFunction?.Body?.Items.ToList() ?? []
-            : (List<Koto>)KotoListProperty.GetValue(group)!;
 }

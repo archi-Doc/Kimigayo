@@ -1,9 +1,7 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using Kimi.Compiler;
-using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 
 namespace Benchmark;
@@ -41,8 +39,9 @@ public class ParseBenchmark
             var last = array[^1] // Last element
             var middle = array[1..^1] // Excludes both element 0 and the last element
             var y = array.remove(at: 1) // owner/StructA
-            func Set(index: isize, obj: s/T) -> ()
+            func Set(index: isize, obj: s/T) -> () => ()
             func Get(index: isize) -> s/T
+                return
 
             var items: Array<Int> = [1, 2, 3]
             var items2 = [1, 2, 3, ]
@@ -60,9 +59,9 @@ public class ParseBenchmark
                 public func Method1() -> int32 // use PackageName, Helper
                     return 1
 
-                func Method2() ->
+                func Method2() -> ()
                     #Condition(Os=="Windows")
-                    var i = if (x == true) 1 else 0
+                    var i = if (x == true) => 1 else => 0
                     var i2 = if (x == true)
                         1
                     else
@@ -79,34 +78,9 @@ public class ParseBenchmark
                     return
             """;
 
-    private readonly string sourceText2 = $"""
-            #If (true)
-            public struct TestStruct: @Ia
-                let x = 1
-            #If (true)
-            public struct TestStruct2: @Ib
-                let x = 1
-            #If (true)
-            public struct TestStruct3: @Ic
-                let x = 1
-            #If (true)
-            public struct TestStruct4: @Id
-                let x = 1
-            """;
-
     public ParseBenchmark()
     {
         this.compilation = Compilation.CreateForTest(true);
-    }
-
-    [GlobalSetup]
-    public void Setup()
-    {
-    }
-
-    [GlobalCleanup]
-    public void Cleanup()
-    {
     }
 
     [Benchmark]

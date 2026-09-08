@@ -8,22 +8,18 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a function or method invocation expression.
 /// </summary>
-[TinyhandObject]
-public sealed partial class InvocationKoto : ApplicationKoto
+public sealed class InvocationKoto : ApplicationKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Invocation;
 
     /// <summary>Gets the invoked expression.</summary>
-    [IgnoreMember]
     public Koto Method => this.Target;
 
     // Allocated only when at least one argument is labeled.
-    [Key(3)]
     private string?[]? argumentLabels;
 
     /// <summary>Gets the argument labels in argument order. A positional argument has a null label.</summary>
-    [IgnoreMember]
     public IReadOnlyList<string?> ArgumentLabels
         => this.argumentLabels ??= new string?[this.ArgumentNodes.Count];
 

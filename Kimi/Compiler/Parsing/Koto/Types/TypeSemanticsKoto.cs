@@ -6,54 +6,50 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>
-/// Represents a type together with ownership semantics and an optional origin.
+/// Represents one semantics layer and its Origin, retaining the complete inner type.
 /// </summary>
-[TinyhandObject]
-public sealed partial class TypeSemanticsKoto : TypeKoto
+public sealed class TypeSemanticsKoto : TypeKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.TypeSemantics;
 
-    [Key(1)]
     private SemanticsKind semanticsKind;
 
     /// <inheritdoc/>
-    [IgnoreMember]
-    public override SemanticsKind SemanticsKind => this.semanticsKind;
+    public override SemanticsKind SemanticsKind
+        => this.isTransparentWrapper && this.Type is TypeKoto type ? type.SemanticsKind : this.semanticsKind;
 
-    [Key(2)]
     private string? semanticsParameter;
 
     /// <inheritdoc/>
-    [IgnoreMember]
-    public override string? SemanticsParameter => this.semanticsParameter;
+    public override string? SemanticsParameter
+        => this.isTransparentWrapper && this.Type is TypeKoto type ? type.SemanticsParameter : this.semanticsParameter;
 
-    [Key(3)]
     private TokenKind coreTypeToken;
 
-    [Key(4)]
     private string? coreTypeName;
 
     /// <summary>
-    /// Gets the type to which the semantics applies when it is a compound type.
+    /// Gets the complete inner type, including any nested semantics and Origins.
     /// </summary>
-    [Key(5)]
     public Koto? Type { get; private set; }
 
-    [Key(6)]
     private string? originName;
 
     /// <inheritdoc/>
-    [IgnoreMember]
     public override string? OriginName => this.originName;
 
-    [Key(7)]
     private bool isTransparentWrapper;
 
-    /// <summary>Gets the underlying type identifier.</summary>
-    [IgnoreMember]
+    /// <summary>Gets the qualified or intersected Origin expression.</summary>
+    public Koto? OriginExpression { get; private set; }
+
+    /// <summary>Gets named Origin arguments, or null for an ordinary Origin annotation.</summary>
+    public OriginArgument[]? OriginArguments { get; private set; }
+
+    /// <summary>Gets the leaf identifier; this alone does not identify the complete layered type.</summary>
     public override string Identifier
-        => this.Type is TypeSemanticsKoto simpleType
+        => this.Type is TypeKoto simpleType
             ? simpleType.Identifier
             : this.coreTypeToken.IsPrimitiveType()
             ? this.coreTypeToken.ToText()
@@ -124,14 +120,51 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
                 builder.Append(Constants.SlashChar);
             }
 
+            // An inner Origin belongs to its own layer, and a function arrow binds
+            // less tightly than '/'. Keep both boundaries when writing changed trees.
+            var needsParentheses = !this.isTransparentWrapper &&
+                (this.Type is FunctionTypeKoto ||
+                (this.Type is TypeSemanticsKoto inner &&
+                (inner.OriginName is not null || inner.OriginExpression is not null || inner.OriginArguments is not null)));
+            if (needsParentheses)
+            {
+                builder.Append('(');
+            }
+
             this.Type.WriteTo(ref builder);
+            if (needsParentheses)
+            {
+                builder.Append(')');
+            }
         }
         else
         {
             builder.Append(this.Identifier);
         }
 
-        if (this.originName is not null)
+        if (this.OriginArguments is { } arguments)
+        {
+            builder.Append(" from (");
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                builder.Append(arguments[i].Name);
+                builder.Append(" => ");
+                arguments[i].Value.WriteTo(ref builder);
+            }
+
+            builder.Append(')');
+        }
+        else if (this.OriginExpression is not null)
+        {
+            builder.Append(" from ");
+            this.OriginExpression.WriteTo(ref builder);
+        }
+        else if (this.originName is not null)
         {
             builder.AppendSpace();
             builder.Append(Constants.FromKeyword);
@@ -146,11 +179,65 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
         this.Span = SourceSpan.FromBounds(this.Span.Start, end);
     }
 
+    internal void SetOrigin(Koto? expression, OriginArgument[]? arguments, int end)
+    {
+        this.OriginExpression = expression;
+        this.OriginArguments = arguments;
+        this.originName = (expression as IdentifierNameKoto)?.IdentifierName;
+        this.Adopt(expression);
+        if (arguments is not null)
+        {
+            foreach (var argument in arguments)
+            {
+                this.Adopt(argument.Value);
+            }
+        }
+
+        this.Span = SourceSpan.FromBounds(this.Span.Start, Math.Max(this.Span.End, end));
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
-        => this.Type is null ? [] : [this.Type];
+    {
+        if (this.Type is not null)
+        {
+            yield return this.Type;
+        }
+
+        if (this.OriginExpression is not null)
+        {
+            yield return this.OriginExpression;
+        }
+
+        if (this.OriginArguments is not null)
+        {
+            foreach (var argument in this.OriginArguments)
+            {
+                yield return argument.Value;
+            }
+        }
+    }
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
+        if (this.OriginExpression == oldKoto)
+        {
+            this.OriginExpression = newKoto;
+            this.originName = (newKoto as IdentifierNameKoto)?.IdentifierName;
+            return true;
+        }
+
+        if (this.OriginArguments is not null)
+        {
+            foreach (var argument in this.OriginArguments)
+            {
+                if (argument.Value == oldKoto)
+                {
+                    argument.Value = newKoto;
+                    return true;
+                }
+            }
+        }
+
         if (this.Type != oldKoto)
         {
             return false;
@@ -158,5 +245,27 @@ public sealed partial class TypeSemanticsKoto : TypeKoto
 
         this.Type = newKoto;
         return true;
+    }
+}
+
+/// <summary>Represents a named Origin argument.</summary>
+[TinyhandObject]
+public sealed partial class OriginArgument
+{
+    /// <summary>Gets the declared Origin parameter name.</summary>
+    [Key(0)]
+    public string Name { get; private set; } = string.Empty;
+
+    /// <summary>Gets the supplied Origin expression.</summary>
+    [IgnoreMember]
+    public Koto Value { get; internal set; } = default!;
+
+    /// <summary>Initializes a new instance of the <see cref="OriginArgument"/> class.</summary>
+    /// <param name="name">The Origin parameter name.</param>
+    /// <param name="value">The Origin expression.</param>
+    public OriginArgument(string name, Koto value)
+    {
+        this.Name = name;
+        this.Value = value;
     }
 }

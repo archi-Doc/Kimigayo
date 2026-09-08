@@ -15,4 +15,5 @@ public enum ModifierKind : byte
 
     Static = 16,
     Open = 32,
+    Unsafe = 64,
 }

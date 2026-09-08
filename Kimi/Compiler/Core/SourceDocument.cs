@@ -4,6 +4,7 @@ namespace Kimi.Compiler;
 
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading;
 using Kimi.Diagnostics;
 
@@ -14,28 +15,51 @@ using Kimi.Diagnostics;
 /// Offsets and character positions use .NET UTF-16 code units. Line terminators may be
 /// <c>\n</c>, <c>\r</c>, or <c>\r\n</c>; returned line spans exclude those terminators.
 /// </remarks>
-public sealed class SourceDocument
+[TinyhandObject]
+public sealed partial class SourceDocument
 {
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+
+    /// <summary>Decodes UTF-8 source without replacing malformed byte sequences.</summary>
+    /// <param name="path">The source path.</param>
+    /// <param name="utf8">The source bytes, optionally beginning with a UTF-8 BOM.</param>
+    /// <returns>The decoded source document.</returns>
+    /// <exception cref="DecoderFallbackException">The source is not valid UTF-8.</exception>
+    public static SourceDocument FromUtf8(string path, ReadOnlySpan<byte> utf8)
+    {
+        if (utf8.StartsWith("\uFEFF"u8))
+        {
+            utf8 = utf8[3..];
+        }
+
+        return new(path, StrictUtf8.GetString(utf8));
+    }
+
+    [IgnoreMember]
     private int[]? lineStarts;
 
     /// <summary>
     /// Gets the source path.
     /// </summary>
-    public string Path { get; }
+    [Key(0)]
+    public string Path { get; private set; } = string.Empty;
 
     /// <summary>
     /// Gets the complete source text.
     /// </summary>
-    public string SourceText { get; }
+    [Key(1)]
+    public string SourceText { get; private set; } = string.Empty;
 
     /// <summary>
     /// Gets the number of physical lines in the source text.
     /// </summary>
+    [IgnoreMember]
     public int LineCount => this.GetLineStarts().Length;
 
     /// <summary>
     /// Gets the absolute start offset of each physical line.
     /// </summary>
+    [IgnoreMember]
     public ReadOnlySpan<int> LineStarts => this.GetLineStarts();
 
     /// <summary>
@@ -245,6 +269,10 @@ public sealed class SourceDocument
             pool.Return(buffer);
         }
     }
+
+    [TinyhandOnDeserialized]
+    private void OnDeserialized()
+        => this.lineStarts = null;
 
     /// <summary>
     /// Gets the line start table, building it on first use.

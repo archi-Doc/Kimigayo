@@ -8,13 +8,11 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a string literal expression.
 /// </summary>
-[TinyhandObject]
-public sealed partial class StringLiteralKoto : ExpressionKoto
+public sealed class StringLiteralKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.StringLiteral;
 
-    [Key(1)]
     private string rawLiteral;
 
     /// <summary>Gets the decoded string value.</summary>
@@ -43,13 +41,16 @@ public sealed partial class StringLiteralKoto : ExpressionKoto
 
         if (this.rawLiteral.Length > 0 && this.rawLiteral[0] == '"')
         {
-            builder.Append(this.rawLiteral);
+            builder.Append('"');
+            builder.AppendVerbatim(this.rawLiteral.AsSpan(1));
         }
         else
         {
             builder.Append('"');
-            builder.Append(this.rawLiteral);
-            builder.Append('"');
+            builder.AppendVerbatim(this.rawLiteral);
+            builder.AppendVerbatim("\"");
         }
     }
+
+    internal void WriteContentTo(ref IndentedStringBuilder builder) => builder.AppendVerbatim(this.rawLiteral);
 }

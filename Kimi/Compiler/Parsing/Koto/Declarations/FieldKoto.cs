@@ -7,8 +7,7 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>
 /// Represents a local binding declaration.
 /// </summary>
-[TinyhandObject]
-public sealed partial class FieldKoto : VariableKoto
+public sealed class FieldKoto : VariableKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Field;

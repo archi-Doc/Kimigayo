@@ -6,49 +6,36 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>Describes one arm of a <see cref="MatchKoto"/> expression.</summary>
-[TinyhandObject]
-public sealed partial class MatchArmKoto
+public sealed class MatchArmKoto
 {
     /// <summary>Gets the arm pattern expression.</summary>
-    [Key(0)]
     public Koto Pattern { get; internal set; } = default!;
 
     /// <summary>Gets the arm result expression or block.</summary>
-    [Key(1)]
     public Koto Body { get; internal set; } = default!;
-
-    /// <summary>Gets a value indicating whether an inline arm ends with a semicolon.</summary>
-    [Key(2)]
-    public bool HasTrailingSemicolon { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="MatchArmKoto"/> class.</summary>
     /// <param name="pattern">The arm pattern.</param>
     /// <param name="body">The arm body.</param>
-    /// <param name="hasTrailingSemicolon">Whether an inline arm has a trailing semicolon.</param>
-    public MatchArmKoto(Koto pattern, Koto body, bool hasTrailingSemicolon = false)
+    public MatchArmKoto(Koto pattern, Koto body)
     {
         this.Pattern = pattern;
         this.Body = body;
-        this.HasTrailingSemicolon = hasTrailingSemicolon;
     }
 }
 
 /// <summary>Represents a <c>match</c> expression.</summary>
-[TinyhandObject]
-public sealed partial class MatchKoto : ExpressionKoto
+public sealed class MatchKoto : ExpressionKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Match;
 
     /// <summary>Gets the expression being matched.</summary>
-    [Key(1)]
     public Koto Expression { get; private set; }
 
-    [Key(2)]
     private List<MatchArmKoto> arms;
 
     /// <summary>Gets the match arms.</summary>
-    [IgnoreMember]
     public IReadOnlyList<MatchArmKoto> Arms => this.arms;
 
     /// <summary>Initializes a new instance of the <see cref="MatchKoto"/> class.</summary>
@@ -95,19 +82,7 @@ public sealed partial class MatchKoto : ExpressionKoto
             else
             {
                 builder.AppendSpace();
-                if (arm.HasTrailingSemicolon && ParenthesizedKoto.NeedsMultilineGrouping(arm.Body))
-                {
-                    ParenthesizedKoto.WriteGroupedTo(arm.Body, ref builder);
-                }
-                else
-                {
-                    arm.Body.WriteTo(ref builder);
-                }
-
-                if (arm.HasTrailingSemicolon)
-                {
-                    builder.Append(';');
-                }
+                arm.Body.WriteTo(ref builder);
             }
         }
 
