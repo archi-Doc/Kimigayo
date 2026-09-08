@@ -196,7 +196,7 @@ public group Example
         $Console.WriteLine("Hello world!")
         context.Console.WriteLine("Hello world!")
         Example.Example.Test()
-        $Panic("")
+        $abort("")
         self.Method2(32)
         var x = Class.new()
         var y = x@ref
