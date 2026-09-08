@@ -240,8 +240,8 @@ public enum KotoKind : byte
     /// <summary>A deferred compile-time <c>#if</c> directive.</summary>
     CompileTimeIf,
 
-    /// <summary>A deferred compile-time <c>#case</c> group.</summary>
-    CompileTimeCaseGroup,
+    /// <summary>A deferred compile-time <c>#match</c> group.</summary>
+    CompileTimeMatch,
 
     /// <summary>A <c>match</c> expression.</summary>
     Match,

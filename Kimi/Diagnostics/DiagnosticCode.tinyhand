@@ -28,6 +28,15 @@
   + Name="CompileTimeCaseFallbackMustBeLast_Kd"
     Message="#case _ must be the final arm in a Case Group"
 
+  + Name="CompileTimeCaseOutsideMatch_Kd"
+    Message="#case must be a direct arm of a #match body"
+
+  + Name="EmptyCompileTimeMatch_Kd"
+    Message="#match requires an indented body containing at least one #case arm"
+
+  + Name="InvalidCompileTimeMatchItem_Kd"
+    Message="A #match body may contain only #case arms, blank lines, and comments"
+
   + Name="DuplicateCompileTimeCaseFallback_Kd"
     Message="A Case Group may contain at most one #case _ arm"
 

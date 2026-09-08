@@ -95,12 +95,13 @@ public class DirectiveConditionValidationTest
     {
         var compilation = Parse($"""
             func select()
-                #case true
-                    return
-                #case {laterCondition}
-                    return
-                #case _
-                    return
+                #match
+                    #case true
+                        return
+                    #case {laterCondition}
+                        return
+                    #case _
+                        return
             """);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
         var body = function.Body!;
@@ -117,7 +118,7 @@ public class DirectiveConditionValidationTest
     [Fact]
     public void LaterCaseOperandErrorIsDiagnosedAfterSelection()
     {
-        var compilation = Parse("#case true\n    ()\n#case false and 1\n    ()");
+        var compilation = Parse("#match\n    #case true\n        ()\n    #case false and 1\n        ()");
 
         Assert.Contains(
             compilation.Kotonoha.DiagnosticCollection.GetArray(),

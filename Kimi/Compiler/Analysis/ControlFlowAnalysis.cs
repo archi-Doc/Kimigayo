@@ -99,7 +99,7 @@ public sealed class ControlFlowAnalysis
     }
 
     private static bool HasDeferredDirective(Koto node)
-        => node is CompileTimeIfKoto or CompileTimeCaseGroupKoto ||
+        => node is CompileTimeIfKoto or CompileTimeMatchKoto ||
             node.ChildNodes.Any(child => child is not (FunctionKoto or PropertyAccessorKoto) && HasDeferredDirective(child));
 
     private static FieldKoto? GetConditionBinding(ParenthesizedKoto node)
@@ -210,7 +210,7 @@ public sealed class ControlFlowAnalysis
                 }
 
                 return new(true, ControlFlowType.Unit);
-            case CompileTimeIfKoto or CompileTimeCaseGroupKoto:
+            case CompileTimeIfKoto or CompileTimeMatchKoto:
                 this.pending.Add(node);
                 return new(true, null);
             case FieldKoto field:

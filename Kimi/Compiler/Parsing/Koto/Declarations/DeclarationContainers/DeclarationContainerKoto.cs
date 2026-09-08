@@ -523,9 +523,9 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
                 continue;
             }
 
-            if (Parser.IsCompileTimeCaseStart(ref reader))
+            if (Parser.IsCompileTimeMatchStart(ref reader))
             {
-                var caseGroup = Parser.ParseCompileTimeCaseGroup(ref reader, this);
+                var caseGroup = Parser.ParseCompileTimeMatch(ref reader, this);
                 this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup));
                 continue;
             }

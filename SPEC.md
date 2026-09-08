@@ -104,12 +104,13 @@ public group Program
         s is ref or obj
         T is Comparable
 
-        #case (s is ref) and (T is i32)
-            return "ref/i32"
-        #case s is ref
-            return "ref"
-        #case _
-            return "other"
+        #match
+            #case (s is ref) and (T is i32)
+                return "ref/i32"
+            #case s is ref
+                return "ref"
+            #case _
+                return "other"
 ```
 > **Design Note (Do not modify this text!)**
 >
@@ -187,7 +188,8 @@ Compile-time Directives select Syntax during compilation without producing runti
 | Form | Purpose |
 | --- | --- |
 | `#if` | Independently includes or excludes one Syntax node. |
-| `#case` | Selects one arm from an ordered Case Group. |
+| `#match` | Introduces an ordered Case Group and selects one arm. |
+| `#case` | Introduces an arm directly inside a `#match` body. |
 | `#Name` | Attaches an Attribute; it is not a Compile-time Directive. |
 
 The former `#If(...)` form is an Attribute. The lowercase `#if` form specified here is a separate language construct.
@@ -205,17 +207,28 @@ alias Kimi.Windows
     let assertions = true
 ```
 
-Consecutive same-indentation `#case` arms form a **Case Group**. Blank lines and comments preserve the group; any other Syntax node ends it. Select the first matching arm in source order. The optional catch-all `#case _` must occur once at most, as the final arm.
+A **Case Group** is introduced by `#match` and consists of the `#case` arms indented one level under it. The group's extent is the `#match` body; nothing outside that body joins the group, so two Case Groups may appear adjacently. Select the first matching arm in source order. The optional catch-all `#case _` must occur once at most, as the final arm.
 
 ```kimi
 func useImplementation<T>(value: T) -> ()
-    #case windows
-        useWindowsImplementation(value)
-    #case T is i32
-        useIntegerImplementation(value)
-    #case _
-        useGenericImplementation(value)
+    #match
+        #case windows
+            useWindowsImplementation(value)
+        #case T is i32
+            useIntegerImplementation(value)
+        #case _
+            useGenericImplementation(value)
+
+    #match
+        #case pointerWidth == 64
+            useWidePath(value)
+        #case _
+            useNarrowPath(value)
 ```
+
+A `#match` header has no subject expression. Its body must contain at least one `#case` arm and contains only such arms, apart from blank lines and comments. Each arm must have an indented Block. A `#case` outside the direct arm list of a `#match` body is an error; nested selections require their own `#match`. Blank lines and comments do not split a group within its body.
+
+A `#match` construct is one Syntax item and may be controlled as a whole by a preceding `#if`. The `#match` wrapper does not itself introduce an additional lookup scope; the selected arm's Block follows the existing scope rules. These rules apply in both executable bodies and Declaration Containers.
 
 Every final evaluation context must select an arm. A catch-all may be omitted if the compiler proves the explicit arms exhaustive. Fully resolved Conditions with no match are a compile-time error.
 
@@ -225,7 +238,7 @@ The [nonempty Block rule](#921-nonempty-executable-blocks) checks source structu
 
 #### 2.2.2. Staged condition evaluation
 
-`#if` and `#case` share an evaluator. Before ordinary Binding, the Parser evaluates Conditions using the prepared compile-time environment. Directive Binding later resolves remaining Names without binding excluded Syntax.
+`#if` Conditions and `#match` arm Conditions share an evaluator. Before ordinary Binding, the Parser evaluates Conditions using the prepared compile-time environment. Directive Binding later resolves remaining Names without binding excluded Syntax.
 
 An evaluation attempt produces exactly one of these results:
 
@@ -291,17 +304,19 @@ The target setting selects whether `Test` is present before Name resolution usin
 
 ```kimi
 func kind<T>() -> i32
-    #case T is i32
-        return 32
-    #case _
-        return 0
+    #match
+        #case T is i32
+            return 32
+        #case _
+            return 0
 
 func example<T>() -> i32
-    #case T is i32
-        let result = 32
-        return result
-    #case _
-        return 0
+    #match
+        #case T is i32
+            let result = 32
+            return result
+        #case _
+            return 0
 ```
 
 Both functions may defer selection until `T` is known. In `example`, select the branch and establish its local declarations before resolving `result`. This does not change an enclosing lookup environment that has already been used.
@@ -338,7 +353,7 @@ CompileTimeIfKoto
     Condition
     Target
 
-CompileTimeCaseGroupKoto
+CompileTimeMatchKoto
     CompileTimeCaseArmKoto[]
         Condition or fallback
         Block
@@ -346,7 +361,7 @@ CompileTimeCaseGroupKoto
 
 Normally only Deferred directives retain directive Koto nodes: an early-true `#if` contributes its Target directly; an early-false one contributes none. Independently, the enclosing scope retains pending Condition validation obligations even when the directive Koto or unselected Syntax is discarded. Each obligation retains the full Condition and its original CodeContext and identifies the enclosing scope for Directive Binding. These obligations are separate from executable syntax and must not cause excluded targets to undergo ordinary Binding. Invalid Case Groups may remain for error recovery. Resolving a specialization must not mutate Koto shared with others.
 
-The Parser implements early `#if` and `#case` evaluation, propagates known operand Errors before short-circuit truth results, and retains Deferred directives as dedicated Koto nodes. It also retains unresolved Condition validation obligations independently of selection; control-flow analysis exposes encountered obligations as pending Binding. Unknown-Name classification by later Directive Binding, specialization evaluation, enforcement of scope lookup-environment boundaries, and constraint narrowing are planned.
+The Parser implements early `#if` and `#match` evaluation, propagates known operand Errors before short-circuit truth results, and retains Deferred directives as dedicated Koto nodes. It also retains unresolved Condition validation obligations independently of selection; control-flow analysis exposes encountered obligations as pending Binding. Unknown-Name classification by later Directive Binding, specialization evaluation, enforcement of scope lookup-environment boundaries, and constraint narrowing are planned.
 
 ### 2.3. Source contexts and dependencies
 
@@ -840,12 +855,13 @@ Missing required unsafe context, invalid Types, and unsupported operations are c
 | Operation | Unsafe Block required |
 | --- | --- |
 | Declare, hold, Copy, pass, or destroy a raw pointer | No |
+| Explicit `@` acquisition of the same normalized raw pointer Type | No; operand evaluation may require it |
 | Create a contextually typed `null` | No |
 | Equality of same-Type pointers, or a pointer and `null` | No |
 | Call an unsafe function | Yes |
 | Dereference or index a raw pointer | Yes |
 | Pointer arithmetic | Yes |
-| Pointer-to-pointer or pointer/integer conversion | Yes |
+| Conversion between distinct raw pointer Types, or between a raw pointer and an integer | Yes |
 
 #### 4.6.1. Null and equality
 
@@ -918,7 +934,15 @@ Pointer subtraction from another pointer, integer-left addition, and other point
 
 #### 4.6.4. Pointer conversions
 
-In unsafe context, `@` supports `unsafe/T -> unsafe/U`, `unsafe/T -> usize`, and `usize -> unsafe/T`. Pointer casts within one address space preserve address and provenance without changing memory, initialization, or alignment, or granting access as `U`.
+When the complete raw pointer Types match after normalization, `@` performs ordinary same-Type acquisition. It copies the pointer, preserves address, provenance, and Origin information and constraints, and does not itself require unsafe context. Expand Type aliases for this comparison; matching size or memory layout alone is insufficient. It grants no new access permission or ownership. Unsafe operations in operand evaluation still require unsafe context.
+
+```kimi
+// pointer has Type unsafe/Node.
+let a = pointer             // Copy; no unsafe context required.
+let b = pointer@unsafe/Node // Same-Type Copy; no unsafe context required.
+```
+
+For distinct normalized raw pointer Types, `@` supports `unsafe/T -> unsafe/U` in unsafe context. `unsafe/T -> usize` and `usize -> unsafe/T` also require unsafe context. Pointer casts within one address space preserve address and provenance without changing memory, initialization, or alignment, or granting access as `U`.
 
 ```kimi
 unsafe:
@@ -936,18 +960,17 @@ Pointer/integer conversion initially requires a target whose ordinary data addre
 
 Null converts to integer zero, and integer zero converts to null, without requiring an all-zero internal pointer representation. These explicit conversions still require unsafe context.
 
-A round trip through `usize` back to the original pointer Type preserves address and provenance if the pointer-derived integer is unchanged within the same execution and the allocation stays live throughout. The integer may be copied, stored, or passed.
+Converting a pointer to `usize` guarantees its numeric address only. `usize` is not a language-level carrier of provenance; Copy, Move, argument passing, return, and storage follow ordinary integer rules. Converting the same numeric address back to the original pointer Type within the same execution guarantees address equality, but not preservation or recovery of provenance. Integer arithmetic or serialization cannot strengthen this guarantee.
 
 ```kimi
 unsafe:
     let address = pointer@usize
     let saved = address
     let restored = saved@unsafe/i32
-    // Preserves address and provenance under the round-trip conditions.
-    // Initialization and access permissions must still hold when accessing memory.
+    // Preserves the address only; access validity is a separate requirement.
 ```
 
-Conversion neither extends lifetime nor restores permissions. Arithmetic results, coincidentally equal integers, and addresses from another execution have no round-trip provenance guarantee. Supported targets allow arbitrary integer-to-pointer casts, but using the result where provenance is required needs an additional applicable target guarantee.
+Conversion neither extends lifetime nor restores permissions. Supported targets allow arbitrary integer-to-pointer casts, but dereferencing the result or performing another operation requiring provenance needs an additional documented Compiler/target guarantee and the usual lifetime, alignment, initialization, and access conditions. Unsafe context alone does not establish these conditions. Portable code that needs to preserve provenance should retain the original pointer value. Addresses from another execution have no validity guarantee.
 
 #### 4.6.6. Backend and separately specified operations
 
@@ -1744,6 +1767,8 @@ A contract getter requirement may specify a result Type, for example `var child:
 
 A contract requirement creates no implementation, storage read, Loan, effective storage representation, or `HasStorage` classification. Contract `move` requirements are not defined in this revision. Both a stored `var count: i32 has get` and a computed `get => items.count` may satisfy the readable requirement. In concrete declarations, `has` defines bodyless accessors; in contracts, it specifies required capabilities only.
 
+Generic requirements establish declared capabilities, not flow state at a use. They do not prove that a value is currently Initialized or that no conflicting Loan exists. These conditions must be checked at each use; `has get, set` alone does not prove Stored representation or compiler-provided standard accessors.
+
 ### 6.5. Contextual identifiers and receivers
 
 `storage` denotes the Property's actual owned location, not a copy. It has the Property Type, and a bound use causes the location to exist. `value` is available only in setters. These Names are not globally reserved.
@@ -2097,6 +2122,10 @@ User-defined `deinit` assumes a complete value. Reject Partial Move that invalid
 Use [Exchange or Swap](#79-initialization-preserving-exchange), or a Type-specific operation, when ordinary extraction is forbidden. Exchange preserves initialization; Type-specific invariants remain the implementation's responsibility and may require restricted storage access. A Move Path never bypasses an accessor.
 
 #### 7.1.6. Verification and representation
+
+Separate **Consume Eligibility** from **Consume Legality** when checking extraction from a place. Eligibility covers the supported place kind, ownership path, Move Path, declaration/accessor properties required by the selected operation, and structural Partial Move restrictions. Legality checks accessibility at the use, Initialized and complete state on all incoming paths, required construction completion, actual Loans and Origins, and Destruction conditions. Both are static checks. Type constraints can establish structural facts; they do not discharge use-site flow checks or introduce a new Consume contract syntax.
+
+The presence of user-defined `deinit` and the enclosing storage structure can make Partial Move structurally ineligible. Check these restrictions against the actual path at each use as well; `deinit` is not solely a flow-dependent condition. Moving a complete value as a whole remains distinct from Partial Move.
 
 Track per-path state, destruction responsibility, first initialization of `let`, construction completion, and current completeness across branches, loops, transfers, and `defer`. Check access, Copy/Move, actual Loans and Origins, replacement, and [Destruction lifetime requirements](#766-destruction-lifetime-checking). Raw-pointer operations need not recover or repair an untracked original owner's responsibility.
 
@@ -2623,7 +2652,7 @@ Expressions
 
 Related Syntax
 ├─ Block Statement: unsafe: / defer:
-├─ Compile-time Directive: #if / #case
+├─ Compile-time Directive: #if / #match
 ├─ Attribute: #Name
 └─ Composition Root: $
 ```
@@ -2654,7 +2683,7 @@ Evaluate operands once, from left to right, unless a construct specifies an exce
 
 `and`, `or`, and selections evaluate only the required operands or branches. [Simple assignment](#871-simple-assignment) evaluates and secures its right side before its target; compound assignment retains target-first evaluation. Type arguments and conversion target Types are not evaluated at runtime.
 
-An abrupt Completion, divergence, or Panic prevents evaluation of later operands and the enclosing operation. Unevaluated syntax still undergoes name, Type, and transfer-target checks; syntax excluded by `#if` / `#case` follows [conditional compilation](#22-compile-time-directives). [Temporary lifetimes](#78-temporary-lifetimes) and scope-exit rules govern retained values.
+An abrupt Completion, divergence, or Panic prevents evaluation of later operands and the enclosing operation. Unevaluated syntax still undergoes name, Type, and transfer-target checks; syntax excluded by `#if` / `#match` follows [conditional compilation](#22-compile-time-directives). [Temporary lifetimes](#78-temporary-lifetimes) and scope-exit rules govern retained values.
 
 ### 8.3. Primary expressions
 
@@ -2879,15 +2908,29 @@ let clear = flags & mask == 0
 
 `expression@Type` explicitly converts a value. A Type-Semantics-only target, such as `value@ref`, retains the source Core Type. Infer Origins in runtime expressions; do not write `from origin` here.
 
+Type/Semantics adaptation includes **Identity Acquisition**, so it need not change the Type. When normalized complete Types match and ordinary acquisition is allowed, Copy a Copy value or Move a non-Copy value. Borrow/Reborrow rules take precedence for borrow targets, including same-Type exclusive references. `@owner`, `@obj`, `@rc`, and `@arc` may request same-Semantics acquisition; they do not create ownership or convert between ownership representations. Property acquisition still uses its getter result.
+
 | Conversion | Rule |
 | --- | --- |
+| Identity Acquisition | Same normalized complete Type; ordinary Copy/Move, subject to the Borrow/Reborrow priority above. |
 | Integer to integer | Check that the value fits; no truncation or wrapping. |
 | Integer to float; float to float | Round to nearest, ties to even. A finite value rounding to infinity fails. Float-to-float preserves NaN and infinity, without guaranteeing NaN payloads. |
 | Float to integer | Truncate toward zero, then check that the mathematical integer fits. NaN and infinity fail. |
 | Value to a borrow such as `ref` / `uniq` | Require a valid place, access permissions, and Origin; do not extend lifetime. |
-| Raw pointer to raw pointer; raw pointer to/from `usize` | Follow [pointer conversion and provenance](#464-pointer-conversions) rules in an Unsafe Block. |
+| Raw pointer to the same normalized complete Type | Ordinary same-Type Copy; the operation itself requires no Unsafe Block. Preserve Origin information and constraints. |
+| Raw pointer to a distinct raw pointer Type; raw pointer to/from `usize` | Follow [pointer conversion and provenance](#464-pointer-conversions) rules in an Unsafe Block. |
+| Typed Null Formation | `null@unsafe/T` gives `null` a raw pointer Type; it is not a pointer cast and requires no Unsafe Block. Safe reference targets are forbidden. |
 
 Check failures follow [Panic Termination](#113-panic-termination). Built-in numeric conversions exclude `bool` / `char`, string parsing, and arbitrary bit reinterpretation. Conversion does not acquire ownership from a safe borrow, upgrade shared access to exclusive access, or implicitly increase a reference count.
+
+Literal fitting is a language-defined static check. After such checks, a failed numeric conversion in a required constant-evaluation context is a compile-time error; otherwise it initiates Panic only if evaluated. Constant propagation or folding must not turn the latter into a compile-time error; follow the [common constant-evaluation rules](#1134-checks-builds-and-constant-evaluation).
+
+```kimi
+let x: i32 = 300
+x@u8 // Panic if evaluated, even when constant propagation knows x is 300.
+```
+
+Panic and cleanup during or after `@` evaluation follow Error Handling and Value Lifetime. There is no `@`-specific rollback of completed Moves or side effects.
 
 ```kimi
 let wide = value@i64
@@ -2965,7 +3008,7 @@ Operator symbols, precedence, and associativity are fixed by the language. User-
 
 `and`, `or`, `not`, `=`, `@`, `is`, Property `move`, Ranges, and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined. Neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.`, or ternary `?:`; use logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref` / `@uniq`. Recognition by the lexer alone does not make a token a usable operator.
 
-`#Name` is an Attribute and `#if` / `#case` are compile-time directives, not runtime unary operators. `$` denotes the Composition Root; `$panic(...)` follows [Panic Termination](#113-panic-termination). Other Composition Root operations, dependency resolution, lifetimes, and failure rules remain separately specified. The internal name `MacroKoto` does not define language semantics.
+`#Name` is an Attribute and `#if` / `#match` are compile-time directives, not runtime unary operators. `$` denotes the Composition Root; `$panic(...)` follows [Panic Termination](#113-panic-termination). Other Composition Root operations, dependency resolution, lifetimes, and failure rules remain separately specified. The internal name `MacroKoto` does not define language semantics.
 
 ### 8.9. Implementation status
 
@@ -3065,7 +3108,7 @@ This rule applies to executable bodies of branches, `match` arms, iterations, La
 
 #### 9.2.2. Conditional compilation and results
 
-Check source emptiness **before directive selection**, independently of reachability. A valid `#if` or `#case` counts even when selection removes all executable Syntax; its own syntax and selection requirements still apply.
+Check source emptiness **before directive selection**, independently of reachability. A valid `#if` or `#match` counts even when selection removes all executable Syntax; its own syntax and selection requirements still apply.
 
 ```kimi
 defer:
@@ -3995,6 +4038,8 @@ Panic diagnostics carry a reason and source location: the failed operation for i
 Panic conditions and termination behavior are identical in Debug and Release builds. An implicit check failure is a language-guaranteed termination operation, not merely a rewrite to a replaceable function call. Replacing `$panic` or diagnostic handling cannot make a Panic return normally.
 
 Invalid operations found during required compile-time constant evaluation are compile-time errors. A runtime operation initiates Panic only if it is actually evaluated and its check fails. Optimization must not introduce Panic from an operation skipped by short-circuit or conditional evaluation. Undefined behavior from an unsafe contract violation is not guaranteed to be detected as Panic.
+
+Language-defined static checks, including literal fitting, apply independently of optimization. Outside required constant-evaluation contexts, knowledge obtained only by constant propagation or folding must not turn a specified runtime Panic into a compile-time error. This also applies when the failing value is statically known.
 
 These rules are independent of implementation mechanisms such as a `trap` instruction. APIs returning failures as values use the contracts above; wrapping or saturating integer arithmetic requires separate explicit library APIs.
 

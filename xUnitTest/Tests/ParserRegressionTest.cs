@@ -915,12 +915,13 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         var source = """
             func select()
-                #case linux
-                    var excluded = 1
-                #case windows
-                    var selected = 2
-                #case _
-                    var fallback = 3
+                #match
+                    #case linux
+                        var excluded = 1
+                    #case windows
+                        var selected = 2
+                    #case _
+                        var fallback = 3
             """;
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
@@ -939,17 +940,18 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         var source = """
             func select<s/T>()
-                #case T is i32
-                    var specialized = 1
-                #case _
-                    var fallback = 2
+                #match
+                    #case T is i32
+                        var specialized = 1
+                    #case _
+                        var fallback = 2
             """;
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
         Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
         var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
-        var group = Assert.IsType<CompileTimeCaseGroupKoto>(Assert.Single(function.Body!.Items));
+        var group = Assert.IsType<CompileTimeMatchKoto>(Assert.Single(function.Body!.Items));
         Assert.Collection(
             group.Arms,
             arm =>
@@ -965,7 +967,7 @@ public class ParserRegressionTest
         TinyhandSerializer.DeserializeObject(bytes, ref restored);
         restored!.OnDeserialized(compilation);
         var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
-        var restoredGroup = Assert.IsType<CompileTimeCaseGroupKoto>(Assert.Single(restoredFunction.Body!.Items));
+        var restoredGroup = Assert.IsType<CompileTimeMatchKoto>(Assert.Single(restoredFunction.Body!.Items));
         Assert.Equal(2, restoredGroup.Arms.Count);
         Assert.All(restoredGroup.ChildNodes, child => Assert.Same(restoredGroup, child.Parent));
     }
@@ -978,14 +980,16 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         var source = """
             func invalidFallback()
-                #case _
-                    return
-                #case _
-                    return
+                #match
+                    #case _
+                        return
+                    #case _
+                        return
 
             func nonExhaustive()
-                #case linux
-                    return
+                #match
+                    #case linux
+                        return
             """;
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
@@ -1004,12 +1008,13 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         var source = """
             func select()
-                #case windows
-                    return
-                #case 1
-                    return
-                #case _
-                    return
+                #match
+                    #case windows
+                        return
+                    #case 1
+                        return
+                    #case _
+                        return
             """;
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
@@ -1027,10 +1032,11 @@ public class ParserRegressionTest
         var source = """
             func select()
                 #if linux
-                #case windows
-                    var firstExcluded =
-                #case _
-                    var fallbackExcluded =
+                #match
+                    #case windows
+                        var firstExcluded =
+                    #case _
+                        var fallbackExcluded =
                 var retained = 1
             """;
 

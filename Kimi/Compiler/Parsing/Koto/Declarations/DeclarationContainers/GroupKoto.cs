@@ -92,10 +92,10 @@ public sealed class GroupKoto : DeclarationContainerKoto
                 continue;
             }
 
-            if (Parser.IsCompileTimeCaseStart(ref reader))
+            if (Parser.IsCompileTimeMatchStart(ref reader))
             {
                 hasNonAliasDeclaration = true;
-                var caseGroup = Parser.ParseCompileTimeCaseGroup(ref reader);
+                var caseGroup = Parser.ParseCompileTimeMatch(ref reader);
                 caseGroup = Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup);
                 this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, caseGroup, true);
                 continue;

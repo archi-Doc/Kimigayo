@@ -189,30 +189,24 @@ public class SpecConformanceParseTest
     }
 
     [Theory]
-    [InlineData("#if unknown")]
-    [InlineData("#if true")]
-    [InlineData("#case unknown")]
-    [InlineData("#case true")]
-    public void DirectivesRetainDeclarationContext(string directive)
+    [InlineData(false, "unknown")]
+    [InlineData(false, "true")]
+    [InlineData(true, "unknown")]
+    [InlineData(true, "true")]
+    public void DirectivesRetainDeclarationContext(bool match, string condition)
     {
-        var parsed = Parse($"""
-            struct Sample<T>
-                {directive}
-                    var value: T has get, set
-                    func getValue() -> T => value
-
-            contract Sequence
-                {directive}
-                    associate Element is Comparable
-                    var count: i32 has get
-            """);
+        var directive = match ? $"#match\n        #case {condition}" : $"#if {condition}";
+        var indent = match ? "            " : "        ";
+        var parsed = Parse(
+            $"struct Sample<T>\n    {directive}\n{indent}var value: T has get, set\n{indent}func getValue() -> T => value\n" +
+            $"contract Sequence\n    {directive}\n{indent}associate Element is Comparable\n{indent}var count: i32 has get");
         AssertValid(parsed);
         RoundTrip(parsed);
         var sample = Assert.Single(parsed.RootKoto.NestedDeclarationContainers.OfType<StructKoto>());
         var body = Assert.Single(sample.Members) switch
         {
             CompileTimeIfKoto conditional => Assert.IsType<CodeBlockKoto>(conditional.Target),
-            CompileTimeCaseGroupKoto cases => cases.Arms[0].Body,
+            CompileTimeMatchKoto cases => cases.Arms[0].Body,
             CodeBlockKoto block => block,
             _ => throw new InvalidOperationException(),
         };

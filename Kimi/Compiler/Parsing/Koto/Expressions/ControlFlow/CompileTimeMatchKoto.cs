@@ -41,22 +41,22 @@ public sealed class CompileTimeCaseArmKoto
     }
 }
 
-/// <summary>Stores a compile-time Case Group whose selected arm is not yet certain.</summary>
-public sealed class CompileTimeCaseGroupKoto : ExpressionKoto
+/// <summary>Stores a compile-time <c>#match</c> whose selection is deferred or whose syntax is invalid.</summary>
+public sealed class CompileTimeMatchKoto : ExpressionKoto
 {
     /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.CompileTimeCaseGroup;
+    public override KotoKind Akind => KotoKind.CompileTimeMatch;
 
     private List<CompileTimeCaseArmKoto> arms;
 
     /// <summary>Gets the arms in source order.</summary>
     public IReadOnlyList<CompileTimeCaseArmKoto> Arms => this.arms;
 
-    /// <summary>Initializes a new instance of the <see cref="CompileTimeCaseGroupKoto"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="CompileTimeMatchKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete group span.</param>
     /// <param name="arms">The parsed arms.</param>
-    public CompileTimeCaseGroupKoto(
+    public CompileTimeMatchKoto(
         ref TokenReader reader,
         SourceSpan range,
         List<CompileTimeCaseArmKoto> arms)
@@ -73,6 +73,9 @@ public sealed class CompileTimeCaseGroupKoto : ExpressionKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
+        builder.Append("#match");
+        builder.AppendLine();
+        builder.IncrementIndent();
         for (var i = 0; i < this.arms.Count; i++)
         {
             if (i > 0)
@@ -94,6 +97,8 @@ public sealed class CompileTimeCaseGroupKoto : ExpressionKoto
 
             this.arms[i].Body.WriteIndentedTo(ref builder);
         }
+
+        builder.DecrementIndent();
     }
 
     protected override IEnumerable<Koto> GetChildNodes()

@@ -12,17 +12,18 @@ let windows = true
     #OsAttribute let osId = 1
 
 func FuncA<s/T>(value: s/T)
-    #case s is ref and T is Comparable
-        ProcessComparableReference(value)
+    #match
+        #case s is ref and T is Comparable
+            ProcessComparableReference(value)
 
-    #case s is ref
-        ProcessReference(value)
+        #case s is ref
+            ProcessReference(value)
 
-    #case s is obj
-        ProcessObject(value)
+        #case s is obj
+            ProcessObject(value)
 
-    #case _
-        ProcessOther(value)
+        #case _
+            ProcessOther(value)
 
 // Single-line comment
 /* Multi-line

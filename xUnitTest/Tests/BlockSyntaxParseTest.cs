@@ -127,13 +127,13 @@ public class BlockSyntaxParseTest
     [InlineData("unsafe:\n    #if false\n    work()")]
     [InlineData("func process()\n    #if false\n        work()")]
     [InlineData("if ready()\n    #if false\n        work()")]
-    [InlineData("defer:\n    #case false\n        work()\n    #case _\n        ()")]
+    [InlineData("defer:\n    #match\n        #case false\n            work()\n        #case _\n            ()")]
     public void ChecksSourceItemsBeforeConditionalSelection(string source)
         => ParseSuccess(source);
 
     [Theory]
     [InlineData("defer:\n    #if false")]
-    [InlineData("defer:\n    #case true")]
+    [InlineData("defer:\n    #match\n        #case true")]
     [InlineData("defer:\n    #Inline")]
     [InlineData("defer:\n    public")]
     [InlineData("defer:\n    #if false\n        ;")]

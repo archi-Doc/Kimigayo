@@ -39,6 +39,32 @@ public sealed class ContractKoto : DeclarationContainerKoto
     /// <inheritdoc/>
     public override void Parse(ref TokenReader reader)
     {
+        var enclosingConditions = reader.PendingDirectiveConditions;
+        reader.PendingDirectiveConditions = null;
+        try
+        {
+            this.ParseBody(ref reader);
+            this.AddPendingDirectiveConditions(reader.PendingDirectiveConditions);
+        }
+        finally
+        {
+            reader.PendingDirectiveConditions = enclosingConditions;
+        }
+    }
+
+    /// <inheritdoc/>
+    protected override void WriteTypeConstraintTo(IsKoto constraint, ref IndentedStringBuilder builder)
+    {
+        if (!constraint.IsAssociatedConstraint)
+        {
+            builder.Append("associate ");
+        }
+
+        constraint.WriteTo(ref builder);
+    }
+
+    private void ParseBody(ref TokenReader reader)
+    {
         ConsumeBlockStart(ref reader);
         while (TryBeginDeclaration(ref reader))
         {
@@ -50,9 +76,9 @@ public sealed class ContractKoto : DeclarationContainerKoto
                 continue;
             }
 
-            if (Parser.IsCompileTimeCaseStart(ref reader))
+            if (Parser.IsCompileTimeMatchStart(ref reader))
             {
-                var caseGroup = Parser.ParseCompileTimeCaseGroup(ref reader, this);
+                var caseGroup = Parser.ParseCompileTimeMatch(ref reader, this);
                 this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup));
                 continue;
             }
@@ -112,16 +138,5 @@ public sealed class ContractKoto : DeclarationContainerKoto
                 }
             }
         }
-    }
-
-    /// <inheritdoc/>
-    protected override void WriteTypeConstraintTo(IsKoto constraint, ref IndentedStringBuilder builder)
-    {
-        if (!constraint.IsAssociatedConstraint)
-        {
-            builder.Append("associate ");
-        }
-
-        constraint.WriteTo(ref builder);
     }
 }
