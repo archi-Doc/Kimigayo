@@ -4,12 +4,14 @@
   - [1. Overview](#1-overview)
   - [2. Source and lexical structure](#2-source-and-lexical-structure)
   - [3. Types and basic value model](#3-types-and-basic-value-model)
+    - [Fixed arrays and length parameters](#322-sequence-types)
     - [Generic Type parameters](#337-generic-type-parameters)
   - [4. Declarations and contracts](#4-declarations-and-contracts)
     - [Explicit full function specialization](#465-explicit-full-function-specialization)
   - [5. Name resolution, overload resolution, and inference](#5-name-resolution-overload-resolution-and-inference)
 - [Part II. Language constructs and semantics](#part-ii-language-constructs-and-semantics)
   - [6. Expressions and operators](#6-expressions-and-operators)
+    - [Index, Range, ResolvedRange, and Slice](#644-indexing-and-slicing)
   - [7. Control flow](#7-control-flow)
   - [8. Properties](#8-properties)
   - [9. Ownership and lifetime analysis](#9-ownership-and-lifetime-analysis)
@@ -81,16 +83,16 @@ User-defined Types, Contracts, and Declaration Containers conventionally use Pas
 | --- | --- |
 | `[]` | Array and Dictionary construction, fixed-array Types, indexing, Range-based slicing, and anonymous-function Capture Lists. |
 | `()` | Ordered grouping: parameters, arguments, Tuples, Unit, Function Types, conditions, and operator precedence. |
-| `<>` | Generic Type parameter slots and their Type arguments. General value/Const arguments are not introduced. |
+| `<>` | Type arguments and [function length arguments](#3224-function-length-parameters). |
 | `{}` | Unused; reserved for future language evolution. |
 | `=` | Initialization, parameter defaults, or assignment according to context; acquisition follows [Copy and Move](#35-copy-and-move). |
 | `@` | Explicit Type/Semantics adaptation or Consume (`@move`); see [explicit operations](#664-explicit-operations). |
 | `->` | Result Type associated with the input side of a function declaration or Function Type. |
 | `=>` | Mapping or correspondence: function and accessor expression bodies, `if` expression bodies, `match` arms, and named Origin arguments. |
-| `:` | Structural association: Name and Type, key and value, or Label and Block/Iteration Construct. |
+| `:` | Structural association: Name and Type, key and value, or Label and Block/Iteration Construct. In Origin relation notation, `a : b` means `a` outlives `b` (including equal lifetimes). |
 | `#` | A compile-time construct. Lowercase reserved directives such as `#if` differ from PascalCase Attributes such as `#Inline`. |
 | `$` | Selects the Composition Root; it is not a macro prefix. |
-| `;` | Separates the element Type and literal length in `[T; N]` only; never separates statements. |
+| `;` | Forbidden outside comments and literals; never a statement or Type separator. |
 
 The single-layer ordinary Type form is `semantics/CoreType from origin`; value borrows and pointers may enclose a complete Type, as in `ref/ref/T`. Object Types also admit a runtime-contract View Target. See [Types](#3-types-and-basic-value-model) for composition, grouping, and omission rules. Examples are independent unless explicitly connected. Application-specific Types and APIs illustrate assumed declarations, not promised library interfaces. Fences marked `text` may use conceptual storage or compiler notation rather than source syntax; lines marked Error are intentional boundary examples.
 
@@ -207,7 +209,7 @@ A token's spelling is contiguous. Separate adjacent spellings when their concate
 
 The [notation table](#12-conventions-and-notation) summarizes punctuation. Expression grouping, generic/comparison boundaries, and the token rules for `@` follow [precedence and associativity](#65-precedence-and-associativity).
 
-`;` is never a statement separator or an expression-body terminator. It is permitted only as the structural separator in the [fixed-length array Type](#322-sequence-types); every other occurrence outside comments and literal content is an error. Write separate statements on separate effective lines. In particular, `if condition => 1` joins an aligned following `else` without `;`. `$` and `#` are separate punctuation tokens; `$abort` is `$` followed by the Name `abort`, and `#if` is `#` followed by the keyword `if`.
+`;` is never a statement separator or an expression-body terminator. Every occurrence outside comments and literal content is an error. Write separate statements on separate effective lines. In particular, `if condition => 1` joins an aligned following `else` without `;`. `$` and `#` are separate punctuation tokens; `$abort` is `$` followed by the Name `abort`, and `#if` is `#` followed by the keyword `if`.
 
 ### 2.5. Names
 
@@ -232,7 +234,7 @@ All Format (`Cf`) characters are forbidden anywhere in Names, including bidirect
 
 Visually confusable Names are not treated as equal. Implementations may provide optional lint warnings for confusable Names; such warnings do not affect name identity or language validity, and the compiler is not required to emit them.
 
-The Unicode character-category and normalization data version is implementation-defined. Implementations must document their data source/version policy. The current .NET compiler uses its host runtime's Unicode category and normalization APIs; the effective data may depend on the runtime and operating system/globalization backend. This specification does not pin a Unicode release, so builds requiring identical character acceptance must use the same runtime and globalization data.
+Character-category tests and NFC validation use [Unicode 15.0.0](https://www.unicode.org/versions/Unicode15.0.0/) data. Characters unassigned in that release are not permitted in Names. Host runtime, operating system, and globalization settings must not change these results; adopting another Unicode release requires a language-specification revision.
 
 Contextual keywords may be used as Names in contexts that accept contextual identifiers. Reserved keywords may not. `in` delimits a `for` header and `has` introduces an inline Property accessor list; both may be Names elsewhere. `move` is an **@-context reserved name**: immediately after `@`, it selects Consume without Type/Semantics lookup. Elsewhere it may be an ordinary Name, so `move(...)` is an ordinary call. There is no prefix `move` or Move accessor. A Type named `move` requires a nonconflicting spelling, such as an alias, in an Adaptation Target. Built-in Semantics names likewise select their Semantics in shorthand targets. `Self` is reserved; `self`, `storage`, and `value` follow [contextual name rules](#511-namespaces-roles-and-visibility).
 
@@ -244,7 +246,7 @@ Contextual keywords may be used as Names in contexts that accept contextual iden
 
 `specialize` is contextual immediately before `func` in an [explicit specialization declaration](#465-explicit-full-function-specialization); it does not reserve the name in unrelated contexts.
 
-For example, `Dog`, `_value`, `point2`, `日本語`, and `ǅelta` are valid Names, while `2point`, `has-value`, and the empty string are not.
+For example, `Dog`, `_value`, `point2`, `Delta`, and `ǅelta` are valid Names, while `2point`, `has-value`, and the empty string are not.
 
 #### 2.5.1. Keyword and punctuation inventory
 
@@ -263,18 +265,19 @@ The following tables define source-language classification. Internal token enum 
 | --- | --- |
 | Declarations | alias, rootgroup, group, struct, enum, contract; declaration/header positions. extension is reserved contextually for a future declaration, which is rejected in this revision. |
 | Parameters, Origins, accessors | in in a for header; origin in an Origin parameter list; from in an Origin annotation or exit target; static as the distinguished Origin in Origin expressions; associate in an associated-Type declaration/specification; has, get, set in accessor syntax; specialize immediately before func. |
-| Semantics and Safety | owner, ref, uniq, obj, rc, arc, objref, objuniq, unsafe in Semantics positions; unsafe also before func and before a colon introducing an Unsafe Statement. |
+| Semantics and Safety | owner, ref, uniq, obj, rc, arc, objref, objuniq, unsafe in Semantics positions, including requirements; unsafe also before func and before a colon introducing an Unsafe Statement. |
 | Semantics categories | value, valueborrow, object, objectborrow, borrow, owning, reference in Semantics requirements; see [category sets](#33-type-semantics). |
 | Contextual bindings and operations | self, storage, value under receiver/accessor rules; move immediately after @; abort after $. |
+| Fixed arrays and lengths | of only between the length and element Type in `[N of T]`; length only at the start of a generic parameter declaration followed by its Name. |
 
 | Punctuation/operator class | Spellings |
 | --- | --- |
-| Structural | `(` `)` `[` `]` `,` `;` `.` `:` `::` `->` `=>` `@` `#` `$` `?` |
+| Structural | `(` `)` `[` `]` `,` `.` `:` `::` `->` `=>` `@` `#` `$` `?` |
 | Arithmetic and updates | `+` `-` `*` `/` `%` `++` `--` `+=` `-=` `*=` `/=` `%=` |
 | Comparison and assignment | `=` `==` `!=` `<` `<=` `>` `>=` |
 | Bitwise and shifts | `&` `\|` `^` `<<` `>>` `&=` `\|=` `^=` `<<=` `>>=` |
 | Ranges | `..` `..=` |
-| Recognized but unavailable | `{` `}` `!` `&&` `\|\|` |
+| Recognized but unavailable | `{` `}` `;` `!` `&&` `\|\|` |
 
 Outside comments and literals, use longest-spelling matching within this punctuation inventory: ..= before .. before dot, -> before minus, <<= before << before <, >>= before >> before >, and :: before colon. The two-character => and == both precede the single equals sign; there is no ordering ambiguity between their distinct spellings. There is no +++ token: a+++b tokenizes as a, ++, +, b. Adjacent closing generic angles may be contextually split: >> becomes two > tokens, and >>= may supply two > tokens followed by = (or > followed by >= if only one generic level closes). This split is allowed only while closing syntactically recognized Type arguments/parameters; it never changes a shift in expression context. Tuple indices have the specific lexical exception below. Other unlisted punctuation is invalid unless it forms a sequence of listed tokens; such a sequence still needs a valid grammatical interpretation.
 
@@ -304,9 +307,9 @@ decimal-literal      := decimal-sequence fraction? exponent?
 fraction             := '.' decimal-digit decimal-tail
 exponent             := ('e' | 'E') ('+' | '-')? decimal-digit decimal-tail
 
-binary-literal       := '0' ('b' | 'B') binary-tail
-octal-literal        := '0' ('o' | 'O') octal-tail
-hexadecimal-literal  := '0' ('x' | 'X') hexadecimal-tail
+binary-literal       := '0' ('b' | 'B') '_'* binary-digit binary-tail
+octal-literal        := '0' ('o' | 'O') '_'* octal-digit octal-tail
+hexadecimal-literal  := '0' ('x' | 'X') '_'* hexadecimal-digit hexadecimal-tail
 
 decimal-sequence     := decimal-digit decimal-tail
 decimal-tail         := (decimal-digit | '_')*
@@ -320,15 +323,17 @@ octal-digit          := '0' .. '7'
 hexadecimal-digit    := decimal-digit | 'a' .. 'f' | 'A' .. 'F'
 ```
 
-`_` is an ignored digit separator. Consecutive separators, separators after a base prefix, and trailing separators are allowed: `1__000`, `123_`, `0x_FF`, and `0b__101__` are valid. A base prefix with no digits, including one followed only by separators, denotes zero: `0x` and `0o___` are valid. An exponent must start with a decimal digit immediately after `e`/`E` and its optional sign; `1e_2` and `1e+_2` are invalid.
+`_` is an ignored digit separator. Consecutive separators, separators after a base prefix, and trailing separators are allowed: `1__000`, `123_`, `0x_FF`, and `0b__101__` are valid. Every base prefix requires at least one digit valid for that base; `0x`, `0b`, and `0o___` are compile-time errors. An exponent must start with a decimal digit immediately after `e`/`E` and its optional sign; `1e_2` and `1e+_2` are invalid.
+
+An immediately adjacent Name continuation character cannot start a separate token after a number. Consume the remaining Name continuation characters as part of a malformed numeric token and diagnose it; `0xg`, `0b102`, and `123abc` are errors.
 
 A decimal point belongs to the literal only when followed immediately by a decimal digit: `1.0` is floating point; `1.` is integer `1` followed by a dot. Only decimal literals support fractions and exponents; `0xFF.0` starts with integer `0xFF`.
 
 Exception: immediately following a member-access dot token (ignoring intervening spaces and comments), scan a Tuple index as the maximal run of ASCII decimal digits only. Do not consume a fraction, exponent, base prefix, or digit separator there. Thus `pair.0.1` is `pair`, `.`, `0`, `.`, `1`, and `pair.0.name` accesses a named member of element zero. The parser may equivalently resplit a numeric token using its original spelling. Ordinary `0.1` remains a floating-point literal; the Tuple index must subsequently be in range.
 
-After removing separators, a decimal literal with a fraction or exponent converts to IEEE 754 `f64`. Finite results are valid; conversion to either infinity is an error. Other decimal literals and all base-prefixed literals are integers. Magnitudes `0` through `2^128 - 1` are stored as 128-bit bit patterns; larger magnitudes are invalid.
+After removing separators, a decimal literal with a fraction or exponent denotes an exact decimal value. Round it once to its determined IEEE 754 `f32` or `f64` Type using round-to-nearest, ties-to-even; no intermediate floating Type is used. A result of either infinity is a compile-time error; subnormal and zero results are permitted. Other decimal literals and all base-prefixed literals are integers. Magnitudes `0` through `2^128 - 1` are stored as 128-bit bit patterns; larger magnitudes are invalid.
 
-Number literals have no Type suffix. Internal representations do not determine a literal's language Type; [expression type inference](#631-type-inference) defines contextual Types and defaults. To specify a Type, use a declaration annotation or an explicit conversion such as `123@i32`.
+Number literals have no Type suffix. [Expression type inference](#631-type-inference) defines contextual Types and defaults. To specify a literal's Type, use a declaration annotation or [explicit literal fitting](#6644-numeric-conversions-and-literals), such as `123@i32`.
 
 ### 2.7. Character escapes
 
@@ -384,7 +389,7 @@ A Char Literal cannot contain a physical line break or tab and does not support 
 
 ```kimi
 let letter: char = 'A'       // U+0041
-let hiragana: char = 'あ'    // U+3042
+let euro: char = '€'         // U+20AC
 let emoji: char = '😀'       // U+1F600
 let quote: char = '\''
 let slash: char = '\\'
@@ -434,9 +439,7 @@ Second line
 "
 ```
 
-The opening and closing delimiters are not part of the value. Any line break between them is part of the string content; `\n` may instead be used when an explicit line-feed escape is preferred.
-
-No indentation, initial newline, or final newline is stripped. Literal spaces and physical LF, CRLF, or CR sequences are preserved exactly as content, subject only to escape processing. The same rule applies to raw strings. Literal-internal lines do not affect the enclosing layout stack.
+The delimiters are not part of the value. In both escaped and raw string text, each physical LF, CRLF, or CR contributes one LF. No spaces, indentation, initial newline, or final newline are stripped. Escape results and interpolated values are not normalized; use `\r` in an escaped string for an explicit CR. Literal-internal lines do not affect the enclosing layout stack.
 
 Escaped strings support the shared [Character Escapes](#27-character-escapes) and string interpolation with `\(expression)`.
 
@@ -516,6 +519,8 @@ Primitive scalar operations use the [generic code generation policy](#149-generi
 | `f64` | 64 bits (8 bytes) |
 | `bool` | 8 bits (1 byte) |
 
+The only valid `bool` storage representations are `0x00` for `false` and `0x01` for `true`. Reading any other bit pattern as `bool` is undefined behavior under the [valid-value requirement](#382-dereference-and-ownership).
+
 #### 3.1.3. Character type
 
 `char` represents one Unicode scalar value and has a fixed storage size of 32 bits (4 bytes). Its valid ranges are U+0000..U+D7FF and U+E000..U+10FFFF, inclusive. Surrogates (U+D800..U+DFFF) and values above U+10FFFF are invalid.
@@ -548,10 +553,10 @@ Encoding one `char` as UTF-8 produces one to four bytes:
 | Literal | Scalar value | UTF-8 bytes of the value |
 | --- | --- | --- |
 | `'A'` | U+0041 | `41` |
-| `'あ'` | U+3042 | `E3 81 82` |
+| `'€'` | U+20AC | `E2 82 AC` |
 | `'😀'` | U+1F600 | `F0 9F 98 80` |
 
-The source literal `'あ'` occupies five bytes (`27 E3 81 82 27`), including its three-byte UTF-8 content. Its value is U+3042, stored as a four-byte `char`; encoded length and storage size differ.
+The source literal `'€'` occupies five bytes (`27 E2 82 AC 27`), including its three-byte UTF-8 content. Its value is U+20AC, stored as a four-byte `char`; encoded length and storage size differ.
 
 `string` is the built-in Core Type for UTF-8 text. Its exact in-memory container and storage layout are implementation-defined. Owned `string` is always non-Copy; see [Copy capability](#351-copy-capability-and-explicit-duplication).
 
@@ -569,7 +574,17 @@ A named Core Type may be qualified with dots and may have generic arguments.
 A.B<T, U>
 ```
 
-Tuple types use parentheses and commas: `()` is Unit, `(T,)` is a one-element Tuple, and `(T, U)` is a two-element Tuple. `(T)` groups a Type without adding a Tuple or changing its Semantics. Function types use `->` between the parameter type and return type. `(T) -> U` has one parameter of Type `T`; `((T,)) -> U` has one parameter whose Type is a one-element Tuple.
+Tuple types use parentheses and commas: `()` is Unit, `(T,)` is a one-element Tuple, and `(T, U)` is a two-element Tuple. `(T)` groups a Type without adding a Tuple or changing its Semantics.
+
+A Function Type consists of a parenthesized **Function Parameter List**, `->`, and a result Type. The list is a distinct grammar element, not a grouped or Tuple Type; it accepts an optional trailing comma. `->` associates to the right. A bare Type cannot replace the list.
+
+| Function Type | Parameters |
+| --- | --- |
+| `() -> U` | None |
+| `(T) -> U`, `(T,) -> U` | One of Type `T` |
+| `(()) -> U` | One of Type Unit |
+| `((T,)) -> U` | One of Type `(T,)` |
+| `(T, V) -> U` | Two, of Types `T` and `V` |
 
 ```kimi
 (i32, string)
@@ -601,17 +616,131 @@ An empty environment or `func []` does not imply purity, a function-pointer ABI,
 
 #### 3.2.2. Sequence types
 
-The fixed-length array Type is `[T; N]`, where T is a complete element Type and N is one unsigned decimal integer literal (digit separators follow integer-literal rules). N must fit nonnegative isize and the target's representable layout. Zero is permitted. Length is part of Type identity: [T; 2] and [T; 3] differ. This dedicated Type form introduces no Const generic parameter, general value argument, length expression, or length inference placeholder.
+Fixed arrays use `[N of T]`, where N is a compile-time length and T is a complete element Type, including Semantics and Origins. Dynamic `Array<T>` owns variable-length storage; `Slice<T> from source` is a shared borrowed view. Their [indexing and slicing](#644-indexing-and-slicing) rules are defined together.
 
-`Array<T>` is a dynamically sized owning sequence requiring T is Owned; `Slice<T>` from source is a shared view of consecutive T elements. Both named Types have the [Core Kotonoha identities](#1410-required-core-declarations). Slice is Copy regardless of T, owns no elements, and retains its backing-storage Origin and shared Loan. Mutable slices are not introduced. Slice elements are read through shared access; the slice handle being Copy does not permit moving non-Copy elements out. `Array<T>` is Non-Copy; a fixed array is Copy exactly when its complete element Type is Copy. Ordinary Owned checks remain recursive.
+##### 3.2.2.1. Fixed-array identity and layout
 
-An array literal with expected `[T; N]` initializes exactly N elements in source order, with ordinary Copy/Move acquisition; a count mismatch is an error. Otherwise it produces `Array<T>`, inferring T from the expected Type or elements. [] needs an expected Type, including [T; 0]. No implicit owning-array-to-Slice conversion occurs; use range indexing. Fixed-array element Move Paths and reverse-index destruction follow §§9.1.3 and 10.3.2. Dynamic Array and Dictionary indexing never gains fixed-element Move Paths merely from a constant index.
+Type identity includes the evaluated length and complete element Type. Thus `[3 of i32]` differs from `[4 of i32]`, while `[(2 + 2) of i32]` equals `[4 of i32]`. Arrays of different lengths, fixed arrays and Array, and owning arrays and Slice have no implicit conversions.
 
-~~~kimi
-let fixed: [i32; 3] = [10, 20, 30]
-let dynamic: Array<i32> = [10, 20, 30]
-let middle: Slice<i32> from fixed = fixed[1..]
-~~~
+Elements are stored inline in index order, without implicit heap allocation for the array's own element storage. Nested arrays apply the rule recursively, with the innermost index varying contiguously. The enclosing value's storage location and allocations performed by individual elements follow their own rules.
+
+Require a finite, valid element layout. Let d = stride(T); Slice uses the same element spacing. These are specification quantities, not source operators, and follow the [common layout rules](#146-structure-layout-and-abi).
+
+| Quantity | Layout of `[N of T]` |
+| --- | --- |
+| Element i offset | i * d, for 0 <= i < N |
+| Alignment | alignment(T), including when N = 0 |
+| Array stride | N * d, the spacing between consecutive array values |
+| Size | Common aggregate layout; this section does not fix whether final-element trailing padding is included |
+| Zero-sized elements | Use T's stride; if d = 0, distinct logical elements may share an address |
+
+Check size, stride, and padding calculations against target layout limits and nonnegative isize. An unrepresentable concrete layout is a compile-time error. `[0 of T]` has size and stride zero and initializes/destroys no elements, but still checks T's Type, layout, and ownership. Validate inline embedding before multiplying by zero: a struct directly storing `[0 of Self]` has forbidden recursive value layout. Pointer and reference referents do not create inline edges.
+
+##### 3.2.2.2. Length constants
+
+A length is a nonnegative compile-time integer representable by the target's isize. A generic length remains symbolic until instantiation. Write an integer literal, a possibly qualified constant name, a length parameter, or a parenthesized integer constant expression. Any compound expression requires parentheses around the entire length.
+
+The initial evaluator admits integer literals, length parameters, **Constant-readable Bindings**, grouping, unary `+ -`, and binary `+ - * / %`. A Constant-readable Binding is an integer `let` local or static Stored Property whose declaration initializer can be recursively evaluated using only these forms, after normal lookup, access, and initialization checks. Parameters, `var`, instance Properties, custom getters, calls, and cyclic initializers are excluded. This is a semantic classification, not general constant treatment of `let` or new `const` syntax.
+
+Use normal integer typing and checked arithmetic. Untyped integer literals receive expected Type isize; already typed constants retain their integer Type. Negative intermediate values are allowed by signed arithmetic, but a negative final length, noninteger value, overflow, zero divisor, or out-of-range length is a compile-time error. This evaluation is independent of optimization and does not broaden ordinary-expression or directive evaluation. Type formation does not execute a static initializer or getter at runtime.
+
+```kimi
+let Width = 4
+let Height = 3
+let buffer: [(Width * Height) of u8] // Length 12; still Uninitialized.
+let row: [Width of u8] = [1, 2, 3, 4]
+let badSyntax: [Width * Height of u8] // Error: parentheses required.
+let negative: [(-1) of u8]           // Error: negative length.
+let invalid: [(4 / 0) of u8]         // Error: division by zero.
+let of = 4                          // Ordinary Name outside the Type delimiter.
+```
+
+Separate-compilation artifacts retain folded integer values and Types, or verified slot-dependent expressions and formation obligations. Record referenced declaration Identities and dependencies; changes invalidate dependent artifacts and recompute Type, layout, and selection keys. Length changes have no ABI compatibility guarantee. Check constant accessibility at the definition: a private constant need not become public when its value can be exported without private-name lookup. Expand private constants there and export conditions checkable by clients. Ordinary API accessibility still applies to element Types and other signature contents.
+
+##### 3.2.2.3. Initialization and inference
+
+With an expected fixed-array Type, an array literal constructs that Type and must contain exactly N elements; no padding or truncation is allowed. Acquire elements in source order by ordinary Copy/Move. A local binding annotation may use `[N of _]`, recursively for nested arrays, to infer only the element Type from its initializer. Require a unique Type at declaration. This placeholder is forbidden in lengths, signatures, and explicit generic arguments.
+
+Without a fixed-array expectation, an independent array literal constructs Array. Call-argument literals remain subject to candidate-local fitting under the next subsection; do not default them to Array first. Empty literals require an expected element Type. Numeric element defaults follow ordinary inference.
+
+An annotation-only declaration remains Uninitialized: no zero fill or default element construction occurs. Initial construction requires a whole-array initializer or one whole-array assignment; element-by-element writes into an unconstructed array are forbidden. After completed construction and Partial Move, missing elements may be reinitialized through eligible static Move Paths with ordinary write permissions. Whole-value reads and borrows require completeness.
+
+```kimi
+let a: [4 of i32] = [1, 2, 3, 4]
+let inferred: [4 of _] = [1, 2, 3, 4] // [4 of i32]
+let dynamic = [1, 2, 3, 4]            // Array<i32>
+let empty: [0 of i32] = []
+let wrong: [3 of i32] = [1, 2]        // Error: element count.
+let unknown: [0 of _] = []            // Error: unknown element Type.
+let pending: [2 of i32]
+pending = [1, 2] // Whole initial construction; pending[0] = 1 cannot construct it.
+
+let matrix: [3 of [4 of f32]] = [
+    [1.0, 2.0, 3.0, 4.0],
+    [5.0, 6.0, 7.0, 8.0],
+    [9.0, 10.0, 11.0, 12.0],
+]
+let cell = matrix[1][2] // f32 value 7.0; each dimension is checked separately.
+```
+
+##### 3.2.2.4. Function length parameters
+
+Declare a length slot as `<length N>`. A plain `<N>` remains a Type slot; neither signature use nor the body infers a slot's kind. `length` is contextual only at the start of a generic parameter declaration followed by its Name. It does not change ordinary names or `.length`.
+
+First bind the declaration list's kinds, order, and names and reject duplicates; then bind the signature and body. A length slot is a nonnegative isize constant in the Value namespace, not a complete Type or a Semantics/Type pair. Diagnose kind misuse at the use and identify its declaration. Only function length slots are introduced: no value parameters on Type declarations, general Const generics, or source length-constraint syntax.
+
+```kimi
+func process<length N>(values: [N of i32])
+    let count: isize = N
+    ()
+
+func keep<length N, T>(values: [N of T]) -> [N of T] => values
+func work<length N>()
+    let buffer: [N of u8] // Uninitialized; Type and layout are still checked.
+
+let a: [4 of i32] = [1, 2, 3, 4]
+process(a)          // N = 4
+process([1, 2, 3])  // N = 3
+process<4>(a)      // No length keyword in the argument list.
+process<3>(a)      // Error: length mismatch.
+let result = keep<4, i32>(a)
+work<4>()          // A body-only length must still be supplied.
+```
+
+Within each overload candidate, bind explicit arguments first, then infer length and element Type from known fixed-array Types and literals fitted to that candidate. Evidence from all arguments must agree; do not retype an already established Array value. Explicit lists supply all slots in order, using length syntax for length slots and complete Types for Type slots.
+
+Do not solve compound equations backward: `[(N * 2) of T]` is checked after N is fixed elsewhere. An independently known expected Type may fill only unbound parts, never change input-established Types or lengths. Expectations can come from an explicit binding annotation, an already typed assignment destination, a declared function result, or a known parameter Type. Nested calls use an expectation common to all remaining outer candidates or one supplied by an already unique candidate. Explicit `@` targets guide only [permitted inference](#6642-static-selection-and-inference); result constructs propagate expectations under [result validation](#78-result-validation). Bodies, later uses/member accesses, unresolved sibling branches, and candidate traversal order provide no new inference evidence. Do not retry inner overloads separately for competing outer candidates.
+
+```kimi
+func consume<T>(x: Array<T>) => ()
+func consume<length N, T>(x: [N of T]) => ()
+consume([1, 2, 3]) // Error: both fit and neither candidate is better.
+```
+
+Fixed and dynamic array literals receive no automatic preference beyond ordinary candidate comparison.
+
+**Formation obligations.** Each signature length expression E generates `ValidLength(E)`: the indivisible compiler obligation that typed E evaluates with checked integer operations to nonnegative isize. Logical expansion or minimization is not required. A nondependent failure rejects the declaration; a dependent obligation is a public applicability condition. For example, N - 1 needs N >= 1 and N / M needs M != 0, without imposing nonnegativity on all intermediate values.
+
+At concrete calls, check these obligations after inference and before candidate comparison; false obligations eliminate candidates. Their strength neither ranks candidates nor solves lengths backward. A representation failure discovered after selection, such as an excessive concrete layout, cannot reopen overload selection.
+
+Verify the body for every binding satisfying its public conditions. Body lengths and callee conditions must follow from the declaration or produce a definition error; do not defer semantic checking to convenient instantiations or infer extra applicability conditions from the body. Length proof is limited to concrete evaluation, the inherent nonnegative-isize property of length parameters, and reuse of identical normalized formation obligations. Symbolic physical layout remains an ordinary instantiation-time representation obligation.
+
+For signature and formation-obligation comparison, normalize typed expressions by removing grouping, evaluating nondependent subexpressions with checks, and replacing parameter names with corresponding declaration slot positions. Retain Types, operators, and operand order; do not commute, reassociate, or cancel terms. With matching slots and integer Types, N + 4, N + (2 + 2), and ((N + 4)) coincide; 4 + N has different structure. Concrete Type identity and full-specialization keys instead use evaluated lengths. Each length slot counts once in GenericArity.
+
+##### 3.2.2.5. Operations and ownership
+
+Fixed arrays and Array expose public read-only `length: isize` and `indices: ResolvedRange`, with the [metadata acquisition rules](#6441-access-and-length-metadata). Fixed arrays have no resizing operation. Element writes obey ordinary `var`, `let`, and borrowed-access permissions.
+
+A fixed array is Copy exactly when its complete element Type is Copy. Derive Owned and retain element Origins/Loans recursively. Partial Move follows [Move Paths](#913-move-paths-and-partial-move). [Aggregate cleanup](#1032-field-cleanup) destroys remaining initialized elements in decreasing index order, including abandoned construction on ordinary control transfer; skip Uninitialized/Moved parts and recursively clean partly built elements. Abort does not guarantee cleanup.
+
+Array is Non-Copy, requires T is Owned, and obeys the separate retained-borrow storage restrictions in [Core declarations](#1410-required-core-declarations). To obtain a shared view of either owning array form, explicitly slice it.
+
+```kimi
+var values: [4 of i32] = [10, 20, 30, 40]
+values[1] = 25
+let count = values.length
+let middle: Slice<i32> from values = values[1..3]
+```
 
 ### 3.3. Type semantics
 
@@ -637,6 +766,8 @@ In the syntax below, `T` denotes a Core Type; in object forms it may also denote
 
 The source-level Semantics categories are closed sets, as follows. These names occupy the Type namespace's Requirement role when the subject is a Semantics binding; they are neither Core Types nor concrete Semantics prefixes. In that role their built-in meaning cannot be shadowed; elsewhere they remain ordinary contextual Names. A category cannot be written as a value Type or shorthand adaptation target.
 
+A Requirement on a Semantics binding may also name any concrete Semantics listed above (`owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `unsafe`), testing equality with that Semantics. Concrete names and categories combine under the [Requirement expression rules](#442-requirement-expressions), as in `s is ref or obj`.
+
 | Category | Members |
 | --- | --- |
 | value | owner |
@@ -647,7 +778,7 @@ The source-level Semantics categories are closed sets, as follows. These names o
 | owning | owner, obj, rc, arc |
 | reference | ref, uniq, obj, rc, arc, objref, objuniq, unsafe |
 
-In particular, reference means every non-owner representation, including counted ownership and raw pointers; use borrow for safe borrowed representations. Category owning is distinct from the recursive Owned guarantee. No category named owned, counted, pointer, safe, or all is introduced by this table.
+`reference` includes every non-`owner` representation, including raw pointers; it establishes no safe-borrow guarantee. `s is borrow` requires an outer safe borrow; `s is owning or borrow` permits every outer Semantics except `unsafe`. These are outer-layer tests, not recursive guarantees about nested Types or payloads. Category `owning` is distinct from the recursive `Owned` guarantee. No category named `owned`, `counted`, `pointer`, `safe`, or `all` is introduced.
 
 #### 3.3.1. Owned values
 
@@ -686,12 +817,12 @@ Object borrows provide non-owning access to objects, subject to lifetime constra
 References to Contract targets in the object model describe the [runtime Contract extension](#443-runtime-contracts), outside the initial static Contract implementation. Concrete Core Type targets remain governed by the ordinary Object View rules.
 
 ```text
-Object View Type = Object Semantics + View Target + Origin
+Object View Type = Object Semantics + View Target + Outer Origin (for object borrows)
 Object Semantics = obj | rc | arc | objref | objuniq
 View Target      = Core Type | runtime Contract View with fixed associated Types
 ```
 
-An Object View Type is the complete static Type of an object handle or borrow. In `objref/Speaker`, the runtime contract `Speaker` is a View Target, not a Core Type with its own data layout. This extension does not create `owner/Speaker` or `ref/Speaker`.
+An Object View Type is the complete static Type of an object handle or borrow. As in the [projection table](#3371-slots-and-projections), `objref` and `objuniq` require an outer Origin, subject to elision; `obj`, `rc`, and `arc` have none. View Target and payload dependencies remain part of the complete Type. In `objref/Speaker`, the runtime contract `Speaker` is a View Target, not a Core Type with its own data layout. This extension does not create `owner/Speaker` or `ref/Speaker`.
 
 The **Runtime Object Type** (also **Dynamic Type** or **Dynamic Core Type**) is the concrete Core Type actually constructed. Its [Runtime Type Identity](#1481-type-identity-and-descriptors) excludes the handle's outer Semantics and Origin bindings. Static Types still retain every lifetime dependency.
 
@@ -726,7 +857,7 @@ unsafe/ref/T                        // Raw pointer to shared-reference storage.
 ref/(ref/T from inner) from outer    // Separate inner and outer Origins.
 ```
 
-Prefixes associate to the right and bind more tightly than `->`. Thus `ref/ref/T from outer` annotates only the outer reference; it does not assign `outer` to the inner reference. Parentheses enclose a complete Type and allow annotations at each layer. For example, `ref/((i32) -> bool)` borrows a common function value, while `ref/(i32) -> bool` is a function Type with a `ref/i32` parameter. Grouping never creates a Tuple or an additional borrow.
+Prefixes associate to the right. Thus `ref/ref/T from outer` annotates only the outer reference; it does not assign `outer` to the inner reference. Parentheses enclose a complete Type and allow annotations at each layer. For example, `ref/((i32) -> bool)` borrows a common function value, while `(ref/i32) -> bool` has one `ref/i32` parameter. `ref/(i32) -> bool` is invalid because a Function Type requires its own parameter list. Grouping never creates a Tuple or an additional borrow.
 
 Expand aliases and retain every layer for Type identity, applicability, layout, and Origin analysis. `ref/ref/T` is distinct from `ref/T`. `owner/V` is redundant ownership notation for the existing value Type `V`, not an operation that removes its references or Object Semantics; redundant owner prefixes and grouping normalize away. Object Semantics still require a supported Core Type or runtime-contract View Target, not an already Semantics-applied value Type. Consequently `ref/obj/T` is permitted but `obj/ref/T` does not implicitly box a reference. Generic Semantics parameters obey the same restrictions after substitution; generic parameter roles follow the slot rules below.
 
@@ -737,6 +868,8 @@ Copy classification uses the outer effective Semantics: `ref/uniq/T` is Copy, wh
 This syntax adds no implicit repeated dereference, safe `*` operator, or pointer/safe-reference conversion. Borrow formation uses the explicit rules in [Borrow and Reborrow](#6645-explicit-borrow-and-reborrow).
 
 #### 3.3.7. Generic Type parameters
+
+This section defines Type slots. Function length slots use explicit `<length N>` under [length parameters](#3224-function-length-parameters); plain `<N>` remains a Type slot. A length slot accepts no complete Type and is not decomposed as a pair.
 
 ##### 3.3.7.1. Slots and projections
 
@@ -749,6 +882,8 @@ Both parameter forms consume **one complete Type argument**. Preserve Semantics,
          T = DirectTarget(W)
          o = OuterOrigin(W)       // Present only for an outer safe borrow.
 ```
+
+`WholeType`, the projection functions, and `o` are explanatory notation, not source bindings. `<s/T>` declares only `s` and `T`; the original `s/T` retains W's Origins without naming them. Source Origin names use the separate [Origin parameter schema](#93-abstract-origins).
 
 An ordinary `T` denotes a complete value Type, not only a bare Core Type. The pair's `T` has the fixed internal kind **SemanticsTarget**, whose value is a complete value Type or an Object View Target. Using it as a standalone value Type in a generic body requires proof of that role under the declared Constraints at definition checking; only the remaining proved symbolic substitution may be a [deferred obligation](#5210-deferred-generic-obligations). Its kind does not change at instantiation.
 
@@ -789,7 +924,7 @@ For `W = ref/i32 from a`, `s/T from b` forms `ref/i32 from b`. Formation does no
 | Unsized or unspecified representation | No new such Type is introduced; a valid Type must additionally meet layout requirements at each storage use |
 | Bare Contract, group, bare Semantics, general value argument | Not a complete value Type argument; a Contract can appear only in an already permitted Object View Type |
 
-Explicit argument lists supply every slot in declaration order, with optional trailing commas. Omitting the entire list uses only the inference supported by that construct. Partial lists, `_` placeholders, defaults, variadic slots, and general Const generics are not introduced. `<s/T, U>` takes two arguments such as `<ref/i32 from a, string>`; `<ref, i32>` cannot supply one pair. Origin parameters have a separate schema and consume no Type argument slots.
+Explicit argument lists supply every slot in declaration order, with optional trailing commas. Omitting the entire list uses only the inference supported by that construct. Partial lists, `_` placeholders, defaults, variadic slots, and general Const generics are not introduced. Only [function length slots](#3224-function-length-parameters) admit the specified length arguments. `<s/T, U>` takes two arguments such as `<ref/i32 from a, string>`; `<ref, i32>` cannot supply one pair. Origin parameters have a separate schema and consume no Type argument slots.
 
 A valid Type argument is not permission to use it in every role. Keep constraints on base Types, associated Types, storage, finite layout, Copy derivation, escape, and Object payload erasure. Instance storage may retain Type-argument Origins under [storage contracts](#94-origin-elision-and-return-contracts); static storage still rejects safe-borrow retention. No blanket `Storable` Constraint is added.
 
@@ -849,7 +984,8 @@ node = makeNode()
 | `ref/T`, `objref/T`, `unsafe/T` | Copy regardless of referent `T` |
 | `uniq/T`, `objuniq/T` | Non-Copy |
 | `obj/T`, `rc/T`, `arc/T` | Non-Copy even if `T` is Copy |
-| Slice | Shared-borrow representation: Copy; exclusive-borrow representation: non-Copy |
+| Slice<T> from source | Copy shared handle regardless of T; no exclusive-element Slice is introduced |
+| Index, Range, ResolvedRange | Copy |
 | Function Item | Copy |
 | Concrete Closure | Copy exactly when every captured complete Type is Copy; empty environments qualify |
 | Owned common Function Type | Non-Copy regardless of its hidden environment |
@@ -960,6 +1096,8 @@ Borrow and Slice formation never extend the source's lifetime. Result transfers 
 ### 3.7. Origins and loans: overview
 
 Kimigayo uses **Origins** instead of lifetime variables. An Origin describes how long a borrow remains valid; a **Loan** records which place is borrowed and whether the borrow is shared or exclusive.
+
+The relation notation `a : b` means that `a` outlives `b`, including equality: `region(a) ⊇ region(b)`. It is not a source declaration form; see [Origin ordering](#922-ordering-and-intersection).
 
 Origin annotations appear in signatures and type declarations. Local Origins may be inferred from initializers and ordinary Origin/Loan constraints. Omission is permitted only by the [position-specific rules](#94-origin-elision-and-return-contracts): direct borrowed inputs introduce input Origins, results use conservative elision, and instance Stored Properties require explicit Origin bindings. Static Stored Properties may not retain safe borrows in this revision.
 
@@ -1164,7 +1302,7 @@ A Signature determines whether declarations may coexist in one scope:
 | Property | Name |
 | Enum Case | Name within its enum; no payload overloads |
 
-**GenericArity** counts Type argument slots; a pair counts as one. **OriginArity** counts explicitly declared Origin parameters, excluding Origins projected from a Type slot and inference variables. Origin schemas govern binding and fragment compatibility, not additional overloads. Thus `View<T> origin source` and `View<T> origin left, right` cannot coexist as same-name, same-arity Type overloads.
+**GenericArity** counts generic argument slots, including function length slots; a pair counts as one. **OriginArity** counts explicitly declared Origin parameters, excluding Origins projected from a Type slot and inference variables. Origin schemas govern binding and fragment compatibility, not additional overloads. Thus `View<T> origin source` and `View<T> origin left, right` cannot coexist as same-name, same-arity Type overloads.
 
 Normalize by resolved Symbol and Kotonoha/version, expanding transparent aliases and resolved associated-Type projections and removing grouping and redundant owner prefixes. Preserve every Semantics layer. Represent generic expressions structurally using the declared binder and slot position:
 
@@ -1174,6 +1312,7 @@ Normalize by resolved Symbol and Kotonoha/version, expanding transparent aliases
 | Pair s / pair T | `OuterSemantics(Slot(i))` / `DirectTarget(Slot(i))` |
 | Original pair `s/T` | `Slot(i)` |
 | s applied to another slot U | `Apply(OuterSemantics(Slot(i)), Slot(j))` |
+| Length N / fixed array | `LengthSlot(i)` / `FixedArray(LengthExpression, ElementType)`; compare lengths under [normalization](#3224-function-length-parameters). |
 
 Apply these rewrites recursively and compare by structural alpha-equivalence. Do not simplify using accidental equality after instantiation or arbitrary Constraint proofs. Pair target T alone is not Slot(i). Slot kind controls binding and validation but cannot alone distinguish overloads: `f<T>(value: T)` and `f<s/U>(value: s/U)` conflict. `ref/T` and `uniq/T`, including receivers, remain distinct. Applied Semantics distinguish use-site Types, not Container identities.
 
@@ -1884,7 +2023,9 @@ Function Types retain neither argument names nor defaults. Calls through functio
 
 #### 4.6.5. Explicit full function specialization
 
-An **explicit full specialization** supplies an implementation for one closed set of static Type arguments of an existing generic function. It preserves that function's call contract, but may produce different results or side effects. Selecting a matching specialization is mandatory, not an optional optimization.
+An **explicit full specialization** supplies an implementation for one closed set of static generic arguments of an existing generic function. It preserves that function's call contract, but may produce different results or side effects. Selecting a matching specialization is mandatory, not an optional optimization.
+
+Generic arguments here include function length slots. Evaluate them under [length rules](#3224-function-length-parameters), leaving no unbound length. `LengthKey(N)` identifies a length by its integer value. The Type/Origin-specific checks below apply to Type slots.
 
 ##### 4.6.5.1. Declaration and target identification
 
@@ -1900,14 +2041,14 @@ specialize func process<i32>(value: i32) -> ()
 
 `specialize` is a contextual declaration introducer before `func`. A specialization has a single unqualified Name, explicit Type arguments, explicitly typed parameters, an optional result Type, and an ordinary Block or Expression body. It declares no Type parameters and does not automatically introduce the original function's Type parameter names into its body. Origin binders are inherited, not newly declared. Omitted results mean Unit, even if the original's substituted result is non-Unit; write that result explicitly.
 
-Supply all of the function's own Type slots in declaration order, using their original kinds. Ordinary and pair slots each take one complete Type. After alias and associated-Type normalization, every Core Type and Semantics component must be fixed: no unbound Type/Semantics parameter, unresolved projection, or outer generic parameter may remain. `List<i32>` is closed; `List<T>` with unbound T is not. `Self` is allowed only when ordinary resolution meets the same rule. Origins are checked separately below. These restrictions apply to specialization declarations, not to dependent Types in ordinary generic bodies.
+Supply all of the function's own generic slots in declaration order, using their original kinds. Ordinary and pair Type slots each take one complete Type. After alias and associated-Type normalization, every Core Type and Semantics component must be fixed: no unbound Type/Semantics parameter, unresolved projection, or outer generic parameter may remain. `List<i32>` is closed; `List<T>` with unbound T is not. `Self` is allowed only when ordinary resolution meets the same rule. Origins are checked separately below. These restrictions apply to specialization declarations, not to dependent Types in ordinary generic bodies.
 
 The target must be a named generic type function or instance method with an ordinary implementation. Constructors, `deinit`, accessors, and dedicated operator declarations are excluded. Partial or conditional specialization, omitted arguments, placeholders, priority rules, general Const arguments, specializing a generic Container's arguments, methods with unbound outer generic parameters, and explicit target-Identity syntax are not introduced.
 
 First reject duplicate ordinary declarations. Then identify the original function:
 
-1. Collect same-name generic functions in the same declaration Container with the same function kind (type function or instance method) and Type slot count.
-2. Bind the written Type arguments using each candidate's slot definitions. Match the substituted receiver presence and Type structure and the ordinary parameters' count, order, and normalized Type structure. Form and validate complete Types before excluding Origins for this structural comparison.
+1. Collect same-name generic functions in the same declaration Container with the same function kind (type function or instance method) and generic slot count.
+2. Bind the written generic arguments using each candidate's slot definitions. Match the substituted receiver presence and Type structure and the ordinary parameters' count, order, and normalized Type structure. Form and validate complete Types before excluding Origins for this structural comparison.
 3. Zero matches is an error; multiple matches is an ambiguous specialization declaration. For exactly one match, validate the inherited contract.
 
 Do not use result Types, parameter names, Constraint satisfaction, Origin relationships, implicit adaptation, slot kind alone, ordinary overload ranking, or declaration/file order to resolve ambiguity. A failed contract check cannot select another target.
@@ -1949,9 +2090,9 @@ Validate all necessary Type Origins before comparison. After matching inherited 
 
 ##### 4.6.5.3. Selection and declaration ownership
 
-Use the [Implementation Selection Key](#1492-identity-and-generation-keys): the original function's declaration Identity and its ordered, normalized static Type arguments with only Origins excluded. Preserve nominal identity, nested structure, and every Semantics layer, including an outer object handle. `obj/D` and `rc/D` therefore have different keys even when they identify the same dynamic payload Type. Two specialization declarations with the same key are an error.
+Use the [Implementation Selection Key](#1492-identity-and-generation-keys): the original function's declaration Identity and its ordered, normalized static generic arguments with only Origins excluded. Preserve nominal identity, nested structure, and every Semantics layer, including an outer object handle. `obj/D` and `rc/D` therefore have different keys even when they identify the same dynamic payload Type. Two specialization declarations with the same key are an error.
 
-Calls and function references first use ordinary lookup, overload resolution, inference, and the original contract's Type, Constraint, Origin, and Loan checks. Specializations never enter the candidate set or supply inference evidence. Once the static Type arguments determine a key, use its matching specialization, or the ordinary implementation if none exists. Do not inspect a value's Dynamic Type, including behind a base or Contract View, to change this selection.
+Calls and function references first use ordinary lookup, overload resolution, inference, and the original contract's Type, Constraint, Origin, and Loan checks. Specializations never enter the candidate set or supply inference evidence. Once the static generic arguments determine a key, use its matching specialization, or the ordinary implementation if none exists. Do not inspect a value's Dynamic Type, including behind a base or Contract View, to change this selection.
 
 ```kimi
 // classify and its i32 specialization are declared above.
@@ -1960,9 +2101,9 @@ let number: i32 = 10
 let result = forward<i32>(number@ref) // 1, including with shared generic code.
 ```
 
-A generic caller cannot be fixed to the ordinary implementation merely because its Type arguments were initially unknown. This guarantee is independent of code sharing, separate compilation, optimization level, and LTO. Function references obey the same choice and their existing restrictions, including the ban on unsafe function values.
+A generic caller cannot be fixed to the ordinary implementation merely because its generic arguments were initially unknown. This guarantee is independent of code sharing, separate compilation, optimization level, and LTO. Function references obey the same choice and their existing restrictions, including the ban on unsafe function values.
 
-There is no direct name for the specialization or syntax to bypass it and call the ordinary body. Calling the same function with the same Type arguments from its specialization selects that specialization again and is recursive; move common work to a helper. A specialization-body error never falls back to another body or overload.
+There is no direct name for the specialization or syntax to bypass it and call the ordinary body. Calling the same function with the same generic arguments from its specialization selects that specialization again and is recursive; move common work to a helper. A specialization-body error never falls back to another body or overload.
 
 Specializations belong to the original function's Kotonoha and declaration Container. Existing Container fragments may put them in another file; unrelated extensions and other Kotonoha libraries cannot add or replace them. The defining Kotonoha closes the specialization set after environment selection and declaration collection, including generated sources, before finalizing affected call targets and no later than artifact finalization. Declaration and loading order cannot affect selection. Verification, artifact information, and invalidation follow [generic code generation](#149-generic-code-generation).
 
@@ -2080,7 +2221,7 @@ Namespaces separate declaration kinds; a **Lookup Role** filters candidates by s
 | Namespace | Declarations |
 | --- | --- |
 | Type | Containers, Kotonoha reference names, Core Type and Semantics parameters, associated Types, `Self`, and built-in Semantics/category requirements |
-| Value | Functions, Properties, enum Cases, parameters, locals, local functions |
+| Value | Functions, Properties, enum Cases, parameters, locals, local functions, function length parameters |
 | Origin | Origin declarations |
 | Label | Labels; use the dedicated transfer-target rules |
 
@@ -2382,7 +2523,7 @@ Pairwise comparison yields better, worse, equivalent, or incomparable. **Proceed
 
 1. Compare adaptation quality for the receiver and each explicit source argument. A dominates B only if it is no worse everywhere and better somewhere. All equal proceeds; opposing advantages are incomparable. Match named arguments by the same source expression, not candidate parameter order. Exclude defaults and never sum numeric costs.
 2. Compare substituted parameter Types at the same positions. A dominates B if every Type is equal or a defined subtype and at least one is a strict subtype. All equal proceeds; unrelated Types or opposing subtype advantages are incomparable.
-3. Prefer a function with no type parameters of its own. A generic enclosing Type alone does not make the function generic.
+3. Prefer a function with no generic parameters of its own, including length parameters. A generic enclosing Type alone does not make the function generic.
 4. Prefer fewer defaults used by this call.
 5. Otherwise report ambiguity.
 
@@ -2406,7 +2547,7 @@ These rules deliberately leave owner-to-`ref`/`uniq` overloads ambiguous. Any pr
 
 Fix local Types at declaration; later uses cannot infer backward. Every named function, including local functions, methods, and Contract function requirements, has an explicit return Type or defaults to Unit when `-> Type` is omitted. This rule is independent of accessibility and applies to both Block and Expression bodies. Resolve that signature without inferring a return Type from the body or callers, and validate [API signature accessibility](#5122-api-signature-accessibility). Generic return Types may be explicitly written expressions over parameters; substituting them does not reanalyze a body. Local binding inference and [anonymous-function inference](#6431-syntax-and-inference) remain available.
 
-Explicit Type arguments follow the [slot rules](#337-generic-type-parameters). Omitted defaults do not infer generic arguments. Explicit specializations do not participate in inference or overload applicability; select an implementation only after the original declaration and its static Type arguments are determined.
+Explicit Type arguments follow the [slot rules](#337-generic-type-parameters). Omitted defaults do not infer generic arguments. Explicit specializations do not participate in inference or overload applicability; select an implementation only after the original declaration and its static generic arguments are determined.
 
 Generic inference and substitution use the [complete-Type slots and projections](#337-generic-type-parameters), preserving all bound Origins and inferred Loan requirements, including nested dependencies. A surrounding borrow such as `ref/T` retains `T`'s internal dependencies alongside its own Origin and Loan. Substitution alone creates no Borrow/Reborrow, releases no Loan, and extends no lifetime; actual call-site checks follow [Ownership and Origin rules](#9-ownership-and-lifetime-analysis).
 
@@ -2495,6 +2636,8 @@ Implicit erasure applies only after the expected common Function Type is fixed. 
 
 #### 5.2.9. Generic argument inference
 
+Apply the additional [fixed-array inference rules](#3224-function-length-parameters) to lengths and literal element counts. Keep lengths alongside Type, Semantics, and Origin bindings within each candidate, with results independent of argument traversal order.
+
 Within each candidate, bind explicit arguments first. Otherwise collect structural Type, Semantics, and Origin constraints from the receiver and independently typable arguments together; do not fix the first input and adapt later inputs to it. Use an independently known expected result only for still-unbound parts, without changing input-established Types or Semantics. Apply the existing nested-expression boundaries and literal fitting, using literal defaults only after other evidence has been processed.
 
 Infer unbound s directly from the source's outer Semantics. Do not search implicit Borrow/Reborrow or other conversions for a common Semantics: owner and ref evidence for the same s conflicts. Once a target Type is fixed, including by explicit arguments, check normal adaptation separately. Origin inference uses the [limited principal-solution rules](#934-generic-origin-inference).
@@ -2505,7 +2648,7 @@ Do not use argument/candidate traversal order, arbitrary conversion chains, comm
 
 #### 5.2.10. Deferred generic obligations
 
-**Universal body verification.** An ordinary generic body must be semantically valid for every well-formed Type/Origin argument binding satisfying its declared Constraints and public Signature requirements. Verify this before accepting or exporting the definition, including definitions with no uses. Use the limited proof system of §4.4.5 and symbolic Type/Origin/effect rules; do not enumerate available Types or infer a hidden capability Constraint from the body. Failure to establish the required proof is a definition error. Explicit specializations cannot rescue an invalid ordinary body.
+**Universal body verification.** An ordinary generic body must be semantically valid for every well-formed Type/length/Origin argument binding satisfying its declared Constraints and public Signature requirements. Verify this before accepting or exporting the definition, including definitions with no uses. Use the limited proof system of §4.4.5 and symbolic Type/Origin/effect rules; do not enumerate available Types or infer a hidden capability Constraint from the body. Failure to establish the required proof is a definition error. Explicit specializations cannot rescue an invalid ordinary body.
 
 This requirement fixes meaning, not a physical compiler-pass schedule. Dependencies on other declarations may delay checking within the build, but an unverified definition cannot be accepted merely because selected concrete instantiations succeed. In particular, a generic call to another generic function must prove that function's declared requirements from the caller's declared premises.
 
@@ -2545,7 +2688,7 @@ Diagnostics for definition errors identify the body use and missing declared pro
 
 The following boundaries remain separately specified. Implementations must not invent them through broader search:
 
-- General Const arguments, standalone Semantics slots, partial/default/variadic generic arguments, and partial or conditional explicit specialization are not introduced. Their syntax and identity rules need separate designs.
+- General Const arguments beyond [function lengths](#3224-function-length-parameters), standalone Semantics slots, partial/default/variadic generic arguments, and partial/conditional specialization are not introduced.
 - Additional implicit argument/receiver adaptations beyond the defined applicability table; exact contextual-binding boundaries for additional accessor/function forms. The explicit Borrow table does not add implicit overload preferences.
 - Operator/indexer candidate collection and explicit selection syntax; combining optional `?` with external/internal parameter-name syntax. Constructor collection is defined under [constructors](#433-constructors).
 
@@ -2622,7 +2765,7 @@ Evaluate operands once, from left to right, unless a construct specifies an exce
 | `start()..end()` | Start boundary, end boundary. |
 | `"\(a()) / \(b())"` | Evaluate and stringify each interpolation in source order. |
 
-`and`, `or`, and selections evaluate only the required operands or branches. [Simple assignment](#671-simple-assignment) evaluates and secures its right side before its target; compound assignment retains target-first evaluation. Type arguments and conversion target Types are not evaluated at runtime.
+`and`, `or`, and selections evaluate only the required operands or branches. [Simple assignment](#671-simple-assignment) evaluates and secures its right side before its target; compound assignment retains target-first evaluation. Type arguments, length arguments, and adaptation-target Type formation are not evaluated at runtime.
 
 An abrupt Completion, divergence, or Abort prevents evaluation of later operands and the enclosing operation. Unevaluated syntax still undergoes name, Type, and transfer-target checks; syntax excluded by `#if` / `#match` follows [conditional compilation](#13-compile-time-directives). [Temporary lifetimes](#36-temporary-values-places-and-lifetimes) and scope-exit rules govern retained values.
 
@@ -2653,7 +2796,7 @@ During [overload resolution](#52-overload-resolution-and-inference), fit unresol
 | Form | Meaning |
 | --- | --- |
 | `name` | Reference to a visible binding, function, or other named entity. |
-| `123`, `0xff`, `1.5`, `true`, `'あ'`, `"text"` | Scalar literals; see [lexical structure](#2-source-and-lexical-structure). |
+| `123`, `0xff`, `1.5`, `true`, `'€'`, `"text"` | Scalar literals; see [lexical structure](#2-source-and-lexical-structure). |
 | `"value = \(value)"` | Interpolated string; the embedded Type must support stringification. |
 | `null` | Contextually typed [raw null pointer](#381-null-and-equality). |
 | `()` | Unit value. |
@@ -2725,7 +2868,7 @@ Argument mapping, Type adaptation, expected-result filtering, candidate comparis
 
 In an expression, `<` introducing type arguments must be adjacent to the target name and have a matching `>`. Thus `f<T>(x)` applies type arguments while `a < b` compares values. Nested type arguments may split `>>` into two closing delimiters. Use spaces around comparison operators to avoid ambiguity.
 
-Type arguments follow [slot binding](#337-generic-type-parameters) and [inference boundaries](#525-inference-boundaries-and-specialization); general Const arguments are not introduced. After ordinary call resolution, select any matching [explicit specialization](#465-explicit-full-function-specialization). Structure construction uses the dedicated [Type.init invocation](#433-constructors), with ordinary call argument evaluation and its own Type-only qualifier lookup. `T(args)` is not a constructor shorthand.
+Generic arguments follow [slot binding](#337-generic-type-parameters), [function length slots](#322-sequence-types), and [inference boundaries](#525-inference-boundaries-and-specialization); other general Const arguments are not introduced. After ordinary call resolution, select any matching [explicit specialization](#465-explicit-full-function-specialization). Structure construction uses the dedicated [Type.init invocation](#433-constructors), with ordinary call argument evaluation and its own Type-only qualifier lookup. `T(args)` is not a constructor shorthand.
 
 #### 6.4.3. Function expressions
 
@@ -2828,7 +2971,7 @@ The internal call signature retains complete receiver/parameter/result Types, pe
 
 ##### 6.4.3.4. Function references and common-type conversion
 
-A resolved function reference produces its Function Item Type, including its bound generic Type arguments and Origin contract. Different declarations remain distinct. Function Item ownership is Copy/Owned/Shared and does not erase borrowed parameter/result contracts. A runtime method receiver is not automatically bound; follow explicit receiver argument rules. Unsafe functions and `deinit` cannot be acquired as values.
+A resolved function reference produces its Function Item Type, including its bound generic arguments and Origin contract. Different declarations remain distinct. Function Item ownership is Copy/Owned/Shared and does not erase borrowed parameter/result contracts. A runtime method receiver is not automatically bound; follow explicit receiver argument rules. Unsafe functions and `deinit` cannot be acquired as values.
 
 ```kimi
 func add(x: i32, y: i32) -> i32 => x + y
@@ -2854,46 +2997,280 @@ Erasure is an owning-container conversion distinct from source Copy/Move; it doe
 
 #### 6.4.4. Indexing and slicing
 
-This section describes indexing values with a length. [Raw pointer indexing](#383-pointer-arithmetic-and-indexing) instead uses signed offsets, has no implicit bounds check, and forbids from-end and Range indexing.
+##### 6.4.4.1. Access and length metadata
 
-An element Index may be a nonnegative `isize` or a From-end Index `^n`. Applying it with `value[index]` selects one element; the resolved Index must satisfy `0 <= index < length`.
+These built-in operations apply to `[N of T]`, `Array<T>`, and `Slice<T>`. Element indexing accepts isize or Index; range indexing accepts Range or ResolvedRange. Dictionary indexing instead takes keys. [Raw pointers](#383-pointer-arithmetic-and-indexing) retain signed-isize offsets without safe sequence bounds checks and accept neither Index nor Range. String indexing units and user-defined indexers are not introduced.
 
-A prefix caret denotes an Index measured from the end. `^n` resolves to `length - n`, where `n` is a nonnegative `isize`. Therefore, `^1` selects the last element. `^0` is a valid Range boundary but is not a valid element Index. Infix `^` remains the exclusive-or operator.
+| Core Type | Meaning |
+| --- | --- |
+| Index | Copy, Owned position measured from the start or end; retains no target |
+| Range | Copy, Owned unresolved boundaries and end-inclusion flag; not Iterable |
+| ResolvedRange | Copy, Owned validated absolute half-open interval; finite isize iteration |
+| `Slice<T>` from source | Copy shared view, independent of T's Copy capability; retains backing Origin and shared Loan |
 
-A Range is an expression with optional start and end boundaries. Each explicit boundary is either a nonnegative `isize` Index or a from-end Index.
+These names are not keywords; `::Core.Index`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Core Types, never same-named user Types.
 
-| Form       | Selected boundaries                  |
-| ---------- | ------------------------------------ |
-| `start..end`  | From `start`, excluding `end`     |
-| `start..=end` | From `start`, including `end`     |
-| `start..`     | From `start` to the end            |
-| `..end`       | From the beginning, excluding `end` |
-| `..=end`      | From the beginning, including `end` |
-| `..`          | The entire range                   |
+**Length metadata.** Fixed arrays and Array provide length and indices; Slice also provides isEmpty. Evaluate the receiver once and require ordinary initialization, completeness, and access legality. Knowing a fixed length does not erase receiver effects or checks.
 
-The omitted start boundary is zero. The omitted end boundary is the length of the indexed value and is exclusive. An inclusive Range must have an end boundary. A Range retains its boundary information until application to a sequence resolves length-dependent boundaries.
+| Receiver | Acquisition |
+| --- | --- |
+| Fixed array | Check shared access and use Type-level N without reading elements |
+| Array | Share access during the operation and read its current length |
+| Slice | Copy the handle and read its stored length, without reading backing elements |
 
-Ranges are non-associative; an unparenthesized chained Range such as `a..b..c` is invalid. Parentheses do not make a Range a valid numeric boundary of another Range. See the [precedence table](#65-precedence-and-associativity).
+Returned integers, Booleans, and ResolvedRange values acquire no receiver/source Origin or Loan; this does not release existing Loans. indices is a snapshot of [0, L) at acquisition. Resizing an Array does not update a saved snapshot; later accesses check the then-current length.
 
-Applying a Range with `value[range]` produces a Slice over the selected consecutive elements. A Slice does not copy its elements. Its Origin derives from the indexed value, so it cannot outlive that value.
+**Element Places.** Bind the receiver and index Types, resolve bounds, and check access to produce an element Place carrying complete Type T, source location, and permissions. Place formation itself performs no element Copy/Move. Chained access such as `matrix[1][2] = 10` preserves Places without copying an intermediate inner array.
 
-For `Array<T>`, `[T; N]`, and `Slice<T>`, this result is the shared Core `Slice<T>`. Its shared Loan prohibits overlapping mutation, replacement, or invalidation while live, including reallocation of a backing Array. A slice of a slice retains the backing-storage dependency. Non-Copy element extraction through dynamic indexing or a Slice is not authorized.
+| Use | Operation after locating the Place |
+| --- | --- |
+| `values[i] = value` | Ordinary initialization/replacement with write permissions and Loan checks |
+| `values[i]@ref` / `@uniq` | Shared/exclusive borrow of that Place; exclusive access requires write permission |
+| `values[i]@move` | Explicit Move only through an eligible static Move Path of an owned fixed array |
+| Ordinary value read | Copy/Move on an eligible owned fixed-array static Move Path; otherwise shared reading |
 
-After resolving from-end boundaries, an exclusive Range must satisfy `0 <= start <= end <= length`. An inclusive Range must satisfy `0 <= start <= end < length`. An exclusive Range with equal boundaries is empty.
-
-Invalid Indices or boundaries, including negative `n` in `^n`, are check failures under [Abort Termination](#113-abort-termination). Safe sequence access may omit a check only when safety is proven.
+Static paths use only the [integer-literal recognition rule](#913-move-paths-and-partial-move). Array, runtime indices, Index values, and paths through borrows do not become movable. Ordinary reads Copy when allowed; eligible Non-Copy static elements Move. Other reads follow the [shared result rules](#6446-slice-operations-and-element-results), including Object Semantics and Reborrow rather than an unconditional ref/T result. Explicit @move also Moves Copy values and cannot fall back to reading. @ref borrows the element Place regardless of index form. Slice Places are shared-only.
 
 ```kimi
-let values = [10, 20, 30, 40]
-let last = values[^1]       // 40
-let middle = values[1..^1]  // Slice referring to 20 and 30.
-let all = values[..]
-let empty = values[2..2]
+// resources is an owned fixed array of Non-Copy value Type Resource.
+let i: isize = 0
+let view = resources[i]   // ref/Resource; the element remains.
+// End all required uses of view before the following Move.
+let taken = resources[0] // Ordinary Move; resources[0] becomes Moved.
+
+var numbers: [2 of i32] = [10, 20]
+let copied = numbers[0]     // Copy; source remains Initialized.
+let moved = numbers[0]@move // Explicit Move even for i32.
+numbers[0] = 30            // Repair an already constructed array.
+let bad = numbers[i]@move  // Error: not a static Move Path.
 ```
 
-Dictionary indexing is a separate operation: reading `dictionary[key]` requires an existing key and initiates implicit Abort if it is absent. Fallible lookup, insertion, and user-defined indexer declarations require separate library rules. Integer indexing into a `string` does not yet select a character; the specification must first choose byte, Unicode scalar, or grapheme indexing.
+##### 6.4.4.2. Index
 
-Target and index evaluation follows [evaluation order](#62-evaluation-order).
+Index exposes public read-only `offset: isize` and `isFromEnd: bool`. Its constructor is `init(offset: isize, fromEnd?: bool = false)`.
+
+| Construction | Meaning |
+| --- | --- |
+| `Index.init(n)` | Offset n from the start; the first element is zero |
+| `Index.init(n, fromEnd: true)` / `^n` | Offset n backward from the end boundary |
+
+Prefix ^ produces a storable, passable Index outside indexing expressions too; infix ^ remains integer exclusive-or. Write `^(n + 1)` for a compound from-end distance. Integer indices, range boundaries, and ^ operands have expected Type isize. Already typed i32/usize values require normal explicit conversion. An isize in an index/boundary position denotes a start-relative offset; this adds no general implicit conversion between isize and Index.
+
+Construction with a negative offset initiates Abort without consulting a target length. At length L, start-relative n resolves to n and end-relative n to L - n. Thus ^1 selects the last element and ^0 denotes the one-past-end boundary.
+
+Index implements Equatable by direction and offset, not by coincidental resolution to the same target position. It provides neither Comparable nor arithmetic.
+
+```kimi
+let first: Index = Index.init(0)
+let last: Index = ^1
+let values: [4 of i32] = [10, 20, 30, 40]
+let a = values[first] // 10
+let b = values[last]  // 40
+let end = ^0         // Valid Index; values[end] is out of bounds.
+```
+
+##### 6.4.4.3. Range and ResolvedRange
+
+**Range** is a nongeneric unresolved range specification, constructed only by range syntax; no Range.init is introduced. Boundaries accept isize or Index and normalize integers to start-relative Index values. A negative integer boundary initiates Abort at construction.
+
+| Syntax | Interval |
+| --- | --- |
+| `start..end` | Include start, exclude end |
+| `start..=end` | Include both boundaries |
+| `start..` | From start through the target's end |
+| `..end` / `..=end` | From the start, excluding/including end |
+| `..` | Entire target |
+
+Range exposes public read-only `start: Index`, `end: Index`, and `isInclusive: bool`. Omitted start normalizes to start-relative zero, omitted end to ^0. An inclusive end cannot be omitted. Construction neither borrows an array nor checks boundary order. A saved Range can apply to different targets; it has no target-independent length or isEmpty.
+
+Range implements Equatable by normalized start, end, and isInclusive. Thus .. equals 0..^0, but 1..3 differs from 1..=2. To compare resolved intervals, compare their ResolvedRange values.
+
+**ResolvedRange** always satisfies 0 <= start <= end <= maximum isize. It exposes public read-only `start: isize`, `end: isize`, `length: isize = end - start`, and `isEmpty: bool`. Obtain it through Range.resolve/tryResolve, sequence indices, or `ResolvedRange.init(start: isize, end: isize)`; invalid constructor bounds initiate Abort. No setter or implicit construction bypasses validation.
+
+ResolvedRange implements Equatable by start and end. It retains no storage Origin/Loan; application to an array or Slice rechecks the target bounds. Neither range Type implements Comparable, and no implicit conversion or cross-Type equality is provided.
+
+**Iteration.** Of the two range Types, only ResolvedRange implements Iterable with Element = isize. It yields start through end - 1 in increasing steps of one, produces no values for an empty interval, and remains exhausted after the first None. Never compute a value beyond end, even at maximum isize. Range is not Iterable even when its syntax uses absolute boundaries; conformance cannot depend on value or spelling. Use values.indices for array-index iteration and explicit construction/resolution for other intervals. Infinite iteration, descending/stepped ranges, negative integer intervals, and dedicated ResolvedRange syntax are not introduced.
+
+```kimi
+let inner: Range = 1..^1
+let values: [4 of i32] = [10, 20, 30, 40]
+let middle = values[inner]
+for i in values.indices
+    let value = values[i]
+let resolved = inner.resolve(values.length)
+for i in resolved
+    let value = values[i] // Indices 1 and 2.
+for i in 0..values.length // Error: Range is not Iterable.
+    ()
+```
+
+Ranges are non-associative and bind below logical/arithmetic operations but above assignment. Prefix ^ has ordinary prefix precedence. Reject a..b..c syntactically and (a..b)..c by boundary Type.
+
+| Expression | Interpretation |
+| --- | --- |
+| `a + 1..b * 2` | (a + 1)..(b * 2) |
+| `^n + 1` | (^n) + 1; Type error because Index has no addition |
+| `^(n + 1)` | From-end distance n + 1 |
+| `0..^1` | 0..(^1) |
+| `a ^ b..c` | (a ^ b)..c; integer exclusive-or first |
+
+##### 6.4.4.4. Bounds, evaluation, and failure
+
+Target length L is a nonnegative isize. Resolve boundaries to absolute positions and check the following conditions without clamping or turning reversed intervals into empty ones.
+
+| Operation | Valid condition | Result |
+| --- | --- | --- |
+| Index boundary resolution | 0 <= n <= L | n from the start, L - n from the end |
+| Element access | 0 <= resolved p < L | Element p |
+| Half-open Range | 0 <= start <= end <= L | [start, end) |
+| Inclusive Range | 0 <= start <= end < L | Normalize to [start, end + 1) |
+| ResolvedRange application | 0 <= start <= end <= L | [start, end) |
+
+Check n <= L before from-end subtraction and end < L before adding one to an inclusive end; valid resolution cannot overflow.
+
+| Operation | Result Type | Invalid length/bounds |
+| --- | --- | --- |
+| index.resolve(length) | isize boundary | Abort |
+| index.tryResolve(length) | `Option<isize>` | None |
+| range.resolve(length) | ResolvedRange | Abort |
+| range.tryResolve(length) | `Option<ResolvedRange>` | None |
+
+Here index is Index, range is Range, and length is isize. These operations take small Copy values and access no target storage. Successful Index resolution validates a boundary, not an element: (^0).resolve(L) returns L. A valid ResolvedRange may still fail on a shorter target.
+
+```kimi
+let r = ResolvedRange.init(start: 2, end: 5)
+let shortArray: [3 of i32] = [1, 2, 3]
+let checked = shortArray[..].trySlice(r) // None.
+let failed = shortArray[r]              // Abort if executed.
+```
+
+values[..] and values[L..] also apply to empty arrays. values[L..L] and values[^0..] are empty; element index L or ^0, and an inclusive end of ^0, are invalid.
+
+Ordinary element/range indexing initiates Abort on invalid bounds. Use Slice.tryGet/trySlice for expected input failures. A try operation converts only its own length/bounds failure to None, not failures in argument evaluation or other operations: slice.tryGet(^(-1)) aborts during Index construction, while slice.tryGet(-1) returns None. Successful try operations return Some.
+
+Evaluate the receiver and index once under [evaluation order](#62-evaluation-order). A range expression evaluates start then end, then checks integer boundaries for nonnegativity in the same order. Failures inside boundary expressions, including ^ construction, stop subsequent evaluation immediately. These are independent failure examples:
+
+```kimi
+func sideEffect() -> isize
+    return 2 // Represents an observable effect.
+
+let a = (-1)..sideEffect()  // Evaluate sideEffect, then Abort constructing Range.
+let b = ^(-1)..sideEffect() // Abort constructing Index; do not call sideEffect.
+```
+
+Locate the built-in access receiver first. While evaluating its index, prohibit modification, destruction, Move, or reallocation of that storage; shared reads remain allowed, including values[values.length - 1]. Establish a write's exclusive Loan after resolving bounds and check existing Loans. Never reevaluate the receiver or boundaries. For a Slice, first Copy its handle; reassigning the original handle does not change the acquired view.
+
+[Simple assignment](#671-simple-assignment) secures its RHS before locating the indexed target. [Compound assignment](#672-compound-assignment) evaluates receiver/index, checks bounds, reads the old value, evaluates the RHS, computes, and writes back, once each. Increment/decrement use the same target/Loan rules. Arithmetic failure prevents writeback, and the established exclusive Loan forbids conflicting RHS access. [Exchange operations](#97-initialization-preserving-exchange) evaluate arguments left to right, retaining each target's exclusive Loan during later arguments; Swap requires static non-overlap, not merely runtime i != j. Exchange/Swap remain conceptual names with no additional source API here.
+
+Apply the common [Abort and constant-evaluation rules](#1134-checks-builds-and-constant-evaluation). Syntax, Type, literal-fitting, and required constant-evaluation violations are compile-time errors. Ordinary out-of-bounds a[10] for a three-element array instead aborts if executed. A compiler may warn, but optimization must not turn such a runtime failure into language-level rejection. Rejection of an ineligible static Move Path is a separate rule.
+
+##### 6.4.4.5. Slice storage, lifetime, and permissions
+
+`Slice<T> from source` shares an initialized contiguous region of complete element Type T. Formation requires ordinary initialization and access checks and cannot hide Uninitialized or partially Moved storage. Its runtime length does not participate in Type identity. Every range access returns Slice, including constant-length ranges, without copying elements into a fixed array.
+
+Slice indices start at zero; from-end positions and reslicing use the current Slice length. Original array indices are not retained. Slicing rows of a nested fixed array produces `Slice<[N of T]>` without flattening. Element inheritance or matching layout does not permit conversion between different element-Type Slices.
+
+**Origins and Loans.** The Origin records backing lifetime; the Loan records conflicting Places and permissions. Handle copies, reslices, iterators, and references to element slots retain both. They need not borrow the handle variable itself: acquired views remain usable after that variable ends if the backing storage and inherited Loan remain valid.
+
+Under [static Place analysis](#962-place-overlap-and-conflicts), an array-derived Slice borrows the array Place as a whole. Reslicing, splitAt, and empty Slices retain that Loan's conflict footprint. Runtime interval resolution neither narrows it nor proves disjointness. Thus a later use of empty from `let empty = values[1..1]` conflicts with `values[3] = 10`, because of the retained shared Loan, not the Origin alone. The Loan ends after all required derived uses end. Source Move, destruction, or reallocation is also forbidden while it would invalidate an active view.
+
+Slice owns no elements; handle Copy/destruction neither copies nor destroys them. T need not be Owned, and all dependencies inside T remain intact. source may shorten but cannot lengthen; Slice's own Owned classification uses [ordinary Origin rules](#92-origin-expressions-and-ordering).
+
+**Storage and escape.** A local Slice may refer to heap-backed Array or static data. The restriction is on retaining safe-borrow values, including Slice, in heap storage such as Array elements/object fields or static Stored Properties. `from static` denotes a static-lifetime borrow, not absence of a borrow; Copy/Owned cannot waive this separate structural storage check. Local bindings, valid argument/result lifetime contracts, and local aggregates with explicit Origins follow their ordinary rules.
+
+Borrowing a temporary never extends its [lifetime](#36-temporary-values-places-and-lifetimes). Do not reject an unused binding solely because it contains a temporary borrow; check whether later use, return, or retention requires the expired dependency.
+
+```kimi
+func makeArray() -> Array<i32> => [1, 2, 3]
+func inspect<T> origin source(values: Slice<T> from source) => ()
+
+inspect(makeArray()[..]) // Temporary array survives through the call.
+let escaped = makeArray()[..]
+inspect(escaped)         // Error: temporary expired at the initializer boundary.
+let owned = makeArray()
+let lasting = owned[..]
+inspect(lasting)         // Borrows an owning local.
+```
+
+A var Slice permits handle reassignment only. `uniq/Slice<T>` exclusively borrows the handle, not its elements. Mutable Slices, implicit owning-array conversion, safe raw-pointer construction, Slice equality, and implicit elementwise comparison are not introduced.
+
+##### 6.4.4.6. Slice operations and element results
+
+For s: `Slice<T>` from source, members receive and Copy the handle by value. Element/partial-Slice results retain source rather than borrowing the call's handle variable. All listed operations are public.
+
+| Operation | Result and conditions |
+| --- | --- |
+| s.length: isize / s.isEmpty: bool | Read-only count / whether count is zero |
+| s.indices: ResolvedRange | Read-only snapshot under the metadata rules |
+| s[index] | Shared element access; accepts isize or Index |
+| s[range] | `Slice<T>` from source; accepts Range or ResolvedRange, checked at current length |
+| s.tryGet(index) | `Option<ref/T from source>`; separate isize/Index overloads |
+| s.trySlice(range) | Option<`Slice<T>` from source>; separate Range/ResolvedRange overloads |
+| s.splitAt(index) | (`Slice<T>` from source, `Slice<T>` from source), covering [0, p) and [p, length) |
+| s.trySplitAt(index) | Option of that Tuple |
+
+Both split operations have isize and Index overloads and accept boundaries zero and length. Invalid boundaries abort for splitAt and return None for trySplitAt. tryGet and trySlice likewise return None on their own invalid bounds. tryGet deliberately has a fixed reference result independent of T's Copy capability.
+
+A value read of s[index] uses the same Copy/shared Borrow/Reborrow selection as the [default getter table](#82-default-getter-results), without calling a getter. Simple Copy elements yield T; owned Non-Copy value elements yield ref/T. Preserve the table's handling of borrowed and Object Semantics. New borrows are limited by source and existing element dependencies; copied references retain their own Origins. @ref instead borrows the element Place itself. Element writes, Move/@move, and exclusive borrows through Slice are forbidden.
+
+For unknown T, retain the correlated result Type, acquisition effect, and Origins as the internal family SharedReadResult(T, source), not a source-spellable Type. Verify the body for all admitted cases; neither assume unknown means Non-Copy nor defer Type checking until a favorable instantiation. Operations/results that do not fit every case require a constraint or explicit borrow.
+
+```kimi
+func first<T> origin source(s: Slice<T> from source) -> T
+    T is Copy
+    return s[0]
+
+func firstRef<T> origin source(s: Slice<T> from source) -> ref/T from source
+    return s[0]@ref // Borrow the slot regardless of T's Copy capability.
+
+let values: [4 of i32] = [10, 20, 30, 40]
+let s = values[1..]     // Length 3; s[0] is 20.
+let last = s[^1]        // 40
+let firstTwo = s[..2]   // 20, 30; retains the backing dependency.
+let parts = s.splitAt(1)
+let left = parts.0
+let right = parts.1
+match s.tryGet(10)
+    .Some(let value) => ()
+    .None => ()
+
+func tryTail<T> origin source(values: Slice<T> from source) -> Option<Slice<T> from source>
+    return values.trySlice(1..) // None for an empty Slice; no static length condition.
+```
+
+```kimi
+var values: [3 of i32] = [1, 2, 3]
+let shared = values[..]
+values[0] = 10 // Error: conflicts with a subsequent use of the shared Loan.
+let first = shared[0]
+shared[0] = 20 // Error: Slice elements are read-only.
+```
+
+##### 6.4.4.7. Slice iteration and nested Origins
+
+Slice implements Iterable with Element = ref/T from source, including Copy elements, yielding shared references in index order. The iterator retains a handle and position, not owned elements. Yielded references borrow backing slots, not the iterator's receiver/storage, satisfying the [non-lending protocol](#7611-iteration-protocol-and-acquisition). It stays exhausted after None.
+
+Keep element-internal Origins separate from slot-borrow Origins:
+
+```kimi
+let data: i32 = 10
+let refs: [1 of (ref/i32 from data)] = [data@ref]
+let s: Slice<ref/i32 from data> from refs = refs[..]
+let value = s[0]       // Copy the inner ref/i32 from data.
+let slot = s.tryGet(0) // Option<ref/(ref/i32 from data) from refs>
+for element in s
+    let inner = *element // ref/i32 from data.
+```
+
+The outer references from tryGet and iteration borrow refs' slots; the inner reference depends on data. The inner Origin must remain valid while using the outer reference. After copying an inner reference, preserve its own Origin without attaching a new slot borrow.
+
+##### 6.4.4.8. Representation and performance
+
+Index/Range/ResolvedRange construction, resolution and Copy, and Slice creation, Copy, reslicing, splitting, and address calculation take O(1) time in element count. They require no additional element storage, heap allocation, or reference-count update. Element Copy and user-code costs are separate. Iteration takes O(n) time and O(1) extra storage; do not first materialize an array of iteration values.
+
+A Slice's semantic representation retains backing-element location or equivalent provenance, nonnegative isize length, and static Origins/Loans. Element spacing is stride(T). Empty Slices and zero-sized elements retain source provenance. No universal pointer-plus-length ABI, runtime lifetime tag, or pointer to a disappearing handle variable is required. Use logical counts/positions rather than subtracting element pointers to recover length; never form invalid pointers before checking.
+
+Checks may be eliminated, shared, or optimized in loops only when safety is proven without changing effects, Abort behavior, or borrow legality. Constant-folding Index/Range operations does not expand the literal-only static Move Path rule.
 
 #### 6.4.5. Object member calls
 
@@ -3176,7 +3553,7 @@ A finite value rounding to infinity fails. Rounding to a subnormal or zero is al
 
 Float-to-float conversion preserves signed zero, including the sign of a nonzero value rounded to zero. Integer zero converts to positive floating zero; either floating zero converts to integer zero. Floating rounding always uses roundTiesToEven independently of ambient rounding modes. Flush-to-zero or similar settings must not change the specified result. These rules also apply to literal conversion.
 
-Direct untyped integer literals with integer targets are fitted to that Type, including a directly applied negative sign. Direct floating literals with `f32`/`f64` targets are interpreted in that Type. A direct untyped integer literal with `@f32`/`@f64` is rounded once from its exact integer value, without an intermediate default `i32` or `f64`. Parentheses alone and a direct sign preserve this treatment; the language's literal representation limits still apply.
+For direct unresolved literals, `@` performs literal fitting in these cases: integer literals with integer targets must fit the target range; floating literals with `f32`/`f64` targets follow [single-rounding rules](#26-number-literals); integer literals with `@f32`/`@f64` round once from the exact integer value, without an intermediate default Type. Failure to fit, including floating overflow to infinity, is a compile-time error, not a runtime numeric-conversion failure. Parentheses alone and a direct sign preserve this treatment; the language's literal representation limits still apply.
 
 Floating literals with integer targets first get their ordinary floating source Type, then undergo truncation and range checking. Typed values and general arithmetic expressions use ordinary numeric conversion. Explicit literal adaptation does not widen implicit argument fitting or overload candidate comparison.
 
@@ -3187,6 +3564,7 @@ let single = 1@f32
 let negativeZero = -0.0@f32
 let truncated = 3.9@i32  // 3
 // 256@u8 // Error: direct literal does not fit.
+// 300@i8 // Compile-time error; a typed i32 value 300 converted to i8 instead Aborts.
 ```
 
 Apply rounding and checks at every `@` in a chain. Do not remove an intermediate result if its rounding or failure would change.
@@ -3802,7 +4180,7 @@ clean up iterator on normal exit and ordinary transfers
 
 Each for binding is an immutable let binding scoped to that iteration's body; there is no implicit var form. Payload acquisition is Copy for Copy Types and Move otherwise. Parenthesized bindings require a Tuple with exactly that many elements and acquire its components left to right; names must be distinct. Neither key/value member names nor an arbitrary deconstruction method supplies this Tuple.
 
-The next receiver Loan ends before the body. Returned references may retain existing external dependencies captured by the iterator, but cannot borrow from this call's exclusive receiver or iterator-owned storage: lending iterators remain deferred. `Array<T>` and fixed-array owned iteration yield T by consuming elements; `Slice<T>` iteration yields shared ref/T values from its backing source. Direct for iteration of an owning non-Copy collection consumes it; use for item in values[..] for shared iteration. `Dictionary<K,V>` consuming iteration yields (K,V) in insertion order. Slice/source Loans remain live while the iterator or an escaped yielded reference needs them, so overlapping mutation of the source is rejected. A consumed owning source is unavailable until validly reinitialized. Unrelated nonconflicting mutation follows ordinary Loan rules.
+The next receiver Loan ends before the body. Returned references may retain existing external dependencies captured by the iterator, but cannot borrow from this call's exclusive receiver or iterator-owned storage: lending iterators remain deferred. `Array<T>` and fixed-array owned iteration yield T by consuming elements. [ResolvedRange iteration](#6443-range-and-resolvedrange) yields isize; Range is not Iterable. [Slice iteration](#6447-slice-iteration-and-nested-origins) yields ref/T from source even for Copy elements. Direct for iteration of an owning non-Copy collection consumes it; use for item in values[..] for shared iteration. `Dictionary<K,V>` consuming iteration yields (K,V) in insertion order. Slice/source Loans remain live while the iterator or an escaped yielded reference needs them, so overlapping mutation of the source is rejected. A consumed owning source is unavailable until validly reinitialized. Unrelated nonconflicting mutation follows ordinary Loan rules.
 
 Body fall-through and continue clean up the current bindings before calling next again; exit, return, and outer transfers also clean up the iterator and its unyielded owned elements. This protocol adds no cleanup guarantee on Abort and no rollback of prior Moves.
 
@@ -4852,7 +5230,7 @@ Before completeness, whole-value reads, Copy, borrowing, Move, and exposure are 
 
 Partial Move changes current completeness, not the construction-completion fact. Permitted reinitialization of all missing fields restores completeness without rerunning a constructor. If a field cannot be reinitialized, that value remains incomplete and cannot be used/transferred as a whole; its remaining Initialized parts can still be used and cleaned up. No separate permanent-incomplete state is defined. Whole-value Move transfers its construction information; whole replacement uses the new value's information.
 
-Tuple and array construction places elements in increasing element-index order. Each element acquires its own initialization and responsibility only when placement completes normally; a partly built element is tracked recursively. The aggregate commits completion after all elements are placed. If an element expression leaves the construction by ordinary control transfer, first secure that transfer's result, then clean the abandoned construction's remaining elements in decreasing index order. Previously moved arguments and completed side effects are not rolled back. Raw uninitialized memory is not an alternate safe construction syntax.
+Tuple and array construction places elements in increasing element-index order. Each element acquires its own initialization and responsibility only when placement completes normally; a partly built element is tracked recursively. The aggregate commits completion after all elements are placed. If an element expression leaves the construction by ordinary control transfer, first secure that transfer's result, then clean the abandoned construction's remaining elements in decreasing index order. Previously moved arguments and completed side effects are not rolled back. Raw uninitialized memory is not an alternate safe construction syntax. Fixed arrays additionally require [whole initial construction](#3223-initialization-and-inference); static-path repair after completed construction remains permitted.
 
 #### 9.1.3. Move paths and partial move
 
@@ -4864,7 +5242,7 @@ A **Move Path** is a statically trackable path with independent initialization s
 ConstantIndexExpression := IntegerLiteral | "(" ConstantIndexExpression ")"
 ~~~
 
-After resolving a fixed-array Type `[T; N]`, an index recognized this way forms a static element Move Path only when its value n satisfies `0 <= n < N`. Path identity uses the numeric value, so `1`, `0x1`, and `(1)` designate the same element. No optimizer result changes this classification. The same rule defines constant fixed-array indices for overlap analysis (§9.6.2); it grants neither a path through a dynamic collection nor permission to Move through a borrow.
+After resolving a fixed-array Type `[N of T]`, an index recognized this way forms a static element Move Path only when its value n satisfies `0 <= n < N`. Path identity uses the numeric value, so `1`, `0x1`, and `(1)` designate the same element. No optimizer result changes this classification. The same rule defines constant fixed-array indices for overlap analysis (§9.6.2); it grants neither a path through a dynamic collection nor permission to Move through a borrow.
 
 | Index expression | Static fixed-array Move Path |
 | --- | --- |
@@ -5413,7 +5791,7 @@ Two places overlap when an operation on one may affect the other. Static place a
 | Other reference dereferences | Follow Loan provenance and apply these rules |
 | Anything not decided above | Non-overlap unproven; reject operations requiring proof |
 
-Inline parts exclude pointer/reference referents. Distinct shared-reference or raw-pointer variables alone do not prove independence. Constant fixed-array indices use only the [ConstantIndexExpression rule](#913-move-paths-and-partial-move), comparing decoded in-range literal values, not general constant evaluation or optimization; runtime index comparisons such as `i != j` do not establish disjointness. No arbitrary integer proof or optimizer result changes acceptance. Simultaneous exclusive borrows may be used only through their valid access paths; reborrowing still suspends conflicting parent access.
+Inline parts exclude pointer/reference referents. Distinct shared-reference or raw-pointer variables alone do not prove independence. Constant fixed-array indices use only the [ConstantIndexExpression rule](#913-move-paths-and-partial-move), comparing decoded in-range literal values, not general constant evaluation or optimization; runtime index comparisons such as `i != j` do not establish disjointness. No arbitrary integer proof or optimizer result changes acceptance. Array-derived Slices retain the whole-array Loan footprint through reslicing, splitting, and empty views under [Slice lifetime rules](#6445-slice-storage-lifetime-and-permissions). Simultaneous exclusive borrows may be used only through their valid access paths; reborrowing still suspends conflicting parent access.
 
 These are storage rules, not permission to bypass Property accessors. Field-scoped standard operations may borrow disjoint fields separately; custom whole-receiver operations retain their whole-instance footprint.
 
@@ -6385,7 +6763,7 @@ An object handle's Runtime Type Identity is `CoreId(D)`, excluding its root `obj
 | `Box<objref/C>` and `Box<obj/C>` | Different: inner Semantics are retained |
 | `obj/Box<ref/i32 from a>` and `obj/Box<i32>` | Different after root-handle removal |
 
-Runtime identity equality does not imply equal value representation, layout, ABI, ownership operations, assignment compatibility, Origins, or Loans. It neither authorizes code sharing nor skips validation. Equal names, layouts, member sets, or descriptor addresses alone also do not define identity. General Const arguments and their identity rules are not introduced. Other identity and key purposes are separated under [generation keys](#1492-identity-and-generation-keys).
+Runtime identity equality does not imply equal value representation, layout, ABI, ownership operations, assignment compatibility, Origins, or Loans. It neither authorizes code sharing nor skips validation. Equal names, layouts, member sets, or descriptor addresses alone also do not define identity. Fixed-array Type structure retains the evaluated length and element-Type key. General Const arguments beyond function lengths are not introduced. Other identity and key purposes are separated under [generation keys](#1492-identity-and-generation-keys).
 
 Conformance is registered by the concrete Type's definition and fixed when metadata is generated. No unrelated extension, module search, or runtime registration changes it. Artifacts for one Type must agree on identity, bases, conformance, and effective implementation mapping; reject disagreement at build/link time rather than using load order. An entry must satisfy the declaration and ObjectCompatible guarantees; receiver adjustment cannot bypass access, Type, Origin, or Loan checks. A destruction entry does not make `deinit` a source-level function value.
 
@@ -6422,7 +6800,7 @@ The following are logical distinctions, not prescribed APIs or binary encodings:
 | Identity or key | Purpose and retained information |
 | --- | --- |
 | Complete static Type identity | Normalized nominal identity, all Semantics layers, nested Types, and Origins; used for semantic checks alongside Loan information |
-| Implementation Selection Key | Original function declaration Identity plus ordered ArgKey values for all its own Type slots; select a matching explicit implementation from the closed definition-side set |
+| Implementation Selection Key | Original function declaration Identity plus ordered ArgKey / LengthKey values for all its own generic slots; select a matching explicit implementation from the closed definition-side set |
 | Runtime Object Type Identity | CoreId of the actual payload, with the special root-handle rule in [object metadata](#1481-type-identity-and-descriptors) |
 | Code Generation Key | Distinguish the selected implementation's meaning and representation, scalar operations, calling convention, embedded operations, and ownership effects that change generated code |
 | Code Cache Key | Generation key plus declaration/Kotonoha identity and version, closed specialization set and selection mappings, selected body and dependency content identities, target, compiler build, and optimization/generation settings |
@@ -6506,8 +6884,11 @@ This is the minimal set named by language rules, not a promise of a general stan
 | --- | --- |
 | `Option<T>` | enum with Some(T), None in that order |
 | `Result<T,E>` | enum with Ok(T), Err(E) in that order |
-| `Array<T>` | Non-Copy owning dynamic sequence requiring T is Owned, public read-only length: isize; checked element/range indexing under §6.4.4; Array literals and consuming Iterable conformance |
-| `Slice<T>` origin source | Copy shared sequence view; public read-only length: isize; checked element/range indexing and shared Iterable conformance; backing Origin is mandatory or inferred under ordinary Origin rules |
+| `Array<T>` | Non-Copy owning dynamic sequence requiring T is Owned; public read-only length: isize and indices: ResolvedRange; checked indexing under §6.4.4, literals, and consuming Iterable conformance |
+| `Index` | Copy, Owned, Equatable direction/offset value; constructor, read-only fields, resolve/tryResolve under §6.4.4.2 and §6.4.4.4 |
+| `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §6.4.4.3 and §6.4.4.4; not Iterable |
+| `ResolvedRange` | Copy, Owned, Equatable validated interval; constructor, read-only fields, and `Iterable<Element = isize>` under §6.4.4.3 |
+| `Slice<T>` origin source | Copy shared view with all public operations in §6.4.4.6 and `Iterable<Element = ref/T from source>`; backing Origin is explicit or inferred under ordinary rules |
 | `Dictionary<K,V>` | Non-Copy owning collection requiring K is Equatable and Owned, and V is Owned; literal construction and existing-key indexing, public read-only length: isize, and consuming Iterable conformance |
 | `Stringify` | `func stringify(self: ref/Self) -> string`; returns an independent owned string |
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
@@ -6516,9 +6897,9 @@ This is the minimal set named by language rules, not a promise of a general stan
 | `Iterable` | `associate Element`; `associate Iterator is ::Core.Iterator`; `Self.Iterator.Element is Self.Element`; `func iterate(self: owner/Self) -> Self.Iterator` |
 | Copy, Owned, Callable | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership, and call rules; they are not ordinary user-implementable replacements |
 
-The Element associated requirement of these two intrinsic protocols is the sole complete-Type exception in §4.4.1.3; its implementation binding may be ref/T from an existing external source. The Iterator associated requirement of Iterable remains a Core Type. No other user-defined associated requirement changes kind. Signatures in the table are source-shape contracts; associated-Type projections and function receiver/result Origins obey the ordinary Contract and lifetime rules. Iterable/Iterator are static Contracts, and the initial non-lending restriction is mandatory. Compiler-provided fixed arrays implement Iterable directly with Element = T; dynamic array and Dictionary iterators hold and destroy any remaining unyielded elements, while Slice iterators retain the external source Loan. Types depending on that source preserve it through associated Types and Option payloads. Taking a next result does not extend any lifetime.
+The Element associated requirement of these two intrinsic protocols is the sole complete-Type exception in §4.4.1.3; its implementation binding may be ref/T from an existing external source. The Iterator associated requirement of Iterable remains a Core Type. No other user-defined associated requirement changes kind. Signatures in the table are source-shape contracts; associated-Type projections and function receiver/result Origins obey the ordinary Contract and lifetime rules. Iterable/Iterator are static Contracts, and the initial non-lending restriction is mandatory. Compiler-provided fixed arrays implement Iterable directly with Element = T; owning array and Dictionary iterators hold and destroy any remaining unyielded elements. ResolvedRange and Slice bind Iterable.Iterator to concrete compiler-provided Core iterator Types carrying the element Type and source dependencies required by §6.4.4. A ResolvedRange iterator stores position/end, and a Slice iterator stores its copied handle/position and external source Loan; neither owns yielded elements and both remain exhausted after None. This requires concrete associated-Type identities, not additional public iterator constructor spellings. Types depending on that source preserve it through associated Types and Option payloads. Taking a next result does not extend any lifetime.
 
-The primitive keyword string denotes the compiler's UTF-8 string Core Type, not a shadowable alias; its required operations here are literal/interpolation construction, concatenation, comparison, and Stringify. No character indexer, mutable string buffer, allocator, or formatting options are implied. Fixed arrays use the dedicated `[T; N]` Type syntax and have length N with the same public read-only length member. Sequence indexed access uses the existing place/acquisition rules; only Slice additionally forces shared access.
+The primitive keyword string denotes the compiler's UTF-8 string Core Type, not a shadowable alias; its required operations here are literal/interpolation construction, concatenation, comparison, and Stringify. No character indexer, mutable string buffer, allocator, or formatting options are implied. Fixed-array syntax and layout follow [sequence Types](#322-sequence-types); metadata, indexed Place acquisition, and shared reading follow [indexing and slicing](#644-indexing-and-slicing).
 
 The Option/Result payload Copy and Owned classifications follow ordinary enum rules; no extra copying is introduced.
 
@@ -6647,7 +7028,7 @@ Check declarations, paths, initialization/completeness, Loans, Origins, and dest
 
 ### A.6. Literal representation
 
-The syntax tree canonicalizes spelling: integers render as signed 128-bit decimal values; floating-point values use round-trip `f64` notation with a decimal marker when needed (for example, `1.0`).
+Literal storage and source serialization must preserve integer magnitudes and exact decimal values until literal fitting. Canonical spelling must preserve the literal kind and its fitted result for every permitted target Type; decimal floating literals must not be canonicalized through `f64`. String serialization must preserve the value after physical-newline normalization and escape/interpolation processing.
 
 ### A.7. Cleanup analysis and lowering
 
@@ -6712,24 +7093,44 @@ Coverage must distinguish qualified and ambiguous short associated-Type names, d
 
 ### A.12. Generic schemas and specialization verification
 
-Preserve complete Type slots rather than flattening a pair into two independent arguments. A logical schema contains:
+Preserve complete Type slots rather than flattening a pair into two independent arguments. Keep function length slots distinct from Type slots. A logical schema contains:
 
 ```text
 DeclarationSchema
-    TypeSlots: ordered index, kind (ordinary or pair), bound names
+    GenericSlots: ordered index, kind (ordinary Type, pair Type, or function length), bound names
     OriginSchema: ordered binders, bounds, inferred variance and Loan requirements
 PairSlot
     WholeType: complete or dependent Type
     OuterSemantics, DirectTarget, OuterOrigin: projections of WholeType
+LengthSlot
+    Value: nonnegative isize constant or bound dependent length expression
 DeferredObligation
     requirement, source use, defining bindings/environment, dependencies, deadline
 ```
 
 Use Origin schemas for argument correspondence, fragment-header matching, and artifact compatibility, not overload identity. Preserve Binding Identities through alias expansion and Signature normalization. Prove role restrictions before using a projection, or retain only a legitimate obligation. Semantic metadata must not discard Origin information merely because runtime descriptors omit it.
 
+Fixed-array verification must cover contextual of/length, explicit slot kinds and conflicts, parenthesized constant expressions, constant-readable eligibility, expected-Type boundaries, candidate-local literals, element counts, zero length, zero-sized elements, recursive/nested layout and stride, normalized dependent expressions, negative intermediates, public ValidLength failures, universal body checking, specialization keys, and artifact invalidation after constant changes. Check whole initial construction, static-path reinitialization after Partial Move, reverse partial cleanup, and literal-only Move Paths.
+
 Verification must cover full-Type binding and one-slot pair decomposition, reconstruction versus applying s to another binding, duplicate names, trailing commas, occurs-checks, invalid Type arguments, recursive storage dependencies, and principal Origin solutions independent of input order. Retain distinct Loans when Origin expressions simplify.
 
 For explicit specialization, cover target ambiguity before contract checks, inherited defaults and Safety, closed arguments, Origin-only duplicate keys, `obj/D` versus `rc/D` selection, mandatory selection through shared generic callers/function references, recursive self-calls, and no fallback after failure. Check unused selected declarations, closed-set ownership, and invalidation after set/body changes. Code sharing and budget tests must preserve selected behavior with and without automatic specialization or LTO. Also verify rejection of unconstrained reuse and implicit capture, all-row dependent getter checking, validity of transfer-only Copy/Move families, definition checking without callers, and the absence of body-derived hidden applicability conditions. Concrete instantiation must preserve the verified symbolic ownership and cleanup plans under §5.2.10.
+
+### A.13. Sequence access verification
+
+Binding must distinguish element and range access by the bound argument Type, not a range-literal syntax flag. Retain the receiver and element Places, index/range form, resolved bounds, access permissions, acquisition plan, full result Type, and Origin/Loan dependencies. Nested element access must not read/copy intermediate arrays. For generic shared reads, retain the correlated SharedReadResult family and verify every admitted case before concrete lowering.
+
+Preserve one-time receiver/argument evaluation, index-evaluation storage protection, exclusive-Loan activation after bounds checking, RHS-first simple assignment, and target-first compound assignment. Validate increment and exchange operations under their common rules. Metadata results are independent snapshots; they neither retain new source Loans nor waive receiver validity.
+
+| Verification area | Required coverage |
+| --- | --- |
+| Index and Range | Lengths 0/1, ^0/^1, negative offsets, excessive distances, saved values, half-open/inclusive/reversed ranges, operand evaluation before construction checks |
+| ResolvedRange | Maximum-isize end, finite and permanently exhausted iteration, rejection of direct Range iteration, reuse against shorter/resized targets |
+| Place acquisition | Copy versus ordinary/explicit Move, literal-only eligibility, runtime/Index shared reading, nested writes without intermediate Copy, reinitialization after Partial Move |
+| Slice boundaries | Zero-based reslicing, split endpoints, None from each try operation, failure inside arguments remaining Abort |
+| Lifetime and storage | Temporary/local escape, views surviving handle variables, nested element Origins, inherited whole-array Loans including empty/split views, static-borrow retention rejection |
+| Metadata and iteration | Receiver effects, completeness checks, no result Loan for metadata, stable saved indices, reference iteration independent of element Copy, no iterator-owned borrowed results |
+| Lowering | Identical acceptance, results, effect/Abort order, and Loan legality with optimization enabled/disabled; O(1) view operations without element-proportional allocation or Copy |
 
 ## Appendix B. Non-normative reference models
 
@@ -6851,7 +7252,7 @@ Retain Candidate positions, Origin/Loan dependencies, and Copy/Move/Borrow/Rebor
 
 ## Appendix C. Implementation status
 
-Implementation coverage and the recorded compiler snapshot are maintained in [STATUS.md](STATUS.md). They do not weaken language rules or Compiler requirements.
+Implementation coverage and the recorded compiler snapshot are maintained in [STATUS.md](STATUS.md). They do not weaken language rules or Compiler requirements. Integrating fixed-array and sequence-view rules does not imply compiler support; distinguish parsing from Binding, constant evaluation, ownership analysis, and execution.
 
 ## Appendix D. Deferred feature index
 
@@ -6875,7 +7276,7 @@ This index links to design boundaries owned by the language sections. It adds no
 | Associated-Type inference beyond explicit identity facts, arbitrary complete-Type bindings, and stronger symbolic Constraint reasoning | Not introduced | [Associated Types](#4413-associated-types), [proof boundaries](#445-constraint-proof-system) |
 | Generic Type slots, full function specialization, and code-sharing policy | Defined; implementation tracked separately | [Generic parameters](#337-generic-type-parameters), [full specialization](#465-explicit-full-function-specialization), [code generation](#149-generic-code-generation) |
 | Ordinary generic body verification, unknown-Copy reuse, and generic getter Type determination | Defined; implementation tracked separately | [Deferred generic obligations](#5210-deferred-generic-obligations) |
-| Const/value argument syntax and identity, standalone Semantics slots, partial/default/variadic generic arguments | Not introduced | [Generic Type parameters](#337-generic-type-parameters) |
+| Const/value arguments beyond function lengths, standalone Semantics slots, partial/default/variadic generic arguments | Not introduced | [Function length parameters](#3224-function-length-parameters), [Generic Type parameters](#337-generic-type-parameters) |
 | Partial/conditional explicit specialization, specialization priorities, generic Container specialization | Not introduced | [Full specialization](#465-explicit-full-function-specialization) |
 | Exact precompilation, callee propagation, sharing/ABI formats, and optimization budgets | Implementation-design boundaries | [Generic generation limits](#1495-generation-limits-and-code-merging) |
 | Contract-level abstract Origins, heap/global borrow escape, and lending iterators | Deferred design; ordinary function/struct abstract Origins are defined in 9.3 | [Abstract Origins](#93-abstract-origins), [Lifetime design boundaries](#99-lifetime-design-boundaries) |
@@ -6934,7 +7335,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Completion | Normal or abrupt completion of evaluation, distinct from divergence and Abort Termination. | [Completions](#71-completions) |
 | Composition Root | The language facility selected by `$`. | [Reserved syntax](#68-extension-boundaries-and-reserved-syntax) |
 | Associated Type | Ordinarily a Core Type binding fixed by explicit Type-identity facts; Core iteration Element requirements have the explicit complete-Type exception in §14.10. | [Associated Types](#4413-associated-types) |
-| GenericArity / OriginArity | Type slot count / explicitly declared Origin count; one pair consumes one Type slot. | [Signatures](#41-signatures) |
+| GenericArity / OriginArity | Generic slot count (including function lengths) / explicitly declared Origin count; one pair consumes one slot. | [Signatures](#41-signatures) |
 | SemanticsTarget | Fixed kind of a pair's direct target: a complete value Type or permitted Object View Target. | [Generic parameters](#337-generic-type-parameters) |
 | Instantiation / explicit full specialization / automatic specialization | Argument binding / mandatory user implementation selection / meaning-preserving Type-specific code generation. | [Generic code generation](#149-generic-code-generation) |
 | Deferred Obligation | A legitimate dependent check retained with its evidence, environment, and deadline. | [Generic checking](#5210-deferred-generic-obligations) |
@@ -7048,9 +7449,9 @@ decimal-literal      := decimal-sequence fraction? exponent?
 fraction             := '.' decimal-digit decimal-tail
 exponent             := ('e' | 'E') ('+' | '-')? decimal-digit decimal-tail
 
-binary-literal       := '0' ('b' | 'B') binary-tail
-octal-literal        := '0' ('o' | 'O') octal-tail
-hexadecimal-literal  := '0' ('x' | 'X') hexadecimal-tail
+binary-literal       := '0' ('b' | 'B') '_'* binary-digit binary-tail
+octal-literal        := '0' ('o' | 'O') '_'* octal-digit octal-tail
+hexadecimal-literal  := '0' ('x' | 'X') '_'* hexadecimal-digit hexadecimal-tail
 
 decimal-sequence     := decimal-digit decimal-tail
 decimal-tail         := (decimal-digit | '_')*
@@ -7075,35 +7476,45 @@ CharLiteral = "'" (DirectScalar | CharacterEscape) "'"
 [Type composition](#3-types-and-basic-value-model), [compound Types](#32-compound-type-syntax), [Semantics](#33-type-semantics), [generic application](#642-invocation-and-generic-application), [Origins](#93-abstract-origins).
 
 ```ebnf
-Type                 := TypeHead ("->" Type)?
+Type                 := FunctionType | TypeHead
+FunctionType         := FunctionParameters "->" Type
+FunctionParameters   := "(" TrailingList<Type>? ")"
 TypeHead             := SemanticsType OriginAnnotation?
 SemanticsType        := Semantics "/" SemanticsType | TypeAtom
 TypeAtom             := CoreType | "(" Type ")"
 ObjectSemantics      := "obj" | "rc" | "arc" | "objref" | "objuniq"
 RuntimeContractType  := ContractReference
 CoreType             := NamedType | UnitType | TupleType | FixedArrayType
-FixedArrayType       := "[" Type ";" DecimalLength "]"
-DecimalLength        := ? unsigned decimal integer literal, §3.2.2 ?
+FixedArrayType       := "[" ArrayLength "of" ArrayElementType "]"
+ArrayElementType     := Type | "_"
+ArrayLength          := IntegerLiteral | ConstantName | "(" LengthExpression ")"
+ConstantName         := "::"? Name ("." Name)*
+LengthExpression     := LengthProduct (("+" | "-") LengthProduct)*
+LengthProduct        := LengthUnary (("*" | "/" | "%") LengthUnary)*
+LengthUnary          := ("+" | "-") LengthUnary | IntegerLiteral
+                      | ConstantName | "(" LengthExpression ")"
 UnitType             := "(" ")"
 TupleType            := "(" Type "," TrailingList<Type>? ")"
 NamedType            := "::"? TypeSegment ("." TypeSegment)*
 TypeSegment          := TypeName TypeArguments?
 TypeName             := Name | PrimitiveType | "Self"
-TypeArguments        := "<" TrailingList<Type> ">"
+TypeArguments        := "<" TrailingList<GenericArgument> ">"
+GenericArgument      := Type | ArrayLength
 PrimitiveType        := "isize" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128"
                       | "u8" | "u16" | "u32" | "u64" | "u128"
                       | "f32" | "f64" | "bool" | "char" | "string"
 Semantics            := "owner" | "ref" | "uniq" | "obj" | "rc" | "arc"
                       | "objref" | "objuniq" | "unsafe" | Name
 GenericParameters    := "<" TrailingList<GenericParameter> ">"
-GenericParameter     := TypeParameter | PairParameter
-TypeParameter        := Name
+GenericParameter     := NamedParameter | PairParameter | LengthParameter
+NamedParameter       := Name
 PairParameter        := Name "/" Name
+LengthParameter      := "length" Name
 ```
 
 Object-target syntax uses the View Target lookup role; in the [runtime Contract extension](#443-runtime-contracts), a named target may resolve to a valid `RuntimeContractType` instead of a Core Type. Runtime designation and View bindings are not supplied by this grammar. A bare Contract is not a value Type. This shared syntax permits no arbitrary Object Semantics around an already Semantics-applied Type. Layer legality and Origin attachment follow [nested Semantics](#336-nested-semantics-and-type-grouping). `NamedType` also preserves dotted associated-Type projection syntax; its Contract and Core Type roles are resolved under F.3. Callable signature syntax appears with requirements below; generated Closure and Function Item Types have no source declaration spelling.
 
-Both GenericParameters and TypeArguments are nonempty and permit a trailing comma. A pair consumes one complete Type argument. Interpret `Name / Name` as a pair only in the parameter-declaration list; the argument list contains ordinary Type syntax. Standalone Semantics/Const arguments, partial lists, placeholders, defaults, and variadic slots are not introduced. Origin arguments retain their separate rules.
+GenericParameters and TypeArguments are nonempty and allow trailing commas. NamedParameter and PairParameter declare Type slots; only LengthParameter declares a function length slot. A pair consumes one complete Type argument and is recognized only by declaration-side `Name / Name`. Preserve syntactically ambiguous Name/grouped GenericArguments until Binding checks their declared slot kind under [length parameters](#3224-function-length-parameters); do not infer slot kinds from uses. `of` is contextual only after ArrayLength as the element delimiter. `_` as ArrayElementType is allowed only in a local binding annotation with an initializer. LengthParameter is forbidden on Type declarations. Standalone Semantics slots, general Const arguments, partial/default/variadic arguments, and other `_` Type arguments are not introduced; Origin arguments follow their separate rules.
 
 ### F.3. Declaration grammar
 
@@ -7181,7 +7592,7 @@ SemanticsCategory    := "value" | "valueborrow" | "object" | "objectborrow"
                       | "borrow" | "owning" | "reference"
 CallableRequirement  := "Callable" "<" (CallableReceiver ",")? FunctionSignature ">"
 CallableReceiver     := "ref" | "uniq" | "owner"
-FunctionSignature    := "(" TrailingList<Type>? ")" "->" Type
+FunctionSignature    := FunctionParameters "->" Type
 FunctionItem         := ExecutableItem | ConstraintClause
 ContainerItem        := Declaration | ConstraintClause | AssociatedTypeSpecification
                       | Directive<ContainerItem>
@@ -7243,7 +7654,7 @@ OperationTarget      := "move" | Semantics | AdaptationType
 AdaptationType       := Semantics "/" AdaptationType | AdaptationAtom
 AdaptationAtom       := NamedType | UnitType | "(" OriginFreeType ")"
                       | "(" OriginFreeType "," TrailingList<OriginFreeType>? ")"
-                      | "[" OriginFreeType ";" DecimalLength "]"
+                      | "[" ArrayLength "of" OriginFreeType "]"
 OriginFreeType       := ? Type with no written Origins at any layer, §6.6.4.1 ?
 Prefix               := ("+" | "-" | "not" | "*" | "^" | "++" | "--") Prefix
                       | Postfix

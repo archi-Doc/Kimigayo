@@ -40,7 +40,9 @@ The current source-snapshot serialization/reparse facility is not a [binary inte
 
 The current front end parses escaped strings, raw strings, and string interpolation, including nested expressions. Escape sequences are validated during parsing; evaluating interpolated strings is deferred to later compilation stages.
 
-Compile-time basic-value evaluation currently supports integer representations fitting `i64` and all valid `f64` literals.
+Compile-time basic-value evaluation currently supports integer representations fitting `i64` and finite literals parsed as `f64`; exact decimal retention and contextual single rounding remain unimplemented (C.10).
+
+固定長配列の `[N of T]`、要素型の `_` 推論、長さの定数式、関数の長さジェネリクスの仕様本文は、Index・Range・Sliceと合わせて[統合前仕様](SEQUENCE_TYPES.md)にまとめている。今回の変更は文書のみ。専用の構文解析・定数束縛と評価・長さ推論・配置・所有権解析・コード生成は未実装であり、既存の基本値評価や配列リテラルの解析だけでは対応済みとしない。
 
 The front end parses recursive Semantics prefixes, distinct grouped and Tuple Types, and independently annotated inner Origins, preserving them through writing and source serialization. Type resolution, layout validation, subtyping, ownership rules, and most Type semantics remain unimplemented; parsing a nested Type or storage-borrow target does not establish its semantic legality. Syntax-level control-flow facts retain supported nested pointer Types and leave unresolved reference/Origin checks pending.
 
@@ -95,7 +97,7 @@ This documentation revision changes no compiler implementation. New recommendati
 | Review items | Evidence and decision |
 | --- | --- |
 | A-1, A-6 | Tokenizer.ReadLine measures four-space levels, ignores comment-only lines, diagnoses misalignment, tracks delimiter/chain indentation, and closes blocks at EOF. Strict one-level body increases and grammar-aware Case/body precedence are adopted requirements; current raw leading-dot recognition and multi-level increase recovery do not fully enforce them. |
-| A-2 | Tokenizer diagnoses every semicolon and emits a Separator only for recovery. Statement examples now agree. The newly specified fixed-array Type separator is an exception still requiring lexer/parser implementation. |
+| A-2 | Tokenizer diagnoses every semicolon and emits a Separator only for recovery. 固定長配列は `[N of T]` に改訂し、セミコロンを許可する例外は削除した。 |
 | A-3 | TokenKind/TokenHelper provide the punctuation and keyword baseline. The normative reserved set also incorporates existing prose (Self, init, access words, require, defer); internal contextual classification is not full enforcement. Root :: token handling remains required. |
 | A-4 | NumberLiteralHelper currently scans an ordinary fraction after a member dot. The dedicated digit-only Tuple index split is a new specified requirement. |
 | A-5 | Parser.ParseType consumes identifier/slash Semantics prefixes without lookup, stops slash after primitive or grouped heads, and recognizes adjacent generics. The specification records this commitment and mandatory grouping for ambiguous division; newer array/root-qualified targets still require support. |
@@ -126,4 +128,19 @@ This revision changes documentation only. The settled language rules below do no
 | 5. Pipeline | Compilation exposes front-end/control-flow analysis; the recorded Build API does not emit a binary. Correct the reference pipeline so concrete effects and cleanup precede lowering and shared executable code generation. This is a scheduling requirement, not completed backend work. |
 | 6. Contract fragments | ContractKoto parses a declaration body; this does not establish merged Contract identity validation. Specify duplicate selected Contract declarations as errors and retain fragments only as a future feature. |
 
-No unresolved design decision remains for these six items. General constant evaluation, struct static-member modifiers, and future Contract fragments are not introduced; existing unrelated deferred designs retain their previous status.
+No unresolved design decision remains for these six items. 長さに必要な限定的な定数評価はSPEC §3.2.2に従う。General constant evaluation, struct static-member modifiers, and future Contract fragments are not introduced; existing unrelated deferred designs retain their previous status.
+
+### C.10. Type and literal review (items 3–14)
+
+Documentation only; compiler code and tests are unchanged. These decisions supersede conflicting earlier specification snapshots.
+
+| Items | Decision and implementation gap |
+| --- | --- |
+| 3. Function parameters | Require a distinct parenthesized parameter list: `() -> U` has zero parameters; `(T,) -> U` has one `T` parameter. Parser.ParseDeclarationType and NestedTypeParseTest still accept the now-invalid `ref/(i32) -> bool`; dedicated list enforcement remains required. |
+| 4–5. Semantics requirements | Clarify concrete-name equality already allowed by §4.4. Keep the existing category sets: `reference` includes `unsafe`; `owning or borrow` excludes only outer `unsafe`. Neither proves recursive safety. Requirement Binding is unimplemented; directive Conditions still reject every `is` test. |
+| 6–7, 14. Origins | Clarify object-borrow-only outer Origins, explanatory pair projection `o`, and reflexive outlives notation. No new Origin binding or constraint-declaration syntax is introduced; semantic Origin support remains unimplemented. |
+| 8–9. Numeric literals | Adopt exact decimal retention and one rounding to the determined floating Type; direct literal fitting failures are compile-time errors. NumberLiteralHelper.ParseFloat and NumberLiteralKoto.Literal currently parse/write via `f64`; representation, serialization, and contextual fitting require updates. |
+| 10. Base prefixes | Require at least one valid digit. NumberLiteralScanTest and NumberLiteralParseTest still accept empty/separator-only prefixes as zero. Existing malformed-suffix scanning already rejects examples such as `0xg`. |
+| 11. String newlines | Normalize physical LF/CRLF/CR to LF in both string forms, preserving spaces, escapes, and interpolated values. StringLiteralHelper and StringLiteralParseTest currently preserve physical newline sequences; value normalization and test expectations require updates. |
+| 12. Unicode | Pin category and NFC data to Unicode 15.0.0; a minimum version with optional newer characters would retain acceptance differences. IdentifierHelper currently uses host Unicode APIs; fixed-data validation is unimplemented. |
+| 13. Boolean validity | Specify `0x00`/`0x01` as the only valid `bool` storage representations. Backend valid-value enforcement is not established by the current front-end coverage. |
