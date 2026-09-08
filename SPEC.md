@@ -1499,6 +1499,8 @@ Fix local Types at declaration; later uses cannot infer backward. Functions decl
 
 Explicit function type arguments must supply the full list. Partial lists and inference placeholders are not defined. Omitted defaults do not infer generic arguments.
 
+Generic inference and substitution preserve all bound Origins and inferred Loan requirements of substituted Types, including nested dependencies. This does not change Core Type/Semantics parameter roles. A surrounding borrow such as `ref/T` retains `T`'s internal dependencies alongside the borrow's own Origin and Loan. Substitution alone creates no Borrow/Reborrow, releases no Loan, and extends no lifetime; actual call-site Origins and Loans follow the [Ownership and Origin rules](#9-ownership-and-lifetime-analysis).
+
 Bidirectional checking supports literals, function references, anonymous functions, and expressions directly checkable against a candidate Type. It does not search combinations by rerunning an inner overload for every outer candidate in `f(g(x))`:
 
 - First process independently typable arguments and explicit Type information.
