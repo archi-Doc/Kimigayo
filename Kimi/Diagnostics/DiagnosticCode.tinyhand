@@ -109,6 +109,7 @@
 
   + Name="InvalidIdentifier_Kd"
     Message="'{0}' is not a valid identifier"
+    Fix="Use an NFC name with valid identifier characters and no Unicode Format (Cf) characters"
 
   + Name="InvalidIndentation_Kd"
     Message="Invalid indentation. Insert {0} spaces for each indentation level"
@@ -136,6 +137,10 @@
 
   + Name="MissingBlockCommentEnd_Kd"
     Message="Reached end-of-file. Missing '*/'"
+
+  + Name="CodeAfterMultilineComment_Kd"
+    Message="Code cannot follow a multiline block comment's closing delimiter on the same physical line"
+    Fix="Move the code to the next line and use ordinary indentation"
 
   + Name="MissingComma_Kd"
     Message="A comma is required to separate syntax elements"

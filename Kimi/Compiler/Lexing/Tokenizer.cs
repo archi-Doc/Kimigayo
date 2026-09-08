@@ -299,7 +299,7 @@ internal ref struct Tokenizer
 
             if (next == Constants.AsteriskChar)
             {// Multi line comment
-                tokenizer.ReadMultiLineComment();
+                return tokenizer.ReadMultiLineComment();
             }
             else if (next == Constants.EqualsChar)
             {
@@ -582,13 +582,14 @@ LineContent:
             }
             else if (this.span[1] == Constants.AsteriskChar)
             {// /* Multi line comment */
-                this.ReadMultiLineComment();
+                if (this.ReadMultiLineComment())
+                {
+                    goto NextLine;
+                }
 
                 // Skip spaces after the comment WITHOUT counting them as indentation;
                 // the indentation of this line was already measured at the line start
                 // (this prevents a bogus InvalidIndentation diagnostic for "/* c */ foo").
-                // If the comment spanned multiple physical lines, code following the
-                // closing "*/" inherits the indentation of the line that opened it.
                 this.Slice(BaseHelper.CountLeadingSpaces(this.span));
                 goto LineContent;
             }
@@ -832,28 +833,56 @@ EndOfFile:
         }
     }
 
-    private void ReadMultiLineComment()
+    // Returns true when a comment crosses a physical line and ends the current line.
+    private bool ReadMultiLineComment()
     {
-        var length = this.span.IndexOf("*/");
-        if (length < 0)
+        var crossedLine = false;
+        while (true)
         {
-            this.diagnostics.Add(this.NewRange(Math.Min(2, this.span.Length)), DiagnosticCode.MissingBlockCommentEnd_Kd);
-            this.Slice(this.span.Length);
-            return;
-        }
+            var length = this.span.IndexOf("*/");
+            if (length < 0)
+            {
+                this.diagnostics.Add(this.NewRange(Math.Min(2, this.span.Length)), DiagnosticCode.MissingBlockCommentEnd_Kd);
+                this.Slice(this.span.Length);
+                return true;
+            }
 
-        this.Slice(length + 2);
+            crossedLine |= this.span[..length].IndexOfAny('\r', '\n') >= 0;
+            this.Slice(length + 2);
+            if (!crossedLine)
+            {
+                return false;
+            }
+
+            // Only spaces and comments may follow a multiline comment's terminator.
+            this.Slice(BaseHelper.CountLeadingSpaces(this.span));
+            if (this.span.StartsWith("/*"))
+            {
+                continue;
+            }
+
+            if (!this.span.IsEmpty && this.span[0] is not ('\r' or '\n') && !this.span.StartsWith("//"))
+            {
+                this.diagnostics.Add(this.NewRange(1), DiagnosticCode.CodeAfterMultilineComment_Kd);
+            }
+
+            // Consume the closing line (including invalid trailing code for recovery).
+            // The next physical line is processed with ordinary indentation rules.
+            this.ReadSingleLineComment();
+            return true;
+        }
     }
 
     private void ReadSingleLineComment()
     {// // Comment\n
-        var idx = BaseHelper.IndexOfLfOrCrLf(this.span, out var newLineLength);
+        var idx = this.span.IndexOfAny('\r', '\n');
         if (idx < 0)
         {
             this.Slice(this.span.Length);
         }
         else
         {
+            var newLineLength = this.span[idx] == '\r' && idx + 1 < this.span.Length && this.span[idx + 1] == '\n' ? 2 : 1;
             this.Slice(idx + newLineLength);
         }
     }

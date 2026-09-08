@@ -133,15 +133,17 @@ Outside literal content, U+0020 spaces separate tokens; leading spaces determine
 - `/*` starts a block comment ending at the first `*/`; block comments do not nest. A missing terminator is a compile-time error.
 - Within literal text, comment delimiters are content. Interpolated expressions follow ordinary token rules.
 
-Physical newlines inside a block comment do not end a logical line or contribute indentation. When a logical line begins with a block comment, its indentation is determined by the leading spaces before `/*`. Code following `*/` keeps that indentation, even on a later physical line; spaces after the closing delimiter do not add indentation. A newline outside the comment resumes the ordinary line rules.
+A block comment containing no physical newline may appear between tokens on the same line. Leading spaces before the comment determine that line's indentation; spaces after `*/` do not add indentation.
+
+If a block comment contains a physical newline, no code may follow its closing `*/` on the same physical line. Only spaces and comments may follow it; violating this rule is a compile-time error. The comment does not join code across physical lines. Subsequent code must appear on a following line and obey the ordinary indentation and line-continuation rules. Comment-only lines and indentation inside comments do not affect block structure.
 
 ```kimi
-let total = 1 /* still the same logical line
-*/ + 2
+let total = 1 /* inline comment */ + 2
 
 func example()
-    /* This line establishes four spaces of indentation.
-*/ work()
+    /* A multiline comment.
+    */
+    work()
     finish()
 ```
 
@@ -166,7 +168,17 @@ The start character may be:
 Each continuation character may be any valid start character, or:
 
 - an ASCII digit (`0`–`9`), or
-- a Unicode character in one of the categories Nonspacing Mark (`Mn`), Spacing Combining Mark (`Mc`), Decimal Digit Number (`Nd`), Connector Punctuation (`Pc`), or Format (`Cf`).
+- a Unicode character in one of the categories Nonspacing Mark (`Mn`), Spacing Combining Mark (`Mc`), Decimal Digit Number (`Nd`), or Connector Punctuation (`Pc`).
+
+Names are equal if and only if their Unicode scalar sequences match exactly. Comparison is case-sensitive and culture-independent. No Unicode normalization, case folding, compatibility mapping, or removal of characters is performed for name lookup or duplicate-name detection.
+
+Every Name, in both declarations and references, must already be in Unicode Normalization Form C (NFC). A non-NFC spelling is a compile-time error; the compiler does not silently normalize it. For example, a Name containing U+00E9 (`é`) is permitted, while the canonically equivalent sequence U+0065 U+0301 is rejected. `Dog` and `dog` are distinct Names, as are ASCII `A` and fullwidth `Ａ`.
+
+All Format (`Cf`) characters are forbidden anywhere in Names, including bidirectional controls and zero-width join/non-join controls. This restriction applies to Names, not to comment or literal contents. It does not exclude every default-ignorable character in other Unicode categories.
+
+Visually confusable Names are not treated as equal. Implementations may provide optional lint warnings for confusable Names; such warnings do not affect name identity or language validity, and the compiler is not required to emit them.
+
+The Unicode character-category and normalization data version is implementation-defined. Implementations must document their data source/version policy. The current .NET compiler uses its host runtime's Unicode category and normalization APIs; the effective data may depend on the runtime and operating system/globalization backend. This specification does not pin a Unicode release, so builds requiring identical character acceptance must use the same runtime and globalization data.
 
 Contextual keywords may be used as Names in contexts that accept contextual identifiers. Reserved keywords may not. `in` delimits a `for` header and `has` introduces an inline Property accessor list; both may be Names elsewhere. `move` is an **@-context reserved name**: immediately after `@`, it selects Consume without Type/Semantics lookup. Elsewhere it may be an ordinary Name, so `move(...)` is an ordinary call. There is no prefix `move` or Move accessor. A Type named `move` requires a nonconflicting spelling, such as an alias, in an Adaptation Target. Built-in Semantics names likewise select their Semantics in shorthand targets. `Self` is reserved; `self`, `storage`, and `value` follow [contextual name rules](#511-namespaces-roles-and-visibility).
 
@@ -588,7 +600,7 @@ Prefixes associate to the right and bind more tightly than `->`. Thus `ref/ref/T
 
 Expand aliases and retain every layer for Type identity, applicability, layout, and Origin analysis. `ref/ref/T` is distinct from `ref/T`. `owner/V` is redundant ownership notation for the existing value Type `V`, not an operation that removes its references or Object Semantics; redundant owner prefixes and grouping normalize away. Object Semantics still require a supported Core Type or runtime-contract View Target, not an already Semantics-applied value Type. Consequently `ref/obj/T` is permitted but `obj/ref/T` does not implicitly box a reference. Generic Semantics parameters obey the same restrictions after substitution; generic parameter roles are unchanged.
 
-Each layer retains its own Origin dependencies. Existing inference and elision rules apply independently to omitted Origins; an explicit outer annotation does not overwrite an inner one. At every safe value-borrow layer, all observable Origins of `V` must outlive that layer's Origin. For the last example above, `inner : outer` is required. Grouping or a redundant owner prefix cannot supply a second, conflicting annotation to the same normalized layer. Raw pointers do not establish safe-reference validity or extend lifetime.
+Each layer retains its own Origin dependencies. The [position-specific Origin rules](#94-origin-elision-and-return-contracts) apply to each omitted Origin; an explicit outer annotation does not overwrite an inner one. In a parameter Type, only the outer direct borrow may introduce an implicit input Origin; inner borrow Origins and Origin arguments of aggregate inputs must be explicit. Local initializers may supply inference for all layers, while instance Stored Properties require explicit bindings throughout. The unannotated forms above illustrate Type composition, not permission to omit Origins in every position. At every safe value-borrow layer, all observable Origins of `V` must outlive that layer's Origin. For the last example above, `inner : outer` is required. Grouping or a redundant owner prefix cannot supply a second, conflicting annotation to the same normalized layer. Raw pointers do not establish safe-reference validity or extend lifetime.
 
 Copy classification uses the outer effective Semantics: `ref/uniq/T` is Copy, whereas `uniq/ref/T` is Non-Copy. Copying the outer shared reference does not copy the stored exclusive capability. Shared access through an outer reference cannot Move a non-Copy inner value, obtain exclusive access through a stored `uniq`, or mutate the reference slot. A shared reborrow of that stored capability remains bounded by the outer Loan. Destroying or moving an outer reference does not destroy or move its referent. Replacing a reference slot through valid exclusive access must preserve all inner Type, Origin, and Loan constraints.
 
@@ -738,7 +750,7 @@ Borrow and Slice formation never extend the source's lifetime. Result transfers 
 
 Kimigayo uses **Origins** instead of lifetime variables. An Origin describes how long a borrow remains valid; a **Loan** records which place is borrowed and whether the borrow is shared or exclusive.
 
-Origin annotations appear in signatures and type declarations. Origins inside function bodies are inferred. When an annotation is omitted, conservative elision rules apply.
+Origin annotations appear in signatures and type declarations. Local Origins may be inferred from initializers and ordinary Origin/Loan constraints. Omission is permitted only by the [position-specific rules](#94-origin-elision-and-return-contracts): direct borrowed inputs introduce input Origins, results use conservative elision, and instance Stored Properties require explicit Origin bindings. Static Stored Properties may not retain safe borrows in this revision.
 
 The safe value-borrow semantics are:
 
@@ -1265,7 +1277,7 @@ let limit: i32 = 10
 var current = 0
 ```
 
-A local Type must be fixed at declaration, even without an initializer. Locals become visible after their declaration, so an initializer `let x = x` refers to an outer `x`; duplicate and forward-reference rules follow [name visibility](#511-namespaces-roles-and-visibility). `let` permits only its first initialization, and Move never resets that history. Definite initialization and permitted reinitialization follow [initialization-state rules](#911-storage-state-and-responsibility).
+A local Type must be fixed at declaration, even without an initializer. An explicit local Type with an omitted borrow Origin or required Origin argument needs a declaration initializer under [Origin inference](#94-origin-elision-and-return-contracts); a later first assignment cannot supply the missing annotation. A fully specified Type may still omit its initializer under the ordinary initialization rules. Locals become visible after their declaration, so an initializer `let x = x` refers to an outer `x`; duplicate and forward-reference rules follow [name visibility](#511-namespaces-roles-and-visibility). `let` permits only its first initialization, and Move never resets that history. Definite initialization and permitted reinitialization follow [initialization-state rules](#911-storage-state-and-responsibility).
 
 ### 4.6. Functions
 
@@ -3402,6 +3414,10 @@ Expand inline has declarations
 - A **Stored Property** has `HasStorage = true` and owns one location: part of the instance layout for an instance Property, or static storage for a static member of a `group`.
 - A **Computed Property** has `HasStorage = false` and contributes no storage slot.
 
+An instance Stored Property must explicitly bind every borrow Origin and required Type Origin argument in its complete Property Type, including nested layers and generic Type arguments, under [Origin binding](#94-origin-elision-and-return-contracts). Bindings use the containing Type's declared abstract Origins or `static` where valid; `self` does not provide an implicit self-borrowing storage contract. Neither a declaration initializer nor constructor assignments infer the Property's Origin contract.
+
+A static Stored Property may not retain a safe borrow in this revision, directly or through stored aggregate fields, elements, or a closure environment. This prohibition includes borrows bound to `static`; `Owned` alone is not sufficient to permit such storage. Apply the check after alias expansion and generic substitution, retaining unresolved generic obligations until specialization. A callable signature that accepts or returns a borrow, or a raw pointer's Referent Type, does not itself mean that the stored value retains that borrow. Computed Properties have no storage to which this prohibition applies; their getter results obey the existing result rules.
+
 ### 8.1. Effective representation
 
 Expand source accessors before classifying storage, but preserve whether each is compiler-provided standard access or a custom body:
@@ -3445,7 +3461,7 @@ An omitted or bodyless getter uses the complete Property Type to select a Copy o
 
 For ordinary borrowed receivers, a default instance getter's borrow/reborrow has Origin `from self`, bounded by the receiver even when storage carries a longer Origin. On a statically identified owned receiver, [standard field access](#810-access-after-partial-move) creates a Loan on the field instead of borrowing the entire instance; its Origin is bounded by field storage and owner validity. A shared reborrow suspends conflicting access through the stored exclusive reference while the result is live. A Copy preserves the value's existing Origin dependencies without extending them or replacing them with `self`.
 
-A default static getter that creates a borrow anchors it to the Property's storage and its current stored value. Static allocation alone does not permit replacement or destruction of that value while the borrow is live. Normal Origin and Loan rules still apply; this does not add support for the deferred feature of borrow escape into global storage.
+A default static getter that creates a borrow anchors it to the Property's storage and its current stored value. Static allocation alone does not permit replacement or destruction of that value while the borrow is live. Normal Origin and Loan rules still apply. Borrowing an otherwise permitted static stored value for local use is distinct from storing a borrowed value in static storage; the latter is forbidden in this revision.
 
 For example:
 
@@ -4002,6 +4018,8 @@ Pair<A, B> from (
 
 Named argument lists require parentheses, even for one argument. For a Type with exactly one Origin, `View<T> from v` abbreviates `View<T> from (source => v)`.
 
+Omitted Origin arguments follow the [position-specific rules](#94-origin-elision-and-return-contracts). Parameter Types and instance Stored Property Types require explicit arguments for Origin-bearing aggregates; local initializers may infer them, and result Types use result-Origin elision. No argument defaults to `static` merely because it appears in a generic Type argument. References to the containing `Self` retain that Type's already-bound abstract Origins and do not introduce a new omitted argument list.
+
 #### 9.3.2. Variance
 
 The compiler infers Origin variance from all occurrences and solves recursive types to a fixed point. Explicit variance annotations are not allowed.
@@ -4053,6 +4071,44 @@ The requirement determines which caller-side Loan must remain active while a ret
 
 ### 9.4. Origin elision and return contracts
 
+Origin omission depends on the position of the complete Type. These rules apply to `ref`, `uniq`, `objref`, and `objuniq`, after alias expansion and normalization of grouping and redundant owner prefixes. They do not create a safe-borrow Origin for `unsafe/T`.
+
+| Type position | Meaning of an omitted Origin |
+| --- | --- |
+| Direct borrowed parameter or borrowed receiver | Introduce an independent input Origin for that input's outer borrow layer. |
+| Function result | Apply the result-Origin rules below; whole-result inference retains its existing rules. |
+| Local binding with inferred Type | Infer the Type, Origin dependencies, and Loans from the initializer under ordinary acquisition rules. |
+| Explicit local Type containing a borrow or Origin-bearing aggregate | Infer omitted Origins and Origin arguments from the declaration initializer and ordinary Origin/Loan constraints. Without an initializer, omission is a compile-time error. |
+| Instance Stored Property | Require explicit bindings for all borrow layers and required Type Origin arguments; do not infer the storage contract from initialization. |
+| Static Stored Property | Safe-borrow retention is forbidden, including nested borrows and explicitly `static` borrows. |
+| Generic Type argument or nested value Type | Recursively apply the enclosing position's rule; being a Type argument does not introduce a separate default. |
+
+An implicit input Origin is universally quantified for that input and supplied from the caller's argument or receiver. It is not the lexical lifetime of the parameter variable. Different direct borrowed inputs introduce independent Origins unless explicit annotations relate them. Only their outer direct borrow Origins participate in result elision. Borrow Origins nested inside a parameter's Referent Type, generic arguments, or aggregate Type must be explicit; they are not additional implicitly quantified inputs. An already-bound generic Type parameter or `Self` preserves its existing dependencies. Fixed expected callable signatures and the limited input quantification of [Callable constraints](#444-callable-constraints) retain their own rules; this section adds no general higher-ranked Origins.
+
+For locals, inference means satisfying ordinary subtyping, variance, outlives, and Loan constraints, not requiring literal equality with the initializer's Origin. Permitted shortening remains available. The declaration fixes the local Type and its Origin constraints; later assignments must satisfy that contract and cannot extend a source lifetime or erase a retained Loan dependency. Explicit Origin annotations remain constraints on the initializer and all subsequent assignments.
+
+Instance storage exposes the containing Type's declared Origin contract. Bind each retained dependency to the containing Type's abstract Origins, or explicitly to `static` where ordinary validity and Loan rules permit. An exclusive borrow still requires a valid unique Loan anchor; longevity alone is insufficient. Initializers and constructors must satisfy these bindings, rather than determine them.
+
+```kimi
+func f<T>(x: ref/T, y: ref/T)
+// Independent input Origins x and y.
+
+func nested<T> origin inner(x: ref/(ref/T from inner))
+// The outer borrow has implicit input Origin x; inner is explicit.
+
+func invalid<T>(x: ref/ref/T) // Error: the inner Origin is omitted.
+
+struct View<T> origin source
+    var value: ref/T from source
+
+func use<T>(x: ref/T)
+    var local: ref/T = x // Infer an Origin satisfying initialization and use constraints.
+    var missing: ref/T  // Error: no initializer to infer the omitted Origin.
+
+group Global
+    var value: ref/i32 from static // Error: static storage may not retain a safe borrow.
+```
+
 When a result Origin is omitted, the compiler applies these rules in order:
 
 1. If the result contains no borrow, no result-Origin constraint is generated.
@@ -4075,7 +4131,7 @@ func empty() -> ref/string
 Only direct borrowed parameters participate in rule 2. Origins nested in aggregate inputs must be selected explicitly:
 
 ```kimi
-func get(v: View<T>) -> ref/T from v.source
+func get<T> origin s(v: View<T> from (source => s)) -> ref/T from v.source
 ```
 
 An explicit `from` clause overrides elision. Thus this result depends on `self`, not on the conservative meet `self and key`:
@@ -4401,7 +4457,7 @@ This revision does not define:
 - abstract Origin parameters on contracts or trait-like abstractions (the [Property getter receiver/result contracts](#82-default-getter-results) do not introduce contract-level Origin parameters);
 - existential object views that hide non-static payload dependencies;
 - general higher-ranked Origins beyond the direct-input quantification of Callable constraints;
-- borrow escape into heap or global storage;
+- borrow escape into heap or global storage; in particular, static Stored Properties are forbidden from retaining safe borrows, including `static` borrows and borrows nested in stored values, under [Property storage rules](#8-properties);
 - lending iterators;
 - cancellation cleanup guarantees.
 
@@ -5571,7 +5627,7 @@ In the EBNF below, quoted text is literal syntax, `|` is choice, parentheses gro
 Name                 := NameStart NameContinue*
 NameStart            := "A".."Z" | "a".."z" | "_"
                       | ? Unicode Lu, Ll, Lt, Lm, Lo, or Nl ?
-NameContinue         := NameStart | "0".."9" | ? Unicode Mn, Mc, Nd, Pc, or Cf ?
+NameContinue         := NameStart | "0".."9" | ? Unicode Mn, Mc, Nd, or Pc ?
 PhysicalNewline      := LF | CR LF | CR
 LineComment          := "//" ? text up to a physical newline or EOF ?
 BlockComment         := "/*" ? text up to the first closing delimiter ? "*/"

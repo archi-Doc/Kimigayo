@@ -13,7 +13,7 @@ namespace Kimi.Compiler.Helper;
 public static class IdentifierHelper
 {
     /// <summary>
-    /// Determines whether the specified text is a valid identifier.
+    /// Determines whether the specified text is a valid NFC identifier without format controls.
     /// </summary>
     /// <param name="identifier">The text to validate as an identifier.</param>
     /// <returns><see langword="true"/> if the text is valid; otherwise, <see langword="false"/>.</returns>
@@ -25,6 +25,7 @@ public static class IdentifierHelper
         }
 
         var c = identifier[0];
+        var hasNonAscii = c > 0x7F;
         int index;
 
         if (c <= 0x7F)
@@ -62,6 +63,7 @@ public static class IdentifierHelper
                 continue;
             }
 
+            hasNonAscii = true;
             if (!TryGetUnicodeCategory(identifier, index, out var category, out var consumed) ||
                 !IsIdentifierPartCategory(category))
             {
@@ -71,7 +73,9 @@ public static class IdentifierHelper
             index += consumed;
         }
 
-        return true;
+        // Validate the original spelling; never normalize the symbol-table key.
+        // ASCII is already NFC. Check Unicode only after rejecting malformed UTF-16.
+        return !hasNonAscii || identifier.ToString().IsNormalized(NormalizationForm.FormC);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -115,8 +119,7 @@ public static class IdentifierHelper
             UnicodeCategory.NonSpacingMark or
             UnicodeCategory.SpacingCombiningMark or
             UnicodeCategory.DecimalDigitNumber or
-            UnicodeCategory.ConnectorPunctuation or
-            UnicodeCategory.Format;
+            UnicodeCategory.ConnectorPunctuation;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

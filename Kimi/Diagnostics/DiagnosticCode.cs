@@ -45,6 +45,7 @@ public enum DiagnosticCode
     IntegerOverflow_Kd,
     LetPropertyCannotHaveSetter_Kd,
     MissingBlockCommentEnd_Kd,
+    CodeAfterMultilineComment_Kd,
     MissingComma_Kd,
     MissingExpectedToken_Kd,
     MissingStringLiteralEnd_Kd,

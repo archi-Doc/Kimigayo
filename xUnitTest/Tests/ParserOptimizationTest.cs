@@ -31,7 +31,9 @@ public class ParserOptimizationTest
     [InlineData("identifier", true)]
     [InlineData("変数", true)]
     [InlineData("a😀", false)]
-    [InlineData("a\u0301", true)]
+    [InlineData("a\u0301", false)]
+    [InlineData("\u00e1", true)]
+    [InlineData("a\u200d", false)]
     [InlineData("\u0301a", false)]
     public void ValidatesPreviouslyInternedSpellings(string spelling, bool valid)
     {

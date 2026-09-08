@@ -567,7 +567,16 @@ public ref struct TokenReader
     /// <returns>The shared string for the token text.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly string GetIdentifier(Token token)
-        => this.compilation.Intern(this.GetSpan(token));
+    {
+        var span = this.GetSpan(token);
+        if (this.compilation.TryGetIdentifier(span, out var identifier))
+        {
+            return identifier;
+        }
+
+        this.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
+        return this.compilation.Intern(span); // Preserve the spelling for error recovery.
+    }
 
     /// <summary>Validates and interns an identifier without allocating a syntax node.</summary>
     /// <param name="token">The identifier token.</param>
