@@ -903,6 +903,32 @@ A raw pointer value may exist without sufficient provenance for memory access. U
 
 Raw pointer acquisition APIs, allocation and deallocation, initialization of raw storage, conversion to or from safe references, ownership acquisition, and Unsafe Function Types are specified separately. Example functions such as `obtainPointer` and `use` are illustrative, not standard API declarations.
 
+### 3.9. Type relations and expression operations
+
+The following table is normative. It separates relations between complete Types from operations on expressions. The distinction is semantic, not whether machine instructions are emitted: a Borrow, Reborrow, Copy, or Move remains a value operation even when optimized away. A static Type relation does not by itself authorize acquisition of a value. The referenced rules define each relation's scope; this table adds no conversions, adaptation chains, or overload preferences.
+
+Here `A <: B` includes normalized identity and the explicitly defined subtype rules. Complete Types retain Semantics, nested Types, generic arguments, and Origin bindings. Unresolved generic or Origin information retains constraints for later resolution; it is not evidence that Types are identical or compatible.
+
+| Relation or operation | Inputs and normative condition | Effect and boundary |
+| --- | --- | --- |
+| Normalized Type identity | Two complete Types. Expand aliases and normalize grouping and redundant owner prefixes; compare the resulting Type structure, declaration identity, generic arguments, Semantics, and Origin bindings. Bound Origin parameters correspond by binder, not spelling. | No value operation. Different nominal declarations do not become equal through matching names, fields, or layout. This is not the Origin-erasing Runtime Type Identity used by object views. |
+| Alias equivalence | An alias and its resolved target, with substitutions and complete Type information preserved. | Participates in normalized identity; no wrapper, conversion, or ownership change is introduced. Alias lookup still follows ordinary visibility and lookup rules. |
+| Subtyping | Two complete Types, under established generic and Origin constraints. Prove identity or a subtype relation explicitly defined by this specification. | Static fitting only. Do not insert acquisition, Borrow/Reborrow, dereference, numeric conversion, object upcast, or user conversion as part of the proof. |
+| Origin shortening and variance | Apply [Origin variance](#932-variance) and outlives constraints at each relevant position. Covariance permits shortening, contravariance reverses the relation, and invariance requires equality. | A subtype proof, not a new borrow. Preserve existing dependencies and Loans; do not extend lifetime or replace inner Origins with an outer annotation. Exclusive Referent Type invariance remains mandatory. |
+| Callable signature compatibility | For implementation `(A1, ..., An) -> R` and requirement `(P1, ..., Pn) -> Q`, apply [callable compatibility](#528-callable-signature-compatibility): equal arity, `Pi <: Ai`, `R <: Q`, and compatible Origin/Loan contracts. | Static signature fitting. It does not insert argument/result operations or itself convert a Function Item or Closure to a common Function Type. Receiver and environment requirements remain separate. |
+| Expected-result compatibility | An instantiated candidate result Type and an independently established expected Type, under [expected-result filtering](#523-expected-results). Require identity or a defined subtype relation. | Excludes candidates without inserting a value operation. Result acquisition and declared Loan propagation remain required; this is not general implicit expression adaptation. |
+| Never fitting | Never has no normally produced value and fits any otherwise valid expected value Type without a value conversion. | No outer value operation executes on a non-completing path. Preserve target, Unsafe, and local correctness checks, and validate transfer operands against their own result boundary under [result validation](#78-result-validation). Do not use inferred Never to constrain unreachable result sources. |
+| Implicit expression adaptation | An expression, target Type, and use-site context. Select only adaptations allowed in that position, including the finite [argument adaptation rules](#522-argument-adaptation-and-literals) and fixed-expectation [common function conversion](#6434-function-references-and-common-type-conversion). | May require acquisition, Borrow/Reborrow, or a defined conversion. Literal fitting determines an unresolved literal's Type; it does not convert an established numeric Type. No universal implicit-conversion search is permitted. |
+| Explicit expression adaptation | An expression and resolved Adaptation Target in context. Select one [defined `@` operation](#6643-defined-adaptations), then enforce its requirements and static result fitting. | May change value representation, view, or Loan state, or perform runtime checks. No hidden sequence of operations is inserted. Origins are inferred as specified for Adaptation Targets. |
+| Object upcast | An expression and different object View Target with proof of `Supports(S, V)` and a matching [explicit upcast row](#6647-object-upcasts). | One explicit view/acquisition operation. Inheritance or conformance alone does not establish an implicit complete-value adaptation or callable argument/result conversion. |
+| Borrow / Reborrow | An expression with the required Place, access, and Loan properties, and a permitted implicit or explicit borrow operation. | Establish or derive Loans under the borrow rules. Changing `uniq/T` to `ref/T` requires shared Reborrow; it is not a subtype rule. |
+| Numeric conversion | An established numeric value Type and a target admitted by the [explicit numeric conversion table](#6644-numeric-conversions-and-literals). | A value conversion with the specified rounding, range checks, and failure behavior. `i32` is not a subtype of `i64`; representable literal fitting is separate. |
+| Acquisition legality | An expression, selected access operation, and current initialization/access/ownership/Loan state. Apply ordinary Copy, Move, Borrow, or Consume requirements. | Type compatibility does not prove legality. An exact Type match can still fail because storage is Moved, access is unavailable, or a Loan conflicts. Failure does not reopen committed lookup or overload selection. |
+
+For example, `ref/T from longer <: ref/T from shorter` may hold when `longer : shorter`, without establishing a new Loan. In contrast, `uniq/T` to `ref/T` needs Reborrow, and an object view change needs its explicit upcast operation. Same normalized Type does not force an identity operation: explicit same-Type exclusive adaptation still selects Reborrow, and ordinary by-value acquisition may Copy or Move.
+
+Candidate analysis may record operation choices and unresolved obligations, but must not commit source-state changes while testing candidates. After selection, enforce the chosen acquisition and adaptation under the specified evaluation order, and apply static result fitting without replacing that operation. The [implementation correspondence](#b5-type-relation-and-operation-plans) is informative; no particular internal API is required.
+
 ## 4. Declarations and contracts
 
 Kimigayo uses the following information to identify declarations and their meaning:
@@ -1164,7 +1190,7 @@ contract Sequence
 
 See [contract Property requirements](#842-contract-property-requirements) for accessor conformance.
 
-**Design boundary:** Associated-Type resolution/equality and Constraint proof rules for `and`/`or`/`not` and dependent conditions remain separately specified.
+Constraint entailment uses the [limited proof system](#445-constraint-proof-system). **Design boundary:** Associated-Type resolution/equality remains separately specified; the proof system does not invent associated-Type bindings or solve projection equality.
 
 #### 4.4.2. Requirement expressions
 
@@ -1265,6 +1291,45 @@ let result = applyTwice(10, transform@uniq) // 13; captured count is now 2.
 ```
 
 A Shared callable also qualifies, but a `uniq/F` argument still needs ordinary exclusive access. Shared environment access does not prevent use of a separate `uniq/T` argument's normal exclusive capability. By-value `F` parameters use normal Copy/Move; this constraint does not silently borrow them or guarantee repeated calls or non-escape. Generic conformance and result-Owned obligations must resolve before finalization.
+
+#### 4.4.5. Constraint proof system
+
+Constraint meaning and available proof are distinct. `and`, `or`, and `not` retain their Boolean meanings, but generic checking uses only the rules below. The accepted programs must not depend on optional SAT solving, arbitrary theorem proving, enumeration of Types, or optimizer-derived facts. Fully determined concrete conditions still use ordinary Boolean evaluation.
+
+In this section `P` and `Q` denote validated, bound propositions. Parse requirement expressions under [requirement precedence](#442-requirement-expressions) before interpreting them: `T is (A and B)` supplies the propositions `(T is A) and (T is B)`, and similarly for `or` and the scope of `not`. This interpretation does not change source precedence. Proposition identity uses bound subject and requirement Symbols, substitutions, and normalized complete Types, including Semantics and Origins where applicable; equal source spellings alone are insufficient. Parentheses are transparent and `not not P` normalizes to `P`. No De Morgan, distributive, or other logical-equivalence normalization is added.
+
+The proof judgment has four outcomes, distinct from the Condition evaluator's outcomes:
+
+| Outcome | Meaning |
+| --- | --- |
+| **Proven** | The permitted rules establish the proposition. |
+| **Refuted** | The permitted rules establish its negation; absence of proof is insufficient. |
+| **Unknown** | Neither polarity is established by the permitted rules. This is not a Boolean value or an automatic right to defer. |
+| **Error** | Invalid names, subjects, requirements, declarations, or detected contradictory evidence prevent a valid judgment. |
+
+Evidence comes from the current declaration's validated input Constraints, facts introduced by selected compile-time conditions, defined built-in capability rules, and verified explicit or inherited conformance. Facts retain their Binding Identity, substitutions, and lexical/specialization scope. A generic input Constraint is an assumption inside the constrained body, but must be discharged at use. A conformance declaration or `Self is C` obligation cannot prove its own implementation merely by being declared; its required implementations and prerequisite Constraints must be validated under the existing conformance rules. Built-in derivation exceptions such as `Self is Copy` retain their own rules.
+
+| Proof rule | Permitted derivation |
+| --- | --- |
+| Exact assumption | A matching available proposition proves itself; an available `not P` refutes `P`. |
+| Conjunction elimination | Available `P and Q` supplies both `P` and `Q`, recursively. |
+| Conjunction introduction | Prove `P and Q` when both operands are Proven. |
+| Disjunction introduction | Prove `P or Q` when either operand is Proven. This grants no evidence for the other operand. |
+| Negation | Exchange Proven and Refuted for `not P`; Unknown remains Unknown and Error remains Error. Double negation is normalized as above. |
+| Boolean refutation | Refute `P and Q` if either operand is Refuted; refute `P or Q` if both are Refuted. |
+| Concrete atomic judgment | Use defined concrete Type-identity, Semantics/category, and built-in capability tests, or the closed conformance judgment below. |
+| Verified conformance | Prove an explicit or inherited conformance after proving its prerequisites and validating its effective implementations. Retain legitimate unresolved prerequisites. |
+| Other cases | Unknown, unless validation requires Error. |
+
+All operands must be valid. Error is absorbing even when another operand determines truth. Otherwise, an unresolved operand does not prevent conjunction refutation from a Refuted operand or disjunction introduction from a Proven operand. Exact compound assumptions remain usable without proving each operand separately, but only conjunction elimination exposes component facts. In particular, `P or Q` together with `not P` does **not** prove `Q` in this system. No case analysis, contraposition, proof by contradiction, or inference from contradiction is permitted. These restrictions apply to symbolic proof, not to Boolean evaluation after concrete atomic judgments have determined operand values.
+
+**Concrete and closed-world judgments.** Fully bound Types may be compared by normalized identity; fully determined Semantics/category and built-in capability tests use their respective rules. An unbound Type or an unresolved structural prerequisite must not be treated as a negative result. For conformance, absence is Refuted only after the relevant concrete declaration, inherited conformances, and all potentially applicable conditional conformances are complete in the fixed compilation environment, with no pending merge, selection, binding, or prerequisite that could establish it. All such alternatives must be ruled out by the specified rules. A failed lookup alone does not establish negative conformance. Malformed or invalid conformance declarations are Error, not evidence of absence. An unsupported associated-Type operation is not a concrete negative judgment.
+
+**Recursion.** Revisiting the same active proof obligation with the same bound arguments supplies no evidence. A cycle alone cannot prove or refute conformance, and an in-progress registration is not verified conformance. Independent finite evidence may still resolve the obligation; otherwise it remains Unknown until its resolution deadline and is diagnosed if still required. A temporary cycle result must not prevent later independently established evidence from being considered. Do not reject recursive Types merely because their declarations are recursive. Structural built-in analyses with separately defined recursion or fixed-point rules use those rules; this section adds no general coinductive conformance assumption.
+
+**Contradictions.** After the specified normalization and conjunction elimination, directly available `P` and `not P` are contradictory evidence and produce Error. Likewise, evidence establishing both polarities of a queried proposition is Error. Do not derive arbitrary capabilities from an inconsistent environment. Detection of more complex contradictions by excluded logical transformations is not required and cannot supply proof.
+
+**Use and finalization.** A required Constraint succeeds only when Proven. Refuted fails the requirement; Error reports invalid input or contradictory evidence. Unknown may be retained only when an identified later binding, specialization, or prerequisite analysis can resolve it before the applicable deadline. Unknown without such a dependency is an unproven-requirement error when a proof is required. Every required concrete-call or specialization obligation must be resolved before finalization. Unknown is never accepted, converted to Refuted, or used as evidence for a negated Constraint. Associated-Type resolution and stronger symbolic reasoning remain design boundaries.
 
 ### 4.5. Bindings
 
@@ -1602,6 +1667,8 @@ For example, `Box<i32>` selects `Box<T>` from a stage containing `Box<T>` and `B
 
 ### 5.2. Overload resolution and inference
 
+Use the distinct relations in [Type relations and expression operations](#39-type-relations-and-expression-operations): argument adaptation, expected-result compatibility, and acquisition legality are separate judgments. A successful subtype proof does not select or authorize a value operation.
+
 #### 5.2.1. Candidate applicability
 
 Check each declaration in the committed function group independently:
@@ -1666,6 +1733,8 @@ choose(1@i64)  // Exact i64.
 ```
 
 #### 5.2.3. Expected results
+
+This is the static expected-result judgment in [the relation table](#39-type-relations-and-expression-operations), not the implicit-expression-adaptation judgment.
 
 An expected result may complete inference and exclude otherwise applicable candidates. Compatibility requires normalized Type identity or a defined subtype relation without additional value operations. Instantiate and check Origins, including permitted covariant shortening. Do not insert a new borrow/reborrow, dereference, numeric conversion, or user conversion to retain a candidate. Do not retype a function's body literal to change its established return Type.
 
@@ -1733,7 +1802,7 @@ outer(intermediate)
 
 Resolve a function reference to one declaration using ordinary selection evidence, including explicit generic arguments or a fixed expected callable signature. A unique candidate needs no expected Type; an unresolved overload set is not a value. Anonymous-function arity and explicit Types may filter candidates, but its body is checked only after a common expected signature or a single candidate is determined. A fixed `Callable<r, S>` signature may guide parameter inference while `F` retains the concrete Closure Type. Do not rerun a body for competing signatures, infer parameters from later uses, or repeat capture effects during candidate trials. Function values carry neither labels nor defaults and cannot name unsafe functions or `deinit`. Later conformance failure never selects another overload or capture mode.
 
-After inference, check Constraints as satisfied, unsatisfied, legitimately dependent, or erroneous. Nondependent names bind at the definition. Generic bodies use evidence from declared constraints and selected conditions; failure to prove `T is C` does not prove `T is not C`. Deferred members use the [definition-site source environment](#12-modules-and-dependencies), never caller imports. All necessary constraints must be decided before finalizing a concrete call or specialization. Do not use arbitrary theorem proving, enumeration of available Types, or constraint strength for overload ranking.
+After inference, check Constraints using the [limited proof system](#445-constraint-proof-system). Proven satisfies a requirement, Refuted fails it, and Error diagnoses invalid or contradictory evidence. Unknown retains an obligation only for a legitimate dependency that can resolve before the applicable deadline; it is not an applicable result or a negative fact. Nondependent names bind at the definition. Generic bodies use evidence from declared constraints and selected conditions; failure to prove `T is C` does not prove `T is not C`. Deferred members use the [definition-site source environment](#12-modules-and-dependencies), never caller imports. All necessary constraints must be Proven before finalizing a concrete call or specialization. Do not use arbitrary theorem proving, enumeration of available Types, or constraint strength for overload ranking.
 
 Conditional membership follows the [name-resolution boundary](#134-name-resolution-boundary). Excluded declarations do not merge or enter candidate sets. Compiler requirements preserve independent specialization environments.
 
@@ -1788,6 +1857,8 @@ use(value)
 With the first result discarded, `s = ref` creates a shared Loan ending in that expression; `s = uniq` similarly requires exclusive writability. The later use is checked normally after the Loan ends. `s = owner` copies a Copy value but moves a non-Copy value, making the later use an error. Retaining a borrow result instead requires checking all later uses in its Loan lifetime.
 
 #### 5.2.8. Callable signature compatibility
+
+Callable variance uses the static Type relations in [the relation table](#39-type-relations-and-expression-operations); common Function Type conversion and receiver acquisition are separate operations.
 
 Common Function Type conversion and `Callable<r, S>` use one rule. For implementation `(A1, ..., An) -> R` and required `(P1, ..., Pn) -> Q`, require equal arity, `Pi <: Ai` at every position, and `R <: Q`. Here `<:` means normalized complete-Type identity or an already defined subtype relation, retaining Semantics and Origins. Parameter labels, defaults, and optionality cannot bridge a mismatch.
 
@@ -2295,6 +2366,8 @@ let clear = flags & mask == 0
 ```
 
 #### 6.6.4. Explicit operations
+
+Explicit operation selection is distinct from subtyping and acquisition legality under [Type relations and expression operations](#39-type-relations-and-expression-operations). Origin restriction fits the selected operation's result; it does not substitute another operation.
 
 `@` is a built-in explicit value operation. It cannot be overloaded, does not search conversion chains, and applies only to its direct operand. The operation itself calls no user code; ordinary operand evaluation, including calls and getters, still does. It never implicitly boxes, acquires resources, duplicates ownership, or increments reference counts.
 
@@ -4022,6 +4095,8 @@ Omitted Origin arguments follow the [position-specific rules](#94-origin-elision
 
 #### 9.3.2. Variance
 
+These are static subtype rules under [Type relations and expression operations](#39-type-relations-and-expression-operations). They do not create or authorize a value operation; acquisition and existing Loan obligations must be checked separately.
+
 The compiler infers Origin variance from all occurrences and solves recursive types to a fixed point. Explicit variance annotations are not allowed.
 
 | Position                 | Origin                   | Core Type         |
@@ -5047,7 +5122,7 @@ T is Comparable
 
 A concrete Type or Type Semantics on the right of `is` tests identity. A named capability declared with `contract` or a named category tests satisfaction of its requirements.
 
-A selected `#if` target adds its Condition to the facts available while analyzing that target. A selected `#case` arm adds its Condition and the negation of every earlier Condition in the same `#match`. These facts are local to the selected target or arm, do not leak into following Syntax or sibling groups, and are not Constraint Clauses. Narrowing preserves the concrete Core Type: `T is Comparable` does not replace `T` with `Comparable`. This defines the available assumptions; it does not introduce additional Constraint proof rules.
+A selected `#if` target adds its Condition to the facts available while analyzing that target. A selected `#case` arm adds its Condition and the negation of every earlier Condition in the same `#match`; `#case _` adds only the earlier negations. These facts are local to the selected target or arm, do not leak into following Syntax or sibling groups, and are not Constraint Clauses. Narrowing preserves the concrete Core Type: `T is Comparable` does not replace `T` with `Comparable`. Use these assumptions only through the [limited proof rules](#445-constraint-proof-system). An assumed disjunction does not expose either alternative, and negated compound conditions are not decomposed through De Morgan. Facts from a target cannot justify the selection that makes that target available.
 
 Compile-time Conditions do not evaluate runtime values. The initial design does not destructure values or introduce pattern bindings. For example, `#case value is ref/i32 x` is invalid; use `#case (s is ref) and (T is i32)` to narrow a value of Type `s/T` to `ref/i32`. Parentheses separate each [requirement expression](#442-requirement-expressions) from the surrounding condition.
 
@@ -5064,7 +5139,9 @@ After dependency classification, language evaluation has exactly four outcomes:
 | **Deferred** | The Condition has a valid compile-time dependency whose value is not yet available. |
 | **Error** | The Condition is invalid, non-Boolean, or refers to an unavailable Name. |
 
-After name and dependency validation, an unbound declared generic parameter produces **Deferred**, while an unknown Name produces **Error**. Short-circuit reasoning determines truth, but does not waive validation of any operand in a Condition. **Error** is absorbing for `and` and `or`, regardless of operand order: `Error and X`, `X and Error`, `Error or X`, and `X or Error` are **Error** for every result `X`; `not Error` is **Error**. Otherwise, `false and Deferred` is **False**, `true or Deferred` is **True**, and `true and Deferred`, `false or Deferred`, and `not Deferred` are **Deferred**.
+For a bound requirement test, [Constraint proof](#445-constraint-proof-system) maps Proven to True and Refuted to False. Proof Error maps to Error. Unknown maps to Deferred only if an identified, validated compile-time dependency can resolve it before the required deadline; otherwise report an unproven-requirement Error when evaluation is required. Lack of symbolic proof alone is not Deferred, and is never False. Concrete requirement operands whose atomic judgments are determined evaluate `and`, `or`, and `not` normally; the limited symbolic proof rules do not suppress concrete Boolean evaluation.
+
+After name and dependency validation, a value still dependent on an unbound declared generic parameter produces **Deferred**, while an unknown Name produces **Error**. A requirement already Proven or Refuted from permitted evidence does not remain Deferred merely because its subject is generic. Short-circuit reasoning determines truth, but does not waive validation of any operand in a Condition. **Error** is absorbing for `and` and `or`, regardless of operand order: `Error and X`, `X and Error`, `Error or X`, and `X or Error` are **Error** for every result `X`; `not Error` is **Error**. Otherwise, `false and Deferred` is **False**, `true or Deferred` is **True**, and `true and Deferred`, `false or Deferred`, and `not Deferred` are **Deferred**.
 
 Truth determination and validation are separate. Every reached Condition must be valid, including operands and later arm Conditions whose values cannot affect selection. Unknown Names and invalid operands are errors. A known truth value does not authorize finalization before validation is complete, and does not require obtaining an irrelevant valid dependent value. **Deferred** means a validated compile-time dependency, never an unsupported feature or implementation limitation.
 
@@ -5430,6 +5507,21 @@ Dog descriptor
 
 Descriptor sharing/canonicalization may permit address comparison when it preserves language identity; distinct physical descriptors may still denote one Runtime Type Identity.
 
+### B.5. Type relation and operation plans
+
+**Non-normative.** A Binder can map the [normative relation table](#39-type-relations-and-expression-operations) to separate APIs such as the following. Names and signatures are illustrative, not language requirements.
+
+| Illustrative API | Responsibility |
+| --- | --- |
+| `IsIdenticalType(A, B)` | Compare normalized complete Types, including bound Origin identity. |
+| `IsSubtype(A, B, constraints)` | Prove static fitting without inserting value operations. |
+| `IsExpectedResultCompatible(A, B, constraints)` | Apply only the static relation permitted during candidate result filtering. |
+| `CanImplicitlyAdapt(expression, target, context)` | Select an adaptation permitted in that use-site context. |
+| `CanExplicitlyAdapt(expression, target, context)` | Select one operation admitted by the resolved explicit target. |
+| `CanAcquire(expression, access, state)` | Check the selected access against Place, initialization, ownership, and Loan state. |
+
+Despite the illustrative `Can` names, adaptation and acquisition checks benefit from returning a plan rather than only a Boolean. A plan can retain the selected operation, complete result Type, Origin constraints, required access, Copy/Move and Loan effects, and any deferred generic obligations. Static relation checks can likewise distinguish proven, rejected, and unresolved constraints. Keep candidate plans isolated from committed program state. Once selection is complete, validate and lower the selected plan in evaluation order rather than repeating operation selection with different rules. Defined runtime checks, such as numeric range checks, remain part of the operation rather than reasons to search for another conversion.
+
 ## Appendix C. Implementation status
 
 Implementation coverage is informative and does not weaken language rules or Compiler requirements. All implementation-progress notes are centralized here; `planned` in a retained snapshot means implementation work, not permission to use an undesigned feature.
@@ -5527,7 +5619,8 @@ This index links to design boundaries owned by the language sections. It adds no
 | Runtime-contract declaration/binding syntax; contract/exact test and checked-cast spellings | Partially specified | [Runtime contracts](#443-runtime-contracts), [tests and casts](#6652-general-view-tests-and-checked-casts) |
 | Extra implicit/ordinary base conversions, contract inheritance/defaults, consuming/generic runtime requirements, external conformance | Deferred design | [Object views](#335-object-views-and-identity), [runtime contracts](#443-runtime-contracts) |
 | Fixed FFI layout | Deferred design | [Structure layout and ABI](#146-structure-layout-and-abi) |
-| Constraint proof and associated Types | Partially specified | [Associated Types and Property requirements](#441-associated-types-and-property-requirements) |
+| Limited Constraint proof | Defined; implementation tracked separately | [Constraint proof system](#445-constraint-proof-system) |
+| Associated-Type resolution/equality and stronger symbolic Constraint reasoning | Deferred design | [Associated Types and Property requirements](#441-associated-types-and-property-requirements), [proof boundaries](#445-constraint-proof-system) |
 | Generic specialization and operation selection | Partially specified | [Inference and operation design boundaries](#53-inference-and-operation-design-boundaries) |
 | Abstract Origins, escaping borrows, and lending iterators | Deferred design | [Lifetime design boundaries](#99-lifetime-design-boundaries) |
 | Destruction lifetime relaxation | Deferred design | [Destruction lifetime checking](#966-destruction-lifetime-checking) |
