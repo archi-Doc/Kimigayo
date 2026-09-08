@@ -20,6 +20,9 @@
   - [13. Compile-time directives](#13-compile-time-directives)
   - [14. Compilation model](#14-compilation-model)
     - [Generic code generation](#149-generic-code-generation)
+    - [Required Core declarations](#1410-required-core-declarations)
+    - [Program startup](#1411-program-startup-and-static-initialization)
+    - [Foreign function imports](#1412-foreign-function-imports)
 - [Appendices](#appendices)
   - [Appendix A. Compiler implementation requirements](#appendix-a-compiler-implementation-requirements)
   - [Appendix B. Non-normative reference models](#appendix-b-non-normative-reference-models)
@@ -36,7 +39,7 @@
 
 **Kimigayo** is a programming language built from scratch to be consistent, fast, simple, fun, and safe.
 
-This document defines the intended language. Language rules, Compiler requirements, and the recorded implementation snapshot are distinct; see [implementation status](#appendix-c-implementation-status).
+This document defines the intended language. Language rules, Compiler requirements, and the recorded implementation snapshot are distinct; see [implementation status](STATUS.md).
 
 **Basic example.**
 
@@ -76,7 +79,7 @@ User-defined Types, Contracts, and Declaration Containers conventionally use Pas
 
 | Notation | Meaning and uses |
 | --- | --- |
-| `[]` | Array and Dictionary construction, indexing, Range-based slicing, and anonymous-function Capture Lists. |
+| `[]` | Array and Dictionary construction, fixed-array Types, indexing, Range-based slicing, and anonymous-function Capture Lists. |
 | `()` | Ordered grouping: parameters, arguments, Tuples, Unit, Function Types, conditions, and operator precedence. |
 | `<>` | Generic Type parameter slots and their Type arguments. General value/Const arguments are not introduced. |
 | `{}` | Unused; reserved for future language evolution. |
@@ -87,6 +90,7 @@ User-defined Types, Contracts, and Declaration Containers conventionally use Pas
 | `:` | Structural association: Name and Type, key and value, or Label and Block/Iteration Construct. |
 | `#` | A compile-time construct. Lowercase reserved directives such as `#if` differ from PascalCase Attributes such as `#Inline`. |
 | `$` | Selects the Composition Root; it is not a macro prefix. |
+| `;` | Separates the element Type and literal length in `[T; N]` only; never separates statements. |
 
 The single-layer ordinary Type form is `semantics/CoreType from origin`; value borrows and pointers may enclose a complete Type, as in `ref/ref/T`. Object Types also admit a runtime-contract View Target. See [Types](#3-types-and-basic-value-model) for composition, grouping, and omission rules. Examples are independent unless explicitly connected. Application-specific Types and APIs illustrate assumed declarations, not promised library interfaces. Fences marked `text` may use conceptual storage or compiler notation rather than source syntax; lines marked Error are intentional boundary examples.
 
@@ -110,7 +114,9 @@ Unqualified declarative rules and imperative requirements are normative even wit
 
 ## 2. Source and lexical structure
 
-Source structure determines token boundaries and syntactic containment. Literal-specific rules appear with each literal form.
+Source structure determines token boundaries and syntactic containment.
+
+The punctuation, layout, and grammar rules in this chapter are language requirements. Error-recovery tokens and current parser acceptance are tracked separately in [STATUS.md](STATUS.md). Literal-specific rules appear with each literal form.
 
 ### 2.1. Source text and encoding
 
@@ -124,9 +130,52 @@ Use four U+0020 spaces per indentation level. Tabs are not permitted in indentat
 
 Physical line endings may be LF, CRLF, or CR.
 
-Newlines separate Syntax items where the surrounding grammar permits separation. Commas separate arguments or elements and are not binary operators. Indentation rules still apply within `()` and `[]`: indent continued arguments and elements one level, and optionally align the closing delimiter with the opening line. A method-chain continuation starting with `.` also uses one extra indentation level.
+Newlines separate Syntax items where the surrounding grammar permits separation. Commas separate arguments or elements and are not binary operators. Indentation rules still apply within `()` and `[]`: each open delimiter contributes one required continuation level. A closing delimiter may align with its opening line or remain at the continuation level. These are syntax requirements, not formatting recommendations. A method-chain continuation starting with `.` also uses one extra indentation level, subject to the syntactic distinction below.
 
 This specification does not allow arbitrary binary operators at the start of a line to continue the previous line. `:`, `=>`, `->`, and `in` are delimiters for their respective constructs, not general binary operators.
+
+#### 2.2.1. Layout normalization
+
+An **effective line** begins or continues a source token, including a literal, outside comment and literal-internal text. A line consisting only of a literal is effective; the subsequent content lines of that same multiline literal do not independently participate in layout. Blank and comment-only lines neither change the indentation stack nor end a pending body or branch join. A nonblank code line's indentation must be a multiple of four spaces; three or six spaces is a compile-time error. Recovery may round indentation to continue diagnostics, but does not make the source valid. Literal content contributes no layout events and undergoes no indentation validation.
+
+Layout processing maintains a stack rooted at column zero. Entries distinguish syntactic bodies, open delimiters, and method-chain continuations. The following normalization is normative; an implementation may combine it with parsing and use different internal token kinds:
+
+~~~text
+stack := [root at column 0]
+for each effective line:
+    validate leading spaces and compute its column
+    if this line starts a body required or permitted by the preceding syntax:
+        require column = the header's active column + 4
+        emit NEWLINE, INDENT; push body(column)
+    else if this line continues an open delimiter, a method chain, or a header delimiter:
+        validate continuation and closing-delimiter alignment below
+        emit no item-separating NEWLINE, INDENT, or DEDENT for the continuation
+    else:
+        close finished method-chain entries
+        emit NEWLINE if the preceding logical item has ended
+        while column < the current body's column:
+            pop body; emit DEDENT
+        require column = the current body's column
+    read tokens, updating delimiter entries and body-header state
+at EOF:
+    diagnose every unclosed explicit delimiter or missing required body
+    emit a final NEWLINE if a logical item is still pending
+    close method-chain entries; emit one DEDENT for every remaining body
+~~~
+
+An increase by more than one body level is an error; it does not create empty intermediate bodies. One physical line may close any number of bodies, producing innermost-first DEDENT events. A dedent must land on an enclosing active level. NEWLINE is consumed as SEP only where the grammar permits an item boundary; it is consumed by BranchJoin for an aligned continuation of an if expression. No separator is required after the last item before DEDENT or EOF.
+
+A logical boundary that closes nested bodies also separates their completed enclosing items; a parser may consume that boundary together with its DEDENT sequence rather than require another physical newline.
+
+Inside open parentheses, brackets, and syntactically recognized generic argument/parameter delimiters, a continued content line is indented one level per still-open delimiter beyond the surrounding active body/chain level. Matching leading closing delimiters may remove those levels on their line; any following tokens, such as the plus in an outer-aligned closing parenthesis followed by plus, remain part of the same logical expression. A close at the content level is also permitted. Suppression of item separators does not suppress indentation errors. An explicit executable body nested inside a delimiter, such as an anonymous-function body, still generates its own body events. Comparison angle tokens do not open a continuation context.
+
+A line beginning with -> or => may continue a function/accessor/branch header only where that grammar still expects the delimiter; it uses exactly one extra level relative to the header. This does not open a body or enable arbitrary operator continuation. A subsequent body is measured relative to the original header's active level, not cumulatively from this delimiter line.
+
+#### 2.2.2. Leading-dot continuation and Case references
+
+Determine a new body or match-arm position from grammar before considering dot continuation. At the first token of a match arm, a leading dot starts a Case Pattern; at the first token of a newly introduced executable body, it may start a Case construction. Neither continues the header. At an ordinary item level a leading dot may likewise start an independent Case expression. These decisions do not use an expected Type or name lookup.
+
+Otherwise, a leading single dot at exactly one extra indentation level after an expression continues that expression. Further chain lines use the same extra level. Thus a line containing four spaces followed by .Some(1) after a root-level let x = compute() is a member-call continuation, while an equally indented .Some Pattern after a match header starts an arm. A range token (.. or ..=) is not a single dot. To force an independent Case expression, place it at its item's normal indentation and optionally group it as (.Some(1)); qualification such as `Option<i32>`.Some(1) is also available. Case lookup then follows [Case construction](#472-case-construction-and-resolution).
 
 ### 2.3. Whitespace and comments
 
@@ -157,6 +206,8 @@ func example()
 A token's spelling is contiguous. Separate adjacent spellings when their concatenation would form a different token. Names, keywords, literals, punctuation, and operators follow their own token rules; recognizing a token does not make it a permitted expression.
 
 The [notation table](#12-conventions-and-notation) summarizes punctuation. Expression grouping, generic/comparison boundaries, and the token rules for `@` follow [precedence and associativity](#65-precedence-and-associativity).
+
+`;` is never a statement separator or an expression-body terminator. It is permitted only as the structural separator in the [fixed-length array Type](#322-sequence-types); every other occurrence outside comments and literal content is an error. Write separate statements on separate effective lines. In particular, `if condition => 1` joins an aligned following `else` without `;`. `$` and `#` are separate punctuation tokens; `$abort` is `$` followed by the Name `abort`, and `#if` is `#` followed by the keyword `if`.
 
 ### 2.5. Names
 
@@ -194,6 +245,38 @@ Contextual keywords may be used as Names in contexts that accept contextual iden
 `specialize` is contextual immediately before `func` in an [explicit specialization declaration](#465-explicit-full-function-specialization); it does not reserve the name in unrelated contexts.
 
 For example, `Dog`, `_value`, `point2`, `日本語`, and `ǅelta` are valid Names, while `2point`, `has-value`, and the empty string are not.
+
+#### 2.5.1. Keyword and punctuation inventory
+
+The following tables define source-language classification. Internal token enum groupings do not override them. An identifier-shaped spelling not listed as reserved remains a Name, with contextual interpretation only in the positions specified below. Reserved spellings are matched only as complete words, so ifValue is one Name.
+
+| Reserved class | Spellings |
+| --- | --- |
+| Primitive Types | `isize`, `usize`, `i8`, `i16`, `i32`, `i64`, `i128`, `u8`, `u16`, `u32`, `u64`, `u128`, `f32`, `f64`, `bool`, `char`, `string` |
+| Bindings and functions | `let`, `var`, `func` |
+| Control, tests, and literals | `if`, `else`, `case`, `for`, `while`, `loop`, `match`, `return`, `exit`, `continue`, `yield`, `require`, `defer`, `is`, `not`, `and`, `or`, `true`, `false`, `null` |
+| Access and inheritance | `public`, `internal`, `private`, `protected`, `open` |
+| Dedicated forms | `Self`, `init`, `deinit`, `base` |
+| Reserved future syntax | `as` |
+
+| Contextual class | Spellings and recognizing context |
+| --- | --- |
+| Declarations | alias, rootgroup, group, struct, enum, contract, static; declaration/header positions. extension is reserved contextually for a future declaration, which is rejected in this revision. |
+| Parameters, Origins, accessors | in in a for header; origin in an Origin parameter list; from in an Origin annotation or exit target; associate in an associated-Type declaration/specification; has, get, set in accessor syntax; specialize immediately before func. |
+| Semantics and Safety | owner, ref, uniq, obj, rc, arc, objref, objuniq, unsafe in Semantics positions; unsafe also before func and before a colon introducing an Unsafe Statement. |
+| Semantics categories | value, valueborrow, object, objectborrow, borrow, owning, reference in Semantics requirements; see [category sets](#33-type-semantics). |
+| Contextual bindings and operations | self, storage, value under receiver/accessor rules; move immediately after @; abort after $. |
+
+| Punctuation/operator class | Spellings |
+| --- | --- |
+| Structural | `(` `)` `[` `]` `,` `;` `.` `:` `::` `->` `=>` `@` `#` `$` `?` |
+| Arithmetic and updates | `+` `-` `*` `/` `%` `++` `--` `+=` `-=` `*=` `/=` `%=` |
+| Comparison and assignment | `=` `==` `!=` `<` `<=` `>` `>=` |
+| Bitwise and shifts | `&` `\|` `^` `<<` `>>` `&=` `\|=` `^=` `<<=` `>>=` |
+| Ranges | `..` `..=` |
+| Recognized but unavailable | `{` `}` `!` `&&` `\|\|` |
+
+Outside comments and literals, use longest-spelling matching within this punctuation inventory: ..= before .. before dot, -> before minus, <<= before << before <, >>= before >> before >, and :: before colon. The two-character => and == both precede the single equals sign; there is no ordering ambiguity between their distinct spellings. There is no +++ token: a+++b tokenizes as a, ++, +, b. Adjacent closing generic angles may be contextually split: >> becomes two > tokens, and >>= may supply two > tokens followed by = (or > followed by >= if only one generic level closes). This split is allowed only while closing syntactically recognized Type arguments/parameters; it never changes a shift in expression context. Tuple indices have the specific lexical exception below. Other unlisted punctuation is invalid unless it forms a sequence of listed tokens; such a sequence still needs a valid grammatical interpretation.
 
 ### 2.6. Number literals
 
@@ -240,6 +323,8 @@ hexadecimal-digit    := decimal-digit | 'a' .. 'f' | 'A' .. 'F'
 `_` is an ignored digit separator. Consecutive separators, separators after a base prefix, and trailing separators are allowed: `1__000`, `123_`, `0x_FF`, and `0b__101__` are valid. A base prefix with no digits, including one followed only by separators, denotes zero: `0x` and `0o___` are valid. An exponent must start with a decimal digit immediately after `e`/`E` and its optional sign; `1e_2` and `1e+_2` are invalid.
 
 A decimal point belongs to the literal only when followed immediately by a decimal digit: `1.0` is floating point; `1.` is integer `1` followed by a dot. Only decimal literals support fractions and exponents; `0xFF.0` starts with integer `0xFF`.
+
+Exception: immediately following a member-access dot token (ignoring intervening spaces and comments), scan a Tuple index as the maximal run of ASCII decimal digits only. Do not consume a fraction, exponent, base prefix, or digit separator there. Thus `pair.0.1` is `pair`, `.`, `0`, `.`, `1`, and `pair.0.name` accesses a named member of element zero. The parser may equivalently resplit a numeric token using its original spelling. Ordinary `0.1` remains a floating-point literal; the Tuple index must subsequently be in range.
 
 After removing separators, a decimal literal with a fraction or exponent converts to IEEE 754 `f64`. Finite results are valid; conversion to either infinity is an error. Other decimal literals and all base-prefixed literals are integers. Magnitudes `0` through `2^128 - 1` are stored as 128-bit bit patterns; larger magnitudes are invalid.
 
@@ -351,9 +436,13 @@ Second line
 
 The opening and closing delimiters are not part of the value. Any line break between them is part of the string content; `\n` may instead be used when an explicit line-feed escape is preferred.
 
+No indentation, initial newline, or final newline is stripped. Literal spaces and physical LF, CRLF, or CR sequences are preserved exactly as content, subject only to escape processing. The same rule applies to raw strings. Literal-internal lines do not affect the enclosing layout stack.
+
 Escaped strings support the shared [Character Escapes](#27-character-escapes) and string interpolation with `\(expression)`.
 
 An interpolation begins with `\(` and ends at its matching `)`. The enclosed text is parsed as a Kimigayo expression, including any nested parentheses, and the expression's string representation is inserted into the surrounding string:
+
+Find the matching close using ordinary expression tokenization, including character literals, escaped/raw strings, nested interpolations, and comments. Parentheses inside those token contents do not change the enclosing interpolation depth. Missing delimiters and malformed nested tokens are errors. Interpolation expressions have their own delimiter/layout context; their newlines cannot close an outer source body. The language imposes no fixed nesting limit, but implementations may document a finite resource limit and must diagnose exceeding it rather than truncate or misparse the source.
 
 ```kimi
 "Hello, \(name)."
@@ -510,6 +599,20 @@ Function Item or concrete Closure
 
 An empty environment or `func []` does not imply purity, a function-pointer ABI, fixed size, no allocation, or concurrency safety. A borrow of an existing common function value uses ordinary Semantics: `ref/F` is Copy and `uniq/F` is Non-Copy. It neither erases a borrowed concrete Closure nor exposes additional call capabilities.
 
+#### 3.2.2. Sequence types
+
+The fixed-length array Type is `[T; N]`, where T is a complete element Type and N is one unsigned decimal integer literal (digit separators follow integer-literal rules). N must fit nonnegative isize and the target's representable layout. Zero is permitted. Length is part of Type identity: [T; 2] and [T; 3] differ. This dedicated Type form introduces no Const generic parameter, general value argument, length expression, or length inference placeholder.
+
+`Array<T>` is a dynamically sized owning sequence requiring T is Owned; `Slice<T>` from source is a shared view of consecutive T elements. Both named Types have the [Core Kotonoha identities](#1410-required-core-declarations). Slice is Copy regardless of T, owns no elements, and retains its backing-storage Origin and shared Loan. Mutable slices are not introduced. Slice elements are read through shared access; the slice handle being Copy does not permit moving non-Copy elements out. `Array<T>` is Non-Copy; a fixed array is Copy exactly when its complete element Type is Copy. Ordinary Owned checks remain recursive.
+
+An array literal with expected `[T; N]` initializes exactly N elements in source order, with ordinary Copy/Move acquisition; a count mismatch is an error. Otherwise it produces `Array<T>`, inferring T from the expected Type or elements. [] needs an expected Type, including [T; 0]. No implicit owning-array-to-Slice conversion occurs; use range indexing. Fixed-array element Move Paths and reverse-index destruction follow §§9.1.3 and 10.3.2. Dynamic Array and Dictionary indexing never gains fixed-element Move Paths merely from a constant index.
+
+~~~kimi
+let fixed: [i32; 3] = [10, 20, 30]
+let dynamic: Array<i32> = [10, 20, 30]
+let middle: Slice<i32> from fixed = fixed[1..]
+~~~
+
 ### 3.3. Type semantics
 
 Type Semantics specify the ownership, borrowing, layout, and safety properties of a typed value.
@@ -532,6 +635,20 @@ In the syntax below, `T` denotes a Core Type; in object forms it may also denote
 | Object Borrow | ExclusiveRef | `objuniq/T`    | Exclusive mutable borrow of an object |
 | Unsafe        | Pointer      | `unsafe/T`     | Unsafe pointer                        |
 
+The source-level Semantics categories are closed sets, as follows. These names occupy the Type namespace's Requirement role when the subject is a Semantics binding; they are neither Core Types nor concrete Semantics prefixes. In that role their built-in meaning cannot be shadowed; elsewhere they remain ordinary contextual Names. A category cannot be written as a value Type or shorthand adaptation target.
+
+| Category | Members |
+| --- | --- |
+| value | owner |
+| valueborrow | ref, uniq |
+| object | obj, rc, arc |
+| objectborrow | objref, objuniq |
+| borrow | ref, uniq, objref, objuniq |
+| owning | owner, obj, rc, arc |
+| reference | ref, uniq, obj, rc, arc, objref, objuniq, unsafe |
+
+In particular, reference means every non-owner representation, including counted ownership and raw pointers; use borrow for safe borrowed representations. Category owning is distinct from the recursive Owned guarantee. No category named owned, counted, pointer, safe, or all is introduced by this table.
+
 #### 3.3.1. Owned values
 
 `T` and `owner/T` are equivalent: both directly own a value with the data layout of `T`.
@@ -545,6 +662,8 @@ Value borrows provide non-owning access to value data, subject to lifetime const
 - `uniq/T` is an exclusive mutable borrow; no conflicting reference may coexist.
 
 #### 3.3.3. Owned objects
+
+Concurrency and payload synchronization remain under the [deferred memory-model and thread-transfer design](#d2-concurrency-memory-model-and-thread-transfer).
 
 An object retains its complete dynamic payload, type metadata, and ownership responsibility. These are logical roles, not a prescribed field order or allocation:
 
@@ -1075,6 +1194,8 @@ Duplicate Signatures are declaration errors. Distinct Symbols imported from diff
 
 ### 4.2. Declaration containers
 
+**Extension boundary:** This revision does not accept `extension` declarations or imports and supplies no extension candidates. References below to future extension access, identity, and precedence constrain that future design only; they are not active lookup stages or conformance mechanisms. Ordinary member lookup is complete without an extension pass.
+
 A **Declaration Container** is a named declaration scope whose body may contain Properties, functions, associated-Type declarations/specifications, Constraint Clauses, or nested Declaration Containers as permitted by its kind. Its body is delimited by indentation.
 
 | Declaration Container kind | Instantiable | Main characteristics |
@@ -1082,12 +1203,12 @@ A **Declaration Container** is a named declaration scope whose body may contain 
 | `group` | No | Accepts Properties, functions, and nested Declaration Container declarations. All members are static. Generic parameters and Origins are not supported. |
 | `struct` | Yes | Accepts Properties, functions, associated-Type specifications, constructors, and at most one selected `deinit`. Generic parameters, Origins, and Constraints are supported. Sealed by default; `open struct` permits derivation. |
 | `enum` | Yes | Closed sum Type with Cases, positional payloads, functions, and Constraints; see [enums](#47-enums). No fragments or inheritance. |
-| `extension` | No | Its Name identifies the target. |
+| `extension` (future) | No | Not introduced in this revision; see the boundary below. |
 | `contract` | No | Declares function/Property requirements, associated Types, and Constraints; supports multiple-parent refinement. No implementations, storage, generic parameters, or contract-level Origins. See [Contracts](#441-contracts). |
 
 #### 4.2.1. Root and nested containers
 
-Each source unit contributes named declarations to the project root. Top-level executable syntax, including bindings (`let` and `var`) and local functions, has a SourceDocument-local execution scope and is not exported into the Compilation root or visible to another file. Its source-local scope and lookup environment must be preserved. Shared functions and Properties belong in named Containers. Cross-source execution order remains unspecified. A `rootgroup` declaration starts at the root and accepts a dot-separated Name. For example:
+Each source unit contributes named declarations to the project root. Top-level executable syntax, including bindings (`let` and `var`) and local functions, has a SourceDocument-local execution scope and is not exported into the Compilation root or visible to another file. Its source-local scope and lookup environment must be preserved. Shared functions and Properties belong in named Containers. Execution is restricted to one entry SourceDocument under [program startup](#1411-program-startup-and-static-initialization). A `rootgroup` declaration starts at the root and accepts a dot-separated Name. For example:
 
 ```kimi
 rootgroup A.B
@@ -1122,7 +1243,7 @@ struct Box<T>
 // Repeating the Constraints or renaming T to U in B.kimi is an error.
 ```
 
-**Design boundary:** Contract fragment contents, extension identity/public names, cross-fragment static group initialization, and cross-source execution order remain separately specified.
+**Design boundary:** Contract fragment contents and future extension identity/public names remain separately specified. Static initialization and the single-source entry rule are defined under [program startup](#1411-program-startup-and-static-initialization).
 
 ### 4.3. Structure declarations
 
@@ -1177,7 +1298,7 @@ public struct Leaf : Base
 public struct Invalid : Leaf // Error: Leaf is sealed.
 ```
 
-Inheritance uses the C# class model for the single-base relationship and access permissions, with Kotonoha as the module boundary. Kimigayo's default `private` access, Container nesting rules, explicit receivers, and Type Semantics still apply. Derivation does not grant the base's private access or change inherited members' declared accessibility. Inherited ordinary members are considered before extensions; detailed hiding and inherited overload-group construction belong to the member-lookup design below. `open` does not make every member virtual. Access through a base-typed expression is checked against the statically selected declaration, not a runtime override.
+Inheritance uses the C# class model for the single-base relationship and access permissions, with Kotonoha as the module boundary. Kimigayo's default `private` access, Container nesting rules, explicit receivers, and Type Semantics still apply. Derivation does not grant the base's private access or change inherited members' declared accessibility. Only ordinary members are searched in this revision; future extensions must follow them; detailed hiding and inherited overload-group construction belong to the member-lookup design below. `open` does not make every member virtual. Access through a base-typed expression is checked against the statically selected declaration, not a runtime override.
 
 An override must target an accessible overridable member and preserve its declared accessibility. The cross-Kotonoha exception is a `protected internal` base member: its override in another Kotonoha declares `protected`. The same rule applies to overridden accessors, each of which must be accessible to the overriding code. A private member cannot be overridden, and an internal or private-protected member cannot be overridden from another Kotonoha. These rules do not allow an override to expose an otherwise inaccessible API Type.
 
@@ -1186,6 +1307,8 @@ The direct base is one inline owned subobject, logically preceding the structure
 **Design boundary:** Virtual/abstract/override declaration syntax, inherited member hiding and overload-group construction, and explicit ordinary base-member invocation remain separately specified. [Virtual semantics](#434-virtual-members-and-overrides), [object dispatch](#645-object-member-calls), and [explicit object upcasts](#6647-object-upcasts) are defined below; additional ordinary derived/base conversions remain outside this revision. Construction/destruction order, base-constructor invocation, and Copy derivation over inherited storage are specified here and in their owning sections. C# compatibility for inheritance access does not implicitly import CLR representation, boxing, garbage collection, or value slicing, or add conversions to the existing adaptation tables.
 
 #### 4.3.3. Constructors
+
+Syntactically, a qualified Type-shaped path followed by `.init(` is always a construction expression. `init` is excluded from ordinary member Names, so there is no competing ordinary-call parse. Qualification may begin with `::` and contain Type arguments. A Name-shaped qualifier such as `value` is accepted syntactically, then checked using Type lookup; if it identifies only a value, Binding reports an error. There is no retry as a value-member call and no reinitialization of existing storage.
 
 A constructor is a dedicated structure declaration: an optional access specification, `init`, a parameter list, an optional `: base(arguments)` clause, and a nonempty indented executable Block. It has no ordinary Name, explicit receiver, separate generic or Origin parameters, result annotation, expression body, or virtual/override modifier. It uses the containing structure's Type parameters, Origins, and Constraints. Parameter labels, defaults, and Type checking follow ordinary function parameters. Access defaults to `private`; constructor parameters obey API signature accessibility. Only a structure's own fragments may declare its constructors; groups, enums, contracts, extensions, and executable Blocks may not.
 
@@ -1336,7 +1459,9 @@ Reject a refinement when its requirements cannot coexist as separate implementat
 
 ##### 4.4.1.3. Associated types
 
-An associated Type is restricted to a Core Type. Unlike an ordinary generic Type slot, it cannot bind an arbitrary Semantics-applied complete Type. Specify borrow Semantics and operation Origins at use sites. Existing dependencies inside a Type remain subject to ordinary Origin checking; generic substitutions must prove this restricted role or retain a legitimate obligation.
+An associated Type is restricted to a Core Type. Unlike an ordinary generic Type slot, it cannot bind an arbitrary Semantics-applied complete Type.
+
+The only intrinsic exception is the Element requirement of Core.Iterable and Core.Iterator (§14.10), which binds a complete Type, including Semantics and existing Origins. Its explicit specification uses the same associate syntax; it adds no general complete-Type associated declaration facility. For ordinary Core-Type associated requirements, specify borrow Semantics and operation Origins at use sites. Existing dependencies inside a Type remain subject to ordinary Origin checking; generic substitutions must prove this restricted role or retain a legitimate obligation.
 
 ```kimi
 contract BorrowSource
@@ -1369,7 +1494,7 @@ struct Pipe
     public func read(self: ref/Self) -> i32 => 42
 ```
 
-**Projections.** `T.C.Element` refers to the associated Type of `T`'s conformance to `C`; `T.Element` is the short form when the declaration is unique under the available Constraints. `C` uses ordinary Contract-name/alias lookup, not member lookup on `T`. Require conformance evidence; never discover it by searching for a same-named Contract. The Type-side base may be a named or constructed Core Type, a parameter, `Self`, or another associated-Type projection. It is not a value or Semantics-applied expression.
+**Projections.** `T.C.Element` refers to the associated Type of `T`'s conformance to `C`; `T.Element` is the short form when the declaration is unique under the available Constraints. `C` uses ordinary Contract-name/alias lookup, not member lookup on `T`. Require conformance evidence; never discover it by searching for a same-named Contract. The Type-side base may be a named or constructed Core Type, a parameter, `Self`, or another associated-Type projection. Intrinsic protocol Element projections that bind a Semantics-applied Type do not become Core-Type qualifiers merely by being associated projections. It is not a value or Semantics-applied expression.
 
 ```kimi
 func readOne<T>(source: ref/T) -> T.Source.Element
@@ -1476,6 +1601,8 @@ B.reset --+                         |
 Use only the defined proof rules, not enumeration of instantiations or arbitrary theorem proving. If equivalence cannot be proved, retain the candidates and apply ordinary call selection; a non-unique result is ambiguous. A coincidental match in one instantiation cannot make an otherwise invalid generic call valid. No additional qualified-call syntax such as `value@A.reset()` is introduced; `@` retains its existing adaptation meaning.
 
 ##### 4.4.1.7. Intrinsic contracts and guarantees
+
+The [required Core declaration table](#1410-required-core-declarations) also fixes the identities and signatures used for `Stringify`, `Equatable`, `Comparable`, `Iterable`, and `Iterator`. Their source conformance uses the ordinary static Contract rules; their only special effects are the interpolation, comparison, and iteration mappings explicitly specified here.
 
 Some Contracts are **compiler-intrinsic**, including `Copy`. Each has only the special acquisition, destruction, layout, concurrency, or code-generation effects explicitly defined for it. These effects belong to the compiler-recognized Contract Identity; a user Contract with the same name or requirements does not gain them. `Self is MyCopy` does not make a Type Copy. Compiler-derived conformance is available only where individually specified, and `Self is Copy` must pass its ordinary derivation checks.
 
@@ -1692,6 +1819,8 @@ Both forms follow the shared [result validation](#78-result-validation), [reacha
 
 A generic Block-bodied function may begin its body with [Constraints](#44-constraints). Its Constraint Clauses must precede every executable body item and are processed at compile time; they are not executable expressions.
 
+Before lookup, parse the maximal leading sequence of unparenthesized `ConstraintSubject is IsRequirement` items as Constraint Clauses. A subject not permitted for this function is an error, not a fallback runtime test. Blank lines and comments do not end this prefix. Parenthesizing the whole test, as `(value is Dog)`, makes it an executable expression item and ends the prefix; subsequent ordinary value tests are executable. A later clause rooted in a generic parameter remains a misplaced-Constraint error. In a nongeneric function body this prefix rule does not apply, and `value is Dog` is an expression. Dedicated Type/Contract Constraint regions retain their own rules even through parentheses.
+
 **Basic example.**
 
 ```kimi
@@ -1876,11 +2005,13 @@ At construction, bind payload dependencies to the enum's Origin arguments and va
 
 Enums initially support owned values and value borrows; constructing or matching enums through Object Semantics is deferred. Their payloads may contain existing Object Semantics. Reject direct or indirect inline recursion without finite size; recursive data requires an existing legal indirection, with no implicit heap allocation. Case changes use whole-value assignment/Replacement, not tag mutation. No ordinary `value.0` or `value.Case` payload extraction is added. Copy follows [enum derivation](#352-enum-copy), and remaining payloads follow [aggregate cleanup](#1032-field-cleanup).
 
-Integer discriminants/conversions, default values, implicit equality derivation, tag size or numbering, niche optimization, and fixed ABI are unspecified. Declaration order does not define numeric values or a wire format.
+Implicit equality/ordering derivation is not introduced; explicit comparison conformance follows §6.6.3.1. Integer discriminants/conversions, default values, tag size or numbering, niche optimization, and fixed ABI are unspecified. Declaration order does not define numeric values or a wire format.
 
 #### 4.7.2. Case construction and resolution
 
-Use `Type.Case` or, with a known expected enum Type, `.Case`. The qualifier identifies an enum Core Type whose Case set can be determined statically after alias expansion. Generic arguments must be explicit or uniquely inferred. Do not write the enum's own Semantics or Origin arguments in the qualifier; complete Types inside generic arguments retain theirs. Infer/check the constructed value's Origin arguments from its expected Type and payload arguments. If these do not determine them, annotate the expected Type; do not invent hidden Origins or `static`.
+Use `Type.Case` or, with a known expected enum Type, `.Case`.
+
+Leading-dot layout is decided syntactically under [§2.2.2](#222-leading-dot-continuation-and-case-references) before expected-Type lookup. The qualifier identifies an enum Core Type whose Case set can be determined statically after alias expansion. Generic arguments must be explicit or uniquely inferred. Do not write the enum's own Semantics or Origin arguments in the qualifier; complete Types inside generic arguments retain theirs. Infer/check the constructed value's Origin arguments from its expected Type and payload arguments. If these do not determine them, annotate the expected Type; do not invent hidden Origins or `static`.
 
 ```kimi
 let quit: Message = Message.Quit
@@ -1909,7 +2040,7 @@ Name resolution identifies declarations; overload resolution selects an applicab
 | Term | Meaning |
 | --- | --- |
 | Binding / Name resolution | Associating source names and operations with declarations and meanings. |
-| Lookup environment | The declarations, aliases, and extensions available for a lookup in one scope. |
+| Lookup environment | The declarations and aliases available for a lookup in one scope; extensions are a future design. |
 | Project root | Root of the primary module's declaration hierarchy. |
 | Compilation root | Lookup entry point for the project root and directly referenced module names. |
 | Source environment | The definition-site aliases and lookup context of one source document. |
@@ -1934,7 +2065,7 @@ Namespaces separate declaration kinds; a **Lookup Role** filters candidates by s
 
 | Namespace | Declarations |
 | --- | --- |
-| Type | Containers, Kotonoha reference names, Core Type and Semantics parameters, associated Types, `Self` |
+| Type | Containers, Kotonoha reference names, Core Type and Semantics parameters, associated Types, `Self`, and built-in Semantics/category requirements |
 | Value | Functions, Properties, enum Cases, parameters, locals, local functions |
 | Origin | Origin declarations |
 | Label | Labels; use the dedicated transfer-target rules |
@@ -1988,7 +2119,7 @@ The protected scope includes bodies lexically nested in the declaring or qualify
 
 Accessibility grants permission; **Name Reachability** supplies a valid path through scopes, qualification, aliases, or explicit re-exports. Both, plus role compatibility, are required. Public declarations are not automatically imported. Each enclosing Container and access path must allow access; aliases and re-exports cannot widen it. API signatures obey the domain checks below, and consumers naming their Types or requirements must additionally have a reachable path under the [module rules](#12-modules-and-dependencies).
 
-Private access uses the merged Container Symbol, not the file. Other fragments of that Container have access; unrelated declarations in the same file do not. A parent does not gain access to a child's private members merely by containing it. An extension does not gain the target's private access. Ordinary accessors inherit their Property's access and may only narrow it. [Enum Cases](#471-cases-and-payloads) and [Contract requirements](#5124-conformance-accessibility) instead inherit their declaring Container's effective domain without independent access modifiers. Locals, parameters, and contextual names use lexical visibility instead of access modifiers.
+Private access uses the merged Container Symbol, not the file. Other fragments of that Container have access; unrelated declarations in the same file do not. A parent does not gain access to a child's private members merely by containing it. A future extension must not gain the target's private access. Ordinary accessors inherit their Property's access and may only narrow it. [Enum Cases](#471-cases-and-payloads) and [Contract requirements](#5124-conformance-accessibility) instead inherit their declaring Container's effective domain without independent access modifiers. Locals, parameters, and contextual names use lexical visibility instead of access modifiers.
 
 ```kimi
 // A.kimi
@@ -2012,7 +2143,7 @@ Compute domains from Symbol identity, merged Container relationships, and the va
 
 When access to an instance member of base structure `B` relies on the protected permission of derived structure `D`, the receiver's static Core Type (its Effective Type at that use) must be `D` or derive from `D`. A generic receiver may use a proven corresponding base constraint. A receiver statically typed as `B` or as a sibling of `D` is insufficient, even if its runtime value is a `D`. Check each required accessor independently. Access inside `B`'s own lexical body does not need this extra derived-receiver restriction. For `protected internal`, access authorized by the same-Kotonoha branch likewise does not need it; `private protected` must satisfy both the Kotonoha and protected conditions. Static members have no instance-receiver restriction. None of these rules supplies a missing receiver or an otherwise undefined receiver conversion.
 
-For generic declarations, the protected lexical scope includes structures derived from any construction of that declaration; the instance-receiver check still uses the actual derived receiver Type. Inheritance alone never grants private access. An extension receives no special private or protected privilege merely by targeting a Type; check accesses using its own lexical context and any independently established inheritance relationship.
+For generic declarations, the protected lexical scope includes structures derived from any construction of that declaration; the instance-receiver check still uses the actual derived receiver Type. Inheritance alone never grants private access. A future extension must receive no special private or protected privilege merely by targeting a Type; its design must use its own lexical access context.
 
 For example, if `Left` and `Right` derive from `Base`, code in `Left` may use a protected `Base` Property through a `ref/Left` receiver, but not through a `ref/Base` or `ref/Right` receiver. Ownership, borrow permissions, and accessor availability must also hold.
 
@@ -2137,7 +2268,7 @@ func read(Config: ref/Settings) -> i32
 
 `::A.B` starts at the Compilation root: project-root declarations and direct-dependency reference names. It ignores local scopes and all aliases but still checks roles and access. A project-root declaration cannot share a dependency reference name, even across namespaces; ordinary namespace and Signature rules still govern root declarations among themselves.
 
-Member lookup searches ordinary members before extensions. An accessible, role-compatible ordinary member commits lookup even if no overload applies; inaccessible or wrong-role members alone do not block extensions. Search only extensions enabled by the use's lexical scope, then its source aliases, then default aliases, respecting separate stages and combining candidates within a stage. Do not add argument-associated Containers automatically.
+Member lookup searches ordinary members. An accessible, role-compatible ordinary member commits lookup even if no overload applies. There is no active extension stage in this revision. **Future extension constraint:** ordinary members must precede extensions; inaccessible or wrong-role members alone must not block them. A future design must specify lexical, source-alias, and default-alias enablement stages and must not automatically add argument-associated Containers.
 
 Generic bodies use their [definition-site source environment](#12-modules-and-dependencies), including during deferred instantiation; caller aliases and extensions never enlarge their candidate sets.
 
@@ -2301,7 +2432,7 @@ inspect(number) // Select Exact i32, then reject without an Unsafe Block.
 
 Adding a better overload can therefore invalidate existing calls even if that overload later fails Usage Legality. `@move` resolves its Access Designator for Consume and checks eligibility and legality; it does not fall back to Read or another same-name declaration.
 
-Operator operands use the same adaptation and candidate-comparison rules while preserving fixed syntax and evaluation order. Extension operators obey member lookup stages. Collection of built-in, contract, and extension operator candidates, construction/indexer integration, and explicit ambiguity-resolution syntax require their own declaration rules; ordinary lookup must not invent them.
+Operator operands preserve the fixed syntax, evaluation order, and permitted adaptations. Built-in operations and the comparison Contract mappings in §6.6.3.1 define the available operator candidates. No extension operator candidates exist in this revision. User-defined arithmetic, general indexer declarations, and additional ambiguity-resolution syntax remain deferred; ordinary lookup must not invent them.
 
 Diagnostics distinguish undefined/wrong-role/inaccessible names, path or value-kind conflicts, missing receivers, type-argument or argument mismatch, no applicable overload, ambiguity, inference boundaries, dependency cycles, declaration errors, and usage errors. Show candidate Signatures and declaration locations for ambiguity; retain useful rejection reasons without dumping every tentative error. Resource-limit exhaustion is separate from language ambiguity or mismatch and must request annotations or smaller expressions, never choose the first candidate.
 
@@ -2499,7 +2630,7 @@ During [overload resolution](#52-overload-resolution-and-inference), fit unresol
 | `[a, b]`, `[]` | Array literal. |
 | `[key: value]`, `[:]` | Dictionary literal. |
 
-Tuples may have different Types at each position. An array has one element Type; a dictionary has one key Type and one value Type. Empty collection literals need an expected Type. Concrete collection Types and storage are defined by the library; ambiguity does not fall back to a universal object Type.
+Tuples may have different Types at each position. An array has one element Type; a dictionary has one key Type and one value Type. Empty collection literals need an expected Type. Array and Dictionary literals use the [required Core Types](#1410-required-core-declarations), with the expected fixed-array exception in [sequence Types](#322-sequence-types); ambiguity does not fall back to a universal object Type.
 
 ```kimi
 let pair = (10, "ten")
@@ -2508,6 +2639,12 @@ let values = [10, 20, 30,]
 let names = [1: "one", 2: "two",]
 let message = "first = \(values[0])"
 ```
+
+##### 6.3.2.1. Interpolation stringification
+
+Each interpolation requires the compiler-recognized Stringify Contract on the embedded value's complete Type. Evaluate that expression once, obtain a call-local shared borrow, invoke its verified stringify mapping once, and append the resulting owned string before evaluating the next interpolation. This never implicitly Moves a non-Copy source just to print it. Release the call's Loan when the call completes; the returned string and completed interpolated string retain no borrow of the source. Ordinary temporary cleanup and Abort rules apply. Allocation may be combined or eliminated, but the result has independent owned-string value semantics.
+
+All owned primitive scalar Types, Unit, and string conform. Integers use decimal digits with a minus sign only when negative; bool uses true/false, char contributes its scalar's UTF-8 encoding, Unit uses (), and string contributes its contents. Floating-point formatting is locale-independent and implementation-defined; the compiler/runtime must document its finite-value and NaN/infinity spellings. Shared or exclusive safe borrows forward stringification through shared access when the referent supports it, without extracting ownership. Other user Types require explicit Self is Stringify and a matching public implementation. No object-address or raw-pointer formatting is implicit, and string concatenation retains its string-only rule.
 
 #### 6.3.3. Dictionary construction and duplicate keys
 
@@ -2519,7 +2656,9 @@ Equivalent duplicate keys are errors. A duplicate detectable as a constant is a 
 4. Otherwise evaluate its value once.
 5. Insert the retained key and resulting value.
 
-Equivalence follows dictionary key equality; matching hash values alone do not make keys duplicates. The key Type must guarantee that the logical equality and hash value of a stored key remain unchanged while the dictionary holds it. Later entries never overwrite existing values.
+Equivalence follows dictionary key equality; matching hash values alone do not make keys duplicates.
+
+The Core Dictionary uses the Equatable mapping for key equality. An implementation may use linear search and requires no source Hash contract. If it uses hashing internally, equal keys must have equal hashes; hashing must not change which keys are equivalent. User-defined key equality must be an equivalence relation, in addition to the stability conditions below. The key Type must guarantee that the logical equality and hash value of a stored key remain unchanged while the dictionary holds it. Later entries never overwrite existing values.
 
 A candidate key's logical equality and hash value must also remain unchanged from the start of duplicate checking through completion of insertion, including evaluation of its value expression.
 
@@ -2706,6 +2845,8 @@ Ranges are non-associative; an unparenthesized chained Range such as `a..b..c` i
 
 Applying a Range with `value[range]` produces a Slice over the selected consecutive elements. A Slice does not copy its elements. Its Origin derives from the indexed value, so it cannot outlive that value.
 
+For `Array<T>`, `[T; N]`, and `Slice<T>`, this result is the shared Core `Slice<T>`. Its shared Loan prohibits overlapping mutation, replacement, or invalidation while live, including reallocation of a backing Array. A slice of a slice retains the backing-storage dependency. Non-Copy element extraction through dynamic indexing or a Slice is not authorized.
+
 After resolving from-end boundaries, an exclusive Range must satisfy `0 <= start <= end <= length`. An inclusive Range must satisfy `0 <= start <= end < length`. An exclusive Range with equal boundaries is empty.
 
 Invalid Indices or boundaries, including negative `n` in `^n`, are check failures under [Abort Termination](#113-abort-termination). Safe sequence access may omit a check only when safety is proven.
@@ -2879,6 +3020,17 @@ let found = valid and matches(values[index])
 let clear = flags & mask == 0
 ```
 
+##### 6.6.3.1. Contract comparison mapping
+
+After the built-in cases in this section, comparison of two operands of the same complete user Type requires the recognized Core Contract below. Resolve its conformance mapping once; do not search same-named free functions, imported extensions, or conversion chains. Generic code requires the corresponding Constraint. Built-in comparisons retain priority and cannot be replaced by a conformance declaration.
+
+| Operators | Required operation | Result |
+| --- | --- | --- |
+| ==, != | Equatable.equals on shared borrows of both operands | returned bool, or its negation |
+| <, <=, >, >= | Comparable.compare on shared borrows of both operands | compare returned i32 with zero |
+
+Comparable refines Equatable; its compare sign must agree with equality and a total order. Owned integers, char, and string have both conformances. bool, Unit, and floating-point Types have Equatable; floating-point relational operators are built in, but floats do not acquire Comparable because NaN is unordered. The specified borrow and Tuple comparison rules forward/compose the required capabilities. Structs and enums receive no implicit equality or ordering derivation; even payload-free enums need explicit conformance and members for user comparison. Arithmetic Contracts, custom operator declarations, and user-defined arithmetic remain deferred; arithmetic on an arbitrary user Type is an error in this revision.
+
 #### 6.6.4. Explicit operations
 
 Explicit operation selection is distinct from subtyping and acquisition legality under [Type relations and expression operations](#39-type-relations-and-expression-operations). Origin restriction fits the selected operation's result; it does not substitute another operation.
@@ -2908,6 +3060,10 @@ Adaptation Target
 └─ Origin: inferred during adaptation
     -> complete result Type retains target, Semantics, and Origin
 ```
+
+**Syntactic extent.** After @, move terminates the operation target immediately. Otherwise, consume an identifier-shaped head followed by slash as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed to make that decision. A prefix must later resolve to a concrete Semantics or declared Semantics binding. Consume a remaining primitive, named/qualified/generic, grouped, Tuple, or fixed-array Type head as the target. Generic adjacency uses §6.4.2; written Origins are forbidden at every target layer. A following slash is division only after that head is complete and cannot begin another syntactic Semantics prefix.
+
+Consequently, a@ref/uniq/T consumes the whole prefix chain; a@T / b parses a target T/b and is a Semantics-lookup error when T denotes only a Core Type. Whitespace cannot rescue that spelling. Write (a@T) / b or a@(T) / b for division. Primitive keywords cannot be Semantics parameters, so x@i32 / y already means (x@i32) / y. x@(i32) is a grouped Type target, with the same adaptation as x@i32. Function Type targets require grouping around the complete arrow Type, as x@((i32) -> i32); a following outer arrow is not consumed by adaptation. These choices are final before Binding and never retry based on conversion success.
 
 For a single-layer value Type with Core Type `T`, `@ref` and `@ref/T` select the same existing Borrow/Reborrow operation when applicable. For a nested borrow, shorthand retains its immediate Referent Type: applying `@ref` to `ref/ref/T` copies that outer shared reference. It does not add a layer or turn `@ref` into `@objref`. A fully specified target can instead request a borrow of reference-value storage under [Borrow and Reborrow](#6645-explicit-borrow-and-reborrow). Type names, aliases, generic applications, grouping, and Tuple syntax are accepted as target syntax without implying that every adaptation is defined.
 
@@ -3224,7 +3380,11 @@ If the right side or operation does not complete normally, do not write; getter 
 
 ### 6.8. Extension boundaries and reserved syntax
 
-Operator symbols, precedence, and associativity are fixed by the language. User-defined arithmetic and comparison may be supplied through explicit Constraints once their declaration syntax, required members, and resolution rules are specified. Such extensions must preserve evaluation order and counts, comparison's `bool` result, and assignment's Unit result.
+**Attribute syntax.** An Attribute is # followed by an attribute Name, optionally followed by a parenthesized comma-separated Argument list with an optional trailing comma. A Name here must begin with an uppercase Unicode letter; lowercase if, match, and case after # select only their directive forms, while other lowercase forms are errors. Multiple Attributes attach in source order to the next declaration at the same indentation, either as same-line prefixes or on preceding effective lines. Blank lines and comments may intervene; an unrelated item or dedent cannot be crossed. A dangling Attribute is an error.
+
+Attributes are accepted on ordinary Container, function, and Property declarations, and on function parameters before the parameter Name. Explicit specializations and Contract requirements retain their prohibition on Attributes; expression statements, patterns, arguments, and accessor lists do not accept Attribute prefixes. Generic Attribute resolution and semantics remain deferred, so an unknown selected Attribute must be diagnosed rather than silently ignored. Excluded syntax checks only the spelling, arguments, and placement. The recognized LibraryImport Attribute has the concrete semantics in [foreign functions](#1412-foreign-function-imports).
+
+Operator symbols, precedence, and associativity are fixed by the language. User-defined comparison uses the [Core Contract mapping](#6631-contract-comparison-mapping). User-defined arithmetic remains deferred and unavailable; a same-named method does not authorize an operator. Future arithmetic must preserve evaluation order and counts and assignment's Unit result.
 
 `and`, `or`, `not`, `=`, `@` (including `@move`), `is`, Ranges, and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined. Neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.`, or ternary `?:`; use logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref` / `@uniq`. Prefix `move`, a Move accessor, and a dedicated `<-` Move operator are not defined. Recognition by the lexer alone does not make a token a usable operator.
 
@@ -3368,7 +3528,7 @@ defer: exit // Valid: end this Deferred Block when it executes.
 
 let result = unsafe: unsafeOperation() // Error: not an expression.
 let result = defer: close()           // Error: not an expression.
-defer: close(); log("done")           // Error: two statements.
+defer: close(); log("done")           // Error: semicolon cannot separate statements.
 defer: return                        // Error: crosses the Deferred Control Boundary.
 defer: if condition                  // Error: requires a following Block.
     cleanup()
@@ -3592,6 +3752,28 @@ Both constructs discard body results and produce Unit on completion. Neither acc
 | Body end or self-targeted `continue` | Request the next value; finish if exhausted. | Reevaluate the condition; finish if false. |
 | Self-targeted `exit` | End the Iteration Construct. | End the Iteration Construct. |
 
+##### 7.6.1.1. Iteration protocol and acquisition
+
+The recognized Core Iterable and Iterator Contracts define for iteration. Evaluate E once and acquire it, using ordinary Copy/Move, into a hidden iterable local. Invoke its consuming iterate mapping once to obtain a hidden iterator local. Repeatedly invoke Iterator.next with a short exclusive reborrow of that iterator. A Some payload supplies the next element; None terminates the loop. Missing or ambiguous conformances are errors; no method-name duck typing or fallback protocol is used.
+
+~~~text
+iterable := acquire(E)
+iterator := Iterable.iterate(consume iterable)
+repeat:
+    step := Iterator.next(exclusive reborrow of iterator)
+    if step is None: finish
+    acquire Some payload into fresh iteration bindings
+    execute body
+    clean up iteration bindings before requesting the next step
+clean up iterator on normal exit and ordinary transfers
+~~~
+
+Each for binding is an immutable let binding scoped to that iteration's body; there is no implicit var form. Payload acquisition is Copy for Copy Types and Move otherwise. Parenthesized bindings require a Tuple with exactly that many elements and acquire its components left to right; names must be distinct. Neither key/value member names nor an arbitrary deconstruction method supplies this Tuple.
+
+The next receiver Loan ends before the body. Returned references may retain existing external dependencies captured by the iterator, but cannot borrow from this call's exclusive receiver or iterator-owned storage: lending iterators remain deferred. `Array<T>` and fixed-array owned iteration yield T by consuming elements; `Slice<T>` iteration yields shared ref/T values from its backing source. Direct for iteration of an owning non-Copy collection consumes it; use for item in values[..] for shared iteration. `Dictionary<K,V>` consuming iteration yields (K,V) in insertion order. Slice/source Loans remain live while the iterator or an escaped yielded reference needs them, so overlapping mutation of the source is rejected. A consumed owning source is unavailable until validly reinitialized. Unrelated nonconflicting mutation follows ordinary Loan rules.
+
+Body fall-through and continue clean up the current bindings before calling next again; exit, return, and outer transfers also clean up the iterator and its unyielded owned elements. This protocol adds no cleanup guarantee on Abort and no rollback of prior Moves.
+
 #### 7.6.2. `loop`
 
 `loop` repeats unconditionally. It discards body values and starts the next iteration at the beginning of the body after body fall-through or a self-targeted `continue`.
@@ -3659,6 +3841,12 @@ A selection that does not require a result has only Block bodies, no self-target
 
 In `if` and `while`, a parenthesized condition containing one initialized `let` or `var` tests the bound Boolean value. For example, `if (var z = Func()) => 1 else => 0` requires Boolean `z`. Evaluate the initializer once and enforce any explicit binding Type. Ordinary Block declarations still produce no result.
 
+The initialized binding becomes visible after its initializer. For if it remains in scope throughout that branch body and the remaining else-if/else chain, including conditions reached after its false result, and ends at the end of the whole selection. A binding introduced by a later else-if is scoped only to that clause and the suffix of the chain; it is not visible on an earlier selected path. These header bindings cannot redeclare an already active header binding. None is visible after the selection. Branch result Origins and escaped captures must not outlive these scopes. A var may be assigned where visible, but the tested Boolean value is not reevaluated by such assignment.
+
+For while, create a fresh binding each time the condition is evaluated; it is visible in that iteration's body only. Clean it up on false termination, body completion, continue, or any outgoing transfer before reevaluation or exit. The initializer sees an outer same-named binding, if any, rather than the previous iteration's binding. Flow facts belong to each new Binding Identity; ordinary Boolean/refinement analysis applies without extending its scope.
+
+**BranchJoin.** After an Expression body, else or else if may occur on the same physical line, or on the next effective line at the indentation of the physical line containing the corresponding initial if. After a Block body, it must occur on the next effective line at that same indentation, after closing the body. It cannot attach at the indentation of the body's final statement. Blank and comment-only lines may intervene; another Syntax item may not. Every clause in one else-if chain uses the initial if's header indentation. Same-line joins attach to the nearest syntactically unmatched if; grouping disambiguates nested expression bodies. Layout, never name lookup or expected result Type, determines a line-separated join.
+
 ```kimi
 var compact = if condition => 1
 else => 2
@@ -3674,7 +3862,7 @@ else
     prepare()
     yield 2
 
-if condition => 1;
+if condition => 1
 else => 2                       // Valid: the integer result is discarded.
 ```
 
@@ -4425,7 +4613,9 @@ var age: i32 = -1
         storage = max(value, 0)
 ```
 
-Here the initial stored value is `-1`; a later assignment of `-10` invokes the setter and stores `0`. A Property initializer is invalid when `HasStorage = false`, because no Property-owned location exists to initialize. A stored Property without a declaration initializer must be initialized according to the containing type's definite-initialization rules before it is read. After initialization, a `let` Property cannot be assigned.
+Here the initial stored value is `-1`; a later assignment of `-10` invokes the setter and stores `0`. A Property initializer is invalid when `HasStorage = false`, because no Property-owned location exists to initialize. A stored Property without a declaration initializer must be initialized according to the containing type's definite-initialization rules before it is read.
+
+This omission applies to instance storage; static Stored Properties require a declaration initializer and use [lazy initialization](#1411-program-startup-and-static-initialization). After initialization, a `let` Property cannot be assigned.
 
 For a structure, evaluate declaration initializers once in [logical declaration order](#431-split-structures-and-storage-order), preserving their observable side effects regardless of physical layout or parallel compilation. A Property becomes initialized only after its initializer completes normally and its result has been secured in that Property's storage. This does not implicitly initialize Properties that have no declaration initializer.
 
@@ -5363,6 +5553,8 @@ The internal call contract is preserved for concrete generic use; callers do not
 
 #### 9.8.3. Escape and retention
 
+The Owned guarantee grants no thread-transfer or concurrent-access capability; see the [concurrency design boundary](#d2-concurrency-memory-model-and-thread-transfer).
+
 Escape describes retention across a creation/call boundary, not a permanent syntactic Closure category. Check returned values, saved fields, other Closures, and indirect callees against destination lifetime and capability contracts. Borrow capture is not inherently non-escaping, and Move capture does not remove nested borrow dependencies. Moving or heap-allocating a Closure cannot extend a local referent's lifetime. Temporaries retain their original expiration.
 
 Non-escaping means that the callee retains neither the callable nor its environment dependencies beyond the call. It does not mean one call, no allocation, or waived Loan checks. `ref/F` and an Owned result let a verified callback-only body use a borrowed concrete environment without erasure, but neither `ref/F` nor Callable alone promises that every environment-derived value is unsavable. A separately compiled callee cannot be assumed non-escaping without a verified contract. Non-escaping declaration syntax and borrowed erased callable views remain deferred.
@@ -5661,6 +5853,8 @@ Use `Option` for a contract representing normal absence and `Result` for a contr
 
 `Option<T>` represents a value or normal absence without an absence reason.
 
+This is the compiler-recognized Core Option declaration, whose identity is fixed in §14.10. The following enum shows its required shape; it is not an instruction to redeclare it in each program.
+
 ```kimi
 enum Option<T>
     Some(T)
@@ -5678,6 +5872,8 @@ match findUser(id)
 #### 11.2.2. Result
 
 `Result<T, E>` represents success or failure with a reason. `E` is an ordinary Type; no exception object hierarchy is required.
+
+This is the compiler-recognized Core Result declaration under §14.10. The following enum shows its required shape. The discarded-Result warning refers to that Symbol Identity, including through aliases, rather than every user Type spelled Result.
 
 ```kimi
 enum Result<T, E>
@@ -5878,7 +6074,7 @@ Compile-time directives choose source syntax without runtime branching. The foll
 | Term | Meaning |
 | --- | --- |
 | Condition | A compile-time Boolean expression controlling syntax selection. |
-| Lookup environment | The declarations, aliases, and extensions visible to name lookup in a scope. |
+| Lookup environment | The declarations and aliases visible to name lookup in a scope; extensions are a future design. |
 | Prepared environment | Fixed target values and configured compile-time settings available before source selection. |
 | Environment selection | A choice fixed by target values and configured Project settings, independently of generic arguments. |
 | Finalization | Acceptance of a declaration, layout, specialization, or body after its required dependencies and checks are resolved. |
@@ -5892,9 +6088,21 @@ Compile-time Directives select Syntax during compilation without producing runti
 | `#case` | Introduces an arm directly inside a `#match` body. |
 | `#Name` | Attaches an Attribute; it is not a Compile-time Directive. |
 
-The former `#If(...)` form is an Attribute. The lowercase `#if` form specified here is a separate language construct.
+The former `#If(...)` form has Attribute syntax (with semantics still deferred). The lowercase `#if` form specified here is a separate language construct.
 
 ### 13.1. Syntax and structural selection
+
+Directive placement is restricted to whole items in these categories:
+
+| Permitted surrounding list | Selected item category |
+| --- | --- |
+| SourceDocument root | Source declarations, source-local aliases, and executable items allowed there |
+| group, rootgroup, struct body | Container items allowed by that particular kind |
+| enum body | Enum Cases, functions, Constraints, associated-Type specifications |
+| contract body | Requirements, associated-Type declarations, Constraints |
+| Executable/function body | Executable items and a function's permitted leading Constraints |
+
+Directives are forbidden inside runtime match-arm lists, parameter or argument lists, generic lists, accessor lists (inline or Block), Capture Lists, Tuple/collection element lists, Patterns, Type expressions, and expression subtrees. Select a whole surrounding item instead. #case occurs only directly in a #match directive body, never as a standalone item or runtime match arm. Attributes obey §6.8 and do not expand these permissions.
 
 `#if` controls either the next Syntax node at the same indentation or one indented Block:
 
@@ -5993,7 +6201,7 @@ These validation obligations concern reached directives. They do not require eva
 
 ### 13.4. Name-resolution boundary
 
-Select directives using only the prepared environment, before ordinary Name resolution using the affected scope begins. The scope's lookup environment includes selected declarations, overload candidates, aliases, and extension imports. A later phase must not add, remove, or replace candidates by reevaluating a Condition for an instantiation.
+Select directives using only the prepared environment, before ordinary Name resolution using the affected scope begins. The scope's lookup environment includes selected declarations, overload candidates, and aliases. Extension imports are not introduced. A later phase must not add, remove, or replace candidates by reevaluating a Condition for an instantiation.
 
 Environment directives remain permitted in executable bodies and Declaration Containers. They may select declarations, imports, or local syntax for a fixed target/configuration. A directive creates no extra lookup scope beyond the ordinary scope rules of its selected syntax. Establish selected local declarations before resolving their uses.
 
@@ -6240,6 +6448,64 @@ Equivalent code may merge only while preserving observable Type/function identit
 
 Exact precompilation, callee-information passing, artifact/ABI formats, inlining budgets, and sharing mechanisms remain implementation-design boundaries. Current common Function Type and runtime-contract restrictions are unchanged; the ordinary-body verification questions remain under [deferred obligations](#5210-deferred-generic-obligations).
 
+### 14.10. Required Core declarations
+
+Every Compilation binds exactly one compiler-compatible **Core Kotonoha**, using the reserved direct reference name Core. The declarations below are public at that Kotonoha's root and available through default aliases. Qualified paths such as `::Core.Option<T>` identify them regardless of local shadowing. Compiler metadata records their originating Kotonoha/version and Symbol Identities; a same-spelled user declaration or replacement alias never receives their special behavior. Reject a missing, duplicate, or incompatible Core definition before finalization. The compiler may synthesize these definitions, but synthesized and loaded definitions must have the same language identities and contracts. Core itself is built with these identities designated by the compiler.
+
+This is the minimal set named by language rules, not a promise of a general standard library:
+
+| Declaration | Required shape or operation |
+| --- | --- |
+| `Option<T>` | enum with Some(T), None in that order |
+| `Result<T,E>` | enum with Ok(T), Err(E) in that order |
+| `Array<T>` | Non-Copy owning dynamic sequence requiring T is Owned, public read-only length: isize; checked element/range indexing under §6.4.4; Array literals and consuming Iterable conformance |
+| `Slice<T>` origin source | Copy shared sequence view; public read-only length: isize; checked element/range indexing and shared Iterable conformance; backing Origin is mandatory or inferred under ordinary Origin rules |
+| `Dictionary<K,V>` | Non-Copy owning collection requiring K is Equatable and Owned, and V is Owned; literal construction and existing-key indexing, public read-only length: isize, and consuming Iterable conformance |
+| `Stringify` | `func stringify(self: ref/Self) -> string`; returns an independent owned string |
+| `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
+| `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`; negative/zero/positive for less/equal/greater |
+| `Iterator` | `associate Element`; `func next(self: uniq/Self) -> Option<Self.Element>` |
+| `Iterable` | `associate Element`; `associate Iterator is ::Core.Iterator`; `Self.Iterator.Element is Self.Element`; `func iterate(self: owner/Self) -> Self.Iterator` |
+| Copy, Owned, Callable | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership, and call rules; they are not ordinary user-implementable replacements |
+
+The Element associated requirement of these two intrinsic protocols is the sole complete-Type exception in §4.4.1.3; its implementation binding may be ref/T from an existing external source. The Iterator associated requirement of Iterable remains a Core Type. No other user-defined associated requirement changes kind. Signatures in the table are source-shape contracts; associated-Type projections and function receiver/result Origins obey the ordinary Contract and lifetime rules. Iterable/Iterator are static Contracts, and the initial non-lending restriction is mandatory. Compiler-provided fixed arrays implement Iterable directly with Element = T; dynamic array and Dictionary iterators hold and destroy any remaining unyielded elements, while Slice iterators retain the external source Loan. Types depending on that source preserve it through associated Types and Option payloads. Taking a next result does not extend any lifetime.
+
+The primitive keyword string denotes the compiler's UTF-8 string Core Type, not a shadowable alias; its required operations here are literal/interpolation construction, concatenation, comparison, and Stringify. No character indexer, mutable string buffer, allocator, or formatting options are implied. Fixed arrays use the dedicated `[T; N]` Type syntax and have length N with the same public read-only length member. Sequence indexed access uses the existing place/acquisition rules; only Slice additionally forces shared access.
+
+The Option/Result payload Copy and Owned classifications follow ordinary enum rules; no extra copying is introduced.
+
+Complete generic payload Type arguments retain their existing Origin/Loan dependencies through substitution, even without a separately written enum Origin binder. This cannot hide a newly created receiver borrow or authorize heap/global borrow escape. Fixed-array elements likewise retain every dependency of T. Dynamic Array and Dictionary elements must additionally contain no recursively retained safe borrow, even one from static; apply the retained-borrow check of §8 to their actual stored contents. Owned alone does not relax that restriction. These restrictions preserve the existing heap/global borrow boundary. Checked-cast designs refer to this Core Option Identity even though their final runtime-view syntax remains deferred. A Dictionary implementation need not expose hashing. Additional collection allocation/mutation APIs and general library APIs remain separately specified.
+
+### 14.11. Program startup and static initialization
+
+An application Project selects exactly one entry SourceDocument by its project-relative path; when exactly one selected SourceDocument contains top-level executable items it is the inferred entry. Multiple such documents, a missing/ambiguous configured path, or an application with neither a configured entry nor an inferable one are build errors. A configured entry may be empty and terminates successfully. Other SourceDocuments may contribute Container declarations and aliases, but no top-level executable items; root-level local function declarations count as items in their source-local execution scope. Library Kotonoha builds permit no top-level executable items and have no process entry. Source-local alias declarations remain non-executable and do not count when inferring the entry. Entry selection is a build input; its serialized Project-setting spelling is implementation-defined and must be documented.
+
+Execute the entry's selected top-level items in source order in their source-local execution scope with ordinary local-function visibility, lifetime, and cleanup rules. Reaching its end exits successfully with process code zero after normal cleanup. An emitter may synthesize a host entry function, but this does not create a source-language Function Boundary: top-level return remains an error under §7.9.3. There is no implicit invocation of a user function named main or Main. Abort uses §11.3, produces unsuccessful process termination, and does not promise normal cleanup; the host-specific failure status is implementation-defined.
+
+Static Stored Properties, including group Properties, use lazy per-Property initialization immediately before their first read, borrow, write, or other storage access. Run their initializer exactly once to normal completion; computed Properties have no hidden initialization storage. A static Stored Property must have an initializer, which is checked even if never accessed; its complete Type must meet the existing prohibition on retained safe borrows. Accessing a Property already initializing is an initialization-cycle failure and initiates Abort. A reference to a function or Type alone does not initialize unrelated Properties. Recursive dependencies therefore determine initialization order by actual first access, not fragment order, file enumeration, or linker order. Initial assignment does not bypass initialization of old storage.
+
+At successful process termination, first destroy entry locals, then initialized static values in reverse successful-initialization order. Preserve required destructor lifetime dependencies; reject a retained static dependency that cannot remain valid for that order. Uninitialized Properties are not destroyed. Initializing new static storage, accessing destroyed storage, or reentering a Property's destruction during this shutdown is an Abort failure. These rules apply to dependencies as well as the primary Kotonoha.
+
+This revision specifies one execution thread and does not admit source thread creation or concurrent foreign reentry into language code. Atomic arc reference counts do not expand that permission. Cross-thread lazy-initialization synchronization, thread transfer, and the memory model remain the [explicit concurrency design boundary](#d2-concurrency-memory-model-and-thread-transfer).
+
+### 14.12. Foreign function imports
+
+The recognized Attribute #LibraryImport("library", "symbol") on an unsafe func declaration declares a foreign function with the target platform's C calling convention. Both arguments are required non-interpolated string literals with no embedded NUL and nonempty contents. The declaration has no body, receiver, Generic/Origin parameters, default/optional arguments, variadic tail, or specialization. It is callable only directly; the existing prohibition on acquiring unsafe functions as values applies. It may occur only at the root of a group/rootgroup or as a static type function in a struct; ordinary access rules apply. A func with LibraryImport and an executable body is an error. The attribute's two spellings name a library and an exported symbol exactly; source function naming is independent.
+
+~~~kimi
+group Native
+    #LibraryImport("observer", "observe_i32")
+    public unsafe func observe(value: i32) -> ()
+
+unsafe: Native.observe(42)
+~~~
+
+Initially supported parameter/result Types are i8/u8, i16/u16, i32/u32, i64/u64, f32/f64, and raw unsafe/T pointers; Unit is permitted only as the result (C void). Scalar widths and the target C ABI must agree; unsupported signatures/targets are compile-time errors. Pointer pointee layout is not passed by value or implicitly guaranteed compatible. bool, char, string, borrows, object handles, aggregates, function/closure values, i128/u128, and isize/usize are excluded from this initial ABI surface. No automatic marshalling, retention, allocation, or cleanup is inserted.
+
+Arguments are evaluated and acquired once from left to right, then passed using the selected target ABI. Every call obeys unsafe-function rules. The caller must meet the foreign function's validity, aliasing, lifetime, and retention contract; crossing this boundary never suspends active Loans or grants permission to invalidate live safe references. A normal return resumes ordinary cleanup. Foreign exceptions, long jumps/unwinding across a language frame, and callbacks/reentry into language code are outside the permitted ABI contract; no language cleanup guarantee applies to their violation.
+
+Library resolution and link-input mapping are implementation-defined build inputs, documented and recorded for reproducibility. Missing libraries/symbols must fail linking or loading before entry execution. A minimal conforming backend can validate this path with a linked C function receiving one fixed-width integer. Fixed aggregate layout, exports, callbacks, platform-specific calling conventions, and variadic FFI remain deferred.
+
 # Appendices
 
 ## Appendix A. Compiler implementation requirements
@@ -6311,13 +6577,13 @@ Cache only context-independent results or include every relevant dependency:
 | --- | --- |
 | Lookup | Scope, name, namespace, role, lexical visibility, source alias environment |
 | Accessible lookup | Also use-site Kotonoha, Container relationship, and inheritance/access domains |
-| Member lookup | Target Symbol/Type, type arguments, static/instance use, protected receiver Type, extensions |
+| Member lookup | Target Symbol/Type, type arguments, static/instance use, protected receiver Type; no extension candidates in this revision |
 | Applicability | Candidate, argument Effective Types/literal values/labels/forms, expected Type, type arguments and constraints |
 | Conditional work | Compilation target, configured Project settings, selection state; independent of generic arguments |
 
 Do not reuse a role-filtered lookup for a different role, or source-wide access results across unrelated Containers. Invalidate affected caches when sources, dependencies, aliases, selections, or Symbols change. Flow-dependent Loan and initialization state belongs to Usage Legality, not overload-selection cache keys. Refinement changes the input Effective Type and therefore must be reflected in member/applicability cache keys.
 
-Validation must cover source-context isolation, merged private access, duplicate/role/arity boundaries, Type/Value paths, aliases, extension precedence, expected results, incomparable candidates, nested inference, generic binding environments, and no fallback after usage failure. Reordering load, parse, generator completion, or candidate enumeration must preserve results; parsing examples alone does not validate Binding.
+Validation must cover source-context isolation, merged private access, duplicate/role/arity boundaries, Type/Value paths, aliases, rejection of unavailable extension declarations, expected results, incomparable candidates, nested inference, generic binding environments, and no fallback after usage failure. Reordering load, parse, generator completion, or candidate enumeration must preserve results; parsing examples alone does not validate Binding.
 
 Validate effective access-domain inclusion for every exposed API component, recursively through constructed Types and constraints, after merging and inference. Preserve deferred associated-type obligations. Cover private Types used by internal APIs, public members in restricted Containers, private type arguments at generic uses, and definition-site private helpers during cross-Kotonoha instantiation. Inheritance access validation must cover sealed-base rejection, open-fragment agreement, base accessibility, protected receiver restrictions, both compound access forms, and the cross-Kotonoha override exception. Access-cache validity must account for base-graph and modifier changes, independently of the source alias environment.
 
@@ -6531,93 +6797,7 @@ Retain Candidate positions, Origin/Loan dependencies, and Copy/Move/Borrow/Rebor
 
 ## Appendix C. Implementation status
 
-Implementation coverage is informative and does not weaken language rules or Compiler requirements. All implementation-progress notes are centralized here; `planned` in a retained snapshot means implementation work, not permission to use an undesigned feature.
-
-### C.1. Coverage summary
-
-This table defines the recorded status of each compiler stage. The notes below describe covered cases and specific remaining work; they do not assign a separate stage status. Parsing alone does not guarantee execution. **Implemented** and **Partial** are limited to the coverage described below. **Not implemented** means the recorded stage is unavailable; it does not imply that all related design details are settled; **Not assessed** means the recorded notes do not establish that stage's coverage. **N/A** means the feature has no such stage.
-
-| Feature | Parsing | Binding | Analysis | Lowering | Runtime |
-| --- | --- | --- | --- | --- | --- |
-| Functions and Constraint Clauses | Partial | Not implemented | Partial | Not implemented | Not implemented |
-| Static Contracts and associated Types | Partial; see C.4 | Not implemented | Not implemented | Not implemented | N/A |
-| `#if` / `#match` | Implemented | Not implemented | Partial | Not assessed | N/A |
-| Types | Partial | Not implemented | Partial | Not implemented | Not implemented |
-| Origins | Partial | Not implemented | Not implemented | Not implemented | Not implemented |
-| Properties | Implemented | Not implemented | Partial | Not implemented | Not implemented |
-| Constructors and aggregate destruction | Not assessed | Not implemented | Partial | Not implemented | Not implemented |
-| `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
-| `@move` / Consume | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
-| Control flow and `defer` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
-| Enum Cases, Patterns, and guards | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
-| Explicit full specialization and generic code sharing | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
-| Option / Result / Abort | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
-
-Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
-
-The integrated Closure/capture/Callable model, runtime `is` and refinement, `require`, and Object Type System are language specifications, not implementation completion claims. Their complete parser, Binding, ownership, lowering, and runtime coverage has not been assessed here; existing broad coverage rows do not certify these additions.
-
-### C.2. Builds, modules, and source artifacts
-
-**Current implementation status:** project loading, target preparation, tokenization, parsing, early directive selection, and partial control-flow/type analysis are implemented. The current LLVM backend preparation requires a supported pointer width and LLVM data-layout string. The current `Build` API reports front-end checks only; it does not certify a finalized program or produce a binary.
-
-Loading external Kotonoha libraries is not yet implemented.
-
-The recorded compiler supports only its current language version. Exact version selection, fallback defaults, rejection of unsupported versions, and build metadata are specified.
-
-The current source-snapshot serialization/reparse facility is not a [binary interface](#123-source-artifacts-and-binary-interfaces).
-
-### C.3. Lexical forms and types
-
-The current front end parses escaped strings, raw strings, and string interpolation, including nested expressions. Escape sequences are validated during parsing; evaluating interpolated strings is deferred to later compilation stages.
-
-Compile-time basic-value evaluation currently supports integer representations fitting `i64` and all valid `f64` literals.
-
-The front end parses recursive Semantics prefixes, distinct grouped and Tuple Types, and independently annotated inner Origins, preserving them through writing and source serialization. Type resolution, layout validation, subtyping, ownership rules, and most Type semantics remain unimplemented; parsing a nested Type or storage-borrow target does not establish its semantic legality. Syntax-level control-flow facts retain supported nested pointer Types and leave unresolved reference/Origin checks pending.
-
-Body parsing for `enum` and `extension` is not implemented.
-
-The enum Case, construction, Pattern, guard, and coverage rules are specified but not implemented. `EnumKoto` skips its body, and `MatchArmKoto.Pattern` stores a general `Koto`; this does not implement dedicated Pattern parsing. Case Symbols, candidate/body binding plans, whole-Subject acquisition, payload Move Paths, guard Loans, and coverage diagnostics remain required. The general control-flow row does not certify these features.
-
-Split-structure integration, generated-source integration, and layout generation are planned, not implemented.
-
-Inheritance access domains, recursive API signature accessibility, and protected-receiver checks are specified but not implemented by general Binding. Lexing has modifier token kinds, which does not establish complete parsing or semantic support for `open struct`, base clauses, compound access, or overrides. Inheritance parsing coverage is not assessed here. Inherited lookup and virtual/override declaration spellings retain their syntax boundaries. Object dispatch, metadata, upcasts, casts, compatibility, base lifetime, and Copy rules are specified; this documentation integration does not establish their implementation.
-
-The Parser supports Origin lists on structures and functions, simple and qualified annotations, intersections, and named arguments. Origin name resolution, inference, variance analysis, and borrow checking are not implemented.
-
-### C.4. Declarations and compile-time directives
-
-Complete-Type slot/pair binding, structural Signature normalization, explicit `specialize func` selection, and the generic code-sharing policy are specified by this revision, not implemented by this documentation change. Parser acceptance alone does not establish these binding, validation, metadata, or backend guarantees.
-
-The current Parser stores leading Constraint Clauses separately from executable body items and preserves deferred directives on them. It checks clause subjects against the declared generic parameters and diagnoses clauses placed after executable items. Semantic validation of Constraints during Binding and specialization is not implemented.
-
-The static Contract model is specified, not implemented by this documentation change. `ContractKoto` currently accepts inline Property requirements and `associate Name is requirement`; it does not implement function requirements or bare associated-Type declarations. Refinement, qualified specifications/projections, signature-first Constraint collection, and conformance matching/mappings/access checks require implementation. Any accepted generic Contract headers do not establish language support; user-defined generic Contracts are excluded. Runtime Contract Views remain outside the initial Contract implementation.
-
-**Current implementation status:** the Parser validates the environment-only Condition expression set, evaluates known scalar operations, and propagates Errors before short-circuit truth results. Every directive `is` test is rejected; there is no requirement evaluation, Type narrowing, or generic-dependent selection. Its internal **Pending** result currently retains unresolved scalar Names as validation obligations; this is an implementation limitation, not a valid language dependency. Such Names can only resolve in the prepared environment and must otherwise be diagnosed before finalization. Pending nodes and control-flow PendingBinding reporting retain those validation obligations; unknown-Name finalization remains unimplemented.
-
-### C.5. Properties
-
-The Parser records Properties, inline and block accessors, explicit getter result annotations, and basic syntax errors. Control-flow analysis checks known accessor result Types. Accessor expansion, contextual binding of `self`, `storage`, and `value`, storage classification, access and initialization checks, general accessor type checking, Property Consume, and field-scoped standard operations are not implemented; successful parsing alone does not validate them.
-
-### C.6. Expressions and operators
-
-The Parser supports `@Type` precedence, left associativity, and generic/comparison boundaries. Treating a `@move` operand as a Type does not implement a lifetime operation; its stage status is listed in the coverage table. Basic expressions, argument labels/defaults, collections, and anonymous functions have syntax-tree support. Member-name restrictions still need additional validation.
-
-General type inference, overload and argument matching, function-value execution, numeric checks, dictionary duplicate detection, evaluation order during execution, and single-access Property updates require semantic analysis and runtime implementation. Abort name/type validation, diagnostics, and common termination handling are also planned. Control-flow and cleanup coverage is detailed below. Examples using application-specific functions or Types illustrate semantics rather than promise standard-library APIs.
-
-Implementation references:
-
-- [Parser.cs](Kimi/Compiler/Parsing/Parser.cs) and [expression Koto nodes](Kimi/Compiler/Parsing/Koto/Expressions): syntax and precedence.
-- [ControlFlowAnalysis.cs](Kimi/Compiler/Analysis/ControlFlowAnalysis.cs): results, transfers, short-circuit paths, and partial unsafe checks.
-- [ExpressionPrecedenceTest.cs](xUnitTest/Tests/ExpressionPrecedenceTest.cs), [ParserRegressionTest.cs](xUnitTest/Tests/ParserRegressionTest.cs), and [SpecConformanceParseTest.cs](xUnitTest/Tests/SpecConformanceParseTest.cs): grouping, diagnostics, generic boundaries, and expression syntax.
-- [CollectionLiteralParseTest.cs](xUnitTest/Tests/CollectionLiteralParseTest.cs) and [RangeIndexParseTest.cs](xUnitTest/Tests/RangeIndexParseTest.cs): collection and boundary syntax.
-- [ControlFlowAnalysisTest.cs](xUnitTest/Tests/ControlFlowAnalysisTest.cs) and [ControlFlowRevisionParseTest.cs](xUnitTest/Tests/ControlFlowRevisionParseTest.cs): control constructs and result checks.
-
-### C.7. Control flow and failure handling
-
-The constructor/destruction coverage row includes only the existing analysis of executable-body control flow. Constructor selection and synthesis, completion checks, general destructor declaration validation, per-component/base cleanup, reentry prevention, and final object release require semantic and runtime implementation. Complete parsing coverage for `init` declarations, `Type.init` calls, and base-constructor initializers is not assessed; body parsing or a recognized keyword does not establish lifetime support.
-
-**Implementation status:** The Parser preserves explicit branch body forms. Control-flow analysis checks selections, loops, value-producing Labeled Blocks, lexical transfer targets, and the completion effects of explicitly registered Deferred Blocks. It also checks lexical Unsafe permission for known operations and binder-selected function references. The default type provider handles primitive literals, simple declared Types, and basic raw-pointer and contextual `null` checks. General name/overload resolution, conversions, pattern Binding, ownership, automatic destruction, Origin compatibility, and runtime cleanup generation remain planned; unresolved checks are exposed as pending obligations. Bodies containing deferred compile-time directives await directive selection before analysis.
+Implementation coverage and the recorded compiler snapshot are maintained in [STATUS.md](STATUS.md). They do not weaken language rules or Compiler requirements.
 
 ## Appendix D. Deferred feature index
 
@@ -6628,13 +6808,15 @@ This index links to design boundaries owned by the language sections. It adds no
 | Re-export syntax | Deferred design | [Re-exports](#122-re-exports) |
 | Binary artifact format | Partially specified | [Source artifacts and binary interfaces](#123-source-artifacts-and-binary-interfaces) |
 | Dependency configuration and graph diagnostics | Partially specified | [External references and aliases](#121-external-references-and-aliases) |
-| Declaration fragments and source execution order | Partially specified | [Container fragments](#422-container-fragments) |
+| Contract fragments and future extension identity | Partially specified; extension declarations not introduced | [Container fragments](#422-container-fragments) |
 | Source Generators | Partially specified | [Split structures and storage order](#431-split-structures-and-storage-order) |
 | Inherited lookup and virtual/override declaration syntax | Partially specified | [Virtual members](#434-virtual-members-and-overrides) |
 | Runtime Contract Views: designation, View associated-Type bindings, contract/exact tests and checked casts | Extension design; outside the initial static Contract implementation | [Runtime contracts](#443-runtime-contracts), [tests and casts](#6652-general-view-tests-and-checked-casts) |
 | User-defined generic Contracts, outer generic capture, default implementations, external conformance, qualified requirement calls | Not introduced | [Contracts](#441-contracts) |
 | Extra implicit/ordinary base conversions and consuming/generic/type-function runtime requirements | Deferred design | [Object views](#335-object-views-and-identity), [runtime contracts](#443-runtime-contracts) |
 | Fixed FFI layout | Deferred design | [Structure layout and ABI](#146-structure-layout-and-abi) |
+| Concurrency, memory model, and thread-transfer capabilities | Deferred design | [Concurrency boundary](#d2-concurrency-memory-model-and-thread-transfer) |
+| User-defined arithmetic and general Attribute semantics | Deferred design; comparison and LibraryImport are specified | [Extension boundaries](#68-extension-boundaries-and-reserved-syntax) |
 | Limited Constraint proof | Defined; implementation tracked separately | [Constraint proof system](#445-constraint-proof-system) |
 | Associated-Type inference beyond explicit identity facts, arbitrary complete-Type bindings, and stronger symbolic Constraint reasoning | Not introduced | [Associated Types](#4413-associated-types), [proof boundaries](#445-constraint-proof-system) |
 | Generic Type slots, full function specialization, and code-sharing policy | Defined; implementation tracked separately | [Generic parameters](#337-generic-type-parameters), [full specialization](#465-explicit-full-function-specialization), [code generation](#149-generic-code-generation) |
@@ -6675,6 +6857,10 @@ The initial [enum](#47-enums) and [match](#773-match) rules do not introduce the
 
 Object-Semantics enum construction/matching, empty enums, and representation/ABI guarantees also remain outside the [initial enum rules](#471-cases-and-payloads).
 
+### D.2. Concurrency, memory model, and thread transfer
+
+**Deferred design.** Source threads/tasks, a language memory model, data-race rules, atomic ordering operations, thread-transfer/shared-access capabilities analogous to Send/Sync, and cross-thread static initialization are not specified. The initial execution model is single-threaded under §14.11. arc guarantees atomic reference-count updates only; it does not guarantee thread-safe payload access, publication, destruction, or transfer. Owned proves lifetime independence, not thread safety. Future concurrency capability requirements may reject programs or foreign integrations previously accepted by a pre-alpha compiler; neither arc nor Owned preauthorizes those integrations.
+
 ## Appendix E. Terminology index
 
 This index is a reading aid. The linked sections contain the authoritative definitions and restrictions.
@@ -6693,7 +6879,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Complete value | An aggregate with completed construction and all stored fields Initialized. | [Construction and completeness](#912-aggregate-construction-and-completeness) |
 | Completion | Normal or abrupt completion of evaluation, distinct from divergence and Abort Termination. | [Completions](#71-completions) |
 | Composition Root | The language facility selected by `$`. | [Reserved syntax](#68-extension-boundaries-and-reserved-syntax) |
-| Associated Type | A Core Type binding fixed by explicit Type-identity facts; narrower than an ordinary complete-Type generic slot. | [Associated Types](#4413-associated-types) |
+| Associated Type | Ordinarily a Core Type binding fixed by explicit Type-identity facts; Core iteration Element requirements have the explicit complete-Type exception in §14.10. | [Associated Types](#4413-associated-types) |
 | GenericArity / OriginArity | Type slot count / explicitly declared Origin count; one pair consumes one Type slot. | [Signatures](#41-signatures) |
 | SemanticsTarget | Fixed kind of a pair's direct target: a complete value Type or permitted Object View Target. | [Generic parameters](#337-generic-type-parameters) |
 | Instantiation / explicit full specialization / automatic specialization | Argument binding / mandatory user implementation selection / meaning-preserving Type-specific code generation. | [Generic code generation](#149-generic-code-generation) |
@@ -6724,7 +6910,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Koto | A compiler syntax-tree node. | [Compiler terminology](#appendix-a-compiler-implementation-requirements) |
 | Kotonoha | One named source or binary module. | [Modules](#12-modules-and-dependencies) |
 | Loan | A borrowed place, access mode, and validity region. | [Borrow checking](#96-borrow-checking) |
-| Lookup environment | Declarations, aliases, and extensions available for lookup in a scope. | [Name resolution](#5-name-resolution-overload-resolution-and-inference) |
+| Lookup environment | Declarations and aliases available for lookup in a scope; extensions are a future design. | [Name resolution](#5-name-resolution-overload-resolution-and-inference) |
 | Move | Transfer of a value and responsibility or capability, marking its source Moved. | [Copy and Move](#35-copy-and-move) |
 | Move Path | A statically tracked path with independent initialization state and destruction responsibility. | [Move Paths](#913-move-paths-and-partial-move) |
 | Origin | A set of program points where a borrow is guaranteed valid. | [Origin expressions](#921-origin-expressions) |
@@ -6762,7 +6948,7 @@ Callable, object, and flow terms:
 
 In the EBNF below, quoted text is literal syntax, `|` is choice, parentheses group, and `?`, `*`, `+` mean optional, zero or more, and one or more. `? description ?` denotes a lexical class or a production whose definition is linked. `List<X>` abbreviates `X ("," X)*`; `TrailingList<X>` adds an optional final comma. These angle brackets are grammar notation, unlike quoted `"<"` and `">"`.
 
-`NEWLINE`, `INDENT`, `DEDENT`, and `SEP` denote source-layout events under [source structure](#22-lines-indentation-and-continuation), not required internal token kinds. Layout within delimiters and between branch clauses follows the linked constructs. `Body<X>` abbreviates `NEWLINE INDENT ItemList<X> DEDENT`; `ItemList<X>` is a nonempty sequence separated where the surrounding grammar permits. Declaration Containers may additionally have empty bodies where their own rules permit them.
+`NEWLINE`, `INDENT`, `DEDENT`, and `SEP` denote source-layout events under [source structure](#22-lines-indentation-and-continuation), not required internal token kinds. Layout within delimiters and between branch clauses follows the linked constructs. `Body<X>` abbreviates `NEWLINE INDENT ItemList<X> NEWLINE? DEDENT`; `ItemList<X>` is a nonempty sequence separated where the surrounding grammar permits. Declaration Containers may additionally have empty bodies where their own rules permit them.
 
 ### F.1. Lexical grammar
 
@@ -6770,6 +6956,15 @@ In the EBNF below, quoted text is literal syntax, `|` is choice, parentheses gro
 
 ```ebnf
 Name                 := NameStart NameContinue*
+
+Punctuator           := "(" | ")" | "[" | "]" | "," | ";" | "." | ":" | "::"
+                      | "->" | "=>" | "@" | "#" | "$" | "?"
+                      | "+" | "-" | "*" | "/" | "%" | "++" | "--"
+                      | "=" | "+=" | "-=" | "*=" | "/=" | "%="
+                      | "==" | "!=" | "<" | "<=" | ">" | ">="
+                      | "&" | "|" | "^" | "<<" | ">>" | "&=" | "|=" | "^="
+                      | "<<=" | ">>=" | ".." | "..="
+                      | "{" | "}" | "!" | "&&" | "||"
 NameStart            := "A".."Z" | "a".."z" | "_"
                       | ? Unicode Lu, Ll, Lt, Lm, Lo, or Nl ?
 NameContinue         := NameStart | "0".."9" | ? Unicode Mn, Mc, Nd, or Pc ?
@@ -6832,10 +7027,12 @@ SemanticsType        := Semantics "/" SemanticsType | TypeAtom
 TypeAtom             := CoreType | "(" Type ")"
 ObjectSemantics      := "obj" | "rc" | "arc" | "objref" | "objuniq"
 RuntimeContractType  := ContractReference
-CoreType             := NamedType | UnitType | TupleType
+CoreType             := NamedType | UnitType | TupleType | FixedArrayType
+FixedArrayType       := "[" Type ";" DecimalLength "]"
+DecimalLength        := ? unsigned decimal integer literal, §3.2.2 ?
 UnitType             := "(" ")"
 TupleType            := "(" Type "," TrailingList<Type>? ")"
-NamedType            := TypeSegment ("." TypeSegment)*
+NamedType            := "::"? TypeSegment ("." TypeSegment)*
 TypeSegment          := TypeName TypeArguments?
 TypeName             := Name | PrimitiveType | "Self"
 TypeArguments        := "<" TrailingList<Type> ">"
@@ -6872,13 +7069,13 @@ StructureDeclaration := Access? "open"? "struct" Name GenericParameters?
 BaseClause           := ":" CoreType
 EnumDeclaration      := Access? "enum" Name GenericParameters? OriginParameters?
                         Body<EnumItem>
-EnumItem             := EnumCase | FunctionDefinition | SpecializationDeclaration | ConstraintClause
+EnumItem             := EnumCase | AttributedFunctionDefinition | SpecializationDeclaration | ConstraintClause
                       | AssociatedTypeSpecification
                       | Directive<EnumItem>
 EnumCase             := Name ("(" TrailingList<Type> ")")?
 ContractDeclaration  := Access? "contract" Name ContractParentList? Body<ContractItem>
 ContractParentList   := ":" ContractReference ("," ContractReference)*
-ContractReference    := QualifiedName
+ContractReference    := "::"? QualifiedName
 ContractItem         := ContractRequirement | AssociatedTypeDeclaration
                       | ConstraintClause | Directive<ContractItem>
 ContractRequirement  := FunctionRequirement | PropertyRequirement
@@ -6904,13 +7101,17 @@ FunctionHeader       := Access? "unsafe"? "func" Name
                         GenericParameters? OriginParameters?
                         "(" TrailingList<Parameter>? ")" ("->" Type)?
 FunctionDefinition   := FunctionHeader FunctionBody
+AttributedFunctionDefinition := AttributePrefix? FunctionDefinition
+ForeignFunctionDeclaration := FunctionHeader
+// Only with the LibraryImport prefix and restricted header/placement in §14.12.
 SpecializationDeclaration := "specialize" "func" Name TypeArguments
                             "(" TrailingList<SpecializationParameter>? ")"
                             ("->" Type)? SpecializationBody
 SpecializationParameter := Name ("=>" Name)? ":" Type
 SpecializationBody   := "=>" Expression | ExecutableBlock
 FunctionBody         := "=>" Expression | Body<FunctionItem>
-Parameter            := Name ("=>" Name)? ":" Type ("=" Expression)?
+Parameter            := Attribute* ParameterCore
+ParameterCore        := Name ("=>" Name)? ":" Type ("=" Expression)?
                       | Name "?" ":" Type "=" Expression
 ConstraintClause     := ConstraintSubject "is" IsRequirement
 ConstraintSubject    := Name | "Self" | AssociatedTypeReference
@@ -6920,7 +7121,10 @@ PositiveRequirement  := RequirementAtom ("and" RequirementUnary)*
 Requirement          := RequirementAnd ("or" RequirementAnd)*
 RequirementAnd       := RequirementUnary ("and" RequirementUnary)*
 RequirementUnary     := "not" RequirementUnary | RequirementAtom
-RequirementAtom      := CallableRequirement | Type | Semantics | "(" Requirement ")"
+RequirementAtom      := CallableRequirement | Type | Semantics | SemanticsCategory
+                      | "(" Requirement ")"
+SemanticsCategory    := "value" | "valueborrow" | "object" | "objectborrow"
+                      | "borrow" | "owning" | "reference"
 CallableRequirement  := "Callable" "<" (CallableReceiver ",")? FunctionSignature ">"
 CallableReceiver     := "ref" | "uniq" | "owner"
 FunctionSignature    := "(" TrailingList<Type>? ")" "->" Type
@@ -6928,14 +7132,20 @@ FunctionItem         := ExecutableItem | ConstraintClause
 ContainerItem        := Declaration | ConstraintClause | AssociatedTypeSpecification
                       | Directive<ContainerItem>
 ContainerBody        := ? indented ContainerItem sequence permitted by its kind ?
-Declaration          := GroupDeclaration | RootGroupDeclaration
+Attribute            := "#" AttributeName ("(" TrailingList<Argument>? ")")?
+AttributeName        := ? Name beginning with an uppercase Unicode letter, §6.8 ?
+AttributePrefix      := Attribute (Attribute | NEWLINE)*
+Declaration          := AttributePrefix? UnattributedDeclaration
+UnattributedDeclaration := GroupDeclaration | RootGroupDeclaration
                       | StructureDeclaration | ContractDeclaration
                       | FunctionDefinition | SpecializationDeclaration | PropertyDeclaration
                       | ConstructorDeclaration | DeinitDeclaration
-                      | EnumDeclaration | ExtensionDeclaration
+                      | EnumDeclaration | ForeignFunctionDeclaration
 ```
 
-Modifier placement and compound-access combinations are constrained by [accessibility](#512-accessibility-and-reachability), even where the shared grammar uses `Access`. `open` applies only to structures. `BaseClause` has the semantic restrictions in [inheritance](#432-inheritance-and-open-structures); member-level virtual/override syntax is not supplied by this grammar.
+Modifier placement and compound-access combinations are constrained by [accessibility](#512-accessibility-and-reachability), even where the shared grammar uses `Access`.
+
+AttributePrefix is allowed only on the declarations and parameters enumerated in §6.8; the shared Declaration wrapper does not authorize Attributes on constructors, deinit, or explicit specializations. Attribute-bearing functions in executable/enum lists use AttributedFunctionDefinition. ForeignFunctionDeclaration requires exactly the LibraryImport form of §14.12 and cannot appear in those lists. `open` applies only to structures. `BaseClause` has the semantic restrictions in [inheritance](#432-inheritance-and-open-structures); member-level virtual/override syntax is not supplied by this grammar.
 
 `SpecializationDeclaration` is permitted only in the original generic function's declaration Container and Kotonoha. It adds no Type or Origin binder, Constraints, access/unsafe modifiers, attributes, defaults, or optionality markers. Its body uses ordinary executable syntax; the original function's contract is inherited under [full specialization](#465-explicit-full-function-specialization). Written Type arguments must be closed after normalization, except for Origins governed by that inherited contract.
 
@@ -6976,7 +7186,11 @@ Additive             := Multiplicative (("+" | "-") Multiplicative)*
 Multiplicative       := Adapted (("*" | "/" | "%") Adapted)*
 Adapted              := Prefix ("@" OperationTarget)*
 OperationTarget      := "move" | Semantics | AdaptationType
-AdaptationType       := ? Type target syntax without written Origin annotations, §6.6.4.1 ?
+AdaptationType       := Semantics "/" AdaptationType | AdaptationAtom
+AdaptationAtom       := NamedType | UnitType | "(" OriginFreeType ")"
+                      | "(" OriginFreeType "," TrailingList<OriginFreeType>? ")"
+                      | "[" OriginFreeType ";" DecimalLength "]"
+OriginFreeType       := ? Type with no written Origins at any layer, §6.6.4.1 ?
 Prefix               := ("+" | "-" | "not" | "*" | "^" | "++" | "--") Prefix
                       | Postfix
 Postfix              := Primary PostfixSuffix*
@@ -6986,12 +7200,12 @@ PostfixSuffix        := "." (Name | DecimalTupleIndex)
 AdjacentTypeArguments := ? TypeArguments adjacent to an eligible Name, §6.4.2 ?
 DecimalTupleIndex    := ? decimal integer literal used as a Tuple member, §6.4.1 ?
 Argument             := (Name ":")? Expression
-Primary              := Name | Literal | "(" Expression ")" | TupleExpression
+Primary              := "::"? Name | Literal | "(" Expression ")" | TupleExpression
                       | ArrayExpression | DictionaryExpression | FunctionExpression
                       | IfExpression | MatchExpression | Iteration | LabeledBlock
                       | Transfer | CompositionRootExpression | ConstructionExpression
                       | CaseConstruction
-ConstructionExpression := "::"? NamedType "." "init"
+ConstructionExpression := NamedType "." "init"
                           "(" TrailingList<Argument>? ")"
 CaseReference        := NamedType "." Name | "." Name
 CaseConstruction     := CaseReference ("(" TrailingList<Expression> ")")?
@@ -7006,10 +7220,12 @@ AnonymousBody        := "=>" Expression | ExecutableBlock
 CaptureList          := "[" TrailingList<Capture>? "]"
 Capture              := Name ("@" CaptureOperation)? | "var" Name ("@" "move")?
 CaptureOperation     := "move" | "ref" | "uniq"
-CompositionRootExpression := "$" "abort" "(" TrailingList<Argument>? ")"
+CompositionRootExpression := "$" "abort" "(" Expression ")"
 ```
 
 Ordinary `is` / `is not` accepts one named struct Core Type and does not consume outer `and` / `or`. The separate compile-time [requirement expressions](#442-requirement-expressions) retain their existing extent in their dedicated contexts. Anonymous parameter/result omission and Capture Lists obey [function-expression rules](#643-function-expressions). Adaptation-target parsing and generic/comparison disambiguation follow [precedence](#65-precedence-and-associativity); these boundaries are not alternative parses selected by conversion success.
+
+The `.init(` suffix has construction priority under §4.3.3 and cannot use `Name` in `PostfixSuffix`; its qualifier is checked in the Type role during Binding. Adaptation alternatives obey the syntactic prefix commitment of §6.6.4.1 before lookup, including Origin-free generic arguments. `$abort` accepts exactly one positional Expression, without a label or trailing comma; it must fit `string`.
 
 ### F.5. Statements and Blocks
 
@@ -7017,7 +7233,7 @@ Ordinary `is` / `is not` accepts one named struct Core Type and does not consume
 
 ```ebnf
 SourceUnit           := ? source-local declarations, aliases, and executable items, §4.2.1 ?
-ExecutableItem       := Expression | LocalBinding | FunctionDefinition
+ExecutableItem       := Expression | LocalBinding | AttributedFunctionDefinition
                       | UnsafeStatement | DeferStatement | RequireStatement
                       | Directive<ExecutableItem>
 ExecutableBlock      := Body<ExecutableItem>
@@ -7038,7 +7254,8 @@ IfExpression         := "if" Condition BranchBody
                         (BranchJoin "else" BranchBody)?
 Condition            := Expression | "(" InitializedBinding ")"
 BranchBody           := "=>" Expression | ExecutableBlock
-BranchJoin           := ? permitted same-line or line-separated else boundary, §7.7.2 ?
+BranchJoin           := ? same-line expression join, or next effective aligned line
+                          after expression/body closure, §7.7.2 ?
 MatchExpression      := "match" Expression Body<MatchArm>
 MatchArm             := Pattern ("if" GuardExpression)? "=>"
                         (Expression | ExecutableBlock)
@@ -7128,7 +7345,7 @@ PlainString         := ? StringLiteral without interpolation, §13.2 ?
 
 ```
 
-The hash forms use `#` followed by reserved lowercase directive names. `Item` retains the surrounding syntax category; directives do not make an otherwise forbidden item legal there. Case layout and excluded-target grammar checking follow the linked sections.
+The hash forms use `#` followed by the reserved lowercase keywords `if`, `match`, and `case`. Uppercase-initial `AttributeName` instead selects the Attribute grammar in F.3; other lowercase hash forms are errors. `Item` retains the surrounding syntax category; directives do not make an otherwise forbidden item legal there. Case layout and excluded-target grammar checking follow the linked sections.
 
 ### F.9. Syntax boundaries
 
@@ -7136,12 +7353,12 @@ These entries record the limits of a complete syntax summary for this revision. 
 
 | Form or production | Owning syntax and boundary |
 | --- | --- |
-| `ExtensionDeclaration` | [Container kinds](#42-declaration-containers) identify the form; [extension identity](#422-container-fragments) and body grammar need further rules. |
+| Extension declarations | Not introduced; no production or active extension candidate stage exists in this revision. See [Container boundary](#42-declaration-containers). |
 | Virtual/abstract/override declarations and ordinary base-member invocation | Access, compatibility, dispatch, and destruction semantics are specified; final member modifier/body spellings remain deferred. Base clauses and base-constructor initializers are defined in F.3. |
 | Runtime-contract designations, View associated-type bindings, exact/contract tests and checked casts | The [runtime extension](#443-runtime-contracts) and [object operations](#6652-general-view-tests-and-checked-casts) preserve the design without final source spellings. Static associated-Type specifications/projections are defined in F.3. Ordinary struct `is` and explicit upcasts are defined. |
 | Callable extensions | Borrowed or Exclusive/Consuming erased Types, public lending results, non-escaping declarations, capture aliases/initializers/parts, generic receiver Semantics, and `from environment` remain unintroduced. |
 | Additional Patterns | The [initial forms](#7731-patterns) are defined; Struct, Type, OR, Range, Rest, and other [extensions](#d1-enum-and-pattern-extensions) remain deferred. |
-| Attributes | `#Name` is distinct from a directive under [reserved syntax](#68-extension-boundaries-and-reserved-syntax). General attribute arguments and placement need their own specification. |
+| Attributes | Syntax and placement are specified in [§6.8](#68-extension-boundaries-and-reserved-syntax); semantics other than [LibraryImport](#1412-foreign-function-imports) remain deferred. |
 | Additional Composition Root expressions | Only `$abort(...)` is given a complete operation syntax here; see [extension boundaries](#68-extension-boundaries-and-reserved-syntax). |
 | Additional type arguments and object allocation | [Generic application](#642-invocation-and-generic-application) does not define general constant type arguments. [Constructors](#433-constructors) define owned structure construction, not allocation APIs for object Semantics; those APIs must preserve [object destruction](#1033-ownership-object-release-and-reentry). |
 | Function parameters | The combined optional/external-name form remains under [parameter design boundaries](#53-inference-and-operation-design-boundaries); the separate forms are summarized in F.3. |
