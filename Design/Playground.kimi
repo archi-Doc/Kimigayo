@@ -9,6 +9,7 @@ alias AliasD
 
 public group Helper // namespace - alias
     func Method2() -> ()
+        var xx = 1
         #if os=="Windows"
         // block
             var i = if (x == true) => 1 else => 0
@@ -56,7 +57,7 @@ var array: Array<owner/T.U> = new()
 var obj = T.new() // T: owner/T
 var obj2 = T.new() // T.New()
 var movedObj = obj // obj => movedObj
-var movedObj = obj@unsafe/T
+unsafe: var movedObj = obj@unsafe/T
 array.Add(movedObj) // movedObj => array
 
 private func find<s/T, owner/T2>(

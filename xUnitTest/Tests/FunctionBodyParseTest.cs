@@ -105,12 +105,12 @@ public class FunctionBodyParseTest
         Assert.False(assignmentTail.Body!.HasTrailingExpression);
         Assert.IsType<EqualsKoto>(assignmentTail.Body.Items[^1]);
 
-        var semicolonTail = ParseSingleFunction(
+        var expressionTail = ParseSingleFunction(
             """
-            func SemicolonTail()
-                1;
+            func ExpressionTail()
+                1
             """);
-        Assert.False(semicolonTail.Body!.HasTrailingExpression);
+        Assert.False(expressionTail.Body!.HasTrailingExpression);
 
         var localDeclarationTail = ParseSingleFunction(
             """

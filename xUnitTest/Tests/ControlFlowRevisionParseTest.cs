@@ -127,7 +127,7 @@ public class ControlFlowRevisionParseTest
     }
 
     [Fact]
-    public void PreservesBranchSemicolonsThroughSerializationAndUnparse()
+    public void PreservesBranchBodyFormsThroughSerializationAndUnparse()
     {
         var parsed = Parse(
             """
@@ -136,41 +136,37 @@ public class ControlFlowRevisionParseTest
                     if b
                         1
                     else
-                        2;
+                        2
                 else
-                    3;
+                    3
                 let second = match a
-                    A => if b => 1 else => 2;
+                    A => if b => 1 else => 2
                     B =>
-                        3;
+                        3
                 return ()
             """);
         foreach (var tree in Versions(parsed))
         {
             var body = Function(tree).Body!;
             var first = Assert.IsType<IfKoto>(Assert.IsType<FieldKoto>(body.Items[0]).InitializerKoto);
-            Assert.True(first.ElseBody!.HasTrailingSemicolon);
-            Assert.False(first.ElseBody.HasTrailingExpression);
+            Assert.False(first.ElseBody!.HasTrailingExpression);
             var nested = Assert.IsType<IfKoto>(first.Branches[0].Body.Items[0]);
-            Assert.True(nested.ElseBody!.HasTrailingSemicolon);
+            Assert.False(nested.ElseBody!.HasTrailingExpression);
             var second = Assert.IsType<MatchKoto>(Assert.IsType<FieldKoto>(body.Items[1]).InitializerKoto);
             Assert.IsType<IfKoto>(second.Arms[0].Body is ParenthesizedKoto grouped ? grouped.Operand : second.Arms[0].Body);
-            Assert.True(second.Arms[0].HasTrailingSemicolon);
             Assert.True(KotoHelper.IsValueContext(second.Arms[0].Body));
             var blockArm = Assert.IsType<CodeBlockKoto>(second.Arms[1].Body);
-            Assert.True(blockArm.HasTrailingSemicolon);
             Assert.False(blockArm.HasTrailingExpression);
             Assert.IsType<UnitLiteralKoto>(Assert.IsType<ReturnKoto>(body.Items[2]).Expression);
         }
     }
 
     [Fact]
-    public void InlineMatchSemicolonPreservesNestedExpressionResult()
+    public void InlineMatchPreservesNestedExpressionResult()
     {
-        foreach (var tree in Versions(Parse("func run() => match x\n    A => (if b => 1 else => 2);\n    B => ()")))
+        foreach (var tree in Versions(Parse("func run() => match x\n    A => (if b => 1 else => 2)\n    B => ()")))
         {
             var match = Assert.IsType<MatchKoto>(Function(tree).ExpressionBody);
-            Assert.True(match.Arms[0].HasTrailingSemicolon);
             var inner = Assert.IsType<IfKoto>(Assert.IsType<ParenthesizedKoto>(match.Arms[0].Body).Operand);
             Assert.True(KotoHelper.IsValueContext(inner));
             Assert.True(inner.Branches[0].Body.HasTrailingExpression);
@@ -237,13 +233,12 @@ public class ControlFlowRevisionParseTest
     }
 
     [Fact]
-    public void PreservesSemicolonOnAWholeNestedIf()
+    public void DiscardsAWholeNestedIfInABlockBody()
     {
-        foreach (var tree in Versions(Parse("func run() => if flag\n    if other => 1 else => 2;\nelse\n    ()")))
+        foreach (var tree in Versions(Parse("func run() => if flag\n    if other => 1 else => 2\nelse\n    ()")))
         {
             var outer = Assert.IsType<IfKoto>(Function(tree).ExpressionBody);
             var branch = outer.Branches[0].Body;
-            Assert.True(branch.HasTrailingSemicolon);
             Assert.False(branch.HasTrailingExpression);
             var inner = branch.Items[0] is ParenthesizedKoto parentheses ? parentheses.Operand : branch.Items[0];
             Assert.False(KotoHelper.IsValueContext(Assert.IsType<IfKoto>(inner)));

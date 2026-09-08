@@ -127,7 +127,6 @@ public static partial class TokenHelper
         Set(TokenKind.OpenBrace, "{");
         Set(TokenKind.CloseBrace, "}");
         Set(TokenKind.Colon, ":");
-        Set(TokenKind.Semicolon, ";");
         Set(TokenKind.Question, "?");
 
         // Others
@@ -408,7 +407,6 @@ public static partial class TokenHelper
             Constants.OpenBraceChar => (TokenKind.OpenBrace, +1),
             Constants.CloseBraceChar => (TokenKind.CloseBrace, -1),
             Constants.ColonChar => (TokenKind.Colon, 0),
-            Constants.SemicolonChar => (TokenKind.Semicolon, 0),
             Constants.BarChar => (TokenKind.Bar, 0),
             Constants.CaretChar => (TokenKind.Caret, 0),
             Constants.EqualsChar => (TokenKind.Equals, 0),

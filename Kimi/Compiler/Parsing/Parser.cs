@@ -55,7 +55,7 @@ public static class Parser
         Mark(
             IsExpressionBoundaryKind,
             [
-                TokenKind.Separator, TokenKind.Semicolon, TokenKind.StartBlock, TokenKind.EndBlock, TokenKind.Else,
+                TokenKind.Separator, TokenKind.StartBlock, TokenKind.EndBlock, TokenKind.Else,
                 TokenKind.EqualsGreaterThan, TokenKind.Comma, TokenKind.CloseParenthesis, TokenKind.CloseBracket,
             ]);
 
@@ -277,7 +277,7 @@ NextParameter:
         var end = closeParenthesisRange.End;
         if (reader.TryConsume(TokenKind.MinusGreaterThan, out var returnArrowRange, false))
         {
-            if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock or TokenKind.EqualsGreaterThan or TokenKind.Semicolon)
+            if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock or TokenKind.EqualsGreaterThan)
             {
                 reader.Diagnostic.Add(returnArrowRange, DiagnosticCode.MissingReturnType_Kd);
                 returnType = new ErrorKoto(ref reader, returnArrowRange);
@@ -475,11 +475,7 @@ Exit:
 
         var fieldKoto = new FieldKoto(ref reader, token, nameKoto, typeKoto, initializerKoto);
 
-        if (reader.CurrentTokenKind == TokenKind.Semicolon)
-        {
-            reader.Advance();
-        }
-        else if (!allowParenthesizedTerminator ||
+        if (!allowParenthesizedTerminator ||
             reader.CurrentTokenKind is not (TokenKind.CloseParenthesis or TokenKind.Yield))
         {
             reader.SkipUntil(TokenKind.EndBlock, TokenKind.Separator, DiagnosticCode.UnexpectedTrailingToken_Kd);
@@ -531,11 +527,6 @@ Exit:
         if (hasInlineAccessors)
         {
             ParseInlinePropertyAccessors(ref reader, property);
-        }
-
-        if (reader.TryConsume(TokenKind.Semicolon))
-        {
-            return property;
         }
 
         if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
@@ -654,7 +645,7 @@ Exit:
                 returnType);
             AddPropertyAccessor(ref reader, property, accessor, accessorToken);
 
-            if (body is not CodeBlockKoto && !reader.TryConsume(TokenKind.Semicolon) &&
+            if (body is not CodeBlockKoto &&
                 reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) &&
                 reader.CanRead)
             {
@@ -1451,7 +1442,7 @@ Exit:
         items.AddRange(temporary.TypeConstraints);
         items.AddRange(temporary.Members);
         items.AddRange(temporary.NestedDeclarationContainers);
-        var block = new CodeBlockKoto(ref reader, SourceSpan.FromBounds(start, reader.CurrentTokenRange.Start), items, false)
+        var block = new CodeBlockKoto(ref reader, SourceSpan.FromBounds(start, reader.CurrentTokenRange.Start), items)
         {
             DeclarationContext = declarationContext.TokenKind,
         };
@@ -1560,13 +1551,8 @@ Exit:
         var caseCount = 0;
         while (reader.Position < end && reader.CanRead && reader.CurrentTokenKind != TokenKind.EndBlock)
         {
-            if (reader.CurrentTokenKind is TokenKind.Separator or TokenKind.Semicolon)
+            if (reader.CurrentTokenKind == TokenKind.Separator)
             {
-                if (isMatchBody && reader.CurrentTokenKind == TokenKind.Semicolon)
-                {
-                    reader.AddDiagnostic(DiagnosticCode.InvalidCompileTimeMatchItem_Kd);
-                }
-
                 reader.Advance();
                 continue;
             }
@@ -1668,13 +1654,8 @@ Exit:
             if (reader.Position < end && reader.CurrentTokenKind == TokenKind.StartBlock)
             {
                 reader.Advance();
-                while (reader.Position < end && reader.CurrentTokenKind is TokenKind.Separator or TokenKind.Semicolon)
+                while (reader.Position < end && reader.CurrentTokenKind == TokenKind.Separator)
                 {
-                    if (isMatchHeader && reader.CurrentTokenKind == TokenKind.Semicolon)
-                    {
-                        reader.AddDiagnostic(DiagnosticCode.InvalidCompileTimeMatchItem_Kd);
-                    }
-
                     reader.Advance();
                 }
 
@@ -1867,29 +1848,18 @@ Exit:
         if (reader.CurrentTokenKind != TokenKind.StartBlock)
         {
             reader.AddDiagnostic(DiagnosticCode.EmptyExecutableBlock_Kd);
-            return new CodeBlockKoto(ref reader, start, [], false);
+            return new CodeBlockKoto(ref reader, start, []);
         }
 
         var blockContext = reader.TakeContext();
         reader.Advance();
         var items = default(TemporaryList<Koto>);
-        var hasTrailingExpression = false;
-        var hasTrailingSemicolon = false;
         var seenExecutableItem = false;
         var hasSourceItem = false;
 
         while (reader.CanRead)
         {
-            while (reader.CurrentTokenKind is TokenKind.Separator or TokenKind.Semicolon)
-            {
-                if (reader.CurrentTokenKind == TokenKind.Semicolon)
-                {
-                    hasTrailingExpression = false;
-                    hasTrailingSemicolon = true;
-                }
-
-                reader.Advance();
-            }
+            reader.SkipSeparators();
 
             if (!reader.CanRead)
             {
@@ -1909,9 +1879,7 @@ Exit:
                 return new CodeBlockKoto(
                     ref reader,
                     SourceSpan.FromBounds(start.Start, end),
-                    items.ToArray(),
-                    hasTrailingExpression,
-                    hasTrailingSemicolon);
+                    items.ToArray());
             }
 
             ConsumeAttributeAndModifier(ref reader, out var isEnd, allowCompileTimeDirectives: true);
@@ -1944,8 +1912,6 @@ Exit:
             {
                 var caseGroup = ParseCompileTimeMatch(ref reader);
                 items.Add(ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup));
-                hasTrailingExpression = true;
-                hasTrailingSemicolon = false;
                 seenExecutableItem = true;
                 continue;
             }
@@ -1973,22 +1939,14 @@ Exit:
 
             seenExecutableItem = true;
             var oldPosition = reader.Position;
-            var item = ParseBlockItem(ref reader, out var isDeclaration);
+            var item = ParseBlockItem(ref reader, out _);
             if (item is not null)
             {
                 item = ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, item);
                 items.Add(item);
-                hasTrailingExpression = !isDeclaration;
-                hasTrailingSemicolon = false;
             }
 
-            if (reader.CurrentTokenKind == TokenKind.Semicolon)
-            {
-                hasTrailingExpression = false;
-                hasTrailingSemicolon = true;
-                reader.Advance();
-            }
-            else if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock))
+            if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock))
             {
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
             }
@@ -2005,9 +1963,7 @@ Exit:
         return new CodeBlockKoto(
             ref reader,
             SourceSpan.FromBounds(start.Start, Math.Max(start.End, eof)),
-            items.ToArray(),
-            hasTrailingExpression,
-            hasTrailingSemicolon);
+            items.ToArray());
     }
 
     internal static Koto? ParseBlockItem(ref TokenReader reader, out bool isDeclaration)
@@ -2154,13 +2110,12 @@ Exit:
                 item = ParseBlockItem(ref inline, out _);
             }
 
-            var hasSemicolon = inline.TryConsume(TokenKind.Semicolon);
             if (inline.CanRead)
             {
                 inline.AddDiagnostic(DiagnosticCode.InvalidInlineStatement_Kd);
             }
 
-            body = new CodeBlockKoto(ref inline, SourceSpan.FromBounds(start.Start, Math.Max(start.End, item?.Span.End ?? start.End)), item is null ? [] : [item], false, hasSemicolon);
+            body = new CodeBlockKoto(ref inline, SourceSpan.FromBounds(start.Start, Math.Max(start.End, item?.Span.End ?? start.End)), item is null ? [] : [item]);
             reader.Advance(count);
         }
 
@@ -2400,12 +2355,9 @@ Exit:
                     ? ParseRequiredBlock(ref reader)
                     : ParseRequiredExpression(ref reader);
 
-                var hasSemicolon = reader.TryConsume(TokenKind.Semicolon);
-                arms.Add(new MatchArmKoto(pattern, body, hasSemicolon));
+                arms.Add(new MatchArmKoto(pattern, body));
                 end = body.Span.End;
             }
-
-            reader.TryConsume(TokenKind.Semicolon);
 
             if (reader.Position == oldPosition)
             {
@@ -2512,7 +2464,7 @@ Exit:
         }
 
         reader.AddDiagnostic(DiagnosticCode.EmptyExecutableBlock_Kd);
-        return new CodeBlockKoto(ref reader, reader.CurrentTokenRange, [], false);
+        return new CodeBlockKoto(ref reader, reader.CurrentTokenRange, []);
     }
 
     private static CodeBlockKoto ParseRequiredConditionalBody(ref TokenReader reader)
@@ -2528,17 +2480,7 @@ Exit:
         }
 
         var expression = ParseRequiredExpression(ref reader);
-        // An inline branch owns a semicolon only before else. A semicolon
-        // after the entire if belongs to its surrounding statement or match arm.
-        var lookahead = 1;
-        while (reader.PeekKind(lookahead) == TokenKind.Separator)
-        {
-            lookahead++;
-        }
-
-        var hasSemicolon = reader.CurrentTokenKind == TokenKind.Semicolon &&
-            reader.PeekKind(lookahead) == TokenKind.Else && reader.TryConsume(TokenKind.Semicolon);
-        return new CodeBlockKoto(ref reader, expression.Span, [expression], !hasSemicolon, hasSemicolon)
+        return new CodeBlockKoto(ref reader, expression.Span, [expression])
         {
             IsExpressionBody = true,
         };
@@ -3192,7 +3134,6 @@ Loop:
     private static CodeBlockKoto ParseParenthesizedBlock(ref TokenReader reader)
     {
         var items = new List<Koto>();
-        var hasTrailingExpression = false;
 
         while (reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var)
         {
@@ -3207,20 +3148,18 @@ Loop:
         if (reader.CurrentTokenKind == TokenKind.Yield)
         {
             items.Add(ParseJumpExpression(ref reader));
-            hasTrailingExpression = true;
         }
 
         if (items.Count == 0)
         {
             reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
-            return new CodeBlockKoto(ref reader, reader.CurrentTokenRange, items, false);
+            return new CodeBlockKoto(ref reader, reader.CurrentTokenRange, items);
         }
 
         return new CodeBlockKoto(
             ref reader,
             SourceSpan.FromBounds(items[0].Span.Start, items[^1].Span.End),
-            items,
-            hasTrailingExpression);
+            items);
     }
 
     private static Koto ParseCollectionLiteral(ref TokenReader reader)

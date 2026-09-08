@@ -336,15 +336,14 @@ public sealed class FunctionKoto : IdentifiableKoto
 
     /// <summary>Adds top-level syntax to this generated function.</summary>
     /// <param name="item">The syntax node to add.</param>
-    /// <param name="hasTrailingExpression">Whether the item is an expression without a semicolon.</param>
-    internal void AddGeneratedItem(Koto item, bool hasTrailingExpression)
+    internal void AddGeneratedItem(Koto item)
     {
         if (!this.IsGenerated || this.Body is null)
         {
             throw new InvalidOperationException();
         }
 
-        this.Body.AddLast(item, hasTrailingExpression);
+        this.Body.AddLast(item);
     }
 
     protected override IEnumerable<Koto> GetChildNodes()

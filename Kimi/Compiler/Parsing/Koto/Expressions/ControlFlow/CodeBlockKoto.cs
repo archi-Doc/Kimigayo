@@ -15,11 +15,6 @@ public sealed class CodeBlockKoto : ExpressionKoto
 
     private IReadOnlyList<Koto> items;
 
-    private bool hasUnterminatedExpression;
-
-    /// <summary>Gets a value indicating whether the last item has an explicit semicolon.</summary>
-    public bool HasTrailingSemicolon { get; private set; }
-
     /// <summary>Gets the declaration context of a compile-time directive body.</summary>
     public TokenKind DeclarationContext { get; internal set; }
 
@@ -41,14 +36,10 @@ public sealed class CodeBlockKoto : ExpressionKoto
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete block span.</param>
     /// <param name="items">The parsed block items.</param>
-    /// <param name="hasTrailingExpression">Whether the final item is an expression without a semicolon.</param>
-    /// <param name="hasTrailingSemicolon">Whether the final item has an explicit semicolon.</param>
-    public CodeBlockKoto(ref TokenReader reader, SourceSpan range, IReadOnlyList<Koto> items, bool hasTrailingExpression, bool hasTrailingSemicolon = false)
+    public CodeBlockKoto(ref TokenReader reader, SourceSpan range, IReadOnlyList<Koto> items)
         : base(ref reader, range)
     {
         this.items = items;
-        this.hasUnterminatedExpression = hasTrailingExpression;
-        this.HasTrailingSemicolon = hasTrailingSemicolon;
         this.Adopt(items);
     }
 
@@ -80,19 +71,7 @@ public sealed class CodeBlockKoto : ExpressionKoto
             }
             else
             {
-                if (i == this.items.Count - 1 && this.HasTrailingSemicolon && ParenthesizedKoto.NeedsMultilineGrouping(this.items[i]))
-                {
-                    ParenthesizedKoto.WriteGroupedTo(this.items[i], ref builder);
-                }
-                else
-                {
-                    this.items[i].WriteTo(ref builder);
-                }
-            }
-
-            if (i == this.items.Count - 1 && this.HasTrailingSemicolon)
-            {
-                builder.Append(';');
+                this.items[i].WriteTo(ref builder);
             }
         }
     }
@@ -133,8 +112,7 @@ public sealed class CodeBlockKoto : ExpressionKoto
 
     /// <summary>Adds an item to a compiler-generated block.</summary>
     /// <param name="item">The item to add.</param>
-    /// <param name="hasTrailingExpression">Whether the item is an expression without a semicolon.</param>
-    internal void AddLast(Koto item, bool hasTrailingExpression)
+    internal void AddLast(Koto item)
     {
         if (this.items is not List<Koto> list)
         {
@@ -144,7 +122,6 @@ public sealed class CodeBlockKoto : ExpressionKoto
 
         list.Add(item);
         item.Parent = this;
-        this.hasUnterminatedExpression = hasTrailingExpression;
     }
 
     protected override IEnumerable<Koto> GetChildNodes()

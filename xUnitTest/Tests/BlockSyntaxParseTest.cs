@@ -57,7 +57,7 @@ public class BlockSyntaxParseTest
     [InlineData("defer: ()")]
     [InlineData("unsafe: ()")]
     [InlineData("defer: let value = 1")]
-    [InlineData("defer: count += 1;")]
+    [InlineData("defer: count += 1")]
     [InlineData("defer: defer: work()")]
     [InlineData("defer: let result = if ready() => 1 else => 2")]
     [InlineData("unsafe: return *pointer")]
@@ -98,11 +98,10 @@ public class BlockSyntaxParseTest
     [InlineData("for value in values")]
     [InlineData("func empty()")]
     [InlineData("defer:\n    // Only a comment.")]
-    [InlineData("unsafe:\n    ;")]
+    [InlineData("unsafe:\n    // Empty body")]
     [InlineData("if ready()\n    ()\nelse")]
     [InlineData("match value\n    0 =>")]
     [InlineData("struct Example\n    func empty()")]
-    [InlineData("struct Example\n    var value: i32\n        get\n            ;")]
     public void RejectsEmptyExecutableBodies(string source)
         => Assert.Contains(Parse(source).DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.EmptyExecutableBlock_Kd));
 
@@ -150,7 +149,7 @@ public class BlockSyntaxParseTest
     [InlineData("#if false\n#LibraryImport(LibraryName) func imported()")]
     [InlineData("#if false\n    #LibraryImport(LibraryName)\n    func imported()")]
     [InlineData("#if false\n    struct Empty")]
-    [InlineData("#if false\n    public struct Empty\n        ;")]
+    [InlineData("#if false\n    public struct Empty\n        // No members")]
     [InlineData("#if false\n    var value: i32\n        get")]
     public void EmptyBodyRulePreservesBodylessDeclarations(string source)
         => ParseSuccess(source);

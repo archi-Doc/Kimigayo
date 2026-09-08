@@ -34,6 +34,10 @@
   + Name="InvalidInlineStatement_Kd"
     Message="An inline body requires one complete statement on the same line, without a following Block"
 
+  + Name="SemicolonNotAllowed_Kd"
+    Message="Semicolons are not allowed"
+    Fix="Remove the semicolon, or use a newline to separate syntax items"
+
   + Name="CompileTimeCaseFallbackMustBeLast_Kd"
     Message="#case _ must be the final arm in a Case Group"
 

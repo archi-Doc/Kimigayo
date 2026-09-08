@@ -15,7 +15,7 @@ public class SpecRevisionAnalysisTest
     [InlineData("var value: obj/Node\n    get -> obj/Node => Node.new()")]
     [InlineData("var value: i32\n    get -> i64\n        return 1")]
     [InlineData("var value: i32\n    get -> i64")]
-    [InlineData("var value: i32\n    get => 1;")]
+    [InlineData("var value: i32\n    get => 1")]
     [InlineData("var value: i32 has get -> (i32, string) -> bool")]
     public void GetterAnnotationsRoundTripAndRetainTreeOwnership(string member)
     {

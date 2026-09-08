@@ -103,7 +103,6 @@ public enum TokenKind : byte
     OpenBrace, // {
     CloseBrace, // }
     Colon, // :
-    Semicolon, // ;
     Dollar, // $
     Question, // ?
 

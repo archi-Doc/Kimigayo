@@ -1,92 +1,41 @@
 # Kimigayo Language Specification
 
-- [1. Overview](#1-overview)
-  - [1.1. Purpose and implementation status](#11-purpose-and-implementation-status)
-  - [1.2. Conventions and notation](#12-conventions-and-notation)
-- [2. Compilation](#2-compilation)
-  - [2.1. Build model](#21-build-model)
-  - [2.2. Compile-time directives](#22-compile-time-directives)
-  - [2.3. Source contexts and dependencies](#23-source-contexts-and-dependencies)
-- [3. Lexical structure](#3-lexical-structure)
-  - [3.1. Names](#31-names)
-  - [3.2. Number literals](#32-number-literals)
-  - [3.3. Character escapes](#33-character-escapes)
-  - [3.4. Character literals](#34-character-literals)
-  - [3.5. String literals](#35-string-literals)
-- [4. Types](#4-types)
-  - [4.1. Primitive Core Types](#41-primitive-core-types)
-  - [4.2. Compound Type syntax](#42-compound-type-syntax)
-  - [4.3. Structures](#43-structures)
-  - [4.4. Index, Range, and Slice](#44-index-range-and-slice)
-  - [4.5. Type Semantics](#45-type-semantics)
-  - [4.6. Raw pointers and unsafe operations](#46-raw-pointers-and-unsafe-operations)
-- [5. Declarations](#5-declarations)
-  - [5.1. Signatures](#51-signatures)
-  - [5.2. Declaration Containers](#52-declaration-containers)
-  - [5.3. Type Contracts](#53-type-contracts)
-  - [5.4. Bindings](#54-bindings)
-  - [5.5. Functions](#55-functions)
-  - [5.6. Name resolution](#56-name-resolution)
-  - [5.7. Overload resolution and inference](#57-overload-resolution-and-inference)
-  - [5.8. Binding implementation and open boundaries](#58-binding-implementation-and-open-boundaries)
-- [6. Properties](#6-properties)
-  - [6.1. Effective representation](#61-effective-representation)
-  - [6.2. Default getter results](#62-default-getter-results)
-  - [6.3. Accessors](#63-accessors)
-  - [6.4. Inline accessor declarations](#64-inline-accessor-declarations)
-  - [6.5. Contextual identifiers and receivers](#65-contextual-identifiers-and-receivers)
-  - [6.6. Initialization](#66-initialization)
-  - [6.7. Access control](#67-access-control)
-  - [6.8. Storage, addressability, and result semantics](#68-storage-addressability-and-result-semantics)
-  - [6.9. Property Consume](#69-property-consume)
-  - [6.10. Access after Partial Move](#610-access-after-partial-move)
-  - [6.11. Property implementation requirements](#611-property-implementation-requirements)
-- [7. Ownership and lifetimes](#7-ownership-and-lifetimes)
-  - [7.1. Value Lifetime](#71-value-lifetime)
-  - [7.2. Origins and Loans](#72-origins-and-loans)
-  - [7.3. Abstract Origins](#73-abstract-origins)
-  - [7.4. Origin elision and return contracts](#74-origin-elision-and-return-contracts)
-  - [7.5. Exclusive Origins](#75-exclusive-origins)
-  - [7.6. Borrow checking](#76-borrow-checking)
-  - [7.7. Deferred lifetime features](#77-deferred-lifetime-features)
-  - [7.8. Temporary values, places, and lifetimes](#78-temporary-values-places-and-lifetimes)
-  - [7.9. Initialization-preserving exchange](#79-initialization-preserving-exchange)
-- [8. Expressions and operators](#8-expressions-and-operators)
-  - [8.1. Classification and contexts](#81-classification-and-contexts)
-  - [8.2. Evaluation order](#82-evaluation-order)
-  - [8.3. Primary expressions](#83-primary-expressions)
-  - [8.4. Access and application](#84-access-and-application)
-  - [8.5. Precedence and associativity](#85-precedence-and-associativity)
-  - [8.6. Operator semantics](#86-operator-semantics)
-  - [8.7. Assignment](#87-assignment)
-  - [8.8. Extension boundaries and reserved syntax](#88-extension-boundaries-and-reserved-syntax)
-  - [8.9. Implementation status](#89-implementation-status)
-- [9. Control flow](#9-control-flow)
-  - [9.1. Completions](#91-completions)
-  - [9.2. Blocks and evaluation contexts](#92-blocks-and-evaluation-contexts)
-  - [9.3. Block constructs](#93-block-constructs)
-  - [9.4. Labels](#94-labels)
-  - [9.5. Control transfers](#95-control-transfers)
-  - [9.6. Iteration Constructs](#96-iteration-constructs)
-  - [9.7. Selections: if, match, and yield](#97-selections-if-match-and-yield)
-  - [9.8. Result validation](#98-result-validation)
-- [10. Scope exit and cleanup](#10-scope-exit-and-cleanup)
-  - [10.1. Deferred Blocks](#101-deferred-blocks)
-  - [10.2. Scope-exit destruction](#102-scope-exit-destruction)
-  - [10.3. Aggregate Destruction and deinit](#103-aggregate-destruction-and-deinit)
-- [11. Error handling](#11-error-handling)
-  - [11.1. Policy and status](#111-policy-and-status)
-  - [11.2. Absence and failure as values](#112-absence-and-failure-as-values)
-  - [11.3. Panic Termination](#113-panic-termination)
-  - [11.4. Warnings](#114-warnings)
+- [Part I. Language foundations](#part-i-language-foundations)
+  - [1. Overview](#1-overview)
+  - [2. Source and lexical structure](#2-source-and-lexical-structure)
+  - [3. Types and basic value model](#3-types-and-basic-value-model)
+  - [4. Declarations and contracts](#4-declarations-and-contracts)
+  - [5. Name resolution, overload resolution, and inference](#5-name-resolution-overload-resolution-and-inference)
+- [Part II. Language constructs and semantics](#part-ii-language-constructs-and-semantics)
+  - [6. Expressions and operators](#6-expressions-and-operators)
+  - [7. Control flow](#7-control-flow)
+  - [8. Properties](#8-properties)
+  - [9. Ownership and lifetime analysis](#9-ownership-and-lifetime-analysis)
+  - [10. Scope exit and destruction](#10-scope-exit-and-destruction)
+  - [11. Failure handling](#11-failure-handling)
+- [Part III. Program and compilation environment](#part-iii-program-and-compilation-environment)
+  - [12. Modules and dependencies](#12-modules-and-dependencies)
+  - [13. Compile-time directives](#13-compile-time-directives)
+  - [14. Compilation model](#14-compilation-model)
+- [Appendices](#appendices)
+  - [Appendix A. Compiler implementation requirements](#appendix-a-compiler-implementation-requirements)
+  - [Appendix B. Non-normative reference models](#appendix-b-non-normative-reference-models)
+  - [Appendix C. Implementation status](#appendix-c-implementation-status)
+  - [Appendix D. Deferred feature index](#appendix-d-deferred-feature-index)
+  - [Appendix E. Terminology index](#appendix-e-terminology-index)
+  - [Appendix F. Syntax summary](#appendix-f-syntax-summary)
+
+# Part I. Language foundations
 
 ## 1. Overview
 
-### 1.1. Purpose and implementation status
+### 1.1. Purpose
 
 **Kimigayo** is a programming language built from scratch to be consistent, fast, simple, fun, and safe.
 
-> **Pre-alpha status:** This document specifies the intended language. The implementation supports project loading, target setup, tokenization, parsing, diagnostics, and basic control-flow analysis, including Unsafe and Deferred Blocks and value-producing Labeled Blocks. Unless stated otherwise, general Binding, overload resolution, type checking, generic specialization, ownership and Origin analysis, lowering, and code generation are planned.
+This document defines the intended language. Language rules, Compiler requirements, and the recorded implementation snapshot are distinct; see [implementation status](#appendix-c-implementation-status).
+
+**Basic example.**
 
 ```kimi
 alias Kimi.Base
@@ -120,7 +69,7 @@ public group Program
 
 Kimigayo does not guarantee backward compatibility between language versions. It prioritizes consistency and language quality. Reproducible builds must pin the compiler build as well as their source, dependencies, and configuration; a language-version label alone does not identify a pre-alpha compiler implementation.
 
-Use four spaces per indentation level. Indentation expresses syntactic containment. User-defined Types, Contracts, and Declaration Containers conventionally use PascalCase; built-in Type keywords retain their specified spellings. Functions, Properties, local bindings, parameters, and other value names generally use camelCase.
+User-defined Types, Contracts, and Declaration Containers conventionally use PascalCase; built-in Type keywords retain their specified spellings. Functions, Properties, local bindings, parameters, and other value names generally use camelCase.
 
 | Notation | Meaning and uses |
 | --- | --- |
@@ -128,328 +77,83 @@ Use four spaces per indentation level. Indentation expresses syntactic containme
 | `()` | Ordered grouping: parameters, arguments, Tuples, Unit, Function Types, conditions, and operator precedence. |
 | `<>` | Generic parameters and arguments, including compile-time parameters and arguments that construct Types. |
 | `{}` | Unused; reserved for future language evolution. |
-| `=` | Initialization, parameter defaults, or assignment according to context; acquisition follows [Value Lifetime](#71-value-lifetime). |
-| `@` | Explicit Type/Semantics adaptation or Consume (`@move`); see [explicit operations](#864-explicit-operations). |
+| `=` | Initialization, parameter defaults, or assignment according to context; acquisition follows [Copy and Move](#35-copy-and-move). |
+| `@` | Explicit Type/Semantics adaptation or Consume (`@move`); see [explicit operations](#664-explicit-operations). |
 | `->` | Result Type associated with the input side of a function declaration or Function Type. |
 | `=>` | Mapping or correspondence: function and accessor expression bodies, `if` expression bodies, `match` arms, and named Origin arguments. |
 | `:` | Structural association: Name and Type, key and value, or Label and Block/Iteration Construct. |
 | `#` | A compile-time construct. Lowercase reserved directives such as `#if` differ from PascalCase Attributes such as `#Inline`. |
+| `$` | Selects the Composition Root; it is not a macro prefix. |
 
-The complete Type form is `semantics/CoreType from origin`; see [Types](#4-types) for its components and omission rules. Examples are independent unless explicitly connected. Application-specific Types and APIs illustrate assumed declarations, not promised library interfaces. Fences marked `text` may use conceptual storage or compiler notation rather than source syntax; lines marked Error are intentional boundary examples.
+The complete Type form is `semantics/CoreType from origin`; see [Types](#3-types-and-basic-value-model) for its components and omission rules. Examples are independent unless explicitly connected. Application-specific Types and APIs illustrate assumed declarations, not promised library interfaces. Fences marked `text` may use conceptual storage or compiler notation rather than source syntax; lines marked Error are intentional boundary examples.
 
-## 2. Compilation
+### 1.3. Reading the rules
 
-### 2.1. Build model
+Examples appear beside the rules they illustrate. **Basic examples** show ordinary use; **boundary examples** explain edge cases; **error examples** identify the violated rule.
 
-The build model separates workspace orchestration, project configuration, source modules, and target compilation:
-
-| Element | Responsibility |
-| ------- | -------------- |
-| Solution | Holds multiple Projects and supplies options shared by their builds. |
-| Project | Defines one application or library build unit. It is configured by a `.kimiproj` file. |
-| Kotonoha | Defines a named module unit for an application or library, built from one or more SourceDocuments. |
-| SourceDocument | An immutable source snapshot, including its path and text. Replacing its text creates a new snapshot. |
-| Koto tree | Parsed syntax with source contexts and parent/child relationships; it is not a bound program or binary interface. |
-| Compilation | Compiles one Project under one fixed set of source, dependency, target, and build inputs. |
-| CodeContext | Associates one source snapshot with its source-local lookup and diagnostic context. |
-| Compilation root | The lookup entry point for the project root and direct-dependency reference names. |
-| project root | The root of the primary Kotonoha's declaration hierarchy. |
-
-A Solution discovers and loads Projects. A Project stores target triples, aliases, and external Kotonoha descriptors, and creates one Compilation for each target.
-
-An optional `.kimiproj` `LangVersion` requests an exact supported language version. If omitted, use the solution's version when supplied, otherwise the compiler's current version. Unsupported requests are errors, never silent fallback. Record the effective language version and compiler build identity in build metadata. The current compiler supports only its current language version; this setting does not promise compatibility with older compilers bearing the same pre-alpha version label.
-
-Compilation inputs include the complete target triple (including ABI/environment), backend and target layout, build mode and code-affecting options, Project compile-time settings, language/compiler version, source snapshots, and resolved dependency versions and interfaces. Reuse analysis or artifacts only when all relevant inputs agree; OS and architecture alone are not a cache key. Changing inputs requires a fresh analysis. Artifact cache formats are separately specified.
-
-Each Compilation owns the primary Kotonoha and provides target information and compile-time variables. Loading external Kotonoha libraries is planned.
-
-A Kotonoha tokenizes and parses each `SourceDocument`, merging declarations into one root Koto tree. Root executable syntax is placed as described under [root and nested containers](#521-root-and-nested-containers).
-
-A source-derived CodeContext belongs to one Kotonoha and one immutable SourceDocument snapshot. A different snapshot at the same path requires a fresh context and fresh alias/Binding results; path equality does not establish revision identity. Source-less parsing entry points may create such contexts but must not themselves become the source identity of parsed nodes. Nodes cannot be inserted into another Kotonoha's Declaration Container. See [source contexts and dependencies](#23-source-contexts-and-dependencies).
-
-The logical compilation pipeline, including stages not yet implemented, is:
-
-```text
-Solution -> Project -> Compilation(inputs)
-    -> SourceDocuments -> Tokenization -> Parsing / Koto tree
-    -> Directive Binding and selection of lookup environments
-    -> Declaration and Name Binding, Type checking and overload resolution
-    -> Required generic specialization and remaining directive selection
-    -> Control-flow, ownership, lifetime and Origin analysis
-    -> Lowering -> backend IR -> binary
-```
-
-This is a dependency order, not a requirement for one whole-program pass per line. Parsing may select known directives early. Directive Binding and specialization recur per affected scope under [staged evaluation](#222-staged-condition-evaluation); establish that scope's lookup environment before using it. Analyses may share facts, but unresolved obligations must not be treated as successful finalization.
-
-A target must provide the Kimigayo data-layout and ABI facts required by the language. Backend-specific representations are implementation details. **Current implementation status:** project loading, target preparation, tokenization, parsing, early directive selection, and partial control-flow/type analysis are implemented. General Binding, specialization, ownership/Origin analysis, lowering, and code generation remain planned. The current LLVM backend preparation requires a supported pointer width and LLVM data-layout string. The current `Build` API reports front-end checks only; it does not certify a finalized program or produce a binary.
-
-Prepared Compilations provide these immutable-for-analysis scalar values:
-
-| Name | Type | Value |
-| --- | --- | --- |
-| `os` | `string` | Canonical lower-case OS family: `windows` for Win32, `macos` for MacOSX, `linux` for Linux; other recognized families use their lower-case target-family name, and an unrecognized OS uses `unknown`. Version suffixes are excluded. |
-| `arch` | `string` | Canonical lower-case architecture family, such as `x86`, `x86_64`, `aarch64`, or `riscv64`; target aliases for the same family give the same value. |
-| `windows`, `linux`, `macos` | `bool` | Exactly the respective comparisons `os == "windows"`, `os == "linux"`, and `os == "macos"`. At most one is true; all are false for other OS families. |
-| `debug`, `release` | `bool` | The selected build mode and its negation: `release == not debug`. |
-| `pointerWidth` | `i64` | Default raw-pointer width in bits from the prepared target layout; currently supported values are 16, 32, and 64. |
-
-Project compile-time settings have explicit `bool`, `i64`, or `string` values. Their Names must be valid identifiers and must not collide with reserved words or built-in Compilation values; collisions are errors rather than an override order. They are copied into the prepared environment before parsing. The current `.kimiproj` representation is `CompileTimeSettings`, a Name-to-setting map whose entries specify exactly one of `Bool`, `Integer`, or `String`.
-
-#### 2.1.1. Serialization
-
-Portable interchange uses source artifacts or binary interfaces, not serialized Koto implementation details. Source artifacts preserve the source and configuration needed for reconstruction. Binary-interface information includes Symbol/version identity, visibility and public paths, normalized Signatures, Type and Origin Contracts, unsafe requirements, Property/accessor capabilities and field-operation semantics, generic specialization inputs, ABI/layout/calling conventions, and target/language/compiler identity. These are information categories, not a complete compatibility format: encoding, required fields, validation, and compatibility rules belong to a separate artifact-interface specification. The current source-snapshot serialization/reparse facility is not such a binary interface.
-
-### 2.2. Compile-time directives
-
-Compile-time Directives select Syntax during compilation without producing runtime control flow:
-
-| Form | Purpose |
+| Wording | Meaning |
 | --- | --- |
-| `#if` | Independently includes or excludes one Syntax node. |
-| `#match` | Introduces an ordered Case Group and selects one arm. |
-| `#case` | Introduces an arm directly inside a `#match` body. |
-| `#Name` | Attaches an Attribute; it is not a Compile-time Directive. |
+| must / must not | Mandatory requirement or prohibition. The feature defines whether a violation is a compile-time error, Panic, or an Unsafe contract violation. |
+| may | Permission within all stated constraints. |
+| should | Recommendation, not a condition for language conformance. |
+| is planned | Implementation work is intended; this is not a language rule. |
+| is deferred | In a design-status note, design is postponed; this is distinct from a Deferred Condition. |
+| implementation-defined | The implementation chooses within the stated limits and must document the choice. |
+| unspecified | Any result within the stated limits is permitted; the choice need not be documented. This does not imply undefined behavior. |
 
-The former `#If(...)` form is an Attribute. The lowercase `#if` form specified here is a separate language construct.
+Unqualified declarative rules and imperative requirements are normative even without `must`. Examples illustrate those rules and do not override them. Compiler requirements preserve required information and invariants; a **Non-normative reference model** is an optional algorithm, not an alternative semantics.
 
-#### 2.2.1. Syntax and selection
+**Specified, not implemented** means the stated rules are settled but their implementation is unavailable. **Partially specified** means rules exist but identified design details remain open. **Deferred design** means that feature's design is withheld in this revision. These are distinct from **Deferred** as a valid compile-time Condition result. Implementation plans grant no language permission.
 
-`#if` controls either the next Syntax node at the same indentation or one indented Block:
+## 2. Source and lexical structure
 
-```kimi
-#if windows
-alias Kimi.Windows
+Source structure determines token boundaries and syntactic containment. Literal-specific rules appear with each literal form.
 
-#if debug
-    let logging = true
-    let assertions = true
-```
-
-A **Case Group** is introduced by `#match` and consists of the `#case` arms indented one level under it. The group's extent is the `#match` body; nothing outside that body joins the group, so two Case Groups may appear adjacently. Select the first matching arm in source order. The optional catch-all `#case _` must occur once at most, as the final arm.
-
-```kimi
-func useImplementation<T>(value: T) -> ()
-    #match
-        #case windows
-            useWindowsImplementation(value)
-        #case T is i32
-            useIntegerImplementation(value)
-        #case _
-            useGenericImplementation(value)
-
-    #match
-        #case pointerWidth == 64
-            useWidePath(value)
-        #case _
-            useNarrowPath(value)
-```
-
-A `#match` header has no subject expression. Its body must contain at least one `#case` arm and contains only such arms, apart from blank lines and comments. Each arm must have an indented Block. A `#case` outside the direct arm list of a `#match` body is an error; nested selections require their own `#match`. Blank lines and comments do not split a group within its body.
-
-A `#match` construct is one Syntax item and may be controlled as a whole by a preceding `#if`. The `#match` wrapper does not itself introduce an additional lookup scope; the selected arm's Block follows the existing scope rules. These rules apply in both executable bodies and Declaration Containers.
-
-Every final evaluation context must select an arm. Without `#case _`, at least one explicit Condition must evaluate to **True** in that context using the specified evaluator. If none is True and a value remains dependent, retain the group until its finalization deadline; if all are False, report an error. The initial language requires no symbolic exhaustiveness proof, enumeration of Types, or Contract theorem proving. A catch-all supplies an unconditional alternative without such proof.
-
-The selected Block occupies the structural position of the Case Group. Normal Block, result-Type, scope, and control-transfer rules apply after selection. An early-false `#if` target is consumed without creating Koto nodes. Unselected `#case` arms do not undergo ordinary Binding, Lowering, or code generation.
-
-The [nonempty Block rule](#921-nonempty-executable-blocks) checks source structure before selection. Removing all executable Syntax does not itself make a Block invalid.
-
-**Checks on excluded Syntax.** Every SourceDocument is tokenized, so encoding, token validity, and indentation errors are always diagnosed. An early-False `#if` target is scanned for balanced Block structure, required executable bodies, and the structural placement/nonemptiness rules of `#match` and `#case`, without constructing target Koto nodes. Its ordinary expression/declaration grammar is not checked; for example, an incomplete initializer in that target is permitted. A target parsed while its Condition is pending, and every `#match` arm body, undergo ordinary parsing before selection; later exclusion does not retract parse diagnostics.
-
-| Check | Early-False `#if` target | Already parsed target or unselected `#match` arm body |
-| --- | --- | --- |
-| Tokenization and indentation | Required | Required |
-| Block/directive structure and source-level nonempty executable bodies | Required | Required |
-| Ordinary expression/declaration grammar | Skipped | Required during parsing |
-| Nested Directive Condition evaluation | Skipped | Performed only as reached during parsing; remaining obligations in an excluded body need no Binding |
-| Ordinary Name/Type/ownership checks, lowering and code generation after exclusion | Skipped | Skipped |
-
-The controlling `#if` Condition and all explicit Conditions of the current `#match` are checked independently of their targets, as specified below. A non-reserved `#Name` denotes an Attribute, not an unknown directive; resolving that Attribute is not required in excluded Syntax.
-
-#### 2.2.2. Staged condition evaluation
-
-`#if` Conditions and `#match` arm Conditions share an evaluator. Before ordinary Binding, the Parser evaluates Conditions using the prepared compile-time environment. Directive Binding later resolves remaining Names without binding excluded Syntax.
-
-After dependency classification, language evaluation produces exactly one of these results. An earlier implementation attempt may instead be pending validation; that is not a fifth language result.
-
-| Result | Meaning |
-| --- | --- |
-| **True** | The Condition is satisfied. |
-| **False** | The Condition is not satisfied. |
-| **Deferred** | The Condition has a valid compile-time dependency whose value is not yet available. |
-| **Error** | The Condition is invalid, non-Boolean, or refers to an unavailable Name. |
-
-After Directive Binding, an unbound declared generic parameter produces **Deferred**, while an unknown Name produces **Error**. Short-circuit reasoning determines truth, but does not waive validation of any operand in a Condition. **Error** is absorbing for `and` and `or`, regardless of operand order: `Error and X`, `X and Error`, `Error or X`, and `X or Error` are **Error** for every result `X`; `not Error` is **Error**. Otherwise, `false and Deferred` is **False**, `true or Deferred` is **True**, and `true and Deferred`, `false or Deferred`, and `not Deferred` are **Deferred**.
-
-Truth determination and validation completion are separate: even when an early evaluation determines **True** or **False**, retain any Condition containing unresolved Names or unvalidated dependencies, together with its source, diagnostic context, and enclosing lookup scope, as a Directive Binding obligation. Directive Binding must classify these dependencies and report unknown Names and other invalid operands, including operands that cannot affect truth. This does not require ordinary Binding of excluded controlled Syntax, or obtaining the value of a valid dependency that cannot affect truth. An early truth result does not authorize successful finalization while validation remains pending. **Deferred** describes a validated language dependency, never an unsupported expression or an implementation limitation.
-
-For example, `false and missing`, `true or missing`, and their operand-reversed forms are **Error** after Directive Binding if `missing` is unknown. `debug and missing` must diagnose that unknown Name in both Debug and Release configurations. `false and 1` and `true or 1` are **Error** because the numeric operand is non-Boolean.
-
-Each pass attempts the single Condition of a `#if` and every explicit Condition of a Case Group. Every arm Condition is checked, and an **Error** is reported even when an earlier arm determines the selection. Validation obligations for all explicit arm Conditions survive early group selection, including those of later arms whose values cannot change the selection. This requirement concerns Conditions of directives reached by parsing; it does not require parsing directives inside an excluded `#if` target. A Case Group is selected as soon as its first-match result is certain:
-
-- a **False** arm is skipped;
-- a **True** arm is selected when every preceding arm is **False**;
-- a preceding **Deferred** arm prevents selection of a later **True** arm or `#case _`;
-- Conditions after an already selectable **True** arm cannot change the selection.
-
-For example, `#case windows` may resolve during parsing, while `T is i32` remains **Deferred** until `T` is bound.
-
-The evaluation and Syntax-processing sequence is:
-
-```text
-Parse a directive Condition
-    -> evaluate known target and Project values
-        -> independently retain the Condition and its context if validation requires Directive Binding
-        -> True: parse the controlled Syntax without a directive Koto
-        -> False: consume the controlled Syntax without creating Koto nodes
-        -> unresolved validation or Deferred value: parse the controlled Syntax and retain a directive Koto
-        -> Error: report a diagnostic and discard the controlled Syntax
-    -> resolve Names and validate operands in all retained Conditions, including early-True/False Conditions and Conditions of unselected case arms
-    -> re-evaluate after generic Binding and for each specialization
-    -> resolve selections that change a scope's lookup environment before ordinary Name resolution using that environment begins
-    -> require a final result and completed validation before finalization
-    -> bind and lower only the selected Syntax
-```
-
-A still-Deferred Condition is an error when its containing declaration, layout, specialization, or executable body must be finalized. Deferral is valid only when a later compilation phase can provide the missing dependency before that point.
-
-**Scope lookup environments.** A Condition that changes a scope's lookup environment must have its selection resolved before ordinary Name resolution using that environment begins. Until then, do not begin that resolution. The environment includes declarations and overload candidates, as well as applicable alias and extension imports; a later selection must not add, remove, or replace candidates in an environment already in use.
-
-Resolve and evaluate such Conditions using an already established environment independent of the conditional declarations in the affected scope. This preparatory Directive Binding may resolve condition Names before ordinary Name resolution begins. A Condition must not depend on a declaration whose availability it controls, directly or through a cycle.
-
-This boundary applies per scope, not once to the entire program. Conditions that select only expressions or statements without changing a lookup environment may remain Deferred until specialization. A selected branch may also contain local declarations if Name resolution using that branch's environment starts only after selection. Follow normal scope rules: a declaration introduced into an enclosing scope must be selected before resolution using that enclosing environment begins. A directive does not create an extra scope merely to defer this requirement.
-
-| Controlled Syntax | Required selection point |
-| --- | --- |
-| Declarations or imports that change an enclosing lookup environment | Before ordinary Name resolution using that environment begins. |
-| Expressions and statements that do not change a lookup environment | May wait for specialization, subject to the finalization deadline. |
-| Local declarations inside a branch first analyzed after specialization | Before ordinary Name resolution using the selected branch's environment begins. |
-
-```kimi
-#if windows
-func Test() -> () => ()
-```
-
-The target setting selects whether `Test` is present before Name resolution using its containing environment begins.
-
-```kimi
-func kind<T>() -> i32
-    #match
-        #case T is i32
-            return 32
-        #case _
-            return 0
-
-func example<T>() -> i32
-    #match
-        #case T is i32
-            let result = 32
-            return result
-        #case _
-            return 0
-```
-
-Both functions may defer selection until `T` is known. In `example`, select the branch and establish its local declarations before resolving `result`. This does not change an enclosing lookup environment that has already been used.
-
-Scopes with established environments may proceed independently. An affected scope must wait if later Binding or specialization can establish its environment; otherwise, diagnose the unresolved dependency when that scope must be analyzed or finalized. Never begin with a provisional candidate set and revise resolved Names later. This rule fixes conditional membership in the lookup environment; ordinary declaration-order visibility rules still apply.
-
-#### 2.2.3. Conditions and narrowing
-
-A Condition uses the following closed initial expression set. The whole expression must have Type `bool`; ordinary operator precedence and explicit parentheses apply.
-
-| Form | Rule |
-| --- | --- |
-| `true`, `false`, integer and string literals | Integers have Type `i64` and must fit its range; a leading `+` or `-` is permitted only directly on an integer literal. Strings use the ordinary literal rules, without interpolation. |
-| Compile-time value Name | A built-in Compilation value or an explicitly configured Project setting. |
-| `not E`, `E and E`, `E or E` | Boolean operands and the Error/short-circuit rules above. |
-| `E == E`, `E != E` | Equal scalar Types (`bool`, `i64`, or `string`); no implicit cross-Type conversion. String comparison is ordinal and case-sensitive. |
-| `P is R`, `P is not R` | `P` names a declared generic Core Type or Type Semantics parameter; `R` is a simple primitive Type, a Semantics name, or a simple/qualified Type, Contract, or category Name. Constructed Types and runtime value patterns are outside this initial Condition grammar. |
-| `(E)` | Grouping of one permitted expression. |
-
-All other expression forms are invalid Conditions, including calls (even purported compile-time calls), runtime member access, indexing, arithmetic, ordering comparisons, conversions, collections, interpolation, and floating-point/character/null literals. Reject them even in short-circuited operands. An implementation must not label an unimplemented language feature **Deferred**; it must either expose a distinct pending Binding obligation or report an implementation limitation.
-
-**Condition lookup.** Scalar value lookup searches only the disjoint built-in and Project-setting environment established before parsing; ordinary source `let`/`var` declarations, Properties, aliases to values, and functions are not compile-time values. For `is`, resolve the subject among lexically visible generic parameters, using the nearest declaration first. Resolve Type/Contract/category names using normal Type Name Selection, qualification, source aliases, and then default aliases, restricted to the already established environment of §2.2.2. This permits unconditional same-Container Types and accessible Contracts in directly referenced libraries, without permitting a Condition to depend on declarations whose availability it controls. Contract Clauses supply evidence about these parameters, not an additional value namespace. Preserve the definition's source context during specialization.
-
-```kimi
-windows
-windows or linux
-os == "windows" or os == "linux"
-pointerWidth == 64
-s is ref
-T is i32
-T is Comparable
-(s is ref) and (T is Comparable)
-```
-
-A concrete Type or Type Semantics on the right of `is` tests identity. A named capability declared with `contract` or a named category tests satisfaction of its requirements.
-
-A selected `#if` target adds its Condition to the facts available while analyzing that target. A selected `#case` arm adds its Condition and the negation of every earlier Condition in the same `#match`. These facts are local to the selected target or arm, do not leak into following Syntax or sibling groups, and are not Contract Clauses. Narrowing preserves the concrete Core Type: `T is Comparable` does not replace `T` with `Comparable`. This defines the available assumptions; it does not introduce additional Contract proof rules.
-
-Compile-time Conditions do not evaluate runtime values. The initial design does not destructure values or introduce pattern bindings. For example, `#case value is ref/i32 x` is invalid; use `#case (s is ref) and (T is i32)` to narrow a value of Type `s/T` to `ref/i32`. Parentheses separate each [requirement expression](#532-requirement-expressions) from the surrounding condition.
-
-#### 2.2.4. Koto representation
-
-The Parser represents directives explicitly rather than evaluating them as Attributes:
-
-```text
-CompileTimeIfKoto
-    Condition
-    Target
-
-CompileTimeMatchKoto
-    CompileTimeCaseArmKoto[]
-        Condition or fallback
-        Block
-```
-
-A directive whose selection still awaits validation or a dependent value retains a directive Koto node. An early-true `#if` contributes its Target directly; an early-false one contributes none. Independently, the enclosing scope retains pending Condition validation obligations even when the directive Koto or unselected Syntax is discarded. Each obligation retains the full Condition and its original CodeContext and identifies the enclosing scope for Directive Binding. These obligations are separate from executable syntax and must not cause excluded targets to undergo ordinary Binding. Invalid Case Groups may remain for error recovery. Resolving a specialization must not mutate Koto shared with others.
-
-**Current implementation status:** the Parser validates the closed Condition expression set, evaluates known scalar operations, and propagates Errors before short-circuit truth results. Its internal **Pending** result represents an attempt awaiting Name/requirement Binding; it is not the language result **Deferred**. Pending directives retain dedicated Koto nodes, and validation obligations survive early selection. Control-flow analysis exposes encountered obligations as pending Binding. Unknown-Name classification by later Directive Binding, `is` evaluation, specialization, lookup-environment enforcement, and constraint narrowing remain planned.
-
-### 2.3. Source contexts and dependencies
-
-Each source syntax node and declaration fragment retains its original CodeContext. After Container merging, resolve member bodies, headers, Type annotations, and contracts using their own source contexts, not a single context attached to the merged Container. Preserve fragment locations for diagnostics and header checks. Source-less roots and generated wrapper nodes do not represent a source alias environment; moving source syntax into them preserves its origin context. Generated source documents have their own contexts.
-
-Each Compilation owns a **Compilation root**, direct-dependency reference-name mappings, and default aliases. The primary Kotonoha's Container hierarchy ends at the **project root**. A resolved Symbol identifies its declaration, including originating Kotonoha/version, independently of spelling or alias path.
-
-#### 2.3.1. External references and aliases
-
-Only directly referenced Kotonoha libraries are source-addressable by library name. Use qualification such as `ExternalLib.GroupA.StructB` or an explicit `alias` declaration; do not search all external members unqualified. Multiple library versions may use different reference names, with configuration syntax separately specified. Loading transitive metadata for type checking does not expose those libraries by name.
-
-`alias ExternalLib.GroupA` opens a Container's direct members for unqualified lookup:
-
-- Declare it at top level before ordinary declarations or executable code; it applies only to that SourceDocument. Nested aliases are invalid.
-- Resolve its Container path from the Compilation root, without other source aliases or default aliases. Check target accessibility at the declaration.
-- Introduce direct Types, functions, Properties, and child Containers in their namespaces; do not recursively introduce descendants.
-- Retain a reference to the target Container. Check member access at each actual use, rather than caching one source-wide list of accessible members.
-- Treat explicit aliases together at their lookup stage and defaults together at a later stage. Order is irrelevant; deduplicate paths to the same Symbol. Different same-name functions form one candidate set, distinct Types use Type Name Selection, and mixed value kinds conflict.
-- Do not automatically re-export source aliases to other files or consumers.
-
-```kimi
-// A.kimi; GroupA exports StructB and Child.StructC.
-alias ExternalLib.GroupA
-group Work
-    func accept(value: StructB) -> () => ()
-    func nested(value: Child.StructC) -> () => ()
-
-// B.kimi: merged Work does not inherit A.kimi's alias.
-group Work
-    func reject(value: StructB) -> () => () // Error: not imported here.
-```
-
-Import `ExternalLib.GroupA.Child` explicitly to use `StructC` alone; `alias Child` cannot resolve through another alias. Library reference-name configuration is distinct from source `alias`.
-
-#### 2.3.2. Re-exports
-
-**Deferred feature:** re-export declaration syntax and artifact representation are not yet defined; source aliases never act as re-exports. Until that feature is specified, a consumer that names a Type or requirement originating in another Kotonoha must directly reference that originating library and have an accessible path to the Symbol. A public Signature referring to an external public Type does not itself create that path. Merely loading transitive metadata does not satisfy Name Reachability.
-
-Any future re-export design must preserve the original Symbol, avoid widening access, and reject cycles without a real target. Its syntax and compatibility requirements belong to that feature's specification.
-
-## 3. Lexical structure
+### 2.1. Source text and encoding
 
 Kimigayo source text uses UTF-8. Invalid UTF-8 source byte sequences are compile-time errors.
 
-### 3.1. Names
+A **SourceDocument** is one immutable source snapshot (path and text) belonging to a source module. A **Kotonoha** is that named module; its dependency and source-environment rules appear under [Modules and dependencies](#12-modules-and-dependencies).
+
+### 2.2. Lines, indentation, and continuation
+
+Use four U+0020 spaces per indentation level. Tabs are not permitted in indentation. Indentation expresses syntactic containment.
+
+Physical line endings may be LF, CRLF, or CR.
+
+Newlines separate Syntax items where the surrounding grammar permits separation. Commas separate arguments or elements and are not binary operators. Indentation rules still apply within `()` and `[]`: indent continued arguments and elements one level, and optionally align the closing delimiter with the opening line. A method-chain continuation starting with `.` also uses one extra indentation level.
+
+This specification does not allow arbitrary binary operators at the start of a line to continue the previous line. `:`, `=>`, `->`, and `in` are delimiters for their respective constructs, not general binary operators.
+
+### 2.3. Whitespace and comments
+
+Outside literal content, U+0020 spaces separate tokens; leading spaces determine indentation, and trailing spaces are ignored. This does not change literal contents or make tabs valid layout whitespace. Comments contribute no executable syntax items and separate rather than concatenate adjacent tokens.
+
+- `//` starts a comment extending to the physical line ending or end of source.
+- `/*` starts a block comment ending at the first `*/`; block comments do not nest. A missing terminator is a compile-time error.
+- Within literal text, comment delimiters are content. Interpolated expressions follow ordinary token rules.
+
+Physical newlines inside a block comment do not end a logical line or contribute indentation. When a logical line begins with a block comment, its indentation is determined by the leading spaces before `/*`. Code following `*/` keeps that indentation, even on a later physical line; spaces after the closing delimiter do not add indentation. A newline outside the comment resumes the ordinary line rules.
+
+```kimi
+let total = 1 /* still the same logical line
+*/ + 2
+
+func example()
+    /* This line establishes four spaces of indentation.
+*/ work()
+    finish()
+```
+
+`total` is initialized to `3`. Both `work()` and `finish()` belong to `example`'s body. Blank and comment-only lines do not supply an executable body; see the [nonempty Block rule](#721-nonempty-executable-blocks).
+
+### 2.4. Tokens and separators
+
+A token's spelling is contiguous. Separate adjacent spellings when their concatenation would form a different token. Names, keywords, literals, punctuation, and operators follow their own token rules; recognizing a token does not make it a permitted expression.
+
+The [notation table](#12-conventions-and-notation) summarizes punctuation. Expression grouping, generic/comparison boundaries, and the token rules for `@` follow [precedence and associativity](#65-precedence-and-associativity).
+
+### 2.5. Names
 
 A **Name** identifies a declaration in source. All named declarations, including Declaration Containers, Types, functions, Properties, bindings, and parameters, use the same character rules. A Name contains a start character followed by zero or more continuation characters.
 
@@ -464,11 +168,11 @@ Each continuation character may be any valid start character, or:
 - an ASCII digit (`0`–`9`), or
 - a Unicode character in one of the categories Nonspacing Mark (`Mn`), Spacing Combining Mark (`Mc`), Decimal Digit Number (`Nd`), Connector Punctuation (`Pc`), or Format (`Cf`).
 
-Contextual keywords may be used as Names in contexts that accept contextual identifiers. Reserved keywords may not. `in` delimits a `for` header and `has` introduces an inline Property accessor list; both may be Names elsewhere. `move` is an **@-context reserved name**: immediately after `@`, it selects Consume without Type/Semantics lookup. Elsewhere it may be an ordinary Name, so `move(...)` is an ordinary call. There is no prefix `move` or Move accessor. A Type named `move` requires a nonconflicting spelling, such as an alias, in an Adaptation Target. Built-in Semantics names likewise select their Semantics in shorthand targets. `Self` is reserved; `self`, `storage`, and `value` follow [contextual name rules](#561-namespaces-roles-and-visibility).
+Contextual keywords may be used as Names in contexts that accept contextual identifiers. Reserved keywords may not. `in` delimits a `for` header and `has` introduces an inline Property accessor list; both may be Names elsewhere. `move` is an **@-context reserved name**: immediately after `@`, it selects Consume without Type/Semantics lookup. Elsewhere it may be an ordinary Name, so `move(...)` is an ordinary call. There is no prefix `move` or Move accessor. A Type named `move` requires a nonconflicting spelling, such as an alias, in an Adaptation Target. Built-in Semantics names likewise select their Semantics in shorthand targets. `Self` is reserved; `self`, `storage`, and `value` follow [contextual name rules](#511-namespaces-roles-and-visibility).
 
 For example, `Dog`, `_value`, `point2`, `日本語`, and `ǅelta` are valid Names, while `2point`, `has-value`, and the empty string are not.
 
-### 3.2. Number literals
+### 2.6. Number literals
 
 A `NumberLiteral` begins with an ASCII decimal digit. A leading `+` or `-` is an operator and is not part of the literal. The sign characters may occur inside a decimal exponent.
 
@@ -516,11 +220,9 @@ A decimal point belongs to the literal only when followed immediately by a decim
 
 After removing separators, a decimal literal with a fraction or exponent converts to IEEE 754 `f64`. Finite results are valid; conversion to either infinity is an error. Other decimal literals and all base-prefixed literals are integers. Magnitudes `0` through `2^128 - 1` are stored as 128-bit bit patterns; larger magnitudes are invalid.
 
-`NumberLiteral` currently has no type suffix. The internal `i128` / `f64` representations do not determine a literal's language Type; [expression type inference](#831-type-inference) defines contextual Types and defaults. To specify a Type, use a declaration annotation or an explicit conversion such as `123@i32`.
+Number literals have no Type suffix. Internal representations do not determine a literal's language Type; [expression type inference](#631-type-inference) defines contextual Types and defaults. To specify a Type, use a declaration annotation or an explicit conversion such as `123@i32`.
 
-The syntax tree canonicalizes spelling: integers render as signed 128-bit decimal values; floating-point values use round-trip `f64` notation with a decimal marker when needed (for example, `1.0`). Compile-time basic-value evaluation currently supports integer representations fitting `i64` and all valid `f64` literals.
-
-### 3.3. Character escapes
+### 2.7. Character escapes
 
 Char Literals and escaped String Literals share the following Character Escapes. Each escape produces exactly one Unicode scalar value.
 
@@ -550,17 +252,17 @@ Char Literals and escaped String Literals share the following Character Escapes.
 '\u(D83D)\u(DE00)'  // Error: each escape is a surrogate
 ```
 
-String interpolation is defined separately under [Escaped strings](#351-escaped-strings).
+String interpolation is defined separately under [Escaped strings](#291-escaped-strings).
 
-### 3.4. Character literals
+### 2.8. Character literals
 
-A `CharLiteral` has Type `char`. It encloses one directly written Unicode scalar value or one [Character Escape](#33-character-escapes) in single quotation marks. Delimiters are not part of the value.
+A `CharLiteral` has Type `char`. It encloses one directly written Unicode scalar value or one [Character Escape](#27-character-escapes) in single quotation marks. Delimiters are not part of the value.
 
 ```text
 CharLiteral = "'" (DirectScalar | CharacterEscape) "'"
 ```
 
-#### 3.4.1. Content and validation
+#### 2.8.1. Content and validation
 
 After escape processing, the content must be exactly one Unicode scalar value. `DirectScalar` is any scalar value except the following, which must be escaped:
 
@@ -587,7 +289,7 @@ let flag = '🇯🇵'            // Error: two scalar values
 let interpolation = '\(letter)' // Error: interpolation is not supported
 ```
 
-#### 3.4.2. Normalization and displayed characters
+#### 2.8.2. Normalization and displayed characters
 
 The compiler does not normalize Char Literal content. Validation uses the content after escape processing. A `char` represents a scalar value, not a grapheme cluster or a displayed character; a combining mark alone is valid.
 
@@ -600,7 +302,7 @@ The compiler does not normalize Char Literal content. Validation uses the conten
 
 The front end parses and validates Char Literals and preserves their original spelling when writing the syntax tree.
 
-### 3.5. String literals
+### 2.9. String literals
 
 A `StringLiteral` produces UTF-8 text of Type `string`. Both forms support single or multiple lines:
 
@@ -609,9 +311,11 @@ A `StringLiteral` produces UTF-8 text of Type `string`. Both forms support singl
 | Escaped string | One double quotation mark (`"`) on each side | Yes | Yes |
 | Raw string | The same number of double quotation marks, at least three, on each side | No | No |
 
-#### 3.5.1. Escaped strings
+#### 2.9.1. Escaped strings
 
 An escaped string is enclosed by one double quotation mark on each side. A backslash introduces an escape sequence:
+
+**Basic example.**
 
 ```kimi
 "Hello, world"
@@ -624,7 +328,7 @@ Second line
 
 The opening and closing delimiters are not part of the value. Any line break between them is part of the string content; `\n` may instead be used when an explicit line-feed escape is preferred.
 
-Escaped strings support the shared [Character Escapes](#33-character-escapes) and string interpolation with `\(expression)`.
+Escaped strings support the shared [Character Escapes](#27-character-escapes) and string interpolation with `\(expression)`.
 
 An interpolation begins with `\(` and ends at its matching `)`. The enclosed text is parsed as a Kimigayo expression, including any nested parentheses, and the expression's string representation is inserted into the surrounding string:
 
@@ -633,7 +337,7 @@ An interpolation begins with `\(` and ends at its matching `)`. The enclosed tex
 "Total: \(price * quantity)"
 ```
 
-#### 3.5.2. Raw strings
+#### 2.9.2. Raw strings
 
 A raw string is enclosed by matching delimiters of three or more consecutive double quotation marks. Backslashes, line breaks, and interpolation-like text are ordinary content; no escape processing or interpolation occurs.
 
@@ -653,9 +357,7 @@ A delimiter of `N` quotation marks permits shorter runs in the content. Lengthen
 
 The opening and closing delimiters must contain the same number of quotation marks and are not part of the value.
 
-The current front end parses escaped strings, raw strings, and string interpolation, including nested expressions. Escape sequences are validated during parsing; evaluating interpolated strings is deferred to later compilation stages.
-
-## 4. Types
+## 3. Types and basic value model
 
 A **Type** combines Type Semantics, a Core Type, and an Origin:
 
@@ -671,15 +373,15 @@ semantics/CoreType from origin
 
 For example, `ref/Dog from owner` is a shared borrow of a `Dog` whose validity derives from `owner`. The Core Type is required; Type Semantics and Origin may be omitted when determined by the language or context.
 
-The front end parses much of this syntax. Type resolution, layout validation, subtyping, ownership rules, and most Type semantics are not implemented.
-
 Kimigayo provides a fixed set of primitive Core Types and user-defined named Core Types.
 
-### 4.1. Primitive Core Types
+A structure is a user-defined composite Core Type introduced by a [`struct` declaration](#43-structure-declarations).
+
+### 3.1. Primitive core types
 
 Primitive Core Types are built into the language. Sizes below are storage sizes.
 
-#### 4.1.1. Integer Types
+#### 3.1.1. Integer types
 
 | Signed | Unsigned | Size |
 | --- | --- | --- |
@@ -690,7 +392,7 @@ Primitive Core Types are built into the language. Sizes below are storage sizes.
 | `i128` | `u128` | 128 bits (16 bytes) |
 | `isize` | `usize` | Native pointer size of the target platform |
 
-#### 4.1.2. Floating-point and Boolean Types
+#### 3.1.2. Floating-point and boolean types
 
 | Type | Size |
 | --- | --- |
@@ -698,15 +400,15 @@ Primitive Core Types are built into the language. Sizes below are storage sizes.
 | `f64` | 64 bits (8 bytes) |
 | `bool` | 8 bits (1 byte) |
 
-#### 4.1.3. Character Type
+#### 3.1.3. Character type
 
 `char` represents one Unicode scalar value and has a fixed storage size of 32 bits (4 bytes). Its valid ranges are U+0000..U+D7FF and U+E000..U+10FFFF, inclusive. Surrogates (U+D800..U+DFFF) and values above U+10FFFF are invalid.
 
-All scalars in these ranges are valid, including unassigned code points, private-use characters, noncharacters, controls, and combining marks; displayability is irrelevant. [Character literals](#34-character-literals) impose additional direct-spelling restrictions.
+All scalars in these ranges are valid, including unassigned code points, private-use characters, noncharacters, controls, and combining marks; displayability is irrelevant. [Character literals](#28-character-literals) impose additional direct-spelling restrictions.
 
 The size guarantee does not guarantee the same internal representation as `u32`. Alignment and byte order are not specified here.
 
-#### 4.1.4. UTF-8 and strings
+#### 3.1.4. UTF-8 and strings
 
 `char` is neither a UTF-8 code unit nor a byte sequence. Each scalar value decoded from UTF-8 text can be represented by a `char`.
 
@@ -735,15 +437,15 @@ Encoding one `char` as UTF-8 produces one to four bytes:
 
 The source literal `'あ'` occupies five bytes (`27 E3 81 82 27`), including its three-byte UTF-8 content. Its value is U+3042, stored as a four-byte `char`; encoded length and storage size differ.
 
-`string` is the built-in Core Type for UTF-8 text. Its exact in-memory container and storage layout are implementation-defined. Owned `string` is always non-Copy; see [Copy capability](#714-copy-capability-and-explicit-duplication).
+`string` is the built-in Core Type for UTF-8 text. Its exact in-memory container and storage layout are implementation-defined. Owned `string` is always non-Copy; see [Copy capability](#351-copy-capability-and-explicit-duplication).
 
-#### 4.1.5. Unit and Never Types
+#### 3.1.5. Unit and never types
 
 `()` is the Unit type. It has one value and represents the absence of a meaningful result.
 
-An expression with no reachable path that completes normally has Type Never, which has no values. `return`, `exit`, `continue`, `yield`, and `$panic(...)` have Type Never. Transfer operands supply results to their targets without changing the Types of the transfer expressions themselves. Never is a Type, not a Completion: a completed transfer has an abrupt Completion, whereas divergence produces no Completion. Missing required results are errors, not Never. See [Completions](#91-completions), [result validation](#98-result-validation), and [Panic Termination](#113-panic-termination).
+An expression with no reachable path that completes normally has Type Never, which has no values. `return`, `exit`, `continue`, `yield`, and `$panic(...)` have Type Never. Transfer operands supply results to their targets without changing the Types of the transfer expressions themselves. Never is a Type, not a Completion: a completed transfer has an abrupt Completion, whereas divergence produces no Completion. Missing required results are errors, not Never. See [Completions](#71-completions), [result validation](#78-result-validation), and [Panic Termination](#113-panic-termination).
 
-### 4.2. Compound Type syntax
+### 3.2. Compound type syntax
 
 A named Core Type may be qualified with dots and may have generic arguments.
 
@@ -758,81 +460,7 @@ Tuple types use parentheses and commas. Function types use `->` between the para
 (i32, string) -> bool
 ```
 
-### 4.3. Structures
-
-A `struct` defines a composite value Type. Its Properties may use primitive or structure Types, with Type Semantics specifying representation, ownership, and access:
-
-```
-struct Point
-    var x: f64
-    var y: f64
-
-struct Node
-    var value: i32
-    var next: obj/Node
-
-struct View
-    var source: ref/Data
-```
-
-#### 4.3.1. Split structures and storage order
-
-A `struct` may be split into compatible declaration fragments, including fragments produced by a Source Generator. Multiple fragments may contribute Stored Properties. Merge fragments for the same declaration, validate their headers and member uniqueness, and classify storage using the normal Property rules, including implicit accessors and `has` expansion. No primary fragment is required. Detailed declaration identity and header checks follow the [Container integration rules](#522-container-fragments).
-
-Define a **logical declaration order** independently of physical memory layout:
-
-1. Ordinary source documents precede generated source documents. Order ordinary documents by their stable logical source identifiers.
-2. Order generated documents by stable Generator identifier, then by the Generator's logical output identifier.
-3. Within each document, use source declaration order, including the written order of multiple fragments of the same structure.
-
-Source identifiers are build metadata independent of absolute checkout paths, temporary output paths, and processing order. Ordinary sources use normalized project-relative logical paths; sources outside the project directory require an assigned stable project-relative logical name. Generated output identifiers are logical names assigned by the Generator. Normalize path separators to `/` and remove redundant path segments; compare identifiers ordinally without host-specific case folding or locale rules. Require unique ordinary source identifiers, unique Generator identifiers within a build, and unique output identifiers within each Generator; identifier collisions are build errors.
-
-Apply this order to the selected declarations of each specialization. Only Stored Properties contribute storage slots. File enumeration, parser completion, and Generator completion order must not affect the result. Renaming a source or generated output may change logical order and therefore initializer side-effect order.
-
-The compiler derives physical layout from the selected storage declarations, their Types, the target, and the applicable layout mode. Default layout must be reproducible for identical build inputs, compiler, and configuration, but need not use logical declaration order for physical offsets. It must preserve the observable initialization order defined under [Initialization](#66-initialization). Ordinary structs do not guarantee a stable ABI across source or toolchain changes. An explicit fixed-layout facility for FFI or other binary interfaces is specified separately; default layout must not be treated as that facility.
-
-Collect Source Generator outputs and resolve environment-changing selections before ordinary Name resolution using the affected scope begins, following [scope lookup-environment boundaries](#222-staged-condition-evaluation). Do not begin consuming a provisional type and append generated Storage later. Finalize layout only after the complete selected fragment set and storage classification are known. Generated documents retain their own source context and logical identifiers. Generator APIs and scheduling are not yet specified; generator dependencies that prevent establishing the required environment are errors, not permission to revise resolved Names.
-
-Split-structure integration, generated-source integration, and layout generation are planned, not implemented.
-
-### 4.4. Index, Range, and Slice
-
-This section describes indexing values with a length. [Raw pointer indexing](#463-pointer-arithmetic-and-indexing) instead uses signed offsets, has no implicit bounds check, and forbids from-end and Range indexing.
-
-An element Index may be a nonnegative `isize` or a From-end Index `^n`. Applying it with `value[index]` selects one element; the resolved Index must satisfy `0 <= index < length`.
-
-A prefix caret denotes an Index measured from the end. `^n` resolves to `length - n`, where `n` is a nonnegative `isize`. Therefore, `^1` selects the last element. `^0` is a valid Range boundary but is not a valid element Index. Infix `^` remains the exclusive-or operator.
-
-A Range is an expression with optional start and end boundaries. Each explicit boundary is either a nonnegative `isize` Index or a from-end Index.
-
-| Form       | Selected boundaries                  |
-| ---------- | ------------------------------------ |
-| `start..end`  | From `start`, excluding `end`     |
-| `start..=end` | From `start`, including `end`     |
-| `start..`     | From `start` to the end            |
-| `..end`       | From the beginning, excluding `end` |
-| `..=end`      | From the beginning, including `end` |
-| `..`          | The entire range                   |
-
-The omitted start boundary is zero. The omitted end boundary is the length of the indexed value and is exclusive. An inclusive Range must have an end boundary. A Range retains its boundary information until application to a sequence resolves length-dependent boundaries.
-
-Ranges are non-associative; an unparenthesized chained Range such as `a..b..c` is invalid. Parentheses do not make a Range a valid numeric boundary of another Range. See the [precedence table](#85-precedence-and-associativity).
-
-Applying a Range with `value[range]` produces a Slice over the selected consecutive elements. A Slice does not copy its elements. Its Origin derives from the indexed value, so it cannot outlive that value.
-
-After resolving from-end boundaries, an exclusive Range must satisfy `0 <= start <= end <= length`. An inclusive Range must satisfy `0 <= start <= end < length`. An exclusive Range with equal boundaries is empty.
-
-Invalid Indices or boundaries, including negative `n` in `^n`, are check failures under [Panic Termination](#113-panic-termination). Safe sequence access may omit a check only when safety is proven.
-
-```kimi
-let values = [10, 20, 30, 40]
-let last = values[^1]       // 40
-let middle = values[1..^1]  // Slice referring to 20 and 30.
-let all = values[..]
-let empty = values[2..2]
-```
-
-### 4.5. Type Semantics
+### 3.3. Type semantics
 
 Type Semantics specify the ownership, borrowing, layout, and safety properties of a typed value.
 
@@ -854,11 +482,11 @@ In the syntax below, `T` denotes a Core Type.
 | Object Borrow | ExclusiveRef | `objuniq/T`    | Exclusive mutable borrow of an object |
 | Unsafe        | Pointer      | `unsafe/T`     | Unsafe pointer                        |
 
-#### 4.5.1. Owned values
+#### 3.3.1. Owned values
 
 `T` and `owner/T` are equivalent: both directly own a value with the data layout of `T`.
 
-#### 4.5.2. Value borrows
+#### 3.3.2. Value borrows
 
 Value borrows provide non-owning access to value data, subject to lifetime constraints.
 
@@ -866,7 +494,7 @@ Value borrows provide non-owning access to value data, subject to lifetime const
 
 - `uniq/T` is an exclusive mutable borrow; no conflicting reference may coexist.
 
-#### 4.5.3. Owned objects
+#### 3.3.3. Owned objects
 
 Object layout consists of metadata followed by the data layout of `T`:
 
@@ -876,7 +504,7 @@ Object layout consists of metadata followed by the data layout of `T`:
 
 - `arc/T` uses atomic reference counting. Atomic ownership management does not guarantee safe concurrent mutation of `T`.
 
-#### 4.5.4. Object borrows
+#### 3.3.4. Object borrows
 
 Object borrows provide non-owning access to objects, subject to lifetime constraints.
 
@@ -884,7 +512,162 @@ Object borrows provide non-owning access to objects, subject to lifetime constra
 
 - `objuniq/T` is an exclusive mutable object borrow; no conflicting reference may coexist.
 
-### 4.6. Raw pointers and unsafe operations
+### 3.4. Values, places, and storage
+
+**Storage** is a region holding values. **Destruction responsibility** is the obligation to destroy an owned value at the end of its lifetime, subject to [cleanup and termination](#10-scope-exit-and-destruction).
+
+A **Place** is a storage location that can hold a value. A **Place expression** designates it; parentheses preserve the classification. A Place is distinct from a **Temporary Value**, even when that result is materialized into a separate [Temporary Place](#36-temporary-values-places-and-lifetimes).
+
+An **Access Designator** identifies an access target after Name/Type resolution: a local or parameter, Property, Tuple element, index, or built-in dereference. It includes computed Properties and user indexers without promising storage or Consume permission.
+
+```text
+Access Designator -> operation-specific resolution
+                    ├─ Place access
+                    ├─ value acquisition, such as a getter result
+                    └─ error
+```
+
+These are resolution outcomes, not fallback stages. A failed Consume cannot become Read. Permitted function/method references produce function values; locals holding such values are Access Designators. Classify by resolved meaning, not spelling alone. Parentheses do not change the category.
+
+Owned Move transfers ownership and destruction responsibility, preventing a second destruction at the source. Borrow-value Copy/Move duplicates or transfers access capability without owning its referent; destroying a borrow does not destroy the referent. Destroying `rc/T` or `arc/T` releases an owning reference under object-lifetime rules. A non-owning `unsafe/T` neither destroys its referent nor frees its storage.
+
+Initialization places a value in an empty place. Destruction ends a value's lifetime and responsibility; if its storage remains, that place becomes Uninitialized after normal completion. No access is possible after the storage's lifetime ends.
+
+Value Lifetime separates acquisition (Copy / Move), placement (Initialization / Replacement), and Destruction. One assignment may contain both Move and Replacement.
+
+The [initialization-state rules](#911-storage-state-and-responsibility) define Initialized, Uninitialized, and Moved. A **Partial Move** transfers an inline part and leaves an aggregate incomplete; supported paths and permissions follow [Move Paths](#913-move-paths-and-partial-move).
+
+### 3.5. Copy and move
+
+**Copy** implicitly duplicates a value, leaves its source Initialized, and preserves the source's destruction responsibility. It executes no user-defined code, heap-allocating duplication, reference-count change, or resource acquisition. Copying a reference does not copy its referent.
+
+**Move** transfers the value and destruction responsibility, or a borrow value's access capability, and marks the source Moved. It invokes no user code and need not clear source memory.
+
+Ordinary value acquisition selects Copy for a Copy Type and Move otherwise; reject an unavailable operation. This covers initialization, assignment sources, by-value arguments, and explicit/implicit result transfers. Explicit [Consume](#915-explicit-consume) with `@move` forces Move even for Copy Types. Borrow creation and reborrowing are separate operations; a Name or Property read does not necessarily consume storage.
+
+Copy capability is independent of `let`/`var` and flow-dependent Loans. At use, Copy obeys read restrictions and Move must not conflict with overlapping active Loans. Both preserve Origin dependencies without extending referent lifetimes. Reborrowing does not make exclusive references Copy.
+
+```kimi
+let a: i32 = 10
+let b = a                 // Copy; a stays Initialized.
+var node: obj/Node = makeNode()
+let owned = node          // Move; node becomes Moved.
+// use(node)              // Error until reinitialized.
+node = makeNode()
+```
+
+#### 3.5.1. Copy capability and explicit duplication
+
+`T` and `owner/T` are the same owned Type. Classify complete Types using Core Type, Semantics, and stored components:
+
+| Type | Classification |
+| --- | --- |
+| Owned integers, floating-point values, `bool`, `char`, Unit | Copy |
+| `ref/T`, `objref/T`, `unsafe/T` | Copy regardless of referent `T` |
+| `uniq/T`, `objuniq/T` | Non-Copy |
+| `obj/T`, `rc/T`, `arc/T` | Non-Copy even if `T` is Copy |
+| Slice | Shared-borrow representation: Copy; exclusive-borrow representation: non-Copy |
+| Noncapturing function value | Copy |
+| Owned Tuple / fixed-length array | Copy exactly when every component Type is Copy |
+| Owned user-defined struct | Non-Copy unless explicitly opted in |
+| Owned `string` | Non-Copy regardless of its internal representation |
+
+Never has no values and needs no classification. Other Types require their own rules; sharing elements alone does not establish Copy.
+
+`Copy` is a compiler-checked built-in capability. `Self is Copy` opts a struct into compiler derivation exactly when every stored field's complete Type is Copy and the struct has no user-defined `deinit`. These conditions suffice: no additional active-Loan requirement belongs to Type classification. Computed Properties contribute no fields, all-Copy fields do not imply opt-in, and users cannot supply a Copy body.
+
+```kimi
+struct Point
+    Self is Copy
+    var x: i32
+    var y: i32
+
+func duplicate<T>(value: T) -> (T, T)
+    T is Copy
+    return (value, value)
+```
+
+`T is Copy` is a generic constraint. Do not assume Copy before constraints or specialization establish it. Automatic derivation is specific to `Self is Copy`, not a general consequence of `Self is Capability`.
+
+Unknown Copy capability follows [Generic Access Effects](#527-generic-access-effects), including dependent acquisition and default-getter rules.
+
+Duplication requiring allocation, reference-count increments, or resource duplication uses explicit methods or contracts. No standard duplication contract or API spelling is specified.
+
+```kimi
+let text: string = "Hello"
+let copy = text.clone() // Illustrative explicit duplication API.
+let moved = text        // Move; text is no longer usable.
+```
+
+### 3.6. Temporary values, places, and lifetimes
+
+#### 3.6.1. Materialization
+
+| Term | Meaning |
+| --- | --- |
+| Temporary Value | An expression's temporary result; not its original persistent Place |
+| Temporary Place | Anonymous storage holding that value |
+| Materialization | Giving a Temporary Value a stable Temporary Place when an operation needs storage |
+
+Unless qualified, *temporary* means Temporary Value. Merely using physical storage does not make a result its source Place.
+
+```text
+Temporary Value
+    -> materialize if stable storage is needed
+       -> Temporary Place
+          ├─ permitted Borrow / Reborrow
+          └─ permitted field / element operations
+```
+
+Materialization neither reevaluates the expression nor adds Copy, resource duplication, reference-count increments, heap allocation, or lifetime extension. It preserves the same value and destruction responsibility. It must not turn failed Consume into a Read or restore a moved source.
+
+A newly owned temporary has exclusive writable capability over its whole Temporary Place unless another rule restricts access; it needs no `let`/`var` binding. Materialization realizes this capability without upgrading borrows, granting referent or Property permissions, ignoring readonly parts, or bypassing Loans, Origins, construction, or `deinit` conditions.
+
+#### 3.6.2. Lifetime and borrowing
+
+Unless a construct needs a longer lifetime, a temporary lasts until the outermost expression that created it finishes. Argument temporaries last through the call; iteration sources and `match` subjects last for their required use. Destroy remaining temporaries in reverse creation order. After a Move, the transferred value follows its destination's lifetime, while the original Temporary Place keeps its original lifetime and destroys only remaining Initialized parts.
+
+New borrows of owned temporaries depend on their Temporary Places and cannot outlive them. Exclusive capability permits the applicable explicit exclusive borrow; it does not bypass the [Borrow table](#6645-explicit-borrow-and-reborrow).
+
+```kimi
+inspect(makeResource()@ref)
+modify(makeResource()@uniq)
+inspect(resource@move@ref) // resource remains Moved.
+
+let view = makeResource()@ref
+// inspect(view) // Error: borrowed temporary expired after the initializer.
+
+let owned = makeResource()
+let lastingView = owned@ref // Borrow the retained local instead.
+inspect(lastingView)
+```
+
+A temporary that is already a borrow follows shared-reference Copy or Reborrow rules. Preserve its referent Origins; do not substitute a borrow of storage holding the reference value.
+
+```kimi
+let view = makeView()@ref // If makeView returns ref/T, preserve its Origins.
+```
+
+Borrow and Slice formation never extend the source's lifetime. Result transfers secure values before common [scope-exit cleanup](#102-scope-exit-destruction); Panic follows [Error Handling](#113-panic-termination).
+
+### 3.7. Origins and loans: overview
+
+Kimigayo uses **Origins** instead of lifetime variables. An Origin describes how long a borrow remains valid; a **Loan** records which place is borrowed and whether the borrow is shared or exclusive.
+
+Origin annotations appear in signatures and type declarations. Origins inside function bodies are inferred. When an annotation is omitted, conservative elision rules apply.
+
+The safe value-borrow semantics are:
+
+```kimi
+ref/T from o   // shared, immutable, and aliasable
+uniq/T from o  // exclusive and mutable
+```
+
+`uniq/T` is not implicitly copyable and cannot coexist with another overlapping borrow. The corresponding object-borrow semantics, `objref/T` and `objuniq/T`, follow the same shared and exclusive rules. This section uses `ref` and `uniq` in examples.
+
+When `from o` is omitted, [Origin elision](#94-origin-elision-and-return-contracts) determines the Origin.
+
+### 3.8. Raw pointers and unsafe operations
 
 `unsafe/T` is a non-owning raw pointer to storage for Core Type `T`, which determines access and element-sized arithmetic. Pointers are Copy regardless of `T`; copying or destroying one does not copy or destroy its pointee or free storage.
 
@@ -908,7 +691,7 @@ Missing required unsafe context, invalid Types, and unsupported operations are c
 | Pointer arithmetic | Yes |
 | Conversion between distinct raw pointer Types, or between a raw pointer and an integer | Yes |
 
-#### 4.6.1. Null and equality
+#### 3.8.1. Null and equality
 
 `unsafe/T` permits `null`, whose expected Type must determine `unsafe/T` or compilation fails. Safe references (`ref/T`, `uniq/T`, `objref/T`, `objuniq/T`) are non-null. Non-nullness alone does not validate a raw pointer.
 
@@ -923,7 +706,7 @@ let empty = pointer == null
 
 Initialized pointers may be compared even if null or dangling. Equal addresses imply neither equal provenance nor ownership or access permission. Different pointer Types require an explicit unsafe conversion to a common Type. Pointer ordering comparisons are not defined.
 
-#### 4.6.2. Dereference and ownership
+#### 3.8.2. Dereference and ownership
 
 `*pointer` denotes a memory place of Type `T`. Forming it requires live storage covering the required range, valid alignment, and provenance; null and one-past-the-end pointers cannot be dereferenced. **Provenance** records the allocation a pointer derives from and the basis for its accesses.
 
@@ -949,7 +732,7 @@ unsafe:
 
 Replacing an initialized pointee uses normal destruction rules. Initializing uninitialized raw storage requires a separately specified operation; ordinary assignment is not a substitute.
 
-#### 4.6.3. Pointer arithmetic and indexing
+#### 3.8.3. Pointer arithmetic and indexing
 
 For `p: unsafe/T` and `n: isize`, including negative `n`, only these arithmetic and indexing forms are supported:
 
@@ -959,7 +742,7 @@ For `p: unsafe/T` and `n: isize`, including negative `n`, only these arithmetic 
 | `p - n` | Pointer displaced by `-n * sizeof(T)` bytes. |
 | `p[n]` | The same memory place as `*(p + n)`. |
 
-`p += n` and `p -= n` combine these displacements with [compound assignment](#872-compound-assignment) and require the same unsafe conditions. Pointer increment and decrement are not supported.
+`p += n` and `p -= n` combine these displacements with [compound assignment](#672-compound-assignment) and require the same unsafe conditions. Pointer increment and decrement are not supported.
 
 `sizeof(T)` includes padding. Arithmetic requires known layout and positive size. Mathematical displacement outside `isize`, or address wraparound, is undefined behavior.
 
@@ -978,7 +761,7 @@ unsafe:
 
 Pointer subtraction from another pointer, integer-left addition, and other pointer arithmetic are forbidden.
 
-#### 4.6.4. Pointer conversions
+#### 3.8.4. Pointer conversions
 
 When the complete raw pointer Types match after normalization, `@` performs ordinary same-Type acquisition. It copies the pointer, preserves address, provenance, and Origin information and constraints, and does not itself require unsafe context. Expand Type aliases for this comparison; matching size or memory layout alone is insufficient. It grants no new access permission or ownership. Unsafe operations in operand evaluation still require unsafe context.
 
@@ -1000,7 +783,7 @@ unsafe:
 
 `unsafe/u8` permits byte-sized arithmetic, not reads of uninitialized memory. A cast itself does not read a pointee or require a valid, aligned value of the destination pointee Type; dereference and access do.
 
-#### 4.6.5. Target and round-trip guarantees
+#### 3.8.5. Target and round-trip guarantees
 
 Pointer/integer conversion initially requires a target whose ordinary data addresses fit losslessly in `usize`, whose pointer-address, address-index, `usize`, and `isize` widths agree, and which provides the guarantees below. Multiple address spaces and integer conversion of pointers carrying extra state (such as capabilities) are excluded. Unsupported conversions are compile-time errors; CPU/OS support is target-specific.
 
@@ -1020,13 +803,11 @@ Conversion neither extends lifetime nor restores permissions. Supported targets 
 
 A raw pointer value may exist without sufficient provenance for memory access. Under ordinary value-use rules, it can be held, copied, moved, passed, destroyed, compared by address with the same pointer Type, or tested against `null` without unsafe context. Converting it back to `usize` or casting to a different pointer Type requires the ordinary supported-target and unsafe conditions and does not establish missing provenance. Zero-displacement arithmetic retains the existing unsafe, known-layout, and positive-size conditions; nonzero displacement additionally needs live-allocation provenance and bounds. Dereference and indexing must satisfy their place-formation conditions, with initialization and access permissions additionally checked as required by the actual read or write. Value-level equality does not prove access validity.
 
-#### 4.6.6. Backend and separately specified operations
-
-`ptr` is not a Primitive Type. LLVM `ptr` is a backend representation; instructions supply the Types needed for memory access and arithmetic. Lowering must preserve this specification and use properties such as `inbounds` only when their premises hold. Language undefined behavior and LLVM poison are distinct concepts.
+#### 3.8.6. Raw pointer API design boundaries
 
 Raw pointer acquisition APIs, allocation and deallocation, initialization of raw storage, conversion to or from safe references, ownership acquisition, and Unsafe Function Types are specified separately. Example functions such as `obtainPointer` and `use` are illustrative, not standard API declarations.
 
-## 5. Declarations
+## 4. Declarations and contracts
 
 Kimigayo uses the following information to identify declarations and their meaning:
 
@@ -1036,7 +817,9 @@ Kimigayo uses the following information to identify declarations and their meani
 | `Signature` | The information that distinguishes declarations in the same scope     |
 | `Type`      | The meaning of a value or invocation within the type system           |
 
-### 5.1. Signatures
+Name lookup, accessibility, and invocation selection follow [Name resolution, overload resolution, and inference](#5-name-resolution-overload-resolution-and-inference). Property declaration syntax is defined under [Properties](#8-properties).
+
+### 4.1. Signatures
 
 A Signature determines whether declarations may coexist in one scope:
 
@@ -1061,7 +844,7 @@ func identity<U>(value: U) -> U => value // Error: same normalized Signature.
 
 Duplicate Signatures are declaration errors. Distinct Symbols imported from different Containers may have the same shape; a use is ambiguous unless overload rules select one. Fragment header-name agreement is separate from parameter-name normalization between different function declarations. Existing syntax-based Signature structures do not yet implement these semantic checks.
 
-### 5.2. Declaration Containers
+### 4.2. Declaration containers
 
 A **Declaration Container** is a named declaration scope whose body may contain Properties, functions, Contract Clauses, or nested Declaration Containers as permitted by its kind. Its body is delimited by indentation.
 
@@ -1069,28 +852,28 @@ A **Declaration Container** is a named declaration scope whose body may contain 
 | --------------- | ------------ | -------------------- |
 | `group` | No | Accepts Properties, functions, and nested Declaration Container declarations. All members are static. Generic parameters and Origins are not supported. |
 | `struct` | Yes | Accepts Properties and functions in declaration order. Generic parameters, Origins, and a Type Contract are supported. |
-| `enum` | Yes | Body parsing is not implemented. |
-| `extension` | No | Its Name identifies the target. Body parsing is not implemented. |
+| `enum` | Yes | Enum declaration container. |
+| `extension` | No | Its Name identifies the target. |
 | `contract` | No | Specifies associated-type Contract Clauses and Property requirements. The Parser preserves required accessors without generating implementations or storage. |
 
-#### 5.2.1. Root and nested containers
+#### 4.2.1. Root and nested containers
 
-Each source unit contributes named declarations to the project root. Top-level executable syntax, including bindings (`let` and `var`) and local functions, has a SourceDocument-local execution scope and is not exported into the Compilation root or visible to another file. Lowering may place it in an implicit generated function owned by the Kotonoha, but must preserve source scopes and CodeContexts. Shared functions and Properties belong in named Containers. Cross-source execution order remains unspecified. A `rootgroup` declaration starts at the root and accepts a dot-separated Name. For example:
+Each source unit contributes named declarations to the project root. Top-level executable syntax, including bindings (`let` and `var`) and local functions, has a SourceDocument-local execution scope and is not exported into the Compilation root or visible to another file. Its source-local scope and lookup environment must be preserved. Shared functions and Properties belong in named Containers. Cross-source execution order remains unspecified. A `rootgroup` declaration starts at the root and accepts a dot-separated Name. For example:
 
 ```kimi
 rootgroup A.B
     var value = 1
 ```
 
-creates the nested group path `A.B`. Ordinary `group` bodies accept nested Declaration Container declarations. `struct` bodies do not currently accept nested Declaration Containers.
+creates the nested group path `A.B`. Ordinary `group` bodies accept nested Declaration Container declarations. In this revision, `struct` bodies do not accept nested Declaration Containers.
 
-Aliases follow [source-local import rules](#231-external-references-and-aliases). Synthesized intermediate groups in a `rootgroup` path use an explicit group declaration's accessibility when present, otherwise `private`; synthesis is not an independent header fragment. Public paths require explicitly accessible groups.
+Aliases follow [source-local import rules](#121-external-references-and-aliases). Synthesized intermediate groups in a `rootgroup` path use an explicit group declaration's accessibility when present, otherwise `private`; synthesis is not an independent header fragment. Public paths require explicitly accessible groups.
 
-#### 5.2.2. Container fragments
+#### 4.2.2. Container fragments
 
 Group and struct declarations may be split, even within one file. Collect same-parent, same-name fragments and identify a declaration by originating Kotonoha, parent Symbol, name, kind, and generic arity. Reject conflicting kinds such as a group and struct with the same name. Different arities, such as `Box` and `Box<T>`, are different Types. Never merge across Kotonoha libraries or treat an extension as a target declaration fragment; applied `ref`/`uniq` Semantics do not change Container identity.
 
-Matching fragments must agree on generic parameter count/kinds/order/names, Origin count/order/names, declaration kind, semantic modifiers, and accessibility after defaults. Do not widen conflicting accessibility. Exactly one fragment may define the Container's Type Contract, even if duplicate clauses would be identical; other fragments omit it and share that definition's constraints. Resolve it in its defining CodeContext.
+Matching fragments must agree on generic parameter count/kinds/order/names, Origin count/order/names, declaration kind, semantic modifiers, and accessibility after defaults. Do not widen conflicting accessibility. Exactly one fragment may define the Container's Type Contract, even if duplicate clauses would be identical; other fragments omit it and share that definition's constraints. Resolve it in its definition-site source environment.
 
 After compile-time selection and merging, reject duplicate Properties, duplicate function Signatures, and namespace conflicts. All selected fragments may contribute Stored Properties, including generated ones, under [split-structure storage order](#431-split-structures-and-storage-order). Do not require a primary fragment. Enum/contract fragment contents and extension identity need further rules.
 
@@ -1106,11 +889,50 @@ struct Box<T>
 // Repeating the contract or renaming T to U in B.kimi is an error.
 ```
 
-### 5.3. Type Contracts
+**Design boundary:** Enum/contract fragment contents, extension identity/public names, cross-fragment static group initialization, and cross-source execution order remain separately specified.
 
-A **Type Contract** is a set of **Contract Clauses** of the form `subject is requirement`. All clauses must hold. They constrain Core Types, Type Semantics, or `Self` (the enclosing Type) and establish capabilities the implementation may use. Each declaration kind restricts the permitted subjects; see [function Type Contracts](#552-function-type-contract).
+### 4.3. Structure declarations
 
-Core Type requirements may name a capability declared with `contract` or another compile-time type capability. Type Semantics requirements may name concrete semantics, such as `ref` or `obj`, or a semantics category. Requirements combine with `and`, `or`, `not`, and parentheses under the [requirement-expression rules](#532-requirement-expressions).
+A `struct` defines a composite value Type. Its Properties may use primitive or structure Types, with Type Semantics specifying representation, ownership, and access:
+
+```
+struct Point
+    var x: f64
+    var y: f64
+
+struct Node
+    var value: i32
+    var next: obj/Node
+
+struct View
+    var source: ref/Data
+```
+
+**Design boundary:** Explicit/generated construction syntax and allowed access remain separately specified; [initialization](#86-initialization) and [construction completeness](#912-aggregate-construction-and-completeness) still constrain them.
+
+#### 4.3.1. Split structures and storage order
+
+A `struct` may be split into compatible declaration fragments, including fragments produced by a Source Generator. Multiple fragments may contribute Stored Properties. Merge fragments for the same declaration, validate their headers and member uniqueness, and classify storage using the normal Property rules, including implicit accessors and `has` expansion. No primary fragment is required. Detailed declaration identity and header checks follow the [Container integration rules](#422-container-fragments).
+
+Define a **logical declaration order** independently of physical memory layout:
+
+1. Ordinary source documents precede generated source documents. Order ordinary documents by their stable logical source identifiers.
+2. Order generated documents by stable Generator identifier, then by the Generator's logical output identifier.
+3. Within each document, use source declaration order, including the written order of multiple fragments of the same structure.
+
+Source identifiers are build metadata independent of absolute checkout paths, temporary output paths, and processing order. Ordinary sources use normalized project-relative logical paths; sources outside the project directory require an assigned stable project-relative logical name. Generated output identifiers are logical names assigned by the Generator. Normalize path separators to `/` and remove redundant path segments; compare identifiers ordinally without host-specific case folding or locale rules. Require unique ordinary source identifiers, unique Generator identifiers within a build, and unique output identifiers within each Generator; identifier collisions are build errors.
+
+Apply this order to the selected declarations of each specialization. Only Stored Properties contribute storage slots. File enumeration, parser completion, and Generator completion order must not affect the result. Renaming a source or generated output may change logical order and therefore initializer side-effect order.
+
+Generated declaration availability must satisfy the [name-resolution boundary](#134-name-resolution-boundary). Do not begin consuming a provisional type and append generated Storage later. Finalize layout only after the complete selected fragment set and storage classification are known. Generated documents retain their own source context and logical identifiers. Generator APIs, inputs, scheduling, and dependency checks beyond the established output deadline remain separately specified; generator dependencies that prevent establishing the required environment are errors, not permission to revise resolved Names.
+
+Physical layout and ABI guarantees follow [Structure layout and ABI](#146-structure-layout-and-abi).
+
+### 4.4. Type contracts
+
+A **Type Contract** is a set of **Contract Clauses** of the form `subject is requirement`. All clauses must hold. They constrain Core Types, Type Semantics, or `Self` (the enclosing Type) and establish capabilities the implementation may use. Each declaration kind restricts the permitted subjects; see [function Type Contracts](#462-function-type-contract).
+
+Core Type requirements may name a capability declared with `contract` or another compile-time type capability. Type Semantics requirements may name concrete semantics, such as `ref` or `obj`, or a semantics category. Requirements combine with `and`, `or`, `not`, and parentheses under the [requirement-expression rules](#442-requirement-expressions).
 
 A `struct` header may contain generic parameters and an Origin list. Its Type Contract precedes Properties and functions.
 
@@ -1132,11 +954,11 @@ struct ComparableContainer<T>
     var value: T
 ```
 
-`T is Comparable` supplies comparison capabilities for the stored value's Type. `Self is Comparable` requires `ComparableContainer<T>` itself to fulfill `Comparable`; it does not automatically derive an implementation from the clause on `T`. The members needed to fulfill that requirement are omitted from this example. The built-in `Self is Copy` is a specific [compiler-derivation exception](#714-copy-capability-and-explicit-duplication). Semantic validation of these requirements is planned.
+`T is Comparable` supplies comparison capabilities for the stored value's Type. `Self is Comparable` requires `ComparableContainer<T>` itself to fulfill `Comparable`; it does not automatically derive an implementation from the clause on `T`. The members needed to fulfill that requirement are omitted from this example. The built-in `Self is Copy` is a specific [compiler-derivation exception](#351-copy-capability-and-explicit-duplication).
 
 A Type Contract is a set of conditions, distinct from the `contract` Declaration Container that declares a named capability such as `Comparable`.
 
-#### 5.3.1. Associated Types and Property requirements
+#### 4.4.1. Associated types and property requirements
 
 Inside a `contract`, `associate` introduces an associated-type Contract Clause, and `has` declares required Property accessors:
 
@@ -1146,9 +968,11 @@ contract Sequence
     var count: i32 has get
 ```
 
-See [contract Property requirements](#642-contract-property-requirements) for accessor conformance.
+See [contract Property requirements](#842-contract-property-requirements) for accessor conformance.
 
-#### 5.3.2. Requirement expressions
+**Design boundary:** Associated-Type resolution/equality and Contract proof rules for `and`/`or`/`not` and dependent conditions remain separately specified.
+
+#### 4.4.2. Requirement expressions
 
 `subject is requirement` tests requirements on a Type or Type Semantics. Its result is a compile-time `bool`; unresolved requirements must not be deferred to runtime. Type Contracts and compile-time directives apply their own subject and narrowing rules. Runtime `value is T`, pattern bindings, and runtime type narrowing are not defined.
 
@@ -1163,24 +987,26 @@ See [contract Property requirements](#642-contract-property-requirements) for ac
 
 Use `(T is A) and enabled` to combine a complete test with another condition. Use `T is (not A) or B` to limit negation to A. Value equality uses `==`.
 
-### 5.4. Bindings
+### 4.5. Bindings
 
 Properties and local bindings begin with `let` or `var`. For a local binding, `let` declares an immutable binding and `var` declares a mutable binding. A Type annotation and an initializer are independently optional when the omitted information can be inferred.
+
+**Basic example.**
 
 ```kimi
 let limit: i32 = 10
 var current = 0
 ```
 
-A local Type must be fixed at declaration, even without an initializer. Locals become visible after their declaration, so an initializer `let x = x` refers to an outer `x`; duplicate and forward-reference rules follow [name visibility](#561-namespaces-roles-and-visibility). `let` permits only its first initialization, and Move never resets that history. Definite initialization and permitted reinitialization follow [Value Lifetime](#71-value-lifetime).
+A local Type must be fixed at declaration, even without an initializer. Locals become visible after their declaration, so an initializer `let x = x` refers to an outer `x`; duplicate and forward-reference rules follow [name visibility](#511-namespaces-roles-and-visibility). `let` permits only its first initialization, and Move never resets that history. Definite initialization and permitted reinitialization follow [initialization-state rules](#911-storage-state-and-responsibility).
 
-### 5.5. Functions
+### 4.6. Functions
 
-A function begins with `func`, followed by its Name, optional generic parameters, optional Origin parameters, and a parenthesized parameter list. A result Type follows `->`; it is mandatory for public functions and may be inferred for internal/private functions under [inference boundaries](#575-inference-boundaries-and-specialization). A definition has an indentation-delimited Block body or a single expression introduced by `=>`.
+A function begins with `func`, followed by its Name, optional generic parameters, optional Origin parameters, and a parenthesized parameter list. A result Type follows `->`; it is mandatory for public functions and may be inferred for internal/private functions under [inference boundaries](#525-inference-boundaries-and-specialization). A definition has an indentation-delimited Block body or a single expression introduced by `=>`.
 
-#### 5.5.1. Function bodies and results
+#### 4.6.1. Function bodies and results
 
-A **Block-bodied function** requires explicit `return` for non-Unit results. Every direct expression, including the last, uses Discard Context regardless of trailing semicolons. Nested Value Contexts, such as initializers, retain their usual rules.
+A **Block-bodied function** requires explicit `return` for non-Unit results. Every direct expression, including the last, uses Discard Context. Nested Value Contexts, such as initializers, retain their usual rules.
 
 ```kimi
 func add(left: i32, right: i32) -> i32
@@ -1206,17 +1032,19 @@ func find() -> i32
 
 A final `if`, `match`, or `loop` also discards its own result. Use `return if ...`, `return match ...`, `return loop ...`, or explicit returns on the appropriate paths.
 
-An **Expression-bodied function** evaluates the expression after `=>` in Value Context and uses its normal result as the function result. A `return` executed inside that expression may also supply the function result. A trailing semicolon does not suppress the implicit result.
+An **Expression-bodied function** evaluates the expression after `=>` in Value Context and uses its normal result as the function result. A `return` executed inside that expression may also supply the function result.
 
 ```kimi
 func add(left: i32, right: i32) -> i32 => left + right
 ```
 
-Both forms follow the shared [result validation](#98-result-validation), [reachability](#982-reachability), and [scope-exit destruction](#102-scope-exit-destruction) rules. [Function Boundaries](#953-function-boundaries) lists the other bodies to which these rules apply.
+Both forms follow the shared [result validation](#78-result-validation), [reachability](#782-reachability), and [scope-exit destruction](#102-scope-exit-destruction) rules. [Function Boundaries](#753-function-boundaries) lists the other bodies to which these rules apply.
 
-#### 5.5.2. Function Type Contract
+#### 4.6.2. Function type contract
 
-A generic Block-bodied function may begin its body with a [Type Contract](#53-type-contracts). Its Contract Clauses must precede every executable body item and are processed at compile time; they are not executable expressions.
+A generic Block-bodied function may begin its body with a [Type Contract](#44-type-contracts). Its Contract Clauses must precede every executable body item and are processed at compile time; they are not executable expressions.
+
+**Basic example.**
 
 ```kimi
 func inspect<s/T>(value: s/T) -> ()
@@ -1226,15 +1054,13 @@ func inspect<s/T>(value: s/T) -> ()
     return
 ```
 
-Each clause subject must name a generic parameter of that function. In this example, the two clauses jointly form its Type Contract; requirement syntax follows the shared [Type Contract](#53-type-contracts) rules.
+Each clause subject must name a generic parameter of that function. In this example, the two clauses jointly form its Type Contract; requirement syntax follows the shared [Type Contract](#44-type-contracts) rules.
 
 Every explicit or inferred generic argument at a call site must satisfy its clauses. Body type checking and specialization may rely on those requirements. A Type Contract is not part of the function Signature; declarations differing only in their contracts conflict.
 
-The current Parser stores leading Contract Clauses separately from executable body items and preserves deferred directives on them. It checks clause subjects against the declared generic parameters and diagnoses clauses placed after executable items. Type Contract validation during Binding and specialization is planned.
+#### 4.6.3. Unsafe functions
 
-#### 5.5.3. Unsafe functions
-
-An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. Calling it requires an [Unsafe Block](#933-unsafe-block); violating its safety contract is undefined behavior. This runtime safety contract is distinct from a Type Contract and its Contract Clauses.
+An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. Calling it requires an [Unsafe Block](#733-unsafe-block); violating its safety contract is undefined behavior. This runtime safety contract is distinct from a Type Contract and its Contract Clauses.
 
 ```kimi
 // Safety: pointer must refer to a live, initialized i32 throughout the call,
@@ -1260,7 +1086,7 @@ Initially, unsafe functions support direct calls only. Taking a function value, 
 let reader = read // Error: an unsafe function cannot be taken as a function value.
 ```
 
-#### 5.5.4. Parameter names and defaults
+#### 4.6.4. Parameter names and defaults
 
 A parameter may separate its external argument name from its local name with `external => internal: T`. An optional parameter uses `name?: T = defaultExpression`. The `?` requires a default and means argument omission, not a nullable Type; a default alone does not make a parameter optional.
 
@@ -1275,9 +1101,21 @@ let next = offset(3)
 let adjusted = offset(3, by: 5)
 ```
 
-Function Types retain neither argument names nor defaults. Calls through function values supply all arguments positionally. See [invocation](#842-invocation-and-generic-application) for argument matching and evaluation.
+Function Types retain neither argument names nor defaults. Calls through function values supply all arguments positionally. See [invocation](#642-invocation-and-generic-application) for argument matching and evaluation.
 
-### 5.6. Name resolution
+## 5. Name resolution, overload resolution, and inference
+
+Name resolution identifies declarations; overload resolution selects an applicable operation before use-site legality is checked.
+
+| Term | Meaning |
+| --- | --- |
+| Binding / Name resolution | Associating source names and operations with declarations and meanings. |
+| Lookup environment | The declarations, aliases, and extensions available for a lookup in one scope. |
+| Project root | Root of the primary module's declaration hierarchy. |
+| Compilation root | Lookup entry point for the project root and directly referenced module names. |
+| Source environment | The definition-site aliases and lookup context of one source document. |
+
+### 5.1. Name resolution
 
 Resolve Names before selecting overloads or checking whether an operation can execute:
 
@@ -1291,7 +1129,7 @@ Name Resolution
 
 Apply language-defined lexical visibility and compile-time selection order first. File loading, alias order, candidate enumeration, caching, parallelism, and optimization must not change resolution.
 
-#### 5.6.1. Namespaces, roles, and visibility
+#### 5.1.1. Namespaces, roles, and visibility
 
 Namespaces separate declaration kinds; a **Lookup Role** filters candidates by syntactic use before lookup stops.
 
@@ -1332,7 +1170,7 @@ Type parameters belong to their declaring function or Type scope. Nested functio
 
 `Self` is reserved, cannot be redeclared, and requires a valid Type context. `self`, `storage`, and `value` are contextual names introduced by receiver and accessor rules. While active, they cannot be redeclared as locals or parameters; elsewhere they are ordinary Names. Their runtime bindings are not implicitly captured by nested functions. Origin and Label lookup never falls back to Type or Value names.
 
-#### 5.6.2. Accessibility and reachability
+#### 5.1.2. Accessibility and reachability
 
 | Access | Scope |
 | --- | --- |
@@ -1358,9 +1196,9 @@ group Other
 
 An inaccessible declaration is diagnostic evidence, not a candidate that stops lookup. Once a Property or member has been selected, an inaccessible required accessor or missing receiver is an error; do not resume outer lookup.
 
-#### 5.6.3. Unqualified lookup
+#### 5.1.3. Unqualified lookup
 
-For the required namespace and role, search these stages in order. A bare Adaptation Target Name in `E@X` uses the two roles specified by [explicit operations](#864-explicit-operations); it does not select a role using conversion success.
+For the required namespace and role, search these stages in order. A bare Adaptation Target Name in `E@X` uses the two roles specified by [explicit operations](#664-explicit-operations); it does not select a role using conversion success.
 
 1. Current local scope, then enclosing lexical and parameter scopes, each separately.
 2. Current Container.
@@ -1391,7 +1229,7 @@ There is no implicit `self`: instance members require `self.member` or another e
 
 If all stages fail, prefer an inaccessible matching-role declaration diagnostic, then an accessible wrong-role diagnostic, then undefined Name. Diagnostic exploration of outer declarations never makes them valid fallback targets.
 
-#### 5.6.4. Qualification and extensions
+#### 5.1.4. Qualification and extensions
 
 Resolve the first component of `A.B.C` by ordinary lookup with its syntactic role, then search only the selected target's members. Do not return to its parents. Intermediate Type-side components are Qualifiers; the final role follows the syntax, such as Core Type in a Type annotation or Declaration Container in an alias.
 
@@ -1417,17 +1255,17 @@ func read(Config: ref/Settings) -> i32
 
 Member lookup searches ordinary members before extensions. An accessible, role-compatible ordinary member commits lookup even if no overload applies; inaccessible or wrong-role members alone do not block extensions. Search only extensions enabled by the use's lexical scope, then its source aliases, then default aliases, respecting separate stages and combining candidates within a stage. Do not add argument-associated Containers automatically.
 
-Generic bodies retain their definition-site CodeContext and extension environment, including during deferred specialization. Caller aliases and extensions never enlarge their candidate sets.
+Generic bodies use their [definition-site source environment](#12-modules-and-dependencies), including during deferred specialization; caller aliases and extensions never enlarge their candidate sets.
 
-#### 5.6.5. Type Name Selection
+#### 5.1.5. Type name selection
 
 After committing lookup, filter Type candidates by the number and kinds of explicit type arguments. Resolve the arguments themselves in the use-site context. Select exactly one candidate; zero means type-argument mismatch and several mean ambiguity. Check the selected Type's contract afterward, without trying another Type if it fails.
 
 For example, `Box<i32>` selects `Box<T>` from a stage containing `Box<T>` and `Box<T,U>`. A nearer stage containing only `Box<T,U>` blocks an outer `Box<T>`. Different same-arity Types imported at one stage remain ambiguous. Legitimate unresolved argument kinds defer selection with its stage fixed; malformed arguments or unknown Names are errors. Omitted type arguments use only the inference permitted by their construct.
 
-### 5.7. Overload resolution and inference
+### 5.2. Overload resolution and inference
 
-#### 5.7.1. Candidate applicability
+#### 5.2.1. Candidate applicability
 
 Check each declaration in the committed function group independently:
 
@@ -1440,7 +1278,7 @@ Check each declaration in the committed function group independently:
 
 Zero applicable candidates is an error. Candidate checking records plans; it does not execute or commit runtime Copy/Move, Loans, or defaults. Errors in declarations, such as unknown Types, malformed contracts, or duplicate Signatures, remain declaration errors even when another candidate succeeds.
 
-Positional arguments precede named arguments and bind parameters in order. Named arguments use external names, may be reordered, and cannot bind a parameter twice. Reject unknown labels, excess positional arguments, and missing required arguments. Evaluate explicit arguments in source order, then omitted defaults in parameter order; defaults follow [declaration-site rules](#554-parameter-names-and-defaults) and supply no generic-inference evidence. Function-value calls supply every argument positionally.
+Positional arguments precede named arguments and bind parameters in order. Named arguments use external names, may be reordered, and cannot bind a parameter twice. Reject unknown labels, excess positional arguments, and missing required arguments. Evaluate explicit arguments in source order, then omitted defaults in parameter order; defaults follow [declaration-site rules](#464-parameter-names-and-defaults) and supply no generic-inference evidence. Function-value calls supply every argument positionally.
 
 ```kimi
 func scale(value: i32, by => factor: i32) -> i32 => value * factor
@@ -1449,7 +1287,7 @@ scale(3, value: 4)     // Error: value supplied twice.
 scale(3, factor: 4)    // Error: factor is an internal name.
 ```
 
-#### 5.7.2. Argument adaptation and literals
+#### 5.2.2. Argument adaptation and literals
 
 Compare adaptations in this order, best first:
 
@@ -1460,7 +1298,7 @@ Compare adaptations in this order, best first:
 | Same-semantics reborrow | Reborrow while preserving the input Type Semantics |
 | Cross-semantics borrow/reborrow | Another permitted borrow or reborrow |
 
-Exact describes Type adaptation, not value transfer: an Exact by-value argument still Copies or Moves under [Value Lifetime](#71-value-lifetime). Copy versus Move adds no ranking preference. Origin subtyping that needs no value operation remains permitted.
+Exact describes Type adaptation, not value transfer: an Exact by-value argument still Copies or Moves under [Copy and Move](#35-copy-and-move). Copy versus Move adds no ranking preference. Origin subtyping that needs no value operation remains permitted.
 
 The initial borrow adaptations are:
 
@@ -1490,7 +1328,7 @@ choose(x)      // Exact i32.
 choose(1@i64)  // Exact i64.
 ```
 
-#### 5.7.3. Expected results
+#### 5.2.3. Expected results
 
 An expected result may complete inference and exclude otherwise applicable candidates. Compatibility requires normalized Type identity or a defined subtype relation without additional value operations. Instantiate and check Origins, including permitted covariant shortening. Do not insert a new borrow/reborrow, dereference, numeric conversion, or user conversion to retain a candidate. Do not retype a function's body literal to change its established return Type.
 
@@ -1505,7 +1343,7 @@ fetch(1)                   // Error: discarding leaves both candidates.
 
 These declarations have distinct parameter Signatures. Declarations differing only in return Type are invalid regardless of call-site expectations. A candidate returning `T` cannot survive an expected `ref/T` by borrowing its result; nor can `uniq/T` become `ref/T` by a newly inserted reborrow.
 
-#### 5.7.4. Best candidate
+#### 5.2.4. Best candidate
 
 Pairwise comparison yields better, worse, equivalent, or incomparable. **Proceed to the next step only for equivalent candidates.** Select a candidate only if it is better than every other applicable candidate:
 
@@ -1529,7 +1367,9 @@ let action: (uniq/i32) -> () = inspect
 
 The exclusive candidate wins for an exclusive input because its Semantics match, not because exclusivity is stronger. Two candidates `(i32, ref/i32)` and `(ref/i32, i32)` are incomparable for two `i32` locals. Likewise, `f<T>(T)` and `f<U>(Box<U>)` remain tied for `Box<i32>` when substitution makes both parameter Types equal and later steps tie.
 
-#### 5.7.5. Inference boundaries and specialization
+These rules deliberately leave owner-to-`ref`/`uniq` overloads ambiguous. Any preference would require a language revision. Property Consume eligibility and its generic limits follow [Property Consume](#89-property-consume).
+
+#### 5.2.5. Inference boundaries and specialization
 
 Fix local Types at declaration; later uses cannot infer backward. Public functions require explicit return Types. Internal/private functions may infer returns, but fix the return Type before the function participates in another expression's overload resolution. Inference cycles require return annotations. Generic return Types may remain expressions over parameters; substituting them does not reanalyze a body.
 
@@ -1554,11 +1394,11 @@ outer(intermediate)
 
 An overloaded function reference uses an expected Function Type to check parameters and result; if still unresolved, require an annotation. Anonymous-function arity and explicit Types may filter candidates, but do not reanalyze its body under different surviving Function Types. Once the expected Function Type is fixed, check its body bidirectionally. Function values carry neither labels nor defaults, cannot capture runtime locals in this revision, and cannot name unsafe functions. That last failure never selects another overload.
 
-After inference, check Type Contracts as satisfied, unsatisfied, legitimately dependent, or erroneous. Nondependent names bind at the definition. Generic bodies use evidence from declared constraints and selected conditions; failure to prove `T is C` does not prove `T is not C`. Deferred members retain the definition's CodeContext and fixed outer environment, never caller imports. All necessary constraints must be decided before finalizing a concrete call or specialization. Do not use arbitrary theorem proving, enumeration of available Types, or constraint strength for overload ranking.
+After inference, check Type Contracts as satisfied, unsatisfied, legitimately dependent, or erroneous. Nondependent names bind at the definition. Generic bodies use evidence from declared constraints and selected conditions; failure to prove `T is C` does not prove `T is not C`. Deferred members use the [definition-site source environment](#12-modules-and-dependencies), never caller imports. All necessary constraints must be decided before finalizing a concrete call or specialization. Do not use arbitrary theorem proving, enumeration of available Types, or constraint strength for overload ranking.
 
-Environment-changing conditions obey [staged selection](#222-staged-condition-evaluation): finalize the entire affected environment before any ordinary lookup uses it, even for an apparently unaffected Name or role. Directive Binding uses an already established environment. Select a specialization-dependent branch before creating and using its local lookup environment. Excluded declarations do not merge or enter candidate sets; selected environments must not mutate already resolved references or another specialization's environment.
+Conditional membership follows the [name-resolution boundary](#134-name-resolution-boundary). Excluded declarations do not merge or enter candidate sets. Compiler requirements preserve independent specialization environments.
 
-#### 5.7.6. Usage legality and operators
+#### 5.2.6. Usage legality and operators
 
 After selection, check unsafe permission, initialization and Move state, actual Loans and lifetimes, required accessor access, write capability, and other control-flow or ownership conditions. Static Type and declaration permissions needed for adaptation are checked earlier; flow-dependent failures never change the selected overload.
 
@@ -1573,7 +1413,9 @@ Adding a better overload can therefore invalidate existing calls even if that ov
 
 Operator operands use the same adaptation and candidate-comparison rules while preserving fixed syntax and evaluation order. Extension operators obey member lookup stages. Collection of built-in, contract, and extension operator candidates, construction/indexer integration, and explicit ambiguity-resolution syntax require their own declaration rules; ordinary lookup must not invent them.
 
-#### 5.7.7. Generic Access Effects
+Diagnostics distinguish undefined/wrong-role/inaccessible names, path or value-kind conflicts, missing receivers, type-argument or argument mismatch, no applicable overload, ambiguity, inference boundaries, dependency cycles, declaration errors, and usage errors. Show candidate Signatures and declaration locations for ambiguity; retain useful rejection reasons without dumping every tentative error. Resource-limit exhaustion is separate from language ambiguity or mismatch and must request annotations or smaller expressions, never choose the first candidate.
+
+#### 5.2.7. Generic access effects
 
 Before finalizing ownership/Loan analysis for an acquisition or adaptation, determine its **Access Effect** statically and uniquely:
 
@@ -1594,7 +1436,7 @@ Generic analysis
                             -> determine effect -> finalize ownership and cleanup
 ```
 
-Do not treat unresolved Copy capability as proof of non-Copy or fix the effect to Move. Generic checking need not finish at definition time. Deferral is permitted only when a later phase can resolve the dependency before finalization; otherwise report an error. Environment-changing directives still obey their earlier [selection deadlines](#222-staged-condition-evaluation).
+Do not treat unresolved Copy capability as proof of non-Copy or fix the effect to Move. Generic checking need not finish at definition time. Deferral is permitted only when a later phase can resolve the dependency before finalization; otherwise report an error. Environment-changing directives still obey their earlier [selection deadlines](#134-name-resolution-boundary).
 
 Specializations may have different effects. Check each body and cleanup with its own effects; never reuse a different-effect analysis without validation. An explicit `#case` is not required when specialization directly resolves the operation.
 
@@ -1606,1158 +1448,23 @@ use(value)
 
 With the first result discarded, `s = ref` creates a shared Loan ending in that expression; `s = uniq` similarly requires exclusive writability. The later use is checked normally after the Loan ends. `s = owner` copies a Copy value but moves a non-Copy value, making the later use an error. Retaining a borrow result instead requires checking all later uses in its Loan lifetime.
 
-### 5.8. Binding implementation and open boundaries
+### 5.3. Inference and operation design boundaries
 
-Binding must preserve these semantic stages, without requiring a single-pass implementation:
+The following boundaries remain separately specified. Implementations must not invent them through broader search:
 
-```text
-Parse per source and collect fragments/generator output
--> select directives in established environments
--> collect selected declarations, root and scope tables, and alias targets
--> bind headers, Types, Signatures, and contracts; validate merges/duplicates
--> resolve bodies -> test candidates -> select -> check usage
--> retain Symbol references and the selected operation plan for lowering
-```
-
-Keep Type/Value and Origin/Label tables separate. A Lookup Context includes source context, scope, namespace, role, and accessibility. Preserve resolved Symbol, function-group, deferred, and error outcomes. Lowering must not re-resolve strings. Share normalized Types, but isolate candidate type variables, constraints, argument mappings, tentative bindings, adaptation plans, and rejection reasons. Commit only the selected candidate. Cheap filters may precede inference only if lookup stopping is unchanged. Pairwise comparison may require O(n²) comparisons; type-comparison cost is additional.
-
-Cache only context-independent results or include every relevant dependency:
-
-| Cache | Required distinctions |
-| --- | --- |
-| Lookup | Scope, name, namespace, role, lexical visibility, source alias environment |
-| Accessible lookup | Also use-site Kotonoha and Container relationship |
-| Member lookup | Target Symbol/Type, type arguments, static/instance use, extensions |
-| Applicability | Candidate, argument Types/literal values/labels/forms, expected Type, type arguments and constraints |
-| Conditional work | Compilation target, selection state, specialization |
-
-Do not reuse a role-filtered lookup for a different role, or source-wide access results across unrelated Containers. Invalidate affected caches when sources, dependencies, aliases, selections, or Symbols change. Flow-dependent Loan and initialization state belongs to Usage Legality, not overload-selection cache keys.
-
-Diagnostics distinguish undefined/wrong-role/inaccessible names, path or value-kind conflicts, missing receivers, type-argument or argument mismatch, no applicable overload, ambiguity, inference boundaries, dependency cycles, declaration errors, and usage errors. Show candidate Signatures and declaration locations for ambiguity; retain useful rejection reasons without dumping every tentative error. Resource-limit exhaustion is separate from language ambiguity or mismatch and must request annotations or smaller expressions, never choose the first candidate.
-
-Validation must cover source-context isolation, merged private access, duplicate/role/arity boundaries, Type/Value paths, aliases, extension precedence, expected results, incomparable candidates, nested inference, specialization environments, and no fallback after usage failure. Reordering load, parse, generator completion, or candidate enumeration must preserve results; parsing examples alone does not validate Binding.
-
-The following details remain separately specified; implementations must not invent them through broader search:
-
-- Versioned dependency reference configuration, re-export syntax and reference-graph diagnostics; enum/contract fragment contents and extension identity/public names.
-- Cross-fragment static group initialization and cross-source execution order; Generator APIs, inputs, scheduling, and dependency checks beyond the established output deadline.
-- Explicit/generated construction syntax and allowed access, fixed FFI layout, and detailed Core Type/Semantics parameter-to-argument correspondence.
+- Detailed Core Type/Semantics parameter-to-argument correspondence.
 - Additional implicit argument/receiver adaptations beyond the defined applicability table; exact contextual-binding boundaries for additional accessor/function forms. The explicit Borrow table does not add implicit overload preferences.
-- Associated-Type resolution/equality and contract proof rules for `and`/`or`/`not` and dependent conditions.
 - Operator/constructor/indexer candidate collection and explicit selection syntax; combining optional `?` with external/internal parameter-name syntax.
 
-The current rules deliberately leave owner-to-`ref`/`uniq` overloads ambiguous. Any preference would require a language revision. Property Consume eligibility and its generic limits follow [Property Consume](#69-property-consume).
+# Part II. Language constructs and semantics
 
-## 6. Properties
+## 6. Expressions and operators
 
-A **Property** is Kimigayo's only value-bearing member kind. Storage slots, global storage, and other lowered representations are implementation details. A `let` or `var` inside an executable Block is a local binding.
+Expressions produce values or transfer control. This chapter defines their syntax, Type rules, and evaluation.
 
-A Property has a **Property Type**, optional `get` and `set` accessors, and optional owned storage. The Property Type determines storage, Consume result, and setter input Types. A read uses the **Getter Result Type**, which may differ. Custom getters/setters remain supported; [Property Consume](#69-property-consume) requires accessible standard get and set instead of a separate Move accessor.
+### 6.1. Classification and contexts
 
-Storage classification follows this sequence:
-
-```text
-Expand inline has declarations
-    -> expand bodyless and implicit accessors
-    -> bind the effective accessors and contextual identifiers
-    -> detect references bound to storage
-    -> determine HasStorage
-```
-
-`HasStorage` is true exactly when an effective accessor contains a reference bound to contextual `storage`. Expression and Block bodies both count, including unreachable references. During binding, `storage` is provisionally available; a bound reference causes storage to exist. An ordinary Name spelled `storage` outside an accessor does not count.
-
-- A **Stored Property** has `HasStorage = true` and owns one location: part of the instance layout for an instance Property, or static storage for a static member of a `group`.
-- A **Computed Property** has `HasStorage = false` and contributes no storage slot.
-
-The Parser records Properties, inline and block accessors, explicit getter result annotations, and basic syntax errors. Control-flow analysis checks known accessor result Types. Accessor expansion, contextual binding of `self`, `storage`, and `value`, storage classification, access and initialization checks, general accessor type checking, Property Consume, and field-scoped standard operations are planned.
-
-### 6.1. Effective representation
-
-Expand source accessors before classifying storage, but preserve whether each is compiler-provided standard access or a custom body:
-
-| Source form | Effective access |
-| --- | --- |
-| `let x: T`, no explicit accessors | Standard get |
-| `var x: T`, no explicit accessors | Standard get and set |
-| Any explicit block or `has` accessor list | Exactly the written accessors; no implicit additions |
-
-An explicit list suppresses unwritten accessors, including get when only set is written. A bodyless getter performs the standard Copy/shared read; a bodyless setter applies Initialization/Replacement. Each binds `storage`; custom accessors determine storage by their bound uses. Equivalent user code does not confer standard field-scoped semantics. Standard get/set also provide the declaration-side prerequisites for Consume, without a separate opt-in accessor.
-
-```kimi
-var age: i32 = 0
-    get
-    set
-        storage = max(value, 0)
-// Explicit standard get plus custom set. Omitting get makes this write-only.
-
-var count: i32
-    get => items.count // Computed and read-only if items is separate state.
-```
-
-An initializer does not create storage by itself; it is valid only for a Stored Property. `let` provides immutable stored data without a setter and cannot be consumed as a Property. This differs from an owned `let` local or receiver. Read-only computed Properties use `var` and an explicit getter.
-
-### 6.2. Default getter results
-
-An omitted or bodyless getter uses the complete Property Type to select a Copy or shared-borrow operation. It never moves from the instance, implicitly duplicates object ownership, or returns an exclusive borrow. [Value Lifetime](#71-value-lifetime) defines Copy capability.
-
-| Property Type | Default Getter Result Type | Operation |
-| --- | --- | --- |
-| Copy `owner/T` (also written `T`) | `T` | Copy the stored value |
-| Non-Copy `owner/T` | `ref/T` | Shared borrow of the stored value |
-| `obj/T` | `objref/T` | Shared borrow of the owned object |
-| `rc/T`, `arc/T` | `objref/T` | Shared borrow without incrementing a reference count |
-| `ref/T` | `ref/T` | Copy the shared reference |
-| `objref/T` | `objref/T` | Copy the shared object reference |
-| `uniq/T` | `ref/T` | Shared reborrow through the stored exclusive reference |
-| `objuniq/T` | `objref/T` | Shared reborrow through the stored exclusive object reference |
-| `unsafe/T` | `unsafe/T` | Copy the pointer value; dereference remains unsafe |
-
-For ordinary borrowed receivers, a default instance getter's borrow/reborrow has Origin `from self`, bounded by the receiver even when storage carries a longer Origin. On a statically identified owned receiver, [standard field access](#610-access-after-partial-move) creates a Loan on the field instead of borrowing the entire instance; its Origin is bounded by field storage and owner validity. A shared reborrow suspends conflicting access through the stored exclusive reference while the result is live. A Copy preserves the value's existing Origin dependencies without extending them or replacing them with `self`.
-
-A default static getter that creates a borrow anchors it to the Property's storage and its current stored value. Static allocation alone does not permit replacement or destruction of that value while the borrow is live. Normal Origin and Loan rules still apply; this does not add support for the deferred feature of borrow escape into global storage.
-
-For example:
-
-```kimi
-struct Parent
-    public var child: obj/Node
-```
-
-has these conceptual signatures for ordinary borrowed-receiver access:
-
-```text
-get(self: ref/Parent) -> objref/Node from self
-set(self: uniq/Parent, value: obj/Node) -> ()
-```
-
-Reading `parent.child` borrows the object; assignment passes ownership to its setter. The standard get/set declaration above permits [Property Consume](#69-property-consume) when the caller owns the struct receiver and all use-site conditions hold. An authorized exchange or Type-specific operation follows its own rules.
-
-A stored `let value: uniq/T from source` similarly returns `ref/T from self`, leaving the exclusive capability in storage. Shared inspection does not make the containing structure Copy.
-
-For generic Properties, unresolved Type Semantics or Copy capability leave the default rule dependent. Binding may use a result Type only once constraints or specialization establish its row, and must resolve the operation before finalizing a specialization. An unconstrained Core Type parameter is not assumed Copy. Use `T is Copy` when Copy capability is required.
-
-### 6.3. Accessors
-
-A getter defines a read and follows the [function body and result rules](#551-function-bodies-and-results), with the Getter Result Type as its Target Result Type:
-
-```kimi
-var area: f64
-    get => self.width * self.height
-
-var loggedArea: f64
-    get
-        logRead()
-        return self.width * self.height
-```
-
-A computed getter must explicitly start with `get`; a bare expression in the Property body is invalid.
-
-`get -> ResultType` specifies the Getter Result Type, including any Origin annotation. Without it, even a custom getter uses the [default result Type](#62-default-getter-results); its body does not infer a different Type. Omitted result Origins on custom getters follow function Origin elision.
-
-```kimi
-var child: obj/Node
-    get -> objref/Node from self => storage@objref
-
-var freshNode: obj/Node
-    get -> obj/Node => Node.new() // Assumes new returns obj/Node.
-```
-
-A result annotation does not permit moving borrowed storage: `get -> obj/Node => storage` is invalid for stored `obj/Node` because the receiver is `ref/Self`. Custom bodies must explicitly perform required borrows or reborrows; only omitted or bodyless getters synthesize a default read.
-
-A bodyless getter with an explicit result annotation still performs the default read. The result must satisfy the annotated Type and Origin without moving storage or implicitly duplicating ownership. An incompatible annotation is an error, and annotations do not relax `let` restrictions.
-
-A setter defines a write. Its implicit input `value` has the Property Type; source uses `set`, never `set value`:
-
-```kimi
-var percentage: i32 = 0
-    set
-        storage = clamp(value, 0, 100)
-
-// obj.percentage = 120 invokes the setter with value = 120.
-```
-
-Reads invoke the getter; assignments after initialization invoke the setter and are invalid if none exists. Accessors may operate on other state:
-
-```kimi
-var width: f64
-    get => self.right - self.left
-
-    set
-        self.right = self.left + value
-```
-
-Neither accessor uses `storage`, so this Property is computed and read-write.
-
-### 6.4. Inline accessor declarations
-
-A Property may declare bodyless accessors inline with a `has` clause:
-
-```kimi
-var count: i32 has get, private set
-```
-
-The clause follows the Property initializer when one is present:
-
-```kimi
-var count: i32 = 0 has get, private set
-```
-
-The grammar is:
-
-```text
-inline-accessors := has accessor-declaration (',' accessor-declaration)*
-
-accessor-declaration := access-restriction? get ('->' ResultType)?
-                      | access-restriction? set
-```
-
-The list must contain at least one accessor. `get` and `set` may each appear at most once, in either order; unwritten accessors are not added. Access restrictions match those in a Property body. `move` is not an accessor declaration.
-
-#### 6.4.1. Concrete Properties
-
-`has` expands to the same bodyless declarations as an indented list, before storage classification:
-
-```kimi
-var count: i32 has get, private set
-// Same standard accessor declarations as:
-var otherCount: i32
-    get
-    private set
-```
-
-Standard get performs the default read and standard set writes storage. Their intrinsic storage references determine `HasStorage`; `has get` is Stored and read-only. Preserve the standard-accessor marker and field-scoped semantics during expansion rather than turning them into ordinary user bodies.
-
-Inline and indented accessor lists cannot be combined. Use an indented list for custom bodies. `let` cannot declare a setter.
-
-#### 6.4.2. Contract Property requirements
-
-Inside a `contract`, `has` declares the accessor capabilities that a conforming Property must provide:
-
-```kimi
-contract Collection
-    var count: i32 has get
-
-contract MutableCollection
-    var count: i32 has get, set
-```
-
-Conformance requires a compatible Property Type and all required accessors with sufficient accessibility. A getter must also satisfy the required Getter Result Type and Origin contract; a setter accepts the required Property Type under normal parameter compatibility rules.
-
-A contract getter requirement may specify a result Type, for example `var child: obj/Node has get -> objref/Node from self`. Without an annotation, the required Getter Result Type follows the same default result rules as a concrete Property, but no storage read or Loan is generated by the requirement itself. Here `self` denotes the required shared receiver. A conforming getter must provide a result compatible with the required result Type for every legal receiver Origin; it cannot impose a shorter lifetime than the requirement promises. Generic requirements retain unresolved default result rules until the applicable constraints or specialization determine them.
-
-A contract requirement creates no implementation, storage read, Loan, effective storage representation, or `HasStorage` classification. There is no Move accessor requirement or new Consume contract syntax. Both a stored `var count: i32 has get` and a computed `get => items.count` may satisfy the readable requirement. In concrete declarations, `has` defines bodyless accessors; in contracts, it specifies required capabilities only.
-
-Generic requirements establish declared capabilities, not flow state at a use. They do not prove that a value is currently Initialized or that no conflicting Loan exists. These conditions must be checked at each use; `has get, set` alone does not prove Stored representation or compiler-provided standard accessors.
-
-### 6.5. Contextual identifiers and receivers
-
-`storage` denotes the Property's actual owned location, not a copy. It has the Property Type, and a bound use causes the location to exist. `value` is available only in setters. These Names are not globally reserved.
-
-Ordinary instance getter/setter access has these implicit signatures:
-
-```text
-get(self: ref/Self) -> GetterResultType
-set(self: uniq/Self, value: PropertyType) -> ()
-```
-
-The getter has shared/read access to the instance and its storage; the setter has exclusive/read-write access. Receivers do not change the Type of `storage` to `ref/T` or `uniq/T`. The Getter Result Type separately describes the read or borrow result.
-
-For statically identified owned places, compiler-provided standard getter/setter access instead follows [field-scoped operations](#610-access-after-partial-move), including after Partial Move. Property Consume has no ordinary borrow receiver. Custom bodies retain the signatures above. Mutable or exclusive getter receivers are not supported. Static Properties, including `group` members, have no instance receiver.
-
-### 6.6. Initialization
-
-An initializer initializes owned storage directly and does not invoke the setter:
-
-```kimi
-var age: i32 = -1
-    set
-        storage = max(value, 0)
-```
-
-Here the initial stored value is `-1`; a later assignment of `-10` invokes the setter and stores `0`. A Property initializer is invalid when `HasStorage = false`, because no Property-owned location exists to initialize. A stored Property without a declaration initializer must be initialized according to the containing type's definite-initialization rules before it is read. After initialization, a `let` Property cannot be assigned.
-
-For a structure, evaluate declaration initializers once in [logical declaration order](#431-split-structures-and-storage-order), preserving their observable side effects regardless of physical layout or parallel compilation. A Property becomes initialized only after its initializer completes normally and its result has been secured in that Property's storage. This does not implicitly initialize Properties that have no declaration initializer.
-
-An instance Property declaration initializer must not access the partially constructed `self`, including by reading, borrowing, or writing another Property of that instance, invoking a member on `self`, or passing or otherwise exposing `self` to another operation. This restriction also applies to earlier Properties of that instance that have already been initialized. Cross-Property dependencies must be expressed in explicit construction or generated initialization code governed by definite-initialization rules; constructor syntax, that code's permitted accesses, and verification of complete initialization are specified separately. Ordinary independent calls and accesses to other fully initialized values remain allowed under normal Type and lifetime rules and run in logical order.
-
-Construction completion and current completeness follow [Value Lifetime](#712-aggregate-construction-and-completeness); absent explicit completion syntax, a constructor commits completion on normal body completion. A recoverable failure under normal Scope Exit destroys only initialized fields still owned by construction in reverse logical declaration order, never the unfinished aggregate's own `deinit`. For declaration initializers this is also reverse initialization order because they execute in logical order. Cleanup does not undo effects; [Panic Termination](#113-panic-termination) does not unwind. See [field cleanup](#1032-field-cleanup). This introduces no exception or failure-constructor syntax.
-
-For example, this declaration is invalid because its explicit getter does not refer to `storage`, so its effective representation is computed:
-
-```kimi
-var value: i32 = 10
-    get => calculateValue()
-```
-
-### 6.7. Access control
-
-Accessors inherit the Property's accessibility unless they declare a stricter restriction. An accessor cannot be more accessible than its Property. Restrictions do not change a bodyless accessor's default implementation, whether inline or in the Property body:
-
-```kimi
-public var count: i32 = 0 has get, private set
-// Public default getter; private default setter.
-
-private var value: i32
-    public set // Error: broader access than the Property.
-```
-
-### 6.8. Storage, addressability, and result semantics
-
-Owned storage and the value returned by a getter are separate concepts. A computed Property may return a borrowed or reference-like value without acquiring its own storage:
-
-```kimi
-var first: ref/T
-    get => items[0]@ref
-```
-
-Conversely, a stored Property may have custom accessors because any bound `storage` reference is sufficient for `HasStorage = true`:
-
-```kimi
-var balance: i64 = 0
-    get
-        auditRead()
-        return storage
-
-    set
-        storage = normalize(value)
-```
-
-A stored Property has an internal addressable location subject to the normal ownership and borrowing rules. Ordinary Property reads and writes still go through its accessors; address formation must not bypass a custom accessor or its access restrictions. A computed Property has no intrinsic location, although its getter may return a reference to storage owned elsewhere.
-
-Indexer declaration syntax and its accessor semantics are specified separately and are not part of this Property model.
-
-### 6.9. Property Consume
-
-`receiver.property@move` explicitly extracts the stored value under the common [Consume rules](#717-explicit-consume). Properties expose only `get` and `set`; there is no Move accessor, separate Move accessibility, or prefix `move` expression.
-
-#### 6.9.1. Eligibility and permissions
-
-Property Consume requires all of the following:
-
-| Structural condition | Requirement |
-| --- | --- |
-| Representation | Instance Stored Property of a struct |
-| Accessors | Both compiler-provided standard `get` and standard `set` |
-| Receiver | Caller-owned struct place, including an owned Temporary Place |
-| Path | A supported static Move Path |
-
-At the use site, both accessors must be accessible, receiver construction must have completed, and the target must satisfy initialization, completeness, Loan, Origin, and `deinit` conditions. Standard accessor annotations do not relax these requirements. Consume invokes neither accessor.
-
-Getter visibility bounds read access; setter visibility bounds changes to storage. Consume requires both permissions, without turning get permission alone into permission to extract ownership. Requiring standard accessors prevents bypassing custom validation or transformation. A public standard setter therefore exposes Consume wherever the standard getter is also accessible.
-
-Custom accessors, computed Properties, static Properties, and setter-less `let` Properties are ineligible. An owned `let` **receiver** may still contain a consumable `var` Property: receiver writability is needed for reinitialization, not extraction.
-
-```kimi
-struct Person
-    public var name: string has get, set
-    public var age: i32 has get, set
-
-let person = makePerson()
-let name = person.name@move // Allowed with the common Consume conditions.
-// person.name = "Alice"   // Error: receiver is not writable.
-```
-
-Get/set requirements on a generic Property do not establish Stored representation or standard accessors. [Generic constraints](#642-contract-property-requirements) may establish structural facts, but each use still needs the common legality checks. No new Consume contract syntax is introduced.
-
-#### 6.9.2. Receiver evaluation and result
-
-Evaluate the receiver once by its ordinary rules, then locate and Consume the target storage without invoking its getter or setter. Do not bypass another Property getter while evaluating the receiver. A local receiver designates its storage without acquiring the whole instance by value.
-
-An owned struct Temporary Value is [materialized](#78-temporary-values-places-and-lifetimes) before extracting its field. Remaining fields follow the temporary's usual lifetime; the extracted value follows its destination.
-
-```kimi
-let item = makeHolder().item@move
-// Move item out of the owned temporary; clean up its remaining fields normally.
-
-let name = outer.inner.name@move
-// Evaluate outer.inner through its getter.
-// A borrowed receiver forbids Consume; a complete owned temporary may allow it.
-// This never bypasses inner's getter to extract from its original storage.
-```
-
-The result has the complete **Property Type**, including Origins, rather than the Getter Result Type. Copy fields also become Moved. Moving a reference or pointer transfers that value/capability, not ownership of its referent. Failed Consume never falls back to a getter or another Property.
-
-To extract from original storage at several Property boundaries, make each operation explicit:
-
-```kimi
-var inner = outer.inner@move
-let name = inner.name@move
-inner.name = "Alice"
-outer.inner = inner@move
-```
-
-Each extraction requires Consume permission; each restoration requires writable storage and an accessible standard setter. Borrowed or object receivers remain ineligible, including `uniq/Self`; an owned struct **field value** of Type `obj/Node` is allowed when the other conditions hold.
-
-### 6.10. Access after Partial Move
-
-For a statically identified owned place whose construction previously completed, standard getters/setters operate on the target field without creating a whole-instance `ref/Self` or `uniq/Self`. This applies to all standard field operations, not just consumable Properties. Equivalent custom bodies do not gain this behavior.
-
-| Operation on an incomplete instance | Condition |
-| --- | --- |
-| Standard `get` | Target value is Initialized and, if an aggregate, complete; readable/borrowable |
-| `property@move` | All Property Consume conditions hold for the target |
-| Standard `set` | Storage is writable and setter accessible |
-| Custom accessor or whole-receiver method | Forbidden until the instance is complete |
-| Whole-instance read, Copy, Move, or borrow | Forbidden until complete |
-
-A new standard-getter Loan targets the field and is bounded by its storage and owner validity. Copying a stored shared borrow instead preserves that borrow's Origins. A whole-instance Loan overlaps every field; a Loan on a disjoint field need not block Consume. Results and remaining fields keep dependencies that later destruction or replacement must not invalidate.
-
-```kimi
-var person = makePerson() // Person as defined above.
-let borrowed = person.name
-inspect(borrowed)         // Last use of this borrow.
-let name = person.name@move
-let age = person.age@move // Allowed: age is complete even though person is not.
-person.name = "Alice"
-person.age = 30
-use(person)              // Complete again.
-```
-
-Using `borrowed` after the first Move would create a conflicting Loan. Deferred uses participate in the same checks.
-
-Standard `set` follows RHS-first [assignment](#871-simple-assignment). An Initialized destination undergoes Replacement; Moved or legally Uninitialized storage undergoes Initialization. A partially initialized aggregate field first destroys only its remaining parts. Apply these rules per path at joins. Restoring every field makes an already-constructed instance complete without rerunning its constructor; it grants no access during initial construction.
-
-```kimi
-person.name = person.name@move // Extract, then reinitialize the empty field.
-// person.name = person.name  // Error: getter yields ref/string; setter needs string.
-```
-
-### 6.11. Property implementation requirements
-
-Preserve Stored representation, standard-accessor markers, accessor accessibility, and field-scoped semantics through Binding and separate-compilation interfaces. Retain the abstract Type/storage information needed to validate Consume without exposing physical layout. Runtime state must not select between accessor implementations.
-
-Check declarations, paths, initialization/completeness, Loans, Origins, and destruction responsibility before lowering. Consume is a direct value/state transfer, not a user function call. Accessor expansion, storage classification, general Property legality, field-scoped operations, and Property Consume remain implementation work; successful parsing alone does not validate these semantics.
-
-## 7. Ownership and lifetimes
-
-### 7.1. Value Lifetime
-
-Value Lifetime separates acquisition (Copy / Move), placement (Initialization / Replacement), and Destruction. One assignment may contain both Move and Replacement. These are intended semantics; ownership analysis and runtime cleanup remain planned.
-
-#### 7.1.1. Storage, state, and responsibility
-
-**Storage** is a region holding values; a **place** identifies a location within it. Track initialization state and destruction responsibility per place:
-
-| State | Meaning | Read / borrow / Copy / Move | Write to `let` | Write to `var` |
-| --- | --- | --- | --- | --- |
-| Uninitialized | No initialized value is held | Forbidden | Only if never initialized | Initialization |
-| Initialized | An initialized value is held | Subject to Type and access rules | Forbidden | Replacement |
-| Moved | The former value/capability and responsibility were transferred | Forbidden | Forbidden | Reinitialization |
-
-Moved records the source's history, not whether the destination value is still alive. Track a `let` place's first initialization separately; neither Move nor internal Destruction resets it. This revision provides no general user operation to explicitly destroy a place and reset that history. State alone grants no access or write permission.
-
-Initialization places a value in an empty place. Destruction ends a value's lifetime and responsibility; if its storage remains, that place becomes Uninitialized after normal completion. No access is possible after the storage's lifetime ends.
-
-Owned Move transfers ownership and destruction responsibility, preventing a second destruction at the source. Borrow-value Copy/Move duplicates or transfers access capability without owning its referent; destroying a borrow does not destroy the referent. Destroying `rc/T` or `arc/T` releases an owning reference under object-lifetime rules. A non-owning `unsafe/T` neither destroys its referent nor frees its storage.
-
-Every read, borrow, Copy, or Move requires initialization on every reachable incoming path. `let` permits one initialization per path during its binding lifetime; `var` permits later initialization/replacement under ordinary permissions. Stored `let` Properties follow the same first-initialization limit and their dedicated access rules.
-
-```kimi
-var number: i32
-if condition
-    number = 1
-else
-    number = 2
-print(number)             // Both paths initialize number.
-
-let resource: Resource
-resource = makeResource()
-consume(resource)         // Move.
-resource = makeResource() // Error: let cannot be initialized again.
-```
-
-#### 7.1.2. Aggregate construction and completeness
-
-Track two facts independently: **construction completion**, recording successful completion of initialization, and **current completeness**, requiring every stored field to be Initialized. A **complete value** satisfies both. This revision has no optional-to-initialize stored fields.
-
-Constructors and staged initialization verify all fields and success conditions, commit completion, then expose or transfer the complete value. Secure a successful constructor result before normal Scope Exit. Without explicit completion-point syntax, normal constructor-body completion is the completion point; a failure exit or Panic does not commit it. Merely assigning all fields does not bypass remaining constructor work.
-
-Before completeness, whole-value reads, Copy, borrowing, Move, and exposure are forbidden, including ordinary accessors taking the whole `self`. Direct operations on initialized fields follow their own access rules. After a completed construction followed by Partial Move, field-scoped [standard Property operations](#610-access-after-partial-move) are allowed; this does not authorize initial-construction access.
-
-Partial Move changes current completeness, not the construction-completion fact. Permitted reinitialization of all missing fields restores completeness without rerunning a constructor. If a field cannot be reinitialized, that value remains incomplete and cannot be used/transferred as a whole; its remaining Initialized parts can still be used and cleaned up. No separate permanent-incomplete state is defined. Whole-value Move transfers its construction information; whole replacement uses the new value's information.
-
-#### 7.1.3. Copy and Move
-
-**Copy** implicitly duplicates a value, leaves its source Initialized, and preserves the source's destruction responsibility. It executes no user-defined code, heap-allocating duplication, reference-count change, or resource acquisition. Copying a reference does not copy its referent.
-
-**Move** transfers the value and destruction responsibility, or a borrow value's access capability, and marks the source Moved. It invokes no user code and need not clear source memory.
-
-Ordinary value acquisition selects Copy for a Copy Type and Move otherwise; reject an unavailable operation. This covers initialization, assignment sources, by-value arguments, and explicit/implicit result transfers. Explicit [Consume](#717-explicit-consume) with `@move` forces Move even for Copy Types. Borrow creation and reborrowing are separate operations; a Name or Property read does not necessarily consume storage.
-
-Copy capability is independent of `let`/`var` and flow-dependent Loans. At use, Copy obeys read restrictions and Move must not conflict with overlapping active Loans. Both preserve Origin dependencies without extending referent lifetimes. Reborrowing does not make exclusive references Copy.
-
-```kimi
-let a: i32 = 10
-let b = a                 // Copy; a stays Initialized.
-var node: obj/Node = makeNode()
-let owned = node          // Move; node becomes Moved.
-// use(node)              // Error until reinitialized.
-node = makeNode()
-```
-
-#### 7.1.4. Copy capability and explicit duplication
-
-`T` and `owner/T` are the same owned Type. Classify complete Types using Core Type, Semantics, and stored components:
-
-| Type | Classification |
-| --- | --- |
-| Owned integers, floating-point values, `bool`, `char`, Unit | Copy |
-| `ref/T`, `objref/T`, `unsafe/T` | Copy regardless of referent `T` |
-| `uniq/T`, `objuniq/T` | Non-Copy |
-| `obj/T`, `rc/T`, `arc/T` | Non-Copy even if `T` is Copy |
-| Slice | Shared-borrow representation: Copy; exclusive-borrow representation: non-Copy |
-| Noncapturing function value | Copy |
-| Owned Tuple / fixed-length array | Copy exactly when every component Type is Copy |
-| Owned user-defined struct | Non-Copy unless explicitly opted in |
-| Owned `string` | Non-Copy regardless of its internal representation |
-
-Never has no values and needs no classification. Other Types require their own rules; sharing elements alone does not establish Copy.
-
-`Copy` is a compiler-checked built-in capability. `Self is Copy` opts a struct into compiler derivation exactly when every stored field's complete Type is Copy and the struct has no user-defined `deinit`. These conditions suffice: no additional active-Loan requirement belongs to Type classification. Computed Properties contribute no fields, all-Copy fields do not imply opt-in, and users cannot supply a Copy body.
-
-```kimi
-struct Point
-    Self is Copy
-    var x: i32
-    var y: i32
-
-func duplicate<T>(value: T) -> (T, T)
-    T is Copy
-    return (value, value)
-```
-
-`T is Copy` is a generic constraint. Do not assume Copy before constraints or specialization establish it. Automatic derivation is specific to `Self is Copy`, not a general consequence of `Self is Capability`.
-
-Unknown Copy capability follows [Generic Access Effects](#577-generic-access-effects), including dependent acquisition and default-getter rules.
-
-Duplication requiring allocation, reference-count increments, or resource duplication uses explicit methods or contracts. No standard duplication contract or API spelling is specified.
-
-```kimi
-let text: string = "Hello"
-let copy = text.clone() // Illustrative explicit duplication API.
-let moved = text        // Move; text is no longer usable.
-```
-
-#### 7.1.5. Move Paths and Partial Move
-
-A **Move Path** is a statically trackable path with independent initialization state and destruction responsibility. Initial paths include stored fields, Tuple elements, fixed-length array indices determined by language constant evaluation during semantic analysis, and combinations of these. Runtime indices, dynamic containers, and user indexers are not added even for literal indices. Do not use optimization-derived constant propagation or arbitrary integer proofs to expand the accepted paths.
-
-A Move Path defines tracking granularity, not access permission:
-
-| Source access | Partial Move |
-| --- | --- |
-| Tuple element / constant-index fixed array element | Direct place acquisition normally Moves a non-Copy value |
-| Struct Property | Ordinary access uses `get`; `@move` requires Property Consume eligibility and permissions |
-
-```kimi
-var pair: (string, i32) = ("Alice", 30)
-let name = pair.0  // Partial Move; pair is incomplete.
-let age = pair.1   // Remaining initialized part is usable.
-// let all = pair  // Error: incomplete.
-pair.0 = "Bob"
-let all = pair     // Complete again.
-```
-
-Do not Move a non-Copy referent or subpart through `ref`, `uniq`, `objref`, or `objuniq`, leaving the borrowed place Moved/Uninitialized, even if a later reinitialization is planned. Exclusive access does not transfer ownership. Explicit Consume likewise cannot extract through borrowed referents or borrowed Property receivers, even for Copy values.
-
-User-defined `deinit` assumes a complete value. Reject Partial Move that invalidates this assumption for the aggregate itself or any enclosing ancestor, including nested paths, methods, and Destruction. A complete owned value whose own Type has `deinit` may move as a whole.
-
-Use [Exchange or Swap](#79-initialization-preserving-exchange), or a Type-specific operation, when ordinary extraction is forbidden. Exchange preserves initialization; Type-specific invariants remain the implementation's responsibility and may require restricted storage access. A Move Path never bypasses an accessor.
-
-#### 7.1.6. Consume verification and representation
-
-Separate two static checks; they are not runtime fallback stages:
-
-```text
-Consume
-├─ Eligibility: does the declaration, Type, and path provide the operation?
-│  ├─ supported place kind and ownership path
-│  ├─ trackable Move Path
-│  ├─ required storage and accessor properties
-│  └─ structural Partial Move / deinit restrictions
-└─ Legality: may this use site perform it?
-   ├─ required accessibility
-   ├─ target Initialized on every incoming path; complete if an aggregate
-   ├─ required receiver construction previously completed
-   ├─ no conflicting Loan; valid Origins
-   └─ actual ancestor path and Destruction conditions
-```
-
-An accessor's existence is structural; accessibility depends on the use site. Constraints can prove structural facts, not current initialization or absence of Loans. Unknown structural facts follow [generic Access Effect resolution](#577-generic-access-effects); no new Consume contract syntax is defined.
-
-An ancestor may be incomplete if the target remains Initialized and complete, and can be located without whole-value access to that ancestor. Whole-receiver reads/borrows remain forbidden. User-defined `deinit` can make a path structurally ineligible; also check the actual ancestors at each use. Moving a complete value as a whole is distinct from Partial Move.
-
-Track per-path state, destruction responsibility, first initialization of `let`, construction completion, and current completeness across branches, loops, transfers, and `defer`. Apply [Destruction lifetime checks](#766-destruction-lifetime-checking). Raw-pointer operations need not recover or repair an untracked original owner's responsibility.
-
-Lowering may elide transfers and temporary storage or use conditional cleanup flags only while preserving values, abstract place identity and lifetime, Move state, Loans, Origins, destruction responsibility, and specified failures. Optimization must not change which programs or Move Paths are legal.
-
-#### 7.1.7. Explicit Consume
-
-`E@move` transfers a value/capability and its applicable destruction responsibility. Unlike ordinary acquisition, it forces Move even for Copy Types. It produces a Temporary Value with the source's complete Type and Origin dependencies; a source Place becomes Moved. It neither converts the Type nor extends lifetime.
-
-```text
-E@move
-├─ Access Designator -> resolve Consume
-│                      ├─ eligible and legal -> extract from the Place
-│                      └─ otherwise -> compile-time error
-└─ other value-producing expression -> evaluate normally, then Move its temporary
-```
-
-[Access Designator](#81-classification-and-contexts) classification does not grant Consume permission. Failure never falls back to Read, a getter/indexer result, or materialization of that result. This applies to computed Properties and unsupported runtime indices or indexers as well as direct places. Parentheses preserve the classification. Receiver, index, and pointer subexpressions follow ordinary evaluation; Consume does not propagate into them or bypass intervening getters.
-
-Safe source kinds are owned root places, Tuple elements, fixed-array elements at language-constant indices, and eligible [stored struct Properties](#69-property-consume). Apply the same ownership and path conditions to Copy Types. Exclude safe extraction through borrowed referents, object receivers, static Properties, user indexers, and runtime indices. Generic owned arguments can move as whole values without an extra Consume contract.
-
-Raw dereference such as `(*p)@move` follows Unsafe rules instead of safe path tracking; preventing later reads or double destruction by an untracked owner is the programmer's obligation.
-
-Move is permitted from an owned `let` local without granting reinitialization. A setter-less `let` Property is ineligible, while a `var` Property inside an owned `let` receiver may be eligible. Restoring storage still requires its usual Write permission, and moving it does not reset `let`'s first-initialization history. There is no separate permanent-incomplete state.
-
-```kimi
-let number: i32 = 10
-let taken = number@move // number is Moved despite being Copy.
-let result = transform(holder.item)@move
-// Ordinary argument/getter evaluation; only transform's result is explicitly moved.
-```
-
-To move a Read result intentionally, first obtain it with `let value = expression`, then use `value@move`. References and pointers move as values/capabilities, not as ownership of their referents. Borrowing or reborrowing a Move result follows the ordinary temporary, Loan, and Origin rules; it does not restore the original place.
-
-Value transfer, destruction-responsibility transfer, and source-state updates form one operation, with no intervening user code, Destruction, or control transfer. Source memory need not be erased. Operand evaluation may execute user code, and completed effects are not rolled back on later failure.
-
-```kimi
-x@move@move // Move from x, then Move the resulting temporary.
-```
-
-### 7.2. Origins and Loans
-
-Kimigayo uses **Origins** instead of lifetime variables. An Origin describes how long a borrow remains valid; a **Loan** records which place is borrowed and whether the borrow is shared or exclusive.
-
-The Parser supports Origin lists on structures and functions, simple and qualified annotations, intersections, and named arguments. Origin name resolution, inference, variance analysis, and borrow checking are not implemented.
-
-Origin annotations appear in signatures and type declarations. Origins inside function bodies are inferred. When an annotation is omitted, conservative elision rules apply.
-
-The safe value-borrow semantics are:
-
-```kimi
-ref/T from o   // shared, immutable, and aliasable
-uniq/T from o  // exclusive and mutable
-```
-
-`uniq/T` is not implicitly copyable and cannot coexist with another overlapping borrow. The corresponding object-borrow semantics, `objref/T` and `objuniq/T`, follow the same shared and exclusive rules. This section uses `ref` and `uniq` in examples.
-
-When `from o` is omitted, the Origin elision rules below determine the Origin.
-
-#### 7.2.1. Origin expressions
-
-An Origin is the set of program points at which a borrow is guaranteed to be valid.
-
-| Kind     | Examples                | Meaning                                         |
-| -------- | ----------------------- | ----------------------------------------------- |
-| Concrete | `x`, `self`, `x.source` | Origin supplied by a parameter or receiver      |
-| Abstract | `source`, `left`        | Origin parameter declared by a function or type |
-| Static   | `static`                | Built-in maximum Origin                         |
-
-The syntax is:
-
-```text
-origin-expression := Name
-                   | origin-expression '.' Name
-                   | static
-                   | origin-expression 'and' origin-expression
-```
-
-A borrowed parameter used as an Origin denotes the Origin carried by its value, not the lexical scope of the parameter variable:
-
-```kimi
-func first(x: ref/T) -> ref/T from x
-```
-
-`x.source` denotes the abstract Origin `source` carried by `x`. Qualification is required so that values of the same Origin-bearing type remain distinguishable:
-
-```kimi
-func View.get(self: ref/Self) -> ref/T from self.source
-```
-
-Local values also have compiler-internal Origins, but these cannot be named in a public signature.
-
-#### 7.2.2. Ordering and intersection
-
-`o1 : o2` means that `o1` outlives `o2`: `region(o1) ⊇ region(o2)`.
-
-The relation is reflexive and transitive. `static` outlives every Origin.
-
-`and` is the meet of two Origins:
-
-```text
-region(o1 and o2) = region(o1) ∩ region(o2)
-```
-
-Consequently, `o1 and o2` never outlives either operand. A result declared `from x and y` is valid only in the region common to both inputs.
-
-#### 7.2.3. `static` and `Owned`
-
-```kimi
-func empty() -> ref/string from static
-```
-
-A shared borrow from `static` has no non-static lifetime dependency. Safe code cannot derive `uniq/T from static` from longevity alone: an exclusive borrow also requires a unique Loan anchor. For the same reason, an abstract Origin whose Loan requirement is `uniq` cannot be bound to `static` in safe code.
-
-`static` describes an Origin; it does not mean that a type contains no non-static borrow. The `Owned` capability expresses that condition:
-
-```kimi
-func spawn<F>(f: F)
-    F is Owned
-```
-
-A type is `Owned` when every reachable Origin dependency is absent or bound to `static`.
-
-### 7.3. Abstract Origins
-
-Functions and types may declare abstract Origin parameters separately from type parameters:
-
-```kimi
-func unwrap<T> origin s(v: View<T> from (source => s))
-    -> ref/T from s
-
-struct View<T> origin source
-    let value: ref/T from source
-```
-
-Function Origins are universally quantified. Origin parameters occupy a namespace distinct from type parameters.
-
-#### 7.3.1. Origin arguments
-
-Named Origin arguments use `from (...)` and `=>`:
-
-```kimi
-struct Pair<A, B> origin left, right
-    let a: ref/A from left
-    let b: ref/B from right
-
-Pair<A, B> from (
-    left => a,
-    right => b)
-```
-
-Named argument lists require parentheses, even for one argument. For a Type with exactly one Origin, `View<T> from v` abbreviates `View<T> from (source => v)`.
-
-#### 7.3.2. Variance
-
-The compiler infers Origin variance from all occurrences and solves recursive types to a fixed point. Explicit variance annotations are not allowed.
-
-| Position                 | Origin                   | Core Type         |
-| ------------------------ | ------------------------ | ----------------- |
-| `ref/T from o`           | Covariant in `o`         | Covariant in `T`  |
-| `uniq/T from o`          | Covariant in `o`         | Invariant in `T`  |
-| Function parameter       | Reverses polarity        | Contravariant     |
-| Function result          | Preserves polarity       | Covariant         |
-| Interior-mutable storage | Representation-dependent | Usually invariant |
-
-For an Origin parameter `p` of `S`:
-
-- covariance permits `S from (p => o1) <: S from (p => o2)` when `o1 : o2`;
-- contravariance reverses that relation;
-- invariance requires equal Origins.
-
-The direct borrow rules are:
-
-```text
-o1 : o2
---------------------------------
-ref/T from o1 <: ref/T from o2
-uniq/T from o1 <: uniq/T from o2
-```
-
-`uniq/T` remains invariant in `T`.
-
-#### 7.3.3. Loan requirements
-
-Each abstract Origin has an inferred Loan requirement:
-
-```text
-none < ref < uniq
-```
-
-Using an Origin in `ref/T` requires `ref`; using it in `uniq/T` requires `uniq`. Multiple uses take the stronger requirement, and requirements propagate through nested Origin-bearing types.
-
-```kimi
-struct View<T> origin source
-    let value: ref/T from source       // loan(source) = ref
-
-struct MutView<T> origin source
-    let value: uniq/T from source      // loan(source) = uniq
-```
-
-The requirement determines which caller-side Loan must remain active while a returned or stored Origin-bearing value is live. It is not an additional Copy classification condition: [Copy capability](#714-copy-capability-and-explicit-duplication) is structural, while actual Loan conflicts are checked at each use.
-
-### 7.4. Origin elision and return contracts
-
-When a result Origin is omitted, the compiler applies these rules in order:
-
-1. If the result contains no borrow, no result-Origin constraint is generated.
-2. If there are directly borrowed parameters, each omitted result Origin becomes the meet of all their Origins.
-3. Otherwise, an omitted shared result Origin is `static`. If that would create an exclusive static borrow, an explicit valid Origin is required.
-
-Examples:
-
-```kimi
-func first(x: ref/T) -> ref/T
-// result Origin: x
-
-func choose(x: ref/T, y: ref/T) -> ref/T
-// result Origin: x and y
-
-func empty() -> ref/string
-// result Origin: static
-```
-
-Only direct borrowed parameters participate in rule 2. Origins nested in aggregate inputs must be selected explicitly:
-
-```kimi
-func get(v: View<T>) -> ref/T from v.source
-```
-
-An explicit `from` clause overrides elision. Thus this result depends on `self`, not on the conservative meet `self and key`:
-
-```kimi
-func lookup(self: ref/Self, key: ref/Key)
-    -> ref/V from self
-```
-
-#### 7.4.1. Return contracts
-
-A declared return Origin limits the dependency visible to callers without requiring a borrow from that specific input. Every explicit or implicit result, including unreachable ones, must subtype the declared result Type under [result validation](#98-result-validation) and [reachability](#982-reachability).
-
-For example, `ref/T from static` may satisfy `ref/T from x` because `static : x`, provided the Origin position is covariant. Invariant positions require equality, while contravariant positions reverse the subtype direction.
-
-`from x and y` is deliberately conservative in two ways:
-
-- the result region is `region(x) ∩ region(y)`;
-- Loans for both possible sources remain active while the result is live.
-
-```kimi
-let r = choose(a, b)
-b.mutate()       // Error: the Loan on b is still active.
-use(r)
-```
-
-The caller cannot rely on which argument the implementation actually selected. An Origin-bearing result type with distinct Origin parameters can preserve more precision.
-
-### 7.5. Exclusive Origins
-
-An exclusive borrow requires both a valid Origin and a unique Loan anchor. An Origin proves longevity but not uniqueness.
-
-A shared borrow may be returned from a stored Origin:
-
-```kimi
-func View.get(self: ref/Self)
-    -> ref/T from self.source
-```
-
-Returning `uniq/T from self.source` from `self: uniq/Self` is invalid because detaching the result from the current `self` Loan could allow a second exclusive borrow:
-
-```kimi
-func View.bad(self: uniq/Self)
-    -> uniq/T from self.source       // Error
-```
-
-One valid form consumes the Origin-bearing owner:
-
-```kimi
-func View.into_uniq(self: Self)
-    -> uniq/T from self.source
-```
-
-Moving `self` prevents reuse of the capability.
-
-Alternatively, reborrow through the current exclusive receiver:
-
-```kimi
-func View.get_uniq(self: uniq/Self)
-    -> uniq/T from self
-```
-
-The parent Loan remains active, and access through it is suspended, while the returned reborrow is live.
-
-### 7.6. Borrow checking
-
-Function bodies are lowered to a control-flow graph. A **program point** is a position immediately before or after an operation. A [Place](#81-classification-and-contexts) does not by itself grant write permission. The lowered representation uses these projections:
-
-```text
-place := local
-       | place '.' Name
-       | place '.' TupleIndex
-       | '*' place
-       | place '[' _ ']'
-```
-
-These projections describe storage, including lowered slots, rather than granting direct access to source-level Property storage. [Properties](#68-storage-addressability-and-result-semantics) use accessors. Parentheses preserve a place. Reading a place copies, moves, or borrows according to the required Type and access permissions.
-
-A **region** is a set of program points. Local regions are inferred; Origins in signatures introduce universal regions; `static` is the maximum region.
-
-A Loan is:
-
-```text
-Loan = (place, mode, region)
-mode = ref | uniq
-```
-
-It is active at program point `P` exactly when `P` belongs to its region. Regions follow actual uses rather than lexical scope, providing non-lexical lifetimes:
-
-```kimi
-let r = x@ref
-use(r)
-x.mutate()       // Allowed: r is no longer live.
-```
-
-#### 7.6.1. Constraints
-
-Type checking generates these constraints:
-
-| Constraint      | Rule                                                         |
-| --------------- | ------------------------------------------------------------ |
-| Subtyping       | Assignment and argument passing require `type(value) <: type(destination)`. |
-| Liveness        | If a value containing `o` may be used after `P`, then `P` belongs to `region(o)`. |
-| Outlives        | `a : b` requires `region(a) ⊇ region(b)`.                    |
-| Well-formedness | Every Origin in `T` observable through `ref/T from o` or `uniq/T from o` must outlive `o`. |
-| Calls           | Origin arguments and result Loan requirements are instantiated as described under Calls and Origin propagation. |
-
-The well-formedness rule prevents borrowed contents from expiring before the outer borrow.
-
-#### 7.6.2. Place overlap and conflicts
-
-Two places overlap when an operation on one may affect the other. Static place analysis uses only these structural rules for proving non-overlap:
-
-| Places | Result |
-| --- | --- |
-| Identical place, or a place and an inline subpart | Overlap |
-| Independent local roots and their inline parts | Disjoint |
-| Distinct inline stored fields, Tuple elements, or different constant fixed-array indices of one aggregate, and their subparts | Disjoint |
-| Referents of simultaneously live valid `uniq`/`objuniq` borrows with distinct Loan anchors | Disjoint by exclusivity |
-| Other reference dereferences | Follow Loan provenance and apply these rules |
-| Anything not decided above | Non-overlap unproven; reject operations requiring proof |
-
-Inline parts exclude pointer/reference referents. Distinct shared-reference or raw-pointer variables alone do not prove independence. Constants use language constant evaluation, not optimization; runtime index comparisons such as `i != j` do not establish disjointness. No arbitrary integer proof or optimizer result changes acceptance. Simultaneous exclusive borrows may be used only through their valid access paths; reborrowing still suspends conflicting parent access.
-
-These are storage rules, not permission to bypass Property accessors. Field-scoped standard operations may borrow disjoint fields separately; custom whole-receiver operations retain their whole-instance footprint.
-
-Each operation is checked against every active Loan on an overlapping place:
-
-| Operation               | Existing `ref` | Existing `uniq` |
-| ----------------------- | -------------- | --------------- |
-| Read                    | Allowed        | Forbidden       |
-| Write or move           | Forbidden      | Forbidden       |
-| Create `ref`            | Allowed        | Forbidden       |
-| Create `uniq`           | Forbidden      | Forbidden       |
-| Destroy the borrowed place | Forbidden      | Forbidden       |
-
-This enforces shared aliasing or mutation, but never both simultaneously.
-
-#### 7.6.3. Reborrowing
-
-Borrowing through an exclusive borrow creates a child Loan. While the child is live, the parent remains live but access through it is suspended. Overlapping access is rejected by the normal conflict rules.
-
-```kimi
-func bump(n: uniq/i32)
-
-var v = 0
-bump(v@uniq)
-bump(v@uniq)
-```
-
-Each call creates a temporary reborrow; the first ends before the second starts.
-
-#### 7.6.4. Calls and Origin propagation
-
-For a call, the compiler:
-
-1. creates fresh regions for the callee's abstract Origins;
-2. instantiates parameter types and checks argument subtyping;
-3. applies declared outlives constraints;
-4. instantiates the return type;
-5. recursively collects its Origin dependencies and Loan requirements;
-6. creates the required caller-side Loans and keeps them active for the corresponding result regions.
-
-This applies to direct borrow results and nested aggregate results:
-
-```kimi
-func make(a: ref/A, b: ref/B)
-    -> Pair<A, B> from (
-        left => a,
-        right => b)
-```
-
-While the returned `Pair` is live, shared Loans on both `a` and `b` remain active. A dependency requiring `uniq` propagates an exclusive Loan. `static` creates no caller-side Loan.
-
-A call's receiver and argument Loans begin as each borrow/reborrow is formed in evaluation order, before later arguments and defaults. In particular, an exclusive receiver is active while explicit arguments are evaluated. No two-phase reservation exception is defined; intrinsic Exchange/Swap use the same rule.
-
-#### 7.6.5. Universal regions
-
-Every Origin in a function signature is universally quantified. The implementation must work for every legal caller instantiation, so a local region cannot be widened to satisfy a universal return Origin:
-
-```kimi
-func bad(x: ref/T) -> ref/T from x
-    let local = T.new()
-    return ref/local       // Error
-```
-
-#### 7.6.6. Destruction lifetime checking
-
-The [Destruction rules](#103-aggregate-destruction-and-deinit) and [Scope Exit](#102-scope-exit-destruction) determine responsibility and order. Destruction lifetime checking applies to every Origin/Loan that Destruction may observe and requires validity at each such observation.
-
-```text
-DestructorUsePoints(value, origin) ⊆ region(origin)
-```
-
-Destruction that observes no Origin/Loan adds no lifetime requirement. Conservatively assume that every user-defined `deinit` observes all reachable Origins even if its body does not use them, and apply the same checking recursively to field Destruction. No relaxation mechanism is defined.
-
-```kimi
-struct Logger origin sink
-    let out: uniq/Writer from sink
-
-    deinit
-        observe(self.out)
-```
-
-Here `observe` accepts `ref/Writer`; reading `self.out` shares the stored capability instead of extracting it. `sink` must remain valid during Destruction, even if the `deinit` body were replaced with `()`.
-
-#### 7.6.7. Reference algorithm
-
-A conforming borrow checker may proceed as follows:
-
-```text
-1. Type-check and generate subtype constraints.
-2. Build the control-flow graph and compute liveness.
-3. Generate Origin and well-formedness constraints.
-4. Instantiate call-site Origins and propagate result Loan requirements.
-5. Solve region constraints to a fixed point.
-6. Reject local-to-universal region flows.
-7. Compute active Loans and check overlap conflicts.
-8. Check reborrows and destructor observations.
-```
-
-The region and Loan analyses may be implemented using Datalog or an equivalent fixed-point solver.
-
-### 7.7. Deferred lifetime features
-
-This revision does not define:
-
-- abstract Origin parameters on contracts or trait-like abstractions (the Property getter receiver/result contracts above do not introduce contract-level Origin parameters);
-- default Origins for trait objects;
-- higher-ranked Origins;
-- borrow escape into heap or global storage;
-- lending iterators;
-- relaxation of conservative Destruction lifetime checking;
-- explicit completion-point syntax and further constructor access rules, fields exempt from initialization, additional dynamic Move Paths, a standard duplication contract/API, or exchange API spelling/resolution;
-- delayed exclusive-Loan activation (reservation), inter-thread exchange atomicity, or cancellation cleanup guarantees.
-
-These features require extensions to the core rules above and must not be inferred from this revision.
-
-### 7.8. Temporary values, places, and lifetimes
-
-#### 7.8.1. Materialization
-
-| Term | Meaning |
-| --- | --- |
-| Temporary Value | An expression's temporary result; not its original persistent Place |
-| Temporary Place | Anonymous storage holding that value |
-| Materialization | Giving a Temporary Value a stable Temporary Place when an operation needs storage |
-
-Unless qualified, *temporary* means Temporary Value. Merely using physical storage does not make a result its source Place.
-
-```text
-Temporary Value
-    -> materialize if stable storage is needed
-       -> Temporary Place
-          ├─ permitted Borrow / Reborrow
-          └─ permitted field / element operations
-```
-
-Materialization neither reevaluates the expression nor adds Copy, resource duplication, reference-count increments, heap allocation, or lifetime extension. It preserves the same value and destruction responsibility. It must not turn failed Consume into a Read or restore a moved source.
-
-A newly owned temporary has exclusive writable capability over its whole Temporary Place unless another rule restricts access; it needs no `let`/`var` binding. Materialization realizes this capability without upgrading borrows, granting referent or Property permissions, ignoring readonly parts, or bypassing Loans, Origins, construction, or `deinit` conditions.
-
-#### 7.8.2. Lifetime and borrowing
-
-Unless a construct needs a longer lifetime, a temporary lasts until the outermost expression that created it finishes. Argument temporaries last through the call; iteration sources and `match` subjects last for their required use. Destroy remaining temporaries in reverse creation order. After a Move, the transferred value follows its destination's lifetime, while the original Temporary Place keeps its original lifetime and destroys only remaining Initialized parts.
-
-New borrows of owned temporaries depend on their Temporary Places and cannot outlive them. Exclusive capability permits the applicable explicit exclusive borrow; it does not bypass the [Borrow table](#8645-explicit-borrow-and-reborrow).
-
-```kimi
-inspect(makeResource()@ref)
-modify(makeResource()@uniq)
-inspect(resource@move@ref) // resource remains Moved.
-
-let view = makeResource()@ref
-// inspect(view) // Error: borrowed temporary expired after the initializer.
-
-let owned = makeResource()
-let lastingView = owned@ref // Borrow the retained local instead.
-inspect(lastingView)
-```
-
-A temporary that is already a borrow follows shared-reference Copy or Reborrow rules. Preserve its referent Origins; do not substitute a borrow of storage holding the reference value.
-
-```kimi
-let view = makeView()@ref // If makeView returns ref/T, preserve its Origins.
-```
-
-Borrow and Slice formation never extend the source's lifetime. Result transfers secure values before common [scope-exit cleanup](#102-scope-exit-destruction); Panic follows [Error Handling](#113-panic-termination).
-
-### 7.9. Initialization-preserving exchange
-
-| Operation | Old value | Placement | Result |
-| --- | --- | --- | --- |
-| Initialization | None | Fill empty storage | Unit for assignment |
-| Replacement (`=`) | Destroy remaining old parts | Place after destruction | Unit |
-| `Exchange` | Transfer without destruction | Keep target initialized | Old value |
-| `Swap` | Exchange both values without destruction | Keep both initialized | Unit |
-
-`Exchange(place, with: value)` and `Swap(placeA, placeB)` denote language-provided intrinsic exchange operations. Their semantic requirements are defined here; final API spellings and resolution remain separate. In examples, `place` denotes **authorized direct storage access**, not permission to bypass a Property getter or expose its private storage. Property Consume permission alone does not grant such access.
-
-#### 7.9.1. Evaluation and transfer
-
-- Each target is Initialized and permits exclusive writing. Values have identical complete Types, including Origins; conversions finish before exchange begins.
-- Evaluate targets and arguments left to right. A target's exclusive Loan begins when its borrow argument is formed and remains active during later argument evaluation and exchange, just as for an ordinary exclusive receiver call. There is no reservation or delayed-activation exception.
-- Exchange itself runs no user code, Destruction, Panic-producing work, or control transfer. Internal empty states cannot be observed by the program. This does not guarantee inter-thread atomicity.
-- If argument evaluation fails, do not exchange; apply normal temporary cleanup and preserve Origin/Loan dependencies.
-
-`Exchange` secures its replacement first, then transfers the old target value and responsibility to the result and the replacement's responsibility to the target. Preparing the replacement must not empty the target or create a conflicting borrow. `Swap` transfers both values and responsibilities while keeping both targets Initialized and returns Unit; static non-overlap is required.
-
-```text
-Before: target = old, replacement = new
-After:  target = new, result = old
-```
-
-```kimi
-// p denotes an authorized writable i32 place.
-Exchange(p, with: p + 1) // Error: later read conflicts with the target Loan.
-let next = p + 1
-Exchange(p, with: next)  // Valid: computed before borrowing the target.
-
-// x is a writable non-Copy owned value.
-x = x                   // Valid: RHS-first Move and reinitialization.
-Exchange(x, with: x)     // Error: replacement would empty the target.
-```
-
-A Type-specific operation with `uniq/Self` may use authorized field exchange to return the old owned field without leaving the receiver incomplete. It must preserve the Type's invariants and all dependencies.
-
-#### 7.9.2. Static non-overlap
-
-Use the structural [place analysis](#762-place-overlap-and-conflicts). Distinct independent roots, distinct inline fields/Tuple elements/constant fixed-array indices, and valid simultaneous exclusive borrows with distinct Loan anchors can prove non-overlap. Identical or containing places overlap. Follow Loan provenance for other dereferences; different raw pointers or shared-reference variables alone prove nothing.
-
-```text
-Function parameters: a: uniq/T, b: uniq/T
-Swap(referent(a), referent(b)) // Conceptual storage notation: distinct live anchors.
-```
-
-Unknown relationships are rejected. Do not accept `Swap(a[i], a[j])` merely from `i != j`, arbitrary integer facts, or optimization. This bounds the required proof and the accepted programs, not just compiler effort.
-
-## 8. Expressions and operators
-
-This chapter defines expression syntax and intended semantics. Parsing a form does not imply that its name resolution, type checking, or runtime behavior is implemented; see [implementation status](#89-implementation-status).
-
-### 8.1. Classification and contexts
-
-This source-language classification is independent of the internal Koto inheritance hierarchy:
+The source-language expression forms are:
 
 ```text
 Expressions
@@ -2774,9 +1481,9 @@ Expressions
 │  ├─ Invocation (including $panic(...))
 │  └─ Generic Application
 ├─ Index / Slice Expression
-├─ Conversion Expression
+├─ Explicit @ Operation: Type/Semantics adaptation or Consume
 ├─ Unary Expression
-│  ├─ Sign / Logical Negation / Dereference / From-end Index / Property Move
+│  ├─ Sign / Logical Negation / Dereference / From-end Index
 │  └─ Prefix / Postfix Increment and Decrement
 ├─ Binary Expression
 │  ├─ Arithmetic / Shift / Bitwise
@@ -2797,30 +1504,15 @@ Related Syntax
 └─ Composition Root: $
 ```
 
-A **Place** is a storage location that can hold a value. A **Place expression** designates it; parentheses preserve the classification. A Place is distinct from a **Temporary Value**, even when that result is materialized into a separate [Temporary Place](#78-temporary-values-places-and-lifetimes).
+Value and access categories follow [Values, places, and storage](#34-values-places-and-storage).
 
-An **Access Designator** identifies an access target after Name/Type resolution: a local or parameter, Property, Tuple element, index, or built-in dereference. It includes computed Properties and user indexers without promising storage or Consume permission.
+A normally completing expression produces a typed result, including [Unit](#315-unit-and-never-types). [Value and Discard Contexts](#72-blocks-and-evaluation-contexts) determine how that result is used. Discarding it preserves side effects and type, ownership, and destruction checks. Assignment requires a writable [place](#34-values-places-and-storage) or an accessible Property setter; a readable Property need not expose borrowable storage.
 
-```text
-Access Designator -> operation-specific resolution
-                    ├─ Place access
-                    ├─ value acquisition, such as a getter result
-                    └─ error
-```
+An ordinary indented Block is a syntax container, not an arbitrary value expression. Use a selection or Labeled Block to obtain a value from several operations. `unsafe:` and `defer:` are statements and cannot be initializers or arguments. `let` / `var` declarations are not general expressions; their use in `if` / `while` conditions follows the dedicated [condition syntax](#772-if).
 
-These are resolution outcomes, not fallback stages. A failed Consume cannot become Read. Permitted function/method references produce function values; locals holding such values are Access Designators. Classify by resolved meaning, not spelling alone. Parentheses do not change the category.
+Source delimiters and continuation follow [Lines, indentation, and continuation](#22-lines-indentation-and-continuation).
 
-A normally completing expression produces a typed result, including [Unit](#415-unit-and-never-types). [Value and Discard Contexts](#92-blocks-and-evaluation-contexts) determine how that result is used. Discarding it preserves side effects and type, ownership, and destruction checks. Assignment requires a writable [place](#76-borrow-checking) or an accessible Property setter; a readable Property need not expose borrowable storage.
-
-An ordinary indented Block is a syntax container, not an arbitrary value expression. Use a selection or Labeled Block to obtain a value from several operations. `unsafe:` and `defer:` are statements and cannot be initializers or arguments. `let` / `var` declarations are not general expressions; their use in `if` / `while` conditions follows the dedicated [condition syntax](#972-if).
-
-#### 8.1.1. Delimiters and line breaks
-
-Newlines and `;` separate expressions; commas separate arguments or elements and are not binary operators. Indentation rules still apply within `()` and `[]`: indent continued arguments and elements one level, and optionally align the closing delimiter with the opening line. A method-chain continuation starting with `.` also uses one extra indentation level.
-
-This specification does not allow arbitrary binary operators at the start of a line to continue the previous line. `:`, `=>`, `->`, and `in` are delimiters for their respective constructs, not general binary operators. A trailing semicolon does not change result or evaluation-context rules.
-
-### 8.2. Evaluation order
+### 6.2. Evaluation order
 
 Evaluate operands once, from left to right, unless a construct specifies an exception or conditional evaluation. Precedence determines grouping; evaluation order determines the order of effects.
 
@@ -2834,19 +1526,19 @@ Evaluate operands once, from left to right, unless a construct specifies an exce
 | `start()..end()` | Start boundary, end boundary. |
 | `"\(a()) / \(b())"` | Evaluate and stringify each interpolation in source order. |
 
-`and`, `or`, and selections evaluate only the required operands or branches. [Simple assignment](#871-simple-assignment) evaluates and secures its right side before its target; compound assignment retains target-first evaluation. Type arguments and conversion target Types are not evaluated at runtime.
+`and`, `or`, and selections evaluate only the required operands or branches. [Simple assignment](#671-simple-assignment) evaluates and secures its right side before its target; compound assignment retains target-first evaluation. Type arguments and conversion target Types are not evaluated at runtime.
 
-An abrupt Completion, divergence, or Panic prevents evaluation of later operands and the enclosing operation. Unevaluated syntax still undergoes name, Type, and transfer-target checks; syntax excluded by `#if` / `#match` follows [conditional compilation](#22-compile-time-directives). [Temporary lifetimes](#78-temporary-values-places-and-lifetimes) and scope-exit rules govern retained values.
+An abrupt Completion, divergence, or Panic prevents evaluation of later operands and the enclosing operation. Unevaluated syntax still undergoes name, Type, and transfer-target checks; syntax excluded by `#if` / `#match` follows [conditional compilation](#13-compile-time-directives). [Temporary lifetimes](#36-temporary-values-places-and-lifetimes) and scope-exit rules govern retained values.
 
-### 8.3. Primary expressions
+### 6.3. Primary expressions
 
-#### 8.3.1. Type inference
+#### 6.3.1. Type inference
 
 Expected Types from declarations, parameters, and results propagate into expressions. Otherwise infer from operands. Ordinary numeric operations require the same numeric Type; integer widths, signedness, and integer/floating-point Types do not mix implicitly.
 
 An untyped integer literal adopts an expected integer Type if its value fits. Without one, it defaults to `i32`; a value outside that range requires an explicit Type. A floating-point literal adopts an expected `f32` or `f64`, defaulting to `f64`. Check a directly negated integer literal as a signed value, allowing the minimum of a signed Type.
 
-Explicit `@f32` / `@f64` on a direct untyped integer literal follows the [explicit-literal adaptation rule](#864-explicit-operations), without an intermediate default integer Type. This does not add implicit integer-to-float fitting.
+Explicit `@f32` / `@f64` on a direct untyped integer literal follows the [explicit-literal adaptation rule](#664-explicit-operations), without an intermediate default integer Type. This does not add implicit integer-to-float fitting.
 
 ```kimi
 let a: i64 = 10
@@ -2858,16 +1550,16 @@ let minimum: i8 = -128
 
 There are no implicit conversions between `bool`, `char`, and numbers. Conditions require `bool`, not an integer or pointer. Borrowing and reborrowing are separate adaptations governed by ownership rules.
 
-During [overload resolution](#57-overload-resolution-and-inference), fit unresolved literals independently to candidates before defaulting; numeric defaults do not break ties. Expected Types and nested-call/function inference are limited by [inference boundaries](#575-inference-boundaries-and-specialization). Locals never infer backward from later uses.
+During [overload resolution](#52-overload-resolution-and-inference), fit unresolved literals independently to candidates before defaulting; numeric defaults do not break ties. Expected Types and nested-call/function inference are limited by [inference boundaries](#525-inference-boundaries-and-specialization). Locals never infer backward from later uses.
 
-#### 8.3.2. Names, literals, and grouping
+#### 6.3.2. Names, literals, and grouping
 
 | Form | Meaning |
 | --- | --- |
 | `name` | Reference to a visible binding, function, or other named entity. |
-| `123`, `0xff`, `1.5`, `true`, `'あ'`, `"text"` | Scalar literals; see [lexical structure](#3-lexical-structure). |
+| `123`, `0xff`, `1.5`, `true`, `'あ'`, `"text"` | Scalar literals; see [lexical structure](#2-source-and-lexical-structure). |
 | `"value = \(value)"` | Interpolated string; the embedded Type must support stringification. |
-| `null` | Contextually typed [raw null pointer](#461-null-and-equality). |
+| `null` | Contextually typed [raw null pointer](#381-null-and-equality). |
 | `()` | Unit value. |
 | `(value)` | Grouped expression; preserves a place. |
 | `(value,)`, `(a, b)` | One-element or multi-element Tuple. |
@@ -2884,7 +1576,7 @@ let names = [1: "one", 2: "two",]
 let message = "first = \(values[0])"
 ```
 
-#### 8.3.3. Dictionary construction and duplicate keys
+#### 6.3.3. Dictionary construction and duplicate keys
 
 Equivalent duplicate keys are errors. A duplicate detectable as a constant is a compile-time error. Otherwise, process each entry in source order:
 
@@ -2907,13 +1599,13 @@ When checked at runtime, the first entry is evaluated and inserted before checki
 
 If key evaluation, duplicate checking, or value evaluation does not complete normally, do not insert that entry or process later entries. No partially constructed dictionary is returned, and completed side effects are not rolled back. The duplicate's diagnostic location is the later key expression. Termination and cleanup follow [Panic Termination](#113-panic-termination).
 
-### 8.4. Access and application
+### 6.4. Access and application
 
-#### 8.4.1. Member access
+#### 6.4.1. Member access
 
-`expression.name` selects a member. [Qualified lookup](#564-qualification-and-extensions) distinguishes Container and value paths, reports ambiguity when both succeed, and never implicitly inserts `self`. The right side of `.` must be a member Name or an in-range decimal integer literal selecting a Tuple element; `pair.0` selects its first element. Dynamic member lookup with an arbitrary expression is not defined.
+`expression.name` selects a member. [Qualified lookup](#514-qualification-and-extensions) distinguishes Container and value paths, reports ambiguity when both succeed, and never implicitly inserts `self`. The right side of `.` must be a member Name or an in-range decimal integer literal selecting a Tuple element; `pair.0` selects its first element. Dynamic member lookup with an arbitrary expression is not defined.
 
-Ordinary Property reads use the getter; writes require the setter; `property@move` follows [Property Consume](#69-property-consume). Check the selected operation's permissions and receiver conditions. Type/Semantics `@` on a Property adapts its getter result, not backing storage. Tuple and fixed-array places follow [Move Paths](#715-move-paths-and-partial-move). Raw pointers do not dereference automatically: write `(*pointer).name` in an Unsafe Block; this does not grant safe struct-Property Consume.
+Ordinary Property reads use the getter; writes require the setter; `property@move` follows [Property Consume](#89-property-consume). Check the selected operation's permissions and receiver conditions. Type/Semantics `@` on a Property adapts its getter result, not backing storage. Tuple and fixed-array places follow [Move Paths](#913-move-paths-and-partial-move). Raw pointers do not dereference automatically: write `(*pointer).name` in an Unsafe Block; this does not grant safe struct-Property Consume.
 
 ```kimi
 let count = collection.count
@@ -2921,19 +1613,19 @@ collection.count = 10   // Requires a setter and write permission.
 let first = pair.0
 ```
 
-#### 8.4.2. Invocation and generic application
+#### 6.4.2. Invocation and generic application
 
 `callee(arg1, arg2)` invokes a function, method, or function value. Zero arguments and a trailing comma are allowed. `callee<T, U>(args)` applies explicit type arguments before calling.
 
-Argument mapping, Type adaptation, expected-result filtering, candidate comparison, and final usage checks follow [overload resolution](#57-overload-resolution-and-inference). Named arguments use `name: expression`; positional arguments must precede them. Function values retain positional-only calling, and unsafe calls retain their [additional restrictions](#553-unsafe-functions). Explicit function type arguments must provide the entire required list.
+Argument mapping, Type adaptation, expected-result filtering, candidate comparison, and final usage checks follow [overload resolution](#52-overload-resolution-and-inference). Named arguments use `name: expression`; positional arguments must precede them. Function values retain positional-only calling, and unsafe calls retain their [additional restrictions](#463-unsafe-functions). Explicit function type arguments must provide the entire required list.
 
 In an expression, `<` introducing type arguments must be adjacent to the target name and have a matching `>`. Thus `f<T>(x)` applies type arguments while `a < b` compares values. Nested type arguments may split `>>` into two closing delimiters. Use spaces around comparison operators to avoid ambiguity.
 
-Type-argument inference and specialization follow the declared inference boundaries but remain unimplemented. Constant type-argument and user-defined construction conventions need additional rules. This syntax does not automatically make every `T(args)` a valid construction.
+Type-argument inference and specialization follow the declared inference boundaries. Constant type-argument and user-defined construction conventions need additional rules. This syntax does not automatically make every `T(args)` a valid construction.
 
-#### 8.4.3. Function expressions
+#### 6.4.3. Function expressions
 
-An anonymous function uses `func (parameters) -> Result => expression` or an indented body. Creating it does not execute its body; invocation does. Results follow [function body rules](#551-function-bodies-and-results).
+An anonymous function uses `func (parameters) -> Result => expression` or an indented body. Creating it does not execute its body; invocation does. Results follow [function body rules](#461-function-bodies-and-results).
 
 ```kimi
 let twice = func (value: i32) -> i32 => value * 2
@@ -2942,13 +1634,48 @@ let result = twice(5)
 
 Initially, function values cannot capture outer local bindings. Diagnose capture until capture lists, Copy/Move behavior, borrow lifetimes, and calling capabilities are specified together. Do not implicitly copy captured bindings or extend their lifetimes.
 
-#### 8.4.4. Indexing and slicing
+#### 6.4.4. Indexing and slicing
 
-`value[index]` selects an element; `value[range]` produces a Slice. [Index, Range, and Slice](#44-index-range-and-slice) defines sequence boundaries and lifetimes. [Raw pointer indexing](#463-pointer-arithmetic-and-indexing) instead uses signed `isize` displacements, permits negative offsets, and has no length check; From-end Indices and Ranges are forbidden.
+This section describes indexing values with a length. [Raw pointer indexing](#383-pointer-arithmetic-and-indexing) instead uses signed offsets, has no implicit bounds check, and forbids from-end and Range indexing.
+
+An element Index may be a nonnegative `isize` or a From-end Index `^n`. Applying it with `value[index]` selects one element; the resolved Index must satisfy `0 <= index < length`.
+
+A prefix caret denotes an Index measured from the end. `^n` resolves to `length - n`, where `n` is a nonnegative `isize`. Therefore, `^1` selects the last element. `^0` is a valid Range boundary but is not a valid element Index. Infix `^` remains the exclusive-or operator.
+
+A Range is an expression with optional start and end boundaries. Each explicit boundary is either a nonnegative `isize` Index or a from-end Index.
+
+| Form       | Selected boundaries                  |
+| ---------- | ------------------------------------ |
+| `start..end`  | From `start`, excluding `end`     |
+| `start..=end` | From `start`, including `end`     |
+| `start..`     | From `start` to the end            |
+| `..end`       | From the beginning, excluding `end` |
+| `..=end`      | From the beginning, including `end` |
+| `..`          | The entire range                   |
+
+The omitted start boundary is zero. The omitted end boundary is the length of the indexed value and is exclusive. An inclusive Range must have an end boundary. A Range retains its boundary information until application to a sequence resolves length-dependent boundaries.
+
+Ranges are non-associative; an unparenthesized chained Range such as `a..b..c` is invalid. Parentheses do not make a Range a valid numeric boundary of another Range. See the [precedence table](#65-precedence-and-associativity).
+
+Applying a Range with `value[range]` produces a Slice over the selected consecutive elements. A Slice does not copy its elements. Its Origin derives from the indexed value, so it cannot outlive that value.
+
+After resolving from-end boundaries, an exclusive Range must satisfy `0 <= start <= end <= length`. An inclusive Range must satisfy `0 <= start <= end < length`. An exclusive Range with equal boundaries is empty.
+
+Invalid Indices or boundaries, including negative `n` in `^n`, are check failures under [Panic Termination](#113-panic-termination). Safe sequence access may omit a check only when safety is proven.
+
+```kimi
+let values = [10, 20, 30, 40]
+let last = values[^1]       // 40
+let middle = values[1..^1]  // Slice referring to 20 and 30.
+let all = values[..]
+let empty = values[2..2]
+```
 
 Dictionary indexing is a separate operation: reading `dictionary[key]` requires an existing key and initiates implicit Panic if it is absent. Fallible lookup, insertion, and user-defined indexer declarations require separate library rules. Integer indexing into a `string` does not yet select a character; the specification must first choose byte, Unicode scalar, or grapheme indexing.
 
-### 8.5. Precedence and associativity
+Target and index evaluation follows [evaluation order](#62-evaluation-order).
+
+### 6.5. Precedence and associativity
 
 Earlier rows bind more tightly. Left associativity groups `a op b op c` as `(a op b) op c`; right associativity groups it as `a op (b op c)`. Grouping does not guarantee type correctness or change evaluation order.
 
@@ -2969,7 +1696,7 @@ Earlier rows bind more tightly. Left associativity groups `a op b op c` as `(a o
 | 13 | `..` `..=` | Non-associative |
 | 14 | `=`, compound assignments | Right |
 
-`is` has the asymmetric [requirement-expression rule](#532-requirement-expressions): comparison strength on the left, and a requirement through `or` on the right. It is separate from the six value comparisons above. `as` is reserved.
+`is` has the asymmetric [requirement-expression rule](#442-requirement-expressions): comparison strength on the left, and a requirement through `or` on the right. It is separate from the six value comparisons above. `as` is reserved.
 
 Unparenthesized comparison chains such as `a < b < c`, `a == b == c`, and `a < b == flag` are syntax errors. Write `a < b and b < c` or `(a < b) == flag`; each comparison still requires valid operand Types.
 
@@ -2990,21 +1717,21 @@ Conversion type arguments follow the same adjacent-`<` and matching-`>` rule as 
 | `start + 1..end - 1` | `(start + 1)..(end - 1)` |
 | `target = flags & mask == 0` | `target = ((flags & mask) == 0)` |
 
-### 8.6. Operator semantics
+### 6.6. Operator semantics
 
-#### 8.6.1. Unary operators
+#### 6.6.1. Unary operators
 
 | Operator | Operand and result |
 | --- | --- |
 | `+value` | Numeric value, unchanged Type and value. |
 | `-value` | Negated signed integer or floating-point value. |
 | `not value` | Negated `bool`. |
-| `*pointer` | Raw-pointer place under [unsafe dereference rules](#462-dereference-and-ownership). |
+| `*pointer` | Raw-pointer place under [unsafe dereference rules](#382-dereference-and-ownership). |
 | `^value` | From-end Index formed from a nonnegative `isize`. |
 | `++target` / `--target` | Increment or decrement an integer; return the updated value. |
 | `target++` / `target--` | Increment or decrement an integer; return the old value. |
 
-Increment and decrement require a readable, writable integer place or Property; they do not apply to floats, raw pointers, or arbitrary Types. Resolve, read, and write the target once each. Overflow prevents the write. A prefix operation returns its computed value without reading the Property again. These operations follow the target-validity and ownership requirements of [compound assignment](#872-compound-assignment).
+Increment and decrement require a readable, writable integer place or Property; they do not apply to floats, raw pointers, or arbitrary Types. Resolve, read, and write the target once each. Overflow prevents the write. A prefix operation returns its computed value without reading the Property again. These operations follow the target-validity and ownership requirements of [compound assignment](#672-compound-assignment).
 
 ```kimi
 var count: i32 = 1
@@ -3014,7 +1741,7 @@ let after = ++count   // after = 3, count = 3
 
 `not` binds more tightly than comparison; negate a comparison as `not (a == b)`. Explicit dereference of non-pointer Types is not defined by this operator.
 
-#### 8.6.2. Arithmetic, bitwise, and shift operators
+#### 6.6.2. Arithmetic, bitwise, and shift operators
 
 `+ - * /` take operands of the same numeric Type and return that Type. `%` accepts integers only. Integer division truncates toward zero. On mathematical integers, the remainder satisfies `a = (a / b) * b + a % b`; a nonzero remainder has the dividend's sign.
 
@@ -3032,9 +1759,9 @@ Check integer `+ - *`, unary `-`, increment/decrement, and the arithmetic part o
 
 Floating-point operations follow IEEE 754 for `f32` / `f64`, using round-to-nearest, ties-to-even. They support infinity, NaN, and signed zero; floating-point division by zero does not use integer failure rules. Do not implicitly reassociate or fuse ordinary operations when rounding or NaN results would change.
 
-`string + string` concatenates without implicit numeric stringification. Raw-pointer arithmetic is limited to the forms and unsafe conditions in [pointer arithmetic](#463-pointer-arithmetic-and-indexing); its undefined-behavior rules are distinct from checked integer arithmetic.
+`string + string` concatenates without implicit numeric stringification. Raw-pointer arithmetic is limited to the forms and unsafe conditions in [pointer arithmetic](#383-pointer-arithmetic-and-indexing); its undefined-behavior rules are distinct from checked integer arithmetic.
 
-#### 8.6.3. Comparison and logical operators
+#### 6.6.3. Comparison and logical operators
 
 `== != < <= > >=` return `bool`. Numeric operands must have the same Type. `bool` and Unit support equality only. `char` compares Unicode scalar values. `string` uses UTF-8 byte equality and lexicographic order without normalization or locale processing.
 
@@ -3042,7 +1769,7 @@ Floating-point `+0.0 == -0.0` is true. With a NaN operand, `== < <= > >=` are fa
 
 Comparisons may borrow their operands and do not Move non-Copy owned values solely to compare them. User-defined comparison requires an explicit Type capability. Safe borrows compare referent values of the same Type using that Type's comparison capability. Tuples support elementwise equality and lexicographic ordering when all corresponding elements support the required comparison.
 
-Value equality and object identity are separate operations; `==` does not implicitly become an address comparison for object Types. Raw-pointer `== !=` are the explicit exception, following [pointer equality](#461-null-and-equality).
+Value equality and object identity are separate operations; `==` does not implicitly become an address comparison for object Types. Raw-pointer `== !=` are the explicit exception, following [pointer equality](#381-null-and-equality).
 
 | Logical operation | Evaluation |
 | --- | --- |
@@ -3058,7 +1785,7 @@ let found = valid and matches(values[index])
 let clear = flags & mask == 0
 ```
 
-#### 8.6.4. Explicit operations
+#### 6.6.4. Explicit operations
 
 `@` is a built-in explicit value operation. It cannot be overloaded, does not search conversion chains, and applies only to its direct operand. The operation itself calls no user code; ordinary operand evaluation, including calls and getters, still does. It never implicitly boxes, acquires resources, duplicates ownership, or increments reference counts.
 
@@ -3068,7 +1795,7 @@ Explicit @ Operation
 └─ Value Lifetime Operation: @move
 ```
 
-##### 8.6.4.1. Forms and Adaptation Targets
+##### 6.6.4.1. Forms and adaptation targets
 
 | Form | Meaning |
 | --- | --- |
@@ -3106,7 +1833,7 @@ For a bare Name `X` in `E@X`, first recognize `move` and built-in Semantics name
 
 Operand Types, expected Types, or conversion success cannot resolve a role ambiguity or reopen outer lookup. Qualified names and constructed Types use normal Type syntax; `@s/T` gives `s` the Semantics role and `T` the Type role. Qualification or an explicit Semantics/Core Type form may disambiguate a bare name.
 
-##### 8.6.4.2. Static selection and inference
+##### 6.6.4.2. Static selection and inference
 
 Resolve the operation from the explicit designation and operand Type/category, then check access, ownership, Loans, and Origins. Numeric conversion, Identity Acquisition, and pointer casts use ordinary value acquisition. Borrow targets use the Borrow table; `@move` uses Consume resolution. Failure never selects a different operation, getter, or overload.
 
@@ -3119,16 +1846,16 @@ let f: (i32) -> () = handler@move
 let g = f@move // f is a Place and becomes Moved.
 ```
 
-Deferred generic effects follow [Generic Access Effects](#577-generic-access-effects). Resolve effects before finalizing ownership/Loan analysis. `Never` follows ordinary abrupt-completion and Type-fitting rules, not a value conversion. A non-completing operand prevents execution of the outer operation but does not waive syntax, target-Type, or Unsafe checks.
+Deferred generic effects follow [Generic Access Effects](#527-generic-access-effects). Resolve effects before finalizing ownership/Loan analysis. `Never` follows ordinary abrupt-completion and Type-fitting rules, not a value conversion. A non-completing operand prevents execution of the outer operation but does not waive syntax, target-Type, or Unsafe checks.
 
-##### 8.6.4.3. Defined adaptations
+##### 6.6.4.3. Defined adaptations
 
 | Operation | Condition |
 | --- | --- |
 | Identity Acquisition | Same normalized complete Type; ordinary acquisition is permitted |
 | Numeric Conversion | Owned integer/float values in the numeric table below |
 | Borrow / Reborrow | The explicit Borrow table below |
-| Raw Pointer Conversion | The [pointer conversion rules](#464-pointer-conversions) |
+| Raw Pointer Conversion | The [pointer conversion rules](#384-pointer-conversions) |
 | Typed Null Formation | Contextually type `null` as a raw pointer; no Unsafe context required |
 
 **Identity Acquisition** copies a Copy Type and otherwise Moves. Borrow targets take precedence, including same-Type exclusive Reborrow. Same-Type raw pointer acquisition is ordinary Copy and requires no Unsafe context for the operation itself. `@owner`, `@obj`, `@rc`, and `@arc` allow same-Semantics acquisition; they do not create ownership or convert between ownership representations.
@@ -3151,7 +1878,7 @@ inspect(number@i64@ref)
 
 There is no elementwise Tuple/array conversion, structural struct conversion, dynamic cast, string parsing, numeric conversion involving `bool`/`char`, arbitrary bit reinterpretation, or user-defined conversion. Same-Type acquisition of these Types remains possible. Do not implicitly dereference safe references to convert or extract their owned referents. Raw-pointer/safe-reference conversion and ownership acquisition require separately specified operations. `as` remains reserved, not an alias of `@`.
 
-##### 8.6.4.4. Numeric conversions and literals
+##### 6.6.4.4. Numeric conversions and literals
 
 | Source -> target | Rule |
 | --- | --- |
@@ -3179,9 +1906,9 @@ let truncated = 3.9@i32  // 3
 
 Apply rounding and checks at every `@` in a chain. Do not remove an intermediate result if its rounding or failure would change.
 
-##### 8.6.4.5. Explicit Borrow and Reborrow
+##### 6.6.4.5. Explicit borrow and reborrow
 
-Here `T` is the same normalized Core Type. Every row requires valid initialization, access, Loans, and Origins. These are explicit adaptations; do not add rows to implicit [argument fitting](#572-argument-adaptation-and-literals) solely because they appear here.
+Here `T` is the same normalized Core Type. Every row requires valid initialization, access, Loans, and Origins. These are explicit adaptations; do not add rows to implicit [argument fitting](#522-argument-adaptation-and-literals) solely because they appear here.
 
 | Input | Operation | Result |
 | --- | --- | --- |
@@ -3206,7 +1933,7 @@ modify(exclusive@uniq) // After the previous child Loan ends.
 let transferred = exclusive@move
 ```
 
-Do not upgrade shared to exclusive, derive exclusive object borrows from `rc`/`arc`, or convert between value-borrow and object-borrow representations. A runtime reference count of one does not grant an exception. Owned temporaries use [materialization and temporary borrowing](#78-temporary-values-places-and-lifetimes).
+Do not upgrade shared to exclusive, derive exclusive object borrows from `rc`/`arc`, or convert between value-borrow and object-borrow representations. A runtime reference count of one does not grant an exception. Owned temporaries use [materialization and temporary borrowing](#36-temporary-values-places-and-lifetimes).
 
 A Property operand of Type/Semantics adaptation is read through its getter once. Adapt the **Getter Result Type**, also when inferring the shorthand Core Type. A Copy getter result is a Temporary Value; borrowing it does not borrow the original Property storage. A borrowed getter result follows Copy/Reborrow rules. Neither an accessible setter nor `@ref`/`@uniq` exposes backing storage; accessor-internal field-scoped operations retain their own rules.
 
@@ -3216,9 +1943,9 @@ let view = holder.item@ref // If get returns ref/Resource, Copy that reference.
 inspect(person.age@ref)    // Borrow the getter's Copy result temporary.
 ```
 
-##### 8.6.4.6. Evaluation, results, and failure
+##### 6.6.4.6. Evaluation, results, and failure
 
-Evaluate each operand and required receiver once; finish chained operations from the inside outward. `@move` follows [Consume](#717-explicit-consume); only its final operand result is explicitly moved. `@move` is an expression usable in initialization, assignment, arguments, and results; its result retains the operand Type.
+Evaluate each operand and required receiver once; finish chained operations from the inside outward. `@move` follows [Consume](#915-explicit-consume); only its final operand result is explicitly moved. `@move` is an expression usable in initialization, assignment, arguments, and results; its result retains the operand Type.
 
 ```kimi
 // Independent examples; x is i32.
@@ -3228,7 +1955,7 @@ x@ref@move // Move the borrow value, not x.
 x@move@ref // Move x, then borrow the resulting temporary.
 ```
 
-Surrounding evaluation order is unchanged. [Assignment](#871-simple-assignment) remains RHS-first and returns Unit. A custom destination setter receives the secured result normally; source Consume and destination Write permissions are separate. Destruction of the old destination must not invalidate result Loans/Origins. Loans begin when Borrow/Reborrow occurs, including while later arguments are evaluated; do not delay an exclusive receiver Loan until after argument evaluation.
+Surrounding evaluation order is unchanged. [Assignment](#671-simple-assignment) remains RHS-first and returns Unit. A custom destination setter receives the secured result normally; source Consume and destination Write permissions are separate. Destruction of the old destination must not invalidate result Loans/Origins. Loans begin when Borrow/Reborrow occurs, including while later arguments are evaluated; do not delay an exclusive receiver Loan until after argument evaluation.
 
 ```kimi
 var x = makeResource()
@@ -3255,9 +1982,9 @@ x@u8 // Panic when evaluated, even if propagation knows x is 300.
 
 Panic and cleanup during or after `@` evaluation follow Error Handling and Value Lifetime. There is no operation-specific rollback of completed Moves or side effects, and no lifetime extension.
 
-### 8.7. Assignment
+### 6.7. Assignment
 
-#### 8.7.1. Simple assignment
+#### 6.7.1. Simple assignment
 
 `target = value` returns Unit and evaluates in this order:
 
@@ -3266,7 +1993,7 @@ Panic and cleanup during or after `@` evaluation follow Error Handling and Value
 3. Destroy the old value or initialized parts still present at that destination. Skip Moved/Uninitialized parts.
 4. Place the temporary by ordinary Copy/Move rules, transferring its responsibility as applicable and leaving the destination Initialized.
 
-For a custom Property setter, pass the secured result to that setter instead of directly performing steps 3–4; its internal direct assignments follow these rules. Standard setters apply them to the field and can [restore incomplete instances](#610-access-after-partial-move). Initial Property construction uses its dedicated rules.
+For a custom Property setter, pass the secured result to that setter instead of directly performing steps 3–4; its internal direct assignments follow these rules. Standard setters apply them to the field and can [restore incomplete instances](#810-access-after-partial-move). Initial Property construction uses its dedicated rules.
 
 The destination Type is known statically; type checking does not evaluate the left side early. RHS-first evaluation lets the destination supply its own old value. It deliberately differs from compound assignment and ordinary receiver calls:
 
@@ -3304,7 +2031,7 @@ Self-assignment of a Copy value uses Copy then Replacement. Property `x.p = x.p`
 
 Right associativity parses `a = b = c` as `a = (b = c)`; the inner Unit result makes ordinary numeric chaining invalid. Assignment is not a Boolean condition. Destructuring, whole-Slice assignment, and initialization of raw uninitialized memory need separate rules.
 
-#### 8.7.2. Compound assignment
+#### 6.7.2. Compound assignment
 
 `+= -= *= /= %= &= |= ^= <<= >>=` perform the corresponding binary operation and return Unit. Resolve the destination once, read its old value once, evaluate the right side, compute, and write once. This is not a textual replacement with `target = target op value`; receivers and indices are not repeated.
 
@@ -3316,29 +2043,15 @@ values[nextIndex()] += amount() // Index, old value, amount, addition, write.
 
 If the right side or operation does not complete normally, do not write; getter and operand effects already performed remain. Compound assignment is not atomic and does not provide synchronization. Raw-pointer `+=` / `-=` use only the permitted displacement operations and their unsafe conditions; other pointer compound assignments are forbidden.
 
-### 8.8. Extension boundaries and reserved syntax
+### 6.8. Extension boundaries and reserved syntax
 
 Operator symbols, precedence, and associativity are fixed by the language. User-defined arithmetic and comparison may be supplied through explicit Type Contracts once their declaration syntax, required members, and resolution rules are specified. Such extensions must preserve evaluation order and counts, comparison's `bool` result, and assignment's Unit result.
 
 `and`, `or`, `not`, `=`, `@` (including `@move`), `is`, Ranges, and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined. Neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.`, or ternary `?:`; use logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref` / `@uniq`. Prefix `move`, a Move accessor, and a dedicated `<-` Move operator are not defined. Recognition by the lexer alone does not make a token a usable operator.
 
-`#Name` is an Attribute and `#if` / `#match` are compile-time directives, not runtime unary operators. `$` denotes the Composition Root; `$panic(...)` follows [Panic Termination](#113-panic-termination). Other Composition Root operations, dependency resolution, lifetimes, and failure rules remain separately specified. The internal name `MacroKoto` does not define language semantics.
+`#Name` is an Attribute and `#if` / `#match` are compile-time directives, not runtime unary operators. `$` denotes the Composition Root; `$panic(...)` follows [Panic Termination](#113-panic-termination). Other Composition Root operations, dependency resolution, lifetimes, and failure rules remain separately specified.
 
-### 8.9. Implementation status
-
-The Parser supports `@Type` precedence, left associativity, and generic/comparison boundaries. Dedicated `@move` parsing and Consume analysis remain unimplemented; treating the operand as a Type does not implement a lifetime operation. Basic expressions, argument labels/defaults, collections, and anonymous functions have syntax-tree support. Member-name restrictions still need additional validation.
-
-General type inference, overload and argument matching, function-value execution, numeric checks, dictionary duplicate detection, evaluation order during execution, and single-access Property updates require semantic analysis and runtime implementation. Panic name/type validation, diagnostics, and common termination handling are also planned. Control-flow and unsafe checks are partial; ownership, Origins, and runtime cleanup remain planned. Examples using application-specific functions or Types illustrate semantics rather than promise standard-library APIs.
-
-Implementation references:
-
-- [Parser.cs](Kimi/Compiler/Parsing/Parser.cs) and [expression Koto nodes](Kimi/Compiler/Parsing/Koto/Expressions): syntax and precedence.
-- [ControlFlowAnalysis.cs](Kimi/Compiler/Analysis/ControlFlowAnalysis.cs): results, transfers, short-circuit paths, and partial unsafe checks.
-- [ExpressionPrecedenceTest.cs](xUnitTest/Tests/ExpressionPrecedenceTest.cs), [ParserRegressionTest.cs](xUnitTest/Tests/ParserRegressionTest.cs), and [SpecConformanceParseTest.cs](xUnitTest/Tests/SpecConformanceParseTest.cs): grouping, diagnostics, generic boundaries, and expression syntax.
-- [CollectionLiteralParseTest.cs](xUnitTest/Tests/CollectionLiteralParseTest.cs) and [RangeIndexParseTest.cs](xUnitTest/Tests/RangeIndexParseTest.cs): collection and boundary syntax.
-- [ControlFlowAnalysisTest.cs](xUnitTest/Tests/ControlFlowAnalysisTest.cs) and [ControlFlowRevisionParseTest.cs](xUnitTest/Tests/ControlFlowRevisionParseTest.cs): control constructs and result checks.
-
-## 9. Control flow
+## 7. Control flow
 
 Control flow distinguishes four concepts:
 
@@ -3349,7 +2062,7 @@ Control flow distinguishes four concepts:
 | **Control Transfer** | A requested change in control. | `return`, `exit`, `continue`, `yield` |
 | **Completion** | How evaluation finishes. | `Normal(result)`, `Return(target, result)`, `Exit(target, result)`, `Continue(target)`, `Yield(target, result)` |
 
-An **Iteration Construct** is a `for`, `while`, or `loop`; an **iteration** is one execution of its body. Each construct establishes an Iteration Boundary. Every `if` and `match` establishes a Selection Boundary regardless of its result or context. Boundaries may accept, stop, or pass through a transfer lookup, as specified under [target lookup](#952-target-lookup).
+An **Iteration Construct** is a `for`, `while`, or `loop`; an **iteration** is one execution of its body. Each construct establishes an Iteration Boundary. Every `if` and `match` establishes a Selection Boundary regardless of its result or context. Boundaries may accept, stop, or pass through a transfer lookup, as specified under [target lookup](#752-target-lookup).
 
 | Transfer | Role |
 | --- | --- |
@@ -3360,7 +2073,7 @@ An **Iteration Construct** is a `for`, `while`, or `loop`; an **iteration** is o
 
 Unlabeled `exit` skips Labeled Blocks. A `loop` or explicitly named Labeled Block can receive a result in either Evaluation Context. Deferred Blocks accept only operandless self-targeted `exit`; no transfer may cross their boundary. Kimigayo uses `exit`, not `break`, for iteration termination.
 
-### 9.1. Completions
+### 7.1. Completions
 
 **Normal completion**, represented by `Normal(result)`, means that an expression or construct finishes and returns control to its evaluator. A statement's normal Completion uses Unit without making that statement a value-producing expression. **Abrupt completion** is a `Return`, `Exit`, `Continue`, or `Yield` directed at a resolved lexical target. A transfer expression does not complete normally, even when its target subsequently does.
 
@@ -3378,19 +2091,19 @@ After required [Scope Exit](#102-scope-exit-destruction) processing, a boundary 
 
 **Divergence** means that evaluation never finishes and produces no Completion. Under the broader term **Evaluation Outcome**, Completion, divergence, and [Panic Termination](#113-panic-termination) are distinct cases. Panic ends the entire process without a Completion delivered to a lexical target. Never describes the absence of normal completion; it is neither a Completion variant nor a synonym for divergence.
 
-### 9.2. Blocks and evaluation contexts
+### 7.2. Blocks and evaluation contexts
 
-A **Block** is an indentation-delimited sequence of declarations, expressions, and statements evaluated in order. An ordinary Block completes with Unit on reaching its end, including when its last item is a declaration or conditional compilation removes all its items. Source-level executable bodies must satisfy the nonempty rule below. Nesting an ordinary Block adds no control-transfer target. Constructs with their own result rules apply those rules instead. Function bodies follow [Functions](#551-function-bodies-and-results).
+A **Block** is an indentation-delimited sequence of declarations, expressions, and statements evaluated in order. An ordinary Block completes with Unit on reaching its end, including when its last item is a declaration or conditional compilation removes all its items. Source-level executable bodies must satisfy the nonempty rule below. Nesting an ordinary Block adds no control-transfer target. Constructs with their own result rules apply those rules instead. Function bodies follow [Functions](#461-function-bodies-and-results).
 
 A **Value Context** is a syntactic position that uses an expression's value: an initializer, operand, argument, condition, `match` subject, `return` / `exit` / `yield` operand, or Expression body introduced by `=>`. It remains a Value Context even when the expected Type is Unit or the result is subsequently unused. Reachability, constant evaluation, and optimization do not change it.
 
 A **Discard Context** discards an expression's normal result without imposing Unit or suppressing Type, ownership, or destruction checks. Every direct expression, including the last, in an ordinary, Labeled, Unsafe, Deferred, iteration, branch, or function Block body uses this context. Nested initializers, arguments, and operands retain their positional contexts. Discarding a `Result` produces a [compile-time warning](#1123-handling-propagation-and-discarding).
 
-An expression determines its result; its Evaluation Context determines whether that result is consumed or discarded. A `loop` accepts result operands in either context. Selections follow the unified [Result-requiring Selection](#971-branch-results) rules.
+An expression determines its result; its Evaluation Context determines whether that result is consumed or discarded. A `loop` accepts result operands in either context. Selections follow the unified [Result-requiring Selection](#771-branch-results) rules.
 
-A trailing semicolon does not change an expression's Evaluation Context or whether an Expression body supplies an implicit result. Body form, not the number of direct expressions or declarations, determines the branch result rule.
+Body form, not the number of direct expressions or declarations, determines the branch result rule.
 
-#### 9.2.1. Nonempty executable Blocks
+#### 7.2.1. Nonempty executable blocks
 
 An executable Block requires at least one complete source **Syntax item**: a declaration, expression, statement, or compile-time directive. Blank lines, comments, and separators do not count. Directives must include their required condition, target, and body.
 
@@ -3420,7 +2133,7 @@ defer:
 
 This rule applies to executable bodies of branches, `match` arms, iterations, Labeled Blocks, Unsafe Blocks, Deferred Blocks, functions, and accessors. It does not define emptiness rules for a `match` arm list or a Declaration Container body. Single-line forms already require one complete InlineStatement.
 
-#### 9.2.2. Conditional compilation and results
+#### 7.2.2. Conditional compilation and results
 
 Check source emptiness **before directive selection**, independently of reachability. A valid `#if` or `#match` counts even when selection removes all executable Syntax; its own syntax and selection requirements still apply.
 
@@ -3430,7 +2143,7 @@ defer:
         closeHandle()
 ```
 
-When `windows` is false, the Block remains valid. The Parser must check source items even when early selection creates no Koto nodes. After selection, normal Type, result-coverage, and transfer rules apply. A direct `()` is discarded and does not supply a Block result.
+When `windows` is false, the Block remains valid. Source-item checks still apply when early conditional selection excludes all executable items. After selection, normal Type, result-coverage, and transfer rules apply. A direct `()` is discarded and does not supply a Block result.
 
 ```kimi
 let result = if condition
@@ -3441,7 +2154,7 @@ else
 
 Likewise, removing a required `yield` or result-bearing `exit` through conditional compilation may cause a result-coverage error, even though the source Block passes the emptiness check.
 
-### 9.3. Block constructs
+### 7.3. Block constructs
 
 | Construct | Category | Execution and result |
 | --- | --- | --- |
@@ -3449,11 +2162,11 @@ Likewise, removing a required `yield` or result-bearing `exit` through condition
 | Unsafe Block (`unsafe:`) | Block Statement | Execute now with unsafe permission; no expression result. |
 | [Deferred Block](#101-deferred-blocks) (`defer:`) | Block Statement | Register now and execute at Scope Exit; no expression result. |
 
-A **Block Statement** is a statement with a scoped body, not an expression. Unsafe and Deferred Blocks are allowed only in executable bodies, not directly in Declaration Containers. Both have an indented multiline form and a single-line form containing one [InlineStatement](#931-inlinestatement). Both forms create an independent body scope and have the same evaluation and cleanup rules.
+A **Block Statement** is a statement with a scoped body, not an expression. Unsafe and Deferred Blocks are allowed only in executable bodies, not directly in Declaration Containers. Both have an indented multiline form and a single-line form containing one [InlineStatement](#731-inlinestatement). Both forms create an independent body scope and have the same evaluation and cleanup rules.
 
 At statement start, contextual keywords `unsafe:` and `defer:` take precedence over Label parsing. Neither declares a Label. `unsafe/T` remains Type Semantics syntax and `unsafe func` a function declaration modifier; outside their special contexts these spellings follow normal Name rules.
 
-#### 9.3.1. InlineStatement
+#### 7.3.1. InlineStatement
 
 An **InlineStatement** is one statement completed on a single line without a following indented Block.
 
@@ -3464,7 +2177,7 @@ An **InlineStatement** is one statement completed on a single line without a fol
 | `return`, `exit`, `continue`, or `yield` | Normal target, operand, and boundary rules apply. |
 | Single-line `unsafe:` or `defer:` | Its body is recursively an InlineStatement. |
 
-Function and Declaration Container declarations, Labeled Blocks, and constructs requiring a following indented Block are excluded. A trailing semicolon follows normal rules, but multiple semicolon-separated statements are not allowed in one inline body. In nested forms, the right-hand statement is the body of the immediately preceding colon.
+Function and Declaration Container declarations, Labeled Blocks, and constructs requiring a following indented Block are excluded. In nested forms, the right-hand statement is the body of the immediately preceding colon.
 
 ```kimi
 unsafe: unsafeOperation()
@@ -3483,13 +2196,13 @@ defer: if condition                  // Error: requires a following Block.
 
 Use the multiline form for such a branch. `defer: unsafe: releaseRaw(pointer)` is equivalent to a Deferred Block containing an Unsafe Block whose body calls `releaseRaw(pointer)`.
 
-#### 9.3.2. Labeled Block
+#### 7.3.2. Labeled block
 
 A Labeled Block begins with `Label:` followed by its indented body on the next line. It receives a result only from an `exit` explicitly targeting that Label. Its trailing expression never implicitly supplies a result, and unlabeled exits still skip it.
 
 A **Result-requiring Labeled Block** occurs in Value Context (even with expected Unit) or has a result-bearing self-targeted `exit`. Classify after target lookup, before reachability analysis. Count resolved self-targeted exits even inside nested constructs, but not results sent elsewhere.
 
-Every reachable completing path must use `exit expression from Label`, including `exit () from Label` for Unit. Fall-through is an error; operandless self-targeted exits are forbidden even if unreachable. Paths transferring outward or never completing need no Block result. Shared [result validation](#98-result-validation) applies in both contexts.
+Every reachable completing path must use `exit expression from Label`, including `exit () from Label` for Unit. Fall-through is an error; operandless self-targeted exits are forbidden even if unreachable. Paths transferring outward or never completing need no Block result. Shared [result validation](#78-result-validation) applies in both contexts.
 
 ```kimi
 let result = resolve:
@@ -3516,9 +2229,9 @@ work:
 
 A Labeled Block that does not require a result occurs in Discard Context and has no result-bearing self-targeted exit. It completes with Unit on fall-through or `exit from Label`. A Labeled Block with no reachable normal completion has Expression Type Never; missing required results are errors, not a reason to infer Never.
 
-#### 9.3.3. Unsafe Block
+#### 7.3.3. Unsafe block
 
-An **Unsafe Block** executes its body immediately with permission for [unsafe operations](#46-raw-pointers-and-unsafe-operations). It is a statement and cannot appear as an initializer, argument, or other expression operand, in either body form. It creates no Control Boundary and does not intercept transfer lookup. Its body follows ordinary Evaluation Context and Scope Exit rules.
+An **Unsafe Block** executes its body immediately with permission for [unsafe operations](#38-raw-pointers-and-unsafe-operations). It is a statement and cannot appear as an initializer, argument, or other expression operand, in either body form. It creates no Control Boundary and does not intercept transfer lookup. Its body follows ordinary Evaluation Context and Scope Exit rules.
 
 ```kimi
 work:
@@ -3538,7 +2251,7 @@ unsafe:
         return *pointer // Error: inner needs its own Unsafe Block.
 ```
 
-### 9.4. Labels
+### 7.4. Labels
 
 Labels may be attached to Blocks, `for`, `while`, and `loop`:
 
@@ -3556,7 +2269,7 @@ search: loop
     process()
 ```
 
-A labeled Iteration Construct uses `Label: for ...`, `Label: while ...`, or `Label: loop`. Unlike a [Labeled Block](#932-labeled-block), adding a Label to an Iteration Construct does not change its result rules; a labeled `loop` may appear in Value Context:
+A labeled Iteration Construct uses `Label: for ...`, `Label: while ...`, or `Label: loop`. Unlike a [Labeled Block](#732-labeled-block), adding a Label to an Iteration Construct does not change its result rules; a labeled `loop` may appear in Value Context:
 
 ```kimi
 var result = outer: loop
@@ -3565,13 +2278,13 @@ var result = outer: loop
             exit value from outer
 ```
 
-Labels follow the character rules for [Names](#31-names) and have a namespace separate from those of variables and Types. Labels with the same Name and overlapping scopes in one function are invalid.
+Labels follow the character rules for [Names](#25-names) and have a namespace separate from those of variables and Types. Labels with the same Name and overlapping scopes in one function are invalid.
 
 A Label is visible only inside its construct's body, excluding its `for` iterable or `while` condition. A transfer may identify only an enclosing construct in the same Function Boundary without crossing a Deferred Control Boundary. Sibling, inner, and other-function Labels are inaccessible. A Label names a construct, not an instruction address: jumping into a body or back to a completed construct is not supported.
 
-### 9.5. Control transfers
+### 7.5. Control transfers
 
-#### 9.5.1. Syntax and operands
+#### 7.5.1. Syntax and operands
 
 ```text
 return [expression]
@@ -3592,9 +2305,9 @@ Brackets indicate optional syntax. `exit name` uses `name` as a result expressio
 | `continue` to an Iteration Construct | Forbidden. |
 | `yield` to a Selection Boundary | Required; use `yield ()` for Unit. |
 
-Operands are evaluated before transfer. If operand evaluation leaves by another transfer or never completes, the original transfer does not occur. Otherwise, its result is secured by Copy or Move before [scope-exit destruction](#102-scope-exit-destruction) and delivery to the target. Each transfer expression itself has type [Never](#415-unit-and-never-types).
+Operands are evaluated before transfer. If operand evaluation leaves by another transfer or never completes, the original transfer does not occur. Otherwise, its result is secured by Copy or Move before [scope-exit destruction](#102-scope-exit-destruction) and delivery to the target. Each transfer expression itself has type [Never](#315-unit-and-never-types).
 
-#### 9.5.2. Target lookup
+#### 7.5.2. Target lookup
 
 Resolve targets by walking outward through lexical containment. Resolve the target first, then check operand presence and Type; an unsuitable operand never causes lookup to skip a target.
 
@@ -3619,18 +2332,18 @@ var result = loop
         exit 10 // Error: the nearest Iteration Construct is for, which forbids an operand.
 ```
 
-#### 9.5.3. Function Boundaries
+#### 7.5.3. Function boundaries
 
 Each of these bodies establishes an independent **Function Boundary**:
 
 - Named functions, including methods and nested functions.
-- Anonymous functions. Capturing closures remain deferred under [function expressions](#843-function-expressions).
+- Anonymous functions. Capturing closures remain deferred under [function expressions](#643-function-expressions).
 - Property getters and setters.
 - Destructors (`deinit`).
 
 In these control-flow rules, "function" includes all of these bodies. A `return` ends only its own function. Other transfers cannot target an outer function's Labels, Iteration Constructs, or selections.
 
-Getters return their [Getter Result Type](#62-default-getter-results); setters and `deinit` return Unit. All follow [function body and result rules](#551-function-bodies-and-results). Normal `deinit` completion, including `return`, still performs automatic field destruction required by the Type.
+Getters return their [Getter Result Type](#82-default-getter-results); setters and `deinit` return Unit. All follow [function body and result rules](#461-function-bodies-and-results). Normal `deinit` completion, including `return`, still performs automatic field destruction required by the Type.
 
 ```kimi
 func outer() -> i32
@@ -3640,7 +2353,7 @@ func outer() -> i32
     return f()
 ```
 
-#### 9.5.4. Label and nesting examples
+#### 7.5.4. Label and nesting examples
 
 Adding a Labeled Block does not change the target of an unlabeled `exit` or `continue`:
 
@@ -3677,9 +2390,9 @@ outer: for x in xs
         process(x, y)
 ```
 
-### 9.6. Iteration Constructs
+### 7.6. Iteration constructs
 
-#### 9.6.1. `for` and `while`
+#### 7.6.1. `for` and `while`
 
 `for` evaluates its iterable once and executes its body for each supplied value. A single Name binds the value; a parenthesized, comma-separated binding destructures it. `while` evaluates a Boolean condition before each iteration and executes its body while that condition is true. Condition parentheses are optional.
 
@@ -3698,7 +2411,7 @@ Both constructs discard body results and produce Unit on completion. Neither acc
 | Body end or self-targeted `continue` | Request the next value; finish if exhausted. | Reevaluate the condition; finish if false. |
 | Self-targeted `exit` | End the Iteration Construct. | End the Iteration Construct. |
 
-#### 9.6.2. `loop`
+#### 7.6.2. `loop`
 
 `loop` repeats unconditionally. It discards body values and starts the next iteration at the beginning of the body after body fall-through or a self-targeted `continue`.
 
@@ -3715,7 +2428,7 @@ var result = loop
         exit value
 ```
 
-Only reachable self-targeted exits contribute to inference. Unreachable exits are checked against any available Target Result Type under [result validation](#98-result-validation). Nested selections do not intercept `exit`.
+Only reachable self-targeted exits contribute to inference. Unreachable exits are checked against any available Target Result Type under [result validation](#78-result-validation). Nested selections do not intercept `exit`.
 
 ```kimi
 loop
@@ -3728,17 +2441,17 @@ outer: loop
         exit from outer
 ```
 
-The inner `loop` has no result-producing path and has type Never. The outer `loop` completes with Unit. See [result validation](#98-result-validation) for the common rules.
+The inner `loop` has no result-producing path and has type Never. The outer `loop` completes with Unit. See [result validation](#78-result-validation) for the common rules.
 
-### 9.7. Selections: if, match, and yield
+### 7.7. Selections: if, match, and yield
 
-#### 9.7.1. Branch results
+#### 7.7.1. Branch results
 
 Each `if` branch and `match` arm explicitly chooses an **Expression body** or **Block body**, regardless of its item count:
 
 | Body form | Evaluation and result rule |
 | --- | --- |
-| Expression body: `=> Expression` | Evaluate the expression in Value Context and implicitly supply its normal result to the selection. A trailing semicolon does not suppress the result. |
+| Expression body: `=> Expression` | Evaluate the expression in Value Context and implicitly supply its normal result to the selection. |
 | Block body: an indented Block | Evaluate every direct expression in Discard Context. Use `yield expression` to supply a result to the selection. No expression, including a sole or final expression, is an implicit result. |
 
 For `if`, the Expression body follows the condition or `else` on the same line; a Block body starts on the next line at a greater indentation. For `match`, `=>` also separates the pattern from its body: an expression follows it on the same line, or an indented Block follows it on the next line. Different branches of the same selection may use different body forms.
@@ -3754,12 +2467,12 @@ Resolve transfer targets before this classification, without using reachability.
 Every Result-requiring Selection follows three common requirements:
 
 - **Exhaustiveness:** `if` requires a final `else`; `match` must cover all subject values through its patterns or a catch-all arm. Literal conditions, unreachable branches, and paths that never complete do not waive this requirement.
-- **Result coverage:** every reachable path that completes normally must supply a result. A Block must use `yield`, including `yield ()` for Unit; declarations, discarded expressions, and bodies emptied by conditional compilation do not supply implicit branch results. Source-level empty executable Blocks are parse errors under the [nonempty rule](#921-nonempty-executable-blocks). A path leaving for an outer target or never finishing needs no result. After a transfer caught internally, analysis follows the continuation.
-- **Result compatibility:** explicit and implicit results obey the shared [result validation](#98-result-validation) rules, even when the selection's result is discarded.
+- **Result coverage:** every reachable path that completes normally must supply a result. A Block must use `yield`, including `yield ()` for Unit; declarations, discarded expressions, and bodies emptied by conditional compilation do not supply implicit branch results. Source-level empty executable Blocks are parse errors under the [nonempty rule](#721-nonempty-executable-blocks). A path leaving for an outer target or never finishing needs no result. After a transfer caught internally, analysis follows the continuation.
+- **Result compatibility:** explicit and implicit results obey the shared [result validation](#78-result-validation) rules, even when the selection's result is discarded.
 
 A selection that does not require a result has only Block bodies, no self-targeted `yield`, and occurs in Discard Context. Reaching a selected Block's end or selecting no branch supplies Unit. Paths that leave for an outer target or never finish supply no result to that selection.
 
-#### 9.7.2. `if`
+#### 7.7.2. `if`
 
 `if` tests Boolean conditions in order and executes the first selected branch. It may have subsequent `else if` branches and one final `else`. Condition parentheses are optional. Each branch independently chooses an Expression body or a Block body.
 
@@ -3781,7 +2494,7 @@ else
     yield 2
 
 if condition => 1;
-else => 2;                      // Valid: the integer result is discarded; semicolons do not change it.
+else => 2                       // Valid: the integer result is discarded.
 ```
 
 `yield` ends the whole target `if`, skipping the rest of its branch. When the `if` requires a result, an `else if` without a final `else` is insufficient for exhaustiveness.
@@ -3802,7 +2515,7 @@ if condition
 
 An `if` that does not require a result may omit `else`.
 
-#### 9.7.3. `match`
+#### 7.7.3. `match`
 
 `match` evaluates its subject once, tests arms in source order, and executes the first matching arm. Every arm uses `pattern => Expression` or `pattern =>` followed by an indented Block. There is no fall-through to another arm.
 
@@ -3817,7 +2530,7 @@ var result = match value
 
 `yield` ends the whole target `match`. This example assumes `A` and `B` cover every case. A `match` that does not require a result may be non-exhaustive.
 
-#### 9.7.4. Nested `yield` targets
+#### 7.7.4. Nested `yield` targets
 
 A Labeled Block does not stop `yield` lookup:
 
@@ -3886,23 +2599,21 @@ var result = if condition
 else => 0
 ```
 
-### 9.8. Result validation
+### 7.8. Result validation
 
-A transfer supplies a result only to its resolved target. Function results follow [Functions](#551-function-bodies-and-results); Blocks, Iteration Constructs, and branches use their result sources defined above. Discard Context does not exempt a construct from result validation.
-
-**Implementation status:** The Parser preserves explicit branch body forms. Control-flow analysis checks selections, loops, value-producing Labeled Blocks, lexical transfer targets, and the completion effects of explicitly registered Deferred Blocks. It also checks lexical Unsafe permission for known operations and binder-selected function references. The default type provider handles primitive literals, simple declared Types, and basic raw-pointer and contextual `null` checks. General name/overload resolution, conversions, pattern Binding, ownership, automatic destruction, Origin compatibility, and runtime cleanup generation remain planned; unresolved checks are exposed as pending obligations. Bodies containing deferred compile-time directives await directive selection before analysis.
+A transfer supplies a result only to its resolved target. Function results follow [Functions](#461-function-bodies-and-results); Blocks, Iteration Constructs, and branches use their result sources defined above. Discard Context does not exempt a construct from result validation.
 
 Validate results in this order:
 
 1. Determine Evaluation Contexts and body forms, resolve transfer targets, and classify Result-requiring Selections and Labeled Blocks without excluding unreachable code. Check syntax, Names, operand presence, and local Type correctness. Enforce selection exhaustiveness requirements.
-2. Apply [reachability](#982-reachability) analysis to result sources, required Scope Exit processing, and paths leaving each construct. Collect result candidates only from reachable result-delivery paths. A transfer whose operand or required cleanup cannot complete normally supplies no result to its original target.
+2. Apply [reachability](#782-reachability) analysis to result sources, required Scope Exit processing, and paths leaving each construct. Collect result candidates only from reachable result-delivery paths. A transfer whose operand or required cleanup cannot complete normally supplies no result to its original target.
 3. Check result coverage: reject any reachable path that reaches an end requiring a result without supplying one. Where a construct implicitly supplies Unit, include that Unit as a candidate only when the path is reachable. A non-Unit Block-bodied function may not fall through.
 4. Determine the Target Result Type as described below, independently of whether the construct's Expression Type is Never. Unreachable result sources do not contribute candidates or constraints to inference.
 5. When a Target Result Type is available, check every explicit result operand and implicit Expression-body result against it, including in unreachable code. Operandless `return` and `exit` supply Unit. Apply normal conversion and Origin compatibility rules. A source that cannot itself complete normally supplies no value to compare; its local operations and any transfers inside it are still checked.
 
 Paths that leave a construct for an outer target or never complete supply no result candidate for that construct. Transfers caught internally may let evaluation continue and must be followed to their continuation.
 
-#### 9.8.1. Expression Type and Target Result Type
+#### 7.8.1. Expression type and target Result type
 
 The **Expression Type** describes a normally completing expression's value. An expression, including a `loop`, selection, or Labeled Block, with no reachable path that completes normally has Type Never. Missing required results are errors, not Never. Unsafe and Deferred Blocks are statements with no Expression Type; analyze their body completion separately.
 
@@ -3947,7 +2658,7 @@ func choose(flag: bool) -> i32
 
 The `if` has type Never: neither `result` initialization nor function-body fall-through occurs. Both returns supply integer function results. In contrast, `yield` itself has type Never but supplies a result to its target `if` / `match`.
 
-#### 9.8.2. Reachability
+#### 7.8.2. Reachability
 
 Reachability is determined statically within each Function Boundary. Treat a path as reachable unless the following analysis proves otherwise. Optimization settings must not change type-checking results.
 
@@ -3977,15 +2688,971 @@ let selected = if false => "text" // Error: string is incompatible with the infe
 else => 1
 ```
 
-In each example, the unreachable expression or transfer is locally valid, but its result is incompatible with the target. Undefined Names or Labels, invalid operand operations, and value-bearing exits targeting `for` are also errors in unreachable code. These rules concern runtime control flow; Syntax excluded by [conditional compilation](#22-compile-time-directives) follows its separate Binding rules.
+In each example, the unreachable expression or transfer is locally valid, but its result is incompatible with the target. Undefined Names or Labels, invalid operand operations, and value-bearing exits targeting `for` are also errors in unreachable code. These rules concern runtime control flow; Syntax excluded by [conditional compilation](#13-compile-time-directives) follows its separate Binding rules.
 
-## 10. Scope exit and cleanup
+## 8. Properties
 
-### 10.1. Deferred Blocks
+A **Property** is Kimigayo's only value-bearing member kind. Storage slots, global storage, and other lowered representations are implementation details. A `let` or `var` inside an executable Block is a local binding.
+
+A Property has a **Property Type**, optional `get` and `set` accessors, and optional owned storage. The Property Type determines storage, Consume result, and setter input Types. A read uses the **Getter Result Type**, which may differ. Custom getters/setters remain supported; [Property Consume](#89-property-consume) requires accessible standard get and set instead of a separate Move accessor.
+
+Storage classification follows this sequence:
+
+```text
+Expand inline has declarations
+    -> expand bodyless and implicit accessors
+    -> bind the effective accessors and contextual identifiers
+    -> detect references bound to storage
+    -> determine HasStorage
+```
+
+`HasStorage` is true exactly when an effective accessor contains a reference bound to contextual `storage`. Expression and Block bodies both count, including unreachable references. During binding, `storage` is provisionally available; a bound reference causes storage to exist. An ordinary Name spelled `storage` outside an accessor does not count.
+
+- A **Stored Property** has `HasStorage = true` and owns one location: part of the instance layout for an instance Property, or static storage for a static member of a `group`.
+- A **Computed Property** has `HasStorage = false` and contributes no storage slot.
+
+### 8.1. Effective representation
+
+Expand source accessors before classifying storage, but preserve whether each is compiler-provided standard access or a custom body:
+
+| Source form | Effective access |
+| --- | --- |
+| `let x: T`, no explicit accessors | Standard get |
+| `var x: T`, no explicit accessors | Standard get and set |
+| Any explicit block or `has` accessor list | Exactly the written accessors; no implicit additions |
+
+An explicit list suppresses unwritten accessors, including get when only set is written. A bodyless getter performs the standard Copy/shared read; a bodyless setter applies Initialization/Replacement. Each binds `storage`; custom accessors determine storage by their bound uses. Equivalent user code does not confer standard field-scoped semantics. Standard get/set also provide the declaration-side prerequisites for Consume, without a separate opt-in accessor.
+
+```kimi
+var age: i32 = 0
+    get
+    set
+        storage = max(value, 0)
+// Explicit standard get plus custom set. Omitting get makes this write-only.
+
+var count: i32
+    get => items.count // Computed and read-only if items is separate state.
+```
+
+An initializer does not create storage by itself; it is valid only for a Stored Property. `let` provides immutable stored data without a setter and cannot be consumed as a Property. This differs from an owned `let` local or receiver. Read-only computed Properties use `var` and an explicit getter.
+
+### 8.2. Default getter results
+
+An omitted or bodyless getter uses the complete Property Type to select a Copy or shared-borrow operation. It never moves from the instance, implicitly duplicates object ownership, or returns an exclusive borrow. [Copy capability](#351-copy-capability-and-explicit-duplication) determines this classification.
+
+| Property Type | Default Getter Result Type | Operation |
+| --- | --- | --- |
+| Copy `owner/T` (also written `T`) | `T` | Copy the stored value |
+| Non-Copy `owner/T` | `ref/T` | Shared borrow of the stored value |
+| `obj/T` | `objref/T` | Shared borrow of the owned object |
+| `rc/T`, `arc/T` | `objref/T` | Shared borrow without incrementing a reference count |
+| `ref/T` | `ref/T` | Copy the shared reference |
+| `objref/T` | `objref/T` | Copy the shared object reference |
+| `uniq/T` | `ref/T` | Shared reborrow through the stored exclusive reference |
+| `objuniq/T` | `objref/T` | Shared reborrow through the stored exclusive object reference |
+| `unsafe/T` | `unsafe/T` | Copy the pointer value; dereference remains unsafe |
+
+For ordinary borrowed receivers, a default instance getter's borrow/reborrow has Origin `from self`, bounded by the receiver even when storage carries a longer Origin. On a statically identified owned receiver, [standard field access](#810-access-after-partial-move) creates a Loan on the field instead of borrowing the entire instance; its Origin is bounded by field storage and owner validity. A shared reborrow suspends conflicting access through the stored exclusive reference while the result is live. A Copy preserves the value's existing Origin dependencies without extending them or replacing them with `self`.
+
+A default static getter that creates a borrow anchors it to the Property's storage and its current stored value. Static allocation alone does not permit replacement or destruction of that value while the borrow is live. Normal Origin and Loan rules still apply; this does not add support for the deferred feature of borrow escape into global storage.
+
+For example:
+
+```kimi
+struct Parent
+    public var child: obj/Node
+```
+
+has these conceptual signatures for ordinary borrowed-receiver access:
+
+```text
+get(self: ref/Parent) -> objref/Node from self
+set(self: uniq/Parent, value: obj/Node) -> ()
+```
+
+Reading `parent.child` borrows the object; assignment passes ownership to its setter. The standard get/set declaration above permits [Property Consume](#89-property-consume) when the caller owns the struct receiver and all use-site conditions hold. An authorized exchange or Type-specific operation follows its own rules.
+
+A stored `let value: uniq/T from source` similarly returns `ref/T from self`, leaving the exclusive capability in storage. Shared inspection does not make the containing structure Copy.
+
+For generic Properties, unresolved Type Semantics or Copy capability leave the default rule dependent. Binding may use a result Type only once constraints or specialization establish its row, and must resolve the operation before finalizing a specialization. An unconstrained Core Type parameter is not assumed Copy. Use `T is Copy` when Copy capability is required.
+
+### 8.3. Accessors
+
+A getter defines a read and follows the [function body and result rules](#461-function-bodies-and-results), with the Getter Result Type as its Target Result Type:
+
+```kimi
+var area: f64
+    get => self.width * self.height
+
+var loggedArea: f64
+    get
+        logRead()
+        return self.width * self.height
+```
+
+A computed getter must explicitly start with `get`; a bare expression in the Property body is invalid.
+
+`get -> ResultType` specifies the Getter Result Type, including any Origin annotation. Without it, even a custom getter uses the [default result Type](#82-default-getter-results); its body does not infer a different Type. Omitted result Origins on custom getters follow function Origin elision.
+
+```kimi
+var child: obj/Node
+    get -> objref/Node from self => storage@objref
+
+var freshNode: obj/Node
+    get -> obj/Node => Node.new() // Assumes new returns obj/Node.
+```
+
+A result annotation does not permit moving borrowed storage: `get -> obj/Node => storage` is invalid for stored `obj/Node` because the receiver is `ref/Self`. Custom bodies must explicitly perform required borrows or reborrows; only omitted or bodyless getters synthesize a default read.
+
+A bodyless getter with an explicit result annotation still performs the default read. The result must satisfy the annotated Type and Origin without moving storage or implicitly duplicating ownership. An incompatible annotation is an error, and annotations do not relax `let` restrictions.
+
+A setter defines a write. Its implicit input `value` has the Property Type; source uses `set`, never `set value`:
+
+```kimi
+var percentage: i32 = 0
+    set
+        storage = clamp(value, 0, 100)
+
+// obj.percentage = 120 invokes the setter with value = 120.
+```
+
+Reads invoke the getter; assignments after initialization invoke the setter and are invalid if none exists. Accessors may operate on other state:
+
+```kimi
+var width: f64
+    get => self.right - self.left
+
+    set
+        self.right = self.left + value
+```
+
+Neither accessor uses `storage`, so this Property is computed and read-write.
+
+### 8.4. Inline accessor declarations
+
+A Property may declare bodyless accessors inline with a `has` clause:
+
+**Basic example.**
+
+```kimi
+var count: i32 has get, private set
+```
+
+The clause follows the Property initializer when one is present:
+
+```kimi
+var count: i32 = 0 has get, private set
+```
+
+The grammar is:
+
+```text
+inline-accessors := has accessor-declaration (',' accessor-declaration)*
+
+accessor-declaration := access-restriction? get ('->' ResultType)?
+                      | access-restriction? set
+```
+
+The list must contain at least one accessor. `get` and `set` may each appear at most once, in either order; unwritten accessors are not added. Access restrictions match those in a Property body. `move` is not an accessor declaration.
+
+#### 8.4.1. Concrete properties
+
+`has` expands to the same bodyless declarations as an indented list, before storage classification:
+
+```kimi
+var count: i32 has get, private set
+// Same standard accessor declarations as:
+var otherCount: i32
+    get
+    private set
+```
+
+Standard get performs the default read and standard set writes storage. Their intrinsic storage references determine `HasStorage`; `has get` is Stored and read-only. Preserve the standard-accessor marker and field-scoped semantics during expansion rather than turning them into ordinary user bodies.
+
+Inline and indented accessor lists cannot be combined. Use an indented list for custom bodies. `let` cannot declare a setter.
+
+#### 8.4.2. Contract property requirements
+
+Inside a `contract`, `has` declares the accessor capabilities that a conforming Property must provide:
+
+```kimi
+contract Collection
+    var count: i32 has get
+
+contract MutableCollection
+    var count: i32 has get, set
+```
+
+Conformance requires a compatible Property Type and all required accessors with sufficient accessibility. A getter must also satisfy the required Getter Result Type and Origin contract; a setter accepts the required Property Type under normal parameter compatibility rules.
+
+A contract getter requirement may specify a result Type, for example `var child: obj/Node has get -> objref/Node from self`. Without an annotation, the required Getter Result Type follows the same default result rules as a concrete Property, but no storage read or Loan is generated by the requirement itself. Here `self` denotes the required shared receiver. A conforming getter must provide a result compatible with the required result Type for every legal receiver Origin; it cannot impose a shorter lifetime than the requirement promises. Generic requirements retain unresolved default result rules until the applicable constraints or specialization determine them.
+
+A contract requirement creates no implementation, storage read, Loan, effective storage representation, or `HasStorage` classification. There is no Move accessor requirement or new Consume contract syntax. Both a stored `var count: i32 has get` and a computed `get => items.count` may satisfy the readable requirement. In concrete declarations, `has` defines bodyless accessors; in contracts, it specifies required capabilities only.
+
+Generic requirements establish declared capabilities, not flow state at a use. They do not prove that a value is currently Initialized or that no conflicting Loan exists. These conditions must be checked at each use; `has get, set` alone does not prove Stored representation or compiler-provided standard accessors.
+
+### 8.5. Contextual identifiers and receivers
+
+`storage` denotes the Property's actual owned location, not a copy. It has the Property Type, and a bound use causes the location to exist. `value` is available only in setters. These Names are not globally reserved.
+
+Ordinary instance getter/setter access has these implicit signatures:
+
+```text
+get(self: ref/Self) -> GetterResultType
+set(self: uniq/Self, value: PropertyType) -> ()
+```
+
+The getter has shared/read access to the instance and its storage; the setter has exclusive/read-write access. Receivers do not change the Type of `storage` to `ref/T` or `uniq/T`. The Getter Result Type separately describes the read or borrow result.
+
+For statically identified owned places, compiler-provided standard getter/setter access instead follows [field-scoped operations](#810-access-after-partial-move), including after Partial Move. Property Consume has no ordinary borrow receiver. Custom bodies retain the signatures above. Mutable or exclusive getter receivers are not supported. Static Properties, including `group` members, have no instance receiver.
+
+### 8.6. Initialization
+
+An initializer initializes owned storage directly and does not invoke the setter:
+
+```kimi
+var age: i32 = -1
+    set
+        storage = max(value, 0)
+```
+
+Here the initial stored value is `-1`; a later assignment of `-10` invokes the setter and stores `0`. A Property initializer is invalid when `HasStorage = false`, because no Property-owned location exists to initialize. A stored Property without a declaration initializer must be initialized according to the containing type's definite-initialization rules before it is read. After initialization, a `let` Property cannot be assigned.
+
+For a structure, evaluate declaration initializers once in [logical declaration order](#431-split-structures-and-storage-order), preserving their observable side effects regardless of physical layout or parallel compilation. A Property becomes initialized only after its initializer completes normally and its result has been secured in that Property's storage. This does not implicitly initialize Properties that have no declaration initializer.
+
+An instance Property declaration initializer must not access the partially constructed `self`, including by reading, borrowing, or writing another Property of that instance, invoking a member on `self`, or passing or otherwise exposing `self` to another operation. This restriction also applies to earlier Properties of that instance that have already been initialized. Cross-Property dependencies must be expressed in explicit construction or generated initialization code governed by definite-initialization rules; constructor syntax, that code's permitted accesses, and verification of complete initialization are specified separately. Ordinary independent calls and accesses to other fully initialized values remain allowed under normal Type and lifetime rules and run in logical order.
+
+Construction completion and current completeness follow [Value Lifetime](#912-aggregate-construction-and-completeness); absent explicit completion syntax, a constructor commits completion on normal body completion. A recoverable failure under normal Scope Exit destroys only initialized fields still owned by construction in reverse logical declaration order, never the unfinished aggregate's own `deinit`. For declaration initializers this is also reverse initialization order because they execute in logical order. Cleanup does not undo effects; [Panic Termination](#113-panic-termination) does not unwind. See [field cleanup](#1032-field-cleanup). This introduces no exception or failure-constructor syntax.
+
+For example, this declaration is invalid because its explicit getter does not refer to `storage`, so its effective representation is computed:
+
+```kimi
+var value: i32 = 10
+    get => calculateValue()
+```
+
+### 8.7. Access control
+
+Accessors inherit the Property's accessibility unless they declare a stricter restriction. An accessor cannot be more accessible than its Property. Restrictions do not change a bodyless accessor's default implementation, whether inline or in the Property body:
+
+```kimi
+public var count: i32 = 0 has get, private set
+// Public default getter; private default setter.
+
+private var value: i32
+    public set // Error: broader access than the Property.
+```
+
+### 8.8. Storage, addressability, and result semantics
+
+Owned storage and the value returned by a getter are separate concepts. A computed Property may return a borrowed or reference-like value without acquiring its own storage:
+
+```kimi
+var first: ref/T
+    get => items[0]@ref
+```
+
+Conversely, a stored Property may have custom accessors because any bound `storage` reference is sufficient for `HasStorage = true`:
+
+```kimi
+var balance: i64 = 0
+    get
+        auditRead()
+        return storage
+
+    set
+        storage = normalize(value)
+```
+
+A stored Property has an internal addressable location subject to the normal ownership and borrowing rules. Ordinary Property reads and writes still go through its accessors; address formation must not bypass a custom accessor or its access restrictions. A computed Property has no intrinsic location, although its getter may return a reference to storage owned elsewhere.
+
+Indexer declaration syntax and its accessor semantics are specified separately and are not part of this Property model.
+
+### 8.9. Property consume
+
+`receiver.property@move` explicitly extracts the stored value under the common [Consume rules](#915-explicit-consume). Properties expose only `get` and `set`; there is no Move accessor, separate Move accessibility, or prefix `move` expression.
+
+#### 8.9.1. Eligibility and permissions
+
+Property Consume requires all of the following:
+
+| Structural condition | Requirement |
+| --- | --- |
+| Representation | Instance Stored Property of a struct |
+| Accessors | Both compiler-provided standard `get` and standard `set` |
+| Receiver | Caller-owned struct place, including an owned Temporary Place |
+| Path | A supported static Move Path |
+
+At the use site, both accessors must be accessible, receiver construction must have completed, and the target must satisfy initialization, completeness, Loan, Origin, and `deinit` conditions. Standard accessor annotations do not relax these requirements. Consume invokes neither accessor.
+
+Getter visibility bounds read access; setter visibility bounds changes to storage. Consume requires both permissions, without turning get permission alone into permission to extract ownership. Requiring standard accessors prevents bypassing custom validation or transformation. A public standard setter therefore exposes Consume wherever the standard getter is also accessible.
+
+Custom accessors, computed Properties, static Properties, and setter-less `let` Properties are ineligible. An owned `let` **receiver** may still contain a consumable `var` Property: receiver writability is needed for reinitialization, not extraction.
+
+```kimi
+struct Person
+    public var name: string has get, set
+    public var age: i32 has get, set
+
+let person = makePerson()
+let name = person.name@move // Allowed with the common Consume conditions.
+// person.name = "Alice"   // Error: receiver is not writable.
+```
+
+Get/set requirements on a generic Property do not establish Stored representation or standard accessors. [Generic constraints](#842-contract-property-requirements) may establish structural facts, but each use still needs the common legality checks. No new Consume contract syntax is introduced.
+
+#### 8.9.2. Receiver evaluation and result
+
+Evaluate the receiver once by its ordinary rules, then locate and Consume the target storage without invoking its getter or setter. Do not bypass another Property getter while evaluating the receiver. A local receiver designates its storage without acquiring the whole instance by value.
+
+An owned struct Temporary Value is [materialized](#36-temporary-values-places-and-lifetimes) before extracting its field. Remaining fields follow the temporary's usual lifetime; the extracted value follows its destination.
+
+```kimi
+let item = makeHolder().item@move
+// Move item out of the owned temporary; clean up its remaining fields normally.
+
+let name = outer.inner.name@move
+// Evaluate outer.inner through its getter.
+// A borrowed receiver forbids Consume; a complete owned temporary may allow it.
+// This never bypasses inner's getter to extract from its original storage.
+```
+
+The result has the complete **Property Type**, including Origins, rather than the Getter Result Type. Copy fields also become Moved. Moving a reference or pointer transfers that value/capability, not ownership of its referent. Failed Consume never falls back to a getter or another Property.
+
+To extract from original storage at several Property boundaries, make each operation explicit:
+
+```kimi
+var inner = outer.inner@move
+let name = inner.name@move
+inner.name = "Alice"
+outer.inner = inner@move
+```
+
+Each extraction requires Consume permission; each restoration requires writable storage and an accessible standard setter. Borrowed or object receivers remain ineligible, including `uniq/Self`; an owned struct **field value** of Type `obj/Node` is allowed when the other conditions hold.
+
+### 8.10. Access after partial move
+
+For a statically identified owned place whose construction previously completed, standard getters/setters operate on the target field without creating a whole-instance `ref/Self` or `uniq/Self`. This applies to all standard field operations, not just consumable Properties. Equivalent custom bodies do not gain this behavior.
+
+| Operation on an incomplete instance | Condition |
+| --- | --- |
+| Standard `get` | Target value is Initialized and, if an aggregate, complete; readable/borrowable |
+| `property@move` | All Property Consume conditions hold for the target |
+| Standard `set` | Storage is writable and setter accessible |
+| Custom accessor or whole-receiver method | Forbidden until the instance is complete |
+| Whole-instance read, Copy, Move, or borrow | Forbidden until complete |
+
+A new standard-getter Loan targets the field and is bounded by its storage and owner validity. Copying a stored shared borrow instead preserves that borrow's Origins. A whole-instance Loan overlaps every field; a Loan on a disjoint field need not block Consume. Results and remaining fields keep dependencies that later destruction or replacement must not invalidate.
+
+```kimi
+var person = makePerson() // Person as defined above.
+let borrowed = person.name
+inspect(borrowed)         // Last use of this borrow.
+let name = person.name@move
+let age = person.age@move // Allowed: age is complete even though person is not.
+person.name = "Alice"
+person.age = 30
+use(person)              // Complete again.
+```
+
+Using `borrowed` after the first Move would create a conflicting Loan. Deferred uses participate in the same checks.
+
+Standard `set` follows RHS-first [assignment](#671-simple-assignment). An Initialized destination undergoes Replacement; Moved or legally Uninitialized storage undergoes Initialization. A partially initialized aggregate field first destroys only its remaining parts. Apply these rules per path at joins. Restoring every field makes an already-constructed instance complete without rerunning its constructor; it grants no access during initial construction.
+
+```kimi
+person.name = person.name@move // Extract, then reinitialize the empty field.
+// person.name = person.name  // Error: getter yields ref/string; setter needs string.
+```
+
+## 9. Ownership and lifetime analysis
+
+### 9.1. Initialization and consume analysis
+
+This section checks the initialization, completeness, and Consume legality of values defined by [Values, places, and storage](#34-values-places-and-storage).
+
+#### 9.1.1. Storage, state, and responsibility
+
+Track initialization state and destruction responsibility per place:
+
+| State | Meaning | Read / borrow / Copy / Move | Write to `let` | Write to `var` |
+| --- | --- | --- | --- | --- |
+| Uninitialized | No initialized value is held | Forbidden | Only if never initialized | Initialization |
+| Initialized | An initialized value is held | Subject to Type and access rules | Forbidden | Replacement |
+| Moved | The former value/capability and responsibility were transferred | Forbidden | Forbidden | Reinitialization |
+
+Moved records the source's history, not whether the destination value is still alive. Track a `let` place's first initialization separately; neither Move nor internal Destruction resets it. This revision provides no general user operation to explicitly destroy a place and reset that history. State alone grants no access or write permission.
+
+Every read, borrow, Copy, or Move requires initialization on every reachable incoming path. `let` permits one initialization per path during its binding lifetime; `var` permits later initialization/replacement under ordinary permissions. Stored `let` Properties follow the same first-initialization limit and their dedicated access rules.
+
+```kimi
+var number: i32
+if condition
+    number = 1
+else
+    number = 2
+print(number)             // Both paths initialize number.
+
+let resource: Resource
+resource = makeResource()
+consume(resource)         // Move.
+resource = makeResource() // Error: let cannot be initialized again.
+```
+
+#### 9.1.2. Aggregate construction and completeness
+
+Track two facts independently: **construction completion**, recording successful completion of initialization, and **current completeness**, requiring every stored field to be Initialized. A **complete value** satisfies both. This revision has no optional-to-initialize stored fields.
+
+Constructors and staged initialization verify all fields and success conditions, commit completion, then expose or transfer the complete value. Secure a successful constructor result before normal Scope Exit. Without explicit completion-point syntax, normal constructor-body completion is the completion point; a failure exit or Panic does not commit it. Merely assigning all fields does not bypass remaining constructor work.
+
+Before completeness, whole-value reads, Copy, borrowing, Move, and exposure are forbidden, including ordinary accessors taking the whole `self`. Direct operations on initialized fields follow their own access rules. After a completed construction followed by Partial Move, field-scoped [standard Property operations](#810-access-after-partial-move) are allowed; this does not authorize initial-construction access.
+
+Partial Move changes current completeness, not the construction-completion fact. Permitted reinitialization of all missing fields restores completeness without rerunning a constructor. If a field cannot be reinitialized, that value remains incomplete and cannot be used/transferred as a whole; its remaining Initialized parts can still be used and cleaned up. No separate permanent-incomplete state is defined. Whole-value Move transfers its construction information; whole replacement uses the new value's information.
+
+#### 9.1.3. Move paths and partial move
+
+A **Move Path** is a statically trackable path with independent initialization state and destruction responsibility. Initial paths include stored fields, Tuple elements, fixed-length array indices determined by language constant evaluation during semantic analysis, and combinations of these. Runtime indices, dynamic containers, and user indexers are not added even for literal indices. Do not use optimization-derived constant propagation or arbitrary integer proofs to expand the accepted paths.
+
+A Move Path defines tracking granularity, not access permission:
+
+| Source access | Partial Move |
+| --- | --- |
+| Tuple element / constant-index fixed array element | Direct place acquisition normally Moves a non-Copy value |
+| Struct Property | Ordinary access uses `get`; `@move` requires Property Consume eligibility and permissions |
+
+```kimi
+var pair: (string, i32) = ("Alice", 30)
+let name = pair.0  // Partial Move; pair is incomplete.
+let age = pair.1   // Remaining initialized part is usable.
+// let all = pair  // Error: incomplete.
+pair.0 = "Bob"
+let all = pair     // Complete again.
+```
+
+Do not Move a non-Copy referent or subpart through `ref`, `uniq`, `objref`, or `objuniq`, leaving the borrowed place Moved/Uninitialized, even if a later reinitialization is planned. Exclusive access does not transfer ownership. Explicit Consume likewise cannot extract through borrowed referents or borrowed Property receivers, even for Copy values.
+
+User-defined `deinit` assumes a complete value. Reject Partial Move that invalidates this assumption for the aggregate itself or any enclosing ancestor, including nested paths, methods, and Destruction. A complete owned value whose own Type has `deinit` may move as a whole.
+
+Use [Exchange or Swap](#97-initialization-preserving-exchange), or a Type-specific operation, when ordinary extraction is forbidden. Exchange preserves initialization; Type-specific invariants remain the implementation's responsibility and may require restricted storage access. A Move Path never bypasses an accessor.
+
+#### 9.1.4. Consume verification and representation
+
+Separate two static checks; they are not runtime fallback stages:
+
+```text
+Consume
+├─ Eligibility: does the declaration, Type, and path provide the operation?
+│  ├─ supported place kind and ownership path
+│  ├─ trackable Move Path
+│  ├─ required storage and accessor properties
+│  └─ structural Partial Move / deinit restrictions
+└─ Legality: may this use site perform it?
+   ├─ required accessibility
+   ├─ target Initialized on every incoming path; complete if an aggregate
+   ├─ required receiver construction previously completed
+   ├─ no conflicting Loan; valid Origins
+   └─ actual ancestor path and Destruction conditions
+```
+
+An accessor's existence is structural; accessibility depends on the use site. Constraints can prove structural facts, not current initialization or absence of Loans. Unknown structural facts follow [generic Access Effect resolution](#527-generic-access-effects); no new Consume contract syntax is defined.
+
+An ancestor may be incomplete if the target remains Initialized and complete, and can be located without whole-value access to that ancestor. Whole-receiver reads/borrows remain forbidden. User-defined `deinit` can make a path structurally ineligible; also check the actual ancestors at each use. Moving a complete value as a whole is distinct from Partial Move.
+
+Track per-path state, destruction responsibility, first initialization of `let`, construction completion, and current completeness across branches, loops, transfers, and `defer`. Apply [Destruction lifetime checks](#966-destruction-lifetime-checking). Raw-pointer operations need not recover or repair an untracked original owner's responsibility.
+
+Lowering may elide transfers and temporary storage or use conditional cleanup flags only while preserving values, abstract place identity and lifetime, Move state, Loans, Origins, destruction responsibility, and specified failures. Optimization must not change which programs or Move Paths are legal.
+
+#### 9.1.5. Explicit consume
+
+`E@move` transfers a value/capability and its applicable destruction responsibility. Unlike ordinary acquisition, it forces Move even for Copy Types. It produces a Temporary Value with the source's complete Type and Origin dependencies; a source Place becomes Moved. It neither converts the Type nor extends lifetime.
+
+```text
+E@move
+├─ Access Designator -> resolve Consume
+│                      ├─ eligible and legal -> extract from the Place
+│                      └─ otherwise -> compile-time error
+└─ other value-producing expression -> evaluate normally, then Move its temporary
+```
+
+[Access Designator](#34-values-places-and-storage) classification does not grant Consume permission. Failure never falls back to Read, a getter/indexer result, or materialization of that result. This applies to computed Properties and unsupported runtime indices or indexers as well as direct places. Parentheses preserve the classification. Receiver, index, and pointer subexpressions follow ordinary evaluation; Consume does not propagate into them or bypass intervening getters.
+
+Safe source kinds are owned root places, Tuple elements, fixed-array elements at language-constant indices, and eligible [stored struct Properties](#89-property-consume). Apply the same ownership and path conditions to Copy Types. Exclude safe extraction through borrowed referents, object receivers, static Properties, user indexers, and runtime indices. Generic owned arguments can move as whole values without an extra Consume contract.
+
+Raw dereference such as `(*p)@move` follows Unsafe rules instead of safe path tracking; preventing later reads or double destruction by an untracked owner is the programmer's obligation.
+
+Move is permitted from an owned `let` local without granting reinitialization. A setter-less `let` Property is ineligible, while a `var` Property inside an owned `let` receiver may be eligible. Restoring storage still requires its usual Write permission, and moving it does not reset `let`'s first-initialization history. There is no separate permanent-incomplete state.
+
+```kimi
+let number: i32 = 10
+let taken = number@move // number is Moved despite being Copy.
+let result = transform(holder.item)@move
+// Ordinary argument/getter evaluation; only transform's result is explicitly moved.
+```
+
+To move a Read result intentionally, first obtain it with `let value = expression`, then use `value@move`. References and pointers move as values/capabilities, not as ownership of their referents. Borrowing or reborrowing a Move result follows the ordinary temporary, Loan, and Origin rules; it does not restore the original place.
+
+Value transfer, destruction-responsibility transfer, and source-state updates form one operation, with no intervening user code, Destruction, or control transfer. Source memory need not be erased. Operand evaluation may execute user code, and completed effects are not rolled back on later failure.
+
+```kimi
+x@move@move // Move from x, then Move the resulting temporary.
+```
+
+### 9.2. Origin expressions and ordering
+
+The basic meaning of Origins and Loans is defined in [Origins and Loans: overview](#37-origins-and-loans-overview). This section defines annotation expressions and their ordering.
+
+#### 9.2.1. Origin expressions
+
+An Origin is the set of program points at which a borrow is guaranteed to be valid.
+
+| Kind     | Examples                | Meaning                                         |
+| -------- | ----------------------- | ----------------------------------------------- |
+| Concrete | `x`, `self`, `x.source` | Origin supplied by a parameter or receiver      |
+| Abstract | `source`, `left`        | Origin parameter declared by a function or type |
+| Static   | `static`                | Built-in maximum Origin                         |
+
+The syntax is:
+
+```text
+origin-expression := Name
+                   | origin-expression '.' Name
+                   | static
+                   | origin-expression 'and' origin-expression
+```
+
+A borrowed parameter used as an Origin denotes the Origin carried by its value, not the lexical scope of the parameter variable:
+
+```kimi
+func first(x: ref/T) -> ref/T from x
+```
+
+`x.source` denotes the abstract Origin `source` carried by `x`. Qualification is required so that values of the same Origin-bearing type remain distinguishable:
+
+```kimi
+func View.get(self: ref/Self) -> ref/T from self.source
+```
+
+Local values also have compiler-internal Origins, but these cannot be named in a public signature.
+
+#### 9.2.2. Ordering and intersection
+
+`o1 : o2` means that `o1` outlives `o2`: `region(o1) ⊇ region(o2)`.
+
+The relation is reflexive and transitive. `static` outlives every Origin.
+
+`and` is the meet of two Origins:
+
+```text
+region(o1 and o2) = region(o1) ∩ region(o2)
+```
+
+Consequently, `o1 and o2` never outlives either operand. A result declared `from x and y` is valid only in the region common to both inputs.
+
+#### 9.2.3. `static` and `Owned`
+
+```kimi
+func empty() -> ref/string from static
+```
+
+A shared borrow from `static` has no non-static lifetime dependency. Safe code cannot derive `uniq/T from static` from longevity alone: an exclusive borrow also requires a unique Loan anchor. For the same reason, an abstract Origin whose Loan requirement is `uniq` cannot be bound to `static` in safe code.
+
+`static` describes an Origin; it does not mean that a type contains no non-static borrow. The `Owned` capability expresses that condition:
+
+```kimi
+func spawn<F>(f: F)
+    F is Owned
+```
+
+A type is `Owned` when every reachable Origin dependency is absent or bound to `static`.
+
+### 9.3. Abstract origins
+
+Functions and types may declare abstract Origin parameters separately from type parameters:
+
+```kimi
+func unwrap<T> origin s(v: View<T> from (source => s))
+    -> ref/T from s
+
+struct View<T> origin source
+    let value: ref/T from source
+```
+
+Function Origins are universally quantified. Origin parameters occupy a namespace distinct from type parameters.
+
+#### 9.3.1. Origin arguments
+
+Named Origin arguments use `from (...)` and `=>`:
+
+```kimi
+struct Pair<A, B> origin left, right
+    let a: ref/A from left
+    let b: ref/B from right
+
+Pair<A, B> from (
+    left => a,
+    right => b)
+```
+
+Named argument lists require parentheses, even for one argument. For a Type with exactly one Origin, `View<T> from v` abbreviates `View<T> from (source => v)`.
+
+#### 9.3.2. Variance
+
+The compiler infers Origin variance from all occurrences and solves recursive types to a fixed point. Explicit variance annotations are not allowed.
+
+| Position                 | Origin                   | Core Type         |
+| ------------------------ | ------------------------ | ----------------- |
+| `ref/T from o`           | Covariant in `o`         | Covariant in `T`  |
+| `uniq/T from o`          | Covariant in `o`         | Invariant in `T`  |
+| Function parameter       | Reverses polarity        | Contravariant     |
+| Function result          | Preserves polarity       | Covariant         |
+| Interior-mutable storage | Representation-dependent | Usually invariant |
+
+For an Origin parameter `p` of `S`:
+
+- covariance permits `S from (p => o1) <: S from (p => o2)` when `o1 : o2`;
+- contravariance reverses that relation;
+- invariance requires equal Origins.
+
+The direct borrow rules are:
+
+```text
+o1 : o2
+--------------------------------
+ref/T from o1 <: ref/T from o2
+uniq/T from o1 <: uniq/T from o2
+```
+
+`uniq/T` remains invariant in `T`.
+
+#### 9.3.3. Loan requirements
+
+Each abstract Origin has an inferred Loan requirement:
+
+```text
+none < ref < uniq
+```
+
+Using an Origin in `ref/T` requires `ref`; using it in `uniq/T` requires `uniq`. Multiple uses take the stronger requirement, and requirements propagate through nested Origin-bearing types.
+
+```kimi
+struct View<T> origin source
+    let value: ref/T from source       // loan(source) = ref
+
+struct MutView<T> origin source
+    let value: uniq/T from source      // loan(source) = uniq
+```
+
+The requirement determines which caller-side Loan must remain active while a returned or stored Origin-bearing value is live. It is not an additional Copy classification condition: [Copy capability](#351-copy-capability-and-explicit-duplication) is structural, while actual Loan conflicts are checked at each use.
+
+### 9.4. Origin elision and return contracts
+
+When a result Origin is omitted, the compiler applies these rules in order:
+
+1. If the result contains no borrow, no result-Origin constraint is generated.
+2. If there are directly borrowed parameters, each omitted result Origin becomes the meet of all their Origins.
+3. Otherwise, an omitted shared result Origin is `static`. If that would create an exclusive static borrow, an explicit valid Origin is required.
+
+Examples:
+
+```kimi
+func first(x: ref/T) -> ref/T
+// result Origin: x
+
+func choose(x: ref/T, y: ref/T) -> ref/T
+// result Origin: x and y
+
+func empty() -> ref/string
+// result Origin: static
+```
+
+Only direct borrowed parameters participate in rule 2. Origins nested in aggregate inputs must be selected explicitly:
+
+```kimi
+func get(v: View<T>) -> ref/T from v.source
+```
+
+An explicit `from` clause overrides elision. Thus this result depends on `self`, not on the conservative meet `self and key`:
+
+```kimi
+func lookup(self: ref/Self, key: ref/Key)
+    -> ref/V from self
+```
+
+#### 9.4.1. Return contracts
+
+A declared return Origin limits the dependency visible to callers without requiring a borrow from that specific input. Every explicit or implicit result, including unreachable ones, must subtype the declared result Type under [result validation](#78-result-validation) and [reachability](#782-reachability).
+
+For example, `ref/T from static` may satisfy `ref/T from x` because `static : x`, provided the Origin position is covariant. Invariant positions require equality, while contravariant positions reverse the subtype direction.
+
+`from x and y` is deliberately conservative in two ways:
+
+- the result region is `region(x) ∩ region(y)`;
+- Loans for both possible sources remain active while the result is live.
+
+```kimi
+let r = choose(a, b)
+b.mutate()       // Error: the Loan on b is still active.
+use(r)
+```
+
+The caller cannot rely on which argument the implementation actually selected. An Origin-bearing result type with distinct Origin parameters can preserve more precision.
+
+### 9.5. Exclusive origins
+
+An exclusive borrow requires both a valid Origin and a unique Loan anchor. An Origin proves longevity but not uniqueness.
+
+A shared borrow may be returned from a stored Origin:
+
+```kimi
+func View.get(self: ref/Self)
+    -> ref/T from self.source
+```
+
+Returning `uniq/T from self.source` from `self: uniq/Self` is invalid because detaching the result from the current `self` Loan could allow a second exclusive borrow:
+
+```kimi
+func View.bad(self: uniq/Self)
+    -> uniq/T from self.source       // Error
+```
+
+One valid form consumes the Origin-bearing owner:
+
+```kimi
+func View.into_uniq(self: Self)
+    -> uniq/T from self.source
+```
+
+Moving `self` prevents reuse of the capability.
+
+Alternatively, reborrow through the current exclusive receiver:
+
+```kimi
+func View.get_uniq(self: uniq/Self)
+    -> uniq/T from self
+```
+
+The parent Loan remains active, and access through it is suspended, while the returned reborrow is live.
+
+### 9.6. Borrow checking
+
+Function bodies are lowered to a control-flow graph. A **program point** is a position immediately before or after an operation. A [Place](#34-values-places-and-storage) does not by itself grant write permission. The lowered representation uses these projections:
+
+```text
+place := local
+       | place '.' Name
+       | place '.' TupleIndex
+       | '*' place
+       | place '[' _ ']'
+```
+
+These projections describe storage, including lowered slots, rather than granting direct access to source-level Property storage. [Properties](#88-storage-addressability-and-result-semantics) use accessors. Parentheses preserve a place. Reading a place copies, moves, or borrows according to the required Type and access permissions.
+
+A **region** is a set of program points. Local regions are inferred; Origins in signatures introduce universal regions; `static` is the maximum region.
+
+A Loan is:
+
+```text
+Loan = (place, mode, region)
+mode = ref | uniq
+```
+
+It is active at program point `P` exactly when `P` belongs to its region. Regions follow actual uses rather than lexical scope, providing non-lexical lifetimes:
+
+```kimi
+let r = x@ref
+use(r)
+x.mutate()       // Allowed: r is no longer live.
+```
+
+#### 9.6.1. Constraints
+
+Type checking generates these constraints:
+
+| Constraint      | Rule                                                         |
+| --------------- | ------------------------------------------------------------ |
+| Subtyping       | Assignment and argument passing require `type(value) <: type(destination)`. |
+| Liveness        | If a value containing `o` may be used after `P`, then `P` belongs to `region(o)`. |
+| Outlives        | `a : b` requires `region(a) ⊇ region(b)`.                    |
+| Well-formedness | Every Origin in `T` observable through `ref/T from o` or `uniq/T from o` must outlive `o`. |
+| Calls           | Origin arguments and result Loan requirements are instantiated as described under Calls and Origin propagation. |
+
+The well-formedness rule prevents borrowed contents from expiring before the outer borrow.
+
+#### 9.6.2. Place overlap and conflicts
+
+Two places overlap when an operation on one may affect the other. Static place analysis uses only these structural rules for proving non-overlap:
+
+| Places | Result |
+| --- | --- |
+| Identical place, or a place and an inline subpart | Overlap |
+| Independent local roots and their inline parts | Disjoint |
+| Distinct inline stored fields, Tuple elements, or different constant fixed-array indices of one aggregate, and their subparts | Disjoint |
+| Referents of simultaneously live valid `uniq`/`objuniq` borrows with distinct Loan anchors | Disjoint by exclusivity |
+| Other reference dereferences | Follow Loan provenance and apply these rules |
+| Anything not decided above | Non-overlap unproven; reject operations requiring proof |
+
+Inline parts exclude pointer/reference referents. Distinct shared-reference or raw-pointer variables alone do not prove independence. Constants use language constant evaluation, not optimization; runtime index comparisons such as `i != j` do not establish disjointness. No arbitrary integer proof or optimizer result changes acceptance. Simultaneous exclusive borrows may be used only through their valid access paths; reborrowing still suspends conflicting parent access.
+
+These are storage rules, not permission to bypass Property accessors. Field-scoped standard operations may borrow disjoint fields separately; custom whole-receiver operations retain their whole-instance footprint.
+
+Each operation is checked against every active Loan on an overlapping place:
+
+| Operation               | Existing `ref` | Existing `uniq` |
+| ----------------------- | -------------- | --------------- |
+| Read                    | Allowed        | Forbidden       |
+| Write or move           | Forbidden      | Forbidden       |
+| Create `ref`            | Allowed        | Forbidden       |
+| Create `uniq`           | Forbidden      | Forbidden       |
+| Destroy the borrowed place | Forbidden      | Forbidden       |
+
+This enforces shared aliasing or mutation, but never both simultaneously.
+
+#### 9.6.3. Reborrowing
+
+Borrowing through an exclusive borrow creates a child Loan. While the child is live, the parent remains live but access through it is suspended. Overlapping access is rejected by the normal conflict rules.
+
+**Basic example.**
+
+```kimi
+func bump(n: uniq/i32)
+
+var v = 0
+bump(v@uniq)
+bump(v@uniq)
+```
+
+Each call creates a temporary reborrow; the first ends before the second starts.
+
+#### 9.6.4. Calls and origin propagation
+
+For a call, the compiler:
+
+1. creates fresh regions for the callee's abstract Origins;
+2. instantiates parameter types and checks argument subtyping;
+3. applies declared outlives constraints;
+4. instantiates the return type;
+5. recursively collects its Origin dependencies and Loan requirements;
+6. creates the required caller-side Loans and keeps them active for the corresponding result regions.
+
+This applies to direct borrow results and nested aggregate results:
+
+```kimi
+func make(a: ref/A, b: ref/B)
+    -> Pair<A, B> from (
+        left => a,
+        right => b)
+```
+
+While the returned `Pair` is live, shared Loans on both `a` and `b` remain active. A dependency requiring `uniq` propagates an exclusive Loan. `static` creates no caller-side Loan.
+
+A call's receiver and argument Loans begin as each borrow/reborrow is formed in evaluation order, before later arguments and defaults. In particular, an exclusive receiver is active while explicit arguments are evaluated. No two-phase reservation exception is defined; intrinsic Exchange/Swap use the same rule.
+
+#### 9.6.5. Universal regions
+
+Every Origin in a function signature is universally quantified. The implementation must work for every legal caller instantiation, so a local region cannot be widened to satisfy a universal return Origin:
+
+**Error example.**
+
+```kimi
+func bad(x: ref/T) -> ref/T from x
+    let local = T.new()
+    return ref/local       // Error
+```
+
+The local value cannot satisfy the universal return Origin `x`; returning its borrow is a compile-time error.
+
+#### 9.6.6. Destruction lifetime checking
+
+The [Destruction rules](#103-aggregate-destruction-and-deinit) and [Scope Exit](#102-scope-exit-destruction) determine responsibility and order. Destruction lifetime checking applies to every Origin/Loan that Destruction may observe and requires validity at each such observation.
+
+```text
+DestructorUsePoints(value, origin) ⊆ region(origin)
+```
+
+Destruction that observes no Origin/Loan adds no lifetime requirement. Conservatively assume that every user-defined `deinit` observes all reachable Origins even if its body does not use them, and apply the same checking recursively to field Destruction. No relaxation mechanism is defined.
+
+```kimi
+struct Logger origin sink
+    let out: uniq/Writer from sink
+
+    deinit
+        observe(self.out)
+```
+
+Here `observe` accepts `ref/Writer`; reading `self.out` shares the stored capability instead of extracting it. `sink` must remain valid during Destruction, even if the `deinit` body were replaced with `()`.
+
+### 9.7. Initialization-preserving exchange
+
+| Operation | Old value | Placement | Result |
+| --- | --- | --- | --- |
+| Initialization | None | Fill empty storage | Unit for assignment |
+| Replacement (`=`) | Destroy remaining old parts | Place after destruction | Unit |
+| `Exchange` | Transfer without destruction | Keep target initialized | Old value |
+| `Swap` | Exchange both values without destruction | Keep both initialized | Unit |
+
+`Exchange(place, with: value)` and `Swap(placeA, placeB)` denote language-provided intrinsic exchange operations. Their semantic requirements are defined here; final API spellings and resolution remain separate. In examples, `place` denotes **authorized direct storage access**, not permission to bypass a Property getter or expose its private storage. Property Consume permission alone does not grant such access.
+
+#### 9.7.1. Evaluation and transfer
+
+- Each target is Initialized and permits exclusive writing. Values have identical complete Types, including Origins; conversions finish before exchange begins.
+- Evaluate targets and arguments left to right. A target's exclusive Loan begins when its borrow argument is formed and remains active during later argument evaluation and exchange, just as for an ordinary exclusive receiver call. There is no reservation or delayed-activation exception.
+- Exchange itself runs no user code, Destruction, Panic-producing work, or control transfer. Internal empty states cannot be observed by the program. This does not guarantee inter-thread atomicity.
+- If argument evaluation fails, do not exchange; apply normal temporary cleanup and preserve Origin/Loan dependencies.
+
+`Exchange` secures its replacement first, then transfers the old target value and responsibility to the result and the replacement's responsibility to the target. Preparing the replacement must not empty the target or create a conflicting borrow. `Swap` transfers both values and responsibilities while keeping both targets Initialized and returns Unit; static non-overlap is required.
+
+```text
+Before: target = old, replacement = new
+After:  target = new, result = old
+```
+
+```kimi
+// p denotes an authorized writable i32 place.
+Exchange(p, with: p + 1) // Error: later read conflicts with the target Loan.
+let next = p + 1
+Exchange(p, with: next)  // Valid: computed before borrowing the target.
+
+// x is a writable non-Copy owned value.
+x = x                   // Valid: RHS-first Move and reinitialization.
+Exchange(x, with: x)     // Error: replacement would empty the target.
+```
+
+A Type-specific operation with `uniq/Self` may use authorized field exchange to return the old owned field without leaving the receiver incomplete. It must preserve the Type's invariants and all dependencies.
+
+#### 9.7.2. Static non-overlap
+
+Use the structural [place analysis](#962-place-overlap-and-conflicts). Distinct independent roots, distinct inline fields/Tuple elements/constant fixed-array indices, and valid simultaneous exclusive borrows with distinct Loan anchors can prove non-overlap. Identical or containing places overlap. Follow Loan provenance for other dereferences; different raw pointers or shared-reference variables alone prove nothing.
+
+```text
+Function parameters: a: uniq/T, b: uniq/T
+Swap(referent(a), referent(b)) // Conceptual storage notation: distinct live anchors.
+```
+
+Unknown relationships are rejected. Do not accept `Swap(a[i], a[j])` merely from `i != j`, arbitrary integer facts, or optimization. This bounds the required proof and the accepted programs, not just compiler effort.
+
+### 9.8. Lifetime design boundaries
+
+This revision does not define:
+
+- abstract Origin parameters on contracts or trait-like abstractions (the [Property getter receiver/result contracts](#82-default-getter-results) do not introduce contract-level Origin parameters);
+- default Origins for trait objects;
+- higher-ranked Origins;
+- borrow escape into heap or global storage;
+- lending iterators;
+- cancellation cleanup guarantees.
+
+These features require extensions to the [Ownership and Origin rules](#9-ownership-and-lifetime-analysis) and must not be inferred from this revision.
+
+## 10. Scope exit and destruction
+
+Scope exit secures results and performs cleanup. A Deferred Block registers code for scope exit; it is unrelated to a Deferred compile-time Condition.
+
+### 10.1. Deferred blocks
 
 A **Deferred Block** registers cleanup when execution reaches `defer`. Registration evaluates none of its body, arguments, conditions, or initializers. The statement has no result; expressions inside retain their positional Evaluation Contexts.
 
 A registration belongs to its directly containing executable scope: function, branch, arm, current iteration, Labeled or Unsafe Block, or executing Deferred Block body. Unreached registrations do not run; each iteration registers and cleans up independently. Registrations cannot be cancelled or manually invoked.
+
+**Basic example.**
 
 ```kimi
 func process(flag: bool)
@@ -3998,7 +3665,7 @@ func process(flag: bool)
 
 For true `flag`, output is `branch end`, `after branch`, then `function end`. Deferred execution and automatic destruction share the [Scope Exit ordering](#102-scope-exit-destruction).
 
-#### 10.1.1. Deferred Control Boundary
+#### 10.1.1. Deferred control boundary
 
 Each Deferred Block establishes a **Deferred Control Boundary** that no transfer lookup may cross. It accepts only operandless self-targeted `exit`, including through nested ordinary or Unsafe Blocks; even `()` is forbidden as an operand.
 
@@ -4075,12 +3742,6 @@ unsafe:
 
 A Deferred Block does not itself grant unsafe permission. Permission follows the operation's lexical context, never its later caller, and does not cross Function Boundaries. Safety conditions must hold when the delayed operation executes.
 
-#### 10.1.4. Implementation model
-
-Analyze registration separately from execution: a non-completing deferred body affects actual cleanup paths, not reachability immediately after registration. Lower defers and destruction into one exit sequence, retaining registration state only as needed. No dynamic closure, function value, or heap cleanup stack is required.
-
-For `if condition` containing only `defer: cleanup()`, a true branch registers and runs cleanup before leaving that branch; false registers nothing. No registration flag is needed in this simple case, and Lowering must not move cleanup into the surrounding scope. Example cleanup functions are illustrative, not standard API declarations.
-
 ### 10.2. Scope-exit destruction
 
 **Scope Exit** combines registered Deferred Blocks and automatic destruction. It applies both to ordinary scope completion and to scopes left by `return`, `exit`, `continue`, or `yield`.
@@ -4139,7 +3800,7 @@ func take() -> Resource
 
 Clean only scopes actually left. `continue` cleans the current iteration's departing scopes and retains outer scopes needed for continuation. Named transfers clean all intervening scopes they leave. Exiting a Deferred Block completes its nested cleanup, then resumes pending outer cleanup.
 
-Normal ownership, borrowing, and [Destruction lifetime checking](#766-destruction-lifetime-checking) apply throughout cleanup. Securing a result first does not permit a borrow of a destroyed local to escape. For partial initialization or Partial Move, apply [field cleanup](#1032-field-cleanup) to parts with remaining responsibility rather than skipping the whole aggregate. Raw pointer access does not guarantee automatic tracking of the original owner's destruction responsibility.
+Normal ownership, borrowing, and [Destruction lifetime checking](#966-destruction-lifetime-checking) apply throughout cleanup. Securing a result first does not permit a borrow of a destroyed local to escape. For partial initialization or Partial Move, apply [field cleanup](#1032-field-cleanup) to parts with remaining responsibility rather than skipping the whole aggregate. Raw pointer access does not guarantee automatic tracking of the original owner's destruction responsibility.
 
 #### 10.2.3. Completion and abnormal termination
 
@@ -4149,7 +3810,7 @@ Deliver a pending transfer or result only after all required cleanup completes n
 
 Forced process termination and undefined behavior provide no cleanup guarantee. Panic skips or aborts cleanup under [Panic Termination](#113-panic-termination). Cancellation, if introduced, requires separate common rules for Deferred Blocks, destruction, and secured results; this specification provides no cleanup guarantee for it.
 
-### 10.3. Aggregate Destruction and deinit
+### 10.3. Aggregate destruction and deinit
 
 #### 10.3.1. Special receiver
 
@@ -4200,9 +3861,11 @@ Cleanup: c, then a
 
 Destruction lifetime checking applies at every actual observation, including field cleanup. If cleanup reaches a responsibility, execute it exactly once; Move transfers it and prevents double destruction at the source. This guarantee does not promise that every destruction completes when an earlier cleanup diverges, Panics, or terminates execution. [Panic Termination](#113-panic-termination) remains the sole abnormal-termination policy.
 
-## 11. Error handling
+## 11. Failure handling
 
-### 11.1. Policy and status
+Failure handling determines whether execution continues with an ordinary value or terminates. Panic interacts with cleanup through its explicit termination rules.
+
+### 11.1. Error policy
 
 Kimigayo represents ordinary failures as values and uses Panic Termination only when normal execution cannot continue. It provides no exception throwing or catching mechanism.
 
@@ -4216,7 +3879,7 @@ Runtime problems fall into three categories:
 
 These are not a simple severity ranking: `None` represents expected absence, `Err` an operation failure, Panic process termination, and Warning a diagnostic independent of control flow.
 
-**Design status:** `Option<T>`, `Result<T, E>`, and `$panic(...)` are not yet implemented. Enum payloads, construction, and patterns below are conceptual; their syntax belongs to the corresponding Type and pattern specifications. Example APIs are illustrative, not standard-library declarations.
+**Partially specified:** Enum payload, construction, and pattern syntax used in the Option/Result examples belongs to those Type and pattern specifications. Example APIs are illustrative.
 
 Dedicated failure propagation syntax is not defined. Future syntax, such as `?` or `else return`, must follow normal Scope Exit rules; its details belong to that syntax's specification.
 
@@ -4292,7 +3955,7 @@ Discarding a `Result` expression in Discard Context is allowed but produces a co
 
 Returning a recoverable failure follows normal [Scope Exit](#102-scope-exit-destruction) rules, including their requirement that earlier cleanup complete normally before remaining cleanup or result delivery proceeds. Use this path for ordinary failures requiring resource cleanup.
 
-### 11.3. Panic Termination
+### 11.3. Panic termination
 
 **Panic Termination** abnormally terminates the entire process executing the program when normal execution cannot continue. Explicit requests and implicit runtime check failures share the termination rules below.
 
@@ -4303,6 +3966,8 @@ Panic is a termination mechanism, not a classification of causes. It may represe
 Every runtime check failure specified by this document initiates implicit Panic. These include integer overflow, invalid integer division or remainder, invalid indices or Range boundaries, invalid conversions or shift counts, duplicate dictionary keys, and missing keys on indexed reads. Each operation defines its invalid values; IEEE 754 floating-point division by zero is not an integer division failure.
 
 The same cause can instead be recoverable under a different API contract:
+
+**Basic example.**
 
 ```kimi
 func tryAllocate(size: usize) -> Option<Buffer>
@@ -4315,11 +3980,11 @@ func allocateRequired(size: usize) -> Buffer
 
 `tryAllocate` returns absence when allocation is unavailable; `allocateRequired` treats that outcome as fatal.
 
-#### 11.3.2. Explicit Panic and argument evaluation
+#### 11.3.2. Explicit panic and argument evaluation
 
 `$panic(expression)` is a Composition Root termination operation. Evaluate its argument once under ordinary expression rules with expected Type `string`. On normal completion, use that string as diagnostic information and initiate Panic Termination. If evaluation instead transfers control, diverges, or initiates another Panic, follow that outcome without initiating this call's Panic. Failures while dynamically constructing a message follow the same argument-evaluation rules.
 
-The `$panic(...)` expression has Type Never and never completes normally. Apply the ordinary [Never](#415-unit-and-never-types) and [result validation](#98-result-validation) rules:
+The `$panic(...)` expression has Type Never and never completes normally. Apply the ordinary [Never](#315-unit-and-never-types) and [result validation](#78-result-validation) rules:
 
 ```kimi
 func requireValue(value: Option<i32>) -> i32
@@ -4328,7 +3993,7 @@ func requireValue(value: Option<i32>) -> i32
         None => $panic("Required value is missing")
 ```
 
-Panic itself is not a Control Transfer and produces no Completion; distinguish it from a transfer during argument evaluation. The [Evaluation Outcomes](#91-completions) are Completion, Divergence, and Panic Termination.
+Panic itself is not a Control Transfer and produces no Completion; distinguish it from a transfer during argument evaluation. The [Evaluation Outcomes](#71-completions) are Completion, Divergence, and Panic Termination.
 
 #### 11.3.3. Termination, diagnostics, and cleanup
 
@@ -4372,3 +4037,914 @@ func parse(source: string) -> Result<ParseReport<Syntax>, ParseError>
 ```
 
 This API returns warnings with successful results. An API that must preserve warnings on failure includes them in its error value or in an outer report containing the `Result`.
+
+# Part III. Program and compilation environment
+
+## 12. Modules and dependencies
+
+A module groups source declarations and controls the names exposed through dependencies. Source environments belong to definitions, not to their callers or merged-container wrappers.
+
+| Term | Meaning |
+| --- | --- |
+| Kotonoha | One named source or binary module. |
+| SourceDocument | One immutable source input belonging to a Kotonoha. |
+| Compilation root | Entry point for the project root and direct-dependency reference names. |
+| Project root | Root of the primary Kotonoha's declaration hierarchy. |
+| Source environment | A document's definition-site aliases and lookup context. |
+
+Merged declarations keep each fragment's definition-site source environment for names, Types, contracts, and diagnostics. Merging must not apply one fragment's aliases to another. Generated documents have independent source environments.
+
+Each Compilation owns a **Compilation root**, direct-dependency reference-name mappings, and default aliases. The primary Kotonoha's Container hierarchy ends at the **project root**. A resolved Symbol identifies its declaration, including originating Kotonoha/version, independently of spelling or alias path.
+
+### 12.1. External references and aliases
+
+Only directly referenced Kotonoha libraries are source-addressable by library name. Use qualification such as `ExternalLib.GroupA.StructB` or an explicit `alias` declaration; do not search all external members unqualified. Multiple library versions may use different reference names, with configuration syntax separately specified. Loading transitive metadata for type checking does not expose those libraries by name.
+
+`alias ExternalLib.GroupA` opens a Container's direct members for unqualified lookup:
+
+- Declare it at top level before ordinary declarations or executable code; it applies only to that SourceDocument. Nested aliases are invalid.
+- Resolve its Container path from the Compilation root, without other source aliases or default aliases. Check target accessibility at the declaration.
+- Introduce direct Types, functions, Properties, and child Containers in their namespaces; do not recursively introduce descendants.
+- Retain a reference to the target Container. Check member access at each actual use, rather than caching one source-wide list of accessible members.
+- Treat explicit aliases together at their lookup stage and defaults together at a later stage. Order is irrelevant; deduplicate paths to the same Symbol. Different same-name functions form one candidate set, distinct Types use Type Name Selection, and mixed value kinds conflict.
+- Do not automatically re-export source aliases to other files or consumers.
+
+```kimi
+// A.kimi; GroupA exports StructB and Child.StructC.
+alias ExternalLib.GroupA
+group Work
+    func accept(value: StructB) -> () => ()
+    func nested(value: Child.StructC) -> () => ()
+
+// B.kimi: merged Work does not inherit A.kimi's alias.
+group Work
+    func reject(value: StructB) -> () => () // Error: not imported here.
+```
+
+Import `ExternalLib.GroupA.Child` explicitly to use `StructC` alone; `alias Child` cannot resolve through another alias. Library reference-name configuration is distinct from source `alias`.
+
+**Design boundary:** Versioned dependency reference configuration and reference-graph diagnostics remain separately specified. Re-export syntax follows [Re-exports](#122-re-exports).
+
+### 12.2. Re-exports
+
+**Deferred design:** re-export declaration syntax and artifact representation are not yet defined; source aliases never act as re-exports. Until that feature is specified, a consumer that names a Type or requirement originating in another Kotonoha must directly reference that originating library and have an accessible path to the Symbol. A public Signature referring to an external public Type does not itself create that path. Merely loading transitive metadata does not satisfy Name Reachability.
+
+Any future re-export design must preserve the original Symbol, avoid widening access, and reject cycles without a real target. Its syntax and compatibility requirements belong to that feature's specification.
+
+### 12.3. Source artifacts and binary interfaces
+
+Portable interchange uses source artifacts or binary interfaces, not serialized Koto implementation details. Source artifacts preserve the source and configuration needed for reconstruction. Binary-interface information includes Symbol/version identity, visibility and public paths, normalized Signatures, Type and Origin Contracts, unsafe requirements, Property/accessor capabilities and field-operation semantics, generic specialization inputs, ABI/layout/calling conventions, and target/language/compiler identity. These are information categories, not a complete compatibility format: encoding, required fields, validation, and compatibility rules belong to a separate artifact-interface specification.
+
+## 13. Compile-time directives
+
+Compile-time directives choose source syntax without runtime branching. The following terms are used in this chapter:
+
+| Term | Meaning |
+| --- | --- |
+| Condition | A compile-time Boolean expression controlling syntax selection. |
+| Lookup environment | The declarations, aliases, and extensions visible to name lookup in a scope. |
+| Prepared environment | Fixed target values and configured compile-time settings available before source selection. |
+| Deferred | A valid Condition dependency whose value is not yet available. |
+| Finalization | Acceptance of a declaration, layout, specialization, or body after its required dependencies and checks are resolved. |
+
+Compile-time Directives select Syntax during compilation without producing runtime control flow:
+
+| Form | Purpose |
+| --- | --- |
+| `#if` | Independently includes or excludes one Syntax node. |
+| `#match` | Introduces an ordered Case Group and selects one arm. |
+| `#case` | Introduces an arm directly inside a `#match` body. |
+| `#Name` | Attaches an Attribute; it is not a Compile-time Directive. |
+
+The former `#If(...)` form is an Attribute. The lowercase `#if` form specified here is a separate language construct.
+
+### 13.1. Syntax and structural selection
+
+`#if` controls either the next Syntax node at the same indentation or one indented Block:
+
+**Basic example.**
+
+```kimi
+#if windows
+alias Kimi.Windows
+
+#if debug
+    let logging = true
+    let assertions = true
+```
+
+A **Case Group** is introduced by `#match` and consists of the `#case` arms indented one level under it. The group's extent is the `#match` body; nothing outside that body joins the group, so two Case Groups may appear adjacently. Select the first matching arm in source order. The optional catch-all `#case _` must occur once at most, as the final arm.
+
+```kimi
+func useImplementation<T>(value: T) -> ()
+    #match
+        #case windows
+            useWindowsImplementation(value)
+        #case T is i32
+            useIntegerImplementation(value)
+        #case _
+            useGenericImplementation(value)
+
+    #match
+        #case pointerWidth == 64
+            useWidePath(value)
+        #case _
+            useNarrowPath(value)
+```
+
+A `#match` header has no subject expression. Its body must contain at least one `#case` arm and contains only such arms, apart from blank lines and comments. Each arm must have an indented Block. A `#case` outside the direct arm list of a `#match` body is an error; nested selections require their own `#match`. Blank lines and comments do not split a group within its body.
+
+A `#match` construct is one Syntax item and may be controlled as a whole by a preceding `#if`. The `#match` wrapper does not itself introduce an additional lookup scope; the selected arm's Block follows the existing scope rules. These rules apply in both executable bodies and Declaration Containers.
+
+Every final evaluation context must select an arm. Without `#case _`, at least one explicit Condition must evaluate to **True** in that context using the specified evaluator. If none is True and a value remains dependent, retain the group until its finalization deadline; if all are False, report an error. The initial language requires no symbolic exhaustiveness proof, enumeration of Types, or Contract theorem proving. A catch-all supplies an unconditional alternative without such proof.
+
+The selected Block occupies the structural position of the Case Group. Normal Block, result-Type, scope, and control-transfer rules apply after selection. An early-false `#if` target is excluded. Unselected `#case` arms do not undergo ordinary semantic checking or contribute executable code.
+
+The [nonempty Block rule](#721-nonempty-executable-blocks) checks source structure before selection. Removing all executable Syntax does not itself make a Block invalid.
+
+Validation of excluded targets follows [Diagnostics and excluded syntax](#135-diagnostics-and-excluded-syntax).
+
+### 13.2. Condition forms and narrowing
+
+A Condition uses the following closed initial expression set. The whole expression must have Type `bool`; ordinary operator precedence and explicit parentheses apply.
+
+| Form | Rule |
+| --- | --- |
+| `true`, `false`, integer and string literals | Integers have Type `i64` and must fit its range; a leading `+` or `-` is permitted only directly on an integer literal. Strings use the ordinary literal rules, without interpolation. |
+| Compile-time value Name | A built-in Compilation value or an explicitly configured Project setting. |
+| `not E`, `E and E`, `E or E` | Boolean operands and the [Condition evaluation rules](#133-condition-evaluation-and-selection). |
+| `E == E`, `E != E` | Equal scalar Types (`bool`, `i64`, or `string`); no implicit cross-Type conversion. String comparison is ordinal and case-sensitive. |
+| `P is R`, `P is not R` | `P` names a declared generic Core Type or Type Semantics parameter; `R` is a simple primitive Type, a Semantics name, or a simple/qualified Type, Contract, or category Name. Constructed Types and runtime value patterns are outside this initial Condition grammar. |
+| `(E)` | Grouping of one permitted expression. |
+
+All other expression forms are invalid Conditions, including calls (even purported compile-time calls), runtime member access, indexing, arithmetic, ordering comparisons, conversions, collections, interpolation, and floating-point/character/null literals. Reject them even in short-circuited operands.
+
+**Condition lookup.** Scalar value lookup searches only the disjoint built-in and Project-setting environment established before parsing; ordinary source `let`/`var` declarations, Properties, aliases to values, and functions are not compile-time values. For `is`, resolve the subject among lexically visible generic parameters, using the nearest declaration first. Resolve Type/Contract/category names using normal Type Name Selection, qualification, source aliases, and then default aliases, restricted to the already established environment of §13.4. This permits unconditional same-Container Types and accessible Contracts in directly referenced libraries, without permitting a Condition to depend on declarations whose availability it controls. Contract Clauses supply evidence about these parameters, not an additional value namespace. Preserve the definition's source context during specialization.
+
+```kimi
+windows
+windows or linux
+os == "windows" or os == "linux"
+pointerWidth == 64
+s is ref
+T is i32
+T is Comparable
+(s is ref) and (T is Comparable)
+```
+
+A concrete Type or Type Semantics on the right of `is` tests identity. A named capability declared with `contract` or a named category tests satisfaction of its requirements.
+
+A selected `#if` target adds its Condition to the facts available while analyzing that target. A selected `#case` arm adds its Condition and the negation of every earlier Condition in the same `#match`. These facts are local to the selected target or arm, do not leak into following Syntax or sibling groups, and are not Contract Clauses. Narrowing preserves the concrete Core Type: `T is Comparable` does not replace `T` with `Comparable`. This defines the available assumptions; it does not introduce additional Contract proof rules.
+
+Compile-time Conditions do not evaluate runtime values. The initial design does not destructure values or introduce pattern bindings. For example, `#case value is ref/i32 x` is invalid; use `#case (s is ref) and (T is i32)` to narrow a value of Type `s/T` to `ref/i32`. Parentheses separate each [requirement expression](#442-requirement-expressions) from the surrounding condition.
+
+### 13.3. Condition evaluation and selection
+
+`#if` and `#match` Conditions use the same evaluation rules. Known target and Project values may determine selection before generic dependencies are bound. Validation must resolve remaining Names without semantically checking excluded controlled Syntax.
+
+After dependency classification, language evaluation has exactly four outcomes:
+
+| Result | Meaning |
+| --- | --- |
+| **True** | The Condition is satisfied. |
+| **False** | The Condition is not satisfied. |
+| **Deferred** | The Condition has a valid compile-time dependency whose value is not yet available. |
+| **Error** | The Condition is invalid, non-Boolean, or refers to an unavailable Name. |
+
+After name and dependency validation, an unbound declared generic parameter produces **Deferred**, while an unknown Name produces **Error**. Short-circuit reasoning determines truth, but does not waive validation of any operand in a Condition. **Error** is absorbing for `and` and `or`, regardless of operand order: `Error and X`, `X and Error`, `Error or X`, and `X or Error` are **Error** for every result `X`; `not Error` is **Error**. Otherwise, `false and Deferred` is **False**, `true or Deferred` is **True**, and `true and Deferred`, `false or Deferred`, and `not Deferred` are **Deferred**.
+
+Truth determination and validation are separate. Every reached Condition must be valid, including operands and later arm Conditions whose values cannot affect selection. Unknown Names and invalid operands are errors. A known truth value does not authorize finalization before validation is complete, and does not require obtaining an irrelevant valid dependent value. **Deferred** means a validated compile-time dependency, never an unsupported feature or implementation limitation.
+
+For example, `false and missing`, `true or missing`, and their operand-reversed forms are **Error** if `missing` is unknown. `debug and missing` must diagnose that unknown Name in both Debug and Release configurations. `false and 1` and `true or 1` are **Error** because the numeric operand is non-Boolean.
+
+Evaluation checks the single Condition of a `#if` and every explicit Condition of a Case Group. Every arm Condition is checked, and an **Error** is reported even when an earlier arm determines the selection. Early selection does not waive validation of any explicit arm Condition, including later arms whose values cannot change selection. This requirement concerns Conditions of directives reached by parsing; it does not require parsing directives inside an excluded `#if` target. A Case Group is selected as soon as its first-match result is certain:
+
+- a **False** arm is skipped;
+- a **True** arm is selected when every preceding arm is **False**;
+- a preceding **Deferred** arm prevents selection of a later **True** arm or `#case _`;
+- Conditions after an already selectable **True** arm cannot change the selection.
+
+For example, `#case windows` may resolve during parsing, while `T is i32` remains **Deferred** until `T` is bound.
+
+A still-Deferred Condition is an error when its containing declaration, layout, specialization, or executable body must be finalized. Deferral is valid only when a later compilation phase can provide the missing dependency before that point.
+
+### 13.4. Name-resolution boundary
+
+**Scope lookup environments.** A Condition that changes a scope's lookup environment must have its selection resolved before ordinary Name resolution using that environment begins. Until then, do not begin that resolution. The environment includes declarations and overload candidates, as well as applicable alias and extension imports; a later selection must not add, remove, or replace candidates in an environment already in use.
+
+Resolve and evaluate such Conditions using an already established environment independent of the conditional declarations in the affected scope. Condition names may be resolved in that independent environment before ordinary Name resolution begins. A Condition must not depend on a declaration whose availability it controls, directly or through a cycle.
+
+This boundary applies per scope, not once to the entire program. Conditions that select only expressions or statements without changing a lookup environment may remain Deferred until specialization. A selected branch may also contain local declarations if Name resolution using that branch's environment starts only after selection. Follow normal scope rules: a declaration introduced into an enclosing scope must be selected before resolution using that enclosing environment begins. A directive does not create an extra scope merely to defer this requirement.
+
+| Controlled Syntax | Required selection point |
+| --- | --- |
+| Declarations or imports that change an enclosing lookup environment | Before ordinary Name resolution using that environment begins. |
+| Expressions and statements that do not change a lookup environment | May wait for specialization, subject to the finalization deadline. |
+| Local declarations inside a branch first analyzed after specialization | Before ordinary Name resolution using the selected branch's environment begins. |
+
+```kimi
+#if windows
+func Test() -> () => ()
+```
+
+The target setting selects whether `Test` is present before Name resolution using its containing environment begins.
+
+**Boundary example.**
+
+```kimi
+func kind<T>() -> i32
+    #match
+        #case T is i32
+            return 32
+        #case _
+            return 0
+
+func example<T>() -> i32
+    #match
+        #case T is i32
+            let result = 32
+            return result
+        #case _
+            return 0
+```
+
+Both functions may defer selection until `T` is known. In `example`, select the branch and establish its local declarations before resolving `result`. This does not change an enclosing lookup environment that has already been used.
+
+Scopes with established environments may proceed independently. An affected scope must wait if later Binding or specialization can establish its environment; otherwise, diagnose the unresolved dependency when that scope must be analyzed or finalized. Never begin with a provisional candidate set and revise resolved Names later. This rule fixes conditional membership in the lookup environment; ordinary declaration-order visibility rules still apply.
+
+### 13.5. Diagnostics and excluded syntax
+
+**Checks on excluded Syntax.** Every SourceDocument is tokenized, so encoding, token validity, and indentation errors are always diagnosed. An early-False `#if` target is scanned for balanced Block structure, required executable bodies, and the structural placement/nonemptiness rules of `#match` and `#case`. Its ordinary expression/declaration grammar is not checked; for example, an incomplete initializer in that target is permitted. A target parsed while its Condition is pending, and every `#match` arm body, undergo ordinary parsing before selection; later exclusion does not retract parse diagnostics.
+
+| Check | Early-False `#if` target | Already parsed target or unselected `#match` arm body |
+| --- | --- | --- |
+| Tokenization and indentation | Required | Required |
+| Block/directive structure and source-level nonempty executable bodies | Required | Required |
+| Ordinary expression/declaration grammar | Skipped | Required during parsing |
+| Nested Directive Condition evaluation | Skipped | Performed only as reached during parsing; remaining obligations in an excluded body need no Binding |
+| Ordinary Name/Type/ownership checks, lowering and code generation after exclusion | Skipped | Skipped |
+
+The controlling `#if` Condition and all explicit Conditions of the current `#match` are checked independently of their targets under [Condition evaluation](#133-condition-evaluation-and-selection). A non-reserved `#Name` denotes an Attribute, not an unknown directive; resolving that Attribute is not required in excluded Syntax.
+
+**Error example.**
+
+```kimi
+#if false and 1
+    useFeature()
+```
+
+The numeric operand is not Boolean. Short-circuit truth does not waive validation, so the Condition is a compile-time error.
+
+## 14. Compilation model
+
+A Compilation processes one Project for fixed source, dependency, target, and configuration inputs. The source-language rules determine meaning; this chapter defines compilation invariants with implementation requirements and reference algorithms in separate appendices.
+
+### 14.1. Build units
+
+The build model separates workspace orchestration, project configuration, source modules, and target compilation:
+
+| Element | Responsibility |
+| ------- | -------------- |
+| Solution | Holds multiple Projects and supplies options shared by their builds. |
+| Project | Defines one application or library build unit. It is configured by a `.kimiproj` file. |
+| Kotonoha | Defines a named module unit for an application or library, built from one or more SourceDocuments. |
+| SourceDocument | An immutable source snapshot, including its path and text. Replacing its text creates a new snapshot. |
+| Compilation | Compiles one Project under one fixed set of source, dependency, target, and build inputs. |
+| Compilation root | The lookup entry point for the project root and direct-dependency reference names. |
+| project root | The root of the primary Kotonoha's declaration hierarchy. |
+
+A Solution discovers and loads Projects. A Project stores target triples, aliases, and external Kotonoha descriptors, and creates one Compilation for each target.
+
+### 14.2. Build inputs
+
+Compilation inputs include the complete target triple (including ABI/environment), backend and target layout, build mode and code-affecting options, Project compile-time settings, language/compiler version, source snapshots, and resolved dependency versions and interfaces. Reuse analysis or artifacts only when all relevant inputs agree; OS and architecture alone are not a cache key. Changing inputs requires a fresh analysis. Artifact cache formats are separately specified.
+
+### 14.3. Target preparation
+
+Each Compilation owns the primary Kotonoha and provides target information and compile-time variables.
+
+A target must provide the Kimigayo data-layout and ABI facts required by the language. Backend-specific representations are implementation details.
+
+### 14.4. Compile-time values
+
+Prepared Compilations provide these immutable-for-analysis scalar values:
+
+| Name | Type | Value |
+| --- | --- | --- |
+| `os` | `string` | Canonical lower-case OS family: `windows` for Win32, `macos` for MacOSX, `linux` for Linux; other recognized families use their lower-case target-family name, and an unrecognized OS uses `unknown`. Version suffixes are excluded. |
+| `arch` | `string` | Canonical lower-case architecture family, such as `x86`, `x86_64`, `aarch64`, or `riscv64`; target aliases for the same family give the same value. |
+| `windows`, `linux`, `macos` | `bool` | Exactly the respective comparisons `os == "windows"`, `os == "linux"`, and `os == "macos"`. At most one is true; all are false for other OS families. |
+| `debug`, `release` | `bool` | The selected build mode and its negation: `release == not debug`. |
+| `pointerWidth` | `i64` | Default raw-pointer width in bits from the prepared target layout; supported values in this revision are 16, 32, and 64. |
+
+Project compile-time settings have explicit `bool`, `i64`, or `string` values. Their Names must be valid identifiers and must not collide with reserved words or built-in Compilation values; collisions are errors rather than an override order. They are copied into the prepared environment before parsing. The `.kimiproj` representation is `CompileTimeSettings`, a Name-to-setting map whose entries specify exactly one of `Bool`, `Integer`, or `String`.
+
+### 14.5. Language-version selection
+
+An optional `.kimiproj` `LangVersion` requests an exact supported language version. If omitted, use the solution's version when supplied, otherwise the compiler's current version. Unsupported requests are errors, never silent fallback. Record the effective language version and compiler build identity in build metadata. This setting does not promise compatibility with older compilers bearing the same pre-alpha version label.
+
+### 14.6. Structure layout and ABI
+
+The compiler derives physical layout from the selected storage declarations, their Types, the target, and the applicable layout mode. Default layout must be reproducible for identical build inputs, compiler, and configuration, but need not use logical declaration order for physical offsets. It must preserve the observable initialization order defined under [Initialization](#86-initialization). Ordinary structs do not guarantee a stable ABI across source or toolchain changes. An explicit fixed-layout facility for FFI or other binary interfaces is specified separately; default layout must not be treated as that facility.
+
+### 14.7. Compilation invariants
+
+Compilation must respect semantic dependencies; it need not use one whole-program pass per stage. [The reference compilation models](#appendix-b-non-normative-reference-models) illustrate valid arrangements. Parsing may select known directives early. Condition validation and specialization recur per affected scope under [staged evaluation](#134-name-resolution-boundary); establish that scope's lookup environment before using it. Analyses may share facts, but unresolved obligations must not be treated as successful finalization.
+
+# Appendices
+
+## Appendix A. Compiler implementation requirements
+
+**Normative.** These requirements preserve information and invariants needed by the language rules. They do not add user-visible syntax or change failure behavior. Implementation-specific representations are distinct from the reference algorithms below.
+
+| Term | Meaning |
+| --- | --- |
+| Koto / Koto tree | Parsed syntax nodes with source contexts and parent/child relationships; not a bound program or binary interface. |
+| CodeContext | Source-local lookup and diagnostic context for one immutable source snapshot. |
+| Directive Binding | Resolving and validating compile-time Condition names and dependencies. |
+| Validation obligation | Information retained until a required check can be completed. |
+| Finalization | The point when a declaration, layout, specialization, or executable body is accepted for subsequent compilation; required checks must be resolved. |
+| Lowering | Translating checked source operations into lower-level representations while preserving semantics. |
+
+### A.1. Source identity and incremental analysis
+
+A source-derived CodeContext belongs to one Kotonoha and one immutable SourceDocument snapshot. A different snapshot at the same path requires a fresh context and fresh alias/Binding results; path equality does not establish revision identity. Source-less parsing entry points may create such contexts but must not themselves become the source identity of parsed nodes. Nodes cannot be inserted into another Kotonoha's Declaration Container. See [source contexts and dependencies](#12-modules-and-dependencies).
+
+Each source syntax node and declaration fragment retains its original CodeContext. After Container merging, resolve member bodies, headers, Type annotations, and contracts using their own source contexts, not a single context attached to the merged Container. Preserve fragment locations for diagnostics and header checks. Source-less roots and generated wrapper nodes do not represent a source alias environment; moving source syntax into them preserves its origin context. Generated source documents have their own contexts.
+
+Lowering may place top-level executable syntax in an implicit generated function owned by the Kotonoha, but must preserve source scopes and CodeContexts.
+
+The internal name `MacroKoto` does not define language semantics; `$` is the Composition Root.
+
+A Kotonoha tokenizes and parses each `SourceDocument`, merging declarations into one root Koto tree. Root executable syntax is placed as described under [root and nested containers](#421-root-and-nested-containers).
+
+### A.2. Directive representation and validation obligations
+
+The Parser represents directives explicitly rather than evaluating them as Attributes:
+
+```text
+CompileTimeIfKoto
+    Condition
+    Target
+
+CompileTimeMatchKoto
+    CompileTimeCaseArmKoto[]
+        Condition or fallback
+        Block
+```
+
+A directive whose selection still awaits validation or a dependent value retains a directive Koto node. An early-true `#if` contributes its Target directly; an early-false one contributes none. Independently, the enclosing scope retains pending Condition validation obligations even when the directive Koto or unselected Syntax is discarded. Each obligation retains the full Condition and its original CodeContext and identifies the enclosing scope for Directive Binding. These obligations are separate from executable syntax and must not cause excluded targets to undergo ordinary Binding. Invalid Case Groups may remain for error recovery. Resolving a specialization must not mutate Koto shared with others.
+
+Retain a Condition with unresolved Names or unvalidated dependencies even when early evaluation determines True or False. Its validation obligation preserves the source, diagnostic context, and enclosing lookup scope until Directive Binding can complete the [Condition validation](#133-condition-evaluation-and-selection). An early truth result does not discharge that obligation.
+
+An implementation must not label an unimplemented language feature **Deferred**; it must either expose a distinct pending Binding obligation or report an implementation limitation.
+
+### A.3. Binding, caches, and incremental validity
+
+Binding must preserve these semantic stages, without requiring a single-pass implementation:
+
+```text
+Parse per source and collect fragments/generator output
+-> select directives in established environments
+-> collect selected declarations, root and scope tables, and alias targets
+-> bind headers, Types, Signatures, and contracts; validate merges/duplicates
+-> resolve bodies -> test candidates -> select -> check usage
+-> retain Symbol references and the selected operation plan for lowering
+```
+
+Keep Type/Value and Origin/Label tables separate. A Lookup Context includes source context, scope, namespace, role, and accessibility. Preserve resolved Symbol, function-group, deferred, and error outcomes. Lowering must not re-resolve strings. Share normalized Types, but isolate candidate type variables, constraints, argument mappings, tentative bindings, adaptation plans, and rejection reasons. Commit only the selected candidate. Cheap filters may precede inference only if lookup stopping is unchanged. Pairwise comparison may require O(n²) comparisons; type-comparison cost is additional.
+
+Cache only context-independent results or include every relevant dependency:
+
+| Cache | Required distinctions |
+| --- | --- |
+| Lookup | Scope, name, namespace, role, lexical visibility, source alias environment |
+| Accessible lookup | Also use-site Kotonoha and Container relationship |
+| Member lookup | Target Symbol/Type, type arguments, static/instance use, extensions |
+| Applicability | Candidate, argument Types/literal values/labels/forms, expected Type, type arguments and constraints |
+| Conditional work | Compilation target, selection state, specialization |
+
+Do not reuse a role-filtered lookup for a different role, or source-wide access results across unrelated Containers. Invalidate affected caches when sources, dependencies, aliases, selections, or Symbols change. Flow-dependent Loan and initialization state belongs to Usage Legality, not overload-selection cache keys.
+
+Validation must cover source-context isolation, merged private access, duplicate/role/arity boundaries, Type/Value paths, aliases, extension precedence, expected results, incomparable candidates, nested inference, specialization environments, and no fallback after usage failure. Reordering load, parse, generator completion, or candidate enumeration must preserve results; parsing examples alone does not validate Binding.
+
+### A.4. Property implementation requirements
+
+Preserve Stored representation, standard-accessor markers, accessor accessibility, and field-scoped semantics through Binding and separate-compilation interfaces. Retain the abstract Type/storage information needed to validate Consume without exposing physical layout. Runtime state must not select between accessor implementations.
+
+Check declarations, paths, initialization/completeness, Loans, Origins, and destruction responsibility before lowering. Consume is a direct value/state transfer, not a user function call.
+
+### A.5. Raw pointer backend requirements
+
+`ptr` is not a Primitive Type. LLVM `ptr` is a backend representation; instructions supply the Types needed for memory access and arithmetic. Lowering must preserve this specification and use properties such as `inbounds` only when their premises hold. Language undefined behavior and LLVM poison are distinct concepts.
+
+### A.6. Literal representation
+
+The syntax tree canonicalizes spelling: integers render as signed 128-bit decimal values; floating-point values use round-trip `f64` notation with a decimal marker when needed (for example, `1.0`).
+
+### A.7. Cleanup analysis and lowering
+
+Analyze registration separately from execution: a non-completing deferred body affects actual cleanup paths, not reachability immediately after registration. Lower defers and destruction into one exit sequence, retaining registration state only as needed. No dynamic closure, function value, or heap cleanup stack is required.
+
+For `if condition` containing only `defer: cleanup()`, a true branch registers and runs cleanup before leaving that branch; false registers nothing. No registration flag is needed in this simple case, and Lowering must not move cleanup into the surrounding scope. Example cleanup functions are illustrative, not standard API declarations.
+
+## Appendix B. Non-normative reference models
+
+**Non-normative.** These algorithms illustrate valid implementation strategies. A different strategy must preserve all language rules and Compiler requirements, including validation of excluded syntax and immutable lookup decisions.
+
+### B.1. Build pipeline reference model
+
+**Non-normative reference model.** The required dependencies and invariants remain normative; pass boundaries and scheduling are implementation choices.
+
+The logical compilation pipeline, including stages not yet implemented, is:
+
+```text
+Solution -> Project -> Compilation(inputs)
+    -> SourceDocuments -> Tokenization -> Parsing / Koto tree
+    -> Directive Binding and selection of lookup environments
+    -> Declaration and Name Binding, Type checking and overload resolution
+    -> Required generic specialization and remaining directive selection
+    -> Control-flow, ownership, lifetime and Origin analysis
+    -> Lowering -> backend IR -> binary
+```
+
+### B.2. Directive processing sequence
+
+**Non-normative reference model.** This sequence is one way to preserve the required selection, excluded-syntax, and validation behavior. The preceding Compiler requirements and language rules remain mandatory.
+
+The evaluation and Syntax-processing sequence is:
+
+```text
+Parse a directive Condition
+    -> evaluate known target and Project values
+        -> independently retain the Condition and its context if validation requires Directive Binding
+        -> True: parse the controlled Syntax without a directive Koto
+        -> False: consume the controlled Syntax without creating Koto nodes
+        -> unresolved validation or Deferred value: parse the controlled Syntax and retain a directive Koto
+        -> Error: report a diagnostic and discard the controlled Syntax
+    -> resolve Names and validate operands in all retained Conditions, including early-True/False Conditions and Conditions of unselected case arms
+    -> re-evaluate after generic Binding and for each specialization
+    -> resolve selections that change a scope's lookup environment before ordinary Name resolution using that environment begins
+    -> require a final result and completed validation before finalization
+    -> bind and lower only the selected Syntax
+```
+
+### B.3. Borrow checking reference algorithm
+
+**Non-normative reference model.** Implementations may use another algorithm that preserves the Ownership and Origin rules.
+
+A conforming borrow checker may proceed as follows:
+
+```text
+1. Type-check and generate subtype constraints.
+2. Build the control-flow graph and compute liveness.
+3. Generate Origin and well-formedness constraints.
+4. Instantiate call-site Origins and propagate result Loan requirements.
+5. Solve region constraints to a fixed point.
+6. Reject local-to-universal region flows.
+7. Compute active Loans and check overlap conflicts.
+8. Check reborrows and destructor observations.
+```
+
+The region and Loan analyses may be implemented using Datalog or an equivalent fixed-point solver.
+
+## Appendix C. Implementation status
+
+Implementation coverage is informative and does not weaken language rules or Compiler requirements. All implementation-progress notes are centralized here; `planned` in a retained snapshot means implementation work, not permission to use an undesigned feature.
+
+### C.1. Coverage summary
+
+This table defines the recorded status of each compiler stage. The notes below describe covered cases and specific remaining work; they do not assign a separate stage status. Parsing alone does not guarantee execution. **Implemented** and **Partial** are limited to the coverage described below. **Not implemented** means the recorded stage is unavailable; it does not imply that all related design details are settled; **Not assessed** means the recorded notes do not establish that stage's coverage. **N/A** means the feature has no such stage.
+
+| Feature | Parsing | Binding | Analysis | Lowering | Runtime |
+| --- | --- | --- | --- | --- | --- |
+| Functions and Contract Clauses | Partial | Not implemented | Partial | Not implemented | Not implemented |
+| `#if` / `#match` | Implemented | Not implemented | Partial | Not assessed | N/A |
+| Types | Partial | Not implemented | Partial | Not implemented | Not implemented |
+| Origins | Partial | Not implemented | Not implemented | Not implemented | Not implemented |
+| Properties | Implemented | Not implemented | Partial | Not implemented | Not implemented |
+| `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
+| `@move` / Consume | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
+| Control flow and `defer` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
+| Generic specialization | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
+| Option / Result / Panic | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
+
+Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
+
+### C.2. Builds, modules, and source artifacts
+
+**Current implementation status:** project loading, target preparation, tokenization, parsing, early directive selection, and partial control-flow/type analysis are implemented. The current LLVM backend preparation requires a supported pointer width and LLVM data-layout string. The current `Build` API reports front-end checks only; it does not certify a finalized program or produce a binary.
+
+Loading external Kotonoha libraries is not yet implemented.
+
+The recorded compiler supports only its current language version. Exact version selection, fallback defaults, rejection of unsupported versions, and build metadata are specified.
+
+The current source-snapshot serialization/reparse facility is not a [binary interface](#123-source-artifacts-and-binary-interfaces).
+
+### C.3. Lexical forms and types
+
+The current front end parses escaped strings, raw strings, and string interpolation, including nested expressions. Escape sequences are validated during parsing; evaluating interpolated strings is deferred to later compilation stages.
+
+Compile-time basic-value evaluation currently supports integer representations fitting `i64` and all valid `f64` literals.
+
+The front end parses much of the specified Type syntax. Type resolution, layout validation, subtyping, ownership rules, and most Type semantics are not implemented.
+
+Body parsing for `enum` and `extension` is not implemented.
+
+Split-structure integration, generated-source integration, and layout generation are planned, not implemented.
+
+The Parser supports Origin lists on structures and functions, simple and qualified annotations, intersections, and named arguments. Origin name resolution, inference, variance analysis, and borrow checking are not implemented.
+
+### C.4. Declarations and compile-time directives
+
+The current Parser stores leading Contract Clauses separately from executable body items and preserves deferred directives on them. It checks clause subjects against the declared generic parameters and diagnoses clauses placed after executable items. Semantic Type Contract validation during Binding and specialization is not implemented.
+
+**Current implementation status:** the Parser validates the closed Condition expression set, evaluates known scalar operations, and propagates Errors before short-circuit truth results. Its internal **Pending** result represents an attempt awaiting Name/requirement Binding; it is not the language result **Deferred**. Pending directives retain dedicated Koto nodes, and validation obligations survive early selection. Control-flow analysis exposes encountered obligations as pending Binding. Unknown-Name classification by later Directive Binding, `is` evaluation, specialization, lookup-environment enforcement, and constraint narrowing remain planned.
+
+### C.5. Properties
+
+The Parser records Properties, inline and block accessors, explicit getter result annotations, and basic syntax errors. Control-flow analysis checks known accessor result Types. Accessor expansion, contextual binding of `self`, `storage`, and `value`, storage classification, access and initialization checks, general accessor type checking, Property Consume, and field-scoped standard operations are not implemented; successful parsing alone does not validate them.
+
+### C.6. Expressions and operators
+
+The Parser supports `@Type` precedence, left associativity, and generic/comparison boundaries. Treating a `@move` operand as a Type does not implement a lifetime operation; its stage status is listed in the coverage table. Basic expressions, argument labels/defaults, collections, and anonymous functions have syntax-tree support. Member-name restrictions still need additional validation.
+
+General type inference, overload and argument matching, function-value execution, numeric checks, dictionary duplicate detection, evaluation order during execution, and single-access Property updates require semantic analysis and runtime implementation. Panic name/type validation, diagnostics, and common termination handling are also planned. Control-flow and cleanup coverage is detailed below. Examples using application-specific functions or Types illustrate semantics rather than promise standard-library APIs.
+
+Implementation references:
+
+- [Parser.cs](Kimi/Compiler/Parsing/Parser.cs) and [expression Koto nodes](Kimi/Compiler/Parsing/Koto/Expressions): syntax and precedence.
+- [ControlFlowAnalysis.cs](Kimi/Compiler/Analysis/ControlFlowAnalysis.cs): results, transfers, short-circuit paths, and partial unsafe checks.
+- [ExpressionPrecedenceTest.cs](xUnitTest/Tests/ExpressionPrecedenceTest.cs), [ParserRegressionTest.cs](xUnitTest/Tests/ParserRegressionTest.cs), and [SpecConformanceParseTest.cs](xUnitTest/Tests/SpecConformanceParseTest.cs): grouping, diagnostics, generic boundaries, and expression syntax.
+- [CollectionLiteralParseTest.cs](xUnitTest/Tests/CollectionLiteralParseTest.cs) and [RangeIndexParseTest.cs](xUnitTest/Tests/RangeIndexParseTest.cs): collection and boundary syntax.
+- [ControlFlowAnalysisTest.cs](xUnitTest/Tests/ControlFlowAnalysisTest.cs) and [ControlFlowRevisionParseTest.cs](xUnitTest/Tests/ControlFlowRevisionParseTest.cs): control constructs and result checks.
+
+### C.7. Control flow and failure handling
+
+**Implementation status:** The Parser preserves explicit branch body forms. Control-flow analysis checks selections, loops, value-producing Labeled Blocks, lexical transfer targets, and the completion effects of explicitly registered Deferred Blocks. It also checks lexical Unsafe permission for known operations and binder-selected function references. The default type provider handles primitive literals, simple declared Types, and basic raw-pointer and contextual `null` checks. General name/overload resolution, conversions, pattern Binding, ownership, automatic destruction, Origin compatibility, and runtime cleanup generation remain planned; unresolved checks are exposed as pending obligations. Bodies containing deferred compile-time directives await directive selection before analysis.
+
+## Appendix D. Deferred feature index
+
+This index links to design boundaries owned by the language sections. It adds no syntax or permissions. Implementation coverage is independent and recorded in [Appendix C](#appendix-c-implementation-status). Language-version selection is specified under [Language-version selection](#145-language-version-selection).
+
+| Feature | Status | Owning section |
+| --- | --- | --- |
+| Re-export syntax | Deferred design | [Re-exports](#122-re-exports) |
+| Binary artifact format | Partially specified | [Source artifacts and binary interfaces](#123-source-artifacts-and-binary-interfaces) |
+| Dependency configuration and graph diagnostics | Partially specified | [External references and aliases](#121-external-references-and-aliases) |
+| Declaration fragments and source execution order | Partially specified | [Container fragments](#422-container-fragments) |
+| Source Generators | Partially specified | [Split structures and storage order](#431-split-structures-and-storage-order) |
+| Construction syntax and completion | Partially specified | [Structure declarations](#43-structure-declarations) |
+| Fixed FFI layout | Deferred design | [Structure layout and ABI](#146-structure-layout-and-abi) |
+| Contract proof and associated Types | Partially specified | [Associated Types and Property requirements](#441-associated-types-and-property-requirements) |
+| Generic specialization and operation selection | Partially specified | [Inference and operation design boundaries](#53-inference-and-operation-design-boundaries) |
+| Abstract Origins, escaping borrows, and lending iterators | Deferred design | [Lifetime design boundaries](#98-lifetime-design-boundaries) |
+| Destruction lifetime relaxation | Deferred design | [Destruction lifetime checking](#966-destruction-lifetime-checking) |
+| Additional dynamic Move Paths | Deferred design | [Move Paths and Partial Move](#913-move-paths-and-partial-move) |
+| Standard duplication API | Deferred design | [Copy capability and explicit duplication](#351-copy-capability-and-explicit-duplication) |
+| Exchange API and concurrency guarantees | Partially specified | [Initialization-preserving exchange](#97-initialization-preserving-exchange) |
+| Raw pointer and FFI APIs | Partially specified | [Raw pointer API design boundaries](#386-raw-pointer-api-design-boundaries) |
+| Option / Result syntax and propagation | Partially specified | [Error policy](#111-error-policy) |
+| String indexing and library indexers | Partially specified | [Indexing and slicing](#644-indexing-and-slicing) |
+| Capturing closures | Deferred design | [Function expressions](#643-function-expressions) |
+| Composition Root extensions | Partially specified | [Extension boundaries and reserved syntax](#68-extension-boundaries-and-reserved-syntax) |
+
+## Appendix E. Terminology index
+
+This index is a reading aid. The linked sections contain the authoritative definitions and restrictions.
+
+| Term | Short meaning | Defined in |
+| --- | --- | --- |
+| Access Designator | A resolved access target, without a promise of storage or Consume permission. | [Value model](#34-values-places-and-storage) |
+| Adaptation Target | Core Type and Semantics requested by `@`; result Origins are inferred. | [Explicit operations](#6641-forms-and-adaptation-targets) |
+| Binding | Associating source names and operations with declarations and meanings. | [Name resolution](#5-name-resolution-overload-resolution-and-inference) |
+| CodeContext | Source-local lookup and diagnostic context for one immutable source snapshot. | [Compiler requirements](#appendix-a-compiler-implementation-requirements) |
+| Compilation | One Project processed under fixed source, dependency, target, and build inputs. | [Build units](#141-build-units) |
+| Compilation root | Lookup entry point for the project root and direct-dependency reference names. | [Modules](#12-modules-and-dependencies) |
+| Complete value | An aggregate with completed construction and all stored fields Initialized. | [Construction and completeness](#912-aggregate-construction-and-completeness) |
+| Completion | Normal or abrupt completion of evaluation, distinct from divergence and Panic Termination. | [Completions](#71-completions) |
+| Composition Root | The language facility selected by `$`. | [Reserved syntax](#68-extension-boundaries-and-reserved-syntax) |
+| Consume | Explicit acquisition using `@move` that forces Move even for Copy Types. | [Explicit Consume](#915-explicit-consume) |
+| Consume Eligibility | Whether the declaration, Type, and path provide the Consume operation. | [Consume verification](#914-consume-verification-and-representation) |
+| Consume Legality | Whether the current use site may perform an eligible Consume. | [Consume verification](#914-consume-verification-and-representation) |
+| Control Boundary | A lexical boundary governing control-transfer target lookup. | [Control flow](#7-control-flow) |
+| Copy | Implicit value duplication that leaves its source initialized. | [Copy and Move](#35-copy-and-move) |
+| Core Type | The component of a Type that identifies what the value is. | [Type composition](#3-types-and-basic-value-model) |
+| Declaration Container | A named declaration scope with members permitted by its kind. | [Containers](#42-declaration-containers) |
+| Deferred Condition | A valid compile-time Condition whose dependency value is not yet available. | [Condition evaluation](#133-condition-evaluation-and-selection) |
+| Deferred Block | Cleanup code registered by `defer` for its containing scope's exit. | [Deferred Blocks](#101-deferred-blocks) |
+| Destruction responsibility | Responsibility for ending an owned value's lifetime under the cleanup rules. | [Value model](#34-values-places-and-storage) |
+| Directive Binding | Resolution and validation of compile-time Condition names and dependencies. | [Compiler requirements](#appendix-a-compiler-implementation-requirements) |
+| Discard Context | An evaluation context that does not retain an expression's result. | [Evaluation contexts](#72-blocks-and-evaluation-contexts) |
+| Finalization | Acceptance of a declaration, layout, specialization, or body after required checks are resolved. | [Compiler terminology](#appendix-a-compiler-implementation-requirements) |
+| Getter Result Type | The Type returned by a Property read, which may differ from its Property Type. | [Default getter results](#82-default-getter-results) |
+| Koto | A compiler syntax-tree node. | [Compiler terminology](#appendix-a-compiler-implementation-requirements) |
+| Kotonoha | One named source or binary module. | [Modules](#12-modules-and-dependencies) |
+| Loan | A borrowed place, access mode, and validity region. | [Borrow checking](#96-borrow-checking) |
+| Lookup environment | Declarations, aliases, and extensions available for lookup in a scope. | [Name resolution](#5-name-resolution-overload-resolution-and-inference) |
+| Move | Transfer of a value and responsibility or capability, marking its source Moved. | [Copy and Move](#35-copy-and-move) |
+| Move Path | A statically tracked path with independent initialization state and destruction responsibility. | [Move Paths](#913-move-paths-and-partial-move) |
+| Origin | A set of program points where a borrow is guaranteed valid. | [Origin expressions](#921-origin-expressions) |
+| Partial Move | Transfer of an aggregate's part, leaving the aggregate incomplete. | [Move Paths](#913-move-paths-and-partial-move) |
+| Place | A storage location that can hold a value. | [Value model](#34-values-places-and-storage) |
+| Project root | Root of the primary Kotonoha's declaration hierarchy. | [Modules](#12-modules-and-dependencies) |
+| Property | A value-bearing member with a Property Type and applicable accessors and storage. | [Properties](#8-properties) |
+| Reborrow | A borrow derived from an existing borrow, subject to the parent's capability and Origin. | [Reborrowing](#963-reborrowing) |
+| Signature | Information distinguishing declarations in the same scope. | [Signatures](#41-signatures) |
+| SourceDocument | One immutable source input, including path and text, belonging to a Kotonoha. | [Source text](#21-source-text-and-encoding) |
+| Temporary Place | Anonymous storage materializing a Temporary Value. | [Materialization](#361-materialization) |
+| Temporary Value | An expression's temporary result, distinct from its original persistent Place. | [Materialization](#361-materialization) |
+| Type | Core Type, Type Semantics, and Origin together. | [Type composition](#3-types-and-basic-value-model) |
+| Type Contract | A set of requirement clauses constraining generic parameters or `Self`. | [Type Contracts](#44-type-contracts) |
+| Type Semantics | How a value is represented, owned, accessed, or used. | [Type Semantics](#33-type-semantics) |
+| Value Context | An evaluation context that requires an expression's value. | [Evaluation contexts](#72-blocks-and-evaluation-contexts) |
+
+## Appendix F. Syntax summary
+
+**Non-normative syntax reference.** This appendix collects the specified forms; the linked language sections remain authoritative. It is not a standalone parser-generator grammar. Context-sensitive placement, token boundaries, and the open productions listed in F.9 remain part of the syntax definition; an open production does not accept arbitrary text.
+
+In the EBNF below, quoted text is literal syntax, `|` is choice, parentheses group, and `?`, `*`, `+` mean optional, zero or more, and one or more. `? description ?` denotes a lexical class or a production whose definition is linked. `List<X>` abbreviates `X ("," X)*`; `TrailingList<X>` adds an optional final comma. These angle brackets are grammar notation, unlike quoted `"<"` and `">"`.
+
+`NEWLINE`, `INDENT`, `DEDENT`, and `SEP` denote source-layout events under [source structure](#22-lines-indentation-and-continuation), not required internal token kinds. Layout within delimiters and between branch clauses follows the linked constructs. `Body<X>` abbreviates `NEWLINE INDENT ItemList<X> DEDENT`; `ItemList<X>` is a nonempty sequence separated where the surrounding grammar permits. Declaration Containers may additionally have empty bodies where their own rules permit them.
+
+### F.1. Lexical grammar
+
+[Source and layout](#2-source-and-lexical-structure), [Names and keywords](#25-names), [numeric literals](#26-number-literals), [escapes](#27-character-escapes), [character literals](#28-character-literals), [strings](#29-string-literals).
+
+```ebnf
+Name                 := NameStart NameContinue*
+NameStart            := "A".."Z" | "a".."z" | "_"
+                      | ? Unicode Lu, Ll, Lt, Lm, Lo, or Nl ?
+NameContinue         := NameStart | "0".."9" | ? Unicode Mn, Mc, Nd, Pc, or Cf ?
+PhysicalNewline      := LF | CR LF | CR
+LineComment          := "//" ? text up to a physical newline or EOF ?
+BlockComment         := "/*" ? text up to the first closing delimiter ? "*/"
+CharacterEscape      := "\0" | "\\" | "\e" | "\t" | "\n" | "\r"
+                      | '\"' | "\'" | "\u(" HexDigits1To6 ")"
+HexDigits1To6         := ? one to six ASCII hexadecimal digits ?
+EscapedString        := '"' (StringText | CharacterEscape | Interpolation)* '"'
+Interpolation        := "\(" Expression ")"
+StringText           := ? literal text excluding unescaped quote and backslash ?
+RawString            := QuoteRun RawText QuoteRun
+QuoteRun             := ? matching run of N double quotes, N >= 3 ?
+RawText              := ? raw content delimited by that QuoteRun ?
+Literal              := number-literal | CharLiteral | EscapedString | RawString
+                      | "true" | "false" | "null" | "(" ")"
+```
+
+```text
+number-literal       := decimal-literal
+                      | binary-literal
+                      | octal-literal
+                      | hexadecimal-literal
+
+decimal-literal      := decimal-sequence fraction? exponent?
+fraction             := '.' decimal-digit decimal-tail
+exponent             := ('e' | 'E') ('+' | '-')? decimal-digit decimal-tail
+
+binary-literal       := '0' ('b' | 'B') binary-tail
+octal-literal        := '0' ('o' | 'O') octal-tail
+hexadecimal-literal  := '0' ('x' | 'X') hexadecimal-tail
+
+decimal-sequence     := decimal-digit decimal-tail
+decimal-tail         := (decimal-digit | '_')*
+binary-tail          := (binary-digit | '_')*
+octal-tail           := (octal-digit | '_')*
+hexadecimal-tail     := (hexadecimal-digit | '_')*
+
+decimal-digit        := '0' .. '9'
+binary-digit         := '0' | '1'
+octal-digit          := '0' .. '7'
+hexadecimal-digit    := decimal-digit | 'a' .. 'f' | 'A' .. 'F'
+```
+
+```text
+CharLiteral = "'" (DirectScalar | CharacterEscape) "'"
+```
+
+`DirectScalar` is the character class defined in [character content and validation](#281-content-and-validation); keyword exclusions and contextual Name roles follow [Names](#25-names).
+
+### F.2. Type grammar
+
+[Type composition](#3-types-and-basic-value-model), [compound Types](#32-compound-type-syntax), [Semantics](#33-type-semantics), [generic application](#642-invocation-and-generic-application), [Origins](#93-abstract-origins).
+
+```ebnf
+Type                 := TypeHead ("->" Type)?
+TypeHead             := (Semantics "/")? CoreType OriginAnnotation?
+CoreType             := NamedType | "(" TrailingList<Type>? ")"
+NamedType            := TypeSegment ("." TypeSegment)*
+TypeSegment          := TypeName TypeArguments?
+TypeName             := Name | PrimitiveType | "Self"
+TypeArguments        := "<" TrailingList<Type> ">"
+PrimitiveType        := "isize" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128"
+                      | "u8" | "u16" | "u32" | "u64" | "u128"
+                      | "f32" | "f64" | "bool" | "char" | "string"
+Semantics            := "owner" | "ref" | "uniq" | "obj" | "rc" | "arc"
+                      | "objref" | "objuniq" | "unsafe" | Name
+GenericParameters    := "<" List<GenericParameter> ">"
+GenericParameter     := Name | Name "/" Name
+```
+
+### F.3. Declaration grammar
+
+[Containers](#42-declaration-containers), [structures](#43-structure-declarations), [contracts](#44-type-contracts), [bindings](#45-bindings), [functions](#46-functions), [parameters](#464-parameter-names-and-defaults), [aliases](#121-external-references-and-aliases).
+
+```ebnf
+QualifiedName        := Name ("." Name)*
+Access               := "private" | "internal" | "public"
+AliasDeclaration     := "alias" QualifiedName
+LocalBinding         := ("let" | "var") Name (":" Type)? ("=" Expression)?
+InitializedBinding   := ("let" | "var") Name (":" Type)? "=" Expression
+GroupDeclaration     := Access? "group" Name ContainerBody
+RootGroupDeclaration := Access? "rootgroup" QualifiedName ContainerBody
+StructureDeclaration := Access? "struct" Name GenericParameters?
+                        OriginParameters? ContainerBody
+ContractDeclaration  := Access? "contract" Name ContainerBody
+FunctionHeader       := Access? "unsafe"? "func" QualifiedName
+                        GenericParameters? OriginParameters?
+                        "(" TrailingList<Parameter>? ")" ("->" Type)?
+FunctionDefinition   := FunctionHeader FunctionBody
+FunctionBody         := "=>" Expression | Body<FunctionItem>
+Parameter            := Name ("=>" Name)? ":" Type ("=" Expression)?
+                      | Name "?" ":" Type "=" Expression
+ContractClause       := (Name | "Self") "is" IsRequirement
+AssociatedClause     := "associate" Name "is" IsRequirement
+IsRequirement        := "not" Requirement | PositiveRequirement
+PositiveRequirement  := RequirementAtom ("and" RequirementUnary)*
+                        ("or" RequirementAnd)*
+Requirement          := RequirementAnd ("or" RequirementAnd)*
+RequirementAnd       := RequirementUnary ("and" RequirementUnary)*
+RequirementUnary     := "not" RequirementUnary | RequirementAtom
+RequirementAtom      := Type | Semantics | "(" Requirement ")"
+FunctionItem         := ExecutableItem | ContractClause
+ContainerItem        := Declaration | ContractClause | AssociatedClause
+                      | Directive<ContainerItem>
+ContainerBody        := ? indented ContainerItem sequence permitted by its kind ?
+Declaration          := GroupDeclaration | RootGroupDeclaration
+                      | StructureDeclaration | ContractDeclaration
+                      | FunctionDefinition | PropertyDeclaration | DeinitDeclaration
+                      | EnumDeclaration | ExtensionDeclaration
+```
+
+### F.4. Expression grammar
+
+[Primary forms](#632-names-literals-and-grouping), [calls](#642-invocation-and-generic-application), [precedence](#65-precedence-and-associativity), [requirement tests](#442-requirement-expressions), [explicit operations](#664-explicit-operations), [assignment](#67-assignment).
+
+```ebnf
+Expression           := Assignment
+Assignment           := RangeExpression (AssignmentOperator Assignment)?
+AssignmentOperator   := "=" | "+=" | "-=" | "*=" | "/=" | "%="
+                      | "<<=" | ">>=" | "&=" | "^=" | "|="
+RangeExpression      := OrExpression
+                      | OrExpression? ".." OrExpression?
+                      | OrExpression? "..=" OrExpression
+OrExpression         := AndExpression ("or" AndExpression)*
+AndExpression        := Comparison ("and" Comparison)*
+Comparison           := BitOr (("<" | "<=" | ">" | ">=" | "==" | "!=") BitOr)?
+                      | BitOr "is" IsRequirement
+BitOr                := BitXor ("|" BitXor)*
+BitXor               := BitAnd ("^" BitAnd)*
+BitAnd               := Shift ("&" Shift)*
+Shift                := Additive (("<<" | ">>") Additive)*
+Additive             := Multiplicative (("+" | "-") Multiplicative)*
+Multiplicative       := Adapted (("*" | "/" | "%") Adapted)*
+Adapted              := Prefix ("@" OperationTarget)*
+OperationTarget      := "move" | Semantics | AdaptationType
+AdaptationType       := ? Type target syntax without written Origin annotations, §6.6.4.1 ?
+Prefix               := ("+" | "-" | "not" | "*" | "^" | "++" | "--") Prefix
+                      | Postfix
+Postfix              := Primary PostfixSuffix*
+PostfixSuffix        := "." (Name | DecimalTupleIndex)
+                      | "(" TrailingList<Argument>? ")"
+                      | AdjacentTypeArguments | "[" Expression "]" | "++" | "--"
+AdjacentTypeArguments := ? TypeArguments adjacent to an eligible Name, §6.4.2 ?
+DecimalTupleIndex    := ? decimal integer literal used as a Tuple member, §6.4.1 ?
+Argument             := (Name ":")? Expression
+Primary              := Name | Literal | "(" Expression ")" | TupleExpression
+                      | ArrayExpression | DictionaryExpression | FunctionExpression
+                      | IfExpression | MatchExpression | Iteration | LabeledBlock
+                      | Transfer | CompositionRootExpression
+TupleExpression      := "(" Expression "," TrailingList<Expression>? ")"
+ArrayExpression      := "[" TrailingList<Expression>? "]"
+DictionaryExpression := "[" ":" "]" | "[" TrailingList<DictionaryEntry> "]"
+DictionaryEntry      := Expression ":" Expression
+FunctionExpression   := "func" "(" TrailingList<Parameter>? ")"
+                        "->" Type FunctionBody
+CompositionRootExpression := "$" "panic" "(" TrailingList<Argument>? ")"
+```
+
+The initial `not` after `is` and the greedy right-hand extent of `is` follow [requirement expressions](#442-requirement-expressions). Adaptation-target parsing and generic/comparison disambiguation follow [precedence](#65-precedence-and-associativity); these boundaries are not alternative parses selected by conversion success.
+
+### F.5. Statements and Blocks
+
+[Source items](#721-nonempty-executable-blocks), [inline bodies](#731-inlinestatement), [Labels](#74-labels), [transfers](#751-syntax-and-operands), [iterations](#76-iteration-constructs), [selections](#77-selections-if-match-and-yield), [defer](#101-deferred-blocks), [destruction declarations](#103-aggregate-destruction-and-deinit).
+
+```ebnf
+SourceUnit           := ? source-local declarations, aliases, and executable items, §4.2.1 ?
+ExecutableItem       := Expression | LocalBinding | FunctionDefinition
+                      | UnsafeStatement | DeferStatement | Directive<ExecutableItem>
+ExecutableBlock      := Body<ExecutableItem>
+UnsafeStatement      := "unsafe" ":" (InlineStatement | ExecutableBlock)
+DeferStatement       := "defer" ":" (InlineStatement | ExecutableBlock)
+InlineStatement      := ? one permitted single-line item, with no following Block, §7.3.1 ?
+LabeledBlock         := Name ":" ExecutableBlock
+Iteration            := (Name ":")? (ForExpression | WhileExpression | LoopExpression)
+ForExpression        := "for" ForBinding "in" Expression ExecutableBlock
+ForBinding           := Name | "(" List<Name> ")"
+WhileExpression      := "while" Condition ExecutableBlock
+LoopExpression       := "loop" ExecutableBlock
+IfExpression         := "if" Condition BranchBody
+                        (BranchJoin "else" "if" Condition BranchBody)*
+                        (BranchJoin "else" BranchBody)?
+Condition            := Expression | "(" InitializedBinding ")"
+BranchBody           := "=>" Expression | ExecutableBlock
+BranchJoin           := ? permitted same-line or line-separated else boundary, §7.7.2 ?
+MatchExpression      := "match" Expression Body<MatchArm>
+MatchArm             := Pattern "=>" (Expression | ExecutableBlock)
+Transfer             := "return" Expression?
+                      | "exit" Expression? ("from" Name)?
+                      | "continue" Name?
+                      | "yield" Expression
+DeinitDeclaration    := "deinit" ExecutableBlock
+```
+
+### F.6. Property grammar
+
+[Property declarations](#8-properties), [accessor bodies](#83-accessors), [inline accessors](#84-inline-accessor-declarations), [access restrictions](#87-access-control), [contract requirements](#842-contract-property-requirements).
+
+```ebnf
+PropertyDeclaration  := Access? ("let" | "var") Name
+                        (":" Type)? ("=" Expression)?
+                        (inline-accessors | Body<Accessor>)?
+Accessor             := Access? "get" ("->" Type)? AccessorBody?
+                      | Access? "set" AccessorBody?
+AccessorBody         := "=>" Expression | ExecutableBlock
+```
+
+```text
+inline-accessors := has accessor-declaration (',' accessor-declaration)*
+
+accessor-declaration := access-restriction? get ('->' ResultType)?
+                      | access-restriction? set
+```
+
+`access-restriction` denotes `Access`; `ResultType` denotes `Type`.
+
+### F.7. Origin grammar
+
+[Origin expressions](#921-origin-expressions), [Origin parameters](#93-abstract-origins), [named arguments](#931-origin-arguments), [outlives notation](#922-ordering-and-intersection).
+
+```ebnf
+OriginParameters     := "origin" List<Name>
+OriginAnnotation     := "from" (origin-expression | "(" TrailingList<OriginArgument> ")")
+OriginArgument       := Name "=>" origin-expression
+```
+
+```text
+origin-expression := Name
+                   | origin-expression '.' Name
+                   | static
+                   | origin-expression 'and' origin-expression
+```
+
+`o1 : o2` is the [outlives relation notation](#922-ordering-and-intersection), not an additional source declaration production.
+
+### F.8. Compile-time directive grammar
+
+[Directive syntax](#131-syntax-and-structural-selection), [closed Condition forms](#132-condition-forms-and-narrowing), [excluded-syntax parsing](#135-diagnostics-and-excluded-syntax).
+
+```ebnf
+Directive<Item>      := IfDirective<Item> | MatchDirective<Item>
+IfDirective<Item>    := "#" "if" CompileCondition (NEWLINE Item | Body<Item>)
+MatchDirective<Item> := "#" "match" NEWLINE INDENT CaseList<Item> DEDENT
+CaseList<Item>       := CaseArm<Item>+ DefaultArm<Item>? | DefaultArm<Item>
+CaseArm<Item>        := "#" "case" CompileCondition Body<Item>
+DefaultArm<Item>     := "#" "case" "_" Body<Item>
+CompileCondition    := CompileAnd ("or" CompileAnd)*
+CompileAnd          := CompileComparison ("and" CompileComparison)*
+CompileComparison   := CompileUnary (("==" | "!=") CompileUnary)?
+                      | Name "is" "not"? ConditionRequirement
+CompileUnary        := "not" CompileUnary | CompileAtom
+CompileAtom         := "true" | "false" | SignedInteger | PlainString | Name
+                      | "(" CompileCondition ")"
+SignedInteger       := ("+" | "-")? IntegerLiteral
+IntegerLiteral      := ? integer alternatives of number-literal in F.1 ?
+PlainString         := ? StringLiteral without interpolation, §13.2 ?
+ConditionRequirement := QualifiedName | PrimitiveType | Semantics
+```
+
+The hash forms use `#` followed by reserved lowercase directive names. `Item` retains the surrounding syntax category; directives do not make an otherwise forbidden item legal there. Case layout and excluded-target grammar checking follow the linked sections.
+
+### F.9. Syntax boundaries
+
+These entries record the limits of a complete syntax summary for this revision. They are not wildcard productions or newly defined features.
+
+| Form or production | Owning syntax and boundary |
+| --- | --- |
+| `EnumDeclaration`, `ExtensionDeclaration` | [Container kinds](#42-declaration-containers) identify the forms; [fragment and identity boundaries](#422-container-fragments) remain open. No complete enum payload or extension-body grammar is supplied. |
+| `Pattern` | [Match arms](#773-match) specify the arm wrapper. Full pattern, enum construction, and payload syntax remain [partially specified](#111-error-policy). |
+| Attributes | `#Name` is distinct from a directive under [reserved syntax](#68-extension-boundaries-and-reserved-syntax). General attribute arguments and placement need their own specification. |
+| Additional Composition Root expressions | Only `$panic(...)` is given a complete operation syntax here; see [extension boundaries](#68-extension-boundaries-and-reserved-syntax). |
+| Additional type arguments and construction | [Generic application](#642-invocation-and-generic-application) and [inference boundaries](#53-inference-and-operation-design-boundaries) do not define a general constant-argument or constructor grammar. |
+| Function parameters | The combined optional/external-name form remains under [parameter design boundaries](#53-inference-and-operation-design-boundaries); the separate forms are summarized in F.3. |
+| Re-export, fixed FFI layout, and failure propagation | See [Re-exports](#122-re-exports), [layout boundaries](#146-structure-layout-and-abi), and [error policy](#111-error-policy). |

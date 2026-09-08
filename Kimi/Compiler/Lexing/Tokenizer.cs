@@ -51,6 +51,15 @@ internal ref struct Tokenizer
             return true;
         };
 
+        CharacterHandlerTable[Constants.SemicolonChar] = (ref tokenizer) =>
+        {
+            tokenizer.diagnostics.Add(tokenizer.NewRange(1), DiagnosticCode.SemicolonNotAllowed_Kd);
+            // Recover as a separator so the parser can still inspect following syntax.
+            // This does not end the physical line or alter indentation.
+            tokenizer.AddTokenAndSlice(TokenKind.Separator, 1);
+            return false;
+        };
+
         CharacterHandlerTable[Constants.AmpersandChar] = (ref tokenizer) =>
         {// & && &=
             var next = tokenizer.NextChar;

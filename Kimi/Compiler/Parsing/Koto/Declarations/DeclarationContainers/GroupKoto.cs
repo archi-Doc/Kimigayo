@@ -97,7 +97,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
                 hasNonAliasDeclaration = true;
                 var caseGroup = Parser.ParseCompileTimeMatch(ref reader);
                 caseGroup = Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup);
-                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, caseGroup, true);
+                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, caseGroup);
                 continue;
             }
 
@@ -167,14 +167,8 @@ public sealed class GroupKoto : DeclarationContainerKoto
             }
 
             var oldPosition = reader.Position;
-            var item = Parser.ParseBlockItem(ref reader, out var isDeclaration);
-            var hasTrailingExpression = !isDeclaration;
-            if (reader.CurrentTokenKind == TokenKind.Semicolon)
-            {
-                hasTrailingExpression = false;
-                reader.Advance();
-            }
-            else if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
+            var item = Parser.ParseBlockItem(ref reader, out _);
+            if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
             {
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
             }
@@ -182,7 +176,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
             if (item is not null && !isExcluded)
             {
                 item = Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, item);
-                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, item, hasTrailingExpression);
+                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, item);
             }
 
             if (reader.Position == oldPosition)

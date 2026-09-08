@@ -31,6 +31,7 @@ public enum DiagnosticCode
     IndentationLevelMismatchWarning_Kd,
     InvalidAttributeKoto_Kd,
     InvalidCharacter_Kd,
+    SemicolonNotAllowed_Kd,
     InvalidCharLiteral_Kd,
     InvalidSourceEncoding_Kd,
     InvalidCharacterAtEndOfFile_Kd,

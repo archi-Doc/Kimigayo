@@ -121,7 +121,7 @@ public class CompileTimeMatchParseTest
     {
         var compilation = Parse($"#match\n    {invalidItem}\n    #case true\n        ()\nvar following = 1");
 
-        AssertDiagnostic(compilation, DiagnosticCode.InvalidCompileTimeMatchItem_Kd);
+        AssertDiagnostic(compilation, invalidItem == ";" ? DiagnosticCode.SemicolonNotAllowed_Kd : DiagnosticCode.InvalidCompileTimeMatchItem_Kd);
         Assert.Equal("following", Assert.IsType<FieldKoto>(compilation.Kotonoha.GeneratedFunction!.Body!.Items[^1]).NameKoto.IdentifierName);
     }
 
@@ -175,7 +175,7 @@ public class CompileTimeMatchParseTest
     [InlineData("#match", DiagnosticCode.EmptyCompileTimeMatch_Kd)]
     [InlineData("#match\n    ()", DiagnosticCode.InvalidCompileTimeMatchItem_Kd)]
     [InlineData("#match\n    #case true", DiagnosticCode.EmptyExecutableBlock_Kd)]
-    [InlineData("#match\n    ;\n    #case true\n        ()", DiagnosticCode.InvalidCompileTimeMatchItem_Kd)]
+    [InlineData("#match\n    ;\n    #case true\n        ()", DiagnosticCode.SemicolonNotAllowed_Kd)]
     [InlineData("#match value\n    #case _\n        ()", DiagnosticCode.UnexpectedTrailingToken_Kd)]
     public void ExcludedMatchStillValidatesItsSourceStructure(string target, DiagnosticCode diagnostic)
     {

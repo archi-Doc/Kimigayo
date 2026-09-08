@@ -51,7 +51,7 @@ public class ControlFlowAnalysisTest
     [InlineData("func f()\n    if false\n        return 1\n    loop\n        continue")]
     [InlineData("func f() -> i32\n    if false\n        return 1\n    loop\n        continue")]
     [InlineData("loop\n    exit 10")]
-    [InlineData("if true => 1;\nelse => 2;")]
+    [InlineData("if true => 1\nelse => 2")]
     [InlineData("if true\n    yield 1\nelse\n    yield 2")]
     [InlineData("func f(flag: bool) -> i32\n    let x = if flag\n        return 1\n    else\n        return 2")]
     [InlineData("let x = if true => 1\nelse\n    2")]
@@ -199,7 +199,7 @@ public class ControlFlowAnalysisTest
         var compilation = Compilation.CreateForTest();
         compilation.Kotonoha.CreateCodeContext().Parse(
             compilation.Kotonoha.RootKoto,
-            "if true => 1;\nelse\n    yield 2\nloop\n    if false\n        exit 1");
+            "if true => 1\nelse\n    yield 2\nloop\n    if false\n        exit 1");
         var restored = new Kotonoha(compilation);
         TinyhandSerializer.DeserializeObject(TinyhandSerializer.Serialize(compilation.Kotonoha), ref restored);
         restored!.OnDeserialized(compilation);
@@ -207,7 +207,7 @@ public class ControlFlowAnalysisTest
         Assert.Empty(analysis.Issues);
         var selection = Assert.IsType<IfKoto>(analysis.Nodes.Single(x => x.Key is IfKoto && x.Value.IsResultRequiring).Key);
         Assert.True(selection.Branches[0].Body.IsExpressionBody);
-        Assert.True(selection.Branches[0].Body.HasTrailingSemicolon);
+        Assert.True(selection.Branches[0].Body.HasTrailingExpression);
         Assert.False(selection.ElseBody!.IsExpressionBody);
     }
 
