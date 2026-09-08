@@ -103,7 +103,7 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
     public override bool? RequiresUnsafeContext(Koto expression) => expression switch
     {
         DereferenceKoto => true,
-        ConversionKoto { Right: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Unsafe } } => true,
+        ConversionKoto conversion when GetOuterSemantics(conversion.Right) == SemanticsKind.Unsafe => true,
         _ => null,
     };
 
@@ -131,6 +131,7 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
     /// <inheritdoc/>
     public override ControlFlowType? GetDeclaredType(Koto? syntax) => syntax switch
     {
+        ParenthesizedTypeKoto t => this.GetDeclaredType(t.Type),
         TupleTypeKoto t when t.Elements.Count == 0 => ControlFlowType.Unit,
         TypeSemanticsKoto { Type: not null, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } t
             when t.SemanticsKind is SemanticsKind.Unsafe or SemanticsKind.Owner && this.GetDeclaredType(t.Type) is { } core
@@ -207,6 +208,24 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
         }
 
         return null;
+    }
+
+    private static SemanticsKind? GetOuterSemantics(Koto syntax)
+    {
+        while (true)
+        {
+            switch (syntax)
+            {
+                case ParenthesizedTypeKoto grouped:
+                    syntax = grouped.Type;
+                    break;
+                case TypeSemanticsKoto { Type: not null } wrapper when wrapper.IsTransparentWrapper || wrapper.SemanticsKind == SemanticsKind.Owner:
+                    syntax = wrapper.Type;
+                    break;
+                default:
+                    return (syntax as TypeKoto)?.SemanticsKind;
+            }
+        }
     }
 
     private static bool TryGetIntegerValue(Koto node, out System.Numerics.BigInteger value)

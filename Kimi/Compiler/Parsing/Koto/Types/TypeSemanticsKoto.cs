@@ -6,7 +6,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>
-/// Represents a type together with ownership semantics and an optional origin.
+/// Represents one semantics layer and its Origin, retaining the complete inner type.
 /// </summary>
 public sealed class TypeSemanticsKoto : TypeKoto
 {
@@ -16,19 +16,21 @@ public sealed class TypeSemanticsKoto : TypeKoto
     private SemanticsKind semanticsKind;
 
     /// <inheritdoc/>
-    public override SemanticsKind SemanticsKind => this.semanticsKind;
+    public override SemanticsKind SemanticsKind
+        => this.isTransparentWrapper && this.Type is TypeKoto type ? type.SemanticsKind : this.semanticsKind;
 
     private string? semanticsParameter;
 
     /// <inheritdoc/>
-    public override string? SemanticsParameter => this.semanticsParameter;
+    public override string? SemanticsParameter
+        => this.isTransparentWrapper && this.Type is TypeKoto type ? type.SemanticsParameter : this.semanticsParameter;
 
     private TokenKind coreTypeToken;
 
     private string? coreTypeName;
 
     /// <summary>
-    /// Gets the type to which the semantics applies when it is a compound type.
+    /// Gets the complete inner type, including any nested semantics and Origins.
     /// </summary>
     public Koto? Type { get; private set; }
 
@@ -45,9 +47,9 @@ public sealed class TypeSemanticsKoto : TypeKoto
     /// <summary>Gets named Origin arguments, or null for an ordinary Origin annotation.</summary>
     public OriginArgument[]? OriginArguments { get; private set; }
 
-    /// <summary>Gets the underlying type identifier.</summary>
+    /// <summary>Gets the leaf identifier; this alone does not identify the complete layered type.</summary>
     public override string Identifier
-        => this.Type is TypeSemanticsKoto simpleType
+        => this.Type is TypeKoto simpleType
             ? simpleType.Identifier
             : this.coreTypeToken.IsPrimitiveType()
             ? this.coreTypeToken.ToText()
@@ -118,7 +120,22 @@ public sealed class TypeSemanticsKoto : TypeKoto
                 builder.Append(Constants.SlashChar);
             }
 
+            // An inner Origin belongs to its own layer, and a function arrow binds
+            // less tightly than '/'. Keep both boundaries when writing changed trees.
+            var needsParentheses = !this.isTransparentWrapper &&
+                (this.Type is FunctionTypeKoto ||
+                (this.Type is TypeSemanticsKoto inner &&
+                (inner.OriginName is not null || inner.OriginExpression is not null || inner.OriginArguments is not null)));
+            if (needsParentheses)
+            {
+                builder.Append('(');
+            }
+
             this.Type.WriteTo(ref builder);
+            if (needsParentheses)
+            {
+                builder.Append(')');
+            }
         }
         else
         {

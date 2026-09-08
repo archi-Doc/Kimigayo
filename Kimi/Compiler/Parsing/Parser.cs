@@ -915,10 +915,10 @@ Exit:
     public static Koto ParseType(ref TokenReader reader)
         => ParseDeclarationType(ref reader);
 
-    private static Koto ParseType(ref TokenReader reader, bool parseOrigin, bool disambiguateGenerics = false)
+    private static Koto ParseType(ref TokenReader reader, bool parseOrigin, bool disambiguateGenerics = false, bool allowNestedOrigins = true)
     {
         var start = reader.CurrentTokenRange.Start;
-        var left = ParseTypeInternal(ref reader, disambiguateGenerics);
+        var left = ParseTypeInternal(ref reader, disambiguateGenerics, allowNestedOrigins);
         if (left is null)
         {
             return reader.NewErrorKoto();
@@ -932,7 +932,7 @@ Exit:
                 var operatorRange = reader.CurrentTokenRange;
                 reader.Advance();
 
-                var accessor = ParseTypeInternal(ref reader, disambiguateGenerics) ?? reader.NewErrorKoto();
+                var accessor = ParseTypeInternal(ref reader, disambiguateGenerics, allowNestedOrigins) ?? reader.NewErrorKoto();
                 left = new MemberAccessKoto(
                     ref reader,
                     SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
@@ -948,7 +948,7 @@ Exit:
                     break;
                 }
 
-                left = ParseGenericsPostfix(ref reader, left);
+                left = ParseGenericsPostfix(ref reader, left, allowNestedOrigins);
             }
             else
             {
@@ -968,7 +968,7 @@ Exit:
 
         return left;
 
-        static Koto? ParseTypeInternal(ref TokenReader reader, bool disambiguateGenerics)
+        static Koto? ParseTypeInternal(ref TokenReader reader, bool disambiguateGenerics, bool allowNestedOrigins)
         {
             if (!reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.EndBlock or TokenKind.StartBlock or TokenKind.Comma or TokenKind.CloseParenthesis or TokenKind.GreaterThan or TokenKind.GreaterThanGreaterThan or TokenKind.Equals)
             {
@@ -978,7 +978,7 @@ Exit:
 
             if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
             {
-                return ParseDeclarationType(ref reader, false);
+                return ParseDeclarationType(ref reader, parseOrigin: false, parseFunctionType: false, allowNestedOrigins: allowNestedOrigins);
             }
 
             var token = reader.CurrentToken;
@@ -986,7 +986,7 @@ Exit:
 
             if (token.Kind.IsIdentifierOrContextualKeyword() &&
                 reader.CurrentTokenKind == TokenKind.Slash)
-            {// semantics/Type
+            {// Semantics applies to the next type head; arrows and this layer's Origin remain outside.
                 var semantics = reader.GetSpan(token);
                 string? semanticsParameter = default;
                 if (!CompilerHelper.TryParse(semantics, out var semanticsKind))
@@ -997,8 +997,8 @@ Exit:
                 reader.Advance();
 
                 var attribute = reader.PopAttribute();
-                var type = ParseType(ref reader, parseOrigin: false, disambiguateGenerics: disambiguateGenerics);
-                if (type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: not null } transparentType)
+                var type = ParseType(ref reader, parseOrigin: false, disambiguateGenerics: disambiguateGenerics, allowNestedOrigins: allowNestedOrigins);
+                if (type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: not null, OriginName: null, OriginExpression: null, OriginArguments: null } transparentType)
                 {
                     type = transparentType.Type;
                 }
@@ -1136,7 +1136,7 @@ Exit:
     }
 
     /// <summary>Parses <c>&lt;T1, T2&gt;</c> after an identifier and wraps the identifier in a generic node.</summary>
-    private static GenericsKoto ParseGenericsPostfix(ref TokenReader reader, Koto left)
+    private static GenericsKoto ParseGenericsPostfix(ref TokenReader reader, Koto left, bool allowOrigins = true)
     {
         Debug.Assert(reader.CurrentTokenKind == TokenKind.LessThan);
         reader.Advance();
@@ -1145,7 +1145,7 @@ Exit:
         reader.TrySkipSeparatorsTo(TokenKind.GreaterThan);
         while (true)
         {
-            var type = ParseType(ref reader);
+            var type = ParseDeclarationType(ref reader, parseOrigin: allowOrigins, allowNestedOrigins: allowOrigins);
             typeList.Add(type);
             end = type.Span.End;
             reader.TrySkipSeparatorsTo(TokenKind.GreaterThan);
@@ -2534,7 +2534,7 @@ Exit:
                 {
                     // Origins in executable expressions are inferred. A following
                     // "from Label" belongs to an enclosing exit expression.
-                    typeKoto = ParseType(ref reader, parseOrigin: false, disambiguateGenerics: true);
+                    typeKoto = ParseType(ref reader, parseOrigin: false, disambiguateGenerics: true, allowNestedOrigins: false);
                 }
 
                 left = new ConversionKoto(
@@ -3379,7 +3379,7 @@ Loop:
         return ParseExpression(ref reader, RangeRightBindingPower);
     }
 
-    private static Koto ParseDeclarationType(ref TokenReader reader, bool parseOrigin = true)
+    private static Koto ParseDeclarationType(ref TokenReader reader, bool parseOrigin = true, bool parseFunctionType = true, bool allowNestedOrigins = true)
     {
         Koto type;
         if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
@@ -3388,6 +3388,7 @@ Loop:
             reader.Advance();
 
             var elements = new List<Koto>();
+            var hasComma = false;
             while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseParenthesis)
             {
                 if (reader.CurrentTokenKind == TokenKind.Separator)
@@ -3396,9 +3397,10 @@ Loop:
                     continue;
                 }
 
-                elements.Add(ParseDeclarationType(ref reader));
+                elements.Add(ParseDeclarationType(ref reader, parseOrigin: allowNestedOrigins, allowNestedOrigins: allowNestedOrigins));
                 if (reader.CurrentTokenKind == TokenKind.Comma)
                 {
+                    hasComma = true;
                     reader.Advance();
                 }
                 else if (reader.CurrentTokenKind != TokenKind.CloseParenthesis)
@@ -3415,7 +3417,10 @@ Loop:
                 end = Math.Max(end, closeRange.End);
             }
 
-            type = new TupleTypeKoto(ref reader, SourceSpan.FromBounds(openRange.Start, end), elements);
+            var range = SourceSpan.FromBounds(openRange.Start, end);
+            type = elements.Count == 1 && !hasComma
+                ? new ParenthesizedTypeKoto(ref reader, range, elements[0])
+                : new TupleTypeKoto(ref reader, range, elements);
             if (parseOrigin)
             {
                 type = ParseTypeOrigin(ref reader, type);
@@ -3423,17 +3428,17 @@ Loop:
         }
         else
         {
-            type = ParseType(ref reader, parseOrigin);
+            type = ParseType(ref reader, parseOrigin, allowNestedOrigins: allowNestedOrigins);
         }
 
-        if (reader.CurrentTokenKind != TokenKind.MinusGreaterThan)
+        if (!parseFunctionType || reader.CurrentTokenKind != TokenKind.MinusGreaterThan)
         {
             return type;
         }
 
         var arrowRange = reader.CurrentTokenRange;
         reader.Advance();
-        var returnType = ParseDeclarationType(ref reader);
+        var returnType = ParseDeclarationType(ref reader, parseOrigin: allowNestedOrigins, allowNestedOrigins: allowNestedOrigins);
         return new FunctionTypeKoto(
             ref reader,
             SourceSpan.FromBounds(type.Span.Start, Math.Max(arrowRange.End, returnType.Span.End)),

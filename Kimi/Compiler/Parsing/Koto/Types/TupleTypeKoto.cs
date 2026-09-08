@@ -41,6 +41,11 @@ public sealed class TupleTypeKoto : TypeKoto
             this.Elements[i].WriteTo(ref builder);
         }
 
+        if (this.Elements.Count == 1)
+        {
+            builder.Append(',');
+        }
+
         builder.Append(')');
     }
 

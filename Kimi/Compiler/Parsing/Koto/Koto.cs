@@ -302,6 +302,9 @@ public enum KotoKind : byte
     /// <summary>A contextually typed raw-pointer null literal.</summary>
     NullLiteral,
 
+    /// <summary>A parenthesized type, distinct from a one-element tuple.</summary>
+    ParenthesizedType,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
