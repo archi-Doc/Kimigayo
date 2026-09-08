@@ -1210,7 +1210,8 @@ Exit:
 
         var span = SourceSpan.FromBounds(sharp.Span.Start, Math.Max(sharp.Span.End, condition.Span.End));
 
-        switch (CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition))
+        var result = EvaluateCompileTimeCondition(ref reader, condition);
+        switch (result)
         {
             case CompileTimeConditionResult.True:
                 break;
@@ -1229,6 +1230,17 @@ Exit:
 
                 break;
         }
+    }
+
+    private static CompileTimeConditionResult EvaluateCompileTimeCondition(ref TokenReader reader, Koto condition)
+    {
+        var result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition, out var requiresBinding);
+        if (requiresBinding)
+        {
+            reader.RetainDirectiveCondition(condition);
+        }
+
+        return result;
     }
 
     /// <summary>Parses consecutive compile-time Case Group arms.</summary>
@@ -1277,7 +1289,7 @@ Exit:
             else
             {
                 condition = ParseRequiredCompileTimeCondition(ref reader);
-                result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);
+                result = EvaluateCompileTimeCondition(ref reader, condition);
             }
 
             var body = declarationContext is null || declarationContext.IsRoot
@@ -1355,10 +1367,12 @@ Exit:
         items.AddRange(temporary.TypeConstraints);
         items.AddRange(temporary.Members);
         items.AddRange(temporary.NestedDeclarationContainers);
-        return new CodeBlockKoto(ref reader, SourceSpan.FromBounds(start, reader.CurrentTokenRange.Start), items, false)
+        var block = new CodeBlockKoto(ref reader, SourceSpan.FromBounds(start, reader.CurrentTokenRange.Start), items, false)
         {
             DeclarationContext = declarationContext.TokenKind,
         };
+        block.AddPendingDirectiveConditions(temporary.PendingDirectiveConditions.Select(x => x.Condition));
+        return block;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1708,6 +1722,22 @@ Exit:
         => ParseFunctionBlock(ref reader, null);
 
     internal static CodeBlockKoto ParseFunctionBlock(ref TokenReader reader, FunctionKoto? function)
+    {
+        var enclosingConditions = reader.PendingDirectiveConditions;
+        reader.PendingDirectiveConditions = null;
+        try
+        {
+            var block = ParseFunctionBlockCore(ref reader, function);
+            block.AddPendingDirectiveConditions(reader.PendingDirectiveConditions);
+            return block;
+        }
+        finally
+        {
+            reader.PendingDirectiveConditions = enclosingConditions;
+        }
+    }
+
+    private static CodeBlockKoto ParseFunctionBlockCore(ref TokenReader reader, FunctionKoto? function)
     {
         var start = reader.CurrentTokenRange;
         if (reader.CurrentTokenKind != TokenKind.StartBlock)

@@ -335,6 +335,13 @@ public abstract class Koto
     /// <summary>Gets the parent node, or <see langword="null"/> for the root.</summary>
     public Koto? Parent { get; internal set; }
 
+    private List<PendingDirectiveCondition>? pendingDirectiveConditions;
+
+    /// <summary>Gets conditions awaiting Directive Binding in this scope, independently of branch selection.</summary>
+    /// <remarks>These validation obligations are separate from <see cref="ChildNodes"/> and ordinary Binding.</remarks>
+    public IReadOnlyList<PendingDirectiveCondition> PendingDirectiveConditions
+        => (IReadOnlyList<PendingDirectiveCondition>?)this.pendingDirectiveConditions ?? [];
+
     /// <summary>Gets the direct syntax-tree children of this node.</summary>
     public IEnumerable<Koto> ChildNodes
     {
@@ -499,6 +506,19 @@ public abstract class Koto
             attributeChain.Parent = parent;
             parent = attributeChain;
             attributeChain = attributeChain.AttributeChain;
+        }
+    }
+
+    internal void AddPendingDirectiveConditions(IEnumerable<Koto>? conditions)
+    {
+        if (conditions is null)
+        {
+            return;
+        }
+
+        foreach (var condition in conditions)
+        {
+            (this.pendingDirectiveConditions ??= []).Add(new(condition, this));
         }
     }
 

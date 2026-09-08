@@ -144,8 +144,17 @@ public sealed class ControlFlowAnalysis
         }
     }
 
+    private void RecordPendingDirectiveConditions(Koto scope)
+    {
+        foreach (var condition in scope.PendingDirectiveConditions)
+        {
+            this.pending.Add(condition.Condition);
+        }
+    }
+
     private Flow Visit(Koto node, bool reachable, ControlFlowType? expected = null)
     {
+        this.RecordPendingDirectiveConditions(node);
         expected ??= this.types.GetExpectedType(node);
         var referencedFunction = this.types.GetReferencedFunction(node);
         if (referencedFunction?.Modifier.HasFlag(ModifierKind.Unsafe) == true)
@@ -693,6 +702,7 @@ public sealed class ControlFlowAnalysis
 
     private Flow VisitLabeledBlock(LabeledKoto labeled, CodeBlockKoto block, bool reachable, ControlFlowType? expected)
     {
+        this.RecordPendingDirectiveConditions(block);
         var required = KotoHelper.IsResultRequiringLabeledBlock(labeled);
         var boundary = this.Begin(block, required ? expected : ControlFlowType.Unit);
         this.nodes[block].IsResultRequiring = required;

@@ -495,6 +495,21 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
     /// <param name="parseDeclarationContainers">Whether nested Declaration Containers are accepted.</param>
     protected void ParseMembers(ref TokenReader reader, bool parseTypeConstraints, bool parseDeclarationContainers)
     {
+        var enclosingConditions = reader.PendingDirectiveConditions;
+        reader.PendingDirectiveConditions = null;
+        try
+        {
+            this.ParseMembersCore(ref reader, parseTypeConstraints, parseDeclarationContainers);
+            this.AddPendingDirectiveConditions(reader.PendingDirectiveConditions);
+        }
+        finally
+        {
+            reader.PendingDirectiveConditions = enclosingConditions;
+        }
+    }
+
+    private void ParseMembersCore(ref TokenReader reader, bool parseTypeConstraints, bool parseDeclarationContainers)
+    {
         ConsumeBlockStart(ref reader);
         var declarationOrder = DeclarationOrder.None;
         var acceptsTypeConstraints = parseTypeConstraints && this.typeConstraints is not { Count: > 0 };

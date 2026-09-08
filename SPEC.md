@@ -236,11 +236,13 @@ An evaluation attempt produces exactly one of these results:
 | **Deferred** | The Condition has a valid compile-time dependency whose value is not yet available. |
 | **Error** | The Condition is invalid, non-Boolean, or refers to an unavailable Name. |
 
-After Directive Binding, an unbound declared generic parameter produces **Deferred**, while an unknown Name produces **Error**. `and`, `or`, and `not` use short-circuit reasoning; for example, `false and Deferred` is **False**, while `true and Deferred` is **Deferred**.
+After Directive Binding, an unbound declared generic parameter produces **Deferred**, while an unknown Name produces **Error**. Short-circuit reasoning determines truth, but does not waive validation of any operand in a Condition. **Error** is absorbing for `and` and `or`, regardless of operand order: `Error and X`, `X and Error`, `Error or X`, and `X or Error` are **Error** for every result `X`; `not Error` is **Error**. Otherwise, `false and Deferred` is **False**, `true or Deferred` is **True**, and `true and Deferred`, `false or Deferred`, and `not Deferred` are **Deferred**.
 
-The Parser currently treats unresolved Names and unsupported expressions as **Deferred** because it cannot distinguish unknown Names from declared generic parameters. Directive Binding must later classify them and report unknown Names.
+The Parser currently treats unresolved Names and unsupported expressions as **Deferred** because it cannot distinguish unknown Names from declared generic parameters. Truth determination and validation completion are separate: even when the Parser determines **True** or **False**, it must retain any Condition containing unresolved Names or unvalidated expressions, together with its source, diagnostic context, and enclosing lookup scope, as a Directive Binding obligation. Directive Binding must classify these dependencies and report unknown Names and other invalid operands, including operands that cannot affect truth. This does not require ordinary Binding of excluded controlled Syntax, or obtaining the value of a valid dependency that cannot affect truth. An early truth result does not authorize successful finalization while validation remains pending.
 
-Each pass attempts the single Condition of a `#if` and every explicit Condition of a Case Group. Every arm Condition is checked, and an **Error** is reported even when an earlier arm determines the selection. A Case Group is selected as soon as its first-match result is certain:
+For example, `false and missing`, `true or missing`, and their operand-reversed forms are **Error** after Directive Binding if `missing` is unknown. `debug and missing` must diagnose that unknown Name in both Debug and Release configurations. `false and 1` and `true or 1` are **Error** because the numeric operand is non-Boolean.
+
+Each pass attempts the single Condition of a `#if` and every explicit Condition of a Case Group. Every arm Condition is checked, and an **Error** is reported even when an earlier arm determines the selection. Validation obligations for all explicit arm Conditions survive early group selection, including those of later arms whose values cannot change the selection. This requirement concerns Conditions of directives reached by parsing; it does not require parsing directives inside an excluded `#if` target. A Case Group is selected as soon as its first-match result is certain:
 
 - a **False** arm is skipped;
 - a **True** arm is selected when every preceding arm is **False**;
@@ -254,14 +256,15 @@ The evaluation and Syntax-processing sequence is:
 ```text
 Parse a directive Condition
     -> evaluate known target and Project values
+        -> independently retain the Condition and its context if validation requires Directive Binding
         -> True: parse the controlled Syntax without a directive Koto
         -> False: consume the controlled Syntax without creating Koto nodes
         -> Deferred: parse the controlled Syntax and retain a directive Koto
         -> Error: report a diagnostic and discard the controlled Syntax
-    -> resolve Names in retained Conditions
+    -> resolve Names and validate operands in all retained Conditions, including early-True/False Conditions and Conditions of unselected case arms
     -> re-evaluate after generic Binding and for each specialization
     -> resolve selections that change a scope's lookup environment before ordinary Name resolution using that environment begins
-    -> require a final result before finalization
+    -> require a final result and completed validation before finalization
     -> bind and lower only the selected Syntax
 ```
 
@@ -341,9 +344,9 @@ CompileTimeCaseGroupKoto
         Block
 ```
 
-Normally only Deferred directives retain directive Koto nodes: an early-true `#if` contributes its Target directly; an early-false one contributes none. Invalid Case Groups may remain for error recovery. Resolving a specialization must not mutate Koto shared with others.
+Normally only Deferred directives retain directive Koto nodes: an early-true `#if` contributes its Target directly; an early-false one contributes none. Independently, the enclosing scope retains pending Condition validation obligations even when the directive Koto or unselected Syntax is discarded. Each obligation retains the full Condition and its original CodeContext and identifies the enclosing scope for Directive Binding. These obligations are separate from executable syntax and must not cause excluded targets to undergo ordinary Binding. Invalid Case Groups may remain for error recovery. Resolving a specialization must not mutate Koto shared with others.
 
-The Parser implements early `#if` and `#case` evaluation and retains Deferred directives as dedicated Koto nodes. Later Binding/specialization evaluation, enforcement of scope lookup-environment boundaries, and constraint narrowing are planned.
+The Parser implements early `#if` and `#case` evaluation, propagates known operand Errors before short-circuit truth results, and retains Deferred directives as dedicated Koto nodes. It also retains unresolved Condition validation obligations independently of selection; control-flow analysis exposes encountered obligations as pending Binding. Unknown-Name classification by later Directive Binding, specialization evaluation, enforcement of scope lookup-environment boundaries, and constraint narrowing are planned.
 
 ### 2.3. Source contexts and dependencies
 

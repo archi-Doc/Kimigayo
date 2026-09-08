@@ -598,6 +598,12 @@ public ref struct TokenReader
     /// <summary>Gets or sets a value indicating whether primitive type names are accepted in a directive condition.</summary>
     internal bool IsParsingCompileTimeCondition { get; set; }
 
+    /// <summary>Gets or sets validation obligations for the scope currently being parsed.</summary>
+    internal List<Koto>? PendingDirectiveConditions { get; set; }
+
+    internal void RetainDirectiveCondition(Koto condition)
+        => (this.PendingDirectiveConditions ??= []).Add(condition);
+
     /// <summary>Creates a bounded reader that cannot consume a following physical line or Block.</summary>
     /// <param name="tokenCount">The number of tokens owned by the inline body.</param>
     /// <returns>An independent reader over the same source and diagnostic destination.</returns>

@@ -65,6 +65,21 @@ public sealed class GroupKoto : DeclarationContainerKoto
 
     private void ParseRoot(ref TokenReader reader)
     {
+        var enclosingConditions = reader.PendingDirectiveConditions;
+        reader.PendingDirectiveConditions = null;
+        try
+        {
+            this.ParseRootCore(ref reader);
+            this.AddPendingDirectiveConditions(reader.PendingDirectiveConditions);
+        }
+        finally
+        {
+            reader.PendingDirectiveConditions = enclosingConditions;
+        }
+    }
+
+    private void ParseRootCore(ref TokenReader reader)
+    {
         ConsumeBlockStart(ref reader);
         var hasNonAliasDeclaration = false;
         while (TryBeginDeclaration(ref reader))
