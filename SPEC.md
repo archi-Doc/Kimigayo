@@ -1566,7 +1566,7 @@ A local Type must be fixed at declaration, even without an initializer. An expli
 
 ### 4.6. Functions
 
-A function begins with `func`, followed by its Name, optional generic parameters, optional Origin parameters, and a parenthesized parameter list. A result Type follows `->`; whether it is mandatory or may be inferred depends on declared accessibility under [inference boundaries](#525-inference-boundaries-and-specialization). A definition has an indentation-delimited Block body or a single expression introduced by `=>`.
+A function begins with `func`, followed by its Name, optional generic parameters, optional Origin parameters, and a parenthesized parameter list. A result Type follows `->`. For every named function, omitting `-> Type` means Unit (`()`), regardless of accessibility; the body never infers its return Type. A non-Unit return Type must be explicit. A definition has an indentation-delimited Block body or a single expression introduced by `=>`. Anonymous functions retain their separate [inference rules](#6431-syntax-and-inference).
 
 The declared function Name is a single, unqualified Name. Its declaration belongs to the lexical Container or executable scope in which it appears. Declare a member inside the relevant Container body, including a permitted fragment; `func View.get(...)` and other qualified function declaration names are compile-time errors. A qualified declaration cannot attach a function to another Container, introduce an extension, or obtain that Container's private access or generic bindings. Qualified Names at use sites and explicit receivers remain governed by their existing rules.
 
@@ -1582,7 +1582,7 @@ func invalidAdd(left: i32, right: i32) -> i32
     left + right // Error: return is required.
 ```
 
-Reachable body fall-through contributes Unit to result inference. For a Unit function, it is equivalent to `return ()`; for a declared or inferred non-Unit result, it is an error. Paths that never complete do not need a result.
+Reachable body fall-through is equivalent to `return ()` for a Unit function and is an error for a non-Unit function. In an anonymous function whose result is inferred, reachable fall-through contributes Unit to inference. Paths that never complete do not need a result; they do not change a named function's declared or default Unit return Type.
 
 ```kimi
 func process()
@@ -1602,6 +1602,15 @@ An **Expression-bodied function** evaluates the expression after `=>` in Value C
 
 ```kimi
 func add(left: i32, right: i32) -> i32 => left + right
+
+func invalidNumber()
+    return 123 // Error: the omitted return Type means Unit.
+
+func invalidExpression() => 123 // Error: the expression must fit Unit.
+func doNothing() => ()          // Valid: Unit is the default.
+
+let number = add(1, 2)                  // Local Type inference remains: i32.
+let twice = func (value: i32) => value * 2 // Anonymous result inference remains: i32.
 ```
 
 Both forms follow the shared [result validation](#78-result-validation), [reachability](#782-reachability), and [scope-exit destruction](#102-scope-exit-destruction) rules. [Function Boundaries](#753-function-boundaries) lists the other bodies to which these rules apply.
@@ -2093,7 +2102,7 @@ These rules deliberately leave owner-to-`ref`/`uniq` overloads ambiguous. Any pr
 
 #### 5.2.5. Inference boundaries and specialization
 
-Fix local Types at declaration; later uses cannot infer backward. Functions declared `public`, `protected`, or `protected internal` require explicit return Types, even if an enclosing Container narrows their effective domain. Functions declared `internal`, `private protected`, or `private` may infer returns, but fix the return Type before the function participates in another expression's overload resolution and validate [API signature accessibility](#5122-api-signature-accessibility). Inference cycles require return annotations. Generic return Types may remain expressions over parameters; substituting them does not reanalyze a body.
+Fix local Types at declaration; later uses cannot infer backward. Every named function, including local functions, methods, and Contract function requirements, has an explicit return Type or defaults to Unit when `-> Type` is omitted. This rule is independent of accessibility and applies to both Block and Expression bodies. Resolve that signature without inferring a return Type from the body or callers, and validate [API signature accessibility](#5122-api-signature-accessibility). Generic return Types may be explicitly written expressions over parameters; substituting them does not reanalyze a body. Local binding inference and [anonymous-function inference](#6431-syntax-and-inference) remain available.
 
 Explicit function type arguments must supply the full list. Partial lists and inference placeholders are not defined. Omitted defaults do not infer generic arguments.
 
@@ -3546,8 +3555,10 @@ Patterns are dedicated syntax, not general expressions. Initially they occur onl
 ```kimi
 // result: Result<Option<User>, Error>
 match result
-    .Ok(.Some(let user)) => use(user)
-    .Ok(.None) => useDefault()
+    .Ok(let option) =>
+        match option
+            .Some(let user) => use(user)
+            .None => useDefault()
     .Err(let error) => report(error)
 ```
 
@@ -3636,24 +3647,33 @@ If guard evaluation or cleanup does not complete normally, no body binding is ev
 
 ##### 7.7.3.4. Coverage and unreachable Patterns
 
-Compute exhaustiveness from the union of **unguarded** Patterns. Guarded arms, even `if true`, contribute no coverage. Do not use guard logic, constant subjects, call results, or a body's Never Type to supply missing coverage.
+Prove exhaustiveness using only the following limited rules over **unguarded** Patterns. Guarded arms, even `if true`, contribute no coverage. Do not use guard logic, constant subjects, call results, or a body's Never Type to supply missing coverage. Acceptance must not depend on a stronger proof that combines arbitrary Pattern domains.
+
+For this proof, a **whole-position Pattern** is a Wildcard or Binding, a Unit Pattern at a Unit position, or a Tuple Pattern whose elements are all recursively whole-position Patterns. Grouping is transparent. A Literal or Enum Case Pattern is not a whole-position Pattern, even for an enum with one Case. Apply these rules after Pattern Type/arity validation; legal implicit referent inspection retains the same rules.
 
 | Matched domain | Coverage model |
 | --- | --- |
-| Wildcard / Binding | The whole domain at that position |
+| Whole-position Pattern | One such arm covers the entire matched domain |
 | `bool` / Unit | `true` and `false` / the single `()` value |
-| Enum | Union of every declared Case's payload domain |
-| Tuple / positional payload | Product of element domains; multiple arms may jointly cover it |
-| Integer / `char` / `string` | Each distinct written Literal value plus an abstract remainder |
-| Structurally opaque Type | An opaque domain covered by Wildcard / Binding |
+| Enum | Every declared Case has an arm whose payload elements are all whole-position Patterns; a payloadless Case needs only its Case Pattern |
+| Tuple | One whole-position Pattern is required; do not combine partial Tuple Patterns |
+| Integer / `char` / `string` | A Wildcard or Binding is required; enumerating Literals does not establish exhaustiveness |
+| Structurally opaque Type | A Wildcard or Binding is required |
 
-Even enumerating every integer or character value does not remove the abstract remainder in this initial proof model. A Wildcard/Binding at that position, or an enclosing catch-all, is required. This limits accepted coverage proofs, not runtime values. Listing Case names without covering their payloads is insufficient. Treat all declared Cases as possible; do not infer recursively empty or uninhabited payloads. Legal referent Patterns use the same domain rules.
+Complex payload and Tuple partitions remain valid Patterns, but their combination supplies no whole-payload or whole-Tuple coverage proof. Add an unguarded catch-all for the affected Case (for example, `.Some(_)`) or the entire subject (`_` or a Binding), or use nested matches with independently checked coverage. The `true`/`false` rule applies to a match whose subject is `bool`; it does not combine `.Some(true)` and `.Some(false)` into coverage of `.Some(_)`. These are limits on accepted proofs, not runtime matching. Treat all declared Cases as possible; do not infer recursively empty or uninhabited payloads.
 
 ```kimi
 match flagOption
     .Some(true) => 1
     .Some(false) => 0
-    .None => -1                     // Covers Option<bool>.
+    .None => -1
+    // Error: Some needs a whole-payload arm despite the Boolean partition.
+
+match flagOption
+    .Some(true) => 1
+    .Some(false) => 0
+    .Some(_) => 0                   // Required catch-all; no mandatory union-based warning.
+    .None => -1                     // Valid coverage of Option<bool>.
 
 match numberOption
     .Some(0) => 0
@@ -3662,10 +3682,15 @@ match numberOption
 match pair
     (true, _) => 1
     (false, true) => 2
-    (false, false) => 3              // Covers (bool, bool).
+    (false, false) => 3
+    // Error without a catch-all: partial Tuple Patterns are not combined.
+
+match pair
+    (true, _) => 1
+    (_, _) => 2                    // Valid: one whole-position Tuple Pattern.
 ```
 
-Require an unreachable-pattern warning when an arm's whole Pattern domain is contained in the union of earlier unguarded Patterns, including when the later arm has a guard. Binding names and `let`/`var` do not affect coverage. Partial overlap is allowed without this warning. Logical reachability analysis of `if false` is outside this rule.
+Require an unreachable-pattern warning only when a **single earlier unguarded Pattern** contains the later Pattern under these structural rules: an earlier Wildcard or Binding contains any Pattern at that position; equal fitted Literals and Unit Patterns contain themselves; same-Case Patterns and equal-arity Tuple Patterns contain a later Pattern when each earlier child recursively contains its corresponding later child. Grouping is transparent, and Binding names and `let`/`var` do not affect containment. No other containment proof is required. The later arm may have a guard. Do not combine earlier arms for this mandatory warning or enumerate payload combinations. Partial overlap and guard logic such as `if false` do not establish containment. Implementations may offer stronger optional lint diagnostics, but they must not change language acceptance or exhaustiveness proofs.
 
 ```kimi
 match value
@@ -3686,7 +3711,7 @@ match otherValue
     _ => 0
 ```
 
-This diagnostic is independent of [control-flow reachability](#782-reachability). It never removes an arm from Type, ownership, result-coverage, or result-inference checks. Diagnose invalid Pattern Types/arity first; a non-exhaustive error shows a missing Case or Pattern witness, and an unreachable warning identifies the preceding covering arms.
+This diagnostic is independent of [control-flow reachability](#782-reachability). It never removes an arm from Type, ownership, result-coverage, or result-inference checks. Diagnose invalid Pattern Types/arity first. A failed exhaustiveness proof identifies a missing Case, required whole-payload arm, or required catch-all; it must not claim a runtime value is unmatched when only the limited proof fails. A mandatory unreachable warning identifies the single preceding covering arm.
 
 #### 7.7.4. Nested `yield` targets
 
@@ -3775,17 +3800,17 @@ Paths that leave a construct for an outer target or never complete supply no res
 
 The **Expression Type** describes a normally completing expression's value. An expression, including a `loop`, selection, or Labeled Block, with no reachable path that completes normally has Type Never. Missing required results are errors, not Never. Unsafe and Deferred Blocks are statements with no Expression Type; analyze their body completion separately.
 
-The **Target Result Type** constrains results supplied to a boundary. Use a declared or expected Type, or infer it from reachable result candidates under normal inference and conversion rules. Propagate expected Types to result sources even if the Expression Type is Never.
+The **Target Result Type** constrains results supplied to a boundary. Use a declared Type, a named function's default Unit Type, or an expected Type; where inference is permitted, infer it from reachable result candidates under normal inference and conversion rules. Propagate expected Types to result sources even if the Expression Type is Never.
 
 | Source of Target Result Type | Compatibility checking, including unreachable results |
 | --- | --- |
-| Explicit declaration or expected Type | Check against that Type. |
+| Explicit declaration, default Unit of a named function, or expected Type | Check against that Type. |
 | Type inferred from reachable result candidates | Check against the inferred Type. |
 | No Type supplied and no reachable result candidates | No Target Result Type is available; omit only the comparison against it. |
 
 Never inferred solely from the absence of reachable results does not become a Target Result Type. An explicitly specified Never still constrains results. Unreachable fall-through does not manufacture a Unit result for compatibility checking.
 
-A function keeps its declared return Type. Without a declared or expected Type, infer from reachable results. If none exist, expose inferred return Type Never, but do not use that fallback to constrain unreachable returns. The function value retains its concrete Function Item or Closure Type unless converted to a common Function Type.
+A named function keeps its explicitly declared return Type, or Unit when omitted, even when its body never completes normally. An anonymous function keeps its declared or fixed expected return Type; without either, infer from reachable results. If none exist, expose inferred return Type Never, but do not use that fallback to constrain unreachable returns. The function value retains its concrete Function Item or Closure Type unless converted to a common Function Type.
 
 ```kimi
 loop
@@ -4687,7 +4712,7 @@ Origin omission depends on the position of the complete Type. These rules apply 
 | Type position | Meaning of an omitted Origin |
 | --- | --- |
 | Direct borrowed parameter or borrowed receiver | Introduce an independent input Origin for that input's outer borrow layer. |
-| Function result | Apply the result-Origin rules below; whole-result inference retains its existing rules. |
+| Function result | Apply the result-Origin rules below; anonymous whole-result inference retains its existing rules. A named function with no result annotation returns Unit. |
 | Local binding with inferred Type | Infer the Type, Origin dependencies, and Loans from the initializer under ordinary acquisition rules. |
 | Explicit local Type containing a borrow or Origin-bearing aggregate | Infer omitted Origins and Origin arguments from the declaration initializer and ordinary Origin/Loan constraints. Without an initializer, omission is a compile-time error. |
 | Instance Stored Property | Require explicit bindings for all borrow layers and required Type Origin arguments; do not infer the storage contract from initialization. |
@@ -5982,7 +6007,8 @@ Verification must cover at least these boundaries; neither parsing nor optimizat
 | Boundary | Required result |
 | --- | --- |
 | `.Some(0)` and `.None` alone; all arms guarded | Missing coverage in a Result-requiring match |
-| `Option<bool>`, Tuples, nested enums, multiple earlier arms | Recursive products/unions; warn when their unguarded union covers a later Pattern |
+| `Option<bool>`, Tuples, nested enums, multiple earlier arms | Require whole-payload/whole-position arms or catch-alls; partial partitions do not combine into coverage, and unions do not trigger mandatory unreachable warnings |
+| Same-Case/Tuple containment, duplicate Literals, guarded earlier/later arms | Mandatory warning only for the specified structural containment by one earlier unguarded Pattern; a later guard does not suppress it |
 | Duplicate names, wrong Case/arity/Type, `.Some` or `.None()` construction | Errors regardless of reachability |
 | `i8` literals `-128`, `128`, `-129`; `i32` arms `0`, `-0`, `0x00` | Fit after sign; reject the two out-of-range values; warn on the two later equal unguarded values |
 | Origin-bearing ref/uniq payload construction, acquisition, cleanup | Preserve dependencies/capabilities; never destroy borrowed referents |
@@ -6505,6 +6531,8 @@ Declaration          := GroupDeclaration | RootGroupDeclaration
 ```
 
 Modifier placement and compound-access combinations are constrained by [accessibility](#512-accessibility-and-reachability), even where the shared grammar uses `Access`. `open` applies only to structures. `BaseClause` has the semantic restrictions in [inheritance](#432-inheritance-and-open-structures); member-level virtual/override syntax is not supplied by this grammar.
+
+Omitting the result annotation in a named function declaration or Contract function requirement means Unit; the optional grammar does not authorize body-based return inference. Anonymous functions retain their own inference rules.
 
 Contract requirements have no access modifiers, default/optional parameters, Property initializers, or executable bodies. `RequirementConstraints` is an optional nonempty indented list of Constraint Clauses; method Generic and Origin parameters remain ordinary function parameters. Required accessors occur at most once each, with at least one present; `let` forbids `set`.
 
