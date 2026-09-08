@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Reflection;
 using System.Text.Json;
 using Kimi;
 using Kimi.Compiler;
@@ -10,15 +9,12 @@ using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Tinyhand;
 using Xunit;
+using static XunitTest.ParseTestHelper;
 
 namespace XunitTest;
 
 public class ParserRegressionTest
 {
-    private static readonly PropertyInfo KotoListProperty = typeof(DeclarationContainerKoto).GetProperty(
-        "KotoList",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-
     [Fact]
     public void StopsAtEndOfIncompleteExpression()
     {
@@ -1071,15 +1067,7 @@ public class ParserRegressionTest
 
     private static (GroupKoto Root, Diagnostic[] Diagnostics) Parse(string source)
     {
-        var compilation = Compilation.CreateForTest();
-        var kotonoha = compilation.Kotonoha;
-        var context = kotonoha.CreateCodeContext();
-        context.Parse(kotonoha.RootKoto, source);
+        var kotonoha = ParseTestHelper.Parse(source);
         return (kotonoha.RootKoto, kotonoha.DiagnosticCollection.GetArray());
     }
-
-    private static List<Koto> GetChildren(DeclarationContainerKoto group)
-        => ReferenceEquals(group, group.Kotonoha.RootKoto)
-            ? group.Kotonoha.GeneratedFunction?.Body?.Items.ToList() ?? []
-            : (List<Koto>)KotoListProperty.GetValue(group)!;
 }

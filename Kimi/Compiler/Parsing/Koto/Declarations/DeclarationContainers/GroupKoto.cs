@@ -167,7 +167,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
             }
 
             var oldPosition = reader.Position;
-            var item = Parser.ParseBlockItem(ref reader, out _);
+            var item = Parser.ParseBlockItem(ref reader);
             if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock) && reader.CanRead)
             {
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);

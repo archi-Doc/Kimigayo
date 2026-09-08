@@ -5,6 +5,7 @@ using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Tinyhand;
 using Xunit;
+using static XunitTest.ParseTestHelper;
 
 namespace XunitTest;
 
@@ -339,19 +340,6 @@ public class SpecConformanceParseTest
     [InlineData("group Example\n    #if true\ngroup Other")]
     public void DiagnosesCompileTimeIfWithoutATarget(string source)
         => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
-
-    private static Kotonoha Parse(string source)
-    {
-        var compilation = Compilation.CreateForTest();
-        var kotonoha = compilation.Kotonoha;
-        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
-        return kotonoha;
-    }
-
-    private static void AssertValid(Kotonoha parsed)
-        => Assert.True(
-            parsed.DiagnosticCollection.GetArray().Length == 0,
-            string.Join(Environment.NewLine, parsed.DiagnosticCollection.GetArray().Select(x => $"{x.Span}: {x.Message}")));
 
     private static string Write(Kotonoha parsed)
     {

@@ -6,6 +6,7 @@ using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
+using static XunitTest.ParseTestHelper;
 
 namespace XunitTest;
 
@@ -85,13 +86,6 @@ public class SemicolonParseTest
     [InlineData("/* ; */ work()")]
     public void AllowsSemicolonsInLiteralContentAndComments(string source)
         => Assert.Empty(Parse(source).DiagnosticCollection.GetArray());
-
-    private static Kotonoha Parse(string source)
-    {
-        var tree = Compilation.CreateForTest().Kotonoha;
-        tree.CreateCodeContext().Parse(tree.RootKoto, source);
-        return tree;
-    }
 
     private static void AssertItems(IReadOnlyList<Koto> items)
     {

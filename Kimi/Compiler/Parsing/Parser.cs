@@ -1939,7 +1939,7 @@ Exit:
 
             seenExecutableItem = true;
             var oldPosition = reader.Position;
-            var item = ParseBlockItem(ref reader, out _);
+            var item = ParseBlockItem(ref reader);
             if (item is not null)
             {
                 item = ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, item);
@@ -1966,11 +1966,10 @@ Exit:
             items.ToArray());
     }
 
-    internal static Koto? ParseBlockItem(ref TokenReader reader, out bool isDeclaration)
+    internal static Koto? ParseBlockItem(ref TokenReader reader)
     {
         if (IsBlockStatementStart(ref reader))
         {
-            isDeclaration = true; // A statement does not supply a trailing expression result.
             return ParseBlockStatement(ref reader);
         }
 
@@ -1979,18 +1978,15 @@ Exit:
         {
             case TokenKind.Let:
             case TokenKind.Var:
-                isDeclaration = true;
                 reader.Advance();
                 return ParseField(ref reader, token, false);
 
             case TokenKind.Func:
                 if (reader.PeekKind(1) == TokenKind.OpenParenthesis)
                 {
-                    isDeclaration = false;
                     return ParseExpression(ref reader);
                 }
 
-                isDeclaration = true;
                 reader.Advance();
                 var function = ParseFuncDeclaration(ref reader);
                 if (function is null)
@@ -1998,15 +1994,7 @@ Exit:
                     return null;
                 }
 
-                if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-                {
-                    function.Parse(ref reader);
-                }
-                else
-                {
-                    ReportMissingFunctionBody(ref reader, function);
-                }
-
+                ParseNamedFunctionBody(ref reader, function);
                 return function;
 
             case TokenKind.Group:
@@ -2014,7 +2002,6 @@ Exit:
             case TokenKind.Enum:
             case TokenKind.Extension:
             case TokenKind.Contract:
-                isDeclaration = true;
                 reader.Advance();
                 var supportsGenericHeader = token.Kind == TokenKind.Struct;
                 var declaration = ParseDeclarationContainerHeader(
@@ -2042,16 +2029,22 @@ Exit:
                 return container;
 
             default:
-                isDeclaration = false;
                 return ParseExpression(ref reader);
         }
     }
 
-    /// <summary>Reports a missing implementation body, preserving imported declarations.</summary>
+    /// <summary>Parses a named function body, allowing bodyless imported declarations.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="function">The parsed declaration.</param>
-    internal static void ReportMissingFunctionBody(ref TokenReader reader, FunctionKoto function)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void ParseNamedFunctionBody(ref TokenReader reader, FunctionKoto function)
     {
+        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        {
+            function.Parse(ref reader);
+            return;
+        }
+
         if (function.ReturnType is ErrorKoto)
         {
             return; // Avoid cascading diagnostics after an incomplete signature.
@@ -2107,7 +2100,7 @@ Exit:
             }
             else
             {
-                item = ParseBlockItem(ref inline, out _);
+                item = ParseBlockItem(ref inline);
             }
 
             if (inline.CanRead)

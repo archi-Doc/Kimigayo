@@ -746,14 +746,7 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
             return true;
         }
 
-        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-        {
-            functionKoto.Parse(ref reader);
-        }
-        else
-        {
-            Parser.ReportMissingFunctionBody(ref reader, functionKoto);
-        }
+        Parser.ParseNamedFunctionBody(ref reader, functionKoto);
 
         if (!isExcluded && !functionKoto.IsExcluded)
         {

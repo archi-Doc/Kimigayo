@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using BenchmarkDotNet.Attributes;
 using Kimi.Compiler.Helper;
@@ -29,16 +29,6 @@ public class NumberLiteralBenchmark
         this.bString2 = this.bString + Suffix;
         this.hString2 = this.hString + Suffix;
         this.oString2 = this.oString + Suffix;
-    }
-
-    [GlobalSetup]
-    public void Setup()
-    {
-    }
-
-    [GlobalCleanup]
-    public void Cleanup()
-    {
     }
 
     /*[Benchmark]

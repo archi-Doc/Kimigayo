@@ -1,21 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Tinyhand;
 using Xunit;
+using static XunitTest.ParseTestHelper;
 
 namespace XunitTest;
 
 public class ControlTransferParseTest
 {
-    private static readonly PropertyInfo KotoListProperty = typeof(DeclarationContainerKoto).GetProperty(
-        "KotoList",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-
     [Fact]
     public void ParsesEachConstructAndControlTransferKeywordPair()
     {
@@ -200,22 +196,4 @@ public class ControlTransferParseTest
         Assert.True(TokenKind.Yield.IsKeyword());
         Assert.Equal(Constants.YieldKeyword, TokenKind.Yield.ToText());
     }
-
-    private static FunctionKoto ParseSingleFunction(string source)
-    {
-        var compilation = Compilation.CreateForTest();
-        var kotonoha = compilation.Kotonoha;
-        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
-        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
-        Assert.True(
-            diagnostics.Length == 0,
-            string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
-
-        return Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
-    }
-
-    private static List<Koto> GetChildren(DeclarationContainerKoto group)
-        => ReferenceEquals(group, group.Kotonoha.RootKoto)
-            ? group.Kotonoha.GeneratedFunction?.Body?.Items.ToList() ?? []
-            : (List<Koto>)KotoListProperty.GetValue(group)!;
 }

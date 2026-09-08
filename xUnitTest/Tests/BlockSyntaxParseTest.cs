@@ -4,6 +4,7 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
+using static XunitTest.ParseTestHelper;
 
 namespace XunitTest;
 
@@ -183,21 +184,6 @@ public class BlockSyntaxParseTest
     [InlineData("struct Example\n    unsafe:\n        work()")]
     public void StatementBlocksAreNotDeclarationContainerMembers(string source)
         => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
-
-    private static Kotonoha Parse(string source)
-    {
-        var compilation = Compilation.CreateForTest();
-        var tree = compilation.Kotonoha;
-        tree.CreateCodeContext().Parse(tree.RootKoto, source);
-        return tree;
-    }
-
-    private static Kotonoha ParseSuccess(string source)
-    {
-        var tree = Parse(source);
-        Assert.True(tree.DiagnosticCollection.GetArray().Length == 0, string.Join(Environment.NewLine, tree.DiagnosticCollection.GetArray().Select(x => x.ToString())));
-        return tree;
-    }
 
     private static IReadOnlyList<Koto> Items(Kotonoha tree) => tree.GeneratedFunction!.Body!.Items;
 }

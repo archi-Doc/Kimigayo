@@ -7,6 +7,7 @@ using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
+using static XunitTest.ParseTestHelper;
 
 namespace XunitTest;
 
@@ -164,16 +165,4 @@ public class CharLiteralParseTest
         Assert.Equal(new ControlFlowType("char"), new SyntaxControlFlowTypes().GetDeclaredType(function.ReturnType));
         Assert.Empty(parsed.Compilation.AnalyzeControlFlow().Issues);
     }
-
-    private static Kotonoha Parse(string source)
-    {
-        var parsed = Compilation.CreateForTest().Kotonoha;
-        parsed.CreateCodeContext().Parse(parsed.RootKoto, source);
-        return parsed;
-    }
-
-    private static void AssertValid(Kotonoha parsed)
-        => Assert.True(
-            parsed.DiagnosticCollection.GetArray().Length == 0,
-            string.Join(Environment.NewLine, parsed.DiagnosticCollection.GetArray().Select(x => x.Message)));
 }

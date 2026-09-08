@@ -1,9 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.CompilerServices;
 using BenchmarkDotNet.Attributes;
 using Kimi.Compiler;
-using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 
 namespace Benchmark;
@@ -80,34 +78,9 @@ public class ParseBenchmark
                     return
             """;
 
-    private readonly string sourceText2 = $"""
-            #If (true)
-            public struct TestStruct: @Ia
-                let x = 1
-            #If (true)
-            public struct TestStruct2: @Ib
-                let x = 1
-            #If (true)
-            public struct TestStruct3: @Ic
-                let x = 1
-            #If (true)
-            public struct TestStruct4: @Id
-                let x = 1
-            """;
-
     public ParseBenchmark()
     {
         this.compilation = Compilation.CreateForTest(true);
-    }
-
-    [GlobalSetup]
-    public void Setup()
-    {
-    }
-
-    [GlobalCleanup]
-    public void Cleanup()
-    {
     }
 
     [Benchmark]
