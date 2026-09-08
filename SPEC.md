@@ -170,6 +170,8 @@ Each continuation character may be any valid start character, or:
 
 Contextual keywords may be used as Names in contexts that accept contextual identifiers. Reserved keywords may not. `in` delimits a `for` header and `has` introduces an inline Property accessor list; both may be Names elsewhere. `move` is an **@-context reserved name**: immediately after `@`, it selects Consume without Type/Semantics lookup. Elsewhere it may be an ordinary Name, so `move(...)` is an ordinary call. There is no prefix `move` or Move accessor. A Type named `move` requires a nonconflicting spelling, such as an alias, in an Adaptation Target. Built-in Semantics names likewise select their Semantics in shorthand targets. `Self` is reserved; `self`, `storage`, and `value` follow [contextual name rules](#511-namespaces-roles-and-visibility).
 
+`public`, `internal`, `private`, `protected`, and `open` are reserved modifier keywords. The compound access specifications `protected internal` and `private protected` each consist of two keywords; their placement follows [accessibility](#512-accessibility-and-reachability).
+
 For example, `Dog`, `_value`, `point2`, `日本語`, and `ǅelta` are valid Names, while `2point`, `has-value`, and the empty string are not.
 
 ### 2.6. Number literals
@@ -833,6 +835,8 @@ Normalize Core Types by resolved Symbol, including their Kotonoha/version, and i
 
 For Signature comparison only, exclude Origin names, lists, and lifetime relations. Retain complete Types and Origin contracts for semantic checks. Return Types, external/internal parameter names, defaults, optionality, access, unsafe modifiers, and Type Contracts cannot independently distinguish overloads.
 
+An **API signature**, for [accessibility checks](#5122-api-signature-accessibility), includes the Types and requirements exposed by a declaration, including results and Type Contracts. This is broader than the Signature used above for overload identity; exclusion from overload identity does not exempt a component from accessibility checking.
+
 ```kimi
 struct Reader
     func read(self: ref/Self) -> i32 => 0
@@ -851,7 +855,7 @@ A **Declaration Container** is a named declaration scope whose body may contain 
 | Declaration Container kind | Instantiable | Main characteristics |
 | --------------- | ------------ | -------------------- |
 | `group` | No | Accepts Properties, functions, and nested Declaration Container declarations. All members are static. Generic parameters and Origins are not supported. |
-| `struct` | Yes | Accepts Properties and functions in declaration order. Generic parameters, Origins, and a Type Contract are supported. |
+| `struct` | Yes | Accepts Properties and functions in declaration order. Generic parameters, Origins, and a Type Contract are supported. Sealed by default; `open struct` permits derivation. |
 | `enum` | Yes | Enum declaration container. |
 | `extension` | No | Its Name identifies the target. |
 | `contract` | No | Specifies associated-type Contract Clauses and Property requirements. The Parser preserves required accessors without generating implementations or storage. |
@@ -874,6 +878,8 @@ Aliases follow [source-local import rules](#121-external-references-and-aliases)
 Group and struct declarations may be split, even within one file. Collect same-parent, same-name fragments and identify a declaration by originating Kotonoha, parent Symbol, name, kind, and generic arity. Reject conflicting kinds such as a group and struct with the same name. Different arities, such as `Box` and `Box<T>`, are different Types. Never merge across Kotonoha libraries or treat an extension as a target declaration fragment; applied `ref`/`uniq` Semantics do not change Container identity.
 
 Matching fragments must agree on generic parameter count/kinds/order/names, Origin count/order/names, declaration kind, semantic modifiers, and accessibility after defaults. Do not widen conflicting accessibility. Exactly one fragment may define the Container's Type Contract, even if duplicate clauses would be identical; other fragments omit it and share that definition's constraints. Resolve it in its definition-site source environment.
+
+For structures, `open` must agree across all fragments. At most one fragment supplies the base clause; the other fragments share that base without repeating it. Resolve the base in that fragment's source environment, then validate the complete merged inheritance relationship.
 
 After compile-time selection and merging, reject duplicate Properties, duplicate function Signatures, and namespace conflicts. All selected fragments may contribute Stored Properties, including generated ones, under [split-structure storage order](#431-split-structures-and-storage-order). Do not require a primary fragment. Enum/contract fragment contents and extension identity need further rules.
 
@@ -927,6 +933,28 @@ Apply this order to the selected declarations of each specialization. Only Store
 Generated declaration availability must satisfy the [name-resolution boundary](#134-name-resolution-boundary). Do not begin consuming a provisional type and append generated Storage later. Finalize layout only after the complete selected fragment set and storage classification are known. Generated documents retain their own source context and logical identifiers. Generator APIs, inputs, scheduling, and dependency checks beyond the established output deadline remain separately specified; generator dependencies that prevent establishing the required environment are errors, not permission to revise resolved Names.
 
 Physical layout and ABI guarantees follow [Structure layout and ABI](#146-structure-layout-and-abi).
+
+#### 4.3.2. Inheritance and open structures
+
+A structure is **sealed** unless its declaration has `open` immediately before `struct`. A sealed structure cannot be a base Type. `open` permits derivation and is independent of accessibility: `public struct` remains sealed, while `internal open struct` permits derivation only where that Type is accessible. A derived structure is itself sealed unless explicitly declared `open`; openness is not inherited. No separate `sealed` modifier is needed for this default.
+
+A structure may specify one direct base with `: BaseType`, after its Name and generic parameters and before its Origin list. The base must resolve to an accessible constructed or nongeneric `open struct` Core Type; a generic parameter, Semantics-applied Type, group, enum, or contract is not a base. Omission declares no user-defined base. Reject multiple bases and direct or indirect inheritance cycles, including cycles through different constructions of the same generic declaration. The base's Type Contract must hold, and its accessibility must cover the derived Type's [effective access domain](#5122-api-signature-accessibility). Contract Clauses continue to express capabilities separately from the base clause.
+
+```kimi
+public open struct Base
+    protected var count: i32 = 0
+
+public struct Leaf : Base
+    public func read(self: ref/Self) -> i32 => self.count
+
+public struct Invalid : Leaf // Error: Leaf is sealed.
+```
+
+Inheritance uses the C# class model for the single-base relationship and access permissions, with Kotonoha as the module boundary. Kimigayo's default `private` access, Container nesting rules, explicit receivers, and Type Semantics still apply. Derivation does not grant the base's private access or change inherited members' declared accessibility. Inherited ordinary members are considered before extensions; detailed hiding and inherited overload-group construction belong to the member-lookup design below. `open` does not make every member virtual. Access through a base-typed expression is checked against the statically selected declaration, not a runtime override.
+
+An override must target an accessible overridable member and preserve its declared accessibility. The cross-Kotonoha exception is a `protected internal` base member: its override in another Kotonoha declares `protected`. The same rule applies to overridden accessors, each of which must be accessible to the overriding code. A private member cannot be overridden, and an internal or private-protected member cannot be overridden from another Kotonoha. These rules do not allow an override to expose an otherwise inaccessible API Type.
+
+**Design boundary:** The open modifier, base clause, single-base restrictions, and access rules above are specified. Virtual/abstract/override declaration syntax, inherited member hiding and overload-group construction, explicit base-member/constructor invocation, and runtime dispatch remain separately specified. Base-subobject layout, construction/destruction order, Copy derivation over inherited storage, and ownership-preserving derived/base conversions also require dedicated rules. C# compatibility for inheritance access does not implicitly import CLR representation, boxing, garbage collection, or value slicing, or add conversions to the existing adaptation tables.
 
 ### 4.4. Type contracts
 
@@ -1002,7 +1030,7 @@ A local Type must be fixed at declaration, even without an initializer. Locals b
 
 ### 4.6. Functions
 
-A function begins with `func`, followed by its Name, optional generic parameters, optional Origin parameters, and a parenthesized parameter list. A result Type follows `->`; it is mandatory for public functions and may be inferred for internal/private functions under [inference boundaries](#525-inference-boundaries-and-specialization). A definition has an indentation-delimited Block body or a single expression introduced by `=>`.
+A function begins with `func`, followed by its Name, optional generic parameters, optional Origin parameters, and a parenthesized parameter list. A result Type follows `->`; whether it is mandatory or may be inferred depends on declared accessibility under [inference boundaries](#525-inference-boundaries-and-specialization). A definition has an indentation-delimited Block body or a single expression introduced by `=>`.
 
 #### 4.6.1. Function bodies and results
 
@@ -1176,9 +1204,14 @@ Type parameters belong to their declaring function or Type scope. Nested functio
 | --- | --- |
 | `private` (default) | Declaring Container and bodies lexically nested within it |
 | `internal` | Same Kotonoha |
+| `protected` | Declaring structure and bodies of its directly or indirectly derived structures |
+| `protected internal` | Same Kotonoha **or** the protected scope |
+| `private protected` | Same Kotonoha **and** the protected scope |
 | `public` | Also accessible from other Kotonoha libraries, subject to enclosing restrictions |
 
-Accessibility grants permission; **Name Reachability** supplies a valid path through scopes, qualification, aliases, or explicit re-exports. Both, plus role compatibility, are required. Public declarations are not automatically imported. Each enclosing Container and access path must allow access; aliases and re-exports cannot widen it. Public Signatures must use Types and requirements reachable by their consumers.
+The protected scope includes bodies lexically nested in the declaring or qualifying derived structure. Protected forms apply only to structure members and their accessors; they are invalid on root/group declarations, group members, and contract requirements. They do not enable nested Container declarations inside structures. A declaration has one access specification; only the two compound forms shown above may combine access words, in the shown order. Duplicate or other combinations are errors. `open` is an inheritance modifier, not an access level. Non-inheritable structures may retain protected members, but gain no derived access sites.
+
+Accessibility grants permission; **Name Reachability** supplies a valid path through scopes, qualification, aliases, or explicit re-exports. Both, plus role compatibility, are required. Public declarations are not automatically imported. Each enclosing Container and access path must allow access; aliases and re-exports cannot widen it. API signatures obey the domain checks below, and consumers naming their Types or requirements must additionally have a reachable path under the [module rules](#12-modules-and-dependencies).
 
 Private access uses the merged Container Symbol, not the file. Other fragments of that Container have access; unrelated declarations in the same file do not. A parent does not gain access to a child's private members merely by containing it. An extension does not gain the target's private access. Accessors inherit their Property's access and may only narrow it. Locals, parameters, and contextual names use lexical visibility instead of access modifiers.
 
@@ -1195,6 +1228,58 @@ group Other
 ```
 
 An inaccessible declaration is diagnostic evidence, not a candidate that stops lookup. Once a Property or member has been selected, an inaccessible required accessor or missing receiver is an error; do not resume outer lookup.
+
+##### 5.1.2.1. Effective access domains and protected receivers
+
+The **effective access domain** `Access(D)` is the set of source contexts permitted to access declaration `D`, considering its declared access and every enclosing named Container. For a member of a named Container, intersect the domain supplied by its access specification with that Container's effective domain. Thus a public member of a private group is confined to that group's domain. A root declaration has no enclosing named Container: `private` and `internal` restrict it to its Kotonoha, while `public` permits access from other Kotonoha libraries. The project root does not impose an additional module-only cap on public root declarations. Root declarations remain subject to dependency and Name Reachability requirements.
+
+Compute domains from Symbol identity, merged Container relationships, and the validated inheritance graph, not file paths or currently observed callers. Internal access refers to the originating Kotonoha, not a package, workspace, source directory, or all libraries in a build. No separate package or friend-module access is defined. Declared public access must remain valid for future consumers, even if no other module currently references it. `internal` and `protected` are not linearly ordered: the former includes unrelated code in one Kotonoha, and the latter can include derived code in another.
+
+When access to an instance member of base structure `B` relies on the protected permission of derived structure `D`, the receiver's static Core Type must be `D` or derive from `D`. A generic receiver may use a proven corresponding base constraint. A receiver statically typed as `B` or as a sibling of `D` is insufficient, even if its runtime value is a `D`. Check each required accessor independently. Access inside `B`'s own lexical body does not need this extra derived-receiver restriction. For `protected internal`, access authorized by the same-Kotonoha branch likewise does not need it; `private protected` must satisfy both the Kotonoha and protected conditions. Static members have no instance-receiver restriction. None of these rules supplies a missing receiver or an otherwise undefined receiver conversion.
+
+For generic declarations, the protected lexical scope includes structures derived from any construction of that declaration; the instance-receiver check still uses the actual derived receiver Type. Inheritance alone never grants private access. An extension receives no special private or protected privilege merely by targeting a Type; check accesses using its own lexical context and any independently established inheritance relationship.
+
+For example, if `Left` and `Right` derive from `Base`, code in `Left` may use a protected `Base` Property through a `ref/Left` receiver, but not through a `ref/Base` or `ref/Right` receiver. Ownership, borrow permissions, and accessor availability must also hold.
+
+##### 5.1.2.2. API signature accessibility
+
+Every declaration `D` must satisfy the following for each concrete Type or requirement `T` exposed in its API signature:
+
+```text
+Access(D) is a subset of Access(T)
+```
+
+Check the effective domains, not merely the written access modifiers. This rule applies to private, internal, and protected declarations as well as public declarations. A direct base Type must satisfy the same condition with the derived Type as `D`. Apply the rule after declaration merging and Type normalization; an invalid exposed signature is a declaration error even if never used. An inferred Type is checked once established and cannot evade this rule.
+
+API components include function parameter and result Types (including receivers), Property Types, accessor parameter and result Types, and Types or Contracts named by generic constraints and exposed associated-type requirements. Use the Property's domain for its declared Property Type, and each accessor's domain for its additional signature components. A restricted setter does not narrow the Property's domain. Type Contracts require this check even when textually written inside a function body. Validate exposed Origin contracts under their own scope and lifetime rules as well.
+
+Inspect compound Types recursively. A constructed generic Type has the intersection of the generic declaration's domain and all its concrete type arguments' domains. Tuples, function Types, arrays, and other compound Types likewise require every constituent Type to be accessible. Type Semantics such as `ref`, `obj`, and `unsafe` do not conceal an inaccessible Core Type. Expand Type aliases for this check. For an associated-type projection, check its qualifier and defining requirement, and any exposed concrete binding established by the associated-type rules; an unresolved projection retains an obligation rather than silently becoming public. Do not recursively inspect a Type's private fields or implementation bodies merely because that Type appears in an API.
+
+Primitive Types and language-defined public requirements impose no additional access restriction. Generic parameters are symbolic API parameters, not private concrete Types: their lexical declaration scope does not restrict the whole generic API to its body. Check their declared constraints instead. In particular, a public generic declaration need not restrict all future type arguments to public Types.
+
+```kimi
+public group Api
+    private struct Hidden
+    public struct Box<T>
+
+    public func identity<T>(value: T) -> T => value
+    public func expose(value: Box<Hidden>) -> () => () // Error.
+    internal func leak(value: Hidden) -> () => ()      // Error: wider than Hidden.
+    private func keep(value: Hidden) -> Hidden
+        return identity<Hidden>(value) // Allowed: Hidden is accessible here.
+
+    private group Implementation
+        public func keep(value: Hidden) -> Hidden => value
+        // Allowed: both keep and Hidden are accessible only within Api's body.
+```
+
+Similarly, a generic function exposed beyond a private Contract's domain cannot name that Contract in its constraints. A public `Box<T>` may be instantiated as `Box<Hidden>` wherever `Hidden` is accessible, but that constructed Type cannot be exposed beyond `Hidden`'s domain. An internal API may use an internal Type when its domain covers that API, including a public member inside an internal Container. Accidental equality of domains in one build must not erase the protected or module conditions required for future consumers.
+
+##### 5.1.2.3. Generic bodies and separate compilation
+
+Check generic body access to nondependent Types and helpers in the declaration's definition-site context. Deferred Binding and specialization retain that context and the original resolved Symbols. A public generic body may use private implementation Types or helper functions without exposing them in its API signature. Instantiation in another Kotonoha does not recheck those implementation accesses as if the body were written by the caller, grant the caller private access, or require the helpers to become public.
+
+At a generic use, check supplied Types and constraints using the normal use-site rules. A caller may supply an accessible private Type to a public generic function; specialization does not turn that concrete instance into a new externally public declaration. A wrapper or other declaration that exposes the resulting constructed Type must independently satisfy API signature accessibility. Preserve sufficient private implementation metadata for specialization without making its Symbols source-addressable to consumers.
 
 #### 5.1.3. Unqualified lookup
 
@@ -1371,7 +1456,7 @@ These rules deliberately leave owner-to-`ref`/`uniq` overloads ambiguous. Any pr
 
 #### 5.2.5. Inference boundaries and specialization
 
-Fix local Types at declaration; later uses cannot infer backward. Public functions require explicit return Types. Internal/private functions may infer returns, but fix the return Type before the function participates in another expression's overload resolution. Inference cycles require return annotations. Generic return Types may remain expressions over parameters; substituting them does not reanalyze a body.
+Fix local Types at declaration; later uses cannot infer backward. Functions declared `public`, `protected`, or `protected internal` require explicit return Types, even if an enclosing Container narrows their effective domain. Functions declared `internal`, `private protected`, or `private` may infer returns, but fix the return Type before the function participates in another expression's overload resolution and validate [API signature accessibility](#5122-api-signature-accessibility). Inference cycles require return annotations. Generic return Types may remain expressions over parameters; substituting them does not reanalyze a body.
 
 Explicit function type arguments must supply the full list. Partial lists and inference placeholders are not defined. Omitted defaults do not infer generic arguments.
 
@@ -2835,13 +2920,13 @@ A Property may declare bodyless accessors inline with a `has` clause:
 **Basic example.**
 
 ```kimi
-var count: i32 has get, private set
+public var count: i32 has get, private set
 ```
 
 The clause follows the Property initializer when one is present:
 
 ```kimi
-var count: i32 = 0 has get, private set
+public var count: i32 = 0 has get, private set
 ```
 
 The grammar is:
@@ -2860,9 +2945,9 @@ The list must contain at least one accessor. `get` and `set` may each appear at 
 `has` expands to the same bodyless declarations as an indented list, before storage classification:
 
 ```kimi
-var count: i32 has get, private set
+public var count: i32 has get, private set
 // Same standard accessor declarations as:
-var otherCount: i32
+public var otherCount: i32
     get
     private set
 ```
@@ -2942,6 +3027,19 @@ public var count: i32 = 0 has get, private set
 private var value: i32
     public set // Error: broader access than the Property.
 ```
+
+An explicit accessor restriction must be strictly narrower in declared access, using this table; enclosing restrictions that happen to make effective domains equal do not permit a broader or repeated modifier. Protected forms also require the structure-member context defined by [general accessibility](#512-accessibility-and-reachability).
+
+| Property declared access | Permitted explicit accessor restrictions |
+| --- | --- |
+| `public` | `protected internal`, `protected`, `internal`, `private protected`, `private` |
+| `protected internal` | `protected`, `internal`, `private protected`, `private` |
+| `protected` | `private protected`, `private` |
+| `internal` | `private protected`, `private` |
+| `private protected` | `private` |
+| `private` | None; omit the accessor restriction |
+
+For example, a `protected` Property cannot have an `internal` setter, because unrelated code in the Kotonoha would gain access. Property and accessor API Types obey [signature accessibility](#5122-api-signature-accessibility). A selected getter or setter must also pass the [protected receiver check](#5121-effective-access-domains-and-protected-receivers), when applicable. Override accessibility follows [inheritance](#432-inheritance-and-open-structures); a private or otherwise inaccessible base accessor cannot be made overridable by overriding the Property.
 
 ### 8.8. Storage, addressability, and result semantics
 
@@ -4093,7 +4191,7 @@ Any future re-export design must preserve the original Symbol, avoid widening ac
 
 ### 12.3. Source artifacts and binary interfaces
 
-Portable interchange uses source artifacts or binary interfaces, not serialized Koto implementation details. Source artifacts preserve the source and configuration needed for reconstruction. Binary-interface information includes Symbol/version identity, visibility and public paths, normalized Signatures, Type and Origin Contracts, unsafe requirements, Property/accessor capabilities and field-operation semantics, generic specialization inputs, ABI/layout/calling conventions, and target/language/compiler identity. These are information categories, not a complete compatibility format: encoding, required fields, validation, and compatibility rules belong to a separate artifact-interface specification.
+Portable interchange uses source artifacts or binary interfaces, not serialized Koto implementation details. Source artifacts preserve the source and configuration needed for reconstruction. Binary-interface information includes Symbol/version identity, declared access and enclosing domains, visibility and public paths, open/base relationships, normalized Signatures, complete API signature Types and requirements, Type and Origin Contracts, unsafe requirements, Property/accessor capabilities and field-operation semantics, generic specialization inputs, ABI/layout/calling conventions, and target/language/compiler identity. Private generic-body dependencies retain their defining Symbols and access context without becoming public source names. These are information categories, not a complete compatibility format: encoding, required fields, validation, and compatibility rules belong to a separate artifact-interface specification.
 
 ## 13. Compile-time directives
 
@@ -4419,14 +4517,16 @@ Cache only context-independent results or include every relevant dependency:
 | Cache | Required distinctions |
 | --- | --- |
 | Lookup | Scope, name, namespace, role, lexical visibility, source alias environment |
-| Accessible lookup | Also use-site Kotonoha and Container relationship |
-| Member lookup | Target Symbol/Type, type arguments, static/instance use, extensions |
+| Accessible lookup | Also use-site Kotonoha, Container relationship, and inheritance/access domains |
+| Member lookup | Target Symbol/Type, type arguments, static/instance use, protected receiver Type, extensions |
 | Applicability | Candidate, argument Types/literal values/labels/forms, expected Type, type arguments and constraints |
 | Conditional work | Compilation target, selection state, specialization |
 
 Do not reuse a role-filtered lookup for a different role, or source-wide access results across unrelated Containers. Invalidate affected caches when sources, dependencies, aliases, selections, or Symbols change. Flow-dependent Loan and initialization state belongs to Usage Legality, not overload-selection cache keys.
 
 Validation must cover source-context isolation, merged private access, duplicate/role/arity boundaries, Type/Value paths, aliases, extension precedence, expected results, incomparable candidates, nested inference, specialization environments, and no fallback after usage failure. Reordering load, parse, generator completion, or candidate enumeration must preserve results; parsing examples alone does not validate Binding.
+
+Validate effective access-domain inclusion for every exposed API component, recursively through constructed Types and constraints, after merging and inference. Preserve deferred associated-type obligations. Cover private Types used by internal APIs, public members in restricted Containers, private type arguments at generic uses, and definition-site private helpers during external specialization. Inheritance access validation must cover sealed-base rejection, open-fragment agreement, base accessibility, protected receiver restrictions, both compound access forms, and the cross-Kotonoha override exception. Access-cache validity must account for base-graph and modifier changes, independently of the source alias environment.
 
 ### A.4. Property implementation requirements
 
@@ -4553,6 +4653,8 @@ Body parsing for `enum` and `extension` is not implemented.
 
 Split-structure integration, generated-source integration, and layout generation are planned, not implemented.
 
+Inheritance access domains, recursive API signature accessibility, and protected-receiver checks are specified but not implemented by general Binding. Lexing has modifier token kinds, which does not establish complete parsing or semantic support for `open struct`, base clauses, compound access, or overrides. Inheritance parsing coverage is not assessed here; inherited lookup, dispatch, and lifetime integration remain subject to the design boundaries in [inheritance](#432-inheritance-and-open-structures).
+
 The Parser supports Origin lists on structures and functions, simple and qualified annotations, intersections, and named arguments. Origin name resolution, inference, variance analysis, and borrow checking are not implemented.
 
 ### C.4. Declarations and compile-time directives
@@ -4595,6 +4697,7 @@ This index links to design boundaries owned by the language sections. It adds no
 | Declaration fragments and source execution order | Partially specified | [Container fragments](#422-container-fragments) |
 | Source Generators | Partially specified | [Split structures and storage order](#431-split-structures-and-storage-order) |
 | Construction syntax and completion | Partially specified | [Structure declarations](#43-structure-declarations) |
+| Inheritance member lookup, virtual/override syntax, dispatch, and lifetime integration | Partially specified | [Inheritance and open structures](#432-inheritance-and-open-structures) |
 | Fixed FFI layout | Deferred design | [Structure layout and ABI](#146-structure-layout-and-abi) |
 | Contract proof and associated Types | Partially specified | [Associated Types and Property requirements](#441-associated-types-and-property-requirements) |
 | Generic specialization and operation selection | Partially specified | [Inference and operation design boundaries](#53-inference-and-operation-design-boundaries) |
@@ -4617,6 +4720,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | --- | --- | --- |
 | Access Designator | A resolved access target, without a promise of storage or Consume permission. | [Value model](#34-values-places-and-storage) |
 | Adaptation Target | Core Type and Semantics requested by `@`; result Origins are inferred. | [Explicit operations](#6641-forms-and-adaptation-targets) |
+| API signature | Exposed Types and requirements checked for accessibility, beyond overload identity. | [API signature accessibility](#5122-api-signature-accessibility) |
 | Binding | Associating source names and operations with declarations and meanings. | [Name resolution](#5-name-resolution-overload-resolution-and-inference) |
 | CodeContext | Source-local lookup and diagnostic context for one immutable source snapshot. | [Compiler requirements](#appendix-a-compiler-implementation-requirements) |
 | Compilation | One Project processed under fixed source, dependency, target, and build inputs. | [Build units](#141-build-units) |
@@ -4636,6 +4740,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Destruction responsibility | Responsibility for ending an owned value's lifetime under the cleanup rules. | [Value model](#34-values-places-and-storage) |
 | Directive Binding | Resolution and validation of compile-time Condition names and dependencies. | [Compiler requirements](#appendix-a-compiler-implementation-requirements) |
 | Discard Context | An evaluation context that does not retain an expression's result. | [Evaluation contexts](#72-blocks-and-evaluation-contexts) |
+| Effective access domain | Source contexts permitted by a declaration's access and enclosing restrictions. | [Access domains](#5121-effective-access-domains-and-protected-receivers) |
 | Finalization | Acceptance of a declaration, layout, specialization, or body after required checks are resolved. | [Compiler terminology](#appendix-a-compiler-implementation-requirements) |
 | Getter Result Type | The Type returned by a Property read, which may differ from its Property Type. | [Default getter results](#82-default-getter-results) |
 | Koto | A compiler syntax-tree node. | [Compiler terminology](#appendix-a-compiler-implementation-requirements) |
@@ -4751,14 +4856,16 @@ GenericParameter     := Name | Name "/" Name
 
 ```ebnf
 QualifiedName        := Name ("." Name)*
-Access               := "private" | "internal" | "public"
+Access               := "private" | "internal" | "public" | "protected"
+                      | "protected" "internal" | "private" "protected"
 AliasDeclaration     := "alias" QualifiedName
 LocalBinding         := ("let" | "var") Name (":" Type)? ("=" Expression)?
 InitializedBinding   := ("let" | "var") Name (":" Type)? "=" Expression
 GroupDeclaration     := Access? "group" Name ContainerBody
 RootGroupDeclaration := Access? "rootgroup" QualifiedName ContainerBody
-StructureDeclaration := Access? "struct" Name GenericParameters?
-                        OriginParameters? ContainerBody
+StructureDeclaration := Access? "open"? "struct" Name GenericParameters?
+                        BaseClause? OriginParameters? ContainerBody
+BaseClause           := ":" CoreType
 ContractDeclaration  := Access? "contract" Name ContainerBody
 FunctionHeader       := Access? "unsafe"? "func" QualifiedName
                         GenericParameters? OriginParameters?
@@ -4785,6 +4892,8 @@ Declaration          := GroupDeclaration | RootGroupDeclaration
                       | FunctionDefinition | PropertyDeclaration | DeinitDeclaration
                       | EnumDeclaration | ExtensionDeclaration
 ```
+
+Modifier placement and compound-access combinations are constrained by [accessibility](#512-accessibility-and-reachability), even where the shared grammar uses `Access`. `open` applies only to structures. `BaseClause` has the semantic restrictions in [inheritance](#432-inheritance-and-open-structures); member-level virtual/override syntax is not supplied by this grammar.
 
 ### F.4. Expression grammar
 
@@ -4942,6 +5051,7 @@ These entries record the limits of a complete syntax summary for this revision. 
 | Form or production | Owning syntax and boundary |
 | --- | --- |
 | `EnumDeclaration`, `ExtensionDeclaration` | [Container kinds](#42-declaration-containers) identify the forms; [fragment and identity boundaries](#422-container-fragments) remain open. No complete enum payload or extension-body grammar is supplied. |
+| Virtual/abstract/override members and explicit base invocation | [Inheritance](#432-inheritance-and-open-structures) fixes access constraints but leaves these declaration and expression forms separately specified. `open struct` and its single base clause are defined in F.3. |
 | `Pattern` | [Match arms](#773-match) specify the arm wrapper. Full pattern, enum construction, and payload syntax remain [partially specified](#111-error-policy). |
 | Attributes | `#Name` is distinct from a directive under [reserved syntax](#68-extension-boundaries-and-reserved-syntax). General attribute arguments and placement need their own specification. |
 | Additional Composition Root expressions | Only `$panic(...)` is given a complete operation syntax here; see [extension boundaries](#68-extension-boundaries-and-reserved-syntax). |
