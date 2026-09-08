@@ -4090,6 +4090,20 @@ A computed getter must explicitly start with `get`; a bare expression in the Pro
 
 `get -> ResultType` specifies the Getter Result Type, including any Origin annotation. Without it, even a custom getter uses the [default result Type](#82-default-getter-results); its body does not infer a different Type. Omitted result Origins on custom getters follow function Origin elision.
 
+For a Computed Property, interpret omitted Origins in the declared Property Type separately for each effective accessor. For the getter, first determine the default Getter Result Type (or use its explicit result annotation), then apply result-Origin elision to remaining omissions. For the setter, interpret the Property Type as the Type of its implicit `value` parameter: an omitted outer direct borrow Origin introduces an independent input Origin, while nested borrow Origins and aggregate Origin arguments must be explicit. The setter's input Origin is independent of its receiver Origin and of the getter's result contract. Having both accessors does not unify these omitted Origins. Written Origin annotations remain binding in each accessor's scope; `self` denotes that accessor's receiver. Accessor bodies do not infer these signature contracts. Apply the same rules to Contract Property requirements, which also have no storage. Stored Properties instead retain their explicitly bound common storage Type; accessor expansion must not introduce fresh Origins into that Type.
+
+```kimi
+// Computed instance Property signature excerpt; neither accessor uses storage.
+var view: ref/T
+    get => self.readView()
+    set => self.acceptView(value)
+// Getter: ref/T from self.
+// Setter: value has an independent input Origin, unrelated to self.
+// Both bodies must satisfy their respective contracts.
+```
+
+A static computed getter has no receiver, so its omitted shared result Origin is `static` when no direct borrowed input exists. Its setter may still accept a call-local borrow under the ordinary input rules; accepting that input grants no permission to retain it in static storage. A get/set Computed Property whose declared Type is an Origin-bearing aggregate must explicitly supply its Origin arguments to satisfy the setter's input rule, even if its getter alone could elide them.
+
 ```kimi
 var child: obj/Node
     get -> objref/Node from self => storage@objref
@@ -4654,6 +4668,18 @@ Named argument lists require parentheses, even for one argument. For a Type with
 
 Omitted Origin arguments follow the [position-specific rules](#94-origin-elision-and-return-contracts). Parameter Types and instance Stored Property Types require explicit arguments for Origin-bearing aggregates; local initializers may infer them, and result Types use result-Origin elision. No argument defaults to `static` merely because it appears in a generic Type argument. References to the containing `Self` retain that Type's already-bound abstract Origins and do not introduce a new omitted argument list.
 
+A named Origin argument list may specify only some of the target Type's declared Origins. Resolve names against that declaration; reject unknown names and duplicate bindings, even when duplicate expressions are identical. Apply the enclosing position's omission rule independently to each unspecified argument. Written arguments remain fixed constraints and are neither replaced nor included as additional inputs for result elision. A partial list therefore cannot omit a required argument in a parameter or instance Stored Property Type. The single-Origin shorthand is a complete binding, not a partial list. Binding correspondence follows declaration identity, not list order.
+
+```kimi
+// Pair<A, B> declares Origins left and right as above.
+func example<A, B> origin a, b(p: Pair<A, B> from (left => a, right => b))
+    let local: Pair<A, B> from (left => a) = p
+    // Infer right from initialization and ordinary constraints; left stays bound to a.
+
+func invalid<A, B> origin a(p: Pair<A, B> from (left => a))
+// Error: parameter Origin argument right must be explicit.
+```
+
 #### 9.3.2. Variance
 
 These are static subtype rules under [Type relations and expression operations](#39-type-relations-and-expression-operations). They do not create or authorize a value operation; acquisition and existing Loan obligations must be checked separately.
@@ -4718,10 +4744,18 @@ Origin omission depends on the position of the complete Type. These rules apply 
 | Instance Stored Property | Require explicit bindings for all borrow layers and required Type Origin arguments; do not infer the storage contract from initialization. |
 | Static Stored Property | Safe-borrow retention is forbidden, including nested borrows and explicitly `static` borrows. |
 | Generic Type argument or nested value Type | Recursively apply the enclosing position's rule; being a Type argument does not introduce a separate default. |
+| Enum Case payload declaration | Apply the instance storage rule to every payload element, including nested Origins and required aggregate arguments; see [enum payloads](#47-enums). |
+| Constructor parameter | Apply the ordinary parameter rule; the constructed value retains the containing Type's declared Origin contract under [construction](#433-constructors). |
+| Computed Property declaration or Contract Property requirement | Interpret the declared Type separately as getter result and setter input under [accessor rules](#83-accessors); no shared storage contract is inferred. |
+| Explicit getter result annotation | Apply function result elision with the accessor's receiver and inputs; see [accessors](#83-accessors). Default getter operations also preserve their separately specified [Origin behavior](#82-default-getter-results). |
+| Adaptation Target | Infer result Origins from the operand, operation, and constraints under [Adaptation Targets](#6641-forms-and-adaptation-targets); this is not signature result elision. |
+| Callable constraint signature | Apply its limited per-call direct-input quantification and result restrictions under [Callable constraints](#444-callable-constraints), rather than recursively quantifying every nested borrow. |
 
 An implicit input Origin is universally quantified for that input and supplied from the caller's argument or receiver. It is not the lexical lifetime of the parameter variable. Different direct borrowed inputs introduce independent Origins unless explicit annotations relate them. Only their outer direct borrow Origins participate in result elision. Borrow Origins nested inside a parameter's Referent Type, generic arguments, or aggregate Type must be explicit; they are not additional implicitly quantified inputs. An already-bound generic Type parameter or `Self` preserves its existing dependencies. Fixed expected callable signatures and the limited input quantification of [Callable constraints](#444-callable-constraints) retain their own rules; this section adds no general higher-ranked Origins.
 
 For locals, inference means satisfying ordinary subtyping, variance, outlives, and Loan constraints, not requiring literal equality with the initializer's Origin. Permitted shortening remains available. The declaration fixes the local Type and its Origin constraints; later assignments must satisfy that contract and cannot extend a source lifetime or erase a retained Loan dependency. Explicit Origin annotations remain constraints on the initializer and all subsequent assignments.
+
+An initializer is necessary for local omission but does not by itself guarantee successful inference. At declaration binding, associate each omission with a fixed inference variable and constraints derived from the initializer; do not leave a missing annotation for a later first assignment to supply. Region and Loan constraints may remain symbolic during body analysis, and generic-dependent obligations may remain deferred until the applicable substitution or specialization. Later uses constrain these same variables rather than reopening Type inference. Before completing body Origin/Loan analysis, resolve all non-generic omissions to a valid inferred contract; discharge deferred generic obligations before finalizing the specialization. If a required binding cannot be determined under these rules, or its validity cannot be proved by that deadline, report a compile-time error requiring an explicit annotation or corrected constraints. This does not require a unique concrete set of program points when ordinary region inference admits equivalent valid solutions. Never replace an unresolved Origin with `static`, an invented abstract Origin, or an erased dependency; `static` is a default only where an explicit elision rule specifies it.
 
 Instance storage exposes the containing Type's declared Origin contract. Bind each retained dependency to the containing Type's abstract Origins, or explicitly to `static` where ordinary validity and Loan rules permit. An exclusive borrow still requires a valid unique Loan anchor; longevity alone is insufficient. Initializers and constructors must satisfy these bindings, rather than determine them.
 
@@ -4747,9 +4781,11 @@ group Global
 
 When a result Origin is omitted, the compiler applies these rules in order:
 
-1. If the result contains no borrow, no result-Origin constraint is generated.
+1. If the complete result Type contains no borrow or required Origin argument, including dependencies retained through aggregate fields, elements, and generic arguments, no result-Origin constraint is generated. An owned outer Semantics does not make an Origin-bearing aggregate borrow-free.
 2. If there are directly borrowed parameters, each omitted result Origin becomes the meet of all their Origins.
-3. Otherwise, an omitted shared result Origin is `static`. If that would create an exclusive static borrow, an explicit valid Origin is required.
+3. Otherwise, an omitted shared result Origin is `static`; an omitted aggregate Origin argument likewise becomes `static` only if its inferred Loan requirement is `none` or `ref`. If that would create an exclusive static borrow or bind a `uniq` Loan requirement to `static`, an explicit valid Origin is required.
+
+Apply these rules independently to each omitted borrow-layer Origin and required aggregate Origin argument, including unspecified entries of a partial named list. Preserve explicit bindings and already-bound generic dependencies. Check the completed Type's outlives, variance, and Loan requirements; elision is not permission to weaken an invariant position or bind an exclusive Loan requirement to `static`. No result Origin is inferred from a named function's body.
 
 Examples:
 
@@ -4762,6 +4798,13 @@ func choose(x: ref/T, y: ref/T) -> ref/T
 
 func empty() -> ref/string
 // result Origin: static
+
+func view<T>(x: ref/T) -> View<T>
+// View<T> declares Origin source: result is View<T> from (source => x).
+// Its owned outer Type does not suppress the retained borrow dependency.
+
+func pair<A, B>(x: ref/A, y: ref/B) -> Pair<A, B> from (left => x)
+// left remains x; omitted right becomes x and y.
 ```
 
 Only direct borrowed parameters participate in rule 2. Origins nested in aggregate inputs must be selected explicitly:
@@ -4770,7 +4813,7 @@ Only direct borrowed parameters participate in rule 2. Origins nested in aggrega
 func get<T> origin s(v: View<T> from (source => s)) -> ref/T from v.source
 ```
 
-An explicit `from` clause overrides elision. Thus this result depends on `self`, not on the conservative meet `self and key`:
+An explicit `from` clause overrides elision only for the borrow layer or named Origin arguments it binds; omitted bindings elsewhere still follow the rules above. Thus this result depends on `self`, not on the conservative meet `self and key`:
 
 ```kimi
 func lookup(self: ref/Self, key: ref/Key)
