@@ -13,7 +13,7 @@ internal enum CompileTimeConditionResult : byte
     Pending,
 }
 
-/// <summary>Evaluates the condition subset available before ordinary binding.</summary>
+/// <summary>Evaluates environment-only conditions; Type and Semantics tests are invalid.</summary>
 internal static class CompileTimeConditionEvaluator
 {
     private enum ValueResult : byte
@@ -60,10 +60,6 @@ internal static class CompileTimeConditionEvaluator
             case AndKoto or OrKoto or EqualsEqualsKoto or ExclamationEqualsKoto:
                 var binary = (BinaryKoto)node;
                 return ValidateExpression(binary.Left) & ValidateExpression(binary.Right);
-            case IsKoto requirement:
-                var right = requirement.Right is NotKoto negation ? negation.Operand : requirement.Right;
-                return (requirement.Left is IdentifierNameKoto { AttributeChain: null } &&
-                    requirement.Right.AttributeChain is null && IsRequirementName(right)) || Invalid(node);
             default:
                 return Invalid(node);
         }
@@ -74,15 +70,6 @@ internal static class CompileTimeConditionEvaluator
             return false;
         }
     }
-
-    private static bool IsRequirementName(Koto node)
-        => node.AttributeChain is null && node switch
-        {
-            IdentifierNameKoto => true,
-            TypeSemanticsKoto type => type.Type is null && type.OriginExpression is null && type.OriginArguments is null,
-            MemberAccessKoto member => IsRequirementName(member.Left) && member.Right is IdentifierNameKoto { AttributeChain: null },
-            _ => false,
-        };
 
     private static bool TryGetInteger(Koto node, out BasicValue value)
     {
@@ -217,11 +204,6 @@ internal static class CompileTimeConditionEvaluator
                     CompileTimeConditionResult.Pending => ValueResult.Pending,
                     _ => ValueResult.Error,
                 };
-
-            case IsKoto:
-                value = default;
-                requiresBinding = true;
-                return ValueResult.Pending;
 
             default:
                 value = default;

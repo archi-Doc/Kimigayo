@@ -929,7 +929,7 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void CompileTimeCaseRetainsDeferredGenericSelection()
+    public void CompileTimeCaseRejectsTypeSelectionIncludingAfterSerialization()
     {
         var compilation = Compilation.CreateForTest();
         Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
@@ -945,23 +945,15 @@ public class ParserRegressionTest
 
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Contains(kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
-        var group = Assert.IsType<CompileTimeMatchKoto>(Assert.Single(function.Body!.Items));
-        Assert.Collection(
-            group.Arms,
-            arm =>
-            {
-                var condition = Assert.IsType<IsKoto>(arm.Condition);
-                Assert.Equal("T", Assert.IsType<IdentifierNameKoto>(condition.Left).IdentifierName);
-                Assert.Equal("i32", Assert.IsType<TypeSemanticsKoto>(condition.Right).Identifier);
-            },
-            arm => Assert.Null(arm.Condition));
+        Assert.Empty(function.Body!.PendingDirectiveConditions);
 
         var bytes = TinyhandSerializer.Serialize(kotonoha);
         var restored = new Kotonoha(compilation);
         TinyhandSerializer.DeserializeObject(bytes, ref restored);
         restored!.OnDeserialized(compilation);
+        Assert.Contains(restored.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
         var restoredGroup = Assert.IsType<CompileTimeMatchKoto>(Assert.Single(restoredFunction.Body!.Items));
         Assert.Equal(2, restoredGroup.Arms.Count);

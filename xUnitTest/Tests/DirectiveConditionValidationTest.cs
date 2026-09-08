@@ -11,6 +11,68 @@ namespace XunitTest;
 public class DirectiveConditionValidationTest
 {
     [Theory]
+    [InlineData("T is i32")]
+    [InlineData("T is not i32")]
+    [InlineData("s is ref")]
+    [InlineData("T is Copy")]
+    [InlineData("T is External.Contracts.Comparable")]
+    [InlineData("(s is ref) and (T is i32)")]
+    public void TypeConditionsAreRejectedInEveryReachedDirective(string requirement)
+    {
+        foreach (var condition in new[] { requirement, $"false and ({requirement})", $"true or ({requirement})" })
+        {
+            foreach (var directive in new[]
+            {
+                $"#if {condition}\n    ()",
+                $"#match\n    #case {condition}\n        ()\n    #case _\n        ()",
+                $"#match\n    #case true\n        ()\n    #case {condition}\n        ()",
+            })
+            {
+                // Check both top-level and genuine generic-body contexts, including later arms.
+                foreach (var source in new[] { directive, "func f<s/T>()\n    " + directive.Replace("\n", "\n    ") })
+                {
+                    var compilation = Parse(source);
+                    Assert.Contains(
+                        compilation.Kotonoha.DiagnosticCollection.GetArray(),
+                        x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
+                    Assert.Empty(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc", "windows")]
+    [InlineData("x86_64-unknown-linux-gnu", "linux")]
+    public void EnvironmentSelectionInsideGenericBodyPreservesConstraints(string target, string selected)
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare(target));
+        var source = """
+            func f<T>() -> string
+                T is Copy
+                #if pointerWidth == 64
+                    #match
+                        #case windows
+                            return "windows"
+                        #case linux
+                            return "linux"
+                        #case _
+                            return "other"
+            """;
+        compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
+
+        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
+        var written = function.ToString();
+        Assert.Contains("T is Copy", written);
+        Assert.Contains($"return \"{selected}\"", written);
+        Assert.DoesNotContain("#if", written);
+        Assert.DoesNotContain("#match", written);
+        Assert.Empty(function.Body!.PendingDirectiveConditions);
+    }
+
+    [Theory]
     [InlineData("false and 1")]
     [InlineData("1 and false")]
     [InlineData("true or 1")]
@@ -40,8 +102,6 @@ public class DirectiveConditionValidationTest
     [InlineData("not (false and missing)", true)]
     [InlineData("not (true or missing)", false)]
     [InlineData("(false and missing) == false", true)]
-    [InlineData("false and (T is i32)", false)]
-    [InlineData("true or (T is i32)", true)]
     public void EarlyTruthRetainsValidationWithoutDeferringSelection(string condition, bool selected)
     {
         // The incomplete target proves that an early-false condition still skips target parsing.
@@ -146,7 +206,7 @@ public class DirectiveConditionValidationTest
                     #if false and innerMissing
                     var incomplete:
                 func nested<U>()
-                    #if false and (U is i32)
+                    #if false and functionMissing
                     var incomplete =
                     ()
             """);

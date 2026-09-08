@@ -54,10 +54,10 @@ public group Program
         T is Comparable
 
         #match
-            #case (s is ref) and (T is i32)
-                return "ref/i32"
-            #case s is ref
-                return "ref"
+            #case windows
+                return "windows"
+            #case linux
+                return "linux"
             #case _
                 return "other"
 ```
@@ -97,13 +97,13 @@ Examples appear beside the rules they illustrate. **Basic examples** show ordina
 | may | Permission within all stated constraints. |
 | should | Recommendation, not a condition for language conformance. |
 | is planned | Implementation work is intended; this is not a language rule. |
-| is deferred | In a design-status note, design is postponed; this is distinct from a Deferred Condition. |
+| is deferred | In a design-status note, design is postponed; it grants no language permission. |
 | implementation-defined | The implementation chooses within the stated limits and must document the choice. |
 | unspecified | Any result within the stated limits is permitted; the choice need not be documented. This does not imply undefined behavior. |
 
 Unqualified declarative rules and imperative requirements are normative even without `must`. Examples illustrate those rules and do not override them. Compiler requirements preserve required information and invariants; a **Non-normative reference model** is an optional algorithm, not an alternative semantics.
 
-**Specified, not implemented** means the stated rules are settled but their implementation is unavailable. **Partially specified** means rules exist but identified design details remain open. **Deferred design** means that feature's design is withheld in this revision. These are distinct from **Deferred** as a valid compile-time Condition result. Implementation plans grant no language permission.
+**Specified, not implemented** means the stated rules are settled but their implementation is unavailable. **Partially specified** means rules exist but identified design details remain open. **Deferred design** means that feature's design is withheld in this revision. Compile-time directive Conditions have no Deferred result. Implementation plans grant no language permission.
 
 ## 2. Source and lexical structure
 
@@ -401,7 +401,7 @@ Primitive Core Types are built into the language. Sizes below are storage sizes.
 
 **Primitive scalar** is the closed subset consisting of the integer Types (`i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`), floating-point Types (`f32`, `f64`), `bool`, and `char`. `string`, Unit, and Never are not Primitive scalars. This term is a specification category, not a new source-level Type or Constraint name.
 
-For generic code generation, Primitive scalar values and their direct value borrows (`ref/P` and `uniq/P`, where `P` is a Primitive scalar) are specialized by concrete scalar Type. `string` uses the shared implementation policy; Unit and Never receive separate handling according to their value and control-flow rules. Object forms do not enter the scalar-specialization category through their View Target. See [Generic code generation](Generic%20code%20generation.md) for sharing conditions, nested Types, and generation rules.
+For generic code generation, operations on Primitive scalar values are specialized by concrete scalar Type by default. Direct value borrows (`ref/P` and `uniq/P`, where `P` is a Primitive scalar) do not alone require specialization: passing or returning them may share a body when representation and borrow operations are compatible. Access to the referent uses Type-correct instructions or helper operations; the enclosing body may still be shared. A separate body is required only when semantic or representation differences cannot be preserved through shared code, metadata, and helpers. `string` uses the shared implementation policy; Unit and Never follow their value and control-flow rules. Object forms do not enter the scalar-specialization category through their View Target. Shared fallback paths and equivalent-code merging are permitted; distinct final machine-code bodies per scalar Type are not guaranteed. See [Generic code generation](../../../OneDrive/Dev/Documents/Kimigayo/Design/Generic%20code%20generation.md) for the full generation policy.
 
 #### 3.1.1. Integer types
 
@@ -723,7 +723,7 @@ enum CopyOption<T>
 
 Derivation must be provable for every generic argument permitted by the declaration. It neither adds implicit parameter constraints nor grants conformance only to Copy specializations. Removing `T is Copy` from `CopyOption` is a declaration error. Without `Self is Copy`, an unconstrained `Option<T>` remains usable and `Option<i32>` is Non-Copy. An enum storing only `ref/T` needs no Copy constraint on `T` itself.
 
-Proof may depend on constraints or selected conditions, but successful individual specializations do not validate an otherwise unproven declaration. This declaration obligation is separate from [Generic Access Effects](#527-generic-access-effects), which still permit legitimate deferred acquisition checks and never treat unknown Copy as non-Copy.
+Proof may depend on declared constraints, but successful individual specializations do not validate an otherwise unproven declaration. This declaration obligation is separate from [Generic Access Effects](#527-generic-access-effects), which still permit legitimate deferred acquisition checks and never treat unknown Copy as non-Copy.
 
 ### 3.6. Temporary values, places, and lifetimes
 
@@ -1035,7 +1035,7 @@ For structures, `open` must agree across all fragments. At most one fragment sup
 
 After compile-time selection and merging, reject duplicate Properties, duplicate function Signatures, and namespace conflicts. All selected fragments may contribute Stored Properties, including generated ones, under [split-structure storage order](#431-split-structures-and-storage-order). Do not require a primary fragment. Enums cannot be split: after selection and generation, multiple declarations with the same enum Identity are errors. Contract fragment contents and extension identity need further rules.
 
-Constructor Signatures must also be unique across the selected fragments. At most one selected `deinit` body may belong to a merged structure, including generated fragments. Do not concatenate destruction bodies or choose one by source order; duplicates are declaration errors. Mutually excluded bodies may coexist in source only when selection leaves at most one in each concrete specialization.
+Constructor Signatures must also be unique across the selected fragments. At most one selected `deinit` body may belong to a merged structure, including generated fragments. Do not concatenate destruction bodies or choose one by source order; duplicates are declaration errors. Mutually excluded bodies may coexist in source only when selection leaves at most one in each fixed target/configuration environment.
 
 ```kimi
 // A.kimi
@@ -1410,7 +1410,7 @@ Conformance proves only statically specified requirements. Documentation laws su
 
 #### 4.4.2. Requirement expressions
 
-`subject is requirement` tests a Type or Type Semantics in Constraint Clauses, associated-Type declarations/specifications, `#if` conditions, and `#case` conditions. Its result is a compile-time `bool`; unresolved requirements never become runtime tests. Each context retains its permitted subjects, grammar, and validation rules. Associated-Type projection subjects do not expand the closed compile-time Condition grammar. Ordinary expressions instead use [runtime type tests](#6651-runtime-is-tests); syntax context, including through parentheses, determines the interpretation before lookup, with no fallback between Type and Value namespaces.
+`subject is requirement` tests a Type or Type Semantics in Constraint Clauses and associated-Type declarations/specifications. Its result is a compile-time `bool`; unresolved requirements never become runtime tests. Each context retains its permitted subjects, grammar, and validation rules. Requirement Tests are not allowed in `#if` or `#case` Conditions. Ordinary expressions instead use [runtime type tests](#6651-runtime-is-tests); syntax context, including through parentheses, determines the interpretation before lookup, with no fallback between Type and Value namespaces.
 
 `is` binds on its left at comparison precedence. Its right side consumes a requirement expression through `or` precedence. An immediately following `not` negates that entire right side:
 
@@ -1525,7 +1525,7 @@ The proof judgment has four outcomes, distinct from the Condition evaluator's ou
 | **Unknown** | Neither polarity is established by the permitted rules. This is not a Boolean value or an automatic right to defer. |
 | **Error** | Invalid names, subjects, requirements, declarations, or detected contradictory evidence prevent a valid judgment. |
 
-Evidence comes from the current declaration's validated input Constraints, facts introduced by selected compile-time conditions, defined built-in capability rules, and verified explicit or inherited conformance. Facts retain their Binding Identity, substitutions, and lexical/specialization scope. A generic input Constraint is an assumption inside the constrained body, but must be discharged at use. A conformance declaration or `Self is C` obligation cannot prove its own implementation merely by being declared; its required implementations and prerequisite Constraints must be validated under the existing conformance rules. Built-in derivation exceptions such as `Self is Copy` retain their own rules.
+Evidence comes from the current declaration's validated input Constraints, defined built-in capability rules, and verified explicit or inherited conformance. Facts retain their Binding Identity, substitutions, and lexical/specialization scope. A generic input Constraint is an assumption inside the constrained body, but must be discharged at use. A conformance declaration or `Self is C` obligation cannot prove its own implementation merely by being declared; its required implementations and prerequisite Constraints must be validated under the existing conformance rules. Built-in derivation exceptions such as `Self is Copy` retain their own rules.
 
 | Proof rule | Permitted derivation |
 | --- | --- |
@@ -2127,7 +2127,7 @@ outer(intermediate)
 
 Resolve a function reference to one declaration using ordinary selection evidence, including explicit generic arguments or a fixed expected callable signature. A unique candidate needs no expected Type; an unresolved overload set is not a value. Anonymous-function arity and explicit Types may filter candidates, but its body is checked only after a common expected signature or a single candidate is determined. A fixed `Callable<r, S>` signature may guide parameter inference while `F` retains the concrete Closure Type. Do not rerun a body for competing signatures, infer parameters from later uses, or repeat capture effects during candidate trials. Function values carry neither labels nor defaults and cannot name unsafe functions or `deinit`. Later conformance failure never selects another overload or capture mode.
 
-After inference, check Constraints using the [limited proof system](#445-constraint-proof-system). Proven satisfies a requirement, Refuted fails it, and Error diagnoses invalid or contradictory evidence. Unknown retains an obligation only for a legitimate dependency that can resolve before the applicable deadline; it is not an applicable result or a negative fact. Nondependent names bind at the definition. Generic bodies use evidence from declared constraints and selected conditions; failure to prove `T is C` does not prove `T is not C`. Deferred members use the [definition-site source environment](#12-modules-and-dependencies), never caller imports. All necessary constraints must be Proven before finalizing a concrete call or specialization. Do not use arbitrary theorem proving, enumeration of available Types, or constraint strength for overload ranking.
+After inference, check Constraints using the [limited proof system](#445-constraint-proof-system). Proven satisfies a requirement, Refuted fails it, and Error diagnoses invalid or contradictory evidence. Unknown retains an obligation only for a legitimate dependency that can resolve before the applicable deadline; it is not an applicable result or a negative fact. Nondependent names bind at the definition. Generic bodies use evidence from declared constraints; failure to prove `T is C` does not prove `T is not C`. Deferred members use the [definition-site source environment](#12-modules-and-dependencies), never caller imports. All necessary constraints must be Proven before finalizing a concrete call or specialization. Do not use arbitrary theorem proving, enumeration of available Types, or constraint strength for overload ranking.
 
 Conditional membership follows the [name-resolution boundary](#134-name-resolution-boundary). Excluded declarations do not merge or enter candidate sets. Compiler requirements preserve independent specialization environments.
 
@@ -2165,13 +2165,13 @@ A broad Borrow-versus-acquisition category is insufficient: distinguish Copy fro
 Generic analysis
 ├─ effect known -> analyze normally
 └─ legitimate dependency -> retain obligation
-                            -> constraints / selected conditions / specialization
+                            -> constraints / specialization
                             -> determine effect -> finalize ownership and cleanup
 ```
 
 Do not treat unresolved Copy capability as proof of non-Copy or fix the effect to Move. Generic checking need not finish at definition time. Deferral is permitted only when a later phase can resolve the dependency before finalization; otherwise report an error. Environment-changing directives still obey their earlier [selection deadlines](#134-name-resolution-boundary).
 
-Specializations may have different effects. Check each body and cleanup with its own effects; never reuse a different-effect analysis without validation. An explicit `#case` is not required when specialization directly resolves the operation.
+Specializations may have different effects. Check each body and cleanup with its own effects; never reuse a different-effect analysis without validation. Specialization may directly resolve the operation; compile-time directives do not test Types or select Access Effects.
 
 ```kimi
 // s is a declared Semantics parameter; value is an initialized owned value.
@@ -2942,7 +2942,7 @@ value.bark()
 // value is Dog or Cat parses as (value is Dog) or Cat, not a two-Type test.
 ```
 
-The syntax context determines `is` before lookup: Constraint Clauses, associated-Type conditions, and compile-time directive conditions retain their Requirement Test; ordinary initializers, arguments, and runtime conditions use this test. `T is Comparable` in an ordinary expression is not retried in the Type namespace. Parentheses preserve the surrounding context; use `#if` / `#match` for compile-time selection.
+The syntax context determines `is` before lookup: Constraint Clauses and associated-Type conditions retain their Requirement Test; ordinary initializers, arguments, and runtime conditions use this test. `T is Comparable` in an ordinary expression is not retried in the Type namespace. Parentheses preserve the surrounding context. Compile-time directives allow only environment conditions and reject every `is` test.
 
 Accept well-typed tests even when static information proves them always true or false; a warning is allowed. Do not omit left-side effects or derive additional unreachable paths from that knowledge. Conditional Type information follows [flow refinement](#79-type-refinement-and-require). Ordinary owners, value borrows, pointers, numeric values, Tuples, and enum variants are not test subjects. This syntax does not add optional or pattern binding.
 
@@ -5107,7 +5107,7 @@ These features require extensions to the [Ownership and Origin rules](#9-ownersh
 
 ## 10. Scope exit and destruction
 
-Scope exit secures results and performs cleanup. A Deferred Block registers code for scope exit; it is unrelated to a Deferred compile-time Condition.
+Scope exit secures results and performs cleanup. A Deferred Block registers code for scope exit; compile-time directive Conditions have no Deferred result.
 
 ### 10.1. Deferred blocks
 
@@ -5601,7 +5601,7 @@ Compile-time directives choose source syntax without runtime branching. The foll
 | Condition | A compile-time Boolean expression controlling syntax selection. |
 | Lookup environment | The declarations, aliases, and extensions visible to name lookup in a scope. |
 | Prepared environment | Fixed target values and configured compile-time settings available before source selection. |
-| Deferred | A valid Condition dependency whose value is not yet available. |
+| Environment selection | A choice fixed by target values and configured Project settings, independently of generic arguments. |
 | Finalization | Acceptance of a declaration, layout, specialization, or body after its required dependencies and checks are resolved. |
 
 Compile-time Directives select Syntax during compilation without producing runtime control flow:
@@ -5637,8 +5637,8 @@ func useImplementation<T>(value: T) -> ()
     #match
         #case windows
             useWindowsImplementation(value)
-        #case T is i32
-            useIntegerImplementation(value)
+        #case linux
+            useLinuxImplementation(value)
         #case _
             useGenericImplementation(value)
 
@@ -5653,7 +5653,7 @@ A `#match` header has no subject expression. Its body must contain at least one 
 
 A `#match` construct is one Syntax item and may be controlled as a whole by a preceding `#if`. The `#match` wrapper does not itself introduce an additional lookup scope; the selected arm's Block follows the existing scope rules. These rules apply in both executable bodies and Declaration Containers.
 
-Every final evaluation context must select an arm. Without `#case _`, at least one explicit Condition must evaluate to **True** in that context using the specified evaluator. If none is True and a value remains dependent, retain the group until its finalization deadline; if all are False, report an error. The initial language requires no symbolic exhaustiveness proof, enumeration of Types, or Constraint theorem proving. A catch-all supplies an unconditional alternative without such proof.
+Every valid Case Group must select an arm for the prepared environment. Without `#case _`, at least one explicit Condition must evaluate to **True**; otherwise report an error. No generic dependency can defer selection. A catch-all supplies an unconditional alternative, but does not suppress errors in other Conditions.
 
 The selected Block occupies the structural position of the Case Group. Normal Block, result-Type, scope, and control-transfer rules apply after selection. An early-false `#if` target is excluded. Unselected `#case` arms do not undergo ordinary semantic checking or contribute executable code.
 
@@ -5661,9 +5661,9 @@ The [nonempty Block rule](#721-nonempty-executable-blocks) checks source structu
 
 Validation of excluded targets follows [Diagnostics and excluded syntax](#135-diagnostics-and-excluded-syntax).
 
-### 13.2. Condition forms and narrowing
+### 13.2. Environment condition forms
 
-A Condition uses the following closed initial expression set. The whole expression must have Type `bool`; ordinary operator precedence and explicit parentheses apply.
+A Condition uses only the following closed expression set over the prepared Compilation environment. The whole expression must have Type `bool`; ordinary operator precedence and explicit parentheses apply.
 
 | Form | Rule |
 | --- | --- |
@@ -5671,105 +5671,67 @@ A Condition uses the following closed initial expression set. The whole expressi
 | Compile-time value Name | A built-in Compilation value or an explicitly configured Project setting. |
 | `not E`, `E and E`, `E or E` | Boolean operands and the [Condition evaluation rules](#133-condition-evaluation-and-selection). |
 | `E == E`, `E != E` | Equal scalar Types (`bool`, `i64`, or `string`); no implicit cross-Type conversion. String comparison is ordinal and case-sensitive. |
-| `P is R`, `P is not R` | `P` names a declared generic Core Type or Type Semantics parameter; `R` is a simple primitive Type, a Semantics name, or a simple/qualified Type, Contract, or category Name. Constructed Types and runtime value patterns are outside this initial Condition grammar. |
 | `(E)` | Grouping of one permitted expression. |
 
-All other expression forms are invalid Conditions, including calls (even purported compile-time calls), runtime member access, indexing, arithmetic, ordering comparisons, conversions, collections, interpolation, and floating-point/character/null literals. Reject them even in short-circuited operands.
+All other expression forms are invalid Conditions, including every `is`/`is not` test, calls, runtime member access, indexing, arithmetic, ordering comparisons, conversions, collections, interpolation, and floating-point/character/null literals. Reject them even in short-circuited operands or later Conditions after a selected Case. There are no Type-, Semantics-, Contract-, Origin-, or generic-specialization-dependent directive conditions. This restriction applies in every scope, including function bodies.
 
-**Condition lookup.** Scalar value lookup searches only the disjoint built-in and Project-setting environment established before parsing; ordinary source `let`/`var` declarations, Properties, aliases to values, and functions are not compile-time values. For `is`, resolve the subject among lexically visible generic parameters, using the nearest declaration first. Resolve Type/Contract/category names using normal Type Name Selection, qualification, source aliases, and then default aliases, restricted to the already established environment of §13.4. This permits unconditional same-Container Types and accessible Contracts in directly referenced libraries, without permitting a Condition to depend on declarations whose availability it controls. Constraint Clauses supply evidence about these parameters, not an additional value namespace. Preserve the definition's source context during specialization.
+**Condition lookup.** Resolve Names only in the disjoint built-in and Project-setting environment established before parsing. Ordinary source declarations, generic parameters, aliases, Types, Contracts, and runtime values supply no Condition values. A Name absent from the prepared environment is an error, not a dependency to resolve by generic Binding. A same-spelled source declaration does not shadow a prepared setting in this dedicated namespace. Constraints supply no additional Condition values or narrowing facts.
 
 ```kimi
 windows
 windows or linux
 os == "windows" or os == "linux"
 pointerWidth == 64
-s is ref
-T is i32
-T is Comparable
-(s is ref) and (T is Comparable)
+debug and featureEnabled // featureEnabled must be a configured bool setting.
 ```
 
-A concrete Type or Type Semantics on the right of `is` tests identity. A named capability declared with `contract` or a named category tests satisfaction of its requirements.
+```kimi
+#if T is i32            // Error: Type conditions are not supported.
+    ()
+#if false and (s is ref) // Error even though false determines truth.
+    ()
+```
 
-A selected `#if` target adds its Condition to the facts available while analyzing that target. A selected `#case` arm adds its Condition and the negation of every earlier Condition in the same `#match`; `#case _` adds only the earlier negations. These facts are local to the selected target or arm, do not leak into following Syntax or sibling groups, and are not Constraint Clauses. Narrowing preserves the concrete Core Type: `T is Comparable` does not replace `T` with `Comparable`. Use these assumptions only through the [limited proof rules](#445-constraint-proof-system). An assumed disjunction does not expose either alternative, and negated compound conditions are not decomposed through De Morgan. Facts from a target cannot justify the selection that makes that target available.
-
-Compile-time Conditions do not evaluate runtime values. The initial design does not destructure values or introduce pattern bindings. For example, `#case value is ref/i32 x` is invalid; use `#case (s is ref) and (T is i32)` to narrow a value of Type `s/T` to `ref/i32`. Parentheses separate each [requirement expression](#442-requirement-expressions) from the surrounding condition.
+Constraint Clauses and ordinary runtime Type tests retain their separate rules. Environment directives select syntax but introduce no Type or capability assumptions into generic proof.
 
 ### 13.3. Condition evaluation and selection
 
-`#if` and `#match` Conditions use the same evaluation rules. Known target and Project values may determine selection before generic dependencies are bound. Validation must resolve remaining Names without semantically checking excluded controlled Syntax.
-
-After dependency classification, language evaluation has exactly four outcomes:
+`#if` and `#match` Conditions use the same evaluation rules. All valid Condition inputs are fixed by the target and Project settings before source selection. Language evaluation has exactly three outcomes:
 
 | Result | Meaning |
 | --- | --- |
 | **True** | The Condition is satisfied. |
 | **False** | The Condition is not satisfied. |
-| **Deferred** | The Condition has a valid compile-time dependency whose value is not yet available. |
-| **Error** | The Condition is invalid, non-Boolean, or refers to an unavailable Name. |
+| **Error** | Invalid syntax, an unavailable Name, incompatible scalar operands, or a non-Boolean Condition. |
 
-For a bound requirement test, [Constraint proof](#445-constraint-proof-system) maps Proven to True and Refuted to False. Proof Error maps to Error. Unknown maps to Deferred only if an identified, validated compile-time dependency can resolve it before the required deadline; otherwise report an unproven-requirement Error when evaluation is required. Lack of symbolic proof alone is not Deferred, and is never False. Concrete requirement operands whose atomic judgments are determined evaluate `and`, `or`, and `not` normally; the limited symbolic proof rules do not suppress concrete Boolean evaluation.
+There is no Deferred Condition result. Generic Binding and specialization cannot supply missing Condition inputs and never change a valid selection within one fixed Compilation environment.
 
-After name and dependency validation, a value still dependent on an unbound declared generic parameter produces **Deferred**, while an unknown Name produces **Error**. A requirement already Proven or Refuted from permitted evidence does not remain Deferred merely because its subject is generic. Short-circuit reasoning determines truth, but does not waive validation of any operand in a Condition. **Error** is absorbing for `and` and `or`, regardless of operand order: `Error and X`, `X and Error`, `Error or X`, and `X or Error` are **Error** for every result `X`; `not Error` is **Error**. Otherwise, `false and Deferred` is **False**, `true or Deferred` is **True**, and `true and Deferred`, `false or Deferred`, and `not Deferred` are **Deferred**.
+Truth determination does not waive validation. Validate both operands of `and` and `or`, even when one determines truth. **Error** is absorbing for `and`, `or`, and `not`. Otherwise evaluate their ordinary Boolean meaning. For example, `false and missing`, `true or missing`, `debug and missing`, `false and 1`, and `true or (T is i32)` are errors when reached; neither short-circuit truth nor build mode hides the invalid operand.
 
-Truth determination and validation are separate. Every reached Condition must be valid, including operands and later arm Conditions whose values cannot affect selection. Unknown Names and invalid operands are errors. A known truth value does not authorize finalization before validation is complete, and does not require obtaining an irrelevant valid dependent value. **Deferred** means a validated compile-time dependency, never an unsupported feature or implementation limitation.
+Evaluate the single Condition of a `#if` and validate every explicit Condition of a reached `#match`, including later arms whose values cannot change the selection. After successful validation, select the first True arm; False arms are skipped. If none is True, select `#case _` when present; otherwise report an error. No arbitrary theorem proving or enumeration of Types is involved.
 
-For example, `false and missing`, `true or missing`, and their operand-reversed forms are **Error** if `missing` is unknown. `debug and missing` must diagnose that unknown Name in both Debug and Release configurations. `false and 1` and `true or 1` are **Error** because the numeric operand is non-Boolean.
-
-Evaluation checks the single Condition of a `#if` and every explicit Condition of a Case Group. Every arm Condition is checked, and an **Error** is reported even when an earlier arm determines the selection. Early selection does not waive validation of any explicit arm Condition, including later arms whose values cannot change selection. This requirement concerns Conditions of directives reached by parsing; it does not require parsing directives inside an excluded `#if` target. A Case Group is selected as soon as its first-match result is certain:
-
-- a **False** arm is skipped;
-- a **True** arm is selected when every preceding arm is **False**;
-- a preceding **Deferred** arm prevents selection of a later **True** arm or `#case _`;
-- Conditions after an already selectable **True** arm cannot change the selection.
-
-For example, `#case windows` may resolve during parsing, while `T is i32` remains **Deferred** until `T` is bound.
-
-A still-Deferred Condition is an error when its containing declaration, layout, specialization, or executable body must be finalized. Deferral is valid only when a later compilation phase can provide the missing dependency before that point.
+These validation obligations concern reached directives. They do not require evaluating nested directives inside an excluded `#if` target; [excluded-syntax rules](#135-diagnostics-and-excluded-syntax) define that boundary.
 
 ### 13.4. Name-resolution boundary
 
-**Scope lookup environments.** A Condition that changes a scope's lookup environment must have its selection resolved before ordinary Name resolution using that environment begins. Until then, do not begin that resolution. The environment includes declarations and overload candidates, as well as applicable alias and extension imports; a later selection must not add, remove, or replace candidates in an environment already in use.
+Select directives using only the prepared environment, before ordinary Name resolution using the affected scope begins. The scope's lookup environment includes selected declarations, overload candidates, aliases, and extension imports. A later phase must not add, remove, or replace candidates by reevaluating a Condition for a generic specialization.
 
-Resolve and evaluate such Conditions using an already established environment independent of the conditional declarations in the affected scope. Condition names may be resolved in that independent environment before ordinary Name resolution begins. A Condition must not depend on a declaration whose availability it controls, directly or through a cycle.
-
-This boundary applies per scope, not once to the entire program. Conditions that select only expressions or statements without changing a lookup environment may remain Deferred until specialization. A selected branch may also contain local declarations if Name resolution using that branch's environment starts only after selection. Follow normal scope rules: a declaration introduced into an enclosing scope must be selected before resolution using that enclosing environment begins. A directive does not create an extra scope merely to defer this requirement.
-
-| Controlled Syntax | Required selection point |
-| --- | --- |
-| Declarations or imports that change an enclosing lookup environment | Before ordinary Name resolution using that environment begins. |
-| Expressions and statements that do not change a lookup environment | May wait for specialization, subject to the finalization deadline. |
-| Local declarations inside a branch first analyzed after specialization | Before ordinary Name resolution using the selected branch's environment begins. |
+Environment directives remain permitted in executable bodies and Declaration Containers. They may select declarations, imports, or local syntax for a fixed target/configuration. A directive creates no extra lookup scope beyond the ordinary scope rules of its selected syntax. Establish selected local declarations before resolving their uses.
 
 ```kimi
 #if windows
-func Test() -> () => ()
-```
-
-The target setting selects whether `Test` is present before Name resolution using its containing environment begins.
-
-**Boundary example.**
-
-```kimi
-func kind<T>() -> i32
-    #match
-        #case T is i32
-            return 32
-        #case _
-            return 0
+func platformName() -> string => "windows"
 
 func example<T>() -> i32
     #match
-        #case T is i32
-            let result = 32
+        #case pointerWidth == 64
+            let result = 64
             return result
         #case _
-            return 0
+            return 32
 ```
 
-Both functions may defer selection until `T` is known. In `example`, select the branch and establish its local declarations before resolving `result`. This does not change an enclosing lookup environment that has already been used.
-
-Scopes with established environments may proceed independently. An affected scope must wait if later Binding or specialization can establish its environment; otherwise, diagnose the unresolved dependency when that scope must be analyzed or finalized. Never begin with a provisional candidate set and revise resolved Names later. This rule fixes conditional membership in the lookup environment; ordinary declaration-order visibility rules still apply.
+The selected body of `example` is the same for every `T` in that Compilation. Source Types and member declarations cannot affect the prepared environment. Different target/configuration inputs require their own Compilation and selection.
 
 ### 13.5. Diagnostics and excluded syntax
 
@@ -5850,7 +5812,7 @@ Layout includes exactly one direct base subobject plus the structure's own Store
 
 ### 14.7. Compilation invariants
 
-Compilation must respect semantic dependencies; it need not use one whole-program pass per stage. [The reference compilation models](#appendix-b-non-normative-reference-models) illustrate valid arrangements. Parsing may select known directives early. Condition validation and specialization recur per affected scope under [staged evaluation](#134-name-resolution-boundary); establish that scope's lookup environment before using it. Analyses may share facts, but unresolved obligations must not be treated as successful finalization.
+Compilation must respect semantic dependencies; it need not use one whole-program pass per stage. [The reference compilation models](#appendix-b-non-normative-reference-models) illustrate valid arrangements. Resolve directive Conditions from the prepared environment and establish each affected scope's lookup environment before using it. Generic specialization does not reselect directives. Analyses may share facts, but unresolved validation obligations must not be treated as successful finalization.
 
 ### 14.8. Object metadata
 
@@ -5921,11 +5883,11 @@ CompileTimeMatchKoto
         Block
 ```
 
-A directive whose selection still awaits validation or a dependent value retains a directive Koto node. An early-true `#if` contributes its Target directly; an early-false one contributes none. Independently, the enclosing scope retains pending Condition validation obligations even when the directive Koto or unselected Syntax is discarded. Each obligation retains the full Condition and its original CodeContext and identifies the enclosing scope for Directive Binding. These obligations are separate from executable syntax and must not cause excluded targets to undergo ordinary Binding. Invalid Case Groups may remain for error recovery. Resolving a specialization must not mutate Koto shared with others.
+A directive whose selection still awaits implementation-internal validation may retain a directive Koto node; this does not represent a valid type-dependent Condition. An early-true `#if` contributes its Target directly; an early-false one contributes none. Independently, retain any pending Condition validation obligations even when the directive Koto or unselected Syntax is discarded. Each obligation retains the full Condition and its original CodeContext and identifies its source scope for diagnostics. Resolve Condition Names only in the prepared environment, never that scope's Type or Value declarations. These obligations are separate from executable syntax and must not cause excluded targets to undergo ordinary Binding. Unknown Names must be diagnosed before finalization. Invalid Case Groups may remain for error recovery. Specialization neither reselects directives nor mutates shared Koto.
 
 Retain a Condition with unresolved Names or unvalidated dependencies even when early evaluation determines True or False. Its validation obligation preserves the source, diagnostic context, and enclosing lookup scope until Directive Binding can complete the [Condition validation](#133-condition-evaluation-and-selection). An early truth result does not discharge that obligation.
 
-An implementation must not label an unimplemented language feature **Deferred**; it must either expose a distinct pending Binding obligation or report an implementation limitation.
+An implementation-internal Pending result is not a language Condition result or permission for Type-dependent selection. It must be discharged against the prepared environment or diagnosed before finalization.
 
 ### A.3. Binding, caches, and incremental validity
 
@@ -5950,7 +5912,7 @@ Cache only context-independent results or include every relevant dependency:
 | Accessible lookup | Also use-site Kotonoha, Container relationship, and inheritance/access domains |
 | Member lookup | Target Symbol/Type, type arguments, static/instance use, protected receiver Type, extensions |
 | Applicability | Candidate, argument Effective Types/literal values/labels/forms, expected Type, type arguments and constraints |
-| Conditional work | Compilation target, selection state, specialization |
+| Conditional work | Compilation target, configured Project settings, selection state; independent of generic specialization |
 
 Do not reuse a role-filtered lookup for a different role, or source-wide access results across unrelated Containers. Invalidate affected caches when sources, dependencies, aliases, selections, or Symbols change. Flow-dependent Loan and initialization state belongs to Usage Legality, not overload-selection cache keys. Refinement changes the input Effective Type and therefore must be reflected in member/applicability cache keys.
 
@@ -6048,7 +6010,7 @@ Solution -> Project -> Compilation(inputs)
     -> SourceDocuments -> Tokenization -> Parsing / Koto tree
     -> Directive Binding and selection of lookup environments
     -> Declaration and Name Binding, Type checking and overload resolution
-    -> Required generic specialization and remaining directive selection
+    -> Required generic specialization (without directive reselection)
     -> Control-flow, ownership, lifetime and Origin analysis
     -> Lowering -> backend IR -> binary
 ```
@@ -6065,10 +6027,10 @@ Parse a directive Condition
         -> independently retain the Condition and its context if validation requires Directive Binding
         -> True: parse the controlled Syntax without a directive Koto
         -> False: consume the controlled Syntax without creating Koto nodes
-        -> unresolved validation or Deferred value: parse the controlled Syntax and retain a directive Koto
+        -> implementation-internal unresolved validation: retain a validation obligation, never a generic dependency
         -> Error: report a diagnostic and discard the controlled Syntax
     -> resolve Names and validate operands in all retained Conditions, including early-True/False Conditions and Conditions of unselected case arms
-    -> re-evaluate after generic Binding and for each specialization
+    -> diagnose Names absent from the prepared environment; do not retry after generic Binding or specialization
     -> resolve selections that change a scope's lookup environment before ordinary Name resolution using that environment begins
     -> require a final result and completed validation before finalization
     -> bind and lower only the selected Syntax
@@ -6205,7 +6167,7 @@ The current Parser stores leading Constraint Clauses separately from executable 
 
 The static Contract model is specified, not implemented by this documentation change. `ContractKoto` currently accepts inline Property requirements and `associate Name is requirement`; it does not implement function requirements or bare associated-Type declarations. Refinement, qualified specifications/projections, signature-first Constraint collection, and conformance matching/mappings/access checks require implementation. Any accepted generic Contract headers do not establish language support; user-defined generic Contracts are excluded. Runtime Contract Views remain outside the initial Contract implementation.
 
-**Current implementation status:** the Parser validates the closed Condition expression set, evaluates known scalar operations, and propagates Errors before short-circuit truth results. Its internal **Pending** result represents an attempt awaiting Name/requirement Binding; it is not the language result **Deferred**. Pending directives retain dedicated Koto nodes, and validation obligations survive early selection. Control-flow analysis exposes encountered obligations as pending Binding. Unknown-Name classification by later Directive Binding, `is` evaluation, specialization, lookup-environment enforcement, and constraint narrowing remain planned.
+**Current implementation status:** the Parser validates the environment-only Condition expression set, evaluates known scalar operations, and propagates Errors before short-circuit truth results. Every directive `is` test is rejected; there is no requirement evaluation, Type narrowing, or generic-dependent selection. Its internal **Pending** result currently retains unresolved scalar Names as validation obligations; this is an implementation limitation, not a valid language dependency. Such Names can only resolve in the prepared environment and must otherwise be diagnosed before finalization. Pending nodes and control-flow PendingBinding reporting retain those validation obligations; unknown-Name finalization remains unimplemented.
 
 ### C.5. Properties
 
@@ -6317,7 +6279,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Copy | Implicit value duplication that leaves its source initialized. | [Copy and Move](#35-copy-and-move) |
 | Core Type | The component of a Type that identifies what the value is. | [Type composition](#3-types-and-basic-value-model) |
 | Declaration Container | A named declaration scope with members permitted by its kind. | [Containers](#42-declaration-containers) |
-| Deferred Condition | A valid compile-time Condition whose dependency value is not yet available. | [Condition evaluation](#133-condition-evaluation-and-selection) |
+| Environment Condition | A Boolean directive expression over fixed target and Project settings. | [Condition evaluation](#133-condition-evaluation-and-selection) |
 | Deferred Block | Cleanup code registered by `defer` for its containing scope's exit. | [Deferred Blocks](#101-deferred-blocks) |
 | Destruction responsibility | Responsibility for ending an owned value's lifetime under the cleanup rules. | [Value model](#34-values-places-and-storage) |
 | Directive Binding | Resolution and validation of compile-time Condition names and dependencies. | [Compiler requirements](#appendix-a-compiler-implementation-requirements) |
@@ -6699,7 +6661,7 @@ origin-expression := Name
 
 ### F.8. Compile-time directive grammar
 
-[Directive syntax](#131-syntax-and-structural-selection), [closed Condition forms](#132-condition-forms-and-narrowing), [excluded-syntax parsing](#135-diagnostics-and-excluded-syntax).
+[Directive syntax](#131-syntax-and-structural-selection), [closed Condition forms](#132-environment-condition-forms), [excluded-syntax parsing](#135-diagnostics-and-excluded-syntax).
 
 ```ebnf
 Directive<Item>      := IfDirective<Item> | MatchDirective<Item>
@@ -6711,14 +6673,14 @@ DefaultArm<Item>     := "#" "case" "_" Body<Item>
 CompileCondition    := CompileAnd ("or" CompileAnd)*
 CompileAnd          := CompileComparison ("and" CompileComparison)*
 CompileComparison   := CompileUnary (("==" | "!=") CompileUnary)?
-                      | Name "is" "not"? ConditionRequirement
+
 CompileUnary        := "not" CompileUnary | CompileAtom
 CompileAtom         := "true" | "false" | SignedInteger | PlainString | Name
                       | "(" CompileCondition ")"
 SignedInteger       := ("+" | "-")? IntegerLiteral
 IntegerLiteral      := ? integer alternatives of number-literal in F.1 ?
 PlainString         := ? StringLiteral without interpolation, §13.2 ?
-ConditionRequirement := QualifiedName | PrimitiveType | Semantics
+
 ```
 
 The hash forms use `#` followed by reserved lowercase directive names. `Item` retains the surrounding syntax category; directives do not make an otherwise forbidden item legal there. Case layout and excluded-target grammar checking follow the linked sections.

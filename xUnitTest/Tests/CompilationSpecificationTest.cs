@@ -60,11 +60,11 @@ public class CompilationSpecificationTest
     [InlineData("s is ref")]
     [InlineData("T is External.Contracts.Comparable")]
     [InlineData("T is not Comparable")]
-    public void RequirementBindingRemainsPendingWithoutInventingAValue(string requirement)
+    public void TypeDependentConditionsAreRejectedWithoutBinding(string requirement)
     {
         var compilation = Parse($"#if false and ({requirement})\nvar incomplete =");
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        Assert.Single(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
+        Assert.Contains(compilation.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
+        Assert.Empty(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
         Assert.Null(compilation.Kotonoha.GeneratedFunction);
     }
 
