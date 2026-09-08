@@ -30,6 +30,9 @@ public sealed class CodeContext
     /// </summary>
     public Kotonoha Kotonoha { get; }
 
+    /// <summary>Gets the immutable source snapshot, or null for a source-less parsing entry point.</summary>
+    public SourceDocument? SourceDocument { get; }
+
     /// <summary>
     /// Gets the current compilation.
     /// </summary>
@@ -40,12 +43,13 @@ public sealed class CodeContext
     /// </summary>
     public GroupKoto RootKoto => this.Kotonoha.RootKoto;
 
-    internal CodeContext(Kotonoha kotonoha, DiagnosticCollection? customDiagnosticCollection = default)
+    internal CodeContext(Kotonoha kotonoha, DiagnosticCollection? customDiagnosticCollection = default, SourceDocument? sourceDocument = null)
     {
         ArgumentNullException.ThrowIfNull(kotonoha);
 
         this.Kotonoha = kotonoha;
         this.DiagnosticCollection = customDiagnosticCollection ?? kotonoha.DiagnosticCollection;
+        this.SourceDocument = sourceDocument;
     }
 
     /// <summary>
@@ -55,6 +59,7 @@ public sealed class CodeContext
     /// <param name="sourceText">The source text to parse.</param>
     /// <exception cref="ArgumentNullException"><paramref name="parentKoto"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="parentKoto"/> belongs to another Kotonoha.</exception>
+    /// <exception cref="InvalidOperationException">This context already belongs to a source snapshot.</exception>
     public void Parse(DeclarationContainerKoto parentKoto, ReadOnlySpan<char> sourceText)
         => this.Parse(parentKoto, new SourceDocument(this.DiagnosticCollection.Name, sourceText.ToString()));
 
@@ -65,6 +70,7 @@ public sealed class CodeContext
     /// <param name="sourceText">The source text to parse.</param>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="parentKoto"/> belongs to another Kotonoha.</exception>
+    /// <exception cref="InvalidOperationException">This context already belongs to a source snapshot.</exception>
     public void Parse(DeclarationContainerKoto parentKoto, string sourceText)
     {
         ArgumentNullException.ThrowIfNull(sourceText);
@@ -79,10 +85,15 @@ public sealed class CodeContext
     /// <remarks>Documents parsed into the root are retained for Kotonoha serialization.</remarks>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="parentKoto"/> belongs to another Kotonoha.</exception>
+    /// <exception cref="InvalidOperationException">This context already belongs to a source snapshot.</exception>
     public void Parse(DeclarationContainerKoto parentKoto, SourceDocument sourceDocument)
     {
         ArgumentNullException.ThrowIfNull(parentKoto);
         ArgumentNullException.ThrowIfNull(sourceDocument);
+        if (this.SourceDocument is not null)
+        {
+            throw new InvalidOperationException("Use a source-less parsing entry point to create a fresh context for each parse.");
+        }
 
         if (!ReferenceEquals(parentKoto.Kotonoha, this.Kotonoha))
         {
@@ -96,11 +107,13 @@ public sealed class CodeContext
             this.Kotonoha.RecordSource(sourceDocument);
         }
 
+        this.Compilation.BeginSourceParsing();
         var tokenizer = new Tokenizer(this.DiagnosticCollection, sourceDocument);
         try
         {
             tokenizer.ReadAll();
-            var reader = new TokenReader(this, ref tokenizer);
+            var sourceContext = new CodeContext(this.Kotonoha, this.DiagnosticCollection, sourceDocument);
+            var reader = new TokenReader(sourceContext, ref tokenizer);
             parentKoto.Parse(ref reader);
         }
         finally

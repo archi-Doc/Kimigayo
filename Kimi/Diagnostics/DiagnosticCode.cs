@@ -11,6 +11,9 @@ public enum DiagnosticCode
     Template_Kd, // First sentinel
 
     ConditionMustBeBool_Kd,
+    InvalidCompileTimeCondition_Kd,
+    InvalidCompileTimeSetting_Kd,
+    UnsupportedLanguageVersion_Kd,
     CompileTimeCaseOutsideMatch_Kd,
     EmptyCompileTimeMatch_Kd,
     InvalidCompileTimeMatchItem_Kd,

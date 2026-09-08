@@ -16,4 +16,10 @@ public partial record class ProjectFile
 
     /// <summary>Gets or sets the project-wide alias imports.</summary>
     public string[] Alias { get; set; } = [];
+
+    /// <summary>Gets or sets the exact language version, or null to inherit the solution/compiler default.</summary>
+    public string? LangVersion { get; set; }
+
+    /// <summary>Gets or sets explicitly typed compile-time scalar settings.</summary>
+    public Dictionary<string, CompileTimeSetting> CompileTimeSettings { get; set; } = new(StringComparer.Ordinal);
 }

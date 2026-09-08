@@ -435,7 +435,7 @@ public abstract class Koto
     /// <param name="obj">The first optional diagnostic argument.</param>
     /// <param name="obj2">The second optional diagnostic argument.</param>
     public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null)
-        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2);
+        => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument);
 
     /// <summary>Adds an attribute to this node.</summary>
     /// <param name="attributeKoto">The attribute to add.</param>

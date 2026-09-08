@@ -246,6 +246,7 @@ public sealed partial class Kotonoha
 
     private void ParseSource(SourceDocument sourceDocument)
     {
+        this.Compilation.BeginSourceParsing();
         var path = sourceDocument.Path;
         var directory = this.Compilation.Project.Directory;
         if (path.Length > 0 && directory.Length > 0)
@@ -256,7 +257,7 @@ public sealed partial class Kotonoha
         var diagnosticCollection = this.Compilation.Kimigayo.GetOrAddDiagnosticCollection(path);
         diagnosticCollection.ClearDiagnostic();
         var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument);
-        var codeContext = this.CreateCodeContext(diagnosticCollection);
+        var codeContext = new CodeContext(this, diagnosticCollection, sourceDocument);
 
         // Tokenize
         try

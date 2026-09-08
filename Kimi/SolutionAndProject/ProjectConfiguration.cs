@@ -7,7 +7,7 @@ namespace Kimi;
 public partial record class ProjectConfiguration
 {
     /// <summary>Gets or sets the selected Kimigayo language version.</summary>
-    public string LangVersion { get; set; } = "0.0.1";
+    public string LangVersion { get; set; } = Compiler.Compilation.CurrentLanguageVersion;
 
     /// <summary>Gets or sets the solution version.</summary>
     public string Version { get; set; } = "0.0.1";

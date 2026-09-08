@@ -136,15 +136,16 @@ public class ExpressionPrecedenceTest
     public void AppliesPrecedenceInsideCompileTimeConditionsAndInterpolation()
     {
         var (body, diagnostics) = Parse("""
-            #if flags & mask == 0
+            #if enabled or flags == 0 and ready
             let selected = 1
             let message = "clear = \(flags & mask == 0)"
             """);
 
         Assert.Empty(diagnostics);
         var directive = Assert.IsType<CompileTimeIfKoto>(body.Items[0]);
-        var comparison = Assert.IsType<EqualsEqualsKoto>(directive.Condition);
-        Assert.IsType<AmpersandKoto>(comparison.Left);
+        var disjunction = Assert.IsType<OrKoto>(directive.Condition);
+        var conjunction = Assert.IsType<AndKoto>(disjunction.Right);
+        Assert.IsType<EqualsEqualsKoto>(conjunction.Left);
 
         var field = Assert.IsType<FieldKoto>(body.Items[1]);
         var text = Assert.IsType<InterpolatedStringKoto>(field.InitializerKoto);

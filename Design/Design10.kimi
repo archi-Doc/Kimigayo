@@ -13,7 +13,7 @@ let windows = true
 
 func FuncA<s/T>(value: s/T)
     #match
-        #case s is ref and T is Comparable
+        #case (s is ref) and (T is Comparable)
             ProcessComparableReference(value)
 
         #case s is ref

@@ -1211,6 +1211,13 @@ Exit:
         var sharp = reader.Read();
         _ = reader.TryConsume(TokenKind.If, out _, true);
         var condition = ParseRequiredCompileTimeCondition(ref reader);
+        var invalidHeader = reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock);
+        if (invalidHeader)
+        {
+            reader.AddDiagnostic(DiagnosticCode.UnexpectedTrailingToken_Kd);
+            SkipCompileTimeHeaderRemainder(ref reader);
+        }
+
         if (attributes is not null)
         {
             reader.PushAttribute(attributes);
@@ -1219,6 +1226,11 @@ Exit:
         var span = SourceSpan.FromBounds(sharp.Span.Start, Math.Max(sharp.Span.End, condition.Span.End));
 
         var result = EvaluateCompileTimeCondition(ref reader, condition);
+        if (invalidHeader)
+        {
+            result = CompileTimeConditionResult.Error;
+        }
+
         switch (result)
         {
             case CompileTimeConditionResult.True:
@@ -1230,7 +1242,7 @@ Exit:
                 reader.ClearCompileTimeIfPrefixes();
                 break;
 
-            case CompileTimeConditionResult.Deferred:
+            case CompileTimeConditionResult.Pending:
                 if (!reader.IsExcluded)
                 {
                     reader.AddCompileTimeIfPrefix(new CompileTimeIfPrefix(span, condition));
@@ -1399,7 +1411,7 @@ Exit:
                 case CompileTimeConditionResult.True when !selectionBlocked:
                     selectedIndex = i;
                     break;
-                case CompileTimeConditionResult.Deferred:
+                case CompileTimeConditionResult.Pending:
                 case CompileTimeConditionResult.Error:
                     selectionBlocked = true;
                     break;

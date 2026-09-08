@@ -10,6 +10,15 @@
   + Name="ConditionMustBeBool_Kd"
     Message="The condition expression must be of type Bool"
 
+  + Name="InvalidCompileTimeCondition_Kd"
+    Message="This expression is outside the compile-time Condition grammar (integer literals must fit i64)"
+
+  + Name="InvalidCompileTimeSetting_Kd"
+    Message="Invalid compile-time setting '{0}': use a non-reserved Name and exactly one Bool, Integer, or String value"
+
+  + Name="UnsupportedLanguageVersion_Kd"
+    Message="Unsupported language version '{0}'; this compiler supports '{1}'"
+
   + Name="ChainedComparison_Kd"
     Message="Comparison operators cannot be chained without parentheses"
     Label="This comparison requires explicit grouping"

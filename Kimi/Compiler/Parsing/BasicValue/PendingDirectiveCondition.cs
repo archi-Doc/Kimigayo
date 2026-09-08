@@ -12,5 +12,5 @@ namespace Kimi.Compiler.Parsing;
 public sealed record PendingDirectiveCondition(Koto Condition, Koto Scope)
 {
     /// <summary>Gets the source document captured before the diagnostic collection can be reused for another source.</summary>
-    public SourceDocument? SourceDocument { get; } = Condition.DiagnosticCollection?.SourceDocument;
+    public SourceDocument? SourceDocument { get; } = Condition.CodeContext.SourceDocument ?? Condition.DiagnosticCollection?.SourceDocument;
 }

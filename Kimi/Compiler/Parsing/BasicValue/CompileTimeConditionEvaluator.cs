@@ -4,13 +4,13 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
-/// <summary>Describes the result of an early compile-time condition evaluation.</summary>
+/// <summary>Describes an early evaluation attempt; Pending does not assert a validated language dependency.</summary>
 internal enum CompileTimeConditionResult : byte
 {
     Error,
     False,
     True,
-    Deferred,
+    Pending,
 }
 
 /// <summary>Evaluates the condition subset available before ordinary binding.</summary>
@@ -20,12 +20,17 @@ internal static class CompileTimeConditionEvaluator
     {
         Error,
         Known,
-        Deferred,
+        Pending,
     }
 
     public static CompileTimeConditionResult Evaluate(Compilation compilation, Koto condition, out bool requiresBinding)
     {
         requiresBinding = false;
+        if (!ValidateExpression(condition))
+        {
+            return CompileTimeConditionResult.Error;
+        }
+
         var result = EvaluateBoolean(compilation, condition, ref requiresBinding);
         if (result == CompileTimeConditionResult.Error)
         {
@@ -33,6 +38,65 @@ internal static class CompileTimeConditionEvaluator
         }
 
         return result;
+    }
+
+    private static bool ValidateExpression(Koto node)
+    {
+        if (node.AttributeChain is not null)
+        {
+            return Invalid(node);
+        }
+
+        switch (node)
+        {
+            case BoolLiteralKoto or StringLiteralKoto or IdentifierNameKoto:
+                return true;
+            case NumberLiteralKoto or PrefixPlusKoto or PrefixMinusKoto:
+                return TryGetInteger(node, out _) || Invalid(node);
+            case ParenthesizedKoto parenthesized:
+                return ValidateExpression(parenthesized.Operand);
+            case NotKoto not:
+                return ValidateExpression(not.Operand);
+            case AndKoto or OrKoto or EqualsEqualsKoto or ExclamationEqualsKoto:
+                var binary = (BinaryKoto)node;
+                return ValidateExpression(binary.Left) & ValidateExpression(binary.Right);
+            case IsKoto requirement:
+                var right = requirement.Right is NotKoto negation ? negation.Operand : requirement.Right;
+                return (requirement.Left is IdentifierNameKoto { AttributeChain: null } &&
+                    requirement.Right.AttributeChain is null && IsRequirementName(right)) || Invalid(node);
+            default:
+                return Invalid(node);
+        }
+
+        static bool Invalid(Koto invalid)
+        {
+            invalid.AddDiagnostic(DiagnosticCode.InvalidCompileTimeCondition_Kd);
+            return false;
+        }
+    }
+
+    private static bool IsRequirementName(Koto node)
+        => node.AttributeChain is null && node switch
+        {
+            IdentifierNameKoto => true,
+            TypeSemanticsKoto type => type.Type is null && type.OriginExpression is null && type.OriginArguments is null,
+            MemberAccessKoto member => IsRequirementName(member.Left) && member.Right is IdentifierNameKoto { AttributeChain: null },
+            _ => false,
+        };
+
+    private static bool TryGetInteger(Koto node, out BasicValue value)
+    {
+        var negative = node is PrefixMinusKoto;
+        var operand = node is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)node).Operand : node;
+        if (operand is NumberLiteralKoto { AttributeChain: null } literal && literal.TryGetIntegerMagnitude(out var magnitude) &&
+            magnitude <= (UInt128)long.MaxValue + (negative ? 1U : 0U))
+        {
+            value = new(negative ? (long)-(Int128)magnitude : (long)magnitude);
+            return true;
+        }
+
+        value = default;
+        return false;
     }
 
     private static CompileTimeConditionResult EvaluateBoolean(Compilation compilation, Koto koto, ref bool requiresBinding)
@@ -67,8 +131,8 @@ internal static class CompileTimeConditionEvaluator
                 return CompileTimeConditionResult.False;
             }
 
-            return left == CompileTimeConditionResult.Deferred || right == CompileTimeConditionResult.Deferred
-                ? CompileTimeConditionResult.Deferred
+            return left == CompileTimeConditionResult.Pending || right == CompileTimeConditionResult.Pending
+                ? CompileTimeConditionResult.Pending
                 : CompileTimeConditionResult.True;
         }
 
@@ -86,15 +150,15 @@ internal static class CompileTimeConditionEvaluator
                 return CompileTimeConditionResult.True;
             }
 
-            return left == CompileTimeConditionResult.Deferred || right == CompileTimeConditionResult.Deferred
-                ? CompileTimeConditionResult.Deferred
+            return left == CompileTimeConditionResult.Pending || right == CompileTimeConditionResult.Pending
+                ? CompileTimeConditionResult.Pending
                 : CompileTimeConditionResult.False;
         }
 
         var valueResult = EvaluateValue(compilation, koto, out var value, ref requiresBinding);
-        if (valueResult == ValueResult.Deferred)
+        if (valueResult == ValueResult.Pending)
         {
-            return CompileTimeConditionResult.Deferred;
+            return CompileTimeConditionResult.Pending;
         }
 
         if (valueResult == ValueResult.Error || value.Kind != BasicValueKind.Bool)
@@ -113,7 +177,7 @@ internal static class CompileTimeConditionEvaluator
                 value = new(boolean.Value);
                 return ValueResult.Known;
 
-            case NumberLiteralKoto number when number.TryGetBasicValue(out value):
+            case NumberLiteralKoto or PrefixPlusKoto or PrefixMinusKoto when TryGetInteger(koto, out value):
                 return ValueResult.Known;
 
             case StringLiteralKoto text:
@@ -128,7 +192,7 @@ internal static class CompileTimeConditionEvaluator
 
                 value = default;
                 requiresBinding = true;
-                return ValueResult.Deferred;
+                return ValueResult.Pending;
 
             case ParenthesizedKoto parenthesized:
                 return EvaluateValue(compilation, parenthesized.Operand, out value, ref requiresBinding);
@@ -150,14 +214,18 @@ internal static class CompileTimeConditionEvaluator
                 return booleanResult switch
                 {
                     CompileTimeConditionResult.True or CompileTimeConditionResult.False => ValueResult.Known,
-                    CompileTimeConditionResult.Deferred => ValueResult.Deferred,
+                    CompileTimeConditionResult.Pending => ValueResult.Pending,
                     _ => ValueResult.Error,
                 };
 
-            default:
+            case IsKoto:
                 value = default;
                 requiresBinding = true;
-                return ValueResult.Deferred;
+                return ValueResult.Pending;
+
+            default:
+                value = default;
+                return ValueResult.Error;
         }
     }
 
@@ -176,10 +244,10 @@ internal static class CompileTimeConditionEvaluator
             return ValueResult.Error;
         }
 
-        if (leftResult == ValueResult.Deferred || rightResult == ValueResult.Deferred)
+        if (leftResult == ValueResult.Pending || rightResult == ValueResult.Pending)
         {
             value = default;
-            return ValueResult.Deferred;
+            return ValueResult.Pending;
         }
 
         if (left.Kind != right.Kind)
