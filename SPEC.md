@@ -172,6 +172,8 @@ Contextual keywords may be used as Names in contexts that accept contextual iden
 
 `public`, `internal`, `private`, `protected`, and `open` are reserved modifier keywords. The compound access specifications `protected internal` and `private protected` each consist of two keywords; their placement follows [accessibility](#512-accessibility-and-reachability).
 
+`init`, `deinit`, and `base` are reserved for [construction](#433-constructors) and destruction. They do not introduce ordinary callable Names or an implicit base receiver.
+
 For example, `Dog`, `_value`, `point2`, `日本語`, and `ǅelta` are valid Names, while `2point`, `has-value`, and the empty string are not.
 
 ### 2.6. Number literals
@@ -576,7 +578,7 @@ node = makeNode()
 
 Never has no values and needs no classification. Other Types require their own rules; sharing elements alone does not establish Copy.
 
-`Copy` is a compiler-checked built-in capability. `Self is Copy` opts a struct into compiler derivation exactly when every stored field's complete Type is Copy and the struct has no user-defined `deinit`. These conditions suffice: no additional active-Loan requirement belongs to Type classification. Computed Properties contribute no fields, all-Copy fields do not imply opt-in, and users cannot supply a Copy body.
+`Copy` is a compiler-checked built-in capability. `Self is Copy` opts a struct into compiler derivation exactly when every directly declared stored field's complete Type is Copy, its direct base Type (if any) is Copy, and the struct has no user-defined `deinit`. The base is an inline owned component for this check, so the test recursively covers inherited storage and destruction. Each derived declaration must opt in independently; a base's opt-in is not inherited. These conditions suffice, including for an `open struct`: no additional active-Loan requirement belongs to Type classification. Computed Properties contribute no fields, all-Copy fields do not imply opt-in, and users cannot supply a Copy body. An owned Copy always copies the complete value of its exact Core Type, never a sliced base part.
 
 ```kimi
 struct Point
@@ -829,6 +831,7 @@ A Signature determines whether declarations may coexist in one scope:
 | --- | --- |
 | Type declaration | Name and generic parameter count |
 | Function | Name, generic parameter count, ordered normalized parameter Types including the receiver |
+| Constructor | Declaring structure and ordered normalized parameter Types; no ordinary Name or receiver parameter |
 | Property | Name |
 
 Normalize Core Types by resolved Symbol, including their Kotonoha/version, and include Type Semantics exactly once. Normalize equivalent spellings (`T` and `owner/T`) and represent generic parameters by position and kind, not name. `ref/T` and `uniq/T`, including receivers, remain distinct. Applied Semantics distinguish use-site Types, not Type declarations or Container identities.
@@ -855,7 +858,7 @@ A **Declaration Container** is a named declaration scope whose body may contain 
 | Declaration Container kind | Instantiable | Main characteristics |
 | --------------- | ------------ | -------------------- |
 | `group` | No | Accepts Properties, functions, and nested Declaration Container declarations. All members are static. Generic parameters and Origins are not supported. |
-| `struct` | Yes | Accepts Properties and functions in declaration order. Generic parameters, Origins, and a Type Contract are supported. Sealed by default; `open struct` permits derivation. |
+| `struct` | Yes | Accepts Properties, functions, constructors, and at most one selected `deinit`. Generic parameters, Origins, and a Type Contract are supported. Sealed by default; `open struct` permits derivation. |
 | `enum` | Yes | Enum declaration container. |
 | `extension` | No | Its Name identifies the target. |
 | `contract` | No | Specifies associated-type Contract Clauses and Property requirements. The Parser preserves required accessors without generating implementations or storage. |
@@ -882,6 +885,8 @@ Matching fragments must agree on generic parameter count/kinds/order/names, Orig
 For structures, `open` must agree across all fragments. At most one fragment supplies the base clause; the other fragments share that base without repeating it. Resolve the base in that fragment's source environment, then validate the complete merged inheritance relationship.
 
 After compile-time selection and merging, reject duplicate Properties, duplicate function Signatures, and namespace conflicts. All selected fragments may contribute Stored Properties, including generated ones, under [split-structure storage order](#431-split-structures-and-storage-order). Do not require a primary fragment. Enum/contract fragment contents and extension identity need further rules.
+
+Constructor Signatures must also be unique across the selected fragments. At most one selected `deinit` body may belong to a merged structure, including generated fragments. Do not concatenate destruction bodies or choose one by source order; duplicates are declaration errors. Mutually excluded bodies may coexist in source only when selection leaves at most one in each concrete specialization.
 
 ```kimi
 // A.kimi
@@ -914,7 +919,7 @@ struct View
     var source: ref/Data
 ```
 
-**Design boundary:** Explicit/generated construction syntax and allowed access remain separately specified; [initialization](#86-initialization) and [construction completeness](#912-aggregate-construction-and-completeness) still constrain them.
+Explicit and implicit constructors follow [construction](#433-constructors); all construction obeys [initialization](#86-initialization) and [construction completeness](#912-aggregate-construction-and-completeness).
 
 #### 4.3.1. Split structures and storage order
 
@@ -954,7 +959,41 @@ Inheritance uses the C# class model for the single-base relationship and access 
 
 An override must target an accessible overridable member and preserve its declared accessibility. The cross-Kotonoha exception is a `protected internal` base member: its override in another Kotonoha declares `protected`. The same rule applies to overridden accessors, each of which must be accessible to the overriding code. A private member cannot be overridden, and an internal or private-protected member cannot be overridden from another Kotonoha. These rules do not allow an override to expose an otherwise inaccessible API Type.
 
-**Design boundary:** The open modifier, base clause, single-base restrictions, and access rules above are specified. Virtual/abstract/override declaration syntax, inherited member hiding and overload-group construction, explicit base-member/constructor invocation, and runtime dispatch remain separately specified. Base-subobject layout, construction/destruction order, Copy derivation over inherited storage, and ownership-preserving derived/base conversions also require dedicated rules. C# compatibility for inheritance access does not implicitly import CLR representation, boxing, garbage collection, or value slicing, or add conversions to the existing adaptation tables.
+The direct base is one inline owned subobject, logically preceding the structure's directly declared fields. Base subobjects retain their own field identities and construction-completion facts. Physical offsets remain compiler-selected under [layout rules](#146-structure-layout-and-abi); logical ordering does not require flattening or a fixed ABI. Construction runs base first under [constructors](#433-constructors), and destruction runs the derived layer first under [field cleanup](#1032-field-cleanup). The base subobject cannot independently be Moved, replaced, or reconstructed through a base view of a derived value. Whole-value operations retain the exact owning Type and the responsibility for all layers; they cannot slice a derived value. Access to an inherited field still obeys normal permissions and checks all its containing base and derived ancestors for Partial Move restrictions.
+
+**Design boundary:** Virtual/abstract/override declaration syntax, inherited member hiding and overload-group construction, explicit ordinary base-member invocation, runtime dispatch, and additional derived/base conversions remain separately specified. Construction/destruction order, base-constructor invocation, and Copy derivation over inherited storage are specified here and in their owning sections. C# compatibility for inheritance access does not implicitly import CLR representation, boxing, garbage collection, or value slicing, or add conversions to the existing adaptation tables.
+
+#### 4.3.3. Constructors
+
+A constructor is a dedicated structure declaration: an optional access specification, `init`, a parameter list, an optional `: base(arguments)` clause, and a nonempty indented executable Block. It has no ordinary Name, explicit receiver, separate generic or Origin parameters, result annotation, expression body, or virtual/override modifier. It uses the containing structure's Type parameters, Origins, and Type Contract. Parameter labels, defaults, and Type checking follow ordinary function parameters. Access defaults to `private`; constructor parameters obey API signature accessibility. Only a structure's own fragments may declare its constructors; groups, enums, contracts, extensions, and executable Blocks may not.
+
+```kimi
+public open struct Named
+    public let name: string
+    protected init(name: string)
+        self.name = name
+
+public struct Entry : Named
+    public let number: i32
+    public init(name: string, number: i32) : base(name)
+        self.number = number
+
+let entry = Entry.init("item", 1)
+```
+
+`Type.init(arguments)` constructs a fresh owned value of exactly `Type`. The reserved `.init` suffix selects Type lookup, never Value lookup: resolve the structure and all its type arguments first, then consider only its own accessible constructors using ordinary argument mapping and overload comparison. Constructor results are fixed to that owned Type; expected results cannot select another Type or an alternative lookup path. All generic type arguments must be supplied unless the qualifier already denotes a fully bound Type, such as `Self` in a generic structure. Bare type-parameter construction is not defined. Constructors are not inherited, and extensions cannot contribute candidates. Unknown or inaccessible constructors are errors; there is no field-wise, zero-fill, or function-call fallback. `Type.init` without invocation is not a function value; `value.init(...)` cannot reinitialize existing storage. This syntax does not introduce object allocation or conversions to `obj`, `rc`, or `arc`.
+
+After explicit arguments and omitted defaults have been evaluated in the ordinary call order, create fresh construction storage with all components Uninitialized and bind the constructor's parameters. For a derived structure, evaluate the base arguments in that constructor's parameter/source context, then invoke the selected direct-base constructor in the base subobject. If the base initializer is omitted, select an accessible zero-argument base invocation by the same rules, including optional parameters. A `: base(...)` initializer on a structure with no direct base is an error. Exactly one base invocation occurs; constructor delegation within the same Type and explicit repeated base initialization are not defined. The base call is a dedicated construction operation, so protected constructors may be used by a derived constructor without an ordinary instance receiver.
+
+Complete base construction before evaluating this layer's Property declaration initializers, in logical declaration order, and then execute its constructor body. Declaration initializers keep their own declaration-site environments: they cannot reference constructor parameters or `self`. Base arguments cannot use `self` either. No constructor silently initializes a field with zero, null, or an element Type's default constructor. Origins required by stored arguments and the completed base must be represented by the constructed Type's declared Origin contract and inferred under ordinary lifetime constraints; hidden or invented Origins cannot make a construction valid.
+
+Within the constructor body, `self` is a special Construction receiver. Direct `self.field` access to a Stored Property declared by that structure denotes its storage for initialization and field operations, without invoking a user getter or setter. The first write initializes a `let` or `var`; later writes obey their ordinary first-initialization and Replacement rules. Reading an Initialized field uses its complete Type's standard Copy/shared-borrow rule, including normal Loan checks. Construction does not authorize `@move` from a field or a hidden Move on read. Computed Properties, inherited fields, whole-self acquisition or borrowing, instance-method/accessor calls on `self`, and capturing or exposing `self` are forbidden during construction. The base constructor is responsible for its own fields. Temporary borrows of this construction's fields must end before completion; they cannot escape in the constructed value. Borrowed constructor inputs may be stored only when the result's Origin contract permits them. These privileges do not extend to nested functions, ordinary methods, or Property declaration initializers.
+
+The body establishes a Function Boundary with a Unit control-flow result: falling through, `return`, or `return` with a Unit-typed expression requests successful completion, not a failure result. After evaluating any return operand, every such reachable exit must have every own Stored Field Initialized and complete, and the base completed. Then run the body's normal Scope Exit, including remaining parameters and Deferred Blocks, while keeping construction storage alive. Recheck completeness and lifetime validity after cleanup, and only then commit this layer's construction completion. A `defer` may not supply initialization missing at the requested exit. Passing a completion check is not permission to return a borrow of a destroyed parameter. A base completion continues construction of the next layer; only the outermost completion produces the owned result. A Move into the caller's destination does not rerun any constructor.
+
+Constructors have no recoverable-failure return or exception mechanism. Use an ordinary factory returning an Option/Result to perform fallible acquisition and validation before calling `Type.init`; its locals have ordinary cleanup on failure. Panic during any construction phase terminates without unwinding. The partial-initialization cleanup rules also govern interrupted aggregate-expression construction and any ordinary Scope Exit that abandons construction storage; they do not add a new failure syntax or turn an incomplete `return` into success.
+
+After merging, a structure with no selected explicit constructor receives one implicit zero-parameter constructor exactly when every directly declared Stored Property has a declaration initializer and its base, if present, has an accessible zero-argument invocation. It is declared `public`, so its effective access is exactly that of its containing Type, and has an implicit Unit body and the same initialization/completion rules. Empty structures satisfy the field condition. Otherwise there is no implicit constructor; this alone does not make a Type declaration invalid. A selected explicit or source-generated constructor suppresses implicit synthesis even if private. No memberwise constructor is synthesized. Synthesis depends on structural declarations, not whether initializer code happens to type-check; errors in a synthesized constructor are diagnosed normally. Generic dependencies retain validation obligations until specialization.
 
 ### 4.4. Type contracts
 
@@ -1251,7 +1290,7 @@ Access(D) is a subset of Access(T)
 
 Check the effective domains, not merely the written access modifiers. This rule applies to private, internal, and protected declarations as well as public declarations. A direct base Type must satisfy the same condition with the derived Type as `D`. Apply the rule after declaration merging and Type normalization; an invalid exposed signature is a declaration error even if never used. An inferred Type is checked once established and cannot evade this rule.
 
-API components include function parameter and result Types (including receivers), Property Types, accessor parameter and result Types, and Types or Contracts named by generic constraints and exposed associated-type requirements. Use the Property's domain for its declared Property Type, and each accessor's domain for its additional signature components. A restricted setter does not narrow the Property's domain. Type Contracts require this check even when textually written inside a function body. Validate exposed Origin contracts under their own scope and lifetime rules as well.
+API components include function parameter and result Types (including receivers), constructor parameter Types and the constructed result Type, Property Types, accessor parameter and result Types, and Types or Contracts named by generic constraints and exposed associated-type requirements. Use the Property's domain for its declared Property Type, and each accessor's domain for its additional signature components. A restricted setter does not narrow the Property's domain. Type Contracts require this check even when textually written inside a function body. Validate exposed Origin contracts under their own scope and lifetime rules as well.
 
 Inspect compound Types recursively. A constructed generic Type has the intersection of the generic declaration's domain and all its concrete type arguments' domains. Tuples, function Types, arrays, and other compound Types likewise require every constituent Type to be accessible. Type Semantics such as `ref`, `obj`, and `unsafe` do not conceal an inaccessible Core Type. Expand Type aliases for this check. For an associated-type projection, check its qualifier and defining requirement, and any exposed concrete binding established by the associated-type rules; an unresolved projection retains an obligation rather than silently becoming public. Do not recursively inspect a Type's private fields or implementation bodies merely because that Type appears in an API.
 
@@ -1539,7 +1578,7 @@ The following boundaries remain separately specified. Implementations must not i
 
 - Detailed Core Type/Semantics parameter-to-argument correspondence.
 - Additional implicit argument/receiver adaptations beyond the defined applicability table; exact contextual-binding boundaries for additional accessor/function forms. The explicit Borrow table does not add implicit overload preferences.
-- Operator/constructor/indexer candidate collection and explicit selection syntax; combining optional `?` with external/internal parameter-name syntax.
+- Operator/indexer candidate collection and explicit selection syntax; combining optional `?` with external/internal parameter-name syntax. Constructor collection is defined under [constructors](#433-constructors).
 
 # Part II. Language constructs and semantics
 
@@ -1688,7 +1727,7 @@ If key evaluation, duplicate checking, or value evaluation does not complete nor
 
 #### 6.4.1. Member access
 
-`expression.name` selects a member. [Qualified lookup](#514-qualification-and-extensions) distinguishes Container and value paths, reports ambiguity when both succeed, and never implicitly inserts `self`. The right side of `.` must be a member Name or an in-range decimal integer literal selecting a Tuple element; `pair.0` selects its first element. Dynamic member lookup with an arbitrary expression is not defined.
+`expression.name` selects a member. [Qualified lookup](#514-qualification-and-extensions) distinguishes Container and value paths, reports ambiguity when both succeed, and never implicitly inserts `self`. The right side of an ordinary member-access `.` must be a member Name or an in-range decimal integer literal selecting a Tuple element; `pair.0` selects its first element. The reserved `.init(...)` suffix instead forms a [construction expression](#433-constructors) with a Type qualifier. Dynamic member lookup with an arbitrary expression is not defined.
 
 Ordinary Property reads use the getter; writes require the setter; `property@move` follows [Property Consume](#89-property-consume). Check the selected operation's permissions and receiver conditions. Type/Semantics `@` on a Property adapts its getter result, not backing storage. Tuple and fixed-array places follow [Move Paths](#913-move-paths-and-partial-move). Raw pointers do not dereference automatically: write `(*pointer).name` in an Unsafe Block; this does not grant safe struct-Property Consume.
 
@@ -1706,7 +1745,7 @@ Argument mapping, Type adaptation, expected-result filtering, candidate comparis
 
 In an expression, `<` introducing type arguments must be adjacent to the target name and have a matching `>`. Thus `f<T>(x)` applies type arguments while `a < b` compares values. Nested type arguments may split `>>` into two closing delimiters. Use spaces around comparison operators to avoid ambiguity.
 
-Type-argument inference and specialization follow the declared inference boundaries. Constant type-argument and user-defined construction conventions need additional rules. This syntax does not automatically make every `T(args)` a valid construction.
+Type-argument inference and specialization follow the declared inference boundaries. Constant type-argument conventions need additional rules. Structure construction uses the dedicated [Type.init invocation](#433-constructors), with ordinary call argument evaluation and its own Type-only qualifier lookup. `T(args)` is not a constructor shorthand.
 
 #### 6.4.3. Function expressions
 
@@ -2080,6 +2119,8 @@ Panic and cleanup during or after `@` evaluation follow Error Handling and Value
 
 For a custom Property setter, pass the secured result to that setter instead of directly performing steps 3–4; its internal direct assignments follow these rules. Standard setters apply them to the field and can [restore incomplete instances](#810-access-after-partial-move). Initial Property construction uses its dedicated rules.
 
+Replacement operates on existing storage; it neither invokes a constructor for the incoming value nor reruns declaration initializers. Destroy an old complete value by its exact owning Type's full derived-to-base cleanup chain. For an old incomplete value, destroy only components with remaining responsibility under [partial cleanup](#1032-field-cleanup). A base view of a derived value is not a whole-value replacement target. Destination permission, all ancestor restrictions, and actual Loan validity are checked before permitting the operation. If old-value destruction does not complete normally, no new value is installed; do not restore the old state or continue with an empty observable destination.
+
 The destination Type is known statically; type checking does not evaluate the left side early. RHS-first evaluation lets the destination supply its own old value. It deliberately differs from compound assignment and ordinary receiver calls:
 
 ```kimi
@@ -2424,11 +2465,12 @@ Each of these bodies establishes an independent **Function Boundary**:
 - Named functions, including methods and nested functions.
 - Anonymous functions. Capturing closures remain deferred under [function expressions](#643-function-expressions).
 - Property getters and setters.
+- Constructor bodies (`init`); their completion additionally follows [construction checks](#433-constructors).
 - Destructors (`deinit`).
 
 In these control-flow rules, "function" includes all of these bodies. A `return` ends only its own function. Other transfers cannot target an outer function's Labels, Iteration Constructs, or selections.
 
-Getters return their [Getter Result Type](#82-default-getter-results); setters and `deinit` return Unit. All follow [function body and result rules](#461-function-bodies-and-results). Normal `deinit` completion, including `return`, still performs automatic field destruction required by the Type.
+Getters return their [Getter Result Type](#82-default-getter-results); setters, `init` bodies, and `deinit` return Unit. All follow [function body and result rules](#461-function-bodies-and-results). An `init` body's Unit result is distinct from the owned value produced by the enclosing construction operation. Normal `deinit` completion, including `return`, still performs automatic field destruction required by the Type.
 
 ```kimi
 func outer() -> i32
@@ -3005,9 +3047,9 @@ Here the initial stored value is `-1`; a later assignment of `-10` invokes the s
 
 For a structure, evaluate declaration initializers once in [logical declaration order](#431-split-structures-and-storage-order), preserving their observable side effects regardless of physical layout or parallel compilation. A Property becomes initialized only after its initializer completes normally and its result has been secured in that Property's storage. This does not implicitly initialize Properties that have no declaration initializer.
 
-An instance Property declaration initializer must not access the partially constructed `self`, including by reading, borrowing, or writing another Property of that instance, invoking a member on `self`, or passing or otherwise exposing `self` to another operation. This restriction also applies to earlier Properties of that instance that have already been initialized. Cross-Property dependencies must be expressed in explicit construction or generated initialization code governed by definite-initialization rules; constructor syntax, that code's permitted accesses, and verification of complete initialization are specified separately. Ordinary independent calls and accesses to other fully initialized values remain allowed under normal Type and lifetime rules and run in logical order.
+An instance Property declaration initializer must not access the partially constructed `self`, including by reading, borrowing, or writing another Property of that instance, invoking a member on `self`, or passing or otherwise exposing `self` to another operation. This restriction also applies to earlier Properties of that instance that have already been initialized. Cross-Property dependencies must be expressed in an explicit or source-generated [constructor body](#433-constructors), subject to its restricted direct field access and definite-initialization rules. Ordinary independent calls and accesses to other fully initialized values remain allowed under normal Type and lifetime rules and run in logical order. A declaration initializer is not textually inserted into a constructor: it cannot use constructor parameters or transfer control out of that constructor. Any transfer within its expression must target a construct contained in that expression.
 
-Construction completion and current completeness follow [Value Lifetime](#912-aggregate-construction-and-completeness); absent explicit completion syntax, a constructor commits completion on normal body completion. A recoverable failure under normal Scope Exit destroys only initialized fields still owned by construction in reverse logical declaration order, never the unfinished aggregate's own `deinit`. For declaration initializers this is also reverse initialization order because they execute in logical order. Cleanup does not undo effects; [Panic Termination](#113-panic-termination) does not unwind. See [field cleanup](#1032-field-cleanup). This introduces no exception or failure-constructor syntax.
+Construction completion and current completeness follow [Value Lifetime](#912-aggregate-construction-and-completeness); a constructor commits only after its successful body exit and cleanup satisfy the completion checks. Normal Scope Exit abandoning unfinished storage destroys only initialized components still owned by construction, in reverse logical component order, never the unfinished layer's own `deinit`. A completed base is cleaned up after that layer's remaining fields, including the base's own `deinit` when present. For declaration initializers this is also reverse initialization order because they execute in logical order. Cleanup does not undo effects; [Panic Termination](#113-panic-termination) does not unwind. See [field cleanup](#1032-field-cleanup). This introduces no exception or failure-constructor syntax.
 
 For example, this declaration is invalid because its explicit getter does not refer to `storage`, so its effective representation is computed:
 
@@ -3198,13 +3240,15 @@ resource = makeResource() // Error: let cannot be initialized again.
 
 #### 9.1.2. Aggregate construction and completeness
 
-Track two facts independently: **construction completion**, recording successful completion of initialization, and **current completeness**, requiring every stored field to be Initialized. A **complete value** satisfies both. This revision has no optional-to-initialize stored fields.
+Track two facts independently: **construction completion**, recording successful completion of initialization, and **current completeness**, requiring every stored component to be Initialized and complete. A **complete value** satisfies both. For a derived structure, components are its base subobject and its own Stored Fields; track completion separately at each base/derived layer. This revision has no optional-to-initialize stored fields. Computed Properties are not components and require no storage initialization.
 
-Constructors and staged initialization verify all fields and success conditions, commit completion, then expose or transfer the complete value. Secure a successful constructor result before normal Scope Exit. Without explicit completion-point syntax, normal constructor-body completion is the completion point; a failure exit or Panic does not commit it. Merely assigning all fields does not bypass remaining constructor work.
+Constructors verify all fields and success conditions at a requested successful exit, complete body Scope Exit while retaining construction storage, and then commit completion before exposing or transferring the complete value. These are the [constructor phases](#433-constructors); there is no user operation that commits early or resets a completed layer. An abrupt incomplete exit or Panic does not commit it. Merely assigning all fields does not bypass remaining constructor work or cleanup. A complete field or base may own a valid value while its containing layer is still under construction; failure to complete the containing layer does not erase that component's completion fact or destruction responsibility.
 
 Before completeness, whole-value reads, Copy, borrowing, Move, and exposure are forbidden, including ordinary accessors taking the whole `self`. Direct operations on initialized fields follow their own access rules. After a completed construction followed by Partial Move, field-scoped [standard Property operations](#810-access-after-partial-move) are allowed; this does not authorize initial-construction access.
 
 Partial Move changes current completeness, not the construction-completion fact. Permitted reinitialization of all missing fields restores completeness without rerunning a constructor. If a field cannot be reinitialized, that value remains incomplete and cannot be used/transferred as a whole; its remaining Initialized parts can still be used and cleaned up. No separate permanent-incomplete state is defined. Whole-value Move transfers its construction information; whole replacement uses the new value's information.
+
+Tuple and array construction places elements in increasing element-index order. Each element acquires its own initialization and responsibility only when placement completes normally; a partly built element is tracked recursively. The aggregate commits completion after all elements are placed. If an element expression leaves the construction by ordinary control transfer, first secure that transfer's result, then clean the abandoned construction's remaining elements in decreasing index order. Previously moved arguments and completed side effects are not rolled back. Raw uninitialized memory is not an alternate safe construction syntax.
 
 #### 9.1.3. Move paths and partial move
 
@@ -3910,6 +3954,10 @@ Forced process termination and undefined behavior provide no cleanup guarantee. 
 
 ### 10.3. Aggregate destruction and deinit
 
+`deinit` may be declared only directly in a structure body, including a fragment produced by a Source Generator. It is invalid in a group, enum, contract, extension, constructor, function, accessor, or another `deinit`. After conditional selection and merging, each concrete structure has at most one such declaration. A body is required and follows the nonempty executable-Block rule; `deinit` followed by an indented `()` is an explicit no-op body. A no-op body still counts as user-defined `deinit` for Copy and Partial Move restrictions.
+
+The complete declaration is `deinit` followed by that Block. Parameters, generic/Origin parameter lists, result annotations, expression bodies, and access, unsafe, open, virtual, or override modifiers are invalid. Use an Unsafe Block for an unsafe operation inside the body. A structure without `deinit` still receives automatic component cleanup. The declaration is not inherited or overridden: a derived Type may declare its own body, and destruction machinery separately processes every base layer. There is no requirement that a caller have private access to the Type's body in order to destroy a value it legally owns, and no source-level access modifier can suppress mandatory cleanup.
+
 #### 10.3.1. Special receiver
 
 `deinit` is a dedicated destruction declaration with no parameters or explicit result Type. Only Destruction machinery invokes it. Explicit calls, indirect calls, and obtaining its function value are compile-time errors; user-callable finishing work requires a separate API.
@@ -3917,6 +3965,8 @@ Forced process termination and undefined behavior provide no cleanup guarantee. 
 Its `self` has exclusive access equivalent to `uniq/Self` for access/Loan checks, but is a special Destruction receiver, not an ordinary borrow value or a second owner. It cannot be Copied or Moved.
 
 The whole receiver cannot be an assignment, Exchange, or Swap target, or be passed as ordinary `uniq/Self`. This includes methods and setters taking the whole receiver exclusively. Whole-self shared borrowing and direct operations/borrows on initialized fields remain subject to ordinary permissions and Partial Move restrictions. No method or borrow may bypass these rules.
+
+The receiver cannot be converted to a new owning value or reference-counted handle, stored for later use, or otherwise escape Destruction. Shared borrows passed to ordinary helper functions must expire before the relevant storage is destroyed. During destruction of a layer `D`, `Self` denotes `D`; derived layers already cleaned up are unavailable. Calls to virtual members on the under-destruction `self` are forbidden, including through a borrowed view passed to a helper; devirtualization cannot waive this language restriction. This prevents a base destructor from reentering a destroyed derived layer; it does not prohibit ordinary calls on independently live field values. Static knowledge of ownership and call effects must establish these conditions; if an unknown callee could expose that receiver or virtually dispatch on it, reject the call. Runtime reference counts or an unchecked assertion cannot supply the missing proof.
 
 ```text
 During deinit (conceptual storage operations):
@@ -3928,7 +3978,7 @@ During deinit (conceptual storage operations):
 
 #### 10.3.2. Field cleanup
 
-Destroy a complete aggregate by running its user-defined `deinit`, if present, then, after its body and Scope Exit finish normally, destroying stored fields in reverse declaration order. For split structs, use reverse **logical** declaration order. All fields are Initialized when `deinit` starts. Ordinary `return` is allowed and does not skip field cleanup.
+Destroy a complete structure layer by running its own user-defined `deinit`, if present, then, after its body and Scope Exit finish normally, destroying that layer's directly declared Stored Fields in reverse **logical** declaration order. Finally destroy its direct base subobject by the same rule. All fields and the base are Initialized and complete when that layer's `deinit` starts. Ordinary `return` is allowed and does not skip component cleanup. Computed Properties contribute no component, and destruction does not call Property getters or setters. Splitting a Type, changing physical layout, or using a source-generated declaration cannot change this order except through the specified logical declaration order itself.
 
 ```kimi
 struct ResourcePair
@@ -3941,13 +3991,17 @@ struct ResourcePair
 // Either normal exit destroys second, then first.
 ```
 
-An incomplete aggregate does not run its own `deinit`; destroy only its remaining initialized fields in the same reverse field order. Apply this recursively: an initialized field's own Type may run its own `deinit`. Skip Uninitialized and Moved parts. Tuple and array destruction follows their Type-defined component order.
+An incomplete structure layer does not run its own `deinit`; destroy its remaining initialized own fields in the same reverse order, then its base subobject if any part of it still carries responsibility. Apply completion and completeness checks separately to each component: a complete field or completed base runs its own `deinit`, even if its containing derived layer never completed construction. A partly constructed base recursively cleans its initialized components without running that unfinished base layer's body. Skip Uninitialized and Moved parts. Field assignment order and subsequent Replacement do not reorder this cleanup.
+
+Tuple elements and array elements are destroyed in decreasing element-index order, from the last logical element to index zero. This includes fixed-length arrays, initialized elements of a partly built array, and owning array storage used by array literals; spare capacity is not an initialized element. Recurse into a partially initialized element before continuing to the preceding element. Unit and empty arrays have no components to destroy. Enum values destroy only the active variant's payload, in reverse payload-declaration order (last positional payload first); inactive variants have no live payload responsibility. These rules define lifetime behavior without adding enum construction syntax or new dynamic Move Paths. Other library containers must define the destruction order of their owned elements in their own contracts.
 
 | Aggregate state | Own deinit | Field destruction |
 | --- | --- | --- |
 | Complete | Run if declared | All fields afterward |
 | Construction not completed | Never run | Initialized fields only |
 | Incomplete after Partial Move | Never run | Remaining fields only |
+
+The table applies per structure layer; any base cleanup follows own-field cleanup and uses the base's independent state. For example, a complete `Derived : Base` is destroyed as `Derived.deinit`, Derived's fields in reverse order, `Base.deinit`, Base's fields in reverse order, recursively. If Derived construction is incomplete but Base completed, omit `Derived.deinit` while retaining the remaining Derived-field cleanup and the complete Base cleanup.
 
 Partial Move is forbidden if the aggregate made incomplete or an inline containing ancestor has user-defined `deinit`. The last row does not authorize bypassing that restriction.
 
@@ -3958,6 +4012,14 @@ Cleanup: c, then a
 ```
 
 Destruction lifetime checking applies at every actual observation, including field cleanup. If cleanup reaches a responsibility, execute it exactly once; Move transfers it and prevents double destruction at the source. This guarantee does not promise that every destruction completes when an earlier cleanup diverges, Panics, or terminates execution. [Panic Termination](#113-panic-termination) remains the sole abnormal-termination policy.
+
+#### 10.3.3. Ownership, object release, and reentry
+
+Starting Destruction claims the target's remaining responsibility for the destruction machinery. Until cleanup finishes, the target is under destruction, not an ordinary usable initialized owner or an empty replacement destination. Only the special receiver and authorized field operations may observe its still-live parts. Reject reentrant destruction, whole-value use, and attempts to install another value in that target from cleanup callbacks. After normal completion, that responsibility is gone and any surviving storage is Uninitialized; the operation that owns the storage may then place its secured replacement. This internal transition is not an explicit destroy/reset operation for source code and does not reset a `let` binding's initialization history.
+
+Destroying a complete `owner/T` runs the cleanup for exactly `T`. Destroying `obj/T` destroys its owned object and releases its allocation after cleanup completes. Destroying an `rc/T` or `arc/T` handle releases one strong ownership reference; only the release that reaches zero destroys the object and then releases its allocation. Atomic ownership for `arc` must designate exactly one such release. Object cleanup uses the actual owned Type and its complete derived-to-base chain; metadata retained by any permitted base view cannot discard that identity or allocate a second destruction responsibility. Object-allocation API design and additional base conversions do not alter this requirement. No delayed GC finalizer or separate finalizer thread is implied.
+
+Destroying a non-owning borrow or raw pointer ends that value's capability/lifetime and never destroys its referent. Scalar and other trivial Copy values have no user destruction work; copying them does not create a resource-release obligation. Automatic cleanup, replacement, abandoned construction, temporary expiration, and final object release all use the same recursive rules. If a destructor or component cleanup Panics or diverges, remaining components, base layers, pending replacement, and allocation release do not run; there is no rollback or second cleanup attempt.
 
 ## 11. Failure handling
 
@@ -4445,6 +4507,8 @@ An optional `.kimiproj` `LangVersion` requests an exact supported language versi
 
 The compiler derives physical layout from the selected storage declarations, their Types, the target, and the applicable layout mode. Default layout must be reproducible for identical build inputs, compiler, and configuration, but need not use logical declaration order for physical offsets. It must preserve the observable initialization order defined under [Initialization](#86-initialization). Ordinary structs do not guarantee a stable ABI across source or toolchain changes. An explicit fixed-layout facility for FFI or other binary interfaces is specified separately; default layout must not be treated as that facility.
 
+Layout includes exactly one direct base subobject plus the structure's own Stored Fields. The recursively embedded owned-value storage graph must be finite; reject cycles through inline base/field components that require infinite layout. Object handles, borrows, and raw pointers do not inline their referents and therefore do not create such layout edges. Physical reordering cannot alter field identity, initialization/completeness tracking, or the prescribed derived-to-base and reverse-component destruction order.
+
 ### 14.7. Compilation invariants
 
 Compilation must respect semantic dependencies; it need not use one whole-program pass per stage. [The reference compilation models](#appendix-b-non-normative-reference-models) illustrate valid arrangements. Parsing may select known directives early. Condition validation and specialization recur per affected scope under [staged evaluation](#134-name-resolution-boundary); establish that scope's lookup environment before using it. Analyses may share facts, but unresolved obligations must not be treated as successful finalization.
@@ -4548,6 +4612,10 @@ Analyze registration separately from execution: a non-completing deferred body a
 
 For `if condition` containing only `defer: cleanup()`, a true branch registers and runs cleanup before leaving that branch; false registers nothing. No registration flag is needed in this simple case, and Lowering must not move cleanup into the surrounding scope. Example cleanup functions are illustrative, not standard API declarations.
 
+Retain constructor selection, declaration-initializer source environments, per-layer construction completion, per-component initialization/responsibility, and the active Destruction receiver's exact layer. Cleanup plans must include the base as the last component after own fields; a completed base retains its own destructor even when derived construction is abandoned. Store enough interface information to reproduce constructor access/signatures, destructor presence, logical component order, and the exact object's destruction chain across separate compilation. Do not infer these facts from current physical offsets or from whether a destructor body appears empty.
+
+Validation must cover duplicate and conditionally excluded `deinit` declarations across fragments, forbidden placements/modifiers/calls, implicit-constructor suppression, base-constructor accessibility, successful-exit checks before and after constructor cleanup, partial Tuple/array construction, reverse element and base order, no getter/setter invocation by destruction, and skipped Moved components. Include replacement after Partial Move, interruption during old-value cleanup, constructor/destructor receiver escape, base slicing/replacement rejection, and exactly one object cleanup on the final owning-reference release. These are semantic obligations, not guarantees supplied by successful parsing alone.
+
 ## Appendix B. Non-normative reference models
 
 **Non-normative.** These algorithms illustrate valid implementation strategies. A different strategy must preserve all language rules and Compiler requirements, including validation of excluded syntax and immutable lookup decisions.
@@ -4623,6 +4691,7 @@ This table defines the recorded status of each compiler stage. The notes below d
 | Types | Partial | Not implemented | Partial | Not implemented | Not implemented |
 | Origins | Partial | Not implemented | Not implemented | Not implemented | Not implemented |
 | Properties | Implemented | Not implemented | Partial | Not implemented | Not implemented |
+| Constructors and aggregate destruction | Not assessed | Not implemented | Partial | Not implemented | Not implemented |
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | `@move` / Consume | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
 | Control flow and `defer` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
@@ -4653,7 +4722,7 @@ Body parsing for `enum` and `extension` is not implemented.
 
 Split-structure integration, generated-source integration, and layout generation are planned, not implemented.
 
-Inheritance access domains, recursive API signature accessibility, and protected-receiver checks are specified but not implemented by general Binding. Lexing has modifier token kinds, which does not establish complete parsing or semantic support for `open struct`, base clauses, compound access, or overrides. Inheritance parsing coverage is not assessed here; inherited lookup, dispatch, and lifetime integration remain subject to the design boundaries in [inheritance](#432-inheritance-and-open-structures).
+Inheritance access domains, recursive API signature accessibility, and protected-receiver checks are specified but not implemented by general Binding. Lexing has modifier token kinds, which does not establish complete parsing or semantic support for `open struct`, base clauses, compound access, or overrides. Inheritance parsing coverage is not assessed here. Inherited lookup and ordinary dispatch retain the design boundaries in [inheritance](#432-inheritance-and-open-structures); specified base lifetime and Copy rules still require implementation.
 
 The Parser supports Origin lists on structures and functions, simple and qualified annotations, intersections, and named arguments. Origin name resolution, inference, variance analysis, and borrow checking are not implemented.
 
@@ -4683,6 +4752,8 @@ Implementation references:
 
 ### C.7. Control flow and failure handling
 
+The constructor/destruction coverage row includes only the existing analysis of executable-body control flow. Constructor selection and synthesis, completion checks, general destructor declaration validation, per-component/base cleanup, reentry prevention, and final object release require semantic and runtime implementation. Complete parsing coverage for `init` declarations, `Type.init` calls, and base-constructor initializers is not assessed; body parsing or a recognized keyword does not establish lifetime support.
+
 **Implementation status:** The Parser preserves explicit branch body forms. Control-flow analysis checks selections, loops, value-producing Labeled Blocks, lexical transfer targets, and the completion effects of explicitly registered Deferred Blocks. It also checks lexical Unsafe permission for known operations and binder-selected function references. The default type provider handles primitive literals, simple declared Types, and basic raw-pointer and contextual `null` checks. General name/overload resolution, conversions, pattern Binding, ownership, automatic destruction, Origin compatibility, and runtime cleanup generation remain planned; unresolved checks are exposed as pending obligations. Bodies containing deferred compile-time directives await directive selection before analysis.
 
 ## Appendix D. Deferred feature index
@@ -4696,8 +4767,7 @@ This index links to design boundaries owned by the language sections. It adds no
 | Dependency configuration and graph diagnostics | Partially specified | [External references and aliases](#121-external-references-and-aliases) |
 | Declaration fragments and source execution order | Partially specified | [Container fragments](#422-container-fragments) |
 | Source Generators | Partially specified | [Split structures and storage order](#431-split-structures-and-storage-order) |
-| Construction syntax and completion | Partially specified | [Structure declarations](#43-structure-declarations) |
-| Inheritance member lookup, virtual/override syntax, dispatch, and lifetime integration | Partially specified | [Inheritance and open structures](#432-inheritance-and-open-structures) |
+| Inheritance member lookup, virtual/override syntax, dispatch, and additional base conversions | Partially specified | [Inheritance and open structures](#432-inheritance-and-open-structures) |
 | Fixed FFI layout | Deferred design | [Structure layout and ABI](#146-structure-layout-and-abi) |
 | Contract proof and associated Types | Partially specified | [Associated Types and Property requirements](#441-associated-types-and-property-requirements) |
 | Generic specialization and operation selection | Partially specified | [Inference and operation design boundaries](#53-inference-and-operation-design-boundaries) |
@@ -4867,6 +4937,9 @@ StructureDeclaration := Access? "open"? "struct" Name GenericParameters?
                         BaseClause? OriginParameters? ContainerBody
 BaseClause           := ":" CoreType
 ContractDeclaration  := Access? "contract" Name ContainerBody
+ConstructorDeclaration := Access? "init" "(" TrailingList<Parameter>? ")"
+                          BaseInitializer? ExecutableBlock
+BaseInitializer      := ":" "base" "(" TrailingList<Argument>? ")"
 FunctionHeader       := Access? "unsafe"? "func" QualifiedName
                         GenericParameters? OriginParameters?
                         "(" TrailingList<Parameter>? ")" ("->" Type)?
@@ -4889,11 +4962,14 @@ ContainerItem        := Declaration | ContractClause | AssociatedClause
 ContainerBody        := ? indented ContainerItem sequence permitted by its kind ?
 Declaration          := GroupDeclaration | RootGroupDeclaration
                       | StructureDeclaration | ContractDeclaration
-                      | FunctionDefinition | PropertyDeclaration | DeinitDeclaration
+                      | FunctionDefinition | PropertyDeclaration
+                      | ConstructorDeclaration | DeinitDeclaration
                       | EnumDeclaration | ExtensionDeclaration
 ```
 
 Modifier placement and compound-access combinations are constrained by [accessibility](#512-accessibility-and-reachability), even where the shared grammar uses `Access`. `open` applies only to structures. `BaseClause` has the semantic restrictions in [inheritance](#432-inheritance-and-open-structures); member-level virtual/override syntax is not supplied by this grammar.
+
+`ConstructorDeclaration` and `DeinitDeclaration` are allowed only directly in structure bodies, subject to their merging and selection rules. A constructor has a Unit executable body but produces an owned structure through its dedicated construction operation. Neither declaration is an ordinary function declaration; constructor Origin bindings come from the containing Type's contract. See [constructors](#433-constructors) and [destruction declarations](#103-aggregate-destruction-and-deinit).
 
 ### F.4. Expression grammar
 
@@ -4932,7 +5008,9 @@ Argument             := (Name ":")? Expression
 Primary              := Name | Literal | "(" Expression ")" | TupleExpression
                       | ArrayExpression | DictionaryExpression | FunctionExpression
                       | IfExpression | MatchExpression | Iteration | LabeledBlock
-                      | Transfer | CompositionRootExpression
+                      | Transfer | CompositionRootExpression | ConstructionExpression
+ConstructionExpression := "::"? NamedType "." "init"
+                          "(" TrailingList<Argument>? ")"
 TupleExpression      := "(" Expression "," TrailingList<Expression>? ")"
 ArrayExpression      := "[" TrailingList<Expression>? "]"
 DictionaryExpression := "[" ":" "]" | "[" TrailingList<DictionaryEntry> "]"
@@ -5051,10 +5129,10 @@ These entries record the limits of a complete syntax summary for this revision. 
 | Form or production | Owning syntax and boundary |
 | --- | --- |
 | `EnumDeclaration`, `ExtensionDeclaration` | [Container kinds](#42-declaration-containers) identify the forms; [fragment and identity boundaries](#422-container-fragments) remain open. No complete enum payload or extension-body grammar is supplied. |
-| Virtual/abstract/override members and explicit base invocation | [Inheritance](#432-inheritance-and-open-structures) fixes access constraints but leaves these declaration and expression forms separately specified. `open struct` and its single base clause are defined in F.3. |
+| Virtual/abstract/override members and ordinary base-member invocation | [Inheritance](#432-inheritance-and-open-structures) fixes access constraints but leaves these declaration and expression forms separately specified. The single base clause and the distinct base-constructor initializer are defined in F.3. |
 | `Pattern` | [Match arms](#773-match) specify the arm wrapper. Full pattern, enum construction, and payload syntax remain [partially specified](#111-error-policy). |
 | Attributes | `#Name` is distinct from a directive under [reserved syntax](#68-extension-boundaries-and-reserved-syntax). General attribute arguments and placement need their own specification. |
 | Additional Composition Root expressions | Only `$panic(...)` is given a complete operation syntax here; see [extension boundaries](#68-extension-boundaries-and-reserved-syntax). |
-| Additional type arguments and construction | [Generic application](#642-invocation-and-generic-application) and [inference boundaries](#53-inference-and-operation-design-boundaries) do not define a general constant-argument or constructor grammar. |
+| Additional type arguments and object allocation | [Generic application](#642-invocation-and-generic-application) does not define general constant type arguments. [Constructors](#433-constructors) define owned structure construction, not allocation APIs for object Semantics; those APIs must preserve [object destruction](#1033-ownership-object-release-and-reentry). |
 | Function parameters | The combined optional/external-name form remains under [parameter design boundaries](#53-inference-and-operation-design-boundaries); the separate forms are summarized in F.3. |
 | Re-export, fixed FFI layout, and failure propagation | See [Re-exports](#122-re-exports), [layout boundaries](#146-structure-layout-and-abi), and [error policy](#111-error-policy). |
