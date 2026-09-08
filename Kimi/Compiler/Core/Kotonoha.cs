@@ -217,32 +217,6 @@ public sealed partial class Kotonoha
     internal void ClearGeneratedFunction()
         => this.GeneratedFunction = default;
 
-    private static void DumpToken(string path, ReadOnlySpan<Token> tokens)
-    {
-        // Enum.ToString() returns the cached member name, so only the builder grows here.
-        var sb = new StringBuilder(Math.Min(tokens.Length * 12, 1 << 16));
-        foreach (var token in tokens)
-        {
-            if (token.Kind == TokenKind.Separator)
-            {
-                sb.AppendLf();
-            }
-            else
-            {
-                sb.Append('(').Append(token.Kind.ToString()).Append(')');
-            }
-        }
-
-        try
-        {
-            File.WriteAllText(Path.ChangeExtension(path, Constants.TokenExtension), sb.ToString());
-        }
-        catch
-        {
-            // Token dumps are diagnostic aids and must not stop compilation.
-        }
-    }
-
     private void ParseSource(SourceDocument sourceDocument)
     {
         this.Compilation.BeginSourceParsing();
@@ -258,16 +232,10 @@ public sealed partial class Kotonoha
         var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument);
         var codeContext = new CodeContext(this, diagnosticCollection, sourceDocument);
 
-        // Tokenize
+        // Tokenize and parse
         try
         {
             tokenizer.ReadAll();
-            if (this.Compilation.Project.KimiOptions.DumpToken)
-            {
-                DumpToken(sourceDocument.Path, tokenizer.Tokens);
-            }
-
-            // Token to Koto
             var tokenReader = new TokenReader(codeContext, ref tokenizer);
             this.RootKoto.Parse(ref tokenReader);
             this.HasSourceErrors |= diagnosticCollection.GetArray().Any(x => x.Entry.Severity == DiagnosticSeverity.Error);

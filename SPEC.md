@@ -4,7 +4,9 @@
   - [1. Overview](#1-overview)
   - [2. Source and lexical structure](#2-source-and-lexical-structure)
   - [3. Types and basic value model](#3-types-and-basic-value-model)
+    - [Generic Type parameters](#337-generic-type-parameters)
   - [4. Declarations and contracts](#4-declarations-and-contracts)
+    - [Explicit full function specialization](#465-explicit-full-function-specialization)
   - [5. Name resolution, overload resolution, and inference](#5-name-resolution-overload-resolution-and-inference)
 - [Part II. Language constructs and semantics](#part-ii-language-constructs-and-semantics)
   - [6. Expressions and operators](#6-expressions-and-operators)
@@ -17,6 +19,7 @@
   - [12. Modules and dependencies](#12-modules-and-dependencies)
   - [13. Compile-time directives](#13-compile-time-directives)
   - [14. Compilation model](#14-compilation-model)
+    - [Generic code generation](#149-generic-code-generation)
 - [Appendices](#appendices)
   - [Appendix A. Compiler implementation requirements](#appendix-a-compiler-implementation-requirements)
   - [Appendix B. Non-normative reference models](#appendix-b-non-normative-reference-models)
@@ -75,7 +78,7 @@ User-defined Types, Contracts, and Declaration Containers conventionally use Pas
 | --- | --- |
 | `[]` | Array and Dictionary construction, indexing, Range-based slicing, and anonymous-function Capture Lists. |
 | `()` | Ordered grouping: parameters, arguments, Tuples, Unit, Function Types, conditions, and operator precedence. |
-| `<>` | Generic parameters and arguments, including compile-time parameters and arguments that construct Types. |
+| `<>` | Generic Type parameter slots and their Type arguments. General value/Const arguments are not introduced. |
 | `{}` | Unused; reserved for future language evolution. |
 | `=` | Initialization, parameter defaults, or assignment according to context; acquisition follows [Copy and Move](#35-copy-and-move). |
 | `@` | Explicit Type/Semantics adaptation or Consume (`@move`); see [explicit operations](#664-explicit-operations). |
@@ -187,6 +190,8 @@ Contextual keywords may be used as Names in contexts that accept contextual iden
 `init`, `deinit`, and `base` are reserved for [construction](#433-constructors) and destruction. They do not introduce ordinary callable Names or an implicit base receiver.
 
 `require` is reserved for the [require statement](#793-require-statement).
+
+`specialize` is contextual immediately before `func` in an [explicit specialization declaration](#465-explicit-full-function-specialization); it does not reserve the name in unrelated contexts.
 
 For example, `Dog`, `_value`, `point2`, `日本語`, and `ǅelta` are valid Names, while `2point`, `has-value`, and the empty string are not.
 
@@ -401,7 +406,7 @@ Primitive Core Types are built into the language. Sizes below are storage sizes.
 
 **Primitive scalar** is the closed subset consisting of the integer Types (`i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`), floating-point Types (`f32`, `f64`), `bool`, and `char`. `string`, Unit, and Never are not Primitive scalars. This term is a specification category, not a new source-level Type or Constraint name.
 
-For generic code generation, operations on Primitive scalar values are specialized by concrete scalar Type by default. Direct value borrows (`ref/P` and `uniq/P`, where `P` is a Primitive scalar) do not alone require specialization: passing or returning them may share a body when representation and borrow operations are compatible. Access to the referent uses Type-correct instructions or helper operations; the enclosing body may still be shared. A separate body is required only when semantic or representation differences cannot be preserved through shared code, metadata, and helpers. `string` uses the shared implementation policy; Unit and Never follow their value and control-flow rules. Object forms do not enter the scalar-specialization category through their View Target. Shared fallback paths and equivalent-code merging are permitted; distinct final machine-code bodies per scalar Type are not guaranteed. See [Generic code generation](../../../OneDrive/Dev/Documents/Kimigayo/Design/Generic%20code%20generation.md) for the full generation policy.
+Primitive scalar operations use the [generic code generation policy](#149-generic-code-generation). Its default automatic specialization preserves the selected implementation's meaning; it is distinct from an explicitly declared full specialization.
 
 #### 3.1.1. Integer types
 
@@ -488,8 +493,8 @@ A **Function Value** is a callable value. Distinguish its concrete Type from a c
 
 | Core Type | Identity and environment | Owned-value classification |
 | --- | --- | --- |
-| Function Item Type | One resolved function declaration and specialization; no runtime capture environment | Copy, Owned, Shared call |
-| Concrete Closure Type | One anonymous-function expression and specialization; stores its captures and internal call signature | Copy exactly when every capture's complete Type is Copy |
+| Function Item Type | One resolved function declaration and instantiation; no runtime capture environment | Copy, Owned, Shared call |
+| Concrete Closure Type | One anonymous-function expression and instantiation; stores its captures and internal call signature | Copy exactly when every capture's complete Type is Copy |
 | Common Function Type | A shared calling contract and an owned, type-erased environment | Non-Copy, even for an empty or Copy environment |
 
 Repeated evaluation of the same anonymous-function expression with the same type arguments produces the same anonymous Core Type; distinct expressions have distinct Types even with identical text and signatures. Each value retains its own Origin bindings. A Closure's environment is compiler-managed storage, not a user-accessible struct; no user-defined `deinit` can be added to the generated Type.
@@ -511,7 +516,7 @@ Type Semantics specify the ownership, borrowing, layout, and safety properties o
 
 The single-layer syntax is `Semantics/CoreType`, extended to object View Targets below. Semantics prefixes associate to the right; value-borrow and pointer prefixes may enclose a complete inner Type. An unparenthesized `from Origin` annotates the outermost layer. See [nested Semantics](#336-nested-semantics-and-type-grouping) for layer boundaries and permitted combinations.
 
-Within a generic declaration, an identifier in the Semantics position denotes a generic Semantics parameter. For example, `s/T` applies the Semantics parameter `s` to the Core Type parameter `T`.
+Only a declared Semantics binding may occupy a generic Semantics position. A pair parameter `<s/T>` binds one complete Type and exposes its outer Semantics and direct target; [generic Type parameters](#337-generic-type-parameters) define this correspondence. Syntax position alone never changes a parameter's kind.
 
 In the syntax below, `T` denotes a Core Type; in object forms it may also denote a valid runtime-contract View Target.
 
@@ -604,13 +609,70 @@ ref/(ref/T from inner) from outer    // Separate inner and outer Origins.
 
 Prefixes associate to the right and bind more tightly than `->`. Thus `ref/ref/T from outer` annotates only the outer reference; it does not assign `outer` to the inner reference. Parentheses enclose a complete Type and allow annotations at each layer. For example, `ref/((i32) -> bool)` borrows a common function value, while `ref/(i32) -> bool` is a function Type with a `ref/i32` parameter. Grouping never creates a Tuple or an additional borrow.
 
-Expand aliases and retain every layer for Type identity, applicability, layout, and Origin analysis. `ref/ref/T` is distinct from `ref/T`. `owner/V` is redundant ownership notation for the existing value Type `V`, not an operation that removes its references or Object Semantics; redundant owner prefixes and grouping normalize away. Object Semantics still require a supported Core Type or runtime-contract View Target, not an already Semantics-applied value Type. Consequently `ref/obj/T` is permitted but `obj/ref/T` does not implicitly box a reference. Generic Semantics parameters obey the same restrictions after substitution; generic parameter roles are unchanged.
+Expand aliases and retain every layer for Type identity, applicability, layout, and Origin analysis. `ref/ref/T` is distinct from `ref/T`. `owner/V` is redundant ownership notation for the existing value Type `V`, not an operation that removes its references or Object Semantics; redundant owner prefixes and grouping normalize away. Object Semantics still require a supported Core Type or runtime-contract View Target, not an already Semantics-applied value Type. Consequently `ref/obj/T` is permitted but `obj/ref/T` does not implicitly box a reference. Generic Semantics parameters obey the same restrictions after substitution; generic parameter roles follow the slot rules below.
 
 Each layer retains its own Origin dependencies. The [position-specific Origin rules](#94-origin-elision-and-return-contracts) apply to each omitted Origin; an explicit outer annotation does not overwrite an inner one. In a parameter Type, only the outer direct borrow may introduce an implicit input Origin; inner borrow Origins and Origin arguments of aggregate inputs must be explicit. Local initializers may supply inference for all layers, while instance Stored Properties require explicit bindings throughout. The unannotated forms above illustrate Type composition, not permission to omit Origins in every position. At every safe value-borrow layer, all observable Origins of `V` must outlive that layer's Origin. For the last example above, `inner : outer` is required. Grouping or a redundant owner prefix cannot supply a second, conflicting annotation to the same normalized layer. Raw pointers do not establish safe-reference validity or extend lifetime.
 
 Copy classification uses the outer effective Semantics: `ref/uniq/T` is Copy, whereas `uniq/ref/T` is Non-Copy. Copying the outer shared reference does not copy the stored exclusive capability. Shared access through an outer reference cannot Move a non-Copy inner value, obtain exclusive access through a stored `uniq`, or mutate the reference slot. A shared reborrow of that stored capability remains bounded by the outer Loan. Destroying or moving an outer reference does not destroy or move its referent. Replacing a reference slot through valid exclusive access must preserve all inner Type, Origin, and Loan constraints.
 
 This syntax adds no implicit repeated dereference, safe `*` operator, or pointer/safe-reference conversion. Borrow formation uses the explicit rules in [Borrow and Reborrow](#6645-explicit-borrow-and-reborrow).
+
+#### 3.3.7. Generic Type parameters
+
+##### 3.3.7.1. Slots and projections
+
+Both parameter forms consume **one complete Type argument**. Preserve Semantics, nested Types, and all Origins during binding:
+
+```text
+<T>    : T = W
+<s/T>  : WholeType = W
+         s = OuterSemantics(W)
+         T = DirectTarget(W)
+         o = OuterOrigin(W)       // Present only for an outer safe borrow.
+```
+
+An ordinary `T` denotes a complete value Type, not only a bare Core Type. The pair's `T` has the fixed internal kind **SemanticsTarget**, whose value is a complete value Type or an Object View Target. Using it as a standalone value Type requires evidence for that role or a legitimate [deferred obligation](#5210-deferred-generic-obligations); its kind does not change at instantiation.
+
+Normalize transparent aliases, resolved associated-Type projections, grouping, and redundant `owner/` before projecting. Reject alias cycles; retain nominal declaration identity and parameter Binding Identities. No new nominal-alias syntax is introduced. Split only the outer layer: `ref/(uniq/i32 from b) from a` yields `s = ref`, `T = uniq/i32 from b`, and outer Origin `a`. Since `owner/V` preserves V, `owner/(ref/i32 from a)` has outer Semantics `ref`.
+
+| Outer Semantics | Direct target and requirements for applying these Semantics to another U | Outer Origin |
+| --- | --- | --- |
+| `owner` | DirectTarget(W) is W itself; `owner/U` is U for any valid complete value Type | None |
+| `ref`, `uniq` | Complete Referent Type; `uniq` also requires exclusive acquisition and Loans at use | Required |
+| `obj`, `rc`, `arc` | Supported Core Type or valid runtime-contract View Target | None |
+| `objref`, `objuniq` | Supported Core Type or valid runtime-contract View Target; preserve borrowing requirements | Required |
+| `unsafe` | Complete Pointee Type; adds no safe-borrow lifetime guarantee | None |
+
+These rows do not extend the current runtime-contract or callable restrictions. Absence of an outer Origin does not erase payload dependencies: in `ref/(View<i32> from (source => a)) from b`, a belongs to the inner Type and b to the outer borrow.
+
+Within one parameter list, every bound name must be distinct: `<T, T>`, `<s/T, s/U>`, and `<s/s>` are errors. References use Binding Identity under ordinary scope rules. `<s>` is an ordinary Type slot; standalone Semantics slots are not introduced. Built-in forms such as `Callable<ref, S>` have their own grammar, not general Semantics arguments.
+
+##### 3.3.7.2. Reconstruction and Origin annotations
+
+After transparent alias expansion, the original pair expression `s/T` refers to its WholeType W. The correspondence is determined by the declared bindings, not by two targets becoming equal after instantiation. `s/U` with another binding applies only the Semantics kind to U; it does not copy W's outer Origin. Once formed, equal complete Types do not acquire extra identity differences from their construction history.
+
+An explicit Origin annotation uses ordinary Type-formation rules. Otherwise the original `s/T` retains W's Origins; another `s/U` uses the [position-specific Origin rules](#94-origin-elision-and-return-contracts). Storing a Type in a pair slot creates no additional omission permission.
+
+For `W = ref/i32 from a`, `s/T from b` forms `ref/i32 from b`. Formation does not require a relationship between W's old outer Origin a and the new b, and performs no value conversion. It must still validate b's binding, its annotation position, and the formed Type's own inner-Origin outlives constraints. Fitting an actual `from a` value to this Type separately checks permitted shortening (`a : b`), acquisition, and Loans. In particular, `uniq/V` retains invariant V and any required Move/Reborrow; an annotation neither creates nor removes Reborrow.
+
+##### 3.3.7.3. Argument validity
+
+**WellFormedGenericTypeArgument(A)** requires a valid resolved complete Type, or a legitimately dependent Type with retained obligations. Check access, Semantics application, generic and associated-Type arguments, Origin mappings, and Constraints before using any Origin-erased comparison key.
+
+| Argument | Rule |
+| --- | --- |
+| Primitive, struct, enum, Unit, Tuple | Allowed under ordinary Type formation |
+| Common Function Type | Allowed under its existing signature, environment, and Origin restrictions |
+| Function Item or Closure Type | Allowed through inference or an existing reference form; no new anonymous-Type spelling |
+| Safe borrow, Object Type, raw pointer, Origin-bearing aggregate | Allowed as a Type argument; acquisition, storage, erasure, and Unsafe checks remain separate |
+| Never | Allowed as a semantic Type argument, without adding a source name or value; a Never expression alone cannot infer an arbitrary unbound Type |
+| Dependent Type | Preserve definition-side bindings and resolvable obligations until their deadlines |
+| Unsized or unspecified representation | No new such Type is introduced; a valid Type must additionally meet layout requirements at each storage use |
+| Bare Contract, group, bare Semantics, general value argument | Not a complete value Type argument; a Contract can appear only in an already permitted Object View Type |
+
+Explicit argument lists supply every slot in declaration order, with optional trailing commas. Omitting the entire list uses only the inference supported by that construct. Partial lists, `_` placeholders, defaults, variadic slots, and general Const generics are not introduced. `<s/T, U>` takes two arguments such as `<ref/i32 from a, string>`; `<ref, i32>` cannot supply one pair. Origin parameters have a separate schema and consume no Type argument slots.
+
+A valid Type argument is not permission to use it in every role. Keep constraints on base Types, associated Types, storage, finite layout, Copy derivation, escape, and Object payload erasure. Instance storage may retain Type-argument Origins under [storage contracts](#94-origin-elision-and-return-contracts); static storage still rejects safe-borrow retention. No blanket `Storable` Constraint is added.
 
 ### 3.4. Values, places, and storage
 
@@ -692,7 +754,7 @@ func duplicate<T>(value: T) -> (T, T)
     return (value, value)
 ```
 
-`T is Copy` is a generic constraint. Do not assume Copy before constraints or specialization establish it. User-struct derivation is specific to `Self is Copy`, not a general consequence of `Self is Capability`. Compiler-generated Closures instead use the table's automatic rule.
+`T is Copy` is a generic constraint. Do not assume Copy before constraints or instantiation establish it. User-struct derivation is specific to `Self is Copy`, not a general consequence of `Self is Capability`. Compiler-generated Closures instead use the table's automatic rule.
 
 Unknown Copy capability follows [Generic Access Effects](#527-generic-access-effects), including dependent acquisition and default-getter rules.
 
@@ -721,9 +783,9 @@ enum CopyOption<T>
     None
 ```
 
-Derivation must be provable for every generic argument permitted by the declaration. It neither adds implicit parameter constraints nor grants conformance only to Copy specializations. Removing `T is Copy` from `CopyOption` is a declaration error. Without `Self is Copy`, an unconstrained `Option<T>` remains usable and `Option<i32>` is Non-Copy. An enum storing only `ref/T` needs no Copy constraint on `T` itself.
+Derivation must be provable for every generic argument permitted by the declaration. It neither adds implicit parameter constraints nor grants conformance only to Copy instantiations. Removing `T is Copy` from `CopyOption` is a declaration error. Without `Self is Copy`, an unconstrained `Option<T>` remains usable and `Option<i32>` is Non-Copy. An enum storing only `ref/T` needs no Copy constraint on `T` itself.
 
-Proof may depend on declared constraints, but successful individual specializations do not validate an otherwise unproven declaration. This declaration obligation is separate from [Generic Access Effects](#527-generic-access-effects), which still permit legitimate deferred acquisition checks and never treat unknown Copy as non-Copy.
+Proof may depend on declared constraints, but successful individual instantiations do not validate an otherwise unproven declaration. This declaration obligation is separate from [Generic Access Effects](#527-generic-access-effects), which still permit legitimate deferred acquisition checks and never treat unknown Copy as non-Copy.
 
 ### 3.6. Temporary values, places, and lifetimes
 
@@ -983,7 +1045,18 @@ A Signature determines whether declarations may coexist in one scope:
 | Property | Name |
 | Enum Case | Name within its enum; no payload overloads |
 
-Normalize Core Types by resolved Symbol, including their Kotonoha/version, and include Type Semantics exactly once. Normalize equivalent spellings (`T` and `owner/T`) and represent generic parameters by position and kind, not name. `ref/T` and `uniq/T`, including receivers, remain distinct. Applied Semantics distinguish use-site Types, not Type declarations or Container identities.
+**GenericArity** counts Type argument slots; a pair counts as one. **OriginArity** counts explicitly declared Origin parameters, excluding Origins projected from a Type slot and inference variables. Origin schemas govern binding and fragment compatibility, not additional overloads. Thus `View<T> origin source` and `View<T> origin left, right` cannot coexist as same-name, same-arity Type overloads.
+
+Normalize by resolved Symbol and Kotonoha/version, expanding transparent aliases and resolved associated-Type projections and removing grouping and redundant owner prefixes. Preserve every Semantics layer. Represent generic expressions structurally using the declared binder and slot position:
+
+| Source expression | Normalized expression |
+| --- | --- |
+| Ordinary T | `Slot(i)` |
+| Pair s / pair T | `OuterSemantics(Slot(i))` / `DirectTarget(Slot(i))` |
+| Original pair `s/T` | `Slot(i)` |
+| s applied to another slot U | `Apply(OuterSemantics(Slot(i)), Slot(j))` |
+
+Apply these rewrites recursively and compare by structural alpha-equivalence. Do not simplify using accidental equality after instantiation or arbitrary Constraint proofs. Pair target T alone is not Slot(i). Slot kind controls binding and validation but cannot alone distinguish overloads: `f<T>(value: T)` and `f<s/U>(value: s/U)` conflict. `ref/T` and `uniq/T`, including receivers, remain distinct. Applied Semantics distinguish use-site Types, not Container identities.
 
 For Signature comparison only, exclude Origin names, lists, and lifetime relations. Retain complete Types and Origin contracts for semantic checks. Return Types, external/internal parameter names, defaults, optionality, access, unsafe modifiers, and Constraints cannot independently distinguish overloads.
 
@@ -1082,7 +1155,7 @@ Define a **logical declaration order** independently of physical memory layout:
 
 Source identifiers are build metadata independent of absolute checkout paths, temporary output paths, and processing order. Ordinary sources use normalized project-relative logical paths; sources outside the project directory require an assigned stable project-relative logical name. Generated output identifiers are logical names assigned by the Generator. Normalize path separators to `/` and remove redundant path segments; compare identifiers ordinally without host-specific case folding or locale rules. Require unique ordinary source identifiers, unique Generator identifiers within a build, and unique output identifiers within each Generator; identifier collisions are build errors.
 
-Apply this order to the selected declarations of each specialization. Only Stored Properties contribute storage slots. File enumeration, parser completion, and Generator completion order must not affect the result. Renaming a source or generated output may change logical order and therefore initializer side-effect order.
+Apply this order to the environment-selected declarations of each instantiation. Only Stored Properties contribute storage slots. File enumeration, parser completion, and Generator completion order must not affect the result. Renaming a source or generated output may change logical order and therefore initializer side-effect order.
 
 Generated declaration availability must satisfy the [name-resolution boundary](#134-name-resolution-boundary). Do not begin consuming a provisional type and append generated Storage later. Finalize layout only after the complete selected fragment set and storage classification are known. Generated documents retain their own source context and logical identifiers. Generator APIs, inputs, scheduling, and dependency checks beyond the established output deadline remain separately specified; generator dependencies that prevent establishing the required environment are errors, not permission to revise resolved Names.
 
@@ -1142,7 +1215,7 @@ The body establishes a Function Boundary with a Unit control-flow result: fallin
 
 Constructors have no recoverable-failure return or exception mechanism. Use an ordinary factory returning an Option/Result to perform fallible acquisition and validation before calling `Type.init`; its locals have ordinary cleanup on failure. Abort during any construction phase terminates without unwinding. The partial-initialization cleanup rules also govern interrupted aggregate-expression construction and any ordinary Scope Exit that abandons construction storage; they do not add a new failure syntax or turn an incomplete `return` into success.
 
-After merging, a structure with no selected explicit constructor receives one implicit zero-parameter constructor exactly when every directly declared Stored Property has a declaration initializer and its base, if present, has an accessible zero-argument invocation. It is declared `public`, so its effective access is exactly that of its containing Type, and has an implicit Unit body and the same initialization/completion rules. Empty structures satisfy the field condition. Otherwise there is no implicit constructor; this alone does not make a Type declaration invalid. A selected explicit or source-generated constructor suppresses implicit synthesis even if private. No memberwise constructor is synthesized. Synthesis depends on structural declarations, not whether initializer code happens to type-check; errors in a synthesized constructor are diagnosed normally. Generic dependencies retain validation obligations until specialization.
+After merging, a structure with no selected explicit constructor receives one implicit zero-parameter constructor exactly when every directly declared Stored Property has a declaration initializer and its base, if present, has an accessible zero-argument invocation. It is declared `public`, so its effective access is exactly that of its containing Type, and has an implicit Unit body and the same initialization/completion rules. Empty structures satisfy the field condition. Otherwise there is no implicit constructor; this alone does not make a Type declaration invalid. A selected explicit or source-generated constructor suppresses implicit synthesis even if private. No memberwise constructor is synthesized. Synthesis depends on structural declarations, not whether initializer code happens to type-check; errors in a synthesized constructor are diagnosed normally. Generic dependencies retain validation obligations until instantiation.
 
 #### 4.3.4. Virtual members and overrides
 
@@ -1160,7 +1233,7 @@ Initial virtual calls are safe operations. Every virtual implementation and each
 | Runtime-contract implementation | Check `Implements(D, C)`; reject incompatible conformance |
 | Override implementing inherited contract requirements | At the override declaration, also recheck every corresponding requirement; reject the declaration on failure |
 
-Check Property accessors separately: Shared for getters, Exclusive for setters. An invalid virtual/override declaration cannot remain valid merely by disabling object conversion or invocation. Separately compiled callers rely on the declaration guarantee without enumerating all derived Types. Legitimate generic dependencies remain declaration obligations until specialization finalization; reject a failing specialization even when it has no object call sites.
+Check Property accessors separately: Shared for getters, Exclusive for setters. An invalid virtual/override declaration cannot remain valid merely by disabling object conversion or invocation. Separately compiled callers rely on the declaration guarantee without enumerating all derived Types. Legitimate generic dependencies remain declaration obligations until instantiation finalization; reject a failing instantiation even when it has no object call sites.
 
 ```text
 Animal.reset: Exclusive virtual, ObjectCompatible
@@ -1181,7 +1254,7 @@ The following terms distinguish declared capabilities, conditions, and their ful
 | **Constraints** | The set of conditions required for a declaration to be valid or usable. | The leading clauses of a generic function or structure. |
 | **Conformance** | A Type's fulfillment of a Contract, with the required correspondence between requirements and implementations. | A Type fulfills `Comparable`. |
 
-A **Constraint Clause** expresses a Constraint in the form `subject is requirement`. All clauses in a declaration's Constraints must hold. They constrain Core Types, Type Semantics, or `Self` (the enclosing Type) and establish capabilities the implementation may use. Each declaration kind restricts the permitted subjects; see [function Constraints](#462-function-constraints).
+A **Constraint Clause** expresses a Constraint in the form `subject is requirement`. All clauses in a declaration's Constraints must hold. Subjects include complete Types, Semantics, valid target projections, and `Self` (the enclosing Type), subject to each requirement's role. Clauses establish capabilities the implementation may use. Each declaration kind restricts the permitted subjects; see [function Constraints](#462-function-constraints).
 
 Core Type requirements may name a capability declared with `contract` or another compile-time type capability. Type Semantics requirements may name concrete semantics, such as `ref` or `obj`, or a semantics category. Requirements combine with `and`, `or`, `not`, and parentheses under the [requirement-expression rules](#442-requirement-expressions).
 
@@ -1195,7 +1268,7 @@ struct Container<s/T> origin owner, source
     var value: s/T
 ```
 
-These clauses constrain Core Type parameter `T` and Semantics parameter `s`. Constraints may also apply to the enclosing Type:
+These clauses constrain the pair's target projection `T` and Semantics projection `s`. Each requirement must accept its subject's role. Constraints may also apply to the enclosing Type:
 
 ```kimi
 struct ComparableContainer<T>
@@ -1229,7 +1302,7 @@ The initial implementation covers static conformance checking and generic use. U
 
 ##### 4.4.1.1. Function requirements
 
-A function requirement declares a Name, optional function Generic and Origin parameters, explicitly typed parameters, and an explicit result Type. A function with a receiver is an **instance function**; one without a receiver is a **type function**. Receiver, parameter labels, ownership, Origins, and safe/unsafe conditions use ordinary function rules.
+A function requirement declares a Name, optional function Generic and Origin parameters, explicitly typed parameters, and an optional result Type whose omission means Unit. A function with a receiver is an **instance function**; one without a receiver is a **type function**. Receiver, parameter labels, ownership, Origins, and safe/unsafe conditions use ordinary function rules.
 
 Function-specific Constraints occupy an optional indented region immediately after the header. The region contains one or more Constraint Clauses, with no executable statements, `return`, local declarations, or expression body. Its subjects are that function's generic parameters or associated-Type projections rooted in them. Put Contract-wide Constraints at the Contract body level.
 
@@ -1263,7 +1336,7 @@ Reject a refinement when its requirements cannot coexist as separate implementat
 
 ##### 4.4.1.3. Associated types
 
-An associated Type has the same kind as a Core Type parameter. Specify borrow Semantics and operation Origins at use sites; do not assign an arbitrary Semantics-applied complete Type to an associated Type. Existing dependencies inside a Type remain subject to ordinary Origin checking.
+An associated Type is restricted to a Core Type. Unlike an ordinary generic Type slot, it cannot bind an arbitrary Semantics-applied complete Type. Specify borrow Semantics and operation Origins at use sites. Existing dependencies inside a Type remain subject to ordinary Origin checking; generic substitutions must prove this restricted role or retain a legitimate obligation.
 
 ```kimi
 contract BorrowSource
@@ -1278,7 +1351,7 @@ contract BorrowSource
 | `associate Element` | Declare an associated Type in a Contract. |
 | `associate Element is Equatable` | Declare it with a capability requirement, or constrain the uniquely identified associated Type in an implementation. |
 | `associate Element is i32` | Declare it with a fixed Type, or specify that Type in an implementation. |
-| `associate C.Element is T` | In a generic conforming Type, specify identity with its Core Type parameter `T`. |
+| `associate C.Element is T` | Specify identity with a generic binding T, subject to the associated Type's Core Type restriction. |
 
 Determine each associated Type uniquely from explicit specifications and Type-identity Constraints on the Contract or its ancestors. Do not infer bindings from implementation signatures, member search, or function bodies, and do not choose a Type merely because it satisfies a capability. Substitute bindings before matching implementations. An unconstrained `Source.Element` is not inferred as `i32` merely because an implementation of `read` returns `i32`.
 
@@ -1341,7 +1414,7 @@ struct NumberSource
 
 Generic Type conformance must hold under that Type's declared Constraints. Substitute its type arguments normally; success for selected concrete arguments does not validate an unconstrained generic declaration. Verify ancestor conformances as well. Conformance declarations do not generate implementations except under an explicitly specified [intrinsic derivation rule](#4417-intrinsic-contracts-and-guarantees).
 
-Retain the verified requirement-to-Member Identity mapping and associated-Type bindings. Contract calls use this mapping rather than rediscovering members in the caller's source environment or after specialization. No external registration, replacement conformance, default implementation, or access-bypassing witness thunk is introduced.
+Retain the verified requirement-to-Member Identity mapping and associated-Type bindings. Contract calls use this mapping rather than rediscovering members in the caller's source environment or after instantiation. No external registration, replacement conformance, default implementation, or access-bypassing witness thunk is introduced.
 
 ##### 4.4.1.5. Implementation matching
 
@@ -1400,7 +1473,7 @@ B.reset --+                         |
                                one call candidate
 ```
 
-Use only the defined proof rules, not enumeration of specializations or arbitrary theorem proving. If equivalence cannot be proved, retain the candidates and apply ordinary call selection; a non-unique result is ambiguous. A coincidental match in one specialization cannot make an otherwise invalid generic call valid. No additional qualified-call syntax such as `value@A.reset()` is introduced; `@` retains its existing adaptation meaning.
+Use only the defined proof rules, not enumeration of instantiations or arbitrary theorem proving. If equivalence cannot be proved, retain the candidates and apply ordinary call selection; a non-unique result is ambiguous. A coincidental match in one instantiation cannot make an otherwise invalid generic call valid. No additional qualified-call syntax such as `value@A.reset()` is introduced; `@` retains its existing adaptation meaning.
 
 ##### 4.4.1.7. Intrinsic contracts and guarantees
 
@@ -1492,7 +1565,7 @@ A constraint-based call first acquires the receiver required by `r`, then adapts
 - `uniq`: retain exclusive access for the call, reborrowing exclusively or sharing for the actual body.
 - `owner`: acquire by ordinary Copy/Move; borrow that acquired value for a Shared/Exclusive body or transfer it to a Consuming body. Remaining acquired storage is destroyed on call completion. This owned temporary has normal writable/exclusive access even when copied or moved from a `let` binding.
 
-Specialization cannot turn an `owner` acquisition into a borrow merely because the body is Shared. Conversely, copying a Consuming callable does not satisfy a `ref` or `uniq` constraint. Select one public signature; for multiple available constraints with that signature, prefer the weakest declared receiver in order `ref`, `uniq`, `owner`. A later initialization, access, or Loan failure cannot select another receiver. Constraint strength is not an overload-ranking rule.
+Instantiation cannot turn an `owner` acquisition into a borrow merely because the body is Shared. Conversely, copying a Consuming callable does not satisfy a `ref` or `uniq` constraint. Select one public signature; for multiple available constraints with that signature, prefer the weakest declared receiver in order `ref`, `uniq`, `owner`. A later initialization, access, or Loan failure cannot select another receiver. Constraint strength is not an overload-ranking rule.
 
 ```kimi
 func applyTwice<F>(value: i32, transform: uniq/F) -> i32
@@ -1525,7 +1598,7 @@ The proof judgment has four outcomes, distinct from the Condition evaluator's ou
 | **Unknown** | Neither polarity is established by the permitted rules. This is not a Boolean value or an automatic right to defer. |
 | **Error** | Invalid names, subjects, requirements, declarations, or detected contradictory evidence prevent a valid judgment. |
 
-Evidence comes from the current declaration's validated input Constraints, defined built-in capability rules, and verified explicit or inherited conformance. Facts retain their Binding Identity, substitutions, and lexical/specialization scope. A generic input Constraint is an assumption inside the constrained body, but must be discharged at use. A conformance declaration or `Self is C` obligation cannot prove its own implementation merely by being declared; its required implementations and prerequisite Constraints must be validated under the existing conformance rules. Built-in derivation exceptions such as `Self is Copy` retain their own rules.
+Evidence comes from the current declaration's validated input Constraints, defined built-in capability rules, and verified explicit or inherited conformance. Facts retain their Binding Identity, substitutions, and lexical/instantiation scope. A generic input Constraint is an assumption inside the constrained body, but must be discharged at use. A conformance declaration or `Self is C` obligation cannot prove its own implementation merely by being declared; its required implementations and prerequisite Constraints must be validated under the existing conformance rules. Built-in derivation exceptions such as `Self is Copy` retain their own rules.
 
 | Proof rule | Permitted derivation |
 | --- | --- |
@@ -1549,7 +1622,7 @@ All operands must be valid. Error is absorbing even when another operand determi
 
 **Contradictions.** After the specified normalization and conjunction elimination, directly available `P` and `not P` are contradictory evidence and produce Error. Likewise, evidence establishing both polarities of a queried proposition is Error. Do not derive arbitrary capabilities from an inconsistent environment. Detection of more complex contradictions by excluded logical transformations is not required and cannot supply proof.
 
-**Use and finalization.** A required Constraint succeeds only when Proven. Refuted fails the requirement; Error reports invalid input or contradictory evidence. Unknown may be retained only when an identified later binding, specialization, or prerequisite analysis can resolve it before the applicable deadline. Unknown without such a dependency is an unproven-requirement error when a proof is required. Every required concrete-call or specialization obligation must be resolved before finalization. Unknown is never accepted, converted to Refuted, or used as evidence for a negated Constraint. Associated-Type inference beyond explicit identity facts and stronger symbolic reasoning remain design boundaries.
+**Use and finalization.** A required Constraint succeeds only when Proven. Refuted fails the requirement; Error reports invalid input or contradictory evidence. Unknown may be retained only when an identified later binding, instantiation, or prerequisite analysis can resolve it before the applicable deadline. Unknown without such a dependency is an unproven-requirement error when a proof is required. Every required concrete-call or instantiation obligation must be resolved before finalization. Unknown is never accepted, converted to Refuted, or used as evidence for a negated Constraint. Associated-Type inference beyond explicit identity facts and stronger symbolic reasoning remain design boundaries.
 
 ### 4.5. Bindings
 
@@ -1631,7 +1704,7 @@ func inspect<s/T>(value: s/T) -> ()
 
 Each clause subject must name a generic parameter of that function or an [associated-Type projection](#4413-associated-types) rooted in one. Collect leading Constraints before resolving projections in the function signature; this does not waive Constraint validation. In this example, the two clauses jointly form its Constraints. Function requirements use the [same indented placement](#4411-function-requirements) with a Constraints-only region, not an executable body.
 
-Every explicit or inferred generic argument at a call site must satisfy its clauses. Body type checking and specialization may rely on those requirements. Constraints are not part of the function Signature; declarations differing only in their Constraints conflict.
+Every explicit or inferred generic argument at a call site must satisfy its clauses. Body type checking and instantiation may rely on those requirements. Constraints are not part of the function Signature; declarations differing only in their Constraints conflict.
 
 #### 4.6.3. Unsafe functions
 
@@ -1678,6 +1751,90 @@ let adjusted = offset(3, by: 5)
 
 Function Types retain neither argument names nor defaults. Calls through function values supply all arguments positionally. See [invocation](#642-invocation-and-generic-application) for argument matching and evaluation.
 
+#### 4.6.5. Explicit full function specialization
+
+An **explicit full specialization** supplies an implementation for one closed set of static Type arguments of an existing generic function. It preserves that function's call contract, but may produce different results or side effects. Selecting a matching specialization is mandatory, not an optional optimization.
+
+##### 4.6.5.1. Declaration and target identification
+
+```kimi
+func classify<T>(value: ref/T) -> i32 => 0
+specialize func classify<i32>(value: ref/i32) -> i32 => 1
+
+func process<T>(value: T) -> ()
+    ()
+specialize func process<i32>(value: i32) -> ()
+    ()
+```
+
+`specialize` is a contextual declaration introducer before `func`. A specialization has a single unqualified Name, explicit Type arguments, explicitly typed parameters, an optional result Type, and an ordinary Block or Expression body. It declares no Type parameters and does not automatically introduce the original function's Type parameter names into its body. Origin binders are inherited, not newly declared. Omitted results mean Unit, even if the original's substituted result is non-Unit; write that result explicitly.
+
+Supply all of the function's own Type slots in declaration order, using their original kinds. Ordinary and pair slots each take one complete Type. After alias and associated-Type normalization, every Core Type and Semantics component must be fixed: no unbound Type/Semantics parameter, unresolved projection, or outer generic parameter may remain. `List<i32>` is closed; `List<T>` with unbound T is not. `Self` is allowed only when ordinary resolution meets the same rule. Origins are checked separately below. These restrictions apply to specialization declarations, not to dependent Types in ordinary generic bodies.
+
+The target must be a named generic type function or instance method with an ordinary implementation. Constructors, `deinit`, accessors, and dedicated operator declarations are excluded. Partial or conditional specialization, omitted arguments, placeholders, priority rules, general Const arguments, specializing a generic Container's arguments, methods with unbound outer generic parameters, and explicit target-Identity syntax are not introduced.
+
+First reject duplicate ordinary declarations. Then identify the original function:
+
+1. Collect same-name generic functions in the same declaration Container with the same function kind (type function or instance method) and Type slot count.
+2. Bind the written Type arguments using each candidate's slot definitions. Match the substituted receiver presence and Type structure and the ordinary parameters' count, order, and normalized Type structure. Form and validate complete Types before excluding Origins for this structural comparison.
+3. Zero matches is an error; multiple matches is an ambiguous specialization declaration. For exactly one match, validate the inherited contract.
+
+Do not use result Types, parameter names, Constraint satisfaction, Origin relationships, implicit adaptation, slot kind alone, ordinary overload ranking, or declaration/file order to resolve ambiguity. A failed contract check cannot select another target.
+
+```kimi
+func inspect<T>(value: T) -> () => ()
+func inspect<T>(value: i32) -> () => ()
+specialize func inspect<i32>(value: i32) -> () => ()
+// Error: both ordinary declarations have the same substituted input structure.
+```
+
+Diagnostics distinguish no target, input-structure mismatch, multiple targets, and contract mismatch after selection. Include candidate declaration locations and relevant Type, receiver, or arity differences; diagnostic comparison never chooses a nearest candidate.
+
+##### 4.6.5.2. Inherited contract
+
+The specialization header identifies and checks the original contract; it is not an independent call Signature.
+
+| Item | Specialization rule |
+| --- | --- |
+| Receiver and ordinary parameters | Restate count, order, and substituted Type structure; no implicit adaptation |
+| Result | Match the substituted Type; omission means Unit |
+| External parameter names | Match the original; not used to identify the target |
+| Internal names | May change using ordinary `external => internal: Type` syntax |
+| Origin and Loan contract | Inherit binders and preserve every admitted Origin binding |
+| Access, defaults, optionality, generic Constraints | Inherit; do not redeclare, strengthen, or weaken them |
+| Attributes, Safety, calling convention, Effect requirements | Inherit existing rules; no attributes or additional modifiers on the specialization declaration |
+
+Write an inherited optional parameter without `?` or a default. Callers still use the original omission and default-evaluation rules:
+
+```kimi
+func find<T>(value: T, count?: i32 = 1) -> () => ()
+specialize func find<i32>(value: i32, count: i32) -> () => ()
+find<i32>(10) // Evaluate the original default, then call the specialization.
+```
+
+The restriction concerns the specialization declaration, not ordinary syntax inside its body. A specialization of an unsafe function inherits its Safety contract, but unsafe operations still need an Unsafe Block. Contract inheritance introduces no unsupported async, exception-Effect, or variadic feature.
+
+Validate all necessary Type Origins before comparison. After matching inherited binders, the body must work for **every Origin binding permitted by the original contract**. Do not add an Origin parameter or lifetime restriction, narrow applicability by Origin, or register another implementation for different Origins. A specialization cannot rescue an invalid ordinary implementation or replace a declaration-required proof; [deferred generic checking](#5210-deferred-generic-obligations) retains its stated design boundary.
+
+##### 4.6.5.3. Selection and declaration ownership
+
+Use the [Implementation Selection Key](#1492-identity-and-generation-keys): the original function's declaration Identity and its ordered, normalized static Type arguments with only Origins excluded. Preserve nominal identity, nested structure, and every Semantics layer, including an outer object handle. `obj/D` and `rc/D` therefore have different keys even when they identify the same dynamic payload Type. Two specialization declarations with the same key are an error.
+
+Calls and function references first use ordinary lookup, overload resolution, inference, and the original contract's Type, Constraint, Origin, and Loan checks. Specializations never enter the candidate set or supply inference evidence. Once the static Type arguments determine a key, use its matching specialization, or the ordinary implementation if none exists. Do not inspect a value's Dynamic Type, including behind a base or Contract View, to change this selection.
+
+```kimi
+// classify and its i32 specialization are declared above.
+func forward<T>(value: ref/T) -> i32 => classify<T>(value)
+let number: i32 = 10
+let result = forward<i32>(number@ref) // 1, including with shared generic code.
+```
+
+A generic caller cannot be fixed to the ordinary implementation merely because its Type arguments were initially unknown. This guarantee is independent of code sharing, separate compilation, optimization level, and LTO. Function references obey the same choice and their existing restrictions, including the ban on unsafe function values.
+
+There is no direct name for the specialization or syntax to bypass it and call the ordinary body. Calling the same function with the same Type arguments from its specialization selects that specialization again and is recursive; move common work to a helper. A specialization-body error never falls back to another body or overload.
+
+Specializations belong to the original function's Kotonoha and declaration Container. Existing Container fragments may put them in another file; unrelated extensions and other Kotonoha libraries cannot add or replace them. The defining Kotonoha closes the specialization set after environment selection and declaration collection, including generated sources, before finalizing affected call targets and no later than artifact finalization. Declaration and loading order cannot affect selection. Verification, artifact information, and invalidation follow [generic code generation](#149-generic-code-generation).
+
 ### 4.7. Enums
 
 An enum is a nominal, closed sum Core Type. A complete value contains exactly one **Case** and that Case's **payload**, its attached positional data. Equal Case names and payload Types do not make distinct enum declarations the same Type.
@@ -1693,7 +1850,7 @@ public enum Message
 
 Write one Case per line without a `case` keyword; PascalCase is conventional. Case names are unique within the enum and cannot overload by payload Type or arity. A payload element declares one complete Type in positional order, without a binding name, `let`/`var`, default, or variadic form. `Quit` has no payload; `Quit()` is invalid, whereas `Wrapped(())` has one Unit payload.
 
-The header supports ordinary Generic and Origin parameters. The body permits Cases, Constraint Clauses, associated-Type specifications for declared conformances, ordinary functions, and compile-time Directives selecting these items. Constraints use the existing declaration rules; `Self` denotes the enum Core Type. Function access and explicit receivers follow ordinary rules. Properties, `init`, `deinit`, nested Declaration Containers, structure inheritance, `open enum`, and external Case additions are not permitted. Enums cannot have [declaration fragments](#422-container-fragments), and every specialization must retain at least one Case after compile-time selection. Empty enums and uninhabited-value elimination are deferred.
+The header supports ordinary Generic and Origin parameters. The body permits Cases, Constraint Clauses, associated-Type specifications for declared conformances, ordinary functions and their full specializations, and compile-time Directives selecting these items. Constraints use the existing declaration rules; `Self` denotes the enum Core Type. Function access and explicit receivers follow ordinary rules. Properties, `init`, `deinit`, nested Declaration Containers, structure inheritance, `open enum`, and external Case additions are not permitted. Enums cannot have [declaration fragments](#422-container-fragments), and every instantiation must retain at least one Case after compile-time selection. Empty enums and uninhabited-value elimination are deferred.
 
 Each Case has the enum's effective access domain, rather than the ordinary member default of `private`. Cases and payload elements take no access modifiers. Anyone allowed to use the enum may construct and decompose every Case; each payload Type must satisfy [API signature accessibility](#5122-api-signature-accessibility) for the enum's domain. A Case colliding with another Value declaration, including a function, is a declaration error. Adding or removing a public Case is a potentially breaking source API change: additions can break exhaustive matches, and removals can break Case references.
 
@@ -1784,8 +1941,8 @@ Namespaces separate declaration kinds; a **Lookup Role** filters candidates by s
 
 | Lookup Role | Namespace | Eligible declarations |
 | --- | --- | --- |
-| Core Type | Type | Structures, enums, Core Type parameters, associated Types, `Self` |
-| Object View Target | Type | Core Types or runtime contracts; validate specialization and runtime usability after selection |
+| Core Type | Type | Structures, enums, associated Types, `Self`, and generic bindings proven to meet this role |
+| Object View Target | Type | Core Types or runtime contracts; validate instantiation and runtime usability after selection |
 | Type Semantics | Type | Semantics parameters and language-defined Semantics |
 | Qualifier | Type | Groups, Kotonoha references, and Types that can qualify members |
 | Requirement | Type | Capabilities, Types, Semantics, and categories allowed by requirement syntax |
@@ -1895,9 +2052,9 @@ Similarly, a generic function exposed beyond a private Contract's domain cannot 
 
 ##### 5.1.2.3. Generic bodies and separate compilation
 
-Check generic body access to nondependent Types and helpers in the declaration's definition-site context. Deferred Binding and specialization retain that context and the original resolved Symbols. A public generic body may use private implementation Types or helper functions without exposing them in its API signature. Instantiation in another Kotonoha does not recheck those implementation accesses as if the body were written by the caller, grant the caller private access, or require the helpers to become public.
+Check generic body access to nondependent Types and helpers in the declaration's definition-site context. Deferred Binding and instantiation retain that context and the original resolved Symbols. A public generic body may use private implementation Types or helper functions without exposing them in its API signature. Instantiation in another Kotonoha does not recheck those implementation accesses as if the body were written by the caller, grant the caller private access, or require the helpers to become public.
 
-At a generic use, check supplied Types and constraints using the normal use-site rules. A caller may supply an accessible private Type to a public generic function; specialization does not turn that concrete instance into a new externally public declaration. A wrapper or other declaration that exposes the resulting constructed Type must independently satisfy API signature accessibility. Preserve sufficient private implementation metadata for specialization without making its Symbols source-addressable to consumers.
+At a generic use, check supplied Types and constraints using the normal use-site rules. A caller may supply an accessible private Type to a public generic function; instantiation does not turn that concrete instance into a new externally public declaration. A wrapper or other declaration that exposes the resulting constructed Type must independently satisfy API signature accessibility. Preserve sufficient private implementation metadata for specialization without making its Symbols source-addressable to consumers.
 
 ##### 5.1.2.4. Conformance accessibility
 
@@ -1982,7 +2139,7 @@ func read(Config: ref/Settings) -> i32
 
 Member lookup searches ordinary members before extensions. An accessible, role-compatible ordinary member commits lookup even if no overload applies; inaccessible or wrong-role members alone do not block extensions. Search only extensions enabled by the use's lexical scope, then its source aliases, then default aliases, respecting separate stages and combining candidates within a stage. Do not add argument-associated Containers automatically.
 
-Generic bodies use their [definition-site source environment](#12-modules-and-dependencies), including during deferred specialization; caller aliases and extensions never enlarge their candidate sets.
+Generic bodies use their [definition-site source environment](#12-modules-and-dependencies), including during deferred instantiation; caller aliases and extensions never enlarge their candidate sets.
 
 #### 5.1.5. Type name selection
 
@@ -2104,9 +2261,9 @@ These rules deliberately leave owner-to-`ref`/`uniq` overloads ambiguous. Any pr
 
 Fix local Types at declaration; later uses cannot infer backward. Every named function, including local functions, methods, and Contract function requirements, has an explicit return Type or defaults to Unit when `-> Type` is omitted. This rule is independent of accessibility and applies to both Block and Expression bodies. Resolve that signature without inferring a return Type from the body or callers, and validate [API signature accessibility](#5122-api-signature-accessibility). Generic return Types may be explicitly written expressions over parameters; substituting them does not reanalyze a body. Local binding inference and [anonymous-function inference](#6431-syntax-and-inference) remain available.
 
-Explicit function type arguments must supply the full list. Partial lists and inference placeholders are not defined. Omitted defaults do not infer generic arguments.
+Explicit Type arguments follow the [slot rules](#337-generic-type-parameters). Omitted defaults do not infer generic arguments. Explicit specializations do not participate in inference or overload applicability; select an implementation only after the original declaration and its static Type arguments are determined.
 
-Generic inference and substitution preserve all bound Origins and inferred Loan requirements of substituted Types, including nested dependencies. This does not change Core Type/Semantics parameter roles. A surrounding borrow such as `ref/T` retains `T`'s internal dependencies alongside the borrow's own Origin and Loan. Substitution alone creates no Borrow/Reborrow, releases no Loan, and extends no lifetime; actual call-site Origins and Loans follow the [Ownership and Origin rules](#9-ownership-and-lifetime-analysis).
+Generic inference and substitution use the [complete-Type slots and projections](#337-generic-type-parameters), preserving all bound Origins and inferred Loan requirements, including nested dependencies. A surrounding borrow such as `ref/T` retains `T`'s internal dependencies alongside its own Origin and Loan. Substitution alone creates no Borrow/Reborrow, releases no Loan, and extends no lifetime; actual call-site checks follow [Ownership and Origin rules](#9-ownership-and-lifetime-analysis).
 
 Bidirectional checking supports literals, function references, anonymous functions, and expressions directly checkable against a candidate Type. It does not search combinations by rerunning an inner overload for every outer candidate in `f(g(x))`:
 
@@ -2127,9 +2284,9 @@ outer(intermediate)
 
 Resolve a function reference to one declaration using ordinary selection evidence, including explicit generic arguments or a fixed expected callable signature. A unique candidate needs no expected Type; an unresolved overload set is not a value. Anonymous-function arity and explicit Types may filter candidates, but its body is checked only after a common expected signature or a single candidate is determined. A fixed `Callable<r, S>` signature may guide parameter inference while `F` retains the concrete Closure Type. Do not rerun a body for competing signatures, infer parameters from later uses, or repeat capture effects during candidate trials. Function values carry neither labels nor defaults and cannot name unsafe functions or `deinit`. Later conformance failure never selects another overload or capture mode.
 
-After inference, check Constraints using the [limited proof system](#445-constraint-proof-system). Proven satisfies a requirement, Refuted fails it, and Error diagnoses invalid or contradictory evidence. Unknown retains an obligation only for a legitimate dependency that can resolve before the applicable deadline; it is not an applicable result or a negative fact. Nondependent names bind at the definition. Generic bodies use evidence from declared constraints; failure to prove `T is C` does not prove `T is not C`. Deferred members use the [definition-site source environment](#12-modules-and-dependencies), never caller imports. All necessary constraints must be Proven before finalizing a concrete call or specialization. Do not use arbitrary theorem proving, enumeration of available Types, or constraint strength for overload ranking.
+After inference, check Constraints using the [limited proof system](#445-constraint-proof-system). Proven satisfies a requirement, Refuted fails it, and Error diagnoses invalid or contradictory evidence. Unknown retains an obligation only for a legitimate dependency that can resolve before the applicable deadline; it is not an applicable result or a negative fact. Nondependent names bind at the definition. Generic bodies use evidence from declared constraints; failure to prove `T is C` does not prove `T is not C`. Deferred members use the [definition-site source environment](#12-modules-and-dependencies), never caller imports. All necessary constraints must be Proven before finalizing a concrete call or instantiation. Do not use arbitrary theorem proving, enumeration of available Types, or constraint strength for overload ranking.
 
-Conditional membership follows the [name-resolution boundary](#134-name-resolution-boundary). Excluded declarations do not merge or enter candidate sets. Compiler requirements preserve independent specialization environments.
+Conditional membership follows the [name-resolution boundary](#134-name-resolution-boundary). Excluded declarations do not merge or enter candidate sets. Compiler requirements preserve independent generic binding environments.
 
 #### 5.2.6. Usage legality and operators
 
@@ -2165,13 +2322,13 @@ A broad Borrow-versus-acquisition category is insufficient: distinguish Copy fro
 Generic analysis
 ├─ effect known -> analyze normally
 └─ legitimate dependency -> retain obligation
-                            -> constraints / specialization
+                            -> constraints / instantiation
                             -> determine effect -> finalize ownership and cleanup
 ```
 
 Do not treat unresolved Copy capability as proof of non-Copy or fix the effect to Move. Generic checking need not finish at definition time. Deferral is permitted only when a later phase can resolve the dependency before finalization; otherwise report an error. Environment-changing directives still obey their earlier [selection deadlines](#134-name-resolution-boundary).
 
-Specializations may have different effects. Check each body and cleanup with its own effects; never reuse a different-effect analysis without validation. Specialization may directly resolve the operation; compile-time directives do not test Types or select Access Effects.
+Instantiations may have different effects. Check each body and cleanup with its own effects; never reuse a different-effect analysis without validation. Substitution may directly resolve an operation; compile-time directives do not test Types or select Access Effects. These existing deferral rules remain in force pending the [definition-time verification boundary](#5210-deferred-generic-obligations); explicit specialization does not excuse an invalid ordinary body.
 
 ```kimi
 // s is a declared Semantics parameter; value is an initialized owned value.
@@ -2191,11 +2348,41 @@ Compare all parameter/result Origin and Loan contracts for every admitted call; 
 
 Implicit erasure applies only after the expected common Function Type is fixed. No overload ordering between a concrete direct match and an erasure conversion is defined; use an annotation or typed intermediate when that comparison would be needed. Allocation cost never ranks candidates. Receiver, Copy, Owned, or Loan failure cannot reopen selection.
 
+#### 5.2.9. Generic argument inference
+
+Within each candidate, bind explicit arguments first. Otherwise collect structural Type, Semantics, and Origin constraints from the receiver and independently typable arguments together; do not fix the first input and adapt later inputs to it. Use an independently known expected result only for still-unbound parts, without changing input-established Types or Semantics. Apply the existing nested-expression boundaries and literal fitting, using literal defaults only after other evidence has been processed.
+
+Infer unbound s directly from the source's outer Semantics. Do not search implicit Borrow/Reborrow or other conversions for a common Semantics: owner and ref evidence for the same s conflicts. Once a target Type is fixed, including by explicit arguments, check normal adaptation separately. Origin inference uses the [limited principal-solution rules](#934-generic-origin-inference).
+
+Solve structural, Semantics, and Origin constraints until no binding or constraint is added. Require every needed slot to be resolved consistently and uniquely under the permitted rules. Reject infinite substitution such as `X = ref/X` by an occurs-check; declared nominal recursive Types are different and still require valid layout. A cycle alone is not evidence or a result. Retain an unresolved part only when an identified later dependency can resolve it by its deadline.
+
+Do not use argument/candidate traversal order, arbitrary conversion chains, common-base search, or Constraint strength to choose a solution. Constraint substitution uses the same binding table as Type expressions: `s is reference` checks the Semantics projection; the pair's `T is C` checks its target projection and that requirement's role. Ordinary T retains its complete Semantics. Then check fixed-target argument adaptation, substituted Constraints, and expected-result compatibility; flow-dependent acquisition, Loans, and cleanup follow selection.
+
+#### 5.2.10. Deferred generic obligations
+
+A **Deferred Obligation** records a check whose legitimate generic dependency cannot yet be resolved: for example, Type formation, an associated Type, a target role, layout, conformance, or Copy/Move/Borrow and cleanup. Record its defining bindings, required evidence, source location, dependencies, affected analysis, and deadline. Unknown names and failed checks are not dependencies that permit deferral.
+
+| Stage | Required work |
+| --- | --- |
+| Definition | Resolve nondependent names in the selected definition-side environment; bind slots and roles; discharge declaration-required proofs from declared Constraints and Type rules |
+| Legitimate dependency | Retain the obligation and its effects on analysis; Unknown is not success or evidence of non-Copy |
+| Instantiation | Check argument validity, Constraints, and remaining Type, Origin, Loan, layout, and Access Effect obligations with the concrete bindings |
+| Finalization | Reject unproven or failed required obligations by their deadlines; do not retry a committed lookup or overload |
+
+For example, `var y: T` inside `func f<s/T>(x: s/T)` requires DirectTarget(W) to be a value Type and a valid local Type. Under the existing deferral rules, retain this requirement if later W can resolve it; an Object View Target fails. A position that prohibits generic parameters outright, such as a base Type, remains prohibited.
+
+Retained obligations form part of the declaration's **public applicability contract**. Written Constraints alone do not guarantee successful instantiation, and obligations are not another overload-ranking axis. Diagnostics identify the definition-side use, instantiation site, argument bindings, and failed condition. Reuse established analysis and verify remaining obligations and their affected regions; do not reinterpret syntax or add caller imports/extensions to definition-side lookup. Compile-time metadata preserves this information even when runtime keys exclude Origins.
+
+An ordinary implementation must pass its required checks under the declared contract; successful explicit specializations cannot rescue it or discharge `Self is Copy` and other declaration-required proofs. Environment directives add no Type/ability evidence and are never retained as generic-dependent selection; their implementation-internal scalar Pending state follows [directive validation](#a2-directive-representation-and-validation-obligations).
+
+**Design boundary:** the final extent of definition-time ordinary-body verification, acquisition and reuse with unknown Copy, and declaration/Constraint-based generic getter Type determination remains to be settled. Until then, retain the specified Access Effect, associated-Type, layout, and ownership deferral rules rather than abolishing or broadening them. Full-specialization selection does not itself resolve this boundary or relax current common Function Type/runtime-contract limits.
+
 ### 5.3. Inference and operation design boundaries
 
 The following boundaries remain separately specified. Implementations must not invent them through broader search:
 
-- Detailed Core Type/Semantics parameter-to-argument correspondence.
+- Ordinary-body definition-time checking, unknown-Copy reuse, and generic getter Type determination: see [deferred obligations](#5210-deferred-generic-obligations).
+- General Const arguments, standalone Semantics slots, partial/default/variadic generic arguments, and partial or conditional explicit specialization are not introduced. Their syntax and identity rules need separate designs.
 - Additional implicit argument/receiver adaptations beyond the defined applicability table; exact contextual-binding boundaries for additional accessor/function forms. The explicit Borrow table does not add implicit overload preferences.
 - Operator/indexer candidate collection and explicit selection syntax; combining optional `?` with external/internal parameter-name syntax. Constructor collection is defined under [constructors](#433-constructors).
 
@@ -2367,7 +2554,7 @@ Argument mapping, Type adaptation, expected-result filtering, candidate comparis
 
 In an expression, `<` introducing type arguments must be adjacent to the target name and have a matching `>`. Thus `f<T>(x)` applies type arguments while `a < b` compares values. Nested type arguments may split `>>` into two closing delimiters. Use spaces around comparison operators to avoid ambiguity.
 
-Type-argument inference and specialization follow the declared inference boundaries. Constant type-argument conventions need additional rules. Structure construction uses the dedicated [Type.init invocation](#433-constructors), with ordinary call argument evaluation and its own Type-only qualifier lookup. `T(args)` is not a constructor shorthand.
+Type arguments follow [slot binding](#337-generic-type-parameters) and [inference boundaries](#525-inference-boundaries-and-specialization); general Const arguments are not introduced. After ordinary call resolution, select any matching [explicit specialization](#465-explicit-full-function-specialization). Structure construction uses the dedicated [Type.init invocation](#433-constructors), with ordinary call argument evaluation and its own Type-only qualifier lookup. `T(args)` is not a constructor shorthand.
 
 #### 6.4.3. Function expressions
 
@@ -2466,11 +2653,11 @@ let c = (take@move)()       // Explicitly consume the original.
 take()                     // Error: Moved.
 ```
 
-The internal call signature retains complete receiver/parameter/result Types, per-call Origins, fixed captured Origins, and result Loan dependencies. Acquire receiver access before later argument evaluation and keep required Loans through the result's uses. Generic calls follow the declared [Callable receiver](#444-callable-constraints), even when specialization reveals a weaker body requirement.
+The internal call signature retains complete receiver/parameter/result Types, per-call Origins, fixed captured Origins, and result Loan dependencies. Acquire receiver access before later argument evaluation and keep required Loans through the result's uses. Generic calls follow the declared [Callable receiver](#444-callable-constraints), even when instantiation reveals a weaker body requirement.
 
 ##### 6.4.3.4. Function references and common-type conversion
 
-A resolved function reference produces its Function Item Type, including its generic Type/Semantics specialization and Origin contract. Different declarations remain distinct. Function Item ownership is Copy/Owned/Shared and does not erase borrowed parameter/result contracts. A runtime method receiver is not automatically bound; follow explicit receiver argument rules. Unsafe functions and `deinit` cannot be acquired as values.
+A resolved function reference produces its Function Item Type, including its bound generic Type arguments and Origin contract. Different declarations remain distinct. Function Item ownership is Copy/Owned/Shared and does not erase borrowed parameter/result contracts. A runtime method receiver is not automatically bound; follow explicit receiver argument rules. Unsafe functions and `deinit` cannot be acquired as values.
 
 ```kimi
 func add(x: i32, y: i32) -> i32 => x + y
@@ -2731,7 +2918,7 @@ let sameView = value@ref/Value // When value's Core Type is Value.
 let taken = value@move
 ```
 
-For a bare Name `X` in `E@X`, first recognize `move` and built-in Semantics names. Otherwise perform **Adaptation Target Lookup** independently for the Type and generic Semantics-parameter roles, using ordinary lookup stages, visibility, and aliases. Type candidates include Type aliases and generic Core Type parameters. Commit each role's first eligible stage and deduplicate paths to the same Symbol.
+For a bare Name `X` in `E@X`, first recognize `move` and built-in Semantics names. Otherwise perform **Adaptation Target Lookup** independently for the Type and generic Semantics-parameter roles, using ordinary lookup stages, visibility, and aliases. Type candidates include Type aliases and generic Type bindings subject to the target's role restrictions. Commit each role's first eligible stage and deduplicate paths to the same Symbol.
 
 | Lookup result | Outcome |
 | --- | --- |
@@ -4005,7 +4192,7 @@ Expand inline has declarations
 
 An instance Stored Property must explicitly bind every borrow Origin and required Type Origin argument in its complete Property Type, including nested layers and generic Type arguments, under [Origin binding](#94-origin-elision-and-return-contracts). Bindings use the containing Type's declared abstract Origins or `static` where valid; `self` does not provide an implicit self-borrowing storage contract. Neither a declaration initializer nor constructor assignments infer the Property's Origin contract.
 
-A static Stored Property may not retain a safe borrow in this revision, directly or through stored aggregate fields, elements, or a closure environment. This prohibition includes borrows bound to `static`; `Owned` alone is not sufficient to permit such storage. Apply the check after alias expansion and generic substitution, retaining unresolved generic obligations until specialization. A callable signature that accepts or returns a borrow, or a raw pointer's Referent Type, does not itself mean that the stored value retains that borrow. Computed Properties have no storage to which this prohibition applies; their getter results obey the existing result rules.
+A static Stored Property may not retain a safe borrow in this revision, directly or through stored aggregate fields, elements, or a closure environment. This prohibition includes borrows bound to `static`; `Owned` alone is not sufficient to permit such storage. Apply the check after alias expansion and generic substitution, retaining unresolved generic obligations until instantiation. A callable signature that accepts or returns a borrow, or a raw pointer's Referent Type, does not itself mean that the stored value retains that borrow. Computed Properties have no storage to which this prohibition applies; their getter results obey the existing result rules.
 
 ### 8.1. Effective representation
 
@@ -4070,7 +4257,7 @@ Reading `parent.child` borrows the object; assignment passes ownership to its se
 
 A stored `let value: uniq/T from source` similarly returns `ref/T from self`, leaving the exclusive capability in storage. Shared inspection does not make the containing structure Copy.
 
-For generic Properties, unresolved Type Semantics or Copy capability leave the default rule dependent. Binding may use a result Type only once constraints or specialization establish its row, and must resolve the operation before finalizing a specialization. An unconstrained Core Type parameter is not assumed Copy. Use `T is Copy` when Copy capability is required.
+For generic Properties, unresolved Type Semantics or Copy capability leave the default rule dependent. Binding may use a result Type only once constraints or instantiation establish its row, and must resolve the operation before finalization. An unconstrained Type parameter is not assumed Copy. Use `T is Copy` when Copy capability is required. Further definition-time getter-Type restrictions remain part of the [generic verification boundary](#5210-deferred-generic-obligations).
 
 ### 8.3. Accessors
 
@@ -4205,7 +4392,7 @@ Compute each getter's result from its own declared Property Type and getter anno
 
 As with concrete Properties, an explicit list contains at least one accessor, each at most once, and adds no unwritten getter. `has set` is write-only; `let` cannot require a setter. Additional implementation accessors are allowed but are not available through this Contract unless required. Required accessors have no independent access modifiers. Requirements have no initializers or accessor bodies.
 
-A contract getter requirement may specify a result Type, for example `var child: obj/Node has get -> objref/Node from self`. Without an annotation, the required Getter Result Type follows the same default result rules as a concrete Property, but no storage read or Loan is generated by the requirement itself. Here `self` denotes the required shared receiver. A conforming getter must provide a result compatible with the required result Type for every legal receiver Origin; it cannot impose a shorter lifetime than the requirement promises. Generic requirements retain unresolved default result rules until the applicable constraints or specialization determine them.
+A contract getter requirement may specify a result Type, for example `var child: obj/Node has get -> objref/Node from self`. Without an annotation, the required Getter Result Type follows the same default result rules as a concrete Property, but no storage read or Loan is generated by the requirement itself. Here `self` denotes the required shared receiver. A conforming getter must provide a result compatible with the required result Type for every legal receiver Origin; it cannot impose a shorter lifetime than the requirement promises. Generic requirements retain unresolved default result rules until the applicable constraints or instantiation determine them.
 
 A contract requirement creates no implementation, storage read, Loan, effective storage representation, or `HasStorage` classification. There is no Move accessor requirement or new Consume contract syntax. Both a stored `var count: i32 has get` and a computed `get => items.count` may satisfy the readable requirement. In concrete declarations, `has` defines bodyless accessors; in contracts, it specifies required capabilities only.
 
@@ -4617,7 +4804,20 @@ The relation is reflexive and transitive. `static` outlives every Origin.
 region(o1 and o2) = region(o1) ∩ region(o2)
 ```
 
-Consequently, `o1 and o2` never outlives either operand. A result declared `from x and y` is valid only in the region common to both inputs.
+Consequently, the intersection contains no region outside either operand; it may equal an operand. A result declared `from x and y` is valid only in the region common to both inputs.
+
+Normalize intersections using these laws, with outlives simplification requiring proof under the [limited Origin solver](#934-generic-origin-inference):
+
+```text
+a and b         = b and a
+(a and b) and c = a and (b and c)
+a and a         = a
+a : b implies a and b = b
+```
+
+For a fixed binding and proof environment, flatten intersections, replace proven-equal or mutually outliving Origins by the least stable representative, remove duplicates and operands proven to outlive another operand, and sort the remainder. Use a deterministic total order based on stable Binding Identity, including declaration binder and parameter position where applicable, not spelling, input traversal order, or memory address. A singleton is its operand.
+
+Renormalize after substitution or changes to proof evidence; cached reductions must validate their proof dependencies. This is a canonical form under the permitted rules, not a general semantic-equivalence test. Keep input Loan dependencies separately: simplifying an Origin expression never removes a distinct input's Loan.
 
 #### 9.2.3. `static` and `Owned`
 
@@ -4731,6 +4931,31 @@ struct MutView<T> origin source
 
 The requirement determines which caller-side Loan must remain active while a returned or stored Origin-bearing value is live. It is not an additional Copy classification condition: [Copy capability](#351-copy-capability-and-explicit-duplication) is structural, while actual Loan conflicts are checked at each use.
 
+#### 9.3.4. Generic Origin inference
+
+For both ordinary and pair slots, put inference variables at each unresolved Origin position in the complete Type W. Apply variance recursively to nested Types and aggregate mappings. Never turn an explicitly fixed Origin back into an inference variable.
+
+| Position | Constraints and candidate solution |
+| --- | --- |
+| Covariant | Inputs a and b contribute `a : alpha` and `b : alpha`. Without an equality constraint, use the meet of all upper bounds: their longest common region |
+| Invariant | Require proven Origin equality; do not replace invariant inner positions of `uniq/V` with a meet |
+| Contravariant | Reverse constraint direction. If one lower bound provably outlives every other lower bound, choose that least upper bound; do not invent a union of incomparable bounds |
+| Mixed or cyclic | Combine equality and ordering constraints; require a representable, unique principal solution modulo proven Origin equivalence |
+
+A **principal solution** is the most general permitted solution under the Type's variance and fitting relation. Multiple shorter solutions do not make a covariant inference ambiguous: choose the longest common region. Reject inference when no principal solution is expressible or only incomparable candidates remain; require an explicit annotation.
+
+The initial solver uses equality substitution, reflexivity and transitivity of established outlives facts, and the common-lower-bound laws of `and`. Use the forced equality for invariant positions, the meet of upper bounds for covariant positions, and the comparable-lower-bound rule above for contravariant positions. Substitute candidates into every constraint, including inner dependencies and use requirements. Do not enumerate arbitrary regions or use general theorem proving. An unresolved dependency may be retained only under [deferred-obligation rules](#5210-deferred-generic-obligations).
+
+```text
+choose<s/T>(x: s/T, y: s/T) -> s/T
+Inputs:      ref/i32 from a, ref/i32 from b
+Constraints: a : alpha, b : alpha
+Binding:     W = ref/i32 from (a and b)
+Result:      W, retaining both input Loan dependencies
+```
+
+This example has no additional constraints. Changing input order does not change the solution; an expected result cannot extend a or b. Even equivalent Origin regions retain separate input Loans. Exclusive use still requires a unique Loan anchor and valid acquisition/Reborrow after Origin inference succeeds.
+
 ### 9.4. Origin elision and return contracts
 
 Origin omission depends on the position of the complete Type. These rules apply to `ref`, `uniq`, `objref`, and `objuniq`, after alias expansion and normalization of grouping and redundant owner prefixes. They do not create a safe-borrow Origin for `unsafe/T`.
@@ -4755,9 +4980,18 @@ An implicit input Origin is universally quantified for that input and supplied f
 
 For locals, inference means satisfying ordinary subtyping, variance, outlives, and Loan constraints, not requiring literal equality with the initializer's Origin. Permitted shortening remains available. The declaration fixes the local Type and its Origin constraints; later assignments must satisfy that contract and cannot extend a source lifetime or erase a retained Loan dependency. Explicit Origin annotations remain constraints on the initializer and all subsequent assignments.
 
-An initializer is necessary for local omission but does not by itself guarantee successful inference. At declaration binding, associate each omission with a fixed inference variable and constraints derived from the initializer; do not leave a missing annotation for a later first assignment to supply. Region and Loan constraints may remain symbolic during body analysis, and generic-dependent obligations may remain deferred until the applicable substitution or specialization. Later uses constrain these same variables rather than reopening Type inference. Before completing body Origin/Loan analysis, resolve all non-generic omissions to a valid inferred contract; discharge deferred generic obligations before finalizing the specialization. If a required binding cannot be determined under these rules, or its validity cannot be proved by that deadline, report a compile-time error requiring an explicit annotation or corrected constraints. This does not require a unique concrete set of program points when ordinary region inference admits equivalent valid solutions. Never replace an unresolved Origin with `static`, an invented abstract Origin, or an erased dependency; `static` is a default only where an explicit elision rule specifies it.
+An initializer is necessary for local omission but does not by itself guarantee successful inference. At declaration binding, associate each omission with a fixed inference variable and constraints derived from the initializer; do not leave a missing annotation for a later first assignment to supply. Region and Loan constraints may remain symbolic during body analysis, and generic-dependent obligations may remain deferred until the applicable substitution or instantiation. Later uses constrain these same variables rather than reopening Type inference. Before completing body Origin/Loan analysis, resolve all non-generic omissions to a valid inferred contract; discharge deferred generic obligations before finalizing the instantiation. If a required binding cannot be determined under these rules, or its validity cannot be proved by that deadline, report a compile-time error requiring an explicit annotation or corrected constraints. This does not require a unique concrete set of program points when ordinary region inference admits equivalent valid solutions. Never replace an unresolved Origin with `static`, an invented abstract Origin, or an erased dependency; `static` is a default only where an explicit elision rule specifies it.
 
-Instance storage exposes the containing Type's declared Origin contract. Bind each retained dependency to the containing Type's abstract Origins, or explicitly to `static` where ordinary validity and Loan rules permit. An exclusive borrow still requires a valid unique Loan anchor; longevity alone is insufficient. Initializers and constructors must satisfy these bindings, rather than determine them.
+Instance storage exposes the containing Type's declared Origin contract, including dependencies already bound within complete generic Type arguments. Bind directly written borrow dependencies to declared abstract Origins or explicitly to `static` where valid. An exclusive borrow still needs a unique Loan anchor. Initializers and constructors satisfy this contract; they do not infer it.
+
+```kimi
+struct Box<T>
+    let value: T
+// Box<ref/i32 from a> retains a through its complete Type argument.
+// No synthetic named Origin parameter is added to Box.
+```
+
+The constructed Box's lifetime, acquisition, and destruction retain that dependency. This does not permit a directly written field `value: ref/i32` to omit its Origin. Static storage still rejects such a Box even when a is `static`; `Owned` alone is insufficient. Follow the recursive [static storage check](#8-properties), without treating a raw pointer's pointee or a callable signature as an actually retained safe borrow. Finite layout, Copy derivation, heap/global escape, and Object payload erasure remain separate checks.
 
 ```kimi
 func f<T>(x: ref/T, y: ref/T)
@@ -5635,6 +5869,8 @@ Portable interchange uses source artifacts or binary interfaces, not serialized 
 
 Callable interfaces additionally preserve concrete environment identities, capture dependencies, internal/public call signatures, receiver acquisition contracts, and per-call Origin quantification where needed for verification. Object interfaces retain Supports/conformance, validated virtual/contract entries, Runtime Type Identity, and complete destruction/storage-release information. These requirements do not prescribe an effect-summary encoding or fixed ABI.
 
+Generic interfaces also retain complete slot/projection and Origin schemas, deferred obligations, and the defining Kotonoha's closed explicit-specialization set and mappings. Preserve the body and dependency information needed for correct implementation selection and code generation under [generic artifacts](#1494-artifacts-verification-and-invalidation).
+
 ## 13. Compile-time directives
 
 Compile-time directives choose source syntax without runtime branching. The following terms are used in this chapter:
@@ -5747,7 +5983,7 @@ Constraint Clauses and ordinary runtime Type tests retain their separate rules. 
 | **False** | The Condition is not satisfied. |
 | **Error** | Invalid syntax, an unavailable Name, incompatible scalar operands, or a non-Boolean Condition. |
 
-There is no Deferred Condition result. Generic Binding and specialization cannot supply missing Condition inputs and never change a valid selection within one fixed Compilation environment.
+There is no Deferred Condition result. Generic Binding and instantiation cannot supply missing Condition inputs and never change a valid selection within one fixed Compilation environment.
 
 Truth determination does not waive validation. Validate both operands of `and` and `or`, even when one determines truth. **Error** is absorbing for `and`, `or`, and `not`. Otherwise evaluate their ordinary Boolean meaning. For example, `false and missing`, `true or missing`, `debug and missing`, `false and 1`, and `true or (T is i32)` are errors when reached; neither short-circuit truth nor build mode hides the invalid operand.
 
@@ -5757,7 +5993,7 @@ These validation obligations concern reached directives. They do not require eva
 
 ### 13.4. Name-resolution boundary
 
-Select directives using only the prepared environment, before ordinary Name resolution using the affected scope begins. The scope's lookup environment includes selected declarations, overload candidates, aliases, and extension imports. A later phase must not add, remove, or replace candidates by reevaluating a Condition for a generic specialization.
+Select directives using only the prepared environment, before ordinary Name resolution using the affected scope begins. The scope's lookup environment includes selected declarations, overload candidates, aliases, and extension imports. A later phase must not add, remove, or replace candidates by reevaluating a Condition for an instantiation.
 
 Environment directives remain permitted in executable bodies and Declaration Containers. They may select declarations, imports, or local syntax for a fixed target/configuration. A directive creates no extra lookup scope beyond the ordinary scope rules of its selected syntax. Establish selected local declarations before resolving their uses.
 
@@ -5855,7 +6091,7 @@ Layout includes exactly one direct base subobject plus the structure's own Store
 
 ### 14.7. Compilation invariants
 
-Compilation must respect semantic dependencies; it need not use one whole-program pass per stage. [The reference compilation models](#appendix-b-non-normative-reference-models) illustrate valid arrangements. Resolve directive Conditions from the prepared environment and establish each affected scope's lookup environment before using it. Generic specialization does not reselect directives. Analyses may share facts, but unresolved validation obligations must not be treated as successful finalization.
+Compilation must respect semantic dependencies; it need not use one whole-program pass per stage. [The reference compilation models](#appendix-b-non-normative-reference-models) illustrate valid arrangements. Resolve directive Conditions from the prepared environment and establish each affected scope's lookup environment before using it. Instantiation and explicit implementation selection do not reselect directives. Analyses may share facts, but unresolved validation obligations must not be treated as successful finalization.
 
 ### 14.8. Object metadata
 
@@ -5872,7 +6108,28 @@ Type Descriptor
     └─ layout or receiver-adjustment information where required
 ```
 
-Runtime Type Identity comes from the normalized concrete Core Type: declaration Symbol and Kotonoha/version, plus generic arguments in declared order and kind. Preserve nested Types, Semantics, and compile-time value arguments that distinguish the Type. Exclude the handle's outer `obj/rc/arc/objref/objuniq` and all Origin bindings. Different aliases normalize to the same Type; equal names, layouts, member sets, or descriptor addresses alone do not define identity. Runtime identity never establishes static lifetime compatibility.
+**Runtime Object Type Identity**, also called Runtime Type Identity here, identifies the actual concrete payload Core Type D. Use these logical functions on Types whose necessary formation checks have succeeded:
+
+```text
+N(A)      = normalize transparent aliases, resolved associated-Type projections,
+            grouping, and redundant owner prefixes
+ArgKey(A) = remove every Origin from N(A), recursively retaining Type structure
+            and Semantics; nominal nodes retain Symbol/Kotonoha/version and
+            their ordered argument keys
+CoreId(D) = the concrete Core Type's identity computed by the same rules
+```
+
+An object handle's Runtime Type Identity is `CoreId(D)`, excluding its root `obj/rc/arc/objref/objuniq`. Do not apply this root-handle removal recursively inside generic arguments: their Object Semantics remain in ArgKey. Preserve Function/Tuple structure and generated Closure declaration identity. A static base or Contract View Target is not a substitute for the actual D.
+
+| Comparison, assuming valid Types | Runtime Type Identity |
+| --- | --- |
+| `obj/D` and `rc/D` for the same actual D | Equal |
+| `Box<ref/i32 from a>` and `Box<ref/i32 from b>` | Equal |
+| `Box<ref/i32>` and `Box<i32>` | Different |
+| `Box<objref/C>` and `Box<obj/C>` | Different: inner Semantics are retained |
+| `obj/Box<ref/i32 from a>` and `obj/Box<i32>` | Different after root-handle removal |
+
+Runtime identity equality does not imply equal value representation, layout, ABI, ownership operations, assignment compatibility, Origins, or Loans. It neither authorizes code sharing nor skips validation. Equal names, layouts, member sets, or descriptor addresses alone also do not define identity. General Const arguments and their identity rules are not introduced. Other identity and key purposes are separated under [generation keys](#1492-identity-and-generation-keys).
 
 Conformance is registered by the concrete Type's definition and fixed when metadata is generated. No unrelated extension, module search, or runtime registration changes it. Artifacts for one Type must agree on identity, bases, conformance, and effective implementation mapping; reject disagreement at build/link time rather than using load order. An entry must satisfy the declaration and ObjectCompatible guarantees; receiver adjustment cannot bypass access, Type, Origin, or Loan checks. A destruction entry does not make `deinit` a source-level function value.
 
@@ -5883,6 +6140,105 @@ Each view must reach the same original object's type identity, the receiver need
 Reference counts and allocator state belong to instances/allocations, not the shared immutable Type Descriptor. Logical roles may be co-located physically. A vtable is one dispatch structure, not all metadata. No base offset zero, equal pointer values between views, one-word borrow, fixed table/slot layout, descriptor representation, calling convention, stable ABI, FFI layout, or dynamic-loading compatibility is promised.
 
 Optimization may share, normalize, omit, or directly resolve metadata only while preserving Type tests, implementation selection, evaluation order/count, effects, failure, Origins/Loans, and destruction. It must not remove information needed by separately compiled consumers. Source legality cannot depend on allocation elimination or devirtualization.
+
+### 14.9. Generic code generation
+
+#### 14.9.1. Policy and sharing conditions
+
+**Instantiation** binds generic arguments. **Explicit full specialization** selects a user-written implementation under [function specialization](#465-explicit-full-function-specialization). **Automatic specialization** generates Type-specific code while preserving that selected implementation's meaning. Instantiation does not require a separate machine-code body.
+
+Use **shared implementations with automatic specialization where needed**:
+
+| Policy | Condition |
+| --- | --- |
+| Required separation | Shared code, metadata, helpers, and adapters cannot preserve a semantic or representation difference |
+| Default automatic specialization | Primitive scalar value representation or operations; use Type-specific code or adapters under the policies below |
+| Optional automatic specialization | Inlining, removal of indirect calls, or other optimizations preserve meaning |
+
+Sharing must preserve the selected ordinary or explicit implementation, environment-selected syntax, resolved overloads and Contract mappings; parameter/result representations, layout and receiver adjustments; and Copy/Move/Consume, borrowing, reference counts, failure, and destruction paths. Differences may be moved to common-format metadata or helpers, but must not be lost. Equal representation is insufficient to share implementations with different observable behavior.
+
+Metadata executes validated operations; it does not defer source legality, Origin/Loan checks, or environment selection to runtime. Sharing must preserve evaluation order and count, results, side effects, ownership, and failure behavior. It does not expand runtime Pattern exhaustiveness proofs or mandatory unreachable-pattern diagnostics.
+
+#### 14.9.2. Identity and generation keys
+
+The following are logical distinctions, not prescribed APIs or binary encodings:
+
+| Identity or key | Purpose and retained information |
+| --- | --- |
+| Complete static Type identity | Normalized nominal identity, all Semantics layers, nested Types, and Origins; used for semantic checks alongside Loan information |
+| Implementation Selection Key | Original function declaration Identity plus ordered ArgKey values for all its own Type slots; select a matching explicit implementation from the closed definition-side set |
+| Runtime Object Type Identity | CoreId of the actual payload, with the special root-handle rule in [object metadata](#1481-type-identity-and-descriptors) |
+| Code Generation Key | Distinguish the selected implementation's meaning and representation, scalar operations, calling convention, embedded operations, and ownership effects that change generated code |
+| Code Cache Key | Generation key plus declaration/Kotonoha identity and version, closed specialization set and selection mappings, selected body and dependency content identities, target, compiler build, and optimization/generation settings |
+
+Form, normalize, and validate complete Type arguments before computing an Origin-erased key. Ordinary bindings and semantic metadata retain every Origin and Loan. An Implementation Selection Key retains outer handle Semantics; it is not Runtime Object Type Identity. Origin differences alone neither select another implementation nor require duplicated machine code.
+
+A Code Generation Key may omit concrete Type differences handled entirely through metadata or helpers, provided their correspondence remains available. Embedded scalar operations distinguish `i32` from `u32` even when their sizes match. Any merging across selected implementations must prove preservation of their observable behavior. None of these keys replaces Constraint, Type, Origin, or Loan validation.
+
+#### 14.9.3. Shared operations and Type policies
+
+Shared inputs must expose the required information in a common form, directly or through adapters:
+
+| Purpose | Logical information or operation |
+| --- | --- |
+| Layout | Size, alignment, stride, and required field offsets |
+| Initialization | Move-initialize; copy-initialize only where Copy is permitted |
+| Destruction and replacement | Destroy; move-assign/copy-assign when appropriate |
+| Type-dependent operations | Member/Contract implementation, receiver adjustment, required identity and dynamic destruction entries |
+
+Initialization writes uninitialized storage; Move transfers responsibility and Copy preserves the source. Destroy only initialized parts whose responsibility remains. Combined assignment helpers must preserve [assignment order](#67-assignment), including securing the right side before evaluating and replacing the left side, and its failure behavior. This is not a requirement for function-pointer tables, a new Copy capability, user-defined Copy, or unrestricted byte copying. Values may be addressed without mandatory heap boxing. Concrete layouts and identities survive sharing; runtime Origin representations are not required.
+
+Let P be an integer Type, `f32`, `f64`, `bool`, or `char`. `string`, Unit, Never, and nominal wrappers containing scalars are not P. Normalize transparent aliases and redundant owner notation without erasing nominal identity.
+
+| Type or operation | Default generation policy |
+| --- | --- |
+| P passing, results, storage, and temporary Copy/Move | Type-specific automatic specialization or adapters |
+| P arithmetic, conversion, and comparison | Type-correct instructions or helpers; automatic specialization by default |
+| Only passing or returning `ref/P` or `uniq/P` | Share if representation and borrow operations permit |
+| Load/store through `ref/P` or `uniq/P` | Type-correct instructions or helpers; automatic specialization by default |
+| `string`, struct, enum, Tuple, and non-scalar value borrows | Share through metadata when the required operations permit |
+| `unsafe/T` | Share while retaining pointee size, access operations, and Unsafe preconditions |
+| Other existing Type forms | Apply the same representation and operation conditions; introduce no new Type form |
+
+No policy gives writes through `ref` or implicit Copy through `uniq`. Reference comparison follows the allowed language operation, not an assumption that pointer comparison is sufficient. A helper may isolate Type-specific operations so the caller remains shared. A nested scalar, as in `Box<i32>`, does not force whole-body duplication, nor does a fixed `i32` in a declaration require expanding unrelated slots.
+
+Keep `obj`, `rc`, `arc`, `objref`, and `objuniq` separate in ownership-aware intermediate representations. After making ownership, borrowing, and count operations explicit, equivalent low-level code may merge. Sharing within one Semantics still requires a common form for View Targets, preserving member calls, receiver adjustment, dynamic identity, destruction/release, and non-atomic versus atomic counts. Do not assume one-word handles or identical callees.
+
+Unit has one logical value; a mutually agreed calling convention may omit its physical argument/result transfer, but not side effects or required storage/addresses. No fixed zero-byte ABI is promised. Never has no value: if argument evaluation does not complete, emit no subsequent call, while preserving earlier effects and transfers. A Never-returning function does not return normally. Unreachable code retains required static validation.
+
+```kimi
+func pair<P, T>(number: P, value: T) -> (P, T) => (number, value)
+// Without explicit specializations, pair<i32, A> and pair<i32, B> may share
+// a body if metadata preserves T operations and Tuple layout. Selection keys
+// distinguish A/B; a generation key need not embed that metadata-only difference.
+
+func keepBorrow<T>(value: ref/T) -> ref/T from value => value
+// No referent access: compatible borrow representations can share immediately.
+```
+
+#### 14.9.4. Artifacts, verification, and invalidation
+
+The defining Kotonoha collects and closes its explicit specialization set under [declaration ownership](#4653-selection-and-declaration-ownership). Artifacts retain the original declarations, set and mappings, complete contracts, body information, and legitimate [deferred obligations](#5210-deferred-generic-obligations). Preserve defining Symbols, source environments, dependencies, and verification deadlines; private dependencies do not become caller-addressable names.
+
+Check every environment-selected explicit specialization's target, Type arguments, Constraints, inherited contract, and body before finalizing the defining artifact, even if unused or unreachable. Excluded declarations follow [excluded-syntax rules](#135-diagnostics-and-excluded-syntax). A validated unused body need not have machine code; a validated body need not be rechecked at every call. Each use still checks its own contract and lifetime conditions.
+
+Consumers use the artifact's closed set and may not register additions. Calls from shared generic code and function references must reach the implementation selected by their static arguments, independently of separate compilation, optimization, or LTO. Callee information passed at runtime, if used, must still come from that static selection, not from the value's Dynamic Type. No particular propagation or compilation mechanism is required.
+
+Specialization additions, deletions, and body changes may alter behavior without changing the API Type. Invalidate dependent selection and generation results, including calls previously mapped to the ordinary implementation. Validate Code Cache Keys and dependency content, not only package versions. Inconsistent artifacts/call-target mappings require rebuilding dependent results or diagnostics, never a load-order choice. Missing correctness information cannot justify an invalid shared fallback.
+
+Artifacts follow [source and binary interfaces](#123-source-artifacts-and-binary-interfaces); no Koto serialization, fixed ABI, or exact artifact encoding is required.
+
+#### 14.9.5. Generation limits and code merging
+
+Generate needed bodies without enumerating the Cartesian product of Type arguments. Under the same declaration/build conditions, deduplicate generation plans by Code Generation Key; recursion to a key already being generated refers to that plan. Reuse existing code only after Code Cache Key validation.
+
+Bound growing automatic specialization, including Type-growing recursion, by a finite optimization budget and return to a validated shared path when available. Shared fallback is required only where sharing can preserve the selected implementation, not for required separation. Metadata/helpers must also have a finite generation strategy. Budgets constrain automatic optimization, not source validity or mandatory implementation selection: never replace an explicit specialization with the ordinary body to save resources. Scalar defaults do not promise a distinct final body per Type or a public ABI entry.
+
+A shared path cannot discharge unresolved Type, ownership, or layout obligations. Reject infinite value layout under existing rules. Diagnose unresolved obligations separately from resource exhaustion; Type-growing recursion is not otherwise banned by this section.
+
+Equivalent code may merge only while preserving observable Type/function identity and the selected implementation's results, side effects, failure, ownership, and destruction behavior. Separate entry points may share an internal body. No new function-address comparison, reflection, or stack-trace guarantee follows.
+
+Exact precompilation, callee-information passing, artifact/ABI formats, inlining budgets, and sharing mechanisms remain implementation-design boundaries. Current common Function Type and runtime-contract restrictions are unchanged; the ordinary-body verification questions remain under [deferred obligations](#5210-deferred-generic-obligations).
 
 # Appendices
 
@@ -5926,7 +6282,7 @@ CompileTimeMatchKoto
         Block
 ```
 
-A directive whose selection still awaits implementation-internal validation may retain a directive Koto node; this does not represent a valid type-dependent Condition. An early-true `#if` contributes its Target directly; an early-false one contributes none. Independently, retain any pending Condition validation obligations even when the directive Koto or unselected Syntax is discarded. Each obligation retains the full Condition and its original CodeContext and identifies its source scope for diagnostics. Resolve Condition Names only in the prepared environment, never that scope's Type or Value declarations. These obligations are separate from executable syntax and must not cause excluded targets to undergo ordinary Binding. Unknown Names must be diagnosed before finalization. Invalid Case Groups may remain for error recovery. Specialization neither reselects directives nor mutates shared Koto.
+A directive whose selection still awaits implementation-internal validation may retain a directive Koto node; this does not represent a valid type-dependent Condition. An early-true `#if` contributes its Target directly; an early-false one contributes none. Independently, retain any pending Condition validation obligations even when the directive Koto or unselected Syntax is discarded. Each obligation retains the full Condition and its original CodeContext and identifies its source scope for diagnostics. Resolve Condition Names only in the prepared environment, never that scope's Type or Value declarations. These obligations are separate from executable syntax and must not cause excluded targets to undergo ordinary Binding. Unknown Names must be diagnosed before finalization. Invalid Case Groups may remain for error recovery. Instantiation and implementation selection neither reselect directives nor mutate shared Koto.
 
 Retain a Condition with unresolved Names or unvalidated dependencies even when early evaluation determines True or False. Its validation obligation preserves the source, diagnostic context, and enclosing lookup scope until Directive Binding can complete the [Condition validation](#133-condition-evaluation-and-selection). An early truth result does not discharge that obligation.
 
@@ -5941,7 +6297,9 @@ Parse per source and collect fragments/generator output
 -> select directives in established environments
 -> collect selected declarations, root and scope tables, and alias targets
 -> bind headers, Types, Signatures, and Constraints; validate merges/duplicates
+-> match explicit specialization headers; close their set before final call targets
 -> resolve bodies -> test candidates -> select -> check usage
+-> instantiate static arguments and select the required implementation
 -> retain Symbol references and the selected operation plan for lowering
 ```
 
@@ -5955,13 +6313,13 @@ Cache only context-independent results or include every relevant dependency:
 | Accessible lookup | Also use-site Kotonoha, Container relationship, and inheritance/access domains |
 | Member lookup | Target Symbol/Type, type arguments, static/instance use, protected receiver Type, extensions |
 | Applicability | Candidate, argument Effective Types/literal values/labels/forms, expected Type, type arguments and constraints |
-| Conditional work | Compilation target, configured Project settings, selection state; independent of generic specialization |
+| Conditional work | Compilation target, configured Project settings, selection state; independent of generic arguments |
 
 Do not reuse a role-filtered lookup for a different role, or source-wide access results across unrelated Containers. Invalidate affected caches when sources, dependencies, aliases, selections, or Symbols change. Flow-dependent Loan and initialization state belongs to Usage Legality, not overload-selection cache keys. Refinement changes the input Effective Type and therefore must be reflected in member/applicability cache keys.
 
-Validation must cover source-context isolation, merged private access, duplicate/role/arity boundaries, Type/Value paths, aliases, extension precedence, expected results, incomparable candidates, nested inference, specialization environments, and no fallback after usage failure. Reordering load, parse, generator completion, or candidate enumeration must preserve results; parsing examples alone does not validate Binding.
+Validation must cover source-context isolation, merged private access, duplicate/role/arity boundaries, Type/Value paths, aliases, extension precedence, expected results, incomparable candidates, nested inference, generic binding environments, and no fallback after usage failure. Reordering load, parse, generator completion, or candidate enumeration must preserve results; parsing examples alone does not validate Binding.
 
-Validate effective access-domain inclusion for every exposed API component, recursively through constructed Types and constraints, after merging and inference. Preserve deferred associated-type obligations. Cover private Types used by internal APIs, public members in restricted Containers, private type arguments at generic uses, and definition-site private helpers during external specialization. Inheritance access validation must cover sealed-base rejection, open-fragment agreement, base accessibility, protected receiver restrictions, both compound access forms, and the cross-Kotonoha override exception. Access-cache validity must account for base-graph and modifier changes, independently of the source alias environment.
+Validate effective access-domain inclusion for every exposed API component, recursively through constructed Types and constraints, after merging and inference. Preserve deferred associated-type obligations. Cover private Types used by internal APIs, public members in restricted Containers, private type arguments at generic uses, and definition-site private helpers during cross-Kotonoha instantiation. Inheritance access validation must cover sealed-base rejection, open-fragment agreement, base accessibility, protected receiver restrictions, both compound access forms, and the cross-Kotonoha override exception. Access-cache validity must account for base-graph and modifier changes, independently of the source alias environment.
 
 ### A.4. Property implementation requirements
 
@@ -5989,7 +6347,7 @@ Validation must cover duplicate and conditionally excluded `deinit` declarations
 
 ### A.8. Callable and object verification
 
-Preserve selected capture bindings, acquisition order/effects, mutable-binding flags, nested capture dependencies, environment Type identities, and all captured/call/result Origin and Loan relationships through Binding, specialization, lowering, and artifacts. Do not finalize unresolved Copy-required capture, minimum receiver, Callable conformance, or common-type erasure obligations. Verify concrete Copy separately from receiver kind and erased-container classification.
+Preserve selected capture bindings, acquisition order/effects, mutable-binding flags, nested capture dependencies, environment Type identities, and all captured/call/result Origin and Loan relationships through Binding, instantiation, lowering, and artifacts. Do not finalize unresolved Copy-required capture, minimum receiver, Callable conformance, or common-type erasure obligations. Verify concrete Copy separately from receiver kind and erased-container classification.
 
 Verify ObjectCompatible at each specified declaration/use boundary, including separately compiled/indirect callees and inherited contract overrides. Metadata must agree with verified effective implementations and full object identity/cleanup. Unknown effects or artifact disagreement cannot supply proof.
 
@@ -6005,7 +6363,7 @@ Cover same/next-line `else`, comments, multiline conditions, missing or empty bo
 
 ### A.10. Enum and Pattern verification
 
-Preserve Case Symbols, Pattern positions, candidate and body Binding Identities, read/binding Types, Access Modes, acquisition effects, and Origin/Loan dependencies through Binding, specialization, ownership analysis, and lowering. The [reference plan](#b6-match-binding-plan) illustrates this information without fixing the syntax-tree format. Resolve Case sets, Copy obligations, and dependent read Types by their specified deadlines. Type alone cannot recover whether a payload was reached through owned or shared access.
+Preserve Case Symbols, Pattern positions, candidate and body Binding Identities, read/binding Types, Access Modes, acquisition effects, and Origin/Loan dependencies through Binding, instantiation, ownership analysis, and lowering. The [reference plan](#b6-match-binding-plan) illustrates this information without fixing the syntax-tree format. Resolve Case sets, Copy obligations, and dependent read Types by their specified deadlines. Type alone cannot recover whether a payload was reached through owned or shared access.
 
 Verification must cover at least these boundaries; neither parsing nor optimization establishes the guarantees:
 
@@ -6038,6 +6396,27 @@ Validate requirement access and parameter restrictions, parent cycles and confli
 
 Coverage must distinguish qualified and ambiguous short associated-Type names, diamonds versus independent same-named declarations, inherited fixed Types versus missing specifications, input structure versus Origin compatibility, get-only covariance versus setter structural matching, redundant parent declarations versus conflicting mappings, and static type-function calls versus unsupported runtime Views. Check safe/unsafe and default-parameter boundaries, nonstrengthening Constraints/Effects, and public conformance against private implementations. Parsing examples does not establish these semantic guarantees.
 
+### A.12. Generic schemas and specialization verification
+
+Preserve complete Type slots rather than flattening a pair into two independent arguments. A logical schema contains:
+
+```text
+DeclarationSchema
+    TypeSlots: ordered index, kind (ordinary or pair), bound names
+    OriginSchema: ordered binders, bounds, inferred variance and Loan requirements
+PairSlot
+    WholeType: complete or dependent Type
+    OuterSemantics, DirectTarget, OuterOrigin: projections of WholeType
+DeferredObligation
+    requirement, source use, defining bindings/environment, dependencies, deadline
+```
+
+Use Origin schemas for argument correspondence, fragment-header matching, and artifact compatibility, not overload identity. Preserve Binding Identities through alias expansion and Signature normalization. Prove role restrictions before using a projection, or retain only a legitimate obligation. Semantic metadata must not discard Origin information merely because runtime descriptors omit it.
+
+Verification must cover full-Type binding and one-slot pair decomposition, reconstruction versus applying s to another binding, duplicate names, trailing commas, occurs-checks, invalid Type arguments, recursive storage dependencies, and principal Origin solutions independent of input order. Retain distinct Loans when Origin expressions simplify.
+
+For explicit specialization, cover target ambiguity before contract checks, inherited defaults and Safety, closed arguments, Origin-only duplicate keys, `obj/D` versus `rc/D` selection, mandatory selection through shared generic callers/function references, recursive self-calls, and no fallback after failure. Check unused selected declarations, closed-set ownership, and invalidation after set/body changes. Code sharing and budget tests must preserve selected behavior with and without automatic specialization or LTO. These checks do not settle the explicitly deferred ordinary-body verification questions.
+
 ## Appendix B. Non-normative reference models
 
 **Non-normative.** These algorithms illustrate valid implementation strategies. A different strategy must preserve all language rules and Compiler requirements, including validation of excluded syntax and immutable lookup decisions.
@@ -6053,7 +6432,9 @@ Solution -> Project -> Compilation(inputs)
     -> SourceDocuments -> Tokenization -> Parsing / Koto tree
     -> Directive Binding and selection of lookup environments
     -> Declaration and Name Binding, Type checking and overload resolution
-    -> Required generic specialization (without directive reselection)
+    -> Generic instantiation and remaining validation (without directive reselection)
+    -> Explicit implementation selection from the closed defining set
+    -> Shared code generation and any meaning-preserving automatic specialization
     -> Control-flow, ownership, lifetime and Origin analysis
     -> Lowering -> backend IR -> binary
 ```
@@ -6073,7 +6454,7 @@ Parse a directive Condition
         -> implementation-internal unresolved validation: retain a validation obligation, never a generic dependency
         -> Error: report a diagnostic and discard the controlled Syntax
     -> resolve Names and validate operands in all retained Conditions, including early-True/False Conditions and Conditions of unselected case arms
-    -> diagnose Names absent from the prepared environment; do not retry after generic Binding or specialization
+    -> diagnose Names absent from the prepared environment; do not retry after generic Binding or instantiation
     -> resolve selections that change a scope's lookup environment before ordinary Name resolution using that environment begins
     -> require a final result and completed validation before finalization
     -> bind and lower only the selected Syntax
@@ -6146,7 +6527,7 @@ An implementation may attach the following information to bound Pattern position
 
 AccessMode describes the path, not the value's Semantics. The Subject begins with Owned access; an implicit dereference changes it to Shared, inherited by descendants. Binding a `ref/E` Subject with `let r` uses `Owned` / `None`; a Case Pattern inspecting its referent uses `Shared` / `SharedOnce`. Guard reading remains shared in either mode.
 
-Retain Candidate positions, Origin/Loan dependencies, and Copy/Move/Borrow/Reborrow plans alongside these facts. Candidate/body Symbols and binding Types are needed only at Binding positions. Shared position tracking gives no Move authority. Do not reconstruct access effects solely from MatchedType or reuse a specialization's plan when its effects differ.
+Retain Candidate positions, Origin/Loan dependencies, and Copy/Move/Borrow/Reborrow plans alongside these facts. Candidate/body Symbols and binding Types are needed only at Binding positions. Shared position tracking gives no Move authority. Do not reconstruct access effects solely from MatchedType or reuse an instantiation's plan when its effects differ.
 
 ## Appendix C. Implementation status
 
@@ -6169,7 +6550,7 @@ This table defines the recorded status of each compiler stage. The notes below d
 | `@move` / Consume | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
 | Control flow and `defer` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | Enum Cases, Patterns, and guards | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
-| Generic specialization | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
+| Explicit full specialization and generic code sharing | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
 | Option / Result / Abort | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
 
 Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
@@ -6205,6 +6586,8 @@ Inheritance access domains, recursive API signature accessibility, and protected
 The Parser supports Origin lists on structures and functions, simple and qualified annotations, intersections, and named arguments. Origin name resolution, inference, variance analysis, and borrow checking are not implemented.
 
 ### C.4. Declarations and compile-time directives
+
+Complete-Type slot/pair binding, structural Signature normalization, explicit `specialize func` selection, and the generic code-sharing policy are specified by this revision, not implemented by this documentation change. Parser acceptance alone does not establish these binding, validation, metadata, or backend guarantees.
 
 The current Parser stores leading Constraint Clauses separately from executable body items and preserves deferred directives on them. It checks clause subjects against the declared generic parameters and diagnoses clauses placed after executable items. Semantic validation of Constraints during Binding and specialization is not implemented.
 
@@ -6254,7 +6637,11 @@ This index links to design boundaries owned by the language sections. It adds no
 | Fixed FFI layout | Deferred design | [Structure layout and ABI](#146-structure-layout-and-abi) |
 | Limited Constraint proof | Defined; implementation tracked separately | [Constraint proof system](#445-constraint-proof-system) |
 | Associated-Type inference beyond explicit identity facts, arbitrary complete-Type bindings, and stronger symbolic Constraint reasoning | Not introduced | [Associated Types](#4413-associated-types), [proof boundaries](#445-constraint-proof-system) |
-| Generic specialization and operation selection | Partially specified | [Inference and operation design boundaries](#53-inference-and-operation-design-boundaries) |
+| Generic Type slots, full function specialization, and code-sharing policy | Defined; implementation tracked separately | [Generic parameters](#337-generic-type-parameters), [full specialization](#465-explicit-full-function-specialization), [code generation](#149-generic-code-generation) |
+| Ordinary generic body verification, unknown-Copy reuse, and generic getter Type determination | Integration boundary; existing deferral rules retained | [Deferred generic obligations](#5210-deferred-generic-obligations) |
+| Const/value argument syntax and identity, standalone Semantics slots, partial/default/variadic generic arguments | Not introduced | [Generic Type parameters](#337-generic-type-parameters) |
+| Partial/conditional explicit specialization, specialization priorities, generic Container specialization | Not introduced | [Full specialization](#465-explicit-full-function-specialization) |
+| Exact precompilation, callee propagation, sharing/ABI formats, and optimization budgets | Implementation-design boundaries | [Generic generation limits](#1495-generation-limits-and-code-merging) |
 | Contract-level abstract Origins, heap/global borrow escape, and lending iterators | Deferred design; ordinary function/struct abstract Origins are defined in 9.3 | [Abstract Origins](#93-abstract-origins), [Lifetime design boundaries](#99-lifetime-design-boundaries) |
 | Destruction lifetime relaxation | Deferred design | [Destruction lifetime checking](#966-destruction-lifetime-checking) |
 | Additional dynamic Move Paths | Deferred design | [Move Paths and Partial Move](#913-move-paths-and-partial-move) |
@@ -6284,7 +6671,7 @@ The initial [enum](#47-enums) and [match](#773-match) rules do not introduce the
 | Public non-exhaustive enum | Require explicit declaration and client catch-all rules; do not silently add unknown Cases to closed enums |
 | Other binding constructs | Specify permitted refutability, failure control flow, and scopes for each construct |
 | Guard candidate capture | Define explicit read-value acquisition syntax/timing and Origin/Loan escape checks; no `@copy` form exists yet |
-| Generic enum conditional Copy | Separate Type-use constraints from conformance conditions and specify proof, specialization, and acquisition effects |
+| Generic enum conditional Copy | Separate Type-use constraints from conformance conditions and specify proof, instantiation, and acquisition effects |
 
 Object-Semantics enum construction/matching, empty enums, and representation/ABI guarantees also remain outside the [initial enum rules](#471-cases-and-payloads).
 
@@ -6306,7 +6693,11 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Complete value | An aggregate with completed construction and all stored fields Initialized. | [Construction and completeness](#912-aggregate-construction-and-completeness) |
 | Completion | Normal or abrupt completion of evaluation, distinct from divergence and Abort Termination. | [Completions](#71-completions) |
 | Composition Root | The language facility selected by `$`. | [Reserved syntax](#68-extension-boundaries-and-reserved-syntax) |
-| Associated Type | A Core Type parameter-like declaration whose binding is fixed by explicit Type-identity facts. | [Associated Types](#4413-associated-types) |
+| Associated Type | A Core Type binding fixed by explicit Type-identity facts; narrower than an ordinary complete-Type generic slot. | [Associated Types](#4413-associated-types) |
+| GenericArity / OriginArity | Type slot count / explicitly declared Origin count; one pair consumes one Type slot. | [Signatures](#41-signatures) |
+| SemanticsTarget | Fixed kind of a pair's direct target: a complete value Type or permitted Object View Target. | [Generic parameters](#337-generic-type-parameters) |
+| Instantiation / explicit full specialization / automatic specialization | Argument binding / mandatory user implementation selection / meaning-preserving Type-specific code generation. | [Generic code generation](#149-generic-code-generation) |
+| Deferred Obligation | A legitimate dependent check retained with its evidence, environment, and deadline. | [Generic checking](#5210-deferred-generic-obligations) |
 | Conformance | A Type's fulfillment of a Contract, including associated-Type bindings and requirement-to-implementation mappings. | [Conformance](#4414-conformance) |
 | Conformance Identity | The pair of concrete Type Identity and Contract Identity, shared by explicit and refinement-implied conformance. | [Conformance](#4414-conformance) |
 | Constraint | A condition imposed on a Type or Type Semantics. | [Constraints](#44-constraints) |
@@ -6453,11 +6844,15 @@ PrimitiveType        := "isize" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128
                       | "f32" | "f64" | "bool" | "char" | "string"
 Semantics            := "owner" | "ref" | "uniq" | "obj" | "rc" | "arc"
                       | "objref" | "objuniq" | "unsafe" | Name
-GenericParameters    := "<" List<GenericParameter> ">"
-GenericParameter     := Name | Name "/" Name
+GenericParameters    := "<" TrailingList<GenericParameter> ">"
+GenericParameter     := TypeParameter | PairParameter
+TypeParameter        := Name
+PairParameter        := Name "/" Name
 ```
 
 Object-target syntax uses the View Target lookup role; in the [runtime Contract extension](#443-runtime-contracts), a named target may resolve to a valid `RuntimeContractType` instead of a Core Type. Runtime designation and View bindings are not supplied by this grammar. A bare Contract is not a value Type. This shared syntax permits no arbitrary Object Semantics around an already Semantics-applied Type. Layer legality and Origin attachment follow [nested Semantics](#336-nested-semantics-and-type-grouping). `NamedType` also preserves dotted associated-Type projection syntax; its Contract and Core Type roles are resolved under F.3. Callable signature syntax appears with requirements below; generated Closure and Function Item Types have no source declaration spelling.
+
+Both GenericParameters and TypeArguments are nonempty and permit a trailing comma. A pair consumes one complete Type argument. Interpret `Name / Name` as a pair only in the parameter-declaration list; the argument list contains ordinary Type syntax. Standalone Semantics/Const arguments, partial lists, placeholders, defaults, and variadic slots are not introduced. Origin arguments retain their separate rules.
 
 ### F.3. Declaration grammar
 
@@ -6477,7 +6872,7 @@ StructureDeclaration := Access? "open"? "struct" Name GenericParameters?
 BaseClause           := ":" CoreType
 EnumDeclaration      := Access? "enum" Name GenericParameters? OriginParameters?
                         Body<EnumItem>
-EnumItem             := EnumCase | FunctionDefinition | ConstraintClause
+EnumItem             := EnumCase | FunctionDefinition | SpecializationDeclaration | ConstraintClause
                       | AssociatedTypeSpecification
                       | Directive<EnumItem>
 EnumCase             := Name ("(" TrailingList<Type> ")")?
@@ -6488,7 +6883,7 @@ ContractItem         := ContractRequirement | AssociatedTypeDeclaration
                       | ConstraintClause | Directive<ContractItem>
 ContractRequirement  := FunctionRequirement | PropertyRequirement
 FunctionRequirement  := "unsafe"? "func" Name GenericParameters? OriginParameters?
-                        "(" TrailingList<RequirementParameter>? ")" "->" Type
+                        "(" TrailingList<RequirementParameter>? ")" ("->" Type)?
                         RequirementConstraints?
 RequirementParameter := Name ("=>" Name)? ":" Type
 RequirementConstraints := Body<ConstraintClause>
@@ -6509,6 +6904,11 @@ FunctionHeader       := Access? "unsafe"? "func" Name
                         GenericParameters? OriginParameters?
                         "(" TrailingList<Parameter>? ")" ("->" Type)?
 FunctionDefinition   := FunctionHeader FunctionBody
+SpecializationDeclaration := "specialize" "func" Name TypeArguments
+                            "(" TrailingList<SpecializationParameter>? ")"
+                            ("->" Type)? SpecializationBody
+SpecializationParameter := Name ("=>" Name)? ":" Type
+SpecializationBody   := "=>" Expression | ExecutableBlock
 FunctionBody         := "=>" Expression | Body<FunctionItem>
 Parameter            := Name ("=>" Name)? ":" Type ("=" Expression)?
                       | Name "?" ":" Type "=" Expression
@@ -6530,12 +6930,14 @@ ContainerItem        := Declaration | ConstraintClause | AssociatedTypeSpecifica
 ContainerBody        := ? indented ContainerItem sequence permitted by its kind ?
 Declaration          := GroupDeclaration | RootGroupDeclaration
                       | StructureDeclaration | ContractDeclaration
-                      | FunctionDefinition | PropertyDeclaration
+                      | FunctionDefinition | SpecializationDeclaration | PropertyDeclaration
                       | ConstructorDeclaration | DeinitDeclaration
                       | EnumDeclaration | ExtensionDeclaration
 ```
 
 Modifier placement and compound-access combinations are constrained by [accessibility](#512-accessibility-and-reachability), even where the shared grammar uses `Access`. `open` applies only to structures. `BaseClause` has the semantic restrictions in [inheritance](#432-inheritance-and-open-structures); member-level virtual/override syntax is not supplied by this grammar.
+
+`SpecializationDeclaration` is permitted only in the original generic function's declaration Container and Kotonoha. It adds no Type or Origin binder, Constraints, access/unsafe modifiers, attributes, defaults, or optionality markers. Its body uses ordinary executable syntax; the original function's contract is inherited under [full specialization](#465-explicit-full-function-specialization). Written Type arguments must be closed after normalization, except for Origins governed by that inherited contract.
 
 Omitting the result annotation in a named function declaration or Contract function requirement means Unit; the optional grammar does not authorize body-based return inference. Anonymous functions retain their own inference rules.
 
