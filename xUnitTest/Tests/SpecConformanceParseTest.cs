@@ -45,7 +45,7 @@ public class SpecConformanceParseTest
     public void ParsesFunctionOriginsAndSeparatesConstraintsFromExecutableBody()
     {
         var parsed = Parse("""
-            func View.unwrap<s/T> origin source, owner(value: s/T from source)
+            func unwrap<s/T> origin source, owner(value: s/T from source)
                 -> ref/T from value and owner
                 s is ref or obj
                 T is Comparable and (Equatable or Hashable)
@@ -54,7 +54,7 @@ public class SpecConformanceParseTest
             """);
         AssertValid(parsed);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(parsed.GeneratedFunction!.Body!.Items));
-        Assert.Equal("View.unwrap", function.Name);
+        Assert.Equal("unwrap", function.Name);
         Assert.Equal(["source", "owner"], function.Origins);
         Assert.Equal(2, function.TypeConstraints.Count);
         Assert.IsType<ReturnKoto>(Assert.Single(function.Body!.Items));

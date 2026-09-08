@@ -1,9 +1,6 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Buffers;
-using System.Globalization;
 using System.Runtime.CompilerServices;
-using System.Text;
 
 namespace Kimi.Compiler.Helper;
 
@@ -24,123 +21,25 @@ public static class IdentifierHelper
             return false;
         }
 
-        var c = identifier[0];
-        var hasNonAscii = c > 0x7F;
-        int index;
-
-        if (c <= 0x7F)
+        for (var i = 0; i < identifier.Length; i++)
         {
-            if (!IsAsciiIdentifierStart(c))
+            var c = identifier[i];
+            if (c > 0x7F)
+            {
+                return UnicodeIdentifierHelper.IsValid(identifier);
+            }
+
+            var lower = (uint)(c | 0x20);
+            if (!(lower - 'a' <= 'z' - 'a' || c == '_' || (i > 0 && (uint)(c - '0') <= 9)))
             {
                 return false;
             }
-
-            index = 1;
-        }
-        else
-        {
-            if (!TryGetUnicodeCategory(identifier, 0, out var category, out var consumed) ||
-                !IsIdentifierStartCategory(category))
-            {
-                return false;
-            }
-
-            index = consumed;
         }
 
-        while ((uint)index < (uint)identifier.Length)
-        {
-            c = identifier[index];
-
-            if (c <= 0x7F)
-            {
-                if (!IsAsciiIdentifierPart(c))
-                {
-                    return false;
-                }
-
-                index++;
-                continue;
-            }
-
-            hasNonAscii = true;
-            if (!TryGetUnicodeCategory(identifier, index, out var category, out var consumed) ||
-                !IsIdentifierPartCategory(category))
-            {
-                return false;
-            }
-
-            index += consumed;
-        }
-
-        // Validate the original spelling; never normalize the symbol-table key.
-        // ASCII is already NFC. Check Unicode only after rejecting malformed UTF-16.
-        return !hasNonAscii || identifier.ToString().IsNormalized(NormalizationForm.FormC);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsAsciiIdentifierStart(char c)
-    {
-        var lower = (uint)(c | 0x20);
-        return lower - 'a' <= 'z' - 'a' || c == '_';
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsAsciiIdentifierPart(char c)
-    {
-        var lower = (uint)(c | 0x20);
-        return lower - 'a' <= 'z' - 'a' ||
-            (uint)(c - '0') <= 9 ||
-            c == '_';
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsIdentifierStartCategory(UnicodeCategory category)
-    {
-        return category is
-            UnicodeCategory.UppercaseLetter or
-            UnicodeCategory.LowercaseLetter or
-            UnicodeCategory.TitlecaseLetter or
-            UnicodeCategory.ModifierLetter or
-            UnicodeCategory.OtherLetter or
-            UnicodeCategory.LetterNumber;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsIdentifierPartCategory(UnicodeCategory category)
-    {
-        return category is
-            UnicodeCategory.UppercaseLetter or
-            UnicodeCategory.LowercaseLetter or
-            UnicodeCategory.TitlecaseLetter or
-            UnicodeCategory.ModifierLetter or
-            UnicodeCategory.OtherLetter or
-            UnicodeCategory.LetterNumber or
-            UnicodeCategory.NonSpacingMark or
-            UnicodeCategory.SpacingCombiningMark or
-            UnicodeCategory.DecimalDigitNumber or
-            UnicodeCategory.ConnectorPunctuation;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryGetUnicodeCategory(ReadOnlySpan<char> text, int index, out UnicodeCategory category, out int consumed)
-    {
-        var c = text[index];
-
-        if (!char.IsSurrogate(c))
-        {
-            category = CharUnicodeInfo.GetUnicodeCategory(c);
-            consumed = 1;
-            return true;
-        }
-
-        if (Rune.DecodeFromUtf16(text.Slice(index), out var rune, out consumed) != OperationStatus.Done)
-        {
-            category = default;
-            return false;
-        }
-
-        category = Rune.GetUnicodeCategory(rune);
         return true;
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsAsciiPart(char c)
+        => (uint)((c | 0x20) - 'a') <= 'z' - 'a' || (uint)(c - '0') <= 9 || c == '_';
 }

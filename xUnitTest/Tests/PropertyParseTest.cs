@@ -15,14 +15,14 @@ public class PropertyParseTest
     [Theory]
     [InlineData("i32", null)]
     [InlineData("#Type i32", "Type")]
-    public void PreservesAttributesOnPropertyNameTypeAndInitializer(string type, string? typeAttribute)
+    public void DiagnosesAndRecoversAttributesInsidePropertySyntax(string type, string? typeAttribute)
     {
         var source = "public open struct TestStruct<s/C, D> origin a, b\n"
             + $"    public static #Test1 var #Test2 x: {type} = #One 1\n"
             + "    var next: i32 = 2";
         var (_, structure, diagnostics) = ParseStruct(source);
 
-        Assert.True(diagnostics.Length == 0, string.Join(Environment.NewLine, diagnostics.Select(x => x.Message)));
+        Assert.NotEmpty(diagnostics);
         var property = Assert.IsType<PropertyKoto>(structure.Members.First());
         Assert.Equal(ModifierKind.Public | ModifierKind.Static, property.Modifier);
         Assert.Equal("Test1", AttributeName(property));

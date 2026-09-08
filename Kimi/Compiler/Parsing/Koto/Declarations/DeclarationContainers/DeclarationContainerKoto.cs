@@ -65,6 +65,17 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
 
     private List<IsKoto>? typeConstraints;
 
+    private Koto[]? bases;
+
+    /// <summary>Gets the written base type or parent contracts.</summary>
+    public IReadOnlyList<Koto> Bases => this.bases ?? [];
+
+    internal void SetBases(Koto[]? bases)
+    {
+        this.bases = bases;
+        this.Adopt(bases);
+    }
+
     /// <summary>Gets or sets the declared origins, or <see langword="null"/> when none exist.</summary>
     protected List<string>? OriginList { get; set; }
 
@@ -234,6 +245,20 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
             builder.Append('>');
         }
 
+        if (this.bases is { Length: > 0 } bases)
+        {
+            builder.Append(" : ");
+            for (var i = 0; i < bases.Length; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                bases[i].WriteTo(ref builder);
+            }
+        }
+
         if (this.OriginList is { Count: > 0 } origins)
         {
             builder.AppendSpace();
@@ -275,6 +300,7 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
         this.genericArguments?.Clear();
         this.typeConstraints?.Clear();
         this.OriginList?.Clear();
+        this.bases = null;
         if (ReferenceEquals(this, this.Kotonoha.RootKoto))
         {
             this.Kotonoha.ClearGeneratedFunction();
@@ -287,8 +313,7 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
     {
         var containerDeclared = false;
 
-        if ((!this.IsRoot && (this.kotoList is { Count: > 0 } || this.typeConstraints is { Count: > 0 } || this.OriginList is { Count: > 0 }))
-            || this.Modifier != 0)
+        if (!this.IsRoot || this.Modifier != 0)
         {
             builder.EnsureTrailingBlankLine();
             if (this.Akind == KotoKind.Group)
@@ -657,12 +682,18 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
             return false;
         }
 
+        if (tokenKind == TokenKind.Extension)
+        {
+            reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "extension");
+        }
+
         reader.Advance();
-        var supportsGenericHeader = tokenKind == TokenKind.Struct;
+        var supportsGenericHeader = tokenKind is TokenKind.Struct or TokenKind.Enum;
         var declaration = Parser.ParseDeclarationContainerHeader(
             ref reader,
             supportsGenericHeader,
-            supportsGenericHeader);
+            supportsGenericHeader,
+            tokenKind);
         if (isExcluded || reader.IsExcluded)
         {
             reader.SkipCurrentBlock(false);
@@ -674,6 +705,7 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
         {
             var standalone = CreateStandalone(reader.CodeContext, tokenKind, state, token.Span, declaration.Name);
             standalone.AddHeader(declaration.GenericArguments, declaration.Origins);
+            standalone.SetBases(declaration.Bases);
             if (reader.CurrentTokenKind == TokenKind.StartBlock)
             {
                 standalone.Parse(ref reader);
@@ -685,10 +717,15 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
 
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span);
         container.AddHeader(declaration.GenericArguments, declaration.Origins);
+        container.SetBases(declaration.Bases);
 
         if (reader.CurrentTokenKind == TokenKind.StartBlock)
         {
             container.Parse(ref reader);
+        }
+        else if (container is EnumKoto)
+        {
+            container.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
         }
 
         return true;
@@ -707,20 +744,105 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
         bool isExcluded)
     {
         var token = reader.CurrentToken;
+        if (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func)
+        {
+            var specialized = Parser.ParseSpecialization(ref reader);
+            if (specialized is not null)
+            {
+                this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, specialized));
+            }
+
+            return true;
+        }
+
+        if (this is StructKoto && token.Kind == TokenKind.Init)
+        {
+            var constructor = Parser.ParseFuncDeclaration(ref reader, constructor: true);
+            if (constructor is not null)
+            {
+                constructor.Parse(ref reader);
+                this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, constructor));
+            }
+
+            return true;
+        }
+
+        if (token.Kind == TokenKind.Associate)
+        {
+            reader.Advance();
+            if (Parser.IsTypeConstraintStart(ref reader))
+            {
+                var associated = Parser.ParseTypeConstraint(ref reader);
+                if (associated is not null)
+                {
+                    associated.IsAssociatedConstraint = true;
+                    if (this is ContractKoto && compileTimeIfPrefixes is null)
+                    {
+                        this.AddTypeConstraint(associated);
+                    }
+                    else
+                    {
+                        this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, associated));
+                    }
+                }
+            }
+            else
+            {
+                var name = reader.Read();
+                if (this is not ContractKoto || !name.Kind.IsIdentifierOrContextualKeyword())
+                {
+                    reader.Diagnostic.Add(name.Span, DiagnosticCode.UnexpectedToken_Kd, "associate");
+                }
+
+                if (IdentifierNameKoto.TryCreate(ref reader, name, out var identifier))
+                {
+                    this.AddLast(new SyntaxFormKoto(ref reader, name.Span, KotoKind.AssociatedType, "associate ", [identifier]));
+                }
+            }
+
+            return true;
+        }
+
+        if (this is EnumKoto && token.Kind.IsIdentifierOrContextualKeyword())
+        {
+            this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, Parser.ParseEnumCase(ref reader)));
+            reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+            return true;
+        }
+
         if (token.Kind is TokenKind.Let or TokenKind.Var)
         {
-            CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Property);
+            if (this is not ContractKoto)
+            {
+                CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.Property);
+            }
+
             reader.Advance();
             var propertyKoto = Parser.ParseProperty(ref reader, ref token);
             if (propertyKoto is not null && !isExcluded)
             {
+                if (this is ContractKoto)
+                {
+                    propertyKoto.IsContractRequirement = true;
+                    if (!propertyKoto.HasInlineAccessors || propertyKoto.InitializerKoto is not null || propertyKoto.TypeKoto is null)
+                    {
+                        propertyKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "requirement property");
+                        return true;
+                    }
+                }
+                else if (this is EnumKoto)
+                {
+                    propertyKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "enum property");
+                    return true;
+                }
+
                 this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, propertyKoto));
             }
 
             return true;
         }
 
-        if (this is StructKoto && reader.IsCurrentIdentifier("deinit"))
+        if (this is StructKoto && token.Kind == TokenKind.Deinit)
         {
             var context = reader.TakeContext();
             reader.Advance();
@@ -746,7 +868,14 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
             return true;
         }
 
-        Parser.ParseNamedFunctionBody(ref reader, functionKoto);
+        if (this is ContractKoto)
+        {
+            Parser.ParseRequirementBody(ref reader, functionKoto);
+        }
+        else
+        {
+            Parser.ParseNamedFunctionBody(ref reader, functionKoto);
+        }
 
         if (!isExcluded && !functionKoto.IsExcluded)
         {
@@ -784,6 +913,14 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
 
     protected override IEnumerable<Koto> GetChildNodes()
     {
+        if (this.bases is not null)
+        {
+            foreach (var type in this.bases)
+            {
+                yield return type;
+            }
+        }
+
         if (this.genericArguments is not null)
         {
             foreach (var argument in this.genericArguments)
@@ -819,6 +956,11 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
+        if (ReplaceInList(this.bases, oldKoto, newKoto))
+        {
+            return true;
+        }
+
         if (ReplaceInList(this.kotoList, oldKoto, newKoto))
         {
             return true;

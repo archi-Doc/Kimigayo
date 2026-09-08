@@ -14,6 +14,9 @@ public sealed class MatchArmKoto
     /// <summary>Gets the arm result expression or block.</summary>
     public Koto Body { get; internal set; } = default!;
 
+    /// <summary>Gets the optional guard expression.</summary>
+    public Koto? Guard { get; internal set; }
+
     /// <summary>Initializes a new instance of the <see cref="MatchArmKoto"/> class.</summary>
     /// <param name="pattern">The arm pattern.</param>
     /// <param name="body">The arm body.</param>
@@ -54,6 +57,7 @@ public sealed class MatchKoto : ExpressionKoto
         {
             arm.Pattern.Parent = this;
             arm.Body.Parent = this;
+            this.Adopt(arm.Guard);
         }
     }
 
@@ -74,6 +78,12 @@ public sealed class MatchKoto : ExpressionKoto
 
             var arm = this.arms[i];
             arm.Pattern.WriteTo(ref builder);
+            if (arm.Guard is not null)
+            {
+                builder.Append(" if ");
+                arm.Guard.WriteTo(ref builder);
+            }
+
             builder.Append(" =>");
             if (arm.Body is CodeBlockKoto block)
             {
@@ -95,6 +105,11 @@ public sealed class MatchKoto : ExpressionKoto
         foreach (var arm in this.arms)
         {
             yield return arm.Pattern;
+            if (arm.Guard is not null)
+            {
+                yield return arm.Guard;
+            }
+
             yield return arm.Body;
         }
     }
@@ -109,6 +124,12 @@ public sealed class MatchKoto : ExpressionKoto
 
         foreach (var arm in this.arms)
         {
+            if (arm.Guard == oldKoto)
+            {
+                arm.Guard = newKoto;
+                return true;
+            }
+
             if (arm.Pattern == oldKoto)
             {
                 arm.Pattern = newKoto;

@@ -18,7 +18,7 @@ internal ref struct Tokenizer
         Block,
         Parenthesis, // ()
         Bracket, // []
-        AngleBracket, // <>: Not supported yet because distinguishing generics from comparison operators is difficult.
+        AngleBracket, // Recognized adjacent generic delimiters.
         Brace, // {}
         LineContinuation, // Implicit continuation, such as a method chain line starting with ".".
     }
@@ -38,6 +38,12 @@ internal ref struct Tokenizer
     static Tokenizer()
     {
         CharacterHandlerTable = new CharacterHandler?[Constants.ExclusiveUpperBound];
+
+        CharacterHandlerTable[':'] = (ref tokenizer) =>
+        {
+            tokenizer.AddTokenAndSlice(tokenizer.NextChar == ':' ? TokenKind.ColonColon : TokenKind.Colon, tokenizer.NextChar == ':' ? 2 : 1);
+            return false;
+        };
 
         CharacterHandlerTable[Constants.CrChar] = (ref tokenizer) =>
         {// \r \r\n
@@ -182,6 +188,13 @@ internal ref struct Tokenizer
 
         CharacterHandlerTable[Constants.GreaterThanChar] = (ref tokenizer) =>
         {// > >= >> >>=
+            if (tokenizer.indentCount > 0 && tokenizer.indentStack[tokenizer.indentCount - 1] == IndentSource.AngleBracket)
+            {
+                tokenizer.PopIndentSource(TokenKind.GreaterThan);
+                tokenizer.AddTokenAndSlice(TokenKind.GreaterThan, 1);
+                return false;
+            }
+
             var next = tokenizer.NextChar;
             if (next == Constants.EqualsChar)
             {
@@ -226,6 +239,11 @@ internal ref struct Tokenizer
             }
             else
             {
+                if (tokenizer.IsGenericOpen())
+                {
+                    tokenizer.PushIndentSource(IndentSource.AngleBracket);
+                }
+
                 tokenizer.AddTokenAndSlice(TokenKind.LessThan, 1);
             }
 
@@ -348,6 +366,7 @@ internal ref struct Tokenizer
     private int blockDepth;
     private int nonBlockDepth;
     private int tokenAdded;
+    private int genericLookaheadEnd;
 
     /// <summary>
     /// Gets the source document being tokenized.
@@ -603,6 +622,12 @@ LineContent:
         }
 
         var indentLevel = (numberOfSpaces / Constants.IndentationSpaces) - this.indentationOffset;
+        if (this.tokenCount == 0 && indentLevel > 0)
+        {
+            this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+            indentLevel = 0;
+        }
+
         if (this.currentIndentLevel < 0)
         {
             this.currentIndentLevel = indentLevel;
@@ -618,7 +643,7 @@ LineContent:
             // A line that starts with "." is treated as a continuation of the previous
             // expression. It contributes one required indentation level, like grouping
             // constructs, but does not require an explicit closing token.
-            if (this.span[0] == Constants.DotChar)
+            if (this.span[0] == Constants.DotChar && this.NextChar != Constants.DotChar && !this.PreviousLineStartsBody())
             {// Method chain
                 this.PushIndentSource(IndentSource.LineContinuation);
                 goto Loop;
@@ -638,7 +663,13 @@ LineContent:
             this.AddToken(new(TokenKind.Separator, this.CurrentRange));
             separatorInserted = true;
 
-            // TODO: Consider reporting KimiDiagnostic.UnexpectedIndent_Kd when dif > 1.
+            if (indentDelta > 1)
+            {
+                this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                indentDelta = 1;
+            }
+
+            // Recover at the written level after reporting a skipped body level.
             for (var i = 0; i < indentDelta; i++)
             {
                 this.AddToken(new(TokenKind.StartBlock, this.CurrentRange));
@@ -720,8 +751,6 @@ LineContent:
 
             if (hasTrailingContentOnCurrentLine && !indentationMismatch)
             {
-                this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatchWarning_Kd);
-
                 goto Loop;
             }
 
@@ -760,8 +789,134 @@ EndOfFile:
         return this.tokenAdded;
     }
 
+    private bool IsGenericOpen()
+    {
+        if (this.tokenCount == 0)
+        {
+            return false;
+        }
+
+        var previous = this.tokens[this.tokenCount - 1];
+        if (!(previous.Kind.IsIdentifierOrContextualKeyword() || previous.Kind.IsPrimitiveType() || previous.Kind == TokenKind.Self) ||
+            (previous.Span.End != this.position && !this.IsDeclarationGenericContext()))
+        {
+            return false;
+        }
+
+        if (this.position < this.genericLookaheadEnd)
+        {
+            return true;
+        }
+
+        // Cache balanced lookahead so nested arguments do not rescan the same suffix.
+        var depth = 1;
+        for (var i = 1; i < this.span.Length; i++)
+        {
+            var c = this.span[i];
+            if (c == '/' && i + 1 < this.span.Length && this.span[i + 1] == '/')
+            {
+                var end = this.span[(i + 2)..].IndexOfAny('\r', '\n');
+                if (end < 0)
+                {
+                    return false;
+                }
+
+                i += end + 1;
+            }
+            else if (c == '/' && i + 1 < this.span.Length && this.span[i + 1] == '*')
+            {
+                var end = this.span[(i + 2)..].IndexOf("*/");
+                if (end < 0)
+                {
+                    return false;
+                }
+
+                i += end + 3;
+            }
+            else if (c == '<')
+            {
+                depth++;
+            }
+            else if (c == '=' && i + 1 < this.span.Length && this.span[i + 1] == '>')
+            {
+                i++;
+            }
+            else if (c == '>' && this.span[i - 1] != '-')
+            {
+                if (--depth == 0)
+                {
+                    this.genericLookaheadEnd = this.position + i;
+                    return true;
+                }
+            }
+            else if (c is ';' or '=' or '"' or '\'' or '{' or '}')
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsDeclarationGenericContext()
+    {
+        if (this.indentCount > 0 && this.indentStack[this.indentCount - 1] == IndentSource.AngleBracket)
+        {
+            return true;
+        }
+
+        for (var i = this.tokenCount - 2; i >= 0; i--)
+        {
+            var kind = this.tokens[i].Kind;
+            if (kind is TokenKind.Colon or TokenKind.MinusGreaterThan or TokenKind.Func or TokenKind.Struct or TokenKind.Enum)
+            {
+                return true;
+            }
+
+            if (!(kind.IsIdentifierOrContextualKeyword() || kind.IsPrimitiveType() ||
+                kind is TokenKind.Dot or TokenKind.ColonColon or TokenKind.Slash or TokenKind.OpenParenthesis or TokenKind.Comma))
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private bool PreviousLineStartsBody()
+    {
+        // Inspect only the preceding logical header; no source strings are created.
+        for (var i = this.tokenCount - 1; i >= 0; i--)
+        {
+            var kind = this.tokens[i].Kind;
+            if (kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock)
+            {
+                break;
+            }
+
+            if (kind is TokenKind.Match or TokenKind.If or TokenKind.Else or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Func)
+            {
+                return true;
+            }
+        }
+
+        return this.tokenCount > 0 && this.tokens[this.tokenCount - 1].Kind is TokenKind.Colon or TokenKind.EqualsGreaterThan;
+    }
+
     private void ReadLiteralKeywordOrIdentifier()
     {
+        if (this.tokenCount > 0 && this.tokens[this.tokenCount - 1].Kind == TokenKind.Dot && this.span[0] is >= '0' and <= '9')
+        {
+            var digits = 1;
+            while (digits < this.span.Length && this.span[digits] is >= '0' and <= '9')
+            {
+                digits++;
+            }
+
+            this.AddTokenAndSlice(TokenKind.NumericLiteral, digits);
+            return;
+        }
+
         if (NumberLiteralHelper.ScanNumberLiteral(this.span, out var numberLiteralLength))
         {// Numeric literal
             this.AddTokenAndSlice(TokenKind.NumericLiteral, numberLiteralLength);
@@ -776,20 +931,41 @@ EndOfFile:
             return;
         }
 
-        // Keyword or Identifier
-        var length = TokenHelper.IndexOfSeparator(this.span);
-        if (length < 0)
+        // Scan and validate ordinary names together; Unicode takes the shared slow path.
+        var length = 0;
+        while (length < this.span.Length && IdentifierHelper.IsAsciiPart(this.span[length]))
         {
-            length = this.span.Length;
+            length++;
         }
-        else if (length == 0)
+
+        var valid = true;
+        if (length < this.span.Length && !TokenHelper.IsSeparator(this.span[length]))
+        {
+            length = TokenHelper.IndexOfSeparator(this.span);
+            if (length < 0)
+            {
+                length = this.span.Length;
+            }
+
+            valid = IdentifierHelper.IsValidIdentifier(this.span[..length]);
+        }
+
+        if (length == 0)
         {
             this.diagnostics.Add(this.NewRange(1), DiagnosticCode.InvalidCharacter_Kd, this.span[0]);
             this.AddTokenAndSlice(TokenKind.Invalid, 1);
             return;
         }
 
-        this.AddTokenAndSlice(TokenHelper.GetKeywordOrIdentifierKind(this.span.Slice(0, length)), length);
+        var spelling = this.span[..length];
+        var kind = TokenHelper.GetKeywordOrIdentifierKind(spelling);
+        if (!valid)
+        {
+            this.diagnostics.Add(this.NewRange(length), DiagnosticCode.InvalidIdentifier_Kd, spelling.ToString());
+            kind = TokenKind.Invalid;
+        }
+
+        this.AddTokenAndSlice(kind, length);
     }
 
     private void ReadCharLiteral()

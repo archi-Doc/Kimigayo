@@ -57,6 +57,12 @@ public enum TokenKind : byte
     Continue, // loop,for,while/continue
     Yield, // if/yield
     Null, // contextually typed raw-pointer literal
+    Require,
+    Defer,
+    Self,
+    Init,
+    Deinit,
+    Base,
 
     // Contextual keyword
     Alias = 96,
@@ -146,4 +152,5 @@ public enum TokenKind : byte
 
     // An escaped string containing embedded expressions.
     InterpolatedStringLiteral,
+    ColonColon, // ::
 }

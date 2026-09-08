@@ -85,7 +85,7 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void ParsesLogicalExpressionsAsIsRightOperand()
+    public void KeepsLogicalExpressionsOutsideRuntimeIs()
     {
         var source = """
             var first = X is A and B
@@ -99,20 +99,18 @@ public class ParserRegressionTest
         Assert.Empty(diagnostics);
         var fields = GetChildren(root).Select(Assert.IsType<FieldKoto>).ToArray();
 
-        var first = Assert.IsType<IsKoto>(fields[0].InitializerKoto);
-        Assert.IsType<AndKoto>(first.Right);
+        var first = Assert.IsType<AndKoto>(fields[0].InitializerKoto);
+        Assert.IsType<IsKoto>(first.Left);
 
-        var second = Assert.IsType<IsKoto>(fields[1].InitializerKoto);
-        var secondCondition = Assert.IsType<NotKoto>(second.Right);
-        Assert.IsType<OrKoto>(secondCondition.Operand);
+        var second = Assert.IsType<OrKoto>(fields[1].InitializerKoto);
+        Assert.IsType<NotKoto>(Assert.IsType<IsKoto>(second.Left).Right);
 
-        var third = Assert.IsType<IsKoto>(fields[2].InitializerKoto);
-        var thirdCondition = Assert.IsType<AndKoto>(third.Right);
-        Assert.IsType<NotKoto>(thirdCondition.Right);
+        var third = Assert.IsType<AndKoto>(fields[2].InitializerKoto);
+        Assert.IsType<IsKoto>(third.Left);
+        Assert.IsType<NotKoto>(third.Right);
 
         var fourth = Assert.IsType<OrKoto>(fields[3].InitializerKoto);
-        var fourthCondition = Assert.IsType<IsKoto>(fourth.Right);
-        Assert.IsType<AndKoto>(fourthCondition.Right);
+        Assert.IsType<IsKoto>(Assert.IsType<AndKoto>(fourth.Right).Left);
     }
 
     [Fact]
@@ -477,7 +475,7 @@ public class ParserRegressionTest
                 var converted = item@unsafe/C
                 var called = transform(item, "text")
 
-                private func map<s/T>(value?: ref/T, fallback: owner/T = defaultValue) -> uniq/T
+                private func map<s/T>(value?: ref/T = defaultValue, fallback: owner/T = defaultValue) -> uniq/T
                     return
             """;
         var compilation = Compilation.CreateForTest();
@@ -541,7 +539,7 @@ public class ParserRegressionTest
         var (root, diagnostics) = Parse(source);
 
         var diagnostic = Assert.Single(diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnexpectedTrailingToken_Kd), diagnostic.Entry.Name);
+        Assert.Equal(nameof(DiagnosticCode.UnexpectedToken_Kd), diagnostic.Entry.Name);
 
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("A", TokenKind.Struct, default, default));
         Assert.Single(type.TypeConstraints);
@@ -658,10 +656,10 @@ public class ParserRegressionTest
     [Fact]
     public void RemovesAttributeBeyondChainHead()
     {
-        var (root, diagnostics) = Parse("#A\n#B\nvar x = 1");
+        var (root, diagnostics) = Parse("#A\n#B\nfunc x() => 1");
 
         Assert.Empty(diagnostics);
-        var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
+        var field = Assert.IsType<FunctionKoto>(GetChildren(root).Single());
         var head = Assert.IsType<AttributeKoto>(field.AttributeChain);
         var tail = Assert.IsType<AttributeKoto>(head.AttributeChain);
 
@@ -691,14 +689,14 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void ParsesLabeledAndAttributedInvocationArguments()
+    public void DiagnosesAndRecoversLabeledAndAttributedInvocationArguments()
     {
         const string Source = "var y = array.remove(at: 1, #Attribute(2) \"One\")";
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
 
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(kotonoha.DiagnosticCollection.GetArray());
         AssertInvocation(kotonoha);
 
         var bytes = TinyhandSerializer.Serialize(kotonoha);
@@ -762,11 +760,11 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void ParsesChainedAttributePostfixExpressions()
+    public void DiagnosesAndRecoversChainedAttributePostfixExpressions()
     {
         var (root, diagnostics) = Parse("#Example<T>(value)\nvar result = 0");
 
-        Assert.Empty(diagnostics);
+        Assert.NotEmpty(diagnostics);
         var field = Assert.IsType<FieldKoto>(GetChildren(root).Single());
         var attribute = Assert.IsType<AttributeKoto>(field.AttributeChain);
         var invocation = Assert.IsType<InvocationKoto>(attribute.Operand);
@@ -855,10 +853,10 @@ public class ParserRegressionTest
     [Fact]
     public void PascalCaseIfRemainsAnOrdinaryAttribute()
     {
-        var (root, diagnostics) = Parse("#If(false)\nvar attributed = 1");
+        var (root, diagnostics) = Parse("#If(false)\nfunc attributed() => 1");
 
         Assert.Empty(diagnostics);
-        var field = Assert.IsType<FieldKoto>(Assert.Single(GetChildren(root)));
+        var field = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(root)));
         var attribute = Assert.IsType<AttributeKoto>(field.AttributeChain);
         Assert.Equal("If", Assert.IsType<IdentifierNameKoto>(attribute.IdentifierKoto).IdentifierName);
         Assert.Single(attribute.Arguments);

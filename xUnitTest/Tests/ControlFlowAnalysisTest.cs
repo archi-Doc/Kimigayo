@@ -147,7 +147,7 @@ public class ControlFlowAnalysisTest
     [Fact]
     public void KeepsUnresolvedExhaustivenessPendingInsteadOfRejectingEnumPatterns()
     {
-        var analysis = Analyze("let x = match value\n    A => 1\n    B => 2");
+        var analysis = Analyze("let x = match value\n    .A => 1\n    .B => 2");
         Assert.Empty(analysis.Issues);
         Assert.Contains(analysis.PendingBinding, x => x is MatchKoto);
     }

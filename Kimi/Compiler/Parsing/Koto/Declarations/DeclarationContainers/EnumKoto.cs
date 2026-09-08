@@ -19,6 +19,15 @@ public sealed class EnumKoto : DeclarationContainerKoto
     /// <inheritdoc/>
     public override bool IsInstantiable => true;
 
+    /// <inheritdoc/>
+    public override bool SupportsGenerics => true;
+
+    /// <inheritdoc/>
+    public override bool SupportsOrigins => true;
+
+    /// <inheritdoc/>
+    public override bool SupportsTypeConstraints => true;
+
     /// <summary>Initializes a new instance of the <see cref="EnumKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The declaration source span.</param>
@@ -34,5 +43,11 @@ public sealed class EnumKoto : DeclarationContainerKoto
 
     /// <inheritdoc/>
     public override void Parse(ref TokenReader reader)
-        => SkipUnimplementedBody(ref reader);
+    {
+        this.ParseMembers(ref reader, true, false);
+        if (this.Members.Count == 0)
+        {
+            this.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
+        }
+    }
 }

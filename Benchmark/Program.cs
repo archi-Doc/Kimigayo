@@ -11,6 +11,7 @@ public class Program
         var switcher = new BenchmarkSwitcher(new[]
         {
             typeof(ParseBenchmark),
+            typeof(FrontEndBenchmark),
             typeof(TokenReaderBenchmark),
             typeof(SourceDocumentBenchmark),
             typeof(HashedStringBenchmark),

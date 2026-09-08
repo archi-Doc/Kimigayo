@@ -14,16 +14,21 @@ public sealed class TupleTypeKoto : TypeKoto
     public override KotoKind Akind => KotoKind.TupleType;
 
     /// <summary>Gets the tuple element types.</summary>
-    public List<Koto> Elements { get; private set; }
+    public List<Koto> Elements => this.elements is List<Koto> list ? list : (List<Koto>)(this.elements = new List<Koto>(this.elements));
+
+    private IReadOnlyList<Koto> elements;
+
+    /// <summary>Gets element types without materializing a mutable list.</summary>
+    public IReadOnlyList<Koto> ElementNodes => this.elements;
 
     /// <summary>Initializes a new instance of the <see cref="TupleTypeKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
     /// <param name="elements">The tuple element types.</param>
-    public TupleTypeKoto(ref TokenReader reader, SourceSpan range, List<Koto> elements)
+    public TupleTypeKoto(ref TokenReader reader, SourceSpan range, IReadOnlyList<Koto> elements)
         : base(ref reader, range)
     {
-        this.Elements = elements;
+        this.elements = elements;
         this.Adopt(elements);
     }
 
@@ -31,17 +36,17 @@ public sealed class TupleTypeKoto : TypeKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append('(');
-        for (var i = 0; i < this.Elements.Count; i++)
+        for (var i = 0; i < this.elements.Count; i++)
         {
             if (i > 0)
             {
                 builder.AppendCommaAndSpace();
             }
 
-            this.Elements[i].WriteTo(ref builder);
+            this.elements[i].WriteTo(ref builder);
         }
 
-        if (this.Elements.Count == 1)
+        if (this.elements.Count == 1)
         {
             builder.Append(',');
         }
@@ -50,8 +55,8 @@ public sealed class TupleTypeKoto : TypeKoto
     }
 
     protected override IEnumerable<Koto> GetChildNodes()
-        => this.Elements;
+        => this.elements;
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-        => ReplaceInList(this.Elements, oldKoto, newKoto);
+        => ReplaceInList(this.elements, oldKoto, newKoto);
 }

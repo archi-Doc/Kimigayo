@@ -86,9 +86,9 @@ public class ExpressionPrecedenceTest
     [InlineData("a <<= b | c", "a <<= (b | c)")]
     [InlineData("a < b = c", "(a < b) = c")]
     [InlineData("return a + b * c", "return (a + (b * c))")]
-    [InlineData("T is A and B", "T is (A and B)")]
-    [InlineData("T is not A or B", "T is not (A or B)")]
-    [InlineData("P or T is A and not B", "P or (T is (A and (not B)))")]
+    [InlineData("T is A and B", "(T is A) and B")]
+    [InlineData("T is not A or B", "(T is not A) or B")]
+    [InlineData("P or T is A and not B", "P or ((T is A) and (not B))")]
     [InlineData("(T is A) and flags & mask == 0", "(T is A) and ((flags & mask) == 0)")]
     [InlineData("if flags & mask == 0 => -value@i64\nelse => 0", "if (flags & mask) == 0 => (-value)@i64\nelse => 0")]
     public void GroupsExpressionsLikeExplicitParentheses(string expression, string grouped)

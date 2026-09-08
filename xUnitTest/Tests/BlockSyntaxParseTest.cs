@@ -62,10 +62,10 @@ public class BlockSyntaxParseTest
     [InlineData("defer: defer: work()")]
     [InlineData("defer: let result = if ready() => 1 else => 2")]
     [InlineData("unsafe: return *pointer")]
-    [InlineData("let unsafe = 1\nlet defer = unsafe")]
+    [InlineData("let unsafe = 1\nlet from = unsafe")]
     [InlineData("let pointer: unsafe/i32 = obtainPointer()")]
-    [InlineData("let dictionary = [unsafe:1, defer:2]")]
-    [InlineData("call(defer: work(), unsafe: 1)")]
+    [InlineData("let dictionary = [unsafe:1, from:2]")]
+    [InlineData("call(from: work(), unsafe: 1)")]
     public void AcceptsInlineStatementsAndContextualNames(string source)
         => ParseSuccess(source);
 

@@ -16,18 +16,18 @@ This table defines the recorded status of each compiler stage. The notes below d
 | Types | Partial | Not implemented | Partial | Not implemented | Not implemented |
 | Origins | Partial | Not implemented | Not implemented | Not implemented | Not implemented |
 | Properties | Implemented | Not implemented | Partial | Not implemented | Not implemented |
-| Constructors and aggregate destruction | Not assessed | Not implemented | Partial | Not implemented | Not implemented |
+| Constructors and aggregate destruction | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
-| `@move` / Consume | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
+| `@move` / Consume | Implemented | Not implemented | Not implemented | Not implemented | Not implemented |
 | Control flow and `defer` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
-| Enum Cases, Patterns, and guards | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
-| Explicit full specialization and generic code sharing | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
+| Enum Cases, Patterns, and guards | Implemented | Not implemented | Not implemented | Not implemented | Not implemented |
+| Explicit full specialization and generic code sharing | Source specialization syntax | Not implemented | Not implemented | Not implemented | Not implemented |
 | Option / Result / Abort | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
 | Core.writeLine and executable startup | Source forms only; dedicated support not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
 
 Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
 
-The integrated Closure/capture/Callable model, runtime `is` and refinement, `require`, and Object Type System are language specifications, not implementation completion claims. Their complete parser, Binding, ownership, lowering, and runtime coverage has not been assessed here; existing broad coverage rows do not certify these additions.
+The front end now retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. This does not implement Binding, inference, refinement, ownership, dispatch, or execution. See C.14 for the current front-end increment; C.8–C.13 retain historical review snapshots.
 
 ### C.2. Builds, modules, and source artifacts
 
@@ -43,19 +43,17 @@ The current source-snapshot serialization/reparse facility is not a [binary inte
 
 The current front end parses escaped strings, raw strings, and string interpolation, including nested expressions. Escape sequences are validated during parsing; evaluating interpolated strings is deferred to later compilation stages.
 
-Compile-time basic-value evaluation currently supports integer representations fitting `i64` and finite literals parsed as `f64`; exact decimal retention and contextual single rounding remain unimplemented (C.10).
+NumberLiteralKoto retains exact floating-point source spellings until contextual fitting and preserves them through source serialization. Its existing basic-value adapter still evaluates finite values as `f64`; contextual single rounding remains unimplemented.
 
-固定長配列の `[N of T]`、要素型の `_` 推論、長さの定数式、関数の長さジェネリクスの仕様本文は[SPEC §4](SPEC.md#4-arrays-indexing-and-slices)、Index・Range・Sliceは[SPEC §4.6](SPEC.md#46-indexing-and-slicing)に統合済み。今回の変更は文書のみ。専用の構文解析・定数束縛と評価・長さ推論・配置・所有権解析・コード生成は未実装であり、既存の基本値評価や配列リテラルの解析だけでは対応済みとしない。
+The Parser builds fixed-array Types `[N of T]`, unevaluated length expressions, function length parameters/arguments, and initializer-dependent `_` element syntax. Constant binding/evaluation, length and element inference, layout, ownership, and code generation remain unimplemented.
 
 The front end parses recursive Semantics prefixes, distinct grouped and Tuple Types, and independently annotated inner Origins, preserving them through writing and source serialization. Type resolution, layout validation, subtyping, ownership rules, and most Type semantics remain unimplemented; parsing a nested Type or storage-borrow target does not establish its semantic legality. Syntax-level control-flow facts retain supported nested pointer Types and leave unresolved reference/Origin checks pending.
 
-Body parsing for `enum` and `extension` is not implemented.
-
-The enum Case, construction, Pattern, guard, and coverage rules are specified but not implemented. `EnumKoto` skips its body, and `MatchArmKoto.Pattern` stores a general `Koto`; this does not implement dedicated Pattern parsing. Case Symbols, candidate/body binding plans, whole-Subject acquisition, payload Move Paths, guard Loans, and coverage diagnostics remain required. The general control-flow row does not certify these features.
+Enum bodies, payload Cases, inferred Case expressions, dedicated Patterns, and guards are parsed and preserved. Qualified Case expressions retain ordinary member/invocation syntax for later Binding. Case Symbols, acquisition, payload Move Paths, guard Loans, and coverage diagnostics remain unimplemented. Extension declarations are diagnosed as unsupported.
 
 Split-structure integration, generated-source integration, and layout generation are planned, not implemented.
 
-Inheritance access domains, recursive API signature accessibility, and protected-receiver checks are specified but not implemented by general Binding. Lexing has modifier token kinds, which does not establish complete parsing or semantic support for `open struct`, base clauses, compound access, or overrides. Inheritance parsing coverage is not assessed here. Inherited lookup and virtual/override declaration spellings retain their syntax boundaries. Object dispatch, metadata, upcasts, casts, compatibility, base lifetime, and Copy rules are specified; this documentation integration does not establish their implementation.
+Inheritance access domains, recursive API signature accessibility, and protected-receiver checks are specified but not implemented by general Binding. The Parser retains `open struct`, base clauses, and compound access spellings. This does not validate inheritance or overrides. Inherited lookup and virtual/override declaration spellings retain their syntax boundaries. Object dispatch, metadata, upcasts, casts, compatibility, base lifetime, and Copy rules are specified; this documentation integration does not establish their implementation.
 
 The Parser supports Origin lists on structures and functions, simple and qualified annotations, intersections, and named arguments. Origin name resolution, inference, variance analysis, and borrow checking are not implemented.
 
@@ -65,7 +63,7 @@ Complete-Type slot/pair binding, structural Signature normalization, explicit `s
 
 The current Parser stores leading Constraint Clauses separately from executable body items and preserves deferred directives on them. It checks clause subjects against the declared generic parameters and diagnoses clauses placed after executable items. Semantic validation of Constraints during Binding and specialization is not implemented.
 
-The static Contract model is specified, not implemented by this documentation change. `ContractKoto` currently accepts inline Property requirements and `associate Name is requirement`; it does not implement function requirements or bare associated-Type declarations. Refinement, qualified specifications/projections, signature-first Constraint collection, and conformance matching/mappings/access checks require implementation. Any accepted generic Contract headers do not establish language support; user-defined generic Contracts are excluded. Runtime Contract Views remain outside the initial Contract implementation.
+ContractKoto retains base requirements, function and inline Property requirements, bare associated-Type declarations, and qualified specifications/projections. Constraint collection precedes executable body items. Refinement, conformance matching, mappings, and access checks require Binding. Any accepted generic Contract headers do not establish language support; user-defined generic Contracts are excluded. Runtime Contract Views remain outside the initial Contract implementation.
 
 **Current implementation status:** the Parser validates the environment-only Condition expression set, evaluates known scalar operations, and propagates Errors before short-circuit truth results. Every directive `is` test is rejected; there is no requirement evaluation, Type narrowing, or generic-dependent selection. Its internal **Pending** result currently retains unresolved scalar Names as validation obligations; this is an implementation limitation, not a valid language dependency. Such Names can only resolve in the prepared environment and must otherwise be diagnosed before finalization. Pending nodes and control-flow PendingBinding reporting retain those validation obligations; unknown-Name finalization remains unimplemented.
 
@@ -75,7 +73,7 @@ The Parser records Properties, inline and block accessors, explicit getter resul
 
 ### C.6. Expressions and operators
 
-The Parser supports `@Type` precedence, left associativity, and generic/comparison boundaries. Treating a `@move` operand as a Type does not implement a lifetime operation; its stage status is listed in the coverage table. Basic expressions, argument labels/defaults, collections, and anonymous functions have syntax-tree support. Member-name restrictions still need additional validation.
+The Parser supports `@Type` precedence, left associativity, and generic/comparison boundaries. `@move` has a distinct syntax kind and terminates its target without Type parsing; Consume semantics remain unimplemented. Basic expressions, argument labels/defaults, collections, and anonymous functions have syntax-tree support. Reserved member-name restrictions and the digit-only Tuple member syntax are validated.
 
 General type inference, overload and argument matching, function-value execution, numeric checks, dictionary duplicate detection, evaluation order during execution, and single-access Property updates require semantic analysis and runtime implementation. Abort name/type validation, diagnostics, and common termination handling are also planned. Control-flow and cleanup coverage is detailed below. Examples using application-specific functions or Types illustrate semantics rather than promise standard-library APIs.
 
@@ -89,7 +87,7 @@ Implementation references:
 
 ### C.7. Control flow and failure handling
 
-The constructor/destruction coverage row includes only the existing analysis of executable-body control flow. Constructor selection and synthesis, completion checks, general destructor declaration validation, per-component/base cleanup, reentry prevention, and final object release require semantic and runtime implementation. Complete parsing coverage for `init` declarations, `Type.init` calls, and base-constructor initializers is not assessed; body parsing or a recognized keyword does not establish lifetime support.
+The constructor/destruction coverage row includes only the existing analysis of executable-body control flow. Constructor selection and synthesis, completion checks, general destructor declaration validation, per-component/base cleanup, reentry prevention, and final object release require semantic and runtime implementation. The Parser records `init`, `deinit`, constructor references, and base initializers; these nodes do not establish lifetime support.
 
 **Implementation status:** The Parser preserves explicit branch body forms. Control-flow analysis checks selections, loops, value-producing Labeled Blocks, lexical transfer targets, and the completion effects of explicitly registered Deferred Blocks. It also checks lexical Unsafe permission for known operations and binder-selected function references. The default type provider handles primitive literals, simple declared Types, and basic raw-pointer and contextual `null` checks. General name/overload resolution, conversions, pattern Binding, ownership, automatic destruction, Origin compatibility, and runtime cleanup generation remain planned; unresolved checks are exposed as pending obligations. Bodies containing deferred compile-time directives await directive selection before analysis.
 
@@ -215,3 +213,17 @@ milestoneの完了条件は、生成した実行ファイル自身のstdoutがUT
 - 既存build／runをEmit・link・生成物の起動へ接続したときの正式な追加引数、実行引数との分離、終了code伝播の詳細。コマンド名と現状の処理はC.12のとおり確認できたが、実行ファイルを生成・起動する完全な利用手順はまだ裏付けられない。
 - 採用するLLVM／linkerの配布物・version・実行path、Core runtimeのbinary名と実際のlink invocation。初期targetと明示的入力mappingの方針は決めたが、導入済みtoolchainとしての裏付けはない。
 - Runtime内の最終的なstring handle ABI、allocator／release helper、OS出力adapterの具体的実装。C.12の推奨表現はあるが、SPECのimplementation-definedな内部表現を架空の実装済みABIで置き換えない。
+
+
+### C.14. Tokenize/Parse increment (2026-09-09)
+
+This increment ends at Koto construction. It adds no Binding or type-inference implementation.
+
+- Lexing enforces the reserved spellings, root `::`, Tuple index boundaries, strict body indentation, and recognized generic continuation, including nested closing angles. ASCII identifier scanning also validates characters. Unicode category and NFC validation use generated Unicode 15.0.0 data, independent of the host OS; the uncommon normalization path uses stack storage or pooled storage for long identifiers.
+- Shared declaration/body/name helpers cover enum Cases, static Contract requirements, constructors/destructors, base clauses, compound accessibility, complete-Type generic slots/pairs, length parameters, and explicit function specialization.
+- Fixed-array Types, root-qualified names, captures, inferred anonymous parameter Types, `@move`, runtime `is`, `require`, Patterns, and guards retain syntax and source spans for later stages. Small forms share Koto child ownership, replacement, and writing. Tuple Types avoid eagerly allocating mutable lists.
+- Decimal literals retain their original source spans and exact spelling instead of eagerly rounding through `f64`. Attribute placement and the `$abort(Expression)` shape are diagnosed syntactically.
+- Debug and Release each pass 1,348 tests; the Release solution build has zero warnings and errors. An independent check against Unicode 15.0 NormalizationTest.txt passed all 95,370 normalization/name combinations. FrontEndSyntaxTest covers valid/invalid forms, parent/source ownership, parse/write/parse, and exact-decimal serialization. UnicodeIdentifierTest covers fixed-version categories, NFC, Hangul, and pooled normalization. The generator is Design/generate_unicode_identifiers.py; Unicode's license is retained alongside it.
+- Benchmark/Benchmarks/FrontEndBenchmark.cs supplies validated common and extended syntax corpora with allocation measurement. Local Release measurements of the common corpus allocate 7,872 bytes per parse, versus 8,048 bytes at the starting revision (2.2% less); timing varies with host scheduling and is not a throughput guarantee.
+
+The existing early directive evaluator and partial analyses are unchanged in scope. Semantic checks such as name/Case resolution, conformance, literal fitting, capture legality, length evaluation, inheritance, and foreign ABI validation remain downstream work. Historical snapshots above describe their original review dates, not the current front-end coverage.

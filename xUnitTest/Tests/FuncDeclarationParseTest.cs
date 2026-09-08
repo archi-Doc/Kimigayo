@@ -41,7 +41,7 @@ public class FuncDeclarationParseTest
 
         var source = """
             private func find<s/T, T2>(
-                value?: T,
+                value?: T = fallback,
                 owned: owner/T,
                 sharedValue: ref/T,
                 exclusiveValue: uniq/T,
@@ -72,7 +72,7 @@ public class FuncDeclarationParseTest
             kotonoha.RootKoto.UnparseAll(ref builder);
             var text = builder.ToString();
             Assert.Contains(
-                "private func find<s/T, T2>(value?: T, owned: owner/T, sharedValue: ref/T, exclusiveValue: uniq/T, object: obj/T, sharedObject: rc/T, atomicObject: arc/T, sharedObjectBorrow: objref/T, exclusiveObjectBorrow: objuniq/T, raw: unsafe/T, in => collection: Collection<s/T>, using => comparer: (s/T, T2) -> ref/Bool) -> owner/i32",
+                "private func find<s/T, T2>(value?: T = fallback, owned: owner/T, sharedValue: ref/T, exclusiveValue: uniq/T, object: obj/T, sharedObject: rc/T, atomicObject: arc/T, sharedObjectBorrow: objref/T, exclusiveObjectBorrow: objuniq/T, raw: unsafe/T, in => collection: Collection<s/T>, using => comparer: (s/T, T2) -> ref/Bool) -> owner/i32",
                 text);
             Assert.Contains("public func Main() -> ()", text);
         }

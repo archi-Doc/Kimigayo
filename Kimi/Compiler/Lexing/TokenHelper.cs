@@ -93,6 +93,13 @@ public static partial class TokenHelper
         Set(TokenKind.Continue, Constants.ContinueKeyword);
         Set(TokenKind.Yield, Constants.YieldKeyword);
         Set(TokenKind.Null, "null");
+        Set(TokenKind.Require, "require");
+        Set(TokenKind.Defer, "defer");
+        Set(TokenKind.Self, "Self");
+        Set(TokenKind.Init, "init");
+        Set(TokenKind.Deinit, "deinit");
+        Set(TokenKind.Base, "base");
+        Set(TokenKind.ColonColon, "::");
 
         // Contextual keyword
         Set(TokenKind.Alias, Constants.AliasKeyword);
@@ -259,7 +266,8 @@ public static partial class TokenHelper
     /// <returns><see langword="true"/> for an identifier or contextual keyword.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsIdentifierOrContextualKeyword(this TokenKind tokenKind)
-        => tokenKind >= TokenKind.Alias && tokenKind <= TokenKind.Identifier;
+        => tokenKind >= TokenKind.Alias && tokenKind <= TokenKind.Identifier &&
+            tokenKind is not (TokenKind.Public or TokenKind.Private or TokenKind.Protected or TokenKind.Internal or TokenKind.Open or TokenKind.ProtectedOrInternal or TokenKind.ProtectedAndInternal);
 
     /// <summary>
     /// Classifies identifier-like text as a keyword.
@@ -281,7 +289,7 @@ public static partial class TokenHelper
         var c0 = text[0];
         if (c0 < 'a' || c0 > 'z')
         {
-            return TokenKind.Identifier;
+            return text.SequenceEqual("Self") ? TokenKind.Self : TokenKind.Identifier;
         }
 
         var kind = length switch
@@ -318,9 +326,9 @@ public static partial class TokenHelper
             4 => c0 switch
             {
                 'n' => Match(text, "null", TokenKind.Null),
-                'b' => Match(text, Constants.BoolKeyword, TokenKind.Bool),
+                'b' => Match(text, Constants.BoolKeyword, TokenKind.Bool, "base", TokenKind.Base),
                 'c' => Match(text, Constants.CaseKeyword, TokenKind.Case, Constants.CharKeyword, TokenKind.Char),
-                'i' => Match(text, Constants.I128Keyword, TokenKind.I128),
+                'i' => Match(text, Constants.I128Keyword, TokenKind.I128, "init", TokenKind.Init),
                 'u' => Match(text, Constants.U128Keyword, TokenKind.U128),
                 't' => Match(text, Constants.TrueKeyword, TokenKind.True),
                 'f' => Match(text, Constants.FuncKeyword, TokenKind.Func),
@@ -331,6 +339,7 @@ public static partial class TokenHelper
             },
             5 => c0 switch
             {
+                'd' => Match(text, "defer", TokenKind.Defer),
                 'i' => Match(text, Constants.IsizeKeyword, TokenKind.Isize),
                 'u' => Match(text, Constants.UsizeKeyword, TokenKind.Usize),
                 'f' => Match(text, Constants.FalseKeyword, TokenKind.False),
@@ -343,12 +352,13 @@ public static partial class TokenHelper
             },
             6 => c0 switch
             {
+                'd' => Match(text, "deinit", TokenKind.Deinit),
                 's' => Match(text, Constants.StringKeyword, TokenKind.String, Constants.StructKeyword, TokenKind.Struct, Constants.StaticKeyword, TokenKind.Static),
                 'r' => Match(text, Constants.ReturnKeyword, TokenKind.Return),
                 'p' => Match(text, Constants.PublicKeyword, TokenKind.Public),
                 _ => TokenKind.Identifier,
             },
-            7 => Match(text, Constants.PrivateKeyword, TokenKind.Private),
+            7 => Match(text, Constants.PrivateKeyword, TokenKind.Private, "require", TokenKind.Require),
             8 => c0 switch
             {
                 'c' => Match(text, Constants.ContinueKeyword, TokenKind.Continue, Constants.ContractKeyword, TokenKind.Contract),

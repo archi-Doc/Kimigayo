@@ -163,7 +163,7 @@ public class FunctionBodyParseTest
     }
 
     [Fact]
-    public void ParsesConditionalBlocksAndMatchExpressionsTogether()
+    public void RecoversInvalidAttributedBlockAndParsesFollowingSelections()
     {
         const string Source = """
             public group Helper
@@ -195,7 +195,7 @@ public class FunctionBodyParseTest
 
         var diagnostics = kotonoha.DiagnosticCollection.GetArray();
         Assert.True(
-            diagnostics.Length == 0,
+            diagnostics.Length > 0,
             string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
 
         var helper = Assert.IsType<GroupKoto>(

@@ -140,8 +140,8 @@ public class ControlFlowRevisionParseTest
                 else
                     3
                 let second = match a
-                    A => if b => 1 else => 2
-                    B =>
+                    .A => if b => 1 else => 2
+                    .B =>
                         3
                 return ()
             """);
@@ -164,7 +164,7 @@ public class ControlFlowRevisionParseTest
     [Fact]
     public void InlineMatchPreservesNestedExpressionResult()
     {
-        foreach (var tree in Versions(Parse("func run() => match x\n    A => (if b => 1 else => 2)\n    B => ()")))
+        foreach (var tree in Versions(Parse("func run() => match x\n    .A => (if b => 1 else => 2)\n    .B => ()")))
         {
             var match = Assert.IsType<MatchKoto>(Function(tree).ExpressionBody);
             var inner = Assert.IsType<IfKoto>(Assert.IsType<ParenthesizedKoto>(match.Arms[0].Body).Operand);

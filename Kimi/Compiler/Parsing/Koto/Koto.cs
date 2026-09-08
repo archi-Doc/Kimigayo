@@ -305,6 +305,48 @@ public enum KotoKind : byte
     /// <summary>A parenthesized type, distinct from a one-element tuple.</summary>
     ParenthesizedType,
 
+    /// <summary>A fixed-array type.</summary>
+    FixedArrayType,
+
+    /// <summary>A function length parameter.</summary>
+    LengthParameter,
+
+    /// <summary>A root-qualified name.</summary>
+    RootName,
+
+    /// <summary>An inferred enum Case expression.</summary>
+    InferredCase,
+
+    /// <summary>An enum Case declaration.</summary>
+    EnumCase,
+
+    /// <summary>A binding Pattern.</summary>
+    BindingPattern,
+
+    /// <summary>A Case Pattern.</summary>
+    CasePattern,
+
+    /// <summary>A Tuple Pattern.</summary>
+    TuplePattern,
+
+    /// <summary>An explicit Consume operation.</summary>
+    Move,
+
+    /// <summary>A requirement statement.</summary>
+    Require,
+
+    /// <summary>An associated-Type declaration.</summary>
+    AssociatedType,
+
+    /// <summary>A dedicated constructor suffix.</summary>
+    ConstructorReference,
+
+    /// <summary>An omitted anonymous parameter type.</summary>
+    InferredType,
+
+    /// <summary>A generic Type parameter or pair.</summary>
+    GenericParameter,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }

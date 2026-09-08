@@ -104,6 +104,10 @@ public ref struct TokenReader
     /// </summary>
     public readonly int CurrentTokenLength => this.currentToken.Length;
 
+    internal bool AllowArrayElementInference { get; set; }
+
+    internal bool HasInferredArrayElement { get; set; }
+
     #endregion
 
     /// <summary>
