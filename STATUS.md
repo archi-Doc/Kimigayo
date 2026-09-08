@@ -2,6 +2,8 @@
 
 Implementation coverage is informative and does not weaken language rules or Compiler requirements. All implementation-progress notes are centralized here; `planned` in a retained snapshot means implementation work, not permission to use an undesigned feature.
 
+Section references follow the reorganized SPEC.md. This editorial reorganization changes no recorded implementation status.
+
 ### C.1. Coverage summary
 
 This table defines the recorded status of each compiler stage. The notes below describe covered cases and specific remaining work; they do not assign a separate stage status. Parsing alone does not guarantee execution. **Implemented** and **Partial** are limited to the coverage described below. **Not implemented** means the recorded stage is unavailable; it does not imply that all related design details are settled; **Not assessed** means the recorded notes do not establish that stage's coverage. **N/A** means the feature has no such stage.
@@ -35,7 +37,7 @@ Loading external Kotonoha libraries is not yet implemented.
 
 The recorded compiler supports only its current language version. Exact version selection, fallback defaults, rejection of unsupported versions, and build metadata are specified.
 
-The current source-snapshot serialization/reparse facility is not a [binary interface](SPEC.md#123-source-artifacts-and-binary-interfaces).
+The current source-snapshot serialization/reparse facility is not a [binary interface](SPEC.md#183-source-artifacts-and-binary-interfaces).
 
 ### C.3. Lexical forms and types
 
@@ -43,7 +45,7 @@ The current front end parses escaped strings, raw strings, and string interpolat
 
 Compile-time basic-value evaluation currently supports integer representations fitting `i64` and finite literals parsed as `f64`; exact decimal retention and contextual single rounding remain unimplemented (C.10).
 
-固定長配列の `[N of T]`、要素型の `_` 推論、長さの定数式、関数の長さジェネリクスの仕様本文は[SPEC §3.2.2](SPEC.md#322-sequence-types)、Index・Range・Sliceは[SPEC §6.4.4](SPEC.md#644-indexing-and-slicing)に統合済み。今回の変更は文書のみ。専用の構文解析・定数束縛と評価・長さ推論・配置・所有権解析・コード生成は未実装であり、既存の基本値評価や配列リテラルの解析だけでは対応済みとしない。
+固定長配列の `[N of T]`、要素型の `_` 推論、長さの定数式、関数の長さジェネリクスの仕様本文は[SPEC §4](SPEC.md#4-arrays-indexing-and-slices)、Index・Range・Sliceは[SPEC §4.6](SPEC.md#46-indexing-and-slicing)に統合済み。今回の変更は文書のみ。専用の構文解析・定数束縛と評価・長さ推論・配置・所有権解析・コード生成は未実装であり、既存の基本値評価や配列リテラルの解析だけでは対応済みとしない。
 
 The front end parses recursive Semantics prefixes, distinct grouped and Tuple Types, and independently annotated inner Origins, preserving them through writing and source serialization. Type resolution, layout validation, subtyping, ownership rules, and most Type semantics remain unimplemented; parsing a nested Type or storage-borrow target does not establish its semantic legality. Syntax-level control-flow facts retain supported nested pointer Types and leave unresolved reference/Origin checks pending.
 
@@ -114,7 +116,7 @@ This documentation revision changes no compiler implementation. New recommendati
 | D-4 | Condition binding scope and per-iteration identity are adopted rules; general Binding and associated cleanup remain unimplemented. |
 | D-5, D-6 | Directive placement is enumerated without expanding the accepted item categories. The former Appendix C snapshot is preserved in this file, with a link remaining in SPEC.md. |
 
-Open design remains for concurrency/memory ordering/thread transfer, extension declarations, user-defined arithmetic, general Attribute semantics other than LibraryImport, and the FFI extensions listed in SPEC §14.12. These are explicit boundaries, not missing permissions supplied by parser acceptance. Previously deferred features outside this review remain deferred.
+Open design remains for concurrency/memory ordering/thread transfer, extension declarations, user-defined arithmetic, general Attribute semantics other than LibraryImport, and the FFI extensions listed in SPEC §22.3. These are explicit boundaries, not missing permissions supplied by parser acceptance. Previously deferred features outside this review remain deferred.
 
 ### C.9. Follow-up specification review (items 1–6)
 
@@ -129,7 +131,7 @@ This revision changes documentation only. The settled language rules below do no
 | 5. Pipeline | Compilation exposes front-end/control-flow analysis; the recorded Build API does not emit a binary. Correct the reference pipeline so concrete effects and cleanup precede lowering and shared executable code generation. This is a scheduling requirement, not completed backend work. |
 | 6. Contract fragments | ContractKoto parses a declaration body; this does not establish merged Contract identity validation. Specify duplicate selected Contract declarations as errors and retain fragments only as a future feature. |
 
-No unresolved design decision remains for these six items. 長さに必要な限定的な定数評価はSPEC §3.2.2に従う。General constant evaluation, struct static-member modifiers, and future Contract fragments are not introduced; existing unrelated deferred designs retain their previous status.
+No unresolved design decision remains for these six items. 長さに必要な限定的な定数評価はSPEC §4に従う。General constant evaluation, struct static-member modifiers, and future Contract fragments are not introduced; existing unrelated deferred designs retain their previous status.
 
 ### C.10. Type and literal review (items 3–14)
 
@@ -138,7 +140,7 @@ Documentation only; compiler code and tests are unchanged. These decisions super
 | Items | Decision and implementation gap |
 | --- | --- |
 | 3. Function parameters | Require a distinct parenthesized parameter list: `() -> U` has zero parameters; `(T,) -> U` has one `T` parameter. Parser.ParseDeclarationType and NestedTypeParseTest still accept the now-invalid `ref/(i32) -> bool`; dedicated list enforcement remains required. |
-| 4–5. Semantics requirements | Clarify concrete-name equality already allowed by §4.4. Keep the existing category sets: `reference` includes `unsafe`; `owning or borrow` excludes only outer `unsafe`. Neither proves recursive safety. Requirement Binding is unimplemented; directive Conditions still reject every `is` test. |
+| 4–5. Semantics requirements | Clarify concrete-name equality already allowed by §8.2. Keep the existing category sets: `reference` includes `unsafe`; `owning or borrow` excludes only outer `unsafe`. Neither proves recursive safety. Requirement Binding is unimplemented; directive Conditions still reject every `is` test. |
 | 6–7, 14. Origins | Clarify object-borrow-only outer Origins, explanatory pair projection `o`, and reflexive outlives notation. No new Origin binding or constraint-declaration syntax is introduced; semantic Origin support remains unimplemented. |
 | 8–9. Numeric literals | Adopt exact decimal retention and one rounding to the determined floating Type; direct literal fitting failures are compile-time errors. NumberLiteralHelper.ParseFloat and NumberLiteralKoto.Literal currently parse/write via `f64`; representation, serialization, and contextual fitting require updates. |
 | 10. Base prefixes | Require at least one valid digit. NumberLiteralScanTest and NumberLiteralParseTest still accept empty/separator-only prefixes as zero. Existing malformed-suffix scanning already rejects examples such as `0xg`. |
@@ -152,31 +154,31 @@ Documentation only; compiler code and tests are unchanged. These decisions super
 
 | 項目 | 判断・反映先 | 実装上の根拠／残る実装 |
 | --- | --- | --- |
-| S1 充填構築 | §3.2.2.3–4に未導入の境界を明記。workの配列は型形成の例であり、初期化済みbufferではない。既存の配列全体を引数・戻り値等から取得する手段と、その配列への操作は可能。 | 専用の充填・generator構築はない。評価回数、Copy条件、部分構築cleanupを含む新機能は当面導入しない。 |
-| S2 / R13 layout | §3.2.2.1、§3.8.3、§14.6でsize／alignment／strideを定義し、固定配列sizeをN * stride(T)、ポインター歩進をstride(T)に統一。 | IrTargetはpointer width／LLVM DataLayoutを用意するが、言語aggregate layoutを実装していない。規則は推奨仕様として採用。 |
-| S3 長さ式の型 | §3.2.2.2で既知の整数型からの推論を先行し、型情報がない場合だけisizeを既定にする。例のWidth／Heightはisize。 | 定数の既存Typeは維持する。暗黙に全定数をisizeへ変換する案は採らず、型の混在と既存Typeでのoverflowを明記。専用evaluatorは未実装。 |
-| S4 長さの正規化 | §3.2.2.4でtyped +／*の二項の交換正規化を採用。N + 4と4 + Nは同じdependent Type／formation obligationになる。結合・分配・相殺は行わない。 | 記号的長さのBinding／正規化は未実装。通常の実行時演算順序は変えない。 |
-| S5 private長さ定数 | §3.2.2.2の既存の展開許可を維持。公開signatureに使用した展開値は公開APIの一部で、変更は利用側を壊し得ることと理由を明記。 | privateの名前を公開する必要はない。artifactへの値・依存関係の保存と無効化は未実装。 |
-| S6 Unit | §3.1.5／§14.6でsize 0、alignment 1、stride 0を採用。§14.9の物理ABI記述と整合させ、zero-sized Typeでも必要なcleanupを残す。 | ControlFlowType.Unitは意味上のTypeで、物理layoutの根拠ではない。推奨仕様として採用し、unsafe/()の歩進・indexを禁止。 |
-| S7 可変Slice | §3.2.2.5とAppendix Dに未導入の境界と代替手段を明記。 | 所有配列だけに限定せず、既存§6.4.4の権限に従うwhole-array uniq経由のindex更新も可能。lending iteratorなしでもindex走査による変更はできる。 |
-| S8 リテラル候補／借用要素 | §3.2.2.3–4で固定配列注釈、typed intermediate、候補の区別方法を追加。Array優先の新しい順位は採用しない。 | 既定の独立式と候補ごとのfittingは区別する。staticを含むsafe borrowのArray格納は禁止されるので、Ownedだけで説明しない。 |
-| S9 length syntax | §3.2.2.4を「§3.2.2.2の長さ定数式、lengthキーワードなし」に修正。 | 文言整理。専用の構文・slot Bindingは引き続き未実装。 |
-| S10 統合先リンク | C.3をSPEC §3.2.2／§6.4.4へ修正。 | 存在しない統合前文書への参照を解消。 |
-| R1 出力経路 | §14.10／新設§14.13でCore.writeLine(text: string) -> ()を採用。所有引数、UTF-8＋LF、NUL、書き込み失敗時Abortを定義し、完全な1行アプリ例を追加。 | Kimi.ConsoleServiceやPlaygroundのConsole.WriteLineはホストC#用であり言語APIではない。Core identity、string runtime、I/O、Lowering、linkは未実装。 |
-| R2 最小サブセット | C.12に実行可能になるまでの範囲・設定案・検証条件を記載。完全なCoreと部分実装の適合性を§14.13で区別。 | ProjectFile／Projectの現状を確認。現Buildはfront-end結果のみで、実行ファイルは生成しない。 |
-| R3 引数の可変性 | §4.6で通常引数とsetter valueを初期化済みlet相当とし、参照先の権限とbindingの再代入を区別。 | FunctionParameterKotoには名前・Type・default等はあるが可変性の完成したBindingモデルはない。規則は推奨仕様であり未実装。 |
-| R4 receiver | 新設§4.6.6でselfの内部名、任意の記載位置、許容Type、禁止するrename/default、receiver-first呼び出し、unbound参照を定義。 | Parserはparameter listを保持するがreceiver indexや意味上の適合性を確定していない。§10.2.1の記載位置順cleanupを維持。 |
-| R5 除外診断 | §13.3／§13.5／A.2／B.2を、prepared environmentとソース上の入れ子だけで診断が決まる規則に統一。False #ifの投機的な通常文法診断は抑制する。 | ParserのPending分岐とCompilationSpecificationTestの既存テストは新しい全条件を保証しない。unselected #match内もFalse #ifの内部を除きConditionを検証する規則、遅延・cache時の同一結果の検証が必要。 |
-| R6 改行した=> | §7.7.1で論理header行と物理行を区別し、if／else／match armの例を追加。元のheaderからbody深さを測る。 | 既存layout／Parserの対応範囲だけでは各新例の受理を保証しない。grammar-aware continuationの検証が必要。 |
-| R7 空Container | §4.2.1とF.3でgroup／rootgroup／struct／contractのbody省略を許可。comment-only、EOF、選択後の空を定義。enum／実行Blockは除外。 | DeclarationContainerKoto.TryParseDeclarationContainerはStartBlockがある場合のみbodyをparseする。既存の省略経路を確認したが、全Containerの配置・選択後検証は未完成。 |
+| S1 充填構築 | §4.3–§4.4に未導入の境界を明記。workの配列は型形成の例であり、初期化済みbufferではない。既存の配列全体を引数・戻り値等から取得する手段と、その配列への操作は可能。 | 専用の充填・generator構築はない。評価回数、Copy条件、部分構築cleanupを含む新機能は当面導入しない。 |
+| S2 / R13 layout | §4.1、§5.3、§21.1でsize／alignment／strideを定義し、固定配列sizeをN * stride(T)、ポインター歩進をstride(T)に統一。 | IrTargetはpointer width／LLVM DataLayoutを用意するが、言語aggregate layoutを実装していない。規則は推奨仕様として採用。 |
+| S3 長さ式の型 | §4.2で既知の整数型からの推論を先行し、型情報がない場合だけisizeを既定にする。例のWidth／Heightはisize。 | 定数の既存Typeは維持する。暗黙に全定数をisizeへ変換する案は採らず、型の混在と既存Typeでのoverflowを明記。専用evaluatorは未実装。 |
+| S4 長さの正規化 | §4.4でtyped +／*の二項の交換正規化を採用。N + 4と4 + Nは同じdependent Type／formation obligationになる。結合・分配・相殺は行わない。 | 記号的長さのBinding／正規化は未実装。通常の実行時演算順序は変えない。 |
+| S5 private長さ定数 | §4.2の既存の展開許可を維持。公開signatureに使用した展開値は公開APIの一部で、変更は利用側を壊し得ることと理由を明記。 | privateの名前を公開する必要はない。artifactへの値・依存関係の保存と無効化は未実装。 |
+| S6 Unit | §3.1.5／§21.1でsize 0、alignment 1、stride 0を採用。§21.3の物理ABI記述と整合させ、zero-sized Typeでも必要なcleanupを残す。 | ControlFlowType.Unitは意味上のTypeで、物理layoutの根拠ではない。推奨仕様として採用し、unsafe/()の歩進・indexを禁止。 |
+| S7 可変Slice | §4.5とAppendix Dに未導入の境界と代替手段を明記。 | 所有配列だけに限定せず、既存§4.6の権限に従うwhole-array uniq経由のindex更新も可能。lending iteratorなしでもindex走査による変更はできる。 |
+| S8 リテラル候補／借用要素 | §4.3–§4.4で固定配列注釈、typed intermediate、候補の区別方法を追加。Array優先の新しい順位は採用しない。 | 既定の独立式と候補ごとのfittingは区別する。staticを含むsafe borrowのArray格納は禁止されるので、Ownedだけで説明しない。 |
+| S9 length syntax | §4.4を「§4.2の長さ定数式、lengthキーワードなし」に修正。 | 文言整理。専用の構文・slot Bindingは引き続き未実装。 |
+| S10 統合先リンク | C.3をSPEC §4／§4.6へ修正。 | 存在しない統合前文書への参照を解消。 |
+| R1 出力経路 | §22.1／新設§22.4でCore.writeLine(text: string) -> ()を採用。所有引数、UTF-8＋LF、NUL、書き込み失敗時Abortを定義し、完全な1行アプリ例を追加。 | Kimi.ConsoleServiceやPlaygroundのConsole.WriteLineはホストC#用であり言語APIではない。Core identity、string runtime、I/O、Lowering、linkは未実装。 |
+| R2 最小サブセット | C.12に実行可能になるまでの範囲・設定案・検証条件を記載。完全なCoreと部分実装の適合性を§22.4で区別。 | ProjectFile／Projectの現状を確認。現Buildはfront-end結果のみで、実行ファイルは生成しない。 |
+| R3 引数の可変性 | §7で通常引数とsetter valueを初期化済みlet相当とし、参照先の権限とbindingの再代入を区別。 | FunctionParameterKotoには名前・Type・default等はあるが可変性の完成したBindingモデルはない。規則は推奨仕様であり未実装。 |
+| R4 receiver | 新設§7.3でselfの内部名、任意の記載位置、許容Type、禁止するrename/default、receiver-first呼び出し、unbound参照を定義。 | Parserはparameter listを保持するがreceiver indexや意味上の適合性を確定していない。§16.2.1の記載位置順cleanupを維持。 |
+| R5 除外診断 | §19.3／§19.5／A.2／B.2を、prepared environmentとソース上の入れ子だけで診断が決まる規則に統一。False #ifの投機的な通常文法診断は抑制する。 | ParserのPending分岐とCompilationSpecificationTestの既存テストは新しい全条件を保証しない。unselected #match内もFalse #ifの内部を除きConditionを検証する規則、遅延・cache時の同一結果の検証が必要。 |
+| R6 改行した=> | §14.7.1で論理header行と物理行を区別し、if／else／match armの例を追加。元のheaderからbody深さを測る。 | 既存layout／Parserの対応範囲だけでは各新例の受理を保証しない。grammar-aware continuationの検証が必要。 |
+| R7 空Container | §6.1.1とF.3でgroup／rootgroup／struct／contractのbody省略を許可。comment-only、EOF、選択後の空を定義。enum／実行Blockは除外。 | DeclarationContainerKoto.TryParseDeclarationContainerはStartBlockがある場合のみbodyをparseする。既存の省略経路を確認したが、全Containerの配置・選択後検証は未完成。 |
 | R8 raw delimiter | §2.9.2に最大開始quote run、2個だけの空escaped string、終了runの余剰quoteを内容にする規則を追加。 | StringLiteralHelper.ScanStringLiteral／ScanRawStringLiteralの実装に一致。StringLiteralParseTestは6／8個だけのquoteをInvalidと期待しており、empty rawとするコメントよりassertionを根拠にした。 |
-| R9 default所有権 | §4.6.4でpending argument slots、先行引数へのMove／変更禁止、新規Loanをdefault結果に保持しない制限、失敗時の逆取得順cleanupを定義。 | default式の構文保持はあるが実行・所有権解析はない。既存shared borrowのCopyと、結果に残らないshared inspectionは許可。 |
-| R10 継承検索 | §5.1.4で最初のaccessible・role-compatibleな宣言層へ確定し、基底overloadを混合しない規則を採用。deferred indexも修正。 | 継承Bindingは未実装。候補の発見はref/Derivedからref/Baseへの未定義変換を追加しない。virtual等の最終構文は引き続き保留。 |
-| R11 定数重複キー | §6.3.3で組み込みliteral／Unit／整数の直接符号／groupingに限定し、§11.3.4の最適化非依存規則と整合。 | DictionaryのBinding・重複検査は未実装。定数let・計算式・float等はこの静的検査に含めない。 |
-| R12 floatキー | §6.3.3／§6.6.3.1でEquatableのNaN-reflexive equalityとsigned-zero equalityを採用。IEEE組み込み比較は維持。 | floatを禁止する追加型制約は採用しない。generic Contract呼び出しの特殊化、Tuple等のContract合成、hash整合性に注意。user equality法則違反だけでmemory unsafetyを許可しない。 |
-| R14 static Loan | §9.6.4／A.3でcallee・default・initializer・cleanupを含む保守的なstatic effect summaryと、戻り値のstorage anchorを要求。 | 別Kotonoha・間接呼び出し・再帰を含む効果解析は未実装。欠けたsummaryを無効果と解釈しない。最初の実行サブセットではstatic Propertiesを扱わない。 |
-| R15 Type alias | §12.1／Appendix Dでsource Type aliasは未導入と明記。aliasはContainerを開くだけ。moveというTypeの回避例はqualificationへ修正。 | AliasKoto／GroupKotoの経路はContainer pathを保持する。新しいType別名構文を実装する根拠ではない。 |
-| R16 例と文法 | §4.3のViewにOriginを追加し、§4.4.2の混在Requirement／Boolean式を削除。F.3、関連本文・境界一覧を同期。 | 完全な言語例と宣言抜粋を区別する。今回追加した仕様例を現在のParserがすべて受理するという意味ではない。 |
+| R9 default所有権 | §7.2でpending argument slots、先行引数へのMove／変更禁止、新規Loanをdefault結果に保持しない制限、失敗時の逆取得順cleanupを定義。 | default式の構文保持はあるが実行・所有権解析はない。既存shared borrowのCopyと、結果に残らないshared inspectionは許可。 |
+| R10 継承検索 | §9.5で最初のaccessible・role-compatibleな宣言層へ確定し、基底overloadを混合しない規則を採用。deferred indexも修正。 | 継承Bindingは未実装。候補の発見はref/Derivedからref/Baseへの未定義変換を追加しない。virtual等の最終構文は引き続き保留。 |
+| R11 定数重複キー | §12.3.4で組み込みliteral／Unit／整数の直接符号／groupingに限定し、§17.3.4の最適化非依存規則と整合。 | DictionaryのBinding・重複検査は未実装。定数let・計算式・float等はこの静的検査に含めない。 |
+| R12 floatキー | §12.3.4／§13.4.1でEquatableのNaN-reflexive equalityとsigned-zero equalityを採用。IEEE組み込み比較は維持。 | floatを禁止する追加型制約は採用しない。generic Contract呼び出しの特殊化、Tuple等のContract合成、hash整合性に注意。user equality法則違反だけでmemory unsafetyを許可しない。 |
+| R14 static Loan | §15.6.4／A.3でcallee・default・initializer・cleanupを含む保守的なstatic effect summaryと、戻り値のstorage anchorを要求。 | 別Kotonoha・間接呼び出し・再帰を含む効果解析は未実装。欠けたsummaryを無効果と解釈しない。最初の実行サブセットではstatic Propertiesを扱わない。 |
+| R15 Type alias | §18.1／Appendix Dでsource Type aliasは未導入と明記。aliasはContainerを開くだけ。moveというTypeの回避例はqualificationへ修正。 | AliasKoto／GroupKotoの経路はContainer pathを保持する。新しいType別名構文を実装する根拠ではない。 |
+| R16 例と文法 | §6.2のViewにOriginを追加し、§8.3の混在Requirement／Boolean式を削除。F.3、関連本文・境界一覧を同期。 | 完全な言語例と宣言抜粋を区別する。今回追加した仕様例を現在のParserがすべて受理するという意味ではない。 |
 
 ### C.12. First executable milestone
 
@@ -195,7 +197,7 @@ Documentation only; compiler code and tests are unchanged. These decisions super
 
 | 予定する設定名 | 値と規則 |
 | --- | --- |
-| OutputKind | ApplicationまたはLibrary。省略時Application。entry許可はSPEC §14.11に従う。 |
+| OutputKind | ApplicationまたはLibrary。省略時Application。entry許可はSPEC §22.2に従う。 |
 | EntrySource | 任意のproject-relative logical path。省略時は唯一のtop-level実行SourceDocumentから推論。Libraryでは指定不可。 |
 | OutputPath | 任意のproject-relative生成物path。省略時bin/<target>/<ProjectName>.exe（初期Windows target）。標準出力やソースファイルのpathとは独立。 |
 | NativeLibraries | LibraryImportのlibrary文字列から、順序付きlink-input path列へのmap。pathはproject基準で解決し、実際の解決先・内容identity・順序をbuild metadataへ保存。初期版では明示的なlink入力を使い、曖昧な自動library探索を避ける。 |
