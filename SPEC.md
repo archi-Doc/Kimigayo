@@ -916,9 +916,9 @@ A Signature determines whether declarations may coexist in one scope:
 
 Normalize Core Types by resolved Symbol, including their Kotonoha/version, and include Type Semantics exactly once. Normalize equivalent spellings (`T` and `owner/T`) and represent generic parameters by position and kind, not name. `ref/T` and `uniq/T`, including receivers, remain distinct. Applied Semantics distinguish use-site Types, not Type declarations or Container identities.
 
-For Signature comparison only, exclude Origin names, lists, and lifetime relations. Retain complete Types and Origin contracts for semantic checks. Return Types, external/internal parameter names, defaults, optionality, access, unsafe modifiers, and Type Contracts cannot independently distinguish overloads.
+For Signature comparison only, exclude Origin names, lists, and lifetime relations. Retain complete Types and Origin contracts for semantic checks. Return Types, external/internal parameter names, defaults, optionality, access, unsafe modifiers, and Constraints cannot independently distinguish overloads.
 
-An **API signature**, for [accessibility checks](#5122-api-signature-accessibility), includes the Types and requirements exposed by a declaration, including results and Type Contracts. This is broader than the Signature used above for overload identity; exclusion from overload identity does not exempt a component from accessibility checking.
+An **API signature**, for [accessibility checks](#5122-api-signature-accessibility), includes the Types and requirements exposed by a declaration, including results and Constraints. This is broader than the Signature used above for overload identity; exclusion from overload identity does not exempt a component from accessibility checking.
 
 ```kimi
 struct Reader
@@ -933,15 +933,15 @@ Duplicate Signatures are declaration errors. Distinct Symbols imported from diff
 
 ### 4.2. Declaration containers
 
-A **Declaration Container** is a named declaration scope whose body may contain Properties, functions, Contract Clauses, or nested Declaration Containers as permitted by its kind. Its body is delimited by indentation.
+A **Declaration Container** is a named declaration scope whose body may contain Properties, functions, Constraint Clauses, or nested Declaration Containers as permitted by its kind. Its body is delimited by indentation.
 
 | Declaration Container kind | Instantiable | Main characteristics |
 | --------------- | ------------ | -------------------- |
 | `group` | No | Accepts Properties, functions, and nested Declaration Container declarations. All members are static. Generic parameters and Origins are not supported. |
-| `struct` | Yes | Accepts Properties, functions, constructors, and at most one selected `deinit`. Generic parameters, Origins, and a Type Contract are supported. Sealed by default; `open struct` permits derivation. |
+| `struct` | Yes | Accepts Properties, functions, constructors, and at most one selected `deinit`. Generic parameters, Origins, and Constraints are supported. Sealed by default; `open struct` permits derivation. |
 | `enum` | Yes | Enum declaration container. |
 | `extension` | No | Its Name identifies the target. |
-| `contract` | No | Specifies associated-type Contract Clauses and Property requirements. The Parser preserves required accessors without generating implementations or storage. |
+| `contract` | No | Specifies associated-type Constraint Clauses and Property requirements. The Parser preserves required accessors without generating implementations or storage. |
 
 #### 4.2.1. Root and nested containers
 
@@ -960,7 +960,7 @@ Aliases follow [source-local import rules](#121-external-references-and-aliases)
 
 Group and struct declarations may be split, even within one file. Collect same-parent, same-name fragments and identify a declaration by originating Kotonoha, parent Symbol, name, kind, and generic arity. Reject conflicting kinds such as a group and struct with the same name. Different arities, such as `Box` and `Box<T>`, are different Types. Never merge across Kotonoha libraries or treat an extension as a target declaration fragment; applied `ref`/`uniq` Semantics do not change Container identity.
 
-Matching fragments must agree on generic parameter count/kinds/order/names, Origin count/order/names, declaration kind, semantic modifiers, and accessibility after defaults. Do not widen conflicting accessibility. Exactly one fragment may define the Container's Type Contract, even if duplicate clauses would be identical; other fragments omit it and share that definition's constraints. Resolve it in its definition-site source environment.
+Matching fragments must agree on generic parameter count/kinds/order/names, Origin count/order/names, declaration kind, semantic modifiers, and accessibility after defaults. Do not widen conflicting accessibility. Exactly one fragment may define the Container's Constraints, even if duplicate clauses would be identical; other fragments omit them and share that definition's Constraints. Resolve them in their definition-site source environment.
 
 For structures, `open` must agree across all fragments. At most one fragment supplies the base clause; the other fragments share that base without repeating it. Resolve the base in that fragment's source environment, then validate the complete merged inheritance relationship.
 
@@ -977,7 +977,7 @@ struct Box<T>
 // B.kimi
 struct Box<T>
     func countValue(self: ref/Self) -> i32 => self.count
-// Repeating the contract or renaming T to U in B.kimi is an error.
+// Repeating the Constraints or renaming T to U in B.kimi is an error.
 ```
 
 **Design boundary:** Enum/contract fragment contents, extension identity/public names, cross-fragment static group initialization, and cross-source execution order remain separately specified.
@@ -1023,7 +1023,7 @@ Physical layout and ABI guarantees follow [Structure layout and ABI](#146-struct
 
 A structure is **sealed** unless its declaration has `open` immediately before `struct`. A sealed structure cannot be a base Type. `open` permits derivation and is independent of accessibility: `public struct` remains sealed, while `internal open struct` permits derivation only where that Type is accessible. A derived structure is itself sealed unless explicitly declared `open`; openness is not inherited. No separate `sealed` modifier is needed for this default.
 
-A structure may specify one direct base with `: BaseType`, after its Name and generic parameters and before its Origin list. The base must resolve to an accessible constructed or nongeneric `open struct` Core Type; a generic parameter, Semantics-applied Type, group, enum, or contract is not a base. Omission declares no user-defined base. Reject multiple bases and direct or indirect inheritance cycles, including cycles through different constructions of the same generic declaration. The base's Type Contract must hold, and its accessibility must cover the derived Type's [effective access domain](#5122-api-signature-accessibility). Contract Clauses continue to express capabilities separately from the base clause.
+A structure may specify one direct base with `: BaseType`, after its Name and generic parameters and before its Origin list. The base must resolve to an accessible constructed or nongeneric `open struct` Core Type; a generic parameter, Semantics-applied Type, group, enum, or contract is not a base. Omission declares no user-defined base. Reject multiple bases and direct or indirect inheritance cycles, including cycles through different constructions of the same generic declaration. The base's Constraints must hold, and its accessibility must cover the derived Type's [effective access domain](#5122-api-signature-accessibility). Constraint Clauses continue to express capabilities separately from the base clause.
 
 ```kimi
 public open struct Base
@@ -1045,7 +1045,7 @@ The direct base is one inline owned subobject, logically preceding the structure
 
 #### 4.3.3. Constructors
 
-A constructor is a dedicated structure declaration: an optional access specification, `init`, a parameter list, an optional `: base(arguments)` clause, and a nonempty indented executable Block. It has no ordinary Name, explicit receiver, separate generic or Origin parameters, result annotation, expression body, or virtual/override modifier. It uses the containing structure's Type parameters, Origins, and Type Contract. Parameter labels, defaults, and Type checking follow ordinary function parameters. Access defaults to `private`; constructor parameters obey API signature accessibility. Only a structure's own fragments may declare its constructors; groups, enums, contracts, extensions, and executable Blocks may not.
+A constructor is a dedicated structure declaration: an optional access specification, `init`, a parameter list, an optional `: base(arguments)` clause, and a nonempty indented executable Block. It has no ordinary Name, explicit receiver, separate generic or Origin parameters, result annotation, expression body, or virtual/override modifier. It uses the containing structure's Type parameters, Origins, and Constraints. Parameter labels, defaults, and Type checking follow ordinary function parameters. Access defaults to `private`; constructor parameters obey API signature accessibility. Only a structure's own fragments may declare its constructors; groups, enums, contracts, extensions, and executable Blocks may not.
 
 ```kimi
 public open struct Named
@@ -1101,13 +1101,22 @@ Animal.reset: Exclusive virtual, ObjectCompatible
 
 Derived Types must tolerate mutations and preconditions exposed by base APIs. Application invariants stronger than those APIs guarantee cannot become unchecked hidden memory-safety assumptions of safe operations.
 
-### 4.4. Type contracts
+### 4.4. Constraints
 
-A **Type Contract** is a set of **Contract Clauses** of the form `subject is requirement`. All clauses must hold. They constrain Core Types, Type Semantics, or `Self` (the enclosing Type) and establish capabilities the implementation may use. Each declaration kind restricts the permitted subjects; see [function Type Contracts](#462-function-type-contract).
+The following terms distinguish declared capabilities, conditions, and their fulfillment:
+
+| Term | Meaning | Example |
+| --- | --- | --- |
+| **Contract** | A Declaration Container declared with `contract` that specifies a named capability a Type provides. | `contract Comparable` |
+| **Constraint** | A condition imposed on a Type or Type Semantics. | `T is Comparable` |
+| **Constraints** | The set of conditions required for a declaration to be valid or usable. | The leading clauses of a generic function or structure. |
+| **Conformance** | A Type's fulfillment of a Contract, with the required correspondence between requirements and implementations. | A Type fulfills `Comparable`. |
+
+A **Constraint Clause** expresses a Constraint in the form `subject is requirement`. All clauses in a declaration's Constraints must hold. They constrain Core Types, Type Semantics, or `Self` (the enclosing Type) and establish capabilities the implementation may use. Each declaration kind restricts the permitted subjects; see [function Constraints](#462-function-constraints).
 
 Core Type requirements may name a capability declared with `contract` or another compile-time type capability. Type Semantics requirements may name concrete semantics, such as `ref` or `obj`, or a semantics category. Requirements combine with `and`, `or`, `not`, and parentheses under the [requirement-expression rules](#442-requirement-expressions).
 
-A `struct` header may contain generic parameters and an Origin list. Its Type Contract precedes Properties and functions.
+A `struct` header may contain generic parameters and an Origin list. Its Constraints precede Properties and functions.
 
 ```kimi
 struct Container<s/T> origin owner, source
@@ -1117,7 +1126,7 @@ struct Container<s/T> origin owner, source
     var value: s/T
 ```
 
-These clauses constrain Core Type parameter `T` and Semantics parameter `s`. A contract may also constrain the enclosing Type:
+These clauses constrain Core Type parameter `T` and Semantics parameter `s`. Constraints may also apply to the enclosing Type:
 
 ```kimi
 struct ComparableContainer<T>
@@ -1129,11 +1138,11 @@ struct ComparableContainer<T>
 
 `T is Comparable` supplies comparison capabilities for the stored value's Type. `Self is Comparable` requires `ComparableContainer<T>` itself to fulfill `Comparable`; it does not automatically derive an implementation from the clause on `T`. The members needed to fulfill that requirement are omitted from this example. The built-in `Self is Copy` is a specific [compiler-derivation exception](#351-copy-capability-and-explicit-duplication).
 
-A Type Contract is a set of conditions, distinct from the `contract` Declaration Container that declares a named capability such as `Comparable`.
+Constraints may require Conformance to a Contract, but may also test concrete Types, Type Semantics, or categories. The `contract` Declaration Container declares the named capability; a Constraint such as `T is Comparable` requires its fulfillment.
 
 #### 4.4.1. Associated types and property requirements
 
-Inside a `contract`, `associate` introduces an associated-type Contract Clause, and `has` declares required Property accessors:
+Inside a `contract`, `associate` introduces an associated-type Constraint Clause, and `has` declares required Property accessors:
 
 ```kimi
 contract Sequence
@@ -1143,11 +1152,11 @@ contract Sequence
 
 See [contract Property requirements](#842-contract-property-requirements) for accessor conformance.
 
-**Design boundary:** Associated-Type resolution/equality and Contract proof rules for `and`/`or`/`not` and dependent conditions remain separately specified.
+**Design boundary:** Associated-Type resolution/equality and Constraint proof rules for `and`/`or`/`not` and dependent conditions remain separately specified.
 
 #### 4.4.2. Requirement expressions
 
-`subject is requirement` tests a Type or Type Semantics in Contract Clauses, Associated Clauses, `#if` conditions, and `#case` conditions. Its result is a compile-time `bool`; unresolved requirements never become runtime tests. Each context retains its permitted subjects, grammar, and validation rules. Ordinary expressions instead use [runtime type tests](#6651-runtime-is-tests); syntax context, including through parentheses, determines the interpretation before lookup, with no fallback between Type and Value namespaces.
+`subject is requirement` tests a Type or Type Semantics in Constraint Clauses, Associated Clauses, `#if` conditions, and `#case` conditions. Its result is a compile-time `bool`; unresolved requirements never become runtime tests. Each context retains its permitted subjects, grammar, and validation rules. Ordinary expressions instead use [runtime type tests](#6651-runtime-is-tests); syntax context, including through parentheses, determines the interpretation before lookup, with no fallback between Type and Value namespaces.
 
 `is` binds on its left at comparison precedence. Its right side consumes a requirement expression through `or` precedence. An immediately following `not` negates that entire right side:
 
@@ -1202,7 +1211,7 @@ Only requirements accessible through `Speaker` are available from that view. Lif
 
 #### 4.4.4. Callable constraints
 
-`F is Callable<r, S>` is a built-in Type Contract requiring calls with receiver access `r` and signature `S`. `Callable<S>` abbreviates `Callable<ref, S>`. Initially `r` is the literal Semantics `ref`, `uniq`, or `owner`, and `S` is `(A1, ..., An) -> R` with an `Owned` complete result Type.
+`F is Callable<r, S>` is a built-in Constraint requiring calls with receiver access `r` and signature `S`. `Callable<S>` abbreviates `Callable<ref, S>`. Initially `r` is the literal Semantics `ref`, `uniq`, or `owner`, and `S` is `(A1, ..., An) -> R` with an `Owned` complete result Type.
 
 | Constraint receiver | Receiver acquired by a generic call | Admitted minimum call requirement |
 | --- | --- | --- |
@@ -1298,9 +1307,9 @@ func add(left: i32, right: i32) -> i32 => left + right
 
 Both forms follow the shared [result validation](#78-result-validation), [reachability](#782-reachability), and [scope-exit destruction](#102-scope-exit-destruction) rules. [Function Boundaries](#753-function-boundaries) lists the other bodies to which these rules apply.
 
-#### 4.6.2. Function type contract
+#### 4.6.2. Function constraints
 
-A generic Block-bodied function may begin its body with a [Type Contract](#44-type-contracts). Its Contract Clauses must precede every executable body item and are processed at compile time; they are not executable expressions.
+A generic Block-bodied function may begin its body with [Constraints](#44-constraints). Its Constraint Clauses must precede every executable body item and are processed at compile time; they are not executable expressions.
 
 **Basic example.**
 
@@ -1312,13 +1321,13 @@ func inspect<s/T>(value: s/T) -> ()
     return
 ```
 
-Each clause subject must name a generic parameter of that function. In this example, the two clauses jointly form its Type Contract; requirement syntax follows the shared [Type Contract](#44-type-contracts) rules.
+Each clause subject must name a generic parameter of that function. In this example, the two clauses jointly form its Constraints; requirement syntax follows the shared [Constraints](#44-constraints) rules.
 
-Every explicit or inferred generic argument at a call site must satisfy its clauses. Body type checking and specialization may rely on those requirements. A Type Contract is not part of the function Signature; declarations differing only in their contracts conflict.
+Every explicit or inferred generic argument at a call site must satisfy its clauses. Body type checking and specialization may rely on those requirements. Constraints are not part of the function Signature; declarations differing only in their Constraints conflict.
 
 #### 4.6.3. Unsafe functions
 
-An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. Calling it requires an [Unsafe Block](#733-unsafe-block); violating its safety contract is undefined behavior. This runtime safety contract is distinct from a Type Contract and its Contract Clauses.
+An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. Calling it requires an [Unsafe Block](#733-unsafe-block); violating its safety contract is undefined behavior. This runtime safety contract is distinct from Constraints and their Constraint Clauses.
 
 ```kimi
 // Safety: pointer must refer to a live, initialized i32 throughout the call,
@@ -1409,7 +1418,7 @@ Namespaces separate declaration kinds; a **Lookup Role** filters candidates by s
 | Value | Value | All value declarations, including non-callable values |
 | Origin / Label | Corresponding namespace | Origin / Label declarations |
 
-A declaration may serve several roles. A group is a Qualifier, not a Core Type. Role filtering does not inspect generic arity, argument Types or labels, expected results, satisfied contracts, or the existence of a later member. Object-target syntax selects the View Target role; subsequent RuntimeUsable failure does not reopen lookup. There is no callable-only role for `f()`.
+A declaration may serve several roles. A group is a Qualifier, not a Core Type. Role filtering does not inspect generic arity, argument Types or labels, expected results, satisfied Constraints, or the existence of a later member. Object-target syntax selects the View Target role; subsequent RuntimeUsable failure does not reopen lookup. There is no callable-only role for `f()`.
 
 Type and Value names may coexist. Within one namespace and scope, only valid Container merging, distinct Type Signatures, and function overloads permit repeated names. Different roles do not permit conflicting declarations such as `group X` and `struct X` in the same scope.
 
@@ -1482,7 +1491,7 @@ Access(D) is a subset of Access(T)
 
 Check the effective domains, not merely the written access modifiers. This rule applies to private, internal, and protected declarations as well as public declarations. A direct base Type must satisfy the same condition with the derived Type as `D`. Apply the rule after declaration merging and Type normalization; an invalid exposed signature is a declaration error even if never used. An inferred Type is checked once established and cannot evade this rule.
 
-API components include function parameter and result Types (including receivers), constructor parameter Types and the constructed result Type, Property Types, accessor parameter and result Types, and Types or Contracts named by generic constraints and exposed associated-type requirements. Use the Property's domain for its declared Property Type, and each accessor's domain for its additional signature components. A restricted setter does not narrow the Property's domain. Type Contracts require this check even when textually written inside a function body. Validate exposed Origin contracts under their own scope and lifetime rules as well.
+API components include function parameter and result Types (including receivers), constructor parameter Types and the constructed result Type, Property Types, accessor parameter and result Types, and Types or Contracts named by generic constraints and exposed associated-type requirements. Use the Property's domain for its declared Property Type, and each accessor's domain for its additional signature components. A restricted setter does not narrow the Property's domain. Constraints require this check even when textually written inside a function body. Validate exposed Origin contracts under their own scope and lifetime rules as well.
 
 Inspect compound Types recursively. A constructed generic Type has the intersection of the generic declaration's domain and all its concrete type arguments' domains. Tuples, function Types, arrays, and other compound Types likewise require every constituent Type to be accessible. Type Semantics such as `ref`, `obj`, and `unsafe` do not conceal an inaccessible Core Type or runtime-contract View Target. Expand Type aliases for this check. For an associated-type projection, check its qualifier and defining requirement, and any exposed concrete binding established by the associated-type rules; an unresolved projection retains an obligation rather than silently becoming public. Do not recursively inspect a Type's private fields or implementation bodies merely because that Type appears in an API.
 
@@ -1575,7 +1584,7 @@ Generic bodies use their [definition-site source environment](#12-modules-and-de
 
 #### 5.1.5. Type name selection
 
-After committing lookup, filter Type candidates by the number and kinds of explicit type arguments. Resolve the arguments themselves in the use-site context. Select exactly one candidate; zero means type-argument mismatch and several mean ambiguity. Check the selected Type's contract afterward, without trying another Type if it fails.
+After committing lookup, filter Type candidates by the number and kinds of explicit type arguments. Resolve the arguments themselves in the use-site context. Select exactly one candidate; zero means type-argument mismatch and several mean ambiguity. Check the selected Type's Constraints afterward, without trying another Type if they fail.
 
 For example, `Box<i32>` selects `Box<T>` from a stage containing `Box<T>` and `Box<T,U>`. A nearer stage containing only `Box<T,U>` blocks an outer `Box<T>`. Different same-arity Types imported at one stage remain ambiguous. Legitimate unresolved argument kinds defer selection with its stage fixed; malformed arguments or unknown Names are errors. Omitted type arguments use only the inference permitted by their construct.
 
@@ -1589,10 +1598,10 @@ Check each declaration in the committed function group independently:
 2. Match positional and named arguments and record omitted defaults.
 3. Infer type arguments from the receiver and explicit arguments.
 4. Use an independently known expected result Type to fill remaining type arguments, without changing those already fixed.
-5. Check permitted argument adaptations, Function Types, and Type Contracts.
+5. Check permitted argument adaptations, Function Types, and Constraints.
 6. Reject instantiated result Types incompatible with the expected result, if present.
 
-Zero applicable candidates is an error. Candidate checking records plans; it does not execute or commit runtime Copy/Move, Loans, or defaults. Errors in declarations, such as unknown Types, malformed contracts, or duplicate Signatures, remain declaration errors even when another candidate succeeds.
+Zero applicable candidates is an error. Candidate checking records plans; it does not execute or commit runtime Copy/Move, Loans, or defaults. Errors in declarations, such as unknown Types, malformed Constraints, or duplicate Signatures, remain declaration errors even when another candidate succeeds.
 
 Positional arguments precede named arguments and bind parameters in order. Named arguments use external names, may be reordered, and cannot bind a parameter twice. Reject unknown labels, excess positional arguments, and missing required arguments. Evaluate explicit arguments in source order, then omitted defaults in parameter order; defaults follow [declaration-site rules](#464-parameter-names-and-defaults) and supply no generic-inference evidence. Function-value calls supply every argument positionally.
 
@@ -1669,7 +1678,7 @@ Pairwise comparison yields better, worse, equivalent, or incomparable. **Proceed
 4. Prefer fewer defaults used by this call.
 5. Otherwise report ambiguity.
 
-Do not rank numeric Types by width, contracts by strength or clause count, or generic declarations by general pattern partial ordering. Do not invent `uniq/T <: ref/T` from the ability to reborrow. Incomparability at an earlier step cannot be rescued by nongeneric status or fewer defaults; declaration, file, alias, and name order never break ties.
+Do not rank numeric Types by width, Constraints by strength or clause count, or generic declarations by general pattern partial ordering. Do not invent `uniq/T <: ref/T` from the ability to reborrow. Incomparability at an earlier step cannot be rescued by nongeneric status or fewer defaults; declaration, file, alias, and name order never break ties.
 
 ```kimi
 func inspect(value: ref/i32) -> () => ()
@@ -1712,7 +1721,7 @@ outer(intermediate)
 
 Resolve a function reference to one declaration using ordinary selection evidence, including explicit generic arguments or a fixed expected callable signature. A unique candidate needs no expected Type; an unresolved overload set is not a value. Anonymous-function arity and explicit Types may filter candidates, but its body is checked only after a common expected signature or a single candidate is determined. A fixed `Callable<r, S>` signature may guide parameter inference while `F` retains the concrete Closure Type. Do not rerun a body for competing signatures, infer parameters from later uses, or repeat capture effects during candidate trials. Function values carry neither labels nor defaults and cannot name unsafe functions or `deinit`. Later conformance failure never selects another overload or capture mode.
 
-After inference, check Type Contracts as satisfied, unsatisfied, legitimately dependent, or erroneous. Nondependent names bind at the definition. Generic bodies use evidence from declared constraints and selected conditions; failure to prove `T is C` does not prove `T is not C`. Deferred members use the [definition-site source environment](#12-modules-and-dependencies), never caller imports. All necessary constraints must be decided before finalizing a concrete call or specialization. Do not use arbitrary theorem proving, enumeration of available Types, or constraint strength for overload ranking.
+After inference, check Constraints as satisfied, unsatisfied, legitimately dependent, or erroneous. Nondependent names bind at the definition. Generic bodies use evidence from declared constraints and selected conditions; failure to prove `T is C` does not prove `T is not C`. Deferred members use the [definition-site source environment](#12-modules-and-dependencies), never caller imports. All necessary constraints must be decided before finalizing a concrete call or specialization. Do not use arbitrary theorem proving, enumeration of available Types, or constraint strength for overload ranking.
 
 Conditional membership follows the [name-resolution boundary](#134-name-resolution-boundary). Excluded declarations do not merge or enter candidate sets. Compiler requirements preserve independent specialization environments.
 
@@ -2616,7 +2625,7 @@ If the right side or operation does not complete normally, do not write; getter 
 
 ### 6.8. Extension boundaries and reserved syntax
 
-Operator symbols, precedence, and associativity are fixed by the language. User-defined arithmetic and comparison may be supplied through explicit Type Contracts once their declaration syntax, required members, and resolution rules are specified. Such extensions must preserve evaluation order and counts, comparison's `bool` result, and assignment's Unit result.
+Operator symbols, precedence, and associativity are fixed by the language. User-defined arithmetic and comparison may be supplied through explicit Constraints once their declaration syntax, required members, and resolution rules are specified. Such extensions must preserve evaluation order and counts, comparison's `bool` result, and assignment's Unit result.
 
 `and`, `or`, `not`, `=`, `@` (including `@move`), `is`, Ranges, and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined. Neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.`, or ternary `?:`; use logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref` / `@uniq`. Prefix `move`, a Move accessor, and a dedicated `<-` Move operator are not defined. Recognition by the lexer alone does not make a token a usable operator.
 
@@ -4838,7 +4847,7 @@ A module groups source declarations and controls the names exposed through depen
 | Project root | Root of the primary Kotonoha's declaration hierarchy. |
 | Source environment | A document's definition-site aliases and lookup context. |
 
-Merged declarations keep each fragment's definition-site source environment for names, Types, contracts, and diagnostics. Merging must not apply one fragment's aliases to another. Generated documents have independent source environments.
+Merged declarations keep each fragment's definition-site source environment for names, Types, Constraints, and diagnostics. Merging must not apply one fragment's aliases to another. Generated documents have independent source environments.
 
 Each Compilation owns a **Compilation root**, direct-dependency reference-name mappings, and default aliases. The primary Kotonoha's Container hierarchy ends at the **project root**. A resolved Symbol identifies its declaration, including originating Kotonoha/version, independently of spelling or alias path.
 
@@ -4879,7 +4888,7 @@ Any future re-export design must preserve the original Symbol, avoid widening ac
 
 ### 12.3. Source artifacts and binary interfaces
 
-Portable interchange uses source artifacts or binary interfaces, not serialized Koto implementation details. Source artifacts preserve the source and configuration needed for reconstruction. Binary-interface information includes Symbol/version identity, declared access and enclosing domains, visibility and public paths, open/base relationships, normalized Signatures, complete API signature Types and requirements, Type and Origin Contracts, unsafe requirements, Property/accessor capabilities and field-operation semantics, generic specialization inputs, ABI/layout/calling conventions, and target/language/compiler identity. Private generic-body dependencies retain their defining Symbols and access context without becoming public source names. These are information categories, not a complete compatibility format: encoding, required fields, validation, and compatibility rules belong to a separate artifact-interface specification.
+Portable interchange uses source artifacts or binary interfaces, not serialized Koto implementation details. Source artifacts preserve the source and configuration needed for reconstruction. Binary-interface information includes Symbol/version identity, declared access and enclosing domains, visibility and public paths, open/base relationships, normalized Signatures, complete API signature Types and requirements, Constraints and Origin contracts, unsafe requirements, Property/accessor capabilities and field-operation semantics, generic specialization inputs, ABI/layout/calling conventions, and target/language/compiler identity. Private generic-body dependencies retain their defining Symbols and access context without becoming public source names. These are information categories, not a complete compatibility format: encoding, required fields, validation, and compatibility rules belong to a separate artifact-interface specification.
 
 Callable interfaces additionally preserve concrete environment identities, capture dependencies, internal/public call signatures, receiver acquisition contracts, and per-call Origin quantification where needed for verification. Object interfaces retain Supports/conformance, validated virtual/contract entries, Runtime Type Identity, and complete destruction/storage-release information. These requirements do not prescribe an effect-summary encoding or fixed ABI.
 
@@ -4944,7 +4953,7 @@ A `#match` header has no subject expression. Its body must contain at least one 
 
 A `#match` construct is one Syntax item and may be controlled as a whole by a preceding `#if`. The `#match` wrapper does not itself introduce an additional lookup scope; the selected arm's Block follows the existing scope rules. These rules apply in both executable bodies and Declaration Containers.
 
-Every final evaluation context must select an arm. Without `#case _`, at least one explicit Condition must evaluate to **True** in that context using the specified evaluator. If none is True and a value remains dependent, retain the group until its finalization deadline; if all are False, report an error. The initial language requires no symbolic exhaustiveness proof, enumeration of Types, or Contract theorem proving. A catch-all supplies an unconditional alternative without such proof.
+Every final evaluation context must select an arm. Without `#case _`, at least one explicit Condition must evaluate to **True** in that context using the specified evaluator. If none is True and a value remains dependent, retain the group until its finalization deadline; if all are False, report an error. The initial language requires no symbolic exhaustiveness proof, enumeration of Types, or Constraint theorem proving. A catch-all supplies an unconditional alternative without such proof.
 
 The selected Block occupies the structural position of the Case Group. Normal Block, result-Type, scope, and control-transfer rules apply after selection. An early-false `#if` target is excluded. Unselected `#case` arms do not undergo ordinary semantic checking or contribute executable code.
 
@@ -4967,7 +4976,7 @@ A Condition uses the following closed initial expression set. The whole expressi
 
 All other expression forms are invalid Conditions, including calls (even purported compile-time calls), runtime member access, indexing, arithmetic, ordering comparisons, conversions, collections, interpolation, and floating-point/character/null literals. Reject them even in short-circuited operands.
 
-**Condition lookup.** Scalar value lookup searches only the disjoint built-in and Project-setting environment established before parsing; ordinary source `let`/`var` declarations, Properties, aliases to values, and functions are not compile-time values. For `is`, resolve the subject among lexically visible generic parameters, using the nearest declaration first. Resolve Type/Contract/category names using normal Type Name Selection, qualification, source aliases, and then default aliases, restricted to the already established environment of §13.4. This permits unconditional same-Container Types and accessible Contracts in directly referenced libraries, without permitting a Condition to depend on declarations whose availability it controls. Contract Clauses supply evidence about these parameters, not an additional value namespace. Preserve the definition's source context during specialization.
+**Condition lookup.** Scalar value lookup searches only the disjoint built-in and Project-setting environment established before parsing; ordinary source `let`/`var` declarations, Properties, aliases to values, and functions are not compile-time values. For `is`, resolve the subject among lexically visible generic parameters, using the nearest declaration first. Resolve Type/Contract/category names using normal Type Name Selection, qualification, source aliases, and then default aliases, restricted to the already established environment of §13.4. This permits unconditional same-Container Types and accessible Contracts in directly referenced libraries, without permitting a Condition to depend on declarations whose availability it controls. Constraint Clauses supply evidence about these parameters, not an additional value namespace. Preserve the definition's source context during specialization.
 
 ```kimi
 windows
@@ -4982,7 +4991,7 @@ T is Comparable
 
 A concrete Type or Type Semantics on the right of `is` tests identity. A named capability declared with `contract` or a named category tests satisfaction of its requirements.
 
-A selected `#if` target adds its Condition to the facts available while analyzing that target. A selected `#case` arm adds its Condition and the negation of every earlier Condition in the same `#match`. These facts are local to the selected target or arm, do not leak into following Syntax or sibling groups, and are not Contract Clauses. Narrowing preserves the concrete Core Type: `T is Comparable` does not replace `T` with `Comparable`. This defines the available assumptions; it does not introduce additional Contract proof rules.
+A selected `#if` target adds its Condition to the facts available while analyzing that target. A selected `#case` arm adds its Condition and the negation of every earlier Condition in the same `#match`. These facts are local to the selected target or arm, do not leak into following Syntax or sibling groups, and are not Constraint Clauses. Narrowing preserves the concrete Core Type: `T is Comparable` does not replace `T` with `Comparable`. This defines the available assumptions; it does not introduce additional Constraint proof rules.
 
 Compile-time Conditions do not evaluate runtime values. The initial design does not destructure values or introduce pattern bindings. For example, `#case value is ref/i32 x` is invalid; use `#case (s is ref) and (T is i32)` to narrow a value of Type `s/T` to `ref/i32`. Parentheses separate each [requirement expression](#442-requirement-expressions) from the surrounding condition.
 
@@ -5187,7 +5196,7 @@ Optimization may share, normalize, omit, or directly resolve metadata only while
 
 A source-derived CodeContext belongs to one Kotonoha and one immutable SourceDocument snapshot. A different snapshot at the same path requires a fresh context and fresh alias/Binding results; path equality does not establish revision identity. Source-less parsing entry points may create such contexts but must not themselves become the source identity of parsed nodes. Nodes cannot be inserted into another Kotonoha's Declaration Container. See [source contexts and dependencies](#12-modules-and-dependencies).
 
-Each source syntax node and declaration fragment retains its original CodeContext. After Container merging, resolve member bodies, headers, Type annotations, and contracts using their own source contexts, not a single context attached to the merged Container. Preserve fragment locations for diagnostics and header checks. Source-less roots and generated wrapper nodes do not represent a source alias environment; moving source syntax into them preserves its origin context. Generated source documents have their own contexts.
+Each source syntax node and declaration fragment retains its original CodeContext. After Container merging, resolve member bodies, headers, Type annotations, and Constraints using their own source contexts, not a single context attached to the merged Container. Preserve fragment locations for diagnostics and header checks. Source-less roots and generated wrapper nodes do not represent a source alias environment; moving source syntax into them preserves its origin context. Generated source documents have their own contexts.
 
 Lowering may place top-level executable syntax in an implicit generated function owned by the Kotonoha, but must preserve source scopes and CodeContexts.
 
@@ -5224,7 +5233,7 @@ Binding must preserve these semantic stages, without requiring a single-pass imp
 Parse per source and collect fragments/generator output
 -> select directives in established environments
 -> collect selected declarations, root and scope tables, and alias targets
--> bind headers, Types, Signatures, and contracts; validate merges/duplicates
+-> bind headers, Types, Signatures, and Constraints; validate merges/duplicates
 -> resolve bodies -> test candidates -> select -> check usage
 -> retain Symbol references and the selected operation plan for lowering
 ```
@@ -5375,7 +5384,7 @@ This table defines the recorded status of each compiler stage. The notes below d
 
 | Feature | Parsing | Binding | Analysis | Lowering | Runtime |
 | --- | --- | --- | --- | --- | --- |
-| Functions and Contract Clauses | Partial | Not implemented | Partial | Not implemented | Not implemented |
+| Functions and Constraint Clauses | Partial | Not implemented | Partial | Not implemented | Not implemented |
 | `#if` / `#match` | Implemented | Not implemented | Partial | Not assessed | N/A |
 | Types | Partial | Not implemented | Partial | Not implemented | Not implemented |
 | Origins | Partial | Not implemented | Not implemented | Not implemented | Not implemented |
@@ -5419,7 +5428,7 @@ The Parser supports Origin lists on structures and functions, simple and qualifi
 
 ### C.4. Declarations and compile-time directives
 
-The current Parser stores leading Contract Clauses separately from executable body items and preserves deferred directives on them. It checks clause subjects against the declared generic parameters and diagnoses clauses placed after executable items. Semantic Type Contract validation during Binding and specialization is not implemented.
+The current Parser stores leading Constraint Clauses separately from executable body items and preserves deferred directives on them. It checks clause subjects against the declared generic parameters and diagnoses clauses placed after executable items. Semantic validation of Constraints during Binding and specialization is not implemented.
 
 **Current implementation status:** the Parser validates the closed Condition expression set, evaluates known scalar operations, and propagates Errors before short-circuit truth results. Its internal **Pending** result represents an attempt awaiting Name/requirement Binding; it is not the language result **Deferred**. Pending directives retain dedicated Koto nodes, and validation obligations survive early selection. Control-flow analysis exposes encountered obligations as pending Binding. Unknown-Name classification by later Directive Binding, `is` evaluation, specialization, lookup-environment enforcement, and constraint narrowing remain planned.
 
@@ -5462,7 +5471,7 @@ This index links to design boundaries owned by the language sections. It adds no
 | Runtime-contract declaration/binding syntax; contract/exact test and checked-cast spellings | Partially specified | [Runtime contracts](#443-runtime-contracts), [tests and casts](#6652-general-view-tests-and-checked-casts) |
 | Extra implicit/ordinary base conversions, contract inheritance/defaults, consuming/generic runtime requirements, external conformance | Deferred design | [Object views](#335-object-views-and-identity), [runtime contracts](#443-runtime-contracts) |
 | Fixed FFI layout | Deferred design | [Structure layout and ABI](#146-structure-layout-and-abi) |
-| Contract proof and associated Types | Partially specified | [Associated Types and Property requirements](#441-associated-types-and-property-requirements) |
+| Constraint proof and associated Types | Partially specified | [Associated Types and Property requirements](#441-associated-types-and-property-requirements) |
 | Generic specialization and operation selection | Partially specified | [Inference and operation design boundaries](#53-inference-and-operation-design-boundaries) |
 | Abstract Origins, escaping borrows, and lending iterators | Deferred design | [Lifetime design boundaries](#99-lifetime-design-boundaries) |
 | Destruction lifetime relaxation | Deferred design | [Destruction lifetime checking](#966-destruction-lifetime-checking) |
@@ -5493,9 +5502,14 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Complete value | An aggregate with completed construction and all stored fields Initialized. | [Construction and completeness](#912-aggregate-construction-and-completeness) |
 | Completion | Normal or abrupt completion of evaluation, distinct from divergence and Panic Termination. | [Completions](#71-completions) |
 | Composition Root | The language facility selected by `$`. | [Reserved syntax](#68-extension-boundaries-and-reserved-syntax) |
+| Conformance | A Type's fulfillment of a Contract, including the correspondence between requirements and implementations. | [Constraints](#44-constraints) |
+| Constraint | A condition imposed on a Type or Type Semantics. | [Constraints](#44-constraints) |
+| Constraint Clause | A declaration clause expressing a Constraint as `subject is requirement`. | [Constraints](#44-constraints) |
+| Constraints | The set of conditions required for a declaration to be valid or usable. | [Constraints](#44-constraints) |
 | Consume | Explicit acquisition using `@move` that forces Move even for Copy Types. | [Explicit Consume](#915-explicit-consume) |
 | Consume Eligibility | Whether the declaration, Type, and path provide the Consume operation. | [Consume verification](#914-consume-verification-and-representation) |
 | Consume Legality | Whether the current use site may perform an eligible Consume. | [Consume verification](#914-consume-verification-and-representation) |
+| Contract | A Declaration Container declared with `contract` that specifies a named capability a Type provides. | [Constraints](#44-constraints) |
 | Control Boundary | A lexical boundary governing control-transfer target lookup. | [Control flow](#7-control-flow) |
 | Copy | Implicit value duplication that leaves its source initialized. | [Copy and Move](#35-copy-and-move) |
 | Core Type | The component of a Type that identifies what the value is. | [Type composition](#3-types-and-basic-value-model) |
@@ -5525,7 +5539,6 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Temporary Place | Anonymous storage materializing a Temporary Value. | [Materialization](#361-materialization) |
 | Temporary Value | An expression's temporary result, distinct from its original persistent Place. | [Materialization](#361-materialization) |
 | Type | Core Type or object View Target, Semantics, and Origin together. | [Type composition](#3-types-and-basic-value-model) |
-| Type Contract | A set of requirement clauses constraining generic parameters or `Self`. | [Type Contracts](#44-type-contracts) |
 | Type Semantics | How a value is represented, owned, accessed, or used. | [Type Semantics](#33-type-semantics) |
 | Value Context | An evaluation context that requires an expression's value. | [Evaluation contexts](#72-blocks-and-evaluation-contexts) |
 
@@ -5638,7 +5651,7 @@ Object-target syntax uses the View Target lookup role; a named target may resolv
 
 ### F.3. Declaration grammar
 
-[Containers](#42-declaration-containers), [structures](#43-structure-declarations), [contracts](#44-type-contracts), [bindings](#45-bindings), [functions](#46-functions), [parameters](#464-parameter-names-and-defaults), [aliases](#121-external-references-and-aliases).
+[Containers](#42-declaration-containers), [structures](#43-structure-declarations), [Constraints](#44-constraints), [bindings](#45-bindings), [functions](#46-functions), [parameters](#464-parameter-names-and-defaults), [aliases](#121-external-references-and-aliases).
 
 ```ebnf
 QualifiedName        := Name ("." Name)*
@@ -5663,7 +5676,7 @@ FunctionDefinition   := FunctionHeader FunctionBody
 FunctionBody         := "=>" Expression | Body<FunctionItem>
 Parameter            := Name ("=>" Name)? ":" Type ("=" Expression)?
                       | Name "?" ":" Type "=" Expression
-ContractClause       := (Name | "Self") "is" IsRequirement
+ConstraintClause     := (Name | "Self") "is" IsRequirement
 AssociatedClause     := "associate" Name "is" IsRequirement
 IsRequirement        := "not" Requirement | PositiveRequirement
 PositiveRequirement  := RequirementAtom ("and" RequirementUnary)*
@@ -5675,8 +5688,8 @@ RequirementAtom      := CallableRequirement | Type | Semantics | "(" Requirement
 CallableRequirement  := "Callable" "<" (CallableReceiver ",")? FunctionSignature ">"
 CallableReceiver     := "ref" | "uniq" | "owner"
 FunctionSignature    := "(" TrailingList<Type>? ")" "->" Type
-FunctionItem         := ExecutableItem | ContractClause
-ContainerItem        := Declaration | ContractClause | AssociatedClause
+FunctionItem         := ExecutableItem | ConstraintClause
+ContainerItem        := Declaration | ConstraintClause | AssociatedClause
                       | Directive<ContainerItem>
 ContainerBody        := ? indented ContainerItem sequence permitted by its kind ?
 Declaration          := GroupDeclaration | RootGroupDeclaration
@@ -5688,7 +5701,7 @@ Declaration          := GroupDeclaration | RootGroupDeclaration
 
 Modifier placement and compound-access combinations are constrained by [accessibility](#512-accessibility-and-reachability), even where the shared grammar uses `Access`. `open` applies only to structures. `BaseClause` has the semantic restrictions in [inheritance](#432-inheritance-and-open-structures); member-level virtual/override syntax is not supplied by this grammar.
 
-`ConstructorDeclaration` and `DeinitDeclaration` are allowed only directly in structure bodies, subject to their merging and selection rules. A constructor has a Unit executable body but produces an owned structure through its dedicated construction operation. Neither declaration is an ordinary function declaration; constructor Origin bindings come from the containing Type's contract. See [constructors](#433-constructors) and [destruction declarations](#103-aggregate-destruction-and-deinit).
+`ConstructorDeclaration` and `DeinitDeclaration` are allowed only directly in structure bodies, subject to their merging and selection rules. A constructor has a Unit executable body but produces an owned structure through its dedicated construction operation. Neither declaration is an ordinary function declaration; constructor Origin bindings come from the containing Type's Constraints. See [constructors](#433-constructors) and [destruction declarations](#103-aggregate-destruction-and-deinit).
 
 ### F.4. Expression grammar
 
