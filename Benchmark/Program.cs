@@ -8,6 +8,9 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        var b = new ParseBenchmark();
+        b.Test1();
+
         var switcher = new BenchmarkSwitcher(new[]
         {
             typeof(ParseBenchmark),

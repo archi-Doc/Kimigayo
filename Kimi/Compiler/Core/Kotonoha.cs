@@ -149,12 +149,14 @@ public sealed partial class Kotonoha
         => $"Kotonoha: {this.Name}";
 
     /// <summary>
-    /// Creates a parsing context for this source unit.
+    /// Gets a source-less parsing context for this source unit.
     /// </summary>
     /// <param name="diagnosticCollection">An optional diagnostic destination.</param>
-    /// <returns>A new code context.</returns>
+    /// <returns>The shared root context, or a new context for a different diagnostic destination.</returns>
     public CodeContext CreateCodeContext(DiagnosticCollection? diagnosticCollection = null)
-        => new(this, diagnosticCollection);
+        => diagnosticCollection is null || ReferenceEquals(diagnosticCollection, this.DiagnosticCollection)
+            ? this.RootKoto.CodeContext
+            : new(this, diagnosticCollection);
 
     /// <summary>
     /// Attempts to find a Koto node by its identifier.
