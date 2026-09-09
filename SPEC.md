@@ -30,6 +30,7 @@ For the first executable program, start with [minimal console output](#224-minim
   - [18. Modules and dependencies](#18-modules-and-dependencies)
   - [19. Compile-time directives](#19-compile-time-directives)
   - [20. Compilation configuration](#20-compilation-configuration)
+    - [Mods: source generation](#207-mods-source-generation)
   - [21. Layout, runtime metadata, and code generation](#21-layout-runtime-metadata-and-code-generation)
   - [22. Core, program execution, and foreign functions](#22-core-program-execution-and-foreign-functions)
 - [Appendices](#appendices)
@@ -1633,19 +1634,11 @@ Explicit and implicit constructors follow [construction](#623-constructors); all
 
 ##### 6.2.1. Split structures and storage order
 
-A `struct` may be split into compatible declaration fragments, including fragments produced by a Source Generator. Multiple fragments may contribute Stored Properties. Merge fragments for the same declaration, validate their headers and member uniqueness, and classify storage using the normal Property rules, including implicit accessors and `has` expansion. No primary fragment is required. Detailed declaration identity and header checks follow the [Container integration rules](#612-container-fragments).
+A `struct` may be split into compatible declaration fragments, including fragments produced by a [Mod](#207-mods-source-generation). Multiple fragments may contribute Stored Properties. Merge fragments for the same declaration, validate their headers and member uniqueness, and classify storage using the normal Property rules, including implicit accessors and `has` expansion. No primary fragment is required. Detailed declaration identity and header checks follow the [Container integration rules](#612-container-fragments).
 
-Define a **logical declaration order** independently of physical memory layout:
+Apply [logical declaration order](#2074-generated-sources-and-declaration-order) to the environment-selected fragments of each instantiation. Only Stored Properties contribute storage slots. This order determines initializer side-effect order independently of physical layout.
 
-1. Ordinary source documents precede generated source documents. Order ordinary documents by their stable logical source identifiers.
-2. Order generated documents by stable Generator identifier, then by the Generator's logical output identifier.
-3. Within each document, use source declaration order, including the written order of multiple fragments of the same structure.
-
-Source identifiers are build metadata independent of absolute checkout paths, temporary output paths, and processing order. Ordinary sources use normalized project-relative logical paths; sources outside the project directory require an assigned stable project-relative logical name. Generated output identifiers are logical names assigned by the Generator. Normalize path separators to `/` and remove redundant path segments; compare identifiers ordinally without host-specific case folding or locale rules. Require unique ordinary source identifiers, unique Generator identifiers within a build, and unique output identifiers within each Generator; identifier collisions are build errors.
-
-Apply this order to the environment-selected declarations of each instantiation. Only Stored Properties contribute storage slots. File enumeration, parser completion, and Generator completion order must not affect the result. Renaming a source or generated output may change logical order and therefore initializer side-effect order.
-
-Generated declaration availability must satisfy the [name-resolution boundary](#194-name-resolution-boundary). Do not begin consuming a provisional type and append generated Storage later. Finalize layout only after the complete selected fragment set and storage classification are known. Generated documents retain their own source context and logical identifiers. Generator APIs, inputs, scheduling, and dependency checks beyond the established output deadline remain separately specified; generator dependencies that prevent establishing the required environment are errors, not permission to revise resolved Names.
+Mods may inspect provisional Types under [provisional Binding](#2072-compilation-and-binding). Finalize layout only after all Mods complete and the full selected fragment set and storage classification are known. No later generation may append Storage to a finalized Type.
 
 Physical layout and ABI guarantees follow [Structure layout and ABI](#211-structure-layout-and-abi).
 
@@ -1835,7 +1828,13 @@ A local Type must be fixed at declaration, even without an initializer. An expli
 
 **Attribute syntax.** `#Name` accepts an optional parenthesized, comma-separated Argument list with a trailing comma. Name must begin with an uppercase Unicode letter; lowercase if/match/case select directives, and other lowercase forms are errors. Attributes attach in source order to the next same-indentation declaration, on its line or preceding effective lines. Comments/blank lines may intervene; unrelated items and dedents may not. Dangling Attributes are errors.
 
-Attributes are accepted on ordinary Container, function, and Property declarations, and on function parameters before the parameter Name. Explicit specializations and Contract requirements retain their prohibition on Attributes; expression statements, patterns, arguments, and accessor lists do not accept Attribute prefixes. Generic Attribute resolution and semantics remain deferred, so an unknown selected Attribute must be diagnosed rather than silently ignored. Excluded syntax follows §19.5: argument and declaration-placement grammar is checked only where ordinary parsing is required, and excluded Attributes undergo no semantic resolution. The recognized LibraryImport Attribute has the concrete semantics in [foreign functions](#223-foreign-function-imports).
+Attributes are accepted on ordinary Container, function, and Property declarations, and on function parameters before the parameter Name. Explicit specializations and Contract requirements retain their prohibition on Attributes; expression statements, patterns, arguments, and accessor lists do not accept Attribute prefixes. Excluded syntax follows §19.5: argument and declaration-placement grammar is checked only where ordinary parsing is required, and excluded Attributes undergo no semantic resolution. The recognized LibraryImport Attribute has the concrete semantics in [foreign functions](#223-foreign-function-imports).
+
+**Mod markers.** A [Mod](#207-mods-source-generation) may use Attributes to find targets. A marker does not request execution or consume an Attribute: several Mods may inspect the same Attribute, and a later Mod may emit markers for an already completed Mod without restarting it or causing an error merely for that reason.
+
+Expose marker names, argument syntax, and target Koto before the target Type is fully bound. Queries use environment-selected syntax, excluding discarded declarations. Syntax-name matching does not establish semantic identity between unrelated same-spelled Attributes. A Mod's registration or accompanying contract must identify its markers and argument rules. Semantic argument queries obey the [Binding access period](#2072-compilation-and-binding); syntax remains readable afterward. Neither discovery nor argument inspection requires executing the target program or an Attribute constructor.
+
+Marker discovery and validation are distinct. Diagnose a selected Attribute that remains unrecognized by final validation; finding its syntax does not make every unknown Attribute valid. Concrete marker registration/recognition APIs and general Attribute semantics beyond these rules and LibraryImport remain design boundaries.
 
 ### 7. Functions and callable values
 
@@ -2702,6 +2701,8 @@ Diagnostics for definition errors identify the body use and missing declared pro
 ### 9. Names, signatures, and access
 
 Name resolution identifies declarations; overload resolution selects an applicable operation before use-site legality is checked.
+
+During [Mod generation](#2072-compilation-and-binding), these rules may produce provisional results from the declarations currently available. Such results do not commit lookup or overload selection for the final program; final Binding runs after generation is complete.
 
 | Term | Meaning |
 | --- | --- |
@@ -6298,7 +6299,7 @@ Forced process termination and undefined behavior provide no cleanup guarantee. 
 
 #### 16.3. Aggregate destruction and deinit
 
-`deinit` may be declared only directly in a structure body, including a fragment produced by a Source Generator. It is invalid in a group, enum, contract, extension, constructor, function, accessor, or another `deinit`. After conditional selection and merging, each concrete structure has at most one such declaration. A body is required and follows the nonempty executable-Block rule; `deinit` followed by an indented `()` is an explicit no-op body. A no-op body still counts as user-defined `deinit` for Copy and Partial Move restrictions.
+`deinit` may be declared only directly in a structure body, including a fragment produced by a Mod. It is invalid in a group, enum, contract, extension, constructor, function, accessor, or another `deinit`. After conditional selection and merging, each concrete structure has at most one such declaration. A body is required and follows the nonempty executable-Block rule; `deinit` followed by an indented `()` is an explicit no-op body. A no-op body still counts as user-defined `deinit` for Copy and Partial Move restrictions.
 
 `deinit` accepts only its Block: no parameters, generics, Origins, result, Expression body, or access/unsafe/open/virtual/override modifier. Unsafe operations need an inner Unsafe Block. Automatic component cleanup applies without deinit. Each derived layer may define its own body; none is inherited or overridden, and machinery processes bases separately. Legal owners need no private access to invoke mandatory destruction, and access modifiers cannot suppress it.
 
@@ -6766,7 +6767,7 @@ Directive validation reaches source items, True #if targets, and **all arms** of
 
 #### 19.4. Name-resolution boundary
 
-Select directives using only the prepared environment, before ordinary Name resolution using the affected scope begins. The scope's lookup environment includes selected declarations, overload candidates, and aliases. Extension imports are not introduced. A later phase must not add, remove, or replace candidates by reevaluating a Condition for an instantiation.
+Select directives using only the prepared environment before resolving Names in the affected source. The scope's lookup environment includes selected declarations, overload candidates, and aliases. [Mods](#207-mods-source-generation) may add selected declarations during generation and invalidate provisional Binding; final Binding uses the complete generated declaration set. Generated source uses the same fixed prepared environment. Extension imports are not introduced, and generation, instantiation, and implementation selection never reselect an existing directive or change Condition inputs.
 
 Environment directives remain permitted in executable bodies and Declaration Containers. They may select declarations, imports, or local syntax for a fixed target/configuration. A directive creates no extra lookup scope beyond the ordinary scope rules of its selected syntax. Establish selected local declarations before resolving their uses.
 
@@ -6832,7 +6833,7 @@ A Solution discovers and loads Projects. A Project stores target triples, aliase
 
 #### 20.2. Build inputs
 
-Compilation inputs comprise the full target triple (including ABI/environment), backend/layout, build mode and code-affecting options, Project settings, language/compiler version, source snapshots, and resolved dependency versions/interfaces. Reuse requires all relevant inputs to agree; OS/architecture alone is insufficient. Changed inputs require fresh analysis. Artifact cache formats are separately specified.
+Compilation inputs comprise the full target triple (including ABI/environment), backend/layout, build mode and code-affecting options, Project settings, language/compiler version, source snapshots, resolved dependency versions/interfaces, and [Mod registrations, implementations, and additional inputs](#2075-inputs-and-regeneration). Reuse requires all relevant inputs to agree; OS/architecture alone is insufficient. Changed inputs require fresh analysis. Artifact cache formats are separately specified.
 
 #### 20.3. Target preparation
 
@@ -6860,7 +6861,201 @@ An optional `.kimiproj` `LangVersion` requests an exact supported language versi
 
 #### 20.6. Compilation invariants
 
-Compilation follows semantic dependencies, not necessarily whole-program passes; [reference models](#appendix-b-non-normative-reference-models) show optional schedules. Resolve Conditions in the prepared environment and establish each scope’s lookup environment before use. Instantiation and implementation selection never reselect directives. Analyses may share facts, but unresolved obligations cannot count as successful finalization.
+Compilation follows semantic dependencies, not necessarily whole-program passes; [reference models](#appendix-b-non-normative-reference-models) show optional schedules. Resolve Conditions in the prepared environment. Mod analysis may use incomplete declarations under §20.7; complete all generation before committing final Binding or dependent layout and operation plans. Instantiation and implementation selection never reselect directives. Analyses may share facts, but unresolved obligations cannot count as successful finalization.
+
+#### 20.7. Mods: source generation
+
+A **Mod** is Kimigayo's Source Generator: one compiler-invoked generation step. It searches and reads Koto, generates Kimigayo source, and asks the compiler to parse and append it to a Declaration Container. Run each registered Mod once per Compilation, subject to failure or cancellation. A Mod may process many targets, append many fragments, or succeed without output.
+
+Mods process generic declarations, not each generic instantiation; they may emit generic source. Each target-specific Compilation runs its own Mods. Several steps from one package use separate ModIds. There is no automatic retry, marker-driven rerun, or iteration until generation converges.
+
+##### 20.7.1. Registration and execution order
+
+Freeze registrations and dependency lists before execution. Each registration has:
+
+| Field | Meaning |
+| --- | --- |
+| `ModId` | Stable, case-sensitive ID unique within the Compilation. |
+| `Requires` | IDs of required Mods that must finish and integrate their output before this Mod. |
+| `RequiresAfter` | IDs of required Mods that must run after this Mod finishes and integrates its output. |
+
+Both lists require their targets to be registered; neither automatically registers them. There is no Priority. Combine both lists into one graph: `A.Requires = [B]` gives `B -> A`, while `A.RequiresAfter = [B]` gives `A -> B`. Duplicate edges count once. Reject duplicate ModIds, missing targets, self-dependencies, and cycles before running any Mod.
+
+Run Mods sequentially. After each successful output integration and Binding update, select the smallest ModId among unexecuted Mods whose graph predecessors have all succeeded. Compare IDs in culture-independent Ordinal order. Dependency-list order and assembly loading order do not affect execution.
+
+```text
+A.Model.RequiresAfter = [C.Serializer]
+B.Extra.RequiresAfter = [C.Serializer]
+D.Report has no dependency declarations
+
+A.Model ----+
+            +--> C.Serializer
+B.Extra ----+
+
+Execution: A.Model -> B.Extra -> C.Serializer -> D.Report
+```
+
+Reconsider readiness after every step: C becomes ready after B and sorts before D. RequiresAfter guarantees an ordering edge, not the last position in the whole Compilation.
+
+At entry, a Mod sees original source and every successful earlier Mod's output, not only directly named dependencies. Required ordering must be declared rather than relying on incidental ID order. A consumer of all members, such as a serializer, must follow every member-producing Mod. The consumer may declare Requires, producers may declare RequiresAfter, or a transitive path may guarantee the order. Final Binding does not detect omitted serialization work if a producer runs too late.
+
+Graph cycles differ from references between generated Types. Mutual Type references are allowed when Mods can emit them without mutually requiring completed Binding; validate them normally after generation, including finite value layout.
+
+##### 20.7.2. Compilation and Binding
+
+The required generation boundaries are:
+
+```text
+Fix build inputs and validate Mod graph
+    -> parse original sources and select environment directives
+    -> collect declarations and perform provisional Binding
+    -> for each ready Mod:
+         read syntax and any required Binding information
+         first parse-and-append call ends Binding access for this Mod
+         continue syntax searches and appends as needed
+         on success, integrate declarations and update Binding
+    -> after all Mods: final Binding and required semantic checks
+    -> finalize layouts and operation plans, then lower and emit
+```
+
+Only new source needs parsing; reparsing all original documents after each Mod is unnecessary. Generated declarations obey normal merge, header, duplicate-member, access, Type, and ownership rules. The diagram sets dependency boundaries, not an internal ordering for every final check.
+
+**Provisional results.** Whole-program Binding success is not a prerequisite for running Mods. Original source may refer to Types or members that a later Mod supplies. Queries distinguish:
+
+| Result | Meaning |
+| --- | --- |
+| Resolved | Information is available in the current Binding; it is not a final commitment. |
+| Unresolved | Required declarations or information are not yet available. |
+| Invalid | Available information establishes a rule violation. |
+
+Unresolved means neither permanent absence nor a promise of later generation. Do not treat a problem that later additions may resolve as a definite error. A Mod may use syntax alone; if resolved semantics are essential but unavailable, it reports an error rather than requesting a retry.
+
+**Binding access period.** A Mod may read Binding from entry until its first parse-and-append call. That call ends access for all targets, including existing Koto. A Mod that never appends may read Binding until return. Syntax searches and further appends remain available after the boundary; no Binding update occurs inside the Mod.
+
+Names, Type names, flags, and other values extracted beforehand may be used to generate source. Retained Symbols or Binding objects must not provide semantic access after the boundary or from another Mod; the API must reject such access. A Mod needing semantics for several targets gathers all required values before appending:
+
+```csharp
+// Illustrative API: Analyze returns values and a target Koto, not Symbols.
+var plans = context.FindTargets()
+    .Select(target => Analyze(context.Binding, target))
+    .ToArray(); // Complete all semantic reads before the first append.
+
+foreach (var plan in plans)
+    context.ParseAndAppend(plan.Target, Generate(plan));
+```
+
+The compiler need not preserve an immutable Binding snapshot after append. After a Mod succeeds, it may discard and rebuild Binding. Any incremental alternative must match full reanalysis, invalidating affected successful lookups as well as unresolved ones; added overloads can change earlier results. Provisional results never constrain final Binding and are not verified generic-definition obligations. Before emission, all required unresolved information must be resolved and all normal checks must succeed.
+
+##### 20.7.3. Koto queries and appending source
+
+Mods receive read-only access to existing Koto. The only mutation operation parses source and appends allowed declarations or members to a Declaration Container in the Compilation's target Kotonoha. The target may be original or generated, including one just added by the current Mod. Do not permit direct collection writes, deletion, replacement, renaming, body rewriting, reparenting, insertion into referenced libraries, or insertion of statements/expressions inside function bodies.
+
+Pass the target Koto and source text directly, conceptually `ParseAndAppend(targetKoto, sourceCode)`. No TargetContainerId, output record, output ID, Parse-call number, or required OriginLocation argument is introduced. Each fragment follows the target's grammar; its top level denotes direct children without copying the target file's indentation. Internal indentation follows ordinary source rules.
+
+Successful appends are immediately visible as syntax. A query fixes its result membership and order when called, not when enumeration starts. Additions cannot extend that result; a fresh query can find them:
+
+```text
+Query S1 -> [A, B]
+Process A; append C
+Continue S1 -> B only
+Query S2 -> [A, B, C]  (when this is their logical order)
+```
+
+This snapshots the result list, not the whole tree. A new member query on an existing Container may observe newly appended members. Queries use [logical declaration order](#2074-generated-sources-and-declaration-order). For merged declarations, use the first fragment as the ordering key; each API must state whether it returns fragments or merged declarations. Attribute queries follow [Mod marker rules](#65-attributes).
+
+##### 20.7.4. Generated sources and declaration order
+
+Each generated fragment has its own immutable SourceDocument and CodeContext under [source identity](#a1-source-identity-and-incremental-analysis), even when appended below the root. Preserve these sources for regeneration and diagnostics. Resolve generated names in the target's enclosing declaration scopes and the generated document's own alias environment; do not inherit source-local aliases from the target's original file. Use qualified names or aliases permitted by the fragment grammar.
+
+The compiler retains links between the producing Mod, source, target Koto, and generated Koto. No per-output identity or correspondence across builds is required.
+
+Define **logical declaration order** independently of layout and Mod execution order:
+
+1. Ordinary sources precede generated declarations. Sort them by stable logical source name, then source declaration order.
+2. Sort generated declarations by ModId in Ordinal order. Within a Mod, preserve Koto addition order and the written order inside each fragment.
+
+Ordinary logical names are normalized project-relative paths; external files need assigned project-relative names. Normalize separators to `/`, remove redundant segments, and reject collisions. Names are independent of absolute checkout and temporary paths and are compared without host case folding or locale rules. Addition order is retained directly and needs no Parse-call numbering.
+
+Identical inputs must produce identical additions and order. Changing dependency declarations alone does not change logical order when ModIds, generated content, and each Mod's addition order remain the same. Renaming sources or Mods, or changing addition order, may change initializer side-effect order. Structure storage uses this order under [split structures](#621-split-structures-and-storage-order); physical layout remains governed by §21.1. Conflicting declarations follow normal integration rules, never last-writer-wins replacement.
+
+##### 20.7.5. Inputs and regeneration
+
+In addition to [general build inputs](#202-build-inputs), record ModIds, both dependency lists, settings, Mod API compatibility, implementation assemblies and dependencies by content, and additional files by logical name and content. Provide compiler-managed access to declared additional inputs, enumerated by normalized logical name in Ordinal order. A Mod runs on the host but obtains target facts from its Compilation.
+
+Generation must be deterministic for identical inputs. Do not implicitly depend on current time, randomness, undeclared environment variables, file enumeration order, or other external state. Supply external data as fixed declared input. This is a Mod contract, not a promise of OS-level isolation for C# code.
+
+Rebuild from original inputs rather than treating previous generated Koto as original source. Replace each Mod's output collection, removing outputs no longer produced, including after a Mod or input is removed. Do not carry old Koto or Binding objects into a new Compilation. Output caches are optional; reuse must validate all relevant inputs, including earlier Mod outputs, and restore equivalent source, target associations, addition order, diagnostics, and provenance.
+
+##### 20.7.6. Failures and diagnostics
+
+A Mod exception, reported error, invalid append operation, generated syntax error, or definite integration error fails the Mod and Compilation. A still-unresolved provisional dependency is not by itself such an error. Skip all descendants of a failed Mod in the combined graph, including RequiresAfter successors. The compiler may stop all remaining Mods; continuing independent diagnostics must not expose failed partial output as valid input.
+
+Partial Koto may be retained for inspection, but never published or cached as successful output. Do not substitute a previous successful output to make a failed build succeed.
+
+Retain ModId, generated source and position, and target Koto for diagnostics. Follow provenance recursively when the target is generated. A diagnostic may point to an input Koto or Attribute, but a compiler cannot infer every cause from the append target alone. Distinguish the recorded append chain from causes explicitly reported by the Mod.
+
+```text
+Demo.kimi: Demo
+    -> Example.Model adds Item
+        -> Example.Describe adds getVersion
+            -> diagnostic in generated source: line and column
+```
+
+Provide generated-source viewing/saving, dependency and execution-order inspection, per-Mod timing, and failure/skip reasons. Show cycle paths such as `A -> B -> C -> A`. Saved diagnostic copies are not automatically ordinary source inputs.
+
+##### 20.7.7. Two-step example and host boundary
+
+The following API names are illustrative, not existing implementation guarantees. The initial host uses a C# interface and prebuilt assemblies; loading a Mod cannot depend on completion of its target program. A package may register several implementations with distinct IDs.
+
+```csharp
+public interface IMod
+{
+    string ModId { get; }
+    IReadOnlyList<string> Requires { get; }
+    IReadOnlyList<string> RequiresAfter { get; }
+    void Execute(ModContext context);
+}
+```
+
+Assume the example's GenerateModels and Describe markers are recognized with suitable target/argument contracts. Original source may refer to both generated declarations before either exists:
+
+```kimi
+#GenerateModels
+public group Demo
+    public func readVersion() -> i32 => Item.getVersion()
+```
+
+Register `Example.Model.RequiresAfter = [Example.Describe]` and `Example.Describe.Requires = [Example.Model]`. Both describe the same edge; each Mod still runs once. Their Execute bodies are:
+
+```csharp
+// Example.Model: syntax-only queries return fragment snapshots.
+foreach (var target in context.FindContainersWithAttribute("GenerateModels"))
+    context.ParseAndAppend(target, """
+        #Describe
+        public struct Item
+            public var value: i32 = 0
+        """);
+
+// Example.Describe, in its later invocation:
+foreach (var target in context.FindStructuresWithAttribute("Describe"))
+    context.ParseAndAppend(target, """
+        public func getVersion() -> i32 => 1
+        """);
+```
+
+The example's GenerateModels contract restricts its target to a group; a complete implementation validates target and argument rules. Neither body needs Binding, so it can alternate syntax reads and appends. Binding is updated between Mods. The resulting tree is:
+
+```text
+Demo                         original source
+├─ readVersion               original source
+└─ Item                      Example.Model
+   ├─ value                  Example.Model
+   └─ getVersion             Example.Describe
+```
+
+These nodes retain separate source contexts; no original file is rewritten. Final Binding resolves `Item.getVersion()` and validates the complete program.
+
+The long-term implementation plan is to implement the compiler and Mods in Kimigayo while preserving these contracts. Concrete query and marker-registration types, assembly packaging/compatibility checks, project configuration syntax, cache formats, and IDE presentation remain implementation design work. Parallel Mod execution, arbitrary Koto rewriting, function-body insertion, per-instantiation execution, and automatic retries are outside this initial model. A single invocation and snapshot queries do not prevent a Mod's own infinite loop; cancellation and time-limit mechanisms belong to the host.
 
 ### 21. Layout, runtime metadata, and code generation
 
@@ -7165,10 +7360,10 @@ Discharge Pending against the prepared environment or diagnose it before finaliz
 
 #### A.3. Binding, caches, and incremental validity
 
-Binding must preserve these semantic stages, without requiring a single-pass implementation:
+Mod execution and provisional Binding follow [§20.7](#207-mods-source-generation). After generation, final Binding preserves the following stages; Mod updates may repeat affected analysis but never reopen a finalized program:
 
 ```text
-Parse per source and collect fragments/generator output
+Complete source parsing and Mod output integration
 -> select directives in established environments
 -> collect selected declarations, root and scope tables, and alias targets
 -> bind headers, Types, Signatures, and Constraints; validate merges/duplicates
@@ -7450,14 +7645,14 @@ This index links to design boundaries owned by the language sections. It adds no
 | Binary artifact format | Partially specified | [Source artifacts and binary interfaces](#183-source-artifacts-and-binary-interfaces) |
 | Dependency configuration and graph diagnostics | Partially specified | [External references and aliases](#181-external-references-and-aliases) |
 | Future Contract fragments and extension identity | Deferred design; Contract splitting and extension declarations are not introduced | [Container fragments](#612-container-fragments) |
-| Source Generators | Partially specified | [Split structures and storage order](#621-split-structures-and-storage-order) |
+| Mods (source generation) | Execution and semantic rules defined; concrete APIs and host configuration remain design work | [Mods](#207-mods-source-generation) |
 | Virtual/override declaration syntax | Partially specified; ordinary inherited lookup is defined in §9.5 | [Virtual members](#624-virtual-members-and-overrides) |
 | Runtime Contract Views: designation, View associated-Type bindings, contract/exact tests and checked casts | Extension design; outside the initial static Contract implementation | [Runtime contracts](#85-runtime-contracts), [tests and casts](#1362-general-view-tests-and-checked-casts) |
 | User-defined generic Contracts, outer generic capture, default implementations, external conformance, qualified requirement calls | Not introduced | [Contracts](#84-static-contracts) |
 | Extra implicit/ordinary base conversions and consuming/generic/type-function runtime requirements | Deferred design | [Object views](#335-object-views-and-identity), [runtime contracts](#85-runtime-contracts) |
 | Fixed FFI layout | Deferred design | [Structure layout and ABI](#211-structure-layout-and-abi) |
 | Concurrency, memory model, and thread-transfer capabilities | Deferred design | [Concurrency boundary](#d2-concurrency-memory-model-and-thread-transfer) |
-| User-defined arithmetic and general Attribute semantics | Deferred design; comparison and LibraryImport are specified | [Operator boundaries](#138-extension-boundaries-and-reserved-syntax), [Attributes](#65-attributes) |
+| User-defined arithmetic and general Attribute semantics | Deferred beyond specified comparison, LibraryImport, and Mod marker behavior | [Operator boundaries](#138-extension-boundaries-and-reserved-syntax), [Attributes](#65-attributes) |
 | Associated-Type inference beyond explicit identity facts, arbitrary complete-Type bindings, and stronger symbolic Constraint reasoning | Not introduced | [Associated Types](#843-associated-types), [proof boundaries](#87-constraint-proof-system) |
 | Const/value arguments beyond function lengths, standalone Semantics slots, partial/default/variadic generic arguments | Not introduced | [Function length parameters](#44-function-length-parameters), [Generic Type parameters](#81-generic-type-parameters) |
 | Partial/conditional explicit specialization, specialization priorities, generic Container specialization | Not introduced | [Full specialization](#88-explicit-full-function-specialization) |
@@ -7552,6 +7747,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Instantiation / explicit full specialization / automatic specialization | Argument binding / mandatory user implementation selection / meaning-preserving Type-specific code generation. | [Generic code generation](#213-generic-code-generation) |
 | Koto | A compiler syntax-tree node. | [Compiler terminology](#appendix-a-compiler-implementation-requirements) |
 | Kotonoha | One named source or binary module. | [Modules](#18-modules-and-dependencies) |
+| Mod / ModId | One registered source-generation step / its stable identity within a Compilation. | [Mods](#207-mods-source-generation) |
 | Loan | A borrowed place, access mode, and validity region. | [Borrow checking](#156-borrow-checking) |
 | Lookup environment | Declarations and aliases available for lookup in a scope; extensions are a future design. | [Name resolution](#9-names-signatures-and-access) |
 | Move | Transfer of a value and responsibility or capability, marking its source Moved. | [Copy and Move](#35-copy-and-move) |
@@ -7562,6 +7758,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Pattern / Guard | Structural or binding syntax / an optional Boolean test selecting a match arm | [Match](#148-match-expressions-and-patterns) |
 | Place | A storage location that can hold a value. | [Value model](#34-values-places-and-storage) |
 | Project root | Root of the primary Kotonoha's declaration hierarchy. | [Modules](#18-modules-and-dependencies) |
+| Provisional Binding | Mod-time semantic results that do not constrain final Binding. | [Mod Binding](#2072-compilation-and-binding) |
 | Property | A value-bearing member with a Property Type and applicable accessors and storage. | [Properties](#11-properties) |
 | Reborrow | A borrow derived from an existing borrow, subject to the parent's capability and Origin. | [Reborrowing](#1563-reborrowing) |
 | SemanticsTarget | Fixed kind of a pair's direct target: a complete value Type or permitted Object View Target. | [Generic parameters](#81-generic-type-parameters) |
@@ -8008,7 +8205,7 @@ These entries record the limits of a complete syntax summary for this revision. 
 | Runtime-contract designations, View associated-type bindings, exact/contract tests and checked casts | The [runtime extension](#85-runtime-contracts) and [object operations](#1362-general-view-tests-and-checked-casts) preserve the design without final source spellings. Static associated-Type specifications/projections are defined in F.3. Ordinary struct `is` and explicit upcasts are defined. |
 | Callable extensions | Borrowed or Exclusive/Consuming erased Types, public lending results, non-escaping declarations, capture aliases/initializers/parts, generic receiver Semantics, and `from environment` remain unintroduced. |
 | Additional Patterns | The [initial forms](#1481-patterns) are defined; Struct, Type, OR, Range, Rest, and other [extensions](#d1-enum-and-pattern-extensions) remain deferred. |
-| Attributes | Syntax and placement are specified in [§6.5](#65-attributes); semantics other than [LibraryImport](#223-foreign-function-imports) remain deferred. |
+| Attributes | Syntax, placement, and Mod marker behavior follow [§6.5](#65-attributes); LibraryImport follows [§22.3](#223-foreign-function-imports). Concrete marker registration and other general semantics remain design boundaries. |
 | Additional Composition Root expressions | Only `$abort(...)` is given a complete operation syntax here; see [extension boundaries](#138-extension-boundaries-and-reserved-syntax). |
 | Additional type arguments and object allocation | [Generic application](#1242-invocation-and-generic-application) does not define general constant type arguments. [Constructors](#623-constructors) define owned structure construction, not allocation APIs for object Semantics; those APIs must preserve [object destruction](#1633-ownership-object-release-and-reentry). |
 | Function parameters | The combined optional/external-name form remains under [parameter design boundaries](#109-inference-and-operation-design-boundaries); the separate forms are summarized in F.3. |
