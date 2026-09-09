@@ -479,7 +479,7 @@ internal ref struct Tokenizer
             }
 
             offset += 2;
-        }
+        }*/
 
         this.currentIndentLevel = 0;
         do
