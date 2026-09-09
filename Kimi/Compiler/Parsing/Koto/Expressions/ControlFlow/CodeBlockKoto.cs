@@ -15,6 +15,12 @@ public sealed class CodeBlockKoto : ExpressionKoto
 
     private IReadOnlyList<Koto> items;
 
+    private List<PendingDirectiveCondition>? pendingDirectiveConditions;
+
+    /// <inheritdoc/>
+    public override IReadOnlyList<PendingDirectiveCondition> PendingDirectiveConditions
+        => (IReadOnlyList<PendingDirectiveCondition>?)this.pendingDirectiveConditions ?? [];
+
     /// <summary>Gets the declaration context of a compile-time directive body.</summary>
     public TokenKind DeclarationContext { get; internal set; }
 
@@ -116,13 +122,17 @@ public sealed class CodeBlockKoto : ExpressionKoto
     {
         if (this.items is not List<Koto> list)
         {
-            list = new List<Koto>(this.items);
+            // A generated block typically receives many top-level items; avoid the first few regrowths.
+            list = this.items.Count == 0 ? new List<Koto>(16) : new List<Koto>(this.items);
             this.items = list;
         }
 
         list.Add(item);
         item.Parent = this;
     }
+
+    internal override void AddPendingDirectiveConditions(IEnumerable<Koto>? conditions)
+        => AddPendingDirectiveConditions(ref this.pendingDirectiveConditions, this, conditions);
 
     protected override IEnumerable<Koto> GetChildNodes()
         => this.items;

@@ -58,6 +58,12 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
 
     private List<Koto>? kotoList;
 
+    private List<PendingDirectiveCondition>? pendingDirectiveConditions;
+
+    /// <inheritdoc/>
+    public override IReadOnlyList<PendingDirectiveCondition> PendingDirectiveConditions
+        => (IReadOnlyList<PendingDirectiveCondition>?)this.pendingDirectiveConditions ?? [];
+
     /// <summary>Gets or sets the nested Declaration Containers keyed by name, or <see langword="null"/> when none exist.</summary>
     protected Utf16Hashtable<Koto>? NestedContainerTable { get; set; }
 
@@ -83,7 +89,7 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
     public List<TypeKoto> GenericArguments => this.genericArguments ??= [];
 
     /// <summary>Gets the type constraints.</summary>
-    public List<IsKoto> TypeConstraints => this.typeConstraints ??= [];
+    public List<IsKoto> TypeConstraints => this.typeConstraints ??= new(4);
 
     /// <summary>Gets the declared origins.</summary>
     public List<string> Origins => this.OriginList ??= [];
@@ -92,7 +98,7 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
     public IReadOnlyList<Koto> Members => (IReadOnlyList<Koto>?)this.kotoList ?? [];
 
     /// <summary>Gets the mutable member list, creating it on first use.</summary>
-    protected List<Koto> KotoList => this.kotoList ??= [];
+    protected List<Koto> KotoList => this.kotoList ??= new(4);
 
     /// <summary>Gets nested Declaration Containers.</summary>
     public IEnumerable<DeclarationContainerKoto> NestedDeclarationContainers
@@ -122,6 +128,9 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
     /// <inheritdoc/>
     public override ReadOnlySpan<char> GetIdentifier()
         => this.Name;
+
+    internal override void AddPendingDirectiveConditions(IEnumerable<Koto>? conditions)
+        => AddPendingDirectiveConditions(ref this.pendingDirectiveConditions, this, conditions);
 
     /// <summary>Adds a child node to this Declaration Container.</summary>
     /// <param name="koto">The child node to add.</param>

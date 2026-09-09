@@ -42,3 +42,49 @@ Tokenizerの分岐統合も試したが、速度改善を確認できなかっ�
 `dotnet test xUnitTest/xUnitTest.csproj -c Release --no-restore`：432件成功。
 
 追加の回帰テストでは、空・1・4・5・20要素の引数列、ラベルの対応、シリアライズ、配列とListの子ノード置換、属性参照の更新、既存宣言リストの参照維持、Unicode識別子、識別子テーブルの並行挿入と拡張を検証した。
+
+# Parser optimization, round 2 (2026-09-09)
+
+対象は引き続き `ParseBenchmark.Test1()`。入力とベンチマークメソッドの処理内容は変更していない。
+
+## 結果
+
+| 測定 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| アロケーション / 回 | 21,384 B | 18,824 B |
+| 交互計測（1コア固定）・最速値 | 9.85–10.15 µs | 8.19–8.53 µs |
+
+アロケーションは **2,560 B / 回（12%）削減**。交互計測では実行時間が **約 16%短縮**した。
+
+交互計測は、変更前と変更後の Benchmark アセンブリを別ディレクトリにビルドし、`Test1()` と同じ処理を 20,000 回 × 7 ラウンド行う Stopwatch ハーネスで交互に 3 組実行した。プロセス優先度を High、CPU affinity をコア 2 に固定した。この機種（ハイブリッドコア）では固定しない計測は ±5〜10% ぶれるため、固定なしの値は比較に使っていない。
+
+BenchmarkDotNet 0.15.8 / .NET 10.0.11 / Windows 11 でも測定した。変更前のビルドは別ディレクトリの出力のため、両方を `--inProcess`（InProcessEmitToolchain、既定の反復設定）で同一条件にした。
+
+| BenchmarkDotNet (in-process) | Mean | Error (99.9% CI half-width) | Allocated |
+| --- | ---: | ---: | ---: |
+| 変更前 | 10.24 µs | 0.136 µs | 20.88 KB |
+| 変更後 | 8.52 µs | 0.170 µs | 18.38 KB |
+
+変更後を通常の `Job.MediumRun`（別プロセス）で測ると 7.26 µs（Error 0.067 µs）、18.38 KB だった。
+
+## プロファイル
+
+.NET 10 の `dotnet-trace` サンプリングはこの環境ではほぼ全サンプルが `Array.Copy`/`PollGC` に付くため使えなかった。代わりに `SuspendThread` + `GetThreadContext` で RIP を採取し ClrMD で解決する小さなサンプラーを用意した。変更前の内訳はおおよそ、Tokenizer 30%、アロケーション・GC・メモリクリア（coreclr）15%、識別子の intern 5%、残りは Parser の各メソッドに薄く分散していた。アロケーション種別は `GCAllocationTick` から集計し、`TypeSemanticsKoto`・`IdentifierNameKoto`・`NumberLiteralKoto` で 40% を占めていた。
+
+## 実装
+
+- `Koto` 基底から `PendingDirectiveConditions` の格納フィールドを外し、スコープを持つ `DeclarationContainerKoto` と `CodeBlockKoto` だけが保持する（全ノード 8 B 削減）。それ以外のノードへ条件を渡すと `InvalidOperationException`。
+- `Tokenizer.Read`: デリゲート表による分岐を `switch` に展開し、先頭文字クラス表（識別子/数値、単一文字トークン、その他）で識別子を最初に振り分ける。空白と字下げの計測をスカラーループにした（短い連続空白ではベクトル検索の準備コストが上回る）。
+- 識別子の走査を `Vector128` で 8 文字ずつ分類。数値・Unicode 識別子・不正文字の経路は別メソッドに分離し、ホットパスのフレームを小さくした。
+- `TokenHelper.TryGetSingleCharTokenKind` を表引きにし、`GetKeywordOrIdentifierKind` に「その長さのキーワードの先頭文字集合」による事前判定を追加。
+- `IdentifierTable`: 4 文字ずつ混ぜるハッシュに変更し、`TryGetIdentifier` を `Intern` 経由ではなく 1 フレームで探索する。
+- `TypeSemanticsKoto`: 型名と semantics パラメーターは同時に使われないため 1 スロットに統合し、Origin の 3 メンバーは Origin がある場合のみ生成する内部オブジェクトに移した（104 B → 80 B）。公開プロパティは維持。
+- `NumberLiteralKoto`: 整数判定をリーダーのテキストから行い、短いリテラルはスカラー走査（`HasFloatMarker`）。
+- 引数列・ブロック要素の一時リストを `Koto` 専用の `TemporaryKotoList` にし、配列格納時の共変性チェックを不要にした。
+- 生成関数本体のリスト初期容量、`If`/`Match`/リテラル/宣言コンテナーの小さな List の初期容量を用途に合わせた。
+
+`NumberLiteralKoto` の 128 bit キャッシュを外す案は、`KotoHelper.Replace` が `Span` を差し替えるため `ParserOptimizationTest` が失敗し、採用しなかった。
+
+## 検証
+
+`dotnet test xUnitTest/xUnitTest.csproj -c Release`：1348 件成功。変更前後のビルドでベンチマーク入力を解析し、`UnparseAll` の出力と診断（0 件）が一致することを確認した。

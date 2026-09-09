@@ -594,9 +594,7 @@ public ref struct TokenReader
             return true;
         }
 
-        this.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
-        identifier = null;
-        return false;
+        return this.ReportInvalidIdentifier(token, out identifier);
     }
 
     /// <summary>
@@ -723,5 +721,13 @@ Loop:
     {
         this.Position = position;
         this.currentToken = (uint)position < (uint)this.tokens.Length ? this.tokens[position] : this.endToken;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly bool ReportInvalidIdentifier(Token token, out string? identifier)
+    {
+        this.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, this.GetSpan(token).ToString());
+        identifier = null;
+        return false;
     }
 }

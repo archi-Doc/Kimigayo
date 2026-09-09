@@ -317,7 +317,7 @@ public static partial class Parser
 
         if (reader.TryConsume(TokenKind.OpenParenthesis))
         {
-            var items = default(TemporaryList<Koto>);
+            var items = default(TemporaryKotoList);
             var comma = false;
             while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseParenthesis)
             {
@@ -398,7 +398,7 @@ public static partial class Parser
             return new SyntaxFormKoto(ref reader, reference.Span, KotoKind.CasePattern, string.Empty, [reference]);
         }
 
-        var patterns = default(TemporaryList<Koto>);
+        var patterns = default(TemporaryKotoList);
         while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseParenthesis)
         {
             patterns.Add(ParsePattern(ref reader));
@@ -421,7 +421,7 @@ public static partial class Parser
     internal static Koto ParseEnumCase(ref TokenReader reader)
     {
         var name = ParseName(ref reader);
-        var fields = default(TemporaryList<Koto>);
+        var fields = default(TemporaryKotoList);
         var end = name.Span.End;
         var payload = reader.TryConsume(TokenKind.OpenParenthesis);
         if (payload)

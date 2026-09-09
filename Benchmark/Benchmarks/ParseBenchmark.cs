@@ -85,7 +85,7 @@ public class ParseBenchmark
 
     [Benchmark]
     public Koto Test1()
-    {// 7.7 us
+    {// 7.8 us
         var kotonoha = this.compilation.Kotonoha;
         var codeContext = kotonoha.CreateCodeContext();
         codeContext.Parse(kotonoha.RootKoto, this.sourceText);

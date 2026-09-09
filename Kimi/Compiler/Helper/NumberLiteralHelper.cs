@@ -44,6 +44,28 @@ public static partial class NumberLiteralHelper
     public static bool IsInt64(Int128 value)
         => value >= long.MinValue && value <= long.MaxValue;
 
+    /// <summary>Determines whether decimal text contains a fraction or exponent marker.</summary>
+    /// <remarks>Literals are usually a few characters, where a scalar scan beats the vectorized search setup.</remarks>
+    /// <param name="text">The literal text.</param>
+    /// <returns><see langword="true"/> when the text contains <c>.</c>, <c>e</c>, or <c>E</c>.</returns>
+    public static bool HasFloatMarker(ReadOnlySpan<char> text)
+    {
+        if (text.Length > 16)
+        {
+            return text.IndexOfAny('.', 'e', 'E') >= 0;
+        }
+
+        foreach (var c in text)
+        {
+            if (c == '.' || (c | 0x20) == 'e')
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// Scans a numeric literal at the start of <paramref name="text"/>.
     /// </summary>

@@ -190,7 +190,7 @@ public static partial class KotoHelper
     /// <returns>The parsed name segments.</returns>
     public static List<string> ParseQualifiedNameSegments(ref TokenReader reader)
     {
-        var list = new List<string>();
+        var list = new List<string>(4);
         if (reader.IsEnd)
         {
             return list;

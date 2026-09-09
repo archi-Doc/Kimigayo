@@ -19,41 +19,44 @@ public sealed class TypeSemanticsKoto : TypeKoto
     public override SemanticsKind SemanticsKind
         => this.isTransparentWrapper && this.Type is TypeKoto type ? type.SemanticsKind : this.semanticsKind;
 
-    private string? semanticsParameter;
+    // A simple type stores its name here; a compound type stores its custom semantics parameter.
+    // The two never coexist, so one slot keeps the node small.
+    private string? nameOrSemanticsParameter;
 
     /// <inheritdoc/>
     public override string? SemanticsParameter
-        => this.isTransparentWrapper && this.Type is TypeKoto type ? type.SemanticsParameter : this.semanticsParameter;
+        => this.isTransparentWrapper && this.Type is TypeKoto type ? type.SemanticsParameter : this.Type is null ? null : this.nameOrSemanticsParameter;
 
     private TokenKind coreTypeToken;
-
-    private string? coreTypeName;
 
     /// <summary>
     /// Gets the complete inner type, including any nested semantics and Origins.
     /// </summary>
     public Koto? Type { get; private set; }
 
-    private string? originName;
+    // Most types carry no Origin, so its three members share one lazily created object.
+    private Origin? origin;
 
     /// <inheritdoc/>
-    public override string? OriginName => this.originName;
+    public override string? OriginName => this.origin?.Name;
 
     private bool isTransparentWrapper;
 
     /// <summary>Gets the qualified or intersected Origin expression.</summary>
-    public Koto? OriginExpression { get; private set; }
+    public Koto? OriginExpression => this.origin?.Expression;
 
     /// <summary>Gets named Origin arguments, or null for an ordinary Origin annotation.</summary>
-    public OriginArgument[]? OriginArguments { get; private set; }
+    public OriginArgument[]? OriginArguments => this.origin?.Arguments;
 
     /// <summary>Gets the leaf identifier; this alone does not identify the complete layered type.</summary>
     public override string Identifier
         => this.Type is TypeKoto simpleType
             ? simpleType.Identifier
+            : this.Type is not null
+            ? string.Empty
             : this.coreTypeToken.IsPrimitiveType()
             ? this.coreTypeToken.ToText()
-            : this.coreTypeName ?? string.Empty;
+            : this.nameOrSemanticsParameter ?? string.Empty;
 
     internal bool IsTransparentWrapper => this.isTransparentWrapper;
 
@@ -68,7 +71,7 @@ public sealed class TypeSemanticsKoto : TypeKoto
 
         if (!this.coreTypeToken.IsPrimitiveType())
         {
-            this.coreTypeName = reader.GetIdentifier(typeToken);
+            this.nameOrSemanticsParameter = reader.GetIdentifier(typeToken);
         }
     }
 
@@ -87,7 +90,7 @@ public sealed class TypeSemanticsKoto : TypeKoto
         : base(ref reader, range)
     {
         this.semanticsKind = semanticsKind;
-        this.semanticsParameter = semanticsParameter;
+        this.nameOrSemanticsParameter = semanticsParameter;
         this.Type = type;
         type.Parent = this;
     }
@@ -102,7 +105,11 @@ public sealed class TypeSemanticsKoto : TypeKoto
     {
         this.semanticsKind = SemanticsKind.Owner;
         this.Type = type;
-        this.originName = originName;
+        if (originName is not null)
+        {
+            this.origin = new() { Name = originName };
+        }
+
         this.isTransparentWrapper = true;
         type.Parent = this;
     }
@@ -164,26 +171,37 @@ public sealed class TypeSemanticsKoto : TypeKoto
             builder.Append(" from ");
             this.OriginExpression.WriteTo(ref builder);
         }
-        else if (this.originName is not null)
+        else if (this.origin?.Name is { } originName)
         {
             builder.AppendSpace();
             builder.Append(Constants.FromKeyword);
             builder.AppendSpace();
-            builder.Append(this.originName);
+            builder.Append(originName);
         }
     }
 
     internal void SetOrigin(string originName, int end)
     {
-        this.originName = originName;
+        (this.origin ??= new()).Name = originName;
         this.Span = SourceSpan.FromBounds(this.Span.Start, end);
     }
 
     internal void SetOrigin(Koto? expression, OriginArgument[]? arguments, int end)
     {
-        this.OriginExpression = expression;
-        this.OriginArguments = arguments;
-        this.originName = (expression as IdentifierNameKoto)?.IdentifierName;
+        if (expression is null && arguments is null)
+        {
+            this.origin = null;
+        }
+        else
+        {
+            this.origin = new()
+            {
+                Expression = expression,
+                Arguments = arguments,
+                Name = (expression as IdentifierNameKoto)?.IdentifierName,
+            };
+        }
+
         this.Adopt(expression);
         if (arguments is not null)
         {
@@ -219,10 +237,10 @@ public sealed class TypeSemanticsKoto : TypeKoto
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
-        if (this.OriginExpression == oldKoto)
+        if (this.origin is { } origin && origin.Expression == oldKoto)
         {
-            this.OriginExpression = newKoto;
-            this.originName = (newKoto as IdentifierNameKoto)?.IdentifierName;
+            origin.Expression = newKoto;
+            origin.Name = (newKoto as IdentifierNameKoto)?.IdentifierName;
             return true;
         }
 
@@ -245,6 +263,16 @@ public sealed class TypeSemanticsKoto : TypeKoto
 
         this.Type = newKoto;
         return true;
+    }
+
+    /// <summary>Stores the Origin annotation of a type layer.</summary>
+    private sealed class Origin
+    {
+        public string? Name { get; set; }
+
+        public Koto? Expression { get; set; }
+
+        public OriginArgument[]? Arguments { get; set; }
     }
 }
 

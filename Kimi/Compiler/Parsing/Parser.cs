@@ -263,7 +263,7 @@ public static partial class Parser
                 reader.Diagnostic.Add(externalNameToken.Span, DiagnosticCode.UnexpectedToken_Kd, "parameter");
             }
 
-            (parameters ??= []).Add(new(
+            (parameters ??= new(4)).Add(new(
                 externalName,
                 internalName,
                 isOptional,
@@ -417,7 +417,7 @@ Exit:
 
         if (declarationKind is TokenKind.Struct or TokenKind.Contract && reader.TryConsume(TokenKind.Colon))
         {
-            var types = default(TemporaryList<Koto>);
+            var types = default(TemporaryKotoList);
             do
             {
                 types.Add(ParseDeclarationType(ref reader, parseOrigin: false));
@@ -896,7 +896,7 @@ Exit:
         while (reader.CanRead)
         {
             var tokenKind = reader.CurrentTokenKind;
-            if (reader.IsCurrentIdentifier(Constants.UnsafeKeyword) && reader.PeekKind(1) == TokenKind.Func)
+            if (tokenKind == TokenKind.Identifier && reader.PeekKind(1) == TokenKind.Func && reader.IsCurrentIdentifier(Constants.UnsafeKeyword))
             {
                 ReadFlag(ref reader, ModifierKind.Unsafe);
                 continue;
@@ -1250,7 +1250,7 @@ Exit:
     {
         Debug.Assert(reader.CurrentTokenKind == TokenKind.LessThan);
         reader.Advance();
-        var typeList = default(TemporaryList<Koto>);
+        var typeList = default(TemporaryKotoList);
         var end = reader.CurrentTokenRange.End;
         reader.TrySkipSeparatorsTo(TokenKind.GreaterThan);
         while (true)
@@ -1986,7 +1986,7 @@ Exit:
 
         var blockContext = reader.TakeContext();
         reader.Advance();
-        var items = default(TemporaryList<Koto>);
+        var items = default(TemporaryKotoList);
         var seenExecutableItem = false;
         var hasSourceItem = false;
 
@@ -2277,7 +2277,7 @@ Exit:
     private static IfKoto ParseIfExpression(ref TokenReader reader)
     {
         var ifToken = reader.Read();
-        var branches = new List<ConditionalBranchKoto>();
+        var branches = new List<ConditionalBranchKoto>(2);
         CodeBlockKoto? elseBody = null;
         int end;
 
@@ -2455,7 +2455,7 @@ Exit:
     {
         var matchToken = reader.Read();
         var expression = ParseRequiredExpression(ref reader);
-        var arms = new List<MatchArmKoto>();
+        var arms = new List<MatchArmKoto>(4);
         var end = expression.Span.End;
 
         reader.SkipSeparators();
@@ -2997,7 +2997,7 @@ ProcessPrefix:
 
     private static Koto[] ParseArgumentList(ref TokenReader reader, out string?[]? argumentLabels)
     {// (arg0, arg1, )
-        var arguments = default(TemporaryList<Koto>);
+        var arguments = default(TemporaryKotoList);
         var labels = default(TemporaryList<string?>);
         var hasLabels = false;
         argumentLabels = default;
@@ -3377,7 +3377,7 @@ Loop:
 
         static ArrayLiteralKoto ParseArrayLiteral(ref TokenReader reader, SourceSpan openRange, Koto first)
         {
-            var elements = new List<Koto> { first };
+            var elements = new List<Koto>(4) { first };
             while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseBracket)
             {
                 if (reader.CurrentTokenKind != TokenKind.Comma)
@@ -3415,7 +3415,7 @@ Loop:
 
         static DictionaryLiteralKoto ParseDictionaryLiteral(ref TokenReader reader, SourceSpan openRange, Koto firstKey)
         {
-            var entries = new List<DictionaryLiteralEntry>();
+            var entries = new List<DictionaryLiteralEntry>(4);
             var key = firstKey;
             while (reader.CanRead)
             {
@@ -3569,7 +3569,7 @@ Loop:
             var openRange = reader.CurrentTokenRange;
             reader.Advance();
 
-            var elements = default(TemporaryList<Koto>);
+            var elements = default(TemporaryKotoList);
             Koto? firstElement = null;
             var lastEnd = openRange.End;
             var hasComma = false;
@@ -3699,7 +3699,7 @@ Loop:
                 typeKoto = new GenericParameterKoto(ref reader, SourceSpan.FromBounds(first.Span.Start, end), name, semantics);
             }
 
-            (list ??= []).Add(typeKoto);
+            (list ??= new(2)).Add(typeKoto);
 
             if (reader.CurrentTokenKind == TokenKind.Comma)
             {

@@ -24,14 +24,7 @@ public sealed class NumberLiteralKoto : ExpressionKoto
     public ReadOnlySpan<char> SourceSpelling => this.CodeContext.SourceDocument!.AsSpan().Slice(this.Span.Start, this.Span.Length);
 
     /// <summary>Gets a value indicating whether the literal has an integer representation.</summary>
-    public bool IsInteger
-    {
-        get
-        {
-            var text = this.SourceSpelling;
-            return (text.Length > 1 && text[0] == '0' && text[1] is 'x' or 'X' or 'b' or 'B' or 'o' or 'O') || text.IndexOfAny('.', 'e', 'E') < 0;
-        }
-    }
+    public bool IsInteger => IsIntegerText(this.SourceSpelling);
 
     /// <summary>Gets the unsigned source magnitude without formatting its signed storage bit pattern.</summary>
     /// <param name="magnitude">The original magnitude, including values above Int128.MaxValue.</param>
@@ -85,9 +78,12 @@ public sealed class NumberLiteralKoto : ExpressionKoto
         : base(ref reader, token.Span)
     {
         // Fitting is deferred; the source snapshot owns the exact decimal digits.
-        if (this.IsInteger)
+        // The reader already holds the text, so the node does not walk back to its document here.
+        var text = reader.GetSpan(token);
+        if (IsIntegerText(text))
         {
-            this.EnsureParsedValue();
+            this.parseResult = NumberLiteralHelper.ParseNumberLiteral(text, out this.uv);
+            this.hasParsedValue = true;
             if (this.parseResult == NumberLiteralParseResult.Invalid)
             {
                 reader.Diagnostic.Add(token.Span, DiagnosticCode.InvalidNumericLiteral_Kd);
@@ -132,6 +128,9 @@ public sealed class NumberLiteralKoto : ExpressionKoto
             builder.Append(this.SourceSpelling);
         }
     }
+
+    private static bool IsIntegerText(ReadOnlySpan<char> text)
+        => (text.Length > 1 && text[0] == '0' && text[1] is 'x' or 'X' or 'b' or 'B' or 'o' or 'O') || !NumberLiteralHelper.HasFloatMarker(text);
 
     private void EnsureParsedValue()
     {

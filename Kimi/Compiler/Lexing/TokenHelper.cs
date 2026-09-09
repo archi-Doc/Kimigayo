@@ -22,6 +22,13 @@ public static partial class TokenHelper
 
     private static readonly string[] TokenTexts;
 
+    // For each keyword length, the set of lowercase first characters (bit 0 = 'a') that begin a keyword.
+    private static readonly uint[] KeywordFirstCharMasks = new uint[MaxKeywordLength + 1];
+
+    // Single-character token classification, indexed by ASCII code.
+    private static readonly TokenKind[] SingleCharTokenKinds = new TokenKind[128];
+    private static readonly sbyte[] SingleCharGroupingDepths = new sbyte[128];
+
     /// <summary>
     /// Maps UTF-16 keyword spellings to their corresponding keyword token kinds.
     /// </summary>
@@ -175,6 +182,31 @@ public static partial class TokenHelper
         Set(TokenKind.Slash, "/");
         Set(TokenKind.SlashEquals, "/=");
 
+        SetSingleChar(Constants.SharpChar, TokenKind.Sharp, 0);
+        SetSingleChar(Constants.DollarChar, TokenKind.Dollar, 0);
+        SetSingleChar(Constants.AmpersandChar, TokenKind.Ampersand, 0);
+        SetSingleChar(Constants.AsteriskChar, TokenKind.Asterisk, 0);
+        SetSingleChar(Constants.DotChar, TokenKind.Dot, 0);
+        SetSingleChar(Constants.CommaChar, TokenKind.Comma, 0);
+        SetSingleChar(Constants.OpenBracketChar, TokenKind.OpenBracket, +1);
+        SetSingleChar(Constants.CloseBracketChar, TokenKind.CloseBracket, -1);
+        SetSingleChar(Constants.OpenParenthesisChar, TokenKind.OpenParenthesis, +1);
+        SetSingleChar(Constants.CloseParenthesisChar, TokenKind.CloseParenthesis, -1);
+        SetSingleChar(Constants.OpenBraceChar, TokenKind.OpenBrace, +1);
+        SetSingleChar(Constants.CloseBraceChar, TokenKind.CloseBrace, -1);
+        SetSingleChar(Constants.ColonChar, TokenKind.Colon, 0);
+        SetSingleChar(Constants.BarChar, TokenKind.Bar, 0);
+        SetSingleChar(Constants.CaretChar, TokenKind.Caret, 0);
+        SetSingleChar(Constants.EqualsChar, TokenKind.Equals, 0);
+        SetSingleChar(Constants.ExclamationChar, TokenKind.Exclamation, 0);
+        SetSingleChar(Constants.GreaterThanChar, TokenKind.GreaterThan, 0);
+        SetSingleChar(Constants.LessThanChar, TokenKind.LessThan, 0);
+        SetSingleChar(Constants.MinusChar, TokenKind.Minus, 0);
+        SetSingleChar(Constants.PercentChar, TokenKind.Percent, 0);
+        SetSingleChar(Constants.PlusChar, TokenKind.Plus, 0);
+        SetSingleChar(Constants.SlashChar, TokenKind.Slash, 0);
+        SetSingleChar(Constants.QuestionChar, TokenKind.Question, 0);
+
         KeywordToTokenKind = new();
         for (var i = (int)TokenKind.Bool; i < (int)TokenKind.Identifier; i++)
         {
@@ -182,11 +214,21 @@ public static partial class TokenHelper
             if (text.Length > 0)
             {
                 KeywordToTokenKind.TryAdd(text, (TokenKind)i);
+                if (text.Length <= MaxKeywordLength && text[0] is >= 'a' and <= 'z')
+                {
+                    KeywordFirstCharMasks[text.Length] |= 1u << (text[0] - 'a');
+                }
             }
         }
 
         static void Set(TokenKind kind, string text)
             => TokenTexts[(int)kind] = text;
+
+        static void SetSingleChar(char c, TokenKind kind, int groupingDepth)
+        {
+            SingleCharTokenKinds[c] = kind;
+            SingleCharGroupingDepths[c] = (sbyte)groupingDepth;
+        }
     }
 
     /// <summary>
@@ -290,6 +332,11 @@ public static partial class TokenHelper
         if (c0 < 'a' || c0 > 'z')
         {
             return text.SequenceEqual("Self") ? TokenKind.Self : TokenKind.Identifier;
+        }
+
+        if ((KeywordFirstCharMasks[length] & (1u << (c0 - 'a'))) == 0)
+        {// No keyword of this length starts with this character.
+            return TokenKind.Identifier;
         }
 
         var kind = length switch
@@ -400,37 +447,18 @@ public static partial class TokenHelper
     /// <param name="tokenKind">When this method returns, contains the token kind for <paramref name="c"/>, or <see cref="TokenKind.Invalid"/>.</param>
     /// <param name="groupingDepth">When this method returns, contains +1 for an opening grouping token, -1 for a closing grouping token, or 0 for a neutral token.</param>
     /// <returns><see langword="true"/> if <paramref name="c"/> is a recognized single-character token; otherwise, <see langword="false"/>.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryGetSingleCharTokenKind(char c, out TokenKind tokenKind, out int groupingDepth)
     {
-        (tokenKind, groupingDepth) = c switch
+        if (c < 128)
         {
-            Constants.SharpChar => (TokenKind.Sharp, 0),
-            Constants.DollarChar => (TokenKind.Dollar, 0),
-            Constants.AmpersandChar => (TokenKind.Ampersand, 0),
-            Constants.AsteriskChar => (TokenKind.Asterisk, 0),
-            Constants.DotChar => (TokenKind.Dot, 0),
-            Constants.CommaChar => (TokenKind.Comma, 0),
-            Constants.OpenBracketChar => (TokenKind.OpenBracket, +1),
-            Constants.CloseBracketChar => (TokenKind.CloseBracket, -1),
-            Constants.OpenParenthesisChar => (TokenKind.OpenParenthesis, +1),
-            Constants.CloseParenthesisChar => (TokenKind.CloseParenthesis, -1),
-            Constants.OpenBraceChar => (TokenKind.OpenBrace, +1),
-            Constants.CloseBraceChar => (TokenKind.CloseBrace, -1),
-            Constants.ColonChar => (TokenKind.Colon, 0),
-            Constants.BarChar => (TokenKind.Bar, 0),
-            Constants.CaretChar => (TokenKind.Caret, 0),
-            Constants.EqualsChar => (TokenKind.Equals, 0),
-            Constants.ExclamationChar => (TokenKind.Exclamation, 0),
-            Constants.GreaterThanChar => (TokenKind.GreaterThan, 0),
-            Constants.LessThanChar => (TokenKind.LessThan, 0),
-            Constants.MinusChar => (TokenKind.Minus, 0),
-            Constants.PercentChar => (TokenKind.Percent, 0),
-            Constants.PlusChar => (TokenKind.Plus, 0),
-            Constants.SlashChar => (TokenKind.Slash, 0),
-            Constants.QuestionChar => (TokenKind.Question, 0),
-            _ => (TokenKind.Invalid, 0),
-        };
+            tokenKind = SingleCharTokenKinds[c];
+            groupingDepth = SingleCharGroupingDepths[c];
+            return tokenKind != TokenKind.Invalid;
+        }
 
-        return tokenKind != TokenKind.Invalid;
+        tokenKind = TokenKind.Invalid;
+        groupingDepth = 0;
+        return false;
     }
 }
