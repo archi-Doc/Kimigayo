@@ -62,7 +62,7 @@ public sealed record class FunctionParameterKoto
 /// <summary>
 /// Represents a function declaration.
 /// </summary>
-public sealed class FunctionKoto : IdentifiableKoto
+public sealed class FunctionKoto : DeclarationKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Function;
@@ -205,10 +205,6 @@ public sealed class FunctionKoto : IdentifiableKoto
         this.Body = new CodeBlockKoto(codeContext);
         this.Body.Parent = this;
     }
-
-    /// <inheritdoc/>
-    public override ReadOnlySpan<char> GetIdentifier()
-        => this.Name;
 
     /// <summary>Consumes the function body.</summary>
     /// <param name="reader">The token reader.</param>

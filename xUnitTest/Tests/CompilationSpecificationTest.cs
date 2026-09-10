@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -134,10 +135,83 @@ public class CompilationSpecificationTest
     }
 
     [Theory]
+    [InlineData("en-US")]
+    [InlineData("tr-TR")]
+    public void DirectiveConstantNamesIgnoreCaseIndependentlyOfCulture(string cultureName)
+    {
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(cultureName);
+            var compilation = Compilation.CreateForTest();
+            var settings = compilation.Project.ProjectFile.CompileTimeSettings;
+            settings.Add("Feature", new() { Bool = true });
+            settings.Add("limit", new() { Integer = 2 });
+            settings.Add("Flavor", new() { String = "Vanilla" });
+            Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
+            Assert.True(compilation.Variables["WINDOWS"].Bool);
+            Assert.Equal(2, compilation.BuildMetadata!.CompileTimeValues["LIMIT"].I64);
+
+            var source = """
+                #if WINDOWS and not LINUX and not MacOS and OS == "windows" and ARCH == "x86_64" and PointerWidth == 64 and RELEASE and not DEBUG
+                var builtinSelected = 1
+                #if FEATURE and LIMIT == 2 and FLAVOR == "Vanilla" and flavor != "vanilla"
+                var settingSelected = 2
+                #match
+                    #case LiNuX
+                        var excluded = 3
+                    #case WiNdOwS and fEaTuRe and lImIt == 2 and fLaVoR == "Vanilla"
+                        var matchSelected = 4
+                    #case _
+                        var fallback = 5
+                """;
+            compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
+
+            Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+            Assert.Collection(
+                compilation.Kotonoha.GeneratedFunction!.Body!.Items,
+                node => Assert.Equal("builtinSelected", Assert.IsType<FieldKoto>(node).NameKoto.IdentifierName),
+                node => Assert.Equal("settingSelected", Assert.IsType<FieldKoto>(node).NameKoto.IdentifierName),
+                node => Assert.Equal("matchSelected", Assert.IsType<FieldKoto>(Assert.Single(Assert.IsType<CodeBlockKoto>(node).Items)).NameKoto.IdentifierName));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+        }
+    }
+
+    [Theory]
+    [InlineData("Feature", "FEATURE")]
+    [InlineData("FEATURE", "Feature")]
+    public void SettingNamesDifferingOnlyInCaseFailPreparation(string first, string second)
+    {
+        var compilation = Compilation.CreateForTest();
+        var settings = compilation.Project.ProjectFile.CompileTimeSettings;
+        settings.Add(first, new() { Bool = true });
+        settings.Add(second, new() { Bool = false });
+
+        Assert.False(compilation.Prepare("x86_64-pc-windows-msvc"));
+        Assert.Empty(compilation.Variables);
+        Assert.Same(TargetTriple.Invalid, compilation.TargetTriple);
+        Assert.Null(compilation.BuildMetadata);
+        Assert.Equal(
+            nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd),
+            Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+    }
+
+    [Theory]
     [InlineData("os")]
+    [InlineData("OS")]
+    [InlineData("WINDOWS")]
+    [InlineData("Linux")]
+    [InlineData("MACOS")]
     [InlineData("arch")]
+    [InlineData("ARCH")]
     [InlineData("debug")]
+    [InlineData("DEBUG")]
+    [InlineData("RELEASE")]
     [InlineData("pointerWidth")]
+    [InlineData("POINTERWIDTH")]
     [InlineData("if")]
     [InlineData("true")]
     [InlineData("bad-name")]

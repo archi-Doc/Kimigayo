@@ -60,7 +60,7 @@ public class ParseBenchmark
                     return 1
 
                 func Method2() -> ()
-                    #if(Os=="Windows")
+                    #if(Os=="windows")
                     var i = if (x == true) => 1 else => 0
                     var i2 = if (x == true)
                         1
@@ -81,6 +81,10 @@ public class ParseBenchmark
     public ParseBenchmark()
     {
         this.compilation = Compilation.CreateForTest(true);
+        if (!this.compilation.Prepare("x86_64-pc-windows-msvc"))
+        {
+            throw new InvalidOperationException("Benchmark environment must be prepared.");
+        }
     }
 
     [Benchmark]

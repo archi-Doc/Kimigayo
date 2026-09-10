@@ -2,7 +2,6 @@
 
 using Kimi;
 using Kimi.Compiler;
-using Kimi.Compiler.Parsing;
 using Kimi.Compiler.Target;
 using Xunit;
 
@@ -11,18 +10,12 @@ namespace XunitTest;
 public class CoreModelTest
 {
     [Fact]
-    public void CompilationRegistersItsPrimaryKotonohaAndResolvesKotoIds()
+    public void CompilationRegistersItsPrimaryKotonoha()
     {
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
-        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "struct Value");
-        var structure = Assert.IsType<StructKoto>(
-            Assert.Single(kotonoha.RootKoto.NestedDeclarationContainers, x => x.Name == "Value"));
-
         Assert.True(compilation.TryGetKotonoha(kotonoha.Id, out var resolvedKotonoha));
         Assert.Same(kotonoha, resolvedKotonoha);
-        Assert.True(compilation.TryGetKoto(kotonoha.Id, structure.KotoId, out var resolvedKoto));
-        Assert.Same(structure, resolvedKoto);
     }
 
     [Fact]

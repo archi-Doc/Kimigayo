@@ -17,7 +17,7 @@ namespace Kimi.Compiler.Parsing;
 /// Member collections are allocated on first use because most containers only hold a few
 /// of the possible member kinds.
 /// </remarks>
-public abstract class DeclarationContainerKoto : IdentifiableKoto
+public abstract class DeclarationContainerKoto : DeclarationKoto
 {
     protected enum DeclarationOrder : byte
     {
@@ -118,10 +118,6 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
         this.SetAttributeChain(state.AttributeKoto);
         this.Modifier = state.ModifierKind;
     }
-
-    /// <inheritdoc/>
-    public override ReadOnlySpan<char> GetIdentifier()
-        => this.Name;
 
     /// <summary>Adds a child node to this Declaration Container.</summary>
     /// <param name="koto">The child node to add.</param>

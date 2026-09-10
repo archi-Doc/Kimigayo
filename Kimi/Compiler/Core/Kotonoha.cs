@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Diagnostics.CodeAnalysis;
-using System.Text;
 using Arc.Collections;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
@@ -23,9 +21,6 @@ namespace Kimi.Compiler;
 [TinyhandObject]
 public sealed partial class Kotonoha
 {
-    /// <summary>The initial depth reserved by the Koto index walk.</summary>
-    private const int DefaultKotoIndexCapacity = 64;
-
     /// <summary>
     /// Gets the diagnostics associated with this source unit.
     /// </summary>
@@ -76,12 +71,6 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     internal bool HasSourceErrors { get; private set; }
 
-    [IgnoreMember]
-    private readonly UInt64Hashtable<Koto> kotoIdToKoto = new();
-
-    [IgnoreMember]
-    private readonly object kotoIndexLock = new();
-
     [Key(3)]
     private List<SourceDocument> sourceDocuments = new();
 
@@ -130,10 +119,6 @@ public sealed partial class Kotonoha
         this.Compilation = compilation;
         this.RootKoto = new(new CodeContext(this), default, default);
         this.GeneratedFunction = null;
-        lock (this.kotoIndexLock)
-        {
-            this.kotoIdToKoto.Clear();
-        }
 
         foreach (var sourceDocument in this.sourceDocuments)
         {
@@ -157,26 +142,6 @@ public sealed partial class Kotonoha
         => diagnosticCollection is null || ReferenceEquals(diagnosticCollection, this.DiagnosticCollection)
             ? this.RootKoto.CodeContext
             : new(this, diagnosticCollection);
-
-    /// <summary>
-    /// Attempts to find a Koto node by its identifier.
-    /// </summary>
-    /// <param name="kotoId">The Koto identifier.</param>
-    /// <param name="koto">The matching node, if found.</param>
-    /// <returns><see langword="true"/> when a matching node is found.</returns>
-    public bool TryGetKoto(ulong kotoId, [MaybeNullWhen(false)] out Koto koto)
-    {
-        lock (this.kotoIndexLock)
-        {
-            if (this.kotoIdToKoto.TryGetValue(kotoId, out koto) && this.IsAttachedToRoot(koto))
-            {
-                return true;
-            }
-
-            this.RebuildKotoIndex();
-            return this.kotoIdToKoto.TryGetValue(kotoId, out koto);
-        }
-    }
 
     /// <summary>
     /// Tokenizes and parses a source document into this source unit.
@@ -245,38 +210,6 @@ public sealed partial class Kotonoha
         finally
         {
             tokenizer.Dispose();
-        }
-    }
-
-    private bool IsAttachedToRoot(Koto koto)
-    {
-        while (koto.Parent is { } parent)
-        {
-            koto = parent;
-        }
-
-        return ReferenceEquals(koto, this.RootKoto);
-    }
-
-    private void RebuildKotoIndex()
-    {
-        // Koto IDs depend on the completed parent chain. Build the index lazily after parsing
-        // and rebuild on a miss so generated or edited declarations become discoverable.
-        var table = this.kotoIdToKoto;
-        table.Clear();
-        var stack = new Stack<Koto>(DefaultKotoIndexCapacity);
-        stack.Push(this.RootKoto);
-        while (stack.TryPop(out var koto))
-        {
-            if (koto is IdentifiableKoto identifiable)
-            {
-                table.TryAdd(identifiable.KotoId, identifiable);
-            }
-
-            foreach (var child in koto.ChildNodes)
-            {
-                stack.Push(child);
-            }
         }
     }
 }

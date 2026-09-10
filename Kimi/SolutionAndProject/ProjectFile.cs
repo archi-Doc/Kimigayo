@@ -21,5 +21,6 @@ public partial record class ProjectFile
     public string? LangVersion { get; set; }
 
     /// <summary>Gets or sets explicitly typed compile-time scalar settings.</summary>
+    /// <remarks>Preserves written names so preparation can diagnose case-insensitive collisions instead of overwriting entries.</remarks>
     public Dictionary<string, CompileTimeSetting> CompileTimeSettings { get; set; } = new(StringComparer.Ordinal);
 }

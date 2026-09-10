@@ -68,23 +68,23 @@ public static partial class Parser
         }
     }
 
-    /// <summary>Writes the qualified name of an identifiable node.</summary>
-    /// <param name="koto">The innermost identifiable node.</param>
+    /// <summary>Writes the qualified name of a declaration container.</summary>
+    /// <param name="koto">The innermost declaration container.</param>
     /// <param name="builder">The destination builder.</param>
-    public static void WriteQualifiedNameTo(IdentifiableKoto? koto, ref IndentedStringBuilder builder)
+    public static void WriteQualifiedNameTo(DeclarationContainerKoto? koto, ref IndentedStringBuilder builder)
     {
         if (koto is null || koto.IsRoot)
         {
             return;
         }
 
-        if (koto.Parent is IdentifiableKoto parent && !parent.IsRoot)
+        if (koto.Parent is DeclarationContainerKoto parent && !parent.IsRoot)
         {
             WriteQualifiedNameTo(parent, ref builder);
             builder.Append(Constants.DotChar);
         }
 
-        builder.Append(koto.GetIdentifier());
+        builder.Append(koto.Name);
     }
 
     /// <summary>Writes an attribute chain as source text, outermost attribute first.</summary>

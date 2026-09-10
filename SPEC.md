@@ -234,9 +234,9 @@ Each continuation character may be any valid start character, or:
 - an ASCII digit (`0`–`9`), or
 - a Unicode character in one of the categories Nonspacing Mark (`Mn`), Spacing Combining Mark (`Mc`), Decimal Digit Number (`Nd`), or Connector Punctuation (`Pc`).
 
-Names are equal if and only if their Unicode scalar sequences match exactly. Comparison is case-sensitive and culture-independent. No Unicode normalization, case folding, compatibility mapping, or removal of characters is performed for name lookup or duplicate-name detection.
+Ordinary source Names are equal if and only if their Unicode scalar sequences match exactly. Comparison is case-sensitive and culture-independent. No Unicode normalization, case folding, compatibility mapping, or removal of characters is performed for ordinary name lookup or duplicate-name detection. Compile-time constant Names in the dedicated [Condition environment](#193-condition-evaluation-and-selection) are the exception: their lookup and duplicate-name detection are ordinal and case-insensitive.
 
-Every Name, in both declarations and references, must already be in Unicode Normalization Form C (NFC). A non-NFC spelling is a compile-time error; the compiler does not silently normalize it. For example, a Name containing U+00E9 (`é`) is permitted, while the canonically equivalent sequence U+0065 U+0301 is rejected. `Dog` and `dog` are distinct Names, as are ASCII `A` and fullwidth `Ａ`.
+Every Name, in both declarations and references, must already be in Unicode Normalization Form C (NFC). A non-NFC spelling is a compile-time error; the compiler does not silently normalize it. For example, a Name containing U+00E9 (`é`) is permitted, while the canonically equivalent sequence U+0065 U+0301 is rejected. In ordinary source lookup, `Dog` and `dog` are distinct Names, as are ASCII `A` and fullwidth `Ａ`.
 
 All Format (`Cf`) characters are forbidden anywhere in Names, including bidirectional controls and zero-width join/non-join controls. This restriction applies to Names, not to comment or literal contents. It does not exclude every default-ignorable character in other Unicode categories.
 
@@ -6800,7 +6800,7 @@ A Condition uses only the following closed expression set over the prepared Comp
 
 All other expression forms are invalid Conditions, including every `is`/`is not` test, calls, runtime member access, indexing, arithmetic, ordering comparisons, conversions, collections, interpolation, and floating-point/character/null literals. Reject them even in short-circuited operands or later Conditions after a selected Case. There are no Type-, Semantics-, Contract-, Origin-, or generic-specialization-dependent directive conditions. This restriction applies in every scope, including function bodies.
 
-**Condition lookup.** Resolve Names only in the disjoint built-in and Project-setting environment established before parsing. Ordinary source declarations, generic parameters, aliases, Types, Contracts, and runtime values supply no Condition values. A Name absent from the prepared environment is an error, not a dependency to resolve by generic Binding. A same-spelled source declaration does not shadow a prepared setting in this dedicated namespace. Constraints supply no additional Condition values or narrowing facts.
+**Condition lookup.** Resolve Names only in the disjoint built-in and Project-setting environment established before parsing. Compile-time constant Names are compared ordinally without regard to case, independently of culture (the initial C# compiler uses `StringComparer.OrdinalIgnoreCase`), without Unicode normalization. This applies equally to built-in values and Project settings: `windows`, `Windows`, and `WINDOWS` identify the same constant, as do `pointerWidth` and `POINTERWIDTH`. It does not change keyword spelling or the case-sensitive comparison of string values. Ordinary source declarations, generic parameters, aliases, Types, Contracts, and runtime values supply no Condition values. A Name absent from the prepared environment is an error, not a dependency to resolve by generic Binding. A source declaration does not shadow a prepared setting in this dedicated namespace, including when their names differ only in case. Constraints supply no additional Condition values or narrowing facts.
 
 ```kimi
 windows
@@ -6925,7 +6925,7 @@ Prepared Compilations provide these immutable-for-analysis scalar values:
 | `debug`, `release` | `bool` | The selected build mode and its negation: `release == not debug`. |
 | `pointerWidth` | `i64` | Default raw-pointer width in bits from the prepared target layout; supported values in this revision are 16, 32, and 64. |
 
-Project settings provide explicit bool, i64, or string values. Names must be valid identifiers and cannot collide with reserved words or built-in Compilation values; collisions are errors, not overrides. Copy settings into the prepared environment before parsing. `.kimiproj` uses a `CompileTimeSettings` map whose entries set exactly one of Bool, Integer, or String.
+Project settings provide explicit bool, i64, or string values. Names must be valid identifiers and cannot collide with reserved words or built-in Compilation values; collisions are errors, not overrides. Under the [Condition lookup rules](#193-condition-evaluation-and-selection), detect collisions among Project setting names and with built-in Compilation values ordinally without regard to case: `Feature` and `FEATURE` cannot both be configured, and `WINDOWS` cannot override `windows`. Copy settings into the prepared environment before parsing. `.kimiproj` uses a `CompileTimeSettings` map whose entries set exactly one of Bool, Integer, or String.
 
 #### 20.5. Language-version selection
 

@@ -66,10 +66,10 @@ public class Compilation
     public Kotonoha Kotonoha { get; }
 
     /// <summary>
-    /// Gets the variables available to conditional compilation.
+    /// Gets the variables available to conditional compilation, with ordinal case-insensitive name lookup.
     /// </summary>
     public IReadOnlyDictionary<string, BasicValue> Variables { get; private set; } =
-        new ReadOnlyDictionary<string, BasicValue>(new Dictionary<string, BasicValue>());
+        new ReadOnlyDictionary<string, BasicValue>(new Dictionary<string, BasicValue>(StringComparer.OrdinalIgnoreCase));
 
     /// <summary>Gets the inputs recorded on successful preparation, or null when preparation failed.</summary>
     public CompilationBuildMetadata? BuildMetadata { get; private set; }
@@ -149,7 +149,7 @@ public class Compilation
             throw new InvalidOperationException("Create a new Compilation to change inputs after parsing source.");
         }
 
-        this.Variables = new ReadOnlyDictionary<string, BasicValue>(new Dictionary<string, BasicValue>());
+        this.Variables = new ReadOnlyDictionary<string, BasicValue>(new Dictionary<string, BasicValue>(StringComparer.OrdinalIgnoreCase));
         this.TargetTriple = TargetTriple.Invalid;
         this.IrTarget = IrTarget.Invalid;
         this.BuildMetadata = null;
@@ -182,7 +182,7 @@ public class Compilation
             _ => targetTriple.Os.ToString().ToLowerInvariant(),
         };
         var debug = this.Project.KimiOptions.Debug;
-        var variables = new Dictionary<string, BasicValue>(StringComparer.Ordinal)
+        var variables = new Dictionary<string, BasicValue>(StringComparer.OrdinalIgnoreCase)
         {
             ["os"] = new(os),
             ["arch"] = new(targetTriple.Arch.ToString().ToLowerInvariant()),
@@ -223,25 +223,6 @@ public class Compilation
     public bool TryGetKotonoha(uint kotonohaId, [MaybeNullWhen(false)] out Kotonoha kotonoha)
     {
         return this.kotonohaIdToKotonoha.TryGetValue(kotonohaId, out kotonoha);
-    }
-
-    /// <summary>
-    /// Attempts to find a Koto node within a source unit.
-    /// </summary>
-    /// <param name="kotonohaId">The source unit identifier.</param>
-    /// <param name="kotoId">The Koto identifier.</param>
-    /// <param name="koto">The matching node, if found.</param>
-    /// <returns><see langword="true"/> when a matching node is found.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryGetKoto(uint kotonohaId, ulong kotoId, [MaybeNullWhen(false)] out Koto koto)
-    {
-        if (this.kotonohaIdToKotonoha.TryGetValue(kotonohaId, out var kotonoha))
-        {
-            return kotonoha.TryGetKoto(kotoId, out koto);
-        }
-
-        koto = default;
-        return false;
     }
 
     /// <summary>Analyzes control flow after parsing and compile-time directive selection.</summary>

@@ -40,22 +40,19 @@ public class KotonohaSerializationTest
         var originalFunction = Descendants(original.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "first");
         var restoredFunction = Descendants(restored.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "first");
         Assert.Equal(originalFunction.Span, restoredFunction.Span);
-        Assert.Equal(originalFunction.KotoId, restoredFunction.KotoId);
         Assert.Same(restored.SourceDocuments[0], restoredFunction.DiagnosticCollection!.SourceDocument);
-        Assert.True(restored.TryGetKoto(originalFunction.KotoId, out var indexed));
-        Assert.Same(restoredFunction, indexed);
         Assert.All(Descendants(restored.RootKoto), node =>
         {
             Assert.Same(restored, node.Kotonoha);
             Assert.All(node.ChildNodes, child => Assert.Same(node, child.Parent));
         });
 
-        // Reinitializing must neither append documents nor retain old tree/index entries.
+        // Reinitializing must neither append documents nor retain old tree nodes.
         restored.OnDeserialized(destination);
         Assert.Equal(2, restored.SourceDocuments.Count);
         Assert.Equal(original.GeneratedFunction.ToString(), restored.GeneratedFunction!.ToString());
-        Assert.True(restored.TryGetKoto(originalFunction.KotoId, out indexed));
-        Assert.NotSame(restoredFunction, indexed);
+        var rebuiltFunction = Descendants(restored.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "first");
+        Assert.NotSame(restoredFunction, rebuiltFunction);
     }
 
     [Fact]
@@ -64,8 +61,6 @@ public class KotonohaSerializationTest
         var compilation = Compilation.CreateForTest();
         var restored = new Kotonoha(compilation);
         restored.AddSource(new SourceDocument("stale.kimi", "func stale() => 1"));
-        var stale = Descendants(restored.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "stale");
-        Assert.True(restored.TryGetKoto(stale.KotoId, out _));
 
         var bytes = TinyhandSerializer.Serialize(new Kotonoha(compilation, "empty", string.Empty));
         TinyhandSerializer.DeserializeObject(bytes, ref restored);
@@ -75,7 +70,6 @@ public class KotonohaSerializationTest
         Assert.Empty(restored.SourceDocuments);
         Assert.Empty(restored.RootKoto.ChildNodes);
         Assert.Null(restored.GeneratedFunction);
-        Assert.False(restored.TryGetKoto(stale.KotoId, out _));
     }
 
     [Fact]
