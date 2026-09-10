@@ -214,6 +214,28 @@ public sealed class TypeSemanticsKoto : TypeKoto
         this.Span = SourceSpan.FromBounds(this.Span.Start, Math.Max(this.Span.End, end));
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        if (this.Type is not null)
+        {
+            visitor.Visit(this.Type);
+        }
+
+        if (this.OriginExpression is not null)
+        {
+            visitor.Visit(this.OriginExpression);
+        }
+
+        if (this.OriginArguments is not null)
+        {
+            for (var argumentIndex = 0; argumentIndex < KotoVisitor.Count(this.OriginArguments); argumentIndex++)
+            {
+                var argument = this.OriginArguments[argumentIndex];
+                visitor.Visit(argument.Value);
+            }
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         if (this.Type is not null)

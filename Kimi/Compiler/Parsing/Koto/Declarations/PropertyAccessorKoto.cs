@@ -129,6 +129,29 @@ public sealed class PropertyAccessorKoto : Koto
         }
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        if (this.ReceiverType is { } receiverType)
+        {
+            visitor.Visit(receiverType);
+        }
+
+        if (this.ValueType is { } valueType)
+        {
+            visitor.Visit(valueType);
+        }
+
+        if (this.ReturnType is { } returnType)
+        {
+            visitor.Visit(returnType);
+        }
+
+        if (this.Body is { } body)
+        {
+            visitor.Visit(body);
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         if (this.ReceiverType is { } receiverType)

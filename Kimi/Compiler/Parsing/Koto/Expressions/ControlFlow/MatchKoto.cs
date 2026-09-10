@@ -99,6 +99,22 @@ public sealed class MatchKoto : ExpressionKoto
         builder.DecrementIndent();
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Expression);
+        for (var armIndex = 0; armIndex < KotoVisitor.Count(this.arms); armIndex++)
+        {
+            var arm = this.arms[armIndex];
+            visitor.Visit(arm.Pattern);
+            if (arm.Guard is not null)
+            {
+                visitor.Visit(arm.Guard);
+            }
+
+            visitor.Visit(arm.Body);
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         yield return this.Expression;

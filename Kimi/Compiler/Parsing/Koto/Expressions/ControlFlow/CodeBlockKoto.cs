@@ -27,6 +27,11 @@ public sealed class CodeBlockKoto : ExpressionKoto
     /// <summary>Gets the block items in source order.</summary>
     public IReadOnlyList<Koto> Items => this.items;
 
+    /// <summary>Replaces a block item by its known index without searching or copying the item collection.</summary>
+    /// <param name="index">The item index.</param>
+    /// <param name="replacement">The detached replacement node.</param>
+    public void ReplaceItem(int index, Koto replacement) => this.ReplaceAt(this.items, index, replacement);
+
     /// <summary>
     /// Gets the implicit branch result, or <see langword="null"/> when there is no implicit result.
     /// </summary>
@@ -123,6 +128,11 @@ public sealed class CodeBlockKoto : ExpressionKoto
 
         list.Add(item);
         item.Parent = this;
+    }
+
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.VisitMany(this.items);
     }
 
     protected override IEnumerable<Koto> GetChildNodes()

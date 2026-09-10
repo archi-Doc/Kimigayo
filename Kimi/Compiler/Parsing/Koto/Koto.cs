@@ -455,14 +455,27 @@ public abstract class Koto
     public virtual Koto? ResolveIdentifier(ReadOnlySpan<char> identifier)
         => default;
 
-    /// <summary>Binds this node and its children to a compilation.</summary>
-    /// <param name="compilation">The active compilation.</param>
-    public virtual void Bind(Compilation compilation)
+    /// <summary>Gets the current semantic binding state; this does not certify descendants.</summary>
+    public BindingState BindingState { get; internal set; }
+
+    /// <summary>Gets the resolved complete type, or null while unavailable.</summary>
+    public BoundType? BoundType { get; internal set; }
+
+    /// <summary>Gets the selected symbol, or null before selection.</summary>
+    public BindingSymbol? BoundSymbol { get; internal set; }
+
+    internal BindingFailure BindingFailure { get; set; }
+
+    /// <summary>Visits attributes and concrete child storage without creating iterators.</summary>
+    /// <param name="visitor">The reusable visitor.</param>
+    public void VisitChildren(KotoVisitor visitor)
     {
-        foreach (var child in this.GetChildNodes())
+        if (this.AttributeChain is { } attribute)
         {
-            child.Bind(compilation);
+            visitor.Visit(attribute);
         }
+
+        this.VisitChildrenCore(visitor);
     }
 
     /// <summary>Adds a diagnostic for this node.</summary>
@@ -588,6 +601,54 @@ public abstract class Koto
         return false;
     }
 
+    /// <summary>Replaces a known child slot in constant time, retaining source and attribute provenance.</summary>
+    /// <typeparam name="T">The child slot type.</typeparam>
+    /// <param name="list">The owned mutable array or list.</param>
+    /// <param name="index">The already known child index.</param>
+    /// <param name="replacement">The detached replacement node.</param>
+    protected void ReplaceAt<T>(IReadOnlyList<T> list, int index, T replacement)
+        where T : Koto
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        var current = list[index];
+        if (ReferenceEquals(current, replacement))
+        {
+            return;
+        }
+
+        if (list is not IList<T> mutable || (mutable.IsReadOnly && list is not T[]))
+        {
+            throw new InvalidOperationException("The child storage is not mutable.");
+        }
+
+        if (replacement.Parent is not null)
+        {
+            throw new InvalidOperationException("A replacement must be detached.");
+        }
+
+        if (replacement.AttributeChain is not null && current.AttributeChain is not null)
+        {
+            throw new InvalidOperationException("A replacement cannot overwrite an existing attribute chain.");
+        }
+
+        replacement.CodeContext = current.CodeContext;
+        replacement.Span = current.Span;
+        if (current.AttributeChain is { } attributes)
+        {
+            current.AttributeChain = null;
+            replacement.SetAttributeChain(attributes);
+        }
+
+        mutable[index] = replacement;
+        current.Parent = null;
+        replacement.Parent = this;
+        // A rewrite invalidates facts of the owner; a later Bind rebuilds dependent facts.
+        this.BindingState = BindingState.Unvisited;
+        this.BoundType = null;
+        this.BoundSymbol = null;
+        this.BindingFailure = BindingFailure.None;
+    }
+
     /// <summary>Writes the attribute chain, if any, followed by the requested trailing text.</summary>
     /// <param name="builder">The destination builder.</param>
     /// <param name="options">The trailing text option.</param>
@@ -656,6 +717,12 @@ public abstract class Koto
     /// <returns>The direct child nodes, excluding the attribute chain handled by <see cref="ChildNodes"/>.</returns>
     protected virtual IEnumerable<Koto> GetChildNodes()
         => [];
+
+    /// <summary>Visits direct child storage, excluding the attribute chain.</summary>
+    /// <param name="visitor">The reusable visitor.</param>
+    protected virtual void VisitChildrenCore(KotoVisitor visitor)
+    {
+    }
 
     /// <summary>Replaces a child reference owned by the concrete node.</summary>
     /// <param name="oldKoto">The current child.</param>

@@ -10,6 +10,36 @@
   + Name="ConditionMustBeBool_Kd"
     Message="The condition expression must be of type Bool"
 
+  + Name="UnresolvedBinding_Kd"
+    Message="Required Name or Type information remains unresolved after final Binding"
+
+  + Name="AmbiguousBinding_Kd"
+    Message="More than one declaration or operation remains applicable"
+
+  + Name="DuplicateBinding_Kd"
+    Message="A declaration with the same Name or normalized Signature already exists in this scope"
+
+  + Name="NotCallable_Kd"
+    Message="The selected value is not callable; lookup does not fall back to an outer function"
+
+  + Name="NoApplicableOverload_Kd"
+    Message="No unique applicable overload can be established from the supplied arguments"
+
+  + Name="CyclicBinding_Kd"
+    Message="A cyclic dependency prevents Type inference"
+
+  + Name="InvalidAssignment_Kd"
+    Message="The selected target does not permit assignment"
+
+  + Name="InaccessibleBinding_Kd"
+    Message="The selected declaration is inaccessible in this context"
+
+  + Name="InvalidCaptureBinding_Kd"
+    Message="A runtime binding cannot cross this function boundary without a permitted capture"
+
+  + Name="UnsupportedBinding_Kd"
+    Message="The semantic obligations of this syntax are not yet implemented and cannot pass final Binding"
+
   + Name="InvalidCompileTimeCondition_Kd"
     Message="This expression is outside the compile-time Condition grammar (integer literals must fit i64)"
 

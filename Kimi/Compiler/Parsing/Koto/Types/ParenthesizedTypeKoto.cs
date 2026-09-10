@@ -46,6 +46,11 @@ public sealed class ParenthesizedTypeKoto : TypeKoto
         builder.Append(')');
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Type);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes() => [this.Type];
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)

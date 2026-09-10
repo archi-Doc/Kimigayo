@@ -27,6 +27,11 @@ public abstract class ApplicationKoto : ExpressionKoto
     /// <summary>Gets the arguments without materializing a mutable list.</summary>
     public IReadOnlyList<Koto> ArgumentNodes => this.ArgumentStorage ?? [];
 
+    /// <summary>Replaces an argument by its known index without searching or copying the argument collection.</summary>
+    /// <param name="index">The argument index.</param>
+    /// <param name="replacement">The detached replacement node.</param>
+    public void ReplaceArgument(int index, Koto replacement) => this.ReplaceAt(this.ArgumentNodes, index, replacement);
+
     /// <summary>Gets the expression to which the arguments apply.</summary>
     protected Koto Target { get; private set; }
 
@@ -76,6 +81,19 @@ public abstract class ApplicationKoto : ExpressionKoto
         }
 
         builder.Append(close);
+    }
+
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Target);
+        if (this.ArgumentStorage is { } arguments)
+        {
+            for (var argumentIndex = 0; argumentIndex < KotoVisitor.Count(arguments); argumentIndex++)
+            {
+                var argument = arguments[argumentIndex];
+                visitor.Visit(argument);
+            }
+        }
     }
 
     protected override IEnumerable<Koto> GetChildNodes()

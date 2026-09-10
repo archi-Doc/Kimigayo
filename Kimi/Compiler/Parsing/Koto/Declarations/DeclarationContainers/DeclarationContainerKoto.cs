@@ -58,6 +58,17 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
     private List<Koto>? kotoList;
 
+    private List<DeclarationContainerKoto>? nestedContainers;
+
+    /// <summary>Gets nested declarations in insertion order without allocating a snapshot.</summary>
+    public IReadOnlyList<DeclarationContainerKoto> NestedContainers => this.nestedContainers ?? (IReadOnlyList<DeclarationContainerKoto>)Array.Empty<DeclarationContainerKoto>();
+
+    /// <summary>Gets generic parameters without materializing empty storage.</summary>
+    public IReadOnlyList<TypeKoto> GenericParameterNodes => this.genericArguments ?? (IReadOnlyList<TypeKoto>)Array.Empty<TypeKoto>();
+
+    /// <summary>Gets constraints without materializing empty storage.</summary>
+    public IReadOnlyList<IsKoto> ConstraintNodes => this.typeConstraints ?? (IReadOnlyList<IsKoto>)Array.Empty<IsKoto>();
+
     /// <summary>Gets or sets the nested Declaration Containers keyed by name, or <see langword="null"/> when none exist.</summary>
     protected Utf16Hashtable<Koto>? NestedContainerTable { get; set; }
 
@@ -96,7 +107,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
     /// <summary>Gets nested Declaration Containers.</summary>
     public IEnumerable<DeclarationContainerKoto> NestedDeclarationContainers
-        => this.NestedContainerTable?.ToArray().Cast<DeclarationContainerKoto>() ?? [];
+        => this.NestedContainers;
 
     #endregion
 
@@ -293,6 +304,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     {
         this.kotoList?.Clear();
         this.NestedContainerTable?.Clear();
+        this.nestedContainers?.Clear();
         this.genericArguments?.Clear();
         this.typeConstraints?.Clear();
         this.OriginList?.Clear();
@@ -872,6 +884,54 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     protected virtual void WriteTypeConstraintTo(IsKoto constraint, ref IndentedStringBuilder builder)
         => constraint.WriteTo(ref builder);
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        if (this.bases is not null)
+        {
+            for (var typeIndex = 0; typeIndex < KotoVisitor.Count(this.bases); typeIndex++)
+            {
+                var type = this.bases[typeIndex];
+                visitor.Visit(type);
+            }
+        }
+
+        if (this.genericArguments is not null)
+        {
+            for (var argumentIndex = 0; argumentIndex < KotoVisitor.Count(this.genericArguments); argumentIndex++)
+            {
+                var argument = this.genericArguments[argumentIndex];
+                visitor.Visit(argument);
+            }
+        }
+
+        if (this.typeConstraints is not null)
+        {
+            for (var constraintIndex = 0; constraintIndex < KotoVisitor.Count(this.typeConstraints); constraintIndex++)
+            {
+                var constraint = this.typeConstraints[constraintIndex];
+                visitor.Visit(constraint);
+            }
+        }
+
+        if (this.kotoList is not null)
+        {
+            for (var kotoIndex = 0; kotoIndex < KotoVisitor.Count(this.kotoList); kotoIndex++)
+            {
+                var koto = this.kotoList[kotoIndex];
+                visitor.Visit(koto);
+            }
+        }
+
+        if (this.NestedContainerTable is not null)
+        {
+            for (var containerIndex = 0; containerIndex < KotoVisitor.Count(this.NestedContainers); containerIndex++)
+            {
+                var container = this.NestedContainers[containerIndex];
+                visitor.Visit(container);
+            }
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         if (this.bases is not null)
@@ -906,9 +966,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             }
         }
 
-        if (this.NestedContainerTable is not null)
+        if (this.nestedContainers is not null)
         {
-            foreach (var container in this.NestedContainerTable.ToArray())
+            foreach (var container in this.nestedContainers)
             {
                 yield return container;
             }
@@ -951,6 +1011,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             if (nested.TryRemove(oldContainer.Name) &&
                 nested.TryAdd(newContainer.Name, newContainer))
             {
+                ReplaceInList(this.nestedContainers, oldContainer, newContainer);
                 return true;
             }
 
@@ -986,6 +1047,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         var container = CreateStandalone(this.CodeContext, kind, state, range, name);
         container.Parent = this;
         nested.Add(name, container);
+        (this.nestedContainers ??= []).Add(container);
         return container;
     }
 }

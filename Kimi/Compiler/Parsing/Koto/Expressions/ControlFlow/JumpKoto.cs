@@ -58,6 +58,14 @@ public abstract class JumpKoto : ExpressionKoto
         }
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        if (this.Expression is { } expression)
+        {
+            visitor.Visit(expression);
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
         => this.Expression is null ? [] : [this.Expression];
 

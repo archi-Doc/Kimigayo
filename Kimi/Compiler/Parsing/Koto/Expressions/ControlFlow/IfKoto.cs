@@ -88,6 +88,21 @@ public sealed class IfKoto : ExpressionKoto
         }
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        for (var branchIndex = 0; branchIndex < KotoVisitor.Count(this.branches); branchIndex++)
+        {
+            var branch = this.branches[branchIndex];
+            visitor.Visit(branch.Condition);
+            visitor.Visit(branch.Body);
+        }
+
+        if (this.ElseBody is not null)
+        {
+            visitor.Visit(this.ElseBody);
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         foreach (var branch in this.branches)

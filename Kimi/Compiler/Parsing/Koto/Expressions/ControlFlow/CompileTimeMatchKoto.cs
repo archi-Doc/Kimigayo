@@ -101,6 +101,20 @@ public sealed class CompileTimeMatchKoto : ExpressionKoto
         builder.DecrementIndent();
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        for (var armIndex = 0; armIndex < KotoVisitor.Count(this.arms); armIndex++)
+        {
+            var arm = this.arms[armIndex];
+            if (arm.Condition is not null)
+            {
+                visitor.Visit(arm.Condition);
+            }
+
+            visitor.Visit(arm.Body);
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         foreach (var arm in this.arms)

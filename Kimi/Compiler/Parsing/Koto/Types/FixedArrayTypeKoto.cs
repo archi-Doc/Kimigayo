@@ -36,6 +36,12 @@ public sealed class FixedArrayTypeKoto : TypeKoto
         builder.Append(']');
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Length);
+        visitor.Visit(this.ElementType);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         yield return this.Length;

@@ -160,6 +160,20 @@ public sealed class PropertyKoto : VariableKoto
     internal void CompleteSpan(int end)
         => this.Span = SourceSpan.FromBounds(this.Span.Start, Math.Max(this.Span.End, end));
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        base.VisitChildrenCore(visitor);
+
+        if (this.accessors is not null)
+        {
+            for (var accessorIndex = 0; accessorIndex < KotoVisitor.Count(this.accessors); accessorIndex++)
+            {
+                var accessor = this.accessors[accessorIndex];
+                visitor.Visit(accessor);
+            }
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         foreach (var child in base.GetChildNodes())

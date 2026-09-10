@@ -87,6 +87,20 @@ public abstract class VariableKoto : DeclarationKoto
         }
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.NameKoto);
+        if (this.TypeKoto is not null)
+        {
+            visitor.Visit(this.TypeKoto);
+        }
+
+        if (this.InitializerKoto is not null)
+        {
+            visitor.Visit(this.InitializerKoto);
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         yield return this.NameKoto;

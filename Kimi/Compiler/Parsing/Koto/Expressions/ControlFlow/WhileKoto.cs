@@ -40,6 +40,12 @@ public sealed class WhileKoto : ExpressionKoto
         this.Body.WriteIndentedTo(ref builder);
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Condition);
+        visitor.Visit(this.Body);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
         => [this.Condition, this.Body];
 

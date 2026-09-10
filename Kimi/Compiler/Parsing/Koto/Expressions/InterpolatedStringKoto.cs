@@ -50,6 +50,18 @@ public sealed class InterpolatedStringKoto : ExpressionKoto
         builder.AppendVerbatim("\"");
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        for (var i = 0; i < this.Segments.Length; i++)
+        {
+            visitor.Visit(this.Segments[i]);
+            if (i < this.Expressions.Length)
+            {
+                visitor.Visit(this.Expressions[i]);
+            }
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         for (var i = 0; i < this.Segments.Length; i++)

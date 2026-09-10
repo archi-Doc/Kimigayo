@@ -46,6 +46,11 @@ public sealed class LabeledKoto : ExpressionKoto
         }
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Target);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes() => [this.Target];
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)

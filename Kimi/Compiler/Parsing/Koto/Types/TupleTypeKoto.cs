@@ -54,6 +54,11 @@ public sealed class TupleTypeKoto : TypeKoto
         builder.Append(')');
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.VisitMany(this.elements);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
         => this.elements;
 

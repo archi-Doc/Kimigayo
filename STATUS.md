@@ -10,16 +10,16 @@ This table defines the recorded status of each compiler stage. The notes below d
 
 | Feature | Parsing | Binding | Analysis | Lowering | Runtime |
 | --- | --- | --- | --- | --- | --- |
-| Functions and Constraint Clauses | Partial | Not implemented | Partial | Not implemented | Not implemented |
+| Functions and Constraint Clauses | Partial | Partial; see C.16 | Partial | Not implemented | Not implemented |
 | Static Contracts and associated Types | Partial; see C.4 | Not implemented | Not implemented | Not implemented | N/A |
 | `#if` / `#match` | Implemented | Not implemented | Partial | Not assessed | N/A |
-| Types | Partial | Not implemented | Partial | Not implemented | Not implemented |
+| Types | Partial | Partial; see C.16 | Partial | Not implemented | Not implemented |
 | Origins | Partial | Not implemented | Not implemented | Not implemented | Not implemented |
-| Properties | Implemented | Not implemented | Partial | Not implemented | Not implemented |
+| Properties | Implemented | Partial; see C.16 | Partial | Not implemented | Not implemented |
 | Constructors and aggregate destruction | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | Ordinary Copy / Move acquisition | N/A; no dedicated Move operator | Not implemented | Not implemented | Not implemented | Not implemented |
-| Control flow and `defer` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
+| Control flow and `defer` | Implemented | Partial; see C.16 | Partial | Not implemented | Not implemented |
 | Enum Cases, Patterns, and guards | Implemented | Not implemented | Not implemented | Not implemented | Not implemented |
 | Explicit full specialization and generic code sharing | Source specialization syntax | Not implemented | Not implemented | Not implemented | Not implemented |
 | Option / Result / Abort | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
@@ -27,11 +27,11 @@ This table defines the recorded status of each compiler stage. The notes below d
 
 Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
 
-The front end now retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. This does not implement Binding, inference, refinement, ownership, dispatch, or execution. See C.15 for the current Property and Move syntax update; C.8–C.14 retain historical review snapshots.
+The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16 records the initial Binding implementation and supersedes earlier Binding coverage notes for the cases it lists.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
 
 ### C.2. Builds, modules, and source artifacts
 
-**Current implementation status:** project loading, target preparation, tokenization, parsing, early directive selection, and partial control-flow/type analysis are implemented. The current LLVM backend preparation requires a supported pointer width and LLVM data-layout string. The current `Build` API reports front-end checks only; it does not certify a finalized program or produce a binary.
+**Current implementation status:** project loading, target preparation, tokenization, parsing, early directive selection, partial Binding (C.16), and partial control-flow/type analysis are implemented. The current LLVM backend preparation requires a supported pointer width and LLVM data-layout string. The current `Build` API reports front-end checks only; it does not certify a finalized program or produce a binary.
 
 Loading external Kotonoha libraries is not yet implemented.
 
@@ -43,9 +43,9 @@ The current source-snapshot serialization/reparse facility is not a [binary inte
 
 The current front end parses escaped strings, raw strings, and string interpolation, including nested expressions. Escape sequences are validated during parsing; evaluating interpolated strings is deferred to later compilation stages.
 
-NumberLiteralKoto retains exact floating-point source spellings until contextual fitting and preserves them through source serialization. Its existing basic-value adapter still evaluates finite values as `f64`; contextual single rounding remains unimplemented.
+NumberLiteralKoto retains exact floating-point source spellings until contextual fitting and preserves them through source serialization. Its existing basic-value adapter still evaluates finite values as `f64`; Binding fits floating literals directly at the selected `f32`/`f64` precision (C.16).
 
-The Parser builds fixed-array Types `[N of T]`, unevaluated length expressions, function length parameters/arguments, and initializer-dependent `_` element syntax. Constant binding/evaluation, length and element inference, layout, ownership, and code generation remain unimplemented.
+The Parser builds fixed-array Types `[N of T]`, unevaluated length expressions, function length parameters/arguments, and initializer-dependent `_` element syntax. Binding handles concrete literal lengths (C.16); general constant evaluation, length and element inference, layout, ownership, and code generation remain unimplemented.
 
 The front end parses recursive Semantics prefixes, distinct grouped and Tuple Types, and independently annotated inner Origins, preserving them through writing and source serialization. Type resolution, layout validation, subtyping, ownership rules, and most Type semantics remain unimplemented; parsing a nested Type or storage-borrow target does not establish its semantic legality. Syntax-level control-flow facts retain supported nested pointer Types and leave unresolved reference/Origin checks pending.
 
@@ -237,3 +237,25 @@ The dedicated `@move` operation and capture spelling are removed. A Type named `
 PropertyRevisionParseTest covers current and rejected forms, recovery to following declarations, contextual names, declaration/receiver contexts, parent links, source spans, writing, and serialization. Binding, accessor Type/Copy/Origin compatibility, capture and ownership analysis, Lowering, and Runtime remain downstream work.
 
 Validation: all 1,445 Debug tests pass; the Release solution build completes with zero warnings and errors.
+
+### C.16. Initial Binding pipeline (2026-09-10)
+
+`Compilation.Bind()` now runs declaration collection and provisional Binding, a reserved no-op Mod execution boundary, then a fresh final Binding and Bound check. `Project.Build` uses these results and supplies the bound type provider to control-flow analysis. An incomplete Binding or pending control-flow obligation fails the build. This is still a front-end result, not a fully validated executable or an emitted binary.
+
+Koto retains `BindingState`, `BoundType`, and `BoundSymbol`; invocation nodes retain the selected function, generic arguments, and source-argument-to-parameter mapping. There is no second Bound tree, Binding generation counter, or speculative syntax replacement. Successful and failed provisional results are reset before reanalysis. Symbols, canonical types, scopes, call-plan arrays, and collection capacity are reused. Binding diagnostics remain separate until explicitly reported after final analysis.
+
+Implemented cases:
+
+- Separate Type/Value lookup, lexical local visibility, forward local functions, source-document isolation of top-level execution scopes, source-local Container aliases, Core/Qualifier filtering, basic lexical/private/internal/public access, and qualified member lookup.
+- Primitive and nominal Types, ordinary generic Type parameters and substitution, transparent grouping/owner normalization, tuples, function Type structure, and concrete literal-length fixed arrays. Complete numeric literal fitting uses the selected target Type; floating literals are parsed directly at the target precision.
+- Explicit-or-Unit named function results, parameter/local/property Type binding, local initializer inference, primitive operations, assignments, condition checking, and basic blocks/transfers. Declaration Signature comparison normalizes ordinary generic parameter slots rather than their spelling.
+- Direct calls with exact argument Types or fitted literals, positional/named/default arguments, ordinary generic inference, and explicit generic arguments. Candidate scratch state is isolated from Koto. Equal substituted Types use nongeneric preference and then fewer defaults; unrelated numeric Types remain incomparable. Unknown candidates and later declaration additions cannot be bypassed by retaining an old winner.
+- Final unresolved/invalid diagnostics and the bridge to existing control-flow checks. Basic in-memory Symbol identity is independent of the removed KotoId concept.
+
+Still incomplete: Contract/conformance and Constraint proof, associated Types, Semantics/Type pair projection, safe-handle Origin inference and ownership obligations, inheritance/subtyping and full API access-domain validation, fragment-header validation beyond parser merging, function/closure value acquisition, constructor/enum/Pattern binding, complete Property/accessor semantics, general fixed-array length evaluation/inference, specializations, nested contextual-call inference, adaptation ranking, external Kotonoha loading, and Mod execution. Unsupported semantic forms retain explicit unresolved obligations and cannot pass Bound checking; no synthetic success Type is substituted for them. Binding completion alone does not assert that the remaining ownership/layout/runtime checks are implemented.
+
+All concrete node families provide `VisitChildrenCore` using direct child storage and indexed loops; Binding never uses `ChildNodes` iterators or Container-table snapshots. Nested Containers retain an ordered list alongside the lookup table. `ReplaceArgument` and `ReplaceItem` update known slots in constant time, preserving source/attribute provenance and parent links. The current binder does not need to replace any nodes.
+
+`BindingTest` covers provisional dependencies resolved by appended declarations, invalidation of successful overload selection, Symbol/node/call-plan reuse, lexical scopes, source isolation, generic normalization/inference, literal fitting, candidate ordering, argument mappings, and unsupported obligations. A warm allocation regression test checks eight final passes over 256 generic calls allocate zero bytes on the current .NET runtime. `BindingBenchmark` separately measures final Binding and the complete provisional/final pipeline at 32 and 512 calls; parsing is excluded from the measured operations.
+
+Validation: all 1,500 Debug tests pass; the Release solution build completes with zero warnings and errors.

@@ -68,6 +68,11 @@ public abstract class UnaryKoto : ExpressionKoto
         }
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Operand);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
         => [this.Operand];
 

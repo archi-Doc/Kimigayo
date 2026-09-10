@@ -50,6 +50,16 @@ public sealed class GroupKoto : DeclarationContainerKoto
         }
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        base.VisitChildrenCore(visitor);
+
+        if (ReferenceEquals(this, this.Kotonoha.RootKoto) && this.Kotonoha.GeneratedFunction is { } generatedFunction)
+        {
+            visitor.Visit(generatedFunction);
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         foreach (var child in base.GetChildNodes())

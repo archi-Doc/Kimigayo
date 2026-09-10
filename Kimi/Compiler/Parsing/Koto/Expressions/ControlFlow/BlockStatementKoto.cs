@@ -47,6 +47,11 @@ public abstract class BlockStatementKoto : Koto
         }
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Body);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes() => [this.Body];
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)

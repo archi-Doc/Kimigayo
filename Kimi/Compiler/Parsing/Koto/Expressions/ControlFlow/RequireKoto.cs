@@ -43,6 +43,12 @@ public sealed class RequireKoto : Koto
         }
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Condition);
+        visitor.Visit(this.ElseBody);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         yield return this.Condition;

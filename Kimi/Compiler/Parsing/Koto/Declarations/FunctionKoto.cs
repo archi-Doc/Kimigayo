@@ -416,6 +416,65 @@ public sealed class FunctionKoto : DeclarationKoto
         this.Body.AddLast(item);
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        if (this.BaseInitializer is not null)
+        {
+            visitor.Visit(this.BaseInitializer);
+        }
+
+        if (this.typeConstraints is not null)
+        {
+            for (var constraintIndex = 0; constraintIndex < KotoVisitor.Count(this.typeConstraints); constraintIndex++)
+            {
+                var constraint = this.typeConstraints[constraintIndex];
+                visitor.Visit(constraint);
+            }
+        }
+
+        if (this.genericArguments is not null)
+        {
+            for (var argumentIndex = 0; argumentIndex < KotoVisitor.Count(this.genericArguments); argumentIndex++)
+            {
+                var argument = this.genericArguments[argumentIndex];
+                visitor.Visit(argument);
+            }
+        }
+
+        if (this.parameters is not null)
+        {
+            for (var parameterIndex = 0; parameterIndex < KotoVisitor.Count(this.parameters); parameterIndex++)
+            {
+                var parameter = this.parameters[parameterIndex];
+                if (parameter.AttributeChain is not null)
+                {
+                    visitor.Visit(parameter.AttributeChain);
+                }
+
+                visitor.Visit(parameter.Type);
+                if (parameter.DefaultValue is not null)
+                {
+                    visitor.Visit(parameter.DefaultValue);
+                }
+            }
+        }
+
+        if (this.ReturnType is not null)
+        {
+            visitor.Visit(this.ReturnType);
+        }
+
+        if (this.Body is not null)
+        {
+            visitor.Visit(this.Body);
+        }
+
+        if (this.ExpressionBody is not null)
+        {
+            visitor.Visit(this.ExpressionBody);
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         if (this.BaseInitializer is not null)

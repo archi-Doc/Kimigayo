@@ -48,6 +48,11 @@ public sealed class SyntaxFormKoto : ExpressionKoto
         builder.Append(this.suffix);
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.VisitMany(this.children);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes() => this.children;
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)

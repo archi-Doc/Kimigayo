@@ -10,6 +10,17 @@ public enum DiagnosticCode
 {
     Template_Kd, // First sentinel
 
+    UnresolvedBinding_Kd,
+    AmbiguousBinding_Kd,
+    DuplicateBinding_Kd,
+    NotCallable_Kd,
+    NoApplicableOverload_Kd,
+    CyclicBinding_Kd,
+    InvalidAssignment_Kd,
+    InaccessibleBinding_Kd,
+    InvalidCaptureBinding_Kd,
+    UnsupportedBinding_Kd,
+
     ConditionMustBeBool_Kd,
     InvalidCompileTimeCondition_Kd,
     UnknownCompileTimeName_Kd,

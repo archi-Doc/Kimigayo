@@ -41,6 +41,12 @@ public sealed class FunctionTypeKoto : TypeKoto
         this.ReturnType.WriteTo(ref builder);
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Parameters);
+        visitor.Visit(this.ReturnType);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
         => [this.Parameters, this.ReturnType];
 

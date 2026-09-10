@@ -32,6 +32,11 @@ public sealed class LoopKoto : ExpressionKoto
         this.Body.WriteIndentedTo(ref builder);
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Body);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
         => [this.Body];
 

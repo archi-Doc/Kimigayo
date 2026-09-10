@@ -42,6 +42,11 @@ public sealed class ArrayLiteralKoto : ExpressionKoto
         builder.Append(Constants.CloseBracketChar);
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.VisitMany(this.Elements);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
         => this.Elements;
 
@@ -120,6 +125,16 @@ public sealed class DictionaryLiteralKoto : ExpressionKoto
         }
 
         builder.Append(Constants.CloseBracketChar);
+    }
+
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        for (var entryIndex = 0; entryIndex < KotoVisitor.Count(this.Entries); entryIndex++)
+        {
+            var entry = this.Entries[entryIndex];
+            visitor.Visit(entry.Key);
+            visitor.Visit(entry.Value);
+        }
     }
 
     protected override IEnumerable<Koto> GetChildNodes()

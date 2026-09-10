@@ -91,6 +91,12 @@ public abstract class BinaryKoto : ExpressionKoto
         this.Right.WriteTo(ref builder);
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Left);
+        visitor.Visit(this.Right);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
         => [this.Left, this.Right];
 

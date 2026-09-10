@@ -169,18 +169,15 @@ public partial class Project
             projectKotonoha.AddSource(y);
         }
 
-        // Planned: establish scope environments through Directive Binding; bind declarations,
-        // names, types and overloads; specialize generics and select remaining directives.
-
-        // Validate control flow using facts available before general Binding.
-        // Pending obligations are retained by the analysis API for later Binding passes.
-        var controlFlow = compilation.AnalyzeControlFlow();
+        var binding = compilation.Bind();
+        compilation.Binding.ReportDiagnostics();
+        var controlFlow = compilation.AnalyzeControlFlow(compilation.Binding.TypeSystem);
         controlFlow.ReportDiagnostics();
 
         // Planned: ownership/lifetime/Origin analysis, lowering, backend IR, emission and linking.
         // This result certifies only the implemented front-end checks, not finalization or a binary.
 
-        return controlFlow.Issues.Count == 0 && !projectKotonoha.HasSourceErrors &&
+        return binding.IsComplete && controlFlow.PendingBinding.Count == 0 && controlFlow.Issues.Count == 0 && !projectKotonoha.HasSourceErrors &&
             !projectKotonoha.DiagnosticCollection.GetArray().Any(x => x.Entry.Severity == DiagnosticSeverity.Error);
     }
 }

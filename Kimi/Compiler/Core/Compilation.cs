@@ -82,6 +82,9 @@ public class Compilation
 
     private bool hasParsedSource;
 
+    /// <summary>Gets reusable semantic analysis storage for this compilation.</summary>
+    public Binding Binding => field ??= new(this);
+
     #endregion
 
     /// <summary>
@@ -231,6 +234,15 @@ public class Compilation
     public ControlFlowAnalysis AnalyzeControlFlow(ControlFlowTypeSystem? types = null)
         => ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto, types);
 
+    /// <summary>Runs provisional Binding, the reserved Mod stage, final Binding, and Bound checking.</summary>
+    /// <returns>The final Binding summary; incomplete semantics never certify success.</returns>
+    public BindingResult Bind()
+    {
+        this.Binding.Bind(BindingMode.Provisional);
+        this.RunMods();
+        return this.Binding.Bind(BindingMode.Final);
+    }
+
     internal bool TryGetIdentifier(ReadOnlySpan<char> text, [NotNullWhen(true)] out string? identifier)
         => this.identifiers.TryGetIdentifier(text, out identifier);
 
@@ -239,5 +251,12 @@ public class Compilation
     internal bool TryResolveValue(IdentifierNameKoto koto, out BasicValue basicValue)
     {
         return this.Variables.TryGetValue(koto.IdentifierName, out basicValue);
+    }
+
+    private void RunMods()
+    {
+        // Reserved boundary: execute each ready Mod once; after its append phase integrate
+        // declarations and call Binding.Bind(Provisional) before the next Mod reads semantics.
+        // No Mod API or execution is implemented yet. Never mutate syntax during final Binding.
     }
 }

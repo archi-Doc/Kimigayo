@@ -83,6 +83,18 @@ public sealed class ForKoto : ExpressionKoto
         this.Body.WriteIndentedTo(ref builder);
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        for (var bindingIndex = 0; bindingIndex < KotoVisitor.Count(this.bindings); bindingIndex++)
+        {
+            var binding = this.bindings[bindingIndex];
+            visitor.Visit(binding);
+        }
+
+        visitor.Visit(this.Iterable);
+        visitor.Visit(this.Body);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         foreach (var binding in this.bindings)
