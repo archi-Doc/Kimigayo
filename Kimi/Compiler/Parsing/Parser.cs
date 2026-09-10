@@ -1454,8 +1454,15 @@ CloseParameters:
 
     private static void ParseCompileTimeIfPrefix(ref TokenReader reader)
     {
+        if (reader.IsExcluded)
+        {
+            reader.Advance(2);
+            SkipCompileTimeHeaderRemainder(ref reader);
+            return;
+        }
+
         var attributes = reader.PopAttribute();
-        var sharp = reader.Read();
+        reader.Advance();
         _ = reader.TryConsume(TokenKind.If, out _, true);
         var condition = ParseRequiredCompileTimeCondition(ref reader);
         var invalidHeader = reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock);
@@ -1470,50 +1477,17 @@ CloseParameters:
             reader.PushAttribute(attributes);
         }
 
-        var span = SourceSpan.FromBounds(sharp.Span.Start, Math.Max(sharp.Span.End, condition.Span.End));
-
-        var result = EvaluateCompileTimeCondition(ref reader, condition);
-        if (invalidHeader)
+        var result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);
+        if (invalidHeader || result != CompileTimeConditionResult.True)
         {
-            result = CompileTimeConditionResult.Error;
+            reader.IsExcluded = true;
         }
-
-        switch (result)
-        {
-            case CompileTimeConditionResult.True:
-                break;
-
-            case CompileTimeConditionResult.False:
-            case CompileTimeConditionResult.Error:
-                reader.IsExcluded = true;
-                reader.ClearCompileTimeIfPrefixes();
-                break;
-
-            case CompileTimeConditionResult.Pending:
-                if (!reader.IsExcluded)
-                {
-                    reader.AddCompileTimeIfPrefix(new CompileTimeIfPrefix(span, condition));
-                }
-
-                break;
-        }
-    }
-
-    private static CompileTimeConditionResult EvaluateCompileTimeCondition(ref TokenReader reader, Koto condition)
-    {
-        var result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition, out var requiresBinding);
-        if (requiresBinding)
-        {
-            reader.RetainDirectiveCondition(condition);
-        }
-
-        return result;
     }
 
     /// <summary>Parses the arms in one explicit compile-time <c>#match</c> body.</summary>
     /// <param name="reader">The token reader positioned at <c>#match</c>.</param>
     /// <param name="declarationContext">The enclosing Declaration Container, when applicable.</param>
-    /// <returns>The selected body or a deferred Case Group.</returns>
+    /// <returns>The selected body or an invalid Case Group retained for error recovery.</returns>
     internal static Koto ParseCompileTimeMatch(ref TokenReader reader, DeclarationContainerKoto? declarationContext = null)
     {
         var context = reader.TakeContext();
@@ -1522,7 +1496,8 @@ CloseParameters:
         reader.Advance(2); // #match has no subject or condition on its header.
         var groupEnd = reader.CurrentTokenRange.Start;
         var arms = new List<CompileTimeCaseArmKoto>();
-        var results = new List<CompileTimeConditionResult>();
+        var selectedIndex = -1;
+        var invalidCondition = false;
         var fallbackSeen = false;
         var fallbackMustBeLastReported = false;
         var fallbackSpan = default(SourceSpan);
@@ -1577,6 +1552,7 @@ CloseParameters:
             {
                 reader.Diagnostic.Add(fallbackSpan, DiagnosticCode.CompileTimeCaseFallbackMustBeLast_Kd);
                 fallbackMustBeLastReported = true;
+                invalidSyntax = true;
             }
 
             var sharp = reader.Read();
@@ -1603,7 +1579,7 @@ CloseParameters:
             else
             {
                 condition = ParseRequiredCompileTimeCondition(ref reader);
-                result = EvaluateCompileTimeCondition(ref reader, condition);
+                result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);
             }
 
             if (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
@@ -1617,7 +1593,12 @@ CloseParameters:
                 ? ParseRequiredBlock(ref reader)
                 : ParseDeclarationDirectiveBody(ref reader, declarationContext);
             arms.Add(new CompileTimeCaseArmKoto(condition, body));
-            results.Add(result);
+            invalidCondition |= result == CompileTimeConditionResult.Error;
+            if (selectedIndex < 0 && result == CompileTimeConditionResult.True)
+            {
+                selectedIndex = arms.Count - 1;
+            }
+
             groupEnd = Math.Max(groupEnd, body.Span.End);
         }
 
@@ -1634,38 +1615,7 @@ CloseParameters:
         }
 
         reader.RestoreContext(context);
-        var selectionBlocked = false;
-        var selectedIndex = -1;
-        for (var i = 0; i < arms.Count; i++)
-        {
-            if (selectedIndex >= 0)
-            {
-                continue;
-            }
-
-            if (arms[i].Condition is null)
-            {
-                if (!selectionBlocked)
-                {
-                    selectedIndex = i;
-                }
-
-                continue;
-            }
-
-            switch (results[i])
-            {
-                case CompileTimeConditionResult.True when !selectionBlocked:
-                    selectedIndex = i;
-                    break;
-                case CompileTimeConditionResult.Pending:
-                case CompileTimeConditionResult.Error:
-                    selectionBlocked = true;
-                    break;
-            }
-        }
-
-        if (selectedIndex >= 0 && !invalidSyntax)
+        if (selectedIndex >= 0 && !invalidSyntax && !invalidCondition)
         {
             var selectedBody = arms[selectedIndex].Body;
             selectedBody.SetAttributeChain(reader.PopAttribute());
@@ -1676,7 +1626,7 @@ CloseParameters:
             ref reader,
             SourceSpan.FromBounds(groupStart, groupEnd),
             arms);
-        if (!invalidSyntax && !selectionBlocked && !fallbackSeen)
+        if (!invalidSyntax && !invalidCondition && !fallbackSeen)
         {
             group.AddDiagnostic(DiagnosticCode.NonExhaustiveCompileTimeCase_Kd);
         }
@@ -1702,7 +1652,6 @@ CloseParameters:
         {
             DeclarationContext = declarationContext.TokenKind,
         };
-        block.AddPendingDirectiveConditions(temporary.PendingDirectiveConditions.Select(x => x.Condition));
         return block;
     }
 
@@ -1719,34 +1668,6 @@ CloseParameters:
         {
             reader.Advance();
         }
-    }
-
-    /// <summary>Wraps a syntax node in deferred compile-time directives, innermost first.</summary>
-    /// <param name="codeContext">The owning code context.</param>
-    /// <param name="prefixes">The deferred directive prefixes.</param>
-    /// <param name="target">The controlled syntax node.</param>
-    /// <returns>The outermost directive, or <paramref name="target"/> when no directive was deferred.</returns>
-    internal static Koto ApplyCompileTimeIfPrefixes(
-        CodeContext codeContext,
-        List<CompileTimeIfPrefix>? prefixes,
-        Koto target)
-    {
-        if (prefixes is null)
-        {
-            return target;
-        }
-
-        for (var i = prefixes.Count - 1; i >= 0; i--)
-        {
-            var prefix = prefixes[i];
-            target = new CompileTimeIfKoto(
-                codeContext,
-                SourceSpan.FromBounds(prefix.Span.Start, Math.Max(prefix.Span.End, target.Span.End)),
-                prefix.Condition,
-                target);
-        }
-
-        return target;
     }
 
     /// <summary>Consumes one syntax node controlled by an early-false directive without constructing Koto nodes.</summary>
@@ -2096,22 +2017,6 @@ CloseParameters:
 
     internal static CodeBlockKoto ParseFunctionBlock(ref TokenReader reader, FunctionKoto? function)
     {
-        var enclosingConditions = reader.PendingDirectiveConditions;
-        reader.PendingDirectiveConditions = null;
-        try
-        {
-            var block = ParseFunctionBlockCore(ref reader, function);
-            block.AddPendingDirectiveConditions(reader.PendingDirectiveConditions);
-            return block;
-        }
-        finally
-        {
-            reader.PendingDirectiveConditions = enclosingConditions;
-        }
-    }
-
-    private static CodeBlockKoto ParseFunctionBlockCore(ref TokenReader reader, FunctionKoto? function)
-    {
         var start = reader.CurrentTokenRange;
         if (reader.CurrentTokenKind != TokenKind.StartBlock)
         {
@@ -2169,7 +2074,6 @@ CloseParameters:
             // Count source syntax before early conditional selection can discard its nodes.
             hasSourceItem = true;
             var isExcluded = reader.IsExcluded;
-            var compileTimeIfPrefixes = reader.TakeCompileTimeIfPrefixes();
             if (isExcluded)
             {
                 SkipExcludedSyntax(ref reader, executableContext: true);
@@ -2179,7 +2083,7 @@ CloseParameters:
             if (IsCompileTimeMatchStart(ref reader))
             {
                 var caseGroup = ParseCompileTimeMatch(ref reader);
-                items.Add(ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup));
+                items.Add(caseGroup);
                 seenExecutableItem = true;
                 continue;
             }
@@ -2198,7 +2102,7 @@ CloseParameters:
                     var constraint = ParseTypeConstraint(ref reader);
                     if (constraint is not null)
                     {
-                        function.AddTypeConstraint(ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, constraint));
+                        function.AddTypeConstraint(constraint);
                     }
 
                     continue;
@@ -2210,7 +2114,6 @@ CloseParameters:
             var item = ParseBlockItem(ref reader);
             if (item is not null)
             {
-                item = ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, item);
                 items.Add(item);
             }
 

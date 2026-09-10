@@ -16,6 +16,10 @@
   + Name="InvalidCompileTimeSetting_Kd"
     Message="Invalid compile-time setting '{0}': use a non-reserved Name and exactly one Bool, Integer, or String value"
 
+  + Name="UnknownCompileTimeName_Kd"
+    Message="Unknown compile-time environment Name '{0}'"
+    Fix="Use a built-in Compilation value or configure a Project setting before parsing"
+
   + Name="UnsupportedLanguageVersion_Kd"
     Message="Unsupported language version '{0}'; this compiler supports '{1}'"
 

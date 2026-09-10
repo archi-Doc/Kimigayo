@@ -124,7 +124,7 @@ public static partial class KotoHelper
             }
 
             // Deferred directives must be selected before their syntax participates.
-            if (node is CompileTimeIfKoto or CompileTimeMatchKoto or DeferredBlockKoto)
+            if (node is CompileTimeMatchKoto or DeferredBlockKoto)
             {
                 return false;
             }
@@ -224,7 +224,7 @@ public static partial class KotoHelper
                 return true;
             }
 
-            if (current is CompileTimeIfKoto or CompileTimeMatchKoto or DeferredBlockKoto or FunctionKoto or PropertyAccessorKoto)
+            if (current is CompileTimeMatchKoto or DeferredBlockKoto or FunctionKoto or PropertyAccessorKoto)
             {
                 return false;
             }

@@ -837,17 +837,13 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void DeferredCompileTimeIfIsKeptAsDedicatedKoto()
+    public void UnknownCompileTimeNameIsAnImmediateError()
     {
         var compilation = Compilation.CreateForTest();
         var kotonoha = compilation.Kotonoha;
-
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#if genericCondition\nvar specialized = 1");
-
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
-        var directive = Assert.IsType<CompileTimeIfKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
-        Assert.Equal("genericCondition", Assert.IsType<IdentifierNameKoto>(directive.Condition).IdentifierName);
-        Assert.Equal("specialized", Assert.IsType<FieldKoto>(directive.Target).NameKoto.IdentifierName);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Empty(GetChildren(kotonoha.RootKoto));
     }
 
     [Fact]
@@ -945,7 +941,6 @@ public class ParserRegressionTest
 
         Assert.Contains(kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
-        Assert.Empty(function.Body!.PendingDirectiveConditions);
 
         var bytes = TinyhandSerializer.Serialize(kotonoha);
         var restored = new Kotonoha(compilation);

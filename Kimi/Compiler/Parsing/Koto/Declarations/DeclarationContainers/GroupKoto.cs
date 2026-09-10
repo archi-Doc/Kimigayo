@@ -65,27 +65,11 @@ public sealed class GroupKoto : DeclarationContainerKoto
 
     private void ParseRoot(ref TokenReader reader)
     {
-        var enclosingConditions = reader.PendingDirectiveConditions;
-        reader.PendingDirectiveConditions = null;
-        try
-        {
-            this.ParseRootCore(ref reader);
-            this.AddPendingDirectiveConditions(reader.PendingDirectiveConditions);
-        }
-        finally
-        {
-            reader.PendingDirectiveConditions = enclosingConditions;
-        }
-    }
-
-    private void ParseRootCore(ref TokenReader reader)
-    {
         ConsumeBlockStart(ref reader);
         var hasNonAliasDeclaration = false;
         while (TryBeginDeclaration(ref reader))
         {
             var isExcluded = reader.IsExcluded;
-            var compileTimeIfPrefixes = reader.TakeCompileTimeIfPrefixes();
             if (isExcluded)
             {
                 Parser.SkipExcludedSyntax(ref reader, executableContext: true);
@@ -96,7 +80,6 @@ public sealed class GroupKoto : DeclarationContainerKoto
             {
                 hasNonAliasDeclaration = true;
                 var caseGroup = Parser.ParseCompileTimeMatch(ref reader);
-                caseGroup = Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, caseGroup);
                 this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, caseGroup);
                 continue;
             }
@@ -116,7 +99,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
                     if (!isExcluded)
                     {
                         var aliasKoto = new AliasKoto(ref reader, qualifiedName);
-                        this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, aliasKoto));
+                        this.AddLast(aliasKoto);
                     }
                 }
 
@@ -135,23 +118,6 @@ public sealed class GroupKoto : DeclarationContainerKoto
                 }
 
                 var state = reader.TakeContext();
-                if (compileTimeIfPrefixes is not null)
-                {
-                    var standalone = DeclarationContainerKoto.CreateStandalone(
-                        reader.CodeContext,
-                        TokenKind.Group,
-                        state,
-                        token.Span,
-                        name.ToString());
-                    if (reader.CurrentTokenKind == TokenKind.StartBlock)
-                    {
-                        standalone.Parse(ref reader);
-                    }
-
-                    this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, standalone));
-                    continue;
-                }
-
                 var groupKoto = this.GetOrAddDeclarationContainer(name, TokenKind.Group, state, token.Span);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
@@ -161,7 +127,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
                 continue;
             }
 
-            if (this.TryParseDeclarationContainer(ref reader, token, compileTimeIfPrefixes, isExcluded))
+            if (this.TryParseDeclarationContainer(ref reader, token, isExcluded))
             {
                 continue;
             }
@@ -175,7 +141,6 @@ public sealed class GroupKoto : DeclarationContainerKoto
 
             if (item is not null && !isExcluded)
             {
-                item = Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, item);
                 this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, item);
             }
 

@@ -36,8 +36,8 @@ public sealed class ControlFlowNodeInfo
 
 /// <summary>Analyzes lexical transfers, reachability, result coverage, and known result types.</summary>
 /// <remarks>
-/// Run after compile-time directive selection. Bodies with deferred directives are reported as pending,
-/// rather than treating conditional compilation as runtime branching. Supply bound type facts to discharge
+/// Run after compile-time directive selection. Bodies containing invalid directive groups are skipped.
+/// Supply bound type facts to discharge
 /// obligations which the default syntax-only type provider cannot decide.
 /// </remarks>
 public sealed class ControlFlowAnalysis
@@ -98,9 +98,9 @@ public sealed class ControlFlowAnalysis
         return node is BoolLiteralKoto b ? b.Value : null;
     }
 
-    private static bool HasDeferredDirective(Koto node)
-        => node is CompileTimeIfKoto or CompileTimeMatchKoto ||
-            node.ChildNodes.Any(child => child is not (FunctionKoto or PropertyAccessorKoto) && HasDeferredDirective(child));
+    private static bool HasInvalidDirective(Koto node)
+        => node is CompileTimeMatchKoto ||
+            node.ChildNodes.Any(child => child is not (FunctionKoto or PropertyAccessorKoto) && HasInvalidDirective(child));
 
     private static FieldKoto? GetConditionBinding(ParenthesizedKoto node)
     {
@@ -144,17 +144,8 @@ public sealed class ControlFlowAnalysis
         }
     }
 
-    private void RecordPendingDirectiveConditions(Koto scope)
-    {
-        foreach (var condition in scope.PendingDirectiveConditions)
-        {
-            this.pending.Add(condition.Condition);
-        }
-    }
-
     private Flow Visit(Koto node, bool reachable, ControlFlowType? expected = null)
     {
-        this.RecordPendingDirectiveConditions(node);
         expected ??= this.types.GetExpectedType(node);
         var referencedFunction = this.types.GetReferencedFunction(node);
         if (referencedFunction?.Modifier.HasFlag(ModifierKind.Unsafe) == true)
@@ -210,8 +201,8 @@ public sealed class ControlFlowAnalysis
                 }
 
                 return new(true, ControlFlowType.Unit);
-            case CompileTimeIfKoto or CompileTimeMatchKoto:
-                this.pending.Add(node);
+            case CompileTimeMatchKoto:
+                // Invalid groups already have parser diagnostics; their arms are not executable.
                 return new(true, null);
             case FieldKoto field:
                 var declared = this.types.GetDeclaredType(field.TypeKoto);
@@ -453,9 +444,8 @@ public sealed class ControlFlowAnalysis
             return;
         }
 
-        if (HasDeferredDirective(body))
+        if (HasInvalidDirective(body))
         {
-            this.pending.Add(node);
             return;
         }
 
@@ -702,7 +692,6 @@ public sealed class ControlFlowAnalysis
 
     private Flow VisitLabeledBlock(LabeledKoto labeled, CodeBlockKoto block, bool reachable, ControlFlowType? expected)
     {
-        this.RecordPendingDirectiveConditions(block);
         var required = KotoHelper.IsResultRequiringLabeledBlock(labeled);
         var boundary = this.Begin(block, required ? expected : ControlFlowType.Unit);
         this.nodes[block].IsResultRequiring = required;

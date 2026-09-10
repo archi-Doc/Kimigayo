@@ -6862,7 +6862,7 @@ The selected body of `example` is the same for every `T` in that Compilation. So
 
 **Excluded Syntax.** Tokenize every SourceDocument and diagnose all encoding, token, and indentation errors. Validate each reached #if’s complete Condition before deciding target grammar checks. In a False target, check only balanced Blocks, required executable bodies, and #match/#case structural placement and nonemptiness. Skip ordinary expression/declaration grammar; an incomplete initializer is allowed there. Parse every reached #match arm, applying the same nested False #if exception. Unselected arms skip ordinary semantic checking.
 
-Speculative parsing and internal Pending states cannot change acceptance. Suppress speculative ordinary-grammar errors in confirmed False #if targets; retain mandatory token/layout/structure errors. Early truth cannot hide invalid Condition operands or missing prepared Names. Unknown Names are Error, never False or an instantiation dependency, regardless of caching or evaluation schedule.
+Speculative parsing cannot change acceptance. Suppress speculative ordinary-grammar errors in confirmed False #if targets; retain mandatory token/layout/structure errors. Validate reached Conditions immediately against the prepared environment; truth cannot hide invalid operands or missing Names. Unknown Names are Error, never False or an instantiation dependency, regardless of caching or evaluation schedule.
 
 | Check | False `#if` target | Unselected arm of a reached `#match` |
 | --- | --- | --- |
@@ -7418,26 +7418,22 @@ The internal name `MacroKoto` does not define language semantics; `$` is the Com
 
 A Kotonoha tokenizes and parses each `SourceDocument`, merging declarations into one root Koto tree. Root executable syntax is placed as described under [root and nested containers](#611-root-and-nested-containers).
 
-#### A.2. Directive representation and validation obligations
+#### A.2. Immediate directive validation and selection
 
-The Parser represents directives explicitly rather than evaluating them as Attributes:
+The Parser validates and evaluates each reached Condition against the prepared Compilation environment during parsing. The result is True, False, or Error; there is no internal Pending state or later Directive Binding. Unknown Names are diagnosed at their original source locations immediately.
+
+A validated True #if contributes its Target directly; False contributes none. An invalid #if reports its Condition errors and skips its target for recovery. No #if wrapper or pending-condition storage is needed.
+
+A reached #match validates every explicit arm Condition and parses every arm under §19.3/§19.5, including nested Conditions in unselected arms except inside False #if targets. After successful validation, it contributes the first matching Block directly. Invalid Case Groups may retain this representation for error recovery:
 
 ```text
-CompileTimeIfKoto
-    Condition
-    Target
-
 CompileTimeMatchKoto
     CompileTimeCaseArmKoto[]
         Condition or fallback
         Block
 ```
 
-Retain directive Koto while validation is pending; validated True #if contributes its Target, False contributes none. Discarding syntax must preserve all obligations reached under §19.3: full Condition, original CodeContext, scope, and enclosing decisions. These obligations use only the prepared environment and do not cause ordinary Binding of excluded syntax. Diagnose unknown Names by finalization. Invalid Case Groups may remain for recovery; instantiation/implementation selection never reselects directives or mutates shared Koto.
-
-Early True/False does not discharge unresolved Names or dependencies: retain the Condition’s source and lookup/diagnostic context until [validation](#193-condition-evaluation-and-selection) completes. Pending is internal, not a language result or Type-dependent selection permission.
-
-Discharge Pending against the prepared environment or diagnose it before finalization. Tag speculative diagnostics by category and source containment to apply §19.5, preserving Condition errors in reached unselected #match arms. Eager, deferred, and cached parsing must agree on acceptance and mandatory diagnostic categories.
+Condition validation never invokes ordinary Binding of excluded syntax. Once reported, Condition diagnostics preserve their original SourceDocument and span even when the Condition node is discarded. Instantiation and implementation selection never reselect directives or mutate shared Koto. Eager, deferred, and cached source parsing must agree on acceptance and mandatory diagnostic categories under §19.5.
 
 #### A.3. Binding, caches, and incremental validity
 

@@ -237,10 +237,7 @@ public enum KotoKind : byte
     /// <summary>An <c>if</c> expression.</summary>
     If,
 
-    /// <summary>A deferred compile-time <c>#if</c> directive.</summary>
-    CompileTimeIf,
-
-    /// <summary>A deferred compile-time <c>#match</c> group.</summary>
+    /// <summary>An invalid compile-time <c>#match</c> group retained for recovery.</summary>
     CompileTimeMatch,
 
     /// <summary>A <c>match</c> expression.</summary>
@@ -376,13 +373,6 @@ public abstract class Koto
 
     /// <summary>Gets the parent node, or <see langword="null"/> for the root.</summary>
     public Koto? Parent { get; internal set; }
-
-    /// <summary>Gets conditions awaiting Directive Binding in this scope, independently of branch selection.</summary>
-    /// <remarks>
-    /// These validation obligations are separate from <see cref="ChildNodes"/> and ordinary Binding.
-    /// Only scope nodes (Declaration Containers and Blocks) retain obligations, so ordinary nodes carry no storage for them.
-    /// </remarks>
-    public virtual IReadOnlyList<PendingDirectiveCondition> PendingDirectiveConditions => [];
 
     /// <summary>Gets the direct syntax-tree children of this node.</summary>
     public IEnumerable<Koto> ChildNodes
@@ -554,23 +544,6 @@ public abstract class Koto
         }
     }
 
-    /// <summary>Retains validation obligations for this scope.</summary>
-    /// <param name="conditions">The conditions to retain, or <see langword="null"/>.</param>
-    /// <exception cref="InvalidOperationException">This node is not a scope and a condition was supplied.</exception>
-    internal virtual void AddPendingDirectiveConditions(IEnumerable<Koto>? conditions)
-    {
-        if (conditions is null)
-        {
-            return;
-        }
-
-        using var enumerator = conditions.GetEnumerator();
-        if (enumerator.MoveNext())
-        {
-            throw new InvalidOperationException("Only Declaration Containers and Blocks retain pending directive conditions.");
-        }
-    }
-
     internal bool ReplaceChild(Koto oldKoto, Koto newKoto)
     {
         if (this.AttributeChain == oldKoto && newKoto is AttributeKoto attribute)
@@ -690,21 +663,4 @@ public abstract class Koto
     /// <returns><see langword="true"/> when a child reference was replaced.</returns>
     protected virtual bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
         => false;
-
-    /// <summary>Appends validation obligations to a scope node's storage.</summary>
-    /// <param name="storage">The scope's lazily created storage.</param>
-    /// <param name="scope">The scope node.</param>
-    /// <param name="conditions">The conditions to retain, or <see langword="null"/>.</param>
-    private protected static void AddPendingDirectiveConditions(ref List<PendingDirectiveCondition>? storage, Koto scope, IEnumerable<Koto>? conditions)
-    {
-        if (conditions is null)
-        {
-            return;
-        }
-
-        foreach (var condition in conditions)
-        {
-            (storage ??= []).Add(new(condition, scope));
-        }
-    }
 }

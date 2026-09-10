@@ -5,7 +5,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
-/// <summary>Represents one arm of a deferred compile-time Case Group.</summary>
+/// <summary>Represents one arm of an invalid compile-time Case Group.</summary>
 public sealed class CompileTimeCaseArmKoto
 {
     /// <summary>Gets the arm condition, or <see langword="null"/> for <c>#case _</c>.</summary>
@@ -41,7 +41,7 @@ public sealed class CompileTimeCaseArmKoto
     }
 }
 
-/// <summary>Stores a compile-time <c>#match</c> whose selection is deferred or whose syntax is invalid.</summary>
+/// <summary>Stores a compile-time <c>#match</c> retained for error recovery after failed validation or selection.</summary>
 public sealed class CompileTimeMatchKoto : ExpressionKoto
 {
     /// <inheritdoc/>

@@ -37,7 +37,6 @@ public ref struct TokenReader
     private readonly ReadOnlySpan<Token> tokens;
     private readonly Token endToken;
     private Token currentToken;
-    private List<CompileTimeIfPrefix>? compileTimeIfPrefixes;
 
     /// <summary>
     /// Gets the current token position.
@@ -144,7 +143,6 @@ public ref struct TokenReader
         this.AttributeKoto = default;
         this.ModifierKind = default;
         this.IsExcluded = false;
-        this.compileTimeIfPrefixes = default;
         this.HasCompileTimeIfPrefix = false;
     }
 
@@ -609,12 +607,6 @@ public ref struct TokenReader
     /// <summary>Gets or sets a value indicating whether primitive type names are accepted in a directive condition.</summary>
     internal bool IsParsingCompileTimeCondition { get; set; }
 
-    /// <summary>Gets or sets validation obligations for the scope currently being parsed.</summary>
-    internal List<Koto>? PendingDirectiveConditions { get; set; }
-
-    internal void RetainDirectiveCondition(Koto condition)
-        => (this.PendingDirectiveConditions ??= []).Add(condition);
-
     /// <summary>Creates a bounded reader that cannot consume a following physical line or Block.</summary>
     /// <param name="tokenCount">The number of tokens owned by the inline body.</param>
     /// <returns>An independent reader over the same source and diagnostic destination.</returns>
@@ -658,24 +650,6 @@ public ref struct TokenReader
         this.currentToken = new Token(remainingKind, SourceSpan.FromBounds(range.End, this.currentToken.Span.End));
         return true;
     }
-
-    /// <summary>Adds a deferred compile-time directive to the current syntax prefix.</summary>
-    /// <param name="prefix">The directive and its parsed condition.</param>
-    internal void AddCompileTimeIfPrefix(CompileTimeIfPrefix prefix)
-        => (this.compileTimeIfPrefixes ??= []).Add(prefix);
-
-    /// <summary>Detaches the deferred compile-time directives for the current syntax node.</summary>
-    /// <returns>The detached directives, or <see langword="null"/> when none were deferred.</returns>
-    internal List<CompileTimeIfPrefix>? TakeCompileTimeIfPrefixes()
-    {
-        var prefixes = this.compileTimeIfPrefixes;
-        this.compileTimeIfPrefixes = default;
-        return prefixes;
-    }
-
-    /// <summary>Discards deferred directives when an outer condition excludes the syntax.</summary>
-    internal void ClearCompileTimeIfPrefixes()
-        => this.compileTimeIfPrefixes = default;
 
     private bool TryConsumeWithRecovery(TokenKind targetKind, out SourceSpan range, bool addDiagnostic)
     {

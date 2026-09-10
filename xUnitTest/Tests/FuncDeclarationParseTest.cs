@@ -17,6 +17,7 @@ public class FuncDeclarationParseTest
     public void ReportsMissingReturnTypeAtArrow(string source)
     {
         var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 

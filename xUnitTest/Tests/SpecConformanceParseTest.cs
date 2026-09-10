@@ -190,9 +190,7 @@ public class SpecConformanceParseTest
     }
 
     [Theory]
-    [InlineData(false, "unknown")]
     [InlineData(false, "true")]
-    [InlineData(true, "unknown")]
     [InlineData(true, "true")]
     public void DirectivesRetainDeclarationContext(bool match, string condition)
     {
@@ -206,7 +204,6 @@ public class SpecConformanceParseTest
         var sample = Assert.Single(parsed.RootKoto.NestedDeclarationContainers.OfType<StructKoto>());
         var body = Assert.Single(sample.Members) switch
         {
-            CompileTimeIfKoto conditional => Assert.IsType<CodeBlockKoto>(conditional.Target),
             CompileTimeMatchKoto cases => cases.Arms[0].Body,
             CodeBlockKoto block => block,
             _ => throw new InvalidOperationException(),
@@ -216,7 +213,7 @@ public class SpecConformanceParseTest
     }
 
     [Fact]
-    public void DeferredDirectiveDoesNotBecomeAnUnconditionalFunctionConstraint()
+    public void UnknownDirectiveDoesNotBecomeAnUnconditionalFunctionConstraint()
     {
         var parsed = Parse("""
             func inspect<T>(value: T)
@@ -224,10 +221,9 @@ public class SpecConformanceParseTest
                 T is Comparable
                 return
             """);
-        AssertValid(parsed);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(parsed.DiagnosticCollection.GetArray()).Entry.Name);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(parsed.GeneratedFunction!.Body!.Items));
-        Assert.IsType<CompileTimeIfKoto>(Assert.Single(function.TypeConstraints));
-        RoundTrip(parsed);
+        Assert.Empty(function.TypeConstraints);
     }
 
     [Fact]
@@ -324,7 +320,7 @@ public class SpecConformanceParseTest
     {
         var parsed = Parse("""
             contract Sequence
-                #if unknown
+                #if true
                 associate Element is Comparable
                 property count: i32 has get
             """);

@@ -35,7 +35,6 @@ public class CompilationSpecificationTest
         {
             var compilation = Parse($"#if {condition}\nvar excluded = 1");
             Assert.Contains(compilation.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
-            Assert.Empty(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
             Assert.Null(compilation.Kotonoha.GeneratedFunction);
         }
     }
@@ -51,7 +50,6 @@ public class CompilationSpecificationTest
     {
         var compilation = Parse($"#if {condition}\nvar selected = 1");
         Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        Assert.Empty(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
         Assert.IsType<FieldKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
     }
 
@@ -64,7 +62,6 @@ public class CompilationSpecificationTest
     {
         var compilation = Parse($"#if false and ({requirement})\nvar incomplete =");
         Assert.Contains(compilation.Kotonoha.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
-        Assert.Empty(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
         Assert.Null(compilation.Kotonoha.GeneratedFunction);
     }
 

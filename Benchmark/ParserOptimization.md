@@ -88,3 +88,29 @@ BenchmarkDotNet 0.15.8 / .NET 10.0.11 / Windows 11 でも測定した。変更�
 ## 検証
 
 `dotnet test xUnitTest/xUnitTest.csproj -c Release`：1348 件成功。変更前後のビルドでベンチマーク入力を解析し、`UnparseAll` の出力と診断（0 件）が一致することを確認した。
+
+# Directive simplification (2026-09-10)
+
+`#if` / `#match` の条件を、準備済みコンパイル環境だけで即時評価する。未知名はその場で `UnknownCompileTimeName_Kd` を報告する。論理演算の両辺と到達した `#match` の全条件を検証し、False `#if` の内部は検証しない。
+
+- 文法検証と値評価を1回の構文木走査に統合。
+- `PendingDirectiveCondition`、保存用リスト、スコープ間の退避・復元、制御フロー解析での回収を削除。前回の最適化でスコープノードに限定した保存フィールドも不要になった。
+- `CompileTimeIfKoto` と保留プレフィックスの生成・引き継ぎを削除。
+- `#match` の条件結果リストと選択用の再走査を削除。解析中に最初のTrueを記録し、全条件の検証後に選択する。
+
+`DirectiveBenchmark` の2入力で、変更前と変更後を別ディレクトリにReleaseビルドして比較した。Stopwatchによる簡易測定で、同一CPU（affinity mask 4）に固定、TieredCompilation無効、10,000回ウォームアップ後、300,000回 × 7ラウンドの中央値。割り当ては `GC.GetAllocatedBytesForCurrentThread` の差分。
+
+| 入力 | 時間・変更前 | 時間・変更後 | 割り当て・変更前 | 割り当て・変更後 |
+| --- | ---: | ---: | ---: | ---: |
+| `#if` | 2.254 µs | 2.275 µs | 2,291 B | 2,259 B |
+| `#match` | 2.480 µs | 2.368 µs | 3,027 B | 2,907 B |
+
+割り当て削減はそれぞれ32 B、120 B / 回。実行時間は `#if` がほぼ同程度、`#match` がこの測定で約4.5%短縮した。時間にはばらつきがあり、コンパイラ全体の速度向上率を示す値ではない。
+
+継続計測用のBenchmarkDotNetケースも追加した：
+
+```powershell
+dotnet run --project Benchmark/Benchmark.csproj -c Release -- --filter '*DirectiveBenchmark*'
+```
+
+検証：Debug・Releaseとも1,459テスト成功。Releaseのソリューションビルドは警告・エラー0件。短絡演算内の未知名、非選択アーム内の到達条件、False `#if` の内側と積み重ねたプレフィックス、診断位置と元文書、再デシリアライズ時の診断を確認した。

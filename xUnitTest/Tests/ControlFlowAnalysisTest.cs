@@ -153,11 +153,11 @@ public class ControlFlowAnalysisTest
     }
 
     [Fact]
-    public void DefersBodiesWithUnselectedCompileTimeDirectives()
+    public void EnvironmentDirectivesAreSelectedBeforeControlFlowAnalysis()
     {
-        var analysis = Analyze("func f() -> i32\n    #if later\n    return \"text\"\n    return 1");
+        var analysis = Analyze("func f() -> i32\n    #if false\n    return \"text\"\n    return 1");
         Assert.Empty(analysis.Issues);
-        Assert.Contains(analysis.PendingBinding, x => x is FunctionKoto { Name: "f" });
+        Assert.Empty(analysis.PendingBinding);
     }
 
     [Fact]

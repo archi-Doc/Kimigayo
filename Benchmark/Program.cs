@@ -15,6 +15,7 @@ public class Program
         {
             typeof(ParseBenchmark),
             typeof(FrontEndBenchmark),
+            typeof(DirectiveBenchmark),
             typeof(TokenReaderBenchmark),
             typeof(SourceDocumentBenchmark),
             typeof(HashedStringBenchmark),

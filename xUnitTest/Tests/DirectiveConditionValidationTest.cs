@@ -35,7 +35,6 @@ public class DirectiveConditionValidationTest
                     Assert.Contains(
                         compilation.Kotonoha.DiagnosticCollection.GetArray(),
                         x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
-                    Assert.Empty(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
                 }
             }
         }
@@ -69,7 +68,6 @@ public class DirectiveConditionValidationTest
         Assert.Contains($"return \"{selected}\"", written);
         Assert.DoesNotContain("#if", written);
         Assert.DoesNotContain("#match", written);
-        Assert.Empty(function.Body!.PendingDirectiveConditions);
     }
 
     [Theory]
@@ -95,63 +93,41 @@ public class DirectiveConditionValidationTest
     }
 
     [Theory]
-    [InlineData("false and missing", false)]
-    [InlineData("missing and false", false)]
-    [InlineData("true or missing", true)]
-    [InlineData("missing or true", true)]
-    [InlineData("not (false and missing)", true)]
-    [InlineData("not (true or missing)", false)]
-    [InlineData("(false and missing) == false", true)]
-    public void EarlyTruthRetainsValidationWithoutDeferringSelection(string condition, bool selected)
+    [InlineData("missing")]
+    [InlineData("missing == true")]
+    [InlineData("true != missing")]
+    [InlineData("false and missing")]
+    [InlineData("missing and false")]
+    [InlineData("true or missing")]
+    [InlineData("missing or true")]
+    [InlineData("not (false and missing)")]
+    [InlineData("not (true or missing)")]
+    [InlineData("(false and missing) == false")]
+    public void UnknownNamesAreErrorsEvenWhenTruthIsKnown(string condition)
     {
-        // The incomplete target proves that an early-false condition still skips target parsing.
-        var target = selected ? "var retained = 1" : "var incomplete =";
-        var compilation = Parse($"#if {condition}\n{target}");
-        var root = compilation.Kotonoha.RootKoto;
-        var obligation = Assert.Single(root.PendingDirectiveConditions);
-
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        Assert.Same(root, obligation.Scope);
-        Assert.Same(compilation.Kotonoha, obligation.Condition.CodeContext.Kotonoha);
-        Assert.Equal(condition, obligation.Condition.ToString());
-        Assert.Contains(obligation.Condition, compilation.AnalyzeControlFlow().PendingBinding);
-        if (selected)
-        {
-            Assert.IsType<FieldKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
-        }
-        else
-        {
-            Assert.Null(compilation.Kotonoha.GeneratedFunction);
-        }
+        var compilation = Parse($"#if {condition}\nvar value = 1");
+        var diagnostic = Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), diagnostic.Entry.Name);
+        Assert.Contains("missing", diagnostic.Message);
+        Assert.Null(compilation.Kotonoha.GeneratedFunction);
+        Assert.Empty(compilation.AnalyzeControlFlow().PendingBinding);
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void BuildConfigurationDoesNotEraseUnknownNameObligations(bool debug)
+    public void BuildConfigurationDoesNotHideUnknownNames(bool debug)
     {
         var compilation = Parse("#if debug and missing\nvar conditional = 1", debug);
-
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        var obligation = Assert.Single(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
-        Assert.Equal("missing", Assert.IsType<IdentifierNameKoto>(Assert.IsType<AndKoto>(obligation.Condition).Right).IdentifierName);
-        if (debug)
-        {
-            var directive = Assert.IsType<CompileTimeIfKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
-            Assert.Same(obligation.Condition, directive.Condition);
-            Assert.Same(directive, directive.Condition.Parent);
-        }
-        else
-        {
-            Assert.Null(compilation.Kotonoha.GeneratedFunction);
-        }
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.Null(compilation.Kotonoha.GeneratedFunction);
     }
 
     [Theory]
     [InlineData("missing")]
     [InlineData("false and missing")]
     [InlineData("true or missing")]
-    public void SelectedCaseGroupRetainsLaterArmConditions(string laterCondition)
+    public void SelectedCaseGroupValidatesLaterArmConditions(string laterCondition)
     {
         var compilation = Parse($"""
             func select()
@@ -165,14 +141,8 @@ public class DirectiveConditionValidationTest
             """);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
         var body = function.Body!;
-        var obligation = Assert.Single(body.PendingDirectiveConditions);
-
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        Assert.Equal(laterCondition, obligation.Condition.ToString());
-        Assert.Same(body, obligation.Scope);
-        Assert.IsType<CodeBlockKoto>(Assert.Single(body.Items));
-        Assert.Contains(obligation.Condition, ControlFlowAnalysis.Analyze(function).PendingBinding);
-        Assert.Empty(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.IsType<CompileTimeMatchKoto>(Assert.Single(body.Items));
     }
 
     [Fact]
@@ -186,17 +156,15 @@ public class DirectiveConditionValidationTest
     }
 
     [Fact]
-    public void ExcludingAStackedPrefixDoesNotLoseItsCondition()
+    public void ExcludingAStackedPrefixDoesNotHideAnEarlierError()
     {
         var compilation = Parse("#if missing\n#if false\nvar incomplete =");
-
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        Assert.Equal("missing", Assert.Single(compilation.Kotonoha.RootKoto.PendingDirectiveConditions).Condition.ToString());
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
         Assert.Null(compilation.Kotonoha.GeneratedFunction);
     }
 
     [Fact]
-    public void NestedScopesAndDeclarationDirectiveBodiesKeepTheirOwnObligations()
+    public void NestedScopesDiagnoseUnknownNamesImmediately()
     {
         var compilation = Parse("""
             struct Container<T>
@@ -210,48 +178,93 @@ public class DirectiveConditionValidationTest
                     var incomplete =
                     ()
             """);
-        var structure = Assert.Single(compilation.Kotonoha.RootKoto.NestedDeclarationContainers);
-        var declarationBody = Assert.IsType<CodeBlockKoto>(structure.Members[0]);
-        var function = Assert.IsType<FunctionKoto>(structure.Members[1]);
-
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        Assert.Empty(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
-        Assert.Equal("false and outerMissing", Assert.Single(structure.PendingDirectiveConditions).Condition.ToString());
-        Assert.Same(structure, Assert.Single(structure.PendingDirectiveConditions).Scope);
-        Assert.Equal("false and innerMissing", Assert.Single(declarationBody.PendingDirectiveConditions).Condition.ToString());
-        Assert.Same(declarationBody, Assert.Single(declarationBody.PendingDirectiveConditions).Scope);
-        Assert.Same(function.Body, Assert.Single(function.Body!.PendingDirectiveConditions).Scope);
-        Assert.Same(function, function.Body.Parent);
+        var diagnostics = compilation.Kotonoha.DiagnosticCollection.GetArray();
+        Assert.Equal(3, diagnostics.Length);
+        Assert.All(diagnostics, x => Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), x.Entry.Name));
+        Assert.Contains(diagnostics, x => x.Message.Contains("outerMissing", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, x => x.Message.Contains("innerMissing", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, x => x.Message.Contains("functionMissing", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ExcludedTargetDoesNotCreateNestedValidationObligations()
+    public void ExcludedTargetDoesNotValidateNestedConditions()
     {
         var compilation = Parse("#if false\n    #if nestedMissing\n    var incomplete =");
 
         Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        Assert.Empty(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
         Assert.Null(compilation.Kotonoha.GeneratedFunction);
     }
 
+    [Theory]
+    [InlineData("#if missing")]
+    [InlineData("#if false and missing")]
+    [InlineData("#if true or missing")]
+    [InlineData("#if T is i32")]
+    public void FalseStackedPrefixSkipsInnerCondition(string inner)
+    {
+        var compilation = Parse($"#if false\n{inner}\nvar incomplete =\nvar retained = 1");
+        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Equal("retained", Assert.IsType<FieldKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items)).NameKoto.IdentifierName);
+    }
+
+    [Theory]
+    [InlineData("#if missing\nvar ignored = 1", true)]
+    [InlineData("#if false\n    #if missing\n    var incomplete =", false)]
+    [InlineData("#if false\n#if missing\nvar incomplete =", false)]
+    public void UnselectedMatchArmsValidateReachedNestedConditions(string nested, bool error)
+    {
+        var source = "#match\n    #case true\n        ()\n    #case _\n        " + nested.Replace("\n", "\n        ");
+        var compilation = Parse(source);
+        var diagnostics = compilation.Kotonoha.DiagnosticCollection.GetArray();
+        if (error)
+        {
+            Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(diagnostics).Entry.Name);
+        }
+        else
+        {
+            Assert.Empty(diagnostics);
+        }
+    }
+
+    [Theory]
+    [InlineData("firstMissing and secondMissing")]
+    [InlineData("firstMissing or secondMissing")]
+    [InlineData("firstMissing == secondMissing")]
+    [InlineData("firstMissing != secondMissing")]
+    public void UnknownNamesOnBothSidesAreDiagnosedAtTheirSourceSpans(string condition)
+    {
+        var source = $"#if {condition}\nvar ignored = 1";
+        var diagnostics = Parse(source).Kotonoha.DiagnosticCollection.GetArray();
+        Assert.Equal(2, diagnostics.Length);
+        Assert.All(diagnostics, x => Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), x.Entry.Name));
+        Assert.Contains(diagnostics, x => x.Span.Start == source.IndexOf("firstMissing", StringComparison.Ordinal) && x.Span.Length == "firstMissing".Length);
+        Assert.Contains(diagnostics, x => x.Span.Start == source.IndexOf("secondMissing", StringComparison.Ordinal) && x.Span.Length == "secondMissing".Length);
+    }
+
+    [Theory]
+    [InlineData("var missing = true\n#if missing\nvar ignored = 1")]
+    [InlineData("func f<T>()\n    #if T\n        ()")]
+    public void SourceDeclarationsCannotSupplyConditionValues(string source)
+    {
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(Parse(source).Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+    }
+
     [Fact]
-    public void LabeledBlockReportsValidationPendingWithoutChangingControlFlow()
+    public void LabeledBlockReportsUnknownNameWithoutChangingControlFlow()
     {
         var compilation = Parse("work:\n    #if false and missing\n    var incomplete =\n    exit from work");
         var labeled = Assert.IsType<LabeledKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
         var body = Assert.IsType<CodeBlockKoto>(labeled.Target);
-        var obligation = Assert.Single(body.PendingDirectiveConditions);
         var analysis = compilation.AnalyzeControlFlow();
 
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
         Assert.Empty(analysis.Issues);
-        Assert.Contains(obligation.Condition, analysis.PendingBinding);
-        Assert.Same(body, obligation.Scope);
+        Assert.Empty(analysis.PendingBinding);
         Assert.Single(body.Items);
     }
 
     [Fact]
-    public void AppendingSourcesPreservesEachConditionsOriginalDocument()
+    public void AppendingSourcesPreservesEachDiagnosticsOriginalDocument()
     {
         var compilation = Compilation.CreateForTest();
         var context = compilation.Kotonoha.CreateCodeContext();
@@ -260,15 +273,14 @@ public class DirectiveConditionValidationTest
         context.Parse(compilation.Kotonoha.RootKoto, first);
         context.Parse(compilation.Kotonoha.RootKoto, second);
 
-        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        Assert.Collection(
-            compilation.Kotonoha.RootKoto.PendingDirectiveConditions,
-            obligation => Assert.Same(first, obligation.SourceDocument),
-            obligation => Assert.Same(second, obligation.SourceDocument));
+        var diagnostics = compilation.Kotonoha.DiagnosticCollection.GetArray();
+        Assert.Equal(2, diagnostics.Length);
+        Assert.Contains(diagnostics, x => ReferenceEquals(first, x.SourceDocument) && x.Message.Contains("firstMissing", StringComparison.Ordinal));
+        Assert.Contains(diagnostics, x => ReferenceEquals(second, x.SourceDocument) && x.Message.Contains("secondMissing", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void SerializationRebuildsValidationObligationsWithoutDuplication()
+    public void SerializationRebuildsImmediateDiagnosticsWithoutDuplication()
     {
         var compilation = Parse("#if false and missing\nvar incomplete =");
         var bytes = TinyhandSerializer.Serialize(compilation.Kotonoha);
@@ -276,11 +288,9 @@ public class DirectiveConditionValidationTest
         TinyhandSerializer.DeserializeObject(bytes, ref restored);
         restored!.OnDeserialized(compilation);
         restored.OnDeserialized(compilation);
-        var obligation = Assert.Single(restored.RootKoto.PendingDirectiveConditions);
-
-        Assert.Same(restored.RootKoto, obligation.Scope);
-        Assert.Same(restored, obligation.Condition.CodeContext.Kotonoha);
-        Assert.Equal("false and missing", obligation.Condition.ToString());
+        var diagnostic = Assert.Single(restored.DiagnosticCollection.GetArray());
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), diagnostic.Entry.Name);
+        Assert.Contains("missing", diagnostic.Message);
         Assert.Null(restored.GeneratedFunction);
     }
 
@@ -288,12 +298,12 @@ public class DirectiveConditionValidationTest
     [InlineData("false and true")]
     [InlineData("true or false")]
     [InlineData("windows and pointerWidth == 64")]
-    public void FullyValidatedConditionsDoNotCreateBindingObligations(string condition)
+    public void FullyValidatedConditionsDoNotRequireBinding(string condition)
     {
         var compilation = Parse($"#if {condition}\nvar value = 1");
 
         Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
-        Assert.Empty(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
+        Assert.Empty(compilation.AnalyzeControlFlow().PendingBinding);
     }
 
     private static Compilation Parse(string source, bool debug = false)

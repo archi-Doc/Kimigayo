@@ -57,7 +57,7 @@ public class CompileTimeMatchParseTest
     }
 
     [Fact]
-    public void NestedMatchesHaveIndependentBoundariesAndRoundTrip()
+    public void InvalidNestedMatchesPreserveBoundariesForRecovery()
     {
         var compilation = Parse("""
             #match
@@ -73,7 +73,8 @@ public class CompileTimeMatchParseTest
                 #case siblingCondition
                     ()
             """);
-        AssertValid(compilation);
+        Assert.Equal(3, compilation.Kotonoha.DiagnosticCollection.GetArray().Length);
+        AssertDiagnostic(compilation, DiagnosticCode.UnknownCompileTimeName_Kd);
         var items = compilation.Kotonoha.GeneratedFunction!.Body!.Items;
         var outer = Assert.IsType<CompileTimeMatchKoto>(items[0]);
         var inner = Assert.IsType<CompileTimeMatchKoto>(Assert.Single(outer.Arms[0].Body.Items));
@@ -81,13 +82,12 @@ public class CompileTimeMatchParseTest
         Assert.Equal(2, inner.Arms.Count);
         Assert.Single(Assert.IsType<CompileTimeMatchKoto>(items[1]).Arms);
         Assert.All(outer.ChildNodes, child => Assert.Same(outer, child.Parent));
-        Assert.Same(outer.Arms[0].Body, Assert.Single(outer.Arms[0].Body.PendingDirectiveConditions).Scope);
-        Assert.Equal(2, compilation.Kotonoha.RootKoto.PendingDirectiveConditions.Count);
 
         var written = outer.ToString();
         Assert.StartsWith("#match\n", written);
         var restored = Parse(written);
-        AssertValid(restored);
+        Assert.Equal(2, restored.Kotonoha.DiagnosticCollection.GetArray().Length);
+        AssertDiagnostic(restored, DiagnosticCode.UnknownCompileTimeName_Kd);
         var restoredMatch = Assert.IsType<CompileTimeMatchKoto>(Assert.Single(restored.Kotonoha.GeneratedFunction!.Body!.Items));
         Assert.Equal(written, restoredMatch.ToString());
         Assert.Equal(0, outer.Span.Start);
@@ -152,23 +152,15 @@ public class CompileTimeMatchParseTest
             """);
 
         AssertValid(compilation);
-        Assert.Empty(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
         Assert.Equal("retained", SelectedFieldName(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items)));
     }
 
     [Fact]
-    public void DeferredIfControlsTheEntireMatchAsOneItem()
+    public void UnknownIfRejectsTheEntireMatchAsOneItem()
     {
         var compilation = Parse("#if outerCondition\n#match\n    #case innerCondition\n        ()\n    #case _\n        ()\n#match\n    #case _\n        ()");
-        AssertValid(compilation);
-        var items = compilation.Kotonoha.GeneratedFunction!.Body!.Items;
-        var conditional = Assert.IsType<CompileTimeIfKoto>(items[0]);
-        var match = Assert.IsType<CompileTimeMatchKoto>(conditional.Target);
-
-        Assert.Equal(2, match.Arms.Count);
-        Assert.IsType<CodeBlockKoto>(items[1]);
-        Assert.Same(conditional, match.Parent);
-        Assert.All(compilation.Kotonoha.RootKoto.PendingDirectiveConditions, obligation => Assert.Same(compilation.Kotonoha.RootKoto, obligation.Scope));
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
+        Assert.IsType<CodeBlockKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
     }
 
     [Theory]
@@ -196,7 +188,7 @@ public class CompileTimeMatchParseTest
     }
 
     [Fact]
-    public void ContractConditionsKeepTheContractLookupContext()
+    public void ContractConditionsRejectUnknownEnvironmentNames()
     {
         var compilation = Parse("""
             contract C
@@ -207,11 +199,10 @@ public class CompileTimeMatchParseTest
                         property other: i32 has get
             """);
 
-        AssertValid(compilation);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
         var contract = Assert.Single(compilation.Kotonoha.RootKoto.NestedDeclarationContainers);
-        Assert.Same(contract, Assert.Single(contract.PendingDirectiveConditions).Scope);
-        Assert.Empty(compilation.Kotonoha.RootKoto.PendingDirectiveConditions);
-        Assert.IsType<PropertyKoto>(Assert.Single(Assert.IsType<CodeBlockKoto>(Assert.Single(contract.Members)).Items));
+        var group = Assert.IsType<CompileTimeMatchKoto>(Assert.Single(contract.Members));
+        Assert.All(group.Arms, arm => Assert.IsType<PropertyKoto>(Assert.Single(arm.Body.Items)));
     }
 
     private static string SelectedFieldName(Koto item)

@@ -12,6 +12,7 @@ public enum DiagnosticCode
 
     ConditionMustBeBool_Kd,
     InvalidCompileTimeCondition_Kd,
+    UnknownCompileTimeName_Kd,
     InvalidCompileTimeSetting_Kd,
     UnsupportedLanguageVersion_Kd,
     CompileTimeCaseOutsideMatch_Kd,
