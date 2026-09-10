@@ -102,7 +102,7 @@ User-defined Types, Contracts, and Declaration Containers conventionally use Pas
 | `$` | Selects the Composition Root; it is not a macro prefix. |
 | `;` | Forbidden outside comments and literals; never a statement or Type separator. |
 
-Types combine Semantics, a Core Type or object View Target, and Origins; see [Types and values](#3-types-and-values) for composition and omission rules. Examples are independent unless explicitly connected. Application-specific Types and APIs are assumed declarations, not required library interfaces. `text` fences may show conceptual storage or compiler notation; lines marked Error intentionally violate a rule.
+Types combine Semantics, a Core or object View Target, and Origins; see [Types and values](#3-types-and-values) for composition and omission rules. Examples are independent unless explicitly connected. Application-specific Types and APIs are assumed declarations, not required library interfaces. `text` fences may show conceptual storage or compiler notation; lines marked Error intentionally violate a rule.
 
 #### 1.3. Reading the rules
 
@@ -490,31 +490,65 @@ After the opening run, the first maximal quote run of length M >= N terminates t
 
 ### 3. Types and values
 
-An ordinary **Type** combines Type Semantics, a Core Type, and Origins. Value borrows and raw pointers can recursively enclose a complete Type under [nested Semantics](#336-nested-semantics-and-type-grouping). Object Types additionally admit runtime-contract View Targets under [object views](#335-object-views-and-identity). The single-layer form is:
+An ordinary **Type** combines Semantics, a Core, and any required Origins. Its single-layer form is:
 
 ```text
-semantics/CoreType from origin
+Type = Semantics/Core from Origin
 ```
 
-| Component | Meaning |
+| Term | Meaning |
 | --- | --- |
-| Type Semantics | How the value is represented, owned, accessed, or used. |
-| Core Type | What the value is. |
-| Origin | Where the value derives from; constrains its lifetime or validity. |
+| Type | The complete type, including Semantics, its target, and all Origin dependencies. |
+| Semantics | The value's representation, ownership, borrowing, access, and safety rules. |
+| Core | The component that defines the value's kind, structure, and identity; formerly called Core Type. |
+| Origin | The set of program points where a borrow is guaranteed valid; constrains borrows and values that retain them. |
 
-For example, `ref/Dog from owner` is a shared borrow of a `Dog` whose validity derives from `owner`. A Core Type or valid object View Target is required; Type Semantics and Origin may be omitted when determined by the language or context.
+For example, `ref/Dog from source` has Semantics `ref`, Core `Dog`, and Origin `source`. Semantics and Origins may be omitted only under the language's inference and elision rules; not every layer has an Origin.
 
-Kimigayo provides a fixed set of primitive Core Types and user-defined named Core Types.
+A Core is distinct from the **outer** Semantics and Origins. Its elements and generic arguments may contain complete Types: the Core of `owner/(i32, ref/Dog from source)` is a Tuple whose second element retains its borrow and Origin.
 
-A structure is a user-defined composite Core Type introduced by a [`struct` declaration](#62-structure-declarations).
+The basic form has two extensions. `ref`, `uniq`, and `unsafe` may enclose a complete Type, as in `ref/obj/Dog`; see [nested Semantics](#336-nested-semantics-and-type-grouping). Object Semantics may target a permitted runtime Contract View instead of a Core; the Contract itself is not a Core. See [object views](#335-object-views-and-identity).
 
-#### 3.1. Primitive core types
+The following tree classifies components, not inheritance relationships or legal combinations:
 
-Primitive Core Types are built in. Listed sizes are storage sizes.
+```text
+Type
+├─ Semantics
+│  ├─ Value: owner
+│  ├─ Value Borrow: ref, uniq
+│  ├─ Object: obj, rc, arc
+│  ├─ Object Borrow: objref, objuniq
+│  └─ Unsafe: unsafe
+├─ Core
+│  ├─ Scalar: Integer, Floating-point, Boolean, Character
+│  ├─ String
+│  ├─ Unit
+│  ├─ Never
+│  ├─ Struct
+│  ├─ Enum
+│  ├─ Tuple
+│  ├─ Fixed Array: [N of T]
+│  ├─ Callable
+│  │  ├─ Function Item
+│  │  ├─ Concrete Closure
+│  │  └─ Common Function
+│  └─ Other named examples: Array<T>, Dictionary<K, V>, Slice<T>
+└─ Origin
+   ├─ Derived from a borrow source
+   ├─ Declared abstract Origin
+   ├─ Intersection of Origins
+   └─ static
+```
 
-**Primitive scalar** is the closed subset consisting of the integer Types (`i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`), floating-point Types (`f32`, `f64`), `bool`, and `char`. `string`, Unit, and Never are not Primitive scalars. This term is a specification category, not a new source-level Type or Constraint name.
+Named examples do not introduce separate declaration forms or mutually exclusive categories. Structs and enums follow §6; arrays follow [arrays and slices](#4-arrays-indexing-and-slices). The **Core Kotonoha** in §22 is the language's foundation module, distinct from a Type's Core.
 
-Primitive scalar operations use the [generic code generation policy](#213-generic-code-generation). Its default automatic specialization preserves the selected implementation's meaning; it is distinct from an explicitly declared full specialization.
+#### 3.1. Primitive cores
+
+Primitive Cores are built in. Listed sizes are storage sizes.
+
+**Scalar** (short for **Primitive scalar**) is the closed subset consisting of the integer Cores (`i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`), floating-point Cores (`f32`, `f64`), `bool`, and `char`. `string`, Unit, and Never are not Scalars. Scalar is a specification category, not a source-level Type or Constraint name.
+
+Scalar operations use the [generic code generation policy](#213-generic-code-generation). Its default automatic specialization preserves the selected implementation's meaning; it is distinct from an explicitly declared full specialization.
 
 ##### 3.1.1. Integer types
 
@@ -574,7 +608,7 @@ Encoding one `char` as UTF-8 produces one to four bytes:
 
 The source literal `'€'` occupies five bytes (`27 E2 82 AC 27`), including its three-byte UTF-8 content. Its value is U+20AC, stored as a four-byte `char`; encoded length and storage size differ.
 
-`string` is the built-in Core Type for UTF-8 text. Its exact in-memory container and storage layout are implementation-defined. Owned `string` is always non-Copy; see [Copy capability](#351-copy-capability-and-explicit-duplication).
+`string` is the built-in Core for UTF-8 text. Its exact in-memory container and storage layout are implementation-defined. Owned `string` is always non-Copy; see [Copy capability](#351-copy-capability-and-explicit-duplication).
 
 ##### 3.1.5. Unit and never types
 
@@ -586,7 +620,7 @@ An expression with no reachable path that completes normally has Type Never, whi
 
 #### 3.2. Compound types
 
-A named Core Type may be qualified with dots and may have generic arguments.
+A named Core may be qualified with dots and may have generic arguments.
 
 ```kimi
 A.B<T, U>
@@ -613,13 +647,13 @@ A Function Type consists of a parenthesized **Function Parameter List**, `->`, a
 
 A **Function Value** is a callable value. Distinguish its concrete Type from a common **Function Type** `(A1, ..., An) -> R`:
 
-| Core Type | Identity and environment | Owned-value classification |
+| Core | Identity and environment | Owned-value classification |
 | --- | --- | --- |
 | Function Item Type | One resolved function declaration and instantiation; no runtime capture environment | Copy, Owned, Shared call |
 | Concrete Closure Type | One anonymous-function expression and instantiation; stores its captures and internal call signature | Copy exactly when every capture's complete Type is Copy |
 | Common Function Type | A shared calling contract and an owned, type-erased environment | Non-Copy, even for an empty or Copy environment |
 
-Repeated evaluation of the same anonymous-function expression with the same type arguments produces the same anonymous Core Type; distinct expressions have distinct Types even with identical text and signatures. Each value retains its own Origin bindings. A Closure's environment is compiler-managed storage, not a user-accessible struct; no user-defined `deinit` can be added to the generated Type.
+Repeated evaluation of the same anonymous-function expression with the same type arguments produces the same anonymous Core; distinct expressions have distinct Types even with identical text and signatures. Each value retains its own Origin bindings. A Closure's environment is compiler-managed storage, not a user-accessible struct; no user-defined `deinit` can be added to the generated Type.
 
 The initial common Function Type requires an `Owned` environment, exposes only Shared call, and cannot return a borrow dependent on its hidden environment receiver. Its arguments and results need not all be owned values. Concrete Closures retain their actual receiver and lifetime contracts; see [function expressions](#76-function-expressions) and [callable constraints](#86-callable-constraints).
 
@@ -634,13 +668,11 @@ An empty environment or `func []` does not imply purity, a function-pointer ABI,
 
 #### 3.3. Type semantics
 
-Type Semantics specify the ownership, borrowing, layout, and safety properties of a typed value.
-
-The single-layer syntax is `Semantics/CoreType`, extended to object View Targets below. Semantics prefixes associate to the right; value-borrow and pointer prefixes may enclose a complete inner Type. An unparenthesized `from Origin` annotates the outermost layer. See [nested Semantics](#336-nested-semantics-and-type-grouping) for layer boundaries and permitted combinations.
+Semantics prefixes associate to the right. An unparenthesized `from Origin` annotates the outermost layer. See [Type composition](#3-types-and-values) for the basic form and [nested Semantics](#336-nested-semantics-and-type-grouping) for layer boundaries and permitted combinations.
 
 Only a declared Semantics binding may occupy a generic Semantics position. A pair parameter `<s/T>` binds one complete Type and exposes its outer Semantics and direct target; [generic Type parameters](#81-generic-type-parameters) define this correspondence. Syntax position alone never changes a parameter's kind.
 
-In the syntax below, `T` denotes a Core Type; in object forms it may also denote a valid runtime-contract View Target.
+In the syntax below, `T` denotes a Core; in object forms it may also denote a valid runtime-contract View Target.
 
 | Category      | Semantics    | Syntax         | Layout or Meaning                     |
 | ------------- | ------------ | -------------- | ------------------------------------- |
@@ -654,7 +686,7 @@ In the syntax below, `T` denotes a Core Type; in object forms it may also denote
 | Object Borrow | ExclusiveRef | `objuniq/T`    | Exclusive mutable borrow of an object |
 | Unsafe        | Pointer      | `unsafe/T`     | Unsafe pointer                        |
 
-The source-level Semantics categories are closed sets, as follows. These names occupy the Type namespace's Requirement role when the subject is a Semantics binding; they are neither Core Types nor concrete Semantics prefixes. In that role their built-in meaning cannot be shadowed; elsewhere they remain ordinary contextual Names. A category cannot be written as a value Type or shorthand adaptation target.
+The source-level Semantics categories are closed sets, as follows. These names occupy the Type namespace's Requirement role when the subject is a Semantics binding; they are neither Cores nor concrete Semantics prefixes. In that role their built-in meaning cannot be shadowed; elsewhere they remain ordinary contextual Names. A category cannot be written as a value Type or shorthand adaptation target.
 
 A Requirement on a Semantics binding may also name any concrete Semantics listed above (`owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `unsafe`), testing equality with that Semantics. Concrete names and categories combine under the [Requirement expression rules](#83-requirement-expressions), as in `s is ref or obj`.
 
@@ -706,26 +738,26 @@ Object borrows provide non-owning access to objects, subject to lifetime constra
 
 ##### 3.3.5. Object views and identity
 
-References to Contract targets in the object model describe the [runtime Contract extension](#85-runtime-contracts), outside the initial static Contract implementation. Concrete Core Type targets remain governed by the ordinary Object View rules.
+References to Contract targets in the object model describe the [runtime Contract extension](#85-runtime-contracts), outside the initial static Contract implementation. Concrete Core targets remain governed by the ordinary Object View rules.
 
 ```text
 Object View Type = Object Semantics + View Target + Outer Origin (for object borrows)
 Object Semantics = obj | rc | arc | objref | objuniq
-View Target      = Core Type | runtime Contract View with fixed associated Types
+View Target      = Core | runtime Contract View with fixed associated Types
 ```
 
-An Object View Type is the complete static Type of an object handle or borrow. As in the [projection table](#811-slots-and-projections), `objref` and `objuniq` require an outer Origin, subject to elision; `obj`, `rc`, and `arc` have none. View Target and payload dependencies remain part of the complete Type. In `objref/Speaker`, the runtime contract `Speaker` is a View Target, not a Core Type with its own data layout. This extension does not create `owner/Speaker` or `ref/Speaker`.
+An Object View Type is the complete static Type of an object handle or borrow. As in the [projection table](#811-slots-and-projections), `objref` and `objuniq` require an outer Origin, subject to elision; `obj`, `rc`, and `arc` have none. View Target and payload dependencies remain part of the complete Type. In `objref/Speaker`, the runtime contract `Speaker` is a View Target, not a Core with its own data layout. This extension does not create `owner/Speaker` or `ref/Speaker`.
 
-The **Runtime Object Type** (also **Dynamic Type** or **Dynamic Core Type**) is the concrete Core Type actually constructed. Its [Runtime Type Identity](#2121-type-identity-and-descriptors) excludes the handle's outer Semantics and Origin bindings. Static Types still retain every lifetime dependency.
+The **Runtime Object Type** (also **Dynamic Type** or **Dynamic Core**) is the concrete Core actually constructed. Its [Runtime Type Identity](#2121-type-identity-and-descriptors) excludes the handle's outer Semantics and Origin bindings. Static Types still retain every lifetime dependency.
 
 A completed object has exactly one Dynamic Type, unchanged throughout its lifetime. A view determines available operations; changing it preserves the entire object, identity, and destruction responsibility. Replacing metadata or reinitializing the object as another Type is forbidden. A new object later placed at the same address has a new lifetime and inherits no identity, Loan, or flow facts.
 
-**`Supports(D, V)`** relates a concrete Core Type `D` to a View Target `V`. It holds exactly when either:
+**`Supports(D, V)`** relates a concrete Core `D` to a View Target `V`. It holds exactly when either:
 
-- `V` is `D` itself or a direct or indirect base Core Type of `D`; or
+- `V` is `D` itself or a direct or indirect base Core of `D`; or
 - `V` is a runtime Contract View `C` with fixed associated Types and both `RuntimeUsable(C)` and `Implements(D, C)` hold under [runtime contracts](#85-runtime-contracts).
 
-Upcasts, view-support tests, checked casts, and metadata share this relation. It does not grant access, ownership, `Owned`, Origin/Loan validity, or permission to invoke an incompatible ordinary member. Generic element relationships do not imply container covariance. Core Type inheritance alone does not establish substitutability of complete Types: no slicing, implicit `owner/Dog -> owner/Animal`, ordinary `ref/Dog -> ref/Animal`, or `uniq/Dog -> uniq/Animal` conversion is introduced. Object upcasts are explicit operations; [inherited receiver projection](#951-base-subobject-receiver-projection) supplies only the receiver of a selected inherited member.
+Upcasts, view-support tests, checked casts, and metadata share this relation. It does not grant access, ownership, `Owned`, Origin/Loan validity, or permission to invoke an incompatible ordinary member. Generic element relationships do not imply container covariance. Core inheritance alone does not establish substitutability of complete Types: no slicing, implicit `owner/Dog -> owner/Animal`, ordinary `ref/Dog -> ref/Animal`, or `uniq/Dog -> uniq/Animal` conversion is introduced. Object upcasts are explicit operations; [inherited receiver projection](#951-base-subobject-receiver-projection) supplies only the receiver of a selected inherited member.
 
 ```text
 objref/Animal from source       Dog object
@@ -751,7 +783,7 @@ ref/(ref/T from inner) from outer    // Separate inner and outer Origins.
 
 Prefixes associate rightward: `ref/ref/T from outer` annotates only the outer reference. Parentheses group complete Types and permit per-layer annotations. `ref/((i32) -> bool)` borrows a function value; `(ref/i32) -> bool` takes one borrowed integer. `ref/(i32) -> bool` is invalid because a Function Type needs its own parameter list. Grouping adds neither Tuple nor borrow.
 
-Expand aliases and preserve every Type layer for identity, applicability, layout, and Origin analysis: `ref/ref/T` differs from `ref/T`. Grouping and redundant `owner` prefixes normalize away, but `owner/V` preserves V’s references and Object Semantics. Object Semantics require a supported Core Type or runtime-contract View Target, not an already Semantics-applied Type: `ref/obj/T` is valid, while `obj/ref/T` does not box a reference. Generic substitutions obey the same rules; see [generic slots](#81-generic-type-parameters).
+Expand aliases and preserve every Type layer for identity, applicability, layout, and Origin analysis: `ref/ref/T` differs from `ref/T`. Grouping and redundant `owner` prefixes normalize away, but `owner/V` preserves V’s references and Object Semantics. Object Semantics require a supported Core or runtime-contract View Target, not an already Semantics-applied Type: `ref/obj/T` is valid, while `obj/ref/T` does not box a reference. Generic substitutions obey the same rules; see [generic slots](#81-generic-type-parameters).
 
 Each Type layer retains its Origin dependencies under [position-specific elision](#154-origin-elision-and-return-contracts); an outer annotation cannot replace an inner one. In parameter Types, only an outer direct borrow may introduce an implicit input Origin; inner borrow Origins and aggregate Origin arguments must be explicit. Local initializers may infer all layers; instance Fields require explicit bindings throughout. The examples above illustrate composition, not unrestricted Origin omission.
 
@@ -809,7 +841,7 @@ node = makeNode()
 
 `Copy` is a [compiler-intrinsic Contract](#847-intrinsic-contracts-and-guarantees). User-defined Contracts with the same shape do not grant Copy acquisition semantics.
 
-`T` and `owner/T` are the same owned Type. Classify complete Types using Core Type, Semantics, and stored components:
+`T` and `owner/T` are the same owned Type. Classify complete Types using Core, Semantics, and stored components:
 
 | Type | Classification |
 | --- | --- |
@@ -1131,14 +1163,14 @@ let middle: Slice<i32> from values = values[1..3]
 
 These built-in operations apply to `[N of T]`, `Array<T>`, and `Slice<T>`. Element indexing accepts isize or Index; range indexing accepts Range or ResolvedRange. Dictionary indexing instead takes keys. [Raw pointers](#53-pointer-arithmetic-and-indexing) retain signed-isize offsets without safe sequence bounds checks and accept neither Index nor Range. String indexing units and user-defined indexers are not introduced.
 
-| Core Type | Meaning |
+| Core | Meaning |
 | --- | --- |
 | Index | Copy, Owned position measured from the start or end; retains no target |
 | Range | Copy, Owned unresolved boundaries and end-inclusion flag; not Iterable |
 | ResolvedRange | Copy, Owned validated absolute half-open interval; finite isize iteration |
 | `Slice<T>` from source | Copy shared view, independent of T's Copy capability; retains backing Origin and shared Loan |
 
-These names are not keywords; `::Core.Index`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Core Types, never same-named user Types.
+These names are not keywords; `::Core.Index`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Types from the Core Kotonoha, never same-named user Types.
 
 **Length metadata.** Fixed arrays and Array provide length and indices; Slice also provides isEmpty. Evaluate the receiver once and require ordinary initialization, completeness, and access legality. Knowing a fixed length does not erase receiver effects or checks.
 
@@ -1628,7 +1660,7 @@ struct Box<T>
 
 #### 6.2. Structure declarations
 
-A `struct` defines a composite value Type. Its Fields and computed members may use primitive or structure Types, with Type Semantics specifying representation, ownership, and access:
+A `struct` declares a named composite Core. Its Fields and computed members have complete Types, including their Semantics and Origin dependencies:
 
 ```
 struct Point
@@ -1643,7 +1675,7 @@ struct View origin source
     var data: ref/Data from source
 ```
 
-Data is an assumed Core Type in the View example; the instance borrow's Origin is explicitly declared and bound.
+Data is an assumed Core in the View example; the instance borrow's Origin is explicitly declared and bound.
 
 Explicit and implicit constructors follow [construction](#623-constructors); all construction obeys [initialization](#113-types-origins-and-initialization) and [construction completeness](#1512-aggregate-construction-and-completeness).
 
@@ -1661,7 +1693,7 @@ Physical layout and ABI guarantees follow [Structure layout and ABI](#211-struct
 
 A structure is **sealed** unless its declaration has `open` immediately before `struct`. A sealed structure cannot be a base Type. `open` permits derivation and is independent of accessibility: `public struct` remains sealed, while `internal open struct` permits derivation only where that Type is accessible. A derived structure is itself sealed unless explicitly declared `open`; openness is not inherited. No separate `sealed` modifier is needed for this default.
 
-A structure may specify one direct base with `: BaseType`, after its Name and generic parameters and before its Origin list. The base must resolve to an accessible constructed or nongeneric `open struct` Core Type; a generic parameter, Semantics-applied Type, group, enum, or contract is not a base. Omission declares no user-defined base. Reject multiple bases and direct or indirect inheritance cycles, including cycles through different constructions of the same generic declaration. The base's Constraints must hold, and its accessibility must cover the derived Type's [effective access domain](#932-api-signature-accessibility). Constraint Clauses continue to express capabilities separately from the base clause.
+A structure may specify one direct base with `: BaseType`, after its Name and generic parameters and before its Origin list. The base must resolve to an accessible constructed or nongeneric `open struct` Core; a generic parameter, Semantics-applied Type, group, enum, or contract is not a base. Omission declares no user-defined base. Reject multiple bases and direct or indirect inheritance cycles, including cycles through different constructions of the same generic declaration. The base's Constraints must hold, and its accessibility must cover the derived Type's [effective access domain](#932-api-signature-accessibility). Constraint Clauses continue to express capabilities separately from the base clause.
 
 ```kimi
 public open struct Base
@@ -1747,7 +1779,7 @@ Derived Types must tolerate mutations and preconditions exposed by base APIs. Ap
 
 #### 6.3. Enums
 
-An enum is a nominal, closed sum Core Type. A complete value contains exactly one **Case** and that Case's **payload**, its attached positional data. Equal Case names and payload Types do not make distinct enum declarations the same Type.
+An enum is a nominal, closed sum Core. A complete value contains exactly one **Case** and that Case's **payload**, its attached positional data. Equal Case names and payload Types do not make distinct enum declarations the same Type.
 
 ```kimi
 public enum Message
@@ -1760,7 +1792,7 @@ public enum Message
 
 Write one Case per line without a `case` keyword; PascalCase is conventional. Case names are unique within the enum and cannot overload by payload Type or arity. A payload element declares one complete Type in positional order, without a binding name, `let`/`var`, default, or variadic form. `Quit` has no payload; `Quit()` is invalid, whereas `Wrapped(())` has one Unit payload.
 
-The header supports ordinary Generic and Origin parameters. The body permits Cases, Constraint Clauses, associated-Type specifications for declared conformances, ordinary functions and their full specializations, conditional conformances (§8.4.8), and compile-time Directives selecting these items. Constraints use the existing declaration rules; `Self` denotes the enum Core Type. Function access and explicit receivers follow ordinary rules. Fields, computed members, `init`, `deinit`, nested Declaration Containers, structure inheritance, `open enum`, and external Case additions are not permitted. Enums cannot have [declaration fragments](#612-container-fragments), and every instantiation must retain at least one Case after compile-time selection. Empty enums and uninhabited-value elimination are deferred.
+The header supports ordinary Generic and Origin parameters. The body permits Cases, Constraint Clauses, associated-Type specifications for declared conformances, ordinary functions and their full specializations, conditional conformances (§8.4.8), and compile-time Directives selecting these items. Constraints use the existing declaration rules; `Self` denotes the enum Core. Function access and explicit receivers follow ordinary rules. Fields, computed members, `init`, `deinit`, nested Declaration Containers, structure inheritance, `open enum`, and external Case additions are not permitted. Enums cannot have [declaration fragments](#612-container-fragments), and every instantiation must retain at least one Case after compile-time selection. Empty enums and uninhabited-value elimination are deferred.
 
 Each Case has the enum's effective access domain, rather than the ordinary member default of `private`. Cases and payload elements take no access modifiers. Anyone allowed to use the enum may construct and decompose every Case; each payload Type must satisfy [API signature accessibility](#932-api-signature-accessibility) for the enum's domain. A Case colliding with another Value declaration, including a function, is a declaration error. Adding or removing a public Case is a potentially breaking source API change: additions can break exhaustive matches, and removals can break Case references.
 
@@ -1804,7 +1836,7 @@ The same syntax represents `value.move(1, 2)` and `Namespace.Type.member()`. Bin
 
 Only the leading-dot expression form, such as `.Some(1)`, has dedicated inferred-Case syntax. Its arguments are Expressions. A compiler may create a dedicated bound construction node after resolving either form; this does not require a second parse. The reserved `.init(` suffix retains its separate syntactic rule. In Pattern context, qualified and inferred Case references are parsed by the Pattern grammar, with Pattern operands; they do not compete with expression calls.
 
-Leading-dot layout is decided syntactically under [§2.2.2](#222-leading-dot-continuation-and-case-references) before expected-Type lookup. The qualifier identifies an enum Core Type whose Case set can be determined statically after alias expansion. Generic arguments must be explicit or uniquely inferred. Do not write the enum's own Semantics or Origin arguments in the qualifier; complete Types inside generic arguments retain theirs. Infer/check the constructed value's Origin arguments from its expected Type and payload arguments. If these do not determine them, annotate the expected Type; do not invent hidden Origins or `static`.
+Leading-dot layout is decided syntactically under [§2.2.2](#222-leading-dot-continuation-and-case-references) before expected-Type lookup. The qualifier identifies an enum Core whose Case set can be determined statically after alias expansion. Generic arguments must be explicit or uniquely inferred. Do not write the enum's own Semantics or Origin arguments in the qualifier; complete Types inside generic arguments retain theirs. Infer/check the constructed value's Origin arguments from its expected Type and payload arguments. If these do not determine them, annotate the expected Type; do not invent hidden Origins or `static`.
 
 ```kimi
 let quit: Message = Message.Quit
@@ -2130,7 +2162,7 @@ Both parameter forms consume **one complete Type argument**. Preserve Semantics,
 
 `WholeType`, the projection functions, and `o` are explanatory notation, not source bindings. `<s/T>` declares only `s` and `T`; the original `s/T` retains W's Origins without naming them. Source Origin names use the separate [Origin parameter schema](#153-abstract-origins).
 
-An ordinary `T` denotes a complete value Type, not only a bare Core Type. The pair's `T` has the fixed internal kind **SemanticsTarget**, whose value is a complete value Type or an Object View Target. Using it as a standalone value Type in a generic body requires proof of that role under the declared Constraints at definition checking; only the remaining proved symbolic substitution may be a [deferred obligation](#810-generic-body-checking-and-deferred-obligations). Its kind does not change at instantiation.
+An ordinary `T` denotes a complete value Type, not only a bare Core. The pair's `T` has the fixed internal kind **SemanticsTarget**, whose value is a complete value Type or an Object View Target. Using it as a standalone value Type in a generic body requires proof of that role under the declared Constraints at definition checking; only the remaining proved symbolic substitution may be a [deferred obligation](#810-generic-body-checking-and-deferred-obligations). Its kind does not change at instantiation.
 
 Normalize transparent aliases, resolved associated-Type projections, grouping, and redundant `owner/` before projecting. Reject alias cycles; retain nominal declaration identity and parameter Binding Identities. No new nominal-alias syntax is introduced. Split only the outer layer: `ref/(uniq/i32 from b) from a` yields `s = ref`, `T = uniq/i32 from b`, and outer Origin `a`. Since `owner/V` preserves V, `owner/(ref/i32 from a)` has outer Semantics `ref`.
 
@@ -2138,8 +2170,8 @@ Normalize transparent aliases, resolved associated-Type projections, grouping, a
 | --- | --- | --- |
 | `owner` | DirectTarget(W) is W itself; `owner/U` is U for any valid complete value Type | None |
 | `ref`, `uniq` | Complete Referent Type; `uniq` also requires exclusive acquisition and Loans at use | Required |
-| `obj`, `rc`, `arc` | Supported Core Type or valid runtime-contract View Target | None |
-| `objref`, `objuniq` | Supported Core Type or valid runtime-contract View Target; preserve borrowing requirements | Required |
+| `obj`, `rc`, `arc` | Supported Core or valid runtime-contract View Target | None |
+| `objref`, `objuniq` | Supported Core or valid runtime-contract View Target; preserve borrowing requirements | Required |
 | `unsafe` | Complete Pointee Type; adds no safe-borrow lifetime guarantee | None |
 
 These rows do not extend the current runtime-contract or callable restrictions. Absence of an outer Origin does not erase payload dependencies: in `ref/(View<i32> from (source => a)) from b`, a belongs to the inner Type and b to the outer borrow.
@@ -2186,7 +2218,7 @@ The following terms distinguish declared capabilities, conditions, and their ful
 
 A **Constraint Clause** expresses a Constraint in the form `subject is requirement`. All clauses in a declaration's Constraints must hold. Subjects include complete Types, Semantics, valid target projections, and `Self` (the enclosing Type), subject to each requirement's role. Clauses establish capabilities the implementation may use. Each declaration kind restricts the permitted subjects; see [function Constraints](#74-function-constraints).
 
-Core Type requirements may name a capability declared with `contract` or another compile-time type capability. Type Semantics requirements may name concrete semantics, such as `ref` or `obj`, or a semantics category. Requirements combine with `and`, `or`, `not`, and parentheses under the [requirement-expression rules](#83-requirement-expressions).
+Core requirements may name a capability declared with `contract` or another compile-time type capability. Type Semantics requirements may name concrete semantics, such as `ref` or `obj`, or a semantics category. Requirements combine with `and`, `or`, `not`, and parentheses under the [requirement-expression rules](#83-requirement-expressions).
 
 A `struct` header may contain generic parameters and an Origin list. Its ordinary Constraints precede members; conditional conformances may appear at member positions (§8.4.8).
 
@@ -2279,7 +2311,7 @@ Reject a refinement when its requirements cannot coexist as separate implementat
 
 ##### 8.4.3. Associated types
 
-An associated Type is restricted to a Core Type. Unlike an ordinary generic Type slot, it cannot bind an arbitrary Semantics-applied complete Type.
+An associated Type is restricted to a Core. Unlike an ordinary generic Type slot, it cannot bind an arbitrary Semantics-applied complete Type.
 
 The only intrinsic exception is the Element requirement of Core.Iterable and Core.Iterator (§22.1), which binds a complete Type, including Semantics and existing Origins. Its explicit specification uses the same associate syntax; it adds no general complete-Type associated declaration facility. For ordinary Core-Type associated requirements, specify borrow Semantics and operation Origins at use sites. Existing dependencies inside a Type remain subject to ordinary Origin checking; generic substitutions must prove this restricted role or retain a legitimate obligation.
 
@@ -2296,7 +2328,7 @@ contract BorrowSource
 | `associate Element` | Declare an associated Type in a Contract. |
 | `associate Element is Equatable` | Declare it with a capability requirement, or constrain the uniquely identified associated Type in an implementation. |
 | `associate Element is i32` | Declare it with a fixed Type, or specify that Type in an implementation. |
-| `associate C.Element is T` | Specify identity with a generic binding T, subject to the associated Type's Core Type restriction. |
+| `associate C.Element is T` | Specify identity with a generic binding T, subject to the associated Type's Core restriction. |
 
 Determine each associated Type uniquely from explicit specifications and Type-identity Constraints on the Contract or its ancestors. Do not infer bindings from implementation signatures, member search, or function bodies, and do not choose a Type merely because it satisfies a capability. Substitute bindings before matching implementations. An unconstrained `Source.Element` is not inferred as `i32` merely because an implementation of `read` returns `i32`.
 
@@ -2314,7 +2346,7 @@ struct Pipe
     public func read(self: ref/Self) -> i32 => 42
 ```
 
-**Projections.** `T.C.Element` refers to the associated Type of `T`'s conformance to `C`; `T.Element` is the short form when the declaration is unique under the available Constraints. `C` uses ordinary Contract-name/alias lookup, not member lookup on `T`. Require conformance evidence; never discover it by searching for a same-named Contract. The Type-side base may be a named or constructed Core Type, a parameter, `Self`, or another associated-Type projection. Intrinsic protocol Element projections that bind a Semantics-applied Type do not become Core-Type qualifiers merely by being associated projections. It is not a value or Semantics-applied expression.
+**Projections.** `T.C.Element` refers to the associated Type of `T`'s conformance to `C`; `T.Element` is the short form when the declaration is unique under the available Constraints. `C` uses ordinary Contract-name/alias lookup, not member lookup on `T`. Require conformance evidence; never discover it by searching for a same-named Contract. The Type-side base may be a named or constructed Core, a parameter, `Self`, or another associated-Type projection. Intrinsic protocol Element projections that bind a Semantics-applied Type do not become Core-Type qualifiers merely by being associated projections. It is not a value or Semantics-applied expression.
 
 ```kimi
 func readOne<T>(source: ref/T) -> T.Source.Element
@@ -2376,7 +2408,7 @@ After substituting `Self`, the conforming Type's arguments, and associated Types
 | Receiver | Same presence and normalized Type structure. |
 | Parameter Types | Same normalized Type structure. |
 
-Type structure includes resolved Core Type Identity, Semantics, nested structure, and type arguments. Exclude Origin names, bindings, and lifetime relations from identification, but retain them for compatibility. There is no parameter-structure contravariance. Do not rank implementations by ordinary call overload preferences, adaptations, omitted arguments, Origins, Constraints, conditional-member applicability, or Effects. Conditions are checked after identification, unlike direct-call applicability (§8.4.8).
+Type structure includes resolved Core Identity, Semantics, nested structure, and type arguments. Exclude Origin names, bindings, and lifetime relations from identification, but retain them for compatibility. There is no parameter-structure contravariance. Do not rank implementations by ordinary call overload preferences, adaptations, omitted arguments, Origins, Constraints, conditional-member applicability, or Effects. Conditions are checked after identification, unlike direct-call applicability (§8.4.8).
 
 These rules identify Contract implementations; `Callable` and common Function Types retain their separate [callable signature compatibility](#107-callable-signature-compatibility) rules.
 
@@ -2393,7 +2425,7 @@ Zero candidates means a missing implementation; multiple candidates mean ambigui
 
 Compare Origin contracts after binder correspondence using ordinary variance and Loan rules, including invariance where required. A requirement admitting a call-local borrow cannot be implemented by a function requiring that input to be `static`. Origin-free identification does not erase dependencies or relax exclusive access.
 
-Use existing Safety, ownership, Origin, and Access Effect checks; no new effect system is defined here. A safe requirement cannot require an unsafe calling context. Result compatibility inserts no numeric/user conversion, Copy, Borrow/Reborrow, or erasure. Core Type inheritance alone does not prove compatibility of complete Types. On compatibility failure, report the conformance error without searching for another implementation. Properties use the corresponding [accessor rules](#114-contract-property-requirements).
+Use existing Safety, ownership, Origin, and Access Effect checks; no new effect system is defined here. A safe requirement cannot require an unsafe calling context. Result compatibility inserts no numeric/user conversion, Copy, Borrow/Reborrow, or erasure. Core inheritance alone does not prove compatibility of complete Types. On compatibility failure, report the conformance error without searching for another implementation. Properties use the corresponding [accessor rules](#114-contract-property-requirements).
 
 ##### 8.4.6. Calls and shared requirements
 
@@ -2510,7 +2542,7 @@ This feature defines static conformance and generic use. It adds no external reg
 
 #### 8.5. Runtime contracts
 
-**Extension scope.** The initial Contract implementation is static. Runtime-use designation and View associated-Type binding syntax remain to be defined; this section preserves the runtime design for that extension, not permission to form such Views in the initial implementation. Object Views with concrete Core Type targets retain their existing rules. No implicit runtime designation or new `where` syntax is introduced.
+**Extension scope.** The initial Contract implementation is static. Runtime-use designation and View associated-Type binding syntax remain to be defined; this section preserves the runtime design for that extension, not permission to form such Views in the initial implementation. Object Views with concrete Core targets retain their existing rules. No implicit runtime designation or new `where` syntax is introduced.
 
 Compile-time conformance and runtime View usability are separate. A runtime Contract exposes requirements through dynamic dispatch without instance state or a separate `virtual` designation for each requirement. A bare Contract name is never a value Type; the extension uses explicit Object Semantics such as `objref/C`, `objuniq/C`, and `obj/C`.
 
@@ -2656,7 +2688,7 @@ specialize func process<i32>(value: i32) -> ()
 
 `specialize` is a contextual declaration introducer before `func`. A specialization has a single unqualified Name, explicit Type arguments, explicitly typed parameters, an optional result Type, and an ordinary Block or Expression body. It declares no Type parameters and does not automatically introduce the original function's Type parameter names into its body. Origin binders are inherited, not newly declared. Omitted results mean Unit, even if the original's substituted result is non-Unit; write that result explicitly.
 
-Supply all of the function's own generic slots in declaration order, using their original kinds. Ordinary and pair Type slots each take one complete Type. After alias and associated-Type normalization, every Core Type and Semantics component must be fixed: no unbound Type/Semantics parameter, unresolved projection, or outer generic parameter may remain. `List<i32>` is closed; `List<T>` with unbound T is not. `Self` is allowed only when ordinary resolution meets the same rule. Origins are checked separately below. These restrictions apply to specialization declarations, not to dependent Types in ordinary generic bodies.
+Supply all of the function's own generic slots in declaration order, using their original kinds. Ordinary and pair Type slots each take one complete Type. After alias and associated-Type normalization, every Core and Semantics component must be fixed: no unbound Type/Semantics parameter, unresolved projection, or outer generic parameter may remain. `List<i32>` is closed; `List<T>` with unbound T is not. `Self` is allowed only when ordinary resolution meets the same rule. Origins are checked separately below. These restrictions apply to specialization declarations, not to dependent Types in ordinary generic bodies.
 
 The target must be a named generic type function or instance method with an ordinary implementation. Constructors, `deinit`, accessors, and dedicated operator declarations are excluded. Partial or conditional specialization, omitted arguments, placeholders, priority rules, general Const arguments, specializing a generic Container's arguments, methods with unbound outer generic parameters, and explicit target-Identity syntax are not introduced.
 
@@ -2866,15 +2898,15 @@ Namespaces separate declaration kinds; a **Lookup Role** filters candidates by s
 
 | Namespace | Declarations |
 | --- | --- |
-| Type | Containers, Kotonoha reference names, Core Type and Semantics parameters, associated Types, `Self`, and built-in Semantics/category requirements |
+| Type | Containers, Kotonoha reference names, Core and Semantics parameters, associated Types, `Self`, and built-in Semantics/category requirements |
 | Value | Functions, Fields, computed members, enum Cases, parameters, locals, local functions, function length parameters |
 | Origin | Origin declarations |
 | Label | Labels; use the dedicated transfer-target rules |
 
 | Lookup Role | Namespace | Eligible declarations |
 | --- | --- | --- |
-| Core Type | Type | Structures, enums, associated Types, `Self`, and generic bindings proven to meet this role |
-| Object View Target | Type | Core Types or runtime contracts; validate instantiation and runtime usability after selection |
+| Core | Type | Structures, enums, associated Types, `Self`, and generic bindings proven to meet this role |
+| Object View Target | Type | Cores or runtime contracts; validate instantiation and runtime usability after selection |
 | Type Semantics | Type | Semantics parameters and language-defined Semantics |
 | Qualifier | Type | Groups, Kotonoha references, and Types that can qualify members |
 | Requirement | Type | Capabilities, Types, Semantics, and categories allowed by requirement syntax |
@@ -2883,7 +2915,7 @@ Namespaces separate declaration kinds; a **Lookup Role** filters candidates by s
 | Enum Case | Value | Cases of the enum fixed by a CaseReference qualifier or the expected Type |
 | Origin / Label | Corresponding namespace | Origin / Label declarations |
 
-A declaration may serve several roles. A group is a Qualifier, not a Core Type. Role filtering does not inspect generic arity, argument Types or labels, expected results, satisfied Constraints, or the existence of a later member. Object-target syntax selects the View Target role; subsequent RuntimeUsable failure does not reopen lookup. There is no callable-only role for `f()`.
+A declaration may serve several roles. A group is a Qualifier, not a Core. Role filtering does not inspect generic arity, argument Types or labels, expected results, satisfied Constraints, or the existence of a later member. Object-target syntax selects the View Target role; subsequent RuntimeUsable failure does not reopen lookup. There is no callable-only role for `f()`.
 
 Type and Value names may coexist. Within one namespace and scope, only valid Container merging, distinct Type Signatures, and function overloads permit repeated names. Different roles do not permit conflicting declarations such as `group X` and `struct X` in the same scope.
 
@@ -2942,7 +2974,7 @@ An inaccessible declaration is diagnostic evidence, not a candidate that stops l
 
 Compute domains from Symbol identity, merged Container relationships, and the validated inheritance graph, not file paths or currently observed callers. Internal access refers to the originating Kotonoha, not a package, workspace, source directory, or all libraries in a build. No separate package or friend-module access is defined. Declared public access must remain valid for future consumers, even if no other module currently references it. `internal` and `protected` are not linearly ordered: the former includes unrelated code in one Kotonoha, and the latter can include derived code in another.
 
-Protected access to a member of base B from derived D requires a receiver whose static Effective Core Type is D or derived from D; a generic receiver may use a proven base constraint. Static B or a sibling of D is insufficient regardless of runtime Type. Check accessors independently. This extra receiver restriction does not apply inside B’s lexical body, to same-Kotonoha access via `protected internal`, or to static members. `private protected` requires both module and protected conditions. Access permission supplies neither a receiver nor an undefined conversion.
+Protected access to a member of base B from derived D requires a receiver whose static Effective Core is D or derived from D; a generic receiver may use a proven base constraint. Static B or a sibling of D is insufficient regardless of runtime Type. Check accessors independently. This extra receiver restriction does not apply inside B’s lexical body, to same-Kotonoha access via `protected internal`, or to static members. `private protected` requires both module and protected conditions. Access permission supplies neither a receiver nor an undefined conversion.
 
 For generic declarations, the protected lexical scope includes structures derived from any construction of that declaration; the instance-receiver check still uses the actual derived receiver Type. Inheritance alone never grants private access. A future extension must receive no special private or protected privilege merely by targeting a Type; its design must use its own lexical access context.
 
@@ -2960,7 +2992,7 @@ Check the effective domains, not merely the written access modifiers. This rule 
 
 Check function/constructor parameters and results (including receivers/constructed Types), enum payloads, Field and Property/accessor Types, and generic/associated-Type requirements. Use the enum’s domain for payloads, the Field/member domain for F/P, and each accessor’s for additional signature components. A restricted setter does not narrow the Property. Check Constraints even when written inside a body, and validate exposed Origins under their scope/lifetime rules.
 
-Check API Types recursively. A constructed generic Type’s access domain intersects the declaration’s and all concrete arguments’ domains; other compound Types require every constituent to be accessible. Semantics cannot hide an inaccessible Core Type or View Target. Expand aliases. For associated projections, check the qualifier, defining requirement, and any exposed concrete binding; unresolved projections retain obligations. A Type’s appearance in an API does not expose its private fields or implementation bodies.
+Check API Types recursively. A constructed generic Type’s access domain intersects the declaration’s and all concrete arguments’ domains; other compound Types require every constituent to be accessible. Semantics cannot hide an inaccessible Core or View Target. Expand aliases. For associated projections, check the qualifier, defining requirement, and any exposed concrete binding; unresolved projections retain obligations. A Type’s appearance in an API does not expose its private fields or implementation bodies.
 
 Primitive Types and language-defined public requirements impose no additional access restriction. Generic parameters are symbolic API parameters, not private concrete Types: their lexical declaration scope does not restrict the whole generic API to its body. Check their declared constraints instead. In particular, a public generic declaration need not restrict all future type arguments to public Types.
 
@@ -3042,7 +3074,7 @@ group Outer
             ::Outer.f(1)   // Explicitly selects Outer.f.
 ```
 
-A nearer group `X` does not stop Core Type lookup for an annotation `X`, but does stop Qualifier lookup for `X.member`. If that group lacks `member`, do not switch to an outer `X`. Similarly, an integer local `f` stops Value lookup and makes `f()` a non-callable-value error.
+A nearer group `X` does not stop Core lookup for an annotation `X`, but does stop Qualifier lookup for `X.member`. If that group lacks `member`, do not switch to an outer `X`. Similarly, an integer local `f` stops Value lookup and makes `f()` a non-callable-value error.
 
 There is no implicit `self`: instance members require `self.member` or another explicit receiver. An unqualified reference that finds only accessible instance members reports a missing receiver instead of searching for an outer static member.
 
@@ -3050,7 +3082,7 @@ If all stages fail, prefer an inaccessible matching-role declaration diagnostic,
 
 #### 9.5. Qualified and inherited lookup
 
-Resolve the first component of `A.B.C` by ordinary lookup with its syntactic role, then search only the selected target's members. Do not return to its parents. Intermediate Type-side components are Qualifiers; the final role follows the syntax, such as Core Type in a Type annotation or Declaration Container in an alias. [Associated-Type projections](#843-associated-types) additionally interpret `T.C.Element` through `T`'s conformance and resolve `C` as a Contract Name in the source environment, not as a member of `T`. Binding distinguishes projection paths from ordinary qualified paths; distinct successful interpretations remain ambiguous.
+Resolve the first component of `A.B.C` by ordinary lookup with its syntactic role, then search only the selected target's members. Do not return to its parents. Intermediate Type-side components are Qualifiers; the final role follows the syntax, such as Core in a Type annotation or Declaration Container in an alias. [Associated-Type projections](#843-associated-types) additionally interpret `T.C.Element` through `T`'s conformance and resolve `C` as a Contract Name in the source environment, not as a member of `T`. Binding distinguishes projection paths from ordinary qualified paths; distinct successful interpretations remain ambiguous.
 
 Where both Type and Value qualification are syntactically possible, explore both without preferring values:
 
@@ -3082,7 +3114,7 @@ Generic bodies use their [definition-site source environment](#18-modules-and-de
 
 ##### 9.5.1. Base subobject receiver projection
 
-For `receiver.member`, when ordinary lookup selects an instance declaration in a base `B` of the receiver's static Effective Core Type `D`, **Base Subobject Receiver Projection** locates that declaration's inline base subobject along the unique inheritance path. Substitute base Type/Origin arguments at each layer. Check accessibility, including protected-receiver restrictions, against the original receiver before projection. Static members need no projection; Type-qualified unbound calls and function values retain ordinary argument rules.
+For `receiver.member`, when ordinary lookup selects an instance declaration in a base `B` of the receiver's static Effective Core `D`, **Base Subobject Receiver Projection** locates that declaration's inline base subobject along the unique inheritance path. Substitute base Type/Origin arguments at each layer. Check accessibility, including protected-receiver restrictions, against the original receiver before projection. Static members need no projection; Type-qualified unbound calls and function values retain ordinary argument rules.
 
 For a declaration receiver `ref/B` or `uniq/B`, form the corresponding shared Borrow or exclusive Borrow/Reborrow of that subobject using the original receiver's permissions. A shared receiver cannot supply exclusive access. Evaluate the source once, before explicit call arguments; preserve its storage anchor, nested dependencies, and parent Loan restrictions. A computed accessor or method borrows the base subobject as a whole. Field access instead projects directly to the Field Place under §11.1.2 without forming a whole-base borrow; preserve the original owned/borrowed/object receiver classification.
 
@@ -3601,7 +3633,7 @@ During [overload resolution](#10-overload-resolution-and-inference), fit unresol
 | `[a, b]`, `[]` | Array literal. |
 | `[key: value]`, `[:]` | Dictionary literal. |
 
-Tuples may have different Types at each position. An array has one element Type; a dictionary has one key Type and one value Type. Empty collection literals need an expected Type. Array and Dictionary literals use the [required Core Types](#221-required-core-declarations), with the expected fixed-array exception in [sequence Types](#4-arrays-indexing-and-slices); ambiguity does not fall back to a universal object Type.
+Tuples may have different Types at each position. An array has one element Type; a dictionary has one key Type and one value Type. Empty collection literals need an expected Type. Array and Dictionary literals use the [required Cores](#221-required-core-declarations), with the expected fixed-array exception in [sequence Types](#4-arrays-indexing-and-slices); ambiguity does not fall back to a universal object Type.
 
 ```kimi
 let pair = (10, "ten")
@@ -3615,7 +3647,7 @@ let message = "first = \(values[0])"
 
 Each embedded value’s complete Type must satisfy the required Stringify Contract. Evaluate it once, borrow it shared for the call, invoke its verified mapping once, and append the owned result before the next interpolation. Printing does not implicitly Move a non-Copy source. End the call Loan on completion; neither returned nor combined strings retain source borrows. Normal temporary cleanup and Abort rules apply. Allocation may be optimized, but independent owned-string semantics must remain.
 
-Owned primitive scalars, Unit, and string conform to Stringify. Integers use decimal with a minus sign only for negative values; bool uses true/false, char its scalar’s UTF-8 bytes, Unit `()`, and string its contents. Float formatting is locale-independent; finite, NaN, and infinity spellings are implementation-defined and documented. Safe shared/exclusive borrows forward through shared access without taking ownership. User Types need `Self is Stringify` and a matching public implementation. No implicit object-address/raw-pointer formatting is provided; concatenation remains string-only.
+Owned Scalars, Unit, and string conform to Stringify. Integers use decimal with a minus sign only for negative values; bool uses true/false, char its scalar’s UTF-8 bytes, Unit `()`, and string its contents. Float formatting is locale-independent; finite, NaN, and infinity spellings are implementation-defined and documented. Safe shared/exclusive borrows forward through shared access without taking ownership. User Types need `Self is Stringify` and a matching public implementation. No implicit object-address/raw-pointer formatting is provided; concatenation remains string-only.
 
 ##### 12.3.4. Dictionary construction and duplicate keys
 
@@ -3742,7 +3774,7 @@ Earlier rows bind more tightly. Left associativity groups `a op b op c` as `(a o
 | 13 | `..` `..=` | Non-associative |
 | 14 | `=`, compound assignments | Right |
 
-In ordinary expressions, `is` / `is not` ends after one named Core Type; outer `and` / `or` remain Boolean operators. In dedicated compile-time contexts, `is` instead follows the asymmetric [requirement-expression rule](#83-requirement-expressions). Prefix `not` precedence is unchanged: negate a runtime test with `value is not Dog` or `not (value is Dog)`. `as` is reserved.
+In ordinary expressions, `is` / `is not` ends after one named Core; outer `and` / `or` remain Boolean operators. In dedicated compile-time contexts, `is` instead follows the asymmetric [requirement-expression rule](#83-requirement-expressions). Prefix `not` precedence is unchanged: negate a runtime test with `value is not Dog` or `not (value is Dog)`. `as` is reserved.
 
 Unparenthesized comparison chains such as `a < b < c`, `a == b == c`, and `a < b == flag` are syntax errors. Write `a < b and b < c` or `(a < b) == flag`; each comparison still requires valid operand Types.
 
@@ -3859,14 +3891,14 @@ Explicit @ Operation
 | Form | Meaning |
 | --- | --- |
 | `E@Type` | A defined adaptation to the specified target |
-| `E@Semantics` | Same form with Core Type, immediate Referent Type, or object View Target taken from the operand as applicable |
+| `E@Semantics` | Same form with Core, immediate Referent Type, or object View Target taken from the operand as applicable |
 | `E@move` | Explicit Consume; no Adaptation Target |
 
-An **Adaptation Target** specifies Semantics and a Core Type, a complete inner Type for a value-borrow or pointer layer, or an object View Target. Infer result Origins from the operand, operation, Loans, and applicable constraints to obtain the complete result Type. Retain Origin information in aliases, generic Types, and operands; do not erase constraints or extend validity. Runtime targets do not contain `from Origin`; `exit ... from Label` belongs to control-transfer syntax.
+An **Adaptation Target** specifies Semantics and a Core, a complete inner Type for a value-borrow or pointer layer, or an object View Target. Infer result Origins from the operand, operation, Loans, and applicable constraints to obtain the complete result Type. Retain Origin information in aliases, generic Types, and operands; do not erase constraints or extend validity. Runtime targets do not contain `from Origin`; `exit ... from Label` belongs to control-transfer syntax.
 
 ```text
 Adaptation Target
-├─ Core Type / immediate Referent Type / object View Target: specified, or taken from the operand
+├─ Core / immediate Referent Type / object View Target: specified, or taken from the operand
 ├─ Semantics: determined by Type, alias, or explicit Semantics
 └─ Origin: inferred during adaptation
     -> complete result Type retains target, Semantics, and Origin
@@ -3874,14 +3906,14 @@ Adaptation Target
 
 **Syntactic extent.** After @, move terminates the operation target immediately. Otherwise, consume an identifier-shaped head followed by slash as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed to make that decision. A prefix must later resolve to a concrete Semantics or declared Semantics binding. Consume a remaining primitive, named/qualified/generic, grouped, Tuple, or fixed-array Type head as the target. Generic adjacency uses §12.4.2; written Origins are forbidden at every target layer. A following slash is division only after that head is complete and cannot begin another syntactic Semantics prefix.
 
-`a@ref/uniq/T` consumes the full prefix chain. `a@T / b` parses target `T/b` and fails Semantics lookup if T is only a Core Type; whitespace cannot change it. Write `(a@T) / b` or `a@(T) / b` for division. Primitive keywords cannot be Semantics parameters, so `x@i32 / y` already means `(x@i32) / y`. Grouping `x@(i32)` preserves the adaptation. Group complete Function Type targets, as in `x@((i32) -> i32)`; adaptation does not consume a following outer arrow. Parsing commits before Binding and never retries after conversion failure.
+`a@ref/uniq/T` consumes the full prefix chain. `a@T / b` parses target `T/b` and fails Semantics lookup if T is only a Core; whitespace cannot change it. Write `(a@T) / b` or `a@(T) / b` for division. Primitive keywords cannot be Semantics parameters, so `x@i32 / y` already means `(x@i32) / y`. Grouping `x@(i32)` preserves the adaptation. Group complete Function Type targets, as in `x@((i32) -> i32)`; adaptation does not consume a following outer arrow. Parsing commits before Binding and never retries after conversion failure.
 
-For a single-layer value Type with Core Type `T`, `@ref` and `@ref/T` select the same existing Borrow/Reborrow operation when applicable. For a nested borrow, shorthand retains its immediate Referent Type: applying `@ref` to `ref/ref/T` copies that outer shared reference. It does not add a layer or turn `@ref` into `@objref`. A fully specified target can instead request a borrow of reference-value storage under [Borrow and Reborrow](#1355-explicit-borrow-and-reborrow). Type names, aliases, generic applications, grouping, and Tuple syntax are accepted as target syntax without implying that every adaptation is defined.
+For a single-layer value Type with Core `T`, `@ref` and `@ref/T` select the same existing Borrow/Reborrow operation when applicable. For a nested borrow, shorthand retains its immediate Referent Type: applying `@ref` to `ref/ref/T` copies that outer shared reference. It does not add a layer or turn `@ref` into `@objref`. A fully specified target can instead request a borrow of reference-value storage under [Borrow and Reborrow](#1355-explicit-borrow-and-reborrow). Type names, aliases, generic applications, grouping, and Tuple syntax are accepted as target syntax without implying that every adaptation is defined.
 
 ```kimi
 let wide = number@i64
 let view = value@ref
-let sameView = value@ref/Value // When value's Core Type is Value.
+let sameView = value@ref/Value // When value's Core is Value.
 let taken = value@move
 ```
 
@@ -3894,7 +3926,7 @@ For a bare Name `X` in `E@X`, first recognize `move` and built-in Semantics name
 | Both roles, or ambiguity within a role | Ambiguity error |
 | Neither | Ordinary wrong-role, inaccessible, or undefined-Name diagnostic |
 
-Operand Types, expected Types, or conversion success cannot resolve a role ambiguity or reopen outer lookup. Qualified names and constructed Types use normal Type syntax; `@s/T` gives `s` the Semantics role and `T` the Core Type role, extended to the View Target role when `s` is object Semantics. Qualification or an explicit Semantics/Core Type form may disambiguate a bare name.
+Operand Types, expected Types, or conversion success cannot resolve a role ambiguity or reopen outer lookup. Qualified names and constructed Types use normal Type syntax; `@s/T` gives `s` the Semantics role and `T` the Core role, extended to the View Target role when `s` is object Semantics. Qualification or an explicit Semantics/Core form may disambiguate a bare name.
 
 ##### 13.5.2. Static selection and inference
 
@@ -3930,9 +3962,9 @@ resource@owner // Ordinary Move if resource is a non-Copy owned value.
 number@move    // Explicit Move even if number is Copy.
 ```
 
-**Origin Restriction** is common static result fitting, not another value operation. Determine acquisition/Borrow and its effect, then apply only shortening permitted by existing variance and outlives rules. Check Identity Acquisition before this use-site restriction. Preserve Core Type, Semantics, dependencies, and Loans; do not add Copy, Move, or Borrow, extend lifetime, or rewrite arbitrary nested Origins. For example, fitting `ref/T from longer` to `ref/T from shorter` requires `longer` to outlive `shorter`. Exclusive same-Type adaptation still uses Reborrow.
+**Origin Restriction** is common static result fitting, not another value operation. Determine acquisition/Borrow and its effect, then apply only shortening permitted by existing variance and outlives rules. Check Identity Acquisition before this use-site restriction. Preserve Core, Semantics, dependencies, and Loans; do not add Copy, Move, or Borrow, extend lifetime, or rewrite arbitrary nested Origins. For example, fitting `ref/T from longer` to `ref/T from shorter` requires `longer` to outlive `shorter`. Exclusive same-Type adaptation still uses Reborrow.
 
-A target changing both Core Type and Semantics must be one defined operation. No hidden convert-then-borrow sequence is inserted:
+A target changing both Core and Semantics must be one defined operation. No hidden convert-then-borrow sequence is inserted:
 
 ```kimi
 // number is i32.
@@ -4012,7 +4044,7 @@ let transferred = exclusive@move
 
 Do not upgrade shared to exclusive, derive exclusive object borrows from `rc`/`arc`, or convert between value-borrow and object-borrow representations. A runtime reference count of one does not grant an exception. Owned temporaries use [materialization and temporary borrowing](#36-temporary-values-places-and-lifetimes).
 
-A computed/required Property operand invokes its getter once. Adapt the fixed **Getter Result Type**, also when inferring the shorthand Core Type. Borrowing an owned getter result materializes that temporary rather than borrowing backing storage; reference results use ordinary Copy/Reborrow rules. An accessible setter grants no backing-storage access. A Field operand instead follows the direct Place rules of §11.1.
+A computed/required Property operand invokes its getter once. Adapt the fixed **Getter Result Type**, also when inferring the shorthand Core. Borrowing an owned getter result materializes that temporary rather than borrowing backing storage; reference results use ordinary Copy/Reborrow rules. An accessible setter grants no backing-storage access. A Field operand instead follows the direct Place rules of §11.1.
 
 ```kimi
 // Assume item is computed and its getter returns ref/Resource.
@@ -4062,7 +4094,7 @@ Abort and cleanup during or after `@` evaluation follow Error Handling and Value
 
 ##### 13.5.7. Object upcasts
 
-Let `S` be the source's static Core Type View Target and `V` a different target. An upcast requires static proof of `Supports(S, V)`. Inheritance and conformance persist in derived Types, so this guarantee holds even when the actual object is more derived than `S`. Validate [payload erasure](#1581-object-payload-erasure), initialization, access, Origins, and Loans in every row.
+Let `S` be the source's static Core View Target and `V` a different target. An upcast requires static proof of `Supports(S, V)`. Inheritance and conformance persist in derived Types, so this guarantee holds even when the actual object is more derived than `S`. Validate [payload erasure](#1581-object-payload-erasure), initialization, access, Origins, and Loans in every row.
 
 | Source | Explicit operation | Acquisition/result |
 | --- | --- | --- |
@@ -4086,7 +4118,7 @@ Use a checked cast when the source view cannot guarantee the target, including c
 
 ##### 13.5.8. Object ownership creation and sharing
 
-Core provides the following explicit intrinsic operations. The names below describe semantic operations, not final API spellings or new `@` forms. `T` is the exact concrete Core Type of the input owner and must already be admitted as an object payload; these operations do not extend object support to enums or runtime-contract payloads. `V` is an existing valid View Target.
+Core provides the following explicit intrinsic operations. The names below describe semantic operations, not final API spellings or new `@` forms. `T` is the exact concrete Core of the input owner and must already be admitted as an object payload; these operations do not extend object support to enums or runtime-contract payloads. `V` is an existing valid View Target.
 
 | Operation | Input | Result and responsibility |
 | --- | --- | --- |
@@ -4110,9 +4142,9 @@ The new owner takes the payload's destruction responsibility and records the ori
 
 ##### 13.6.1. Runtime is tests
 
-In ordinary expressions, `value is T` and `value is not T` are non-associative comparisons. The right side is one named struct Core Type, with optional qualification and resolved type arguments, but no Semantics, Origin, binding name, or requirement composition. Expand aliases and check accessibility. Unresolved type parameters/associated Types and non-struct targets are outside this initial syntax.
+In ordinary expressions, `value is T` and `value is not T` are non-associative comparisons. The right side is one named struct Core, with optional qualification and resolved type arguments, but no Semantics, Origin, binding name, or requirement composition. Expand aliases and check accessibility. Unresolved type parameters/associated Types and non-struct targets are outside this initial syntax.
 
-The left side must have `obj/S`, `rc/S`, `arc/S`, `objref/S`, or `objuniq/S`, with a struct Core Type `S`. Evaluate it once, then return `Supports(RuntimeObjectType(value), T)` or its negation. Generic identity includes the relevant arguments. This operation itself neither Copies nor Moves nor Consumes the operand, changes counts, nor acquires stronger authority. Getter/call evaluation, required shared access, temporaries, and cleanup retain normal effects.
+The left side must have `obj/S`, `rc/S`, `arc/S`, `objref/S`, or `objuniq/S`, with a struct Core `S`. Evaluate it once, then return `Supports(RuntimeObjectType(value), T)` or its negation. Generic identity includes the relevant arguments. This operation itself neither Copies nor Moves nor Consumes the operand, changes counts, nor acquires stronger authority. Getter/call evaluation, required shared access, temporaries, and cleanup retain normal effects.
 
 ```kimi
 require value is Dog and value.isHealthy() else return
@@ -4126,7 +4158,7 @@ Accept well-typed tests even when static information proves them always true or 
 
 ##### 13.6.2. General view tests and checked casts
 
-The object model additionally defines view-support tests for any valid View Target and a distinct exact-type test. A support test queries `Supports(RuntimeObjectType(value), V)`; an exact test compares Runtime Type Identity with a concrete Core Type and excludes derived Types. The source syntax for contract-view tests and exact tests remains deferred; it does not extend the initial `is` syntax above. A Boolean saved in a variable carries no refinement provenance.
+The object model additionally defines view-support tests for any valid View Target and a distinct exact-type test. A support test queries `Supports(RuntimeObjectType(value), V)`; an exact test compares Runtime Type Identity with a concrete Core and excludes derived Types. The source syntax for contract-view tests and exact tests remains deferred; it does not extend the initial `is` syntax above. A Boolean saved in a variable carries no refinement provenance.
 
 For a statically valid checked cast to `V`, success is exactly the same `Supports` predicate, always using the original object's Dynamic Type, including from a contract view. Failure is an ordinary absent/error result, not Abort or unsafe reinterpretation.
 
@@ -5116,9 +5148,9 @@ In each example, the unreachable expression or transfer is locally valid, but it
 
 ##### 14.10.1. Stable bindings and effective types
 
-Runtime Type refinement attaches to the current **Value Instance** of a resolved **Binding Identity**. Eligible subjects are parenthesized or bare names of object-typed local `let` bindings or non-reassignable parameters with struct Core Type targets. `var`, Fields, computed/required Properties, indexing, and call results can be tested but do not refine later reads. Facts do not transfer to aliases or shadowed bindings.
+Runtime Type refinement attaches to the current **Value Instance** of a resolved **Binding Identity**. Eligible subjects are parenthesized or bare names of object-typed local `let` bindings or non-reassignable parameters with struct Core targets. `var`, Fields, computed/required Properties, indexing, and call results can be tested but do not refine later reads. Facts do not transfer to aliases or shadowed bindings.
 
-The **Effective Type** used for a name at a program point narrows only its guaranteed Core Type. Preserve declared Semantics, Origins, Loans, mutability, initialization state, object identity, and complete destruction responsibility. Writes/reinitialization that could replace the binding invalidate old facts; Move/destruction prevents further use. Mutation of members alone does not invalidate facts while the binding value and Dynamic Type remain the same. This adds no `var` refinement or write permission.
+The **Effective Type** used for a name at a program point narrows only its guaranteed Core. Preserve declared Semantics, Origins, Loans, mutability, initialization state, object identity, and complete destruction responsibility. Writes/reinitialization that could replace the binding invalidate old facts; Move/destruction prevents further use. Mutation of members alone does not invalidate facts while the binding value and Dynamic Type remain the same. This adds no `var` refinement or write permission.
 
 Use Effective Type for member lookup, argument applicability, overload resolution, assignment sources, results, and local inference. Apply each candidate's ordinary fitting/adaptation rules; do not discard a base candidate if those rules fit, retry resolution with the declared Type, or change already fixed declarations or destination Types. Explicit object upcasts remain necessary where ordinarily required.
 
@@ -5530,7 +5562,7 @@ These are static subtype rules under [Type relations and expression operations](
 
 The compiler infers Origin variance from all occurrences and solves recursive types to a fixed point. Explicit variance annotations are not allowed.
 
-| Position                 | Origin                   | Core Type         |
+| Position                 | Origin                   | Core         |
 | ------------------------ | ------------------------ | ----------------- |
 | `ref/T from o`           | Covariant in `o`         | Covariant in `T`  |
 | `uniq/T from o`          | Covariant in `o`         | Invariant in `T`  |
@@ -7003,7 +7035,7 @@ Type Descriptor
     └─ layout or receiver-adjustment information where required
 ```
 
-**Runtime Object Type Identity**, also called Runtime Type Identity here, identifies the actual concrete payload Core Type D. Use these logical functions on Types whose necessary formation checks have succeeded:
+**Runtime Object Type Identity**, also called Runtime Type Identity here, identifies the actual concrete payload Core D. Use these logical functions on Types whose necessary formation checks have succeeded:
 
 ```text
 N(A)      = normalize transparent aliases, resolved associated-Type projections,
@@ -7011,7 +7043,7 @@ N(A)      = normalize transparent aliases, resolved associated-Type projections,
 ArgKey(A) = remove every Origin from N(A), recursively retaining Type structure
             and Semantics; nominal nodes retain Symbol/Kotonoha/version and
             their ordered argument keys
-CoreId(D) = the concrete Core Type's identity computed by the same rules
+CoreId(D) = the concrete Core's identity computed by the same rules
 ```
 
 An object handle's Runtime Type Identity is `CoreId(D)`, excluding its root `obj/rc/arc/objref/objuniq`. Do not apply this root-handle removal recursively inside generic arguments: their Object Semantics remain in ArgKey. Preserve Function/Tuple structure and generated Closure declaration identity. A static base or Contract View Target is not a substitute for the actual D.
@@ -7047,7 +7079,7 @@ Use **shared implementations with automatic specialization where needed**:
 | Policy | Condition |
 | --- | --- |
 | Required separation | Shared code, metadata, helpers, and adapters cannot preserve a semantic or representation difference |
-| Default automatic specialization | Primitive scalar value representation or operations; use Type-specific code or adapters under the policies below |
+| Default automatic specialization | Scalar value representation or operations; use Type-specific code or adapters under the policies below |
 | Optional automatic specialization | Inlining, removal of indirect calls, or other optimizations preserve meaning |
 
 Sharing must preserve the selected ordinary or explicit implementation, environment-selected syntax, resolved overloads and Contract mappings; parameter/result representations, layout and receiver adjustments; and Copy/Move/Consume, borrowing, reference counts, failure, and destruction paths. Differences may be moved to common-format metadata or helpers, but must not be lost. Equal representation is insufficient to share implementations with different observable behavior.
@@ -7137,7 +7169,7 @@ Exact precompilation, callee-information passing, artifact/ABI formats, inlining
 
 ### 22. Core, program execution, and foreign functions
 
-This chapter defines required Core identities, process startup and shutdown, the foreign-call boundary, and minimal standard output.
+This chapter defines the required declarations of the Core Kotonoha, process startup and shutdown, the foreign-call boundary, and minimal standard output. Here, Core names the foundation Kotonoha, not a Type component.
 
 #### 22.1. Required Core declarations
 
@@ -7164,11 +7196,11 @@ This is the minimal set named by language rules, not a promise of a general stan
 | Object ownership intrinsics | Creation of `obj`/`rc`/`arc` and duplication of `rc`/`arc` strong owners with exactly the contracts in §13.5.8; final source names/signatures remain deferred |
 | `writeLine` | `public func writeLine(text: string) -> ()`; standard-output operation under §22.4, with ordinary owned-argument acquisition |
 
-Iterator and Iterable are static, non-lending Contracts. Their Element requirement is the sole complete-Type exception (§8.4.3) and may bind ref/T from an existing external source; Iterable.Iterator still binds a Core Type. Table signatures follow normal associated-Type, receiver, result-Origin, and lifetime rules.
+Iterator and Iterable are static, non-lending Contracts. Their Element requirement is the sole complete-Type exception (§8.4.3) and may bind ref/T from an existing external source; Iterable.Iterator still binds a Core. Table signatures follow normal associated-Type, receiver, result-Origin, and lifetime rules.
 
 Fixed arrays implement Iterable with Element = T. Owning Array/Dictionary iterators retain and destroy unyielded elements. ResolvedRange and Slice use concrete Core iterator identities with §4.6’s element Types and dependencies: range iterators store position/end; Slice iterators store a copied handle, position, and external source Loan. Neither owns yielded elements, and both stay exhausted after None. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving next’s result extends no lifetime. These requirements add no public iterator constructors or other changes to associated-requirement kinds.
 
-The primitive keyword string denotes the compiler's UTF-8 string Core Type, not a shadowable alias; its required operations here are literal/interpolation construction, concatenation, comparison, and Stringify. No character indexer, mutable string buffer, allocator, or formatting options are implied. Fixed-array syntax and layout follow [sequence Types](#4-arrays-indexing-and-slices); metadata, indexed Place acquisition, and shared reading follow [indexing and slicing](#46-indexing-and-slicing).
+The primitive keyword string denotes the compiler's UTF-8 string Core, not a shadowable alias; its required operations here are literal/interpolation construction, concatenation, comparison, and Stringify. No character indexer, mutable string buffer, allocator, or formatting options are implied. Fixed-array syntax and layout follow [sequence Types](#4-arrays-indexing-and-slices); metadata, indexed Place acquisition, and shared reading follow [indexing and slicing](#46-indexing-and-slicing).
 
 The Option/Result payload Copy and Owned classifications follow ordinary enum rules; no extra copying is introduced.
 
@@ -7628,9 +7660,9 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Term | Meaning | Defined in |
 | --- | --- | --- |
 | Access Designator | A resolved access target, without a promise of storage or Consume permission. | [Value model](#34-values-places-and-storage) |
-| Adaptation Target | Core Type or object View Target and Semantics requested by `@`; result Origins are inferred. | [Explicit operations](#1351-forms-and-adaptation-targets) |
+| Adaptation Target | Core or object View Target and Semantics requested by `@`; result Origins are inferred. | [Explicit operations](#1351-forms-and-adaptation-targets) |
 | API signature | Exposed Types and requirements checked for accessibility, beyond overload identity. | [API signature accessibility](#932-api-signature-accessibility) |
-| Associated Type | Ordinarily a Core Type binding fixed by explicit Type-identity facts; Core iteration Element requirements have the explicit complete-Type exception in §22.1. | [Associated Types](#843-associated-types) |
+| Associated Type | Ordinarily a Core binding fixed by explicit Type-identity facts; Core iteration Element requirements have the explicit complete-Type exception in §22.1. | [Associated Types](#843-associated-types) |
 | Binding | Associating source names and operations with declarations and meanings. | [Name resolution](#9-names-signatures-and-access) |
 | Binding Identity / Value Instance | Resolved binding / its currently held value | [Stable bindings](#14101-stable-bindings-and-effective-types) |
 | Callable / Call Receiver Requirement | Declared generic access / concrete minimum body access | [Callable constraints](#86-callable-constraints), [call receivers](#763-call-receiver-and-acquisition) |
@@ -7657,14 +7689,15 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Contract refinement | Inheritance of all parent requirements and Constraints; conformance entails ancestor conformance. | [Refinement](#842-refinement) |
 | Control Boundary | A lexical boundary governing control-transfer target lookup. | [Control flow](#14-control-flow) |
 | Copy | Implicit value duplication that leaves its source initialized. | [Copy and Move](#35-copy-and-move) |
-| Core Type | The component of a Type that identifies what the value is. | [Type composition](#3-types-and-values) |
+| Core | A Type's value kind, structure, and identity, distinct from its outer Semantics and Origins. | [Type composition](#3-types-and-values) |
+| Core Kotonoha | The compiler-compatible foundation module referenced as `Core`. | [Required declarations](#221-required-core-declarations) |
 | Declaration Container | A named declaration scope with members permitted by its kind. | [Containers](#61-declaration-containers) |
 | Deferred Block | Cleanup code registered by `defer` for its containing scope's exit. | [Deferred Blocks](#161-deferred-blocks) |
 | Deferred Obligation | A legitimate dependent check retained with its evidence, environment, and deadline. | [Generic checking](#810-generic-body-checking-and-deferred-obligations) |
 | Destruction responsibility | Responsibility for ending an owned value's lifetime under the cleanup rules. | [Value model](#34-values-places-and-storage) |
 | Directive Binding | Resolution and validation of compile-time Condition names and dependencies. | [Compiler requirements](#appendix-a-compiler-implementation-requirements) |
 | Discard Context | An evaluation context that does not retain an expression's result. | [Evaluation contexts](#142-blocks-and-evaluation-contexts) |
-| Dynamic Type / Runtime Type Identity | Actual constructed Core Type / its runtime comparison identity | [Object views](#335-object-views-and-identity), [metadata](#2121-type-identity-and-descriptors) |
+| Dynamic Type / Runtime Type Identity | Actual constructed Core / its runtime comparison identity | [Object views](#335-object-views-and-identity), [metadata](#2121-type-identity-and-descriptors) |
 | Effective access domain | Source contexts permitted by a declaration's access and enclosing restrictions. | [Access domains](#931-effective-access-domains-and-protected-receivers) |
 | Effective Type / Flow State | Point-specific guaranteed Type / coordinated analysis facts | [Refinement](#1410-type-refinement) |
 | Environment Condition | A Boolean directive expression over fixed target and Project settings. | [Condition evaluation](#193-condition-evaluation-and-selection) |
@@ -7691,14 +7724,15 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Field | A let/var member exposing a Place of fixed Field Type. | [Fields](#111-field-access-and-acquisition) |
 | Property | A computed operation member with logical P and fixed getter result R, or a contract requirement for those operations; no owned storage. | [Fields and computed properties](#11-fields-and-computed-properties) |
 | Reborrow | A borrow derived from an existing borrow, subject to the parent's capability and Origin. | [Reborrowing](#1563-reborrowing) |
+| Scalar | Integer, floating-point, Boolean, or Character Core; short for Primitive scalar. | [Primitive cores](#31-primitive-cores) |
+| Semantics | A value's representation, ownership, borrowing, access, and safety rules; also called Type Semantics. | [Type Semantics](#33-type-semantics) |
 | SemanticsTarget | Fixed kind of a pair's direct target: a complete value Type or permitted Object View Target. | [Generic parameters](#81-generic-type-parameters) |
 | Signature | Information distinguishing declarations in the same scope. | [Signatures](#91-signatures) |
 | SourceDocument | One immutable source input, including path and text, belonging to a Kotonoha. | [Source text](#21-source-text-and-encoding) |
 | Subject Place | Internal storage acquired once before match arm selection | [Match lifetime](#1516-match-acquisition-and-lifetime) |
 | Temporary Place | Anonymous storage materializing a Temporary Value. | [Materialization](#361-materialization) |
 | Temporary Value | An expression's temporary result, distinct from its original persistent Place. | [Materialization](#361-materialization) |
-| Type | Core Type or object View Target, Semantics, and Origin together. | [Type composition](#3-types-and-values) |
-| Type Semantics | How a value is represented, owned, accessed, or used. | [Type Semantics](#33-type-semantics) |
+| Type | A complete type, including Semantics, its target, and all Origin dependencies. | [Type composition](#3-types-and-values) |
 | Value Context | An evaluation context that requires an expression's value. | [Evaluation contexts](#142-blocks-and-evaluation-contexts) |
 | View Target / Supports | Public object target / concrete-Type relationship to that target | [Object views](#335-object-views-and-identity) |
 
@@ -7817,7 +7851,9 @@ PairParameter        := Name "/" Name
 LengthParameter      := "length" Name
 ```
 
-Object-target syntax uses the View Target lookup role; in the [runtime Contract extension](#85-runtime-contracts), a named target may resolve to a valid `RuntimeContractType` instead of a Core Type. Runtime designation and View bindings are not supplied by this grammar. A bare Contract is not a value Type. This shared syntax permits no arbitrary Object Semantics around an already Semantics-applied Type. Layer legality and Origin attachment follow [nested Semantics](#336-nested-semantics-and-type-grouping). `NamedType` also preserves dotted associated-Type projection syntax; its Contract and Core Type roles are resolved under F.3. Callable signature syntax appears with requirements below; generated Closure and Function Item Types have no source declaration spelling.
+`CoreType` and `NamedCoreType` remain grammar production names. They describe syntactic forms, not the full classification of Cores in §3; Function Types use a separate production, and generated callable Cores have no declaration spelling.
+
+Object-target syntax uses the View Target lookup role; in the [runtime Contract extension](#85-runtime-contracts), a named target may resolve to a valid `RuntimeContractType` instead of a Core. Runtime designation and View bindings are not supplied by this grammar. A bare Contract is not a value Type. This shared syntax permits no arbitrary Object Semantics around an already Semantics-applied Type. Layer legality and Origin attachment follow [nested Semantics](#336-nested-semantics-and-type-grouping). `NamedType` also preserves dotted associated-Type projection syntax; its Contract and Core roles are resolved under F.3. Callable signature syntax appears with requirements below; generated Closure and Function Item Types have no source declaration spelling.
 
 GenericParameters and TypeArguments are nonempty and allow trailing commas. NamedParameter and PairParameter declare Type slots; only LengthParameter declares a function length slot. A pair consumes one complete Type argument and is recognized only by declaration-side `Name / Name`. Preserve syntactically ambiguous Name/grouped GenericArguments until Binding checks their declared slot kind under [length parameters](#44-function-length-parameters); do not infer slot kinds from uses. `of` is contextual only after ArrayLength as the element delimiter. `_` as ArrayElementType is allowed only in a local binding annotation with an initializer. LengthParameter is forbidden on Type declarations. Standalone Semantics slots, general Const arguments, partial/default/variadic arguments, and other `_` Type arguments are not introduced; Origin arguments follow their separate rules.
 
@@ -7942,7 +7978,7 @@ Contract requirements have no access modifiers, default/optional parameters, Pro
 
 Constraint subjects follow their declaration context: a Contract body constrains its own/inherited associated Types; a function constrains its generic parameters and projections rooted in them; a Type body uses its ordinary Constraints and conformance rules. These productions do not broaden `#if`/`#case` Conditions.
 
-`ContractReference` resolves a nongeneric user-defined Contract through normal qualification and aliases; built-in parameterized requirements have separate productions. `TypeQualifier` must resolve to a Core Type, parameter, `Self`, or associated-Type projection, not a value or Semantics-applied expression. The Parser distinguishes declarations, specifications, Type positions, and Constraints-only regions by context, preserving dotted paths. Binding resolves the Contract/associated-Type roles and rejects distinct successful interpretations; expected results and value-member fallback cannot disambiguate them. Apply the same rules after ordinary compile-time selection.
+`ContractReference` resolves a nongeneric user-defined Contract through normal qualification and aliases; built-in parameterized requirements have separate productions. `TypeQualifier` must resolve to a Core, parameter, `Self`, or associated-Type projection, not a value or Semantics-applied expression. The Parser distinguishes declarations, specifications, Type positions, and Constraints-only regions by context, preserving dotted paths. Binding resolves the Contract/associated-Type roles and rejects distinct successful interpretations; expected results and value-member fallback cannot disambiguate them. Apply the same rules after ordinary compile-time selection.
 
 `ConstructorDeclaration` and `DeinitDeclaration` are allowed only directly in structure bodies, subject to their merging and selection rules. A constructor has a Unit executable body but produces an owned structure through its dedicated construction operation. Neither declaration is an ordinary function declaration; constructor Origin bindings come from the containing Type's Constraints. See [constructors](#623-constructors) and [destruction declarations](#163-aggregate-destruction-and-deinit).
 
@@ -8009,7 +8045,7 @@ CaptureOperation     := "move" | "ref" | "uniq"
 CompositionRootExpression := "$" "abort" "(" Expression ")"
 ```
 
-Ordinary `is` / `is not` accepts one named struct Core Type and does not consume outer `and` / `or`. The separate compile-time [requirement expressions](#83-requirement-expressions) retain their existing extent in their dedicated contexts. Anonymous parameter/result omission and Capture Lists obey [function-expression rules](#76-function-expressions). Adaptation-target parsing and generic/comparison disambiguation follow [precedence](#131-precedence-and-associativity); these boundaries are not alternative parses selected by conversion success.
+Ordinary `is` / `is not` accepts one named struct Core and does not consume outer `and` / `or`. The separate compile-time [requirement expressions](#83-requirement-expressions) retain their existing extent in their dedicated contexts. Anonymous parameter/result omission and Capture Lists obey [function-expression rules](#76-function-expressions). Adaptation-target parsing and generic/comparison disambiguation follow [precedence](#131-precedence-and-associativity); these boundaries are not alternative parses selected by conversion success.
 
 Qualified enum Case expressions have no separate Primary production: ordinary Postfix syntax is classified during Binding under §6.3.2. Only InferredCaseExpression is a dedicated expression production; CaseReference belongs to the Pattern grammar in F.5.
 
@@ -8067,7 +8103,7 @@ Transfer             := "return" Expression?
 DeinitDeclaration    := "deinit" ExecutableBlock
 ```
 
-CaseReference qualifiers identify enum Core Types without the enum's own Origin annotations; their generic argument Types retain complete Type information. Case existence, expected-Type resolution, payload presence/count, access, and Semantics are checked under [Case construction](#632-case-construction-and-resolution). Cases with payload require arguments, while payload-free Cases prohibit parentheses. Binding names and structural access follow [Patterns](#1481-patterns), not expression or constructor-call semantics. Match and enum bodies must remain nonempty after selection under their respective rules.
+CaseReference qualifiers identify enum Cores without the enum's own Origin annotations; their generic argument Types retain complete Type information. Case existence, expected-Type resolution, payload presence/count, access, and Semantics are checked under [Case construction](#632-case-construction-and-resolution). Cases with payload require arguments, while payload-free Cases prohibit parentheses. Binding names and structural access follow [Patterns](#1481-patterns), not expression or constructor-call semantics. Match and enum bodies must remain nonempty after selection under their respective rules.
 
 #### F.6. Field and Property grammar
 
