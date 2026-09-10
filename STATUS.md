@@ -10,24 +10,25 @@ This table defines the recorded status of each compiler stage. The notes below d
 
 | Feature | Parsing | Binding | Analysis | Lowering | Runtime |
 | --- | --- | --- | --- | --- | --- |
-| Functions and Constraint Clauses | Partial | Partial; see C.16 | Partial | Not implemented | Not implemented |
+| Functions and Constraint Clauses | Partial | Partial; see C.16, C.18–C.19 | Partial | Not implemented | Not implemented |
 | Static Contracts and associated Types | Partial; see C.4 | Not implemented | Not implemented | Not implemented | N/A |
 | `#if` / `#match` | Implemented | Not implemented | Partial | Not assessed | N/A |
-| Types | Partial | Partial; see C.16–C.17 | Partial | Not implemented | Not implemented |
+| Types | Partial | Partial; see C.16–C.19 | Partial | Not implemented | Not implemented |
+| Core intrinsic identities and Copy / Owned classification | Partial; conditional Copy clauses | Partial; see C.19 | Partial; see C.19 | N/A | N/A |
 | Origins | Partial | Partial; see C.17 | Partial declaration requirements; see C.17 | Not implemented | Not implemented |
 | Properties | Implemented | Partial; see C.16 | Partial | Not implemented | Not implemented |
 | Constructors and aggregate destruction | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | Ordinary Copy / Move acquisition | N/A; no dedicated Move operator | Not implemented | Not implemented | Not implemented | Not implemented |
 | Control flow and `defer` | Implemented | Partial; see C.16 | Partial | Not implemented | Not implemented |
-| Enum Cases, Patterns, and guards | Implemented | Not implemented | Not implemented | Not implemented | Not implemented |
+| Enum Cases, Patterns, and guards | Implemented | Partial; Case payload Types only, C.19 | Partial; payload capabilities, C.19 | Not implemented | Not implemented |
 | Explicit full specialization and generic code sharing | Source specialization syntax | Not implemented | Not implemented | Not implemented | Not implemented |
 | Option / Result / Abort | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
 | Core.writeLine and executable startup | Source forms only; dedicated support not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
 
 Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
 
-The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.18 record Binding coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
+The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.19 record Binding coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
 
 ### C.2. Builds, modules, and source artifacts
 
@@ -293,3 +294,21 @@ This milestone is the proof foundation, not complete static conformance or expre
 Constraint environments, interned propositions, Types, and collection capacities are reused across provisional/final passes. ConstraintBindingTest exercises the permitted and forbidden proof rules, contradictions and error absorption, scoped substitution, Origin-sensitive identity, constrained calls and Type uses, declaration-order independence, Signature collisions, role obligations, and source-append invalidation. Eight warmed final passes over 128 constrained generic calls allocate zero bytes on the current .NET runtime; both earlier allocation regressions remain covered.
 
 Validation: all 1,587 tests pass in Debug and Release; the Release solution build completes with zero warnings and errors.
+
+### C.19. Core intrinsic identities and Copy / Owned (2026-09-11)
+
+Each Compilation now owns a synthesized Core requirement module with stable Copy, Owned, and Callable Symbol Identities and compiler-compatible language-version metadata. Synthesis uses declaration construction directly and does not parse source or freeze target preparation. Binding exposes the identities through Compilation.Core / Binding.Core, ordinary qualified lookup, Core namespace aliases, and default requirement lookup. The reserved `::Core` path continues to reach the designated module when a user declaration shadows ordinary `Core` lookup. Same-spelled user declarations retain their ordinary identities. Binding validates the synthesized declaration shapes and rejects missing, duplicate, or incompatible definitions.
+
+This is an intrinsic identity bootstrap, explicitly marked IsCompleteLibrary = false. It does not synthesize the rest of SPEC §22.1, implement Core runtime operations, or load/validate a complete external Core library. Callable has its designated identity, but its parameterized requirement semantics remain a later milestone; a bare Callable is not accepted as a complete requirement. Function Item / concrete Closure capability rules await their complete bound representations and capture analysis. Ordinary user Contract matching, refinement, and associated Types remain pending.
+
+Copy and Owned plug into the existing four-valued Constraint proof engine and call applicability. Binding.ProveCopy / ProveOwned expose the same judgments to subsequent analyses without selecting Copy, Move, or Borrow operations. Copy classifies primitives, nested Semantics, common Function Types, tuples, fixed arrays (including zero-length element requirements), and explicitly opted-in structs/enums. `Self is Copy` validates every own stored Field, every enum Case payload, and the direct base under declaration input Constraints; user deinit prohibits derivation, and computed members contribute no storage. General inherited member Binding and full accessor execution are still separate work. An individual successful instantiation never validates an unproved generic Copy declaration.
+
+Body-free `Self is Copy when P` clauses now parse at Type member positions. Their positive, comma-separated premises have a separate assumption scope; they do not become ordinary Type-formation Constraints. Derivation must succeed under those premises before a concrete use can gain Copy, and each use separately proves the substituted conditions. Insufficient definition premises, forbidden negation/disjunction, and Copy implementation bodies are rejected. This does not implement general conditional Contract implementation blocks or witness matching. The conditional syntax retains its operands and source spans on existing syntax forms.
+
+Owned follows actual retained storage and substitutes both complete generic Types and declared Origin arguments. Absent/static retained Origins satisfy the guarantee; unresolved abstract/input/inference Origins remain Unknown and cannot prove `not Owned`. Raw-pointer pointees and common callable signatures do not count as stored borrow dependencies. A static outer borrow does not erase an inner dependency. Unused generic slots introduce no stored dependency. Owned continues to grant no exemption from the separate prohibition on retaining even static safe borrows in global/heap storage.
+
+One reusable storage description per declaration supplies Field/base/enum-payload enumeration to capability analysis, declaration Origin requirements, and static-storage borrow checks. Field initializer inference is prepared before nominal capability queries; concrete leaf proofs remain available during that preparation. One substitution path handles both generic slots and named Origins. Direct concrete leaf judgments avoid graph allocation. Nontrivial capability dependencies use reusable work nodes, deduplicated edges, and a queue that wakes consumers only when results change. Copy cycles alone supply no proof; independent finite evidence can resolve them. Owned uses the structural reachability fixed point for finite storage graphs. Repeatedly expanding generic instances retain Unknown instead of materializing an unbounded type graph; required unknown judgments still fail at their deadline. Cached type depths account for shared type DAGs without expanding their tree size. Analysis results and active registrations are reset across Binding passes, including source-append changes; no Binding generation or replacement Bound tree is introduced.
+
+IntrinsicCapabilityTest covers intrinsic identity/shadowing, concrete and symbolic capabilities, conditional and unconditional derivation, Origin substitution, pointer/unused-slot exclusions, enum payload storage, direct bases, computed members, cyclic and expanding dependencies, error/unknown behavior, and mutation invalidation. Two additional allocation regressions exercise 128 intrinsic-constrained calls with primitive arguments and with conditional-Copy generic struct arguments. Eight warmed final Binding passes allocate zero bytes in both cases on the current .NET runtime. BindingBenchmark now selects Calls, Origins, or Capabilities workloads at 32 and 512 calls; no throughput claim is made from the allocation tests.
+
+Validation: all 1,657 tests pass in Debug and Release; the Release solution build completes with zero warnings and errors.

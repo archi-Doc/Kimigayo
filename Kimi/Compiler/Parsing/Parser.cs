@@ -1879,8 +1879,9 @@ CloseParameters:
     /// <see cref="IdentifierNameKoto"/> instances for later semantic analysis.
     /// </remarks>
     /// <param name="reader">The token reader positioned at the constraint subject.</param>
+    /// <param name="finishLine">Whether to diagnose and consume trailing tokens on the clause's line.</param>
     /// <returns>The parsed constraint, or <see langword="null"/> when its required prefix is invalid.</returns>
-    public static IsKoto? ParseTypeConstraint(ref TokenReader reader)
+    public static IsKoto? ParseTypeConstraint(ref TokenReader reader, bool finishLine = true)
     {
         var parsesSemantics = reader.IsCurrentIdentifier(Constants.SemanticsKeyword);
         var subject = ParseConstraintSubject(ref reader);
@@ -1893,7 +1894,11 @@ CloseParameters:
         var condition = ParseCondition(ref reader, parsesSemantics);
         var constraint = new IsKoto(ref reader, SourceSpan.FromBounds(subject.Span.Start, Math.Max(isRange.End, condition.Span.End)), subject, condition);
 
-        reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+        if (finishLine)
+        {
+            reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+        }
+
         return constraint;
 
         static Koto ParseCondition(ref TokenReader reader, bool parsesSemantics)

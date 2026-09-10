@@ -64,7 +64,12 @@ public sealed partial class Binding
             imported = candidate;
         }
 
-        return imported;
+        if (imported is not null || !type)
+        {
+            return imported;
+        }
+
+        return name == "Core" ? this.Core.Module : this.Core.Scope.Types.GetValueOrDefault(name);
     }
 
     private BindingScope? AliasTarget(AliasKoto alias, BindingScope useScope)
@@ -72,7 +77,8 @@ public sealed partial class Binding
         var scope = this.rootScope;
         for (var i = 0; i < alias.QualifiedName.Count; i++)
         {
-            if (!scope.Types.TryGetValue(alias.QualifiedName[i], out var symbol) || !this.Accessible(symbol, useScope) || !this.scopes.TryGetValue(symbol.Declaration, out var next))
+            var symbol = i == 0 && alias.QualifiedName[i] == "Core" ? this.Core.Module : scope.Types.GetValueOrDefault(alias.QualifiedName[i]);
+            if (symbol is null || !this.Accessible(symbol, useScope) || !this.scopes.TryGetValue(symbol.Declaration, out var next))
             {
                 Fail(alias, BindingFailure.MissingName, true);
                 return null;
@@ -88,6 +94,11 @@ public sealed partial class Binding
 
     private bool Accessible(BindingSymbol symbol, BindingScope use)
     {
+        if (ReferenceEquals(symbol, this.Core.Module) || symbol.Intrinsic != IntrinsicKind.None)
+        {
+            return true;
+        }
+
         if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.TypeParameter or BindingSymbolKind.LengthParameter)
         {
             return true;
@@ -161,10 +172,37 @@ public sealed partial class Binding
 
         if (syntax is SyntaxFormKoto { Akind: KotoKind.RootName } root && root.Operands.Length == 1)
         {
-            return this.TypeName(root.Operands[0], this.rootScope, core);
+            var resolved = this.RootTypeName(root.Operands[0], core);
+            if (resolved is not null)
+            {
+                root.Operands[0].BoundSymbol = resolved;
+                root.Operands[0].BindingState = BindingState.Resolved;
+            }
+
+            return resolved;
         }
 
         return null;
+    }
+
+    private BindingSymbol? RootTypeName(Koto syntax, bool core)
+    {
+        if (syntax is IdentifierNameKoto { IdentifierName: "Core" })
+        {
+            return this.Core.Module;
+        }
+
+        if (syntax is MemberAccessKoto member && this.RootTypeName(member.Left, false) is { } qualifier && ReferenceEquals(qualifier, this.Core.Module) && member.Right is IdentifierNameKoto right)
+        {
+            var target = this.Core.Scope.Types.GetValueOrDefault(right.IdentifierName);
+            member.Left.BoundSymbol = qualifier;
+            member.Left.BindingState = BindingState.Resolved;
+            right.BoundSymbol = target;
+            right.BindingState = target is null ? BindingState.Unresolved : BindingState.Resolved;
+            return target;
+        }
+
+        return this.TypeName(syntax, this.rootScope, core);
     }
 
     private BoundType? BindType(Koto syntax, BindingScope scope)

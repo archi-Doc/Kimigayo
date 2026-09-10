@@ -316,6 +316,7 @@ public enum KotoKind : byte
 
     /// <summary>An enum Case declaration.</summary>
     EnumCase,
+    ConditionalConformance,
 
     /// <summary>A binding Pattern.</summary>
     BindingPattern,

@@ -16,20 +16,29 @@ public class BindingBenchmark
     [Params(32, 512)]
     public int Calls { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether to measure nested Origin contracts instead of calls.</summary>
-    [Params(false, true)]
-    public bool Origins { get; set; }
+    /// <summary>Gets or sets the declaration and call workload.</summary>
+    [Params("Calls", "Origins", "Capabilities")]
+    public string Scenario { get; set; } = "Calls";
 
     /// <summary>Creates and validates syntax and warms reusable semantic storage.</summary>
     [GlobalSetup]
     public void Setup()
     {
-        var source = new StringBuilder(this.Origins ? "struct View<T> origin a, b\n    let first: ref/T from a\n    let second: ref/T from b\n" : "func identity<T>(value: T) -> T => value\n");
+        var source = new StringBuilder(this.Scenario switch
+        {
+            "Origins" => "struct View<T> origin a, b\n    let first: ref/T from a\n    let second: ref/T from b\n",
+            "Capabilities" => "struct Box<T>\n    Self is Copy when T is Copy\n    let value: T\nvar input: Box<i32>\nfunc identity<T>(value: T) -> T\n    T is Copy and Owned\n    return value\n",
+            _ => "func identity<T>(value: T) -> T => value\n",
+        });
         for (var i = 0; i < this.Calls; i++)
         {
-            if (this.Origins)
+            if (this.Scenario == "Origins")
             {
                 source.Append("func function").Append(i).Append(" origin a, b(x: View<i32> from (a => a, b => b), y: ref/(ref/i32 from a) from b) => ()\n");
+            }
+            else if (this.Scenario == "Capabilities")
+            {
+                source.Append("let result").Append(i).Append(" = identity(input)\n");
             }
             else
             {

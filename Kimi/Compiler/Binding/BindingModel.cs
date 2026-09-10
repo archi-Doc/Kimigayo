@@ -76,6 +76,7 @@ internal enum BindingFailure : byte
     InvalidConstraint,
     UnprovenConstraint,
     UnsatisfiedConstraint,
+    InvalidCore,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
@@ -92,6 +93,8 @@ public sealed class BindingSymbol
     public string Name { get; }
 
     public BindingSymbolKind Kind { get; }
+
+    public IntrinsicKind Intrinsic { get; internal init; }
 
     public Koto Declaration { get; }
 

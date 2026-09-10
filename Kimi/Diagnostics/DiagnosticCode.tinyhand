@@ -58,6 +58,9 @@
   + Name="UnsatisfiedConstraint_Kd"
     Message="The supplied Type arguments do not satisfy the declaration's Constraints"
 
+  + Name="InvalidCoreIntrinsics_Kd"
+    Message="The compiler-owned Core requirement declarations are missing, duplicated, or incompatible"
+
   + Name="InvalidCompileTimeCondition_Kd"
     Message="This expression is outside the compile-time Condition grammar (integer literals must fit i64)"
 

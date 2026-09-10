@@ -87,7 +87,7 @@ public sealed partial class Binding
         return false;
     }
 
-    private static ConstraintProof JudgeConstraintAtom(BoundConstraint proposition)
+    private ConstraintProof JudgeConstraintAtom(BoundConstraint proposition, BindingScope scope)
     {
         if (InvalidConstraintType(proposition.Subject!) || (proposition.RequiredType is { } required && InvalidConstraintType(required)) || proposition.Contract?.Declaration.BindingState == BindingState.Invalid)
         {
@@ -112,6 +112,11 @@ public sealed partial class Binding
             }
 
             return proposition.Mask.Contains(proposition.Subject.Semantics) ? ConstraintProof.Proven : ConstraintProof.Refuted;
+        }
+
+        if (proposition.Contract is { Intrinsic: IntrinsicKind.Copy or IntrinsicKind.Owned } intrinsic)
+        {
+            return this.RequestCapability(proposition.Subject!, intrinsic, scope);
         }
 
         // Registration is not verified conformance. In particular, absence is not refutation.
@@ -172,6 +177,11 @@ public sealed partial class Binding
             }
         }
 
+        this.BindCopyDeclarations();
+    }
+
+    private void ValidateConstraintEnvironments()
+    {
         foreach (var scope in this.scopes.Values)
         {
             if (scope.Constraints is not { } environment)
@@ -253,7 +263,7 @@ public sealed partial class Binding
                     if (target?.Declaration is ContractKoto)
                     {
                         node.BoundSymbol = target;
-                        result = this.InternConstraint(new(ConstraintKind.Contract, subject, contract: target));
+                        result = target.Intrinsic == IntrinsicKind.Callable ? this.InternConstraint(new(ConstraintKind.Error)) : this.InternConstraint(new(ConstraintKind.Contract, subject, contract: target));
                     }
                     else
                     {
@@ -323,7 +333,7 @@ public sealed partial class Binding
             ConstraintKind.Not => NegateProof(this.ProveConstraint(proposition.Left!, scope)),
             ConstraintKind.And => CombineProof(this.ProveConstraint(proposition.Left!, scope), this.ProveConstraint(proposition.Right!, scope), true),
             ConstraintKind.Or => CombineProof(this.ProveConstraint(proposition.Left!, scope), this.ProveConstraint(proposition.Right!, scope), false),
-            _ => JudgeConstraintAtom(proposition),
+            _ => this.JudgeConstraintAtom(proposition, scope),
         };
         positive |= structural == ConstraintProof.Proven;
         negative |= structural == ConstraintProof.Refuted;

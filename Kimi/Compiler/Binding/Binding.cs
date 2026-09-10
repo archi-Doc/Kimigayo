@@ -24,16 +24,21 @@ public sealed partial class Binding
     private readonly HashSet<BindingSymbol> borrowVisiting = new(ReferenceEqualityComparer.Instance);
     private BindingScope rootScope = null!;
     private bool running;
+    private bool coreValid;
 
     internal Binding(Compilation compilation)
     {
         this.compilation = compilation;
         this.indexer = new(this);
         this.TypeSystem = new BindingControlFlowTypes();
+        this.Core = new(compilation);
     }
 
     /// <summary>Gets the latest pass summary. Results are replaced by the next Bind.</summary>
     public BindingResult Result { get; private set; }
+
+    /// <summary>Gets the compiler-designated requirement identities for this compilation.</summary>
+    public CoreIntrinsics Core { get; }
 
     /// <summary>Gets final failures; provisional passes do not publish missing-name diagnostics.</summary>
     public IReadOnlyList<BindingIssue> Issues => this.issues;
@@ -75,6 +80,7 @@ public sealed partial class Binding
             this.aliases.Clear();
             this.obligations.Clear();
             this.obligationSet.Clear();
+            this.ResetCapabilities(mode);
             foreach (var scope in this.scopes.Values)
             {
                 scope.Reset();
@@ -96,6 +102,14 @@ public sealed partial class Binding
             this.rootScope = this.GetScope(this.compilation.Kotonoha.RootKoto, null);
             this.indexer.Scope = this.rootScope;
             this.indexer.Visit(this.compilation.Kotonoha.RootKoto);
+            this.Core.Restore();
+            this.coreValid = this.Core.IsValid;
+            if (!this.coreValid)
+            {
+                Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidCore);
+            }
+
+            this.scopes[this.Core.Kotonoha.RootKoto] = this.Core.Scope;
             this.BindSchemas();
             this.BindConstraints();
             for (var i = 0; i < this.nodes.Count; i++)
@@ -106,12 +120,18 @@ public sealed partial class Binding
                 }
             }
 
+            this.PrepareStorage();
             this.ComputeOriginRequirements();
             this.ValidateSignatures();
+            this.capabilitiesReady = true;
+            this.ValidateConstraintEnvironments();
             this.BindNode(this.compilation.Kotonoha.RootKoto, this.rootScope);
+            this.ClearCapabilityResults();
+            this.ValidateCopyDeclarations(mode);
             this.ComputeOriginRequirements();
             this.ValidateOriginRequirements();
             this.ValidateConstraintUses(mode);
+            this.ClearCapabilityResults();
             this.Result = this.Check(mode);
             return this.Result;
         }
@@ -253,6 +273,7 @@ public sealed partial class Binding
                     BindingFailure.InvalidConstraint => DiagnosticCode.InvalidConstraint_Kd,
                     BindingFailure.UnprovenConstraint => DiagnosticCode.UnprovenConstraint_Kd,
                     BindingFailure.UnsatisfiedConstraint => DiagnosticCode.UnsatisfiedConstraint_Kd,
+                    BindingFailure.InvalidCore => DiagnosticCode.InvalidCoreIntrinsics_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 this.issues.Add(new(node, code));

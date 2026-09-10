@@ -354,7 +354,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (node is PropertyKoto property && this.symbols[property].Scope.Owner is GroupKoto)
+            if (node is PropertyKoto property && IsStoredVariable(property) && this.symbols[property].Scope.Owner is GroupKoto)
             {
                 this.borrowVisiting.Clear();
                 if (this.RetainsBorrow(type, this.borrowVisiting))
@@ -386,14 +386,14 @@ public sealed partial class Binding
 
             try
             {
-                for (var i = 0; i < container.Members.Count; i++)
+                if (!this.storageShapes.TryGetValue(container, out var shape))
                 {
-                    if (container.Members[i] is not VariableKoto { BoundType: { } field })
-                    {
-                        continue;
-                    }
+                    return false;
+                }
 
-                    var actual = type.Kind == BoundTypeKind.Constructed ? this.SubstituteType(field, container, (BoundType[])type.Components) : field;
+                for (var i = 0; i < shape.Types.Count; i++)
+                {
+                    var actual = this.StoredType(shape.Types[i], type);
                     if (actual is not null && this.RetainsBorrow(actual, visiting))
                     {
                         return true;

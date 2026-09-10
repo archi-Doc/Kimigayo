@@ -85,6 +85,9 @@ public class Compilation
     /// <summary>Gets reusable semantic analysis storage for this compilation.</summary>
     public Binding Binding => field ??= new(this);
 
+    /// <summary>Gets this compilation's compiler-owned Core requirement identities.</summary>
+    public CoreIntrinsics Core => this.Binding.Core;
+
     #endregion
 
     /// <summary>

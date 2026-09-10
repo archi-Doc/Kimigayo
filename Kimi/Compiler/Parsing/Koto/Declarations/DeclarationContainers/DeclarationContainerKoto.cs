@@ -585,6 +585,36 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
             if (parseTypeConstraints && Parser.IsTypeConstraintStart(ref reader))
             {
+                if (!acceptsTypeConstraints && !reader.IsCurrentIdentifier("Self"))
+                {
+                    reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
+                    reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+                    continue;
+                }
+
+                var constraint = Parser.ParseTypeConstraint(ref reader, finishLine: false);
+                if (constraint is not null && reader.IsCurrentIdentifier("when"))
+                {
+                    reader.Advance();
+                    var conditions = new List<Koto>();
+                    do
+                    {
+                        var condition = Parser.ParseTypeConstraint(ref reader, finishLine: false);
+                        if (condition is null)
+                        {
+                            break;
+                        }
+
+                        conditions.Add(condition);
+                    }
+                    while (reader.TryConsume(TokenKind.Comma));
+                    var span = SourceSpan.FromBounds(constraint.Span.Start, conditions.Count == 0 ? constraint.Span.End : conditions[^1].Span.End);
+                    var premises = new SyntaxFormKoto(ref reader, conditions.Count == 0 ? span : SourceSpan.FromBounds(conditions[0].Span.Start, span.End), KotoKind.ConditionalConformance, string.Empty, conditions.ToArray());
+                    this.AddLast(new SyntaxFormKoto(ref reader, span, KotoKind.ConditionalConformance, string.Empty, [constraint, premises], separator: " when "));
+                    reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
+                    continue;
+                }
+
                 if (!acceptsTypeConstraints)
                 {
                     reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
@@ -593,7 +623,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 }
 
                 CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.TypeConstraint);
-                var constraint = Parser.ParseTypeConstraint(ref reader);
+                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
                 if (constraint is not null && !isExcluded)
                 {
                     this.AddTypeConstraint(constraint);

@@ -87,11 +87,11 @@ public sealed partial class Binding
                 Visit(result, 1);
             }
         }
-        else if (work.Owner is DeclarationContainerKoto container)
+        else if (work.Owner is DeclarationContainerKoto container && this.storageShapes.TryGetValue(container, out var shape))
         {
-            for (var i = 0; i < container.Members.Count; i++)
+            for (var i = 0; i < shape.Types.Count; i++)
             {
-                if (container.Members[i] is VariableKoto variable && (variable.BoundType ?? variable.TypeKoto?.BoundType) is { } type)
+                if (shape.Types[i].BoundType is { } type)
                 {
                     Visit(type, 1);
                 }

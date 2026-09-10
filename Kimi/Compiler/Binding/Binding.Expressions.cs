@@ -122,6 +122,10 @@ public sealed partial class Binding
 
         switch (node)
         {
+            case SyntaxFormKoto { Akind: KotoKind.EnumCase } enumeration when TryEnumPayload(enumeration, out var payload):
+                Complete(enumeration.Operands[0], BoundType.Unit);
+                Complete(payload, BoundType.Unit);
+                return Complete(enumeration, BoundType.Unit);
             case TypeKoto:
                 return this.BindType(node, scope);
             case DeclarationContainerKoto container:

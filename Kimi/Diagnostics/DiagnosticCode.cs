@@ -26,6 +26,7 @@ public enum DiagnosticCode
     InvalidConstraint_Kd,
     UnprovenConstraint_Kd,
     UnsatisfiedConstraint_Kd,
+    InvalidCoreIntrinsics_Kd,
 
     ConditionMustBeBool_Kd,
     InvalidCompileTimeCondition_Kd,
