@@ -457,7 +457,7 @@ Exit:
 
         static List<string>? ParseOrigins(ref TokenReader reader, SourceSpan originRange)
         {
-            List<string>? list = default;
+            OriginNameList? list = default;
             while (true)
             {
                 if (!reader.CanRead)
@@ -486,7 +486,7 @@ Exit:
                     return list;
                 }
 
-                (list ??= []).Add(reader.GetIdentifier(token));
+                (list ??= new()).Add(reader.GetIdentifier(token), token.Span);
 
                 if (!reader.TryConsume(TokenKind.Comma))
                 {

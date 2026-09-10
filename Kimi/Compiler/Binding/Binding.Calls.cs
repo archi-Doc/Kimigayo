@@ -293,9 +293,24 @@ public sealed partial class Binding
             return null;
         }
 
+        // Call-site Origin solving belongs to applicability, not string lookup or type erasure.
+        // Whole generic slots remain supported: their substitution preserves the supplied Origins.
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            if (function.Parameters[i].Type.BoundType is { } input && HasDeclaredOrigins(input))
+            {
+                return null;
+            }
+        }
+
+        if (function.ReturnType?.BoundType is { } output && HasDeclaredOrigins(output))
+        {
+            return null;
+        }
+
         for (var i = 0; i < function.GenericArguments.Count; i++)
         {
-            if (function.GenericArguments[i] is not GenericParameterKoto { SemanticsParameter: null })
+            if (function.GenericArguments[i] is not GenericParameterKoto)
             {
                 return null;
             }
@@ -530,9 +545,17 @@ public sealed partial class Binding
             return true;
         }
 
-        if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics || pattern.Length != actual.Length || pattern.Components.Count != actual.Components.Count || pattern.Components.Count == 0)
+        if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics || pattern.Length != actual.Length || !ReferenceEquals(pattern.LengthExpression, actual.LengthExpression) || !ReferenceEquals(pattern.Origin, actual.Origin) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.Components.Count == 0)
         {
             return false;
+        }
+
+        for (var i = 0; i < pattern.OriginArguments.Count; i++)
+        {
+            if (!ReferenceEquals(pattern.OriginArguments[i], actual.OriginArguments[i]))
+            {
+                return false;
+            }
         }
 
         for (var i = 0; i < pattern.Components.Count; i++)
@@ -547,38 +570,5 @@ public sealed partial class Binding
     }
 
     private BoundType? Substitute(BoundType type, FunctionKoto function, BoundType?[] arguments)
-    {
-        if (type.Kind == BoundTypeKind.Parameter && type.Symbol!.Scope.Owner == function)
-        {
-            return arguments[type.Symbol.Slot];
-        }
-
-        if (type.Components.Count == 0)
-        {
-            return type;
-        }
-
-        var scratch = ArrayPool<BoundType>.Shared.Rent(type.Components.Count);
-        try
-        {
-            var changed = false;
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                var substituted = this.Substitute(type.Components[i], function, arguments);
-                if (substituted is null)
-                {
-                    return null;
-                }
-
-                scratch[i] = substituted;
-                changed |= !ReferenceEquals(substituted, type.Components[i]);
-            }
-
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), type.Length) : type;
-        }
-        finally
-        {
-            ArrayPool<BoundType>.Shared.Return(scratch, clearArray: true);
-        }
-    }
+        => this.SubstituteType(type, function, arguments);
 }

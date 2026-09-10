@@ -175,13 +175,13 @@ public class BindingTest
     }
 
     [Fact]
-    public void UnsupportedOriginObligationsCannotPassBoundCheck()
+    public void DirectBorrowOriginsResolveBeforeBoundCheck()
     {
         var compilation = Parse("func borrow(value: ref/i32) -> ref/i32 => value");
-        Assert.False(compilation.Bind().IsComplete);
-        Assert.Contains(compilation.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Empty(compilation.Binding.Issues);
         var count = compilation.Binding.Issues.Count;
-        Assert.False(compilation.Binding.CheckBound().IsComplete);
+        Assert.True(compilation.Binding.CheckBound().IsComplete);
         Assert.Equal(count, compilation.Binding.Issues.Count);
     }
 

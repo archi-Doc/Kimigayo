@@ -40,6 +40,15 @@
   + Name="UnsupportedBinding_Kd"
     Message="The semantic obligations of this syntax are not yet implemented and cannot pass final Binding"
 
+  + Name="InvalidOriginBinding_Kd"
+    Message="The Origin name, mapping, or annotation is invalid in this type position"
+
+  + Name="MissingOriginBinding_Kd"
+    Message="This Origin must be explicitly bound or resolved by the position's omission rules"
+
+  + Name="InvalidTypeFormation_Kd"
+    Message="The resolved declaration or Semantics target cannot form this type"
+
   + Name="InvalidCompileTimeCondition_Kd"
     Message="This expression is outside the compile-time Condition grammar (integer literals must fit i64)"
 

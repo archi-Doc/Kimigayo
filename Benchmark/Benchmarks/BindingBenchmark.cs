@@ -16,14 +16,25 @@ public class BindingBenchmark
     [Params(32, 512)]
     public int Calls { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether to measure nested Origin contracts instead of calls.</summary>
+    [Params(false, true)]
+    public bool Origins { get; set; }
+
     /// <summary>Creates and validates syntax and warms reusable semantic storage.</summary>
     [GlobalSetup]
     public void Setup()
     {
-        var source = new StringBuilder("func identity<T>(value: T) -> T => value\n");
+        var source = new StringBuilder(this.Origins ? "struct View<T> origin a, b\n    let first: ref/T from a\n    let second: ref/T from b\n" : "func identity<T>(value: T) -> T => value\n");
         for (var i = 0; i < this.Calls; i++)
         {
-            source.Append("let result").Append(i).Append(" = identity(").Append(i).Append(")\n");
+            if (this.Origins)
+            {
+                source.Append("func function").Append(i).Append(" origin a, b(x: View<i32> from (a => a, b => b), y: ref/(ref/i32 from a) from b) => ()\n");
+            }
+            else
+            {
+                source.Append("let result").Append(i).Append(" = identity(").Append(i).Append(")\n");
+            }
         }
 
         this.compilation = Compilation.CreateForTest();

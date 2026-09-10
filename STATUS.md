@@ -13,8 +13,8 @@ This table defines the recorded status of each compiler stage. The notes below d
 | Functions and Constraint Clauses | Partial | Partial; see C.16 | Partial | Not implemented | Not implemented |
 | Static Contracts and associated Types | Partial; see C.4 | Not implemented | Not implemented | Not implemented | N/A |
 | `#if` / `#match` | Implemented | Not implemented | Partial | Not assessed | N/A |
-| Types | Partial | Partial; see C.16 | Partial | Not implemented | Not implemented |
-| Origins | Partial | Not implemented | Not implemented | Not implemented | Not implemented |
+| Types | Partial | Partial; see C.16–C.17 | Partial | Not implemented | Not implemented |
+| Origins | Partial | Partial; see C.17 | Partial declaration requirements; see C.17 | Not implemented | Not implemented |
 | Properties | Implemented | Partial; see C.16 | Partial | Not implemented | Not implemented |
 | Constructors and aggregate destruction | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
@@ -27,7 +27,7 @@ This table defines the recorded status of each compiler stage. The notes below d
 
 Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
 
-The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16 records the initial Binding implementation and supersedes earlier Binding coverage notes for the cases it lists.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
+The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.17 record Binding coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
 
 ### C.2. Builds, modules, and source artifacts
 
@@ -259,3 +259,21 @@ All concrete node families provide `VisitChildrenCore` using direct child storag
 `BindingTest` covers provisional dependencies resolved by appended declarations, invalidation of successful overload selection, Symbol/node/call-plan reuse, lexical scopes, source isolation, generic normalization/inference, literal fitting, candidate ordering, argument mappings, and unsupported obligations. A warm allocation regression test checks eight final passes over 256 generic calls allocate zero bytes on the current .NET runtime. `BindingBenchmark` separately measures final Binding and the complete provisional/final pipeline at 32 and 512 calls; parsing is excluded from the measured operations.
 
 Validation: all 1,500 Debug tests pass; the Release solution build completes with zero warnings and errors.
+
+### C.17. Complete Type representation and declaration Origins (2026-09-10)
+
+Binding now retains nested Semantics, complete generic arguments, per-layer borrow Origins, declaration-ordered aggregate Origin arguments, and symbolic fixed-array lengths. Grouping and redundant owner layers normalize without discarding dependencies. Type identity uses canonical objects; Signature comparison separately excludes Origins and compares generic slots structurally. Shared structural fitting and substitution are used by the binder and its control-flow type provider. There is still no separate Bound tree or Binding generation.
+
+Declaration schemas distinguish ordinary, pair, and function-length slots. A pair consumes one whole Type and exposes a SemanticsTarget projection; reconstructing the original pair preserves its whole Type, including Origins. Generic use-site whole-Type substitution is supported. Applying a projected Semantics to a different target and using an unproved SemanticsTarget as a value Type retain definition-side obligations. Matching Container fragments must agree on generic and Origin names, order, and kinds. Origin declarations retain their source spans.
+
+Origin lookup resolves declared abstract binders, direct input Origins, static, input-carried named projections, and intersections. Origin expression nodes retain their resolved meaning. Named aggregate mappings reject unknown/duplicate names, normalize to declaration slots, and preserve explicitly supplied arguments. Self retains its containing declaration's complete generic/Origin bindings. Direct input omission, nested-input restrictions, result elision, instance storage requirements, and declaration-fixed local inference variables follow position-specific rules. Local omissions retain initializer-to-declaration constraints for the subsequent Origin solver; they are not silently replaced with static. Accessor signatures use their own direct input/result contexts; complete storage/accessor matching and accessor execution remain downstream work.
+
+Origin variance and Loan requirements propagate over a reusable dependency worklist, including recursive and forward-referenced declaration schemas. Only consumers of changed summaries are requeued. Intersections share a deterministic structural normal form using binder source identity and slot position; only context-independent ordering proofs are currently simplified. Distinct input Loan dependencies are not represented as a license to acquire or erase Loans. Static storage checks follow actual stored components and generic substitution, excluding raw-pointer pointees and callable signatures from retained-borrow traversal.
+
+Fixed-array Type binding supports checked literal arithmetic and bound length-slot expressions, with target-isize bounds and explicit instantiation obligations. General Constant-readable Binding evaluation, typed-constant arithmetic, length inference at calls, and layout remain incomplete.
+
+Binding exposes outstanding obligations separately from resolved syntax, with their source uses, referenced Types/Origins, and deadlines. Unproved definition-side roles cannot pass final Bound checking. Body-Origin and instantiation obligations remain explicit; Project.Build cannot report success while any remain. This is not an ownership/lifetime certificate. Full Constraint/conformance and associated-Type proof, call-site Origin inference/propagation, general Origin constraint solving, full accessor/enum payload formation, runtime Contract Views, and actual Loan/ownership checking remain subsequent work. Calls requiring declaration-Origin inference stay unresolved rather than erasing the callee's Origin contract.
+
+Type and Origin facts share one reference slot on Koto, so Origin support adds no extra reference field to every syntax node. Schemas, canonical Types/Origins/length expressions, scope dictionaries, obligation sets, dependency edges, and work buffers are reused. BindingBenchmark now includes Origin-rich declarations as well as ordinary generic calls. TypeBindingTest verifies nested preservation, positional elision, schema correspondence, pair substitution, Signature collisions, symbolic lengths, source spans, static storage, variance, and invalidation after appended storage changes. Its allocation regression test measures zero bytes for eight warmed final passes over 128 Origin-rich function declarations; the earlier 256-call zero-allocation regression also remains in place.
+
+Validation: all 1,537 tests pass in both Debug and Release; the Release solution build completes with zero warnings and errors. Both warm allocation regression tests pass in both configurations.

@@ -20,6 +20,9 @@ public enum DiagnosticCode
     InaccessibleBinding_Kd,
     InvalidCaptureBinding_Kd,
     UnsupportedBinding_Kd,
+    InvalidOriginBinding_Kd,
+    MissingOriginBinding_Kd,
+    InvalidTypeFormation_Kd,
 
     ConditionMustBeBool_Kd,
     InvalidCompileTimeCondition_Kd,

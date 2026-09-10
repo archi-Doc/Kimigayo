@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private static bool Compatible(BoundType actual, BoundType expected) => ReferenceEquals(actual, expected) || ReferenceEquals(actual, BoundType.Never);
+    private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);
 
     private static bool Writable(Koto node)
     {
@@ -382,7 +382,7 @@ public sealed partial class Binding
         var declared = variable.TypeKoto is { } type ? this.BindType(type, scope) : null;
         var inferred = variable.InitializerKoto is { } initializer ? this.BindNode(initializer, scope, declared) : null;
         symbol.Resolving = false;
-        if (declared is not null && inferred is not null && !Compatible(inferred, declared))
+        if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable))
         {
             Fail(variable, BindingFailure.TypeMismatch);
         }

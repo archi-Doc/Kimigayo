@@ -99,6 +99,13 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Gets the declared origins.</summary>
     public List<string> Origins => this.OriginList ??= [];
 
+    /// <summary>Gets declared Origin names without allocating empty storage.</summary>
+    public IReadOnlyList<string> OriginNames => this.OriginList ?? (IReadOnlyList<string>)Array.Empty<string>();
+
+    internal bool HasIncompatibleBindingHeader { get; private set; }
+
+    private bool hasBindingHeader;
+
     /// <summary>Gets Properties and functions in declaration order.</summary>
     public IReadOnlyList<Koto> Members => (IReadOnlyList<Koto>?)this.kotoList ?? [];
 
@@ -182,6 +189,26 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="origins">The origin names, if declared.</param>
     internal void AddHeader(List<TypeKoto>? genericArguments, List<string>? origins)
     {
+        if (this.hasBindingHeader)
+        {
+            var count = genericArguments?.Count ?? 0;
+            var originCount = origins?.Count ?? 0;
+            var same = count == this.GenericParameterNodes.Count && originCount == this.OriginNames.Count;
+            for (var i = 0; same && i < count; i++)
+            {
+                same = genericArguments![i].Akind == this.GenericParameterNodes[i].Akind && genericArguments[i].Identifier == this.GenericParameterNodes[i].Identifier && genericArguments[i].SemanticsParameter == this.GenericParameterNodes[i].SemanticsParameter;
+            }
+
+            for (var i = 0; same && i < originCount; i++)
+            {
+                same = origins![i] == this.OriginNames[i];
+            }
+
+            this.HasIncompatibleBindingHeader |= !same;
+            return;
+        }
+
+        this.hasBindingHeader = true;
         if (this.SupportsGenerics && genericArguments is not null && this.genericArguments is not { Count: > 0 })
         {
             if (this.genericArguments is null)
@@ -302,6 +329,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Removes all declarations and Declaration Container metadata.</summary>
     public void Clear()
     {
+        this.hasBindingHeader = false;
+        this.HasIncompatibleBindingHeader = false;
         this.kotoList?.Clear();
         this.NestedContainerTable?.Clear();
         this.nestedContainers?.Clear();

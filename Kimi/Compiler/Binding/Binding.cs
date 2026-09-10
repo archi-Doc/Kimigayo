@@ -15,6 +15,13 @@ public sealed partial class Binding
     private readonly List<BindingIssue> issues = new();
     private readonly IndexVisitor indexer;
     private readonly Dictionary<int, List<BoundType>> types = new();
+    private readonly Dictionary<GenericParameterKoto, BindingSymbol> pairSymbols = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<(Koto Binder, OriginKind Kind, int Slot), BoundOrigin> originAtoms = new();
+    private readonly Dictionary<int, List<BoundOrigin>> originExpressions = new();
+    private readonly List<BindingObligation> obligations = new();
+    private readonly HashSet<BindingObligation> obligationSet = new();
+    private readonly HashSet<Koto> resolvingTypes = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<BindingSymbol> borrowVisiting = new(ReferenceEqualityComparer.Instance);
     private BindingScope rootScope = null!;
     private bool running;
 
@@ -30,6 +37,9 @@ public sealed partial class Binding
 
     /// <summary>Gets final failures; provisional passes do not publish missing-name diagnostics.</summary>
     public IReadOnlyList<BindingIssue> Issues => this.issues;
+
+    /// <summary>Gets requirements to discharge during subsequent semantic analysis.</summary>
+    public IReadOnlyList<BindingObligation> Obligations => this.obligations;
 
     /// <summary>Checks the latest final Binding without resolving names or rebuilding the tree.</summary>
     /// <returns>The final semantic completeness summary.</returns>
@@ -63,6 +73,8 @@ public sealed partial class Binding
             this.issues.Clear();
             this.nodes.Clear();
             this.aliases.Clear();
+            this.obligations.Clear();
+            this.obligationSet.Clear();
             foreach (var scope in this.scopes.Values)
             {
                 scope.Reset();
@@ -70,7 +82,7 @@ public sealed partial class Binding
 
             foreach (var symbol in this.symbols.Values)
             {
-                if (symbol.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.TypeParameter))
+                if (symbol.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget))
                 {
                     symbol.Type = null;
                 }
@@ -84,16 +96,20 @@ public sealed partial class Binding
             this.rootScope = this.GetScope(this.compilation.Kotonoha.RootKoto, null);
             this.indexer.Scope = this.rootScope;
             this.indexer.Visit(this.compilation.Kotonoha.RootKoto);
-            foreach (var symbol in this.symbols.Values)
+            this.BindSchemas();
+            for (var i = 0; i < this.nodes.Count; i++)
             {
-                if (symbol.Kind is BindingSymbolKind.Function or BindingSymbolKind.Property)
+                if (this.nodes[i].BoundSymbol is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Property } symbol && ReferenceEquals(symbol.Declaration, this.nodes[i]))
                 {
                     this.BindHeader(symbol);
                 }
             }
 
+            this.ComputeOriginRequirements();
             this.ValidateSignatures();
             this.BindNode(this.compilation.Kotonoha.RootKoto, this.rootScope);
+            this.ComputeOriginRequirements();
+            this.ValidateOriginRequirements();
             this.Result = this.Check(mode);
             return this.Result;
         }
@@ -143,22 +159,22 @@ public sealed partial class Binding
             return true;
         }
 
-        if (a.Kind != b.Kind || a.Semantics != b.Semantics || a.Length != b.Length || a.Components.Count != b.Components.Count)
+        if (a.Kind != b.Kind || a.Semantics != b.Semantics || a.Length != b.Length || !SameLengthSignature(a.LengthExpression, b.LengthExpression) || a.Components.Count != b.Components.Count)
         {
             return false;
         }
 
-        if (a.Kind == BoundTypeKind.Parameter)
+        if (a.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
         {
             return a.Symbol!.Slot == b.Symbol!.Slot;
         }
 
         if (a.Components.Count == 0)
         {
-            return false;
+            return a.Symbol is not null && ReferenceEquals(a.Symbol, b.Symbol);
         }
 
-        if (a.Symbol != b.Symbol)
+        if (a.Kind == BoundTypeKind.SemanticsApplication ? a.Symbol!.Slot != b.Symbol!.Slot : a.Symbol != b.Symbol)
         {
             return false;
         }
@@ -176,6 +192,17 @@ public sealed partial class Binding
 
     private BindingResult Check(BindingMode mode)
     {
+        if (mode == BindingMode.Final)
+        {
+            for (var i = 0; i < this.obligations.Count; i++)
+            {
+                if (this.obligations[i].Deadline == BindingDeadline.Definition)
+                {
+                    Fail(this.obligations[i].Use, BindingFailure.Unsupported, true);
+                }
+            }
+        }
+
         var resolved = 0;
         var unresolved = 0;
         var invalid = 0;
@@ -215,6 +242,9 @@ public sealed partial class Binding
                     BindingFailure.InvalidLiteral => DiagnosticCode.InvalidNumericLiteral_Kd,
                     BindingFailure.Access => DiagnosticCode.InaccessibleBinding_Kd,
                     BindingFailure.Capture => DiagnosticCode.InvalidCaptureBinding_Kd,
+                    BindingFailure.InvalidOrigin => DiagnosticCode.InvalidOriginBinding_Kd,
+                    BindingFailure.MissingOrigin => DiagnosticCode.MissingOriginBinding_Kd,
+                    BindingFailure.InvalidTypeFormation => DiagnosticCode.InvalidTypeFormation_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 this.issues.Add(new(node, code));
@@ -268,7 +298,7 @@ public sealed partial class Binding
         }
 
         symbol.Scope = scope;
-        var table = kind is BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsParameter ? scope.Types : scope.Values;
+        var table = kind is BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsParameter or BindingSymbolKind.SemanticsTarget ? scope.Types : scope.Values;
         if (table.TryGetValue(name, out var previous))
         {
             symbol.Next = previous;
@@ -365,6 +395,7 @@ public sealed partial class Binding
             node.BindingState = BindingState.Unvisited;
             node.BindingFailure = BindingFailure.None;
             node.BoundType = null;
+            node.BoundOrigin = null;
             node.BoundSymbol = null;
             binding.nodes.Add(node);
             var previous = this.Scope;
@@ -404,6 +435,9 @@ public sealed partial class Binding
 
                     node.BoundSymbol = binding.symbols.GetValueOrDefault(node);
                     break;
+                case PropertyAccessorKoto:
+                    this.Scope = binding.GetScope(node, this.Scope);
+                    break;
                 case CodeBlockKoto:
                     if (node.Parent is not FunctionKoto)
                     {
@@ -419,12 +453,25 @@ public sealed partial class Binding
                     binding.Declare(node, variable.NameKoto.IdentifierName, node is PropertyKoto ? BindingSymbolKind.Property : BindingSymbolKind.Local, node, this.Scope);
                     break;
                 case GenericParameterKoto parameter:
-                    var typeSymbol = binding.Declare(node, parameter.Identifier, BindingSymbolKind.TypeParameter, node, this.Scope);
+                    var typeSymbol = binding.Declare(node, parameter.Identifier, parameter.SemanticsParameter is null ? BindingSymbolKind.TypeParameter : BindingSymbolKind.SemanticsTarget, node, this.Scope);
                     typeSymbol.Slot = this.Scope.Types.Count - 1;
-                    typeSymbol.Type ??= new(parameter.Identifier, BoundTypeKind.Parameter, typeSymbol);
+                    typeSymbol.WholeType ??= new(parameter.Identifier, BoundTypeKind.Parameter, typeSymbol);
+                    typeSymbol.Type ??= parameter.SemanticsParameter is null ? typeSymbol.WholeType : new(parameter.Identifier, BoundTypeKind.TargetProjection, typeSymbol);
                     if (parameter.SemanticsParameter is not null)
                     {
-                        Fail(node, BindingFailure.Unsupported, true);
+                        if (!binding.pairSymbols.TryGetValue(parameter, out var semanticsSymbol))
+                        {
+                            semanticsSymbol = new(parameter.SemanticsParameter, BindingSymbolKind.SemanticsParameter, node, this.Scope);
+                            binding.pairSymbols.Add(parameter, semanticsSymbol);
+                        }
+
+                        semanticsSymbol.Scope = this.Scope;
+                        semanticsSymbol.Pair = typeSymbol;
+                        typeSymbol.Pair = semanticsSymbol;
+                        if (!this.Scope.Types.TryAdd(parameter.SemanticsParameter, semanticsSymbol))
+                        {
+                            Fail(node, BindingFailure.Duplicate);
+                        }
                     }
 
                     break;

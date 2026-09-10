@@ -168,78 +168,148 @@ public sealed partial class Binding
     }
 
     private BoundType? BindType(Koto syntax, BindingScope scope)
+        => this.BindType(syntax, scope, this.TypeContext(syntax, scope));
+
+    private BoundType? BindType(Koto syntax, BindingScope scope, TypeBindingContext context)
     {
         if (syntax.BoundType is { } known)
         {
             return known;
         }
 
-        BoundType? result;
+        if (!this.resolvingTypes.Add(syntax))
+        {
+            return Fail(syntax, BindingFailure.Cycle, true);
+        }
+
+        try
+        {
+            var type = this.BindTypeStructure(syntax, scope, context);
+            if (type is null)
+            {
+                return null;
+            }
+
+            var annotated = syntax as TypeSemanticsKoto;
+            type = this.CompleteOrigins(type, annotated, syntax, scope, context);
+            return Complete(syntax, type);
+        }
+        finally
+        {
+            this.resolvingTypes.Remove(syntax);
+        }
+    }
+
+    private BoundType? BindTypeStructure(Koto syntax, BindingScope scope, TypeBindingContext context)
+    {
         switch (syntax)
         {
-            case GenericParameterKoto parameter:
-                if (parameter.SemanticsParameter is not null)
-                {
-                    return Fail(syntax, BindingFailure.Unsupported, true);
-                }
-
-                return Complete(syntax, syntax.BoundSymbol?.Type);
+            case GenericParameterKoto:
+                return syntax.BoundSymbol?.WholeType;
+            case LengthParameterKoto:
+                return BoundType.Primitives["isize"];
             case ParenthesizedTypeKoto parentheses:
-                return Complete(syntax, this.BindType(parentheses.Type, scope));
+                return this.BindType(parentheses.Type, scope, context);
             case TypeSemanticsKoto semantics:
-                // Origin contracts must not be erased to manufacture a complete type.
-                if (semantics.OriginName is not null || semantics.OriginExpression is not null || semantics.OriginArguments is not null || semantics.SemanticsParameter is not null)
-                {
-                    return Fail(syntax, BindingFailure.Unsupported, true);
-                }
-
                 if (semantics.Type is not null)
                 {
-                    result = this.BindType(semantics.Type, scope);
-                    if (!semantics.IsTransparentWrapper && semantics.SemanticsKind is not (SemanticsKind.Owner or SemanticsKind.Unsafe))
+                    var transparent = semantics.IsTransparentWrapper || (semantics.SemanticsParameter is null && semantics.SemanticsKind == SemanticsKind.Owner);
+                    var innerContext = transparent ? context with { SuppressOuter = true } : context.Nested;
+                    // A pair target is a projection, not a complete value type until its role is proved.
+                    BoundType? inner;
+                    if (semantics.SemanticsParameter is not null)
                     {
-                        // Safe handles require Origin elision and ownership obligations, not just a prefix.
-                        return Fail(syntax, BindingFailure.Unsupported, true);
+                        var target = this.TypeName(semantics.Type, scope, true);
+                        if (target?.Kind == BindingSymbolKind.SemanticsTarget)
+                        {
+                            inner = target.Type;
+                            semantics.Type.BoundSymbol = target;
+                            Complete(semantics.Type, inner);
+                        }
+                        else
+                        {
+                            inner = this.BindType(semantics.Type, scope, innerContext);
+                        }
+
+                        var parameter = this.Lookup(semantics.SemanticsParameter, scope, syntax, true);
+                        if (parameter?.Kind != BindingSymbolKind.SemanticsParameter)
+                        {
+                            return Fail(syntax, BindingFailure.InvalidTypeFormation);
+                        }
+
+                        syntax.BoundSymbol = parameter;
+                        if (inner is null)
+                        {
+                            return null;
+                        }
+
+                        if (ReferenceEquals(inner.Symbol, parameter.Pair) && inner.Kind == BoundTypeKind.TargetProjection)
+                        {
+                            return parameter.Pair!.WholeType;
+                        }
+
+                        this.AddObligation(new(BindingObligationKind.TypeFormation, syntax, BindingDeadline.Definition, inner));
+                        return this.InternType(BoundTypeKind.SemanticsApplication, parameter.Pair, SemanticsKind.Parameter, [inner]);
                     }
 
-                    if (result is not null && !semantics.IsTransparentWrapper && semantics.SemanticsKind != SemanticsKind.Owner)
+                    inner = this.BindType(semantics.Type, scope, innerContext);
+                    if (inner is null)
                     {
-                        result = this.InternType(BoundTypeKind.Semantics, null, semantics.SemanticsKind, [result]);
+                        return null;
                     }
 
-                    return Complete(syntax, result);
+                    if (transparent)
+                    {
+                        return inner;
+                    }
+
+                    var kind = semantics.SemanticsKind;
+                    if (kind is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq)
+                    {
+                        if (inner.Kind == BoundTypeKind.Parameter)
+                        {
+                            this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, inner));
+                        }
+                        else if (inner.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) || inner.Symbol?.Declaration is not StructKoto)
+                        {
+                            return Fail(syntax, BindingFailure.InvalidTypeFormation);
+                        }
+                    }
+
+                    return this.InternType(BoundTypeKind.Semantics, null, kind, [inner]);
                 }
 
-                if (BoundType.Primitives.TryGetValue(semantics.Identifier, out result))
+                if (BoundType.Primitives.TryGetValue(semantics.Identifier, out var primitive))
                 {
-                    return Complete(syntax, result);
+                    return primitive;
                 }
 
                 break;
             case TupleTypeKoto tuple:
                 if (tuple.ElementNodes.Count == 0)
                 {
-                    return Complete(syntax, BoundType.Unit);
+                    return BoundType.Unit;
                 }
 
-                return this.BindTypeList(syntax, tuple.ElementNodes, scope, BoundTypeKind.Tuple);
+                return this.BindTypeList(syntax, tuple.ElementNodes, scope, context.Nested, BoundTypeKind.Tuple);
             case FunctionTypeKoto function:
-                var parameters = this.BindType(function.Parameters, scope);
-                result = this.BindType(function.ReturnType, scope);
-                return Complete(syntax, parameters is null || result is null ? null : this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]));
+                var parameters = this.BindType(function.Parameters, scope, context.Nested);
+                var result = this.BindType(function.ReturnType, scope, context.Nested);
+                return parameters is null || result is null ? null : this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]);
             case FixedArrayTypeKoto array:
-                result = this.BindType(array.ElementType, scope);
-                if (!this.TryLength(array.Length, scope, out var length))
+                var element = this.BindType(array.ElementType, scope, context.Nested);
+                var length = this.BindLength(array.Length, scope);
+                if (length is null)
                 {
-                    return Fail(syntax, BindingFailure.Unsupported, true);
+                    return null;
                 }
 
-                return Complete(syntax, result is null ? null : this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [result], length));
+                return element is null ? null : this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
             case GenericsKoto generic:
                 var definition = this.TypeName(generic.Identifier!, scope, true);
-                if (definition?.Declaration is not DeclarationContainerKoto container)
+                if (definition?.Declaration is not DeclarationContainerKoto container || container is ContractKoto or GroupKoto)
                 {
-                    return Fail(syntax, BindingFailure.MissingType, true);
+                    return Fail(syntax, BindingFailure.InvalidTypeFormation);
                 }
 
                 if (generic.TypeArguments.Count != container.GenericParameterNodes.Count)
@@ -250,7 +320,7 @@ public sealed partial class Binding
                 generic.Identifier!.BoundSymbol = definition;
                 generic.Identifier.BindingState = BindingState.Resolved;
                 generic.BoundSymbol = definition;
-                return this.BindTypeList(syntax, generic.TypeArguments, scope, BoundTypeKind.Constructed, definition);
+                return this.BindTypeList(syntax, generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, definition);
         }
 
         var symbol = this.TypeName(syntax, scope, true);
@@ -260,29 +330,49 @@ public sealed partial class Binding
         }
 
         syntax.BoundSymbol = symbol;
-        if (symbol.Declaration is DeclarationContainerKoto { GenericParameterNodes.Count: > 0 })
+        if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || symbol.Declaration is ContractKoto)
         {
-            return Fail(syntax, BindingFailure.TypeMismatch);
+            return Fail(syntax, BindingFailure.InvalidTypeFormation);
         }
 
-        return Complete(syntax, symbol.Type);
+        if (symbol.Kind == BindingSymbolKind.SemanticsTarget)
+        {
+            this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, symbol.Type));
+        }
+
+        if (symbol.Declaration is DeclarationContainerKoto { GenericParameterNodes.Count: > 0 })
+        {
+            var self = syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" };
+            if (!self)
+            {
+                return Fail(syntax, BindingFailure.TypeMismatch);
+            }
+
+            return this.SelfType(symbol);
+        }
+
+        if (syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" })
+        {
+            return this.SelfType(symbol);
+        }
+
+        return symbol.Type;
     }
 
-    private BoundType? BindTypeList(Koto node, IReadOnlyList<Koto> elements, BindingScope scope, BoundTypeKind kind, BindingSymbol? symbol = null)
+    private BoundType? BindTypeList(Koto node, IReadOnlyList<Koto> elements, BindingScope scope, TypeBindingContext context, BoundTypeKind kind, BindingSymbol? symbol = null)
     {
-        // Rent scratch references; only the canonical type owns a retained array.
         var buffer = System.Buffers.ArrayPool<BoundType>.Shared.Rent(elements.Count);
         try
         {
             var complete = true;
             for (var i = 0; i < elements.Count; i++)
             {
-                var type = this.BindType(elements[i], scope);
+                var type = this.BindType(elements[i], scope, context);
                 complete &= type is not null;
                 buffer[i] = type!;
             }
 
-            return Complete(node, complete ? this.InternType(kind, symbol, SemanticsKind.Owner, buffer.AsSpan(0, elements.Count)) : null);
+            return complete ? this.InternType(kind, symbol, SemanticsKind.Owner, buffer.AsSpan(0, elements.Count)) : null;
         }
         finally
         {
@@ -290,13 +380,20 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0)
+    private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null)
     {
         var hash = default(HashCode);
         hash.Add(kind);
         hash.Add(symbol is null ? 0 : RuntimeHelpers.GetHashCode(symbol));
         hash.Add(semantics);
         hash.Add(length);
+        hash.Add(lengthExpression is null ? 0 : RuntimeHelpers.GetHashCode(lengthExpression));
+        hash.Add(origin is null ? 0 : RuntimeHelpers.GetHashCode(origin));
+        for (var i = 0; i < originArguments.Length; i++)
+        {
+            hash.Add(RuntimeHelpers.GetHashCode(originArguments[i]));
+        }
+
         for (var i = 0; i < components.Length; i++)
         {
             hash.Add(RuntimeHelpers.GetHashCode(components[i]));
@@ -308,7 +405,7 @@ public sealed partial class Binding
             for (var i = 0; i < bucket.Count; i++)
             {
                 var type = bucket[i];
-                if (type.Kind != kind || type.Symbol != symbol || type.Semantics != semantics || type.Length != length || type.Components.Count != components.Length)
+                if (type.Kind != kind || type.Symbol != symbol || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin, origin) || type.OriginArguments.Count != originArguments.Length)
                 {
                     continue;
                 }
@@ -317,6 +414,11 @@ public sealed partial class Binding
                 for (var j = 0; j < components.Length; j++)
                 {
                     equal &= ReferenceEquals(type.Components[j], components[j]);
+                }
+
+                for (var j = 0; j < originArguments.Length; j++)
+                {
+                    equal &= ReferenceEquals(type.OriginArguments[j], originArguments[j]);
                 }
 
                 if (equal)
@@ -330,34 +432,8 @@ public sealed partial class Binding
             this.types.Add(key, bucket = new(1));
         }
 
-        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length);
+        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression);
         bucket.Add(created);
         return created;
-    }
-
-    private bool TryLength(Koto node, BindingScope scope, out long length)
-    {
-        length = 0;
-        if (node is ParenthesizedKoto parent)
-        {
-            var resolved = this.TryLength(parent.Operand, scope, out length);
-            Complete(node, resolved ? BoundType.Primitives["isize"] : null);
-            return resolved;
-        }
-
-        var maximum = this.compilation.PointerWidth switch
-        {
-            16 => short.MaxValue,
-            32 => int.MaxValue,
-            _ => long.MaxValue,
-        };
-        if (node is NumberLiteralKoto number && number.TryGetIntegerMagnitude(out var magnitude) && magnitude <= (UInt128)maximum)
-        {
-            length = (long)magnitude;
-            Complete(node, BoundType.Primitives["isize"]);
-            return true;
-        }
-
-        return false;
     }
 }

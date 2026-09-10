@@ -33,6 +33,7 @@ public enum BindingSymbolKind : byte
     Local,
     Parameter,
     TypeParameter,
+    SemanticsTarget,
     SemanticsParameter,
     LengthParameter,
 }
@@ -48,6 +49,9 @@ public enum BoundTypeKind : byte
     Function,
     FixedArray,
     Constructed,
+    TargetProjection,
+    SemanticsApplication,
+    AssociatedProjection,
 }
 
 internal enum BindingFailure : byte
@@ -66,6 +70,9 @@ internal enum BindingFailure : byte
     InvalidLiteral,
     Access,
     Capture,
+    InvalidOrigin,
+    MissingOrigin,
+    InvalidTypeFormation,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
@@ -87,6 +94,12 @@ public sealed class BindingSymbol
 
     public BoundType? Type { get; internal set; }
 
+    public DeclarationSchema? Schema { get; internal set; }
+
+    internal BoundType? WholeType { get; set; }
+
+    internal BindingSymbol? Pair { get; set; }
+
     internal BindingScope Scope { get; set; }
 
     internal BindingSymbol? Next { get; set; }
@@ -101,7 +114,7 @@ public sealed class BindingSymbol
 /// <summary>An immutable complete type; constructed types are interned within a compilation.</summary>
 public sealed record BoundType : ControlFlowType
 {
-    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0)
+    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null)
         : base(name)
     {
         this.Kind = kind;
@@ -109,6 +122,9 @@ public sealed record BoundType : ControlFlowType
         this.Semantics = semantics;
         this.Components = components ?? [];
         this.Length = length;
+        this.Origin = origin;
+        this.OriginArguments = originArguments ?? [];
+        this.LengthExpression = lengthExpression;
     }
 
     public BoundTypeKind Kind { get; }
@@ -120,6 +136,12 @@ public sealed record BoundType : ControlFlowType
     public IReadOnlyList<BoundType> Components { get; }
 
     public long Length { get; }
+
+    public BoundLength? LengthExpression { get; }
+
+    public BoundOrigin? Origin { get; }
+
+    public IReadOnlyList<BoundOrigin> OriginArguments { get; }
 
     public bool IsInteger => this.Kind == BoundTypeKind.Primitive && this.Name is "i8" or "i16" or "i32" or "i64" or "i128" or "isize" or "u8" or "u16" or "u32" or "u64" or "u128" or "usize";
 
@@ -162,10 +184,13 @@ internal sealed class BindingScope(Koto owner)
 
     internal Dictionary<string, BindingSymbol> Values { get; } = new(StringComparer.Ordinal);
 
+    internal Dictionary<string, BoundOrigin>? Origins { get; set; }
+
     internal void Reset()
     {
         this.Types.Clear();
         this.Values.Clear();
+        this.Origins?.Clear();
     }
 }
 

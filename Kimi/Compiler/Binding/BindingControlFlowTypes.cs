@@ -41,7 +41,7 @@ internal sealed class BindingControlFlowTypes : ControlFlowTypeSystem
             return null;
         }
 
-        return ReferenceEquals(actual, expected) || ReferenceEquals(actual, BoundType.Never);
+        return Binding.FitsType(actual, expected);
     }
 
     public override ControlFlowType? InferResultType(IReadOnlyList<ControlFlowResultSource> sources)

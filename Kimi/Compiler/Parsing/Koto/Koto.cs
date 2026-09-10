@@ -459,12 +459,26 @@ public abstract class Koto
     public BindingState BindingState { get; internal set; }
 
     /// <summary>Gets the resolved complete type, or null while unavailable.</summary>
-    public BoundType? BoundType { get; internal set; }
+    public BoundType? BoundType
+    {
+        get => this.boundMeaning as BoundType;
+        internal set => this.boundMeaning = value;
+    }
+
+    /// <summary>Gets the resolved Origin when this syntax occurs in the Origin namespace.</summary>
+    public BoundOrigin? BoundOrigin
+    {
+        get => this.boundMeaning as BoundOrigin;
+        internal set => this.boundMeaning = value;
+    }
 
     /// <summary>Gets the selected symbol, or null before selection.</summary>
     public BindingSymbol? BoundSymbol { get; internal set; }
 
     internal BindingFailure BindingFailure { get; set; }
+
+    // Type and Origin syntax occupy different namespaces; they share one semantic reference slot.
+    private object? boundMeaning;
 
     /// <summary>Visits attributes and concrete child storage without creating iterators.</summary>
     /// <param name="visitor">The reusable visitor.</param>
@@ -645,6 +659,7 @@ public abstract class Koto
         // A rewrite invalidates facts of the owner; a later Bind rebuilds dependent facts.
         this.BindingState = BindingState.Unvisited;
         this.BoundType = null;
+        this.BoundOrigin = null;
         this.BoundSymbol = null;
         this.BindingFailure = BindingFailure.None;
     }
