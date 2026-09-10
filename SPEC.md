@@ -17,7 +17,7 @@ For the first executable program, start with [minimal console output](#224-minim
   - [8. Generics, constraints, and contracts](#8-generics-constraints-and-contracts)
   - [9. Names, signatures, and access](#9-names-signatures-and-access)
   - [10. Overload resolution and inference](#10-overload-resolution-and-inference)
-  - [11. Fields and computed properties](#11-fields-and-computed-properties)
+  - [11. Properties](#11-properties)
 - [Part IV. Expressions and control flow](#part-iv-expressions-and-control-flow)
   - [12. Expressions](#12-expressions)
   - [13. Operators and assignment](#13-operators-and-assignment)
@@ -94,7 +94,7 @@ User-defined Types, Contracts, and Declaration Containers conventionally use Pas
 | `<>` | Type arguments and [function length arguments](#44-function-length-parameters). |
 | `{}` | Unused; reserved for future language evolution. |
 | `=` | Initialization, parameter defaults, or assignment according to context; acquisition follows [Copy and Move](#35-copy-and-move). |
-| `@` | Explicit Type/Semantics adaptation or Consume (`@move`); see [explicit operations](#135-explicit-operations). |
+| `@` | Explicit Type/Semantics adaptation; see [explicit operations](#135-explicit-operations). |
 | `->` | Result Type associated with the input side of a function declaration or Function Type. |
 | `=>` | Mapping or correspondence: function and accessor expression bodies, `if` expression bodies, `match` arms, and named Origin arguments. |
 | `:` | Structural association: Name and Type, key and value, or Label and Block/Iteration Construct. In Origin relation notation, `a : b` means `a` outlives `b` (including equal lifetimes). |
@@ -244,7 +244,7 @@ Visually confusable Names are not treated as equal. Implementations may provide 
 
 Character-category tests and NFC validation use [Unicode 15.0.0](https://www.unicode.org/versions/Unicode15.0.0/) data. Characters unassigned in that release are not permitted in Names. Host runtime, operating system, and globalization settings must not change these results; adopting another Unicode release requires a language-specification revision.
 
-Contextual keywords may be Names where contextual identifiers are allowed; reserved keywords may not. `in` delimits a `for` header and `has` a Property Requirement accessor list, but both may be Names elsewhere. Immediately after `@`, **reserved target** `move` selects Consume without lookup; elsewhere `move(...)` is an ordinary call. There is no prefix `move` or Move accessor. To adapt to a Type named `move`, qualify it, for example `Group.move`; source Type aliases are unavailable (§18.1). Built-in Semantics names similarly select shorthand Semantics targets. `Self` is reserved; `self` and `value` follow [contextual binding rules](#92-namespaces-roles-and-visibility).
+Contextual keywords may be Names where allowed; reserved keywords may not. `in` delimits a for header and `has` a Property Requirement list. Built-in Semantics names after `@` select shorthand targets; `move` has no special operation meaning and uses ordinary Name lookup. There is no explicit Move operator. `Self` is reserved; `self`, `value`, and accessor `storage` follow contextual binding rules (§9.2 and §11).
 
 `public`, `internal`, `private`, `protected`, and `open` are reserved modifier keywords. The compound access specifications `protected internal` and `private protected` each consist of two keywords; their placement follows [accessibility](#93-accessibility-and-reachability).
 
@@ -275,7 +275,7 @@ These tables define token classes independently of internal enum groupings. Unre
 | Parameters, Origins, accessors | in in a for header; origin in an Origin parameter list; from in an Origin annotation or exit target; static as the distinguished Origin in Origin expressions; associate in an associated-Type declaration/specification; has, get, set in accessor syntax; specialize immediately before func; when in conditional conformance. |
 | Semantics and Safety | owner, ref, uniq, obj, rc, arc, objref, objuniq, unsafe in Semantics positions, including requirements; unsafe also before func and before a colon introducing an Unsafe Statement. |
 | Semantics categories | value, valueborrow, object, objectborrow, borrow, owning, reference in Semantics requirements; see [category sets](#33-type-semantics). |
-| Contextual bindings and operations | self, value under receiver/accessor rules; move immediately after @; abort after $. |
+| Contextual bindings and operations | self, value, storage under receiver/accessor rules; abort after $. |
 | Fixed arrays and lengths | of only between the length and element Type in `[N of T]`; length only at the start of a generic parameter declaration followed by its Name. |
 
 | Punctuation/operator class | Spellings |
@@ -808,7 +808,7 @@ Access Designator -> operation-specific resolution
                     └─ error
 ```
 
-These are resolution outcomes, not fallback stages. A failed direct Consume cannot become Read; computed/required Property `@move` is defined to move the getter result (§15.1.5). Permitted function/method references produce function values; locals holding such values are Access Designators. Classify by resolved meaning, not spelling alone. Parentheses do not change the category.
+These are resolution outcomes, not fallback stages. A failed direct Move cannot become a borrow or getter call. Standard Property get exposes permitted Place operations; custom/computed/required get produces its declared result (§11). Permitted function references produce function values. Classify by resolved operation, not spelling; parentheses preserve the category.
 
 Owned Move transfers ownership and destruction responsibility, preventing a second destruction at the source. Borrow-value Copy/Move duplicates or transfers access capability without owning its referent; destroying a borrow does not destroy the referent. Destroying `rc/T` or `arc/T` releases an owning reference under object-lifetime rules. A non-owning `unsafe/T` neither destroys its referent nor frees its storage.
 
@@ -824,7 +824,7 @@ The [initialization-state rules](#1511-storage-state-and-responsibility) define 
 
 **Move** transfers the value and destruction responsibility, or a borrow value's access capability, and marks the source Moved. It invokes no user code and need not clear source memory.
 
-Ordinary value acquisition selects Copy for a Copy Type and Move otherwise; reject an unavailable operation. This covers initialization, assignment sources, by-value arguments, and explicit/implicit result transfers. Explicit [Consume](#1515-explicit-consume) with `@move` forces Move even for Copy Types. Borrow creation and reborrowing are separate operations; a Name or Property read does not necessarily consume storage.
+Ordinary value acquisition selects Copy for a Copy Type and Move otherwise; reject an unavailable operation. This covers initialization, assignment sources, by-value arguments, and result transfers. A non-Copy owned value used in a consuming context Moves, and a value can Move out only from a Movable Place (§15.1.5). Borrow creation/reborrowing is separate. No explicit operator forces a Copy value to Move.
 
 Copy capability is independent of `let`/`var` and flow-dependent Loans. At use, Copy obeys read restrictions and Move must not conflict with overlapping active Loans. Both preserve Origin dependencies without extending referent lifetimes. Reborrowing does not make exclusive references Copy.
 
@@ -928,7 +928,7 @@ Temporary Value
 
 Materialization neither reevaluates the expression nor adds Copy, resource duplication, reference-count increments, heap allocation, or lifetime extension. It preserves the same value and destruction responsibility. It must not turn failed Consume into a Read or restore a moved source.
 
-A newly owned temporary has exclusive writable capability over its whole Temporary Place unless another rule restricts access; it needs no `let`/`var` binding. Materialization realizes this capability without upgrading borrows, granting referent or Property permissions, ignoring readonly parts, or bypassing Loans, Origins, construction, or `deinit` conditions.
+A newly owned temporary has exclusive writable capability over its whole Temporary Place unless another rule restricts access; it needs no `let`/`var` binding. Getter-owned result temporaries have the additional restrictions of [getter results](#1123-getter-results-and-temporaries). Materialization realizes this capability without upgrading borrows, granting referent or Property permissions, ignoring readonly parts, or bypassing Loans, Origins, construction, or `deinit` conditions.
 
 ##### 3.6.2. Lifetime and borrowing
 
@@ -939,7 +939,8 @@ New borrows of owned temporaries depend on their Temporary Places and cannot out
 ```kimi
 inspect(makeResource()@ref)
 modify(makeResource()@uniq)
-inspect(resource@move@ref) // resource remains Moved.
+let taken = resource // Non-Copy Resource moves to taken.
+inspect(taken@ref) // Borrow the destination; resource remains Moved.
 
 let view = makeResource()@ref
 // inspect(view) // Error: borrowed temporary expired after the initializer.
@@ -1029,7 +1030,7 @@ Check size, stride, and padding calculations against target layout limits and no
 
 A length is a nonnegative compile-time integer representable by the target's isize. A generic length remains symbolic until instantiation. Write an integer literal, a possibly qualified constant name, a length parameter, or a parenthesized integer constant expression. Any compound expression requires parentheses around the entire length.
 
-The initial evaluator admits integer literals, length parameters, **Constant-readable Bindings**, grouping, unary `+ -`, and binary `+ - * / %`. A Constant-readable Binding is an integer `let` local or static Field whose declaration initializer can be recursively evaluated using only these forms, after normal lookup, access, and initialization checks. Parameters, `var`, instance Fields, computed accessors, calls, and cyclic initializers are excluded. This is a semantic classification, not general constant treatment of `let` or new `const` syntax.
+The initial evaluator admits integer literals, length parameters, **Constant-readable Bindings**, grouping, unary `+ -`, and binary `+ - * / %`. A Constant-readable Binding is an integer `let` local or static stored Property with accessible standard get whose declaration initializer can be recursively evaluated using only these forms, after normal lookup, access, and initialization checks. Parameters, `var`, instance Fields, custom/computed accessors, calls, and cyclic initializers are excluded. This is a semantic classification, not general constant treatment of `let` or new `const` syntax.
 
 Length evaluation uses checked integer arithmetic. Resolve typed constants and length parameters (isize) first. Established operand Types guide unresolved literals and literal-only subexpressions under same-Type arithmetic; absent such evidence, default them to isize. Typed constants keep their Type. Different established integer Types are incompatible even if their widths or values match; the final nonnegative-isize range check does not convert operands. Intermediate overflow uses the arithmetic Type, including i32 inferred for an ordinary binding.
 
@@ -1188,10 +1189,10 @@ Returned integers, Booleans, and ResolvedRange values acquire no receiver/source
 | --- | --- |
 | `values[i] = value` | Ordinary initialization/replacement with write permissions and Loan checks |
 | `values[i]@ref` / `@uniq` | Shared/exclusive borrow of that Place; exclusive access requires write permission |
-| `values[i]@move` | Explicit Move only through an eligible static Move Path of an owned fixed array |
+| Non-Copy element acquisition | Move only through an eligible static Move Path of an owned fixed array |
 | Ordinary value read | Copy/Move on an eligible owned fixed-array static Move Path; otherwise shared reading |
 
-Static paths use only the [integer-literal recognition rule](#1513-move-paths-and-partial-move). Array, runtime indices, Index values, and paths through borrows do not become movable. Ordinary reads Copy when allowed; eligible Non-Copy static elements Move. Other reads follow the [shared result rules](#466-slice-operations-and-element-results), including Object Semantics and Reborrow rather than an unconditional ref/T result. Explicit @move also Moves Copy values and cannot fall back to reading. @ref borrows the element Place regardless of index form. Slice Places are shared-only.
+Static paths use only the [integer-literal recognition rule](#1513-move-paths-and-partial-move). Array, runtime indices, Index values, and paths through borrows do not become movable. Ordinary reads Copy when allowed; eligible Non-Copy static elements Move. Other reads follow the [shared result rules](#466-slice-operations-and-element-results), including Object Semantics and Reborrow rather than an unconditional ref/T result. @ref borrows the element Place regardless of index form. Slice Places are shared-only.
 
 ```kimi
 // resources is an owned fixed array of Non-Copy value Type Resource.
@@ -1202,9 +1203,9 @@ let taken = resources[0] // Ordinary Move; resources[0] becomes Moved.
 
 var numbers: [2 of i32] = [10, 20]
 let copied = numbers[0]     // Copy; source remains Initialized.
-let moved = numbers[0]@move // Explicit Move even for i32.
+let copied = numbers[0] // i32 Copies; the element stays initialized.
 numbers[0] = 30            // Repair an already constructed array.
-let bad = numbers[i]@move  // Error: not a static Move Path.
+let alsoCopied = numbers[i] // Copy does not require a static Move Path.
 ```
 
 ##### 4.6.2. Index
@@ -1386,7 +1387,7 @@ A shared element read uses the following **SharedReadResult(T, source)** rules. 
 
 New borrows/reborrows are bounded by source storage and existing dependencies. Copy preserves the stored reference's Origins; Reborrow suspends conflicting parent access while live. Other sequence operations referencing this table retain their own path and write permissions.
 
-For s[index], `@ref` instead borrows the element Place itself. Element writes, Move/@move, and exclusive borrows through Slice are forbidden.
+For s[index], `@ref` instead borrows the element Place itself. Element writes, Move, and exclusive borrows through Slice are forbidden.
 
 For unknown T, retain the correlated result Type, acquisition effect, and Origins as the internal family SharedReadResult(T, source), not a source-spellable Type. Verify the body for all admitted cases; neither assume unknown means Non-Copy nor defer Type checking until a favorable instantiation. Operations/results that do not fit every case require a constraint or explicit borrow.
 
@@ -1599,7 +1600,7 @@ Kimigayo uses the following information to identify declarations and their meani
 | `Signature` | The information that distinguishes declarations in the same scope     |
 | `Type`      | The meaning of a value or invocation within the type system           |
 
-See [name resolution and access](#9-names-signatures-and-access) and [overload selection](#10-overload-resolution-and-inference). Field and computed syntax is defined under [Fields and computed properties](#11-fields-and-computed-properties).
+See [name resolution and access](#9-names-signatures-and-access) and [overload selection](#10-overload-resolution-and-inference). Field and computed syntax is defined under [Properties](#11-properties).
 
 #### 6.1. Declaration containers
 
@@ -1677,7 +1678,7 @@ struct View origin source
 
 Data is an assumed Core in the View example; the instance borrow's Origin is explicitly declared and bound.
 
-Explicit and implicit constructors follow [construction](#623-constructors); all construction obeys [initialization](#113-types-origins-and-initialization) and [construction completeness](#1512-aggregate-construction-and-completeness).
+Explicit and implicit constructors follow [construction](#623-constructors); all construction obeys [initialization](#113-types-and-origins) and [construction completeness](#1512-aggregate-construction-and-completeness).
 
 ##### 6.2.1. Split structures and storage order
 
@@ -1741,9 +1742,9 @@ After normal argument/default evaluation, allocate fresh Uninitialized construct
 
 Complete base construction before evaluating this layer's Field declaration initializers, in logical declaration order, and then execute its constructor body. Declaration initializers keep their own declaration-site environments: they cannot reference constructor parameters or `self`. Base arguments cannot use `self` either. No constructor silently initializes a field with zero, null, or an element Type's default constructor. Origins required by stored arguments and the completed base must be represented by the constructed Type's declared Origin contract and inferred under ordinary lifetime constraints; hidden or invented Origins cannot make a construction valid.
 
-Constructor `self` is a special Construction receiver. Direct access to an own Field denotes its storage. First writes initialize `let` or `var`; later writes follow normal initialization/Replacement rules. Value reads require Copy; inspect non-Copy fields using Borrow or existing argument adaptation without first acquiring them. Neither implicit Move nor Field `@move` is allowed during initial construction.
+Constructor `self` is a special Construction receiver. First writes directly initialize own stored Properties only when all incoming paths are before first placement. Later writes to var with standard set use normal state-dependent placement/Replacement; custom set cannot be called, including at mixed-state joins (§11.3.1). Standard get may Copy or borrow initialized own storage; no non-Copy Move is allowed during construction.
 
-Construction forbids computed access, inherited Field access, whole-self acquisition or borrowing, instance-method/accessor calls on self, and capturing or exposing self. The base constructor handles its own fields. Field borrows must end before completion and cannot escape in the result; borrowed inputs may be stored only under the result’s Origin contract. These privileges apply only inside the constructor body, not nested functions, ordinary methods, or Field declaration initializers.
+Construction forbids computed access, inherited Field access, whole-self acquisition or borrowing, instance-method/custom-accessor calls on self, and capturing or exposing self. The base constructor handles its own fields. Field borrows must end before completion and cannot escape in the result; borrowed inputs may be stored only under the result’s Origin contract. These privileges apply only inside the constructor body, not nested functions, ordinary methods, or Field declaration initializers.
 
 A constructor body is a Function Boundary with Unit control-flow result. Fallthrough, operandless return, or return of Unit requests success. After any return operand, every reachable successful exit must have a completed base and complete, Initialized own Fields. Run normal Scope Exit—including parameters and Deferred Blocks—while retaining construction storage; then recheck completeness and lifetimes before committing this layer. A defer cannot supply initialization missing at the requested exit, nor can completion checks justify borrowing a destroyed parameter. Base completion continues the next layer; only outermost completion yields the owned result. Moving that result does not rerun constructors.
 
@@ -1767,7 +1768,7 @@ Initial virtual calls are safe operations. Every virtual implementation and each
 | Runtime-contract implementation | Check `Implements(D, C)`; reject incompatible conformance |
 | Override implementing inherited contract requirements | At the override declaration, also recheck every corresponding requirement; reject the declaration on failure |
 
-Check Property accessors separately: Shared for getters, Exclusive for setters. An invalid virtual/override declaration cannot remain valid merely by disabling object conversion or invocation. Separately compiled callers rely on the declaration guarantee without enumerating all derived Types. Legitimate generic dependencies remain declaration obligations until instantiation finalization; reject a failing instantiation even when it has no object call sites.
+Check Property accessors separately at their declared receiver kind; standard get/set witnesses use Shared/Exclusive respectively. An invalid virtual/override declaration cannot remain valid merely by disabling object conversion or invocation. Separately compiled callers rely on the declaration guarantee without enumerating all derived Types. Legitimate generic dependencies remain declaration obligations until instantiation finalization; reject a failing instantiation even when it has no object call sites.
 
 ```text
 Animal.reset: Exclusive virtual, ObjectCompatible
@@ -2039,13 +2040,13 @@ Creation evaluates captures, not the function body. Invocation evaluates that bo
 | `[]` | Prohibit runtime captures |
 | `[x, y]` | Acquire exactly the listed bindings; unlisted outer runtime bindings are unavailable |
 | `x` | Ordinary Copy if Copy, otherwise Move |
-| `x@move` | Explicit Move, even for Copy |
+
 | `x@ref` / `x@uniq` | The existing value Borrow/Copy/Reborrow operation for that Semantics |
-| `var x` / `var x@move` | Ordinary acquisition / forced Move into a mutable environment binding |
+| `var x` | Ordinary acquisition into a mutable environment binding |
 
 Resolve captures by Binding Identity. An omitted list infers no Move, new external Borrow/Reborrow, or partial capture: reject a Non-Copy root even when only a Copy Field is read. Existing ref/T may be copied with its dependencies. Generic implicit capture requires declared Copy evidence at definition checking; unknown Copy is an error, not deferred checking, inferred Move, or a hidden Constraint. Explicit `[x]` can admit Copy/Move when the body and later source uses are valid for both.
 
-Type names and accessible static function declarations are not runtime captures. Contextual `self` and setter `value` are never implicitly captured; explicit captures obey all receiver, accessor, construction, and destruction restrictions. An ordinary binding named `storage` uses normal capture rules. No runtime receiver is implicitly bound into a function reference.
+Type names and accessible static function declarations are not runtime captures. Contextual `self` and setter `value` are never implicitly captured; explicit captures obey all receiver, accessor, construction, and destruction restrictions. Contextual storage is not a binding-name capture target; ordinary bindings named storage elsewhere use normal capture rules. No runtime receiver is implicitly bound into a function reference.
 
 Explicit captures execute left to right, including unused entries. Earlier Moves and Loans affect later legality. Reject duplicate capture names and collisions with parameters. Inferred captures execute once each in order of first occurrence in selected source, including dependencies needed by nested Closures. Excluded compile-time source contributes no capture; legitimate deferred selection must resolve the set, order, and effects before environment and ownership finalization. Runtime reachability and optimization do not alter that set.
 
@@ -2054,10 +2055,10 @@ let number: i32 = 10
 let copied = func () => number             // Copy capture.
 let text = makeText()                      // Assume string.
 let invalid = func () => text              // Error: explicit list required.
-let holder = func [text@move] () => ()      // Move executes even if unused.
+let holder = func [text] () => ()      // Move executes even if unused.
 ```
 
-Capture targets are binding names only. No aliases, initializer expressions, fields, inter-entry references, `@copy`, or extra object-borrow capture syntax is defined. `var` combines only with ordinary acquisition or `@move`, not `@ref`/`@uniq`. Existing reference capture follows ordinary adaptation:
+Capture targets are binding names only. No aliases, initializer expressions, fields, inter-entry references, `@copy`, or extra object-borrow capture syntax is defined. `var` combines only with ordinary acquisition, not `@ref`/`@uniq`. Existing reference capture follows ordinary adaptation:
 
 | Source | `[x]` | `[x@ref]` | `[x@uniq]` |
 | --- | --- | --- | --- |
@@ -2075,7 +2076,7 @@ let first = next()  // 1
 let second = next() // 2; outer count is still 0.
 ```
 
-Environment bindings are not user Fields. Ownership-bearing calls apply ordinary local acquisition, Move Paths, and `@move`; a consumed `let` cannot be reinitialized. Shared/Exclusive calls cannot move out owned captures. No environment may borrow its own owned capture through another capture; external borrowed dependencies remain legal under lifetime rules.
+Environment bindings are not user Fields. Ownership-bearing calls apply ordinary local acquisition and Move Paths; a consumed `let` cannot be reinitialized. Shared/Exclusive calls cannot move out owned captures. No environment may borrow its own owned capture through another capture; external borrowed dependencies remain legal under lifetime rules.
 
 Nested Closures acquire through every enclosing environment. An inner-only free binding still requires the outer Closure to capture it; outer `[]` or an insufficient explicit list is an error. Every omitted-list boundary independently requires Copy. Outer parameters and body locals need capture only when the inner Closure is created. Moving an outer environment value into an inner Closure makes the outer call Consuming; inner `@uniq` cannot exceed the outer binding's access.
 
@@ -2100,16 +2101,14 @@ Direct calls acquire the minimum receiver under normal evaluation, access, initi
 
 ```kimi
 let text = makeText()
-let reader = func [text@move] () => inspectText(text@ref)
+let reader = func [text] () => inspectText(text@ref)
 reader()
 reader() // Shared call; Move capture does not imply consuming call.
 
-let number: i32 = 7
-let take = func [number] () => number@move
-let a = take()              // Consume a Copy; take remains initialized.
-let b = take()
-let c = (take@move)()       // Explicitly consume the original.
-take()                     // Error: Moved.
+let item = makeResource() // Non-Copy.
+let take = func [item] () => item
+let first = take() // Moves item from the consuming closure.
+take()             // Error: the non-Copy closure was consumed.
 ```
 
 The internal call signature retains complete receiver/parameter/result Types, per-call Origins, fixed captured Origins, and result Loan dependencies. Acquire receiver access before later argument evaluation and keep required Loans through the result's uses. Generic calls follow the declared [Callable receiver](#86-callable-constraints), even when instantiation reveals a weaker body requirement.
@@ -2389,7 +2388,7 @@ struct NumberSource
 
 **Conformance Identity** is the pair of the concrete Type Identity and Contract Identity. Different associated-Type bindings do not create different conformances to the same Contract. Explicit conformance and conformance implied by refinement to the same pair denote one conformance; all simultaneously applicable associated-Type bindings and requirement-to-implementation mappings must agree under §8.4.8's path checks. Redundant explicit parent conformance is allowed without a required warning.
 
-Unconditional generic Type conformance must hold for every binding allowed by the Type Constraints; conditional conformance uses the additional premises and use checks of §8.4.8. Successful selected instantiations do not validate an unconstrained definition. Verify ancestor conformances and all effective mappings. Conformance declarations generate no implementations except explicitly specified intrinsic derivations and the limited Field Requirement Mapping bridges of §11.4.2.
+Unconditional generic Type conformance must hold for every binding allowed by the Type Constraints; conditional conformance uses the additional premises and use checks of §8.4.8. Successful selected instantiations do not validate an unconstrained definition. Verify ancestor conformances and all effective mappings. Conformance declarations generate no implementations except explicitly specified intrinsic derivations and the limited standard Property witness bridges of §11.4.2.
 
 Retain the verified requirement-to-Member Identity mapping and associated-Type bindings. Contract calls use this mapping rather than rediscovering members in the caller's source environment or after instantiation. No external registration, replacement conformance, default implementation, or access-bypassing witness thunk is introduced.
 
@@ -2806,7 +2805,7 @@ func invalidTwice<T>(value: T) -> (T, T)
     return (value, value) // Error at definition: Copy is not guaranteed.
 ~~~
 
-Generic Fields retain F and computed/required getters retain fixed R (§11); neither uses a Copy-dependent getter-result family. Copy/Move effects may remain conditional only after all cases are verified. Shared sequence and Pattern reads retain their separately defined correlated result families (§4.6.6); do not generalize Field acquisition to those operations.
+Generic stored acquisition and custom/computed/required getter results retain their declared Types (§11); none uses a Copy-dependent getter-result family. Copy/Move effects may remain conditional only after all cases are verified. Shared sequence and Pattern reads retain their separately defined correlated result families (§4.6.6); do not generalize Field acquisition to those operations.
 
 A **Deferred Obligation** records remaining substitution or representation work for a verified definition, not an unproven body capability. Record its kind, defining bindings/environment, source location, declared premises, symbolic proof/effect plan, dependencies, and deadline. Unknown names, missing conformance, use-after-Move possibilities, and unresolved overload ambiguity are not deferrable until a favorable instantiation.
 
@@ -2935,7 +2934,7 @@ Type parameters belong to their declaring function or Type scope. Nested functio
 
 Pattern names follow [arm-local scopes](#1482-binding-scopes), with separate candidate and body Identities. A guard candidate is not a capture source, even when its read Type is Copy.
 
-`Self` is reserved, cannot be redeclared, and requires a valid Type context or a Contract requirement context, where it denotes the conforming Type. `self` and `value` are contextual names introduced by receiver and accessor rules. While active, they cannot be redeclared as locals or parameters; elsewhere they are ordinary Names. Their runtime bindings are not implicitly captured by nested functions. `storage` has no contextual binding. Origin and Label lookup never falls back to Type or Value names.
+`Self` is reserved and requires a Type or Contract requirement context. `self` and `value` are contextual receiver/accessor bindings; while active they cannot be redeclared. Stored accessor `storage` designates its own slot (§11.2), not a capturable local; elsewhere storage is an ordinary Name. Contextual runtime bindings are not implicitly captured. Origin and Label lookup never falls back to Type or Value names.
 
 #### 9.3. Accessibility and reachability
 
@@ -2990,7 +2989,7 @@ Access(D) is a subset of Access(T)
 
 Check the effective domains, not merely the written access modifiers. This rule applies to private, internal, and protected declarations as well as public declarations. A direct base Type must satisfy the same condition with the derived Type as `D`. Apply the rule after declaration merging and Type normalization; an invalid exposed signature is a declaration error even if never used. An inferred Type is checked once established and cannot evade this rule.
 
-Check function/constructor parameters and results (including receivers/constructed Types), enum payloads, Field and Property/accessor Types, and generic/associated-Type requirements. Use the enum’s domain for payloads, the Field/member domain for F/P, and each accessor’s for additional signature components. A restricted setter does not narrow the Property. Check Constraints even when written inside a body, and validate exposed Origins under their scope/lifetime rules.
+Check function/constructor parameters and results (including receivers/constructed Types), enum payloads, Field and Property/accessor Types, and generic/associated-Type requirements. Use the enum’s domain for payloads, the Property domain for its header/storage Type, and each accessor’s for additional signature components. A restricted setter does not narrow the Property. Check Constraints even when written inside a body, and validate exposed Origins under their scope/lifetime rules.
 
 Check API Types recursively. A constructed generic Type’s access domain intersects the declaration’s and all concrete arguments’ domains; other compound Types require every constituent to be accessible. Semantics cannot hide an inaccessible Core or View Target. Expand aliases. For associated projections, check the qualifier, defining requirement, and any exposed concrete binding; unresolved projections retain obligations. A Type’s appearance in an API does not expose its private fields or implementation bodies.
 
@@ -3041,8 +3040,8 @@ public struct Example
     Self is Readable
     private var storedValue: i32 = 0
     public computed value: i32
-        get => self.storedValue
-        private set => self.storedValue = value
+        get(self: ref/Self) -> i32 => self.storedValue
+        private set(self: uniq/Self, value: i32) -> () => self.storedValue = value
 ```
 
 The required getter is public; the extra setter may be private. A private getter would fail this conformance. Required accessors are checked separately; additional accessors retain ordinary access rules.
@@ -3116,7 +3115,7 @@ Generic bodies use their [definition-site source environment](#18-modules-and-de
 
 For `receiver.member`, when ordinary lookup selects an instance declaration in a base `B` of the receiver's static Effective Core `D`, **Base Subobject Receiver Projection** locates that declaration's inline base subobject along the unique inheritance path. Substitute base Type/Origin arguments at each layer. Check accessibility, including protected-receiver restrictions, against the original receiver before projection. Static members need no projection; Type-qualified unbound calls and function values retain ordinary argument rules.
 
-For a declaration receiver `ref/B` or `uniq/B`, form the corresponding shared Borrow or exclusive Borrow/Reborrow of that subobject using the original receiver's permissions. A shared receiver cannot supply exclusive access. Evaluate the source once, before explicit call arguments; preserve its storage anchor, nested dependencies, and parent Loan restrictions. A computed accessor or method borrows the base subobject as a whole. Field access instead projects directly to the Field Place under §11.1.2 without forming a whole-base borrow; preserve the original owned/borrowed/object receiver classification.
+For a declaration receiver `ref/B` or `uniq/B`, form the corresponding shared Borrow or exclusive Borrow/Reborrow of that subobject using the original receiver's permissions. A shared receiver cannot supply exclusive access. Evaluate the source once, before explicit call arguments; preserve its storage anchor, nested dependencies, and parent Loan restrictions. A borrowed custom/computed accessor or method borrows the base subobject as a whole. Standard Property access instead projects to its permitted storage Place under §11.1.2 without forming a whole-base borrow; preserve the original owned/borrowed/object receiver classification.
 
 For ordinary value receivers, rank `ref/D -> ref/B` and `uniq/D -> uniq/B` as same-semantics reborrow, and `owner/D -> ref/B`, `owner/D -> uniq/B`, and `uniq/D -> ref/B` as cross-semantics Borrow/Reborrow under [argument adaptation](#102-argument-adaptation-and-literals). These are member-receiver operations only, never Exact conversions. Projection adds no preference based on inheritance depth and cannot reopen lookup. Candidate analysis records operations without committing them before selection.
 
@@ -3286,7 +3285,7 @@ let number: i32 = 1
 inspect(number) // Select Exact i32, then reject without an Unsafe Block.
 ```
 
-Adding a better overload can therefore invalidate existing calls even if that overload later fails Usage Legality. `@move` resolves its Access Designator for Consume and checks eligibility and legality; it does not fall back to Read or another same-name declaration.
+Adding a better overload can invalidate existing calls even if it later fails Usage Legality. Failed Move, Loan, or Property permission checks cannot retry a borrow, getter, or same-name declaration.
 
 Operator operands preserve the fixed syntax, evaluation order, and permitted adaptations. Built-in operations and the comparison Contract mappings in §13.4.1 define the available operator candidates. No extension operator candidates exist in this revision. User-defined arithmetic, general indexer declarations, and additional ambiguity-resolution syntax remain deferred; ordinary lookup must not invent them.
 
@@ -3322,203 +3321,351 @@ The following boundaries remain separately specified. Implementations must not i
 - Additional implicit argument/receiver adaptations beyond the defined applicability table; exact contextual-binding boundaries for additional accessor/function forms. The explicit Borrow table does not add implicit overload preferences.
 - Operator/indexer candidate collection and explicit selection syntax; combining optional `?` with external/internal parameter-name syntax. Constructor collection is defined under [constructors](#623-constructors).
 
-### 11. Fields and computed properties
+### 11. Properties
 
-Fields expose storage Places; Computed Properties expose operations. Contracts require operations through Property Requirements.
+A concrete Property is `let`, `var`, or `computed`. A Contract uses `property` to require operations.
 
-| Declaration | Storage | Accessor bodies | Declaration initializer |
-| --- | --- | --- | --- |
-| `let` | Immutable Field | Forbidden | Optional for instance; required for static |
-| `var` | Mutable Field | Forbidden | Optional for instance; required for static |
-| `computed` | None | `get` required; `set` optional | Forbidden |
-| `property` in a contract | None required | Forbidden | Forbidden |
-
-Fields and computed members are allowed in struct/group/rootgroup bodies; struct members are instance members and group/rootgroup members are static. Neither is allowed in enums. Local `let`/`var` remain bindings; local computed declarations and Property Requirements are not introduced. Fields and computed members share the Value namespace and cannot coexist with the same Name in one scope. Attributes follow §6.5.
-
-Declaration kind alone determines storage. A Field has one logical storage location and a complete **Field Type** F, but no getter, setter, or Getter Result Type. Do not accept `has` or accessor bodies on Fields or synthesize standard accessors. If an internal representation uses `HasStorage`, it is true for Fields, false for computed, and inapplicable to requirements. Bodies and reachability never change layout. There is no contextual `storage` binding; that spelling remains an ordinary Name.
-
-#### 11.1. Field access and acquisition
-
-`receiver.field` evaluates the receiver once and designates the Field Place. The use context selects acquisition, borrowing, or assignment. Merely following a path does not acquire intermediate Fields or base subobjects. An owned temporary is materialized under §3.6 before projecting its fields.
-
-| Operation | Result and conditions |
-| --- | --- |
-| Value acquisition | Copy if F is Copy, otherwise Move; the result Type is always F |
-| `field@move` | Move even if F is Copy; result Type F |
-| `field@ref` / `field@ref/F` | Permitted shared Borrow/Reborrow or Copy of an existing shared reference |
-| `field@uniq` / `field@uniq/F` | Permitted exclusive Borrow/Reborrow under target-Type, Semantics, and access rules |
-| `field = expression` | Initialization or Replacement under writability and state rules |
-
-Every operation checks accessibility, initialization/completion, Semantics, Origins, and Loans. Unknown generic Copy capability uses the verified conditional Copy/Move effect plan of §8.10; it does not change F to `ref/F`. An illegal Move never falls back to Borrow or duplication. A borrowing context applies existing argument adaptation to the Place without first acquiring its value; no new implicit adaptations are added.
-
-Shorthand `@ref`, `@uniq`, and `@objref` follow §13.5.5. For an i32 Field, `@ref` suffices. To borrow storage holding a reference or object handle, explicitly specify the complete slot Type F with `@ref/F` or, for writable storage, `@uniq/F`. If F is `ref/U`, `@ref` copies that reference while `@ref/F` produces `ref/ref/U` to its slot. Failed Reborrow never retries as slot borrowing.
-
-```kimi
-struct Box<T>
-    public var value: T
-
-func view<T>(box: ref/Box<T>) -> ref/T from box
-    return box.value@ref/T
-
-func copyValue<T>(box: ref/Box<T>) -> T
-    T is Copy
-    return box.value
+```text
+Property
+├─ let       immutable storage
+├─ var       mutable storage
+├─ computed  accessor functions, no storage
+└─ property  Contract requirement, no storage promise
 ```
 
-`Box<T>` needs no Copy constraint. Removing the constraint from `copyValue` is a definition error: a borrowed receiver cannot supply the non-Copy Move case. `view` has the fixed result `ref/T`.
+| Declaration | Get | Set | Declaration initializer |
+| --- | --- | --- | --- |
+| `let` | Required; standard when omitted | Forbidden | Optional for instance; required for static |
+| `var` | Required; standard when omitted | Required; standard when omitted | Optional for instance; required for static |
+| `computed` | Body required | Optional; body required if present | Forbidden |
+| Contract `property` | Required operation | Optional operation | Forbidden |
 
-Simple assignment, compound assignment, and increment/decrement use the direct-Place rules of §13.7 and §13.2. Simple assignment evaluates the RHS first; compound updates locate/read the target first. Do not repeat target evaluation, read, or write, or invoke accessors. Non-Copy `x.field = x.field` moves out and restores the same place when Move and reinitialization are legal.
+Concrete Properties belong in struct/group/rootgroup bodies: instance in a struct, static in a group/rootgroup. Enums do not permit them. Local `let`/`var` remain bindings; local computed declarations are forbidden. Properties share the Value namespace. Each accessor appears at most once, in either order. Attributes follow §6.5; inline `has` is only for requirements.
+
+A **Stored Property** is a let/var declaration with one storage slot. Storage kind is determined by the declaration, never by accessor bodies. In storage, layout, and Move Path rules, **Field** means this slot, not a separate declaration kind. All source access to it obeys the Property's operation permissions.
+
+| Type contract | Meaning |
+| --- | --- |
+| Stored `: T` | Storage Type; standard value acquisition also produces T |
+| Stored custom get | Result exactly T; T must be proven Copy |
+| Stored custom set | Input exactly T; result Unit; no Copy constraint |
+| Computed `: T` | Getter result Type; setter input may differ |
+| Contract `property p: T` | Required getter result Type; explicit setter input may differ |
+
+Compare complete Type structure and bound Origin dependencies (§11.3), not merely the Core. Copy capability selects acquisition, never a conditional result Type such as `T` versus `ref/T`.
+
+#### 11.1. Standard access and acquisition
+
+**Standard get is a Place access contract, not a getter function.** A bodyless get/set selects a standard operation. Omitted accessors are supplied according to the declaration table; customizing one does not change the other.
+
+```kimi
+public let limit: i32 = 100
+public var count: i32 = 0
+public var resource: Resource
+    get
+    private set
+```
+
+Standard get exposes permitted operations on storage. Value acquisition Copies T if Copy, otherwise Moves only from a Movable Place (§15.1.5). Borrowing follows existing adaptation rules without first acquiring the value. Standard set directly initializes or replaces storage under ordinary state and cleanup rules.
+
+| Direct storage operation | Required accessible standard accessors |
+| --- | --- |
+| Copy or shared borrow | get |
+| Move from let | get |
+| Move from var | get and set |
+| Exclusive borrow | get and set |
+| Write | set |
+
+All rows additionally require valid receiver capabilities, initialization/completeness, Origins, Loans, Move Paths, and construction/destruction conditions. A custom accessor cannot satisfy a requirement for a standard accessor. Simple assignment needs the final target's set, not its get; getters needed to locate that target are checked separately (§13.7).
+
+| var configuration | Read/borrow target | Update |
+| --- | --- | --- |
+| Standard get + standard set | Storage, subject to the table | Direct set |
+| Custom get + standard set | Getter result; no direct storage borrow/Move | Direct set |
+| Standard get + custom set | Storage Copy/shared borrow; no direct Move/exclusive borrow | Call set |
+| Custom get + custom set | Getter result; no direct storage access | Call set |
+
+Shorthand borrows retain §13.5.5 semantics. For a slot of Type F = ref/U, `@ref` copies the stored shared reference; `@ref/F` borrows the slot as ref/ref/U. Specify the complete slot Type when requesting slot access. Failed Reborrow cannot retry as slot borrowing.
 
 ##### 11.1.1. Access and mutability
 
-A Field's declared accessibility applies to Copy, Borrow, Move, and writes. There are no operation-specific Field access modifiers. Check mutability and receiver permissions separately. A public Field exposes direct storage access; use a private Field and computed member for validation or separate read/write access domains.
+Move is destructive access, not assignment. Moving a var requires accessible standard set but does not call it or add a receiver write-capability requirement. An owned let may be consumed; Move does not reset its first-initialization history. A moved let cannot be reinitialized or expose its slot for exclusive borrowing. Restoring var requires ordinary write permission.
 
-`let` permits only initial placement; `var` permits legal reinitialization and Replacement. This is slot mutability, not deep immutability of a stored reference's referent. Existing reference capabilities and Reborrow rules still apply.
+```kimi
+// Outside the declaring struct; holder is owned and complete.
+// resource has public standard get and private standard set.
+let r = holder.resource       // Error: set is inaccessible for var Move.
+let view = holder.resource@ref // OK: shared storage borrow.
+```
+
+Slot immutability is not deep immutability. A stored reference or object handle may grant access to a separate referent under its own capabilities and Loans.
 
 ##### 11.1.2. Move paths and inherited fields
 
-Safe Field Move requires a caller-owned struct Place and an eligible static Move Path, prior construction completion, an Initialized and complete target, and valid access, Loans, Origins, and ancestor `deinit` conditions. Borrowed receivers, object receivers, and static storage cannot supply safe extraction, including explicit Move of Copy fields. Legal Copy/Borrow remains available; object access does not become an unrestricted ordinary value borrow. Raw-pointer access follows Unsafe rules.
+Safe storage Move requires an owned struct Place, an eligible static Move Path, completed construction, an Initialized and complete target, and valid access, Origins, Loans, and ancestor deinit conditions. Borrowed/object receivers and static storage cannot supply safe extraction. Raw-pointer operations retain their Unsafe rules.
 
-Move does not require writability: owned `let` receivers and `let` Fields may be consumed. Move does not reset first-initialization history. A Moved `let` Field cannot be restored; restoring a `var` Field needs ordinary write permission along the receiver path.
+Inherited lookup selects a Field Identity and unique base path, substituting Type/Origin arguments. Following this path does not acquire intermediate bases or imply a ref/Derived-to-ref/Base conversion. Preserve the original receiver category; inheritance grants no private access. Track state and Loans by base path and Field Identity. A base subobject itself cannot independently be Moved, replaced, or reconstructed.
 
-After inherited lookup (§9.5), project through the unique base-subobject path to the selected Field Identity, substituting base Type/Origin arguments. This designates storage without acquiring intermediate bases or requiring an ordinary `ref/Derived -> ref/Base` conversion. Preserve the original owned/borrowed/object classification, access checks, and dependencies; derivation grants no private base access.
-
-Track state and Loans by base-subobject path and Field Identity. An intermediate ancestor may be incomplete if the target can be located without whole-value acquisition or borrowing. Reads/borrows require the target's initialization and completeness; writes use normal initialization/Replacement rules. Check construction completion and `deinit` restrictions at every containing base/derived layer. Whole-receiver acquisition, borrowing, and computed calls require that receiver to be complete. A base subobject itself cannot independently be Moved, replaced, or reconstructed.
+Every storage projection checks the permissions of enclosing Properties. Child writes, borrows, and consumes—including implicit method-receiver or operator adaptations—cannot bypass an ancestor's custom or inaccessible setter. References reaching separate referents follow their own capabilities. A path crossing a custom getter continues from its result under §11.2.3, never its hidden storage.
 
 ```kimi
-open struct Base
-    public var resource: Resource
-    public var count: i32 = 0
-
-struct Derived: Base
-
-// Assume makeDerived returns a complete value and no ancestor has deinit.
-var x: Derived = makeDerived()
-let resource = x.resource  // Move if Resource is non-Copy; x is incomplete.
-let count = x.count        // Copy the remaining complete Field.
-x.resource = makeResource() // Restore under ordinary write/Loan rules.
+// position: Point is Copy, with standard get and custom set.
+object.position.x = 10       // Error: bypasses position's setter.
+object.position.x.modify()   // Error if modify requires an exclusive receiver.
+var next = object.position
+next.x = 10
+object.position = next      // OK: calls the setter.
 ```
 
-#### 11.2. Computed properties
-
-A computed declaration requires P, its logical **Property Type**, and a getter body. A setter is optional but, if present, requires a body. Each accessor appears at most once, in either order. Bodyless accessors, inline `has`, declaration initializers, and a bare getter expression without `get` are invalid.
-
-| Accessor | Signature |
-| --- | --- |
-| `get -> R` | Fixed **Getter Result Type** R |
-| `get` without a result annotation | Result Type P; never inferred from the body or selected by Copy capability |
-| `set` | Immutable implicit input `value: P`; result Unit |
-
-Instance getters use `self: ref/Self`, setters `self: uniq/Self`. Static accessors have no instance receiver. `value` exists only in setters. Accessor bodies use `=> Expression` or an indented executable Block and follow ordinary function result rules. Object receiver calls require the verified ObjectCompatible entry of §12.4.4.
+Standard access may use a complete remaining Place after a sibling Move. A custom accessor/computed call needs a complete receiver and retains its declared function footprint; callers cannot infer disjointness from its body. Initial-construction restrictions still apply even when all slots are initialized (§11.3.1).
 
 ```kimi
-struct Counter
-    private var storedCount: i32 = 0
-    public computed count: i32
-        get => self.storedCount
-        private set => self.storedCount = max(value, 0)
-
-struct BorrowingBox<T>
-    private var storedValue: T
-    public computed value: T
-        get -> ref/T from self => self.storedValue@ref/T
-        set => self.storedValue = value
+// Both fields have standard accessors; partial Move/deinit conditions hold.
+let item = object.resource
+let count = object.count       // OK: complete remaining storage.
+let shown = object.displayCount // Error if this getter borrows incomplete object.
+object.resource = makeResource() // Restore through accessible standard set.
 ```
 
-The second getter always returns `ref/T`; its setter accepts T. A getter returning an owned non-Copy value must obtain or create that value without extracting it from its shared receiver. Accessor bodies need not expose a particular stored value, and get/set do not imply round-trip equality.
+##### 11.1.3. Generic acquisition
 
-Reading calls the getter once and treats its result as a function result. Assignment secures the RHS first, then evaluates the receiver and passes P to the setter (§13.7). Compound updates require both accessors, an applicable operation on R, and a result fitting P; evaluate receiver/getter/setter once each. Different P and R may make an update invalid.
+Standard accessors need no Copy constraint. A stored custom getter needs proof of T is Copy under the declaration's generic premises, not merely for a chosen instantiation. Custom setters need no Copy constraint but must be valid for every admitted T.
 
-`computed@ref` and other adaptations operate on the getter result, not backing storage. `computed@move` likewise invokes the getter and moves its result; this is not direct storage Consume or a fallback after failed Field extraction. A path crossing computed evaluates that getter and continues from its result under ordinary rules. Borrowed results retain their declared Origin/Loan boundary; callers cannot substitute private-field projection or prove disjointness from an accessor body.
+```kimi
+struct Box<T>
+    public var item: T
+
+func view<T>(box: ref/Box<T>) -> ref/T from box
+    return box.item@ref/T
+
+func readCopy<T>(box: ref/Box<T>) -> T
+    T is Copy
+    return box.item
+
+struct AssignedBox<T>
+    public var item: T
+        set(self: uniq/Self, value: T) -> ()
+            storage = value
+```
+
+AssignedBox cannot supply unconstrained T by value through standard get: its non-Copy case would require forbidden storage Move. Shared borrowing remains available.
+
+When Copy is unproven, verify the conditional Copy/Move state under §8.10. Runtime Copy values still Copy; the result Type remains T. Later use must be valid in both cases. Reinitialization or explicit borrowing may establish valid continued use. Do not retry overload selection after a Move/Loan failure.
+
+```kimi
+func test<T>(box: Box<T>) -> ()
+    let x = box.item
+    inspect(box@ref) // Error: box may be incomplete after non-Copy Move.
+// Adding T is Copy makes this subsequent shared use valid.
+```
+
+#### 11.2. Accessor functions
+
+Custom and computed accessors explicitly declare receiver, input, and result Types; bodies infer none of them. Bodies are `=> Expression` or nonempty executable Blocks. Default/optional parameters are forbidden. Static accessors have no receiver. A setter's value parameter is an initialized immutable binding with ordinary argument acquisition and cleanup.
+
+Stored instance custom get uses `self: ref/Self` and returns storage Type T, which must be Copy. Custom set uses `self: uniq/Self, value: T` and returns Unit. Static forms are `get() -> T` and `set(value: T) -> ()`.
+
+```kimi
+public var level: i32 = 0
+    get(self: ref/Self) -> i32
+        return storage
+    set(self: uniq/Self, value: i32) -> ()
+        storage = clamp(value, 0, 100)
+```
+
+Inside a stored accessor, contextual `storage` denotes its own slot without recursive accessor invocation. It obeys receiver capabilities, let/var mutability, initialization, Origins, and Loans. It is unavailable in computed and requirements. A custom getter may Copy a stored reference of Type T; this differs from exposing a direct borrow of the slot, which requires standard get.
 
 ##### 11.2.1. Accessor accessibility
 
-Accessors inherit the computed member's access unless explicitly restricted. A restriction must be strictly narrower in declared access; equal effective domains caused by an enclosing declaration do not justify a repeated or broader modifier. Protected forms require the usual structure-member context.
+Accessors inherit Property access unless explicitly restricted. A restriction must be strictly narrower in declared access; enclosing declarations cannot justify a repeated or broader modifier. Protected forms retain their structure-member requirements.
 
-| Computed declared access | Permitted explicit accessor restrictions |
+| Property access | Permitted explicit accessor restrictions |
 | --- | --- |
-| `public` | `protected internal`, `protected`, `internal`, `private protected`, `private` |
-| `protected internal` | `protected`, `internal`, `private protected`, `private` |
-| `protected` | `private protected`, `private` |
-| `internal` | `private protected`, `private` |
-| `private protected` | `private` |
-| `private` | None |
+| public | protected internal, protected, internal, private protected, private |
+| protected internal | protected, internal, private protected, private |
+| protected | private protected, private |
+| internal | private protected, private |
+| private protected | private |
+| private | None |
 
-A concrete computed member always has a getter, but accessibility may leave only its setter usable in some contexts. Do not require `Access(set)` to be contained in `Access(get)`. An inaccessible getter prevents reading and moving its result. API signature, protected-receiver, and override checks remain applicable (§9.3 and §6.2.2).
+Neither accessor must retain the Property's full access domain, and set access need not be contained in get access. API signature, protected-receiver, and override checks still apply. Object receiver calls require verified ObjectCompatible entries (§12.4.4); writing ref/Self or uniq/Self alone supplies no proof.
 
-#### 11.3. Types, Origins, and initialization
+##### 11.2.2. Computed properties
 
-A Field may infer its complete Type from a declaration initializer; without that initializer, require a Type annotation rather than inference from constructor assignments. Instance Field storage contracts explicitly bind all borrow layers and required Type Origin arguments, including nested dependencies (§15.4). Use the containing Type's abstract Origins or valid `static` bindings; `self` does not create a self-borrowing storage contract. Initializers do not infer omitted storage Origins by the local-binding rule.
+Computed has no storage, initializer, bodyless standard accessor, or inline has list. Its explicit getter result must match the header Type after Origin completion. The optional setter returns Unit and may have a different input Type. Instance receivers follow explicit ordinary function contracts, including ownership-bearing receivers; static accessors omit self.
 
-For computed and contract requirements, complete and check input/output Origins only for actual get/set accessors. With no explicit getter result, use P in the result position and apply result elision there. A setter's P input is checked independently: an omitted outer direct borrow introduces its own input Origin, while inner borrows and aggregate Origin arguments require explicit bindings. Do not create omitted Origins for nonexistent accessors or unify signatures as a storage contract. Preserve explicit Origins, dependencies retained inside Types, and their binding/well-formedness constraints. Bodies infer no signature contract.
+```kimi
+struct Temperature
+    private var celsius: f64 = 0.0
+    public computed fahrenheit: f64
+        get(self: ref/Self) -> f64
+            return self.celsius * 1.8 + 32.0
+        set(self: uniq/Self, value: f64) -> ()
+            self.celsius = (value - 32.0) / 1.8
 
-A static getter has no receiver; omitted shared result Origins follow ordinary function elision, including `static` where applicable. A static setter may accept a call-local borrow without gaining permission to retain it. Generic verification and all nested Origin/Loan restrictions remain necessary even with fixed F/P/R.
+struct Holder
+    private var item: Resource
+    public computed view: ref/Resource
+        get(self: ref/Self) -> ref/Resource
+            return self.item@ref/Resource
+    public computed result: Resource
+        get(self: Self) -> Resource
+            return self.item // Only with valid partial Move/deinit conditions.
+```
 
-Field declaration initializers directly initialize storage. An instance Field without one follows constructor definite initialization; do not add zero initialization. Preserve base-first construction, logical declaration order, partial cleanup, and the ban on using partially constructed self in declaration initializers (§6.2.3). Construction receivers initialize own Fields directly. Field Move during initial construction is forbidden; non-Copy inspection uses explicit Borrow or existing argument adaptation. Field borrows cannot escape and must end before completion. Inherited Field, computed, and whole-self restrictions remain those of constructors.
+Non-Copy results must be legally created or acquired. A shared receiver cannot supply an owned non-Copy field by extraction. An owning getter may consume the complete receiver; a later setter cannot reuse it. No hidden duplication, restoration, or get/set round-trip equality is promised.
 
-Field layout is fixed after selection, Mod generation, fragment merging, Type resolution, and finite-layout checks. Copy derivation, implicit constructors, completion, and destruction use Fields and base components, never computed members. Physical offsets and cross-toolchain ABI are not promised (§21.1).
+##### 11.2.3. Getter results and temporaries
 
-##### 11.3.1. Static fields
+Stored custom get, computed get, and Contract get produce function results. Adaptations apply to that result, not backing storage.
 
-Group/rootgroup Fields require declaration initializers and use the per-Field lazy state machine in §22.2. There is no `static` declaration modifier. Safe-borrow retention in static storage is forbidden, including explicit `static` Origins and nested fields, elements, or closure captures. Check after alias expansion/substitution, retaining legitimate generic obligations. `Owned` alone does not waive this rule; a raw pointer's referent or a callable's input/result signature is not itself retained borrowed data.
+**An owned getter-result Temporary Place and its inline descendants cannot be directly assigned, compound-updated, incremented/decremented, or exclusively borrowed.** Parentheses, projections, and implicit exclusive receiver adaptation preserve this restriction. Updating the Property itself through set is separate and remains allowed (§13.7).
 
-Actual read, Borrow, write, or other storage access triggers initialization. Merely invoking a computed accessor does not: only Fields actually touched by its execution or callees initialize. Untaken branches and effect summaries do not trigger initialization. A first write initializes first and then replaces a static `var`; static `let` permits no external initialization or replacement. Unused initializers still require static verification.
+```kimi
+// position: Point is Copy, with custom get and standard set.
+object.position.x = 10          // Error: updates only the getter temporary.
+object.position.x += 1          // Error.
+let edit = object.position@uniq/Point // Error.
+var next = object.position
+next.x = 10                     // OK: ordinary local storage.
+object.position = next          // OK: calls position's set.
+```
 
-Static effect summaries (§15.6.4) conservatively include call, initialization, and cleanup effects. Returned static borrows retain Field Identity and current-value Loan anchors. Static allocation does not permit replacement/destruction while those Loans are live.
+The restriction belongs to that Temporary Place, not unlimited value provenance. Value acquisition into a local or ordinary function argument uses the destination's normal rules. An ordinary function's owned result follows §3.6, even if an argument came from a getter. References still pointing into the original restricted temporary retain its restrictions. Separate referents reached through returned references/object handles follow their own capabilities, Origins, and Loans.
+
+```kimi
+// identity takes and returns Point by value.
+identity(object.position).x = 10 // Ordinary function temporary rules.
+// Neither example writes back to object.position.
+```
+
+Value acquisition, shared borrowing, and legal ownership transfer remain allowed. Materialization and borrowing never extend temporary lifetime. Required borrow duration is inferred from uses, returns, and retention; reject it if the referent cannot live that long.
+
+```kimi
+// visible has a custom getter returning i32.
+inspect(object.visible@ref)    // OK: temporary lasts through this call.
+let view = object.visible@ref
+inspect(view)                 // Error: initializer temporary has ended.
+let saved = object.visible
+inspect(saved@ref)             // OK: borrow the local instead.
+```
+
+No blanket rejection of an unused borrow binding is added. For a standard i32 get, `@ref` instead borrows storage.
+
+##### 11.2.4. Non-Copy custom setters
+
+A custom setter receives ownership of non-Copy value and may replace storage. Assignment to storage secures its RHS, destroys any old value, and installs the new one without calling the setter again. Ordinary assignment/cleanup failure rules apply. An exclusive receiver cannot directly Move out an old non-Copy value; inspect it by shared borrowing or use an authorized initialization-preserving operation. End conflicting Loans before replacement and return with a complete receiver.
+
+```kimi
+struct Holder
+    public var item: Resource
+        set(self: uniq/Self, value: Resource) -> ()
+            storage = normalize(value)
+
+holder.item = makeResource()
+inspect(holder.item@ref/Resource) // OK: standard shared access.
+let item = holder.item            // Error: custom set blocks direct Move.
+let edit = holder.item@uniq/Resource // Error: direct exclusive access.
+```
+
+A setter may return without updating storage. Destroy unconsumed input normally; do not double-destroy transferred input or automatically restore it to the caller. Use a result-returning function when acceptance/rejection must be reported. These restrictions do not prohibit legal whole-receiver Move or destruction. Initial placement does not invoke validation (§11.3.1).
+
+#### 11.3. Types and Origins
+
+A stored Type may be inferred only from its declaration initializer; otherwise require an annotation. Do not infer it from accessors or later assignments. Storage explicitly binds required Origins, including nested dependencies (§15.4); self does not create a self-borrowing storage contract.
+
+First complete each accessor signature by ordinary position-sensitive function elision. Then compare required Type structure and bound Origins, and verify its body. Stored custom input/result must match storage T including Origin correspondence, not just names. If elision cannot establish that match, require explicit Origins.
+
+```kimi
+struct View origin source
+    public var value: ref/i32 from source
+        get(self: ref/Self) -> ref/i32 from source
+            return storage
+        set(self: uniq/Self, value: ref/i32 from source) -> ()
+            storage = value
+```
+
+Omitting from source above would give the getter's unbound direct result from self and the setter's direct input an independent input Origin; neither establishes the storage contract. Existing bound dependencies are never replaced by self.
+
+Computed/required accessors use the same function elision but no shared storage-Type comparison. A getter whose only direct borrowed input is self may elide its result Origin to self. Setter input completion is independent. Create no Origins for absent accessors. Static getter/setter contracts use ordinary receiverless rules. Copy reference/aggregate Types still undergo all lifetime and Loan checks.
+
+##### 11.3.1. Construction and destruction
+
+Declaration initializers and constructor first placement initialize own storage directly, without accessor calls. First placement requires that every incoming path is uninitialized and has never completed first placement. Move or destruction does not reset this history. Declaration initializers count as initialized. Do not dynamically choose initial placement versus custom set at a mixed-state join.
+
+| Constructor write to own storage | Definitely before first placement | Already initialized or mixed paths |
+| --- | --- | --- |
+| let | Direct initialization | Error |
+| var with standard set | Direct initialization | Normal state-dependent placement/replacement |
+| var with custom set | Direct initialization | Error: custom set call during construction |
+
+Construction self cannot call custom get/set or computed, even after all slots are initialized. Standard get may Copy or borrow initialized own storage; non-Copy Move, inherited storage access, and whole-self acquisition/borrowing remain forbidden. Construction borrows end before completion (§6.2.3).
+
+```kimi
+// In a constructor: level has custom set and no declaration initializer.
+if condition
+    self.level = 100 // First placement on this path; no setter.
+else
+    self.level = 200 // First placement on this path; no setter.
+self.level = 300     // Error: construction cannot call custom set.
+```
+
+If only one branch initializes level, a subsequent unconditional write is also rejected for custom set. A declaration initializer such as level = 999 bypasses validation too; callers needing validated initial values must arrange it explicitly.
+
+Preserve base-first construction, declaration-order initializers, no self/constructor-parameter use in declaration initializers, definite initialization, and completion checks after cleanup. No zero initialization is added. Layout, Copy derivation, implicit construction, partial Move, and destruction use stored slots/base components only. Computed contributes none; automatic destruction invokes no accessors.
+
+##### 11.3.2. Static storage
+
+Group/rootgroup stored Properties require initializers and retain §22.2's per-slot lazy state machine. Safe-borrow retention in static storage remains forbidden, including static Origins and nested retained data. Check after substitution and retain legitimate generic obligations; Owned alone does not waive this rule. A raw pointer referent or callable signature is not itself retained borrowed data.
+
+Actual slot access triggers initialization. Calling a custom/computed accessor initializes only slots actually touched by its execution or callees, not every summarized effect. A standard write initializes the slot first, then replaces its value; static let permits no external initialization or replacement. Custom set follows its function effects and may never touch storage. Unused initializers still require validation. Static accessors have no self.
+
+Effect summaries include call, initialization, and cleanup effects. Returned borrows keep storage identity and current-value Loan anchors; static allocation does not permit conflicting replacement/destruction.
 
 #### 11.4. Contract property requirements
 
-`property` declares an instance operation requirement, never a type/static requirement or storage promise. Its getter uses `self: ref/Self`, setter `self: uniq/Self`. Require P and an inline `has` list containing get, optionally set, each at most once in either order. Empty and set-only lists, accessor access modifiers, Attributes, initializers, and bodies are invalid. The list requires exactly its written operations.
+A property requirement is instance-only and promises operations, not storage. The header Type T is its getter result. Get is mandatory and set optional, each at most once. Requirements have no accessor access modifiers, Attributes, default/optional parameters, initializer, storage, or body.
 
 ```kimi
 contract Counted
     property count: i32 has get
-
-contract ReadableValue
-    associate Value
-    property value: Value has get -> ref/Value from self
-
-contract WritableValue
-    associate Value
-    property value: Value has get -> ref/Value from self, set
+contract MutableCounted
+    property count: i32 has get, set
+contract ReplaceableItem
+    property item: ref/Resource
+        get(self: ref/Self) -> ref/Resource
+        set(self: uniq/Self, value: Resource) -> ()
 ```
 
-R is the explicit getter result, otherwise P; setter input is P. Copy capability never changes R. Thus `property text: string has get` requires an owned string result; a borrow requires `get -> ref/string from self`.
+`has get` requires get(ref/Self) -> T **by value**, not merely some readable access. `has set` requires set(uniq/Self, value: T) -> Unit. The explicit form states signatures; its getter matches header T and its setter input may differ. Apply ordinary receiver and Origin contracts. A shared receiver cannot Move a non-Copy stored Resource to implement `property item: Resource has get`; a ref/Resource requirement may use shared storage borrowing.
 
-Select the implementation by Name using ordinary member lookup, then require an instance Field or computed member. Do not rank by P, result, or accessor set, or retry another member after failure. Check conformance access, receivers, generic premises, and Origin/Loan compatibility (§8.4.5). Conditional implementations require their published conditions to follow from the conformance and requirement premises.
+##### 11.4.1. Operation compatibility
 
-For every requirement, including get-only, the implementation's P or Field Type F must structurally equal the required P. Substitute Self, Type arguments, and associated Types; compare normalized structure including Semantics and nested Type arguments, excluding Origins from this structural key. This comparison neither erases Origin dependencies nor creates Origins for absent accessors. Preserve and complete Origins under §11.3, and check compatibility by bound-Origin correspondence and ordinary lifetime rules, not spelling equality. Structural equality alone proves no result lifetime or setter input guarantee.
+Select an implementation by ordinary member lookup, then check the selected let/var/computed operations. Never retry another Name/base candidate because of Type, accessor, or accessibility failure. Substitute Self, generic arguments, and associated Types; apply function requirement compatibility without implicit conversions or stronger implementation preconditions. Check access, receiver, Origins/Loans by bound correspondence, and generic premises. No blanket equality between storage Type and requirement header is imposed.
 
-##### 11.4.1. Computed implementations
+Compatible custom/computed accessors implement calls directly. Object calls/conformance additionally need ObjectCompatible and valid runtime conformance. Unknown generic capabilities cannot establish compatibility.
 
-In addition to the common structural check, the getter result must be compatible with fixed R and the setter input must accept every permitted input. Apply function requirement compatibility without implicit conversions or stronger preconditions. Extra implementation accessors are unavailable through the requirement.
+##### 11.4.2. Standard operation witnesses
 
-##### 11.4.2. Field implementations
+**Witness adaptation** may synthesize a requirement operation from an exposed standard Place operation. For storage Type F, only these bridges are supplied:
 
-A **Field Requirement Mapping** retains the verified Requirement Identity, selected Field Identity with its Type/Origin substitutions and base path, and a bridge operation for each required accessor. Under the common F/P structural match, only these bridges are defined:
-
-| Requirement | Bridge |
+| Required operation | Standard implementation |
 | --- | --- |
-| R has structure F | Copy the Field, only if F is proven Copy |
-| R has structure `ref/F` | Shared-borrow Field storage, independently of Copy |
-| set | Assign the P input to a `var` Field; `let` cannot implement set |
+| Shared receiver -> F | Copy, if F is proven Copy |
+| Shared receiver -> ref/F | Authorized shared slot borrow |
+| Exclusive receiver, input F -> Unit | Accessible var standard set |
 
-Verify each bridge under the required shared/exclusive receiver, access, Origins, Loans, and generic premises. Result lifetime must meet R: a new storage borrow is limited by receiver and Field validity, while a copied reference retains its original dependencies. Mapping grants no Field Move or exclusive-storage-borrow operation to callers.
+Check every bridge against receiver, Property permissions, Origins, Loans, and premises. Storage borrows cannot outlive receiver/slot validity; copied references retain original dependencies. Hidden storage behind custom get is unavailable. Other conversions/projections/reborrows need compatible explicit accessors; do not synthesize them.
 
-Other operations require computed, including projecting an `obj`/`rc`/`arc` Field to `objref`, reborrowing an exclusive reference value, or generating/converting a value. Copy of an already stored `objref` uses the Copy row. Do not infer or change R to obtain conformance. An unconstrained T Field can implement `get -> ref/T` but cannot unconditionally implement get returning T.
-
-```kimi
-struct FieldBox<T>
-    Self is ReadableValue
-    associate ReadableValue.Value is T
-    public var value: T
-// The ReadableValue getter bridge borrows the value slot as ref/T.
-// Direct FieldBox access still uses Field Copy/Move/Borrow rules.
+```text
+Requirement + selected Property + Type/Origin substitutions + base path
+    -> verified operation witness
+    -> call or direct lowering preserving the requirement contract
 ```
 
-The source implementation remains a Field. Do not synthesize a computed declaration or add ordinary lookup candidates. Bridges belong only to conformance mappings; lowering them to helper functions creates no source members. This is the limited bridge exception to §8.4.4's implementation-generation restriction, not arbitrary synthesis or an access bypass.
+Retain this mapping without adding concrete accessors or lookup candidates. It is the limited implementation-generation exception of §8.4.4; no runtime witness-table representation is mandated. An unconstrained F slot may implement shared ref/F get but not unconditional by-value F get.
 
-Contract calls apply a function boundary for receiver/Origin/Loan checking, not direct Field projection or caller-visible disjointness. Requirements promise no storage, Move Path, or direct Consume. Their `@ref`/`@move` operations apply to the getter result as for computed. Object calls additionally require ObjectCompatible and valid runtime conformance.
+Contract calls have function boundaries, not caller-visible storage disjointness. Only required operations are available; implementation storage grants no direct Move/exclusive borrow. Getter owned results retain §11.2.3 restrictions even when their witnesses lower to direct operations. Preserve requirement Types, Origins, Loans, and temporary permissions through lowering.
 
 ## Part IV. Expressions and control flow
 
@@ -3686,7 +3833,7 @@ If key evaluation, duplicate checking, or value evaluation does not complete nor
 
 `expression.name` selects a member. [Qualified lookup](#95-qualified-and-inherited-lookup) distinguishes Container and value paths, reports ambiguity when both succeed, and never implicitly inserts `self`. The right side of an ordinary member-access `.` must be a member Name or an in-range decimal integer literal selecting a Tuple element; `pair.0` selects its first element. The reserved `.init(...)` suffix instead forms a [construction expression](#623-constructors) with a Type qualifier. Dynamic member lookup with an arbitrary expression is not defined.
 
-Field selection designates a Place; acquisition and borrowing follow §11.1. Computed/required Property reads invoke a getter, writes require a setter, and `@move` moves the getter result (§11.2). Other adaptations likewise apply to that result, never to hidden storage. Check operation access and receiver permissions. Tuple and fixed-array Places follow [Move Paths](#1513-move-paths-and-partial-move). Raw pointers do not dereference automatically: write `(*pointer).name` in an Unsafe Block; this remains an Unsafe operation.
+Property selection follows §11: standard get exposes permitted Place operations, while custom/computed/required get produces a result. Assignment uses accessible set. Check each operation and receiver; getter results never expose hidden storage. Tuple/fixed-array Places retain Move Path rules. Raw pointers do not dereference automatically: use `(*pointer).name` in an Unsafe Block.
 
 ```kimi
 let count = collection.count
@@ -3739,14 +3886,14 @@ The latter requires the old object's borrowing and destruction conditions; it do
 
 This is a specification predicate, not source syntax or a prescribed analysis algorithm. Unknown separate or indirect callees cannot be assumed safe. Apply the [declaration/use validation boundaries](#624-virtual-members-and-overrides).
 
-Computed getters/setters and Property Requirements declare `ref/Self` / `uniq/Self` receivers. A computed body or Field bridge may share a verified object entry without adding general `objuniq/T -> uniq/T` conversion, changing result contracts, reselecting overloads, or duplicating conformance. Computed calls retain their function boundary; direct Field operations use their Place permissions, and object Fields cannot be Moved out. `MoveOut` is an effect; `@move` is an acquisition operation with its own source rules.
+Borrowed-receiver accessors and requirement bridges may use verified object entries without a general objuniq/T-to-uniq/T conversion, changed contracts, overload reselection, or duplicated conformance. Owning computed receivers follow their declared acquisition rules and gain no object slicing permission. Accessor calls retain function boundaries; direct stored operations retain Property permissions. Object fields cannot Move out. MoveOut is an effect, not a source operator.
 
 ```kimi
 // Structure member excerpt; clamp does not access the receiver.
 private var storedAge: i32 = 0
 public computed age: i32
-    get => self.storedAge
-    set => self.storedAge = clamp(value, 0, 150)
+    get(self: ref/Self) -> i32 => self.storedAge
+    set(self: uniq/Self, value: i32) -> () => self.storedAge = clamp(value, 0, 150)
 ```
 
 The setter replaces one Field, not the complete receiver. It still needs ObjectCompatible verification; the expression body does not grant direct-field privileges to callers.
@@ -3761,7 +3908,7 @@ Earlier rows bind more tightly. Left associativity groups `a op b op c` as `(a o
 | --- | --- | --- |
 | 1 | `.name`, `(...)`, `<Types>`, `[...]`, postfix `++` `--` | Postfix chain, left to right |
 | 2 | Prefix `+` `-` `not` `*` `^` `++` `--` | Right |
-| 3 | `@Type`, `@Semantics`, `@move` | Left |
+| 3 | `@Type`, `@Semantics` | Left |
 | 4 | `*` `/` `%` | Left |
 | 5 | `+` `-` | Left |
 | 6 | `<<` `>>` | Left |
@@ -3778,7 +3925,7 @@ In ordinary expressions, `is` / `is not` ends after one named Core; outer `and` 
 
 Unparenthesized comparison chains such as `a < b < c`, `a == b == c`, and `a < b == flag` are syntax errors. Write `a < b and b < c` or `(a < b) == flag`; each comparison still requires valid operand Types.
 
-`@` is one token. All explicit `@` operations share this precedence and left associativity, below prefix operators: `-x@i64` means `(-x)@i64`, and `(a + b)@move` moves the sum while `a + b@move` moves only b. Use `-(x@move)` to negate after Move. An Adaptation Target may contain qualified names, `/`, and generic arguments; spaces do not necessarily separate Type syntax from operators. Parenthesize the result before member access, calls, or indexing: `(x@T).name`, `(f@move)()`, `(a@move)[0]`. Use `(x@Number) / divisor` for division after adaptation.
+`@` is one token. All adaptations share this precedence and left associativity, below prefix operators: `-x@i64` means `(-x)@i64`. Targets may contain qualified names, `/`, and generic arguments. Parenthesize an adapted result before selection, calls, or indexing: `(x@T).name`, `(f@T)()`, `(a@T)[0]`. Use `(x@Number) / divisor` for division after adaptation.
 
 Conversion type arguments follow the same adjacent-`<` and matching-`>` rule as generic application: `value@Box<i32>` contains a type argument, whereas `value@i64 < limit` compares the converted value. Selections, iterations, and Labeled Blocks have their own body syntax. `return`, `exit`, and `yield` consume a full result expression, so `return a + b` returns the sum.
 
@@ -3882,8 +4029,7 @@ Explicit operation selection is distinct from subtyping and acquisition legality
 
 ```text
 Explicit @ Operation
-├─ Type / Semantics Adaptation: @Type, @ref, @uniq, ...
-└─ Value Lifetime Operation: @move
+└─ Type / Semantics Adaptation: @Type, @ref, @uniq, ...
 ```
 
 ##### 13.5.1. Forms and adaptation targets
@@ -3892,7 +4038,6 @@ Explicit @ Operation
 | --- | --- |
 | `E@Type` | A defined adaptation to the specified target |
 | `E@Semantics` | Same form with Core, immediate Referent Type, or object View Target taken from the operand as applicable |
-| `E@move` | Explicit Consume; no Adaptation Target |
 
 An **Adaptation Target** specifies Semantics and a Core, a complete inner Type for a value-borrow or pointer layer, or an object View Target. Infer result Origins from the operand, operation, Loans, and applicable constraints to obtain the complete result Type. Retain Origin information in aliases, generic Types, and operands; do not erase constraints or extend validity. Runtime targets do not contain `from Origin`; `exit ... from Label` belongs to control-transfer syntax.
 
@@ -3904,7 +4049,7 @@ Adaptation Target
     -> complete result Type retains target, Semantics, and Origin
 ```
 
-**Syntactic extent.** After @, move terminates the operation target immediately. Otherwise, consume an identifier-shaped head followed by slash as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed to make that decision. A prefix must later resolve to a concrete Semantics or declared Semantics binding. Consume a remaining primitive, named/qualified/generic, grouped, Tuple, or fixed-array Type head as the target. Generic adjacency uses §12.4.2; written Origins are forbidden at every target layer. A following slash is division only after that head is complete and cannot begin another syntactic Semantics prefix.
+**Syntactic extent.** After @, consume an identifier-shaped head followed by slash as a Semantics prefix, recursively and regardless of whitespace; no lookup is needed to make that decision. A prefix must later resolve to a concrete Semantics or declared Semantics binding. Consume a remaining primitive, named/qualified/generic, grouped, Tuple, or fixed-array Type head as the target. Generic adjacency uses §12.4.2; written Origins are forbidden at every target layer. A following slash is division only after that head is complete and cannot begin another syntactic Semantics prefix.
 
 `a@ref/uniq/T` consumes the full prefix chain. `a@T / b` parses target `T/b` and fails Semantics lookup if T is only a Core; whitespace cannot change it. Write `(a@T) / b` or `a@(T) / b` for division. Primitive keywords cannot be Semantics parameters, so `x@i32 / y` already means `(x@i32) / y`. Grouping `x@(i32)` preserves the adaptation. Group complete Function Type targets, as in `x@((i32) -> i32)`; adaptation does not consume a following outer arrow. Parsing commits before Binding and never retries after conversion failure.
 
@@ -3914,10 +4059,10 @@ For a single-layer value Type with Core `T`, `@ref` and `@ref/T` select the same
 let wide = number@i64
 let view = value@ref
 let sameView = value@ref/Value // When value's Core is Value.
-let taken = value@move
+let taken = value // Copy if Copy, otherwise Move.
 ```
 
-For a bare Name `X` in `E@X`, first recognize `move` and built-in Semantics names. Otherwise perform **Adaptation Target Lookup** independently for the Type and generic Semantics-parameter roles, using ordinary lookup stages, visibility, and aliases. Type candidates include Type aliases and generic Type bindings subject to the target's role restrictions. Commit each role's first eligible stage and deduplicate paths to the same Symbol.
+For a bare Name `X` in `E@X`, first recognize built-in Semantics names. Otherwise perform **Adaptation Target Lookup** independently for the Type and generic Semantics-parameter roles, using ordinary lookup stages, visibility, and aliases. Type candidates include Type aliases and generic Type bindings subject to the target's role restrictions. Commit each role's first eligible stage and deduplicate paths to the same Symbol.
 
 | Lookup result | Outcome |
 | --- | --- |
@@ -3930,15 +4075,15 @@ Operand Types, expected Types, or conversion success cannot resolve a role ambig
 
 ##### 13.5.2. Static selection and inference
 
-Resolve the operation from the explicit designation and operand Type/category, then check access, ownership, Loans, and Origins. Numeric conversion, Identity Acquisition, and pointer casts use ordinary value acquisition. Borrow targets use the Borrow table; `@move` uses Consume resolution. Failure never selects a different operation, getter, or overload.
+Resolve the operation from the explicit designation and operand Type/category, then check access, ownership, Loans, and Origins. Numeric conversion, Identity Acquisition, and pointer casts use ordinary value acquisition. Borrow targets use the Borrow table. Failure never selects a different operation, getter, or overload.
 
-Targets may guide permitted literal or generic inference but cannot change an established operand or function result Type. An outer expected Type cannot cancel the explicit operation. Since `@move` preserves Type, its expected Type may guide operand inference, function-reference selection, and anonymous-function checking within normal inference boundaries. It must not replace Consume with Copy/Borrow, read a getter to make Consume fit, or introduce cyclic inference or candidate-by-candidate retries. Check subsequent result fitting statically.
+Targets may guide permitted literal/generic inference but cannot change an established operand or result Type. An outer expected Type cannot cancel the selected operation. Preserve normal inference boundaries; do not introduce cyclic inference or candidate-by-candidate retries. Check subsequent result fitting statically.
 
 ```kimi
 // handler is an overloaded function name; the annotation selects its reference.
-let f: (i32) -> () = handler@move
-// Move the temporary function value; no function declaration becomes Moved.
-let g = f@move // f is a Place and becomes Moved.
+let f: (i32) -> () = handler
+// The annotation selects a function reference.
+let g = f // Copy the function value; f remains initialized.
 ```
 
 Deferred generic effects follow [Generic Access Effects](#89-generic-access-effects). Resolve effects before finalizing ownership/Loan analysis. `Never` follows ordinary abrupt-completion and Type-fitting rules, not a value conversion. A non-completing operand prevents execution of the outer operation but does not waive syntax, target-Type, or Unsafe checks.
@@ -3959,7 +4104,7 @@ Deferred generic effects follow [Generic Access Effects](#89-generic-access-effe
 ```kimi
 number@owner   // Copy if number is Copy.
 resource@owner // Ordinary Move if resource is a non-Copy owned value.
-number@move    // Explicit Move even if number is Copy.
+
 ```
 
 **Origin Restriction** is common static result fitting, not another value operation. Determine acquisition/Borrow and its effect, then apply only shortening permitted by existing variance and outlives rules. Check Identity Acquisition before this use-site restriction. Preserve Core, Semantics, dependencies, and Loans; do not add Copy, Move, or Borrow, extend lifetime, or rewrite arbitrary nested Origins. For example, fitting `ref/T from longer` to `ref/T from shorter` requires `longer` to outlive `shorter`. Exclusive same-Type adaptation still uses Reborrow.
@@ -4032,19 +4177,19 @@ let slot = reference@ref/ref/i32     // ref/ref/i32; also depends on reference's
 
 For `reference: ref/i32`, `reference@uniq/ref/i32` borrows its writable slot exclusively; it does not grant mutable access to `number`. A `let` reference slot cannot be borrowed this way exclusively. `reference@ref@ref` remains `ref/i32`. Explicit Origins remain forbidden anywhere in an Adaptation Target, including grouped and generic inner Types; their dependencies are inferred or retained from existing Types.
 
-A new Borrow depends on the target Place and owner validity. Copying a shared reference preserves its referent Origins rather than using the lifetime of the variable holding it. Reborrow lends referent capability without moving the parent reference; while the child Loan is live, conflicting access through the parent is forbidden. A `let` binding holding an exclusive reference does not by itself prevent Reborrow. Use `@move` to transfer the reference itself.
+A new Borrow depends on the target Place and owner validity. Copying a shared reference preserves its referent Origins rather than using the lifetime of the variable holding it. Reborrow lends referent capability without moving the parent reference; while the child Loan is live, conflicting access through the parent is forbidden. A `let` binding holding an exclusive reference does not by itself prevent Reborrow. Ordinary by-value acquisition transfers a non-Copy reference itself.
 
 ```kimi
 var value = makeValue()
 let exclusive = value@uniq
 inspect(exclusive@ref)
 modify(exclusive@uniq) // After the previous child Loan ends.
-let transferred = exclusive@move
+let transferred = exclusive // Move the reference, not its referent.
 ```
 
 Do not upgrade shared to exclusive, derive exclusive object borrows from `rc`/`arc`, or convert between value-borrow and object-borrow representations. A runtime reference count of one does not grant an exception. Owned temporaries use [materialization and temporary borrowing](#36-temporary-values-places-and-lifetimes).
 
-A computed/required Property operand invokes its getter once. Adapt the fixed **Getter Result Type**, also when inferring the shorthand Core. Borrowing an owned getter result materializes that temporary rather than borrowing backing storage; reference results use ordinary Copy/Reborrow rules. An accessible setter grants no backing-storage access. A Field operand instead follows the direct Place rules of §11.1.
+Custom/computed/required get invokes a getter once. Adapt its declared result Type, including shorthand inference. Borrowing an owned result materializes its temporary and obeys §11.2.3; references retain ordinary Copy/Reborrow rules. Set access grants no hidden-storage borrow. Standard get uses §11.1 Place permissions.
 
 ```kimi
 // Assume item is computed and its getter returns ref/Resource.
@@ -4055,42 +4200,33 @@ inspect(person.age@ref)    // Borrow the getter's Copy result temporary.
 
 ##### 13.5.6. Evaluation, results, and failure
 
-Evaluate each operand and required receiver once; finish chained operations from the inside outward. `@move` follows [Consume](#1515-explicit-consume); only its final operand result is explicitly moved. `@move` is an expression usable in initialization, assignment, arguments, and results; its result retains the operand Type.
+Evaluate each operand and required receiver once; chained adaptations finish from the inside outward. Each operation uses its own acquisition and permission rules. Acquisition never propagates backward through a call/getter into hidden storage.
+
+Assignment remains RHS-first and returns Unit. A custom setter receives the secured result normally; source Move and destination Write permissions are independent. Destruction of the old destination must preserve result Loans/Origins. Loans begin at Borrow/Reborrow, including during later argument evaluation; do not delay an exclusive receiver Loan until after arguments.
 
 ```kimi
-// Independent examples; x is i32.
-x@i64@move // Move the converted temporary; x remains Initialized.
-x@move@i64 // Move x, then convert; x is Moved.
-x@ref@move // Move the borrow value, not x.
-x@move@ref // Move x, then borrow the resulting temporary.
+var x = makeResource() // Non-Copy.
+x = x // Move and reinitialize; skip destruction of the Moved old value.
+// f(x, x) is invalid if its first argument consumes x and its second reads x.
 ```
 
-Surrounding evaluation order is unchanged. [Assignment](#1371-simple-assignment) remains RHS-first and returns Unit. A custom destination setter receives the secured result normally; source Consume and destination Write permissions are separate. Destruction of the old destination must not invalidate result Loans/Origins. Loans begin when Borrow/Reborrow occurs, including while later arguments are evaluated; do not delay an exclusive receiver Loan until after argument evaluation.
-
-```kimi
-var x = makeResource()
-x = x@move // Legal Move and reinitialization; skip destruction of the Moved old value.
-// f(x@move, x) // Error: later argument uses Moved x.
-```
-
-Discard does not omit evaluation, conversion checks, or Consume. Destroy an unused owned result at its normal lifetime. `return` and other transfers secure the result before common cleanup; returned borrows must remain valid afterward, and deferred uses of Moved/incomplete values are errors.
+Discard still evaluates and checks acquisition/conversion, then destroys the unused owned result at its normal lifetime. Transfers secure results before cleanup. Returned borrows must survive cleanup; deferred uses of Moved/incomplete values are errors.
 
 | Failure | Handling |
 | --- | --- |
-| Undefined adaptation, Type/access/initialization/Loan/Origin violation | Compile-time error |
-| Literal fitting failure | Compile-time error |
-| Failed conversion in required constant evaluation | Compile-time error |
+| Undefined adaptation; Type, access, initialization, Loan, or Origin violation | Compile-time error |
+| Literal fitting or required constant conversion failure | Compile-time error |
 | Failed runtime numeric conversion | Abort if evaluated |
 | Unsafe memory contract violation | Ordinary Unsafe rules |
 
-Literal fitting is a static language rule. Otherwise, constant propagation/folding cannot change specified runtime Abort into a compile-time error outside required constant evaluation. Optimization cannot introduce failure from skipped evaluation.
+Literal fitting is static. Otherwise, constant folding cannot turn specified runtime Abort into a compile-time error outside required constant evaluation, or introduce failure from skipped evaluation.
 
 ```kimi
 let x: i32 = 300
-x@u8 // Abort when evaluated, even if propagation knows x is 300.
+x@u8 // Abort when evaluated, even when propagation knows x is 300.
 ```
 
-Abort and cleanup during or after `@` evaluation follow Error Handling and Value Lifetime. There is no operation-specific rollback of completed Moves or side effects, and no lifetime extension.
+Abort and cleanup follow ordinary failure/lifetime rules; completed Moves and effects are not rolled back, and no lifetime extension occurs.
 
 ##### 13.5.7. Object upcasts
 
@@ -4189,11 +4325,11 @@ Check target validity/accessibility, Semantics preservation, [Owned erasure](#15
 `target = value` returns Unit and evaluates in this order:
 
 1. Evaluate the right side fully and secure a temporary of the statically determined destination Type by Copy/Move; update the source state and responsibility.
-2. Evaluate the left receiver and indices left to right, locating the destination once without invoking its getter.
+2. Evaluate the left receiver and access path left to right once. Invoke intermediate getters needed to locate the target, but not the getter of the final target.
 3. Destroy the old value or initialized parts still present at that destination. Skip Moved/Uninitialized parts.
 4. Place the temporary by ordinary Copy/Move rules, transferring its responsibility as applicable and leaving the destination Initialized.
 
-For a computed/required Property, pass the secured result to its setter instead of performing steps 3–4 directly. A Field performs direct placement and may restore an incomplete instance under §11.1.2. Initial Field construction uses §6.2.3.
+For custom/computed/required set, pass the secured input to its setter instead of steps 3–4. Standard set directly places storage under §11.1 permissions and may restore incomplete storage. Constructor first placement follows §11.3.1. A destination rooted in a getter-owned temporary is restricted by §11.2.3.
 
 Replacement uses existing storage without invoking incoming constructors or declaration initializers. Clean complete old values by their exact Type’s full chain; clean incomplete ones under [partial cleanup](#1632-field-cleanup). A derived value’s base view is not a whole-value target. Check destination/ancestor permissions and Loans first. If old cleanup does not complete normally, install nothing; neither restore the old state nor continue with an observable empty destination.
 
@@ -4204,6 +4340,7 @@ values[index()] = makeValue()  // makeValue, index, old destruction, placement.
 values[index()] += amount()    // index, old read, amount, compute, write.
 obj().prop = arg()             // arg, obj, setter.
 obj().setProp(arg())           // obj, arg, method call.
+object.view.x = 10 // If computed view returns uniq/Point: RHS, view get, x set.
 ```
 
 Use explicit locals when a particular order for receiver or index effects is needed.
@@ -4229,7 +4366,7 @@ var count: i32 = 0
 let done: () = (count = 20)
 ```
 
-Self-assignment of a Copy value uses Copy then Replacement. Non-Copy Field `x.p = x.p` may Move out and restore the same Place under Field Move and write rules. Computed/required `x.p = x.p` calls get/set and may fail when R does not fit P; `x.p@move` moves its getter result, not backing storage. `let` reinitialization remains forbidden.
+Self-assignment of Copy values uses Copy then Replacement. Non-Copy standard stored `x.p = x.p` may Move out and restore under Property permissions; custom set blocks that source Move. Custom/computed/required get calls its getter, then the selected set if the result fits its input and receiver/Loan conditions hold. Let cannot be reinitialized.
 
 Right associativity parses `a = b = c` as `a = (b = c)`; the inner Unit result makes ordinary numeric chaining invalid. Assignment is not a Boolean condition. Destructuring, whole-Slice assignment, and initialization of raw uninitialized memory need separate rules.
 
@@ -4237,10 +4374,15 @@ Right associativity parses `a = b = c` as `a = (b = c)`; the inner Unit result m
 
 `+= -= *= /= %= &= |= ^= <<= >>=` perform the corresponding binary operation and return Unit. Resolve the destination once, read its old value once, evaluate the right side, compute, and write once. This is not a textual replacement with `target = target op value`; receivers and indices are not repeated.
 
-A computed/required Property uses one getter and one setter; a Field reads and writes its Place directly. The read result must support the operation, and the operation result must fit the destination Type (P for a setter, F for a Field). Do not insert hidden Moves or duplication to supply missing capabilities. Destination validity and destruction dependencies follow simple assignment, but evaluation remains target/read first, then RHS. Thus it is not equivalent to the RHS-first simple-assignment form.
+Select read and write independently under §11: standard operations use permitted storage access, custom/computed/required operations call their accessors. The read result must support the operator, and its result must fit set input. Require valid receivers and Loans through every stage; an owning getter may consume a receiver needed by set. Do not insert duplication, retry borrowing after failed Move, or bypass a setter through exclusive storage access. Evaluation remains target/read first, then RHS; updates of getter-owned temporaries remain forbidden (§11.2.3).
 
 ```kimi
 values[nextIndex()] += amount() // Index, old value, amount, addition, write.
+// item: Resource has standard get and custom set.
+holder.item += x // Cannot acquire non-Copy item by Move for this update.
+// User-defined Resource arithmetic is itself unavailable (§13.8).
+holder.item = rebuild(holder.item@ref/Resource, x)
+// OK if rebuild returns an independent owner and its input Loan ends before set.
 ```
 
 If the right side or operation does not complete normally, do not write; getter and operand effects already performed remain. Compound assignment is not atomic and does not provide synchronization. Raw-pointer `+=` / `-=` use only the permitted displacement operations and their unsafe conditions; other pointer compound assignments are forbidden.
@@ -4249,7 +4391,7 @@ If the right side or operation does not complete normally, do not write; getter 
 
 Operator symbols, precedence, and associativity are fixed by the language. User-defined comparison uses the [Core Contract mapping](#1341-contract-comparison-mapping). User-defined arithmetic remains deferred and unavailable; a same-named method does not authorize an operator. Future arithmetic must preserve evaluation order and counts and assignment's Unit result.
 
-`and`, `or`, `not`, `=`, `@` (including `@move`), `is`, Ranges, and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined. Neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.`, or ternary `?:`; use logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref` / `@uniq`. Prefix `move`, a Move accessor, and a dedicated `<-` Move operator are not defined. Recognition by the lexer alone does not make a token a usable operator.
+`and`, `or`, `not`, `=`, `@`, `is`, Ranges, and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined. Neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.`, or ternary `?:`; use logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref` / `@uniq`. Prefix `move`, a Move accessor, and a dedicated `<-` Move operator are not defined. Recognition by the lexer alone does not make a token a usable operator.
 
 `#Name` is an Attribute and `#if` / `#match` are compile-time directives, not runtime unary operators. `$` denotes the Composition Root; `$abort(...)` follows [Abort Termination](#173-abort-termination). Other Composition Root operations, dependency resolution, lifetimes, and failure rules remain separately specified.
 
@@ -4547,7 +4689,7 @@ Each of these bodies establishes an independent **Function Boundary**:
 
 In these control-flow rules, "function" includes all of these bodies. A `return` ends only its own function. Other transfers cannot target an outer function's Labels, Iteration Constructs, or selections.
 
-Getters return their fixed [Getter Result Type](#112-computed-properties); setters, `init` bodies, and `deinit` return Unit. All follow [function body and result rules](#71-function-bodies-and-results). An `init` body's Unit result is distinct from the owned value produced by the enclosing construction operation. Normal `deinit` completion, including `return`, still performs automatic field destruction required by the Type.
+Getters return their declared [getter result Type](#1122-computed-properties); setters, `init` bodies, and `deinit` return Unit. All follow [function body and result rules](#71-function-bodies-and-results). An `init` body's Unit result is distinct from the owned value produced by the enclosing construction operation. Normal `deinit` completion, including `return`, still performs automatic field destruction required by the Type.
 
 ```kimi
 func outer() -> i32
@@ -4962,7 +5104,7 @@ Here the first `data` is `ref/Data` in the guard and `Data` in the body. Writing
 
 A guard is one expression whose normal result is `bool`. Parentheses are optional; `and`, `or`, and `not` keep ordinary semantics. No `let` conditions, comma condition lists, or guard chains are added. The arm's outer `=>` ends the guard; nested expressions retain their usual syntax boundaries.
 
-Candidate names, including `var` candidates, cannot Move, use `@move`, be reassigned, create exclusive borrows, or be captured. Candidate Places themselves cannot be returned or stored as values. Returning or storing a shared-read result depends on its transitive Origin/Loan dependencies and the destination, not Copyability alone:
+Candidate names, including `var` candidates, cannot Move, be reassigned, create exclusive borrows, or be captured. Candidate Places themselves cannot be returned or stored as values. Returning or storing a shared-read result depends on its transitive Origin/Loan dependencies and the destination, not Copyability alone:
 
 | Shared-read result | Escape from the guard |
 | --- | --- |
@@ -5328,7 +5470,7 @@ A Move Path defines tracking granularity, not access permission:
 | Source access | Partial Move |
 | --- | --- |
 | Tuple element / constant-index fixed array element | Direct place acquisition normally Moves a non-Copy value |
-| Struct Field | Value acquisition Copies F when Copy, otherwise Moves; `@move` forces Move. Both Move forms require §11.1.2. |
+| Stored Property slot | Standard acquisition Copies F when Copy, otherwise Moves under §11.1 permissions and Move Path rules. |
 
 ```kimi
 var pair: (string, i32) = ("Alice", 30)
@@ -5339,7 +5481,7 @@ pair.0 = "Bob"
 let all = pair     // Complete again.
 ```
 
-Do not Move a non-Copy referent or subpart through `ref`, `uniq`, `objref`, or `objuniq`, leaving the borrowed place Moved/Uninitialized, even if a later reinitialization is planned. Exclusive access does not transfer ownership. Explicit Consume likewise cannot extract through borrowed referents or borrowed Field receivers, even for Copy values.
+Do not Move a non-Copy referent or subpart through `ref`, `uniq`, `objref`, or `objuniq`, leaving the borrowed place Moved/Uninitialized, even if a later reinitialization is planned. Exclusive access does not transfer ownership. Copy acquisition leaves the source initialized; it is not extraction.
 
 User-defined `deinit` assumes a complete value. Reject Partial Move that invalidates this assumption for the aggregate itself or any enclosing ancestor, including nested paths, methods, and Destruction. A complete owned value whose own Type has `deinit` may move as a whole.
 
@@ -5372,35 +5514,26 @@ Track per-path state, destruction responsibility, first initialization of `let`,
 
 Lowering may elide transfers and temporary storage or use conditional cleanup flags only while preserving values, abstract place identity and lifetime, Move state, Loans, Origins, destruction responsibility, and specified failures. Optimization must not change which programs or Move Paths are legal.
 
-##### 15.1.5. Explicit consume
+##### 15.1.5. Movable places
 
-`E@move` transfers a value/capability and applicable destruction responsibility, even for Copy Types. The result is a Temporary Value with the source's complete Type and dependencies. A consumed source Place becomes Moved; no Type conversion or lifetime extension occurs.
+A **Movable Place** permits ownership/capability transfer from its current value. Safe direct sources are owned root Places, Tuple elements, fixed-array elements at eligible constant indices, and authorized stored Property slots. Require an Initialized complete target, no conflicting Loan, accessible consuming operations, and valid construction, partial-Move, Origin, and deinit conditions.
 
-```text
-E@move
-├─ Field / local / other direct source -> check Consume eligibility and legality
-├─ computed / Property Requirement -> invoke get once, then Move its result
-├─ unsupported index / user indexer -> error; no fallback to a read
-└─ other value-producing expression -> evaluate, then Move its temporary
-```
+Borrowed referents, object fields, static storage, unsupported indices, and hidden Property storage cannot supply safe extraction. Generic owned arguments may move as whole values without an extra Contract. Raw dereference retains its Unsafe obligations.
 
-Classify by resolved declaration and operation, not source spelling. Parentheses preserve classification. A computed result Move is its defined operation, not a retry after failed Field Consume. Receiver/index/pointer subexpressions keep normal evaluation; Move does not propagate backward through them or bypass getters.
-
-Safe direct sources are owned root Places, Tuple elements, fixed-array elements at permitted constant indices, and eligible struct Fields (§11.1.2). Apply the same path restrictions to Copy Types. Safe extraction through borrowed referents, object receivers, static storage, runtime indices, and user indexers is forbidden. Generic owned arguments may move as whole values without an extra Contract. Raw dereference follows Unsafe rules; the programmer prevents later reads/double destruction by untracked owners.
-
-Owned `let` locals, receivers, and Fields may Move, but this does not restore first-initialization permission. A Moved `let` cannot be reinitialized; `var` restoration needs ordinary writability. A moved reference transfers its capability, not its referent's ownership.
+Ordinary acquisition Copies Copy Types and otherwise Moves. A Move marks the source Moved and transfers its complete Type, dependencies, and destruction responsibility; moving a reference transfers capability, not referent ownership. Owned let may Move but cannot be reinitialized. Restoring var needs write permission. There is no forced Move of Copy Types.
 
 ```kimi
 let number: i32 = 10
-let taken = number@move // number is Moved despite being Copy.
-let result = object.computedValue@move // Invoke get, then Move its result.
+let copied = number // Copy; number remains initialized.
+let resource = makeResource()
+let taken = resource // Non-Copy Move; resource is now Moved.
 ```
 
-Borrowing a Move result follows ordinary temporary, Loan, and Origin rules and does not restore the original Place.
+Getter results are acquired as results, never by moving hidden storage. An already owned temporary transfers to its destination under §3.6. Borrowing its destination does not restore the original source.
 
 ##### 15.1.6. Match acquisition and lifetime
 
-`match E` evaluates `E` once and initializes an internal **Subject Place** by ordinary whole-value acquisition: Copy for a Copy Type, otherwise Move. Materialize an existing Temporary Value without an extra acquisition. This happens before arm selection regardless of bindings, Wildcards, or whether any arm succeeds. Optimization cannot change the original Place's Move state, lifetime, or Loans. A computed/required Property subject invokes its getter once; a Field subject uses ordinary Place acquisition. Explicit `@move` follows §15.1.5 for the resolved source kind.
+`match E` evaluates `E` once and initializes an internal **Subject Place** by ordinary whole-value acquisition: Copy for a Copy Type, otherwise Move. Materialize an existing Temporary Value without an extra acquisition. This happens before arm selection regardless of bindings, Wildcards, or whether any arm succeeds. Optimization cannot change the original Place's Move state, lifetime, or Loans. A custom/computed/required get subject invokes its getter once; standard stored get uses permitted Place acquisition.
 
 ```kimi
 // Message is Non-Copy.
@@ -5647,7 +5780,7 @@ Origin omission depends on the position of the complete Type. These rules apply 
 | Generic Type argument or nested value Type | Recursively apply the enclosing position's rule; being a Type argument does not introduce a separate default. |
 | Enum Case payload declaration | Apply the instance storage rule to every payload element, including nested Origins and required aggregate arguments; see [enum payloads](#63-enums). |
 | Constructor parameter | Apply the ordinary parameter rule; the constructed value retains the containing Type's declared Origin contract under [construction](#623-constructors). |
-| Computed declaration or Property Requirement | Complete Origins only for actual accessors: R in get result position, P in set input position (§11.3). Preserve explicit/internal dependencies; no Origins for nonexistent accessors or shared storage contract. |
+| Property accessor | Complete actual getter results and setter inputs independently by function elision (§11.3). Stored custom signatures must then match complete storage T. Computed/required signatures have no shared storage contract. |
 | Getter result, explicit or defaulted from P | Apply function result elision with the actual getter receiver; preserve already bound dependencies (§11.3). |
 | Adaptation Target | Infer result Origins from the operand, operation, and constraints under [Adaptation Targets](#1351-forms-and-adaptation-targets); this is not signature result elision. |
 | Callable constraint signature | Apply its limited per-call direct-input quantification and result restrictions under [Callable constraints](#86-callable-constraints), rather than recursively quantifying every nested borrow. |
@@ -5669,7 +5802,7 @@ struct Box<T>
 // No synthetic named Origin parameter is added to Box.
 ```
 
-The constructed Box's lifetime, acquisition, and destruction retain that dependency. This does not permit a directly written field `value: ref/i32` to omit its Origin. Static storage still rejects such a Box even when a is `static`; `Owned` alone is insufficient. Follow the recursive [static storage check](#11-fields-and-computed-properties), without treating a raw pointer's pointee or a callable signature as an actually retained safe borrow. Finite layout, Copy derivation, heap/global escape, and Object payload erasure remain separate checks.
+The constructed Box's lifetime, acquisition, and destruction retain that dependency. This does not permit a directly written field `value: ref/i32` to omit its Origin. Static storage still rejects such a Box even when a is `static`; `Owned` alone is insufficient. Follow the recursive [static storage check](#11-properties), without treating a raw pointer's pointee or a callable signature as an actually retained safe borrow. Finite layout, Copy derivation, heap/global escape, and Object payload erasure remain separate checks.
 
 ```kimi
 func f<T>(x: ref/T, y: ref/T)
@@ -5808,7 +5941,7 @@ place := local
        | place '[' _ ']'
 ```
 
-These projections describe direct Field and lowered storage Places. Base/Field identities preserve inherited paths; no ordinary base-reference conversion is implied. Computed/required Properties instead use accessor function boundaries (§11). Parentheses preserve Places. Reading Copies, Moves, or borrows according to context and permissions.
+These projections describe direct Field and lowered storage Places. Base/Field identities preserve inherited paths; no ordinary base-reference conversion is implied. Custom/computed/required accessors instead use function boundaries (§11). Parentheses preserve Places. Reading Copies, Moves, or borrows according to context and permissions.
 
 A **region** is a set of program points. Local regions are inferred; Origins in signatures introduce universal regions; `static` is the maximum region.
 
@@ -5856,7 +5989,7 @@ Two places overlap when an operation on one may affect the other. Static place a
 
 Inline parts exclude pointer/reference referents. Distinct shared-reference or raw-pointer variables alone do not prove independence. Constant fixed-array indices use only the [ConstantIndexExpression rule](#1513-move-paths-and-partial-move), comparing decoded in-range literal values, not general constant evaluation or optimization; runtime index comparisons such as `i != j` do not establish disjointness. No arbitrary integer proof or optimizer result changes acceptance. Array-derived Slices retain the whole-array Loan footprint through reslicing, splitting, and empty views under [Slice lifetime rules](#465-slice-storage-lifetime-and-permissions). Simultaneous exclusive borrows may be used only through their valid access paths; reborrowing still suspends conflicting parent access.
 
-These are storage rules, not permission to bypass Property accessors. Direct Field operations may borrow disjoint fields separately; computed calls retain their receiver footprint.
+These are storage rules, not permission to bypass Property accessors. Direct Field operations may borrow disjoint fields separately; custom/computed/required calls retain their receiver footprint.
 
 Each operation is checked against every active Loan on an overlapping place:
 
@@ -5959,7 +6092,7 @@ Here `observe` accepts `ref/Writer`; reading `self.out` shares the stored capabi
 | `Exchange` | Transfer without destruction | Keep target initialized | Old value |
 | `Swap` | Exchange both values without destruction | Keep both initialized | Unit |
 
-`Exchange(place, with: value)` and `Swap(placeA, placeB)` denote language-provided intrinsic exchange operations. Their semantic requirements are defined here; final API spellings and resolution remain separate. In examples, `place` denotes **authorized direct storage access**, not permission to bypass a Property getter or expose its private storage. Computed/required Property `@move` grants no access to backing storage.
+`Exchange(place, with: value)` and `Swap(placeA, placeB)` denote language-provided intrinsic exchange operations. Their semantic requirements are defined here; final API spellings and resolution remain separate. In examples, `place` denotes **authorized direct storage access**, not permission to bypass a Property getter or expose its private storage. Getter-result acquisition grants no access to backing storage.
 
 ##### 15.7.1. Evaluation and transfer
 
@@ -6031,14 +6164,14 @@ When the whole result Type is omitted and inferred from the body, infer its Orig
 
 ```kimi
 let text = makeText()
-let get = func [text@move] () => text@ref
+let get = func [text] () => text@ref
 // Internal signature: call(self: ref/Self) -> ref/string from self.
 let view = get()
-let moved = get@move // Error if view is still used below.
+let moved = get // Error if view is still used below.
 inspectText(view)
 
 let other = makeText()
-let invalid = func [other@move] () -> ref/string => other@ref
+let invalid = func [other] () -> ref/string => other@ref
 // Error: annotated omitted result Origin is static, not the environment borrow.
 ```
 
@@ -6060,10 +6193,10 @@ Loan validity includes later uses, results, and dependencies observed by destruc
 
 This revision does not define:
 
-- abstract Origin parameters on contracts or trait-like abstractions (the [Property getter receiver/result contracts](#112-computed-properties) do not introduce contract-level Origin parameters);
+- abstract Origin parameters on contracts or trait-like abstractions (the [Property getter receiver/result contracts](#1122-computed-properties) do not introduce contract-level Origin parameters);
 - existential object views that hide non-static payload dependencies;
 - general higher-ranked Origins beyond the direct-input quantification of Callable constraints;
-- borrow escape into heap or global storage; in particular, static Fields are forbidden from retaining safe borrows, including `static` borrows and borrows nested in stored values, under [Field storage rules](#113-types-origins-and-initialization);
+- borrow escape into heap or global storage; in particular, static Fields are forbidden from retaining safe borrows, including `static` borrows and borrows nested in stored values, under [Field storage rules](#113-types-and-origins);
 - lending iterators;
 - cancellation cleanup guarantees.
 
@@ -6565,7 +6698,7 @@ Portable interchange uses source artifacts or binary interfaces, not serialized 
 
 - Symbol/version identity, access/enclosing domains, visibility/public paths, and open/base relationships;
 - normalized Signatures, complete API Types/requirements, Constraints, Origins, and unsafe requirements;
-- Field Types and Place capabilities, fixed computed/required P/R signatures, Field bridges, conditional-conformance premises and verified mappings, and generic specialization inputs;
+- Stored Property Types and standard/custom operation permissions, accessor signatures and Origins, verified witness mappings, conditional-conformance premises, and generic specialization inputs;
 - ABI, layout, calling conventions, and target/language/compiler identity.
 
 Private generic dependencies preserve defining Symbols and access context without becoming public Names. These are information categories; encoding, required fields, validation, and compatibility belong to the separate artifact-interface specification.
@@ -7016,7 +7149,7 @@ Validate all quantities against target limits. Fixed-array size and stride are N
 
 Unit has size 0 and alignment 1. Zero-length arrays and arrays of zero-stride elements have size 0 under their formation rules. Tuples/structs with only zero-sized inline components may have size 0 if their documented layout needs no extra storage; any positive-sized inline component forbids it. Other layouts, including empty-struct padding and enum tags, are implementation-defined and documented. Shared addresses do not merge logical places’ initialization, ownership, or structural Loans. Preserve observable destruction even for zero-sized Types.
 
-Derive layout from selected storage declarations, Types, target, and layout mode. Identical compiler/build inputs must reproduce it. Physical offsets may differ from logical declaration order, but [observable initialization order](#113-types-origins-and-initialization) must remain. Default struct layout promises no stable ABI across source/toolchain changes and is not the separately specified fixed-layout facility for FFI or binary interfaces.
+Derive layout from selected storage declarations, Types, target, and layout mode. Identical compiler/build inputs must reproduce it. Physical offsets may differ from logical declaration order, but [observable initialization order](#1131-construction-and-destruction) must remain. Default struct layout promises no stable ABI across source/toolchain changes and is not the separately specified fixed-layout facility for FFI or binary interfaces.
 
 Layout includes exactly one direct base subobject plus the structure's own Fields. The recursively embedded owned-value storage graph must be finite; reject cycles through inline base/field components that require infinite layout. Object handles, borrows, and raw pointers do not inline their referents and therefore do not create such layout edges. Physical reordering cannot alter field identity, initialization/completeness tracking, or the prescribed derived-to-base and reverse-component destruction order.
 
@@ -7212,7 +7345,7 @@ An application has one entry SourceDocument, configured by project-relative path
 
 Execute the entry's selected top-level items in source order in their source-local execution scope with ordinary local-function visibility, lifetime, and cleanup rules. Reaching its end exits successfully with process code zero after normal cleanup. An emitter may synthesize a host entry function, but this does not create a source-language Function Boundary: top-level return remains an error under §14.11. There is no implicit invocation of a user function named main or Main. Abort uses §17.3, produces unsuccessful process termination, and does not promise normal cleanup; the host-specific failure status is implementation-defined.
 
-Static Fields initialize per Field under §11.3.1. A first read, Borrow, write, or other storage operation checks:
+Static stored Properties initialize per slot under §11.3.2. A first read, Borrow, write, or other storage operation checks:
 
 | State | Action |
 | --- | --- |
@@ -7346,13 +7479,13 @@ Retain parameter immutability, receiver index/kind, argument mappings, and defau
 
 Persist §15.6.4’s static effects and returned Loan anchors in artifacts/callable data. Use stable Field Identities, recursive summaries, and initializer/destructor dependencies; summary changes invalidate callers. Missing/incompatible summaries require conservative effects or diagnostics. Test Loans across direct, recursive, indirect, and separate-module mutation, default/cleanup effects, and permitted shared reads. Runtime Origin erasure must preserve these proof dependencies.
 
-#### A.4. Field and Property implementation requirements
+#### A.4. Property implementation requirements
 
-Represent Fields, computed declarations, and Property Requirements separately in ASTs, Binding, interfaces, and grammar. Preserve fixed F/P/R, access, complete Origin dependencies, Field/base identities, and function boundaries. Do not retain standard-accessor expansion or Copy-dependent Property getter rows.
+Represent let/var storage, standard operations, custom/computed accessor signatures, and Contract requirements explicitly. Preserve storage/base identities, complete Types/Origins, accessor access, function boundaries, and witness mappings. Standard get is not a synthesized source function; Copy does not change its result Type.
 
-Validate Field Move paths, first initialization of let, partial completeness, Loans, and cleanup before lowering. Verify computed object entries and fixed result operations separately. Field Requirement Mappings retain selected Field identities, substitutions/base paths, and verified bridges without adding source members. Update parser, writer, serialization, diagnostics, and artifact invalidation consistently; specification integration does not imply implementation coverage.
+Validate direct/child Place permissions, implicit receiver adaptations, generic Copy proof and conditional Move states, first-placement history, construction-call bans, getter temporary restrictions, and normal cleanup before lowering. Preserve Contract result restrictions through witness optimization. Update parser, writer, grammar, serialization, diagnostics, and artifact invalidation for accessor syntax and removal of explicit Move.
 
-Test generic Copy/Move versus explicit Borrow, partial inherited-field access, ancestor deinit, borrowed/object/static Move rejection, Field self-assignment, computed-result Move, get-only P matching with preserved Origins, and static lazy-init effects/Loan anchors.
+Cover private-set Move rejection; custom-get result versus storage borrowing; non-Copy custom setters and self-assignment; construction branch joins; partial inherited access and ancestor deinit; reference-result Origins; static accessor effects; and Contract by-value versus shared-slot witnesses. Specification integration does not imply compiler implementation coverage.
 
 #### A.5. Raw pointer backend requirements
 
@@ -7682,7 +7815,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Constraint | A condition imposed on a Type or Type Semantics. | [Constraints](#82-constraints) |
 | Constraint Clause | A declaration clause expressing a Constraint as `subject is requirement`. | [Constraints](#82-constraints) |
 | Constraints | The set of conditions required for a declaration to be valid or usable. | [Constraints](#82-constraints) |
-| Consume | Explicit acquisition using `@move` that forces Move even for Copy Types. | [Explicit Consume](#1515-explicit-consume) |
+| Consume | Non-Copy value acquisition that transfers ownership/capability from a Movable Place. | [Movable Places](#1515-movable-places) |
 | Consume Eligibility | Whether the declaration, Type, and path provide the Consume operation. | [Consume verification](#1514-consume-verification-and-representation) |
 | Consume Legality | Whether the current use site may perform an eligible Consume. | [Consume verification](#1514-consume-verification-and-representation) |
 | Contract | A capability declaration containing requirements, associated Types, and Constraints, without implementations or storage. | [Contracts](#84-static-contracts) |
@@ -7704,7 +7837,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Finalization | Acceptance of a declaration, layout, specialization, or body after required checks are resolved. | [Compiler terminology](#appendix-a-compiler-implementation-requirements) |
 | Function Item / common Function Type | Concrete declaration identity / shared erased calling contract | [Callable Types](#321-callable-value-types) |
 | GenericArity / OriginArity | Generic slot count (including function lengths) / explicitly declared Origin count; one pair consumes one slot. | [Signatures](#91-signatures) |
-| Getter Result Type | The Type returned by a Property read, which may differ from its Property Type. | [Computed results](#112-computed-properties) |
+| Getter result Type | The declared result of custom/computed/required get; matches its Property header Type. | [Accessor contracts](#112-accessor-functions) |
 | Instantiation / explicit full specialization / automatic specialization | Argument binding / mandatory user implementation selection / meaning-preserving Type-specific code generation. | [Generic code generation](#213-generic-code-generation) |
 | Koto | A compiler syntax-tree node. | [Compiler terminology](#appendix-a-compiler-implementation-requirements) |
 | Kotonoha | One named source or binary module. | [Modules](#18-modules-and-dependencies) |
@@ -7720,9 +7853,9 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Place | A storage location that can hold a value. | [Value model](#34-values-places-and-storage) |
 | Project root | Root of the primary Kotonoha's declaration hierarchy. | [Modules](#18-modules-and-dependencies) |
 | Provisional Binding | Mod-time semantic results that do not constrain final Binding. | [Mod Binding](#2072-compilation-and-binding) |
-| Field Requirement Mapping | Verified requirement-to-Field correspondence and bridge operations, without a synthetic computed source member. | [Field implementations](#1142-field-implementations) |
-| Field | A let/var member exposing a Place of fixed Field Type. | [Fields](#111-field-access-and-acquisition) |
-| Property | A computed operation member with logical P and fixed getter result R, or a contract requirement for those operations; no owned storage. | [Fields and computed properties](#11-fields-and-computed-properties) |
+| Property Witness Mapping | Verified requirement-to-Property operations with Type/Origin substitutions and optional standard-operation bridges. | [Witness adaptation](#1142-standard-operation-witnesses) |
+| Field | The storage slot of a let/var Property; source access obeys its accessor permissions. | [Stored Properties](#11-properties) |
+| Property | A let/var stored member or computed operation member; a Contract property requires operations. | [Properties](#11-properties) |
 | Reborrow | A borrow derived from an existing borrow, subject to the parent's capability and Origin. | [Reborrowing](#1563-reborrowing) |
 | Scalar | Integer, floating-point, Boolean, or Character Core; short for Primitive scalar. | [Primitive cores](#31-primitive-cores) |
 | Semantics | A value's representation, ownership, borrowing, access, and safety rules; also called Type Semantics. | [Type Semantics](#33-type-semantics) |
@@ -7890,9 +8023,11 @@ FunctionRequirement  := "unsafe"? "func" Name GenericParameters? OriginParameter
                         RequirementConstraints?
 RequirementParameter := Name ("=>" Name)? ":" Type
 RequirementConstraints := Body<ConstraintClause>
-PropertyRequirement  := "property" Name ":" Type "has"
-                        RequiredAccessor ("," RequiredAccessor)*
-RequiredAccessor     := "get" ("->" Type)? | "set"
+PropertyRequirement  := "property" Name ":" Type
+                        ("has" RequiredAccessor ("," RequiredAccessor)*
+                         | Body<RequiredSignature>)
+RequiredAccessor     := "get" | "set"
+RequiredSignature    := GetterSignature | SetterSignature
 AssociatedTypeDeclaration := "associate" Name ("is" IsRequirement)?
 AssociatedTypeSpecification := "associate" AssociatedTypeName "is" IsRequirement
 AssociatedTypeName   := Name | ContractReference "." Name
@@ -7957,7 +8092,7 @@ AttributePrefix      := Attribute (Attribute | NEWLINE)*
 Declaration          := AttributePrefix? UnattributedDeclaration
 UnattributedDeclaration := GroupDeclaration | RootGroupDeclaration
                       | StructureDeclaration | ContractDeclaration
-                      | FunctionDefinition | SpecializationDeclaration | FieldDeclaration | ComputedDeclaration
+                      | FunctionDefinition | SpecializationDeclaration | StoredPropertyDeclaration | ComputedDeclaration
                       | ConstructorDeclaration | DeinitDeclaration
                       | EnumDeclaration | ForeignFunctionDeclaration
 ```
@@ -7972,7 +8107,7 @@ Omitting the result annotation in a named function declaration or Contract funct
 
 Ordinary parameter bindings are immutable under §7. Receiver recognition uses the internal Name self, its position, and declaration context under §7.3; the shared Parameter production alone does not grant receiver defaults, renaming, or arbitrary Types. Default evaluation and cleanup follow §7.2. Empty group/rootgroup/struct/contract declarations follow §6.1.1; empty enums remain invalid.
 
-Contract requirements have no access modifiers, default/optional parameters, Property initializers, or executable bodies. `RequirementConstraints` is an optional nonempty indented list of Constraint Clauses; method Generic and Origin parameters remain ordinary function parameters. Property Requirements are instance-only: get is mandatory and set optional, each at most once in either order. No accessor is implied beyond the has list.
+Contract requirements have no access modifiers, default/optional parameters, Property initializers, or executable bodies. `RequirementConstraints` is an optional nonempty indented list of Constraint Clauses; method Generic and Origin parameters remain ordinary function parameters. Property Requirements are instance-only: get is mandatory and set optional, each at most once in either order. No accessor is implied beyond the written list or explicit signatures. Shared/exclusive defaults for has and explicit signature checks follow §11.4.
 
 `AssociatedTypeDeclaration` introduces a name only inside a Contract. `AssociatedTypeSpecification` requires an existing associated Type of the enclosing Type's declared or implied conformances; a bare `associate Element` is not a specification. `ConformanceClause` is the Type-body interpretation of an unconditional Constraint Clause. `ConditionalConformance` instead occupies a member position only in generic struct/enum bodies (§8.4.8), has one target Contract, and introduces no namespace or generic binders. Its positive-only condition grammar does not change PositiveRequirement. Enum conditional blocks reject computed declarations; all blocks reject storage, Cases, constructors, deinit, nested Types, and nested conformances. Intrinsics retain their own rules.
 
@@ -8006,7 +8141,7 @@ Shift                := Additive (("<<" | ">>") Additive)*
 Additive             := Multiplicative (("+" | "-") Multiplicative)*
 Multiplicative       := Adapted (("*" | "/" | "%") Adapted)*
 Adapted              := Prefix ("@" OperationTarget)*
-OperationTarget      := "move" | Semantics | AdaptationType
+OperationTarget      := Semantics | AdaptationType
 AdaptationType       := Semantics "/" AdaptationType | AdaptationAtom
 AdaptationAtom       := NamedType | UnitType | "(" OriginFreeType ")"
                       | "(" OriginFreeType "," TrailingList<OriginFreeType>? ")"
@@ -8040,8 +8175,8 @@ FunctionExpression   := "func" CaptureList? "(" TrailingList<AnonymousParameter>
 AnonymousParameter   := Name (":" Type)?
 AnonymousBody        := "=>" Expression | ExecutableBlock
 CaptureList          := "[" TrailingList<Capture>? "]"
-Capture              := Name ("@" CaptureOperation)? | "var" Name ("@" "move")?
-CaptureOperation     := "move" | "ref" | "uniq"
+Capture              := Name ("@" CaptureOperation)? | "var" Name
+CaptureOperation     := "ref" | "uniq"
 CompositionRootExpression := "$" "abort" "(" Expression ")"
 ```
 
@@ -8105,20 +8240,24 @@ DeinitDeclaration    := "deinit" ExecutableBlock
 
 CaseReference qualifiers identify enum Cores without the enum's own Origin annotations; their generic argument Types retain complete Type information. Case existence, expected-Type resolution, payload presence/count, access, and Semantics are checked under [Case construction](#632-case-construction-and-resolution). Cases with payload require arguments, while payload-free Cases prohibit parentheses. Binding names and structural access follow [Patterns](#1481-patterns), not expression or constructor-call semantics. Match and enum bodies must remain nonempty after selection under their respective rules.
 
-#### F.6. Field and Property grammar
+#### F.6. Property grammar
 
-[Fields](#111-field-access-and-acquisition), [computed members](#112-computed-properties), [access restrictions](#1121-accessor-accessibility), and [requirements](#114-contract-property-requirements) define the semantic checks. PropertyRequirement and RequiredAccessor are defined in F.3.
+[Standard access](#111-standard-access-and-acquisition), [accessor functions](#112-accessor-functions), and [requirements](#114-contract-property-requirements) define the semantic checks. PropertyRequirement is defined in F.3.
 
 ```ebnf
-FieldDeclaration     := Access? ("let" | "var") Name
-                        (":" Type)? ("=" Expression)?
-ComputedDeclaration  := Access? "computed" Name ":" Type Body<Accessor>
-Accessor             := Access? "get" ("->" Type)? AccessorBody
-                      | Access? "set" AccessorBody
+StoredPropertyDeclaration := Access? ("let" | "var") Name
+                             (":" Type)? ("=" Expression)? Body<StoredAccessor>?
+ComputedDeclaration  := Access? "computed" Name ":" Type Body<CustomAccessor>
+StoredAccessor       := Access? ("get" | "set") | CustomAccessor
+CustomAccessor       := Access? GetterSignature AccessorBody
+                      | Access? SetterSignature AccessorBody
+GetterSignature      := "get" "(" AccessorReceiver? ")" "->" Type
+SetterSignature      := "set" "(" (AccessorReceiver ",")? "value" ":" Type ")" "->" UnitType
+AccessorReceiver     := "self" ":" Type
 AccessorBody         := "=>" Expression | ExecutableBlock
 ```
 
-Fields have no accessor syntax. Computed members require one get and at most one set, in either order, with no initializer or inline has list. Field Type omission requires an initializer; static Fields require initializers. Attribute and Container restrictions follow §6.5 and §11. This grammar grants no Field override or final virtual/abstract/override syntax.
+Each concrete accessor occurs at most once, in either order. Let forbids set; var supplies omitted standard get/set. A bodyless standard accessor has no explicit signature. Custom accessors require full signatures; stored receiver/Copy/Type restrictions follow §11.2. Static accessors omit self. Computed requires a custom get and optional custom set, with no initializer or inline has. Stored Type omission requires an initializer; static storage always requires one. Attributes/containers follow §6.5 and §11. This grammar adds no final virtual/override spelling.
 
 #### F.7. Origin grammar
 

@@ -1,12 +1,14 @@
-# プロパティの設計仕様
+# プロパティ仕様（最終版）
 
-本書は、プロパティに関する設計判断をまとめた仕様である。標準アクセサーは storage から契約を導出し、カスタムアクセサーは関数と同じく契約を明示する。Move は型・所有値を要求する文脈・Place の権限で決定し、`@move` は廃止する。
+確定日: 2026-09-10
 
-本書は SPEC.md とコンパイラへの反映に先立つ設計文書であり、実装済みであることを意味しない。コード例は互いに独立した断片である。`Resource` は非 Copy の所有型とし、生成・複製・検査用の関数は別途宣言済みとする。
+Property を `let / var / computed` に統一し、Contract の要求を `property` で表す。標準アクセスは storage の Place を扱い、カスタム accessor は明示した関数契約に従う。`@move` は廃止する。
 
-## 1. 基本モデル
+本書は設計上の最終仕様であり、SPEC.md 本体・コンパイラへの反映完了を意味しない。変更の背景と反映先は [Design Change](../Changes/2026-09-10%20Property%20Semantics.md) に記録する。
 
-Property は、名前を通して値の取得や更新を提供するメンバーである。具体的な Property は `let`、`var`、`computed` の3種類に分類する。Contract 内では `property` によって操作を要求する。
+例は独立した断片である。`Resource` は非 Copy の所有型、`Point` は Copy 型とし、生成・検査用の関数は別途宣言済みとする。Accessor を含む宣言断片は、明記しない限り struct のメンバーとする。
+
+## 1. Property の分類
 
 ```text
 Property
@@ -15,60 +17,62 @@ Property
 │  ├─ var       mutable storage を持つ
 │  └─ computed  storage を持たない
 └─ Contract の要求
-   └─ property  必要な操作の契約を表す
+   └─ property  読み書きの操作を要求する
 ```
 
-| 宣言 | Storage | Getter | Setter | 宣言時 initializer |
-| --- | --- | --- | --- | --- |
-| `let` | あり。初期化後の置き換え不可 | 必須。省略時は標準 | 不可 | 任意。ただし static は必須 |
-| `var` | あり。更新可能 | 必須。省略時は標準 | 必須。省略時は標準 | 任意。ただし static は必須 |
-| `computed` | なし | カスタム getter 必須 | カスタム setter を任意に宣言 | 不可 |
-| Contract の `property` | 要求しない | 必須 | 任意 | 不可 |
+| 宣言 | Storage | Get | Set | Initializer | 文脈上の storage |
+| --- | --- | --- | --- | --- | --- |
+| `let` | Immutable | 必須。省略時は標準 | 不可 | instance は任意 | accessor 内で参照可 |
+| `var` | Mutable | 必須。省略時は標準 | 必須。省略時は標準 | instance は任意 | accessor 内で参照可 |
+| `computed` | なし | 本体付き get 必須 | 本体付き set を任意に宣言 | 不可 | 不可 |
+| Contract の `property` | 要求しない | 要求必須 | 要求任意 | 不可 | 不可 |
 
-Storage の有無と可変性は宣言種別だけで決まる。アクセサー本体が `storage` を参照するかどうかによって、レイアウトを変更してはならない。
+Static の let/var は既存規則に従い initializer を必須とする。Storage の有無と可変性は宣言種別だけで決まり、accessor 本体の内容で変化しない。
 
-具体的な Property は struct、group、rootgroup 内に宣言できる。struct 内では instance、group と rootgroup 内では static となる。既存の宣言位置の制限を維持し、enum およびローカルの computed は導入しない。ローカルの `let` と `var` は従来どおり binding である。
+具体的な Property は struct、group、rootgroup に宣言できる。Struct 内は instance、group/rootgroup 内は static とする。Enum とローカル computed は導入しない。ローカルの let/var は従来どおり binding である。
 
-## 2. 型・Place・Origin・操作の権限
+## 2. 型・Place・アクセス契約
 
-### 2.1. Stored Property
+### 2.1. 型
 
-```kimi
-public let item: Item
-```
+| 宣言・操作 | 型の意味 |
+| --- | --- |
+| Stored Property の `: T` | Storage 型 T。値として取得した結果も T |
+| Stored のカスタム get | 戻り値は T と一致 |
+| Stored のカスタム set | 入力 value は T と一致、結果は Unit |
+| Computed の `: T` | Getter の戻り値型 |
+| Contract の `property name: T` | 要求する getter の結果型 |
 
-この宣言は、型 `Item` の storage を一つ持つ。instance Property の標準アクセスは、receiver 内の対応する storage の Place を指す。
-
-標準操作の契約は、次の情報から導出する。
+型の一致は、参照やネストした型を含む構造と、§4.2 の Origin 束縛・依存について検査する。同じ Core であるだけでは一致としない。
 
 ```text
-Property 宣言と receiver
-├─ storage の型
-├─ storage の Place
-├─ 宣言のアクセス可能性
-├─ let / var による更新権限
-├─ receiver の所有・共有借用・排他借用などの権限
-└─ 初期化状態、Origin、既存の Loan
-   └─ Copy / Move / 共有借用 / 排他借用 / 更新の可否
+Stored Property
+├─ T が Copy
+│  ├─ 標準 get/set：許可
+│  └─ カスタム get/set：入出力型を T に揃えて許可
+└─ T の Copy 能力が証明できない
+   ├─ 標準 get/set：許可
+   ├─ カスタム get：禁止
+   └─ カスタム set：入力型を T に揃えて許可
 ```
 
-Storage 自体を新しく借用する場合、その有効期間は receiver と storage の有効期間に制約される。この意味で instance storage の借用元は `self` となる。
+Let はどちらの場合も set を持たない。Copy 制限は stored のカスタム getter に適用し、computed と Contract の操作契約には自動的に拡張しない。
 
-Storage の型に含まれる Origin は別の契約である。たとえば保持している参照が外部の Origin に依存していても、その依存先を `self` に置き換えてはならない。また、Move で取得した所有値に、単に取得元であったという理由で `self` への依存を追加しない。
+### 2.2. 標準アクセスと関数結果
 
-### 2.2. カスタム操作
+| 種類 | 公開する対象 |
+| --- | --- |
+| Stored の標準 get | 対応する storage Place への許可された操作 |
+| Stored のカスタム get | 関数が返す T の値 |
+| Computed の get | 関数が返す宣言済みの型の値 |
 
-カスタムアクセサーは、明示したシグネチャを契約とする関数である。契約を本体から推論しない。本体が単に `storage` を返す場合も、標準アクセスに置き換えてはならない。
+**標準 get は getter 関数ではなく、storage Place の読み取り側操作を公開する契約である。** 利用文脈に応じて Copy、Move、借用を選び、各操作の権限を検査する。カスタム get と computed の get は関数を呼び、その結果を返す。
 
-Stored Property の型注釈は storage の型を表す。カスタム getter の戻り値型およびカスタム setter の入力型は、それぞれのシグネチャで指定する。これらが storage の型と異なることを許可する。
+Stored のカスタム get の結果型は T のままだが、`@ref` が指す対象は標準 get と異なる。標準 get を手書きの本体に置き換えることは、値の型が同じでもアクセス契約の変更になり得る。
 
-Computed Property の型注釈は getter の戻り値型を表す。getter にも戻り値型を明記し、Origin 省略の補完後に同じ契約となることを要求する。
-
-## 3. 標準アクセサー
+## 3. 標準 get/set
 
 ### 3.1. 宣言と省略
-
-Stored Property でアクセサーを省略した場合、`let` には標準 get、`var` には標準 get と標準 set を補う。本体のない `get` と `set` により、標準アクセサーを明記できる。
 
 ```kimi
 public let limit: i32 = 100
@@ -79,305 +83,498 @@ public var otherCount: i32 = 0
     private set
 ```
 
-一方のアクセサーだけをカスタム化しても、もう一方は標準のままとする。各 accessor は高々一度宣言でき、記載順は問わない。`let` の set はエラーである。
+本体のない get/set は標準操作を指定する。Let では省略した get、var では省略した get/set を補う。一方だけをカスタム化しても、もう一方は標準のままとする。
 
-具体的な Property に inline `has` は使用しない。`has` は Contract の省略形に用いる。
+各 accessor は高々一度宣言でき、記載順は任意とする。具体的な Property に inline has は使用せず、Contract の省略形に限る。
 
-### 3.2. 取得と借用
+### 3.2. 値の取得と借用
 
-標準 get は通常の関数呼び出しではなく、storage に対する許可済みの操作を提供する。
+```text
+標準アクセスから値 T を取得する
+├─ T が Copy     → Copy
+└─ T が非 Copy   → Movable Place なら Move、そうでなければ Error
 
-| 利用側の操作 | 標準動作 |
-| --- | --- |
-| 値として取得 | storage の型が Copy なら Copy。それ以外は合法な場合に Move |
-| `@ref` など | 通常の適応規則に従う共有借用、Reborrow、または参照値の Copy |
-| storage の排他借用 | 更新権限と排他性を満たす場合に許可 |
-| `=` | 標準 set または初期化規則による直接の配置・置き換え |
+借用を要求する
+├─ 共有借用      → 通常の適応・Origin・Loan 規則で検査
+└─ 排他借用      → 更新権限・排他性・公開契約も検査
+```
 
-借用 receiver から非 Copy の所有値を取り出せない場合はエラーとする。戻り値を暗黙に参照型へ変更したり、失敗した Move を借用で代替したりしてはならない。
+非 Copy 型の Move が不正でも、結果型を ref/T に変更したり、暗黙の借用・複製へ切り替えたりしない。
 
 ```kimi
 struct Holder
     public var item: Resource
 
-// Resource は非 Copy 型。生成用関数などは別途宣言済みとする。
 var holder = makeHolder()
-let view = holder.item@ref/Resource
+let view = holder.item@ref/Resource // storage の共有借用
 inspect(view)
-
-// view の Loan が終了した後。通常の Move 条件を満たすものとする。
-let item = holder.item
-holder.item = makeResource()
+// view の Loan が終了し、部分 Move の条件も満たすとする。
+let item = holder.item             // Resource を Move。元の slot は未保持
+holder.item = makeResource()        // 標準 set で再初期化
 ```
 
-参照や object handle 自体を保持する slot を借用する場合は、既存の型適応規則に従って完全な slot 型を指定する。`@ref` が常に slot の借用を意味するわけではない。
+標準 set は storage を直接初期化・置換する。旧値が残っている場合は通常の破棄規則を適用し、新しい値を配置する。
 
-### 3.3. Movable Place と消費文脈
+### 3.3. 操作の権限
 
-所有値を要求する文脈（consuming context）とは、所有型の binding の初期化、所有型の引数への受け渡し、所有型の戻り値の返却、所有型 storage への代入など、受け取り側がその値を所有する文脈である。参照型の引数に合わせた借用などは、通常の適応規則に従って先に区別する。
-
-Place から所有値を取得するとき、型が Copy なら Copy し、それ以外は Move する。Move は、その使用地点で対象が Movable Place である場合に限り許可する。
-
-Movable Place は「Move による取得が許可された場所」を意味する。宣言の種類だけで固定される属性ではなく、次の条件を満たす必要がある。
+Place は値を保持する場所、Origin は寿命の依存先、Loan は借用に伴うアクセス制約を表す。実際に許可される操作は、次の条件をすべて満たす必要がある。
 
 ```text
-非 Copy の所有値を要求する
-└─ 取得元は Place か
-   ├─ はい：Movable Place の条件を検査
-   │  ├─ 呼び出し側が対象を所有する
-   │  ├─ 対象が初期化済みで完全である
-   │  ├─ 競合する Loan がない
-   │  ├─ アクセス契約が直接消費を許可する
-   │  └─ 部分 Move・構築・deinit の規則を満たす
-   │     ├─ すべて成立：Move し、取得元を未保持にする
-   │     └─ 不成立：コンパイル時エラー
-   └─ いいえ：生成済みの一時所有値を受け渡す
+Property が公開する操作
+    ∩ 宣言と accessor のアクセス可能性
+    ∩ receiver の権限
+    ∩ 初期化状態・Origin・Loan
+    ∩ Move・構築・破棄の規則
 ```
 
-一時的な所有値は、その所有権を受け取り側へ渡すために、名前付き storage から取り出す必要がない。一時値を借用するために領域へ実体化する処理は、既存の一時領域規則に従う。
+Copy、Move、共有借用、排他借用、書き込みの可否は独立に検査する。Storage の直接操作には、次の標準 accessor が存在し、使用地点からアクセス可能であることを要求する。
 
-| 対象 | 所有値としての取得 |
+| 直接操作 | 必要な標準 accessor |
 | --- | --- |
-| 所有するローカル変数 | Copy、または Movable 条件を満たす場合の Move |
-| 所有する stored Property | Copy、または部分 Move とアクセス契約を満たす場合の Move |
-| カスタム setter 付き Property の直接 storage アクセス | Copy のみ。非 Copy の直接 Move は不可 |
-| 一時的な所有値 | 所有権を受け取り側へ渡す |
-| 共有・排他借用を通して指す storage | 合法な Copy は可能。直接の抜き取りは不可 |
+| Copy・共有借用 | 標準 get |
+| let の Move | 標準 get |
+| var の Move | 標準 get と標準 set |
+| 排他借用 | 標準 get と標準 set |
+| 書き込み | 標準 set |
 
-```kimi
-let resource = makeResource()
-consume(resource)          // Resource は非 Copy。local から Move
-consume(resource)          // Error：すでに Move 済み
+カスタム accessor の存在やアクセス可能性では、この条件を代替できない。単純代入の最終対象には set のアクセス可能性を要求し、get は要求しない。対象までの経路に必要な get は別途検査する（§7.2）。
 
-consume(makeResource())    // 生成した所有値をそのまま渡す
+| var の構成 | 読み出し・借用の対象 | 更新 |
+| --- | --- | --- |
+| 標準 get ＋標準 set | Storage。各条件を満たす直接操作を公開 | 標準 set |
+| カスタム get ＋標準 set | Getter の戻り値。直接 storage 借用・Move は不可 | 標準 set |
+| 標準 get ＋カスタム set | Storage の Copy・共有借用。直接 Move・排他借用は不可 | カスタム set |
+| カスタム get ＋カスタム set | Getter の戻り値。直接 storage アクセスなし | カスタム set |
 
-let count: i32 = 10
-consumeCount(count)        // i32 は Copy。count は引き続き使用可能
-```
-
-取得が不正な場合、暗黙の借用や複製へ切り替えてはならない。Generic な型の Copy 能力が未確定の場合も、既存の generic 検証に従って Copy と Move の必要条件を満たすことを確認する。
-
-`@move` は使用できない。Copy 型を強制的に Move して取得元を未保持にする操作は提供しない。この廃止は明示的な借用・型適応を廃止するものではない。
-
-### 3.4. Place の操作権限
-
-Movable、共有借用可能、排他借用可能、書き込み可能は、別々の条件として検査する。
-
-```text
-Place の操作権限
-├─ Copy 可能       型の Copy 能力と読み取り条件
-├─ Movable         所有・初期化・Loan・消費の公開契約
-├─ 共有借用可能    読み取り・寿命・Loan
-├─ 排他借用可能    更新権限・排他性・公開契約
-└─ 書き込み可能    let / var・receiver・set のアクセス可能性
-```
-
-たとえば、所有する `let` は Movable になり得るが、初期化後に書き込み可能ではない。共有借用した `var` は、`var` であるという理由だけでは排他借用や Move が可能にならない。
-
-標準 getter からの直接排他借用には、標準 setter もアクセス可能であることを要求する。非公開 setter を迂回して更新できてはならない。カスタム getter だけを公開する Property は、その戻り値の契約を通してアクセスを提供し、標準の直接 storage アクセスを追加しない。
-
-### 3.5. Immutable storage と Move
-
-`let` は初期化後の置き換えを禁止する。通常の所有権規則で許可された Move まで禁止するものではない。Move 後も初回初期化の履歴は残り、`let` の再初期化はできない。
-
-借用 receiver、object receiver、static storage、祖先の `deinit`、未完了の構築などによる既存の Move 制限を維持する。Property 化によって、従来禁止されていた部分 Move を許可してはならない。
-
-## 4. カスタムアクセサーの契約
-
-### 4.1. 明示する項目
-
-本体を持つアクセサーには、パラメーター一覧と戻り値型を必須とする。instance accessor は receiver `self` とその型を明示する。setter は入力 `value` とその型を明示し、戻り値は `()` とする。
+**Move は取得元を未保持にする消費操作であり、代入ではない。** Var では標準 set のアクセス可能性も要求するが、setter は呼ばず、receiver の通常の書き込み権限も追加で要求しない。Let の消費は引き続き置き換えと区別する。
 
 ```kimi
 struct Holder
     public var item: Resource
-        get(self: ref/Self) -> ref/Resource
-            return storage@ref/Resource
+        get
+        private set
 
-        set(self: uniq/Self, value: Resource) -> ()
+// struct 外。holder は所有する完全な値で、競合 Loan はないとする。
+let item = holder.item       // Error：var の標準 set が非公開
+let view = holder.item@ref   // OK：標準 get による共有借用
+```
+
+初期化済み let の slot 自体への排他借用は禁止する。保持する参照の参照先の権限とは区別し、深い不変性を保証しない。
+
+参照型などを保持する slot を借用するときは、既存の適応規則に従い完全な slot 型を指定する。`@ref` が常に slot を借用するわけではなく、保持する共有参照の Copy になる場合もある。
+
+### 3.4. 子 Place と receiver の完全性
+
+Storage 内の子 Place にアクセスする場合、経路上の各 Property の公開権限も検査する。明示的な操作だけでなく、メソッド・関数呼び出しや演算子に必要な暗黙の借用・消費の適応も対象とし、親の setter を迂回してはならない。
+
+```kimi
+// position は Copy 型で、標準 get とカスタム set を持つ。
+object.position.x = 10 // Error：親の setter を迂回する更新
+// modify は x を uniq/Self で受け取るメソッドとする。
+object.position.x.modify() // Error：暗黙の排他借用も親の境界に従う
+
+var next = object.position
+next.x = 10
+object.position = next // OK：親の setter を通す
+```
+
+保持する参照から別領域へ到達した場合は、storage の子領域とは区別し、参照型の権限に従う。カスタム getter を通る経路は背後の storage を指さず、戻り値に対する §4.3 の規則を適用する。
+
+標準操作は、対象 Place が有効なら、receiver の別の部分が Move 済みでも利用できる。カスタム accessor と computed の呼び出しは、通常の関数と同じく受け渡す receiver が完全であることを要求する。
+
+```kimi
+// resource と count は標準 get、表示用の displayCount はカスタム get。
+let resource = object.resource // 合法な部分 Move とする
+let count = object.count       // OK：残る完全な Place を読む
+let shown = object.displayCount // Error：不完全な object を ref/Self として渡せない
+```
+
+標準操作の借用は対象 Place に、関数呼び出しの借用は receiver・Origin の契約に基づく。Accessor 本体を見て、公開契約より狭い借用範囲を呼び出し側で推論しない。
+
+Receiver が完全でも、構築中の self に対する accessor 呼び出しは §7.3 により禁止する。
+
+Object receiver での accessor 呼び出しには、SPEC.md §12.4.4 の ObjectCompatible 検証も要求する。ref/Self・uniq/Self の宣言だけでは、この条件を満たしたことにならない。
+
+## 4. Stored のカスタム get/set
+
+### 4.1. 許可条件とシグネチャ
+
+Stored のカスタム accessor は §2.1 の型・Copy 条件に加え、次の契約に従う。
+
+- Instance getter の receiver は ref/Self、setter は uniq/Self とする。
+- シグネチャを明記し、本体から型や receiver を推論しない。
+
+```kimi
+public var level: i32 = 0
+    get(self: ref/Self) -> i32
+        return storage
+
+    set(self: uniq/Self, value: i32) -> ()
+        storage = clamp(value, 0, 100)
+```
+
+Static getter は `get() -> T`、setter は `set(value: T) -> ()` とする。Default/optional 引数は認めない。本体は式形式またはインデントしたブロックとする。
+
+```kimi
+public var item: Resource
+    set(self: uniq/Self, value: Resource) -> ()
+        storage = value // OK：非 Copy の所有値を受け取り、置き換える
+
+public var count: i32
+    get(self: ref/Self) -> ref/i32
+        return storage@ref // Error：戻り値型が storage 型 i32 と異なる
+```
+
+非 Copy のカスタム getter は、本体が標準操作と同じでも許可しない。Storage slot の直接借用を公開する場合は標準 get を用いる。Copy 型の保存済み参照をカスタム getter から返すこととは区別する。所有値の生成・取り出しなどは関数や computed の明示的な契約で扱う。
+
+### 4.2. Storage と Origin
+
+`storage` は、その stored Property の accessor 内で、自身の slot を指す文脈上の名前である。`self.name` のように accessor を呼び直さない。Receiver と let/var による権限、初期化状態、Loan に従う。
+
+Origin は、通常の関数の位置別規則でシグネチャから補完した後、必要な型一致と本体の合法性を検査する。本体から契約を推論せず、stored では storage 型の Origin 束縛・依存とも一致させる。束縛の対応で比較し、名前の綴りの一致は要求しない。省略で一致を保証できなければ明示する。
+
+```kimi
+struct View origin source
+    public var value: ref/i32 from source
+        get(self: ref/Self) -> ref/i32 from source
+            return storage
+        set(self: uniq/Self, value: ref/i32 from source) -> ()
             storage = value
 ```
 
-Getter は `self` 以外の実引数を取らない。setter は `self` と `value` を取る。static getter の引数一覧は `()`、static setter は `(value: T)` とする。省略可能引数や default 引数は導入しない。
+この getter で from source を省略すると、通常の補完は from self となり、storage 型との一致を保証できない。Setter 入力の省略も独立した入力 Origin を導入するため、同様に from source を明示する。
 
-Receiver 型の許可範囲と受け渡しは通常の instance 関数に従う。共有、排他、所有 receiver などの権限を、本体の都合によって暗黙に切り替えない。Object receiver は既存の互換性検査も満たす必要がある。
+Computed と Contract にも同じ省略規則を適用するが、storage 型との一致検査は行わない。直接借用入力が self だけの getter は、未指定の戻り値 Origin を self から補完できる。Copy 型の参照や集約型も寿命・Loan 検査の対象であり、既に束縛された依存を self に置き換えない。
+
+### 4.3. Getter 結果の操作と寿命
+
+Stored のカスタム get、computed の get、Contract 経由の get の結果に共通して適用する。結果に対する `@ref` などは戻り値に作用し、暗黙に内部 storage を公開しない。
+
+#### 4.3.1. 一時領域の操作
+
+**Getter が返した所有一時値の領域と子領域への代入・複合代入・増減・排他借用は禁止する。** 括弧、メンバー経路、暗黙の排他 receiver 適応でも回避できない。
 
 ```kimi
-get => storage                  // Error：契約が未記載
-set => storage = value          // Error：契約が未記載
-get(self: ref/Self) -> Resource  // 本体からこの戻り値型を検証する
-    return storage              // Resource が非 Copy なら共有 receiver からの Move で Error
+// position: Point は Copy 型で、カスタム get と標準 set を持つ。
+object.position.x = 10       // Error：getter の一時結果だけを更新してしまう
+object.position.x += 1       // Error
+let edit = object.position@uniq/Point // Error：同じ一時結果の排他借用
+
+var next = object.position   // 値を local に保存
+next.x = 10                  // OK：通常の local の更新
+object.position = next      // OK：position の set を使う
 ```
 
-アクセサーの本体は式形式またはインデントしたブロックとし、通常の関数の戻り値・制御フロー規則に従う。
+参照や object handle が指す別領域は、戻り値を保持する一時 slot と区別し、通常の権限・Origin・Loan 規則で更新できる。Property 自体への代入・複合代入・増減は set を通す更新であり、この禁止には含めない（§7.2）。
 
-### 4.2. Origin の省略
-
-Origin は、通常の関数と同じシグネチャに基づく省略規則を適用する。本体から戻り値の Origin を推論してはならない。
+制限は getter 結果の一時領域に適用し、値の由来を追跡して別領域へ引き継がない。値を取得して local に保存した場合や、通常の関数へ値として渡した場合は、移転先の通常規則に従う。同じ一時領域を参照し続ける場合は制限が残る。値取得・共有借用・合法な所有権移転は妨げない。
 
 ```kimi
-get(self: ref/Self) -> ref/Resource => storage@ref/Resource
-
-// 上と同じ契約
-get(self: ref/Self) -> ref/Resource from self => storage@ref/Resource
+// identity は Point を値で受け取り、Point を値で返す通常の関数とする。
+identity(object.position).x = 10 // 通常の関数の一時値規則で検査
+// この更新も object.position には書き戻されない。
 ```
 
-直接借用する入力が `self` だけなら、戻り値の省略された借用 Origin は `self` から導出される。所有 receiver まで一律に `from self` とする規則ではない。
+#### 4.3.2. 借用の寿命
 
-別の依存先を要求する場合は、通常の関数と同様に Origin を明示する。ネストした借用と集約型の Origin 引数も既存の位置別省略規則に従う。Static accessor には架空の `self` を導入しない。
-
-補完後の契約を本体が満たさない場合はエラーとする。宣言した契約を本体に合わせて自動変更してはならない。
-
-### 4.3. Storage の参照
-
-`storage` は stored Property のカスタム accessor 内でのみ使える文脈上の名前であり、その Property 自身の slot を指す。`self.item` と異なり、アクセサーを再呼び出ししない。
-
-Storage への操作は宣言種別、receiver の権限、初期化状態、Loan に従う。共有 receiver の getter から storage を書き換えたり、非 Copy 値を抜き取ったりすることはできない。
-
-`let` の storage は、排他 receiver を宣言しても初期化後に置き換えられない。Computed Property と Contract にはこの文脈上の `storage` は存在しない。
-
-### 4.4. アクセス可能性
-
-アクセサーは Property のアクセス修飾子を継承する。個別に指定する場合は、既存のアクセス制限規則に従って、Property より厳しい制限だけを許可する。
+借用に必要な期間は使用・返却・保持などの制約から決まり、借用先の有効期間内に収まらなければ借用は成立しない。SPEC.md §3.6 に従い、実体化や借用による一時領域の寿命延長は行わない。
 
 ```kimi
-public var count: i32 = 0
-    get
-    private set(self: uniq/Self, value: i32) -> ()
-        storage = max(value, 0)
+public var visible: i32 = 150
+    get(self: ref/Self) -> i32
+        return min(storage, 100)
+
+// 初期化済み object に対して
+let value = object.visible    // 100
+inspect(object.visible@ref)   // OK：戻り値の一時領域は呼び出し終了まで有効
+let view = object.visible@ref // 一時領域の寿命は initializer の終了まで
+inspect(view)                // Error：この使用に必要な借用期間を確保できない
+
+let saved = object.visible
+let lastingView = saved@ref  // 保存した local を借用
+inspect(lastingView)         // OK
 ```
 
-アクセス可能性と receiver の権限は別々に検査する。`public` であることは排他借用や Move の許可を意味しない。
+上の inspect(view) は、必要な借用期間が一時領域の寿命を超えるためコンパイル時エラーとなる。後続使用のない binding を一律に拒否する規則は追加しない。標準 get なら、上の i32 に対する @ref は対応する storage を借用する。
 
-## 5. 呼び出し側の操作
+### 4.4. カスタム setter の境界
 
-### 5.1. カスタム getter の結果
+直接アクセスと子 Place の制限は §3.3–3.4 に従う。禁止は Property 経由の slot 操作に限定し、receiver 全体の合法な Move や通常の破棄は妨げない。Stored getter の型一致・Copy 条件を回避する特別な排他参照返却も導入しない。
 
-カスタム getter の読み出しは、getter を一度呼び、その戻り値を通常の関数結果として扱う。`@ref` と `@uniq` は戻り値に作用し、隠れた storage を直接操作しない。
+### 4.5. 非 Copy setter の所有権と更新
 
-```kimi
-struct Snapshot
-    public let item: Resource
-        get(self: ref/Self) -> Resource
-            return duplicateResource(storage@ref/Resource)
-
-// snapshot は初期化済みとする。
-let copy = snapshot.item       // getter が作った Resource
-let view = snapshot.item@ref   // getter の一時的な戻り値を借用
-```
-
-一時値の寿命と借用は既存の一時領域規則に従う。Getter が参照を返す場合は、その宣言された Origin と Loan を保持する。呼び出し側が本体を解析して private storage への直接アクセスへ置き換えることはできない。
-
-### 5.2. 更新と setter の迂回
-
-単純代入は右辺の値を先に確保し、次に receiver を評価する。カスタム set は入力型に適合する値を受け取り、一度だけ実行される。Getter は呼ばない。
-
-カスタム setter がある Property の storage に対しては、外部からの直接 Move と排他借用を公開しない。標準 getter を持つ場合の Copy と共有借用は許可する。非 Copy 型の通常の値取得が直接 Move を必要とする場合も禁止対象となり、暗黙の借用には切り替えない。
+**入力の取得：** value は通常の引数と同じ初期化済み let 相当の binding である。非 Copy の所有値は setter に所有権を渡し、二度 Move できない。入力と storage の Origin は §4.2 に従う。
 
 ```kimi
-struct Gauge
-    public var level: i32 = 0
-        get
-        set(self: uniq/Self, value: i32) -> ()
-            storage = clamp(value, 0, 100)
-
-var gauge = makeGauge()
-gauge.level = 150                   // setter により 100 を格納
-let view = gauge.level@ref/i32      // OK：標準 getter による共有借用
-let edit = gauge.level@uniq/i32     // Error：カスタム setter を迂回する
-```
-
-非 Copy 型では、所有値を要求する文脈での読み出し自体がエラーになる。
-
-```kimi
-struct ResourceHolder
+struct Holder
     public var item: Resource
         get
         set(self: uniq/Self, value: Resource) -> ()
-            storage = value
+            storage = normalize(value)
 
-var holder = makeResourceHolder()
-let view = holder.item@ref/Resource // OK：共有借用
+var holder = makeHolder()
+holder.item = makeResource()       // 所有値を setter に渡す
+let view = holder.item@ref/Resource // OK：標準 get による共有借用
 inspect(view)
-// view の Loan が終了した後
-let item = holder.item             // Error：storage は Movable として公開されない
-holder.item = makeResource()        // OK：カスタム setter による更新
+// view の Loan が終了した後でも、以下の直接操作は禁止。
+let taken = holder.item            // Error：カスタム setter の storage から Move
+let edit = holder.item@uniq/Resource // Error：直接排他借用
 ```
 
-規則の対象は、Property が公開する storage の直接アクセスである。「カスタム setter がある Property の結果は消費できない」という意味ではない。カスタム getter が新しく生成・複製した所有値を返す場合、その結果は通常どおり消費できる。
+**更新：** storage への代入は右辺を確保し、旧値を破棄して配置する。Setter を再呼び出しせず、失敗時も通常の代入・cleanup 規則に従う。Self は排他借用なので非 Copy の旧値を直接抜き取れず、検査には共有借用を使う。競合 Loan は更新前に終了させ、正常終了時に receiver を不完全なまま返してはならない。
+
+**入力を保存しない場合：** 更新せず return すれば旧 storage は残り、未消費の入力は通常の引数 cleanup で破棄する。消費済み入力を二重破棄したり、呼び出し側へ自動復元したりしない。受理・拒否の通知が必要なら、結果を返す関数を使用する。
+
+非 Copy の `holder.item = holder.item` は、右辺の直接 Move が禁止されるため呼び出し前にエラーとなる。初回配置については §7.3 に従う。
+
+## 5. 非 Copy・Generic・Move
+
+### 5.1. 非 Copy の stored Property
+
+標準 get が公開されていても、共有・排他借用を通して指す非 Copy 値は直接抜き取れない。
 
 ```kimi
-struct CopyingHolder
-    public var item: Resource
-        get(self: ref/Self) -> Resource
-            return duplicateResource(storage@ref/Resource)
-        set(self: uniq/Self, value: Resource) -> ()
-            storage = value
-
-// copyingHolder は初期化済み
-consume(copyingHolder.item) // OK：getter の戻り値の所有権を渡す
+func inspectHolder(holder: ref/Holder) -> ()
+    let view = holder.item@ref/Resource // OK：共有借用
+    inspect(view)
+    let item = holder.item             // Error：借用 receiver からの Move
 ```
 
-この制限は accessor 自身による合法な storage 操作を禁止しない。また、カスタム getter が明示的に返す排他参照まで禁止しない。その参照を公開すれば、参照先の更新が setter を通らないことも公開契約の一部となる。共有借用の許可も深い不変性を意味せず、保持する参照や object handle の参照先の権限は、その型の通常の規則に従う。
+### 5.2. Generic の検証
 
-### 5.3. 複合更新
-
-複合代入および増減は、receiver、読出し、書込みをそれぞれ一度だけ評価する。Getter の結果に演算を適用でき、その結果を setter に渡せることを要求する。
+標準 Property の宣言自体に Copy 制約は不要である。
 
 ```kimi
-gauge.level += 10
+struct Box<T>
+    public var item: T
+
+func view<T>(box: ref/Box<T>) -> ref/T from box
+    return box.item@ref/T
+
+func readCopy<T>(box: ref/Box<T>) -> T
+    T is Copy
+    return box.item
 ```
 
-Getter の戻り値型と setter の入力型が異なる場合、複合更新が成立しないことがある。また、getter の Loan が setter の呼び出しと両立しない場合や、getter が receiver を消費して後続の set ができない場合もエラーとなる。暗黙の複製や receiver の再評価で補ってはならない。
-
-## 6. Computed Property
-
-Computed Property は storage を持たず、カスタム getter と任意のカスタム setter によって定義する。Initializer と標準 accessor は禁止する。
+制約のない T のカスタム getter は禁止する。宣言に適用される generic 制約から T is Copy を証明する必要があり、特定の具体化が Copy であるだけでは定義を合法にしない。カスタム setter は Copy 制約なしで宣言できるが、本体は許容する全型について通常の所有権規則を満たさなければならない。
 
 ```kimi
-struct Temperature
-    private var celsius: f64 = 0.0
-
-    public computed fahrenheit: f64
-        get(self: ref/Self) -> f64
-            return self.celsius * 1.8 + 32.0
-
-        set(self: uniq/Self, value: f64) -> ()
-            self.celsius = (value - 32.0) / 1.8
+struct AssignedBox<T>
+    public var item: T
+        set(self: uniq/Self, value: T) -> ()
+            storage = value // Copy 型は Copy、非 Copy 型は value から Move
 ```
 
-借用を返す computed は、その参照型を明示する。
+AssignedBox の標準 get では、T が Copy なら値を取得できる。非 Copy の場合は共有借用を使い、直接 Move はできない。Copy 能力が未証明なら、値取得がすべての場合に合法だとは証明できない。
+
+標準の値取得結果は T のままであり、条件付きの戻り値型 Read(T) は導入しない。Copy 能力が未確定なら SPEC.md §8.10 に従い、取得後の状態を潜在的な Move として検証する。後続操作が初期化済みの取得元を必要とする場合、Copy/Move の両方で合法でなければならない。
+
+```kimi
+// Box<T> は上の宣言。部分 Move を妨げる deinit などはないとする。
+func test<T>(box: Box<T>) -> ()
+    let x = box.item
+    inspect(box@ref) // Error：非 Copy の場合、item が未保持で box は不完全
+
+func testCopy<T>(box: Box<T>) -> ()
+    T is Copy
+    let x = box.item
+    inspect(box@ref) // OK：item は Copy され、box は完全なまま
+```
+
+これは解析上の保守的な扱いであり、実行時に Copy 型まで Move してはならない。Copy 制約、取得の代わりの借用、または合法な再初期化によって後続の使用を成立させられる。影響を受けない別の Place の操作まで一律に禁止しない。
+
+Overload は通常の型・引数適応規則で選択し、その後に使用時の初期化状態や Loan を検査する。Move が不正でも借用型の別候補を選び直さない。
+
+### 5.3. Movable Place と let
+
+`@move` は使用できない。直接 Place から所有値を要求する文脈では、Copy 型なら Copy、それ以外は Movable Place に限り Move する。
+
+```text
+Movable Place の条件
+├─ 対象を所有している
+├─ 対象が初期化済み・完全である
+├─ 競合する Loan がない
+├─ アクセス契約が消費を許可する
+└─ 部分 Move・構築・deinit の条件を満たす
+```
+
+一時所有値は、その所有権を受け取り側へ渡す。借用のための一時領域への実体化は、既存の規則に従う。
+
+Let は置き換えを制限し、消費自体は制限しない。Move は新しい値の代入ではない。Move 後も初回初期化の履歴は残り、let の再初期化はできない。
+
+```kimi
+struct FixedHolder
+    public let item: Resource
+
+let holder = makeFixedHolder()
+let item = holder.item             // 通常の条件を満たせば Move
+holder.item = makeResource()        // Error：let の再初期化
+```
+
+借用・object receiver・static storage・構築中の対象・祖先の deinit などに関する既存の直接 Move 制限は維持する。
+
+## 6. Computed
+
+Computed は storage を持たず、getter と任意の setter を通常の関数として実装する。Initializer、本体なしの標準 get/set、文脈上の storage は使用できない。
+
+見出し型 T は getter の戻り値型と Origin 補完後に一致させる。Getter は receiver と結果型、setter は receiver・入力型・Unit の結果を明記する。Receiver と戻り値は通常の関数の所有権規則に従う。
+
+各 accessor は高々一度宣言し、順序は任意とする。Static には receiver を設けない。Default/optional 引数と inline has は使用できず、本体の形式は §4.1 に従う。
+
+Computed は明示的な所有 receiver も許可する。この場合、読み出しが receiver 全体を消費し得る。
 
 ```kimi
 struct Holder
     private var item: Resource
+    public computed result: Resource
+        get(self: Self) -> Resource
+            return self.item // 通常の部分 Move・deinit 条件を満たす場合に限る
 
+let holder = makeHolder()
+let result = holder.result // 非 Copy の Holder 全体を getter に渡す
+inspect(holder@ref)        // Error：receiver は Move 済み
+```
+
+Getter が receiver を消費し、後続の set に渡せなくなる複合更新はエラーとする。通常の関数に存在しない暗黙の複製や復元は行わない。
+
+```kimi
+struct Temperature
+    private var celsius: f64 = 0.0
+    public computed fahrenheit: f64
+        get(self: ref/Self) -> f64
+            return self.celsius * 1.8 + 32.0
+        set(self: uniq/Self, value: f64) -> ()
+            self.celsius = (value - 32.0) / 1.8
+```
+
+非 Copy の結果や getter と異なる setter 入力型も許可する。共有 receiver から内部の非 Copy 値を抜き取ることはできず、所有値を返すなら合法な生成・取得が必要となる。
+
+```kimi
+struct Holder
+    private var item: Resource
     public computed view: ref/Resource
         get(self: ref/Self) -> ref/Resource
             return self.item@ref/Resource
 ```
 
-`view` の Origin は getter のシグネチャの位置で補完する。Storage を保持する宣言としての Origin 検査は行わない。
+Origin と戻り値への借用は §4.2–4.3 に従う。Get/set の往復で値が一致することや、同じ場所を扱うことは保証しない。
 
-Getter と setter が同じ場所を扱うことや、set の直後に get すると同じ値が返ることは保証しない。
+## 7. Accessibility・評価順・初期化
 
-## 7. 初期化・レイアウト・破棄
+### 7.1. Accessibility
 
-宣言時 initializer とコンストラクターによる初回配置は、accessor を呼ばず storage を直接初期化する。カスタム setter があることは、初期値の検証を自動実行することを意味しない。
+Accessor は Property のアクセス修飾子を継承し、個別指定は既存規則に従った厳しい制限だけを許可する。アクセス可能性と receiver の権限は別々に検査する。
 
-Instance storage は initializer を省略できるが、既存のコンストラクターの確実な初期化規則を満たす必要がある。ゼロ初期化を自動追加しない。型注釈の省略を許す場合も、既存の宣言時 initializer からの型推論規則に従い、カスタム accessor の本体から storage 型を推論しない。
+```kimi
+public var count: i32 = 0
+    get
+    private set
+```
 
-Static storage は宣言時 initializer を必須とし、既存の遅延初期化・再入・借用保持の制限を維持する。Computed accessor の呼び出し自体は storage の初期化を意味せず、実行中に実際に触れた static storage が初期化対象となる。
+少なくとも一方の accessor を Property と同じアクセス範囲にする追加制限は設けない。直接操作の条件は §3.3 に従う。
 
-レイアウト、Copy の導出、構築完了判定、部分 Move、破棄には stored Property の storage と基底部分を使用する。Computed Property は含めない。自動破棄で getter や setter を呼んではならない。
+### 7.2. 評価順
 
-## 8. Contract の Property 要求
+SPEC.md の右辺先行の単純代入と、対象先行の複合代入を維持する。
 
-### 8.1. 要求の表現
+```text
+単純代入
+  RHS の評価・値の確保 → 対象の評価 → 標準 set またはカスタム set
 
-Contract の `property` は、操作の契約を要求する。Storage の存在、可変性、Place の具体的な構造は要求しない。Getter を必須とし、setter を任意とする。
+複合代入
+  対象の評価 → 標準の取得または getter → RHS → 演算 → set
+```
 
-通常の要求には省略形を用意する。
+対象・読出し・書込みは必要なものを一度だけ評価する。単純代入では最終対象の get は呼ばないが、receiver やアクセス経路の評価に必要な getter は呼ぶ。増減も右辺評価を除いて複合更新に従う。演算結果が set の入力に適合し、全段階で Loan と対象の有効性を満たす必要がある。
+
+```kimi
+// view は computed で uniq/Point を返し、Point.x は標準 set を持つとする。
+object.view.x = 10
+// RHS → view の getter → 参照先の x の set。x の get は呼ばない。
+```
+
+RHS や演算が正常終了しなければ後続の更新は行わず、実行済みの副作用は取り消さない。暗黙の複製や対象の再評価で不足する権限を補わない。複合更新は atomic ではない。
+
+#### 7.2.1. 非 Copy 型のカスタム setter と複合代入
+
+標準 get とカスタム set を持つ非 Copy の Property は、演算に左辺の所有値取得が必要な場合、複合代入できない。値取得には Move が必要だが、カスタム setter の storage は直接 Move を公開しないためである。
+
+```kimi
+// holder.item: Resource は標準 get とカスタム set を持つ。
+holder.item += x // Error：Resource の所有値取得を必要とする更新は不可
+```
+
+この例は所有権上の制限を示す。現行 SPEC.md §13.8 ではユーザー定義の算術演算子自体が未導入であり、Resource の + や += を定義する許可を本書から追加しない。
+
+借用から独立した所有値を生成できる場合は、通常の関数と単純代入で表現できる。
+
+```kimi
+// rebuild(left: ref/Resource, right: X) -> Resource は別途宣言済み。
+// 戻り値は left への借用依存を保持せず、呼び出し終了時に入力 Loan が終了する。
+holder.item = rebuild(holder.item@ref/Resource, x)
+// RHS で新しい所有値を確保し、借用終了後に setter へ渡す。
+```
+
+### 7.3. Storage の初期化と破棄
+
+#### 7.3.1. 初回配置と構築中のアクセス
+
+Initializer とコンストラクターの own storage への初回配置は、accessor を呼ばず直接初期化する。カスタム setter の検証は初期値には自動適用されない。
+
+初回配置はソース上の出現順ではなく、代入先へアクセスする時点の制御フロー状態で判定する。到達する全経路で own storage が未初期化かつ初回配置前である場合に限り、setter を省略する。Move や内部の破棄は初回配置の履歴をリセットしない。
+
+構築中の self に対するカスタム get/set と computed の呼び出しは、SPEC.md §6.2.3 に従って禁止する。全 storage の初期化が済んだだけでは、この禁止は解除されない。
+
+初期化済みの own storage は、標準 get の権限で Copy・借用できる。非 Copy 値の Move、継承元の storage へのアクセス、self 全体の取得・借用は禁止する。構築中の借用は構築完了前に終了させる。
+
+| 構築中の own storage への代入 | 全到達経路で初回配置前 | 初期化済み、または経路が混在 |
+| --- | --- | --- |
+| let | 直接初期化 | Error：初回配置を保証できない |
+| var ＋標準 set | 直接初期化 | 通常の状態別の配置・置換規則で検証 |
+| var ＋カスタム set | 直接初期化 | Error：構築中の setter 呼び出しは禁止 |
+
+初回配置とカスタム setter を実行時に選び分けない。初期値を宣言時 initializer で配置済みの場合も、この表では初期化済みとして扱う。
+
+```kimi
+// コンストラクター内。level は未初期化の var で、カスタム set を持つ。
+if condition
+    self.level = 100 // この経路の初回配置。setter を呼ばない
+else
+    self.level = 200 // この経路の初回配置。setter を呼ばない
+
+self.level = 300 // Error：構築中のカスタム setter 呼び出し
+```
+
+```kimi
+// 別の例。level は未初期化で、カスタム set を持つ。
+if condition
+    self.level = 100 // この経路の初回配置
+
+self.level = 200 // Error：初期化済みの経路と未初期化の経路が混在
+```
+
+```kimi
+public var level: i32 = 999
+    set(self: uniq/Self, value: i32) -> ()
+        storage = clamp(value, 0, 100)
+// 初期値は 999。構築完了後の代入は setter を通る。
+```
+
+#### 7.3.2. 宣言・静的初期化・破棄
+
+Instance storage は initializer を省略できるが、確実な初期化規則を満たす必要がある。ゼロ初期化は追加しない。Storage 型の推論は宣言時 initializer から行い、accessor 本体や後の代入から推論しない。保持する Origin は既存の storage 宣言規則で検査する。
+
+宣言時 initializer では self とコンストラクター引数を参照できない。基底の構築、宣言順の initializer 評価、コンストラクター本体、cleanup 後の構築完了判定は SPEC.md §6.2.3 に従う。
+
+Static storage の initializer、遅延初期化、安全な借用の保持禁止、Loan と置換の制限は維持する。カスタム static accessor には self を設けず、通常の関数の Origin 規則を適用する。
+
+レイアウト、Copy 導出、構築完了、部分 Move、破棄には stored Property の storage と基底部分を使用する。Computed は含めず、自動破棄で accessor を呼ばない。
+
+## 8. Contract の property
+
+### 8.1. 操作の要求
+
+Contract では property 構文を使用する。具体的な storage の有無や可変性ではなく、固定した get/set の操作契約を要求する。
 
 ```kimi
 contract Counted
@@ -387,9 +584,9 @@ contract MutableCounted
     property count: i32 has get, set
 ```
 
-この省略形の get は共有 receiver から注釈型の値を返す契約、set は排他 receiver と注釈型の入力から Unit を返す契約となる。標準 stored getter の全操作を要求する意味ではない。
+**Has get は単なる「読み取り可能」ではなく、共有 receiver から見出し型 T の値を返す要求（by-value get requirement）である。** T 自体が参照型なら参照値を返す。Has set は排他 receiver と T の入力から Unit を返す要求となる。Storage の直接操作を一括して要求する意味ではない。
 
-特殊な契約は、アクセサーのシグネチャを明示する。本体は記載しない。
+非 Copy Resource を保持する標準 Property は、`property item: Resource has get` を満たせない。`ref/Resource` の返却要求なら、標準 Place の共有借用から witness adaptation できる。
 
 ```kimi
 contract ReadableItem
@@ -402,69 +599,62 @@ contract ReplaceableItem
         set(self: uniq/Self, value: Resource) -> ()
 ```
 
-明示形の Property 注釈型は getter の結果型とする。Contract 内の accessor に `storage`、initializer、アクセス修飾子を記載してはならない。
+明示形では getter の戻り値を見出し型に揃え、setter 入力は個別に指定できる。Getter は必須、setter は任意。本体、initializer、storage、accessor のアクセス修飾子は記載しない。Origin は §4.2 に従う。
 
-### 8.2. 適合判定
+### 8.2. 適合
 
-適合は実際の操作の契約を比較して判定する。実装の storage 型と要求の見出し型の単純な一致は要求しない。Self、型引数、Origin を対応付け、通常の関数要求との互換性を検証する。
+Let/var の標準操作、許可された stored custom accessor、または computed によって要求を満たす。実装の storage 型と要求の見出し型を一律に一致させず、各要求操作の型・receiver・アクセス可能性・Origin・Loan を検証する。
 
-標準 stored getter から要求への対応付けは、少なくとも次の2種類を定義する。
+Self・型引数・関連型を置換後、通常の関数要求の適合規則を適用する。暗黙の型変換や実装側の強い事前条件は追加しない。Origin は束縛の対応と寿命条件で比較し、綴りだけでは判定しない。
 
-| 要求される get | 標準 storage による実装 |
+Object receiver で使う適合には、既存の ObjectCompatible と runtime conformance の条件も適用する。
+
+実装対象は通常のメンバー検索・継承規則で名前から選択し、その後に適合を検査する。型・accessor・アクセス権などの不適合を理由に、別の同名メンバーや基底の候補へ探索を戻さない。
+
+標準 storage 型を F とすると、次の対応付けを提供する。
+
+| 要求 | 標準 stored 操作による実装 |
 | --- | --- |
-| storage 型 T の所有値を共有 receiver から返す | T が Copy と証明される場合の Copy |
-| `ref/T` を返す | 共有借用可能な T の slot を借用 |
+| 共有 receiver から F を返す get | F が Copy と証明できる場合の Copy |
+| 共有 receiver から ref/F を返す get | 許可された slot の共有借用 |
+| F を受け取る set | アクセス可能な var の標準 set |
 
-各対応付けはアクセス可能性と Origin・Loan の要求も満たさなければならない。非 Copy の値を共有 receiver から Move して適合させてはならない。上記以外の変換が必要な場合は、明示したカスタム getter を使用する。
-
-Set 要求は、アクセス可能な標準 set または互換なカスタム set で満たす。`let` は set 要求を満たさない。
+この対応付けを **witness adaptation** と呼ぶ。Contract 適合は、公開された標準 Place 操作から要求を満たす witness operation を合成できる。
 
 ```text
-get 要求
-├─ let       標準操作またはカスタム get の契約で検証
-├─ var       標準操作またはカスタム get の契約で検証
-└─ computed  カスタム get の契約で検証
-
-set 要求
-├─ var       標準 set またはカスタム set で検証
-└─ computed  カスタム set で検証
+Concrete な標準 Property の公開操作
+    → 型・権限・Origin・Loan を検証
+    → Contract の要求を実現する witness operation
 ```
 
-Contract 経由で使用できるのは、要求に記載された操作だけである。実装が storage を持つという理由で、直接 Move や排他借用を追加してはならない。
+Concrete Property にカスタム accessor を追加するものではないため、非 Copy の標準 Property でも共有借用要求を実装できる。借用の Origin は receiver と slot の有効性を超えられず、カスタム getter に隠された storage は使用できない。
 
-## 9. 診断と契約の安定性
+この標準対応付けから、所有 handle の object 借用への変換や、保存済み排他参照の再借用などは合成しない。表にない操作は、適合するカスタム getter または computed で明示する。保存済み参照の Copy は元の Origin 依存を保持する。
 
-次の場合はコンパイル時エラーとする。
+適合情報は要求、選択した Property、型・Origin の対応、および実行する操作を保持する。実装を関数呼び出しにするか直接操作へ展開するかは規定せず、runtime の witness table を必須にしない。
 
-| 条件 | 理由 |
+```text
+get 要求 → let / var / computed の適合する操作
+set 要求 → var / computed の適合する操作
+```
+
+非 Copy F を共有 receiver から所有値で返す要求は、標準 storage の Move で満たせない。Generic な適合も宣言された条件の下ですべての場合に証明する。型や Loan の検査に失敗しても要求型を変更しない。
+
+Contract 経由では要求された操作だけを利用できる。実装が storage を持つという理由で、直接 Move・排他借用を追加しない。Getter の所有一時結果には、実装方式によらず §4.3 を適用する。Witness を直接操作へ展開する場合も、要求に基づく型・Origin・Loan と一時領域の操作制限を保持する。
+
+## 9. 検証と対象外の機能
+
+本書の許可条件を満たさない宣言・操作はコンパイル時エラーとする。検証箇所は次のとおり。
+
+| 検証対象 | 規則 |
 | --- | --- |
-| `let` に set を宣言する | Immutable storage の宣言と両立しない |
-| `computed` に initializer や標準 accessor を書く | 対応する storage がない |
-| カスタム accessor のパラメーター型・戻り値型を省く | 契約を本体から推論しない |
-| Computed の見出し型と getter の結果型が異なる | 公開する結果型が一致しない |
-| 借用 receiver から非 Copy の storage を返す | Movable Place ではない |
-| カスタム setter の storage を直接消費・排他借用する | 直接アクセスの公開契約に含まれない |
-| 戻り値の借用が明示・補完した Origin を満たさない | 本体が返却契約に違反する |
-| 複合更新で getter の結果を setter に渡せない | 操作を合成できない |
-| `@move` を使用する | 明示的 Move 演算子は廃止された |
+| 宣言種別、型、accessor 契約 | §1–2、§4.1–4.2、§6 |
+| 直接操作、子 Place、receiver | §3.3–3.4 |
+| Getter 結果の操作と寿命 | §4.3 |
+| Setter の所有権、Generic、Move | §4.4–5 |
+| アクセス制御、評価順、初期化 | §7 |
+| Contract 適合 | §8 |
 
-アクセサー本体を変更しても、同じシグネチャが表す呼び出し側の契約を変更してはならない。Getter が storage を返すか、新しい値を作るかを呼び出し側が解析する必要はない。
+既存規則のうち、本書で変更を明記しないものは維持する。SPEC.md・構文・診断・所有権解析・STATUS.md への反映範囲は Design Change に従う。
 
-標準 accessor からカスタム accessor への変更は、公開契約の変更になり得る。特に、標準 setter をカスタム setter に変更すると、storage の直接 Move・排他借用が利用できなくなる。この影響は本体の内容ではなく宣言形式で決まる。
-
-## 10. SPEC.md と実装への反映範囲
-
-本書は従来の Field と computed を Property の分類として再構成する。内部の storage の識別・レイアウト・部分 Move の追跡に Field Identity 相当の情報を保持することは妨げない。
-
-採用した規則を SPEC.md に反映するときは、次の関連箇所を一貫して更新する。
-
-- 第11章：Property の分類、標準・カスタム accessor、storage、Contract の要求。
-- 関数と Origin：アクセサーの明示的 receiver と通常の Origin 省略規則。
-- 所有権と式：消費文脈、Movable Place、Copy 型の取得、一時所有値の受け渡し。
-- 演算子と型適応：`@move` の廃止、および借用対象が storage か getter の結果かの区別。
-- アクセス制御と更新：標準 setter の権限、カスタム setter の迂回禁止、単純代入と複合更新。
-- Contract：操作単位の適合判定と、標準 storage 操作からの対応付け。
-- 初期化・破棄・レイアウト：stored Property だけを対象とする storage の処理。
-- 用語集、構文概要、既存コード例、診断、および STATUS.md の実装状況。
-
-本書だけで lexer・parser・所有権解析が変更されたと扱ってはならない。特に `@move` 廃止はプロパティ以外にも及ぶため、言語全体の構文と例を同時に整合させる必要がある。
+借用を取る算術演算子と、その複合代入への適応は未導入である。将来追加する場合も、対象の一度だけの評価、set 入力への型適合、更新と Loan の両立を要求し、失敗した Move からの自動的な借用への切り替えは認めない。
