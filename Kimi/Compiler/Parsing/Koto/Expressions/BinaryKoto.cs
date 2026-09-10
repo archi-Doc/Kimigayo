@@ -412,6 +412,9 @@ public sealed class IsKoto : BinaryKoto
     /// <summary>Gets a value indicating whether this is an associated-type constraint.</summary>
     public bool IsAssociatedConstraint { get; internal set; }
 
+    /// <summary>Gets the bound compile-time proposition; ordinary runtime tests leave this null.</summary>
+    public BoundConstraint? BoundConstraint { get; internal set; }
+
     /// <summary>Initializes a new instance of the <see cref="IsKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>

@@ -26,19 +26,19 @@ public sealed partial class Binding
 {
     private readonly Dictionary<(KotoKind Operation, long Value, BindingSymbol? Parameter, BoundLength? Left, BoundLength? Right), BoundLength> lengths = new();
 
-    private static bool SameLengthSignature(BoundLength? a, BoundLength? b)
+    private static bool SameLengthSignature(BoundLength? a, BoundLength? b, Koto aBinder, Koto bBinder)
     {
         if (ReferenceEquals(a, b))
         {
             return true;
         }
 
-        if (a is null || b is null || a.Operation != b.Operation || a.Value != b.Value || a.Parameter?.Slot != b.Parameter?.Slot)
+        if (a is null || b is null || a.Operation != b.Operation || a.Value != b.Value || !SignatureSlotEquals(a.Parameter, b.Parameter, aBinder, bBinder))
         {
             return false;
         }
 
-        return SameLengthSignature(a.Left, b.Left) && SameLengthSignature(a.Right, b.Right);
+        return SameLengthSignature(a.Left, b.Left, aBinder, bBinder) && SameLengthSignature(a.Right, b.Right, aBinder, bBinder);
     }
 
     private BoundLength InternLength(KotoKind operation, long value = 0, BindingSymbol? parameter = null, BoundLength? left = null, BoundLength? right = null)

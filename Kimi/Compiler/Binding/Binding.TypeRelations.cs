@@ -161,6 +161,21 @@ public sealed partial class Binding
         return true;
     }
 
+    private BoundType DirectTarget(BoundType whole)
+    {
+        if (whole.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication)
+        {
+            return whole.Components[0];
+        }
+
+        if (whole.Kind == BoundTypeKind.Parameter)
+        {
+            return whole.Symbol!.Kind == BindingSymbolKind.SemanticsTarget ? whole.Symbol.Type! : this.InternType(BoundTypeKind.TargetProjection, whole.Symbol, SemanticsKind.Owner, []);
+        }
+
+        return whole;
+    }
+
     private BoundType? SubstituteType(BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments)
     {
         if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection && type.Symbol!.Scope.Owner == binder)
@@ -171,7 +186,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var projected = type.Kind == BoundTypeKind.TargetProjection && whole.Kind == BoundTypeKind.Semantics ? whole.Components[0] : whole;
+            var projected = type.Kind == BoundTypeKind.TargetProjection ? this.DirectTarget(whole) : whole;
             if (type.Origin is { } replacement)
             {
                 if (!IsBorrow(projected.Semantics))

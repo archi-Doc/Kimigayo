@@ -288,7 +288,7 @@ public sealed partial class Binding
     {
         Array.Clear(arguments, 0, function.GenericArguments.Count);
         Array.Clear(used, 0, function.Parameters.Count);
-        if (function.IsSpecialization || function.TypeConstraints.Count != 0)
+        if (function.IsSpecialization)
         {
             return null;
         }
@@ -464,7 +464,12 @@ public sealed partial class Binding
             }
         }
 
-        return true;
+        return this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, function.GenericArguments.Count), scope) switch
+        {
+            ConstraintProof.Proven => true,
+            ConstraintProof.Refuted or ConstraintProof.Error => false,
+            _ => null,
+        };
     }
 
     private BindingSymbol? SelectBest(InvocationKoto call, BindingSymbol group, GenericsKoto? generic, BindingScope scope, BoundType? expected, BoundType?[] aTypes, int[] aMap, bool[] used, int maxGenerics)

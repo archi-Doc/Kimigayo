@@ -49,6 +49,15 @@
   + Name="InvalidTypeFormation_Kd"
     Message="The resolved declaration or Semantics target cannot form this type"
 
+  + Name="InvalidConstraint_Kd"
+    Message="The Constraint contains an invalid subject, requirement, or contradictory evidence"
+
+  + Name="UnprovenConstraint_Kd"
+    Message="The required Constraint cannot be proven by its semantic deadline"
+
+  + Name="UnsatisfiedConstraint_Kd"
+    Message="The supplied Type arguments do not satisfy the declaration's Constraints"
+
   + Name="InvalidCompileTimeCondition_Kd"
     Message="This expression is outside the compile-time Condition grammar (integer literals must fit i64)"
 

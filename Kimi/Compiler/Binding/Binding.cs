@@ -97,6 +97,7 @@ public sealed partial class Binding
             this.indexer.Scope = this.rootScope;
             this.indexer.Visit(this.compilation.Kotonoha.RootKoto);
             this.BindSchemas();
+            this.BindConstraints();
             for (var i = 0; i < this.nodes.Count; i++)
             {
                 if (this.nodes[i].BoundSymbol is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Property } symbol && ReferenceEquals(symbol.Declaration, this.nodes[i]))
@@ -110,6 +111,7 @@ public sealed partial class Binding
             this.BindNode(this.compilation.Kotonoha.RootKoto, this.rootScope);
             this.ComputeOriginRequirements();
             this.ValidateOriginRequirements();
+            this.ValidateConstraintUses(mode);
             this.Result = this.Check(mode);
             return this.Result;
         }
@@ -152,21 +154,24 @@ public sealed partial class Binding
         return type;
     }
 
-    private static bool SignatureEquals(BoundType a, BoundType b)
+    private static bool SignatureSlotEquals(BindingSymbol? a, BindingSymbol? b, Koto aBinder, Koto bBinder)
+        => ReferenceEquals(a, b) || (a is not null && b is not null && ReferenceEquals(a.Scope.Owner, aBinder) && ReferenceEquals(b.Scope.Owner, bBinder) && a.Slot == b.Slot);
+
+    private static bool SignatureEquals(BoundType a, BoundType b, Koto aBinder, Koto bBinder)
     {
         if (ReferenceEquals(a, b))
         {
             return true;
         }
 
-        if (a.Kind != b.Kind || a.Semantics != b.Semantics || a.Length != b.Length || !SameLengthSignature(a.LengthExpression, b.LengthExpression) || a.Components.Count != b.Components.Count)
+        if (a.Kind != b.Kind || a.Semantics != b.Semantics || a.Length != b.Length || !SameLengthSignature(a.LengthExpression, b.LengthExpression, aBinder, bBinder) || a.Components.Count != b.Components.Count)
         {
             return false;
         }
 
         if (a.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
         {
-            return a.Symbol!.Slot == b.Symbol!.Slot;
+            return SignatureSlotEquals(a.Symbol, b.Symbol, aBinder, bBinder);
         }
 
         if (a.Components.Count == 0)
@@ -174,14 +179,14 @@ public sealed partial class Binding
             return a.Symbol is not null && ReferenceEquals(a.Symbol, b.Symbol);
         }
 
-        if (a.Kind == BoundTypeKind.SemanticsApplication ? a.Symbol!.Slot != b.Symbol!.Slot : a.Symbol != b.Symbol)
+        if (a.Kind == BoundTypeKind.SemanticsApplication ? !SignatureSlotEquals(a.Symbol, b.Symbol, aBinder, bBinder) : a.Symbol != b.Symbol)
         {
             return false;
         }
 
         for (var i = 0; i < a.Components.Count; i++)
         {
-            if (!SignatureEquals(a.Components[i], b.Components[i]))
+            if (!SignatureEquals(a.Components[i], b.Components[i], aBinder, bBinder))
             {
                 return false;
             }
@@ -198,7 +203,7 @@ public sealed partial class Binding
             {
                 if (this.obligations[i].Deadline == BindingDeadline.Definition)
                 {
-                    Fail(this.obligations[i].Use, BindingFailure.Unsupported, true);
+                    Fail(this.obligations[i].Use, BindingFailure.UnprovenConstraint);
                 }
             }
         }
@@ -245,6 +250,9 @@ public sealed partial class Binding
                     BindingFailure.InvalidOrigin => DiagnosticCode.InvalidOriginBinding_Kd,
                     BindingFailure.MissingOrigin => DiagnosticCode.MissingOriginBinding_Kd,
                     BindingFailure.InvalidTypeFormation => DiagnosticCode.InvalidTypeFormation_Kd,
+                    BindingFailure.InvalidConstraint => DiagnosticCode.InvalidConstraint_Kd,
+                    BindingFailure.UnprovenConstraint => DiagnosticCode.UnprovenConstraint_Kd,
+                    BindingFailure.UnsatisfiedConstraint => DiagnosticCode.UnsatisfiedConstraint_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 this.issues.Add(new(node, code));
@@ -368,7 +376,7 @@ public sealed partial class Binding
                         {
                             var ta = fa.Parameters[i].Type.BoundType;
                             var tb = fb.Parameters[i].Type.BoundType;
-                            if (ta is null || tb is null || !SignatureEquals(ta, tb))
+                            if (ta is null || tb is null || !SignatureEquals(ta, tb, fa, fb))
                             {
                                 equal = false;
                                 break;
@@ -397,6 +405,11 @@ public sealed partial class Binding
             node.BoundType = null;
             node.BoundOrigin = null;
             node.BoundSymbol = null;
+            if (node is IsKoto clause)
+            {
+                clause.BoundConstraint = null;
+            }
+
             binding.nodes.Add(node);
             var previous = this.Scope;
             if (node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } && node.CodeContext.SourceDocument is { } source)

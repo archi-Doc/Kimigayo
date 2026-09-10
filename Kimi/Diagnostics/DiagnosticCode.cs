@@ -23,6 +23,9 @@ public enum DiagnosticCode
     InvalidOriginBinding_Kd,
     MissingOriginBinding_Kd,
     InvalidTypeFormation_Kd,
+    InvalidConstraint_Kd,
+    UnprovenConstraint_Kd,
+    UnsatisfiedConstraint_Kd,
 
     ConditionMustBeBool_Kd,
     InvalidCompileTimeCondition_Kd,

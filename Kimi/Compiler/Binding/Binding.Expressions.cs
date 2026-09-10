@@ -362,7 +362,7 @@ public sealed partial class Binding
             }
         }
 
-        if (function.IsAnonymous || function.IsConstructor || function.IsDestructor || function.IsSpecialization || function.TypeConstraints.Count != 0)
+        if (function.IsAnonymous || function.IsConstructor || function.IsDestructor || function.IsSpecialization)
         {
             return Fail(function, BindingFailure.Unsupported, true);
         }

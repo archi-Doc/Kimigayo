@@ -73,6 +73,9 @@ internal enum BindingFailure : byte
     InvalidOrigin,
     MissingOrigin,
     InvalidTypeFormation,
+    InvalidConstraint,
+    UnprovenConstraint,
+    UnsatisfiedConstraint,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
@@ -186,11 +189,14 @@ internal sealed class BindingScope(Koto owner)
 
     internal Dictionary<string, BoundOrigin>? Origins { get; set; }
 
+    internal ConstraintEnvironment? Constraints { get; set; }
+
     internal void Reset()
     {
         this.Types.Clear();
         this.Values.Clear();
         this.Origins?.Clear();
+        this.Constraints?.Reset();
     }
 }
 
