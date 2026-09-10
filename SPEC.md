@@ -1202,9 +1202,8 @@ let view = resources[i]   // ref/Resource; the element remains.
 let taken = resources[0] // Ordinary Move; resources[0] becomes Moved.
 
 var numbers: [2 of i32] = [10, 20]
-let copied = numbers[0]     // Copy; source remains Initialized.
-let copied = numbers[0] // i32 Copies; the element stays initialized.
-numbers[0] = 30            // Repair an already constructed array.
+let copied = numbers[0]     // Copy; the element remains Initialized.
+numbers[0] = 30             // Replace the initialized element.
 let alsoCopied = numbers[i] // Copy does not require a static Move Path.
 ```
 
@@ -2040,7 +2039,6 @@ Creation evaluates captures, not the function body. Invocation evaluates that bo
 | `[]` | Prohibit runtime captures |
 | `[x, y]` | Acquire exactly the listed bindings; unlisted outer runtime bindings are unavailable |
 | `x` | Ordinary Copy if Copy, otherwise Move |
-
 | `x@ref` / `x@uniq` | The existing value Borrow/Copy/Reborrow operation for that Semantics |
 | `var x` | Ordinary acquisition into a mutable environment binding |
 
@@ -3693,7 +3691,7 @@ Expressions
 │  ├─ Invocation (including $abort(...))
 │  └─ Generic Application
 ├─ Index / Slice Expression
-├─ Explicit @ Operation: Type/Semantics adaptation or Consume
+├─ Explicit @ Operation: Type/Semantics adaptation
 ├─ Unary Expression
 │  ├─ Sign / Logical Negation / Dereference / From-end Index
 │  └─ Prefix / Postfix Increment and Decrement
@@ -4082,8 +4080,8 @@ Targets may guide permitted literal/generic inference but cannot change an estab
 ```kimi
 // handler is an overloaded function name; the annotation selects its reference.
 let f: (i32) -> () = handler
-// The annotation selects a function reference.
-let g = f // Copy the function value; f remains initialized.
+// Conversion to the common Function Type produces a Non-Copy value.
+let g = f // Move the common function value; f becomes Moved.
 ```
 
 Deferred generic effects follow [Generic Access Effects](#89-generic-access-effects). Resolve effects before finalizing ownership/Loan analysis. `Never` follows ordinary abrupt-completion and Type-fitting rules, not a value conversion. A non-completing operand prevents execution of the outer operation but does not waive syntax, target-Type, or Unsafe checks.

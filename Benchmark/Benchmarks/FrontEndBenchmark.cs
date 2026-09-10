@@ -34,7 +34,7 @@ public class FrontEndBenchmark
         contract Sequence : Base
             associate Element
             func next(self: ref/Self) -> Element
-            var count: i32 has get
+            property count: i32 has get
         open struct Parent
         struct Child : Parent
             init(value: i32) : base(value)
@@ -44,7 +44,7 @@ public class FrontEndBenchmark
         func transform<length N, T>(values: [N of T]) -> [N of T]
             T is Comparable
             require valid else return fallback
-            let visit = func[values@ref, var count@move](x) => x
+            let visit = func[values@ref, var count](x) => x
             let value = match choice
                 .Some(let x) if ready => x
                 .None => 0

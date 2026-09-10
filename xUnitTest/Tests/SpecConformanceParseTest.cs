@@ -74,8 +74,8 @@ public class SpecConformanceParseTest
         var parsed = Parse("""
             contract Sequence
                 associate Element is Comparable
-                var count: i32 has get
-                var item: Element has get, set
+                property count: i32 has get
+                property item: Element has get, set
 
             struct Logger origin sink
                 let output: uniq/Writer from sink
@@ -199,8 +199,8 @@ public class SpecConformanceParseTest
         var directive = match ? $"#match\n        #case {condition}" : $"#if {condition}";
         var indent = match ? "            " : "        ";
         var parsed = Parse(
-            $"struct Sample<T>\n    {directive}\n{indent}var value: T has get, set\n{indent}func getValue() -> T => value\n" +
-            $"contract Sequence\n    {directive}\n{indent}associate Element is Comparable\n{indent}var count: i32 has get");
+            $"struct Sample<T>\n    {directive}\n{indent}var value: T\n{indent}func getValue() -> T => value\n" +
+            $"contract Sequence\n    {directive}\n{indent}associate Element is Comparable\n{indent}property count: i32 has get");
         AssertValid(parsed);
         RoundTrip(parsed);
         var sample = Assert.Single(parsed.RootKoto.NestedDeclarationContainers.OfType<StructKoto>());
@@ -326,7 +326,7 @@ public class SpecConformanceParseTest
             contract Sequence
                 #if unknown
                 associate Element is Comparable
-                var count: i32 has get
+                property count: i32 has get
             """);
         AssertValid(parsed);
         Assert.Contains("associate Element", Write(parsed));

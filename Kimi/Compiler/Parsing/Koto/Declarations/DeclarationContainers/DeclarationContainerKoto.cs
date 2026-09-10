@@ -812,14 +812,15 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
             return true;
         }
 
-        if (this is EnumKoto && token.Kind.IsIdentifierOrContextualKeyword())
+        if (this is EnumKoto && token.Kind.IsIdentifierOrContextualKeyword() &&
+            !(token.Kind is TokenKind.Computed or TokenKind.Property && reader.PeekKind(1).IsIdentifierOrContextualKeyword()))
         {
             this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, Parser.ParseEnumCase(ref reader)));
             reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
             return true;
         }
 
-        if (token.Kind is TokenKind.Let or TokenKind.Var)
+        if (token.Kind is TokenKind.Let or TokenKind.Var or TokenKind.Computed or TokenKind.Property)
         {
             if (this is not ContractKoto)
             {
@@ -830,19 +831,25 @@ public abstract class DeclarationContainerKoto : IdentifiableKoto
             var propertyKoto = Parser.ParseProperty(ref reader, ref token);
             if (propertyKoto is not null && !isExcluded)
             {
-                if (this is ContractKoto)
+                if ((this is ContractKoto) != propertyKoto.IsContractRequirement || this is EnumKoto)
                 {
-                    propertyKoto.IsContractRequirement = true;
-                    if (!propertyKoto.HasInlineAccessors || propertyKoto.InitializerKoto is not null || propertyKoto.TypeKoto is null)
-                    {
-                        propertyKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "requirement property");
-                        return true;
-                    }
-                }
-                else if (this is EnumKoto)
-                {
-                    propertyKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "enum property");
+                    propertyKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "property declaration container");
                     return true;
+                }
+
+                if (propertyKoto.IsContractRequirement &&
+                    (propertyKoto.Modifier != ModifierKind.NoModifier || propertyKoto.AttributeChain is not null))
+                {
+                    propertyKoto.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "property requirement modifiers or attributes");
+                }
+
+                foreach (var accessor in propertyKoto.Accessors)
+                {
+                    if (accessor.HasExplicitSignature &&
+                        (accessor.ReceiverType is not null) != (this is StructKoto or ContractKoto))
+                    {
+                        accessor.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "instance accessors require self; static accessors omit self");
+                    }
                 }
 
                 this.AddLast(Parser.ApplyCompileTimeIfPrefixes(reader.CodeContext, compileTimeIfPrefixes, propertyKoto));

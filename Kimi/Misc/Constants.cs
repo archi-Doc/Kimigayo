@@ -68,6 +68,8 @@ public static class Constants
     public const string GetKeyword = "get";
     public const string SetKeyword = "set";
     public const string HasKeyword = "has";
+    public const string ComputedKeyword = "computed";
+    public const string PropertyKeyword = "property";
     public const string StaticKeyword = "static";
     public const string PublicKeyword = "public";
     public const string ProtectedKeyword = "protected";

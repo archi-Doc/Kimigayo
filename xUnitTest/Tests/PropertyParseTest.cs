@@ -47,6 +47,8 @@ public class PropertyParseTest
         AssertContextualKeyword(TokenKind.Get, Constants.GetKeyword);
         AssertContextualKeyword(TokenKind.Set, Constants.SetKeyword);
         AssertContextualKeyword(TokenKind.Has, Constants.HasKeyword);
+        AssertContextualKeyword(TokenKind.Computed, Constants.ComputedKeyword);
+        AssertContextualKeyword(TokenKind.Property, Constants.PropertyKeyword);
 
         static void AssertContextualKeyword(TokenKind kind, string text)
         {
@@ -63,7 +65,8 @@ public class PropertyParseTest
             struct Keywords
                 let get: i32 = 1
                 var set: i32
-                var has: i32 has get
+                var has: i32
+                    get
             """;
 
         var (_, structure, diagnostics) = ParseStruct(source);
@@ -76,16 +79,18 @@ public class PropertyParseTest
         Assert.IsType<NumberLiteralKoto>(properties[0].InitializerKoto);
         Assert.Empty(properties[0].Accessors);
         Assert.Empty(properties[1].Accessors);
-        Assert.True(properties[2].HasInlineAccessors);
+        Assert.False(properties[2].HasInlineAccessors);
         Assert.Equal(PropertyAccessorKind.Get, Assert.Single(properties[2].Accessors).AccessorKind);
     }
 
     [Fact]
-    public void ParsesInlineAccessorsAfterAnInitializer()
+    public void ParsesStandardAccessorsAfterAnInitializer()
     {
         var source = """
             struct Counter
-                public var Count: i32 = 0 has get, private set
+                public var Count: i32 = 0
+                    get
+                    private set
             """;
 
         var (_, structure, diagnostics) = ParseStruct(source);
@@ -93,7 +98,7 @@ public class PropertyParseTest
         Assert.Empty(diagnostics);
         var property = Assert.IsType<PropertyKoto>(Assert.Single(structure.Members));
         Assert.Equal(ModifierKind.Public, property.Modifier);
-        Assert.True(property.HasInlineAccessors);
+        Assert.False(property.HasInlineAccessors);
         Assert.IsType<NumberLiteralKoto>(property.InitializerKoto);
         Assert.Collection(
             property.Accessors,
@@ -117,13 +122,13 @@ public class PropertyParseTest
     {
         var source = """
             struct Dimensions
-                var Area: i32
-                    get => width * height
+                computed Area: i32
+                    get(self: ref/Self) -> i32 => width * height
 
                 var Percentage: i32 = 0
-                    get => storage
+                    get(self: ref/Self) -> i32 => storage
 
-                    private set
+                    private set(self: uniq/Self, value: i32) -> ()
                         storage = clamp(value, 0, 100)
 
                 var Count: i32
@@ -172,8 +177,12 @@ public class PropertyParseTest
     {
         var source = """
             struct Invalid
-                let Frozen: i32 has get, set
-                var Duplicate: i32 has get, get
+                let Frozen: i32
+                    get
+                    set
+                var Duplicate: i32
+                    get
+                    get
                 var Mixed: i32 has get
                     set
                 var Continued: i32
@@ -181,7 +190,7 @@ public class PropertyParseTest
 
         var (_, structure, diagnostics) = ParseStruct(source);
 
-        Assert.Equal(3, diagnostics.Length);
+        Assert.Equal(4, diagnostics.Length);
         Assert.Contains(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.LetPropertyCannotHaveSetter_Kd));
         Assert.Contains(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.DuplicatePropertyAccessor_Kd));
         Assert.Contains(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.UnexpectedToken_Kd));
@@ -195,10 +204,12 @@ public class PropertyParseTest
     {
         var source = """
             struct Counter
-                public var Count: i32 = 0 has get, private set
-                var Clamped: i32
-                    get => storage
+                public var Count: i32 = 0
+                    get
                     private set
+                var Clamped: i32
+                    get(self: ref/Self) -> i32 => storage
+                    private set(self: uniq/Self, value: i32) -> ()
                         storage = value
             """;
         var (kotonoha, _, diagnostics) = ParseStruct(source);
@@ -213,7 +224,8 @@ public class PropertyParseTest
         var actual = Unparse(restoredKotonoha.RootKoto);
 
         Assert.Equal(expected, actual);
-        Assert.Contains("public var Count: i32 = 0 has get, private set", actual);
+        Assert.Contains("public var Count: i32 = 0", actual);
+        Assert.Contains("set(self: uniq/Self, value: i32) -> ()", actual);
         var structure = Assert.IsType<StructKoto>(Assert.Single(restoredKotonoha.RootKoto.NestedDeclarationContainers));
         var properties = structure.Members.Select(Assert.IsType<PropertyKoto>).ToArray();
         Assert.Equal(2, properties.Length);

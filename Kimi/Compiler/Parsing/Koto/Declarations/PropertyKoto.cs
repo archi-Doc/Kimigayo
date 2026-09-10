@@ -5,6 +5,22 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>Identifies storage, computed operations, or a Contract requirement.</summary>
+public enum PropertyDeclarationKind : byte
+{
+    /// <summary>Immutable storage.</summary>
+    Let,
+
+    /// <summary>Mutable storage.</summary>
+    Var,
+
+    /// <summary>Accessor functions without storage.</summary>
+    Computed,
+
+    /// <summary>A Contract operation requirement.</summary>
+    Requirement,
+}
+
 /// <summary>Represents a source-level Property declaration.</summary>
 public sealed class PropertyKoto : VariableKoto
 {
@@ -17,7 +33,18 @@ public sealed class PropertyKoto : VariableKoto
     public bool HasInlineAccessors { get; private set; }
 
     /// <summary>Gets a value indicating whether this is a contract accessor requirement.</summary>
-    public bool IsContractRequirement { get; internal set; }
+    public bool IsContractRequirement => this.DeclarationKind == PropertyDeclarationKind.Requirement;
+
+    /// <summary>Gets the source declaration kind independently of binding mutability.</summary>
+    public PropertyDeclarationKind DeclarationKind { get; }
+
+    /// <inheritdoc/>
+    public override string VariableText => this.DeclarationKind switch
+    {
+        PropertyDeclarationKind.Computed => Constants.ComputedKeyword,
+        PropertyDeclarationKind.Requirement => Constants.PropertyKeyword,
+        _ => base.VariableText,
+    };
 
     /// <summary>Gets the explicit accessors in source order.</summary>
     public IReadOnlyList<PropertyAccessorKoto> Accessors
@@ -26,7 +53,7 @@ public sealed class PropertyKoto : VariableKoto
     /// <summary>Initializes a new instance of the <see cref="PropertyKoto"/> class.</summary>
     /// <remarks>The modifiers and attribute chain are taken from the reader's current context.</remarks>
     /// <param name="reader">The token reader.</param>
-    /// <param name="token">The <c>let</c> or <c>var</c> token.</param>
+    /// <param name="token">The <c>let</c>, <c>var</c>, <c>computed</c>, or <c>property</c> token.</param>
     /// <param name="nameKoto">The declared name.</param>
     /// <param name="typeKoto">The declared Type, if specified.</param>
     /// <param name="initializerKoto">The initializer expression, if present.</param>
@@ -41,6 +68,13 @@ public sealed class PropertyKoto : VariableKoto
         : base(ref reader, token, nameKoto, typeKoto, initializerKoto)
     {
         this.HasInlineAccessors = hasInlineAccessors;
+        this.DeclarationKind = token.Kind switch
+        {
+            TokenKind.Let => PropertyDeclarationKind.Let,
+            TokenKind.Computed => PropertyDeclarationKind.Computed,
+            TokenKind.Property => PropertyDeclarationKind.Requirement,
+            _ => PropertyDeclarationKind.Var,
+        };
     }
 
     /// <summary>Gets the explicit accessor of the requested kind, if present.</summary>

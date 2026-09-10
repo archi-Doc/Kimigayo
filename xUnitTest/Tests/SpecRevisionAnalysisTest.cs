@@ -10,13 +10,12 @@ namespace XunitTest;
 public class SpecRevisionAnalysisTest
 {
     [Theory]
-    [InlineData("var child: obj/Node has get -> objref/Node from self, private set")]
-    [InlineData("var child: obj/Node\n    get -> objref/Node from self => storage@objref")]
-    [InlineData("var value: obj/Node\n    get -> obj/Node => Node.new()")]
-    [InlineData("var value: i32\n    get -> i64\n        return 1")]
-    [InlineData("var value: i32\n    get -> i64")]
-    [InlineData("var value: i32\n    get => 1")]
-    [InlineData("var value: i32 has get -> (i32, string) -> bool")]
+    [InlineData("computed child: objref/Node\n    get(self: ref/Self) -> objref/Node from self => self.node@objref")]
+    [InlineData("computed value: obj/Node\n    get(self: ref/Self) -> obj/Node => Node.new()")]
+    [InlineData("var value: i64\n    get(self: ref/Self) -> i64\n        return 1")]
+    [InlineData("var value: i32\n    get")]
+    [InlineData("var value: i32\n    get(self: ref/Self) -> i32 => 1")]
+    [InlineData("computed value: (i32, string) -> bool\n    get(self: ref/Self) -> (i32, string) -> bool => callback")]
     public void GetterAnnotationsRoundTripAndRetainTreeOwnership(string member)
     {
         var source = "struct Example\n    " + member.Replace("\n", "\n    ");
@@ -58,7 +57,7 @@ public class SpecRevisionAnalysisTest
     [Fact]
     public void ContractGetterAnnotationIsPreserved()
     {
-        var tree = Parse("contract Collection\n    var child: obj/Node has get -> objref/Node from self");
+        var tree = Parse("contract Collection\n    property child: objref/Node\n        get(self: ref/Self) -> objref/Node from self");
         var property = Assert.IsType<PropertyKoto>(Assert.Single(Assert.Single(tree.RootKoto.NestedDeclarationContainers).Members));
         Assert.True(property.IsContractRequirement);
         Assert.Equal("objref/Node from self", property.Accessors[0].ReturnType!.ToString());
@@ -139,9 +138,9 @@ public class SpecRevisionAnalysisTest
     }
 
     [Theory]
-    [InlineData("get -> bool => 1", true)]
-    [InlineData("get -> i64 => 1", false)]
-    [InlineData("get => 1", false)]
+    [InlineData("get(self: ref/Self) -> bool => 1", true)]
+    [InlineData("get(self: ref/Self) -> i64 => 1", false)]
+    [InlineData("get(self: ref/Self) -> i32 => 1", false)]
     public void GetterUsesItsResultTypeInsteadOfPropertyType(string getter, bool invalid)
     {
         var analysis = Analyze("struct Example\n    var value: i32\n        " + getter);
@@ -151,7 +150,7 @@ public class SpecRevisionAnalysisTest
     [Fact]
     public void UnresolvedGetterContractIsNotInferredFromItsBody()
     {
-        var analysis = Analyze("struct Example<T>\n    var value: T\n        get => 1");
+        var analysis = Analyze("struct Example<T>\n    var value: T\n        get(self: ref/Self) -> T => 1");
         var getter = analysis.Nodes.Single(x => x.Key is PropertyAccessorKoto);
         Assert.Null(getter.Value.TargetResultType);
         Assert.Contains(getter.Key, analysis.PendingBinding);
@@ -163,7 +162,7 @@ public class SpecRevisionAnalysisTest
     [InlineData("unsafe:\n    #if false\n        ()")]
     [InlineData("work:\n    #if false\n        ()")]
     [InlineData("if true\n    #if false\n        ()")]
-    [InlineData("struct Example\n    var value: i32\n        get\n            #if false\n                return 1")]
+    [InlineData("struct Example\n    var value: i32\n        get(self: ref/Self) -> i32\n            #if false\n                return 1")]
     public void EmptySelectedBodiesRemainValidAfterWriting(string source)
     {
         var tree = Parse(source);

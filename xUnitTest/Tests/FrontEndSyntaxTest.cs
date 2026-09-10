@@ -40,7 +40,7 @@ public class FrontEndSyntaxTest
     [InlineData("func f()\n    .None")]
     [InlineData("let a = func(x) => x")]
     [InlineData("let a = func[](x: i32) -> i32 => x")]
-    [InlineData("let a = func[source@ref, var count@move, value@uniq](x) => x")]
+    [InlineData("let a = func[source@ref, var count, value@uniq](x) => x")]
     [InlineData("func f()\n    require valid else return\n    work()")]
     [InlineData("func f()\n    require valid\n    else\n        return\n    work()")]
     [InlineData("enum Option<T>\n    None\n    Some(T)")]
@@ -48,7 +48,7 @@ public class FrontEndSyntaxTest
     [InlineData("let a = match value\n    .Some(let x) if x > 0 => x\n    .None => 0\n    _ => -1")]
     [InlineData("let a = match value\n    Option<i32>.Some(var x) => x\n    (let a, (var b, _)) => b\n    (1,) => 1\n    () => 0")]
     [InlineData("open struct Base\nstruct Derived : Base\n    init(value: i32) : base(value)\n        return\n    deinit\n        return")]
-    [InlineData("contract Sequence : Base, Other\n    associate Element\n    func next(self: ref/Self) -> Element\n    func use<T>(value: T)\n        T is Comparable\n    var size: i32 has get")]
+    [InlineData("contract Sequence : Base, Other\n    associate Element\n    func next(self: ref/Self) -> Element\n    func use<T>(value: T)\n        T is Comparable\n    property size: i32 has get")]
     [InlineData("struct S\n    Self is Sequence\n    associate Sequence.Element is i32")]
     [InlineData("func f<T>(x: T)\n    T.Element is Comparable\n    return")]
     [InlineData("func f<F>(x: F)\n    F is Callable<ref, (i32) -> bool>\n    return")]
@@ -114,11 +114,11 @@ public class FrontEndSyntaxTest
     [Fact]
     public void RetainsCaptureAcquisitionAndUnevaluatedLengths()
     {
-        var tree = ParseSuccess("let f = func[var count@move, source@ref](x) => x\nlet a: [(N + 1) of i32] = values");
+        var tree = ParseSuccess("let f = func[var count, source@ref](x) => x\nlet a: [(N + 1) of i32] = values");
         var items = tree.GeneratedFunction!.Body!.Items;
         var function = Assert.IsType<FunctionKoto>(Assert.IsType<FieldKoto>(items[0]).InitializerKoto);
         Assert.True(function.IsAnonymous);
-        Assert.Equal("move", function.Captures![0].Operation);
+        Assert.Null(function.Captures![0].Operation);
         Assert.True(function.Captures[0].IsMutable);
         Assert.Equal("ref", function.Captures[1].Operation);
         var array = Assert.IsType<FixedArrayTypeKoto>(Assert.IsType<FieldKoto>(items[1]).TypeKoto);

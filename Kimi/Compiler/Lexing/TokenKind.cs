@@ -85,6 +85,8 @@ public enum TokenKind : byte
     Get,
     Set,
     Has,
+    Computed,
+    Property,
 
     // Not keyword
     Identifier = 128,

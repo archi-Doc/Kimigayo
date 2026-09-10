@@ -58,7 +58,6 @@ public static partial class Parser
                 var op = reader.Read();
                 operation = reader.GetSpan(op) switch
                 {
-                    "move" => "move",
                     "ref" when !mutable => "ref",
                     "uniq" when !mutable => "uniq",
                     _ => null,

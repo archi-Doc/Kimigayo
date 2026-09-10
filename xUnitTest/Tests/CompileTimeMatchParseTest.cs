@@ -202,9 +202,9 @@ public class CompileTimeMatchParseTest
             contract C
                 #match
                     #case true
-                        var count: i32 has get
+                        property count: i32 has get
                     #case unknownCondition
-                        var other: i32 has get
+                        property other: i32 has get
             """);
 
         AssertValid(compilation);

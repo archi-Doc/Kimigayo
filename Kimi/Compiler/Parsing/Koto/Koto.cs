@@ -329,9 +329,6 @@ public enum KotoKind : byte
     /// <summary>A Tuple Pattern.</summary>
     TuplePattern,
 
-    /// <summary>An explicit Consume operation.</summary>
-    Move,
-
     /// <summary>A requirement statement.</summary>
     Require,
 

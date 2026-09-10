@@ -128,6 +128,8 @@ public static partial class TokenHelper
         Set(TokenKind.Get, Constants.GetKeyword);
         Set(TokenKind.Set, Constants.SetKeyword);
         Set(TokenKind.Has, Constants.HasKeyword);
+        Set(TokenKind.Computed, Constants.ComputedKeyword);
+        Set(TokenKind.Property, Constants.PropertyKeyword);
 
         // Single token
         Set(TokenKind.Sharp, "#");
@@ -408,7 +410,8 @@ public static partial class TokenHelper
             7 => Match(text, Constants.PrivateKeyword, TokenKind.Private, "require", TokenKind.Require),
             8 => c0 switch
             {
-                'c' => Match(text, Constants.ContinueKeyword, TokenKind.Continue, Constants.ContractKeyword, TokenKind.Contract),
+                'c' => Match(text, Constants.ContinueKeyword, TokenKind.Continue, Constants.ContractKeyword, TokenKind.Contract, Constants.ComputedKeyword, TokenKind.Computed),
+                'p' => Match(text, Constants.PropertyKeyword, TokenKind.Property),
                 'i' => Match(text, Constants.InternalKeyword, TokenKind.Internal),
                 _ => TokenKind.Identifier,
             },

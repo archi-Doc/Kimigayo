@@ -25,7 +25,7 @@ public class SemicolonParseTest
     [InlineData("unsafe: work(); other()")]
     [InlineData("unsafe:\n    ;")]
     [InlineData("struct Example\n    var value: i32;")]
-    [InlineData("struct Example\n    var value: i32\n        get => 1;")]
+    [InlineData("struct Example\n    var value: i32\n        get(self: ref/Self) -> i32 => 1;")]
     [InlineData("struct Example\n    var value: i32\n        get\n            ;")]
     [InlineData("#if false\n    public struct Empty\n        ;")]
     [InlineData("#if false\n    work();")]

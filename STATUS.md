@@ -18,7 +18,7 @@ This table defines the recorded status of each compiler stage. The notes below d
 | Properties | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | Constructors and aggregate destruction | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
-| `@move` / Consume | Implemented | Not implemented | Not implemented | Not implemented | Not implemented |
+| Ordinary Copy / Move acquisition | N/A; no dedicated Move operator | Not implemented | Not implemented | Not implemented | Not implemented |
 | Control flow and `defer` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | Enum Cases, Patterns, and guards | Implemented | Not implemented | Not implemented | Not implemented | Not implemented |
 | Explicit full specialization and generic code sharing | Source specialization syntax | Not implemented | Not implemented | Not implemented | Not implemented |
@@ -27,7 +27,7 @@ This table defines the recorded status of each compiler stage. The notes below d
 
 Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
 
-The front end now retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. This does not implement Binding, inference, refinement, ownership, dispatch, or execution. See C.14 for the current front-end increment; C.8–C.13 retain historical review snapshots.
+The front end now retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. This does not implement Binding, inference, refinement, ownership, dispatch, or execution. See C.15 for the current Property and Move syntax update; C.8–C.14 retain historical review snapshots.
 
 ### C.2. Builds, modules, and source artifacts
 
@@ -63,17 +63,17 @@ Complete-Type slot/pair binding, structural Signature normalization, explicit `s
 
 The current Parser stores leading Constraint Clauses separately from executable body items and preserves deferred directives on them. It checks clause subjects against the declared generic parameters and diagnoses clauses placed after executable items. Semantic validation of Constraints during Binding and specialization is not implemented.
 
-ContractKoto retains base requirements, function and inline Property requirements, bare associated-Type declarations, and qualified specifications/projections. Constraint collection precedes executable body items. Refinement, conformance matching, mappings, and access checks require Binding. Any accepted generic Contract headers do not establish language support; user-defined generic Contracts are excluded. Runtime Contract Views remain outside the initial Contract implementation.
+ContractKoto retains base requirements, function requirements, `property` requirements with inline operations or explicit bodyless signatures, bare associated-Type declarations, and qualified specifications/projections. Constraint collection precedes executable body items. Refinement, conformance matching, mappings, and access checks require Binding. Any accepted generic Contract headers do not establish language support; user-defined generic Contracts are excluded. Runtime Contract Views remain outside the initial Contract implementation.
 
 **Current implementation status:** the Parser validates the environment-only Condition expression set, evaluates known scalar operations, and propagates Errors before short-circuit truth results. Every directive `is` test is rejected; there is no requirement evaluation, Type narrowing, or generic-dependent selection. Its internal **Pending** result currently retains unresolved scalar Names as validation obligations; this is an implementation limitation, not a valid language dependency. Such Names can only resolve in the prepared environment and must otherwise be diagnosed before finalization. Pending nodes and control-flow PendingBinding reporting retain those validation obligations; unknown-Name finalization remains unimplemented.
 
 ### C.5. Properties
 
-The Parser records Properties, inline and block accessors, explicit getter result annotations, and basic syntax errors. Control-flow analysis checks known accessor result Types. Accessor expansion, contextual binding of `self`, `storage`, and `value`, storage classification, access and initialization checks, general accessor type checking, Property Consume, and field-scoped standard operations are not implemented; successful parsing alone does not validate them.
+The Parser distinguishes stored `let`/`var`, `computed`, and Contract `property` declarations. It retains standard accessors, full custom/required signatures (receiver, setter input, result Types and Origins), bodies, source order, and spans. It checks declaration context, required getter/signature/body syntax, duplicate accessors, let setters, receiver presence, Unit setter result syntax, and forbidden inline forms, initializers, parameter forms, and requirement modifiers/Attributes. Control-flow analysis checks known accessor result Types. Accessor expansion, contextual binding of `self`, `storage`, and `value`, resolved storage classification, access and initialization checks, general accessor type checking, Copy constraints, Property Consume, and field-scoped standard operations are not implemented; successful parsing alone does not validate them.
 
 ### C.6. Expressions and operators
 
-The Parser supports `@Type` precedence, left associativity, and generic/comparison boundaries. `@move` has a distinct syntax kind and terminates its target without Type parsing; Consume semantics remain unimplemented. Basic expressions, argument labels/defaults, collections, and anonymous functions have syntax-tree support. Reserved member-name restrictions and the digit-only Tuple member syntax are validated.
+The Parser supports `@Type` precedence, left associativity, and generic/comparison boundaries. `move` is an ordinary Name: `source@move` parses as Type/Semantics adaptation, with target lookup deferred to Binding. There is no dedicated Move syntax kind; capture entries permit ordinary acquisition, `@ref`, or `@uniq`, and `var` permits only ordinary acquisition. Copy/Move semantics remain unimplemented. Basic expressions, argument labels/defaults, collections, and anonymous functions have syntax-tree support. Reserved member-name restrictions and the digit-only Tuple member syntax are validated.
 
 General type inference, overload and argument matching, function-value execution, numeric checks, dictionary duplicate detection, evaluation order during execution, and single-access Property updates require semantic analysis and runtime implementation. Abort name/type validation, diagnostics, and common termination handling are also planned. Control-flow and cleanup coverage is detailed below. Examples using application-specific functions or Types illustrate semantics rather than promise standard-library APIs.
 
@@ -227,3 +227,13 @@ This increment ends at Koto construction. It adds no Binding or type-inference i
 - Benchmark/Benchmarks/FrontEndBenchmark.cs supplies validated common and extended syntax corpora with allocation measurement. Local Release measurements of the common corpus allocate 7,872 bytes per parse, versus 8,048 bytes at the starting revision (2.2% less); timing varies with host scheduling and is not a throughput guarantee.
 
 The existing early directive evaluator and partial analyses are unchanged in scope. Semantic checks such as name/Case resolution, conformance, literal fitting, capture legality, length evaluation, inheritance, and foreign ABI validation remain downstream work. Historical snapshots above describe their original review dates, not the current front-end coverage.
+
+### C.15. Property and Move syntax update (2026-09-10)
+
+This increment aligns Lexing and Parsing with the Property revision. `computed` and `property` are contextual declaration keywords. PropertyKoto retains the declaration kind; PropertyAccessorKoto retains explicit receiver/input/result Types, including Origins, through child traversal, source writing, and source-artifact serialization. Compound accessor accessibility is parsed in its two-word source form.
+
+The dedicated `@move` operation and capture spelling are removed. A Type named `move` follows ordinary adaptation-target parsing, including qualified/generic targets and Semantics prefixes. Benchmark source fixtures and syntax tests use the revised declarations and captures.
+
+PropertyRevisionParseTest covers current and rejected forms, recovery to following declarations, contextual names, declaration/receiver contexts, parent links, source spans, writing, and serialization. Binding, accessor Type/Copy/Origin compatibility, capture and ownership analysis, Lowering, and Runtime remain downstream work.
+
+Validation: all 1,445 Debug tests pass; the Release solution build completes with zero warnings and errors.
