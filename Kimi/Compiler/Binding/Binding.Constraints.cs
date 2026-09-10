@@ -120,7 +120,7 @@ public sealed partial class Binding
         }
 
         // Registration is not verified conformance. In particular, absence is not refutation.
-        return ConstraintProof.Unknown;
+        return proposition.Contract is { } contract ? this.ProveConformance(proposition.Subject!, contract, scope) : ConstraintProof.Unknown;
     }
 
     private BoundConstraint InternConstraint(ConstraintKey key)
@@ -152,33 +152,68 @@ public sealed partial class Binding
 
     private void BindConstraints()
     {
-        // Bind all clauses before any signature needs their projections. No proof runs in this pass.
-        for (var i = 0; i < this.nodes.Count; i++)
+        this.bindingConstraintTypes = true;
+        // Ordinary premises precede associated projections, regardless of written clause order.
+        for (var pass = 0; pass < 2; pass++)
         {
-            var node = this.nodes[i];
-            if (node is FunctionKoto function)
+            for (var i = 0; i < this.nodes.Count; i++)
             {
-                for (var j = 0; j < function.TypeConstraints.Count; j++)
+                var node = this.nodes[i];
+                if (node is FunctionKoto function)
                 {
-                    this.BindConstraint((IsKoto)function.TypeConstraints[j], this.scopes[function]);
+                    for (var j = 0; j < function.TypeConstraints.Count; j++)
+                    {
+                        var clause = (IsKoto)function.TypeConstraints[j];
+                        if (this.DeferredConstraint(clause, this.scopes[function]) == (pass != 0))
+                        {
+                            this.BindConstraint(clause, this.scopes[function]);
+                        }
+                    }
+                }
+                else if (node is DeclarationContainerKoto container)
+                {
+                    if (container is ContractKoto && (container.GenericParameterNodes.Count != 0 || container.OriginNames.Count != 0))
+                    {
+                        Fail(container, BindingFailure.InvalidConstraint);
+                    }
+
+                    for (var j = 0; j < container.ConstraintNodes.Count; j++)
+                    {
+                        var clause = container.ConstraintNodes[j];
+                        if (this.DeferredConstraint(clause, this.scopes[container]) == (pass != 0))
+                        {
+                            this.BindConstraint(clause, this.scopes[container]);
+                        }
+                    }
                 }
             }
-            else if (node is DeclarationContainerKoto container)
-            {
-                if (container is ContractKoto && (container.GenericParameterNodes.Count != 0 || container.OriginNames.Count != 0))
-                {
-                    Fail(container, BindingFailure.InvalidConstraint);
-                }
 
-                for (var j = 0; j < container.ConstraintNodes.Count; j++)
-                {
-                    this.BindConstraint(container.ConstraintNodes[j], this.scopes[container]);
-                }
+            if (pass == 0)
+            {
+                this.RegisterConformances();
             }
         }
 
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i] is IsKoto { IsAssociatedConstraint: true, Parent: StructKoto or EnumKoto } clause)
+            {
+                this.BindAssociatedSpecification(clause, this.scopes[clause.Parent!]);
+            }
+        }
+
+        this.ExpandContractPremises();
+        this.PrepareAssociatedBindings();
+        this.bindingConstraintTypes = false;
+
         this.BindCopyDeclarations();
     }
+
+    private bool DeferredConstraint(IsKoto clause, BindingScope scope)
+        => clause.IsAssociatedConstraint || clause.Left is MemberAccessKoto || this.ContainsProjection(clause.Right, scope);
+
+    private bool ContainsProjection(Koto node, BindingScope scope)
+        => node is MemberAccessKoto ? this.TypeName(node, scope, false) is null : (node is UnaryKoto unary && this.ContainsProjection(unary.Operand, scope)) || (node is BinaryKoto binary && (this.ContainsProjection(binary.Left, scope) || this.ContainsProjection(binary.Right, scope)));
 
     private void ValidateConstraintEnvironments()
     {
@@ -206,12 +241,18 @@ public sealed partial class Binding
         var symbol = this.TypeName(clause.Left, scope, false);
         var semantics = symbol?.Kind == BindingSymbolKind.SemanticsParameter;
         var subject = semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, scope);
-        clause.Left.BoundSymbol = symbol;
+        clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
         Complete(clause.Left, subject);
         var requirement = this.BindRequirement(clause.Right, subject, semantics, scope);
-        var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter;
-        var validSubject = subject is not null && (scope.Owner is FunctionKoto ? input && ReferenceEquals(symbol!.Scope, scope) : input || (clause.Left is IdentifierNameKoto { IdentifierName: "Self" } && scope.Owner is DeclarationContainerKoto and not GroupKoto));
-        if (!validSubject || clause.IsAssociatedConstraint)
+        var root = subject;
+        while (root?.Kind == BoundTypeKind.AssociatedProjection)
+        {
+            root = root.Components[0];
+        }
+
+        var input = symbol?.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter || (subject?.Kind == BoundTypeKind.AssociatedProjection && (root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection || scope.Owner is ContractKoto));
+        var validSubject = subject is not null && (scope.Owner is FunctionKoto ? input && ReferenceEquals((root?.Symbol ?? symbol)?.Scope, scope) : input || (clause.Left is IdentifierNameKoto { IdentifierName: "Self" } && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
+        if (!validSubject || (clause.IsAssociatedConstraint && scope.Owner is not ContractKoto))
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
             Fail(clause, BindingFailure.InvalidConstraint);
@@ -362,7 +403,7 @@ public sealed partial class Binding
         return subject is null || (constraint.RequiredType is not null && required is null) ? this.InternConstraint(new(ConstraintKind.Error)) : this.InternConstraint(new(constraint.Kind, subject, required, constraint.Contract, constraint.Mask));
     }
 
-    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope)
+    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null)
     {
         var result = ConstraintProof.Proven;
         for (var i = 0; i < clauses.Count; i++)
@@ -379,7 +420,8 @@ public sealed partial class Binding
                 continue;
             }
 
-            result = CombineProof(result, this.ProveConstraint(this.SubstituteConstraint(bound, binder, arguments), scope), true);
+            var substituted = this.SubstituteConstraint(bound, binder, arguments);
+            result = CombineProof(result, this.ProveConstraint(self is null ? substituted : this.ContractConstraint(substituted, scope, self), scope), true);
         }
 
         return result;

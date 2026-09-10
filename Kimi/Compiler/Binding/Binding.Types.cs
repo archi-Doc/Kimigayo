@@ -7,6 +7,13 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private static string? TypeSpelling(Koto syntax) => syntax switch
+    {
+        IdentifierNameKoto identifier => identifier.IdentifierName,
+        TypeSemanticsKoto { Type: null } simple => simple.Identifier,
+        _ => null,
+    };
+
     private BindingSymbol? Lookup(string name, BindingScope scope, Koto use, bool type, bool core = false)
     {
         for (var current = scope; current is not null; current = current.Parent)
@@ -99,7 +106,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.TypeParameter or BindingSymbolKind.LengthParameter)
+        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.TypeParameter or BindingSymbolKind.LengthParameter or BindingSymbolKind.AssociatedType || symbol.Declaration is FunctionKoto { IsRequirement: true })
         {
             return true;
         }
@@ -135,12 +142,7 @@ public sealed partial class Binding
 
     private BindingSymbol? TypeName(Koto syntax, BindingScope scope, bool core)
     {
-        string? name = syntax switch
-        {
-            IdentifierNameKoto identifier => identifier.IdentifierName,
-            TypeSemanticsKoto { Type: null } simple => simple.Identifier,
-            _ => null,
-        };
+        var name = TypeSpelling(syntax);
         if (name is not null)
         {
             if (name == "Self")
@@ -160,8 +162,9 @@ public sealed partial class Binding
         if (syntax is MemberAccessKoto member)
         {
             var qualifier = this.TypeName(member.Left, scope, false);
-            if (qualifier is not null && this.scopes.TryGetValue(qualifier.Declaration, out var members) && member.Right is IdentifierNameKoto right && members.Types.TryGetValue(right.IdentifierName, out var target) && (!core || target.Kind != BindingSymbolKind.Container) && this.Accessible(target, scope))
+            if (qualifier is not null && this.scopes.TryGetValue(qualifier.Declaration, out var members) && TypeSpelling(member.Right) is { } rightName && members.Types.TryGetValue(rightName, out var target) && (!core || target.Kind != BindingSymbolKind.Container) && this.Accessible(target, scope))
             {
+                var right = member.Right;
                 member.Left.BoundSymbol = qualifier;
                 member.Left.BindingState = BindingState.Resolved;
                 right.BoundSymbol = target;
@@ -362,15 +365,62 @@ public sealed partial class Binding
         }
 
         var symbol = this.TypeName(syntax, scope, true);
+        if (syntax is MemberAccessKoto projection && symbol is null)
+        {
+            var associated = this.BindAssociatedProjection(projection, scope);
+            if (associated is not null)
+            {
+                return associated;
+            }
+        }
+
+        if (symbol is null && EnclosingContractSelf(scope) is { } contractSelf && syntax is TypeSemanticsKoto { Type: null } or IdentifierNameKoto)
+        {
+            var name = syntax is IdentifierNameKoto identifier ? identifier.IdentifierName : ((TypeSemanticsKoto)syntax).Identifier;
+            symbol = this.FindAssociated(contractSelf, scope, name, null, syntax);
+        }
+
         if (symbol is null)
         {
             return Fail(syntax, BindingFailure.MissingType, true);
         }
 
         syntax.BoundSymbol = symbol;
-        if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || symbol.Declaration is ContractKoto)
+        var isSelf = syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" };
+        if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || (symbol.Declaration is ContractKoto && !isSelf))
         {
             return Fail(syntax, BindingFailure.InvalidTypeFormation);
+        }
+
+        if (symbol.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget)
+        {
+            for (var current = scope; current is not null && !ReferenceEquals(current, symbol.Scope); current = current.Parent)
+            {
+                if (current.Owner is ContractKoto)
+                {
+                    return Fail(syntax, BindingFailure.InvalidConstraint);
+                }
+            }
+        }
+
+        if (symbol.Kind == BindingSymbolKind.AssociatedType)
+        {
+            var self = EnclosingContractSelf(scope);
+            if (self is null)
+            {
+                return Fail(syntax, BindingFailure.InvalidAssociatedType);
+            }
+
+            symbol = this.FindAssociated(self, scope, symbol.Name, null, syntax);
+            if (symbol is null)
+            {
+                return null;
+            }
+
+            syntax.BoundSymbol = symbol;
+
+            var projected = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [self]);
+            return this.bindingConstraintTypes ? projected : this.ContractType(projected, scope);
         }
 
         if (symbol.Kind == BindingSymbolKind.SemanticsTarget)
@@ -399,7 +449,7 @@ public sealed partial class Binding
 
     private BoundType? BindTypeList(Koto node, IReadOnlyList<Koto> elements, BindingScope scope, TypeBindingContext context, BoundTypeKind kind, BindingSymbol? symbol = null)
     {
-        var buffer = System.Buffers.ArrayPool<BoundType>.Shared.Rent(elements.Count);
+        var buffer = this.RentTypes(elements.Count);
         try
         {
             var complete = true;
@@ -414,7 +464,7 @@ public sealed partial class Binding
         }
         finally
         {
-            System.Buffers.ArrayPool<BoundType>.Shared.Return(buffer, clearArray: true);
+            this.typeScratch.Return(buffer, clearArray: true);
         }
     }
 

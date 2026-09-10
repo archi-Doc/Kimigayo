@@ -13,7 +13,7 @@ public sealed partial class Binding
         => constraint.Kind == ConstraintKind.And ? PositiveRequirement(constraint.Left!) && PositiveRequirement(constraint.Right!) : constraint.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Semantics or ConstraintKind.Contract;
 
     private bool DeclaresCopy(BoundConstraint constraint)
-        => constraint.Kind == ConstraintKind.And ? this.DeclaresCopy(constraint.Left!) || this.DeclaresCopy(constraint.Right!) : constraint.Kind == ConstraintKind.Contract && ReferenceEquals(constraint.Contract, this.Core.Copy);
+        => constraint.Kind == ConstraintKind.And ? this.DeclaresCopy(constraint.Left!) || this.DeclaresCopy(constraint.Right!) : constraint.Kind == ConstraintKind.Contract && IsRefinement(constraint.Contract!, this.Core.Copy);
 
     private void BindCopyDeclarations()
     {
@@ -63,6 +63,7 @@ public sealed partial class Binding
                 Complete(premises, BoundType.Boolean);
                 if (valid)
                 {
+                    this.ExpandScopeContractPremises(scope);
                     Complete(conditional, BoundType.Unit);
                     this.RegisterCopy(target, container, scope, premises);
                 }

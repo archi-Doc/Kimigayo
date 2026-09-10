@@ -81,6 +81,7 @@ public sealed partial class Binding
             this.obligations.Clear();
             this.obligationSet.Clear();
             this.ResetCapabilities(mode);
+            this.ResetContracts();
             foreach (var scope in this.scopes.Values)
             {
                 scope.Reset();
@@ -111,6 +112,7 @@ public sealed partial class Binding
 
             this.scopes[this.Core.Kotonoha.RootKoto] = this.Core.Scope;
             this.BindSchemas();
+            this.PrepareContracts();
             this.BindConstraints();
             for (var i = 0; i < this.nodes.Count; i++)
             {
@@ -123,13 +125,16 @@ public sealed partial class Binding
             this.PrepareStorage();
             this.ComputeOriginRequirements();
             this.ValidateSignatures();
+            this.ValidateContractDeclarations();
             this.capabilitiesReady = true;
+            this.ValidateConformances(mode, false);
             this.ValidateConstraintEnvironments();
             this.BindNode(this.compilation.Kotonoha.RootKoto, this.rootScope);
             this.ClearCapabilityResults();
             this.ValidateCopyDeclarations(mode);
             this.ComputeOriginRequirements();
             this.ValidateOriginRequirements();
+            this.ValidateConformances(mode, true);
             this.ValidateConstraintUses(mode);
             this.ClearCapabilityResults();
             this.Result = this.Check(mode);
@@ -274,6 +279,9 @@ public sealed partial class Binding
                     BindingFailure.UnprovenConstraint => DiagnosticCode.UnprovenConstraint_Kd,
                     BindingFailure.UnsatisfiedConstraint => DiagnosticCode.UnsatisfiedConstraint_Kd,
                     BindingFailure.InvalidCore => DiagnosticCode.InvalidCoreIntrinsics_Kd,
+                    BindingFailure.MissingImplementation => DiagnosticCode.MissingContractImplementation_Kd,
+                    BindingFailure.IncompatibleImplementation => DiagnosticCode.IncompatibleContractImplementation_Kd,
+                    BindingFailure.InvalidAssociatedType => DiagnosticCode.InvalidAssociatedType_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 this.issues.Add(new(node, code));
@@ -327,7 +335,7 @@ public sealed partial class Binding
         }
 
         symbol.Scope = scope;
-        var table = kind is BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsParameter or BindingSymbolKind.SemanticsTarget ? scope.Types : scope.Values;
+        var table = kind is BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType ? scope.Types : scope.Values;
         if (table.TryGetValue(name, out var previous))
         {
             symbol.Next = previous;

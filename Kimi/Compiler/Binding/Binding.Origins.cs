@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Buffers;
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 
@@ -135,7 +134,7 @@ public sealed partial class Binding
         }
 
         var capacity = (a.Kind == OriginKind.Intersection ? a.Operands.Count : 1) + (b.Kind == OriginKind.Intersection ? b.Operands.Count : 1);
-        var scratch = ArrayPool<BoundOrigin>.Shared.Rent(capacity);
+        var scratch = this.originScratch.Rent(capacity);
         try
         {
             var count = 0;
@@ -216,7 +215,7 @@ public sealed partial class Binding
         }
         finally
         {
-            ArrayPool<BoundOrigin>.Shared.Return(scratch, clearArray: true);
+            this.originScratch.Return(scratch, clearArray: true);
         }
     }
 

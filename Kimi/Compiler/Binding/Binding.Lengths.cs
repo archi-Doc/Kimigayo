@@ -52,6 +52,22 @@ public sealed partial class Binding
         return result;
     }
 
+    private BoundLength? CorrespondingLength(BoundLength? length, Koto from, Koto to)
+    {
+        if (length is null)
+        {
+            return null;
+        }
+
+        var parameter = length.Parameter;
+        if (parameter is not null && ReferenceEquals(parameter.Scope.Owner, from))
+        {
+            parameter = to.BoundSymbol!.Schema!.GenericSlots[parameter.Slot].Symbol;
+        }
+
+        return this.InternLength(length.Operation, length.Value, parameter, this.CorrespondingLength(length.Left, from, to), this.CorrespondingLength(length.Right, from, to));
+    }
+
     private BoundLength? BindLength(Koto syntax, BindingScope scope, bool final = true)
     {
         BoundLength? result = null;

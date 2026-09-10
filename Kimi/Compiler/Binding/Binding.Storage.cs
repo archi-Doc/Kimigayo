@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Buffers;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -98,28 +97,39 @@ public sealed partial class Binding
 
     private BoundType? StoredType(Koto syntax, BoundType owner)
     {
-        if (syntax.BoundType is not { } field || owner.Symbol?.Declaration is not { } binder)
+        if (syntax.BoundType is not { } field || owner.Symbol is null)
         {
             return null;
         }
 
+        return this.StoredType(field, owner);
+    }
+
+    private BoundType? StoredType(BoundType field, BoundType owner)
+    {
+        var binder = owner.Symbol!.Declaration;
         var substituted = this.SubstituteType(field, binder, (BoundType[])owner.Components);
         return substituted is null ? null : this.SubstituteStoredOrigins(substituted, binder, (BoundOrigin[])owner.OriginArguments);
     }
 
-    private BoundOrigin SubstituteStoredOrigin(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments)
+    private BoundOrigin SubstituteStoredOrigin(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, ReadOnlySpan<BoundOrigin> inputs = default)
     {
-        if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder) && origin.Slot < arguments.Length)
+        if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder) && origin.Slot < arguments.Length && arguments[origin.Slot] is { } argument)
         {
-            return arguments[origin.Slot];
+            return argument;
+        }
+
+        if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && origin.Slot < inputs.Length && inputs[origin.Slot] is { } input)
+        {
+            return input;
         }
 
         if (origin.Kind == OriginKind.Intersection && origin.Operands.Count != 0)
         {
-            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments);
+            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, inputs);
             for (var i = 1; i < origin.Operands.Count; i++)
             {
-                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments));
+                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, inputs));
             }
 
             return result;
@@ -128,37 +138,38 @@ public sealed partial class Binding
         return origin;
     }
 
-    private BoundType SubstituteStoredOrigins(BoundType type, Koto binder, ReadOnlySpan<BoundOrigin> arguments)
+    private BoundType SubstituteStoredOrigins(BoundType type, Koto binder, ReadOnlySpan<BoundOrigin> arguments, ReadOnlySpan<BoundOrigin> inputs = default, Koto? correspondingBinder = null)
     {
-        if (arguments.IsEmpty)
+        if (arguments.IsEmpty && inputs.IsEmpty && correspondingBinder is null)
         {
             return type;
         }
 
-        var origin = type.Origin is { } outer ? this.SubstituteStoredOrigin(outer, binder, arguments) : null;
-        var components = ArrayPool<BoundType>.Shared.Rent(type.Components.Count);
-        var origins = ArrayPool<BoundOrigin>.Shared.Rent(type.OriginArguments.Count);
+        var origin = type.Origin is { } outer ? this.SubstituteStoredOrigin(outer, binder, arguments, inputs) : null;
+        var length = correspondingBinder is null ? type.LengthExpression : this.CorrespondingLength(type.LengthExpression, binder, correspondingBinder);
+        var components = this.RentTypes(type.Components.Count);
+        var origins = this.originScratch.Rent(type.OriginArguments.Count);
         try
         {
-            var changed = !ReferenceEquals(origin, type.Origin);
+            var changed = !ReferenceEquals(origin, type.Origin) || !ReferenceEquals(length, type.LengthExpression);
             for (var i = 0; i < type.Components.Count; i++)
             {
-                components[i] = this.SubstituteStoredOrigins(type.Components[i], binder, arguments);
+                components[i] = this.SubstituteStoredOrigins(type.Components[i], binder, arguments, inputs, correspondingBinder);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                origins[i] = this.SubstituteStoredOrigin(type.OriginArguments[i], binder, arguments);
+                origins[i] = this.SubstituteStoredOrigin(type.OriginArguments[i], binder, arguments, inputs);
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression) : type;
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), length) : type;
         }
         finally
         {
-            ArrayPool<BoundType>.Shared.Return(components, clearArray: true);
-            ArrayPool<BoundOrigin>.Shared.Return(origins, clearArray: true);
+            this.typeScratch.Return(components, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
         }
     }
 

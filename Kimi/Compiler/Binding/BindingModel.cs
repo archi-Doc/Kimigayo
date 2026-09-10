@@ -36,6 +36,7 @@ public enum BindingSymbolKind : byte
     SemanticsTarget,
     SemanticsParameter,
     LengthParameter,
+    AssociatedType,
 }
 
 /// <summary>Classifies normalized semantic types.</summary>
@@ -77,6 +78,9 @@ internal enum BindingFailure : byte
     UnprovenConstraint,
     UnsatisfiedConstraint,
     InvalidCore,
+    MissingImplementation,
+    IncompatibleImplementation,
+    InvalidAssociatedType,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>
@@ -101,6 +105,9 @@ public sealed class BindingSymbol
     public BoundType? Type { get; internal set; }
 
     public DeclarationSchema? Schema { get; internal set; }
+
+    /// <summary>Gets effective requirement metadata for a Contract declaration.</summary>
+    public BoundContract? Contract { get; internal set; }
 
     internal BoundType? WholeType { get; set; }
 

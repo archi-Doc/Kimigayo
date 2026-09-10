@@ -61,6 +61,15 @@
   + Name="InvalidCoreIntrinsics_Kd"
     Message="The compiler-owned Core requirement declarations are missing, duplicated, or incompatible"
 
+  + Name="MissingContractImplementation_Kd"
+    Message="No implementation matches the Contract requirement after Type substitution"
+
+  + Name="IncompatibleContractImplementation_Kd"
+    Message="The identified implementation does not satisfy the Contract's constraints, Origins, result, or access contract"
+
+  + Name="InvalidAssociatedType_Kd"
+    Message="The associated Type has an ambiguous, missing, contradictory, or invalid Core-Type binding"
+
   + Name="InvalidCompileTimeCondition_Kd"
     Message="This expression is outside the compile-time Condition grammar (integer literals must fit i64)"
 

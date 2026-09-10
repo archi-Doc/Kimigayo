@@ -159,7 +159,7 @@ public sealed partial class Binding
                     this.BindNode(generated, scope);
                 }
 
-                if (container is ContractKoto || container.Bases.Count != 0)
+                if (container is not ContractKoto && container.Bases.Count != 0)
                 {
                     return Fail(node, BindingFailure.Unsupported, true);
                 }
@@ -570,7 +570,7 @@ public sealed partial class Binding
 
     private BoundType? BindTuple(TupleLiteralKoto tuple, BindingScope scope, BoundType? expected)
     {
-        var buffer = System.Buffers.ArrayPool<BoundType>.Shared.Rent(tuple.Elements.Count);
+        var buffer = this.RentTypes(tuple.Elements.Count);
         try
         {
             var complete = true;
@@ -585,7 +585,7 @@ public sealed partial class Binding
         }
         finally
         {
-            System.Buffers.ArrayPool<BoundType>.Shared.Return(buffer, clearArray: true);
+            this.typeScratch.Return(buffer, clearArray: true);
         }
     }
 

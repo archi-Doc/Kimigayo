@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Buffers;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -13,8 +12,8 @@ public sealed partial class Binding
     private BoundType SelfType(BindingSymbol symbol)
     {
         var schema = symbol.Schema!;
-        var types = ArrayPool<BoundType>.Shared.Rent(schema.GenericSlots.Count);
-        var origins = ArrayPool<BoundOrigin>.Shared.Rent(schema.Origins.Count);
+        var types = this.RentTypes(schema.GenericSlots.Count);
+        var origins = this.originScratch.Rent(schema.Origins.Count);
         try
         {
             for (var i = 0; i < schema.GenericSlots.Count; i++)
@@ -36,8 +35,8 @@ public sealed partial class Binding
         }
         finally
         {
-            ArrayPool<BoundType>.Shared.Return(types, clearArray: true);
-            ArrayPool<BoundOrigin>.Shared.Return(origins, clearArray: true);
+            this.typeScratch.Return(types, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
         }
     }
 
@@ -105,7 +104,7 @@ public sealed partial class Binding
 
             if (count != 0 && (written || (!context.SuppressOuter && target.OriginArguments.Count != count)))
             {
-                var arguments = ArrayPool<BoundOrigin>.Shared.Rent(count);
+                var arguments = this.originScratch.Rent(count);
                 Array.Clear(arguments, 0, count);
                 try
                 {
@@ -117,7 +116,7 @@ public sealed partial class Binding
                     if (annotation?.OriginArguments is { } named)
                     {
                         // A supplied mapping is checked against declaration slots, independently of source order.
-                        var seen = ArrayPool<bool>.Shared.Rent(count);
+                        var seen = this.flagScratch.Rent(count);
                         Array.Clear(seen, 0, count);
                         try
                         {
@@ -151,7 +150,7 @@ public sealed partial class Binding
                         }
                         finally
                         {
-                            ArrayPool<bool>.Shared.Return(seen);
+                            this.flagScratch.Return(seen);
                         }
                     }
                     else if (written)
@@ -192,7 +191,7 @@ public sealed partial class Binding
                 }
                 finally
                 {
-                    ArrayPool<BoundOrigin>.Shared.Return(arguments, clearArray: true);
+                    this.originScratch.Return(arguments, clearArray: true);
                 }
             }
         }

@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Buffers;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -205,7 +204,7 @@ public sealed partial class Binding
             return type;
         }
 
-        var scratch = ArrayPool<BoundType>.Shared.Rent(type.Components.Count);
+        var scratch = this.RentTypes(type.Components.Count);
         try
         {
             var changed = false;
@@ -229,6 +228,11 @@ public sealed partial class Binding
                     return null;
                 }
 
+                if (whole.Kind == BoundTypeKind.Parameter)
+                {
+                    return this.InternType(BoundTypeKind.SemanticsApplication, whole.Symbol, SemanticsKind.Parameter, scratch.AsSpan(0, 1), origin: type.Origin);
+                }
+
                 if (whole.Semantics == SemanticsKind.Owner)
                 {
                     return scratch[0];
@@ -242,7 +246,7 @@ public sealed partial class Binding
         }
         finally
         {
-            ArrayPool<BoundType>.Shared.Return(scratch, clearArray: true);
+            this.typeScratch.Return(scratch, clearArray: true);
         }
     }
 }
