@@ -161,9 +161,9 @@ public sealed partial class Binding
         return symbol?.Kind == BindingSymbolKind.Container || symbol?.Declaration is ContractKoto ? symbol : null;
     }
 
-    private void BindAssociatedSpecification(IsKoto clause, BindingScope scope)
+    private void BindAssociatedSpecification(IsKoto clause, BindingScope scope, BindingSymbol? owner = null)
     {
-        var self = this.SelfType(scope.Owner.BoundSymbol!);
+        var self = this.SelfType(owner ?? scope.Owner.BoundSymbol!);
         var name = clause.Left as IdentifierNameKoto;
         BindingSymbol? qualifier = null;
         if (clause.Left is MemberAccessKoto member)
@@ -220,6 +220,17 @@ public sealed partial class Binding
             }
 
             CollectShape(shape, path);
+            if (path.Declaration.Parent is SyntaxFormKoto syntax && TryConditionalBlock(syntax, out var block))
+            {
+                for (var j = 0; j < block.Items.Count; j++)
+                {
+                    if (block.Items[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint })
+                    {
+                        Collect(constraint, path);
+                    }
+                }
+            }
+
             for (var j = 0; j < shape.Ancestors.Count; j++)
             {
                 CollectShape(shape.Ancestors[j].Contract!, path);

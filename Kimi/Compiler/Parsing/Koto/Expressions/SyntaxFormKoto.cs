@@ -34,6 +34,15 @@ public sealed class SyntaxFormKoto : ExpressionKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
+        if (this.kind == KotoKind.ConditionalConformance && this.children is [IsKoto, _, CodeBlockKoto block])
+        {
+            this.children[0].WriteTo(ref builder);
+            builder.Append(" when ");
+            this.children[1].WriteTo(ref builder);
+            block.WriteIndentedTo(ref builder);
+            return;
+        }
+
         builder.Append(this.prefix);
         for (var i = 0; i < this.children.Length; i++)
         {

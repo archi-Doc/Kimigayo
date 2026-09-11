@@ -120,6 +120,8 @@ public sealed class BindingSymbol
 
     internal BindingScope Scope { get; set; }
 
+    internal SyntaxFormKoto? ConditionalDeclaration { get; set; }
+
     internal BindingSymbol? Next { get; set; }
 
     internal bool Resolving { get; set; }

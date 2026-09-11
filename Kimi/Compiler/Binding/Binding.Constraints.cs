@@ -153,13 +153,19 @@ public sealed partial class Binding
     private void BindConstraints()
     {
         this.bindingConstraintTypes = true;
-        // Ordinary premises precede associated projections, regardless of written clause order.
-        for (var pass = 0; pass < 2; pass++)
+        // Collect ordinary facts, then complete outer Type/Contract constraints, then P.
+        // Dependent function constraints may use P only through their declaration scope.
+        for (var pass = 0; pass < 3; pass++)
         {
+            if (pass == 2)
+            {
+                this.BindConditionalDeclarations(true);
+            }
+
             for (var i = 0; i < this.nodes.Count; i++)
             {
                 var node = this.nodes[i];
-                if (node is FunctionKoto function)
+                if (node is FunctionKoto function && pass != 1)
                 {
                     for (var j = 0; j < function.TypeConstraints.Count; j++)
                     {
@@ -170,7 +176,7 @@ public sealed partial class Binding
                         }
                     }
                 }
-                else if (node is DeclarationContainerKoto container)
+                else if (node is DeclarationContainerKoto container && pass != 2)
                 {
                     if (container is ContractKoto && (container.GenericParameterNodes.Count != 0 || container.OriginNames.Count != 0))
                     {
@@ -196,7 +202,7 @@ public sealed partial class Binding
             }
         }
 
-        this.BindConditionalDeclarations(true);
+        this.BindConditionalAssociatedSpecifications();
 
         for (var i = 0; i < this.nodes.Count; i++)
         {
@@ -405,7 +411,7 @@ public sealed partial class Binding
         return subject is null || (constraint.RequiredType is not null && required is null) ? this.InternConstraint(new(ConstraintKind.Error)) : this.InternConstraint(new(constraint.Kind, subject, required, constraint.Contract, constraint.Mask));
     }
 
-    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null)
+    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null)
     {
         var result = ConstraintProof.Proven;
         for (var i = 0; i < clauses.Count; i++)
@@ -423,6 +429,11 @@ public sealed partial class Binding
             }
 
             var substituted = this.SubstituteConstraint(bound, binder, arguments);
+            if (declaringType?.Symbol?.Declaration is { } owner)
+            {
+                substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);
+            }
+
             result = CombineProof(result, this.ProveConstraint(self is null ? substituted : this.ContractConstraint(substituted, scope, self), scope), true);
         }
 

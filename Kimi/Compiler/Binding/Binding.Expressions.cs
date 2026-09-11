@@ -113,6 +113,12 @@ public sealed partial class Binding
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
         scope = this.NodeScope(node, scope);
+        if (node is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationContainerKoto } conditionalDeclaration && TryConditionalBlock(conditionalDeclaration, out var implementationBlock))
+        {
+            this.BindNode(implementationBlock, scope);
+            return Complete(node, BoundType.Unit);
+        }
+
         if (node.BindingState == BindingState.Resolved)
         {
             return node.BoundType;
@@ -431,6 +437,22 @@ public sealed partial class Binding
     private BoundType? BindReference(Koto node, BindingSymbol symbol, BindingScope scope)
     {
         node.BoundSymbol = symbol;
+        if (symbol.ConditionalDeclaration is not null)
+        {
+            var conditionalType = node is MemberAccessKoto conditionalMember && this.memberSelections.TryGetValue(conditionalMember, out var memberSelection) ? memberSelection.DeclaringType : null;
+            var proof = this.ProveMemberConditions(symbol, conditionalType, scope);
+            if (proof != ConstraintProof.Proven)
+            {
+                this.RequireConstraint(node, proof, this.capabilityMode);
+                return null;
+            }
+
+            if (symbol.Kind == BindingSymbolKind.Function)
+            {
+                return Fail(node, BindingFailure.Unsupported, true);
+            }
+        }
+
         if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage && scope.Function != symbol.Scope.Function)
         {
             return Fail(node, BindingFailure.Capture);

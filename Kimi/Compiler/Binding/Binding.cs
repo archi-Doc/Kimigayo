@@ -100,6 +100,7 @@ public sealed partial class Binding
                 }
 
                 symbol.Next = null;
+                symbol.ConditionalDeclaration = null;
                 symbol.Resolving = false;
                 symbol.HeaderBound = false;
             }
@@ -459,6 +460,10 @@ public sealed partial class Binding
 
             switch (node)
             {
+                case SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationContainerKoto }:
+                    this.Scope = binding.GetScope(node, this.Scope);
+                    this.Scope.ConformancePath = null;
+                    break;
                 case DeclarationContainerKoto container:
                     if (!container.IsRoot)
                     {
@@ -475,7 +480,9 @@ public sealed partial class Binding
                 case FunctionKoto function:
                     if (!function.IsGenerated && !function.IsAnonymous)
                     {
-                        binding.Declare(node, function.Name, BindingSymbolKind.Function, node, this.Scope);
+                        var memberScope = this.Scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? this.Scope.Parent! : this.Scope;
+                        var symbol = binding.Declare(node, function.Name, BindingSymbolKind.Function, node, memberScope);
+                        symbol.ConditionalDeclaration = ReferenceEquals(memberScope, this.Scope) ? null : (SyntaxFormKoto)this.Scope.Owner;
                     }
 
                     this.Scope = binding.GetScope(node, this.Scope);
@@ -493,7 +500,11 @@ public sealed partial class Binding
                     binding.IndexAccessor(accessor, this.Scope);
                     break;
                 case CodeBlockKoto:
-                    if (node.Parent is not FunctionKoto)
+                    if (node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance })
+                    {
+                        binding.scopes[node] = this.Scope;
+                    }
+                    else if (node.Parent is not FunctionKoto)
                     {
                         this.Scope = binding.GetScope(node, this.Scope);
                     }
@@ -504,7 +515,9 @@ public sealed partial class Binding
 
                     break;
                 case VariableKoto variable:
-                    var variableSymbol = binding.Declare(node, variable.NameKoto.IdentifierName, node is PropertyKoto ? BindingSymbolKind.Property : BindingSymbolKind.Local, node, this.Scope);
+                    var declarationScope = node is PropertyKoto && this.Scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? this.Scope.Parent! : this.Scope;
+                    var variableSymbol = binding.Declare(node, variable.NameKoto.IdentifierName, node is PropertyKoto ? BindingSymbolKind.Property : BindingSymbolKind.Local, node, declarationScope);
+                    variableSymbol.ConditionalDeclaration = ReferenceEquals(declarationScope, this.Scope) ? null : (SyntaxFormKoto)this.Scope.Owner;
                     if (node is PropertyKoto property)
                     {
                         var bound = variableSymbol.Property ??= new(variableSymbol);

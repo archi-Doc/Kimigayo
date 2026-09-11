@@ -610,6 +610,13 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                     while (reader.TryConsume(TokenKind.Comma));
                     var span = SourceSpan.FromBounds(constraint.Span.Start, conditions.Count == 0 ? constraint.Span.End : conditions[^1].Span.End);
                     var premises = new SyntaxFormKoto(ref reader, conditions.Count == 0 ? span : SourceSpan.FromBounds(conditions[0].Span.Start, span.End), KotoKind.ConditionalConformance, string.Empty, conditions.ToArray());
+                    if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                    {
+                        var block = Parser.ParseDeclarationDirectiveBody(ref reader, this);
+                        this.AddLast(new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(span.Start, block.Span.End), KotoKind.ConditionalConformance, string.Empty, [constraint, premises, block], separator: " when "));
+                        continue;
+                    }
+
                     this.AddLast(new SyntaxFormKoto(ref reader, span, KotoKind.ConditionalConformance, string.Empty, [constraint, premises], separator: " when "));
                     reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
                     continue;

@@ -169,9 +169,8 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (container is not (StructKoto or EnumKoto) || syntax.Operands.Length != 2 || syntax.Operands[0] is not IsKoto target || syntax.Operands[1] is not SyntaxFormKoto premises)
+            if (container is not (StructKoto or EnumKoto) || syntax.Operands.Length is not (2 or 3) || syntax.Operands[0] is not IsKoto target || syntax.Operands[1] is not SyntaxFormKoto premises)
             {
-                // Implementation blocks have a separate namespace/scope implementation milestone.
                 Fail(syntax, BindingFailure.InvalidConstraint);
                 continue;
             }
@@ -180,6 +179,7 @@ public sealed partial class Binding
             var scope = this.GetScope(syntax, outer);
             if (!conditions)
             {
+                this.ValidateConditionalBlock(syntax, container);
                 this.BindConstraint(target, outer);
                 if (container.GenericParameterNodes.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract, Contract: { Contract: not null } contract } || premises.Operands.Length == 0)
                 {

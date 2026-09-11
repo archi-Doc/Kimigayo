@@ -17,7 +17,7 @@ public class BindingBenchmark
     public int Calls { get; set; }
 
     /// <summary>Gets or sets the declaration and call workload.</summary>
-    [Params("Calls", "Origins", "Capabilities", "Contracts", "Properties", "ConditionalConformances")]
+    [Params("Calls", "Origins", "Capabilities", "Contracts", "Properties", "ConditionalConformances", "ConditionalMembers")]
     public string Scenario { get; set; } = "Calls";
 
     /// <summary>Creates and validates syntax and warms reusable semantic storage.</summary>
@@ -31,11 +31,16 @@ public class BindingBenchmark
             "Contracts" => "contract Source\n    associate Element\n    func read(self: ref/Self) -> Element\ncontract IntSource: Source\n    Self.Source.Element is i32\nstruct SourceImpl\n    Self is IntSource\n    public func read(self: ref/Self) -> i32 => 1\nfunc use<T>(value: ref/T)\n    T is IntSource\n",
             "Properties" => "contract C\n    property item: i32 has get, set\n    property view: ref/i32 has get\n",
             "ConditionalConformances" => "contract A\n    associate E is i32\n    property item: E has get\ncontract B: A\n",
+            "ConditionalMembers" => "contract A\n    associate E\n    func f(x: i32) -> i32\ncontract B: A\n",
             _ => "func identity<T>(value: T) -> T => value\n",
         });
         for (var i = 0; i < this.Calls; i++)
         {
-            if (this.Scenario == "ConditionalConformances")
+            if (this.Scenario == "ConditionalMembers")
+            {
+                source.Append("struct S").Append(i).Append("<T>\n    Self is B when T is Copy\n        associate A.E is i32\n        public func f(x: i32) -> i32 => x\n        public func f<U>(x: U) -> i32 => 2\nfunc use").Append(i).Append("() -> i32 => S").Append(i).Append("<i32>.f(S").Append(i).Append("<i32>.f(1))\n");
+            }
+            else if (this.Scenario == "ConditionalConformances")
             {
                 source.Append("struct S").Append(i).Append("<T>\n    Self is A when T is Copy\n    Self is B when T is Owned\n    public var item: i32\n");
             }

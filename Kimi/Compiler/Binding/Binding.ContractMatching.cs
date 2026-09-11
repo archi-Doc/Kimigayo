@@ -203,6 +203,25 @@ public sealed partial class Binding
             }
 
             var container = (DeclarationContainerKoto)conformance.Type.Declaration;
+            if (conformance.Declaration.Parent is SyntaxFormKoto syntax && TryConditionalBlock(syntax, out var block))
+            {
+                for (var i = 0; i < block.Items.Count; i++)
+                {
+                    if (block.Items[i] is IsKoto { IsAssociatedConstraint: true } clause)
+                    {
+                        if (clause.BindingState == BindingState.Invalid)
+                        {
+                            return Invalid(BindingFailure.InvalidAssociatedType);
+                        }
+
+                        if (clause.BoundConstraint is { } constraint && shape.AssociatedStorage.Contains(clause.BoundSymbol!))
+                        {
+                            proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, scope, self), scope), true);
+                        }
+                    }
+                }
+            }
+
             for (var i = 0; i < container.Members.Count; i++)
             {
                 if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && shape.AssociatedStorage.Contains(clause.BoundSymbol!))
@@ -388,7 +407,7 @@ public sealed partial class Binding
                 arguments[i] = requirement.BoundSymbol!.Schema!.GenericSlots[i].Symbol.WholeType;
             }
 
-            var proof = ConstraintProof.Proven;
+            var proof = this.ProveMemberConditions(implementation.BoundSymbol!, self, premises);
             for (var i = 0; i < implementation.TypeConstraints.Count; i++)
             {
                 if (((IsKoto)implementation.TypeConstraints[i]).BoundConstraint is not { } constraint)

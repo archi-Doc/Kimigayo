@@ -68,7 +68,7 @@ public sealed partial class Binding
     private void BindPropertyHeader(BoundProperty property)
     {
         var syntax = property.Declaration;
-        var scope = property.Symbol.Scope;
+        var scope = this.DeclarationScope(property.Symbol);
         this.BindAccessorReceiver(property.Getter);
         this.BindAccessorReceiver(property.Setter);
         var getterScope = property.Getter.Declaration is { } get ? this.scopes[get] : scope;
@@ -243,7 +243,7 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        var scope = property.Symbol.Scope;
+        var scope = this.DeclarationScope(property.Symbol);
         if (property.IsStored && scope.Owner is StructKoto)
         {
             var semantics = accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq;

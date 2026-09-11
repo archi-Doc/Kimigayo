@@ -110,15 +110,21 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType? CallType(BoundType type, FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs)
+    private BoundType? CallType(BoundType type, FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType = null)
     {
+        if (this.MemberType(type, declaringType) is not { } memberType)
+        {
+            return null;
+        }
+
+        type = memberType;
         if (self is not null)
         {
             type = this.ContractType(type, scope, self);
         }
 
         var result = this.Substitute(type, function, arguments);
-        if (result is not null && self is not null)
+        if (result is not null && (self is not null || declaringType is not null))
         {
             result = this.ContractType(result, scope, self);
             result = this.SubstituteStoredOrigins(result, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, function.Parameters.Count));

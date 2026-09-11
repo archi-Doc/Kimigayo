@@ -23,7 +23,8 @@ public sealed partial class Binding
         }
 
         this.BindHeader(implementation.Symbol);
-        var proof = this.ValidateAccessor(requirement.Getter);
+        var proof = this.ProveMemberConditions(implementation.Symbol, selection.DeclaringType, scope);
+        proof = CombineProof(proof, this.ValidateAccessor(requirement.Getter), true);
         proof = CombineProof(proof, this.ValidateAccessor(requirement.Setter), true);
         proof = CombineProof(proof, this.ValidateAccessor(implementation.Getter), true);
         proof = CombineProof(proof, this.ValidateAccessor(implementation.Setter), true);

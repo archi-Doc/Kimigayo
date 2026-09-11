@@ -403,7 +403,7 @@ public sealed partial class Binding
     {
         for (var n = 0; n < this.nodes.Count; n++)
         {
-            if (this.nodes[n] is not (FunctionKoto or DeclarationContainerKoto))
+            if (this.nodes[n] is not (FunctionKoto or DeclarationContainerKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationContainerKoto }))
             {
                 continue;
             }
