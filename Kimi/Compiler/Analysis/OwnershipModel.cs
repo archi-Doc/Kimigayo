@@ -23,6 +23,7 @@ public enum OwnershipPlaceKind : byte
     Temporary,
     Result,
     Payload,
+    Subject,
 }
 
 public enum PlaceUseKind : byte
@@ -60,6 +61,11 @@ public enum OwnershipOperationKind : byte
     Unsupported,
     PayloadPlacement,
     CompleteConstruction,
+    InitializeSubject,
+    DecomposeCase,
+    AcquirePattern,
+    MatchDispatch,
+    PatternTest,
 }
 
 public enum PlacementKind : byte
@@ -87,6 +93,7 @@ public enum CleanupReason : byte
     Return,
     LoopTransfer,
     Replacement,
+    SelectionResult,
 }
 
 public enum OwnershipEdgeKind : byte
@@ -97,6 +104,8 @@ public enum OwnershipEdgeKind : byte
     Back,
     Return,
     Abort,
+    MatchArm,
+    Unmatched,
 }
 
 public enum OwnershipFailure : byte
@@ -114,8 +123,8 @@ public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Ko
 {
     public PlaceUseKind Use => this.Kind switch
     {
-        OwnershipOperationKind.Read => PlaceUseKind.Read,
-        OwnershipOperationKind.Consume => PlaceUseKind.Consume,
+        OwnershipOperationKind.Read or OwnershipOperationKind.PatternTest => PlaceUseKind.Read,
+        OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => PlaceUseKind.Consume,
         OwnershipOperationKind.Write or OwnershipOperationKind.PayloadPlacement => PlaceUseKind.Write,
         OwnershipOperationKind.Borrow => PlaceUseKind.Borrow,
         _ => PlaceUseKind.None,
@@ -131,6 +140,12 @@ public readonly record struct OwnershipCleanupPlan(int Edge, int Start, int Coun
 
 /// <summary>One construction's N-to-one responsibility transfer; payload Places are contiguous.</summary>
 public readonly record struct OwnershipConstructionPlan(int Place, BoundEnumCase Case, int PayloadStart, int PayloadCount);
+
+/// <summary>Analysis fans out to every arm; runtime selection tests these Patterns in source order.</summary>
+public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject, int Result, int ArmStart, int ArmCount);
+
+/// <summary>One successful Pattern test and its ownership decomposition before the arm body.</summary>
+public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int DecompositionStart, int DecompositionCount);
 
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1);
 
@@ -150,6 +165,9 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipCleanupStep> CleanupStepStorage = new();
     internal readonly List<OwnershipCleanupPlan> CleanupPlanStorage = new();
     internal readonly List<OwnershipConstructionPlan> ConstructionStorage = new();
+    internal readonly List<OwnershipConstructionPlan> DecompositionStorage = new();
+    internal readonly List<OwnershipMatchPlan> MatchStorage = new();
+    internal readonly List<OwnershipMatchArmPlan> MatchArmStorage = new();
     internal readonly List<OwnershipIssue> IssueStorage = new();
     internal readonly Dictionary<BindingSymbol, int> SymbolPlaces = new(ReferenceEqualityComparer.Instance);
     internal bool[] Reachable = [];
@@ -177,6 +195,12 @@ public sealed partial class OwnershipBody
 
     public IReadOnlyList<OwnershipConstructionPlan> Constructions => this.ConstructionStorage;
 
+    public IReadOnlyList<OwnershipConstructionPlan> Decompositions => this.DecompositionStorage;
+
+    public IReadOnlyList<OwnershipMatchPlan> Matches => this.MatchStorage;
+
+    public IReadOnlyList<OwnershipMatchArmPlan> MatchArms => this.MatchArmStorage;
+
     public IReadOnlyList<OwnershipIssue> Issues => this.IssueStorage;
 
     public bool IsVerified { get; internal set; }
@@ -199,6 +223,9 @@ public sealed partial class OwnershipBody
         this.CleanupStepStorage.Clear();
         this.CleanupPlanStorage.Clear();
         this.ConstructionStorage.Clear();
+        this.DecompositionStorage.Clear();
+        this.MatchStorage.Clear();
+        this.MatchArmStorage.Clear();
         this.IssueStorage.Clear();
         this.SymbolPlaces.Clear();
     }

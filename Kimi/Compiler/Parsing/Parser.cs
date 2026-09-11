@@ -3092,6 +3092,9 @@ ProcessPrefix:
 
             arguments.Add(ParseRequiredExpression(ref reader));
 
+            // A block-valued argument (including match) can leave a dedent separator
+            // before the next comma. Keep the comma mandatory for the argument list.
+            reader.TrySkipSeparatorsTo(TokenKind.Comma);
             tokenKind = reader.CurrentTokenKind;
             if (tokenKind == TokenKind.Comma)
             {

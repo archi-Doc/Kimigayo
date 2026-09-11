@@ -176,13 +176,13 @@ public class PatternBindingTest
     }
 
     [Fact]
-    public void BindingSuccessStillCannotCertifyMatchOwnership()
+    public void ValueOrZeroNowPassesMatchOwnershipVerification()
     {
         var c = Parse("func valueOrZero(value: Option<i32>) -> i32\n    return match value\n        .Some(let n) => n\n        .None => 0");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var result = c.Ownership.Analyze();
-        Assert.False(result.IsVerified);
-        Assert.True(result.UnsupportedCount > 0);
+        Assert.True(result.IsVerified);
+        Assert.Equal(0, result.UnsupportedCount);
     }
 
     [Theory]

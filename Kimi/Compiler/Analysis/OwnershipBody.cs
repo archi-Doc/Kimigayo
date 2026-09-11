@@ -236,6 +236,7 @@ public sealed partial class OwnershipBody
         switch (operation.Kind)
         {
             case OwnershipOperationKind.PayloadPlacement:
+            case OwnershipOperationKind.InitializeSubject:
                 if (operation.Input >= 0)
                 {
                     this.CheckInitialized(operation, operation.Input, this.State(operation.Input));
@@ -251,7 +252,7 @@ public sealed partial class OwnershipBody
                 }
 
                 break;
-            case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver:
+            case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.DecomposeCase or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.PatternTest:
                 this.CheckInitialized(operation, operation.Place, state);
                 break;
             case OwnershipOperationKind.Cleanup:
@@ -304,6 +305,15 @@ public sealed partial class OwnershipBody
 
         switch (operation.Kind)
         {
+            case OwnershipOperationKind.DecomposeCase:
+                var decomposition = this.DecompositionStorage[this.OperationSteps[index]];
+                this.Move(place);
+                for (var i = 0; i < decomposition.PayloadCount; i++)
+                {
+                    this.Initialize(decomposition.PayloadStart + i);
+                }
+
+                break;
             case OwnershipOperationKind.CompleteConstruction:
                 var construction = this.ConstructionStorage[this.OperationSteps[index]];
                 for (var i = 0; i < construction.PayloadCount; i++)
@@ -324,6 +334,7 @@ public sealed partial class OwnershipBody
                 this.Initialize(place);
                 break;
             case OwnershipOperationKind.Consume:
+            case OwnershipOperationKind.AcquirePattern:
                 if (operation.Acquisition == AcquisitionKind.Move)
                 {
                     this.Move(place);
@@ -343,6 +354,7 @@ public sealed partial class OwnershipBody
                 break;
             case OwnershipOperationKind.Write:
             case OwnershipOperationKind.PayloadPlacement:
+            case OwnershipOperationKind.InitializeSubject:
                 if (operation.Input >= 0)
                 {
                     this.Move(operation.Input);

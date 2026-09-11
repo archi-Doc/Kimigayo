@@ -135,6 +135,9 @@ public sealed partial class OwnershipAnalysis
         this.temporaries.Clear();
         this.loops.Clear();
         this.arguments.Clear();
+        this.selections.Clear();
+        this.activeDecompositions.Clear();
+        this.patternStorageNeeded.Clear();
         this.registrationSequence = 0;
         this.current = -1;
         this.Emit(OwnershipOperationKind.Entry, function);
@@ -221,7 +224,10 @@ public sealed partial class OwnershipAnalysis
 
     private int Temporary(Koto source, bool produce = true)
     {
-        var id = this.Place(source, source.BoundType, OwnershipPlaceKind.Temporary, true);
+        // A non-completing block/selection may reserve a result destination, but
+        // Never has no produced value and no temporary cleanup registration.
+        var kind = !produce && ReferenceEquals(source.BoundType, BoundType.Never) ? OwnershipPlaceKind.Result : OwnershipPlaceKind.Temporary;
+        var id = this.Place(source, source.BoundType, kind, true);
         if (produce)
         {
             this.Emit(OwnershipOperationKind.Produce, source, id);
@@ -357,6 +363,8 @@ public sealed partial class OwnershipAnalysis
                 return this.Binary(binary);
             case IfKoto conditional:
                 return this.Conditional(conditional);
+            case MatchKoto match:
+                return this.Match(match);
             case WhileKoto loop:
                 this.Loop(loop);
                 return this.Temporary(node);
@@ -365,6 +373,12 @@ public sealed partial class OwnershipAnalysis
             case CodeBlockKoto block:
                 var blockValue = this.Temporary(node, false);
                 this.Block(block, blockValue);
+                if (!this.flow!.Nodes[block].CanCompleteNormally)
+                {
+                    this.current = -1;
+                    return -1;
+                }
+
                 if (!block.HasTrailingExpression)
                 {
                     this.Emit(OwnershipOperationKind.Produce, block, blockValue);
@@ -501,6 +515,12 @@ public sealed partial class OwnershipAnalysis
 
         this.Connect(this.current, join);
         this.current = join;
+        if (!this.flow!.Nodes[conditional].CanCompleteNormally)
+        {
+            this.current = -1;
+            return -1;
+        }
+
         return this.RegisterTemporary(output);
     }
 
@@ -603,6 +623,12 @@ public sealed partial class OwnershipAnalysis
             this.Emit(OwnershipOperationKind.Deliver, jump, this.resultPlace);
             this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         }
+        else if (jump is YieldKoto && this.TryGetSelection(target, out var selection))
+        {
+            this.Emit(OwnershipOperationKind.Write, jump, selection.Result, value);
+            this.Cleanup(selection.Temporaries, selection.Locals, jump, CleanupReason.SelectionResult);
+            this.Connect(this.current, selection.Join);
+        }
         else
         {
             if (jump.Expression is not null)
@@ -645,9 +671,14 @@ public sealed partial class OwnershipAnalysis
         {
             var registration = temporary >= tempStart && (local < localStart || this.temporaries[temporary].Sequence > this.locals[local].Sequence)
                 ? this.temporaries[temporary--] : this.locals[local--];
-            var operation = this.Emit(OwnershipOperationKind.Cleanup, source, registration.Place);
-            this.body.OperationSteps[operation] = this.body.CleanupStepStorage.Count;
-            this.body.CleanupStepStorage.Add(new(operation, registration.Place, registration.Source, registration.Place < 0 ? CleanupAction.Unsupported : CleanupAction.Skip));
+            if (registration.IsSubject)
+            {
+                this.CleanupSubject(registration.Place, source);
+            }
+            else
+            {
+                this.CleanupPlace(registration.Place, registration.Source, source);
+            }
         }
 
         var count = this.body.CleanupStepStorage.Count - start;
@@ -655,6 +686,13 @@ public sealed partial class OwnershipAnalysis
         {
             this.body.CleanupPlanStorage.Add(new(edge < this.body.EdgeStorage.Count ? edge : -1, start, count, reason));
         }
+    }
+
+    private void CleanupPlace(int place, Koto declaration, Koto source)
+    {
+        var operation = this.Emit(OwnershipOperationKind.Cleanup, source, place);
+        this.body.OperationSteps[operation] = this.body.CleanupStepStorage.Count;
+        this.body.CleanupStepStorage.Add(new(operation, place, declaration, place < 0 ? CleanupAction.Unsupported : CleanupAction.Skip));
     }
 
     private int New(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None)
@@ -693,7 +731,7 @@ public sealed partial class OwnershipAnalysis
         this.body.IssueStorage.Add(new(source, OwnershipFailure.Unsupported));
     }
 
-    private readonly record struct Registration(int Place, Koto Source, int Sequence);
+    private readonly record struct Registration(int Place, Koto Source, int Sequence, bool IsSubject = false);
 
     private readonly record struct LoopFrame(Koto Source, int Head, int Exit, int Locals, int Temporaries);
 

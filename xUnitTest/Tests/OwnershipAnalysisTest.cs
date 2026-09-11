@@ -229,14 +229,20 @@ public class OwnershipAnalysisTest
             Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         }
 
+        var phases = new long[16];
+        var phase = 0;
         var allocated = AllocationMeasurement.Measure(
             () =>
             {
+                var before = GC.GetAllocatedBytesForCurrentThread();
                 c.Bind();
+                phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
+                before = GC.GetAllocatedBytesForCurrentThread();
                 c.Ownership.Analyze();
+                phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
             },
             4);
-        Assert.Equal(0, allocated);
+        Assert.True(allocated == 0, $"Allocated {allocated}; warm and measured Binding/Ownership phases: {string.Join(',', phases)}");
     }
 
     [Theory]

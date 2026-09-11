@@ -2,7 +2,7 @@
 
 Implementation coverage is informative and does not weaken language rules or Compiler requirements. All implementation-progress notes are centralized here; `planned` in a retained snapshot means implementation work, not permission to use an undesigned feature.
 
-Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding; C.24 records whole-Place ownership and cleanup analysis; C.25 records the Core declaration catalog and native backend candidate; C.26 records enum construction Binding and Core.Option/Result declarations; C.27 records enum ownership; C.28 records positional Pattern Binding and match coverage. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
+Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding; C.24 records whole-Place ownership and cleanup analysis; C.25 records the Core declaration catalog and native backend candidate; C.26 records enum construction Binding and Core.Option/Result declarations; C.27 records enum ownership; C.28 records positional Pattern Binding and match coverage; C.29 records owned match acquisition and cleanup. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
 
 ### C.1. Coverage summary
 
@@ -21,7 +21,7 @@ This table defines the recorded status of each compiler stage. The notes below d
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | Ordinary Copy / Move acquisition | N/A; no dedicated Move operator | Partial; committed calls and local write permissions | Partial; whole Places, initialization, Move and cleanup, C.24 | Not implemented | Not implemented |
 | Control flow and `defer` | Implemented | Partial; see C.16 | Partial | Not implemented | Not implemented |
-| Enum Cases, Patterns, and guards | Implemented | Partial; Case declarations/construction, C.26; owned-path Patterns and body scopes, C.28; guards pending | Partial; construction ownership, C.27; Pattern coverage and result flow, C.28; match ownership pending | Not implemented | Not implemented |
+| Enum Cases, Patterns, and guards | Implemented | Partial; Case declarations/construction, C.26; owned-path Patterns and body scopes, C.28; guards pending | Partial; construction ownership, C.27; Pattern coverage and result flow, C.28; concrete owned match ownership, C.29 | Not implemented | Not implemented |
 | Explicit full specialization and generic code sharing | Source specialization syntax | Not implemented | Not implemented | Not implemented | Not implemented |
 | Core.Option / Result | Implemented declaration/construction syntax | Partial; canonical declarations and construction, C.26 | Partial; payload capability classification | Not implemented | Not implemented |
 | Abort | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
@@ -29,7 +29,7 @@ This table defines the recorded status of each compiler stage. The notes below d
 
 Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
 
-The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.21 and C.23–C.28 record Binding and analysis coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
+The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.21 and C.23–C.29 record Binding and analysis coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
 
 ### C.2. Builds, modules, and source artifacts
 
@@ -51,7 +51,7 @@ The Parser builds fixed-array Types `[N of T]`, unevaluated length expressions, 
 
 The front end parses recursive Semantics prefixes, distinct grouped and Tuple Types, and independently annotated inner Origins, preserving them through writing and source serialization. Type resolution, layout validation, subtyping, ownership rules, and most Type semantics remain unimplemented; parsing a nested Type or storage-borrow target does not establish its semantic legality. Syntax-level control-flow facts retain supported nested pointer Types and leave unresolved reference/Origin checks pending.
 
-Enum bodies, payload Cases, inferred Case expressions, dedicated Patterns, and guards are parsed and preserved. Qualified Case expressions retain ordinary member/invocation syntax. C.26 implements Case Symbols, construction Binding and payload acquisition plans; C.27 adds construction cleanup and whole-enum ownership. C.28 adds positional Pattern Binding and coverage diagnostics. Selected payload extraction, partial Moves, guard Loans and match ownership remain unimplemented. Extension declarations are diagnosed as unsupported.
+Enum bodies, payload Cases, inferred Case expressions, dedicated Patterns, and guards are parsed and preserved. Qualified Case expressions retain ordinary member/invocation syntax. C.26 implements Case Symbols, construction Binding and payload acquisition plans; C.27 adds construction cleanup and whole-enum ownership. C.28 adds positional Pattern Binding and coverage diagnostics; C.29 adds selected concrete owned payload acquisition and residual cleanup within match. General Partial Move, guard/shared-reading Loans and execution remain unimplemented. Extension declarations are diagnosed as unsupported.
 
 Split-structure integration, generated-source integration, and layout generation are planned, not implemented.
 
@@ -459,3 +459,21 @@ Rebinding clears Pattern tables, removes obsolete Pattern scope/Symbol keys, ret
 See the [implementation decisions and verification boundary](doc/Changes/2026-09-11%20Match%20Binding.md). Match subject acquisition, selected payload extraction, partial Moves, match cleanup, guard/shared-reading Loans and executable lowering remain pending. The valueOrZero regression binds successfully but ownership reports Unsupported and IsVerified = false.
 
 Validation: 88 new cases; all 2,394 tests pass in Debug and Release, including strict allocation checks. Release Benchmark build: zero warnings and errors.
+
+### C.29. Owned match acquisition, decomposition and cleanup (2026-09-11)
+
+Ownership analysis now verifies unguarded matches over supported concrete primitive/string/enum Types. It consumes committed BoundMatch Patterns and coverage without reinterpreting Pattern syntax as expressions. Subject evaluation occurs once; ordinary source acquisition is followed by InitializeSubject transfer from the acquired temporary, with no extra Copy/Move or replacement cleanup. Even a literal-only or Wildcard match consumes a non-Copy original Place. Never Subjects execute their control flow without creating Subject or arm storage.
+
+The verification CFG dispatches the same intact Subject state to every arm, including warning-covered arms. Only permitted nonexhaustive matches have an unmatched edge. PatternTest retains the entire bound Pattern and performs no acquisition. Its successful continuation may DecomposeCase, the inverse state operation of CompleteConstruction: check the whole parent, retire its whole responsibility and initialize contiguous payload Places. Both Copy and Move binding paths decompose as needed. Dedicated AcquirePattern operations initialize body locals left to right using Binding's acquisition, without intermediate temporary values or local replacement plans.
+
+Case decomposition is confined to each selected arm. Remaining payloads are cleaned before the arm joins other Cases; outer Places continue through the existing four-lane fixed-point solver. No active-Case lattice or ordinary payload projection syntax is added. Subject, payload and binding lifetimes use Declare so loops cannot retain stale Moved/Assigned history. The recursive Type gate still refuses unsupported storage, inline cycles and expanding recursive generics.
+
+Subject cleanup occupies one registration in the existing scope order. At each cleanup emission, active decomposition indexes expand it recursively in reverse payload order, independently of when projections were created. Moved parents and acquired children become Skip through existing state rules; body bindings and locals clean before the Subject. Match results and outward transfer operands are secured first. Selection result frames route yield by exact resolved target, including nested matches; if-targeted yield remains unsupported. Ordinary return and supported while transfers use the same cleanup machinery. Abort has no cleanup continuation, and a permitted unmatched path destroys the whole Subject and returns Unit. Subject-evaluation intermediates keep their enclosing expression lifetime.
+
+The subset explicitly rejects Deferred acquisition, Shared access, implicit dereference, generic matched Types, reference/Origin-bearing storage and Tuples before creating match Places. Negative tests use programs that complete Binding but fail ownership, while guard/shared-structural programs remain blocked earlier by Binding. valueOrZero now passes both Binding and ownership. This is not an executable-emission certificate.
+
+Match and decomposition metadata use value records in retained lists; decomposition shares the existing construction-plan shape and solver transitions. A reverse preorder pass finds paths needing binding storage. The active decomposition index is populated only when match needs it, avoiding per-Place indexing in ordinary whole-value bodies. Every analysis resets the new side tables, and Bind invalidates ownership. A narrow Parser fix accepts dedent separators before a required argument comma, allowing match before another argument without accepting omitted commas. Non-completing Block/if expressions now reserve only non-value result markers and do not register Never temporaries.
+
+See the [implementation decisions and validation record](doc/Changes/2026-09-11%20Match%20Ownership.md). Guard candidates and Loans, borrowed decomposition, generic match effects, Tuple/general Partial Move, type-level drop glue, finite layout validation, LLVM and runtime execution remain pending.
+
+Validation: 59 new cases; 2,453 tests pass in Debug and Release. Warm match analysis and Bind plus both analyses assert zero allocated bytes at 1, 32 and 128 nested-enum matches. The existing ownership allocation test now reports per-phase measurements on failure without changing its operations, iteration count or zero threshold; intermittent 7,856-byte Debug failures during investigation are recorded in the change note. MatchOwnershipBenchmark supplies analysis-only and combined workloads. Release Benchmark build: zero warnings and errors; no throughput comparison is claimed.
