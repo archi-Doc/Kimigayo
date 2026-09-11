@@ -2,7 +2,7 @@
 
 Implementation coverage is informative and does not weaken language rules or Compiler requirements. All implementation-progress notes are centralized here; `planned` in a retained snapshot means implementation work, not permission to use an undesigned feature.
 
-Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding; C.24 records whole-Place ownership and cleanup analysis; C.25 records the Core declaration catalog and native backend candidate. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
+Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding; C.24 records whole-Place ownership and cleanup analysis; C.25 records the Core declaration catalog and native backend candidate; C.26 records enum construction Binding and Core.Option/Result declarations. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
 
 ### C.1. Coverage summary
 
@@ -21,14 +21,15 @@ This table defines the recorded status of each compiler stage. The notes below d
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | Ordinary Copy / Move acquisition | N/A; no dedicated Move operator | Partial; committed calls and local write permissions | Partial; whole Places, initialization, Move and cleanup, C.24 | Not implemented | Not implemented |
 | Control flow and `defer` | Implemented | Partial; see C.16 | Partial | Not implemented | Not implemented |
-| Enum Cases, Patterns, and guards | Implemented | Partial; Case payload Types only, C.19 | Partial; payload capabilities, C.19 | Not implemented | Not implemented |
+| Enum Cases, Patterns, and guards | Implemented | Partial; Case declarations/construction, C.26; Pattern Binding pending | Partial; payload capabilities, C.19; acquisition plans, C.26 | Not implemented | Not implemented |
 | Explicit full specialization and generic code sharing | Source specialization syntax | Not implemented | Not implemented | Not implemented | Not implemented |
-| Option / Result / Abort | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
+| Core.Option / Result | Implemented declaration/construction syntax | Partial; canonical declarations and construction, C.26 | Partial; payload capability classification | Not implemented | Not implemented |
+| Abort | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
 | Core.writeLine and executable startup | Implemented source forms | Partial; canonical function and startup selection, C.23 | Partial; startup contracts, whole-Place ownership and cleanup, C.23–C.24 | Not implemented | Not implemented |
 
 Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
 
-The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.21 and C.23–C.24 record Binding and analysis coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
+The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.21 and C.23–C.26 record Binding and analysis coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
 
 ### C.2. Builds, modules, and source artifacts
 
@@ -50,7 +51,7 @@ The Parser builds fixed-array Types `[N of T]`, unevaluated length expressions, 
 
 The front end parses recursive Semantics prefixes, distinct grouped and Tuple Types, and independently annotated inner Origins, preserving them through writing and source serialization. Type resolution, layout validation, subtyping, ownership rules, and most Type semantics remain unimplemented; parsing a nested Type or storage-borrow target does not establish its semantic legality. Syntax-level control-flow facts retain supported nested pointer Types and leave unresolved reference/Origin checks pending.
 
-Enum bodies, payload Cases, inferred Case expressions, dedicated Patterns, and guards are parsed and preserved. Qualified Case expressions retain ordinary member/invocation syntax for later Binding. Case Symbols, acquisition, payload Move Paths, guard Loans, and coverage diagnostics remain unimplemented. Extension declarations are diagnosed as unsupported.
+Enum bodies, payload Cases, inferred Case expressions, dedicated Patterns, and guards are parsed and preserved. Qualified Case expressions retain ordinary member/invocation syntax. C.26 implements Case Symbols, construction Binding and payload acquisition plans. Payload Move Paths, construction cleanup, guard Loans, and coverage diagnostics remain unimplemented. Extension declarations are diagnosed as unsupported.
 
 Split-structure integration, generated-source integration, and layout generation are planned, not implemented.
 
@@ -404,3 +405,27 @@ The build script verifies native COFF members and emitted test IR, links and run
 This is a tested candidate, not an adopted backend package: adopted is false and packageVersion is unset. Assembly/unwind review, further register and OS unwind validation, representative Kimigayo-generated modules, and a frozen package version/hash remain adoption work. The compiler still has no LLVM emitter, complete generation gate, runtime execution or native supply catalog. These tests do not establish Hello world execution or a throughput improvement.
 
 Validation: all 2,164 tests pass in Debug and Release, including the new zero-byte allocation assertion. The Release Benchmark build completes with zero warnings and errors. Native O0/O2 tests pass with LLVM 22.1.8 and Windows SDK 10.0.26100.0.
+
+### C.26. Enum Case construction and Core.Option/Result (2026-09-11)
+
+Enum Cases now have stable Symbols in the ordinary Value namespace, an owning enum identity, declaration ordinal and shared payload syntax. Ordinary declaration registration rejects Case/Case and Case/function collisions. Storage preparation also validates enum member restrictions and payload API access; it reuses the payload Types already consumed by Copy/Owned and Origin analysis. Repeated enum headers are rejected even when they agree. Declaration ordinals do not specify runtime discriminants or layout.
+
+Qualified construction uses ordinary member lookup; leading-dot construction uses the known expected enum Type. Both paths commit BoundEnumConstruction metadata instead of synthesizing functions or reparsing expressions. Binding checks payload presence, positional arity, complete Type arguments, literal fitting, input adaptation, declaration Constraints and Origin substitution. A selected Case failure does not retry a function. Bare payload constructors, parentheses on empty Cases, named arguments, instance-side Case access and missing expected Types are rejected. Reserved generic paths such as ::Core.Option<i32> retain Core identity through local shadowing.
+
+Typed inputs establish generic arguments before unfitted literals and contextual Cases. This static processing order does not change runtime evaluation order: retained payload operations stay in source order and identify each original expression. Origin inference uses expected Types and actual payload dependencies; a payload-free Case cannot invent missing Origin arguments. Borrow/Reborrow operations remain distinct from value acquisition. Copy/Move/CopyOrMove plans use the existing proof engine after declaration validation, without changing the acquired Type.
+
+Ordinary call candidates can probe leading-dot arguments, including nested Cases, without committing a losing candidate's construction. Existing applicability and Best Candidate storage is reused. Expected-Type construction is committed after selection; an ambiguous call publishes no speculative Case plan. Type inference, storage substitution, Origin matching, literal fitting and argument adaptation share their existing implementations with enum construction.
+
+Core now supplies public Option<T> and Result<T,E> declarations through the same enum pipeline. The canonical syntax is built once without freezing target preparation, then reuses its Symbols and nodes on every Bind. Shape validation checks generic slots, Case order/payloads and Option's conditional Copy clause. Result receives no additional Copy opt-in. Six catalog entries are now present; twelve remain Missing and IsCompleteLibrary remains false. Same-spelled user enums retain ordinary identities.
+
+These examples now pass Binding:
+
+```kimi
+let present: Option<i32> = .Some(42)
+let absent = Option<i32>.None
+let failed: Result<i32, string> = .Err("missing")
+```
+
+Binding success is not an enum ownership or emission certificate. Every Bind invalidates old construction availability while reusing retained plan arrays. Payload Move Paths, cleanup during interrupted construction, Pattern/guard verification, aggregate layout and executable lowering remain pending; ownership analysis still rejects unsupported enum bodies. The next increment is enum construction CFG, payload initialization and cleanup, then whole-enum Move/destruction.
+
+Validation: 74 enum tests cover resolution, arity, access, generic inference, Origin contracts, adaptations, Core mutation, candidate order, pending candidates, rebinding and the ownership boundary. All 2,240 tests pass in Debug and Release. New warm construction and contextual-input workloads assert zero allocated bytes. Allocation tests now share a dedicated measuring thread with test-runner ExecutionContext flow suppressed, after intermittent small allocations appeared in both old and new tests on runner threads. The measured operations, iteration counts and strict zero-byte assertions are preserved; two helper tests verify allocation detection and exception propagation. No compiler instrumentation or relaxed allocation threshold remains. BindingBenchmark adds an Enums workload at 32/512 constructions; no throughput result is claimed.

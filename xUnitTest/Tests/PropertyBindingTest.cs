@@ -364,13 +364,7 @@ public class PropertyBindingTest
             c.Binding.Bind(BindingMode.Final);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 8; i++)
-        {
-            c.Binding.Bind(BindingMode.Final);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Equal(0, allocated);
     }
@@ -417,13 +411,7 @@ public class PropertyBindingTest
             c.Binding.Bind(BindingMode.Final);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 8; i++)
-        {
-            c.Binding.Bind(BindingMode.Final);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.Same(property, Property(c, "S0", "item"));
         Assert.Same(mapping, Conformance(c, "S0", "C"));

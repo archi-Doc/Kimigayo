@@ -15,13 +15,13 @@ public class CoreCatalogTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
         Assert.False(c.Core.IsCompleteLibrary);
-        Assert.Equal(4, c.Core.ValidatedDeclarationCount);
+        Assert.Equal(6, c.Core.ValidatedDeclarationCount);
         Assert.Equal(18, c.Core.Declarations.Length);
         for (var i = 0; i < c.Core.Declarations.Length; i++)
         {
             var entry = c.Core.Declarations[i];
             Assert.Equal(i, (int)entry.Id);
-            if ((int)entry.Id < 4)
+            if ((int)entry.Id < 6)
             {
                 Assert.Equal(CoreDeclarationState.Validated, entry.State);
                 Assert.Same(entry.Symbol, c.Core.GetSymbol(entry.Id));
@@ -55,9 +55,9 @@ public class CoreCatalogTest
     public void MissingCatalogEntriesDoNotCreateLookupCandidates()
     {
         var c = Compilation.CreateForTest();
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(x: ::Core.Option<i32>) => ()");
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(x: ::Core.Array<i32>) => ()");
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(c.Core.GetSymbol(CoreDeclarationId.Option));
+        Assert.Null(c.Core.GetSymbol(CoreDeclarationId.Array));
     }
 
     [Fact]
@@ -72,14 +72,11 @@ public class CoreCatalogTest
         }
 
         var copy = c.Core.Copy;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 8; i++)
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Bind();
             _ = c.Core.IsCompleteLibrary;
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        }));
         Assert.Same(copy, c.Core.Copy);
     }
 }

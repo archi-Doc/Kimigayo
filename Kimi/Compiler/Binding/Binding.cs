@@ -33,6 +33,8 @@ public sealed partial class Binding
         this.TypeSystem = new BindingControlFlowTypes();
         this.Core = new(compilation);
         this.symbols.Add(this.Core.WriteLine.Declaration, this.Core.WriteLine);
+        this.symbols.Add(this.Core.Option.Declaration, this.Core.Option);
+        this.symbols.Add(this.Core.Result.Declaration, this.Core.Result);
     }
 
     /// <summary>Gets the latest pass summary. Results are replaced by the next Bind.</summary>
@@ -80,6 +82,11 @@ public sealed partial class Binding
             this.ResetStartup();
             this.compilation.InvalidateOwnership();
             this.receiverOperations.Clear();
+            foreach (var construction in this.enumConstructions.Values)
+            {
+                construction.IsValid = false;
+            }
+
             this.nodes.Clear();
             this.aliases.Clear();
             this.obligations.Clear();
@@ -123,6 +130,11 @@ public sealed partial class Binding
 
             this.scopes[this.Core.Kotonoha.RootKoto] = this.Core.Scope;
             this.indexer.Scope = this.Core.Scope;
+            // These declarations use ordinary indexing, schemas, storage and constraints.
+            this.Core.Scope.Types.Remove("Option");
+            this.Core.Scope.Types.Remove("Result");
+            this.indexer.Visit(this.Core.Option.Declaration);
+            this.indexer.Visit(this.Core.Result.Declaration);
             this.indexer.Visit(this.Core.WriteLine.Declaration);
             this.BindSchemas();
             this.PrepareContracts();
@@ -145,6 +157,8 @@ public sealed partial class Binding
             this.ValidateConstraintEnvironments();
             this.BindNode(this.compilation.Kotonoha.RootKoto, this.rootScope);
             this.BindNode(this.Core.WriteLine.Declaration, this.scopes[this.Core.WriteLine.Declaration]);
+            this.BindNode(this.Core.Option.Declaration, this.Core.Scope);
+            this.BindNode(this.Core.Result.Declaration, this.Core.Scope);
             this.ClearCapabilityResults();
             this.ValidateCopyDeclarations(mode);
             this.ValidateProperties(mode);
@@ -153,6 +167,7 @@ public sealed partial class Binding
             this.ValidateConformances(mode, true);
             this.ValidateConstraintUses(mode);
             this.ClearCapabilityResults();
+            this.CompleteEnumAcquisitions();
             this.Result = this.Check(mode);
             return this.Result;
         }
@@ -479,6 +494,11 @@ public sealed partial class Binding
 
             switch (node)
             {
+                case SyntaxFormKoto { Akind: KotoKind.EnumCase, Parent: EnumKoto } enumeration when TryEnumPayload(enumeration, out _) && enumeration.Operands[0] is IdentifierNameKoto caseName:
+                    var caseSymbol = binding.Declare(node, caseName.IdentifierName, BindingSymbolKind.EnumCase, node, this.Scope);
+                    caseSymbol.EnumCase ??= new(caseSymbol, this.Scope.Owner.BoundSymbol!);
+                    caseSymbol.EnumCase.Owner = this.Scope.Owner.BoundSymbol!;
+                    break;
                 case SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationContainerKoto }:
                     this.Scope = binding.GetScope(node, this.Scope);
                     this.Scope.ConformancePath = null;

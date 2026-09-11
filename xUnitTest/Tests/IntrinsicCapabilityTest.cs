@@ -392,13 +392,7 @@ public class IntrinsicCapabilityTest
             Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 8; i++)
-        {
-            c.Binding.Bind(BindingMode.Final);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 
     private static Compilation Parse(string source)

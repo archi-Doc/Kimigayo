@@ -191,6 +191,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     {
         if (this.hasBindingHeader)
         {
+            // An enum is a closed declaration, even when repeated headers agree.
+            this.HasIncompatibleBindingHeader |= this is EnumKoto;
             var count = genericArguments?.Count ?? 0;
             var originCount = origins?.Count ?? 0;
             var same = count == this.GenericParameterNodes.Count && originCount == this.OriginNames.Count;
@@ -737,6 +739,11 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             tokenKind);
         var state = reader.TakeContext();
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span);
+        if ((tokenKind == TokenKind.Enum || container is EnumKoto) && container.TokenKind != tokenKind)
+        {
+            container.HasIncompatibleBindingHeader = true;
+        }
+
         container.AddHeader(declaration.GenericArguments, declaration.Origins);
         container.SetBases(declaration.Bases);
 

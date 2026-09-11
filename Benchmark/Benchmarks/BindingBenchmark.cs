@@ -17,7 +17,7 @@ public class BindingBenchmark
     public int Calls { get; set; }
 
     /// <summary>Gets or sets the declaration and call workload.</summary>
-    [Params("Calls", "Origins", "Capabilities", "Contracts", "Properties", "ConditionalConformances", "ConditionalMembers", "InheritedReceivers")]
+    [Params("Calls", "Origins", "Capabilities", "Contracts", "Properties", "ConditionalConformances", "ConditionalMembers", "InheritedReceivers", "Enums")]
     public string Scenario { get; set; } = "Calls";
 
     /// <summary>Creates and validates syntax and warms reusable semantic storage.</summary>
@@ -27,6 +27,7 @@ public class BindingBenchmark
         var source = new StringBuilder(this.Scenario switch
         {
             "Origins" => "struct View<T> origin a, b\n    let first: ref/T from a\n    let second: ref/T from b\n",
+            "Enums" => "enum Entry<T>\n    Value(T, string)\nfunc accept(value: Option<Entry<i32>>) => ()\n",
             "Capabilities" => "struct Box<T>\n    Self is Copy when T is Copy\n    let value: T\nvar input: Box<i32>\nfunc identity<T>(value: T) -> T\n    T is Copy and Owned\n    return value\n",
             "Contracts" => "contract Source\n    associate Element\n    func read(self: ref/Self) -> Element\ncontract IntSource: Source\n    Self.Source.Element is i32\nstruct SourceImpl\n    Self is IntSource\n    public func read(self: ref/Self) -> i32 => 1\nfunc use<T>(value: ref/T)\n    T is IntSource\n",
             "Properties" => "contract C\n    property item: i32 has get, set\n    property view: ref/i32 has get\n",
@@ -37,7 +38,11 @@ public class BindingBenchmark
         });
         for (var i = 0; i < this.Calls; i++)
         {
-            if (this.Scenario == "InheritedReceivers")
+            if (this.Scenario == "Enums")
+            {
+                source.Append("accept(.Some(Entry<i32>.Value(").Append(i).Append(", \"x\")))\n");
+            }
+            else if (this.Scenario == "InheritedReceivers")
             {
                 source.Append("struct D").Append(i).Append("<T>: Base<T>\n    Self is C when T is Copy\n    public func read(self: ref/Self) -> i32 => self.item\nfunc use").Append(i).Append("(x: ref/D").Append(i).Append("<i32>) -> i32 => D").Append(i).Append("<i32>.f(x.read())\n");
             }

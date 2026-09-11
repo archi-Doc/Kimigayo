@@ -96,7 +96,7 @@ public sealed class BoundCall
 
 public sealed partial class Binding
 {
-    private BindingSymbol? Member(MemberAccessKoto member, BindingScope scope)
+    private BindingSymbol? Member(MemberAccessKoto member, BindingScope scope, BoundType? expected = null)
     {
         if (member.Right is not IdentifierNameKoto right)
         {
@@ -118,7 +118,7 @@ public sealed partial class Binding
         {
             if (qualifier.Type is not null)
             {
-                if (this.BindType(member.Left, scope) is not { } qualifiedType)
+                if ((qualifier.Declaration is EnumKoto ? this.EnumQualifierType(member.Left, qualifier, scope, expected) : this.BindType(member.Left, scope)) is not { } qualifiedType)
                 {
                     return null;
                 }
@@ -132,7 +132,7 @@ public sealed partial class Binding
             }
         }
 
-        var valuePossible = qualifierName is not IdentifierNameKoto leftName || this.Lookup(leftName.IdentifierName, scope, member.Left, false) is not null;
+        var valuePossible = this.MayBeValueQualifier(qualifierName, scope);
         if (valuePossible)
         {
             var receiverType = this.BindNode(member.Left, scope);
@@ -159,6 +159,19 @@ public sealed partial class Binding
         var selected = typeMember ?? valueMember;
         if (selected is not null)
         {
+            if (typeMember is not null && selected.EnumCase is null && qualifier?.Declaration is EnumKoto)
+            {
+                // Only Case construction may infer the enum qualifier's missing arguments.
+                var qualifiedType = this.BindTypeStructure(member.Left, scope, this.TypeContext(member.Left, scope));
+                if (qualifiedType is null || this.CompleteOrigins(qualifiedType, member.Left as TypeSemanticsKoto, member.Left, scope, this.TypeContext(member.Left, scope)) is not { } completeType)
+                {
+                    return null;
+                }
+
+                typeSelection = typeSelection with { DeclaringType = completeType };
+                Complete(member.Left, completeType);
+            }
+
             if (selected.Kind != BindingSymbolKind.Function && !this.Accessible(selected, scope, receiverType: typeMember is null ? member.Left.BoundType : null))
             {
                 Fail(member, BindingFailure.Access);
@@ -180,6 +193,32 @@ public sealed partial class Binding
         return selected;
     }
 
+    private bool MayBeValueQualifier(Koto node, BindingScope scope)
+    {
+        if (node is IdentifierNameKoto name)
+        {
+            return this.Lookup(name.IdentifierName, scope, node, false) is not null;
+        }
+
+        if (node is SyntaxFormKoto { Akind: KotoKind.RootName })
+        {
+            return false;
+        }
+
+        if (node is GenericsKoto generic)
+        {
+            return this.MayBeValueQualifier(generic.Identifier!, scope);
+        }
+
+        if (node is MemberAccessKoto member)
+        {
+            return this.MayBeValueQualifier(member.Left, scope) ||
+                (this.TypeName(member.Left, scope, false) is { } type && this.scopes.TryGetValue(type.Declaration, out var members) && member.Right is IdentifierNameKoto right && members.Values.ContainsKey(right.IdentifierName));
+        }
+
+        return true;
+    }
+
     private BoundType? BindCall(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
         var callee = call.Method;
@@ -196,7 +235,11 @@ public sealed partial class Binding
         }
         else if (callee is MemberAccessKoto member)
         {
-            group = this.Member(member, scope);
+            group = this.Member(member, scope, expected);
+        }
+        else if (callee is SyntaxFormKoto { Akind: KotoKind.InferredCase } inferred)
+        {
+            group = this.InferredCase(inferred, scope, expected);
         }
         else
         {
@@ -204,10 +247,23 @@ public sealed partial class Binding
             group = callee.BoundSymbol;
         }
 
+        if (group?.EnumCase is not null)
+        {
+            return generic is null && callee is MemberAccessKoto or SyntaxFormKoto { Akind: KotoKind.InferredCase }
+                ? this.BindEnumConstruction(call, callee, group, call, scope, expected)
+                : Fail(call, BindingFailure.NotCallable);
+        }
+
         var unknownArgument = false;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = call.ArgumentNodes[i];
+            if (NeedsEnumContext(argument))
+            {
+                unknownArgument |= !this.PrepareContextualEnumInputs(argument, scope);
+                continue;
+            }
+
             if (!IsUnfittedLiteral(argument) && this.BindNode(argument, scope) is null)
             {
                 unknownArgument = true;
@@ -390,6 +446,12 @@ public sealed partial class Binding
                 if (call.ArgumentNodes[i].BoundType is null)
                 {
                     this.RequireType(call.ArgumentNodes[i], scope, selectedOperations[i].ParameterType);
+                    if (call.ArgumentNodes[i].BindingState != BindingState.Resolved)
+                    {
+                        return Complete(call, null);
+                    }
+
+                    selectedOperations[i] = selectedOperations[i] with { SourceType = call.ArgumentNodes[i].BoundType };
                 }
             }
 
@@ -503,6 +565,7 @@ public sealed partial class Binding
         }
 
         var next = 0;
+        var contextualInputs = false;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var label = call.GetArgumentLabel(i);
@@ -535,6 +598,7 @@ public sealed partial class Binding
 
             used[slot] = true;
             mapping[i] = slot;
+            contextualInputs |= NeedsEnumContext(call.ArgumentNodes[i]);
             var type = function.Parameters[slot].Type.BoundType;
             if (type is null)
             {
@@ -582,59 +646,64 @@ public sealed partial class Binding
             operations[^1] = new(receiver, receiver.BoundType, requiredReceiver, kind, quality, receiverPath, receiverSlot);
         }
 
-        for (var i = 0; i < call.ArgumentNodes.Count; i++)
+        for (var pass = 0; pass < (contextualInputs ? 2 : 1); pass++)
         {
-            var argument = KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]);
-            var type = this.CallType(function.Parameters[mapping[i]].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType);
-            if (type is null)
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
-                // Default only otherwise unconstrained literals; all established inputs were processed above.
-                var literal = argument is NumberLiteralKoto number ? number : argument is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)argument).Operand as NumberLiteralKoto : null;
-                if (literal is null)
+                var argument = KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]);
+                if (contextualInputs && NeedsEnumContext(argument) != (pass == 1))
                 {
-                    return CandidateApplicability.Pending;
+                    continue;
                 }
 
-                if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, literal.IsInteger ? BoundType.I32 : BoundType.F64, argument))
+                var type = this.CallType(function.Parameters[mapping[i]].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType);
+                if (type is null)
+                {
+                    // Default only otherwise unconstrained literals; all established inputs were processed above.
+                    var literal = argument is NumberLiteralKoto number ? number : argument is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)argument).Operand as NumberLiteralKoto : null;
+                    if (literal is null)
+                    {
+                        return CandidateApplicability.Pending;
+                    }
+
+                    if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, literal.IsInteger ? BoundType.I32 : BoundType.F64, argument))
+                    {
+                        return CandidateApplicability.Inapplicable;
+                    }
+
+                    type = this.CallType(function.Parameters[mapping[i]].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType);
+                    if (type is null)
+                    {
+                        return CandidateApplicability.Pending;
+                    }
+                }
+
+                if (!this.FitsInputLiteral(argument, type))
                 {
                     return CandidateApplicability.Inapplicable;
                 }
 
-                type = this.CallType(function.Parameters[mapping[i]].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType);
-                if (type is null)
+                if (NeedsEnumContext(argument))
                 {
-                    return CandidateApplicability.Pending;
+                    var applicability = this.ProbeContextualEnum(argument, type, scope);
+                    if (applicability != CandidateApplicability.Applicable)
+                    {
+                        return applicability;
+                    }
+
+                    operations[i] = new(call.ArgumentNodes[i], type, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
+                    continue;
                 }
-            }
 
-            if (argument is NumberLiteralKoto numeric && !FitsLiteral(numeric, type, false, this.compilation.PointerWidth))
-            {
-                return CandidateApplicability.Inapplicable;
-            }
+                var quality = ArgumentAdaptation.Literal;
+                var kind = ArgumentOperationKind.Value;
+                if (argument.BoundType is { } actual && (!this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind) || !FitsType(adapted, type)))
+                {
+                    return CandidateApplicability.Inapplicable;
+                }
 
-            if (argument is PrefixMinusKoto { Operand: NumberLiteralKoto negative } && !FitsLiteral(negative, type, true, this.compilation.PointerWidth))
-            {
-                return CandidateApplicability.Inapplicable;
+                operations[i] = new(call.ArgumentNodes[i], argument.BoundType, type, kind, quality, ParameterIndex: mapping[i]);
             }
-
-            if (argument is PrefixPlusKoto { Operand: NumberLiteralKoto positive } && !FitsLiteral(positive, type, false, this.compilation.PointerWidth))
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            if (argument is NullLiteralKoto && type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe })
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            var quality = ArgumentAdaptation.Literal;
-            var kind = ArgumentOperationKind.Value;
-            if (argument.BoundType is { } actual && (!this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind) || !FitsType(adapted, type)))
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            operations[i] = new(call.ArgumentNodes[i], argument.BoundType, type, kind, quality, ParameterIndex: mapping[i]);
         }
 
         var result = function.BoundSymbol!.Type is { } resultPattern ? this.CallType(resultPattern, function, arguments, scope, self, origins, inputs, declaringType) : null;
@@ -678,7 +747,7 @@ public sealed partial class Binding
         }
     }
 
-    private bool Infer(BoundType pattern, BoundType actual, FunctionKoto function, BoundType?[] arguments, bool inferOrigins = false)
+    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false)
     {
         if (ReferenceEquals(actual, BoundType.Never))
         {

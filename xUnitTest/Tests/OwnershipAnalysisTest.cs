@@ -210,14 +210,13 @@ public class OwnershipAnalysisTest
             Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 4; i++)
-        {
-            c.Bind();
-            c.Ownership.Analyze();
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = AllocationMeasurement.Measure(
+            () =>
+            {
+                c.Bind();
+                c.Ownership.Analyze();
+            },
+            4);
         Assert.Equal(0, allocated);
     }
 

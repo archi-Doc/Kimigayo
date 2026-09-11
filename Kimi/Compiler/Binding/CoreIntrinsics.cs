@@ -62,6 +62,10 @@ public sealed class CoreIntrinsics
 
         this.WriteLine = this.CreateWriteLine();
         this.declarations[(int)CoreDeclarationId.WriteLine] = this.declarations[(int)CoreDeclarationId.WriteLine] with { Symbol = this.WriteLine };
+        // Parse the canonical declarations once; every Bind uses the ordinary enum pipeline.
+        this.CreateEnums();
+        this.declarations[(int)CoreDeclarationId.Option] = this.declarations[(int)CoreDeclarationId.Option] with { Symbol = this.Create(3, IntrinsicKind.None) };
+        this.declarations[(int)CoreDeclarationId.Result] = this.declarations[(int)CoreDeclarationId.Result] with { Symbol = this.Create(4, IntrinsicKind.None) };
         this.Restore();
     }
 
@@ -87,13 +91,17 @@ public sealed class CoreIntrinsics
 
     public BindingSymbol WriteLine { get; }
 
+    public BindingSymbol Option => this.declarations[(int)CoreDeclarationId.Option].Symbol!;
+
+    public BindingSymbol Result => this.declarations[(int)CoreDeclarationId.Result].Symbol!;
+
     internal BindingScope Scope { get; }
 
     internal bool IsValid
     {
         get
         {
-            var valid = this.Kotonoha.GeneratedFunction is null && this.Kotonoha.RootKoto.NestedContainers.Count == 3 &&
+            var valid = this.Kotonoha.GeneratedFunction is null && this.Kotonoha.RootKoto.NestedContainers.Count == 5 &&
                 this.Kotonoha.RootKoto.Members.Count == 1 && ReferenceEquals(this.Kotonoha.RootKoto.Members[0], this.WriteLine.Declaration);
             this.ValidatedDeclarationCount = 0;
             for (var i = 0; i < this.declarations.Length; i++)
@@ -102,7 +110,7 @@ public sealed class CoreIntrinsics
                 var state = CoreDeclarationState.Missing;
                 if (entry.Symbol is { } symbol)
                 {
-                    var matches = i < 3 ? this.Valid(symbol, i) : entry.Id == CoreDeclarationId.WriteLine && this.ValidWriteLine();
+                    var matches = i < 3 ? this.Valid(symbol, i) : entry.Id == CoreDeclarationId.WriteLine ? this.ValidWriteLine() : this.ValidEnum(symbol, entry.Id);
                     state = matches ? CoreDeclarationState.Validated : CoreDeclarationState.Invalid;
                     valid &= matches;
                     this.ValidatedDeclarationCount += matches ? 1 : 0;
@@ -141,6 +149,24 @@ public sealed class CoreIntrinsics
         return symbol;
     }
 
+    private void CreateEnums()
+    {
+        var source = new SourceDocument("compiler://Core/enums", "public enum Option<T>\n    Self is Copy when T is Copy\n    Some(T)\n    None\npublic enum Result<T, E>\n    Ok(T)\n    Err(E)");
+        var context = new CodeContext(this.Kotonoha, sourceDocument: source);
+        var tokenizer = new Tokenizer(context.DiagnosticCollection, source);
+        try
+        {
+            tokenizer.ReadAll();
+            var reader = new TokenReader(context, ref tokenizer);
+            // Compiler-owned, target-independent declarations must not freeze project inputs.
+            this.Kotonoha.RootKoto.Parse(ref reader);
+        }
+        finally
+        {
+            tokenizer.Dispose();
+        }
+    }
+
     private BindingSymbol CreateWriteLine()
     {
         // Build ordinary declaration syntax once. Its implementation identity, not a fake
@@ -161,6 +187,48 @@ public sealed class CoreIntrinsics
         {
             tokenizer.Dispose();
         }
+    }
+
+    private bool ValidEnum(BindingSymbol symbol, CoreDeclarationId id)
+    {
+        var option = id == CoreDeclarationId.Option;
+        var index = option ? 3 : 4;
+        if (id is not (CoreDeclarationId.Option or CoreDeclarationId.Result) ||
+            this.Kotonoha.RootKoto.NestedContainers.Count <= index || !ReferenceEquals(this.Kotonoha.RootKoto.NestedContainers[index], symbol.Declaration) ||
+            symbol.Intrinsic != IntrinsicKind.None || !ReferenceEquals(symbol.Scope, this.Scope) ||
+            symbol.Declaration is not EnumKoto { HasIncompatibleBindingHeader: false, Modifier: ModifierKind.Public, AttributeChain: null, Bases.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, ConstraintNodes.Count: 0 } declaration ||
+            declaration.Name != (option ? "Option" : "Result") || !ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto) ||
+            declaration.GenericParameterNodes.Count != (option ? 1 : 2) || declaration.Members.Count != (option ? 3 : 2))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < declaration.GenericParameterNodes.Count; i++)
+        {
+            if (declaration.GenericParameterNodes[i] is not GenericParameterKoto { SemanticsParameter: null, AttributeChain: null } parameter || parameter.Identifier != (i == 0 ? "T" : "E"))
+            {
+                return false;
+            }
+        }
+
+        if (option && (declaration.Members[0] is not SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, AttributeChain: null } conditional ||
+            conditional.Operands.Length != 2 || !CopyClause(conditional.Operands[0], "Self") ||
+            conditional.Operands[1] is not SyntaxFormKoto premises || premises.Operands.Length != 1 || !CopyClause(premises.Operands[0], "T")))
+        {
+            return false;
+        }
+
+        return Case(declaration.Members[option ? 1 : 0], option ? "Some" : "Ok", "T") &&
+            Case(declaration.Members[option ? 2 : 1], option ? "None" : "Err", option ? null : "E");
+
+        static bool CopyClause(Koto node, string subject)
+            => node is IsKoto { Left: IdentifierNameKoto left, Right: IdentifierNameKoto right, AttributeChain: null } && left.IdentifierName == subject && right.IdentifierName == "Copy";
+
+        static bool Case(Koto node, string name, string? type)
+            => node is SyntaxFormKoto { Akind: KotoKind.EnumCase, AttributeChain: null } form && form.Operands.Length == 2 &&
+            form.Operands[0] is IdentifierNameKoto identifier && identifier.IdentifierName == name &&
+            form.Operands[1] is SyntaxFormKoto payload && payload.Operands.Length == (type is null ? 0 : 1) &&
+            (type is null || (payload.Operands[0] is TypeSemanticsKoto { Type: null, SemanticsKind: SemanticsKind.Owner, OriginName: null, OriginExpression: null, OriginArguments: null } element && element.Identifier == type));
     }
 
     private bool ValidWriteLine()

@@ -219,13 +219,7 @@ public class ConstraintBindingTest
         }
 
         var proposition = ((IsKoto)Function(c, "f").TypeConstraints[0]).BoundConstraint;
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 8; i++)
-        {
-            c.Binding.Bind(BindingMode.Final);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
         Assert.Same(proposition, ((IsKoto)Function(c, "f").TypeConstraints[0]).BoundConstraint);
     }
 

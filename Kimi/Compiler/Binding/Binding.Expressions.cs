@@ -129,6 +129,19 @@ public sealed partial class Binding
         }
     }
 
+    private bool FitsInputLiteral(Koto node, BoundType type)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+        return node switch
+        {
+            NumberLiteralKoto number => LiteralCategoryMatches(number, type) && FitsLiteral(number, type, false, this.compilation.PointerWidth),
+            PrefixMinusKoto { Operand: NumberLiteralKoto number } => LiteralCategoryMatches(number, type) && FitsLiteral(number, type, true, this.compilation.PointerWidth),
+            PrefixPlusKoto { Operand: NumberLiteralKoto number } => LiteralCategoryMatches(number, type) && FitsLiteral(number, type, false, this.compilation.PointerWidth),
+            NullLiteralKoto => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Unsafe },
+            _ => true,
+        };
+    }
+
     private BoundType? Join(Koto node, BoundType? a, BoundType? b)
     {
         if (a is null || ReferenceEquals(a, BoundType.Never))
@@ -172,6 +185,7 @@ public sealed partial class Binding
         switch (node)
         {
             case SyntaxFormKoto { Akind: KotoKind.EnumCase } enumeration when TryEnumPayload(enumeration, out var payload):
+                enumeration.Operands[0].BoundSymbol = enumeration.BoundSymbol;
                 Complete(enumeration.Operands[0], BoundType.Unit);
                 Complete(payload, BoundType.Unit);
                 return Complete(enumeration, BoundType.Unit);
@@ -259,14 +273,17 @@ public sealed partial class Binding
                 return this.BindName(identifier, scope);
             case InvocationKoto invocation:
                 return this.BindCall(invocation, scope, expected);
+            case SyntaxFormKoto { Akind: KotoKind.InferredCase } inferred:
+                var inferredSymbol = this.InferredCase(inferred, scope, expected);
+                return inferredSymbol is null ? null : this.BindEnumConstruction(inferred, inferred, inferredSymbol, null, scope, expected);
             case MemberAccessKoto member:
-                var memberSymbol = this.Member(member, scope);
+                var memberSymbol = this.Member(member, scope, expected);
                 if (memberSymbol is null)
                 {
                     return Fail(member, BindingFailure.MissingName, true);
                 }
 
-                return this.BindReference(member, memberSymbol, scope);
+                return memberSymbol.EnumCase is not null ? this.BindEnumConstruction(member, member, memberSymbol, null, scope, expected) : this.BindReference(member, memberSymbol, scope);
             case ParenthesizedKoto parent:
                 return Complete(node, this.BindNode(parent.Operand, scope, expected));
             case UnaryKoto unary:

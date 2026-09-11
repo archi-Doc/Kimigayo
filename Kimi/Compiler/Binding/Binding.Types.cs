@@ -7,6 +7,16 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private static Koto UnwrapTypeSyntax(Koto node)
+    {
+        while (node is TypeSemanticsKoto { Type: { } inner, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null })
+        {
+            node = inner;
+        }
+
+        return node;
+    }
+
     private static string? TypeSpelling(Koto syntax) => syntax switch
     {
         IdentifierNameKoto identifier => identifier.IdentifierName,
@@ -149,18 +159,24 @@ public sealed partial class Binding
 
     private BindingSymbol? RootTypeName(Koto syntax, bool core)
     {
-        if (syntax is IdentifierNameKoto { IdentifierName: "Core" })
+        syntax = UnwrapTypeSyntax(syntax);
+        if (syntax is GenericsKoto generic)
+        {
+            return this.RootTypeName(generic.Identifier!, core);
+        }
+
+        if (TypeSpelling(syntax) == "Core")
         {
             return this.Core.Module;
         }
 
-        if (syntax is MemberAccessKoto member && this.RootTypeName(member.Left, false) is { } qualifier && ReferenceEquals(qualifier, this.Core.Module) && member.Right is IdentifierNameKoto right)
+        if (syntax is MemberAccessKoto member && this.RootTypeName(member.Left, false) is { } qualifier && ReferenceEquals(qualifier, this.Core.Module) && TypeSpelling(member.Right) is { } rightName)
         {
-            var target = this.Core.Scope.Types.GetValueOrDefault(right.IdentifierName);
+            var target = this.Core.Scope.Types.GetValueOrDefault(rightName);
             member.Left.BoundSymbol = qualifier;
             member.Left.BindingState = BindingState.Resolved;
-            right.BoundSymbol = target;
-            right.BindingState = target is null ? BindingState.Unresolved : BindingState.Resolved;
+            member.Right.BoundSymbol = target;
+            member.Right.BindingState = target is null ? BindingState.Unresolved : BindingState.Resolved;
             return target;
         }
 
@@ -204,6 +220,13 @@ public sealed partial class Binding
     {
         switch (syntax)
         {
+            case SyntaxFormKoto { Akind: KotoKind.RootName } root when root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto rootedGeneric:
+                var rootDefinition = this.RootTypeName(rootedGeneric.Identifier!, true);
+                var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);
+                root.BoundSymbol = rootDefinition;
+                root.Operands[0].BoundSymbol = rootDefinition;
+                Complete(root.Operands[0], rootType);
+                return rootType;
             case GenericParameterKoto:
                 return syntax.BoundSymbol?.WholeType;
             case LengthParameterKoto:
@@ -307,20 +330,7 @@ public sealed partial class Binding
                 return element is null ? null : this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
             case GenericsKoto generic:
                 var definition = this.TypeName(generic.Identifier!, scope, true);
-                if (definition?.Declaration is not DeclarationContainerKoto container || container is ContractKoto or GroupKoto)
-                {
-                    return Fail(syntax, BindingFailure.InvalidTypeFormation);
-                }
-
-                if (generic.TypeArguments.Count != container.GenericParameterNodes.Count)
-                {
-                    return Fail(syntax, BindingFailure.TypeMismatch);
-                }
-
-                generic.Identifier!.BoundSymbol = definition;
-                generic.Identifier.BindingState = BindingState.Resolved;
-                generic.BoundSymbol = definition;
-                return this.BindTypeList(syntax, generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, definition);
+                return this.BindConstructedType(generic, definition, scope, context);
         }
 
         var symbol = this.TypeName(syntax, scope, true);
@@ -396,6 +406,24 @@ public sealed partial class Binding
         return symbol.Declaration is DeclarationContainerKoto { GenericParameterNodes.Count: > 0 }
             ? Fail(syntax, BindingFailure.TypeMismatch)
             : symbol.Type;
+    }
+
+    private BoundType? BindConstructedType(GenericsKoto generic, BindingSymbol? definition, BindingScope scope, TypeBindingContext context)
+    {
+        if (definition?.Declaration is not DeclarationContainerKoto container || container is ContractKoto or GroupKoto)
+        {
+            return Fail(generic, BindingFailure.InvalidTypeFormation);
+        }
+
+        if (generic.TypeArguments.Count != container.GenericParameterNodes.Count)
+        {
+            return Fail(generic, BindingFailure.TypeMismatch);
+        }
+
+        generic.Identifier!.BoundSymbol = definition;
+        generic.Identifier.BindingState = BindingState.Resolved;
+        generic.BoundSymbol = definition;
+        return Complete(generic, this.BindTypeList(generic, generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, definition));
     }
 
     private BoundType? BindTypeList(Koto node, IReadOnlyList<Koto> elements, BindingScope scope, TypeBindingContext context, BoundTypeKind kind, BindingSymbol? symbol = null)

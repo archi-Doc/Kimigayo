@@ -270,14 +270,13 @@ public class StartupBindingTest
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         }
 
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 16; i++)
-        {
-            c.Bind();
-            c.Binding.CheckStartup(OutputKind.Application);
-        }
-
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        var allocated = AllocationMeasurement.Measure(
+            () =>
+            {
+                c.Bind();
+                c.Binding.CheckStartup(OutputKind.Application);
+            },
+            16);
         Assert.Equal(0, allocated);
     }
 

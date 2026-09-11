@@ -39,9 +39,14 @@ public sealed partial class Binding
             }
 
             shape.Types.Clear();
-            shape.CaseNames?.Clear();
+            shape.CaseCount = 0;
             shape.HasDestructor = false;
             var scope = this.scopes[container];
+            if (container is EnumKoto && (container.Bases.Count != 0 || container.NestedContainers.Count != 0 || (container.Modifier & ModifierKind.Open) != 0))
+            {
+                Fail(container, BindingFailure.InvalidTypeFormation);
+            }
+
             for (var i = 0; i < container.Bases.Count; i++)
             {
                 var syntax = container.Bases[i];
@@ -54,6 +59,11 @@ public sealed partial class Binding
                 var member = container.Members[i];
                 if (member is VariableKoto field && IsStoredVariable(field))
                 {
+                    if (container is EnumKoto)
+                    {
+                        Fail(member, BindingFailure.InvalidTypeFormation);
+                    }
+
                     var syntax = field.TypeKoto ?? field;
                     if (field.TypeKoto is not null)
                     {
@@ -68,27 +78,44 @@ public sealed partial class Binding
                 }
                 else if (TryEnumPayload(member, out var payload))
                 {
-                    var name = ((SyntaxFormKoto)member).Operands[0];
-                    if (name is IdentifierNameKoto identifier && !(shape.CaseNames ??= new(StringComparer.Ordinal)).Add(identifier.IdentifierName))
+                    if (member.AttributeChain is not null)
                     {
-                        Fail(member, BindingFailure.Duplicate);
-                        Fail(container, BindingFailure.Duplicate);
+                        Fail(member, BindingFailure.InvalidTypeFormation);
                     }
+
+                    if (member.BoundSymbol?.EnumCase is { } enumeration)
+                    {
+                        enumeration.Ordinal = shape.CaseCount;
+                    }
+
+                    shape.CaseCount++;
 
                     for (var j = 0; j < payload.Operands.Length; j++)
                     {
                         var syntax = payload.Operands[j];
                         this.BindType(syntax, scope);
                         shape.Types.Add(syntax);
+                        if (syntax.BoundType is { } type && !TypeAccessCovers(type, container.BoundSymbol!, container.BoundSymbol!))
+                        {
+                            Fail(member, BindingFailure.Access);
+                        }
                     }
                 }
                 else if (member is FunctionKoto { IsDestructor: true })
                 {
                     shape.HasDestructor = true;
+                    if (container is EnumKoto)
+                    {
+                        Fail(member, BindingFailure.InvalidTypeFormation);
+                    }
+                }
+                else if (container is EnumKoto && member is not (FunctionKoto { IsConstructor: false, IsDestructor: false } or IsKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance or KotoKind.AssociatedType }))
+                {
+                    Fail(member, BindingFailure.InvalidTypeFormation);
                 }
             }
 
-            if (container is EnumKoto && shape.CaseNames is not { Count: > 0 })
+            if (container is EnumKoto && shape.CaseCount == 0)
             {
                 Fail(container, BindingFailure.InvalidTypeFormation);
             }
@@ -177,7 +204,7 @@ public sealed partial class Binding
     {
         internal List<Koto> Types { get; } = new();
 
-        internal HashSet<string>? CaseNames { get; set; }
+        internal int CaseCount { get; set; }
 
         internal bool HasDestructor { get; set; }
     }
