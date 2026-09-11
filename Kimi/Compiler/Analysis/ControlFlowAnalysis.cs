@@ -54,7 +54,6 @@ public sealed class ControlFlowAnalysis
     private readonly HashSet<(Koto Node, string Message)> reported = new();
     private readonly Dictionary<IdentifierNameKoto, ControlFlowType?> names = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<DeferredBlockKoto, Flow> cleanups = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<ControlFlowResultSource, JumpKoto> resultTransfers = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<JumpKoto> blockedDeliveries = new(ReferenceEqualityComparer.Instance);
 
     // Direct children are collected into one shared stack-like buffer instead of iterator objects.
@@ -64,6 +63,14 @@ public sealed class ControlFlowAnalysis
     private readonly List<JumpKoto> arrivedTransfers = new();
     private readonly Stack<List<ControlFlowResultSource>> candidateLists = new();
     private readonly Dictionary<string, ControlFlowType> pointeeTypes = new(StringComparer.Ordinal);
+    private readonly List<ControlFlowNodeInfo> infoPool = new();
+    private readonly List<Boundary> boundaryPool = new();
+    private readonly List<HashSet<JumpKoto>> transferPool = new();
+    private readonly List<List<DeferredBlockKoto>> registrationPool = new();
+    private int infoCursor;
+    private int boundaryCursor;
+    private int transferCursor;
+    private int registrationCursor;
 
     private ControlFlowAnalysis(ControlFlowTypeSystem types)
     {
@@ -92,6 +99,25 @@ public sealed class ControlFlowAnalysis
         var analysis = new ControlFlowAnalysis(types ?? new SyntaxControlFlowTypes());
         analysis.Visit(root, true);
         return analysis;
+    }
+
+    /// <summary>Replaces these results using retained storage and the same type provider.</summary>
+    /// <param name="root">The current bound tree.</param>
+    public void Reanalyze(Koto root)
+    {
+        this.nodes.Clear();
+        this.targets.Clear();
+        this.boundaries.Clear();
+        this.issues.Clear();
+        this.pending.Clear();
+        this.reported.Clear();
+        this.names.Clear();
+        this.cleanups.Clear();
+        this.blockedDeliveries.Clear();
+        this.childBuffer.Clear();
+        this.arrivedTransfers.Clear();
+        this.infoCursor = this.boundaryCursor = this.transferCursor = this.registrationCursor = 0;
+        this.Visit(root, true);
     }
 
     /// <summary>Copies definite errors into their source diagnostic collections.</summary>
@@ -129,8 +155,9 @@ public sealed class ControlFlowAnalysis
         switch (condition.Parent)
         {
             case IfKoto selection:
-                foreach (var branch in selection.Branches)
+                for (var index = 0; index < selection.Branches.Count; index++)
                 {
+                    var branch = selection.Branches[index];
                     if (branch.Condition == condition)
                     {
                         return field;
@@ -168,6 +195,43 @@ public sealed class ControlFlowAnalysis
         {
             this.issues.Add(new(node, message));
         }
+    }
+
+    private ControlFlowNodeInfo RentInfo()
+    {
+        if (this.infoCursor == this.infoPool.Count)
+        {
+            this.infoPool.Add(new());
+        }
+
+        var info = this.infoPool[this.infoCursor++];
+        info.ExpressionType = info.TargetResultType = info.FunctionResultType = null;
+        info.IsResultRequiring = info.CanCompleteNormally = info.IsCompletionPending = false;
+        return info;
+    }
+
+    private HashSet<JumpKoto> RentTransfers()
+    {
+        if (this.transferCursor == this.transferPool.Count)
+        {
+            this.transferPool.Add(new(ReferenceEqualityComparer.Instance));
+        }
+
+        var set = this.transferPool[this.transferCursor++];
+        set.Clear();
+        return set;
+    }
+
+    private List<DeferredBlockKoto> RentRegistrations()
+    {
+        if (this.registrationCursor == this.registrationPool.Count)
+        {
+            this.registrationPool.Add(new());
+        }
+
+        var list = this.registrationPool[this.registrationCursor++];
+        list.Clear();
+        return list;
     }
 
     private Flow Visit(Koto node, bool reachable, ControlFlowType? expected = null)
@@ -252,7 +316,10 @@ public sealed class ControlFlowAnalysis
                 return new(true, null);
             case UnsafeBlockKoto unsafeBlock:
                 flow = this.Visit(unsafeBlock.Body, reachable);
-                this.nodes[unsafeBlock] = new() { CanCompleteNormally = flow.Normal, IsCompletionPending = flow.Pending };
+                var unsafeInfo = this.RentInfo();
+                unsafeInfo.CanCompleteNormally = flow.Normal;
+                unsafeInfo.IsCompletionPending = flow.Pending;
+                this.nodes[unsafeBlock] = unsafeInfo;
                 return flow with { Type = null };
             case IfKoto conditional:
                 flow = this.VisitIf(conditional, reachable, expected);
@@ -392,7 +459,7 @@ public sealed class ControlFlowAnalysis
 
         if (!this.nodes.TryGetValue(node, out var info))
         {
-            this.nodes[node] = info = new();
+            this.nodes[node] = info = this.RentInfo();
         }
 
         info.ExpressionType = this.boundaries.TryGetValue(node, out var resultBoundary) && resultBoundary.InvalidResult
@@ -452,7 +519,7 @@ public sealed class ControlFlowAnalysis
             {
                 if (item is DeferredBlockKoto deferred)
                 {
-                    (registrations ??= []).Add(deferred);
+                    (registrations ??= this.RentRegistrations()).Add(deferred);
                 }
 
                 var departing = flow.Transfers;
@@ -559,9 +626,19 @@ public sealed class ControlFlowAnalysis
 
     private Boundary Begin(Koto node, ControlFlowType? expected)
     {
-        var boundary = new Boundary(expected);
+        if (this.boundaryCursor == this.boundaryPool.Count)
+        {
+            this.boundaryPool.Add(new(null));
+        }
+
+        var boundary = this.boundaryPool[this.boundaryCursor++];
+        boundary.Expected = expected;
+        boundary.InferenceBlocked = boundary.InvalidResult = false;
+        boundary.Sources.Clear();
         this.boundaries[node] = boundary;
-        this.nodes[node] = new() { IsResultRequiring = KotoHelper.IsResultRequiringSelection(node) };
+        var info = this.RentInfo();
+        info.IsResultRequiring = KotoHelper.IsResultRequiringSelection(node);
+        this.nodes[node] = info;
         return boundary;
     }
 
@@ -589,15 +666,14 @@ public sealed class ControlFlowAnalysis
         var operand = jump.Expression is { } expression ? this.Visit(expression, reachable, boundary?.Expected) : new Flow(true, ControlFlowType.Unit);
         if (operand.Normal && jump is not ContinueKoto && boundary is not null)
         {
-            var source = new ControlFlowResultSource(jump.Expression ?? jump, operand.Type, reachable);
+            var source = new ControlFlowResultSource(jump.Expression ?? jump, operand.Type, reachable) { Transfer = jump };
             boundary.Sources.Add(source);
-            this.resultTransfers[source] = jump;
         }
 
         var transfers = operand.Transfers;
         if (operand.Normal)
         {
-            (transfers ??= new(ReferenceEqualityComparer.Instance)).Add(jump);
+            (transfers ??= this.RentTransfers()).Add(jump);
         }
 
         return new(false, ControlFlowType.Never, transfers, operand.Pending);
@@ -642,8 +718,9 @@ public sealed class ControlFlowAnalysis
         var normal = false;
         var pendingCompletion = false;
         HashSet<JumpKoto>? transfers = null;
-        foreach (var branch in node.Branches)
+        for (var index = 0; index < node.Branches.Count; index++)
         {
+            var branch = node.Branches[index];
             var condition = this.Visit(branch.Condition, reachable && next, ControlFlowType.Boolean);
             if (next)
             {
@@ -696,8 +773,9 @@ public sealed class ControlFlowAnalysis
         {
             var hasTrue = false;
             var hasFalse = false;
-            foreach (var arm in node.Arms)
+            for (var index = 0; index < node.Arms.Count; index++)
             {
+                var arm = node.Arms[index];
                 var literal = LiteralCondition(arm.Pattern);
                 hasTrue |= literal == true;
                 hasFalse |= literal == false;
@@ -719,8 +797,9 @@ public sealed class ControlFlowAnalysis
         var normal = exhaustive != true;
         var pendingCompletion = subject.Pending || exhaustive is null;
         var transfers = subject.Transfers;
-        foreach (var arm in node.Arms)
+        for (var index = 0; index < node.Arms.Count; index++)
         {
+            var arm = node.Arms[index];
             if (arm.Pattern is not IdentifierNameKoto { IdentifierName: "_" } && subject.Type is { } subjectType)
             {
                 this.CheckCompatibility(new(arm.Pattern, this.types.GetExpressionType(arm.Pattern), true), subjectType);
@@ -867,7 +946,7 @@ public sealed class ControlFlowAnalysis
         foreach (var source in boundary.Sources)
         {
             if (source.IsReachable &&
-                (!this.resultTransfers.TryGetValue(source, out var jump) || !this.blockedDeliveries.Contains(jump)))
+                (source.Transfer is not { } jump || !this.blockedDeliveries.Contains(jump)))
             {
                 candidates.Add(source);
                 allNull &= IsNullLiteral(source.Node);
@@ -971,8 +1050,9 @@ public sealed class ControlFlowAnalysis
         {
             if (parent is CodeBlockKoto block)
             {
-                foreach (var item in block.Items)
+                for (var index = 0; index < block.Items.Count; index++)
                 {
+                    var item = block.Items[index];
                     if (item == child)
                     {
                         break;
@@ -987,8 +1067,9 @@ public sealed class ControlFlowAnalysis
 
             if (parent is FunctionKoto function)
             {
-                foreach (var parameter in function.Parameters)
+                for (var index = 0; index < function.Parameters.Count; index++)
                 {
+                    var parameter = function.Parameters[index];
                     if (parameter.InternalName == name.IdentifierName)
                     {
                         return this.types.GetDeclaredType(parameter.Type);

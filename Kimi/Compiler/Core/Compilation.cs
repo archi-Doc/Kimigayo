@@ -88,6 +88,11 @@ public class Compilation
     /// <summary>Gets this compilation's compiler-owned Core requirement identities.</summary>
     public CoreIntrinsics Core => this.Binding.Core;
 
+    private OwnershipAnalysis? ownership;
+
+    /// <summary>Gets reusable ownership CFG analysis. Verification is separate from executable emission.</summary>
+    public OwnershipAnalysis Ownership => this.ownership ??= new(this);
+
     #endregion
 
     /// <summary>
@@ -245,6 +250,8 @@ public class Compilation
         this.RunMods();
         return this.Binding.Bind(BindingMode.Final);
     }
+
+    internal void InvalidateOwnership() => this.ownership?.Invalidate();
 
     internal bool TryGetIdentifier(ReadOnlySpan<char> text, [NotNullWhen(true)] out string? identifier)
         => this.identifiers.TryGetIdentifier(text, out identifier);

@@ -99,8 +99,9 @@ public static partial class KotoHelper
                     return true;
                 }
 
-                foreach (var branch in conditional.Branches)
+                for (var index = 0; index < conditional.Branches.Count; index++)
                 {
+                    var branch = conditional.Branches[index];
                     if (branch.Body.IsExpressionBody)
                     {
                         return true;
@@ -109,8 +110,9 @@ public static partial class KotoHelper
 
                 break;
             case MatchKoto match:
-                foreach (var arm in match.Arms)
+                for (var index = 0; index < match.Arms.Count; index++)
                 {
+                    var arm = match.Arms[index];
                     if (arm.Body is not CodeBlockKoto)
                     {
                         return true;
@@ -150,8 +152,9 @@ public static partial class KotoHelper
                     return true;
                 }
 
-                foreach (var branch in conditional.Branches)
+                for (var index = 0; index < conditional.Branches.Count; index++)
                 {
+                    var branch = conditional.Branches[index];
                     if (branch.Condition == expression)
                     {
                         return true;
@@ -165,8 +168,9 @@ public static partial class KotoHelper
                     return true;
                 }
 
-                foreach (var arm in match.Arms)
+                for (var index = 0; index < match.Arms.Count; index++)
                 {
+                    var arm = match.Arms[index];
                     if (arm.Body == expression)
                     {
                         return expression is not CodeBlockKoto;
@@ -238,8 +242,9 @@ public static partial class KotoHelper
                 return true;
             }
 
-            foreach (var branch in conditional.Branches)
+            for (var index = 0; index < conditional.Branches.Count; index++)
             {
+                var branch = conditional.Branches[index];
                 if (branch.Body == child)
                 {
                     return true;
@@ -248,8 +253,9 @@ public static partial class KotoHelper
         }
         else if (parent is MatchKoto match)
         {
-            foreach (var arm in match.Arms)
+            for (var index = 0; index < match.Arms.Count; index++)
             {
+                var arm = match.Arms[index];
                 if (arm.Body == child)
                 {
                     return true;

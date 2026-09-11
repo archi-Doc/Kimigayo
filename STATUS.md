@@ -2,7 +2,7 @@
 
 Implementation coverage is informative and does not weaken language rules or Compiler requirements. All implementation-progress notes are centralized here; `planned` in a retained snapshot means implementation work, not permission to use an undesigned feature.
 
-Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
+Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding; C.24 records whole-Place ownership and cleanup analysis. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
 
 ### C.1. Coverage summary
 
@@ -19,16 +19,16 @@ This table defines the recorded status of each compiler stage. The notes below d
 | Properties | Implemented | Partial; declarations/witnesses, C.21 | Partial declaration verification | Not implemented | Not implemented |
 | Constructors and aggregate destruction | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
-| Ordinary Copy / Move acquisition | N/A; no dedicated Move operator | Not implemented | Not implemented | Not implemented | Not implemented |
+| Ordinary Copy / Move acquisition | N/A; no dedicated Move operator | Partial; committed calls and local write permissions | Partial; whole Places, initialization, Move and cleanup, C.24 | Not implemented | Not implemented |
 | Control flow and `defer` | Implemented | Partial; see C.16 | Partial | Not implemented | Not implemented |
 | Enum Cases, Patterns, and guards | Implemented | Partial; Case payload Types only, C.19 | Partial; payload capabilities, C.19 | Not implemented | Not implemented |
 | Explicit full specialization and generic code sharing | Source specialization syntax | Not implemented | Not implemented | Not implemented | Not implemented |
 | Option / Result / Abort | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
-| Core.writeLine and executable startup | Implemented source forms | Partial; canonical function and startup selection, C.23 | Partial; startup contracts and direct-call flow, C.23 | Not implemented | Not implemented |
+| Core.writeLine and executable startup | Implemented source forms | Partial; canonical function and startup selection, C.23 | Partial; startup contracts, whole-Place ownership and cleanup, C.23–C.24 | Not implemented | Not implemented |
 
 Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
 
-The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.21 and C.23 record Binding coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
+The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.21 and C.23–C.24 record Binding and analysis coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
 
 ### C.2. Builds, modules, and source artifacts
 
@@ -374,3 +374,19 @@ The [change record and initial execution subset table](doc/Changes/2026-09-11%20
 StartupBindingTest adds 73 cases covering source selection, invalid signatures, duplicate mains, declaration environments, Library behavior, Core identity and call failures, reBind, control flow and configuration. Warm Compilation.Bind plus startup selection allocates zero bytes for both implicit and explicit bodies with 1, 32 and 512 calls. StartupBindingBenchmark provides separate selection and Bind-plus-selection workloads; no throughput result is claimed.
 
 Validation: all 2,100 tests pass in Debug and Release. The Release Benchmark build completes with zero warnings and errors.
+
+### C.24. Whole-Place ownership CFG and cleanup plans (2026-09-11)
+
+Compilation now owns reusable ownership analysis after final Binding. It consumes committed call/adaptation information and shares the existing control-flow transfer resolver. Project.Build requires ownership verification as well as startup and Binding checks. Unsupported or invalid bodies prevent verification; every Bind invalidates prior results. This remains front-end verification, not executable finalization.
+
+The initial subset covers primitive whole locals and parameters, owned string, temporary/result Places, direct owned-argument calls, scalar operations, simple comparisons, if/short-circuit/while control flow and ordinary return/loop transfers. Every supported Place use records Read, Consume, Write or Borrow. Borrow/Reborrow, defaults, captures, general Property/storage access, aggregates, partial Moves, defer execution, string concatenation and nonnumeric compound assignment remain unsupported. A non-Copy comparison view across complex RHS evaluation also requires later Loan support.
+
+The CFG solves must-initialized, may-initialized, may-moved and assignment-history facts to a fixed point. Local let first placement is checked here; Binding retains structural assignment restrictions. Generic CopyOrMove plans check subsequent uses at the definition and retain conditional acquisition without changing the result Type. RHS-first state determines initialization, replacement or conditional replacement, including non-Copy self-assignment.
+
+Edge cleanup plans retain Destroy/Skip/Conditional actions in execution order. Temporary Places include Static string literals. Scope cleanup preserves reverse declaration order independently of initialization time; parameters precede body bindings. Calls transfer acquired argument responsibility only at entry, and normal return secures the result before cleanup and delivery. Interrupted argument acquisition cleans earlier temporaries in the caller. Abort has no normal cleanup edge. These plans are reusable lowering inputs once remaining finalization requirements are implemented.
+
+ControlFlowAnalysis now supports reanalysis with pooled node/boundary records and reusable transfer/registration buffers. Ownership uses identity indexes, indexed adjacency/incoming edges and retained state/work buffers. The first solver retains a dense operation-by-Place byte matrix; large-body state compression is not implemented. Warm Bind plus both analyses allocates zero bytes for 1, 32 and 128 conditional string locals. OwnershipAnalysisBenchmark supplies analysis-only and combined workloads; no throughput improvement is claimed from allocation checks.
+
+See the [change record and subset boundary](doc/Changes/2026-09-11%20Ownership%20CFG.md). Loan/Origin/lifetime verification, partial storage, complete cleanup effects, the concrete generation gate, LLVM IR and runtime execution remain pending. No unsupported operation gains an emission certificate.
+
+Validation: 56 ownership cases were added and the old Binding-only let-reassignment expectation moved to CFG checking. All 2,155 tests pass through dotnet test in Debug and Release, including allocation assertions. The new retained-state workloads run separately from other test classes after overlapping allocation measurements showed intermittent failures; zero-byte assertions remain unchanged. Release Benchmark build: zero warnings and errors.

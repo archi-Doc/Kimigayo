@@ -23,6 +23,19 @@ public sealed partial class Binding
         return node.BoundSymbol?.Declaration is VariableKoto { VariableKind: VariableKind.Var };
     }
 
+    private static bool CanInitializeLocal(Koto node, BindingScope scope)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+        if (node.BoundSymbol is not { Kind: BindingSymbolKind.Local, Declaration: FieldKoto, Scope: var declarationScope })
+        {
+            return false;
+        }
+
+        // Source scopes deliberately have no function owner. Nested functions cannot assign
+        // these locals; CFG alone decides first placement for a local in its own body.
+        return ReferenceEquals(declarationScope.Function, scope.Function);
+    }
+
     private static bool IsUnfittedLiteral(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
@@ -650,7 +663,7 @@ public sealed partial class Binding
             return Complete(binary, null);
         }
 
-        if (assignment && !Writable(binary.Left))
+        if (assignment && !Writable(binary.Left) && !(kind == KotoKind.Equals && CanInitializeLocal(binary.Left, scope)))
         {
             return Fail(binary, BindingFailure.InvalidAssignment);
         }

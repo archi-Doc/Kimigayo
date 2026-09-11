@@ -78,6 +78,7 @@ public sealed partial class Binding
         {
             this.issues.Clear();
             this.ResetStartup();
+            this.compilation.InvalidateOwnership();
             this.receiverOperations.Clear();
             this.nodes.Clear();
             this.aliases.Clear();
@@ -170,6 +171,8 @@ public sealed partial class Binding
             issue.Node.AddDiagnostic(issue.Code);
         }
     }
+
+    internal BindingSymbol ParameterSymbol(FunctionKoto function, int index) => this.symbols[function.Parameters[index]];
 
     private static BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
     {

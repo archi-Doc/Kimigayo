@@ -24,7 +24,10 @@ public record ControlFlowType(string Name)
 /// <param name="Node">The operand or implicit result expression.</param>
 /// <param name="Type">Its known type, or null while Binding is pending.</param>
 /// <param name="IsReachable">Whether this source contributes to result inference.</param>
-public sealed record ControlFlowResultSource(Koto Node, ControlFlowType? Type, bool IsReachable);
+public readonly record struct ControlFlowResultSource(Koto Node, ControlFlowType? Type, bool IsReachable)
+{
+    internal JumpKoto? Transfer { get; init; }
+}
 
 /// <summary>Supplies type-dependent facts without coupling control flow to a particular binder.</summary>
 /// <remarks>Null answers are deferred obligations, never successful type or exhaustiveness checks.</remarks>

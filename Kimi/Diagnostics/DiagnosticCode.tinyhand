@@ -284,3 +284,15 @@
 
   + Name="LibraryRuntimeBody_Kd"
     Message="A Library cannot contain top-level runtime items"
+
+  + Name="UninitializedPlace_Kd"
+    Message="This use requires an initialized value on every incoming path"
+
+  + Name="MovedPlace_Kd"
+    Message="This value may have been moved on an incoming path"
+
+  + Name="ReassignedLet_Kd"
+    Message="This let binding may already have completed its first initialization"
+
+  + Name="UnsupportedOwnership_Kd"
+    Message="This operation requires ownership or cleanup analysis outside the implemented subset"

@@ -106,6 +106,11 @@ public enum DiagnosticCode
     InvalidStartupMain_Kd,
     LibraryRuntimeBody_Kd,
 
+    UninitializedPlace_Kd,
+    MovedPlace_Kd,
+    ReassignedLet_Kd,
+    UnsupportedOwnership_Kd,
+
     Count, // Last sentinel
 }
 

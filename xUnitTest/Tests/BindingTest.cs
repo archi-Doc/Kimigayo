@@ -60,7 +60,6 @@ public class BindingTest
     [Theory]
     [InlineData("let result = absent", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("let x: i32 = true", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("let x = 1\nx = 2", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("let x = 1\nlet x = 2", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f(x: i32) => x\nfunc f(y: i32) -> i64 => 1", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f<T>(x: T) => x\nfunc f<U>(x: U) => x", DiagnosticCode.DuplicateBinding_Kd)]
