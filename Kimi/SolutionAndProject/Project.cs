@@ -171,13 +171,15 @@ public partial class Project
 
         var binding = compilation.Bind();
         compilation.Binding.ReportDiagnostics();
+        var startup = compilation.Binding.CheckStartup(this.ProjectFile.OutputKind);
+        compilation.Binding.ReportStartupDiagnostics();
         var controlFlow = compilation.AnalyzeControlFlow(compilation.Binding.TypeSystem);
         controlFlow.ReportDiagnostics();
 
         // Planned: ownership/lifetime/Origin analysis, lowering, backend IR, emission and linking.
         // This result certifies only the implemented front-end checks, not finalization or a binary.
 
-        return binding.IsComplete && compilation.Binding.Obligations.Count == 0 && controlFlow.PendingBinding.Count == 0 && controlFlow.Issues.Count == 0 && !projectKotonoha.HasSourceErrors &&
+        return binding.IsComplete && startup.IsComplete && compilation.Binding.Obligations.Count == 0 && controlFlow.PendingBinding.Count == 0 && controlFlow.Issues.Count == 0 && !projectKotonoha.HasSourceErrors &&
             !projectKotonoha.DiagnosticCollection.GetArray().Any(x => x.Entry.Severity == DiagnosticSeverity.Error);
     }
 }

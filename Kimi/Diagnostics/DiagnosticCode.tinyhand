@@ -266,3 +266,21 @@
 
   + Name="UnsupportedEscape_Kd"
     Message="The escape sequence '{0}' is not supported"
+
+  + Name="MissingStartupBody_Kd"
+    Message="An Application requires one top-level runtime body or one source-root public main"
+
+  + Name="MixedStartupBodies_Kd"
+    Message="Top-level runtime items and source-root public main cannot coexist in an Application"
+
+  + Name="MultipleStartupSources_Kd"
+    Message="Top-level runtime items must belong to one SourceDocument"
+
+  + Name="MultipleStartupMains_Kd"
+    Message="An Application cannot declare more than one source-root public main"
+
+  + Name="InvalidStartupMain_Kd"
+    Message="Startup main must be a safe, bodyful, non-imported public function with no parameters, generics, Origins or constraints, returning Unit"
+
+  + Name="LibraryRuntimeBody_Kd"
+    Message="A Library cannot contain top-level runtime items"

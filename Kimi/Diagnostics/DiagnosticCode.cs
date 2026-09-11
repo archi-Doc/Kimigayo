@@ -99,6 +99,13 @@ public enum DiagnosticCode
 
     ChainedComparison_Kd,
 
+    MissingStartupBody_Kd,
+    MixedStartupBodies_Kd,
+    MultipleStartupSources_Kd,
+    MultipleStartupMains_Kd,
+    InvalidStartupMain_Kd,
+    LibraryRuntimeBody_Kd,
+
     Count, // Last sentinel
 }
 

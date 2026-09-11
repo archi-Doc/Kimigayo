@@ -2,7 +2,7 @@
 
 Implementation coverage is informative and does not weaken language rules or Compiler requirements. All implementation-progress notes are centralized here; `planned` in a retained snapshot means implementation work, not permission to use an undesigned feature.
 
-Section references follow the reorganized SPEC.md. This editorial reorganization changes no recorded implementation status.
+Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
 
 ### C.1. Coverage summary
 
@@ -10,13 +10,13 @@ This table defines the recorded status of each compiler stage. The notes below d
 
 | Feature | Parsing | Binding | Analysis | Lowering | Runtime |
 | --- | --- | --- | --- | --- | --- |
-| Functions and Constraint Clauses | Partial | Partial; see C.16, C.18–C.19 | Partial | Not implemented | Not implemented |
-| Static Contracts and associated Types | Partial; see C.4 | Not implemented | Not implemented | Not implemented | N/A |
+| Functions and Constraint Clauses | Partial | Partial; see C.16, C.18–C.21 | Partial | Not implemented | Not implemented |
+| Static Contracts and associated Types | Partial; see C.4, C.21 | Partial; see C.20–C.21 | Partial declaration/path verification | Not implemented | N/A |
 | `#if` / `#match` | Implemented | Not implemented | Partial | Not assessed | N/A |
 | Types | Partial | Partial; see C.16–C.19 | Partial | Not implemented | Not implemented |
 | Core intrinsic identities and Copy / Owned classification | Partial; conditional Copy clauses | Partial; see C.19 | Partial; see C.19 | N/A | N/A |
 | Origins | Partial | Partial; see C.17 | Partial declaration requirements; see C.17 | Not implemented | Not implemented |
-| Properties | Implemented | Partial; see C.16 | Partial | Not implemented | Not implemented |
+| Properties | Implemented | Partial; declarations/witnesses, C.21 | Partial declaration verification | Not implemented | Not implemented |
 | Constructors and aggregate destruction | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | Ordinary Copy / Move acquisition | N/A; no dedicated Move operator | Not implemented | Not implemented | Not implemented | Not implemented |
@@ -24,11 +24,11 @@ This table defines the recorded status of each compiler stage. The notes below d
 | Enum Cases, Patterns, and guards | Implemented | Partial; Case payload Types only, C.19 | Partial; payload capabilities, C.19 | Not implemented | Not implemented |
 | Explicit full specialization and generic code sharing | Source specialization syntax | Not implemented | Not implemented | Not implemented | Not implemented |
 | Option / Result / Abort | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
-| Core.writeLine and executable startup | Source forms only; dedicated support not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
+| Core.writeLine and executable startup | Implemented source forms | Partial; canonical function and startup selection, C.23 | Partial; startup contracts and direct-call flow, C.23 | Not implemented | Not implemented |
 
 Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
 
-The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.19 record Binding coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
+The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.21 and C.23 record Binding coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
 
 ### C.2. Builds, modules, and source artifacts
 
@@ -54,7 +54,7 @@ Enum bodies, payload Cases, inferred Case expressions, dedicated Patterns, and g
 
 Split-structure integration, generated-source integration, and layout generation are planned, not implemented.
 
-Inheritance access domains, recursive API signature accessibility, and protected-receiver checks are specified but not implemented by general Binding. The Parser retains `open struct`, base clauses, and compound access spellings. This does not validate inheritance or overrides. Inherited lookup and virtual/override declaration spellings retain their syntax boundaries. Object dispatch, metadata, upcasts, casts, compatibility, base lifetime, and Copy rules are specified; this documentation integration does not establish their implementation.
+Inherited member lookup and protected-receiver checks have partial Binding coverage (C.21); complete inheritance/object legality and execution remain pending. The Parser retains `open struct`, base clauses, and compound access spellings. This does not validate inheritance or overrides. Inherited lookup and virtual/override declaration spellings retain their syntax boundaries. Object dispatch, metadata, upcasts, casts, compatibility, base lifetime, and Copy rules are specified; this documentation integration does not establish their implementation.
 
 The Parser supports Origin lists on structures and functions, simple and qualified annotations, intersections, and named arguments. Origin name resolution, inference, variance analysis, and borrow checking are not implemented.
 
@@ -66,13 +66,13 @@ The current Parser stores leading Constraint Clauses separately from executable 
 
 ContractKoto retains base requirements, function requirements, `property` requirements with inline operations or explicit bodyless signatures, bare associated-Type declarations, and qualified specifications/projections. Constraint collection precedes executable body items. Refinement, conformance matching, mappings, and access checks require Binding. Any accepted generic Contract headers do not establish language support; user-defined generic Contracts are excluded. Runtime Contract Views remain outside the initial Contract implementation.
 
-The implemented static Binding subset, including function witnesses and associated-Type resolution, is described in C.20 below; Property witness bridges and general conditional conformance are still pending.
+The implemented static Binding subset, including function/Property witnesses, associated Types, conditional conformance and implementation blocks, is described in C.20–C.21. Complete expression/effect/ownership verification remains pending.
 
 **Current implementation status:** the Parser validates and evaluates environment-only Conditions in one traversal, using only the prepared Compilation values and Project settings. Unknown Names are diagnosed immediately at their source locations; results are True, False, or Error. Both logical operands and all explicit Conditions of a reached #match are validated, including nested Conditions in unselected arms except inside False #if targets. Valid directives select syntax during parsing. Pending-condition storage, deferred #if nodes, and Directive Binding are removed; invalid #match groups remain only for recovery.
 
 ### C.5. Properties
 
-The Parser distinguishes stored `let`/`var`, `computed`, and Contract `property` declarations. It retains standard accessors, full custom/required signatures (receiver, setter input, result Types and Origins), bodies, source order, and spans. It checks declaration context, required getter/signature/body syntax, duplicate accessors, let setters, receiver presence, Unit setter result syntax, and forbidden inline forms, initializers, parameter forms, and requirement modifiers/Attributes. Control-flow analysis checks known accessor result Types. Accessor expansion, contextual binding of `self`, `storage`, and `value`, resolved storage classification, access and initialization checks, general accessor type checking, Copy constraints, Property Consume, and field-scoped standard operations are not implemented; successful parsing alone does not validate them.
+The Parser distinguishes stored `let`/`var`, `computed`, and Contract `property` declarations. It retains standard accessors, full custom/required signatures (receiver, setter input, result Types and Origins), bodies, source order, and spans. It checks declaration context, required getter/signature/body syntax, duplicate accessors, let setters, receiver presence, Unit setter result syntax, and forbidden inline forms, initializers, parameter forms, and requirement modifiers/Attributes. Control-flow analysis checks known accessor result Types. C.21 records subsequent accessor declaration/context binding, storage classification, access/Copy checks and Property witnesses. General expression operation selection, initialization/consume/Loan verification and execution remain incomplete; successful parsing alone does not validate them.
 
 ### C.6. Expressions and operators
 
@@ -183,40 +183,35 @@ Documentation only; compiler code and tests are unchanged. These decisions super
 
 ### C.12. First executable milestone
 
-**実装計画。未達成。** 最初のアプリはMain.kimiの `::Core.writeLine("Hello, world!")` とする。1つのtarget／entry SourceDocument、string literal、通常の非generic関数・呼び出し、Unit、単純なlocal binding、必要なCopy／Move／cleanup、Core出力に限定して端から端まで実装する。FFIの整数呼び出しは別の結合テストとして検証する。配列・Dictionary・継承・closure・static Properties・汎用generic共有・複数Kotonohaはこの実行milestoneの必須機能にしない。未対応のselected構文を成功扱いで黙って省略しない。
+**Adopted design; not yet executable.** The first program is either one document containing `::Core.writeLine("Hello, world!")` or one eligible root-level public main. Startup selection and Library restrictions are now normative in [SPEC §22.2](SPEC.md#222-program-startup-and-static-initialization). No EntrySource override or configured-empty-entry shortcut is adopted.
 
-| 領域 | 確認できた現実装 | 採用する実装方針／残作業 |
-| --- | --- | --- |
-| Target | Project.DefaultProjectFile.Targetsはx86_64-pc-windows-msvc。IrTargetがDataLayoutとpointer widthを提供する。 | 最初の実行targetもこれに固定する。DataLayoutの存在だけではlink／実行可能とはしない。 |
-| Project形式 | TinyhandのProjectFileにTargets、KotonohaArray、Alias、LangVersion、CompileTimeSettingsがある。Project.TryCreateはその形式を読む。 | 既存の設定名を維持する。下の出力／entry／native-library設定は追加予定で、現在のProjectFileにはまだない。 |
-| CLI | CommandUnitにbuild／runが登録され、KimiOptionsにはTarget／Debugがある。BuildCommandはLoadForBuildとPrepareProjectのみ、RunCommandはLoadForRunとPrepareProject後にSolution.Buildを呼ぶ。 | 既存のコマンド名を維持し、buildを生成・link完了まで、runを生成成功後の起動まで接続する。現runは生成物を起動せず、終了code伝播・実行引数の分離も未完成。 |
-| Core | 現在の既定AliasはKimi.Baseで、必須CoreのBindingはない。 | reserved Core identityと既定公開宣言をcompiler側で準備する。既存AliasはCore実装の代用にしない。prototypeが限定的なCoreだけを持つ間は部分実装と表示し、完全適合を主張しない。 |
-| string | literalの構文木とdecodeはあるが実行時表現はない。 | 初期案はUTF-8 pointer／byte length／release方針を持つowned handle。literal backingは読み取り専用で共有可能、Moveはhandleの責任移動、literal backingは解放しない。後の動的stringはowned allocationを解放する。Non-Copy規則を変えず、この内部案を公開ABIにしない。 |
-| Emit | Project.Build／Compilationはfront-endと部分control-flow分析まで。 | Binding、Usage Legality、cleanupを確定してLowering、backend IR、linkへ進む。出力関数はtrusted runtimeで実装し、source FFIへのstring marshallingと混同しない。 |
+The compiler's initial output is a matched pre-optimization **.ll + .link.json** pair, not an .exe. LLVM optimization, object generation, linking, and execution are manual, separate validation stages under [SPEC §20.8](SPEC.md#208-initial-llvm-output-and-manual-build). Existing build/run command names do not establish an implemented generation or execution pipeline.
 
-新しいProject設定の推奨スキーマ（仕様案として採用、未実装）は次のとおり。これらを含むファイルを現Buildが正しく扱うとは保証しない。
-
-| 予定する設定名 | 値と規則 |
+| Area | Current implementation / remaining work |
 | --- | --- |
-| OutputKind | ApplicationまたはLibrary。省略時Application。entry許可はSPEC §22.2に従う。 |
-| EntrySource | 任意のproject-relative logical path。省略時は唯一のtop-level実行SourceDocumentから推論。Libraryでは指定不可。 |
-| OutputPath | 任意のproject-relative生成物path。省略時bin/<target>/<ProjectName>.exe（初期Windows target）。標準出力やソースファイルのpathとは独立。 |
-| NativeLibraries | LibraryImportのlibrary文字列から、順序付きlink-input path列へのmap。pathはproject基準で解決し、実際の解決先・内容identity・順序をbuild metadataへ保存。初期版では明示的なlink入力を使い、曖昧な自動library探索を避ける。 |
+| Target preparation | ProjectFile retains Targets; existing IrTarget supplies pointer width and DataLayout. This does not verify windows-x64-v1 layout, emitted IR, or execution. |
+| Settings | ProjectFile currently has Targets, KotonohaArray, Alias, LangVersion, CompileTimeSettings. OutputKind, OutputPath, NativeLibraries, and Optimization remain to be added. Their adopted schema/defaults are owned by SPEC §20.8, not this status document. |
+| Front end / Core | Partial Binding includes compiler-owned Core identities and Copy/Owned (C.19) and later Contract/member work (C.20–C.21). Complete Core execution and writeLine generation remain pending. |
+| Final acceptance | CFG ownership, initialization/consumption, Loan/Origin/lifetime, and cleanup verification must precede executable lowering. Partial Binding is not final acceptance. |
+| Layout / ABI | Layout modes, scalar/Tuple/enum storage, ValueLowering and internal/C ABI are specified in SPEC §§21.1, 21.4, 22.3; their backend implementation is pending. |
+| Emission / artifacts | Checked CFG to LLVM, emitted runtime/Core bodies, __kimi_start, matched manifest publication and hashes are pending. Library output is inspection-only, not a native library or cross-Kotonoha ABI. |
+| Runtime | The six operations, seven Windows imports, UTF-8 string handle and normal/Abort exit codes are specified in SPEC §22.5; generated implementations are pending. |
+| Toolchain supply | LLVM 22.1.5 and the versioned backend archive are adoption requirements, not evidence of installed tools or a validated supply package. |
 
-予定する入力例は `Targets = { "x86_64-pc-windows-msvc" }`、`OutputKind = "Application"`、`EntrySource = "Main.kimi"`、`OutputPath = "bin/Hello.exe"`。これは追加後のTinyhand設定例であり、現在動作するbuild／実行コマンドではない。Core runtimeはtoolchainに同梱し、このHello worldにuser-defined NativeLibraries設定を要求しない方針とする。
+The first execution subset covers ordinary functions, simple locals, Unit, string literals, required Copy/Move and cleanup, and Core.writeLine. Arrays, Dictionary, inheritance, closures, static Property execution, general generic sharing, and multi-Kotonoha linking are later execution coverage; no language rule is relaxed.
 
-milestoneの完了条件は、生成した実行ファイル自身のstdoutがUTF-8の `Hello, world!`＋LFと一致し、stderrが空、終了codeが0になること。ホストC#のPlayground出力では代用しない。Debug／Releaseで同じ結果を確認し、unknown Name・型不一致・Move後の使用・未対応機能を成功扱いしないこと、出力失敗がAbortすることも検証する。全言語のconformance suite完了とは区別する。
+Completion requires the **produced executable itself** to emit the 14 bytes `Hello, world!\n`, empty stderr, and exit 0; host C# output is not a substitute. Test O0/O2 and compiler Debug/Release, ownership failures, unsupported generated operations, output failure/Abort code 1, and actual helper resolution. IR generation, LLVM verification/object generation, native linking, and execution are separately reported successes. See [SPEC §A.14](SPEC.md#a14-layout-llvm-and-runtime-verification) for acceptance tests.
 
 ### C.13. Remaining implementation selections
 
-添付の26項目について、言語上の判断はC.11のとおり反映した。充填構築・可変Slice・Type aliasを今回導入しない判断は、対応漏れではなく明示した設計境界である。
+The initial design now fixes LLVM 22.1.5, windows-x64-v1, custom __kimi_start, normal exit 0 / Abort 1, the six runtime operations and seven Windows APIs, string storage, internal/C ABI, and the native backend-support contract. These are no longer open design selections. Implementation and supply validation remain incomplete.
 
-実装から確定できないため、次の具体的な情報は推測で既存仕様として記載していない。
+- Obtain and validate the actual toolchain and SDK/library inputs. The backend catalog still needs an adopted immutable packageVersion and actual archive SHA-256 for kimi-backend-windows-x64 ABI 1; examples do not constitute supplied binaries.
+- Implement/check native memcpy, memmove, memset and the special __chkstk ABI, with required unwind information and no hidden CRT, TLS, initialization or extra library dependencies. Supply _fltused once in generated IR, not in the archive.
+- Connect the existing compiler entry points to checked .ll/.link.json production and truthful publication diagnostics. Automatic opt/llc/link/run, toolchain discovery, CLI execution arguments/status propagation, and CodeView/PDB generation are future extensions.
+- Define physical representations before emitting borrow/object/common-function handles, dynamic collections, Slice, closures, rc/arc counts/ordering, or shared-generic metadata. C aggregate passing, exports/callbacks/varargs, extra alignment, Unicode console adaptation, arbitrary exit codes, and dynamic FP-environment control remain deferred.
 
-- 既存build／runをEmit・link・生成物の起動へ接続したときの正式な追加引数、実行引数との分離、終了code伝播の詳細。コマンド名と現状の処理はC.12のとおり確認できたが、実行ファイルを生成・起動する完全な利用手順はまだ裏付けられない。
-- 採用するLLVM／linkerの配布物・version・実行path、Core runtimeのbinary名と実際のlink invocation。初期targetと明示的入力mappingの方針は決めたが、導入済みtoolchainとしての裏付けはない。
-- Runtime内の最終的なstring handle ABI、allocator／release helper、OS出力adapterの具体的実装。C.12の推奨表現はあるが、SPECのimplementation-definedな内部表現を架空の実装済みABIで置き換えない。
-
+The detailed normative rules and manual commands are in SPEC §§20.8–22.5. This status file records availability rather than duplicating their configuration or ABI tables.
 
 ### C.14. Tokenize/Parse increment (2026-09-09)
 
@@ -336,3 +331,46 @@ Still pending: Property witness bridges and full accessor semantics; general con
 ContractBindingTest adds 73 cases covering positive/negative witnesses, refinements, associated identities and evidence, generic calls and premises, Origins, access, intrinsic ancestors, generated-member completion, and mutation invalidation. A workload with 128 requirement calls, refinement, and an associated binding allocates zero bytes across eight warmed final Bind passes; existing allocation regressions retain their zero-byte assertions. BindingBenchmark adds the Contracts scenario at 32 and 512 calls. Allocation checks are not throughput measurements.
 
 Validation: all 1,730 tests pass in Debug and Release. Release solution build: zero warnings and errors.
+
+### C.21. Property, conditional conformance, and inherited member Binding (2026-09-11)
+
+This section supersedes the pending lists in C.20 for the implemented cases below. It records existing compiler work; the specification integration in C.22 introduces no further compiler implementation.
+
+- Property declarations retain stored/computed/requirement distinctions, complete accessor contracts, contextual self/value/storage, access and Copy checks, and operation-specific witnesses.
+- Conditional conformance keeps identity separate from proof paths, associated-Type and witness metadata, premise scopes and definition-side coherence. Implementation blocks share the enclosing namespace while retaining their conditions; ordinary call applicability carries Proven/Refuted/Unknown/Error outcomes.
+- Inherited lookup shares access/role layer selection across calls and function/Property matching. Receiver position, original-receiver protected checks, constructed base Types, paths, Type/Origin substitutions and cached candidate operations are retained. A later receiver, condition, or accessor failure does not reopen a base layer.
+- Standard storage projection is distinct from whole-base borrow. Function witnesses retain receiver correspondence. ObjectCompatible currently has a proof entry and retained Unknown obligation, not body/callee/returned-Loan verification; final acceptance rejects unproven projected calls.
+
+Rebinding invalidates availability while reusing storage. The recorded inherited-receiver increment added 56 cases; its Release/Debug suites each passed 2,027 tests. Warm final Binding for 1/32/512 Types allocated zero bytes; the Benchmark Release build had no warnings/errors. These are prior implementation results, not tests rerun for C.22 or throughput measurements.
+
+Full Property expression operations, function-value materialization, complete generic requirement merging and Origin inference, Access Effects/ObjectCompatible, CFG ownership/lifetime/cleanup, and execution remain incomplete. See the change records for [Property Binding](doc/Changes/2026-09-11%20Property%20Binding.md), [conditional conformance](doc/Changes/2026-09-11%20Conditional%20Conformance%20Binding.md), [conditional members](doc/Changes/2026-09-11%20Conditional%20Member%20Binding.md), and [inherited receivers](doc/Changes/2026-09-11%20Inherited%20Receiver%20Binding.md).
+
+### C.22. Lowering and Windows profile specification integration (2026-09-11)
+
+Integrated the adopted [startup/layout/LLVM/runtime design](doc/Design/2026-09-11%20Program%20Startup%20and%20Windows%20Runtime.md) into SPEC, taking that design over conflicting older rules. This is a documentation change; no lowering, runtime, configuration, or native supply implementation was added or validated.
+
+| Contract now specified | Normative location | Implementation status |
+| --- | --- | --- |
+| Public main versus implicit runtime body; uniqueness, Library, shutdown | SPEC §§6.1.1, 22.2 | Dedicated startup Binding/emission pending |
+| Layout Attribute, fragments, C exchange, scalars/Tuples/enums | SPEC §§6.5, 21.1 | Syntax infrastructure alone; layout semantics/generation pending |
+| Finalized generation set, ValueLowering, FunctionAbi, result-slot ownership | SPEC §21.4 | Pending; analysis prerequisites incomplete |
+| CFG/SSA, checked operations, transfers/constants, attributes, FP and unwind | SPEC §21.5 | Pending; initial i128 division/remainder/FP conversion explicitly unsupported by the adopted profile |
+| Runtime, Windows symbols, string and writeLine | SPEC §22.5 | Pending |
+| NativeLibraries, manifest/publication, O0/O2 and manual build | SPEC §20.8 | Settings, artifact generation, and integration pending |
+| Backend supply identity, hash, symbols, adoption tests | SPEC §§21.5.7, A.14 | Native archive/catalog validation pending |
+
+Removed superseded .exe-output, automatic link/run, EntrySource selection, and unspecified initial runtime-ABI plans from C.12–C.13. Older historical entries remain snapshots; C.21 describes newer Binding coverage. Specification examples and tool commands do not certify that an executable or backend archive currently exists.
+
+### C.23. Startup selection and Core.writeLine Binding (2026-09-11)
+
+ProjectFile.OutputKind defaults to Application and supports Library using the specified string configuration values; unknown names are rejected. Project.Build now performs output-specific startup checking after final Binding. Ordinary Bind remains usable for declaration fragments. Binding.CheckStartup retains original source/body identities and reusable runtime-item/diagnostic buffers, invalidated on every Bind. It rejects missing, mixed or multiple Application startup candidates and Library runtime items, including Unit expressions and uninitialized locals.
+
+Source-root public main is registered in the shared root while retaining its declaration-site scope and aliases. Application validates every such main, without choosing a convenient overload; Library keeps ordinary function rules. Other root functions remain source-local. The generated top-level wrapper is not a legal return target. No public main or duplicate body tree is synthesized.
+
+Core now owns the canonical safe writeLine(text: string) -> () function Symbol and its compiler-implementation identity. Ordinary lookup, call selection, Type checking and BoundCall storage are reused, including shadowing, aliases and reserved ::Core qualification. Core shape validation covers this declaration. It remains a partial bootstrap with IsCompleteLibrary = false; no runtime implementation is supplied. The control-flow bridge evaluates committed direct-call receivers and explicit arguments without treating the callee designator as an unresolved function value, and preserves unsafe-call checks. Unsupported specialization arguments no longer enter generic-parameter schema construction.
+
+The [change record and initial execution subset table](doc/Changes/2026-09-11%20Startup%20Binding.md) distinguish front-end acceptance from the remaining acquisition, Move, initialization, cleanup and emission checks. Successful startup Binding does not prove ownership or permit executable lowering. LLVM IR, startup/runtime execution and native supply remain unimplemented.
+
+StartupBindingTest adds 73 cases covering source selection, invalid signatures, duplicate mains, declaration environments, Library behavior, Core identity and call failures, reBind, control flow and configuration. Warm Compilation.Bind plus startup selection allocates zero bytes for both implicit and explicit bodies with 1, 32 and 512 calls. StartupBindingBenchmark provides separate selection and Bind-plus-selection workloads; no throughput result is claimed.
+
+Validation: all 2,100 tests pass in Debug and Release. The Release Benchmark build completes with zero warnings and errors.

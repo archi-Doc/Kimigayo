@@ -2,7 +2,7 @@
 
 The document has six parts. Numbered headings use **chapter → section → subsection**; appendices separate compiler obligations, optional algorithms, implementation status, design boundaries, terminology, and grammar. Each concept has an owning section; cross-references apply its rules without redefining them.
 
-For the first executable program, start with [minimal console output](#224-minimal-console-output) and [program startup](#222-program-startup-and-static-initialization). The language rules below remain distinct from the implementation milestone in [STATUS.md](STATUS.md#c12-first-executable-milestone).
+For the first executable program, start with [minimal console output](#224-minimal-console-output), [program startup](#222-program-startup-and-static-initialization), and [LLVM output/manual build](#208-initial-llvm-output-and-manual-build). The language rules below remain distinct from the implementation milestone in [STATUS.md](STATUS.md#c12-first-executable-milestone).
 
 - [Part I. Introduction and source text](#part-i-introduction-and-source-text)
   - [1. Overview](#1-overview)
@@ -31,8 +31,15 @@ For the first executable program, start with [minimal console output](#224-minim
   - [19. Compile-time directives](#19-compile-time-directives)
   - [20. Compilation configuration](#20-compilation-configuration)
     - [Mods: source generation](#207-mods-source-generation)
+    - [Initial LLVM output and manual build](#208-initial-llvm-output-and-manual-build)
   - [21. Layout, runtime metadata, and code generation](#21-layout-runtime-metadata-and-code-generation)
+    - [Layout modes and representation](#211-structure-layout-and-abi)
+    - [Checked lowering and internal ABI](#214-checked-lowering-and-internal-abi)
+    - [LLVM Windows x64 profile](#215-llvm-windows-x64-profile)
   - [22. Core, program execution, and foreign functions](#22-core-program-execution-and-foreign-functions)
+    - [Startup and shutdown](#222-program-startup-and-static-initialization)
+    - [Foreign function imports](#223-foreign-function-imports)
+    - [Initial Windows runtime](#225-initial-windows-runtime)
 - [Appendices](#appendices)
   - [Appendix A. Compiler implementation requirements](#appendix-a-compiler-implementation-requirements)
   - [Appendix B. Non-normative reference models](#appendix-b-non-normative-reference-models)
@@ -1619,7 +1626,7 @@ A **Declaration Container** is a named declaration scope whose body may contain 
 
 ##### 6.1.1. Root and nested containers
 
-Each source unit contributes named declarations to the project root. Top-level executable syntax, including bindings (`let` and `var`) and local functions, has a SourceDocument-local execution scope and is not exported into the Compilation root or visible to another file. Its source-local scope and lookup environment must be preserved. Shared functions, Fields, and computed members belong in named Containers. Execution is restricted to one entry SourceDocument under [program startup](#222-program-startup-and-static-initialization). A `rootgroup` declaration starts at the root and accepts a dot-separated Name. For example:
+Each source unit contributes named declarations to the project root. Top-level bindings (`let` and `var`), local functions, and executable items retain a SourceDocument-local scope and are not exported to other files. The exception is an explicit root-level `public main`, an ordinary function in the shared root that retains its declaration-site lookup environment. It cannot capture top-level runtime locals. Other shared functions, Fields, and computed members belong in named Containers. [Program startup](#222-program-startup-and-static-initialization) selects either one document's runtime body or one eligible public main. A `rootgroup` declaration starts at the root and accepts a dot-separated Name. For example:
 
 ```kimi
 rootgroup A.B
@@ -1640,7 +1647,7 @@ Matching fragments must agree on generic parameter count/kinds/order/names, Orig
 
 For structures, `open` must agree across all fragments. At most one fragment supplies the base clause; the other fragments share that base without repeating it. Resolve the base in that fragment's source environment, then validate the complete merged inheritance relationship.
 
-After compile-time selection and merging, reject duplicate Field/computed Names, duplicate function Signatures, and namespace conflicts. All selected fragments may contribute Fields, including generated ones, under [split-structure storage order](#621-split-structures-and-storage-order). Do not require a primary fragment. Enums cannot be split: after selection and generation, multiple declarations with the same enum Identity are errors. Contracts likewise cannot be split: after directive selection and source generation, multiple declarations with the same Contract Identity (originating Kotonoha, parent Symbol, name, and contract kind) are declaration errors, even when their contents are identical. User Contracts are nongeneric; no arity distinguishes same-named declarations. Mutually excluded declarations are allowed only when at most one remains. Different Contracts may refine a shared parent, but refinement is not declaration merging.
+After compile-time selection and merging, reject duplicate Field/computed Names, duplicate function Signatures, and namespace conflicts. Selected fragments may contribute Fields, including generated ones, under [split-structure storage order](#621-split-structures-and-storage-order); C layout requires a single storage-bearing fragment (§21.1.2). Do not require a primary fragment. Enums cannot be split: after selection and generation, multiple declarations with the same enum Identity are errors. Contracts likewise cannot be split: after directive selection and source generation, multiple declarations with the same Contract Identity (originating Kotonoha, parent Symbol, name, and contract kind) are declaration errors, even when their contents are identical. User Contracts are nongeneric; no arity distinguishes same-named declarations. Mutually excluded declarations are allowed only when at most one remains. Different Contracts may refine a shared parent, but refinement is not declaration merging.
 
 Constructor Signatures must also be unique across the selected fragments. At most one selected `deinit` body may belong to a merged structure, including generated fragments. Do not concatenate destruction bodies or choose one by source order; duplicates are declaration errors. Mutually excluded bodies may coexist in source only when selection leaves at most one in each fixed target/configuration environment.
 
@@ -1656,7 +1663,7 @@ struct Box<T>
 // Repeating the Constraints or renaming T to U in B.kimi is an error.
 ```
 
-**Future design:** Contract fragments are not introduced; any future fragment facility needs explicit contents and merging rules. Extension identity/public names remain separately specified. Static initialization and the single-source entry rule are defined under [program startup](#222-program-startup-and-static-initialization).
+**Future design:** Contract fragments are not introduced; any future fragment facility needs explicit contents and merging rules. Extension identity/public names remain separately specified. Static initialization and startup selection are defined under [program startup](#222-program-startup-and-static-initialization).
 
 #### 6.2. Structure declarations
 
@@ -1681,7 +1688,7 @@ Explicit and implicit constructors follow [construction](#623-constructors); all
 
 ##### 6.2.1. Split structures and storage order
 
-A `struct` may be split into compatible declaration fragments, including fragments produced by a [Mod](#207-mods-source-generation). Multiple fragments may contribute Fields. Merge fragments for the same declaration, validate their headers and member uniqueness, and identify Fields by declaration kind; computed members add no storage. No primary fragment is required. Detailed declaration identity and header checks follow the [Container integration rules](#612-container-fragments).
+A `struct` may be split into compatible declaration fragments, including fragments produced by a [Mod](#207-mods-source-generation). Multiple fragments may contribute Fields under Kimigayo layout; C layout permits only one selected storage-bearing fragment (§21.1.2). Merge fragments for the same declaration, validate their headers and member uniqueness, and identify Fields by declaration kind; computed members add no storage. No primary fragment is required. Detailed declaration identity and header checks follow the [Container integration rules](#612-container-fragments).
 
 Apply [logical declaration order](#2074-generated-sources-and-declaration-order) to the environment-selected fragments of each instantiation. Only Fields contribute storage slots. This order determines initializer side-effect order independently of physical layout.
 
@@ -1875,13 +1882,13 @@ A local Type must be fixed at declaration, even without an initializer. An expli
 
 **Attribute syntax.** `#Name` accepts an optional parenthesized, comma-separated Argument list with a trailing comma. Name must begin with an uppercase Unicode letter; lowercase if/match/case select directives, and other lowercase forms are errors. Attributes attach in source order to the next same-indentation declaration, on its line or preceding effective lines. Comments/blank lines may intervene; unrelated items and dedents may not. Dangling Attributes are errors.
 
-Attributes are accepted on ordinary Container, function, Field, and computed declarations, and on function parameters before the parameter Name. Explicit specializations and Contract requirements retain their prohibition on Attributes; expression statements, patterns, arguments, and accessor lists do not accept Attribute prefixes. Excluded syntax follows §19.5: argument and declaration-placement grammar is checked only where ordinary parsing is required, and excluded Attributes undergo no semantic resolution. The recognized LibraryImport Attribute has the concrete semantics in [foreign functions](#223-foreign-function-imports).
+Attributes are accepted on ordinary Container, function, Field, and computed declarations, and on function parameters before the parameter Name. Explicit specializations and Contract requirements retain their prohibition on Attributes; expression statements, patterns, arguments, and accessor lists do not accept Attribute prefixes. Excluded syntax follows §19.5: argument and declaration-placement grammar is checked only where ordinary parsing is required, and excluded Attributes undergo no semantic resolution. The recognized Attributes are `#Layout` for struct storage (§21.1.2) and `#LibraryImport` for [foreign functions](#223-foreign-function-imports). Their concrete argument and target rules are checked after selection; no ordinary Name lookup supplies their literal arguments.
 
 **Mod markers.** A [Mod](#207-mods-source-generation) may use Attributes to find targets. A marker does not request execution or consume an Attribute: several Mods may inspect the same Attribute, and a later Mod may emit markers for an already completed Mod without restarting it or causing an error merely for that reason.
 
 Expose marker names, argument syntax, and target Koto before the target Type is fully bound. Queries use environment-selected syntax, excluding discarded declarations. Syntax-name matching does not establish semantic identity between unrelated same-spelled Attributes. A Mod's registration or accompanying contract must identify its markers and argument rules. Semantic argument queries obey the [Binding access period](#2072-compilation-and-binding); syntax remains readable afterward. Neither discovery nor argument inspection requires executing the target program or an Attribute constructor.
 
-Marker discovery and validation are distinct. Diagnose a selected Attribute that remains unrecognized by final validation; finding its syntax does not make every unknown Attribute valid. Concrete marker registration/recognition APIs and general Attribute semantics beyond these rules and LibraryImport remain design boundaries.
+Marker discovery and validation are distinct. Diagnose a selected Attribute that remains unrecognized by final validation; finding its syntax does not make every unknown Attribute valid. Concrete marker registration/recognition APIs and general Attribute semantics beyond these rules, Layout, and LibraryImport remain design boundaries.
 
 ### 7. Functions and callable values
 
@@ -4128,7 +4135,7 @@ There is no elementwise Tuple/array conversion, structural struct conversion, ch
 
 A finite value rounding to infinity fails. Rounding to a subnormal or zero is allowed. NaN payload preservation is not guaranteed. NaN and infinity cannot convert to integers.
 
-Float-to-float conversion preserves signed zero, including the sign of a nonzero value rounded to zero. Integer zero converts to positive floating zero; either floating zero converts to integer zero. Floating rounding always uses roundTiesToEven independently of ambient rounding modes. Flush-to-zero or similar settings must not change the specified result. These rules also apply to literal conversion.
+Float-to-float conversion preserves signed zero, including the sign of a nonzero value rounded to zero. Integer zero converts to positive floating zero; either floating zero converts to integer zero. Floating rounding uses roundTiesToEven, with gradual underflow. The initial Windows profile requires the ABI-standard FP environment at entry and across foreign calls (§21.5.4); foreign code that violates this contract is outside the supported boundary, and the runtime does not repair its environment. These rules also apply to literal conversion.
 
 For direct unresolved literals, `@` performs literal fitting in these cases: integer literals with integer targets must fit the target range; floating literals with `f32`/`f64` targets follow [single-rounding rules](#26-number-literals); integer literals with `@f32`/`@f64` round once from the exact integer value, without an intermediate default Type. Failure to fit, including floating overflow to infinity, is a compile-time error, not a runtime numeric-conversion failure. Parentheses alone and a direct sign preserve this treatment; the language's literal representation limits still apply.
 
@@ -6607,7 +6614,7 @@ func process()
 
 Here, neither the registered `close(resource)` nor scope-exit destruction of `resource` runs.
 
-Abort diagnostics carry a reason and source location: the failed operation for implicit Abort, or the `$abort(...)` call for explicit Abort. A duplicate dictionary key uses the later key expression. The runtime chooses the format and destination and attempts to emit available information; successful or complete output is not guaranteed. Failure to emit diagnostics must not prevent termination.
+Abort diagnostics carry a reason and source location: the failed operation for implicit Abort, or the `$abort(...)` call for explicit Abort. A duplicate dictionary key uses the later key expression. The runtime attempts to emit available information; successful or complete output is not guaranteed. The initial Windows format, stderr destination, and failure code 1 are defined in §22.5.4. Failure to emit diagnostics must not prevent termination.
 
 ##### 17.3.4. Checks, builds, and constant evaluation
 
@@ -7048,7 +7055,7 @@ Define **logical declaration order** independently of layout and Mod execution o
 
 Ordinary logical names are normalized project-relative paths; external files need assigned project-relative names. Normalize separators to `/`, remove redundant segments, and reject collisions. Names are independent of absolute checkout and temporary paths and are compared without host case folding or locale rules. Addition order is retained directly and needs no Parse-call numbering.
 
-Identical inputs must produce identical additions and order. Changing dependency declarations alone does not change logical order when ModIds, generated content, and each Mod's addition order remain the same. Renaming sources or Mods, or changing addition order, may change initializer side-effect order. Structure storage uses this order under [split structures](#621-split-structures-and-storage-order); physical layout remains governed by §21.1. Conflicting declarations follow normal integration rules, never last-writer-wins replacement.
+Identical inputs must produce identical additions and order. Changing dependency declarations alone does not change logical order when ModIds, generated content, and each Mod's addition order remain the same. Renaming sources or Mods, or changing addition order, may change initializer side-effect order. Kimigayo-layout storage uses this order under [split structures](#621-split-structures-and-storage-order). C-layout Fields occupy one fragment in written order (§21.1.2); moving that whole fragment or renaming method-only fragments does not reorder its Fields. Physical layout remains governed by §21.1. Conflicting declarations follow normal integration rules, never last-writer-wins replacement.
 
 ##### 20.7.5. Inputs and regeneration
 
@@ -7129,27 +7136,250 @@ These nodes retain separate source contexts; no original file is rewritten. Fina
 
 The long-term implementation plan is to implement the compiler and Mods in Kimigayo while preserving these contracts. Concrete query and marker-registration types, assembly packaging/compatibility checks, project configuration syntax, cache formats, and IDE presentation remain implementation design work. Parallel Mod execution, arbitrary Koto rewriting, function-body insertion, per-instantiation execution, and automatic retries are outside this initial model. A single invocation and snapshot queries do not prevent a Mod's own infinite loop; cancellation and time-limit mechanisms belong to the host.
 
+#### 20.8. Initial LLVM output and manual build
+
+##### 20.8.1. Output scope and settings
+
+The initial windows-x64-v1 compiler produces one pre-optimization textual .ll and one .link.json per project/target, after final semantic acceptance and supported-operation checks (§21.4). It does not discover/install LLVM or the Windows SDK, run opt/llc/linker commands, or launch the result. A dedicated runtime DLL is not required; runtime bodies are emitted in the same module, with separate native backend support (§21.5.7).
+
+These are adopted configuration rules, not a claim that the current ProjectFile API implements them; see STATUS C.12.
+
+| Setting | Initial rule |
+| --- | --- |
+| Targets | x86_64-pc-windows-msvc |
+| OutputKind | Application (default) or inspection-only Library (§22.2.2) |
+| OutputPath | .ll destination; default bin/<target>/<ProjectName>.ll |
+| NativeLibraries | Per-target logical name to kind/input mapping (§20.8.2) |
+| Optimization | O0 or O2 (default); applied during manual build |
+| EntrySource | Not an initial selection setting; use §22.2's unique-candidate rules |
+
+The first execution subset is ordinary functions, simple local bindings, Unit, string literals, required ownership/cleanup, and Core.writeLine. Arrays, Dictionary, inheritance, closures, static Property execution, general generic sharing, and multiple-Kotonoha linking need not be included in this first execution test. Their language rules are not weakened; unsupported required operations fail. Layout computability, physical ABI support, and runtime availability are separate checks.
+
+Generation success certifies the matched IR/manifest pair, not LLVM acceptance, a linked executable, or successful execution. LLVM verification/object generation, manual linking, and running the produced executable are separately reported stages. Library output supports inspection/verification/object generation only.
+
+##### 20.8.2. NativeLibraries
+
+Each Ordinal logical key maps to `kind` (import or static) and one .lib `input`, never a DLL file. Import produces dllimport declarations; static does not. A simple filename is a linker search name, a relative path with separators is project-relative, and an absolute path is unchanged. Diagnose empty/NUL values or embedded linker options; never execute these strings as commands.
+
+Reserve kernel32 = import/kernel32.lib and kimi_backend = static/kimi_backend_windows_x64_v1.lib. Explicit paths may select the designated profile supplies, not arbitrary replacements. Other keys require configuration; do not guess .lib names from DLL names.
+
+Static libraries must not depend on CRT startup, automatic C/C++ dynamic initialization, custom TLS initialization/termination, or automatic atexit handlers. Zero-initialized and constant data are allowed. Code needing such startup/termination needs a supported adapter first. DLL initialization follows §22.2.3. These are supplier/user connection contracts: a .lib filename and /NODEFAULTLIB do not establish or perform initialization.
+
+##### 20.8.3. Link manifest and publication
+
+Replace OutputPath's extension with .link.json in the same directory and write UTF-8 JSON for both output kinds. The schema is:
+
+```json
+{
+  "schemaVersion": 1,
+  "target": "x86_64-pc-windows-msvc",
+  "codegen": {
+    "profile": "windows-x64-v1",
+    "llvmVersion": "22.1.5",
+    "cpu": "x86-64",
+    "features": ["+sse2"],
+    "relocationModel": "pic",
+    "codeModel": "small",
+    "unwindTables": "async",
+    "optimization": "O2"
+  },
+  "backendSupport": {
+    "packageId": "kimi-backend-windows-x64",
+    "abiVersion": 1,
+    "packageVersion": "1.0.0",
+    "library": "kimi_backend",
+    "artifactSha256": "<64 hex digits for the adopted archive>",
+    "providedSymbols": ["__chkstk", "memcpy", "memmove", "memset"]
+  },
+  "irFile": "ProjectName.ll",
+  "irSha256": "<64 hex digits for the generated IR>",
+  "outputKind": "Application",
+  "entry": "__kimi_start",
+  "subsystem": "console",
+  "libraries": [
+    { "name": "kernel32", "kind": "import", "input": "kernel32.lib" },
+    { "name": "kimi_backend", "kind": "static", "input": "kimi_backend_windows_x64_v1.lib" },
+    { "name": "observer", "kind": "import", "input": "observer.lib" }
+  ],
+  "providedRuntimeSymbols": ["_fltused"],
+  "expectedUndefinedSymbols": [
+    { "symbol": "__chkstk", "provider": "kimi_backend" }
+  ]
+}
+```
+
+Hashes must be actual SHA-256 values; placeholders and packageVersion 1.0.0 illustrate the schema, not an available release. observer and the __chkstk expected reference are conditional examples; _fltused is always supplied.
+
+- Deduplicate libraries required by external declarations or the profile and sort by Ordinal logical name. Rewrite path inputs relative to the manifest; preserve linker search names. irFile is manifest-relative.
+- Library uses null entry and subsystem. Its dependency record does not establish an external .lib/DLL ABI or runnable artifact.
+- codegen is mandatory and matches §21.5.1; irSha256 hashes pre-optimization .ll.
+- backendSupport comes from the adopted catalog. Its library references a static libraries entry; ABI/version/symbols must agree. Manual builds verify the actual .lib hash before use.
+- providedRuntimeSymbols lists generated backend definitions, always _fltused, not ordinary __kimi_ helpers. expectedUndefinedSymbols lists backend references anticipated at generation, with a known provider in libraries. Verify backend symbols against backendSupport.providedSymbols; unknown providers for known dependencies fail generation.
+- Sort both symbol arrays by Ordinal symbol name, without duplicates or overlap. They are not the final object's undefined-symbol list; even an empty list cannot promise no later dependency. LibraryImport/Windows inputs are recorded in libraries.
+- Manual build records retain the actual SDK/library files, versions/content identities, and tool settings selected by linker search.
+
+Complete both temporary outputs before publication, publish the manifest last, and report success only after both are published. A partial publication is failure; old files are not evidence of current success. Consumers check irSha256 because interruption can leave a mixed pair. Success reports both paths, purpose (Application input or Library inspection), entry, and required link inputs.
+
+##### 20.8.4. Manual toolchain example
+
+With LLVM 22.1.5 and all manifest inputs resolved, including a verified backend archive:
+
+```powershell
+opt -S -passes="default<O2>" -mtriple=x86_64-pc-windows-msvc ProjectName.ll -o ProjectName.opt.ll
+llc -O2 -filetype=obj -mtriple=x86_64-pc-windows-msvc -mcpu=x86-64 -mattr=+sse2 -relocation-model=pic -code-model=small ProjectName.opt.ll -o ProjectName.obj
+lld-link ProjectName.obj kernel32.lib kimi_backend_windows_x64_v1.lib /entry:__kimi_start /subsystem:console /nodefaultlib /debug /out:Application.exe
+.\Application.exe
+```
+
+Use every manifest input, not just the example's libraries. O0 omits opt and passes the original .ll to llc -O0 with the same profile. Verify IR before/after optimization and inspect actual object dependencies. /debug does not create Kimigayo line/variable information; CodeView/PDB emission remains separate from Abort source context.
+
+Before adopting a profile, validate it with the pinned LLVM version; another version's preliminary result is not acceptance. Keep semantic tests, representative IR structure/goldens, object ABI/unwind/dependency checks, and execution results distinct (§A.14). Performance decisions use measured execution time, code size, and build time, never weakened checks.
+
 ### 21. Layout, runtime metadata, and code generation
 
 Physical representation and code sharing must preserve the language rules for Type identity, ownership, evaluation, and cleanup. The following requirements constrain backend choices without prescribing one internal representation.
 
 #### 21.1. Structure layout and ABI
 
-**Layout quantities** for storable T (specification notation, not source operators):
+Storage layout, valid value representation, and function ABI are separate contracts. A layout Attribute selects storage rules; it does not select a calling convention, grant Copy, or make a Type safe for foreign construction. The initial physical rules below belong to the versioned [Windows profile](#215-llvm-windows-x64-profile), not a stable cross-version ABI.
 
-| Quantity | Meaning |
-| --- | --- |
-| size(T) | Reserved inline bytes, including layout padding. |
-| alignment(T) | Positive required byte alignment. |
-| stride(T) | Spacing in arrays/pointer displacement: size rounded up to alignment; zero when size is zero. |
+##### 21.1.1. Common layout rules
 
-Validate all quantities against target limits. Fixed-array size and stride are N * stride(T), with alignment(T) even at N = 0 (§4.1). Padding need not be initialized or readable.
+For a storable Type T, size(T) reserves inline bytes including padding, alignment(T) is a positive power of two, and stride(T) is size rounded up to alignment (zero when size is zero). These are specification notation, not source operators. Check rounding, addition, and multiplication for overflow. In windows-x64-v1, size, stride, and valid Field offsets cannot exceed 2^63 - 1; diagnose any stricter backend limit with its reason. A representable size does not guarantee successful allocation.
 
-Unit has size 0 and alignment 1. Zero-length arrays and arrays of zero-stride elements have size 0 under their formation rules. Tuples/structs with only zero-sized inline components may have size 0 if their documented layout needs no extra storage; any positive-sized inline component forbids it. Other layouts, including empty-struct padding and enum tags, are implementation-defined and documented. Shared addresses do not merge logical places’ initialization, ownership, or structural Loans. Preserve observable destruction even for zero-sized Types.
+Fixed arrays have size and stride N * stride(T), element offset i * stride(T), and alignment(T), including N = 0. Unit has size 0, alignment 1, stride 0. Zero-sized values retain evaluation, initialization, ownership, Loans, and destruction. Shared addresses do not merge logical Places. Positive-sized components cannot overlap; nested padding cannot be reused by outer Fields. Padding has no guaranteed content, even in an initialized value; permitted byte transfers may include it, but typed reads, comparisons, and integer coercions must not treat it as a value.
 
-Derive layout from selected storage declarations, Types, target, and layout mode. Identical compiler/build inputs must reproduce it. Physical offsets may differ from logical declaration order, but [observable initialization order](#1131-construction-and-destruction) must remain. Default struct layout promises no stable ABI across source/toolchain changes and is not the separately specified fixed-layout facility for FFI or binary interfaces.
+Layout uses the selected, merged storage declarations after Mods, Type substitution, and storage classification. A struct contains its own Fields and its direct inline base, if any; computed members add no storage, and custom stored accessors do not change slot count. Reject infinite inline storage cycles; borrows, raw pointers, and object handles do not embed their referents. Reordering cannot change Field Identity, logical initialization order, Partial Move, Loans, or destruction order. Identical compiler, target, settings, and selected inputs must reproduce layout.
 
-Layout includes exactly one direct base subobject plus the structure's own Fields. The recursively embedded owned-value storage graph must be finite; reject cycles through inline base/field components that require infinite layout. Object handles, borrows, and raw pointers do not inline their referents and therefore do not create such layout edges. Physical reordering cannot alter field identity, initialization/completeness tracking, or the prescribed derived-to-base and reverse-component destruction order.
+##### 21.1.2. Layout Attribute and fragments
+
+`#Layout("Kimigayo")` and `#Layout("C")` are compiler-recognized Attributes on struct declarations only. Accept exactly one unnamed, non-interpolated string literal, matched case-sensitively; a trailing comma is allowed. Diagnose missing/extra/named arguments, unknown modes, wrong targets, and repeated Attributes on one fragment, even with equal values. No `#Repr` alternative or layout-query syntax is introduced.
+
+An omitted Attribute means unspecified during fragment merging. Share the explicit mode across selected fragments; equal specifications on different fragments are allowed, conflicting ones are errors. With none, choose Kimigayo. Explicit Kimigayo and omission create no distinct Type Identity.
+
+C layout requires all selected instance Fields, including generated Fields, to occur in one fragment in written order. Other fragments may add methods, computed members, and other declarations without storage; the Attribute need not occur on the storage-bearing fragment. Kimigayo layout uses §20.7.4's logical order. Neither uses filesystem enumeration or Binding order. Finalization follows Mods and selection; storage cannot be appended afterward.
+
+A generic struct shares its mode across instantiations, but each concrete Type has its own size, alignment, offsets, and formation checks. Retain unresolved layout obligations until the required instantiation; do not infer equal layout or code sharing from equal modes.
+
+```kimi
+// Record.kimi
+#Layout("C")
+struct NativeRecord
+    var kind: u8
+    var value: u64
+    var flags: u8
+
+// Methods.kimi: shares C layout without repeating the Attribute.
+struct NativeRecord
+    func read(self: ref/Self) -> u64 => self.value
+
+#Layout("c") // Error: mode names are case-sensitive.
+struct Invalid
+    var value: i32
+```
+
+##### 21.1.3. Kimigayo and C modes
+
+**Kimigayo.** Each Field/base meets its natural alignment; the aggregate alignment is at least their maximum. Reserved component ranges fit inside the struct. Physical reordering is permitted, but no declaration-order layout, minimum size, base offset zero, C compatibility, or stable ABI across compiler/input changes is promised. This is Kimigayo's own contract, not rustc layout or Rust ABI.
+
+The initial algorithm places the direct base first, then own Fields in logical order, each naturally aligned, and rounds the total to the maximum alignment. Size equals stride. If every component has size zero, size/stride are zero and alignment is the maximum component alignment, or 1 for an empty struct. Base offset zero is an initial implementation choice only.
+
+**C.** The initial contract is Windows x64 MSVC layout with effective packing 16 (/Zp16), without pragma pack, explicit alignment, or bit-fields. Do not inherit host packing settings. Nested Types keep their own modes. Require natural Field alignment at most 16; larger alignment is unsupported, not silently reduced.
+
+```text
+cursor = 0
+aggregateAlignment = 1
+for each Field F in written order:
+    a = min(alignment(F.Type), 16)
+    cursor = checkedAlignUp(cursor, a)
+    offset(F) = cursor
+    cursor = checkedAdd(cursor, size(F.Type))
+    aggregateAlignment = max(aggregateAlignment, a)
+alignment(S) = aggregateAlignment
+size(S) = stride(S) = checkedAlignUp(cursor, aggregateAlignment)
+```
+
+Reject C layout on open or derived structs, empty structs, direct zero-sized Fields (including Unit and zero-length arrays), and multiple storage-bearing fragments. Methods, constructors, computed members, and deinit do not themselves prevent C layout; foreign construction/destruction is a separate contract. C layout describes the owned payload, not an object handle, allocation header, or reference count.
+
+NativeRecord above has offsets 0, 8, 16, size/stride 24, and alignment 8:
+
+```llvm
+%NativeRecord = type { i8, i64, i8 }
+; In a function, with valid initialized storage:
+%address = getelementptr %NativeRecord, ptr %record, i32 0, i32 1
+%value = load i64, ptr %address, align 8
+```
+
+```c
+#include <stdint.h>
+#include <stddef.h>
+typedef struct NativeRecord {
+    uint8_t kind;
+    uint64_t value;
+    uint8_t flags;
+} NativeRecord;
+/* Compile with Windows x64 packing 16 and no pragma pack. */
+_Static_assert(offsetof(NativeRecord, value) == 8, "value offset");
+_Static_assert(sizeof(NativeRecord) == 24, "size");
+_Static_assert(_Alignof(NativeRecord) == 8, "alignment");
+```
+
+Use ordinary LLVM structs, not packed `<{ ... }>`, for C layout. Verify allocation size, ABI alignment, and offsets against TypeLayout. Source Field index, LLVM element index, and byte offset are distinct. C mode alone does not define native exports, mangling, DLL compatibility, serialization, or aggregate argument passing.
+
+##### 21.1.4. Initial scalar representation
+
+windows-x64-v1 is little endian, uses address space 0, and has 64-bit pointers. Validate this table against LLVM 22.1.5's target DataLayout. LLVM integer Types carry width, not signedness; select signed/unsigned operations from the language Type.
+
+| Language Type | LLVM storage | LLVM computation | Size / alignment / stride, bytes |
+| --- | --- | --- | --- |
+| i8 / u8 | i8 | i8 | 1 / 1 / 1 |
+| i16 / u16 | i16 | i16 | 2 / 2 / 2 |
+| i32 / u32 | i32 | i32 | 4 / 4 / 4 |
+| i64 / u64, isize / usize | i64 | i64 | 8 / 8 / 8 |
+| i128 / u128 | i128 | i128 | 16 / 16 / 16 |
+| f32 / f64 | float / double | float / double | 4 / 4 / 4; 8 / 8 / 8 |
+| bool | i8 | i1 | 1 / 1 / 1 |
+| char | i32 | i32 | 4 / 4 / 4 |
+| unsafe/T | ptr | ptr | 8 / 8 / 8 |
+| Unit | May be omitted | No ordinary value | 0 / 1 / 0 |
+
+Valid stored bool bytes are only 0 and 1. Under that validity premise, load i8 and truncate to i1; store by zero-extending i1 to i8. This does not sanitize invalid bytes. Windows BOOL is i32 and converts by comparison with zero. char stores an unsigned Unicode scalar value: surrogates and values above U+10FFFF are invalid. Neither representation establishes compatibility with C char or WCHAR.
+
+This table does not authorize all operations or FFI uses. Safe borrows and object handles must not be inferred to be one raw pointer. Heap alignment support is separately limited to 16 (§22.5.2); never round down a Type's alignment.
+
+##### 21.1.5. Tuple and enum layout
+
+Initial Tuples place elements in logical index order at natural alignment and round the total to the maximum alignment. All-zero-sized elements yield size/stride zero. Keep logical indices separate from physical indices/offsets. Future internal reordering must preserve evaluation/destruction order; Tuple has no Layout Attribute or C ABI. For example, (u8, u64) initially has offsets 0 and 8, size/stride 16, alignment 8.
+
+Initial enums use an explicit i32 tag and an aligned payload area, without niche optimization. Number selected Cases from zero in declaration order; more than 2^32 Cases is unsupported. These internal tags introduce no source discriminants or integer conversion.
+
+Lay out each Case payload in logical element order. Let A be the maximum payload alignment and P the maximum payload size rounded up to A; if all payloads are empty, use A = 1, P = 0. The payload starts at alignUp(4, A); enum alignment is max(4, A), and total size/stride is rounded to that alignment. Only a selected tag paired with its valid active payload is a valid enum value. Initialization, Move, match, and cleanup use that active Case, never unused payload bytes.
+
+Preserve payload alignment in LLVM with a zero-length alignment carrier followed by P bytes: use [0 x i8/i16/i32/i64/i128] for alignment 1/2/4/8/16. The carrier is not a language Field or cleanup target.
+
+```kimi
+enum Message
+    Quit
+    Number(i64)
+```
+
+```llvm
+; Payload offset 8, total size 16, alignment 8.
+%MessagePayload = type { [0 x i64], [8 x i8] }
+%Message = type { i32, %MessagePayload }
+```
+
+Verify these layouts when nested in structs/arrays. Do not flatten payloads to alignment-1 byte arrays, expose tag-only mutation, or claim C enum/union compatibility.
+
+##### 21.1.6. C exchange eligibility
+
+C layout and C-exchangeable storage are different judgments. Initially allow owned i8/u8 through i64/u64, owned f32/f64, raw unsafe/T pointers, positive-length fixed arrays of eligible elements, and owned C-layout structs whose Fields are recursively eligible.
+
+Exclude Kimigayo-layout structs, Tuples, enums, string, dynamic collections, bool, char, i128/u128, isize/usize, safe borrows, object handles, and function/closure values until their C correspondence is specified. A C-layout struct may contain string if layout succeeds, but it is not C-exchangeable. For example, C-layout Pair<i32> and Pair<u64> have different layouts; Pair<()> violates the zero-sized Field restriction, and Pair<string> gains no marshalling.
+
+A pointer guarantees its value representation only; its pointee may remain opaque. Foreign reads/writes require a separate pointee-layout and validity contract. Foreign construction/overwrite for receipt by Kimigayo initially also requires no user deinit recursively. Constructors, lifetimes, ownership transfer, active Loans, and accessor bypass still require the unsafe contract. No automatic Copy capability, raw-storage initialization API, or safe-to-raw conversion follows.
+
+For ABI comparison, retain target ABI, recursively eligible Field Types, merged order/content, and layout options. Aggregate arguments/results remain excluded from LibraryImport (§22.3), even when storage is C-exchangeable. Packed/transparent layouts, explicit alignment/offsets, unions, bit-fields, flexible array members, external enum representations, and public layout queries remain extensions.
 
 #### 21.2. Object metadata
 
@@ -7196,6 +7426,8 @@ Conformance is registered by the concrete Type's definition and fixed when metad
 Each view must reach the same original object's type identity, the receiver needed by its implementation, a valid adjusted cast result, and preserved Origins/Loans. Owning views must also reach complete destruction and original storage-release information.
 
 Reference counts and allocator state belong to instances/allocations, not the shared immutable Type Descriptor. Logical roles may be co-located physically. A vtable is one dispatch structure, not all metadata. No base offset zero, equal pointer values between views, one-word borrow, fixed table/slot layout, descriptor representation, calling convention, stable ABI, FFI layout, or dynamic-loading compatibility is promised.
+
+Before emitting these representations, define handle width/targets, receiver/base adjustment, allocation headers, descriptor access, rc/arc counter width and overflow, last-owner destruction, and arc atomic ordering. Headers/counts remain outside an owned C-layout payload. Dynamic Array/Dictionary need data/length/capacity, reallocation and element-state contracts; Slice needs reference/length and reslicing rules preserving Loans. Closures/common Function Types need capture/environment storage, call/destruction entries and inline/allocation choices, with logical capture order separate from offsets. None may silently become one ptr; their physical ABI and shared-generic metadata passing remain deferred. Atomic counters introduce no thread facility.
 
 Optimization may share, normalize, omit, or directly resolve metadata only while preserving Type tests, implementation selection, evaluation order/count, effects, failure, Origins/Loans, and destruction. It must not remove information needed by separately compiled consumers. Source legality cannot depend on allocation elimination or devirtualization.
 
@@ -7298,6 +7530,230 @@ Equivalent code may merge only while preserving observable Type/function identit
 
 Exact precompilation, callee-information passing, artifact/ABI formats, inlining budgets, and sharing mechanisms remain implementation-design boundaries. Current common Function Type and runtime-contract restrictions are unchanged; ordinary-body legality and remaining representation obligations follow [universal generic verification](#810-generic-body-checking-and-deferred-obligations).
 
+#### 21.4. Checked lowering and internal ABI
+
+##### 21.4.1. Input and generation set
+
+Lowering consumes finalized, read-only semantic information: complete Types, selected implementations/callees, acquisition and evaluation order, CFG edges, initialization/consumption and destruction responsibility, validated Loans/Origins/lifetimes, cleanup plans, source locations, and supported layout/ABI/runtime operations. It does not re-resolve names or reconsider ownership legality. A separate target-independent Lowered IR is optional; direct LLVM generation from verified CFG and semantic information is allowed.
+
+Share stable Identities without cloning the syntax tree. Compute and reuse these distinct records:
+
+| Record | Information |
+| --- | --- |
+| TypeLayout | Mode, size/alignment/stride, LLVM storage Type, Field/base Identity to offset mapping |
+| ValueLowering | Computation/storage representations, conversions, valid-bit constraints |
+| FunctionAbi | Physical signature, argument/result slots, calling convention, ABI and justified optimization attributes |
+| CleanupPlan | Edge-specific initialized/moved parts, ownership, registration, logical destruction order |
+
+Unresolved Types/obligations, missing cleanup, or unsupported selected operations fail generation. Zero, undef, poison, unreachable, and freeze are not substitutes for unresolved language semantics.
+
+Before optimization, include all selected project implementation bodies without remaining outer/function generic arguments, the startup body, and their required concrete generic implementations, Core, cleanup, and runtime helpers. Foreign imports have no emitted body. Use a worklist keyed by declaration Identity, concrete arguments, and selected implementation. Ordinary recursion reuses a declaration; unbounded distinct instantiations receive a diagnostic at a documented compilation-resource limit.
+
+Unused nongeneric bodies and unexecuted branches within generated bodies still receive unsupported-feature diagnostics; optimization cannot hide them. Excluded syntax is outside this set. Existing semantic verification of uninstantiated generic bodies is unchanged. Unsupported generic sharing/metadata must not silently become a different semantic implementation. LLVM may remove definitions/paths only after these checks.
+
+##### 21.4.2. Physical function signatures
+
+The initial internal ABI is versioned, module-local, and uses LLVM ccc. It applies to user functions, Core, and private runtime helpers in Application and inspection-only Library output. It is not the C ABI or a published inter-module ABI. Derive definitions and calls from the same FunctionAbi.
+
+| Language value | Initial internal passing |
+| --- | --- |
+| Integers, floats, bool, char, raw pointer | Direct computation Type from §21.1.4 |
+| Owned struct, Tuple, fixed array, string, enum | ptr to a dedicated initialized argument slot |
+| Aggregate result | First argument is ptr to caller-provided uninitialized result storage; LLVM result is void |
+| Unit | Omit its physical argument slot; return void |
+| Never result | No result storage; void/noreturn and nonreturning CFG |
+| Borrow, object handle, common function value | Requires an explicit implemented ValueLowering; never assume one ptr |
+
+Preserve logical parameter order, including the analyzed receiver slot. A value receiver is evaluated once before explicit arguments (§7.3); a Type-qualified unbound call supplies self in ordinary argument order. Hidden diagnostic context follows ordinary physical parameters. Argument and result pointers are ordinary ptr parameters: do not add byval or sret automatically. A future ABI change must update both sides.
+
+```kimi
+group Samples
+    func isPositive(value: i32) -> bool => value > 0
+    func echo(text: string) -> string => text
+```
+
+```llvm
+; Fragments omit profile attributes. echo needs an internal definition in final IR.
+define internal i1 @kimi_is_positive(i32 %value) {
+entry:
+  %result = icmp sgt i32 %value, 0
+  ret i1 %result
+}
+; Physical echo signature: void(ptr %result_storage, ptr %text_storage).
+```
+
+##### 21.4.3. Slot responsibility and normal return
+
+Acquire arguments once in source order. Copy preserves its source; Move transfers responsibility into the argument temporary. Allocating a slot is not Copy. A Copy source cannot share a slot that the callee may consume or modify.
+
+| Point | Argument temporaries | Aggregate result slot |
+| --- | --- | --- |
+| Acquisition / just before call | Acquired values are caller responsibility | Uninitialized |
+| Callee entry | Responsibility transfers to callee | Uninitialized |
+| Result secured, cleanup running | Remaining parts are callee responsibility | Initialized, still callee responsibility |
+| Normal return edge | Consumed or cleaned; caller must not destroy again | Responsibility transfers to caller; caller's Initialized fact begins here |
+| Abort or nontermination | No later normal cleanup/return | Caller neither reads nor destroys it |
+
+Transfers during argument acquisition use the caller's cleanup plan for already acquired temporaries. A callee that was never entered cannot perform their cleanup. The callee never frees caller-owned stack storage. Securing a result before cleanup does not make it available to the caller: cleanup must finish before return. If it Aborts or diverges, later cleanup and result delivery do not occur.
+
+If a zero-sized value needs an address, initially use a one-byte substitute slot with the original Type's alignment, such as `alloca i8, align 8`. This changes neither size nor stride. Shared substitute slots meet maximum alignment and remain alive through the last use; Place Identities retain separate state and responsibility. Their existence grants no positive dereferenceable guarantee for the semantic zero-byte value.
+
+##### 21.4.4. Values, Places, and control flow
+
+Keep acquisition, Place evaluation, first placement, and replacement distinct. First placement writes uninitialized storage without destroying an old value. Replacement secures the right side, evaluates the left Place, destroys its remaining old parts, then places the new value. A setter receives the secured value instead of an automatic old-value destruction/store; simple assignment does not call the final target's getter. Compound assignment remains target-first (§13.7).
+
+Standard stored access uses TypeLayout; custom/computed/required access retains the selected callable contract, including restrictions after witness optimization. Self-assignment cannot be removed based only on address equality.
+
+```kimi
+values[index()] = makeValue()
+// makeValue -> index -> old-value cleanup -> placement
+let ok = divisor != 0 and (100 / divisor > 1)
+// Division and its checks run only on the true edge of divisor != 0.
+```
+
+Use CFG edges for short circuit, branches, match guards, and loops. Evaluate conditions/subjects once. Scalar joins use phi from actual normal predecessor blocks; aggregate joins initialize a common uninitialized result slot only on arriving edges. Unit needs no phi, and Never supplies no fictional value/edge. phi predecessors are the blocks after cleanup. select may replace conditional evaluation only when evaluating both alternatives early is proven legal.
+
+Direct construction into an uninitialized final slot may remove intermediate transfers only if evaluation order, aliasing, Loans, storage identity/lifetime, intermediate observations, partial initialization, and cleanup remain unchanged. Otherwise keep an independent temporary; never overwrite a live replacement target early.
+
+##### 21.4.5. Cleanup and physical transfer
+
+Each scope-leaving edge secures its result, performs exactly the cleanup of scopes left, then delivers the result/transfer. Follow §16.2's inner-to-outer, reverse lexical order of locals and defer; process only registered defer and initialized parts still owned. Use edge-known state directly; introduce runtime flags only where paths must remain distinguishable after a join. Equal cleanup sequences may share code when state and destination match. A heap stack or closure per defer is not required. Never infer partial construction/Move/base state from value bits or addresses, reorder cleanup by physical offsets, or move destruction to last use.
+
+Abort stops cleanup; nontermination blocks subsequent cleanup and delivery. Lack of visible side effects does not license removing a language-permitted infinite loop.
+
+Prefer direct Field/scalar operations and avoid slots created only to use a memory intrinsic. For semantically valid bulk transfers, prefer nonvolatile llvm.memcpy on nonoverlapping ranges, llvm.memmove if overlap is permitted, and llvm.memset for required byte filling. Preserve alignment and constant lengths. These operations do not authorize Copy/Move, constructors, or whole-value reads of partially initialized/moved data. Zero-size data transfers may disappear while state updates and cleanup remain. LLVM chooses expansion/vectorization/libcalls; memcpy.inline is reserved for specific constant-length sites that require no libcall.
+
+```llvm
+declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1 immarg)
+; Inside a function: valid, nonoverlapping 24-byte ranges.
+call void @llvm.memcpy.p0.p0.i64(ptr align 8 %dst, ptr align 8 %src, i64 24, i1 false)
+```
+
+#### 21.5. LLVM Windows x64 profile
+
+##### 21.5.1. Target and optimization
+
+The initial profile is **windows-x64-v1**: LLVM **22.1.5**, target **x86_64-pc-windows-msvc**, CPU **x86-64**, features **+sse2**, relocation model **pic**, code model **small**, asynchronous unwind tables. Use the target's verified DataLayout (§21.1). Do not infer extra features from the build machine, require AVX, or compensate for absolute 32-bit data references with /FIXED or a low image base. Diagnose static artifacts outside the code-model range separately from heap size limits.
+
+Every generated function definition, including entry and runtime, carries matching target-cpu, target-features, denormal-fp-math=ieee,ieee, and uwtable(async) (LLVM uwtable is equivalent). Emit:
+
+```llvm
+target triple = "x86_64-pc-windows-msvc"
+; Also emit the verified target datalayout.
+!llvm.module.flags = !{!0}
+!0 = !{i32 8, !"PIC Level", i32 2}
+```
+
+The compiler emits pre-optimization IR. O0 skips the general IR optimization pipeline and uses llc -O0; default O2 uses opt default<O2> followed by llc -O2. opt reads CPU/features from function attributes; do not duplicate them as opt -mcpu/-mattr options. Match llc and manifest settings. Verify before and after optimization.
+
+Use LLVM for inlining, constant propagation, dead-code elimination, SROA, mem2reg, instruction selection, and register allocation. No default O3, unconditional alwaysinline, loop unrolling, or redundant general SSA optimizer is required. Internal ABI changes by whole-module optimization are allowed only when all uses and semantics remain consistent; preserve external ABI and observable storage. O0/O2 cannot change acceptance, checks, cleanup, or nontermination.
+
+##### 21.5.2. Module, symbols, and caches
+
+One project/target emits one .ll with target information, private constants, required external declarations, internal runtime/Core/user/cleanup definitions, and Application entry (§22.2). Source public visibility is not native export.
+
+| Symbol | Linkage |
+| --- | --- |
+| User functions, public main, implicit body, Core, cleanup, runtime helpers | internal definitions in both output kinds |
+| Application __kimi_start | external definition; absent in Library |
+| Windows APIs / LibraryImport | external declarations; dllimport follows library kind (§20.8.2) |
+| Backend marker _fltused | Strong external data definition (§21.5.7) |
+| Internal constants | private; literal sharing follows §21.5.6 |
+
+Emit one definition for each generated function, without a same-name declare. Explanatory signature-only fragments are not complete modules. Mangle source names with Kotonoha/declaration Identity, arguments, and implementation selection.
+
+Use one module symbol table. Same-named external declarations share only if physical Type, calling convention, ABI attributes, dllimport, and resolved library all agree; otherwise diagnose. Function/data and declaration/generated-definition collisions are errors. Reserve __kimi_ for compiler internals, llvm. for LLVM, and _fltused, __chkstk, memcpy, memmove, memset for profile supplies; reject these external names in user LibraryImport. Match exact ABI symbol names. Quote/escape LLVM identifiers and UTF-8 bytes; never insert raw source strings into IR. Shared ptr signatures do not merge source unsafe contracts; attach only guarantees true for every use.
+
+Deterministic output and cache keys retain compiler/layout/internal-ABI versions, target/DataLayout/codegen settings, backend package version/hash, selected fragments/generated sources, complete arguments and selected implementations, cleanup, callees, and helper dependencies. Size/alignment alone is never a sufficient key. Do not depend on absolute working directories, host locale, enumeration order, or host CPU.
+
+##### 21.5.3. Checked instructions and raw pointers
+
+Preserve existing arithmetic, conversion, indexing, and failure order. nsw/nuw, poison, or undefined behavior cannot implement a required Abort check.
+
+| Operation | Initial lowering |
+| --- | --- |
+| Integer add/subtract/multiply | Signed/unsigned overflow intrinsic or equivalent result-plus-overflow check; Abort on failure |
+| Negation, increment/decrement, compound assignment | Check first; commit the write only on success |
+| Integer division/remainder | Check zero divisor and signed minimum / -1 before the instruction |
+| Shift | Check count in its original Type: 0 <= count < left width, then convert; ashr for signed right shift, lshr for unsigned, shl without treating discarded bits as arithmetic overflow |
+| Integer conversion | Check destination range before extension/truncation |
+| Float to integer | Ordered range checks below, then fptosi/fptoui only on success |
+| Integer to float / float width conversion | Required rounding; detect finite-to-infinity failure |
+| Array/index/Range | Required bounds checks before successful address calculation |
+
+Required compile-time evaluation failures are diagnostics. A failing ordinary constant expression still Aborts only if executed; constant propagation cannot turn it into a compile-time error. Prove success before removing a check. Folding a failing path to Abort or removing an unreachable path is allowed; literal fitting remains static.
+
+```llvm
+declare { i32, i1 } @llvm.sadd.with.overflow.i32(i32, i32)
+; Inside a function:
+%pair = call { i32, i1 } @llvm.sadd.with.overflow.i32(i32 %a, i32 %b)
+%sum = extractvalue { i32, i1 } %pair, 0
+%overflow = extractvalue { i32, i1 } %pair, 1
+br i1 %overflow, label %abort_overflow, label %success
+; abort_overflow calls the generated noreturn Abort helper with the source site.
+```
+
+**Float-to-integer bounds.** For source precision p (24 for f32, 53 for f64) and destination width N = 8,16,32,64 (64 for isize/usize), test x directly:
+
+| Destination | Lower bound | Upper bound |
+| --- | --- | --- |
+| iN, N <= p | x > -2^(N-1) - 1 | x < 2^(N-1) |
+| iN, N > p | x >= -2^(N-1) | x < 2^(N-1) |
+| uN | x > -1 | x < 2^N |
+
+All constants are exact in the source format. Ordered comparisons reject NaN/infinities. Only then execute fptosi/fptoui, which truncates toward zero. No trunc/truncf helper or llvm.trunc is needed; do not speculatively convert and hide poison with select. Thus -128.75 to i8 yields -128, -0.75 to u8 yields 0, while -1 to u8 and f32 2147483648 to i32 Abort.
+
+**128-bit subset.** Support storage/acquisition, internal arguments/results, comparisons, bit operations, shifts, integer conversions, and checked add/subtract/negate/increment/decrement/multiply, subject to verification that LLVM 22.1.5 needs no unsupplied helper. Diagnose i128/u128 division/remainder and both directions of f32/f64 conversion, including compound assignments, before optimization even in unused bodies/branches. Required constant evaluation and fitted constant storage are separate. __divti3, __udivti3, __modti3, __umodti3 and __fix*ti/__float*ti* helpers are not supplied initially. Verify actual multiplication expansion rather than assuming a helper from its name.
+
+**Raw pointer operations.** Use the same address-space-0 ptr for allowed pointer-Type casts, icmp eq/ne for same-Type equality/null tests, ptrtoint to i64 and inttoptr from i64 for usize conversions. Use a storage-Type GEP with i64 index for p + n and sub i64 0, n for p - n; no inbounds or nsw/nuw in the initial form. Check GEP spacing against positive stride(T). Zero displacement preserves null as well as other pointers. Arithmetic alone proves neither alignment nor initialization. These operations retain §5's unsafe allocation/provenance, mathematical displacement, and no-wrap conditions; violations need not Abort. Integer reconstruction creates no extra dereference permission. Typed access still needs valid range, alignment, permissions, initialization, and replacement legality. Runtime buffer arithmetic has its own checked contract (§22.5.3).
+
+##### 21.5.4. Floating-point environment
+
+Use ordinary fadd/fsub/fmul/fdiv/fneg/fcmp and conversions, without fast-math, reassociation, approximation, or FP fusion. Preserve §13's NaN, infinity, signed-zero, subnormal, rounding, and Equatable distinctions. denormal-fp-math is ieee,ieee, including any f32 override.
+
+Require Windows x64 ABI-standard MXCSR control state: nearest/ties-even, DAZ off, FTZ off, hardware FP exceptions masked. This is the startup and foreign-code connection contract, also assumed by inspection-only Library IR. External code that temporarily changes control bits restores them before normal return; deliberate environment-changing APIs are unsupported. External initialization follows the same condition. No startup MXCSR setter, per-call save/restore adapter, individual preservation flag, constrained intrinsic, strictfp, or FP-environment noinline is generated.
+
+MXCSR status bits are volatile and not exposed. External code must not depend on status flags left by Kimigayo calculations. Violating these boundary conditions gives no result/cleanup guarantee or automatic repair. Future export, callback, thread entry, dynamic rounding, and exception observation require new contracts. Normal FP optimization may preserve language results and explicit Abort checks without preserving hardware exception status.
+
+##### 21.5.5. Storage, attributes, and unwind information
+
+Keep address-free scalar values in SSA, using phi at joins; mutable locals may use promotable fixed slots. Put required fixed-size allocas in function entry before calls with explicit alignment, while initialization and cleanup stay at their source execution points. Dynamic stack allocation is initially unsupported. Reuse storage only after cleanup and final reference use. Optional lifetime.start/end markers follow actual storage lifetime, not an Origin spelling or Move alone; omit unproven markers.
+
+Prove each optimization attribute separately: actual alignment for align; guaranteed non-nullness for nonnull; valid byte range for dereferenceable; LLVM alias conditions for noalias, not merely uniq; defined bits/no poison for noundef, including padding in any coercion; full GEP conditions for inbounds; no signed/unsigned overflow for nsw/nuw. Do not apply mustprogress, willreturn, or loop.mustprogress uniformly to ordinary functions or loops.
+
+All generated definitions use uwtable(async). Let LLVM produce required .pdata/.xdata, prologue/epilogue and register/stack recovery information, including decisions for optimized leaf functions. This enables OS stack recovery/walking, not language exceptions, Abort cleanup, or foreign unwind permission. Treat nounwind separately; the initial emitter does not infer it merely from LibraryImport's no-unwind contract and generates no exception-catching landingpad. Native assembly needs appropriate Windows unwind information for its own stack/nonvolatile-register operations.
+
+##### 21.5.6. Constants
+
+Retain exact integer magnitudes and decimal values through fitting; round once to the selected f32/f64 and emit its fitted bits using exact LLVM 22.1.5 syntax. Do not round through host f64 or culture-dependent formatting. Verify bit equality after LLVM rereading (for example, 0.1 fitted to f32 has bits 0x3DCCCCCD).
+
+After source newline/escape processing, encode strings as UTF-8 with byte lengths; embedded NUL is data, with no automatic terminator. Preserve interpolation evaluation order. Share identical byte sequences within the module as private unnamed_addr constants; backing addresses do not define string equality/identity. An empty literal is Static/null/length zero with no allocation. Non-Copy ownership remains unchanged (§22.5.5).
+
+```llvm
+; UTF-8 for U+3042; length 3, no trailing NUL.
+@kimi_text_a = private unnamed_addr constant [3 x i8] c"\E3\81\82", align 1
+```
+
+##### 21.5.7. Backend support supply
+
+Memory intrinsics may become external libcalls. Supply memcpy, memmove, memset and Windows x64 assembly __chkstk from the versioned native COFF static archive **kimi_backend_windows_x64_v1.lib**, logical name **kimi_backend**. Do not generate their loop bodies in .ll or use bitcode/LTO members; keep them outside O2 to avoid recursive libcalls. optnone alone is insufficient. Prefer one strong symbol per archive member.
+
+Memory helpers meet Windows x64 C argument/result contracts, including both overlap directions for memmove. __chkstk uses the backend's special ABI, not an ordinary C function: validate the RAX size input/preservation, stack and register restoration, and guard-page probing against emitted calls. Never disable required probes or substitute a similar name from another ABI. All helpers meet this profile's CPU, MXCSR, and unwind contracts, with no extra external dependencies, CRT startup, or dynamic initialization.
+
+Do not emit ssp/sspstrong/sspreq initially. Stack-protector cookies/failure handling and other arithmetic helpers require separately validated supplies before enabling dependent features.
+
+Every Application and Library module, regardless of FP use or optimization, supplies exactly one strong external data definition:
+
+```llvm
+@_fltused = global i32 0, align 4
+```
+
+This backend marker is not CRT initialization state. No dllimport, weak, or common definition is allowed; other inputs, including the backend archive, must not define it.
+
+The compiler's profile catalog fixes packageId=kimi-backend-windows-x64, abiVersion=1, an immutable verified packageVersion, the actual archive's SHA-256, the profile/LLVM/CPU/FP/unwind contract, and providedSymbols=[__chkstk, memcpy, memmove, memset]. Update ABI version when symbol/call contracts change. Filename/path equality is insufficient. If version/ABI/hash are not established, do not claim successful generation using a placeholder supply.
+
+Record the archive as a profile-wide link input even when no known reference currently needs it; unused archive members need not link. Generated _fltused and externally supplied symbols have separate manifest classifications (§20.8.3). Later LLVM may add/remove references: inspect actual object undefined symbols and verify providers. Unknown/unsupplied dependencies fail adoption or linking, never receive empty stub helpers. This supply does not add to the six runtime operations or seven Windows APIs.
+
 ### 22. Core, program execution, and foreign functions
 
 This chapter defines the required declarations of the Core Kotonoha, process startup and shutdown, the foreign-call boundary, and minimal standard output. Here, Core names the foundation Kotonoha, not a Type component.
@@ -7339,41 +7795,134 @@ Generic enum payloads and fixed-array elements preserve complete Type/Origin/Loa
 
 #### 22.2. Program startup and static initialization
 
-An application has one entry SourceDocument, configured by project-relative path or inferred from the sole selected document with top-level executable items. Reject multiple executable documents, an absent/ambiguous configured path, or no configured/inferable entry. A configured empty entry succeeds. Root-level local functions count as executable-scope items; aliases do not. Other documents may contain Container declarations/aliases but no top-level executable items. Libraries have neither such items nor process entry. Entry selection is a build input; document its implementation-defined setting name.
+##### 22.2.1. Startup selection
 
-Execute the entry's selected top-level items in source order in their source-local execution scope with ordinary local-function visibility, lifetime, and cleanup rules. Reaching its end exits successfully with process code zero after normal cleanup. An emitter may synthesize a host entry function, but this does not create a source-language Function Boundary: top-level return remains an error under §14.11. There is no implicit invocation of a user function named main or Main. Abort uses §17.3, produces unsuccessful process termination, and does not promise normal cleanup; the host-specific failure status is implementation-defined.
+After directive selection, Mods, and Binding, an Application must select exactly one of:
+
+- One SourceDocument with top-level runtime body items.
+- One eligible root-level `public func main() -> ()`.
+
+Reject mixed forms, multiple candidate documents/mains, or no candidate. Search the current project, not dependencies; enumeration order and optimization never select the winner. EntrySource is not an initial selection mechanism, and naming an empty document cannot make an Application valid.
+
+Determine HasTopLevelRuntimeBodyItem once per document from selected root items, without descending into functions or Containers. This classification does not require that machine instructions survive:
+
+| Root item | Counts as a runtime body item |
+| --- | --- |
+| Expression/control expression, unsafe/defer/require statement | Yes, including Unit and removable expressions |
+| Local let/var | Yes, even without an initializer |
+| Function declaration, including main | No |
+| Container or alias | No |
+| Attribute argument, Type expression, constant evaluation, Mod execution itself | No |
+| Excluded syntax | No |
+| Selected legal generated item | Classify the resulting item by these rules |
+
+Top-level bindings remain SourceDocument-local, not static Properties. Container static Properties do not count and keep first-access initialization. Generated items must be legal in their target context; neither generation nor startup classification expands that grammar.
+
+Execute the chosen document's body items in source order with its source scope, CodeContext, local-function visibility, lifetimes, and cleanup. Lower it to a private internal function, without synthesizing public main. This physical function does not permit top-level return (§14.11).
+
+```kimi
+// Implicit startup; the uninitialized local itself also counts.
+let pending: i32
+::Core.writeLine("Hello, world!")
+```
+
+A minimal intentionally empty Application is the Unit expression `()`. Empty files and declaration-only files supply no implicit body.
+
+##### 22.2.2. Explicit main and Library
+
+An Application's explicit main is exactly lowercase main, public, directly at the source root, with no parameters/receiver, generic or Origin parameters, and Unit result (ordinary result omission is allowed). It is a safe ordinary function with a body, not unsafe, a foreign import, or a specialization. A main inside a group/struct or another function is not a candidate. Root-level public main is shared-root declaration syntax under §6.1.1, retaining declaration-site aliases; public promises no unmangled native symbol or export.
+
+Validate every root-level public main in an Application as a startup signature. Diagnose invalid declarations rather than selecting a convenient overload. Normal Unit return and fallthrough are permitted; no special ownership rules apply.
+
+```kimi
+public func main() -> ()
+    let message = "Hello, world!"
+    ::Core.writeLine(message)
+    // message has been moved; using it again is an error.
+```
+
+Adding a top-level `::Core.writeLine("Top level")` to this project is an error because it mixes startup forms. Integer-returning main and a safe Core.exit API are not initial features; normal termination is 0 and Abort is 1. Runtime.Exit remains internal.
+
+A Library requires no startup candidate, never automatically calls main, and emits no OS entry. Treat main as an ordinary function without the Application signature restriction. Reject top-level runtime body items, including uninitialized let/var. Initial Library .ll is for inspection, LLVM verification, and object-generation experiments, not an externally callable library/DLL or dependency artifact; all language functions remain internal, even public ones. Optimization may remove all such functions, so inspect pre-optimization IR.
+
+##### 22.2.3. OS entry, static initialization, and shutdown
+
+The initial Windows Application emits compiler-reserved external `__kimi_start`, physical signature void (), Windows x64 ccc, noreturn, and the profile attributes (§21.5). Link with /entry:__kimi_start. It performs required runtime initialization, calls the selected body once, completes normal shutdown, and calls Runtime.Exit(0). Empty initialization/shutdown helpers may be omitted. Ordinary mangling prevents source names from colliding with this reserved symbol.
+
+```llvm
+; Fragment: profile attributes and internal helper definitions are omitted.
+; Each helper has one internal definition, not an additional same-name declare.
+define void @__kimi_start() noreturn {
+entry:
+  call void @__kimi_entry_body()
+  call void @__kimi_shutdown()
+  call void @__kimi_runtime_exit(i32 0)
+  unreachable
+}
+```
+
+The entry body is the implicit body or a call to the selected main. Add required runtime initialization before it; heap/standard-handle acquisition may instead occur inside each runtime operation.
+
+The entry handles Kimigayo initialization/cleanup; it does not run executable CRT startup or C/C++ static constructors. Foreign initialization must already be satisfied, for example by OS DLL loading, or by an explicitly supported adapter. /NODEFAULTLIB is not initialization.
 
 Static stored Properties initialize per slot under §11.3.2. A first read, Borrow, write, or other storage operation checks:
 
 | State | Action |
 | --- | --- |
-| Not started | Mark Initializing; evaluate the declaration initializer; after normal completion mark Initialized, then perform the requested operation |
+| Not started | Mark Initializing; evaluate the declaration initializer; after normal completion mark Initialized, then perform the operation |
 | Initializing | Abort for an initialization cycle |
 | Initialized | Perform the operation without rerunning initialization |
 
-A first write still initializes before Replacement. Actual access determines dependency order, not fragment/file/link order. Computed calls initialize only Fields actually accessed by their execution or callees. Merely referencing a Type/function, an untaken branch, or an effect summary initializes no unrelated Field. Every initializer is checked even if unused; unused Fields may remain uninitialized and are not destroyed.
+A first write initializes before Replacement. Actual access determines dependency order, not fragment/file/link order. Computed execution initializes only storage actually accessed. A Type/function reference, untaken branch, or effect summary initializes no unrelated Field. Check all initializers even if unused; unused Fields need not initialize and are not destroyed. An implementation without static execution support diagnoses required uses rather than treating this specification as an implementation.
 
-At successful process termination, first destroy entry locals, then initialized static values in reverse successful-initialization order. Preserve required destructor lifetime dependencies; reject a retained static dependency that cannot remain valid for that order. Uninitialized Fields are not destroyed. Initializing new static storage, accessing destroyed storage, or reentering a Field's destruction during this shutdown is an Abort failure. These rules apply to dependencies as well as the primary Kotonoha.
+Normal body exit cleans its locals exactly once. Then destroy initialized static values in reverse successful-initialization order, retaining required lifetime dependencies; reject dependencies that cannot survive this order. Initializing new static storage, accessing destroyed storage, or reentering a Field's destruction during shutdown Aborts. These language rules include dependencies, although multi-Kotonoha linking is outside the initial profile.
 
-This revision specifies one execution thread and does not admit source thread creation or concurrent foreign reentry into language code. Atomic arc reference counts do not expand that permission. Cross-thread lazy-initialization synchronization, thread transfer, and the memory model remain the [explicit concurrency design boundary](#d2-concurrency-memory-model-and-thread-transfer).
+Cleanup must finish before subsequent cleanup or Exit. Abort stops normal cleanup/unwinding and attempts diagnostics before Runtime.Exit(1) (§17.3, §22.5); secured results are not delivered or separately destroyed afterward.
+
+This revision admits one execution thread, with no source thread creation or concurrent foreign reentry. Atomic arc counts do not expand that permission; synchronization and thread transfer remain §D.2's design boundary.
 
 #### 22.3. Foreign function imports
 
-The recognized Attribute #LibraryImport("library", "symbol") on an unsafe func declaration declares a foreign function with the target platform's C calling convention. Both arguments are required non-interpolated string literals with no embedded NUL and nonempty contents. The declaration has no body, receiver, Generic/Origin parameters, default/optional arguments, variadic tail, or specialization. It is callable only directly; the existing prohibition on acquiring unsafe functions as values applies. It may occur only at the root of a group/rootgroup or as a static type function in a struct; ordinary access rules apply. A func with LibraryImport and an executable body is an error. The attribute's two spellings name a library and an exported symbol exactly; source function naming is independent.
+##### 22.3.1. Declaration and call contract
 
-~~~kimi
+`#LibraryImport("library", "symbol")` on a bodyless unsafe func selects the target C calling convention. Both arguments are required nonempty, non-interpolated, NUL-free string literals. The first is an Ordinal logical library key in NativeLibraries (§20.8.2), not a DLL filename/path; the second is the exact external symbol, independently of the source function name.
+
+Allow imports only directly in group/rootgroup or as receiverless struct type functions. Reject receivers, generic/Origin parameters, default/optional arguments, varargs, specializations, and executable bodies. Calls are direct only; unsafe functions cannot be acquired as values. Ordinary access and unsafe-call rules apply.
+
+```kimi
 group Native
-    #LibraryImport("observer", "observe_i32")
-    public unsafe func observe(value: i32) -> ()
+    #LibraryImport("observer", "observe_record")
+    public unsafe func observe(record: unsafe/NativeRecord) -> ()
+```
 
-unsafe: Native.observe(42)
-~~~
+NativeRecord can be the C-layout example in §21.1.3; the corresponding C declaration is `void observe_record(NativeRecord *record);`. The raw pointer is not read-only. Layout, validity, lifetime, writes, retention, ownership, and active Loans remain the caller's contract; this example supplies no new pointer-acquisition or raw-storage construction API.
 
-Initially supported parameter/result Types are i8/u8, i16/u16, i32/u32, i64/u64, f32/f64, and raw unsafe/T pointers; Unit is permitted only as the result (C void). Scalar widths and the target C ABI must agree; unsupported signatures/targets are compile-time errors. Pointer pointee layout is not passed by value or implicitly guaranteed compatible. bool, char, string, borrows, object handles, aggregates, function/closure values, i128/u128, and isize/usize are excluded from this initial ABI surface. No automatic marshalling, retention, allocation, or cleanup is inserted.
+Acquire arguments once from left to right, then use the selected ABI. No automatic marshalling, retention, allocation, freeing, or ownership acquisition occurs. Normal return resumes ordinary cleanup. C++ exceptions, SEH unwind, longjmp, callbacks, and reentry must not cross Kimigayo frames; control handled entirely inside the foreign code is allowed. Violations carry no result or cleanup guarantee. Apply the FP boundary contract in §21.5.4. Do not infer nounwind merely from these source restrictions or generate a landingpad to catch violations.
 
-Arguments are evaluated and acquired once from left to right, then passed using the selected target ABI. Every call obeys unsafe-function rules. The caller must meet the foreign function's validity, aliasing, lifetime, and retention contract; crossing this boundary never suspends active Loans or grants permission to invalidate live safe references. A normal return resumes ordinary cleanup. Foreign exceptions, long jumps/unwinding across a language frame, and callbacks/reentry into language code are outside the permitted ABI contract; no language cleanup guarantee applies to their violation.
+Unresolved logical libraries and unsupported ABI signatures are compilation errors. Record required link inputs; unresolved native symbols fail manual linking/loading before entry. C aggregate passing, export, callbacks, varargs, and extra calling conventions remain extensions; C storage layout is specified separately and does not enable them.
 
-Library resolution and link-input mapping are implementation-defined build inputs, documented and recorded for reproducibility. Missing libraries/symbols must fail linking or loading before entry execution. A minimal conforming backend can validate this path with a linked C function receiving one fixed-width integer. Fixed aggregate layout, exports, callbacks, platform-specific calling conventions, and variadic FFI remain deferred.
+##### 22.3.2. Initial Windows C ABI
+
+Compute a physical signature once and share it between declare and call:
+
+| Kimigayo parameter/result | C value | LLVM Type |
+| --- | --- | --- |
+| i8 / u8 | int8_t / uint8_t | i8 |
+| i16 / u16 | int16_t / uint16_t | i16 |
+| i32 / u32 | int32_t / uint32_t | i32 |
+| i64 / u64 | int64_t / uint64_t | i64 |
+| f32 / f64 | float / double | float / double |
+| unsafe/T | Corresponding data pointer | ptr, address space 0 |
+| Unit, result only | void | void |
+
+Use ccc with no signext, zeroext, inreg, byval, or sret for these entries. Do not widen i8/i16 to i32 or apply vararg default promotions. Other numeric conversions are separate language operations. LLVM handles registers, stack arguments beyond the fourth, shadow space, and stack alignment; unused upper bits are not meaningful. Additional optimization attributes need independent proof.
+
+```llvm
+declare dllimport i8 @native_i8(i8)
+declare dllimport i16 @native_u16(i16)
+```
+
+Exclude bool, char, string, borrows, object handles, aggregates (including C-exchangeable structs/arrays), function/closure values, i128/u128, and isize/usize. Raw pointees are not passed by value and need not be C-exchangeable when opaque. Future aggregate passing needs separate argument/result C ABI classification and tests, not direct translation to LLVM aggregate parameters.
 
 #### 22.4. Minimal console output
 
@@ -7381,7 +7930,7 @@ Core provides the public ordinary function `writeLine(text: string) -> ()` at it
 
 Acquire text once under Copy/Move rules and write all its UTF-8 bytes plus one LF to standard output. NUL is data. Preserve contents without normalization, CRLF conversion, or locale encoding. Failure may leave partial output; no rollback or device atomicity is promised. Return Unit after host acceptance and flushing this call’s runtime buffer, not necessarily display or durable storage. Failure to complete initiates Abort under normal diagnostic/termination rules, even if stdout is unavailable. Destroy the acquired argument on normal return. Diagnose an unsupported target/feature if the backend cannot provide this operation.
 
-**Complete application example (one entry SourceDocument).**
+**Complete application example (implicit startup in one SourceDocument).**
 
 ```kimi
 ::Core.writeLine("Hello, world!")
@@ -7389,7 +7938,103 @@ Acquire text once under Copy/Move rules and write all its UTF-8 bytes plus one L
 
 The required standard-output bytes are UTF-8 `Hello, world!` followed by LF; normal completion exits with code zero under §22.2. No source main function, user alias, unsafe block, interpolation, or user-declared foreign function is needed. Passing an existing string local Moves it; use its Stringify mapping to obtain an independent owned string when reuse is needed. Borrowed output overloads and general I/O error/result APIs remain outside this minimal operation.
 
-Implementations must document their executable build invocation, entry-path setting, target/toolchain and runtime selection, output location, and native link-input mapping. The first executable implementation milestone and the distinction between existing and proposed settings are recorded in [STATUS.md](STATUS.md#c12-first-executable-milestone). A prototype supporting only that subset must identify itself as partial; the milestone does not relax the Core identity/shape or validation requirements of a fully conforming Compilation. Unused executable Core bodies need not be emitted, but a same-spelled stub without the required identity and contract is not a compatible Core definition.
+The initial Windows implementation of this operation is specified in §22.5; output settings, manifest, and manual build steps are in §20.8. The first executable implementation milestone and the distinction between existing and proposed settings are recorded in [STATUS.md](STATUS.md#c12-first-executable-milestone). A prototype supporting only that subset must identify itself as partial; the milestone does not relax the Core identity/shape or validation requirements of a fully conforming Compilation. Unused executable Core bodies need not be emitted, but a same-spelled stub without the required identity and contract is not a compatible Core definition.
+
+#### 22.5. Initial Windows runtime
+
+##### 22.5.1. Operations and source context
+
+The compiler emits these six logical operations in the same LLVM module. They are internal abstractions, not source APIs or a dedicated runtime DLL:
+
+```text
+Alloc(size: usize) -> ptr
+Free(memory: ptr) -> ()
+WriteStdout(data: ptr, length: usize) -> ()
+Exit(code: u32) -> Never
+TryWriteStderr(data: ptr, length: usize) -> bool
+Abort(reason: DiagnosticText, sourceLocation: SourceLocation) -> Never
+```
+
+Alloc, detected Free failures, and WriteStdout fail by Abort. TryWriteStderr returns false without initiating Abort. Abort attempts diagnostics then Exit(1); Exit never returns and performs no Kimigayo cleanup. The normal language path calls Exit(0) only after cleanup.
+
+Physical helpers may append private diagnostic context after ordinary parameters. Lowering passes static logical path/line/column information for the original operation, including failures inside Alloc/Free/WriteStdout and generated-source CodeContext provenance. This does not depend on PDBs or stack traces.
+
+##### 22.5.2. Allocation and release
+
+Use the process heap, MaxObjectSize = 2^63 - 1, and alignment support up to 16. Check length * stride, headers, and alignment rounding before allocation; overflow/limit failure Aborts. Alloc checks its own limit too, obtains GetProcessHeap, and calls HeapAlloc(heap, 0, max(size, 1)); null heap/allocation Aborts. It returns uninitialized raw memory, not an Initialized language value. The substitute byte for size zero does not change Type size/stride.
+
+Free(null) succeeds without work. Otherwise require the original live pointer returned by this allocator, never an interior pointer or literal backing. GetProcessHeap failure or detected HeapFree(heap, 0, memory) failure Aborts. Lowered cleanup runs destruction before Free; Free itself invokes no destructor. Correct ownership/pointers are a static-analysis and generation duty; detection of double frees or arbitrary corruption is not guaranteed.
+
+HeapAlloc flags remain zero, without exception generation or disabling process-heap synchronization. HeapAlloc does not supply last-error on failure; do not report a stale GetLastError value for null allocation. Obtain last-error immediately after APIs that provide it, including failed HeapFree/WriteFile.
+
+##### 22.5.3. Synchronous byte output
+
+WriteStdout and TryWriteStderr share a checked byte-write adapter. They add no newline, NUL scan, encoding conversion, buffer, or pointer retention. Length zero succeeds before handle acquisition or pointer access. For positive length, require length <= MaxObjectSize, nonnull data, a readable live range within one allocation, and no unsigned 64-bit overflow in baseAddress + (length - 1). Numeric checks do not prove allocation validity/lifetime.
+
+Use GetStdHandle(-11) for stdout and -12 for stderr; null or INVALID_HANDLE_VALUE fails. Do not close these handles. Initial support requires synchronous standard handles. WriteFile receives a 32-bit written-count slot and null OVERLAPPED; capture a supplied last-error before calling another API.
+
+```text
+remaining = length
+while remaining > 0:
+    chunk = min(remaining, UINT32_MAX)
+    request chunk bytes with WriteFile
+    fail if the call fails, written == 0, or written > chunk
+    remaining -= written
+    if remaining > 0:
+        advance within the original buffer with checked pointer arithmetic
+```
+
+Do not compute a next pointer after completion. Partial writes advance by actual progress; never retry zero progress indefinitely. WriteStdout turns any detected failure into Abort; TryWriteStderr returns false and must not call Abort, WriteStdout, or Alloc. Output may be partial, with no rollback, atomicity, display, durability, or bounded synchronous-wait guarantee. Success means OS acceptance of all bytes. These checked buffer rules do not change general unsafe pointer arithmetic.
+
+##### 22.5.4. Abort diagnostics and exit
+
+Fixed diagnostics use an ASCII identifier, English reason, and source location, optionally a valid numeric OS error:
+
+```text
+Main.kimi:3:5: abort KIMI_E_STDOUT: Failed to write to stdout (win32=6)
+```
+
+Use unique catalog codes, including KIMI_E_ALLOC_SIZE (allocation size exceeds limit), KIMI_E_PROCESS_HEAP, KIMI_E_ALLOC, KIMI_E_FREE, KIMI_E_STDOUT, and KIMI_E_INT_OVERFLOW. Omit unavailable OS codes; do not use FormatMessageW. In displayed logical paths, escape non-ASCII/control characters as `\u{HEX}` and backslash as `\\`; preserve the actual path/provenance internally.
+
+Output diagnostics from constants, valid input strings, and small fixed work areas without requiring heap allocation or one concatenated dynamic string. Explicit `$abort(expression)` retains ordinary one-time argument evaluation and outputs the resulting UTF-8 string after KIMI_E_ABORT without translation or escaping its contents. Once Abort starts, do not normally destroy that string.
+
+TryWriteStderr failure truncates diagnostics and proceeds to Exit(1), with no recursive diagnostic path. Runtime.Exit forwards u32 to ExitProcess and ends its caller block with unreachable. It runs no cleanup; successful shutdown and Abort reach it through their distinct §22.2 paths.
+
+##### 22.5.5. String handle and writeLine
+
+The initial internal string representation is `{ ptr, i64, i8 }`: data, byteLength, releaseKind. Use DataLayout for padding/alignment and the aggregate internal ABI. It is not a public FFI/binary ABI.
+
+| Component/state | Validity and responsibility |
+| --- | --- |
+| Length | 0..MaxObjectSize; contents are valid UTF-8 |
+| Positive length | Nonnull readable data with the required lifetime |
+| Static = 0 | Compiler constant backing, never freed; null permitted only at length zero |
+| Heap = 1 | Nonnull original live Runtime.Alloc pointer, capacity >= length, exactly one owning release responsibility |
+| Empty Heap | Keep and free the original pointer even at length zero; allocation-free empties use Static |
+| Other releaseKind | Invalid; destruction's default branch Aborts instead of freeing an unknown pointer |
+| Moved source slot | Unusable as a value; no bit clearing or rewriting is required |
+
+Establish validity at construction, not by revalidating UTF-8/allocations on every use; corruption detection is not guaranteed. Literal backing may be shared without granting Copy to string. Hello world needs no heap allocation.
+
+The required Core.writeLine Symbol (§22.4) acquires its owned argument once, calls WriteStdout(data, length), calls WriteStdout on a one-byte LF constant, then normally destroys the argument and returns Unit. Static release does nothing; Heap release calls Free. An empty body still emits LF. Output failure Aborts without normal argument destruction; earlier output is not rolled back. No concatenation buffer is required.
+
+Write raw UTF-8 bytes to redirected files/pipes without changing the console code page. Non-ASCII console appearance depends on console configuration; universal Unicode console display is not initially guaranteed. A GetConsoleMode/WriteConsoleW adapter is a future extension, not implicit UTF-16 output.
+
+##### 22.5.6. Windows external symbols
+
+WindowsRuntimeSymbols retains each external name, physical signature, calling convention, dllimport setting, and link input. Share declarations through the module symbol table (§21.5.2), including matching LibraryImport declarations. Emit only needed APIs, using Windows x64 ccc:
+
+```llvm
+declare dllimport ptr @GetProcessHeap()
+declare dllimport ptr @HeapAlloc(ptr, i32, i64)
+declare dllimport i32 @HeapFree(ptr, i32, ptr)
+declare dllimport ptr @GetStdHandle(i32)
+declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)
+declare dllimport i32 @GetLastError()
+declare dllimport void @ExitProcess(i32) noreturn
+```
+
+HANDLE and data pointers use ptr, SIZE_T i64, DWORD/UINT/BOOL i32, and LPDWORD ptr to a 32-bit slot. Windows BOOL is not i1. Empty parameter parentheses mean no parameters, not omitted Types. dllimport specifies reference generation, not automatic linking; use the kernel32 input (§20.8.2).
 
 ## Appendices
 
@@ -7412,7 +8057,7 @@ A CodeContext belongs to one Kotonoha and immutable SourceDocument snapshot (§1
 
 Retain each node/fragment’s original CodeContext and diagnostic/header locations after merging. Resolve its bodies, headers, Types, and Constraints in that context, not the merged Container’s. Generated documents have their own contexts; source-less roots/wrappers supply no alias environment and must preserve wrapped syntax’s original context.
 
-Lowering may place top-level executable syntax in an implicit generated function owned by the Kotonoha, but must preserve source scopes and CodeContexts.
+Lowering places a selected top-level runtime body in a private internal function, preserving its SourceDocument scope and CodeContext. It does not synthesize a public main or permit top-level return (§22.2).
 
 The internal name `MacroKoto` does not define language semantics; `$` is the Composition Root.
 
@@ -7483,15 +8128,15 @@ Cover private-set Move rejection; custom-get result versus storage borrowing; no
 
 #### A.5. Raw pointer backend requirements
 
-`ptr` is not a Primitive Type. LLVM `ptr` is a backend representation; instructions supply the Types needed for memory access and arithmetic. Lowering must preserve this specification and use properties such as `inbounds` only when their premises hold. Language undefined behavior and LLVM poison are distinct concepts.
+`ptr` is not a Primitive Type. LLVM `ptr` is a backend representation; instructions supply the Types needed for memory access and arithmetic. Lowering must preserve this specification and use properties such as `inbounds` only when their premises hold. Language undefined behavior and LLVM poison are distinct concepts. The initial instruction mapping is specified in §21.5.3; pointer/integer round trips add no provenance guarantee.
 
 #### A.6. Literal representation
 
-Preserve integer magnitudes and exact decimals until fitting. Canonical serialization must preserve literal kind and fitted value for every allowed target; never round decimal literals through f64. Serialize strings with their values after newline normalization and escape/interpolation processing.
+Preserve integer magnitudes and exact decimals until fitting. Canonical serialization must preserve literal kind and fitted value for every allowed target; never round decimal literals through f64. Serialize strings with their values after newline normalization and escape/interpolation processing. LLVM emission and sharing follow §21.5.6.
 
 #### A.7. Cleanup analysis and lowering
 
-Analyze defer registration separately from execution: non-completing cleanup affects exit paths, not the path after registration. Lower defer and destruction into one exit sequence, retaining only needed registration state. No dynamic closure, function value, or heap cleanup stack is required.
+Analyze defer registration separately from execution: non-completing cleanup affects exit paths, not the path after registration. Lower defer and destruction into one exit sequence, retaining only needed registration state. No dynamic closure, function value, or heap cleanup stack is required. Initial physical lowering and slot responsibility follow §21.4.
 
 In `if condition` containing only `defer: cleanup()`, the true branch registers and runs cleanup before its own exit; false does neither. This needs no registration flag, and lowering cannot move cleanup outside the branch. cleanup is an illustrative API.
 
@@ -7598,6 +8243,29 @@ Preserve one-time receiver/argument evaluation, index-evaluation protection, exc
 | Metadata and iteration | Receiver effects, completeness checks, no result Loan for metadata, stable saved indices, reference iteration independent of element Copy, no iterator-owned borrowed results |
 | Lowering | Identical acceptance, results, effect/Abort order, and Loan legality with optimization enabled/disabled; O(1) view operations without element-proportional allocation or Copy |
 
+#### A.14. Layout, LLVM, and runtime verification
+
+Validate windows-x64-v1 with LLVM 22.1.5, distinguishing semantic acceptance, TypeLayout, IR structure, object ABI/dependencies/unwind, and actual execution. The verifier alone cannot establish layout, foreign ABI, ownership transfer, or correct startup. Keep input/target/settings/expected results together; retain representative golden IR plus structural checks, and normalize only irrelevant internal numbering/paths.
+
+| Area | Required coverage |
+| --- | --- |
+| Startup | Unique implicit/explicit body; uninitialized top-level let/var and Unit; empty/declaration-only documents; invalid/duplicate main; mixed forms; selected/generated items; Library restrictions; static-only documents |
+| Layout | Attribute errors and fragment conflicts; single C storage fragment; moving the entire fragment/renaming method fragments; nested/zero-sized/aligned Types; generic substitution; inline cycles; overflow; C size/alignment/offsetof under packing 16 |
+| ABI and ownership | Scalar/aggregate/zero-size passing; separate Copy source; acquisition transfers; result secured before cleanup; Abort/divergence before delivery; partial construction/Move; literal backing never freed; Heap ownership released once |
+| Instructions | All checked integer boundaries, signed minimum/-1, invalid shifts; float-to-integer boundaries and adjacent floats for every supported pair, NaN/infinities/fractions/signed zero; finite-to-infinity conversion; i128 supported/unsupported operations and helper dependencies |
+| CFG and optimization | Short circuit/guards, scalar/aggregate/Never joins, actual phi predecessors, assignment/setter evaluation count, self-assignment, first placement, direct construction, edge cleanup/defer flags, nontermination, partial values/padding/overlap |
+| Constants and FP | Exact reread fitted bits and UTF-8/NUL lengths; literal sharing; NaN Equatable distinction; subnormals/ties/signed zero; ABI-standard MXCSR after external save/change/restore, without comparing status flags |
+| FFI and pointer operations | Clang C signatures; signed small integers, maximum unsigned values, mixed FP/integer and 5+ arguments; symbol/library/ABI collisions; null zero-displacement and valid positive/negative/one-past arithmetic; no expected result for unsafe violations |
+| Runtime failures | Partial/zero-progress writes, missing stdout, failed stderr without recursion, allocation/free failures, size/address overflow, invalid releaseKind, empty Static/Heap strings, source provenance and ASCII path diagnostics |
+| Backend supply | Native COFF only, disassembly and dependency inspection, no self/cyclic libcalls; memcpy/memmove/memset boundaries/alignment/results and both overlap directions; __chkstk page/multipage frames, guard probes and register/stack preservation |
+| Profile and publication | CPU/features independent of host, PIC/ASLR at ordinary 64-bit image bases, .pdata/.xdata consistent with prologues, one strong _fltused in both output kinds, package/ABI/hash/supply mismatch, unknown dependencies, mixed publication/hash failure |
+
+Use fault-injecting test adapters where needed without expanding the production six-operation/seven-API set. Compare O0/O2 stdout, stderr, exit status, and observable effect/cleanup order; compiler Debug/Release must preserve acceptance and runtime checks. Run nontermination tests with bounded test-harness time and inspect optimized CFG. Separate required constant evaluation from ordinary constant expressions, and diagnose unsupported generated operations before optimization even in unused bodies.
+
+Adopt helper supplies only after /NODEFAULTLIB custom-entry O0/O2 links and execution establish no hidden CRT/dynamic/TLS/exit-handler dependency. Check all actual object undefined symbols, including references added/removed by LLVM, against real providers. Version/hash/catalog mismatches fail validation. Validate memory intrinsic expansion and libcall paths, and assembly unwind information.
+
+The first executable must itself produce exactly `Hello, world!\n` (14 UTF-8 bytes), empty stderr, and exit code 0; host test-runner output is not a substitute. Also test empty strings, Japanese/NUL bytes under redirection, and Abort code 1. Library verification checks retained pre-optimization bodies/signatures/linkage and object generation, not external linking or execution. Assess unnecessary slots/transfers/flags with representative O2 code without deleting semantically required work.
+
 ### Appendix B. Non-normative reference models
 
 **Non-normative.** All algorithms in this appendix are optional. Any alternative must preserve the language and Appendix A, including excluded-syntax validation and committed lookup decisions.
@@ -7619,12 +8287,14 @@ Solution -> Project -> Compilation(inputs)
        (without directive reselection or new body-derived semantic conditions)
     -> Explicit implementation selection from the closed defining set
     -> Concrete control-flow, Access Effect, ownership, Origin, lifetime and cleanup analysis
-    -> Lowering
-    -> Shared code generation / meaning-preserving automatic specialization
-    -> Backend IR -> binary
+    -> Final acceptance and supported-generation-set validation
+    -> Layout / ValueLowering / FunctionAbi / CleanupPlan
+    -> LLVM lowering -> pre-optimization .ll + .link.json
+    -> Manual LLVM verification / opt / llc -> object
+    -> Manual native linking -> executable -> execution validation
 ```
 
-Select among verified ordinary/specialized bodies, then analyze the selected CFG/effects. Early shared-body planning/caching is allowed; executable lowering waits for resolved effects, Loans, and cleanup. Sharing preserves the finalized operations (§21.3); no unverified body may be emitted.
+Select among verified ordinary/specialized bodies, then analyze the selected CFG/effects. Early shared-body planning/caching is allowed; executable lowering waits for resolved effects, Loans, and cleanup. Sharing preserves the finalized operations (§21.3); no unverified body may be emitted. The initial output boundary is §20.8: generic sharing, external Library ABI, and automated linking/running are not implied by this pipeline.
 
 #### B.2. Directive processing sequence
 
@@ -7737,13 +8407,16 @@ This index links to design boundaries owned by the language sections. It adds no
 | Runtime Contract Views: designation, View associated-Type bindings, contract/exact tests and checked casts | Extension design; outside the initial static Contract implementation | [Runtime contracts](#85-runtime-contracts), [tests and casts](#1362-general-view-tests-and-checked-casts) |
 | User-defined generic Contracts, outer generic capture, default implementations, external conformance, qualified requirement calls | Not introduced | [Contracts](#84-static-contracts) |
 | Extra implicit/ordinary base conversions and consuming/generic/type-function runtime requirements | Deferred design | [Object views](#335-object-views-and-identity), [runtime contracts](#85-runtime-contracts) |
-| Fixed FFI layout | Deferred design | [Structure layout and ABI](#211-structure-layout-and-abi) |
+| Struct layout modes | Kimigayo/C specified; special layouts deferred | [Structure layout and ABI](#211-structure-layout-and-abi) |
 | Concurrency, memory model, and thread-transfer capabilities | Deferred design | [Concurrency boundary](#d2-concurrency-memory-model-and-thread-transfer) |
-| User-defined arithmetic and general Attribute semantics | Deferred beyond specified comparison, LibraryImport, and Mod marker behavior | [Operator boundaries](#138-extension-boundaries-and-reserved-syntax), [Attributes](#65-attributes) |
+| User-defined arithmetic and general Attribute semantics | Deferred beyond specified comparison, Layout, LibraryImport, and Mod marker behavior | [Operator boundaries](#138-extension-boundaries-and-reserved-syntax), [Attributes](#65-attributes) |
 | Associated-Type inference beyond explicit identity facts, arbitrary complete-Type bindings, and stronger symbolic Constraint reasoning | Not introduced | [Associated Types](#843-associated-types), [proof boundaries](#87-constraint-proof-system) |
 | Const/value arguments beyond function lengths, standalone Semantics slots, partial/default/variadic generic arguments | Not introduced | [Function length parameters](#44-function-length-parameters), [Generic Type parameters](#81-generic-type-parameters) |
 | Partial/conditional explicit specialization, specialization priorities, generic Container specialization | Not introduced | [Full specialization](#88-explicit-full-function-specialization) |
 | Exact precompilation, callee propagation, sharing/ABI formats, and optimization budgets | Implementation-design boundaries | [Generic generation limits](#2135-generation-limits-and-code-merging) |
+| Automatic toolchain/build/run, debug information, cross-module/DLL ABI, extra CPU/OS profiles | Deferred beyond the initial manual Windows profile | [Initial output](#208-initial-llvm-output-and-manual-build), [LLVM profile](#215-llvm-windows-x64-profile) |
+| Dynamic collections, borrow/object/function handle ABI, rc/arc physical counters/order, general shared-generic metadata | Physical representation must be specified before emission; no implicit one-pointer fallback | [Object metadata](#212-object-metadata), [Internal ABI](#2142-physical-function-signatures) |
+| C aggregate passing/export/callback/varargs, Unicode console adapter, over-aligned allocation, arbitrary exit codes and FP environment control | Deferred extensions | [FFI](#223-foreign-function-imports), [Windows runtime](#225-initial-windows-runtime) |
 | Contract-level abstract Origins, heap/global borrow escape, and lending iterators | Deferred design; ordinary function/struct abstract Origins are defined in §15.3 | [Abstract Origins](#153-abstract-origins), [Lifetime design boundaries](#159-lifetime-design-boundaries) |
 | Destruction lifetime relaxation | Deferred design | [Destruction lifetime checking](#1566-destruction-lifetime-checking) |
 | Additional dynamic Move Paths | Deferred design | [Move Paths and Partial Move](#1513-move-paths-and-partial-move) |
@@ -8309,9 +8982,9 @@ These entries record the limits of a complete syntax summary for this revision. 
 | Runtime-contract designations, View associated-type bindings, exact/contract tests and checked casts | The [runtime extension](#85-runtime-contracts) and [object operations](#1362-general-view-tests-and-checked-casts) preserve the design without final source spellings. Static associated-Type specifications/projections are defined in F.3. Ordinary struct `is` and explicit upcasts are defined. |
 | Callable extensions | Borrowed or Exclusive/Consuming erased Types, public lending results, non-escaping declarations, capture aliases/initializers/parts, generic receiver Semantics, and `from environment` remain unintroduced. |
 | Additional Patterns | The [initial forms](#1481-patterns) are defined; Struct, Type, OR, Range, Rest, and other [extensions](#d1-enum-and-pattern-extensions) remain deferred. |
-| Attributes | Syntax, placement, and Mod marker behavior follow [§6.5](#65-attributes); LibraryImport follows [§22.3](#223-foreign-function-imports). Concrete marker registration and other general semantics remain design boundaries. |
+| Attributes | Syntax, placement, and Mod marker behavior follow [§6.5](#65-attributes); Layout follows [§21.1.2](#2112-layout-attribute-and-fragments), and LibraryImport follows [§22.3](#223-foreign-function-imports). Concrete marker registration and other general semantics remain design boundaries. |
 | Additional Composition Root expressions | Only `$abort(...)` is given a complete operation syntax here; see [extension boundaries](#138-extension-boundaries-and-reserved-syntax). |
 | Additional type arguments | [Generic application](#1242-invocation-and-generic-application) does not define general constant type arguments. |
 | Object ownership operation spellings | [Core creation and strong-owner duplication](#1358-object-ownership-creation-and-sharing) have defined semantics; source names/signatures remain deferred. `Type.init` constructs an owner value, and `@obj`/`@rc`/`@arc` add no allocation or count increment. |
 | Function parameters | The combined optional/external-name form remains under [parameter design boundaries](#109-inference-and-operation-design-boundaries); the separate forms are summarized in F.3. |
-| Re-export, fixed FFI layout, and failure propagation | See [Re-exports](#182-re-exports), [layout boundaries](#211-structure-layout-and-abi), and [error policy](#171-error-policy). |
+| Re-export, special FFI layouts, and failure propagation | See [Re-exports](#182-re-exports), [layout boundaries](#211-structure-layout-and-abi), and [error policy](#171-error-policy). |

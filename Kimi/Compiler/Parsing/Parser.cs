@@ -2271,7 +2271,7 @@ CloseParameters:
         }
     }
 
-    private static bool HasLibraryImport(AttributeKoto? attribute)
+    internal static bool HasLibraryImport(AttributeKoto? attribute)
     {
         for (; attribute is not null; attribute = attribute.AttributeChain)
         {

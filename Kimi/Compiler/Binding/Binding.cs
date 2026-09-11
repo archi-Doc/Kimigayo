@@ -32,6 +32,7 @@ public sealed partial class Binding
         this.indexer = new(this);
         this.TypeSystem = new BindingControlFlowTypes();
         this.Core = new(compilation);
+        this.symbols.Add(this.Core.WriteLine.Declaration, this.Core.WriteLine);
     }
 
     /// <summary>Gets the latest pass summary. Results are replaced by the next Bind.</summary>
@@ -76,6 +77,7 @@ public sealed partial class Binding
         try
         {
             this.issues.Clear();
+            this.ResetStartup();
             this.receiverOperations.Clear();
             this.nodes.Clear();
             this.aliases.Clear();
@@ -119,6 +121,8 @@ public sealed partial class Binding
             }
 
             this.scopes[this.Core.Kotonoha.RootKoto] = this.Core.Scope;
+            this.indexer.Scope = this.Core.Scope;
+            this.indexer.Visit(this.Core.WriteLine.Declaration);
             this.BindSchemas();
             this.PrepareContracts();
             this.BindConstraints();
@@ -139,6 +143,7 @@ public sealed partial class Binding
             this.ValidateConformances(mode, false);
             this.ValidateConstraintEnvironments();
             this.BindNode(this.compilation.Kotonoha.RootKoto, this.rootScope);
+            this.BindNode(this.Core.WriteLine.Declaration, this.scopes[this.Core.WriteLine.Declaration]);
             this.ClearCapabilityResults();
             this.ValidateCopyDeclarations(mode);
             this.ValidateProperties(mode);
@@ -492,8 +497,14 @@ public sealed partial class Binding
                     if (!function.IsGenerated && !function.IsAnonymous)
                     {
                         var memberScope = this.Scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? this.Scope.Parent! : this.Scope;
+                        var conditional = this.Scope.Owner as SyntaxFormKoto;
+                        if (IsRootMain(function))
+                        {
+                            memberScope = binding.rootScope;
+                        }
+
                         var symbol = binding.Declare(node, function.Name, BindingSymbolKind.Function, node, memberScope);
-                        symbol.ConditionalDeclaration = ReferenceEquals(memberScope, this.Scope) ? null : (SyntaxFormKoto)this.Scope.Owner;
+                        symbol.ConditionalDeclaration = conditional is { Akind: KotoKind.ConditionalConformance } ? conditional : null;
                         if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto)
                         {
                             for (var p = 0; p < function.Parameters.Count; p++)

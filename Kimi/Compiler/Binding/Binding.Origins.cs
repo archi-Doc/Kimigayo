@@ -231,7 +231,8 @@ public sealed partial class Binding
             IReadOnlyList<string> origins;
             if (node is FunctionKoto { IsGenerated: false, IsAnonymous: false } function)
             {
-                parameters = function.GenericArguments;
+                // Specialization arguments are concrete Types, not generic declaration slots.
+                parameters = function.IsSpecialization ? [] : function.GenericArguments;
                 origins = function.Origins;
             }
             else if (node is DeclarationContainerKoto { IsRoot: false } container)

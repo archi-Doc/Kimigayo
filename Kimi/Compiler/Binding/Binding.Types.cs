@@ -71,12 +71,12 @@ public sealed partial class Binding
             imported = candidate;
         }
 
-        if (imported is not null || !type)
+        if (imported is not null)
         {
             return imported;
         }
 
-        return name == "Core" ? this.Core.Module : this.Core.Scope.Types.GetValueOrDefault(name);
+        return type ? name == "Core" ? this.Core.Module : this.Core.Scope.Types.GetValueOrDefault(name) : this.Core.Scope.Values.GetValueOrDefault(name);
     }
 
     private BindingScope? AliasTarget(AliasKoto alias, BindingScope useScope)

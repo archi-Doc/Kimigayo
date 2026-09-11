@@ -245,6 +245,7 @@ public class CompilationSpecificationTest
         var project = compilation.Project;
         var solution = new Solution(compilation.Kimigayo);
         solution.Projects.Add("test", project);
+        project.ProjectFile.OutputKind = OutputKind.Library;
         solution.SolutionFile.Configuration.LangVersion = "future";
         Assert.False(await solution.Build());
         Assert.Empty(project.BuildMetadata);

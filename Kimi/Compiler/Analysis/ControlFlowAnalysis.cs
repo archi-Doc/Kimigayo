@@ -272,6 +272,23 @@ public sealed class ControlFlowAnalysis
             case CodeBlockKoto block:
                 flow = this.VisitSequence(block.Items, 0, block.Items.Count, reachable);
                 break;
+            case InvocationKoto call when this.types.TryGetCallReceiver(call, out var receiver):
+                // A committed direct callee is a designator, not a function-value acquisition.
+                // Bound receiver syntax precedes the explicit arguments exactly once.
+                var receiverFlow = receiver is null ? new Flow(true, ControlFlowType.Unit) : this.Visit(receiver, reachable);
+                var argumentsFlow = this.VisitSequence(call.ArgumentNodes, 0, call.ArgumentNodes.Count, reachable && receiverFlow.Normal);
+                var callType = this.types.GetExpressionType(call);
+                flow = new(
+                    receiverFlow.Normal && argumentsFlow.Normal && callType != ControlFlowType.Never,
+                    callType,
+                    Union(receiverFlow.Transfers, receiverFlow.Normal ? argumentsFlow.Transfers : null),
+                    receiverFlow.Pending || (receiverFlow.Normal && argumentsFlow.Pending) || callType is null);
+                if (callType is null)
+                {
+                    this.pending.Add(call);
+                }
+
+                break;
             case ParenthesizedKoto p:
                 if (GetConditionBinding(p) is { } binding)
                 {

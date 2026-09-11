@@ -22,7 +22,7 @@ public static partial class KotoHelper
 
             if (IsFunctionBody(parent, child))
             {
-                return jump is ReturnKoto ? parent : null;
+                return jump is ReturnKoto && parent is not FunctionKoto { IsGenerated: true } ? parent : null;
             }
 
             if (parent is LabeledKoto labeled && child == labeled.Target && jump.Label == labeled.Label && IsInsideLabeledBody(jump, labeled))

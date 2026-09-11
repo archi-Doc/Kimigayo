@@ -15,7 +15,14 @@ public enum IntrinsicKind : byte
     Callable,
 }
 
-/// <summary>The compiler-owned Core requirement identities. This is not the complete runtime Core library.</summary>
+/// <summary>Identifies a compiler-provided language function implementation.</summary>
+public enum CompilerFunctionKind : byte
+{
+    None,
+    WriteLine,
+}
+
+/// <summary>The compiler-owned Core identities. This is not the complete runtime Core library.</summary>
 public sealed class CoreIntrinsics
 {
     internal CoreIntrinsics(Compilation compilation)
@@ -30,6 +37,7 @@ public sealed class CoreIntrinsics
         this.Copy = this.Create(0, IntrinsicKind.Copy);
         this.Owned = this.Create(1, IntrinsicKind.Owned);
         this.Callable = this.Create(2, IntrinsicKind.Callable);
+        this.WriteLine = this.CreateWriteLine();
         this.Restore();
     }
 
@@ -47,9 +55,13 @@ public sealed class CoreIntrinsics
 
     public BindingSymbol Callable { get; }
 
+    public BindingSymbol WriteLine { get; }
+
     internal BindingScope Scope { get; }
 
-    internal bool IsValid => this.Kotonoha.RootKoto.NestedContainers.Count == 3 && this.Kotonoha.RootKoto.Members.Count == 0 && this.Valid(this.Copy, 0) && this.Valid(this.Owned, 1) && this.Valid(this.Callable, 2);
+    internal bool IsValid => this.Kotonoha.GeneratedFunction is null && this.Kotonoha.RootKoto.NestedContainers.Count == 3 &&
+        this.Kotonoha.RootKoto.Members.Count == 1 && ReferenceEquals(this.Kotonoha.RootKoto.Members[0], this.WriteLine.Declaration) &&
+        this.Valid(this.Copy, 0) && this.Valid(this.Owned, 1) && this.ValidWriteLine();
 
     internal void Restore()
     {
@@ -69,6 +81,41 @@ public sealed class CoreIntrinsics
         declaration.BindingState = BindingState.Resolved;
         return symbol;
     }
+
+    private BindingSymbol CreateWriteLine()
+    {
+        // Build ordinary declaration syntax once. Its implementation identity, not a fake
+        // executable body or a spelling check at calls, supplies the later lowering hook.
+        var source = new SourceDocument("compiler://Core/writeLine", "string");
+        var context = new CodeContext(this.Kotonoha, sourceDocument: source);
+        var tokenizer = new Tokenizer(context.DiagnosticCollection, source);
+        try
+        {
+            tokenizer.ReadAll();
+            var reader = new TokenReader(context, ref tokenizer);
+            var type = new TypeSemanticsKoto(ref reader, new Token(TokenKind.String));
+            var function = new FunctionKoto(ref reader, new(null, ModifierKind.Public, false), default, "writeLine", null, [new("text", "text", false, type, null)], null);
+            this.Kotonoha.RootKoto.AddLast(function);
+            return new("writeLine", BindingSymbolKind.Function, function, this.Scope) { CompilerFunction = CompilerFunctionKind.WriteLine };
+        }
+        finally
+        {
+            tokenizer.Dispose();
+        }
+    }
+
+    private bool ValidWriteLine()
+        => this.WriteLine.Declaration is FunctionKoto function &&
+        ReferenceEquals(function.Parent, this.Kotonoha.RootKoto) &&
+        function.Name == "writeLine" && function.Modifier == ModifierKind.Public &&
+        function.GenericArguments.Count == 0 && function.Origins.Count == 0 && function.Parameters.Count == 1 &&
+        function.TypeConstraints.Count == 0 && function.ReturnType is null && function.Body is null && function.ExpressionBody is null &&
+        function.AttributeChain is null && !function.IsRequirement && !function.IsGenerated && !function.IsSpecialization &&
+        function.Parameters[0] is
+        {
+            ExternalName: "text", InternalName: "text", IsOptional: false, DefaultValue: null, AttributeChain: null,
+            Type: TypeSemanticsKoto { Type: null, Identifier: "string", SemanticsKind: SemanticsKind.Owner, OriginExpression: null, OriginName: null, OriginArguments: null },
+        };
 
     private bool Valid(BindingSymbol symbol, int index)
         => ReferenceEquals(this.Kotonoha.RootKoto.NestedContainers[index], symbol.Declaration) && symbol.Declaration is ContractKoto { Members.Count: 0, ConstraintNodes.Count: 0, Bases.Count: 0, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public } declaration && declaration.Name == symbol.Name;

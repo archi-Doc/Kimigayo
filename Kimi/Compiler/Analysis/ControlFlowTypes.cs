@@ -60,6 +60,16 @@ public abstract class ControlFlowTypeSystem
     /// <returns>The selected declaration, or null when unresolved.</returns>
     public virtual FunctionKoto? GetReferencedFunction(Koto expression) => null;
 
+    /// <summary>Identifies a selected direct call and its receiver, without treating its callee as a runtime value.</summary>
+    /// <param name="call">The call to inspect.</param>
+    /// <param name="receiver">The receiver evaluated before explicit arguments, or null for an unbound call.</param>
+    /// <returns>True when Binding has committed the direct call; false when its evaluation remains unknown.</returns>
+    public virtual bool TryGetCallReceiver(InvocationKoto call, out Koto? receiver)
+    {
+        receiver = null;
+        return false;
+    }
+
     /// <summary>Determines whether a bound operation requires lexical unsafe permission.</summary>
     /// <param name="expression">The operation to check.</param>
     /// <returns>The requirement, or null when operand Types or overloads remain unresolved.</returns>

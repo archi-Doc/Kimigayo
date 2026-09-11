@@ -17,7 +17,15 @@ internal sealed class BindingControlFlowTypes : ControlFlowTypeSystem
         => boundary is FunctionKoto { IsGenerated: true } ? ControlFlowType.Unit : boundary is PropertyAccessorKoto accessor ? FlowType(accessor.ReturnType?.BoundType ?? accessor.BoundType) : FlowType(boundary.BoundSymbol?.Type);
 
     public override FunctionKoto? GetReferencedFunction(Koto expression)
-        => expression.BindingState == BindingState.Resolved ? expression.BoundSymbol?.Declaration as FunctionKoto : null;
+        => expression is ExpressionKoto and not InvocationKoto && expression.BindingState == BindingState.Resolved &&
+            expression.BoundSymbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto function } ? function : null;
+
+    public override bool TryGetCallReceiver(InvocationKoto call, out Koto? receiver)
+    {
+        var bound = call.BoundCall;
+        receiver = bound?.Receiver;
+        return bound is not null;
+    }
 
     public override ControlFlowType? GetDefaultGetterResultType(PropertyKoto property)
         => property.BindingState == BindingState.Resolved ? FlowType(property.BoundType) : null;
@@ -29,7 +37,8 @@ internal sealed class BindingControlFlowTypes : ControlFlowTypeSystem
             return null;
         }
 
-        return expression is DereferenceKoto || (expression.BoundSymbol?.Declaration is FunctionKoto f && (f.Modifier & ModifierKind.Unsafe) != 0);
+        return expression is DereferenceKoto || (expression is ExpressionKoto &&
+            expression.BoundSymbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto f } && (f.Modifier & ModifierKind.Unsafe) != 0);
     }
 
     public override bool? IsCompatible(ControlFlowResultSource source, ControlFlowType target)
