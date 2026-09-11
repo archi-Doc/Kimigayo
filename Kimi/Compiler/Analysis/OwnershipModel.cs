@@ -140,15 +140,20 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipEdge> EdgeStorage = new();
     internal readonly List<int> EdgeHeads = new();
     internal readonly List<int> IncomingEdges = new();
+    internal readonly List<int> OperationSteps = new();
     internal readonly List<OwnershipCleanupStep> CleanupStepStorage = new();
     internal readonly List<OwnershipCleanupPlan> CleanupPlanStorage = new();
     internal readonly List<OwnershipIssue> IssueStorage = new();
     internal readonly Dictionary<BindingSymbol, int> SymbolPlaces = new(ReferenceEqualityComparer.Instance);
-    internal readonly List<int> Worklist = new();
-    internal byte[] StateStorage = [];
     internal bool[] Reachable = [];
-    internal bool[] Queued = [];
-    internal byte[] StateScratch = [];
+    internal bool[] BlockReachable = [];
+    internal bool[] BlockQueued = [];
+    internal int[] BlockQueue = [];
+    internal int[] BlockOf = [];
+    internal int[] BlockLeaders = [];
+    internal int[] IncomingCounts = [];
+    internal ulong[] BlockStates = [];
+    internal ulong[] Scratch = [];
 #pragma warning restore SA1401
 
     public FunctionKoto Function { get; internal set; } = null!;
@@ -171,9 +176,6 @@ public sealed partial class OwnershipBody
 
     public bool IsReachable(int operation) => this.Reachable[operation];
 
-    public PlaceState GetInputState(int operation, int place)
-        => (PlaceState)this.StateStorage[(operation * this.PlaceStorage.Count) + place];
-
     internal void Reset(FunctionKoto function)
     {
         this.Function = function;
@@ -184,6 +186,7 @@ public sealed partial class OwnershipBody
         this.EdgeStorage.Clear();
         this.EdgeHeads.Clear();
         this.IncomingEdges.Clear();
+        this.OperationSteps.Clear();
         this.CleanupStepStorage.Clear();
         this.CleanupPlanStorage.Clear();
         this.IssueStorage.Clear();

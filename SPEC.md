@@ -3987,7 +3987,9 @@ Check integer `+ - *`, unary `-`, increment/decrement, and the arithmetic part o
 
 Floating-point operations follow IEEE 754 for `f32` / `f64`, using round-to-nearest, ties-to-even. They support infinity, NaN, and signed zero; floating-point division by zero does not use integer failure rules. Do not implicitly reassociate or fuse ordinary operations when rounding or NaN results would change.
 
-`string + string` concatenates without implicit numeric stringification. Raw-pointer arithmetic is limited to the forms and unsafe conditions in [pointer arithmetic](#53-pointer-arithmetic-and-indexing); its undefined-behavior rules are distinct from checked integer arithmetic.
+`string + string` denotes concatenation without implicit numeric stringification. Its operand acquisition and ownership rules, including string `+=`, are deferred to a common operator model. That design must specify Copy/Move or borrowing, Loan duration, result ownership, aliasing/self-update, and failure behavior while preserving the evaluation and write order in §13.7. No particular acquisition strategy is adopted here. These operations cannot pass executable finalization until those rules are defined and implemented; parsing or Type checking alone grants no ownership permission.
+
+Raw-pointer arithmetic is limited to the forms and unsafe conditions in [pointer arithmetic](#53-pointer-arithmetic-and-indexing); its undefined-behavior rules are distinct from checked integer arithmetic.
 
 #### 13.4. Comparison and logical operators
 
@@ -3996,6 +3998,20 @@ Floating-point operations follow IEEE 754 for `f32` / `f64`, using round-to-near
 Floating-point `+0.0 == -0.0` is true. With a NaN operand, `== < <= > >=` are false and `!=` is true; floating-point ordering is not total.
 
 Comparisons may borrow their operands and do not Move non-Copy owned values solely to compare them. User-defined comparison requires an explicit Type capability. Safe borrows compare referent values of the same Type using that Type's comparison capability. Tuples support elementwise equality and lexicographic ordering when all corresponding elements support the required comparison.
+
+For a built-in comparison that inspects a non-Copy owned Place, form an implicit shared Loan when that operand is evaluated. Operands are evaluated left to right: the left operand's Loan begins before evaluation of the right operand and remains active through the comparison. Both inspections require Initialized values. Apply the normal [Loan conflict rules](#1562-place-overlap-and-conflicts) throughout operand evaluation; a later operand cannot Move, replace, destroy, or exclusively borrow the earlier borrowed Place. Optimization cannot change this acceptance rule.
+
+On normal completion, comparison-only Loans end after the comparison; its bool result retains no operand Loan. They also end if a control transfer abandons the comparison. Existing Loans retain their own lifetimes, and temporary operands retain their [normal temporary lifetimes](#362-lifetime-and-borrowing); ending an inspection Loan does not destroy a temporary early. Abort follows §17.3.
+
+```kimi
+func take(text: string) -> string => text
+
+let text = "a"
+let same = text == "a" // Shared inspection; text is not Moved.
+// let invalid = text == take(text)
+// Error: the left operand's shared Loan is active when take acquires text by Move.
+writeLine(text) // Allowed: the completed comparison's Loan has ended.
+```
 
 Value equality and object identity are separate operations; `==` does not implicitly become an address comparison for object Types. Raw-pointer `== !=` are the explicit exception, following [pointer equality](#51-null-and-equality).
 
@@ -4378,6 +4394,8 @@ Right associativity parses `a = b = c` as `a = (b = c)`; the inner Unit result m
 ##### 13.7.2. Compound assignment
 
 `+= -= *= /= %= &= |= ^= <<= >>=` perform the corresponding binary operation and return Unit. Resolve the destination once, read its old value once, evaluate the right side, compute, and write once. This is not a textual replacement with `target = target op value`; receivers and indices are not repeated.
+
+String `+=` remains subject to the deferred operator ownership design in [§13.3](#133-arithmetic-bitwise-and-shift-operators); this section's evaluation order does not supply its missing acquisition rules.
 
 Select read and write independently under §11: standard operations use permitted storage access, custom/computed/required operations call their accessors. The read result must support the operator, and its result must fit set input. Require valid receivers and Loans through every stage; an owning getter may consume a receiver needed by set. Do not insert duplication, retry borrowing after failed Move, or bypass a setter through exclusive storage access. Evaluation remains target/read first, then RHS; updates of getter-owned temporaries remain forbidden (§11.2.3).
 
@@ -8410,6 +8428,7 @@ This index links to design boundaries owned by the language sections. It adds no
 | Struct layout modes | Kimigayo/C specified; special layouts deferred | [Structure layout and ABI](#211-structure-layout-and-abi) |
 | Concurrency, memory model, and thread-transfer capabilities | Deferred design | [Concurrency boundary](#d2-concurrency-memory-model-and-thread-transfer) |
 | User-defined arithmetic and general Attribute semantics | Deferred beyond specified comparison, Layout, LibraryImport, and Mod marker behavior | [Operator boundaries](#138-extension-boundaries-and-reserved-syntax), [Attributes](#65-attributes) |
+| String concatenation and string compound-assignment ownership | Deferred to a common operator model; executable acceptance requires defined acquisition, Loans, result ownership and failure rules | [Arithmetic operators](#133-arithmetic-bitwise-and-shift-operators) |
 | Associated-Type inference beyond explicit identity facts, arbitrary complete-Type bindings, and stronger symbolic Constraint reasoning | Not introduced | [Associated Types](#843-associated-types), [proof boundaries](#87-constraint-proof-system) |
 | Const/value arguments beyond function lengths, standalone Semantics slots, partial/default/variadic generic arguments | Not introduced | [Function length parameters](#44-function-length-parameters), [Generic Type parameters](#81-generic-type-parameters) |
 | Partial/conditional explicit specialization, specialization priorities, generic Container specialization | Not introduced | [Full specialization](#88-explicit-full-function-specialization) |

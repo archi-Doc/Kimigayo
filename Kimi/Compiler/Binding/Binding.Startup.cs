@@ -113,7 +113,7 @@ public sealed partial class Binding
     }
 
     private static bool IsRootMain(FunctionKoto function)
-        => function.Name == "main" && (function.Modifier & (ModifierKind)7) == ModifierKind.Public &&
+        => function.Name == "main" && function.Modifier.ExtractAccessibilityModifiers() == ModifierKind.Public &&
             (function.Parent is GroupKoto { IsRoot: true } || function.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } });
 
     private static bool ValidMain(FunctionKoto function)

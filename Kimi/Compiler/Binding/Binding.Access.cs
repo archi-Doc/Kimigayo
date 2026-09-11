@@ -53,9 +53,9 @@ public sealed partial class Binding
 
             var sameModule = ReferenceEquals(current.Declaration.CodeContext.Kotonoha, use.Owner.CodeContext.Kotonoha);
             var lexical = false;
-            for (var scope = use; scope is not null; scope = scope.Parent)
+            for (var scope = use; scope is not null && !lexical; scope = scope.Parent)
             {
-                lexical |= ReferenceEquals(scope, current.Scope);
+                lexical = ReferenceEquals(scope, current.Scope);
             }
 
             if (lexical || (current.Scope.Owner is DeclarationContainerKoto { IsRoot: true } && sameModule))
@@ -72,6 +72,10 @@ public sealed partial class Binding
                     {
                         var instance = ReferenceEquals(current, symbol) && (symbol.ReceiverIndex >= 0 || symbol.Kind == BindingSymbolKind.Property);
                         protectedAccess |= !instance || (receiverType is not null && this.DerivesFrom(EffectiveCore(receiverType).Symbol, derived.BoundSymbol!));
+                        if (protectedAccess)
+                        {
+                            break;
+                        }
                     }
                 }
             }

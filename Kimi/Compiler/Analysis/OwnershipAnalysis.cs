@@ -78,8 +78,7 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
-        var verified = binding.Result.IsComplete && binding.Obligations.Count == 0 &&
-            this.flow.Issues.Count == 0 && this.flow.PendingBinding.Count == 0 && errors == 0 && unsupported == 0;
+        var verified = this.flow.Issues.Count == 0 && this.flow.PendingBinding.Count == 0 && errors == 0 && unsupported == 0;
         if (!verified)
         {
             // A caller cannot certify a program containing an unchecked callee or flow contract.
@@ -191,7 +190,10 @@ public sealed partial class OwnershipAnalysis
     {
         var id = this.body.PlaceStorage.Count;
         type ??= BoundType.Unit;
-        var proof = this.compilation.Binding.ProveCopy(type, source);
+        // Primitive classification needs no Constraint environment (SPEC 3.5.1).
+        var proof = type.Kind == BoundTypeKind.Primitive && !ReferenceEquals(type, BoundType.Never)
+            ? (type.Name == "string" ? ConstraintProof.Refuted : ConstraintProof.Proven)
+            : this.compilation.Binding.ProveCopy(type, source);
         var acquisition = proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove;
         this.body.PlaceStorage.Add(new(id, source, type, kind, mutable, acquisition));
         this.body.IsConcrete &= type.Kind != BoundTypeKind.Parameter;
@@ -235,20 +237,15 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (use is PlaceUseKind.Read or PlaceUseKind.Borrow)
+        if (use != PlaceUseKind.Consume)
         {
             this.Emit(use == PlaceUseKind.Read ? OwnershipOperationKind.Read : OwnershipOperationKind.Borrow, source, place);
-            if (use == PlaceUseKind.Borrow)
-            {
-                this.Unsupported(source);
-            }
-
             return place;
         }
 
+        // Only locals and parameters reach here; temporaries transfer without a Place use.
         var value = this.Temporary(source, false);
-        var acquisition = this.body.PlaceStorage[place].Kind == OwnershipPlaceKind.Temporary ? AcquisitionKind.Move : this.body.PlaceStorage[place].Acquisition;
-        this.Emit(OwnershipOperationKind.Consume, source, place, value, acquisition);
+        this.Emit(OwnershipOperationKind.Consume, source, place, value, this.body.PlaceStorage[place].Acquisition);
         return value;
     }
 
@@ -493,24 +490,12 @@ public sealed partial class OwnershipAnalysis
         var mark = this.arguments.Count;
         if (plan.Receiver is { } receiver)
         {
-            this.arguments.Add(this.Expression(receiver, plan.ReceiverOperation.Kind == ArgumentOperationKind.Value ? PlaceUseKind.Consume : PlaceUseKind.Borrow));
-            if (plan.ReceiverOperation.Kind != ArgumentOperationKind.Value)
-            {
-                this.Unsupported(receiver);
-            }
+            this.arguments.Add(this.Argument(receiver, plan.ReceiverOperation.Kind));
         }
 
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
-            var argument = call.ArgumentNodes[i];
-            var operation = plan.ArgumentOperations[i];
-            var value = this.Expression(argument, operation.Kind == ArgumentOperationKind.Value ? PlaceUseKind.Consume : PlaceUseKind.Borrow);
-            if (operation.Kind != ArgumentOperationKind.Value)
-            {
-                this.Unsupported(argument);
-            }
-
-            this.arguments.Add(value);
+            this.arguments.Add(this.Argument(call.ArgumentNodes[i], plan.ArgumentOperations[i].Kind));
         }
 
         if (plan.Target.Declaration is FunctionKoto target && target.Parameters.Count != this.arguments.Count - mark)
@@ -520,7 +505,10 @@ public sealed partial class OwnershipAnalysis
 
         for (var i = mark; i < this.arguments.Count; i++)
         {
-            this.Emit(OwnershipOperationKind.CallEntry, call, this.arguments[i]);
+            if (this.arguments[i] >= 0)
+            {
+                this.Emit(OwnershipOperationKind.CallEntry, call, this.arguments[i]);
+            }
         }
 
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
@@ -533,6 +521,19 @@ public sealed partial class OwnershipAnalysis
         }
 
         return this.Temporary(call);
+    }
+
+    private int Argument(Koto argument, ArgumentOperationKind kind)
+    {
+        if (kind == ArgumentOperationKind.Value)
+        {
+            return this.Expression(argument);
+        }
+
+        // A borrowed source keeps its value and responsibility; it never enters the callee.
+        this.Expression(argument, PlaceUseKind.Borrow);
+        this.Unsupported(argument);
+        return -1;
     }
 
     private void Loop(WhileKoto loop)
@@ -613,6 +614,7 @@ public sealed partial class OwnershipAnalysis
         {
             var place = this.temporaries[i];
             var operation = this.Emit(OwnershipOperationKind.Cleanup, source, place);
+            this.body.OperationSteps[operation] = this.body.CleanupStepStorage.Count;
             this.body.CleanupStepStorage.Add(new(operation, place, this.body.PlaceStorage[place].Source, CleanupAction.Skip));
         }
 
@@ -620,6 +622,7 @@ public sealed partial class OwnershipAnalysis
         {
             var local = this.locals[i];
             var operation = this.Emit(OwnershipOperationKind.Cleanup, source, local.Place);
+            this.body.OperationSteps[operation] = this.body.CleanupStepStorage.Count;
             this.body.CleanupStepStorage.Add(new(operation, local.Place, local.Source, local.Place < 0 ? CleanupAction.Unsupported : CleanupAction.Skip));
         }
 
@@ -636,6 +639,7 @@ public sealed partial class OwnershipAnalysis
         this.body.OperationStorage.Add(new(kind, source, place, input, acquisition));
         this.body.EdgeHeads.Add(-1);
         this.body.IncomingEdges.Add(-1);
+        this.body.OperationSteps.Add(-1);
         return id;
     }
 
@@ -682,7 +686,11 @@ public sealed partial class OwnershipAnalysis
         {
             if (node is FunctionKoto function)
             {
-                this.owner.Build(function);
+                // Requirement declarations and foreign imports have no body to verify.
+                if (function.Body is not null || function.ExpressionBody is not null || !(function.IsRequirement || Parser.HasLibraryImport(function.AttributeChain)))
+                {
+                    this.owner.Build(function);
+                }
             }
             else if (node is PropertyAccessorKoto)
             {

@@ -159,6 +159,38 @@ public class OwnershipAnalysisTest
         Assert.False(c.Ownership.Analyze().IsVerified);
     }
 
+    [Fact]
+    public void BorrowedArgumentDoesNotMoveItsSource()
+    {
+        var c = Parse("func show(s: ref/string) => ()\nlet s = \"a\"\nshow(s)\nshow(s)");
+        c.Ownership.Analyze();
+        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure != OwnershipFailure.Unsupported);
+        Assert.Equal(2, c.Ownership.Issues.Count(x => x.Source is IdentifierNameKoto));
+        Assert.DoesNotContain(Body(c).Operations, x => x.Kind == OwnershipOperationKind.CallEntry && Body(c).Places[x.Place].Kind != OwnershipPlaceKind.Temporary);
+    }
+
+    [Fact]
+    public void BodylessRequirementsAreNotOwnershipBodies()
+    {
+        var c = Parse("contract Named\n    func name(self: ref/Self) -> i32\nwriteLine(\"x\")");
+        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.DoesNotContain(c.Ownership.Bodies, x => x.Function.IsRequirement);
+    }
+
+    [Fact]
+    public void InputStatesReplayWithinBlocks()
+    {
+        var c = Parse("func f(c: bool)\n    let s = \"a\"\n    if c\n        writeLine(s)\n    let t = 1");
+        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+        var s = body.Places.Single(x => x.Source is FieldKoto { NameKoto.IdentifierName: "s" }).Id;
+        var consume = body.Operations.ToList().FindIndex(x => x.Kind == OwnershipOperationKind.Consume && x.Place == s);
+        Assert.Equal(PlaceState.MustInit | PlaceState.MayInit | PlaceState.MayAssigned, body.GetInputState(consume, s));
+        var last = body.Operations.ToList().FindLastIndex(x => x.Kind == OwnershipOperationKind.Deliver);
+        Assert.Equal(PlaceState.None, body.GetInputState(last, s) & PlaceState.MustInit);
+        Assert.Equal(PlaceState.MayMoved, body.GetInputState(last, s) & PlaceState.MayMoved);
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(32)]
