@@ -135,7 +135,7 @@ public sealed partial class Binding
     }
 
     private BoundConstraint NegateConstraint(BoundConstraint value)
-        => value.Kind == ConstraintKind.Not ? value.Left! : this.InternConstraint(new(ConstraintKind.Not, left: value));
+        => value.Kind == ConstraintKind.Not ? value.Left! : value.Negation ??= this.InternConstraint(new(ConstraintKind.Not, left: value));
 
     private BindingScope ConstraintScope(Koto node)
     {

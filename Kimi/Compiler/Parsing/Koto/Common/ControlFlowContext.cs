@@ -20,8 +20,7 @@ public static partial class KotoHelper
                 return jump is ExitKoto { Label: null } ? deferred : null;
             }
 
-            if ((parent is FunctionKoto function && (child == function.Body || child == function.ExpressionBody)) ||
-                (parent is PropertyAccessorKoto accessor && child == accessor.Body))
+            if (IsFunctionBody(parent, child))
             {
                 return jump is ReturnKoto ? parent : null;
             }
@@ -36,14 +35,7 @@ public static partial class KotoHelper
                 };
             }
 
-            var iterationBody = parent switch
-            {
-                ForKoto f => f.Body,
-                WhileKoto w => w.Body,
-                LoopKoto l => l.Body,
-                _ => null,
-            };
-            if (child == iterationBody)
+            if (IsIterationBody(parent, child))
             {
                 if (jump is YieldKoto)
                 {
@@ -56,9 +48,7 @@ public static partial class KotoHelper
                 }
             }
 
-            if (jump is YieldKoto &&
-                ((parent is IfKoto conditional && (conditional.ElseBody == child || conditional.Branches.Any(x => x.Body == child))) ||
-                 (parent is MatchKoto match && match.Arms.Any(x => x.Body == child))))
+            if (jump is YieldKoto && IsSelectionBody(parent, child))
             {
                 return parent;
             }
@@ -72,7 +62,7 @@ public static partial class KotoHelper
     /// <returns>Whether explicit self-targeted results are required.</returns>
     public static bool IsResultRequiringLabeledBlock(LabeledKoto labeled)
         => labeled.Target is CodeBlockKoto &&
-            (IsValueContext(labeled) || ContainsResult(labeled.Target));
+            (IsValueContext(labeled) || TransferSearch.ContainsResult(labeled.Target));
 
     /// <summary>Tests lexical unsafe permission without inheriting it across function bodies.</summary>
     /// <param name="node">The operation to inspect.</param>
@@ -82,8 +72,7 @@ public static partial class KotoHelper
         Koto child = node;
         for (var parent = child.Parent; parent is not null; child = parent, parent = parent.Parent)
         {
-            if ((parent is FunctionKoto function && (child == function.Body || child == function.ExpressionBody)) ||
-                (parent is PropertyAccessorKoto accessor && child == accessor.Body))
+            if (IsFunctionBody(parent, child))
             {
                 return false;
             }
@@ -102,35 +91,38 @@ public static partial class KotoHelper
     /// <returns>Whether the selection requires a result.</returns>
     public static bool IsResultRequiringSelection(Koto selection)
     {
-        if (selection is not (IfKoto or MatchKoto))
+        switch (selection)
         {
-            return false;
-        }
+            case IfKoto conditional:
+                if (conditional.ElseBody?.IsExpressionBody == true)
+                {
+                    return true;
+                }
 
-        if (IsValueContext(selection) ||
-            (selection is IfKoto conditional && (conditional.Branches.Any(x => x.Body.IsExpressionBody) || conditional.ElseBody?.IsExpressionBody == true)) ||
-            (selection is MatchKoto match && match.Arms.Any(x => x.Body is not CodeBlockKoto)))
-        {
-            return true;
-        }
+                foreach (var branch in conditional.Branches)
+                {
+                    if (branch.Body.IsExpressionBody)
+                    {
+                        return true;
+                    }
+                }
 
-        return ContainsYield(selection);
+                break;
+            case MatchKoto match:
+                foreach (var arm in match.Arms)
+                {
+                    if (arm.Body is not CodeBlockKoto)
+                    {
+                        return true;
+                    }
+                }
 
-        bool ContainsYield(Koto node)
-        {
-            if (node is YieldKoto jump && ResolveTransferTarget(jump) == selection)
-            {
-                return true;
-            }
-
-            // Deferred directives must be selected before their syntax participates.
-            if (node is CompileTimeMatchKoto or DeferredBlockKoto)
-            {
+                break;
+            default:
                 return false;
-            }
-
-            return node.ChildNodes.Any(ContainsYield);
         }
+
+        return IsValueContext(selection) || TransferSearch.ContainsYield(selection);
     }
 
     /// <summary>Determines whether an expression occupies a position that uses its value.</summary>
@@ -153,8 +145,20 @@ public static partial class KotoHelper
             case ParenthesizedKoto parentheses:
                 return IsValueContext(parentheses);
             case IfKoto conditional:
-                return expression is not CodeBlockKoto blockBody || blockBody.IsExpressionBody ||
-                    conditional.Branches.Any(x => x.Condition == expression);
+                if (expression is not CodeBlockKoto blockBody || blockBody.IsExpressionBody)
+                {
+                    return true;
+                }
+
+                foreach (var branch in conditional.Branches)
+                {
+                    if (branch.Condition == expression)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
             case MatchKoto match:
                 if (match.Expression == expression)
                 {
@@ -213,23 +217,142 @@ public static partial class KotoHelper
         return node;
     }
 
-    private static bool ContainsResult(Koto node)
-    {
-        return Contains(node, node);
+    private static bool IsFunctionBody(Koto parent, Koto child)
+        => (parent is FunctionKoto function && (child == function.Body || child == function.ExpressionBody)) ||
+            (parent is PropertyAccessorKoto accessor && child == accessor.Body);
 
-        static bool Contains(Koto current, Koto target)
+    private static bool IsIterationBody(Koto parent, Koto child) => parent switch
+    {
+        ForKoto f => child == f.Body,
+        WhileKoto w => child == w.Body,
+        LoopKoto l => child == l.Body,
+        _ => false,
+    };
+
+    private static bool IsSelectionBody(Koto parent, Koto child)
+    {
+        if (parent is IfKoto conditional)
         {
-            if (current is ExitKoto { Expression: not null } exit && ResolveTransferTarget(exit) == target)
+            if (conditional.ElseBody == child)
             {
                 return true;
             }
 
-            if (current is CompileTimeMatchKoto or DeferredBlockKoto or FunctionKoto or PropertyAccessorKoto)
+            foreach (var branch in conditional.Branches)
             {
-                return false;
+                if (branch.Body == child)
+                {
+                    return true;
+                }
+            }
+        }
+        else if (parent is MatchKoto match)
+        {
+            foreach (var arm in match.Arms)
+            {
+                if (arm.Body == child)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Searches for transfers delivering a result to one target, without child iterators or closures.</summary>
+    private sealed class TransferSearch : KotoVisitor
+    {
+        [ThreadStatic]
+        private static TransferSearch? cached;
+
+        private Koto target = null!;
+        private bool exitResults;
+        private bool found;
+
+        /// <summary>Determines whether a yield targets the selection.</summary>
+        /// <param name="selection">The if or match node.</param>
+        /// <returns>Whether a targeted yield exists.</returns>
+        public static bool ContainsYield(Koto selection)
+        {
+            var search = Rent(selection, false);
+            selection.VisitChildren(search); // The selection's own bodies are searched.
+            return Return(search);
+        }
+
+        /// <summary>Determines whether an exit with a result operand targets the Labeled Block.</summary>
+        /// <param name="block">The labeled block.</param>
+        /// <returns>Whether a targeted exit result exists.</returns>
+        public static bool ContainsResult(Koto block)
+        {
+            var search = Rent(block, true);
+            search.Visit(block);
+            return Return(search);
+        }
+
+        public override void Visit(Koto node)
+        {
+            if (this.found)
+            {
+                return;
             }
 
-            return current.ChildNodes.Any(child => Contains(child, target));
+            if (this.exitResults)
+            {
+                if (node is ExitKoto { Expression: not null } exit && ResolveTransferTarget(exit) == this.target)
+                {
+                    this.found = true;
+                    return;
+                }
+
+                if (node is CompileTimeMatchKoto or DeferredBlockKoto or FunctionKoto or PropertyAccessorKoto)
+                {
+                    return;
+                }
+            }
+            else
+            {
+                if (node is YieldKoto yield && ResolveTransferTarget(yield) == this.target)
+                {
+                    this.found = true;
+                    return;
+                }
+
+                // Deferred directives must be selected before their syntax participates.
+                if (node is CompileTimeMatchKoto or DeferredBlockKoto)
+                {
+                    return;
+                }
+
+                // A yield inside a nested selection, iteration, or function body always resolves to that
+                // boundary or nothing, so those bodies cannot deliver a result to the searched selection.
+                if (node.Parent is { } parent && parent != this.target &&
+                    (IsSelectionBody(parent, node) || IsIterationBody(parent, node) || IsFunctionBody(parent, node)))
+                {
+                    return;
+                }
+            }
+
+            node.VisitChildren(this);
+        }
+
+        private static TransferSearch Rent(Koto target, bool exitResults)
+        {
+            // A nested search on the same thread (not expected) receives its own instance.
+            var search = cached ?? new();
+            cached = null;
+            search.target = target;
+            search.exitResults = exitResults;
+            search.found = false;
+            return search;
+        }
+
+        private static bool Return(TransferSearch search)
+        {
+            var found = search.found;
+            search.target = null!;
+            cached = search;
+            return found;
         }
     }
 }

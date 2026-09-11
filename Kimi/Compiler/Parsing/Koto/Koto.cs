@@ -478,6 +478,13 @@ public abstract class Koto
 
     internal BindingFailure BindingFailure { get; set; }
 
+    /// <summary>Gets or sets the shared Type/Origin slot as a whole, so snapshots never clear one meaning through the other.</summary>
+    internal object? BoundMeaning
+    {
+        get => this.boundMeaning;
+        set => this.boundMeaning = value;
+    }
+
     // Type and Origin syntax occupy different namespaces; they share one semantic reference slot.
     private object? boundMeaning;
 
@@ -576,6 +583,14 @@ public abstract class Koto
     {
         if (this.AttributeChain == oldKoto && newKoto is AttributeKoto attribute)
         {
+            // Only the head is replaced; the remaining attributes stay attached behind it.
+            if (attribute.AttributeChain is null && oldKoto.AttributeChain is { } rest)
+            {
+                oldKoto.AttributeChain = null;
+                attribute.AttributeChain = rest;
+                rest.Parent = attribute;
+            }
+
             this.AttributeChain = attribute;
         }
         else if (!this.ReplaceChildCore(oldKoto, newKoto))
@@ -659,8 +674,7 @@ public abstract class Koto
         replacement.Parent = this;
         // A rewrite invalidates facts of the owner; a later Bind rebuilds dependent facts.
         this.BindingState = BindingState.Unvisited;
-        this.BoundType = null;
-        this.BoundOrigin = null;
+        this.BoundMeaning = null;
         this.BoundSymbol = null;
         this.BindingFailure = BindingFailure.None;
     }

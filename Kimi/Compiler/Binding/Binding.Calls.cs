@@ -127,11 +127,8 @@ public sealed partial class Binding
 
             if (receiverType is not null)
             {
+                // A nominal member takes priority over a requirement member of the same receiver.
                 valueMember = this.RequirementMember(member, scope, receiverType, false);
-            }
-
-            if (receiverType is not null)
-            {
                 valueSelection = this.LookupTypeMember(receiverType, right.IdentifierName);
                 valueMember = valueSelection.Member ?? valueMember;
             }
@@ -564,7 +561,7 @@ public sealed partial class Binding
                     return CandidateApplicability.Pending;
                 }
 
-                if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, BoundType.Primitives[literal.IsInteger ? "i32" : "f64"]))
+                if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, literal.IsInteger ? BoundType.I32 : BoundType.F64))
                 {
                     return CandidateApplicability.Inapplicable;
                 }

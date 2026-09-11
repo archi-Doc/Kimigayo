@@ -54,6 +54,8 @@ public class FrontEndSyntaxTest
     [InlineData("func f<F>(x: F)\n    F is Callable<ref, (i32) -> bool>\n    return")]
     [InlineData("specialize func f<i32>(x: i32) -> i32 => x")]
     [InlineData("protected internal struct S\n    private protected func f() => ()")]
+    [InlineData("group G\n    func f(other => self: i32) => ()")]
+    [InlineData("struct S\n    func f(self: ref/Self, self => other: i32) => ()")]
     public void PreservesSpecifiedSyntax(string source)
     {
         var tree = ParseSuccess(source);
@@ -79,9 +81,28 @@ public class FrontEndSyntaxTest
     [InlineData("let a: _ = value")]
     [InlineData("let a: [4 of _]")]
     [InlineData("func f(value: [4 of _]) => value")]
+    [InlineData("let a: List<[4 of _]> = values")]
+    [InlineData("let a: ([4 of _], i32) = values")]
+    [InlineData("let a: [2 of List<[4 of _]>] = values")]
+    [InlineData("let a = f<[4 of _]>(values)")]
+    [InlineData("struct S\n    func f(self: ref/Self, self: ref/Self) => ()")]
+    [InlineData("struct S\n    func f(other => self: ref/Self) => ()")]
+    [InlineData("enum E\n    A\n    func f(self?: E = E.A) => ()")]
+    [InlineData("contract C\n    func f(self: ref/Self, self: ref/Self)")]
+    [InlineData("group G\n    static func f() => ()")]
+    [InlineData("func f()\n    static let x = 1")]
+    [InlineData("struct S\n    static var x: i32")]
+    [InlineData("open group G")]
+    [InlineData("open enum E\n    A")]
+    [InlineData("struct S\n    open func f() => ()")]
+    [InlineData("for (a, b,) in pairs\n    ()")]
+    [InlineData("for () in pairs\n    ()")]
+    [InlineData("let a = match x\n    let _ => 1\n    _ => 0")]
+    [InlineData("let a = match x\n    .Some(var _) => 1\n    _ => 0")]
     [InlineData("let a = $unknown(1)")]
     [InlineData("let a = $abort()")]
     [InlineData("let a = $abort(message: \"failed\")")]
+    [InlineData("let a = $abort(\"failed\",)")]
     [InlineData("let defer = 1")]
     [InlineData("let Self = 1")]
     [InlineData("let init = 1")]
@@ -110,6 +131,12 @@ public class FrontEndSyntaxTest
     [InlineData("let a: List<\nT\n> = values")]
     public void RejectsInvalidSyntax(string source)
         => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
+
+    [Theory]
+    [InlineData("#if false\nstatic func f() => ()\nlet a = 1")]
+    [InlineData("#if false\nopen group G\nlet a = 1")]
+    public void ExcludedDeclarationsDoNotReportModifierPlacement(string source)
+        => Assert.Empty(Parse(source).DiagnosticCollection.GetArray());
 
     [Fact]
     public void RetainsCaptureAcquisitionAndUnevaluatedLengths()

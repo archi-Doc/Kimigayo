@@ -23,6 +23,4 @@ public class KotoVisitor
             }
         }
     }
-
-    internal static int Count<T>(IReadOnlyList<T> nodes) => nodes.Count;
 }

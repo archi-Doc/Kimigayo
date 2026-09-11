@@ -17,7 +17,7 @@
 ```text
 Kimigayoの実行プログラムができるまで
 ├─ 起動する本体を決める
-│  └─ トップレベル実行コード または public main
+│  └─ トップレベル本体項目 または public main
 ├─ 意味を確定する
 │  └─ 型 / 呼び出し先 / 評価順 / 所有権 / cleanup
 ├─ 機械上の表現を決める
@@ -83,7 +83,8 @@ Kimigayoの実行プログラムができるまで
 | ターゲット | `x86_64-pc-windows-msvc` |
 | LLVM互換性の基準 | LLVM 22.1.5 |
 | 出力単位 | 1プロジェクト・1ターゲットにつき`.ll`と`.link.json`の1組 |
-| Runtimeの供給 | 必要な補助関数を同じLLVMモジュール内に生成 |
+| Runtimeの供給 | 抽象操作の本体を同じLLVMモジュール内に生成 |
+| backend helperの供給 | §11.3の版管理したネイティブstatic library。専用Runtime DLLは不要 |
 | OS機能の利用 | Windows APIの外部宣言と呼び出しを生成 |
 | オブジェクト生成 | 利用者が手動で実行 |
 | リンク・生成物の起動 | 利用者が手動で実行 |
@@ -115,7 +116,7 @@ Kimigayoコンパイラーの担当
 
 配列・Dictionary・継承・closure・static Propertiesの実行・汎用generic共有・複数Kotonohaのリンクは、この最初の実行確認の必須項目にしない。これらの既存言語規則を緩和するものではない。
 
-ライブラリーの起動規則も本書で定めるが、安定した公開ABI、DLL生成、別プロジェクトからのロードまでを初期実装の完了条件には含めない。
+初期Library出力はLLVM IRの検証・保存用とし、外部リンク用の成果物にはしない。モジュール間ABI・DLL・別プロジェクトからの利用は後続拡張とする。
 
 ### 1.3. 設計の採用と実装段階
 
@@ -123,7 +124,7 @@ Kimigayoコンパイラーの担当
 
 | 区分 | 内容 |
 | --- | --- |
-| 最小実行確認 | §1.2のプログラムから.llを生成し、手動でビルド・実行する |
+| 最小実行確認 | §1.2のプログラムから.llを生成し、必要な供給物を使って手動でビルド・実行する |
 | 本書で採用する配置・生成規則 | #Layout、基本型、struct、内部ABI、検査付き演算、Tuple・enumの初期方式 |
 | 後続機能の設計課題 | object handle等の未確定な物理表現、C aggregate値渡し、export、callback、特殊配置 |
 
@@ -137,7 +138,7 @@ Kimigayoコンパイラーの担当
 
 アプリケーションでは、次のいずれか一方を起動本体とする。
 
-1. SourceDocumentのトップレベル実行コード。
+1. SourceDocumentのトップレベル本体項目（§2.3）。
 2. Root直下の明示的な`public func main() -> ()`。
 
 両方式の混在は禁止する。どちらもない場合、または候補が複数ある場合はコンパイルエラーとする。
@@ -145,7 +146,7 @@ Kimigayoコンパイラーの担当
 ```text
 起動候補の判定
 ├─ Application
-│  ├─ トップレベル実行コードだけが1文書にある
+│  ├─ トップレベル本体項目だけが1文書にある
 │  │  └─ 非公開の暗黙起動本体を生成
 │  ├─ 適格なpublic mainだけが1つある
 │  │  └─ 明示的mainを呼び出す
@@ -155,7 +156,7 @@ Kimigayoコンパイラーの担当
 └─ Library
    ├─ 起動候補を要求しない
    ├─ mainがあっても自動実行しない
-   └─ トップレベル実行コードがあればエラー
+   └─ トップレベル本体項目があればエラー
 ```
 
 ### 2.2. 探索範囲とRootの意味
@@ -168,9 +169,9 @@ Kimigayoコンパイラーの担当
 
 この追加によって、すべてのトップレベルローカル関数を共有ルートへ移すことはしない。他のトップレベルローカル束縛・ローカル関数は既存のSourceDocument内のスコープを維持する。mainはトップレベルの実行時ローカル変数をcaptureできない。
 
-### 2.3. トップレベル実行コード
+### 2.3. トップレベル本体項目
 
-ディレクティブ選択・Modsによる生成・Binding後、SourceDocumentごとに`HasTopLevelExecutableCode`を一度確定する。これは内部の判定名であり、現在の実装APIの存在を意味しない。ルート直下の選択済み構文を次の意味分類で判定し、関数・Containerの本体へは降りない。
+ディレクティブ選択・Modsによる生成・Binding後、SourceDocumentごとに`HasTopLevelRuntimeBodyItem`を一度確定する。これは起動本体に属する項目の有無であり、実行時に命令が残るかどうかを表さない。現在の実装APIの存在も意味しない。ルート直下の選択済み構文を次の分類で判定し、関数・Containerの本体へは降りない。
 
 | ルート直下の項目 | 起動候補に数えるか |
 | --- | --- |
@@ -190,10 +191,10 @@ let pending: i32 // 未初期化ローカル。これだけでも起動候補。
 ::Core.writeLine("Hello, world!")
 ```
 
-同じ文書の実行項目はソース順に実行する。複数文書が該当すればエラーとする。構文分類は最適化前に固定し、定数畳み込みや未使用コード除去で起動方式を変更しない。空文書や宣言だけの文書は候補にならない。
+同じ文書の本体項目はソース順に処理する。複数文書が該当すればエラーとする。構文分類は最適化前に固定し、定数畳み込みや未使用コード除去で起動方式を変更しない。空文書や関数・Container・aliasの宣言だけの文書は候補にならない。未初期化ローカルも本体のスコープに属するため、命令・cleanupを生成しなくても候補に数える。
 
 ```kimi
-// 何もしないアプリケーションも実行式で明示する。
+// 他に本体項目がない空のアプリケーションを明示する最小形。
 ()
 ```
 
@@ -233,9 +234,9 @@ public func main() -> ()
 
 ### 2.5. ライブラリー
 
-LibraryにはOS向けの起動関数を生成しない。public mainがあっても、自動的に呼び出さない。
+初期Libraryは、意味検査済みの本体を.llへ保存し、LLVMの検証・コード生成を試すための出力である。他の.ll/.objから呼び出す契約や、Kimigayoの依存ライブラリー形式を提供しない。
 
-トップレベル実行コードは「実行せずに捨てる」のではなく、エラーとする。ライブラリーのコードが明示的に呼ばれた場合の通常の実行・cleanupは、言語の既存規則に従う。
+OS向けの起動関数を生成せず、public mainも自動実行しない。未初期化let/varを含むトップレベル本体項目はエラーとする。publicを含む言語上の関数はinternalで生成する（§11.1）。最適化で全関数が除去されてもよいため、本体の保存・検査には最適化前の.llを使う。
 
 <a id="section-3"></a>
 
@@ -807,7 +808,7 @@ ABIは関数の引数・戻り値を機械上でどう受け渡すかという�
    └─ OS側の起動関数
 ```
 
-初期の内部ABIは同一生成モジュール内で統一する。公開バイナリーABIではなく、内部ABIの版を変更してよい。初期LLVM出力では既定のcalling conventionであるcccを使用し、宣言とcallを同じ物理署名から生成する。cccの採用だけでソース言語のaggregateがC互換に分類されるわけではない。
+初期の内部ABIは同一生成モジュール内だけで使用する。Libraryの保存用IRも同じ規則に従い、モジュール間の呼び出しには使用しない。公開バイナリーABIではなく、内部ABIの版を変更してよい。初期LLVM出力では既定のcalling conventionであるcccを使用し、宣言とcallを同じ物理署名から生成する。cccの採用だけでソース言語のaggregateがC互換に分類されるわけではない。
 
 ### 10.2. 物理的な引数・戻り値
 
@@ -930,11 +931,21 @@ ProjectName.ll
 └─ Applicationの場合だけ__kimi_startのdefine
 ```
 
-Runtime・Coreの専用補助関数は、外部から参照する必要がなければinternal/privateとして生成する。OSの起動シンボルだけはリンカーから到達できるようにする。
+初期出力のlinkageは次とする。publicはソース上の可視性であり、ネイティブexportを意味しない。
+
+| 定義・宣言 | LLVM linkage・扱い |
+| --- | --- |
+| 通常関数・main・起動本体・Core・cleanup・Runtimeの生成関数 | internal。ApplicationとLibraryで共通 |
+| Applicationの__kimi_start | external definition。Libraryでは生成しない |
+| LibraryImport・Windows API | external declaration。dllimportは§16.4.1に従う |
+| backend用の供給シンボル（_fltused等） | backend指定の名前・型でexternal definition。言語の公開ABIにはしない |
+| 文字列等の内部定数 | private。共有規則は§11.12.2に従う |
+
+同じモジュール内に本体を持つ関数にはdefineを一度だけ出力し、同名のdeclareを重ねない。全生成関数に§16.5のtarget属性を付ける。以下のIR断片では、その属性を省略している。
 
 ### 11.2. 起動関数のLLVM断片
 
-以下は構造を示す断片である。`__kimi_entry_body`、`__kimi_shutdown`、`__kimi_runtime_exit`の本体は生成器が供給するため、この断片だけではリンクできない。
+以下のdeclareは物理署名だけを示す説明用表記であり、この断片だけではリンクできない。最終IRでは3関数のinternal definitionを生成し、同名のdeclareは出力しない。不要な空のshutdown等は呼び出しごと省略できる。
 
 ```llvm
 declare void @__kimi_entry_body()
@@ -952,25 +963,45 @@ entry:
 
 暗黙方式ではentry bodyがトップレベルコードを実行し、明示方式では明示的mainへ接続する。必要なRuntime初期化がある場合は、entry bodyより前に追加する。初期のheap・標準ハンドル取得は各操作内で行えるため、空の初期化関数を必須にしない。
 
-浮動小数点を使うプログラムでは、§11.6.2の環境設定もentry bodyより前に生成する。上の断片はその初期化を省略した構造例である。
+NeedsKimigayoFpEnvironmentがtrueのApplicationでは、§11.6.2の環境設定もentry bodyより前に生成する。上の断片はその初期化を省略した構造例である。
 
 NeverをLLVMの戻り値型として作らない。戻らない処理は`void`の関数・`noreturn`属性・`unreachable`などで表現する。未解決の解析結果をunreachableへ置換しない。
 
 ### 11.3. 最適化とコード生成に伴う依存
 
-最適化の有無で、言語上の検査・Abort条件・評価順・cleanupを変えない。初期エミットではstack protector属性`ssp`・`sspstrong`・`sspreq`を付けず、stack protectorの挿入を要求しない。導入時はcookie初期化・検査失敗処理を供給してから有効化する。独自entryではCRTのcookie初期化を当てにできない。[Microsoft security cookie](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/security-init-cookie?view=msvc-170)
+#### 11.3.1. 供給元と契約
 
-| 生成され得る依存 | 扱い |
+最適化の有無で、言語上の検査・Abort条件・評価順・cleanupを変えない。初期エミットではstack protector属性ssp・sspstrong・sspreqを付けない。導入時はcookie初期化と検査失敗処理を供給する。独自entryでCRTの初期化を当てにしない。[Microsoft security cookie](https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/security-init-cookie?view=msvc-170)
+
+| シンボル | 初期の供給方針 |
 | --- | --- |
-| memcpy・memmove・memset | 必要な実装を供給する |
-| __chkstk等のstack probe | ターゲットの契約を満たす実装を供給する。必要なprobeを無効化しない |
-| _fltused | 浮動小数点使用に伴うデータシンボル。選択したbackendの要件に合う定義を供給する |
-| stack protectorの補助処理 | 初期版では挿入を要求しない。外部コードを含め必要になれば初期化契約も満たす |
-| その他の演算helper | i128の演算等で必要になる実装を確認する |
+| memcpy・memmove・memset | LLVM intrinsicが外部呼出しへ変換された場合の実体を、専用のネイティブstatic libraryから供給 |
+| __chkstk | 同じlibrary内のWindows x64専用アセンブリから供給。必要なprobeを無効化しない |
+| _fltused | 必要な場合、生成.llにbackendの要件を満たすデータ定義を一つ供給 |
+| stack protector・その他の演算helper | 供給元とABIを追加検証するまで、必要とする機能を未対応とする |
 
-これらをRuntimeの論理操作やWindows APIの7関数へ数えない。供給できない依存を必要とする機能は未対応とし、.ll生成前に判定できるものは診断する。後続LLVMが追加した依存はオブジェクトの未定義シンボル検査で検出し、手動リンクを失敗させる。空のhelperや仮の成功値で代用しない。
+通常の一括メモリ操作は§11.12.1のLLVM intrinsicを優先し、命令展開・vector化・外部呼出しの選択をLLVMへ任せる。intrinsicの使用は外部helperが不要になる保証ではない。
 
-.link.jsonには既知の依存を記録するが、.ll出力だけで全後続依存を確定したとは扱わない。Kernel32.libだけでリンクできる保証は§1.2の検証済みサブセットに限る。
+backend用libraryの予定名をkimi_backend_windows_x64_v1.lib、予約論理名をkimi_backendとする。専用アセンブリから作るネイティブCOFF objectを格納し、LLVM bitcode・LTO入力にはしない。通常の.ll内にmemcpy等のループ実装を生成せず、O2処理からhelper本体を切り離す。optnone等の属性だけを自己呼び出し防止の根拠にしない。
+
+メモリhelperはWindows x64のC ABIと標準の引数・戻り値契約を満たす。memmoveは両方向の重複に対応する。全helperは初期CPUプロファイルとMXCSR維持契約を満たし、CRT起動・動的初期化・暗黙の追加ライブラリーに依存しない。
+
+__chkstkは通常のC関数ABIで生成しない。RAXで渡される確保サイズとその保持、復帰時のstack状態、必要なregister保存、guard pageを飛び越さないprobeを、対象backendの呼出し列と合わせて検証する。類似名の他ABI向け実装を名前だけで置き換えない。[LLVM compiler-rtのx64 probe実装例](https://github.com/llvm-mirror/compiler-rt/blob/master/lib/builtins/x86_64/chkstk.S)
+
+#### 11.3.2. リンクと採用条件
+
+kimi_backendはプロファイル共通のリンク入力としてmanifestへ記録する。後続LLVMが初めて生成する参照もこのlibraryで解決し、使用しないarchive memberはリンクしない。Runtimeの6操作・Windows APIの7関数は増やさず、Runtime抽象操作の本体は従来どおり同じ.llへ生成する。
+
+専用libraryは実装・検証後に版を付けて供給する予定物であり、この文書の採用だけで利用可能とは扱わない。手動ビルドではmanifestの全入力を解決する。Kernel32.libだけでリンクできることを一般条件にはしない。
+
+manifestでは、生成.llが定義するシンボルと外部供給が必要なシンボルを分ける（§16.4.2）。後続LLVMによる新規参照・最適化による消滅があるため、生成後のobjectの未定義シンボルと採用するlibraryの供給一覧を照合する。未知・未供給の参照が残ればリンクを失敗させ、空のhelperで代用しない。
+
+helper供給物の採用試験には、次を含める。
+
+- native objectの依存・逆アセンブルを検査し、自己呼び出し・循環したlibcallとbitcode混入がない。
+- メモリhelperの境界長・alignment・非重複・両方向重複・戻り値を確認する。
+- __chkstkについてページ境界前後・複数ページの実stack frameを使い、probe、register・stack保存、OSのstack拡張を確認する。
+- 独自entryと/NODEFAULTLIBでO0/O2の生成物をリンク・実行し、CRT初期化への隠れた依存がない。
 
 ### 11.4. レイアウトに基づくメモリ操作
 
@@ -1091,7 +1122,11 @@ floatの比較では、通常の`==`とEquatableのNaNの扱いが異なると�
 
 これらはWindows x64 ABIで規定される標準の制御状態とも一致する。[Microsoft MXCSR](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#mxcsr)
 
-Applicationでは、起動本体を実行する前に必要な状態を設定する。浮動小数点機能を使わない最小プログラムでは、この補助処理の生成は省略できる。
+§4.6の最適化前の生成対象から、内部判定NeedsKimigayoFpEnvironmentを一度確定する。未参照関数・未選択の実行時分岐を含め、いずれかの本体にFP演算・比較・丸め・数値変換があればtrueとする。Core・cleanup・Runtimeの本体も含め、最適化後の到達可能性から変更しない。
+
+f32/f64の型・定数・署名があるだけ、またはload/store・ビット転送だけならtrueにしない。FP分類等を環境非依存のビット操作だけで実装する場合も同様とする。_fltused等のbackend依存の有無はこの判定と別に管理する。
+
+Applicationでtrueなら、起動本体より前にMXCSRを設定する。falseなら環境管理を省略する。Libraryは検証・保存用なので起動時の設定を生成せず、trueの場合は関数本体の検査・生成で同じFP環境を前提とする。
 
 ```text
 浮動小数点を使うApplication
@@ -1106,7 +1141,7 @@ Applicationでは、起動本体を実行する前に必要な状態を設定す
          └─ Kimigayoの計算を続ける
 ```
 
-FunctionAbiに`PreservesKimigayoFpEnvironment`を持たせる。これはコンパイラー内部の性質であり、利用者向けAttributeではない。FPを使うモジュールでは、正常復帰する呼び出しを次の規則で扱う。
+FunctionAbiに`PreservesKimigayoFpEnvironment`を持たせる。これはコンパイラー内部の性質であり、利用者向けAttributeではない。NeedsKimigayoFpEnvironmentがtrueのモジュールでは、正常復帰する呼び出しを次の規則で扱う。
 
 | 呼び出し先 | 判定と処理 |
 | --- | --- |
@@ -1269,18 +1304,30 @@ if condition
 
 #### 11.12.1. 物理転送
 
-取得・破棄責任を先に確定し、転送命令は次の方針で選ぶ。
+取得・破棄責任を先に確定し、不要な転送は省く。メモリ間の単純な一括操作にはLLVM intrinsicを優先し、手書きの転送ループや通常の外部memcpy呼出しを基本形にしない。
 
 | 状況 | 方針 |
 | --- | --- |
-| 少数のscalar Field | Field単位のload/store。不要なaggregate全体のSSA値を作らない |
+| 値が既にscalarのSSAにある、または一部Fieldだけを操作する | 必要なFieldへ直接store／load。intrinsicを使うためだけの一時slotは作らない |
 | 副作用を伴う取得・構築 | 必要な操作を論理順に実行。バイト転送だけで代用しない |
-| 全体が成立した値の単純な物理転送 | 有効範囲・alignmentを確認し、非重複ならllvm.memcpyを使える |
+| 全体が成立した値の単純なメモリ間転送 | 有効範囲・alignmentを確認し、非重複ならllvm.memcpyを優先 |
 | 重複し得る領域 | 意味上の転送も成立する場合だけllvm.memmove。元値の保持が必要なら別の一時領域 |
+| 連続領域を同一バイトで埋める | 意味上必要な処理にllvm.memsetを使用。一般の初期化・コンストラクターの代用にしない |
 | 部分初期化・部分Moveの値 | 有効な部分だけを扱い、全体のloadや未成立Fieldの読取りを生成しない |
 | size 0 | データ転送を省く。取得・状態更新・必要なcleanupは残す |
 
-memcpyの採用は言語上のCopyを許可せず、memmoveの採用もMoveを成立させない。paddingを含むバイト転送は許すが、その値を比較・整数化して利用しない。少数Fieldと一括転送の選択は最適化方針であり、特定の命令数・size閾値を言語ABIにしない。intrinsicから生じる外部helperは§11.3に従う。[LLVM memcpy / memmove](https://llvm.org/docs/LangRef.html#llvm-memcpy-intrinsic)
+memcpyの採用は言語上のCopyを許可せず、memmoveの採用もMoveを成立させない。paddingを含むバイト転送は許すが、その値を比較・整数化して利用しない。各ポインターに実際に保証できるalignmentを指定し、長さが定数なら定数のまま渡す。通常の操作は非volatileとする。小さい転送の命令展開やsize閾値はLLVMに任せ、言語ABIにしない。[LLVM memory intrinsics](https://llvm.org/docs/LangRef.html#llvm-memcpy-intrinsic)
+
+```llvm
+; 双方がalignment 8を満たす、非重複で有効な24バイト領域の転送例。
+declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1 immarg)
+; 関数本体内:
+call void @llvm.memcpy.p0.p0.i64(ptr align 8 %dst, ptr align 8 %src, i64 24, i1 false)
+```
+
+本書のテキスト出力では、上記intrinsicの宣言とcallを生成する。LLVM C++ APIを利用する場合はIRBuilderのCreateMemCpy等に相当し、MemCpyInstは生成されたintrinsic callを扱うクラスである。C++ APIの導入自体は要件にしない。[LLVM IRBuilder](https://llvm.org/doxygen/classllvm_1_1IRBuilderBase.html)
+
+llvm.memcpy.inlineは定数長で外部呼出しを禁止する必要がある限定箇所に使い、通常の転送へ一律適用しない。intrinsicから生じる外部helperは§11.3に従う。
 
 #### 11.12.2. 数値・文字列定数
 
@@ -1702,7 +1749,7 @@ captureの論理順序と物理offsetは分ける。参照や所有値を含む�
 | 設定 | 初期方針 |
 | --- | --- |
 | Targets | 初期対応は`x86_64-pc-windows-msvc` |
-| OutputKind | ApplicationまたはLibrary。既定値はApplication |
+| OutputKind | Applicationまたは検証・保存用Library。既定値はApplication |
 | OutputPath | `.ll`の出力先。既定値は`bin/<target>/<ProjectName>.ll` |
 | EntrySource | 初期版の選択手段にしない。§2の規則で一意に決定 |
 | NativeLibraries | 論理ライブラリー名をリンク入力と種別へ対応づける。§16.4参照 |
@@ -1714,16 +1761,16 @@ OutputKind・OutputPath・NativeLibraries・Optimizationは追加予定の設定
 
 ### 16.2. 手動コマンド
 
-以下は、rdtsc.link.jsonのentryが`__kimi_start`、最適化がO2、リンク入力がKernel32.libだけの場合の例である。実際にはmanifestの全入力と§11.3の追加依存を使う。LLVM 22.1.5とx64用ライブラリーを解決できる環境を前提とする。
+以下は、rdtsc.link.jsonのentryが`__kimi_start`、最適化がO2、リンク入力がKernel32.libと専用backend libraryの場合の例である。実際にはmanifestの全入力と§11.3の追加依存を使う。LLVM 22.1.5と、実装・検証済みの専用backend libraryを含むx64用ライブラリーを解決できる環境を前提とする。
 
 ```powershell
-opt -S -passes="default<O2>" -mtriple=x86_64-pc-windows-msvc -mcpu=x86-64 -mattr=+sse2 rdtsc.ll -o rdtsc.opt.ll
+opt -S -passes="default<O2>" -mtriple=x86_64-pc-windows-msvc rdtsc.ll -o rdtsc.opt.ll
 llc -O2 -filetype=obj -mtriple=x86_64-pc-windows-msvc -mcpu=x86-64 -mattr=+sse2 -relocation-model=static -code-model=small rdtsc.opt.ll -o rdtsc.obj
-lld-link rdtsc.obj kernel32.lib /entry:__kimi_start /subsystem:console /nodefaultlib /debug /out:app.exe
+lld-link rdtsc.obj kernel32.lib kimi_backend_windows_x64_v1.lib /entry:__kimi_start /subsystem:console /nodefaultlib /debug /out:app.exe
 .\app.exe
 ```
 
-optでIR最適化を行い、llcでオブジェクトへ変換してからlld-linkへ渡す。O0ではoptによる最適化を省き、元の.llをllc -O0へ渡す。[LLVM llc](https://llvm.org/docs/CommandGuide/llc.html)
+optでIR最適化を行い、llcでオブジェクトへ変換してからlld-linkへ渡す。O0ではoptによる最適化を省き、元の.llをllc -O0へ渡す。CPU・featuresは§16.5の関数属性からoptへ伝える。[LLVM opt](https://llvm.org/docs/CommandGuide/opt.html)、[LLVM llc](https://llvm.org/docs/CommandGuide/llc.html)
 
 Kernel32.libを検索できない環境では、利用者がライブラリーのパスを明示する。現段階のコンパイラーはLLVM・Windows SDKの探索、インストール、llc・lld-link・生成物の自動実行を行わない。
 
@@ -1754,7 +1801,11 @@ NativeLibrariesは対象ごとの設定であり、LibraryImportの論理名を�
 
 単純なファイル名はリンカーの検索対象名、区切りを含む相対パスはプロジェクト基準、絶対パスはそのままとする。空値・NUL・リンクオプションの混入は診断し、文字列をコマンドとして実行しない。`import`ならLLVM宣言にdllimportを付け、`static`なら付けない。
 
-WindowsRuntimeSymbolsが必要とする論理名`kernel32`は、コンパイラーがkind=import、input=kernel32.libとして供給する。利用者は検索環境または明示パスで解決できるが、この論理名を別ライブラリーへ付け替えない。その他の使用する論理名は設定が必要で、.dll→.lib等の名前推測は行わない。
+予約名kernel32はimport / kernel32.lib、kimi_backendはstatic / kimi_backend_windows_x64_v1.libへ対応づける。指定profileの供給物への明示パスに変更できるが、別実装へ任意に差し替えない。他の論理名は設定が必要で、.dll→.lib等の名前推測は行わない。
+
+kind=staticは、CRT起動、C/C++の動的初期化、独自のTLS初期化・終了処理、atexit等の終了時handlerの自動実行に依存しないコードに限る。ゼロ初期化・定数データ配置まで禁止するものではない。これらの起動・終了処理を必要とするライブラリーは、対応するadapter契約を実装するまで未対応とする。DLL側の初期化は§3.1の接続条件に従う。
+
+この条件は利用者・供給者が確認する外部接続契約である。.libを指定しただけでコンパイラーが適合を検証したとは扱わず、/NODEFAULTLIBによって初期化が実行されるとも解釈しない。
 
 #### 16.4.2. 出力形式
 
@@ -1780,24 +1831,30 @@ OutputPathの拡張子を.link.jsonへ置き換え、.llと同じディレクト
   "subsystem": "console",
   "libraries": [
     { "name": "kernel32", "kind": "import", "input": "kernel32.lib" },
+    { "name": "kimi_backend", "kind": "static", "input": "kimi_backend_windows_x64_v1.lib" },
     { "name": "observer", "kind": "import", "input": "observer.lib" }
   ],
-  "knownBackendDependencies": []
+  "providedRuntimeSymbols": ["_fltused"],
+  "expectedUndefinedSymbols": [
+    { "symbol": "__chkstk", "provider": "kimi_backend" }
+  ]
 }
 ```
 
-- 使用するライブラリーだけを重複排除して記録し、論理名のOrdinal順に出力する。図のobserverは使用する場合の例。
+- 外部宣言またはプロファイルが要求するライブラリーを重複排除し、論理名のOrdinal順に記録する。observer、_fltused、__chkstkは必要な場合の例。
 - パス指定のinputはmanifestの位置を基準に書き直す。検索対象名はそのままとする。irFileもmanifest基準とする。
-- Libraryではentryとsubsystemをnullにする。.libやDLLを生成済みとする意味ではない。
+- Libraryではentryとsubsystemをnullにする。記録は検証用の依存情報であり、外部リンク可能な.lib/DLLや実行可能な成果物を意味しない。
 - codegenは§16.5の必須設定であり、手動ビルドのopt・llcにも適用する。irSha256は最適化前の生成.llに対する値とする。
-- knownBackendDependenciesは生成時に既知のhelper/データシンボル名をソートした配列とする。空でも、後続LLVMの追加依存がない保証にはしない。
+- providedRuntimeSymbolsは、backend向けシンボルのうち生成.llに定義を供給した名前の配列とする。通常の__kimi_内部関数を列挙する用途には使わない。
+- expectedUndefinedSymbolsは、生成時点で外部参照の発生が予想されるbackend向けシンボルを、symbolとproviderで記録する。providerはlibrariesの論理名を参照し、供給元不明の既知依存は生成失敗とする。
+- 両配列はシンボル名のOrdinal順とし、同名を重複・両分類へ登録しない。実際のobjectの未定義シンボル一覧を表すものではなく、空でも後続依存なしとは保証しない。通常のLibraryImport・Windows APIのリンク入力はlibrariesに記録する。
 - マニフェストは指定されたリンク入力を記録する。実際に検索で選ばれたSDK・ライブラリーファイルの版や内容は手動ビルドの記録に残す。
 
 #### 16.4.3. 成功公開
 
 両ファイルを一時出力へ完成させてから公開し、manifestを最後に公開する。成功通知は両方の公開後に行い、失敗時は組として生成失敗を報告する。中断によって新旧が混在し得るため、利用者や後続ツールはirSha256で.llとの対応を確認する。
 
-成功通知には両ファイルのパス、entry、必要なリンク入力を表示する。コンパイラーはLLVM・SDK・DLLの探索やリンク・実行を行わない。
+成功通知には両ファイルのパス、出力用途（Application入力／Library検証用）、entry、必要なリンク入力を表示する。コンパイラーはLLVM・SDK・DLLの探索やリンク・実行を行わない。
 
 ### 16.5. ターゲットと最適化プロファイル
 
@@ -1814,7 +1871,7 @@ OutputPathの拡張子を.link.jsonへ置き換え、.llと同じディレクト
 | 浮動小数点 | §11.6の丸め・検査・環境契約を維持。fast-mathは禁止 |
 | stack・外部helper | §11.3に従う |
 
-生成関数のtarget-cpu・target-featuresと、opt・llcの指定を一致させる。profile・LLVM版・CPU・features・モデル・最適化設定をmanifestと生成キャッシュのキーへ含める。LLVM更新時はプロファイルを再検証する。上位CPU向けプロファイルや実行時CPU切替は後続拡張とする。
+CPU・featuresはプロファイルから全生成関数のtarget-cpu・target-featuresへ出力し、optはその属性を参照する。optへ-mcpu・-mattrを重ねて渡さず、llcの指定とmanifestも同じプロファイルに一致させる。profile・LLVM版・CPU・features・モデル・最適化設定をmanifestと生成キャッシュのキーへ含める。LLVM更新時はプロファイルを再検証する。上位CPU向けプロファイルや実行時CPU切替は後続拡張とする。
 
 relocation modelはLLVMのコード生成設定であり、PEのロード時再配置を禁止する/FIXEDを要求しない。
 
@@ -1839,17 +1896,19 @@ relocation modelはLLVMのコード生成設定であり、PEのロード時再�
 
 | ケース | 期待結果 |
 | --- | --- |
-| 1文書のトップレベルwriteLine | 暗黙方式で生成 |
+| 1文書のトップレベルwriteLine / Unit式だけ | 暗黙方式で生成 |
 | 1つのpublic main | 明示方式で生成 |
 | トップレベル実行コードとpublic mainの混在 | エラー |
-| 実行コードが複数文書に存在 | エラー |
+| トップレベル本体項目が複数文書に存在 | エラー |
 | Root直下のpublic mainが複数存在 | エラー |
 | 起動候補なしのApplication | エラー |
 | 空文書を起動対象として指定して成功させる | 初期版では不可 |
 | 不適格なmain署名 | Applicationで診断 |
 | ディレクティブで候補が除外される | 選択後の候補集合で判定 |
 | Libraryのmain | 自動実行・起動関数生成なし |
-| Libraryのトップレベル実行コード | エラー |
+| Libraryのトップレベル本体項目 | 未初期化let/varだけでもエラー |
+| 未初期化let/varだけのApplication | 暗黙方式で生成。実命令の有無に依存しない |
+| 未初期化let/varと明示的main | 両方式の混在としてエラー |
 
 ### 17.2. 所有権と終了
 
@@ -1877,7 +1936,7 @@ relocation modelはLLVMのコード生成設定であり、PEのロード時再�
 
 ### 17.4. LLVMと手動リンク
 
-LLVM 22.1.5の検証器で、関数型、分岐先、基本ブロック終端、SSAの整合を確認する。手動でオブジェクト生成・リンク・実行まで確認し、未定義補助シンボルが残らないことを初期サブセットの検証に含める。
+LLVM 22.1.5の検証器で、関数型、分岐先、基本ブロック終端、SSAの整合を確認する。Applicationは手動でオブジェクト生成・リンク・実行まで確認し、未定義補助シンボルが残らないことを初期サブセットの検証に含める。Libraryは保存用IRのlinkage・署名・本体とオブジェクト生成を確認し、外部リンク・実行の成功を完了条件にしない。
 
 Debug/Release双方について、言語上の検査、出力、終了状態が一致することを確認する。最適化の有無で所有権上の可否を変えない。
 
@@ -1939,8 +1998,11 @@ goldenは全出力の無条件な文字列一致だけにせず、意味を変�
 - MaxObjectSizeを超える動的確保・出力量と、アドレス加算overflow。TryWriteStderrはfalseを返す。
 - 空のStatic/Heap string、Move後の旧slot、不正releaseKindを注入した破棄分岐。一般のメモリ破損検出試験とは区別する。
 - aggregate戻り値を確保後、cleanup中にAbort・非終了となるケース。
-- FP使用時の_fltused等と、大きいstack frameの__chkstk等の依存解決。
-- manifestの未設定論理名、import/staticの相違、パス解決、重複排除、ハッシュ不一致、片方の公開失敗。
+- FP使用時の_fltused等と、大きいstack frameの__chkstk等の供給分類・依存解決。backend libraryの採用試験は§11.3.2に従う。
+- FP操作が未参照関数・実行時の未選択分岐にある場合、型・署名・転送だけの場合、選択・生成されたCore内にある場合のNeedsKimigayoFpEnvironment。
+- 初期化不要のstatic libraryと、CRT・動的初期化・TLS・終了時handlerの自動実行へ依存する不適合例。後者を接続契約の確認対象として明示する。
+- manifestの未設定論理名・供給元、import/staticの相違、パス解決、供給済み／外部解決候補の重複、ハッシュ不一致、片方の公開失敗。最適化後の参照消滅・新規backend参照も照合する。
+- CPU・feature属性を付けたIRを、§16.2のoptコマンドとllcで処理し、指定LLVM版で属性が保たれること。
 - 初期化式なしのトップレベルlet/var、static Propertyだけの文書、選択・生成・最適化と起動候補の関係。
 
 ### 17.8. Lowering・最適化の追加検証
@@ -1979,7 +2041,7 @@ goldenは全出力の無条件な文字列一致だけにせず、意味を変�
 | SPEC §22.4 | writeLineの言語契約を維持し、本書のWindows実装を参照 |
 | SPEC Appendix A.1・B.1 | 暗黙起動本体の非公開性と、解析後のLLVM Loweringを整合 |
 | STATUS C.12 | 当面のコンパイラー出力を`.ll`までとし、手動ビルド・実行確認を区別 |
-| STATUS C.12の設定案 | .ll/.link.json、NativeLibraries、専用entryを反映し、EntrySourceは初期版から外す |
+| STATUS C.12の設定案 | .ll/.link.json、Libraryの検証用途、NativeLibraries・helper供給分類、専用entryを反映し、EntrySourceは初期版から外す |
 | SPEC §6.1.2・§6.2.1・§6.5 | Layout属性、fragment共有・競合、C方式の単一storage fragment制限を追加 |
 | SPEC §21.1 | Kimigayo/C方式、基本型表現、ゼロサイズ、上限、Tuple・enumの初期配置を整合 |
 | SPEC §22.3 | C交換用判定、論理ライブラリー名、unwind禁止、aggregate値渡しの保留を区別 |
@@ -1987,7 +2049,7 @@ goldenは全出力の無条件な文字列一致だけにせず、意味を変�
 | SPEC §12.2・§13.7・§16.2・§17.3、Appendix A.6–A.7 | 値・Place、評価順、経路別cleanup、定数評価の既存意味を保ち、生成上の契約を関連づける |
 | STATUSのLowering・layout項目 | 入力確定、生成対象、layout、ABI、CFG・SSA、転送・定数、相互運用の進捗を分けて記録 |
 | STATUSのLLVM・ビルド設定 | windows-x64-v1、O0/O2、手動optとmanifestのcodegen情報を反映 |
-| STATUS C.13 | LLVM 22.1.5、独自entry、6操作・7APIの採用を記録 |
+| STATUS C.13 | LLVM 22.1.5、独自entry、6操作・7APIと別供給のbackend libraryを記録 |
 
 実装状況はSTATUSで管理する。本書に例があることや、設計が確定したことだけを根拠に、Parsing・Binding・Analysis・Lowering・Runtimeの実装済み範囲を拡大しない。
 
@@ -2008,7 +2070,7 @@ goldenは全出力の無条件な文字列一致だけにせず、意味を変�
 │  ├─ より大きなalignment・再確保
 │  ├─ ファイル入力・コマンドライン引数・時刻
 │  ├─ コンソールのUnicode表示adapter
-│  └─ 必要なコード生成補助関数の供給
+│  └─ 初期供給物に含まれない演算helperの追加
 └─ ターゲット
    ├─ 上位CPU向けプロファイル・実行時CPU切替
    └─ 他OS・他CPU向けのRuntime実装

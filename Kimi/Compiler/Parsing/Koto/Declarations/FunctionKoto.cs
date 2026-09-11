@@ -425,7 +425,7 @@ public sealed class FunctionKoto : DeclarationKoto
 
         if (this.typeConstraints is not null)
         {
-            for (var constraintIndex = 0; constraintIndex < KotoVisitor.Count(this.typeConstraints); constraintIndex++)
+            for (var constraintIndex = 0; constraintIndex < this.typeConstraints.Count; constraintIndex++)
             {
                 var constraint = this.typeConstraints[constraintIndex];
                 visitor.Visit(constraint);
@@ -434,7 +434,7 @@ public sealed class FunctionKoto : DeclarationKoto
 
         if (this.genericArguments is not null)
         {
-            for (var argumentIndex = 0; argumentIndex < KotoVisitor.Count(this.genericArguments); argumentIndex++)
+            for (var argumentIndex = 0; argumentIndex < this.genericArguments.Count; argumentIndex++)
             {
                 var argument = this.genericArguments[argumentIndex];
                 visitor.Visit(argument);
@@ -443,7 +443,7 @@ public sealed class FunctionKoto : DeclarationKoto
 
         if (this.parameters is not null)
         {
-            for (var parameterIndex = 0; parameterIndex < KotoVisitor.Count(this.parameters); parameterIndex++)
+            for (var parameterIndex = 0; parameterIndex < this.parameters.Count; parameterIndex++)
             {
                 var parameter = this.parameters[parameterIndex];
                 if (parameter.AttributeChain is not null)

@@ -132,8 +132,11 @@ public sealed class BindingSymbol
 }
 
 /// <summary>An immutable complete type; constructed types are interned within a compilation.</summary>
+/// <remarks>Interning makes identity the type equality, so equality and hashing never walk the fields.</remarks>
 public sealed record BoundType : ControlFlowType
 {
+    private readonly NumericCategory numeric;
+
     internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null)
         : base(name)
     {
@@ -145,6 +148,15 @@ public sealed record BoundType : ControlFlowType
         this.Origin = origin;
         this.OriginArguments = originArguments ?? [];
         this.LengthExpression = lengthExpression;
+        this.numeric = kind == BoundTypeKind.Primitive ? Categorize(name) : NumericCategory.None;
+    }
+
+    private enum NumericCategory : byte
+    {
+        None,
+        Signed,
+        Unsigned,
+        Float,
     }
 
     public BoundTypeKind Kind { get; }
@@ -163,9 +175,9 @@ public sealed record BoundType : ControlFlowType
 
     public IReadOnlyList<BoundOrigin> OriginArguments { get; }
 
-    public bool IsInteger => this.Kind == BoundTypeKind.Primitive && this.Name is "i8" or "i16" or "i32" or "i64" or "i128" or "isize" or "u8" or "u16" or "u32" or "u64" or "u128" or "usize";
+    public bool IsInteger => this.numeric is NumericCategory.Signed or NumericCategory.Unsigned;
 
-    public bool IsNumeric => this.IsInteger || (this.Kind == BoundTypeKind.Primitive && this.Name is "f32" or "f64");
+    public bool IsNumeric => this.numeric != NumericCategory.None;
 
     public static new BoundType Unit { get; } = new("()", BoundTypeKind.Primitive);
 
@@ -174,6 +186,35 @@ public sealed record BoundType : ControlFlowType
     public static new BoundType Boolean { get; } = new("bool", BoundTypeKind.Primitive);
 
     internal static readonly Dictionary<string, BoundType> Primitives = CreatePrimitives();
+
+    // Frequently requested primitives; they are the same instances as the Primitives entries.
+    internal static readonly BoundType I32 = Primitives["i32"];
+
+    internal static readonly BoundType F64 = Primitives["f64"];
+
+    internal static readonly BoundType ISize = Primitives["isize"];
+
+    internal static readonly BoundType Char = Primitives["char"];
+
+    internal static readonly BoundType String = Primitives["string"];
+
+    internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned;
+
+    internal bool IsFloatingPoint => this.numeric == NumericCategory.Float;
+
+    /// <inheritdoc/>
+    public bool Equals(BoundType? other) => ReferenceEquals(this, other);
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
+
+    private static NumericCategory Categorize(string name) => name switch
+    {
+        "i8" or "i16" or "i32" or "i64" or "i128" or "isize" => NumericCategory.Signed,
+        "u8" or "u16" or "u32" or "u64" or "u128" or "usize" => NumericCategory.Unsigned,
+        "f32" or "f64" => NumericCategory.Float,
+        _ => NumericCategory.None,
+    };
 
     private static Dictionary<string, BoundType> CreatePrimitives()
     {

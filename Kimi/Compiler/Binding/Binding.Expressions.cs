@@ -29,6 +29,27 @@ public sealed partial class Binding
         return node.BoundType is null && (node is NumberLiteralKoto or NullLiteralKoto || node is PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto });
     }
 
+    private static BoundType DefaultLiteralType(NumberLiteralKoto literal, BoundType? expected)
+        => expected ?? (literal.IsInteger ? BoundType.I32 : BoundType.F64);
+
+    private static bool LiteralCategoryMatches(NumberLiteralKoto literal, BoundType type)
+        => literal.IsInteger ? type.IsInteger : type.IsFloatingPoint;
+
+    private static KotoKind CompoundOperation(KotoKind assignment) => assignment switch
+    {
+        KotoKind.PlusEquals => KotoKind.Plus,
+        KotoKind.MinusEquals => KotoKind.Minus,
+        KotoKind.AsteriskEquals => KotoKind.Asterisk,
+        KotoKind.SlashEquals => KotoKind.Slash,
+        KotoKind.PercentEquals => KotoKind.Percent,
+        KotoKind.AmpersandEquals => KotoKind.Ampersand,
+        KotoKind.CaretEquals => KotoKind.Caret,
+        KotoKind.BarEquals => KotoKind.Bar,
+        KotoKind.LessThanLessThanEquals => KotoKind.LessThanLessThan,
+        KotoKind.GreaterThanGreaterThanEquals => KotoKind.GreaterThanGreaterThan,
+        _ => assignment,
+    };
+
     private static bool FitsLiteral(NumberLiteralKoto literal, BoundType type, bool negative, int pointerWidth)
     {
         if (!literal.IsInteger)
@@ -208,12 +229,12 @@ public sealed partial class Binding
             case UnitLiteralKoto:
                 return Complete(node, BoundType.Unit);
             case CharLiteralKoto:
-                return Complete(node, BoundType.Primitives["char"]);
+                return Complete(node, BoundType.Char);
             case StringLiteralKoto:
-                return Complete(node, BoundType.Primitives["string"]);
+                return Complete(node, BoundType.String);
             case NumberLiteralKoto number:
-                var numberType = expected ?? BoundType.Primitives[number.IsInteger ? "i32" : "f64"];
-                if (number.IsInteger ? !numberType.IsInteger : numberType.Name is not ("f32" or "f64"))
+                var numberType = DefaultLiteralType(number, expected);
+                if (!LiteralCategoryMatches(number, numberType))
                 {
                     return Fail(node, BindingFailure.TypeMismatch);
                 }
@@ -525,7 +546,13 @@ public sealed partial class Binding
     {
         if (unary.Akind is KotoKind.PrefixMinus or KotoKind.PrefixPlus && unary.Operand is NumberLiteralKoto number)
         {
-            var type = expected ?? BoundType.Primitives[number.IsInteger ? "i32" : "f64"];
+            // A directly signed literal is fitted as a signed value (SPEC 12.3.1).
+            var type = DefaultLiteralType(number, expected);
+            if (!LiteralCategoryMatches(number, type))
+            {
+                return Fail(unary, BindingFailure.TypeMismatch);
+            }
+
             if (!FitsLiteral(number, type, unary.Akind == KotoKind.PrefixMinus, this.compilation.PointerWidth))
             {
                 return Fail(unary, BindingFailure.InvalidLiteral);
@@ -541,27 +568,26 @@ public sealed partial class Binding
             return Complete(unary, null);
         }
 
-        if (unary.Akind == KotoKind.Not)
+        switch (unary.Akind)
         {
-            return operand == BoundType.Boolean ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
+            case KotoKind.Not:
+                return ReferenceEquals(operand, BoundType.Boolean) ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
+            case KotoKind.PrefixPlus:
+                return operand.IsNumeric ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
+            case KotoKind.PrefixMinus:
+                // Negation is defined for signed integers and floating-point values only (SPEC 13.2).
+                return operand.IsNumeric && !operand.IsUnsignedInteger ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
+            case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
+                if (!Writable(unary.Operand))
+                {
+                    return Fail(unary, BindingFailure.InvalidAssignment);
+                }
+
+                // Increment and decrement do not apply to floats (SPEC 13.2).
+                return operand.IsInteger ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
+            default:
+                return Fail(unary, BindingFailure.Unsupported, true);
         }
-
-        if (unary.Akind is KotoKind.PrefixPlus or KotoKind.PrefixMinus)
-        {
-            return operand.IsNumeric ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
-        }
-
-        if (unary.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement)
-        {
-            if (!Writable(unary.Operand))
-            {
-                return Fail(unary, BindingFailure.InvalidAssignment);
-            }
-
-            return operand.IsNumeric ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
-        }
-
-        return Fail(unary, BindingFailure.Unsupported, true);
     }
 
     private BoundType? BindBinary(BinaryKoto binary, BindingScope scope, BoundType? expected)
@@ -576,10 +602,18 @@ public sealed partial class Binding
 
         var logical = kind is KotoKind.And or KotoKind.Or;
         var assignment = kind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
-        var comparison = kind is KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals or KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
+        var operation = assignment ? CompoundOperation(kind) : kind;
+        var comparison = operation is KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals or KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
+        var shift = operation is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan;
         BoundType? left;
         BoundType? right;
-        if (IsUnfittedLiteral(binary.Left) && !IsUnfittedLiteral(binary.Right) && !assignment)
+        if (shift)
+        {
+            // The count may have any integer Type; only an untyped count adopts the shifted Type (SPEC 13.3).
+            left = this.BindNode(binary.Left, scope, assignment ? null : expected);
+            right = this.BindNode(binary.Right, scope, left is { IsInteger: true } ? left : null);
+        }
+        else if (IsUnfittedLiteral(binary.Left) && !IsUnfittedLiteral(binary.Right) && !assignment)
         {
             right = this.BindNode(binary.Right, scope, logical ? BoundType.Boolean : null);
             left = this.BindNode(binary.Left, scope, right ?? (comparison ? null : expected));
@@ -600,6 +634,12 @@ public sealed partial class Binding
             return Fail(binary, BindingFailure.InvalidAssignment);
         }
 
+        var result = assignment ? BoundType.Unit : left;
+        if (shift)
+        {
+            return left.IsInteger && right.IsInteger ? Complete(binary, result) : Fail(binary, BindingFailure.TypeMismatch);
+        }
+
         if (!Compatible(right, left))
         {
             return Fail(binary, BindingFailure.TypeMismatch);
@@ -615,22 +655,36 @@ public sealed partial class Binding
             return ReferenceEquals(left, BoundType.Boolean) ? Complete(binary, BoundType.Boolean) : Fail(binary, BindingFailure.TypeMismatch);
         }
 
-        if (kind is KotoKind.EqualsEquals or KotoKind.ExclamationEquals && left.Kind == BoundTypeKind.Primitive)
+        // Only built-in primitive operations are decided here. User Types need Contract mappings or
+        // pointer rules (SPEC 13.4.1, 5.3), which are not bound yet.
+        var primitive = left.Kind == BoundTypeKind.Primitive && !ReferenceEquals(left, BoundType.Never);
+        if (comparison)
         {
-            return Complete(binary, BoundType.Boolean);
+            // bool and Unit support equality only; numbers, char, and string are also ordered (SPEC 13.4).
+            var ordered = left.IsNumeric || ReferenceEquals(left, BoundType.Char) || ReferenceEquals(left, BoundType.String);
+            if (primitive && (ordered || operation is KotoKind.EqualsEquals or KotoKind.ExclamationEquals))
+            {
+                return Complete(binary, BoundType.Boolean);
+            }
+
+            return primitive ? Fail(binary, BindingFailure.TypeMismatch) : Fail(binary, BindingFailure.Unsupported, true);
         }
 
-        if (!left.IsNumeric)
+        if (left.IsNumeric)
         {
-            return Fail(binary, BindingFailure.Unsupported, true);
+            // % and bitwise operators accept integers only, including their compound forms (SPEC 13.3).
+            return operation is KotoKind.Percent or KotoKind.Ampersand or KotoKind.Caret or KotoKind.Bar && !left.IsInteger
+                ? Fail(binary, BindingFailure.TypeMismatch)
+                : Complete(binary, result);
         }
 
-        if (kind is KotoKind.Percent or KotoKind.Ampersand or KotoKind.Caret or KotoKind.Bar or KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan && !left.IsInteger)
+        // string + string concatenates; there is no other built-in string arithmetic (SPEC 13.3).
+        if (operation == KotoKind.Plus && ReferenceEquals(left, BoundType.String))
         {
-            return Fail(binary, BindingFailure.TypeMismatch);
+            return Complete(binary, result);
         }
 
-        return Complete(binary, comparison ? BoundType.Boolean : assignment ? BoundType.Unit : left);
+        return primitive ? Fail(binary, BindingFailure.TypeMismatch) : Fail(binary, BindingFailure.Unsupported, true);
     }
 
     private BoundType? BindTuple(TupleLiteralKoto tuple, BindingScope scope, BoundType? expected)

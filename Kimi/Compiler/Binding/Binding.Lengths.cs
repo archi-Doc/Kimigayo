@@ -147,7 +147,7 @@ public sealed partial class Binding
             return null;
         }
 
-        Complete(syntax, BoundType.Primitives["isize"]);
+        Complete(syntax, BoundType.ISize);
         if (final && !result.IsConstant)
         {
             this.AddObligation(new(BindingObligationKind.TypeFormation, syntax, BindingDeadline.Instantiation));

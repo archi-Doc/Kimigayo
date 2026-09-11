@@ -61,6 +61,11 @@ public class ControlFlowAnalysisTest
     [InlineData("func f(flag: bool) => match flag\n    true => 1\n    false => 2")]
     [InlineData("func f() -> i32\n    if false\n        return -1\n    return 1")]
     [InlineData("func f() -> i32\n    work:\n        exit from work\n    return 1")]
+    [InlineData("func f(ready: bool) -> i32\n    require ready else return 0\n    return 1")]
+    [InlineData("func f(ready: bool) -> i32\n    require ready\n    else\n        return 0\n    return 1")]
+    [InlineData("let answer = if true\n    require false else yield 0\n    yield 1\nelse => 2")]
+    [InlineData("defer:\n    require true else exit\n    ()")]
+    [InlineData("func f()\n    require false else return\n    ()")]
     public void AcceptsValidControlFlow(string source)
     {
         var analysis = Analyze(source);
@@ -91,6 +96,9 @@ public class ControlFlowAnalysisTest
     [InlineData("let x: Never = loop\n    if false\n        exit 1", "incompatible")]
     [InlineData("func f() -> i8\n    if false\n        return 128\n    return 1", "incompatible")]
     [InlineData("func f() -> i32\n    1", "cannot fall through")]
+    [InlineData("func f()\n    require true else ()\n    ()", "require")]
+    [InlineData("func f(ready: bool)\n    require ready else\n        loop\n            exit\n    ()", "require")]
+    [InlineData("func f(ready: bool) -> i32\n    require ready else return 0\n    ()", "cannot fall through")]
     public void RejectsInvalidControlFlow(string source, string diagnostic)
     {
         Assert.Contains(Analyze(source).Issues, x => x.Message.Contains(diagnostic, StringComparison.Ordinal));

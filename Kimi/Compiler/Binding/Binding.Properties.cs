@@ -92,7 +92,7 @@ public sealed partial class Binding
 
         var property = accessor.Property;
         var syntax = accessor.Declaration;
-        var declaredAccess = syntax is null ? ModifierKind.NoModifier : (ModifierKind)((byte)syntax.Modifier & 7);
+        var declaredAccess = syntax is null ? ModifierKind.NoModifier : syntax.Modifier.ExtractAccessibilityModifiers();
         accessor.Access = declaredAccess == ModifierKind.NoModifier ? DeclarationAccess(property.Symbol) : declaredAccess;
         if (accessor.IsStandard)
         {
@@ -225,7 +225,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (syntax is not null && ((byte)syntax.Modifier & 7) != 0 && !NarrowerAccess(accessor.Access, DeclarationAccess(property.Symbol)))
+        if (syntax is not null && syntax.Modifier.ExtractAccessibilityModifiers() != ModifierKind.NoModifier && !NarrowerAccess(accessor.Access, DeclarationAccess(property.Symbol)))
         {
             Fail(syntax, BindingFailure.Access);
             return ConstraintProof.Error;
@@ -294,13 +294,13 @@ public sealed partial class Binding
 
     private sealed class PropertyTypeVisitor : KotoVisitor
     {
-        internal List<(Koto Node, BoundType? Type, BoundOrigin? Origin, BindingSymbol? Symbol, BindingState State, BindingFailure Failure)> Snapshots { get; } = new();
+        // Type and Origin share one semantic slot; restoring them separately would erase the saved Type.
+        internal List<(Koto Node, object? Meaning, BindingSymbol? Symbol, BindingState State, BindingFailure Failure)> Snapshots { get; } = new();
 
         public override void Visit(Koto node)
         {
-            this.Snapshots.Add((node, node.BoundType, node.BoundOrigin, node.BoundSymbol, node.BindingState, node.BindingFailure));
-            node.BoundType = null;
-            node.BoundOrigin = null;
+            this.Snapshots.Add((node, node.BoundMeaning, node.BoundSymbol, node.BindingState, node.BindingFailure));
+            node.BoundMeaning = null;
             node.BindingState = BindingState.Unvisited;
             node.BindingFailure = BindingFailure.None;
             node.VisitChildren(this);
@@ -311,8 +311,7 @@ public sealed partial class Binding
             for (var i = this.Snapshots.Count - 1; i >= start; i--)
             {
                 var saved = this.Snapshots[i];
-                saved.Node.BoundType = saved.Type;
-                saved.Node.BoundOrigin = saved.Origin;
+                saved.Node.BoundMeaning = saved.Meaning;
                 saved.Node.BoundSymbol = saved.Symbol;
                 saved.Node.BindingState = saved.State;
                 saved.Node.BindingFailure = saved.Failure;

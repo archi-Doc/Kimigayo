@@ -228,7 +228,7 @@ public sealed class TypeSemanticsKoto : TypeKoto
 
         if (this.OriginArguments is not null)
         {
-            for (var argumentIndex = 0; argumentIndex < KotoVisitor.Count(this.OriginArguments); argumentIndex++)
+            for (var argumentIndex = 0; argumentIndex < this.OriginArguments.Length; argumentIndex++)
             {
                 var argument = this.OriginArguments[argumentIndex];
                 visitor.Visit(argument.Value);

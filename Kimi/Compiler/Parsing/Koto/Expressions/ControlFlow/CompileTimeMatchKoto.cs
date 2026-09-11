@@ -103,7 +103,7 @@ public sealed class CompileTimeMatchKoto : ExpressionKoto
 
     protected override void VisitChildrenCore(KotoVisitor visitor)
     {
-        for (var armIndex = 0; armIndex < KotoVisitor.Count(this.arms); armIndex++)
+        for (var armIndex = 0; armIndex < this.arms.Count; armIndex++)
         {
             var arm = this.arms[armIndex];
             if (arm.Condition is not null)

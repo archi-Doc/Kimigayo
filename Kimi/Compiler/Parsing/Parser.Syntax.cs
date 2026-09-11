@@ -93,6 +93,28 @@ public static partial class Parser
         return function;
     }
 
+    /// <summary>Checks receiver syntax of a function declared directly in a struct, enum, or Contract.</summary>
+    /// <param name="function">The member function.</param>
+    /// <remarks>At most one parameter has the internal Name self, without rename, default, or optional marker (SPEC 7.3).</remarks>
+    internal static void ValidateReceiverParameters(FunctionKoto function)
+    {
+        var hasReceiver = false;
+        foreach (var parameter in function.Parameters)
+        {
+            if (parameter.InternalName != "self")
+            {
+                continue;
+            }
+
+            if (hasReceiver || parameter.ExternalName != "self" || parameter.IsOptional || parameter.DefaultValue is not null)
+            {
+                parameter.Type.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "receiver parameter");
+            }
+
+            hasReceiver = true;
+        }
+    }
+
     internal static void ParseRequirementBody(ref TokenReader reader, FunctionKoto function)
     {
         function.IsRequirement = true;
@@ -191,7 +213,11 @@ public static partial class Parser
         }
         else
         {
+            // The placeholder is forbidden in generic arguments and other compound element Types (SPEC 4.3).
+            var allowInference = reader.AllowArrayElementInference;
+            reader.AllowArrayElementInference = allowInference && reader.CurrentTokenKind == TokenKind.OpenBracket;
             element = ParseDeclarationType(ref reader, parseOrigin: allowOrigins, allowNestedOrigins: allowOrigins);
+            reader.AllowArrayElementInference = allowInference;
         }
 
         var end = element.Span.End;
@@ -311,6 +337,12 @@ public static partial class Parser
         {
             reader.Advance();
             var name = ParseName(ref reader);
+            if (name is IdentifierNameKoto { IdentifierName: "_" })
+            {
+                // let _ and var _ are invalid; use the wildcard Pattern instead (SPEC 14.8.2).
+                name.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "_");
+            }
+
             return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, name.Span.End), KotoKind.BindingPattern, token.Kind == TokenKind.Let ? "let " : "var ", [name]);
         }
 

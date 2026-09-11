@@ -70,6 +70,15 @@ public class BindingTest
     [InlineData("let x: i8 = 128", DiagnosticCode.InvalidNumericLiteral_Kd)]
     [InlineData("let x: f32 = 1e100", DiagnosticCode.InvalidNumericLiteral_Kd)]
     [InlineData("let x = 1\nfunc f() => x", DiagnosticCode.InvalidCaptureBinding_Kd)]
+    [InlineData("let x: u32 = 1\nlet y = -x", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("var x: f64 = 1.0\nx++", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("var x: f64 = 1.0\nx %= 2.0", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("var x: f64 = 1.0\nx <<= 1", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let x = true < false", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let x = true & false", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let x = 'a' + 'b'", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let x = \"a\" - \"b\"", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let x: i32 = -1.5", DiagnosticCode.TypeMismatch_Kd)]
     public void FinalBindingRejectsInvalidProgramsWithoutDuplicatingIssues(string source, DiagnosticCode code)
     {
         var compilation = Parse(source);
@@ -78,6 +87,24 @@ public class BindingTest
         var count = compilation.Binding.Issues.Count;
         Assert.False(compilation.Bind().IsComplete);
         Assert.Equal(count, compilation.Binding.Issues.Count);
+    }
+
+    [Theory]
+    [InlineData("let x: u64 = 1\nlet count: u8 = 3\nlet y = x << count", "u64")]
+    [InlineData("var x: i16 = 1\nlet count: u32 = 3\nx >>= count\nlet y = x", "i16")]
+    [InlineData("let y = \"a\" + \"b\"", "string")]
+    [InlineData("var s = \"a\"\ns += \"b\"\nlet y = s", "string")]
+    [InlineData("let y = 'a' < 'b'", "bool")]
+    [InlineData("let y = \"a\" >= \"b\"", "bool")]
+    [InlineData("let y = () == ()", "bool")]
+    [InlineData("var x: i8 = 1\nlet y = x++", "i8")]
+    [InlineData("let x: f32 = 1.0\nlet y = -x", "f32")]
+    public void BuiltInOperatorsFollowTheirOperandCategories(string source, string type)
+    {
+        var compilation = Parse(source);
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        var result = All(compilation.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "y");
+        Assert.Equal(type, result.BoundType!.Name);
     }
 
     [Fact]

@@ -52,9 +52,12 @@ public sealed class BoundConstraint
     public BoundConstraint? Left { get; }
 
     public BoundConstraint? Right { get; }
+
+    /// <summary>Gets or sets the interned negation, cached because every proof queries it.</summary>
+    internal BoundConstraint? Negation { get; set; }
 }
 
-// Do not use BoundType's record equality or recursively hash a proposition DAG.
+// Do not recursively hash a proposition DAG; operands are compared by interned identity.
 internal readonly struct ConstraintKey(ConstraintKind kind, BoundType? subject = null, BoundType? requiredType = null, BindingSymbol? contract = null, SemanticsMask mask = default, BoundConstraint? left = null, BoundConstraint? right = null) : IEquatable<ConstraintKey>
 {
     internal ConstraintKind Kind { get; } = kind;

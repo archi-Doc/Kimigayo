@@ -80,14 +80,14 @@ public sealed partial class Binding
     }
 
     private static ModifierKind DeclarationAccess(BindingSymbol symbol)
-        => (ModifierKind)((byte)(symbol.Declaration switch
+        => (symbol.Declaration switch
         {
             DeclarationContainerKoto container => container.Modifier,
             FunctionKoto function => function.Modifier,
-            PropertyAccessorKoto accessor => ((byte)accessor.Modifier & 7) != 0 ? accessor.Modifier : ((PropertyKoto)accessor.Parent!).Modifier,
+            PropertyAccessorKoto accessor => accessor.Modifier.ExtractAccessibilityModifiers() != ModifierKind.NoModifier ? accessor.Modifier : ((PropertyKoto)accessor.Parent!).Modifier,
             VariableKoto variable => variable.Modifier,
             _ => ModifierKind.Public,
-        }) & 7);
+        }).ExtractAccessibilityModifiers();
 
     private static bool PrivateDomainWithin(BindingSymbol symbol, Koto owner)
     {

@@ -562,8 +562,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         var acceptsTypeConstraints = parseTypeConstraints && this.typeConstraints is not { Count: > 0 };
         while (TryBeginDeclaration(ref reader))
         {
-            var isExcluded = reader.IsExcluded;
-            if (isExcluded)
+            if (reader.IsExcluded)
             {
                 Parser.SkipExcludedSyntax(ref reader);
                 continue;
@@ -631,7 +630,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
                 CheckDeclarationOrder(ref reader, ref declarationOrder, DeclarationOrder.TypeConstraint);
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
-                if (constraint is not null && !isExcluded)
+                if (constraint is not null)
                 {
                     this.AddTypeConstraint(constraint);
                 }
@@ -641,15 +640,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
             var token = reader.CurrentToken;
             if (parseDeclarationContainers &&
-                this.TryParseDeclarationContainer(ref reader, token, isExcluded))
+                this.TryParseDeclarationContainer(ref reader, token))
             {
                 continue;
             }
 
-            if (!this.TryParsePropertyOrFunction(
-                ref reader,
-                ref declarationOrder,
-                isExcluded))
+            if (!this.TryParsePropertyOrFunction(ref reader, ref declarationOrder))
             {
                 SkipUnexpectedDeclaration(ref reader, token);
             }
@@ -717,12 +713,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Attempts to parse a nested Declaration Container declaration.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="token">The declaration keyword token.</param>
-    /// <param name="isExcluded">Whether an early condition excludes the declaration.</param>
     /// <returns><see langword="true"/> when a Declaration Container keyword was consumed.</returns>
-    protected bool TryParseDeclarationContainer(
-        ref TokenReader reader,
-        Token token,
-        bool isExcluded = false)
+    /// <remarks>Callers skip syntax excluded by an early directive before reaching a declaration.</remarks>
+    protected bool TryParseDeclarationContainer(ref TokenReader reader, Token token)
     {
         var tokenKind = token.Kind;
         if (tokenKind is not (TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract))
@@ -742,12 +735,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             supportsGenericHeader,
             supportsGenericHeader,
             tokenKind);
-        if (isExcluded || reader.IsExcluded)
-        {
-            reader.SkipCurrentBlock(false);
-            return true;
-        }
-
         var state = reader.TakeContext();
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span);
         container.AddHeader(declaration.GenericArguments, declaration.Origins);
@@ -768,12 +755,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Attempts to parse one Property or function declaration.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="declarationOrder">The current declaration-order state.</param>
-    /// <param name="isExcluded">Whether an early condition excludes the declaration.</param>
     /// <returns><see langword="true"/> when a supported member was consumed.</returns>
-    protected bool TryParsePropertyOrFunction(
-        ref TokenReader reader,
-        ref DeclarationOrder declarationOrder,
-        bool isExcluded)
+    protected bool TryParsePropertyOrFunction(ref TokenReader reader, ref DeclarationOrder declarationOrder)
     {
         var token = reader.CurrentToken;
         if (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func)
@@ -852,7 +835,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
             reader.Advance();
             var propertyKoto = Parser.ParseProperty(ref reader, ref token);
-            if (propertyKoto is not null && !isExcluded)
+            if (propertyKoto is not null)
             {
                 if ((this is ContractKoto) != propertyKoto.IsContractRequirement || this is EnumKoto)
                 {
@@ -889,6 +872,13 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             {
                 IsDestructor = true,
             };
+
+            // deinit accepts only its Block: no modifier, Attribute, or Expression body (SPEC 16.3, F.3).
+            if (context.ModifierKind != ModifierKind.NoModifier || context.AttributeKoto is not null || reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
+            {
+                destructor.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "deinit declaration");
+            }
+
             destructor.Parse(ref reader);
             this.AddLast(destructor);
             return true;
@@ -916,7 +906,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             Parser.ParseNamedFunctionBody(ref reader, functionKoto);
         }
 
-        if (!isExcluded && !functionKoto.IsExcluded)
+        if (this is StructKoto or EnumKoto or ContractKoto)
+        {
+            Parser.ValidateReceiverParameters(functionKoto);
+        }
+
+        if (!functionKoto.IsExcluded)
         {
             this.AddLast(functionKoto);
         }
@@ -952,48 +947,43 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
     protected override void VisitChildrenCore(KotoVisitor visitor)
     {
-        if (this.bases is not null)
+        if (this.bases is { } bases)
         {
-            for (var typeIndex = 0; typeIndex < KotoVisitor.Count(this.bases); typeIndex++)
+            for (var i = 0; i < bases.Length; i++)
             {
-                var type = this.bases[typeIndex];
-                visitor.Visit(type);
+                visitor.Visit(bases[i]);
             }
         }
 
-        if (this.genericArguments is not null)
+        if (this.genericArguments is { } genericArguments)
         {
-            for (var argumentIndex = 0; argumentIndex < KotoVisitor.Count(this.genericArguments); argumentIndex++)
+            for (var i = 0; i < genericArguments.Count; i++)
             {
-                var argument = this.genericArguments[argumentIndex];
-                visitor.Visit(argument);
+                visitor.Visit(genericArguments[i]);
             }
         }
 
-        if (this.typeConstraints is not null)
+        if (this.typeConstraints is { } typeConstraints)
         {
-            for (var constraintIndex = 0; constraintIndex < KotoVisitor.Count(this.typeConstraints); constraintIndex++)
+            for (var i = 0; i < typeConstraints.Count; i++)
             {
-                var constraint = this.typeConstraints[constraintIndex];
-                visitor.Visit(constraint);
+                visitor.Visit(typeConstraints[i]);
             }
         }
 
-        if (this.kotoList is not null)
+        if (this.kotoList is { } kotoList)
         {
-            for (var kotoIndex = 0; kotoIndex < KotoVisitor.Count(this.kotoList); kotoIndex++)
+            for (var i = 0; i < kotoList.Count; i++)
             {
-                var koto = this.kotoList[kotoIndex];
-                visitor.Visit(koto);
+                visitor.Visit(kotoList[i]);
             }
         }
 
-        if (this.NestedContainerTable is not null)
+        if (this.nestedContainers is { } nestedContainers)
         {
-            for (var containerIndex = 0; containerIndex < KotoVisitor.Count(this.NestedContainers); containerIndex++)
+            for (var i = 0; i < nestedContainers.Count; i++)
             {
-                var container = this.NestedContainers[containerIndex];
-                visitor.Visit(container);
+                visitor.Visit(nestedContainers[i]);
             }
         }
     }

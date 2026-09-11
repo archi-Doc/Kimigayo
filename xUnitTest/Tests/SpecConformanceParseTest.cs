@@ -307,12 +307,24 @@ public class SpecConformanceParseTest
     }
 
     [Fact]
-    public void PreservesExpressionBodiedDestructor()
+    public void PreservesBlockBodiedDestructor()
     {
-        var parsed = Parse("struct Resource\n    deinit => release()");
+        var parsed = Parse("struct Resource\n    deinit\n        release()");
         AssertValid(parsed);
-        Assert.Contains("deinit => release()", Write(parsed));
+        Assert.Contains("deinit", Write(parsed));
         RoundTrip(parsed);
+    }
+
+    [Theory]
+    [InlineData("struct Resource\n    deinit => release()")]
+    [InlineData("struct Resource\n    public deinit\n        release()")]
+    [InlineData("struct Resource\n    #Marker\n    deinit\n        release()")]
+    [InlineData("struct Resource\n    unsafe init()\n        ()")]
+    [InlineData("struct Resource\n    #Marker\n    init()\n        ()")]
+    public void RejectsDestructorAndConstructorFormsOutsideTheirGrammar(string source)
+    {
+        // deinit accepts only its Block, and init only an access modifier (SPEC 16.3, 6.2.3, F.3).
+        Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
     }
 
     [Fact]

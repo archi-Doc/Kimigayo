@@ -443,8 +443,7 @@ public sealed partial class Binding
         {
             node.BindingState = BindingState.Unvisited;
             node.BindingFailure = BindingFailure.None;
-            node.BoundType = null;
-            node.BoundOrigin = null;
+            node.BoundMeaning = null;
             node.BoundSymbol = null;
             if (node is IsKoto clause)
             {
@@ -551,7 +550,7 @@ public sealed partial class Binding
 
                     break;
                 case LengthParameterKoto parameter:
-                    binding.Declare(node, parameter.Identifier, BindingSymbolKind.LengthParameter, node, this.Scope).Type = BoundType.Primitives["isize"];
+                    binding.Declare(node, parameter.Identifier, BindingSymbolKind.LengthParameter, node, this.Scope).Type = BoundType.ISize;
                     break;
                 case AliasKoto alias:
                     binding.aliases.Add(alias);

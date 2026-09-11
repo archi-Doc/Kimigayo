@@ -118,7 +118,7 @@ public sealed partial class Binding
             VariableKoto v => v.Modifier,
             _ => ModifierKind.NoModifier,
         };
-        var access = operationAccess ?? (ModifierKind)((byte)modifier & 7);
+        var access = operationAccess ?? modifier.ExtractAccessibilityModifiers();
         if (access is ModifierKind.Public or ModifierKind.Internal or ModifierKind.ProtectedOrInternal)
         {
             return true;
@@ -248,7 +248,7 @@ public sealed partial class Binding
             case GenericParameterKoto:
                 return syntax.BoundSymbol?.WholeType;
             case LengthParameterKoto:
-                return BoundType.Primitives["isize"];
+                return BoundType.ISize;
             case ParenthesizedTypeKoto parentheses:
                 return this.BindType(parentheses.Type, scope, context);
             case TypeSemanticsKoto semantics:
@@ -428,23 +428,15 @@ public sealed partial class Binding
             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, symbol.Type));
         }
 
-        if (symbol.Declaration is DeclarationContainerKoto { GenericParameterNodes.Count: > 0 })
-        {
-            var self = syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" };
-            if (!self)
-            {
-                return Fail(syntax, BindingFailure.TypeMismatch);
-            }
-
-            return this.SelfType(symbol);
-        }
-
-        if (syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" })
+        if (isSelf)
         {
             return this.SelfType(symbol);
         }
 
-        return symbol.Type;
+        // A generic declaration without its arguments is not a complete Type.
+        return symbol.Declaration is DeclarationContainerKoto { GenericParameterNodes.Count: > 0 }
+            ? Fail(syntax, BindingFailure.TypeMismatch)
+            : symbol.Type;
     }
 
     private BoundType? BindTypeList(Koto node, IReadOnlyList<Koto> elements, BindingScope scope, TypeBindingContext context, BoundTypeKind kind, BindingSymbol? symbol = null)

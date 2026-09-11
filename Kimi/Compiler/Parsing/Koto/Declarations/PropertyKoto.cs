@@ -166,7 +166,7 @@ public sealed class PropertyKoto : VariableKoto
 
         if (this.accessors is not null)
         {
-            for (var accessorIndex = 0; accessorIndex < KotoVisitor.Count(this.accessors); accessorIndex++)
+            for (var accessorIndex = 0; accessorIndex < this.accessors.Count; accessorIndex++)
             {
                 var accessor = this.accessors[accessorIndex];
                 visitor.Visit(accessor);

@@ -88,7 +88,7 @@ public abstract class ApplicationKoto : ExpressionKoto
         visitor.Visit(this.Target);
         if (this.ArgumentStorage is { } arguments)
         {
-            for (var argumentIndex = 0; argumentIndex < KotoVisitor.Count(arguments); argumentIndex++)
+            for (var argumentIndex = 0; argumentIndex < arguments.Count; argumentIndex++)
             {
                 var argument = arguments[argumentIndex];
                 visitor.Visit(argument);

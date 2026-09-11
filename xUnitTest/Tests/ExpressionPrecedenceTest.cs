@@ -117,6 +117,47 @@ public class ExpressionPrecedenceTest
     }
 
     [Theory]
+    [InlineData("value is Dog == flag", "==")]
+    [InlineData("value is not Dog != flag", "!=")]
+    [InlineData("a == value is Dog", "is")]
+    [InlineData("value is Dog is Cat", "is")]
+    [InlineData("value is Dog < limit", "<")]
+    public void RuntimeIsTestsAreNonAssociativeComparisons(string expression, string second)
+    {
+        var source = $"let result = {expression}\nlet next = 42";
+        var (body, diagnostics) = Parse(source);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ChainedComparison_Kd), diagnostic.Entry.Name);
+        Assert.Equal(source.LastIndexOf(second, StringComparison.Ordinal), diagnostic.Span.Start);
+        Assert.Equal("next", Assert.IsType<FieldKoto>(body.Items[1]).NameKoto.IdentifierName);
+    }
+
+    [Fact]
+    public void RequirementOperatorsSpanTheirOperands()
+    {
+        const string source = "func f<T>(x: T)\n    T is not Copy and Owned or Copy\n    ()";
+        var compilation = Compilation.CreateForTest();
+        compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
+        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        var function = compilation.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single();
+        var requirement = Assert.IsType<NotKoto>(Assert.IsType<IsKoto>(Assert.Single(function.TypeConstraints)).Right);
+        var disjunction = Assert.IsType<OrKoto>(requirement.Operand);
+        var conjunction = Assert.IsType<AndKoto>(disjunction.Left);
+        Assert.Equal("not Copy and Owned or Copy", source.Substring(requirement.Span.Start, requirement.Span.Length));
+        Assert.Equal("Copy and Owned or Copy", source.Substring(disjunction.Span.Start, disjunction.Span.Length));
+        Assert.Equal("Copy and Owned", source.Substring(conjunction.Span.Start, conjunction.Span.Length));
+    }
+
+    [Fact]
+    public void RuntimeIsTestKeepsAdjacentTypeArguments()
+    {
+        var test = Assert.IsType<IsKoto>(ParseExpression("value is Box<i32>"));
+        Assert.IsType<GenericsKoto>(test.Right);
+        Assert.Empty(Parse("let result = (value is Dog) == flag").Diagnostics);
+    }
+
+    [Theory]
     [MemberData(nameof(ComparisonPairs))]
     public void AllowsExplicitlyGroupedOrSeparateComparisons(string first, string second)
     {

@@ -442,6 +442,7 @@ public sealed partial class Binding
                         if (schema.Origins[j].Name == target.IdentifierName && j < type!.OriginArguments.Count)
                         {
                             result = type.OriginArguments[j];
+                            break;
                         }
                     }
 

@@ -102,7 +102,7 @@ public sealed class MatchKoto : ExpressionKoto
     protected override void VisitChildrenCore(KotoVisitor visitor)
     {
         visitor.Visit(this.Expression);
-        for (var armIndex = 0; armIndex < KotoVisitor.Count(this.arms); armIndex++)
+        for (var armIndex = 0; armIndex < this.arms.Count; armIndex++)
         {
             var arm = this.arms[armIndex];
             visitor.Visit(arm.Pattern);

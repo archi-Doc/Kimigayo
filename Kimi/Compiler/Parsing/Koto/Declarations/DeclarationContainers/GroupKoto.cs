@@ -79,8 +79,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
         var hasNonAliasDeclaration = false;
         while (TryBeginDeclaration(ref reader))
         {
-            var isExcluded = reader.IsExcluded;
-            if (isExcluded)
+            if (reader.IsExcluded)
             {
                 Parser.SkipExcludedSyntax(ref reader, executableContext: true);
                 continue;
@@ -106,11 +105,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
                 }
                 else
                 {
-                    if (!isExcluded)
-                    {
-                        var aliasKoto = new AliasKoto(ref reader, qualifiedName);
-                        this.AddLast(aliasKoto);
-                    }
+                    this.AddLast(new AliasKoto(ref reader, qualifiedName));
                 }
 
                 continue;
@@ -121,12 +116,6 @@ public sealed class GroupKoto : DeclarationContainerKoto
             {
                 reader.Advance();
                 var name = KotoHelper.ValidateAndGetNamespace(ref reader);
-                if (isExcluded)
-                {
-                    reader.SkipCurrentBlock(false);
-                    continue;
-                }
-
                 var state = reader.TakeContext();
                 var groupKoto = this.GetOrAddDeclarationContainer(name, TokenKind.Group, state, token.Span);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
@@ -137,7 +126,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
                 continue;
             }
 
-            if (this.TryParseDeclarationContainer(ref reader, token, isExcluded))
+            if (this.TryParseDeclarationContainer(ref reader, token))
             {
                 continue;
             }
@@ -149,7 +138,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock, DiagnosticCode.UnexpectedTrailingToken_Kd);
             }
 
-            if (item is not null && !isExcluded)
+            if (item is not null)
             {
                 this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, item);
             }

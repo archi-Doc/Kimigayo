@@ -129,7 +129,7 @@ public sealed class DictionaryLiteralKoto : ExpressionKoto
 
     protected override void VisitChildrenCore(KotoVisitor visitor)
     {
-        for (var entryIndex = 0; entryIndex < KotoVisitor.Count(this.Entries); entryIndex++)
+        for (var entryIndex = 0; entryIndex < this.Entries.Count; entryIndex++)
         {
             var entry = this.Entries[entryIndex];
             visitor.Visit(entry.Key);

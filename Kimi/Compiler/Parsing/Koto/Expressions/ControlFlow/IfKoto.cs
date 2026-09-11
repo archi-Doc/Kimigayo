@@ -90,7 +90,7 @@ public sealed class IfKoto : ExpressionKoto
 
     protected override void VisitChildrenCore(KotoVisitor visitor)
     {
-        for (var branchIndex = 0; branchIndex < KotoVisitor.Count(this.branches); branchIndex++)
+        for (var branchIndex = 0; branchIndex < this.branches.Count; branchIndex++)
         {
             var branch = this.branches[branchIndex];
             visitor.Visit(branch.Condition);

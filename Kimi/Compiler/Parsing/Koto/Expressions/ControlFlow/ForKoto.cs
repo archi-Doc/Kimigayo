@@ -85,7 +85,7 @@ public sealed class ForKoto : ExpressionKoto
 
     protected override void VisitChildrenCore(KotoVisitor visitor)
     {
-        for (var bindingIndex = 0; bindingIndex < KotoVisitor.Count(this.bindings); bindingIndex++)
+        for (var bindingIndex = 0; bindingIndex < this.bindings.Count; bindingIndex++)
         {
             var binding = this.bindings[bindingIndex];
             visitor.Visit(binding);

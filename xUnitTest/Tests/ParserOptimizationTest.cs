@@ -157,4 +157,26 @@ public class ParserOptimizationTest
         Assert.Equal("Second", attribute.IdentifierKoto.ToString());
         Assert.Equal("2", Assert.Single(attribute.Arguments).ToString());
     }
+
+    [Fact]
+    public void ReplacingTheHeadAttributeKeepsTheRemainingChain()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, "#First #Second func Run() => ()\n#Third func Other() => ()");
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
+        var functions = kotonoha.GeneratedFunction!.Body!.Items.Cast<FunctionKoto>().ToArray();
+        var head = functions[0].AttributeChain!;
+        var rest = head.AttributeChain!;
+        var replacement = functions[1].AttributeChain!;
+        Assert.True(functions[1].RemoveAttribute(replacement));
+
+        Assert.True(KotoHelper.Replace(functions[0], head, replacement));
+        Assert.Same(replacement, functions[0].AttributeChain);
+        Assert.Same(rest, replacement.AttributeChain);
+        Assert.Same(replacement, rest.Parent);
+        Assert.Same(functions[0], replacement.Parent);
+        Assert.Null(head.Parent);
+        Assert.Null(head.AttributeChain);
+    }
 }

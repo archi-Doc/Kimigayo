@@ -89,14 +89,25 @@ public class NestedTypeParseTest
         Assert.Empty(Assert.IsType<TupleTypeKoto>(ParseParameterType("()")).Elements);
     }
 
-    [Fact]
-    public void SemanticsBindsMoreTightlyThanAnUngroupedFunctionArrow()
+    [Theory]
+    [InlineData("ref/(i32) -> bool")]
+    [InlineData("i32 -> bool")]
+    [InlineData("(i32) from a -> bool")]
+    public void FunctionArrowRequiresAParameterList(string type)
     {
-        var function = Assert.IsType<FunctionTypeKoto>(ParseParameterType("ref/(i32) -> bool"));
-        Assert.Equal(SemanticsKind.Ref, Assert.IsType<TypeSemanticsKoto>(function.Parameters).SemanticsKind);
+        // A bare Type cannot replace the Function Parameter List (SPEC 3.2); recovery still keeps the arrow.
+        var tree = Parse($"func use(value: {type}) => ()");
+        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        var function = Assert.Single(tree.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>());
+        Assert.IsType<FunctionTypeKoto>(Assert.Single(function.Parameters).Type);
+    }
 
+    [Fact]
+    public void GroupedFunctionTypeCarriesTheOuterSemantics()
+    {
         var reference = Assert.IsType<TypeSemanticsKoto>(ParseParameterType("ref/((i32) -> bool)"));
         Assert.IsType<FunctionTypeKoto>(Assert.IsType<ParenthesizedTypeKoto>(reference.Type).Type);
+        Assert.IsType<FunctionTypeKoto>(ParseParameterType("(i32,) -> (bool) -> bool"));
     }
 
     [Theory]

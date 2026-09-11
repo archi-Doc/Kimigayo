@@ -358,8 +358,8 @@ public sealed partial class Binding
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
         // Refinement assumptions are input evidence, not in-progress registrations.
-        var premise = ConstraintProof.Unknown;
-        for (var current = scope; current is not null; current = current.Parent)
+        var premise = type.Symbol?.Declaration is ContractKoto own && IsRefinement(own.BoundSymbol!, contract);
+        for (var current = scope; current is not null && !premise; current = current.Parent)
         {
             if (current.Constraints is not { Invalid: false } environment)
             {
@@ -370,18 +370,15 @@ public sealed partial class Binding
             {
                 if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, type) && IsRefinement(fact.Contract!, contract))
                 {
-                    premise = ConstraintProof.Proven;
+                    premise = true;
+                    break;
                 }
             }
         }
 
-        if (type.Symbol?.Declaration is ContractKoto own && IsRefinement(own.BoundSymbol!, contract))
-        {
-            premise = ConstraintProof.Proven;
-        }
-
+        // Definition evidence is still resolved so that its errors are never hidden by an assumption.
         var proof = this.ResolveConformance(type, contract, scope, out _);
-        return premise == ConstraintProof.Proven ? CombineProof(premise, proof, false) : proof;
+        return premise ? CombineProof(ConstraintProof.Proven, proof, false) : proof;
     }
 
     private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType self, bool normalize = true)

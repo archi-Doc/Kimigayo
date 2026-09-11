@@ -388,7 +388,8 @@ public sealed partial class Binding
 
         internal bool Derivation { get; } = derivation;
 
-        internal ConstraintProof Result { get; set; } = intrinsic.Intrinsic == IntrinsicKind.Owned && type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Semantics ? ConstraintProof.Proven : ConstraintProof.Unknown;
+        // Recursive Owned structure starts optimistically; everything else starts unknown.
+        internal ConstraintProof Result { get; set; } = InitialResult(intrinsic, type);
 
         internal bool Evaluated { get; set; }
 
@@ -400,11 +401,16 @@ public sealed partial class Binding
 
         internal void Reset()
         {
-            this.Result = this.Intrinsic.Intrinsic == IntrinsicKind.Owned && this.Type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Semantics ? ConstraintProof.Proven : ConstraintProof.Unknown;
+            this.Result = InitialResult(this.Intrinsic, this.Type);
             this.Evaluated = false;
             this.Queued = false;
             this.Parent = null;
             this.Dependents.Clear();
         }
+
+        private static ConstraintProof InitialResult(BindingSymbol intrinsic, BoundType type)
+            => intrinsic.Intrinsic == IntrinsicKind.Owned && type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Semantics
+                ? ConstraintProof.Proven
+                : ConstraintProof.Unknown;
     }
 }

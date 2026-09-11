@@ -126,6 +126,17 @@ public class PropertyBindingTest
         Assert.NotSame(property.Type, property.Setter.Input);
     }
 
+    [Fact]
+    public void ImplicitSetterInputRestoresTheSharedHeaderSyntax()
+    {
+        var c = Parse("contract C\n    property item: ref/i32 has get, set");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var property = Property(c, "C", "item");
+        var header = property.Declaration.TypeKoto!;
+        Assert.Equal(BindingState.Resolved, header.BindingState);
+        Assert.Same(property.Type, header.BoundType);
+    }
+
     [Theory]
     [InlineData("public", "private", true)]
     [InlineData("public", "public", false)]
