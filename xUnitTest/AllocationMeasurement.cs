@@ -19,6 +19,9 @@ internal static class AllocationMeasurement
                     operation();
                 }
 
+                // A runtime pause that is not a collection can charge the unused tail of a partially used
+                // allocation context (up to ~8 KB) to this thread. Retire it so zero-allocation work holds none.
+                GC.Collect();
                 var before = GC.GetAllocatedBytesForCurrentThread();
                 for (var i = 0; i < iterations; i++)
                 {
