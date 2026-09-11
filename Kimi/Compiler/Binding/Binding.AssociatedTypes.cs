@@ -6,8 +6,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BindingSymbol Type, BindingSymbol Associated), AssociatedBinding> associatedBindings = new();
-    private readonly HashSet<BoundType> normalizingAssociated = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<(BoundConformancePath Path, BindingSymbol Associated), AssociatedBinding> associatedBindings = new();
+    private readonly HashSet<(BoundType Type, BindingScope Scope)> normalizingAssociated = new();
 
     private static BoundType? EnclosingContractSelf(BindingScope scope)
     {
@@ -181,7 +181,7 @@ public sealed partial class Binding
         }
 
         var associated = name is null ? null : this.FindAssociated(self, scope, name.IdentifierName, qualifier, clause);
-        if (associated is null || !this.conformances.TryGetValue((self.Symbol!, qualifier ?? associated.Scope.Owner.BoundSymbol!), out var conformance) || !conformance.Active)
+        if (associated is null || !this.conformances.TryGetValue((self.Symbol!, qualifier ?? associated.Scope.Owner.BoundSymbol!), out var conformance) || conformance.Paths.Count == 0)
         {
             Fail(clause, BindingFailure.InvalidAssociatedType);
             return;
@@ -199,72 +199,87 @@ public sealed partial class Binding
 
     private void PrepareAssociatedBindings()
     {
-        for (var i = 0; i < this.activeConformances.Count; i++)
+        for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
-            var conformance = this.activeConformances[i];
-            var shape = conformance.Contract.Contract!;
+            var path = this.activeConformancePaths[i];
+            if (!ReferenceEquals(path.RootPath, path))
+            {
+                continue;
+            }
+
+            var shape = path.RootContract.Contract!;
+            // Ancestor paths inherit the root declaration's associated identities, not a
+            // separately declared ancestor's conditions or specifications.
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {
-                var key = (conformance.Type, shape.AssociatedTypes[j]);
+                var key = (path, shape.AssociatedTypes[j]);
                 if (!this.associatedBindings.ContainsKey(key))
                 {
                     this.associatedBindings.Add(key, new());
                 }
             }
 
-            var self = this.SelfType(conformance.Type);
-            for (var j = 0; j < shape.ClauseStorage.Count; j++)
+            CollectShape(shape, path);
+            for (var j = 0; j < shape.Ancestors.Count; j++)
             {
-                if (shape.ClauseStorage[j].BoundConstraint is { } constraint)
+                CollectShape(shape.Ancestors[j].Contract!, path);
+            }
+
+            var container = (DeclarationContainerKoto)path.Type.Declaration;
+            for (var j = 0; j < container.Members.Count; j++)
+            {
+                if (container.Members[j] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint })
                 {
-                    Collect(constraint, self);
+                    Collect(constraint, path);
                 }
             }
         }
 
-        for (var n = 0; n < this.nodes.Count; n++)
+        for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
-            if (this.nodes[n] is IsKoto { IsAssociatedConstraint: true, Parent: DeclarationContainerKoto container, BoundConstraint: { } constraint } && container is StructKoto or EnumKoto)
-            {
-                Collect(constraint, this.SelfType(container.BoundSymbol!));
-            }
-        }
-
-        for (var i = 0; i < this.activeConformances.Count; i++)
-        {
-            var conformance = this.activeConformances[i];
-            var shape = conformance.Contract.Contract!;
+            var path = this.activeConformancePaths[i];
+            var shape = path.Contract.Contract!;
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {
                 var associated = shape.AssociatedTypes[j];
-                var result = this.ResolveAssociated(conformance.Type, associated);
-                if (result is not null)
+                if (this.ResolveAssociated(path, associated) is { } result)
                 {
-                    conformance.AssociatedStorage[associated] = result;
+                    path.AssociatedStorage[associated] = result;
                 }
             }
         }
 
-        void Collect(BoundConstraint constraint, BoundType self)
+        void CollectShape(BoundContract shape, BoundConformancePath path)
+        {
+            for (var i = 0; i < shape.ClauseStorage.Count; i++)
+            {
+                if (shape.ClauseStorage[i].BoundConstraint is { } constraint)
+                {
+                    Collect(constraint, path);
+                }
+            }
+        }
+
+        void Collect(BoundConstraint constraint, BoundConformancePath path)
         {
             if (constraint.Kind == ConstraintKind.And)
             {
-                Collect(constraint.Left!, self);
-                Collect(constraint.Right!, self);
+                Collect(constraint.Left!, path);
+                Collect(constraint.Right!, path);
             }
-            else if (constraint is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: { } required } && this.associatedBindings.TryGetValue((self.Symbol!, constraint.Subject.Symbol!), out var binding))
+            else if (constraint is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: { } required } && this.associatedBindings.TryGetValue((path, constraint.Subject.Symbol!), out var binding) && !binding.Candidates.Contains(required))
             {
-                if (!binding.Candidates.Contains(required))
-                {
-                    binding.Candidates.Add(required);
-                }
+                binding.Candidates.Add(required);
             }
         }
     }
 
-    private BoundType? ResolveAssociated(BindingSymbol owner, BindingSymbol associated)
+    private BoundType? ResolveAssociated(BoundConformancePath path, BindingSymbol associated)
     {
-        if (!this.associatedBindings.TryGetValue((owner, associated), out var binding))
+        // Refinement paths have exactly the root declaration's D + P environment.
+        // Share immutable normalized Types and candidate storage within that root only.
+        path = path.RootPath;
+        if (!this.associatedBindings.TryGetValue((path, associated), out var binding))
         {
             return null;
         }
@@ -275,8 +290,8 @@ public sealed partial class Binding
         }
 
         binding.State = 1;
-        var scope = this.scopes[owner.Declaration];
-        var self = this.SelfType(owner);
+        var scope = path.Scope;
+        var self = this.SelfType(path.Type);
         BoundType? result = null;
         var valid = binding.Candidates.Count != 0;
         for (var i = 0; i < binding.Candidates.Count; i++)
@@ -289,6 +304,57 @@ public sealed partial class Binding
         binding.State = valid ? (byte)2 : (byte)3;
         binding.Result = valid ? result : null;
         return binding.Result;
+    }
+
+    private BoundType? ResolveAssociated(BoundType receiver, BindingSymbol associated, BindingScope scope)
+    {
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol))
+            {
+                return this.ResolveAssociated(path, associated);
+            }
+        }
+
+        if (receiver.Symbol is not { } owner || !this.conformances.TryGetValue((owner, associated.Scope.Owner.BoundSymbol!), out var identity))
+        {
+            return null;
+        }
+
+        BoundType? available = null;
+        BoundType? pending = null;
+        var conflicting = false;
+        for (var i = 0; i < identity.PathStorage.Count; i++)
+        {
+            var path = identity.PathStorage[i];
+            var condition = this.ProveConformanceConditions(path, receiver, scope);
+            if (condition == ConstraintProof.Error)
+            {
+                return null;
+            }
+
+            if (condition == ConstraintProof.Refuted || this.ResolveAssociated(path, associated) is not { } binding)
+            {
+                continue;
+            }
+
+            if (condition == ConstraintProof.Proven)
+            {
+                if (available is not null && !ReferenceEquals(available, binding))
+                {
+                    return null;
+                }
+
+                available = binding;
+            }
+
+            conflicting |= pending is not null && !ReferenceEquals(pending, binding);
+            pending = binding;
+        }
+
+        // Explicit header metadata may normalize a common binding before witnesses are ready.
+        // The separately retained projection obligation must still prove conformance at finalization.
+        return available ?? (conflicting ? null : pending);
     }
 
     private bool IsAssociatedCore(BoundType type, BindingScope scope)
@@ -352,15 +418,14 @@ public sealed partial class Binding
             }
 
             var result = changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression) : type;
-            if (!normalize || result.Kind != BoundTypeKind.AssociatedProjection || !this.normalizingAssociated.Add(result))
+            if (!normalize || result.Kind is not (BoundTypeKind.AssociatedProjection or BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) || !this.normalizingAssociated.Add((result, scope)))
             {
                 return result;
             }
 
             try
             {
-                var receiver = result.Components[0];
-                if (receiver.Symbol?.Declaration is StructKoto or EnumKoto && this.ResolveAssociated(receiver.Symbol, result.Symbol!) is { } fixedType)
+                if (result.Kind == BoundTypeKind.AssociatedProjection && result.Components[0] is { Symbol.Declaration: StructKoto or EnumKoto } receiver && this.ResolveAssociated(receiver, result.Symbol!, scope) is { } fixedType)
                 {
                     return this.StoredType(fixedType, receiver) ?? result;
                 }
@@ -385,7 +450,7 @@ public sealed partial class Binding
             }
             finally
             {
-                this.normalizingAssociated.Remove(result);
+                this.normalizingAssociated.Remove((result, scope));
             }
         }
         finally

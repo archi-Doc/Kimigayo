@@ -206,6 +206,8 @@ internal sealed class BindingScope(Koto owner)
 
     internal ConstraintEnvironment? Constraints { get; set; }
 
+    internal BoundConformancePath? ConformancePath { get; set; }
+
     internal void Reset()
     {
         this.Types.Clear();

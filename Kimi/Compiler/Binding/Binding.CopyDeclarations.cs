@@ -42,37 +42,6 @@ public sealed partial class Binding
                     this.RegisterCopy(clause, container, this.scopes[container], null);
                 }
             }
-
-            for (var i = 0; i < container.Members.Count; i++)
-            {
-                if (container.Members[i] is not SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } conditional || conditional.Operands.Length != 2 || conditional.Operands[0] is not IsKoto target || conditional.Operands[1] is not SyntaxFormKoto premises)
-                {
-                    continue;
-                }
-
-                var scope = this.GetScope(conditional, this.scopes[container]);
-                this.BindConstraint(target, this.scopes[container]);
-                var valid = target.Left is IdentifierNameKoto { IdentifierName: "Self" } && target.BoundConstraint is { Kind: ConstraintKind.Contract } proposition && ReferenceEquals(proposition.Contract, this.Core.Copy) && premises.Operands.Length != 0;
-                for (var j = 0; j < premises.Operands.Length; j++)
-                {
-                    var condition = (IsKoto)premises.Operands[j];
-                    this.BindConstraint(condition, scope);
-                    valid &= condition.BoundConstraint is { } requirement && PositiveRequirement(requirement) && ReferenceEquals(condition.Left.BoundSymbol?.Scope, this.scopes[container]);
-                }
-
-                Complete(premises, BoundType.Boolean);
-                if (valid)
-                {
-                    this.ExpandScopeContractPremises(scope);
-                    Complete(conditional, BoundType.Unit);
-                    this.RegisterCopy(target, container, scope, premises);
-                }
-                else
-                {
-                    Fail(conditional, BindingFailure.InvalidConstraint);
-                    (scope.Constraints ??= new()).Invalid = true;
-                }
-            }
         }
     }
 
@@ -90,6 +59,9 @@ public sealed partial class Binding
         }
 
         declaration.Active = true;
+        declaration.Container = container;
+        declaration.Scope = scope;
+        declaration.Premises = premises;
         list.Add(declaration);
     }
 
@@ -110,11 +82,11 @@ public sealed partial class Binding
     {
         internal IsKoto Clause { get; } = clause;
 
-        internal DeclarationContainerKoto Container { get; } = container;
+        internal DeclarationContainerKoto Container { get; set; } = container;
 
-        internal BindingScope Scope { get; } = scope;
+        internal BindingScope Scope { get; set; } = scope;
 
-        internal SyntaxFormKoto? Premises { get; } = premises;
+        internal SyntaxFormKoto? Premises { get; set; } = premises;
 
         internal bool Active { get; set; }
     }

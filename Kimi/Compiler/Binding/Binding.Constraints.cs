@@ -191,8 +191,12 @@ public sealed partial class Binding
             if (pass == 0)
             {
                 this.RegisterConformances();
+                this.BindCopyDeclarations();
+                this.BindConditionalDeclarations(false);
             }
         }
+
+        this.BindConditionalDeclarations(true);
 
         for (var i = 0; i < this.nodes.Count; i++)
         {
@@ -205,8 +209,6 @@ public sealed partial class Binding
         this.ExpandContractPremises();
         this.PrepareAssociatedBindings();
         this.bindingConstraintTypes = false;
-
-        this.BindCopyDeclarations();
     }
 
     private bool DeferredConstraint(IsKoto clause, BindingScope scope)

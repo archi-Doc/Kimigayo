@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformance Conformance, BindingSymbol Requirement), BindingScope> witnessScopes = new();
+    private readonly Dictionary<(BoundConformancePath Conformance, BindingSymbol Requirement), BindingScope> witnessScopes = new();
 
     private static bool SameGenericShape(FunctionKoto requirement, FunctionKoto implementation)
     {
@@ -138,9 +138,9 @@ public sealed partial class Binding
         return true;
     }
 
-    private ConstraintProof VerifyConformance(BoundConformance conformance)
+    private ConstraintProof VerifyConformance(BoundConformancePath conformance)
     {
-        if (conformance.Invalid || conformance.Contract.Declaration.BindingState == BindingState.Invalid || conformance.Type.Declaration.BindingState == BindingState.Invalid)
+        if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid || conformance.Scope.Parent?.Constraints?.Invalid == true || conformance.Contract.Declaration.BindingState == BindingState.Invalid || conformance.Type.Declaration.BindingState == BindingState.Invalid)
         {
             conformance.IsVerified = false;
             return ConstraintProof.Error;
@@ -164,8 +164,8 @@ public sealed partial class Binding
         try
         {
             var shape = conformance.Contract.Contract!;
-            var scope = this.scopes[conformance.Type.Declaration];
-            var self = this.SelfType(conformance.Type);
+            var scope = conformance.Scope;
+            var self = this.ContractType(this.SelfType(conformance.Type), scope);
             if (conformance.Contract.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned)
             {
                 var intrinsicProof = this.RequestCapability(self, conformance.Contract, scope, derivation: conformance.Contract.Intrinsic == IntrinsicKind.Copy);
@@ -189,7 +189,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < shape.Ancestors.Count; i++)
             {
-                proof = CombineProof(proof, this.VerifyConformance(this.conformances[(conformance.Type, shape.Ancestors[i])]), true);
+                proof = CombineProof(proof, this.VerifyConformance(this.conformancePaths[(conformance.Type, shape.Ancestors[i], conformance.Declaration, conformance.RootContract)]), true);
             }
 
             for (var i = 0; i < shape.ClauseStorage.Count; i++)
@@ -216,7 +216,7 @@ public sealed partial class Binding
                 var requirement = shape.Requirements[i];
                 if (!ReferenceEquals(requirement.Scope.Owner.BoundSymbol, conformance.Contract))
                 {
-                    var ancestor = this.conformances[(conformance.Type, requirement.Scope.Owner.BoundSymbol!)];
+                    var ancestor = this.conformancePaths[(conformance.Type, requirement.Scope.Owner.BoundSymbol!, conformance.Declaration, conformance.RootContract)];
                     if (ancestor.GetImplementation(requirement) is { } inherited)
                     {
                         conformance.WitnessStorage.Add(new(requirement, inherited));
@@ -259,7 +259,7 @@ public sealed partial class Binding
                 BindingSymbol? selected = null;
                 var matches = 0;
                 var pending = false;
-                for (var candidate = scope.Values.GetValueOrDefault(requirement.Name); candidate is not null; candidate = candidate.Next)
+                for (var candidate = this.scopes[conformance.Type.Declaration].Values.GetValueOrDefault(requirement.Name); candidate is not null; candidate = candidate.Next)
                 {
                     if (candidate.Declaration is not FunctionKoto implementation)
                     {
@@ -348,7 +348,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private ConstraintProof CompatibleRequirement(BoundConformance conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope)
+    private ConstraintProof CompatibleRequirement(BoundConformancePath conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope)
     {
         if (requirement.BindingState == BindingState.Invalid || implementation.BindingState == BindingState.Invalid || ((implementation.Modifier & ModifierKind.Unsafe) != 0 && (requirement.Modifier & ModifierKind.Unsafe) == 0) || !this.ConformanceAccessible(conformance, implementation))
         {
@@ -444,6 +444,6 @@ public sealed partial class Binding
         }
     }
 
-    private bool ConformanceAccessible(BoundConformance conformance, FunctionKoto implementation)
+    private bool ConformanceAccessible(BoundConformancePath conformance, FunctionKoto implementation)
         => AccessCovers(implementation.BoundSymbol!, conformance.Type, conformance.Contract);
 }

@@ -277,16 +277,7 @@ public sealed partial class Binding
                 return ConstraintProof.Error;
             }
 
-            var condition = ConstraintProof.Proven;
-            if (declaration.Premises is { } premises)
-            {
-                for (var j = 0; j < premises.Operands.Length; j++)
-                {
-                    var clause = (IsKoto)premises.Operands[j];
-                    var bound = this.SubstituteConstraint(clause.BoundConstraint!, container, (BoundType[])work.Type.Components);
-                    condition = CombineProof(condition, this.ProveConstraint(bound, work.Scope), true);
-                }
-            }
+            var condition = this.ProveConditionalPremises(declaration.Premises, container, work.Type, work.Scope);
 
             result = CombineProof(result, CombineProof(validation, condition, true), false);
         }

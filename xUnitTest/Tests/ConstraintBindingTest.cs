@@ -179,15 +179,14 @@ public class ConstraintBindingTest
     }
 
     [Fact]
-    public void VerifiedEmptyConformanceIsEvidenceButAbsenceIsNotRefutation()
+    public void CompletedConcreteConformanceAbsenceCanBeRefuted()
     {
         var c = Parse("contract C\nstruct S\n    Self is C\nstruct N\n    Self is not C");
-        c.Bind();
+        Assert.True(c.Bind().IsComplete);
         var s = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var n = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "N");
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(s.ConstraintNodes[0].BoundConstraint!, s));
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(n.ConstraintNodes[0].BoundConstraint!, n));
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+        Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(n.ConstraintNodes[0].BoundConstraint!, n));
     }
 
     [Fact]

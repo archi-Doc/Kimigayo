@@ -7,7 +7,8 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BindingSymbol Type, BindingSymbol Contract), BoundConformance> conformances = new();
-    private readonly List<BoundConformance> activeConformances = new();
+    private readonly Dictionary<(BindingSymbol Type, BindingSymbol Contract, IsKoto Declaration, BindingSymbol Root), BoundConformancePath> conformancePaths = new();
+    private readonly List<BoundConformancePath> activeConformancePaths = new();
     private readonly Dictionary<BindingSymbol, List<BoundConformance>> conformancesByType = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundType, BoundType> associatedIdentityChecks = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
@@ -15,12 +16,28 @@ public sealed partial class Binding
     private bool contractHeadersReady;
     private bool bindingConstraintTypes;
 
-    /// <summary>Gets a verified definition mapping without repeating member lookup.</summary>
+    /// <summary>Gets legacy unconditional definition metadata. Use ResolveConformance for use-site evidence.</summary>
     /// <param name="type">The nominal or constructed conforming Type.</param>
     /// <param name="contract">The required Contract identity.</param>
-    /// <returns>The verified declaration mapping, or null when no proof is available.</returns>
+    /// <returns>The verified unconditional definition, or null. Type-formation prerequisites are not discharged.</returns>
     public BoundConformance? GetConformance(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.conformances.TryGetValue((symbol, contract), out var result) && result.Active && result.IsVerified ? result : null;
+        => type.Symbol is { } symbol && this.conformances.TryGetValue((symbol, contract), out var result) && result.UnconditionalPath is not null ? result : null;
+
+    /// <summary>Gets definition metadata, without asserting availability for any substitution.</summary>
+    /// <param name="type">The nominal or constructed Type identifying the declaration.</param>
+    /// <param name="contract">The Contract declaration identity.</param>
+    /// <returns>The registered definition and paths, or null if absent.</returns>
+    public BoundConformance? GetConformanceDefinition(BoundType type, BindingSymbol contract)
+        => type.Symbol is { } symbol && this.conformances.TryGetValue((symbol, contract), out var result) && result.Paths.Count != 0 ? result : null;
+
+    /// <summary>Proves use-site availability and returns a definition-verified evidence path.</summary>
+    /// <param name="type">The actual Type, including its generic arguments.</param>
+    /// <param name="contract">The required Contract identity.</param>
+    /// <param name="context">The use site supplying lexical proof assumptions.</param>
+    /// <param name="path">A verified definition path only when the judgment is Proven; its Types retain declaration slots.</param>
+    /// <returns>The four-valued use-site proof result.</returns>
+    public ConstraintProof ResolveConformance(BoundType type, BindingSymbol contract, Koto context, out BoundConformancePath? path)
+        => this.ResolveConformance(type, contract, this.ConstraintScope(context), out path);
 
     private static bool IsRefinement(BindingSymbol child, BindingSymbol parent)
         => ReferenceEquals(child, parent) || (child.Contract is { } shape && shape.AncestorStorage.Contains(parent));
@@ -39,7 +56,7 @@ public sealed partial class Binding
     {
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
-        this.activeConformances.Clear();
+        this.activeConformancePaths.Clear();
         foreach (var list in this.conformancesByType.Values)
         {
             list.Clear();
@@ -61,16 +78,24 @@ public sealed partial class Binding
 
         foreach (var conformance in this.conformances.Values)
         {
+            conformance.IsVerified = false;
+            conformance.Invalid = false;
+            conformance.DirectClause = null;
+            conformance.PathStorage.Clear();
+        }
+
+        foreach (var conformance in this.conformancePaths.Values)
+        {
             conformance.Active = false;
             conformance.IsVerified = false;
             conformance.Checking = false;
             conformance.Invalid = false;
-            conformance.DirectClause = null;
             conformance.WitnessStorage.Clear();
             conformance.WitnessMap.Clear();
             conformance.PropertyWitnessStorage.Clear();
             conformance.PropertyWitnessMap.Clear();
             conformance.AssociatedStorage.Clear();
+            conformance.Scope.Reset();
         }
     }
 
@@ -267,43 +292,64 @@ public sealed partial class Binding
                 Register(constraint.Left!, type, use);
                 Register(constraint.Right!, type, use);
             }
-            else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Intrinsic: IntrinsicKind.None, Contract: { } shape } contract })
+            else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Intrinsic: IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned, Contract: not null } contract })
             {
-                var direct = this.RegisterConformance(type, contract, use);
-                if (direct.DirectClause is not null && !ReferenceEquals(direct.DirectClause, use))
-                {
-                    direct.Invalid = true;
-                    Fail(use, BindingFailure.Duplicate);
-                    Fail(direct.DirectClause, BindingFailure.Duplicate);
-                }
-
-                direct.DirectClause = use;
-                for (var i = 0; i < shape.Ancestors.Count; i++)
-                {
-                    this.RegisterConformance(type, shape.Ancestors[i], use);
-                }
+                this.RegisterConformanceDeclaration(type, contract, use, this.scopes[type.Declaration], null);
             }
         }
     }
 
-    private BoundConformance RegisterConformance(BindingSymbol type, BindingSymbol contract, Koto use)
+    private void RegisterConformanceDeclaration(BindingSymbol type, BindingSymbol contract, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
     {
-        if (!this.conformances.TryGetValue((type, contract), out var result))
+        var direct = this.RegisterConformance(type, contract, contract, use, scope, premises);
+        if (direct.Identity.DirectClause is { } previous)
         {
-            this.conformances.Add((type, contract), result = new(type, contract));
+            direct.Identity.Invalid = true;
+            Fail(use, BindingFailure.Duplicate);
+            Fail(previous, BindingFailure.Duplicate);
+        }
+
+        direct.Identity.DirectClause = use;
+        var shape = contract.Contract!;
+        for (var i = 0; i < shape.Ancestors.Count; i++)
+        {
+            this.RegisterConformance(type, shape.Ancestors[i], contract, use, scope, premises);
+        }
+    }
+
+    private BoundConformancePath RegisterConformance(BindingSymbol type, BindingSymbol contract, BindingSymbol root, IsKoto use, BindingScope scope, SyntaxFormKoto? premises)
+    {
+        if (!this.conformances.TryGetValue((type, contract), out var identity))
+        {
+            this.conformances.Add((type, contract), identity = new(type, contract));
+        }
+
+        if (!this.conformancePaths.TryGetValue((type, contract, use, root), out var result))
+        {
+            this.conformancePaths.Add((type, contract, use, root), result = new(type, contract) { Identity = identity });
         }
 
         if (!result.Active)
         {
             result.Active = true;
             result.Use = use;
-            this.activeConformances.Add(result);
-            if (!this.conformancesByType.TryGetValue(type, out var list))
+            result.Declaration = use;
+            result.RootContract = root;
+            result.RootPath = ReferenceEquals(contract, root) ? result : this.conformancePaths[(type, root, use, root)];
+            result.Premises = premises;
+            result.Scope.Parent = scope;
+            this.activeConformancePaths.Add(result);
+            if (identity.PathStorage.Count == 0)
             {
-                this.conformancesByType.Add(type, list = new());
+                if (!this.conformancesByType.TryGetValue(type, out var list))
+                {
+                    this.conformancesByType.Add(type, list = new());
+                }
+
+                list.Add(identity);
             }
 
-            list.Add(result);
+            identity.PathStorage.Add(result);
         }
 
         return result;
@@ -311,7 +357,8 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
-        // A positive refinement premise entails its ancestors, but registration supplies no proof.
+        // Refinement assumptions are input evidence, not in-progress registrations.
+        var premise = ConstraintProof.Unknown;
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.Constraints is not { Invalid: false } environment)
@@ -323,33 +370,18 @@ public sealed partial class Binding
             {
                 if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, type) && IsRefinement(fact.Contract!, contract))
                 {
-                    return ConstraintProof.Proven;
+                    premise = ConstraintProof.Proven;
                 }
             }
         }
 
         if (type.Symbol?.Declaration is ContractKoto own && IsRefinement(own.BoundSymbol!, contract))
         {
-            return ConstraintProof.Proven;
+            premise = ConstraintProof.Proven;
         }
 
-        if (!this.contractHeadersReady || type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) || type.Symbol is not { } symbol || !this.conformances.TryGetValue((symbol, contract), out var conformance) || !conformance.Active)
-        {
-            return ConstraintProof.Unknown;
-        }
-
-        var proof = this.VerifyConformance(conformance);
-        if (proof == ConstraintProof.Proven && symbol.Declaration is DeclarationContainerKoto container && container.GenericParameterNodes.Count != 0)
-        {
-            if (type.Components.Count != container.GenericParameterNodes.Count)
-            {
-                return ConstraintProof.Unknown;
-            }
-
-            proof = CombineProof(proof, this.CheckConstraints(container.ConstraintNodes, container, (BoundType[])type.Components, scope), true);
-        }
-
-        return proof;
+        var proof = this.ResolveConformance(type, contract, scope, out _);
+        return premise == ConstraintProof.Proven ? CombineProof(premise, proof, false) : proof;
     }
 
     private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType self, bool normalize = true)
@@ -445,16 +477,21 @@ public sealed partial class Binding
         this.contractHeadersReady = true;
         if (final)
         {
-            // Body/header validation may invalidate an earlier declaration-side witness.
-            for (var i = 0; i < this.activeConformances.Count; i++)
+            foreach (var identity in this.conformances.Values)
             {
-                this.activeConformances[i].IsVerified = false;
+                identity.IsVerified = false;
+            }
+
+            // Body/header validation may invalidate an earlier declaration-side witness.
+            for (var i = 0; i < this.activeConformancePaths.Count; i++)
+            {
+                this.activeConformancePaths[i].IsVerified = false;
             }
         }
 
-        for (var i = 0; i < this.activeConformances.Count; i++)
+        for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
-            var conformance = this.activeConformances[i];
+            var conformance = this.activeConformancePaths[i];
             var proof = this.VerifyConformance(conformance);
             if (final)
             {
@@ -464,6 +501,14 @@ public sealed partial class Binding
 
         if (final)
         {
+            foreach (var identity in this.conformances.Values)
+            {
+                if (identity.PathStorage.Count != 0)
+                {
+                    this.RequireConstraint(identity.PathStorage[0].Use, this.VerifyConformanceAgreement(identity), mode);
+                }
+            }
+
             for (var i = 0; i < this.projectionUses.Count; i++)
             {
                 var use = this.projectionUses[i];

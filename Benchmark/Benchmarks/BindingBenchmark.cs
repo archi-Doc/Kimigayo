@@ -17,7 +17,7 @@ public class BindingBenchmark
     public int Calls { get; set; }
 
     /// <summary>Gets or sets the declaration and call workload.</summary>
-    [Params("Calls", "Origins", "Capabilities", "Contracts", "Properties")]
+    [Params("Calls", "Origins", "Capabilities", "Contracts", "Properties", "ConditionalConformances")]
     public string Scenario { get; set; } = "Calls";
 
     /// <summary>Creates and validates syntax and warms reusable semantic storage.</summary>
@@ -30,11 +30,16 @@ public class BindingBenchmark
             "Capabilities" => "struct Box<T>\n    Self is Copy when T is Copy\n    let value: T\nvar input: Box<i32>\nfunc identity<T>(value: T) -> T\n    T is Copy and Owned\n    return value\n",
             "Contracts" => "contract Source\n    associate Element\n    func read(self: ref/Self) -> Element\ncontract IntSource: Source\n    Self.Source.Element is i32\nstruct SourceImpl\n    Self is IntSource\n    public func read(self: ref/Self) -> i32 => 1\nfunc use<T>(value: ref/T)\n    T is IntSource\n",
             "Properties" => "contract C\n    property item: i32 has get, set\n    property view: ref/i32 has get\n",
+            "ConditionalConformances" => "contract A\n    associate E is i32\n    property item: E has get\ncontract B: A\n",
             _ => "func identity<T>(value: T) -> T => value\n",
         });
         for (var i = 0; i < this.Calls; i++)
         {
-            if (this.Scenario == "Properties")
+            if (this.Scenario == "ConditionalConformances")
+            {
+                source.Append("struct S").Append(i).Append("<T>\n    Self is A when T is Copy\n    Self is B when T is Owned\n    public var item: i32\n");
+            }
+            else if (this.Scenario == "Properties")
             {
                 source.Append("struct S").Append(i).Append("\n    Self is C\n    public var view: i32\n    public var item: i32\n        get(self: ref/Self) -> i32 => storage\n        set(self: uniq/Self, value: i32) -> () => storage = value\n");
             }

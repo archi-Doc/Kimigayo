@@ -41,13 +41,70 @@ public sealed class BoundContract
 /// <summary>A definition-verified implementation of one stable requirement.</summary>
 public readonly record struct BoundWitness(BindingSymbol Requirement, BindingSymbol Implementation);
 
-/// <summary>Reusable definition-side conformance metadata. Only verified mappings supply evidence.</summary>
+/// <summary>A stable declaration identity. Availability belongs to its evidence paths.</summary>
 public sealed class BoundConformance
 {
+    private static readonly IReadOnlyDictionary<BindingSymbol, BoundType> EmptyAssociated = new Dictionary<BindingSymbol, BoundType>();
+
     internal BoundConformance(BindingSymbol type, BindingSymbol contract)
     {
         this.Type = type;
         this.Contract = contract;
+    }
+
+    public BindingSymbol Type { get; }
+
+    public BindingSymbol Contract { get; }
+
+    public IReadOnlyList<BoundConformancePath> Paths => this.PathStorage;
+
+    public bool IsVerified { get; internal set; }
+
+    // Legacy access exposes only an unconditional, verified definition mapping.
+    public IReadOnlyList<BoundWitness> Witnesses => this.UnconditionalPath?.Witnesses ?? Array.Empty<BoundWitness>();
+
+    public IReadOnlyDictionary<BindingSymbol, BoundType> AssociatedTypes => this.UnconditionalPath?.AssociatedTypes ?? EmptyAssociated;
+
+    public IReadOnlyList<BoundPropertyWitness> PropertyWitnesses => this.UnconditionalPath?.PropertyWitnesses ?? Array.Empty<BoundPropertyWitness>();
+
+    internal List<BoundConformancePath> PathStorage { get; } = new();
+
+    internal IsKoto? DirectClause { get; set; }
+
+    internal bool Invalid { get; set; }
+
+    internal BoundConformancePath? UnconditionalPath
+    {
+        get
+        {
+            if (this.IsVerified)
+            {
+                for (var i = 0; i < this.PathStorage.Count; i++)
+                {
+                    if (this.PathStorage[i] is { IsVerified: true, Premises: null } path)
+                    {
+                        return path;
+                    }
+                }
+            }
+
+            return null;
+        }
+    }
+
+    public BindingSymbol? GetImplementation(BindingSymbol requirement) => this.UnconditionalPath?.GetImplementation(requirement);
+
+    public BoundPropertyWitness? GetPropertyWitness(BindingSymbol requirement, PropertyAccessorKind kind) => this.UnconditionalPath?.GetPropertyWitness(requirement, kind);
+}
+
+/// <summary>Reusable definition-side conformance metadata. Only verified mappings supply evidence.</summary>
+public sealed class BoundConformancePath
+{
+    internal BoundConformancePath(BindingSymbol type, BindingSymbol contract)
+    {
+        this.Type = type;
+        this.Contract = contract;
+        this.Scope = new(type.Declaration) { ConformancePath = this };
     }
 
     /// <summary>Gets the conforming Type declaration; generic slots remain definition-bound.</summary>
@@ -55,6 +112,13 @@ public sealed class BoundConformance
 
     /// <summary>Gets the required Contract identity.</summary>
     public BindingSymbol Contract { get; }
+
+    /// <summary>Gets the direct declaration from which this path is inherited.</summary>
+    public IsKoto Declaration { get; internal set; } = null!;
+
+    public BindingSymbol RootContract { get; internal set; } = null!;
+
+    public SyntaxFormKoto? Premises { get; internal set; }
 
     /// <summary>Gets a value indicating whether this pass has verified the declaration contract and every witness.</summary>
     public bool IsVerified { get; internal set; }
@@ -68,6 +132,12 @@ public sealed class BoundConformance
     /// <summary>Gets the separately verified get/set mappings, valid only while IsVerified is true.</summary>
     public IReadOnlyList<BoundPropertyWitness> PropertyWitnesses => this.PropertyWitnessStorage;
 
+    internal BoundConformance Identity { get; set; } = null!;
+
+    internal BindingScope Scope { get; }
+
+    internal BoundConformancePath RootPath { get; set; } = null!;
+
     internal List<BoundWitness> WitnessStorage { get; } = new();
 
     internal Dictionary<BindingSymbol, BindingSymbol> WitnessMap { get; } = new(ReferenceEqualityComparer.Instance);
@@ -77,8 +147,6 @@ public sealed class BoundConformance
     internal Dictionary<(BindingSymbol Requirement, PropertyAccessorKind Kind), BoundPropertyWitness> PropertyWitnessMap { get; } = new();
 
     internal Dictionary<BindingSymbol, BoundType> AssociatedStorage { get; } = new(ReferenceEqualityComparer.Instance);
-
-    internal IsKoto? DirectClause { get; set; }
 
     internal Koto Use { get; set; } = null!;
 

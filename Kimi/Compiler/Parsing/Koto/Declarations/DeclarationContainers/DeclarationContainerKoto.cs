@@ -585,7 +585,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
             if (parseTypeConstraints && Parser.IsTypeConstraintStart(ref reader))
             {
-                if (!acceptsTypeConstraints && !reader.IsCurrentIdentifier("Self"))
+                if (!acceptsTypeConstraints && reader.CurrentTokenKind != TokenKind.Self && !reader.IsCurrentIdentifier("Self"))
                 {
                     reader.Diagnostic.Add(reader.CurrentTokenRange, DiagnosticCode.DuplicateTypeConstraintDefinition_Kd);
                     reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
