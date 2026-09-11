@@ -89,7 +89,8 @@ public readonly record struct BoundPropertyWitness(
     BoundType ResultType,
     BoundType ImplementationType,
     IReadOnlyList<BoundOrigin?> InputOrigins,
-    BoundMemberPath? BasePath);
+    BoundMemberPath? BasePath,
+    ConstraintProof ObjectCompatibility = ConstraintProof.Proven);
 
 /// <summary>An interned base projection; traversal never acquires an intermediate base.</summary>
 public sealed class BoundMemberPath

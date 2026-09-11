@@ -13,6 +13,11 @@ public sealed class BoundCall
     private BoundType[] typeArguments = [];
     private BoundOrigin[] origins = [];
     private BoundOrigin[] inputOrigins = [];
+    private BoundArgumentOperation[] argumentOperations = [];
+
+    public BoundArgumentOperation ReceiverOperation { get; private set; }
+
+    public ReadOnlySpan<BoundArgumentOperation> ArgumentOperations => this.argumentOperations;
 
     /// <summary>Gets the selected function Symbol.</summary>
     public BindingSymbol Target { get; private set; } = null!;
@@ -29,6 +34,9 @@ public sealed class BoundCall
     /// <summary>Gets the instantiated Type declaring a nominal member, including an inherited member's base Type.</summary>
     public BoundType? DeclaringType { get; private set; }
 
+    /// <summary>Gets the lookup path, including for type-qualified calls that do not project a receiver.</summary>
+    public BoundMemberPath? BasePath { get; private set; }
+
     /// <summary>Gets the committed substitutions for the function's declared Origins.</summary>
     public ReadOnlySpan<BoundOrigin> Origins => this.origins;
 
@@ -41,13 +49,21 @@ public sealed class BoundCall
     /// <summary>Gets the selected complete type arguments.</summary>
     public ReadOnlySpan<BoundType> TypeArguments => this.typeArguments;
 
-    internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default)
+    internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null)
     {
         this.Target = target;
         this.ReturnType = result;
         this.Receiver = receiver;
         this.ConformingType = conformingType;
         this.DeclaringType = declaringType;
+        this.BasePath = basePath;
+        this.ReceiverOperation = receiverOperation;
+        if (this.argumentOperations.Length != operations.Length)
+        {
+            this.argumentOperations = new BoundArgumentOperation[operations.Length];
+        }
+
+        operations.CopyTo(this.argumentOperations);
         if (this.origins.Length != origins.Length)
         {
             this.origins = new BoundOrigin[origins.Length];
@@ -107,7 +123,7 @@ public sealed partial class Binding
                     return null;
                 }
 
-                typeSelection = this.LookupTypeMember(qualifiedType, right.IdentifierName);
+                typeSelection = this.LookupTypeMember(qualifiedType, right.IdentifierName, scope);
                 typeMember = typeSelection.Member ?? typeMember;
             }
             else if (typeScope.Values.TryGetValue(right.IdentifierName, out var candidate))
@@ -129,7 +145,7 @@ public sealed partial class Binding
             {
                 // A nominal member takes priority over a requirement member of the same receiver.
                 valueMember = this.RequirementMember(member, scope, receiverType, false);
-                valueSelection = this.LookupTypeMember(receiverType, right.IdentifierName);
+                valueSelection = this.LookupTypeMember(receiverType, right.IdentifierName, scope, receiverType);
                 valueMember = valueSelection.Member ?? valueMember;
             }
         }
@@ -143,7 +159,7 @@ public sealed partial class Binding
         var selected = typeMember ?? valueMember;
         if (selected is not null)
         {
-            if (selected.Kind != BindingSymbolKind.Function && !this.Accessible(selected, scope))
+            if (selected.Kind != BindingSymbolKind.Function && !this.Accessible(selected, scope, receiverType: typeMember is null ? member.Left.BoundType : null))
             {
                 Fail(member, BindingFailure.Access);
                 return null;
@@ -232,6 +248,7 @@ public sealed partial class Binding
         var maxParameters = 0;
         var maxGenerics = 0;
         var maxOrigins = 0;
+        var solveOrigins = self is not null || group.Scope.Owner is StructKoto or EnumKoto;
         foreach (var candidate in candidates)
         {
             if (candidate.Declaration is FunctionKoto function)
@@ -240,11 +257,15 @@ public sealed partial class Binding
                 maxParameters = Math.Max(maxParameters, function.Parameters.Count);
                 maxGenerics = Math.Max(maxGenerics, function.GenericArguments.Count);
                 maxOrigins = Math.Max(maxOrigins, function.Origins.Count);
+                solveOrigins |= function.Origins.Count != 0 || (candidate.Type is { } resultPattern && HasDeclaredOrigins(resultPattern));
+                for (var p = 0; !solveOrigins && p < function.Parameters.Count; p++)
+                {
+                    solveOrigins |= function.Parameters[p].Type.BoundType is { } input && HasDeclaredOrigins(input);
+                }
             }
         }
 
         var argumentCount = call.ArgumentNodes.Count;
-        var solveOrigins = self is not null || group.Scope.Owner is StructKoto or EnumKoto;
         var originSlots = solveOrigins ? maxOrigins : 0;
         var inputSlots = solveOrigins ? maxParameters : 0;
         var savedCandidates = candidateCount > 1 ? candidateCount : 0;
@@ -255,10 +276,11 @@ public sealed partial class Binding
         var inputs = this.originScratch.Rent(inputSlots);
         var evaluated = this.candidateScratch.Rent(candidateCount);
         var allTypes = this.typeScratch.Rent(savedCandidates * maxGenerics);
-        var allParameters = this.typeScratch.Rent(candidateCount * argumentCount);
         var allMaps = this.indexScratch.Rent(savedCandidates * argumentCount);
         var allOrigins = this.originScratch.Rent(savedCandidates * originSlots);
         var allInputs = this.originScratch.Rent(savedCandidates * inputSlots);
+        var operationStride = argumentCount + 1;
+        var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
         try
         {
             var count = 0;
@@ -276,13 +298,14 @@ public sealed partial class Binding
                 var index = count++;
                 var declaringType = self is null ? this.CallDeclaringType(callee, candidate) : null;
                 var state = CandidateApplicability.Inapplicable;
-                if (this.Accessible(candidate, scope))
+                var defaultsUsed = 0;
+                if (this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType))
                 {
                     this.BindHeader(candidate);
-                    state = this.TryCandidate(call, function, generic, scope, scratch, mapping, used, expected, self, origins, inputs, declaringType);
+                    state = this.TryCandidate(call, function, generic, scope, scratch, mapping, used, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed);
                 }
 
-                evaluated[index] = new(candidate, state, declaringType);
+                evaluated[index] = new(candidate, state, declaringType, defaultsUsed);
                 pending |= state == CandidateApplicability.Pending;
                 error |= state == CandidateApplicability.Error;
                 if (state != CandidateApplicability.Applicable)
@@ -298,11 +321,6 @@ public sealed partial class Binding
                     mapping.AsSpan(0, argumentCount).CopyTo(allMaps.AsSpan(index * argumentCount));
                     origins.AsSpan(0, originSlots).CopyTo(allOrigins.AsSpan(index * originSlots));
                     inputs.AsSpan(0, inputSlots).CopyTo(allInputs.AsSpan(index * inputSlots));
-                }
-
-                for (var i = 0; i < argumentCount; i++)
-                {
-                    allParameters[(index * argumentCount) + i] = this.CallType(function.Parameters[mapping[i]].Type.BoundType!, function, scratch, scope, self, origins, inputs, declaringType);
                 }
             }
 
@@ -323,7 +341,7 @@ public sealed partial class Binding
 
             if (applicable > 1)
             {
-                winnerIndex = SelectBest(evaluated.AsSpan(0, count), allParameters, argumentCount);
+                winnerIndex = SelectBest(evaluated.AsSpan(0, count), operations, operationStride);
                 if (winnerIndex < 0)
                 {
                     return Fail(call, BindingFailure.Ambiguous, true);
@@ -355,9 +373,24 @@ public sealed partial class Binding
                 return Fail(call, BindingFailure.MissingType, true);
             }
 
+            var selectedOperations = operations.AsSpan(winnerIndex * operationStride, operationStride);
+            var receiverOperation = selectedOperations[argumentCount];
+            if (receiverOperation.Source is not null)
+            {
+                receiverOperation = receiverOperation with { ObjectCompatibility = receiverOperation.BasePath is null ? ConstraintProof.Proven : ProjectedReceiverProof(winner) };
+                this.receiverOperations[call] = receiverOperation;
+                if (receiverOperation.ObjectCompatibility != ConstraintProof.Proven)
+                {
+                    return Fail(call, BindingFailure.UnprovenConstraint, receiverOperation.ObjectCompatibility == ConstraintProof.Unknown);
+                }
+            }
+
             for (var i = 0; i < argumentCount; i++)
             {
-                this.RequireType(call.ArgumentNodes[i], scope, allParameters[(winnerIndex * argumentCount) + i]);
+                if (call.ArgumentNodes[i].BoundType is null)
+                {
+                    this.RequireType(call.ArgumentNodes[i], scope, selectedOperations[i].ParameterType);
+                }
             }
 
             callee.BoundSymbol = winner;
@@ -374,15 +407,16 @@ public sealed partial class Binding
             }
 
             call.BoundSymbol = winner;
-            (call.CallStorage ??= new()).Set(winner, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? selected.Parameters.Count : 0));
+            var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
+            (call.CallStorage ??= new()).Set(winner, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? selected.Parameters.Count : 0), selectedOperations[..argumentCount], receiverOperation, basePath);
             return Complete(call, result);
         }
         finally
         {
+            this.argumentOperationScratch.Return(operations, clearArray: true);
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
             this.indexScratch.Return(allMaps);
-            this.typeScratch.Return(allParameters, clearArray: true);
             this.typeScratch.Return(allTypes, clearArray: true);
             this.candidateScratch.Return(evaluated, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
@@ -396,32 +430,21 @@ public sealed partial class Binding
     private Koto? CallReceiver(Koto callee)
         => callee is MemberAccessKoto member && (this.requirementGroups.TryGetValue(member, out var group) && group.Active ? !group.TypeAccess : member.Left.BoundSymbol?.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.Container)) ? member.Left : null;
 
-    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
+    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed)
     {
+        defaultsUsed = 0;
+        operations.Clear();
+        if (function.BindingState == BindingState.Invalid)
+        {
+            return CandidateApplicability.Error;
+        }
+
         Array.Clear(arguments, 0, function.GenericArguments.Count);
         Array.Clear(used, 0, function.Parameters.Count);
-        if (self is not null || declaringType is not null)
-        {
-            Array.Clear(origins, 0, function.Origins.Count);
-            Array.Clear(inputs, 0, function.Parameters.Count);
-        }
+        Array.Clear(origins, 0, function.Origins.Count);
+        Array.Clear(inputs, 0, Math.Min(inputs.Length, function.Parameters.Count));
 
         if (function.IsSpecialization)
-        {
-            return CandidateApplicability.Pending;
-        }
-
-        // Call-site Origin solving belongs to applicability, not string lookup or type erasure.
-        // Whole generic slots remain supported: their substitution preserves the supplied Origins.
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            if (self is null && declaringType is null && function.Parameters[i].Type.BoundType is { } input && HasDeclaredOrigins(input))
-            {
-                return CandidateApplicability.Pending;
-            }
-        }
-
-        if (self is null && declaringType is null && function.ReturnType?.BoundType is { } output && HasDeclaredOrigins(output))
         {
             return CandidateApplicability.Pending;
         }
@@ -452,36 +475,31 @@ public sealed partial class Binding
         }
 
         var receiver = this.CallReceiver(generic?.Identifier ?? call.Method);
-        var receiverSlot = -1;
-        for (var p = 0; p < function.Parameters.Count; p++)
+        if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? call.Method) is not MemberAccessKoto)
         {
-            if (function.Parameters[p].InternalName != "self")
-            {
-                continue;
-            }
+            return CandidateApplicability.Inapplicable;
+        }
 
-            if (receiver?.BoundType is not { } receiverType)
+        var receiverSlot = receiver is null ? -1 : function.BoundSymbol!.ReceiverIndex;
+        var receiverPath = receiver is not null && (generic?.Identifier ?? call.Method) is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) ? selection.Path : null;
+        if (receiver is not null)
+        {
+            if (receiverSlot < 0 || receiver.BoundType is not { } receiverType)
             {
                 return CandidateApplicability.Inapplicable;
             }
 
-            if (function.Parameters[p].Type.BoundType is not { } parameterType)
+            if (function.Parameters[receiverSlot].Type.BoundType is not { } parameterType)
             {
                 return CandidateApplicability.Pending;
             }
 
-            if (!InferInput(parameterType, receiverType))
+            if (!InferInput(parameterType, receiverType, receiver, receiverPath))
             {
                 return CandidateApplicability.Inapplicable;
             }
 
-            used[p] = true;
-            receiverSlot = p;
-        }
-
-        if (receiver is not null && receiverSlot < 0 && self is not null)
-        {
-            return CandidateApplicability.Inapplicable;
+            used[receiverSlot] = true;
         }
 
         var next = 0;
@@ -523,7 +541,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Pending;
             }
 
-            if (call.ArgumentNodes[i].BoundType is { } actual && !InferInput(type, actual))
+            if (call.ArgumentNodes[i].BoundType is { } actual && !InferInput(type, actual, call.ArgumentNodes[i]))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -537,15 +555,31 @@ public sealed partial class Binding
             }
         }
 
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            defaultsUsed += used[i] ? 0 : 1;
+        }
+
         // Established input types cannot change; expectations only fill unresolved slots.
         if (expected is not null && function.BoundSymbol?.Type is { } returnPattern)
         {
             this.Infer(this.MemberType(self is null ? returnPattern : this.ContractType(returnPattern, scope, self), declaringType)!, expected, function, arguments);
         }
 
-        if ((self is not null || declaringType is not null) && receiverSlot >= 0 && receiver?.BoundType is { } actualReceiver && this.CallType(function.Parameters[receiverSlot].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType) is { } requiredReceiver && !FitsType(actualReceiver, requiredReceiver))
+        if (receiverSlot >= 0)
         {
-            return CandidateApplicability.Inapplicable;
+            var requiredReceiver = this.CallType(function.Parameters[receiverSlot].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType);
+            if (requiredReceiver is null)
+            {
+                return CandidateApplicability.Pending;
+            }
+
+            if (!this.AdaptInput(receiver!, requiredReceiver, receiver!.BoundType!, scope, receiverPath, declaringType, out var adaptedReceiver, out var quality, out var kind) || !FitsType(adaptedReceiver, requiredReceiver))
+            {
+                return CandidateApplicability.Inapplicable;
+            }
+
+            operations[^1] = new(receiver, receiver.BoundType, requiredReceiver, kind, quality, receiverPath, receiverSlot);
         }
 
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
@@ -561,7 +595,7 @@ public sealed partial class Binding
                     return CandidateApplicability.Pending;
                 }
 
-                if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, literal.IsInteger ? BoundType.I32 : BoundType.F64))
+                if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, literal.IsInteger ? BoundType.I32 : BoundType.F64, argument))
                 {
                     return CandidateApplicability.Inapplicable;
                 }
@@ -593,17 +627,27 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            if ((self is not null || declaringType is not null) && argument.BoundType is { } actual && !FitsType(actual, type))
+            var quality = ArgumentAdaptation.Literal;
+            var kind = ArgumentOperationKind.Value;
+            if (argument.BoundType is { } actual && (!this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind) || !FitsType(adapted, type)))
             {
                 return CandidateApplicability.Inapplicable;
             }
+
+            operations[i] = new(call.ArgumentNodes[i], argument.BoundType, type, kind, quality, ParameterIndex: mapping[i]);
         }
 
-        if ((self is not null || declaringType is not null) && function.BoundSymbol!.Type is { } resultPattern && this.CallType(resultPattern, function, arguments, scope, self, origins, inputs, declaringType) is { } result && HasUnsubstitutedOrigin(result, function))
+        var result = function.BoundSymbol!.Type is { } resultPattern ? this.CallType(resultPattern, function, arguments, scope, self, origins, inputs, declaringType) : null;
+        if (result is null || HasUnsubstitutedOrigin(result, function))
         {
             // Result-only Origin inference needs the later call-site solver. Never retain a
             // requirement's abstract binder as though it were this call's concrete Origin.
             return CandidateApplicability.Pending;
+        }
+
+        if (expected is not null && !FitsType(result, this.ContractType(expected, scope)))
+        {
+            return CandidateApplicability.Inapplicable;
         }
 
         var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, function.GenericArguments.Count), scope, self, declaringType);
@@ -615,23 +659,22 @@ public sealed partial class Binding
             ConstraintProof.Error => CandidateApplicability.Error,
             _ => CandidateApplicability.Pending,
         };
-        bool InferInput(BoundType pattern, BoundType actual)
+        bool InferInput(BoundType pattern, BoundType actual, Koto source, BoundMemberPath? path = null)
         {
             if (this.MemberType(pattern, declaringType) is not { } memberPattern)
             {
                 return false;
             }
 
-            pattern = memberPattern;
-
-            if (self is not null || declaringType is not null)
+            pattern = this.ContractType(memberPattern, scope, self);
+            if (!this.AdaptInput(source, pattern, actual, scope, path, declaringType, out actual, out _, out _))
             {
-                pattern = this.ContractType(pattern, scope, self);
-                this.MatchInputOrigins(pattern, actual, function, origins, inputs);
-                pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, function.Parameters.Count));
+                return false;
             }
 
-            return this.Infer(pattern, actual, function, arguments, self is not null || declaringType is not null);
+            this.MatchInputOrigins(pattern, actual, function, origins, inputs);
+            pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, function.Parameters.Count)));
+            return this.Infer(pattern, actual, function, arguments, true);
         }
     }
 

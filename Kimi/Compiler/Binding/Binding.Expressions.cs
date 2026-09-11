@@ -504,21 +504,42 @@ public sealed partial class Binding
             var write = assignment && target.Parent!.Akind == KotoKind.Equals;
             var update = (assignment && !write) || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
             var operation = write ? property.Setter : property.Getter;
-            if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access))
+            var sourceReceiver = (node as MemberAccessKoto)?.Left;
+            if ((write || update) && sourceReceiver?.BoundType is { Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc })
+            {
+                return Fail(node, BindingFailure.InvalidAssignment);
+            }
+
+            if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access, sourceReceiver?.BoundType))
             {
                 return Fail(node, BindingFailure.Access);
             }
 
-            if (update && (!property.Setter.IsPresent || !this.Accessible(symbol, scope, property.Setter.Access)))
+            if (update && (!property.Setter.IsPresent || !this.Accessible(symbol, scope, property.Setter.Access, sourceReceiver?.BoundType)))
             {
                 return Fail(node, BindingFailure.Access);
             }
 
             if (!operation.IsStandard || (update && !property.Setter.IsStandard))
             {
+                if (node is MemberAccessKoto projected && sourceReceiver?.BoundType is { } sourceType && this.memberSelections.TryGetValue(projected, out var pathSelection) && pathSelection.Path is not null && operation.Receiver is { } declaredReceiver && this.MemberType(declaredReceiver, pathSelection.DeclaringType) is { } required)
+                {
+                    if (!this.AdaptInput(sourceReceiver, required, sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind))
+                    {
+                        return Fail(node, BindingFailure.TypeMismatch);
+                    }
+
+                    this.receiverOperations[node] = new(sourceReceiver, sourceType, projectedReceiver, kind, quality, pathSelection.Path, 0, ProjectedReceiverProof(symbol));
+                }
+
                 // Callable Property uses need the operation/Origin plans of expression
                 // checking. A declaration-side witness alone must not bypass that boundary.
                 return Fail(node, BindingFailure.Unsupported, true);
+            }
+
+            if (node is MemberAccessKoto stored && sourceReceiver?.BoundType is { } storedSource && this.memberSelections.TryGetValue(stored, out var storageSelection) && storageSelection.Path is not null)
+            {
+                this.receiverOperations[node] = new(sourceReceiver, storedSource, storageSelection.DeclaringType, ArgumentOperationKind.StorageProjection, ArgumentAdaptation.Exact, storageSelection.Path);
             }
         }
 

@@ -51,7 +51,7 @@ public class BindingTest
         var call = Assert.Single(All(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>());
         compilation.Binding.Bind(BindingMode.Provisional);
         Assert.Equal(BindingState.Resolved, call.BindingState);
-        compilation.Kotonoha.CreateCodeContext().Parse(Assert.Single(compilation.Kotonoha.RootKoto.NestedContainers), "func f(x: i64) -> i64 => x");
+        compilation.Kotonoha.CreateCodeContext().Parse(Assert.Single(compilation.Kotonoha.RootKoto.NestedContainers), "func f(x: i64) -> i32 => 1");
         Assert.False(compilation.Binding.Bind(BindingMode.Final).IsComplete);
         Assert.Null(call.BoundCall);
         Assert.Contains(compilation.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);

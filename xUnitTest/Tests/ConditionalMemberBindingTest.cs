@@ -194,7 +194,7 @@ public class ConditionalMemberBindingTest
     [InlineData(true)]
     public void UnknownConditionCannotCommitAnAlternative(bool proven)
     {
-        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f(x: i32) -> i32 => 1\n    public func f<U>(x: U) -> i32 => 2\nfunc use<T>(x: S<T>) -> i32\n" + (proven ? "    T is Copy\n" : string.Empty) + "    return x.f(1)");
+        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f(x: i32) -> i32 => 1\n    public func f<U>(x: U) -> i32 => 2\nfunc use<T>(x: S<T>) -> i32\n" + (proven ? "    T is Copy\n" : string.Empty) + "    return S<T>.f(1)");
         Assert.True(c.Bind().IsComplete == proven, Describe(c));
         var call = Assert.Single(Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         if (proven)

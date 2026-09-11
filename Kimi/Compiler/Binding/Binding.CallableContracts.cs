@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private ConstraintProof CompareCallableContracts(CallableContract requirement, CallableContract implementation, BindingScope scope, BoundType self, BoundType? declaringType, BoundType?[] arguments, BoundOrigin[] origins, BoundOrigin[] inputs)
+    private ConstraintProof CompareCallableContracts(CallableContract requirement, CallableContract implementation, BindingScope scope, BoundType self, BoundType? declaringType, BoundType?[] arguments, BoundOrigin[] origins, BoundOrigin[] inputs, BoundMemberPath? path = null)
     {
         if (requirement.InputCount != implementation.InputCount)
         {
@@ -28,6 +28,15 @@ public sealed partial class Binding
             }
 
             required = this.ContractType(required, scope, self);
+            if (i == requirement.ReceiverIndex && path is not null)
+            {
+                required = this.ProjectRequirementReceiver(required, self, declaringType)!;
+                if (required is null)
+                {
+                    return ConstraintProof.Refuted;
+                }
+            }
+
             actual = this.ProjectCallableType(actual, declaringType);
             if (actual is null || !SignatureEquals(required, this.ContractType(actual, scope), requirement.Binder, implementation.Binder))
             {
@@ -45,6 +54,15 @@ public sealed partial class Binding
             }
 
             var required = this.ContractType(input, scope, self);
+            if (i == requirement.ReceiverIndex && path is not null)
+            {
+                required = this.ProjectRequirementReceiver(required, self, declaringType)!;
+                if (required is null)
+                {
+                    return ConstraintProof.Refuted;
+                }
+            }
+
             var actual = Translate(implementation.Input(i)!);
             if (actual is null || !FitsType(required, actual))
             {
@@ -90,6 +108,8 @@ public sealed partial class Binding
         internal int OriginCount => this.function?.Origins.Count ?? 0;
 
         internal int InputCount => this.function?.Parameters.Count ?? 2;
+
+        internal int ReceiverIndex => this.function is { } f ? f.BoundSymbol!.ReceiverIndex : this.accessor!.Receiver is null ? -1 : 0;
 
         internal BoundType? Result => this.function is { } f ? f.BoundSymbol?.Type : this.accessor!.Result;
 

@@ -99,47 +99,6 @@ public sealed partial class Binding
         return scope;
     }
 
-    private bool Accessible(BindingSymbol symbol, BindingScope use, ModifierKind? operationAccess = null)
-    {
-        if (ReferenceEquals(symbol, this.Core.Module) || symbol.Intrinsic != IntrinsicKind.None)
-        {
-            return true;
-        }
-
-        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.TypeParameter or BindingSymbolKind.LengthParameter or BindingSymbolKind.AssociatedType || symbol.Declaration is FunctionKoto { IsRequirement: true })
-        {
-            return true;
-        }
-
-        var modifier = symbol.Declaration switch
-        {
-            DeclarationContainerKoto c => c.Modifier,
-            FunctionKoto f => f.Modifier,
-            VariableKoto v => v.Modifier,
-            _ => ModifierKind.NoModifier,
-        };
-        var access = operationAccess ?? modifier.ExtractAccessibilityModifiers();
-        if (access is ModifierKind.Public or ModifierKind.Internal or ModifierKind.ProtectedOrInternal)
-        {
-            return true;
-        }
-
-        if (symbol.Scope == this.rootScope)
-        {
-            return true;
-        }
-
-        for (var scope = use; scope is not null; scope = scope.Parent)
-        {
-            if (scope == symbol.Scope)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private BindingSymbol? TypeName(Koto syntax, BindingScope scope, bool core)
     {
         var name = TypeSpelling(syntax);

@@ -16,7 +16,7 @@ public sealed partial class Binding
         Error,
     }
 
-    private static int SelectBest(ReadOnlySpan<EvaluatedCandidate> candidates, BoundType?[] parameters, int argumentCount)
+    private static int SelectBest(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
     {
         for (var a = 0; a < candidates.Length; a++)
         {
@@ -35,15 +35,57 @@ public sealed partial class Binding
                 }
 
                 var fb = (FunctionKoto)candidates[b].Symbol.Declaration;
-                var equal = true;
-                for (var i = 0; i < argumentCount; i++)
+                var better = false;
+                var worse = false;
+                for (var i = 0; i < stride; i++)
                 {
-                    equal &= ReferenceEquals(parameters[(a * argumentCount) + i], parameters[(b * argumentCount) + i]);
+                    var x = operations[(a * stride) + i];
+                    var y = operations[(b * stride) + i];
+                    better |= x.Adaptation < y.Adaptation;
+                    worse |= x.Adaptation > y.Adaptation;
+                }
+
+                if (worse)
+                {
+                    dominates = false;
+                    break;
+                }
+
+                if (better)
+                {
+                    continue;
+                }
+
+                for (var i = 0; i < stride; i++)
+                {
+                    var x = operations[(a * stride) + i].ParameterType;
+                    var y = operations[(b * stride) + i].ParameterType;
+                    if (ReferenceEquals(x, y))
+                    {
+                        continue;
+                    }
+
+                    // Only existing operation-free Type relations participate here.
+                    var xy = x is not null && y is not null && FitsType(x, y);
+                    var yx = x is not null && y is not null && FitsType(y, x);
+                    better |= xy && !yx;
+                    worse |= !xy;
+                }
+
+                if (worse)
+                {
+                    dominates = false;
+                    break;
+                }
+
+                if (better)
+                {
+                    continue;
                 }
 
                 var aGeneric = fa.GenericArguments.Count != 0;
                 var bGeneric = fb.GenericArguments.Count != 0;
-                if (!(equal && (aGeneric != bGeneric ? !aGeneric : fa.Parameters.Count < fb.Parameters.Count)))
+                if (!(aGeneric != bGeneric ? !aGeneric : candidates[a].DefaultsUsed < candidates[b].DefaultsUsed))
                 {
                     dominates = false;
                     break;
@@ -59,5 +101,5 @@ public sealed partial class Binding
         return -1;
     }
 
-    private readonly record struct EvaluatedCandidate(BindingSymbol Symbol, CandidateApplicability State, BoundType? DeclaringType);
+    private readonly record struct EvaluatedCandidate(BindingSymbol Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed);
 }

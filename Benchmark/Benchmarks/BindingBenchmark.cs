@@ -17,7 +17,7 @@ public class BindingBenchmark
     public int Calls { get; set; }
 
     /// <summary>Gets or sets the declaration and call workload.</summary>
-    [Params("Calls", "Origins", "Capabilities", "Contracts", "Properties", "ConditionalConformances", "ConditionalMembers")]
+    [Params("Calls", "Origins", "Capabilities", "Contracts", "Properties", "ConditionalConformances", "ConditionalMembers", "InheritedReceivers")]
     public string Scenario { get; set; } = "Calls";
 
     /// <summary>Creates and validates syntax and warms reusable semantic storage.</summary>
@@ -32,11 +32,16 @@ public class BindingBenchmark
             "Properties" => "contract C\n    property item: i32 has get, set\n    property view: ref/i32 has get\n",
             "ConditionalConformances" => "contract A\n    associate E is i32\n    property item: E has get\ncontract B: A\n",
             "ConditionalMembers" => "contract A\n    associate E\n    func f(x: i32) -> i32\ncontract B: A\n",
+            "InheritedReceivers" => "contract C\n    func f(x: i32) -> i32\n    property item: i32 has get\nopen struct Base<T>\n    public var item: i32\n    public func f(x: i32) -> i32 => x\n    public func f<U>(x: U) -> i32 => 1\n",
             _ => "func identity<T>(value: T) -> T => value\n",
         });
         for (var i = 0; i < this.Calls; i++)
         {
-            if (this.Scenario == "ConditionalMembers")
+            if (this.Scenario == "InheritedReceivers")
+            {
+                source.Append("struct D").Append(i).Append("<T>: Base<T>\n    Self is C when T is Copy\n    public func read(self: ref/Self) -> i32 => self.item\nfunc use").Append(i).Append("(x: ref/D").Append(i).Append("<i32>) -> i32 => D").Append(i).Append("<i32>.f(x.read())\n");
+            }
+            else if (this.Scenario == "ConditionalMembers")
             {
                 source.Append("struct S").Append(i).Append("<T>\n    Self is B when T is Copy\n        associate A.E is i32\n        public func f(x: i32) -> i32 => x\n        public func f<U>(x: U) -> i32 => 2\nfunc use").Append(i).Append("() -> i32 => S").Append(i).Append("<i32>.f(S").Append(i).Append("<i32>.f(1))\n");
             }

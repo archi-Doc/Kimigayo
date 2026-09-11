@@ -124,10 +124,10 @@ public sealed partial class Binding
         }
 
         var result = this.Substitute(type, function, arguments);
-        if (result is not null && (self is not null || declaringType is not null))
+        if (result is not null)
         {
             result = this.ContractType(result, scope, self);
-            result = this.SubstituteStoredOrigins(result, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, function.Parameters.Count));
+            result = this.SubstituteStoredOrigins(result, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, function.Parameters.Count)));
         }
 
         return result;

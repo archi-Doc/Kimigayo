@@ -114,6 +114,9 @@ public sealed class BindingSymbol
     /// <summary>Gets retained Property operation contracts, when this is a Property.</summary>
     public BoundProperty? Property { get; internal set; }
 
+    /// <summary>Gets the instance receiver's parameter slot, or -1 for ordinary/type functions.</summary>
+    public int ReceiverIndex { get; internal set; } = -1;
+
     internal BoundType? WholeType { get; set; }
 
     internal BindingSymbol? Pair { get; set; }

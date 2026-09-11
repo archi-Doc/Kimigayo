@@ -116,7 +116,7 @@ public sealed partial class Binding
                 for (var w = 0; w < a.WitnessStorage.Count; w++)
                 {
                     var witness = a.WitnessStorage[w];
-                    same &= b.WitnessMap.TryGetValue(witness.Requirement, out var implementation) && ReferenceEquals(witness.Implementation, implementation);
+                    same &= b.WitnessMap.TryGetValue(witness.Requirement, out var otherWitness) && ReferenceEquals(witness.Implementation, otherWitness.Implementation) && this.SameFunctionWitness(witness.Function, otherWitness.Function, scope);
                 }
 
                 foreach (var binding in a.AssociatedStorage)
@@ -133,7 +133,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    same &= ReferenceEquals(x.Requirement, y.Requirement) && ReferenceEquals(x.Implementation, y.Implementation) && x.Kind == y.Kind && ReferenceEquals(x.BasePath, y.BasePath)
+                    same &= ReferenceEquals(x.Requirement, y.Requirement) && ReferenceEquals(x.Implementation, y.Implementation) && x.Kind == y.Kind && this.SameMemberPath(x.BasePath, y.BasePath, scope) && x.ObjectCompatibility == y.ObjectCompatibility
                         && this.SameConformanceType(x.ReceiverType, y.ReceiverType, scope) && this.SameConformanceType(x.InputType, y.InputType, scope)
                         && this.SameConformanceType(x.ResultType, y.ResultType, scope) && this.SameConformanceType(x.ImplementationType, y.ImplementationType, scope)
                         && x.InputOrigins.Count == y.InputOrigins.Count;

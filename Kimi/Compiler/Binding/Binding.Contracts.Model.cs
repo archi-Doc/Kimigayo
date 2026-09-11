@@ -39,7 +39,7 @@ public sealed class BoundContract
 }
 
 /// <summary>A definition-verified implementation of one stable requirement.</summary>
-public readonly record struct BoundWitness(BindingSymbol Requirement, BindingSymbol Implementation);
+public readonly record struct BoundWitness(BindingSymbol Requirement, BindingSymbol Implementation, BoundFunctionWitness? Function = null);
 
 /// <summary>A stable declaration identity. Availability belongs to its evidence paths.</summary>
 public sealed class BoundConformance
@@ -140,7 +140,7 @@ public sealed class BoundConformancePath
 
     internal List<BoundWitness> WitnessStorage { get; } = new();
 
-    internal Dictionary<BindingSymbol, BindingSymbol> WitnessMap { get; } = new(ReferenceEqualityComparer.Instance);
+    internal Dictionary<BindingSymbol, BoundWitness> WitnessMap { get; } = new(ReferenceEqualityComparer.Instance);
 
     internal List<BoundPropertyWitness> PropertyWitnessStorage { get; } = new();
 
@@ -160,7 +160,7 @@ public sealed class BoundConformancePath
     /// <param name="requirement">The original requirement declaration identity.</param>
     /// <returns>The selected member, or null while the mapping is unverified or has no such requirement.</returns>
     public BindingSymbol? GetImplementation(BindingSymbol requirement)
-        => this.IsVerified ? this.WitnessMap.GetValueOrDefault(requirement) : null;
+        => this.IsVerified && this.WitnessMap.TryGetValue(requirement, out var witness) ? witness.Implementation : null;
 
     /// <summary>Gets a verified operation by requirement identity, without member lookup.</summary>
     /// <param name="requirement">The Property requirement identity.</param>

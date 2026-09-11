@@ -2,15 +2,15 @@
 
 策定・統合日: 2026-09-11
 
-状態: 採用仕様。実装状況はSTATUS.mdで別途管理する。
+状態: 最終採用仕様（初期Windows x64プロファイル）。実装状況はSTATUS.mdで別途管理する。
 
 対象: Kimigayoコンパイラーの初期実行サブセットと、その後の型対応に使う生成規則
 
 基準: LLVM 22.1.5 / `x86_64-pc-windows-msvc`
 
-本書は、起動方法、型のメモリ配置、通常関数と外部関数の受け渡し、LLVM IRの生成、Windows上のRuntimeを一つの流れとして定める。先行する「起動処理・Windows Runtime案」と「structレイアウト・LLVM Lowering案」の採用内容を統合し、実装に必要な初期規則を具体化した。
+本書は、起動方法、型レイアウト、内部・外部ABI、LLVM IR生成、Windows Runtimeを定める。先行案とレビュー結果を統合し、初期実装で採用する契約を確定した。
 
-本書の採用は、SPEC.mdへの反映やコンパイラーの実装完了を意味しない。既存文書への反映箇所は§18、実装後の検証は§17にまとめる。
+本書が変更する起動・配置・生成規則は本書を採用先とし、それ以外の言語規則はSPEC.mdに従う。SPEC.mdへの反映箇所は§18、実装の検証条件は§17にまとめる。仕様の確定と実装完了は区別する。
 
 ## 読み方と全体構成
 
@@ -385,7 +385,7 @@ structを連続して置く場合
 └─ 3個目: 先頭 + 2 × stride
 ```
 
-paddingは整列のための余白であり、言語上のFieldではない。初期化済みの値でも、paddingが初期化済み・読取り可能・ゼロであるとは保証しない。
+paddingは言語上のFieldではなく、初期化済みの値でも内容・ゼロ埋めを保証しない。有効なstorage内のバイト転送に含めてよいが、型付きの値・比較対象として読み出さない（§11.12.1）。
 
 ### 5.2. Windows x64の基本型表現
 
@@ -787,6 +787,32 @@ LibraryImportの第1引数は論理ライブラリー名、第2引数は外部�
 
 論理名の解決に失敗した場合や対象ABIで扱えない署名はコンパイル時に診断する。必要なリンク入力は.link.jsonで利用者へ渡し、手動リンクまたはロードで未解決シンボルがあれば実行開始前に失敗させる。
 
+### 9.5. Windows x64のC ABI対応表
+
+LibraryImportの署名を次の表で一度確定し、declareとcallで共有する。符号の違いはKimigayoの型情報に保持し、LLVM整数型の幅は変えない。
+
+| Kimigayo | 対応するCの値型 | LLVM引数・戻り値型 |
+| --- | --- | --- |
+| i8 / u8 | int8_t / uint8_t | i8 |
+| i16 / u16 | int16_t / uint16_t | i16 |
+| i32 / u32 | int32_t / uint32_t | i32 |
+| i64 / u64 | int64_t / uint64_t | i64 |
+| f32 / f64 | float / double | float / double |
+| unsafe/T | 対応するデータポインター | ptr（address space 0） |
+| Unit | void（戻り値のみ） | void |
+
+呼び出し規約は本ターゲットのcccとし、表の引数・戻り値にはsignext・zeroext・inreg・byval・sretを付けない。i8/i16を便宜上i32へ広げず、可変長引数のdefault promotionも適用しない。callの結果をKimigayoで広い型へ変換する場合は、別の数値変換として処理する。
+
+```llvm
+; import libraryを使う場合の署名例。符号拡張属性は付けない。
+declare dllimport i8 @native_i8(i8)
+declare dllimport i16 @native_u16(i16)
+```
+
+register割当て、5番目以降のstack引数、shadow space、stack alignmentはLLVM backendへ任せる。引数・戻り値の未使用上位bitには依存しない。noundef・nonnull等の追加保証は§11.7.2で個別に判定し、C ABIの型表から自動付与しない。[Microsoft x64 calling convention](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170)
+
+初期署名表は、対象版のClangが生成するCの署名と照合する。負のi8/i16、最大のu8/u16、整数とFPの混在、5個以上の引数を含むC関数への呼出し試験を行う。CからKimigayoへのexportを、この検証のために言語機能として追加する必要はない。
+
 <a id="section-10"></a>
 
 ## 10. 通常関数の内部ABIと所有権の受け渡し
@@ -848,7 +874,7 @@ entry:
 }
 ```
 
-stringのechoでは、戻り値領域と引数領域を別々に持つ。下記は型と物理署名の例であり、本体は省略している。
+stringのechoでは、戻り値領域と引数領域を別々に持つ。下記のdeclareは物理署名だけを示し、最終IRではinternal definitionを出力する。
 
 ```llvm
 %StringHandle = type { ptr, i64, i8 }
@@ -941,7 +967,7 @@ ProjectName.ll
 | backend用の供給シンボル（_fltused等） | backend指定の名前・型でexternal definition。言語の公開ABIにはしない |
 | 文字列等の内部定数 | private。共有規則は§11.12.2に従う |
 
-同じモジュール内に本体を持つ関数にはdefineを一度だけ出力し、同名のdeclareを重ねない。全生成関数に§16.5のtarget属性を付ける。以下のIR断片では、その属性を省略している。
+同じモジュール内に本体を持つ関数にはdefineを一度だけ出力し、同名のdeclareを重ねない。全生成関数に§16.5のtarget属性と§11.7.3のuwtableを付ける。IR断片では、個別に示すものを除き、これらを省略する。
 
 ### 11.2. 起動関数のLLVM断片
 
@@ -977,7 +1003,7 @@ NeverをLLVMの戻り値型として作らない。戻らない処理は`void`�
 | --- | --- |
 | memcpy・memmove・memset | LLVM intrinsicが外部呼出しへ変換された場合の実体を、専用のネイティブstatic libraryから供給 |
 | __chkstk | 同じlibrary内のWindows x64専用アセンブリから供給。必要なprobeを無効化しない |
-| _fltused | 必要な場合、生成.llにbackendの要件を満たすデータ定義を一つ供給 |
+| _fltused | §11.3.3の判定で生成.llにデータ定義を一つ供給 |
 | stack protector・その他の演算helper | 供給元とABIを追加検証するまで、必要とする機能を未対応とする |
 
 通常の一括メモリ操作は§11.12.1のLLVM intrinsicを優先し、命令展開・vector化・外部呼出しの選択をLLVMへ任せる。intrinsicの使用は外部helperが不要になる保証ではない。
@@ -1002,6 +1028,33 @@ helper供給物の採用試験には、次を含める。
 - メモリhelperの境界長・alignment・非重複・両方向重複・戻り値を確認する。
 - __chkstkについてページ境界前後・複数ページの実stack frameを使い、probe、register・stack保存、OSのstack拡張を確認する。
 - 独自entryと/NODEFAULTLIBでO0/O2の生成物をリンク・実行し、CRT初期化への隠れた依存がない。
+
+#### 11.3.3. _fltusedの定義と供給物の識別
+
+最適化前の生成対象にf32/f64、またはinline componentとしてそれらを含む型の値が現れればNeedsFltUsedをtrueとし、それ以外はfalseとする。定数・load/store・演算・変換・call、生成関数の引数・戻り値、生成するglobal initializerを含む。型名の宣言だけやポインターの参照先型は数えない。最適化で値が消えても判定を変更しない。
+
+trueなら次の定義を生成し、providedRuntimeSymbolsへ記録する。これはbackendの参照を解決するmarkerであり、値0をCRT初期化済み・未初期化の判定には使わない。
+
+```llvm
+@_fltused = global i32 0, align 4
+```
+
+external linkageの強い定義を一つだけ持ち、dllimport・weak・commonにはしない。専用backend libraryは_fltusedを定義しない。falseの出力で後続LLVMが_fltusedを要求した場合はプロファイルの対応漏れとしてビルドを失敗させ、実装の判定を修正する。
+
+NeedsFltUsedはリンク用、NeedsKimigayoFpEnvironmentは演算環境用（§11.6.2）であり、別の判定である。FP値の転送だけなら前者だけがtrueになり得る。
+
+専用backend libraryの採用情報をコンパイラーのプロファイルカタログに固定する。
+
+| 項目 | 契約 |
+| --- | --- |
+| packageId | kimi-backend-windows-x64 |
+| abiVersion | 1。供給シンボル・呼出し契約が変われば更新 |
+| packageVersion | 検証した供給物の版。同じ版を別内容に差し替えない |
+| artifactSha256 | 採用する.libの実バイト列のSHA-256 |
+| 対象 | windows-x64-v1 / LLVM 22.1.5 / 本書のCPU・FP・unwind契約 |
+| providedSymbols | __chkstk、memcpy、memmove、memset。強い外部定義を各一つ供給 |
+
+供給物は1シンボル1archive memberを基本とし、不要なhelperを取り込まない。追加外部依存・初期化コードを含めない。パスやファイル名の一致だけで適合とせず、§16.4の記録と実ファイルを手動ビルド時に照合する。カタログの版・ABI・ハッシュが未確定なら、仮の供給物を採用した生成成功にはしない。
 
 ### 11.4. レイアウトに基づくメモリ操作
 
@@ -1028,6 +1081,35 @@ Paddingは値ではない。ゼロ初期化、比較可能性、Copy後のpaddin
 
 `noalias`、`nonnull`、`noundef`、`dereferenceable`、`inbounds`等は個別に前提を満たす場合だけ付ける。特に`uniq`という名称や借用の存在だけでLLVMの全関数にわたるalias保証を推論しない。`sret`や`byval`等のABI属性と最適化用属性も分けて管理する。[LLVM parameter attributes](https://llvm.org/docs/LangRef.html#parameter-attributes)
 
+#### 11.4.1. raw pointerの命令対応
+
+通常のデータポインターはaddress space 0のptrとする。以下はSPEC §5で許可された操作だけに適用し、新しい取得・所有権変換APIを追加しない。
+
+| 操作 | 初期エミット |
+| --- | --- |
+| 同じraw pointer型の取得、unsafe/Tからunsafe/Uへの許可された変換 | 同じptr値を使用。pointeeの型・alignment・有効値の保証を増やさない |
+| 同じ型のポインターの== / !=、null判定 | icmp eq / ne ptr |
+| unsafe/Tからusize | ptrtoint ptrからi64 |
+| usizeからunsafe/T | inttoptr i64からptr |
+| p + n | Tのstorage型を使うGEP、indexはi64のn |
+| p - n | i64のsub 0, nをindexにしたGEP |
+| p[n] | p + nで場所を求め、Tのstorage型・必要alignmentでアクセス |
+
+```llvm
+; pはunsafe/i32、nはisize。算術の有効性はSPEC §5.3の契約に従う。
+%next = getelementptr i32, ptr %p, i64 %n
+%address = ptrtoint ptr %p to i64
+%restored = inttoptr i64 %address to ptr
+```
+
+GEPの要素間隔がstride(T)と一致することをTypeLayoutで確認する。既知の正のstrideが必要で、ゼロサイズ型の歩進を許可しない。変位0ではnullも含め元のポインターを保つ。算術だけの段階で、pointeeの初期化・alignmentを要求しない。
+
+初期生成では上のGEPにinbounds、変位計算にnsw/nuwを付けない。非ゼロ変位の同一allocation条件、数学上の変位のisize範囲、アドレスの非周回は既存のunsafe契約とし、違反を必ずAbortさせる規則にはしない。通常の配列indexやRuntimeバッファーの検査付き操作とは区別する。
+
+ポインターを整数化してから加算・再変換する形を、ポインター算術の基本実装にしない。LLVMのptrtoint/inttoptrを使っても、言語上のprovenance・寿命・アクセス権限の回復は保証しない。本プロファイルは、整数から復元したという事実だけでdereference可能とする追加保証を与えない。
+
+型付きアクセスは有効な範囲・alignment・アクセス権限を必要とする。loadには初期化済みの有効値、storeには§11.9の初期配置・置換の条件を適用する。alias保証をポインターの型名やアドレス比較から作らない。[既存SPEC §5](../../SPEC.md#5-raw-pointers-and-unsafe-memory)、[LLVM pointer conversions](https://llvm.org/docs/LangRef.html#ptrtoint-to-instruction)
+
 ### 11.5. 検査付き算術と変換
 
 整数overflow、ゼロ除算、不正shift、数値変換の失敗、評価順序は既存SPECに従う。ここでは、その意味をLLVMへ落とす方法を定める。
@@ -1048,7 +1130,7 @@ Paddingは値ではない。ゼロ初期化、比較可能性、Copy後のpaddin
 
 `nsw`や`nuw`を付けただけでは、言語が要求するoverflow検査にならない。LLVMのpoisonや未定義動作を、Abortの代用にしない。[LLVM overflow intrinsics](https://llvm.org/docs/LangRef.html#arithmetic-with-overflow-intrinsics)
 
-以下は符号付き32ビット加算の例である。abort helperは理由を固定した非公開関数で、%siteは元のソース位置を指す。
+以下は符号付き32ビット加算の例である。abort helperは理由を固定した非公開関数で、%siteは元のソース位置を指す。そのdeclareは署名の省略表記であり、最終IRではinternal definitionを出力する。
 
 ```llvm
 declare { i32, i1 } @llvm.sadd.with.overflow.i32(i32, i32)
@@ -1198,6 +1280,14 @@ llvm.lifetime.start/endは任意の最適化情報である。実際のstorage�
 
 初期版では、成立を証明できない最適化用属性を付けない。この方針は言語側のLoan検査や有効値検査を省略してよいという意味ではない。
 
+#### 11.7.3. Windowsのunwind情報
+
+全生成関数の定義にuwtable(async)を付け、entry・Runtime・FP環境adapterも対象とする。LLVMの表記uwtableは同じ意味である。必要な.pdata/.xdata、prologue・epilogue、register・stackの復元情報はbackendに生成させ、最適化後のleaf関数に情報が必要かどうかもbackendへ任せる。
+
+これはOSによるstack復元・stack walkのための情報であり、言語の例外処理やAbort時cleanupを追加しない。nounwindの有無とも別に扱う。C++例外・SEH unwind等がKimigayoフレームを横断してよいという変更ではない。
+
+専用アセンブリは、自身のstack・非揮発register操作を表すWindows用unwind情報を必要に応じて持つ。関数名やCのprototypeだけで適合とせず、__chkstkの特殊な呼出し列を含め、O0/O2のobject・リンク後の情報を検証する。[Microsoft x64 unwindability](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#unwindability)、[LLVM uwtable](https://llvm.org/docs/LangRef.html#function-attributes)
+
 ### 11.8. 名前、順序、生成キャッシュ
 
 利用者の名前はKotonoha・宣言Identity・generic引数・実装選択を含めて変換する。モジュール全体のシンボル表で、利用者定義・LibraryImport・Windows API・entry・Runtime helperの衝突を検査する。
@@ -1209,7 +1299,7 @@ llvm.lifetime.start/endは任意の最適化情報である。実際のstorage�
 | 関数とデータ、外部宣言と生成済み定義が衝突 | コンパイルエラー |
 | 予約entry・内部helper名へのLibraryImport | コンパイルエラー |
 
-`__kimi_`を内部用、`llvm.`をLLVM用に予約し、LibraryImportの外部名として受理しない。文字列は対象ABIの正確なシンボル名で照合する。同じLLVM ptr署名を共有しても、各ソース宣言の型・unsafe使用契約は統合しない。最適化用の保証はすべての利用で成立するものだけを付ける。
+`__kimi_`を内部用、`llvm.`をLLVM用に予約する。_fltused・__chkstk・memcpy・memmove・memsetも本プロファイルの供給用に予約し、利用者のLibraryImportの外部名として受理しない。文字列は対象ABIの正確なシンボル名で照合する。LLVMの識別子・文字列は必要な引用とUTF-8バイトのescapeを行い、ソース文字列をIR構文へ直接挿入しない。同じLLVM ptr署名を共有しても、各ソース宣言の型・unsafe使用契約は統合しない。最適化用の保証はすべての利用で成立するものだけを付ける。
 
 ```text
 observe_record: void(ptr)  + observe_record: void(ptr)
@@ -1693,7 +1783,15 @@ enumの内部storage
 
 有効なenum値は、選択済みCaseのtagと、そのCaseに対応する有効なpayloadの組だけである。初期化・Move・部分cleanup・matchはその組に基づく。使用しないpayload領域を読み出さない。有効なenum値だと確定していない外部整数をtagとして扱い、到達不能へ置き換えることもしない。
 
-この方式は内部表現であり、C enumやC unionとの互換性を保証しない。Caseの切り替えは既存の全体代入・置換規則に従い、tagだけを書き換える利用者向け操作は追加しない。
+LLVMのpayload storageは、alignmentを保持するゼロ長要素とPバイトの領域を組み合わせる。Pは上記のpayload sizeとし、alignment 1/2/4/8/16にはそれぞれi8/i16/i32/i64/i128のゼロ長配列を使う。これを通常のLLVM structのtagに続けて置き、親struct・固定配列に埋め込んでもTypeLayoutと一致させる。
+
+```llvm
+; Message: payload offset 8、全体size 16、alignment 8。
+%MessagePayload = type { [0 x i64], [8 x i8] }
+%Message = type { i32, %MessagePayload }
+```
+
+ゼロ長要素はalignment指定用であり、言語上のField・値・cleanup対象ではない。payloadを単なるi8配列へ落としてalignmentを失わない。この方式は内部表現であり、C enumやC unionとの互換性を保証しない。Caseの切り替えは既存の全体代入・置換規則に従い、tagだけを書き換える利用者向け操作は追加しない。
 
 ### 15.3. 継承とobjectの表現
 
@@ -1765,7 +1863,7 @@ OutputKind・OutputPath・NativeLibraries・Optimizationは追加予定の設定
 
 ```powershell
 opt -S -passes="default<O2>" -mtriple=x86_64-pc-windows-msvc rdtsc.ll -o rdtsc.opt.ll
-llc -O2 -filetype=obj -mtriple=x86_64-pc-windows-msvc -mcpu=x86-64 -mattr=+sse2 -relocation-model=static -code-model=small rdtsc.opt.ll -o rdtsc.obj
+llc -O2 -filetype=obj -mtriple=x86_64-pc-windows-msvc -mcpu=x86-64 -mattr=+sse2 -relocation-model=pic -code-model=small rdtsc.opt.ll -o rdtsc.obj
 lld-link rdtsc.obj kernel32.lib kimi_backend_windows_x64_v1.lib /entry:__kimi_start /subsystem:console /nodefaultlib /debug /out:app.exe
 .\app.exe
 ```
@@ -1809,7 +1907,7 @@ kind=staticは、CRT起動、C/C++の動的初期化、独自のTLS初期化・�
 
 #### 16.4.2. 出力形式
 
-OutputPathの拡張子を.link.jsonへ置き換え、.llと同じディレクトリーへUTF-8 JSONを出力する。ApplicationとLibraryの両方が対象である。以下は形式例で、irSha256の山括弧内は実際には64桁のSHA-256へ置換する。
+OutputPathの拡張子を.link.jsonへ置き換え、.llと同じディレクトリーへUTF-8 JSONを出力する。ApplicationとLibraryの両方が対象である。以下は形式例で、ハッシュの山括弧内は実際には64桁のSHA-256へ置換する。packageVersionの1.0.0は例であり、供給済みの版を示さない。
 
 ```json
 {
@@ -1820,9 +1918,18 @@ OutputPathの拡張子を.link.jsonへ置き換え、.llと同じディレクト
     "llvmVersion": "22.1.5",
     "cpu": "x86-64",
     "features": ["+sse2"],
-    "relocationModel": "static",
+    "relocationModel": "pic",
     "codeModel": "small",
+    "unwindTables": "async",
     "optimization": "O2"
+  },
+  "backendSupport": {
+    "packageId": "kimi-backend-windows-x64",
+    "abiVersion": 1,
+    "packageVersion": "1.0.0",
+    "library": "kimi_backend",
+    "artifactSha256": "<採用する.libのSHA-256>",
+    "providedSymbols": ["__chkstk", "memcpy", "memmove", "memset"]
   },
   "irFile": "ProjectName.ll",
   "irSha256": "<生成した.llのSHA-256>",
@@ -1845,8 +1952,9 @@ OutputPathの拡張子を.link.jsonへ置き換え、.llと同じディレクト
 - パス指定のinputはmanifestの位置を基準に書き直す。検索対象名はそのままとする。irFileもmanifest基準とする。
 - Libraryではentryとsubsystemをnullにする。記録は検証用の依存情報であり、外部リンク可能な.lib/DLLや実行可能な成果物を意味しない。
 - codegenは§16.5の必須設定であり、手動ビルドのopt・llcにも適用する。irSha256は最適化前の生成.llに対する値とする。
+- backendSupportは§11.3.3の採用カタログから出力する。libraryはlibrariesのstatic項目を参照し、版・ABI・供給一覧を一致させる。実際にリンクする.libのartifactSha256が一致しなければ使用しない。
 - providedRuntimeSymbolsは、backend向けシンボルのうち生成.llに定義を供給した名前の配列とする。通常の__kimi_内部関数を列挙する用途には使わない。
-- expectedUndefinedSymbolsは、生成時点で外部参照の発生が予想されるbackend向けシンボルを、symbolとproviderで記録する。providerはlibrariesの論理名を参照し、供給元不明の既知依存は生成失敗とする。
+- expectedUndefinedSymbolsは、生成時点で外部参照の発生が予想されるbackend向けシンボルを、symbolとproviderで記録する。providerはlibrariesの論理名を参照し、kimi_backendのシンボルはbackendSupport.providedSymbolsで供給を確認する。供給元不明の既知依存は生成失敗とする。
 - 両配列はシンボル名のOrdinal順とし、同名を重複・両分類へ登録しない。実際のobjectの未定義シンボル一覧を表すものではなく、空でも後続依存なしとは保証しない。通常のLibraryImport・Windows APIのリンク入力はlibrariesに記録する。
 - マニフェストは指定されたリンク入力を記録する。実際に検索で選ばれたSDK・ライブラリーファイルの版や内容は手動ビルドの記録に残す。
 
@@ -1866,14 +1974,22 @@ OutputPathの拡張子を.link.jsonへ置き換え、.llと同じディレクト
 | --- | --- |
 | LLVM / target | 22.1.5 / x86_64-pc-windows-msvc |
 | CPU / feature指定 | x86-64 / +sse2。通常のx86-64基準とし、AVX等を要求しない |
-| relocation model / code model | static / small |
+| relocation model / code model | pic / small |
 | DataLayout | 上記ターゲットから得る値。§5のTypeLayoutとの一致を検証 |
 | 浮動小数点 | §11.6の丸め・検査・環境契約を維持。fast-mathは禁止 |
-| stack・外部helper | §11.3に従う |
+| unwind | 全生成定義にuwtable(async)。§11.7.3に従う |
+| stack・外部helper | §11.3のABI版・packageVersion・artifactSha256に従う |
 
-CPU・featuresはプロファイルから全生成関数のtarget-cpu・target-featuresへ出力し、optはその属性を参照する。optへ-mcpu・-mattrを重ねて渡さず、llcの指定とmanifestも同じプロファイルに一致させる。profile・LLVM版・CPU・features・モデル・最適化設定をmanifestと生成キャッシュのキーへ含める。LLVM更新時はプロファイルを再検証する。上位CPU向けプロファイルや実行時CPU切替は後続拡張とする。
+CPU・featuresはプロファイルから全生成関数のtarget-cpu・target-featuresへ出力し、optはその属性を参照する。optへ-mcpu・-mattrを重ねて渡さず、llcの指定とmanifestも同じプロファイルに一致させる。profile・LLVM版・CPU・features・モデル・unwind・最適化設定とbackend供給物の版・ハッシュをmanifestと生成キャッシュのキーへ含める。LLVM更新時はプロファイルを再検証する。上位CPU向けプロファイルや実行時CPU切替は後続拡張とする。
 
-relocation modelはLLVMのコード生成設定であり、PEのロード時再配置を禁止する/FIXEDを要求しない。
+Windows x64の通常のimage base・ASLRに対応するため、PICでコード・静的データを参照する。static relocationによる絶対32ビットのデータ参照を前提にしない。/FIXEDや低位image baseへの変更で回避しない。
+
+生成IRには次のmodule flagを出力し、optとllcの設定を揃える。code modelの射程を超える静的生成物は未対応として診断し、ヒープ上の値のsize上限とは区別する。
+
+```llvm
+!llvm.module.flags = !{!0}
+!0 = !{i32 8, !"PIC Level", i32 2}
+```
 
 #### 16.5.2. 最適化の担当
 
@@ -2026,6 +2142,22 @@ goldenは全出力の無条件な文字列一致だけにせず、意味を変�
 
 性能の構造確認には、アドレス不要なscalar、短いaggregateの受け渡し、分岐内だけのdeferを含める。不要なalloca・転送・フラグがO2で残る場合は理由を調べるが、正しさに必要な処理まで削減目標にしない。非終了の実行試験は時間制限で回収し、併せて最適化後CFGを確認する。
 
+### 17.9. 最終プロファイルの検証
+
+| 対象 | 確認すること |
+| --- | --- |
+| C ABI | §9.5の全型、負値・最大値、引数混在・5個以上の引数。小さい整数の上位bitを仮定しない |
+| raw pointer | nullの変位0、正負の歩進、one-pastからの有効な復帰、同一型・異なる型・整数との変換。unsafe違反に特定の実行結果を要求しない |
+| 初期化 | raw storageへの合法な初期配置と、初期化済み値のload・置換を区別 |
+| enum | payload alignment 1/2/4/8/16、空payload、親struct・配列への埋込みでsize・offset・alignmentが一致 |
+| unwind | entry・非leaf・stack利用関数・adapter・native helperの.pdata/.xdataと実際のprologueが一致 |
+| PIC | 通常の64ビットimage base・ASLRで、global変数・文字列・FP定数の参照がO0/O2とも正しく動く |
+| _fltused | 定義が必要なFP値・不要な整数だけの本体、FP転送だけの本体、最適化でFP操作が消える本体。強い定義が一つである |
+| backend供給物 | packageId・ABI・版・ハッシュ・供給一覧の不一致、予約シンボル衝突、未知の追加依存を検出 |
+| intrinsic | 定数長・可変長のmemcpy、重複を伴うmemmove、memset。命令展開と外部呼出しの両経路が契約を満たす |
+
+LLVM verifierだけでFFI・unwind・helperの適合は証明できない。基準版22.1.5で、IR検証、objectのシンボル・unwind情報、実際のC呼出しと起動・終了まで確認する。別版での予備検証を基準版の合格に置き換えない。
+
 <a id="section-18"></a>
 
 ## 18. 既存文書への反映箇所
@@ -2044,11 +2176,12 @@ goldenは全出力の無条件な文字列一致だけにせず、意味を変�
 | STATUS C.12の設定案 | .ll/.link.json、Libraryの検証用途、NativeLibraries・helper供給分類、専用entryを反映し、EntrySourceは初期版から外す |
 | SPEC §6.1.2・§6.2.1・§6.5 | Layout属性、fragment共有・競合、C方式の単一storage fragment制限を追加 |
 | SPEC §21.1 | Kimigayo/C方式、基本型表現、ゼロサイズ、上限、Tuple・enumの初期配置を整合 |
-| SPEC §22.3 | C交換用判定、論理ライブラリー名、unwind禁止、aggregate値渡しの保留を区別 |
+| SPEC §22.3 | C交換用判定、型別C ABI、論理ライブラリー名、unwind横断禁止、aggregate値渡しの保留を区別 |
+| SPEC §5・Appendix A.5 | raw pointerの命令対応を関連づけ、整数変換による権限回復を保証しない |
 | SPEC AppendixのFFI・Attribute保留項目 | 今回定義した範囲を反映し、特殊配置・外部ABI拡張の保留を維持 |
 | SPEC §12.2・§13.7・§16.2・§17.3、Appendix A.6–A.7 | 値・Place、評価順、経路別cleanup、定数評価の既存意味を保ち、生成上の契約を関連づける |
 | STATUSのLowering・layout項目 | 入力確定、生成対象、layout、ABI、CFG・SSA、転送・定数、相互運用の進捗を分けて記録 |
-| STATUSのLLVM・ビルド設定 | windows-x64-v1、O0/O2、手動optとmanifestのcodegen情報を反映 |
+| STATUSのLLVM・ビルド設定 | windows-x64-v1、unwind、O0/O2、手動optとmanifestのcodegen・backendSupport情報を反映 |
 | STATUS C.13 | LLVM 22.1.5、独自entry、6操作・7APIと別供給のbackend libraryを記録 |
 
 実装状況はSTATUSで管理する。本書に例があることや、設計が確定したことだけを根拠に、Parsing・Binding・Analysis・Lowering・Runtimeの実装済み範囲を拡大しない。
@@ -2092,6 +2225,6 @@ goldenは全出力の無条件な文字列一致だけにせず、意味を変�
 
 ### 19.2. この統合文書の状態
 
-本書は、起動処理・Windows Runtime案とstructレイアウト・LLVM Lowering案を統合した採用仕様である。例示コードは、言語例、生成されるLLVMの例、説明用の擬似コード、検証用Cコードをそれぞれ区別して掲載している。
+本書で初期Windows x64の採用仕様を確定する。後続機能として明示した物理表現・公開ABIは今回の確定範囲に含めない。
 
-文書の統合時点ではコンパイラーの実装、LLVMでの例示コードの実行試験、SPEC・STATUSへの反映は行っていない。実装の完了は§16.3と§17の段階別の検証で判断する。
+本書の確定はコンパイラー・専用backend libraryの実装完了、LLVM 22.1.5での全検証、SPEC・STATUSへの反映完了を意味しない。実装の完了は§16.3と§17の段階別の検証で判断する。

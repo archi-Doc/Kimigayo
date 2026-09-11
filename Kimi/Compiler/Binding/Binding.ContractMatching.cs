@@ -238,8 +238,9 @@ public sealed partial class Binding
                     var ancestor = this.conformancePaths[(conformance.Type, requirement.Scope.Owner.BoundSymbol!, conformance.Declaration, conformance.RootContract)];
                     if (ancestor.GetImplementation(requirement) is { } inherited)
                     {
-                        conformance.WitnessStorage.Add(new(requirement, inherited));
-                        conformance.WitnessMap.Add(requirement, inherited);
+                        var inheritedWitness = ancestor.WitnessMap[requirement];
+                        conformance.WitnessStorage.Add(inheritedWitness);
+                        conformance.WitnessMap.Add(requirement, inheritedWitness);
                         for (var w = 0; w < ancestor.PropertyWitnessStorage.Count; w++)
                         {
                             var operation = ancestor.PropertyWitnessStorage[w];
@@ -278,14 +279,22 @@ public sealed partial class Binding
                 BindingSymbol? selected = null;
                 var matches = 0;
                 var pending = false;
-                for (var candidate = this.scopes[conformance.Type.Declaration].Values.GetValueOrDefault(requirement.Name); candidate is not null; candidate = candidate.Next)
+                var selection = this.LookupTypeMember(self, requirement.Name, scope, self);
+                if (selection.Ambiguous)
                 {
-                    if (candidate.Declaration is not FunctionKoto implementation)
+                    return Invalid(BindingFailure.Ambiguous);
+                }
+
+                pending |= selection.Pending;
+                for (var candidate = selection.Member; candidate is not null; candidate = candidate.Next)
+                {
+                    if (candidate.Declaration is not FunctionKoto implementation || !this.Accessible(candidate, scope, receiverType: self))
                     {
                         continue;
                     }
 
-                    var match = this.MatchesRequirement(function, implementation, self, scope);
+                    this.BindHeader(candidate);
+                    var match = this.MatchesRequirement(function, implementation, self, scope, selection);
                     pending |= match is null;
                     if (match == true)
                     {
@@ -310,15 +319,16 @@ public sealed partial class Binding
                     return Invalid(BindingFailure.MissingImplementation);
                 }
 
-                var compatibility = this.CompatibleRequirement(conformance, function, (FunctionKoto)selected.Declaration, self, scope);
+                var compatibility = this.CompatibleRequirement(conformance, function, (FunctionKoto)selected.Declaration, self, scope, selection);
                 if (compatibility is ConstraintProof.Error or ConstraintProof.Refuted)
                 {
                     return Invalid(BindingFailure.IncompatibleImplementation);
                 }
 
                 proof = CombineProof(proof, compatibility, true);
-                conformance.WitnessStorage.Add(new(requirement, selected));
-                conformance.WitnessMap.Add(requirement, selected);
+                var witness = new BoundWitness(requirement, selected, this.FunctionWitness(conformance, requirement));
+                conformance.WitnessStorage.Add(witness);
+                conformance.WitnessMap.Add(requirement, witness);
             }
 
             conformance.IsVerified = proof == ConstraintProof.Proven;
@@ -337,7 +347,7 @@ public sealed partial class Binding
         }
     }
 
-    private bool? MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope)
+    private bool? MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
         if (implementation.IsSpecialization || !SameGenericShape(requirement, implementation) || requirement.Parameters.Count != implementation.Parameters.Count)
         {
@@ -358,7 +368,23 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (!SignatureEquals(this.ContractType(required, scope, self), this.ContractType(actual, scope), requirement, implementation))
+            required = this.ContractType(required, scope, self);
+            if (i == requirement.BoundSymbol!.ReceiverIndex && selection.Path is not null)
+            {
+                required = this.ProjectRequirementReceiver(required, self, selection.DeclaringType)!;
+                if (required is null)
+                {
+                    return false;
+                }
+            }
+
+            actual = this.MemberType(actual, selection.DeclaringType)!;
+            if (actual is null)
+            {
+                return null;
+            }
+
+            if (!SignatureEquals(required, this.ContractType(actual, scope), requirement, implementation))
             {
                 return false;
             }
@@ -367,7 +393,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private ConstraintProof CompatibleRequirement(BoundConformancePath conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope)
+    private ConstraintProof CompatibleRequirement(BoundConformancePath conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
         if (requirement.BindingState == BindingState.Invalid || implementation.BindingState == BindingState.Invalid || ((implementation.Modifier & ModifierKind.Unsafe) != 0 && (requirement.Modifier & ModifierKind.Unsafe) == 0) || !this.ConformanceAccessible(conformance, implementation))
         {
@@ -407,7 +433,7 @@ public sealed partial class Binding
                 arguments[i] = requirement.BoundSymbol!.Schema!.GenericSlots[i].Symbol.WholeType;
             }
 
-            var proof = this.ProveMemberConditions(implementation.BoundSymbol!, self, premises);
+            var proof = this.ProveMemberConditions(implementation.BoundSymbol!, selection.DeclaringType, premises);
             for (var i = 0; i < implementation.TypeConstraints.Count; i++)
             {
                 if (((IsKoto)implementation.TypeConstraints[i]).BoundConstraint is not { } constraint)
@@ -416,10 +442,23 @@ public sealed partial class Binding
                 }
 
                 var substituted = this.SubstituteConstraint(constraint, implementation, arguments.AsSpan(0, requirement.GenericArguments.Count));
+                if (selection.DeclaringType is { Symbol.Declaration: { } owner } declaring)
+                {
+                    substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaring.Components);
+                }
+
                 proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(substituted, premises, self), premises), true);
             }
 
-            return CombineProof(proof, this.CompareCallableContracts(new(requirement), new(implementation), premises, self, null, arguments, origins, inputs), true);
+            proof = CombineProof(proof, this.CompareCallableContracts(new(requirement), new(implementation), premises, self, selection.DeclaringType, arguments, origins, inputs, selection.Path), true);
+            var witness = this.FunctionWitness(conformance, requirement.BoundSymbol!);
+            witness.DeclaringType = selection.DeclaringType!;
+            witness.BasePath = selection.Path;
+            witness.RequirementReceiver = requirement.BoundSymbol!.ReceiverIndex is var receiverIndex && receiverIndex >= 0 ? this.ContractType(requirement.Parameters[receiverIndex].Type.BoundType!, premises, self) : null;
+            witness.ImplementationReceiver = implementation.BoundSymbol!.ReceiverIndex is var implementationIndex && implementationIndex >= 0 ? this.CallType(implementation.Parameters[implementationIndex].Type.BoundType!, implementation, arguments, premises, null, origins, inputs, selection.DeclaringType) : null;
+            witness.SetOrigins(origins.AsSpan(0, implementation.Origins.Count), inputs.AsSpan(0, implementation.Parameters.Count));
+            witness.ObjectCompatibility = selection.Path is not null && receiverIndex >= 0 ? ProjectedReceiverProof(implementation.BoundSymbol!) : ConstraintProof.Proven;
+            return CombineProof(proof, witness.ObjectCompatibility, true);
         }
         finally
         {

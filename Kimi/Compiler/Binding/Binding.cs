@@ -76,6 +76,7 @@ public sealed partial class Binding
         try
         {
             this.issues.Clear();
+            this.receiverOperations.Clear();
             this.nodes.Clear();
             this.aliases.Clear();
             this.obligations.Clear();
@@ -103,6 +104,7 @@ public sealed partial class Binding
                 symbol.ConditionalDeclaration = null;
                 symbol.Resolving = false;
                 symbol.HeaderBound = false;
+                symbol.ReceiverIndex = -1;
             }
 
             // The indexer resets every semantic field before any header or expression is evaluated.
@@ -378,6 +380,16 @@ public sealed partial class Binding
 
             // Named signatures never infer a result from their body or callers (SPEC 10.5).
             symbol.Type = function.ReturnType is { } result ? this.BindType(result, scope) : BoundType.Unit;
+            if (symbol.ReceiverIndex >= 0)
+            {
+                var receiver = function.Parameters[symbol.ReceiverIndex];
+                var type = receiver.Type.BoundType;
+                var valid = type is not null && SameType(EffectiveCore(type), this.SelfType(symbol.Scope.Owner.BoundSymbol!)) && type.Semantics is not (SemanticsKind.Unsafe or SemanticsKind.Parameter);
+                if (!valid || receiver.ExternalName != "self" || receiver.IsOptional || receiver.DefaultValue is not null)
+                {
+                    Fail(function, BindingFailure.InvalidTypeFormation);
+                }
+            }
         }
         else if (symbol.Property is { } property)
         {
@@ -482,6 +494,21 @@ public sealed partial class Binding
                         var memberScope = this.Scope.Owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? this.Scope.Parent! : this.Scope;
                         var symbol = binding.Declare(node, function.Name, BindingSymbolKind.Function, node, memberScope);
                         symbol.ConditionalDeclaration = ReferenceEquals(memberScope, this.Scope) ? null : (SyntaxFormKoto)this.Scope.Owner;
+                        if (memberScope.Owner is StructKoto or EnumKoto or ContractKoto)
+                        {
+                            for (var p = 0; p < function.Parameters.Count; p++)
+                            {
+                                if (function.Parameters[p].InternalName == "self")
+                                {
+                                    if (symbol.ReceiverIndex >= 0)
+                                    {
+                                        Fail(function, BindingFailure.InvalidTypeFormation);
+                                    }
+
+                                    symbol.ReceiverIndex = p;
+                                }
+                            }
+                        }
                     }
 
                     this.Scope = binding.GetScope(node, this.Scope);

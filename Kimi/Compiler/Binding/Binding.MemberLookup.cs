@@ -54,17 +54,23 @@ public sealed partial class Binding
         return valid;
     }
 
-    // Lookup commits a name before operation, Type, applicability, or access validation.
-    private MemberSelection LookupTypeMember(BoundType type, string name, BoundMemberPath? path = null)
+    // Access and namespace select the layer. Receiver/argument/accessor checks never reopen it.
+    private MemberSelection LookupTypeMember(BoundType type, string name, BindingScope use, BoundType? receiver = null, BoundMemberPath? path = null, bool typeRole = false)
     {
         if (type.Symbol is not { } symbol || !this.scopes.TryGetValue(symbol.Declaration, out var scope))
         {
             return default;
         }
 
-        if (scope.Values.TryGetValue(name, out var member))
+        if ((typeRole ? scope.Types : scope.Values).TryGetValue(name, out var member))
         {
-            return new(member, type, path);
+            for (var candidate = member; candidate is not null; candidate = candidate.Next)
+            {
+                if (this.Accessible(candidate, use, receiverType: receiver))
+                {
+                    return new(candidate, type, path);
+                }
+            }
         }
 
         if (symbol.Declaration is not StructKoto structure)
@@ -95,7 +101,7 @@ public sealed partial class Binding
                     this.memberPaths.Add(key, next = new(path, syntax, substituted));
                 }
 
-                var candidate = this.LookupTypeMember(substituted, name, next);
+                var candidate = this.LookupTypeMember(substituted, name, use, receiver, next, typeRole);
                 if (candidate.Ambiguous || candidate.Pending)
                 {
                     return candidate;
