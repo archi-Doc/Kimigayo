@@ -2,7 +2,7 @@
 
 Implementation coverage is informative and does not weaken language rules or Compiler requirements. All implementation-progress notes are centralized here; `planned` in a retained snapshot means implementation work, not permission to use an undesigned feature.
 
-Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding; C.24 records whole-Place ownership and cleanup analysis. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
+Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding; C.24 records whole-Place ownership and cleanup analysis; C.25 records the Core declaration catalog and native backend candidate. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
 
 ### C.1. Coverage summary
 
@@ -14,7 +14,7 @@ This table defines the recorded status of each compiler stage. The notes below d
 | Static Contracts and associated Types | Partial; see C.4, C.21 | Partial; see C.20–C.21 | Partial declaration/path verification | Not implemented | N/A |
 | `#if` / `#match` | Implemented | Not implemented | Partial | Not assessed | N/A |
 | Types | Partial | Partial; see C.16–C.19 | Partial | Not implemented | Not implemented |
-| Core intrinsic identities and Copy / Owned classification | Partial; conditional Copy clauses | Partial; see C.19 | Partial; see C.19 | N/A | N/A |
+| Core intrinsic identities and Copy / Owned classification | Partial; conditional Copy clauses | Partial; see C.19, C.25 | Partial; see C.19 | N/A | N/A |
 | Origins | Partial | Partial; see C.17 | Partial declaration requirements; see C.17 | Not implemented | Not implemented |
 | Properties | Implemented | Partial; declarations/witnesses, C.21 | Partial declaration verification | Not implemented | Not implemented |
 | Constructors and aggregate destruction | Implemented | Not implemented | Partial | Not implemented | Not implemented |
@@ -196,7 +196,7 @@ The compiler's initial output is a matched pre-optimization **.ll + .link.json**
 | Layout / ABI | Layout modes, scalar/Tuple/enum storage, ValueLowering and internal/C ABI are specified in SPEC §§21.1, 21.4, 22.3; their backend implementation is pending. |
 | Emission / artifacts | Checked CFG to LLVM, emitted runtime/Core bodies, __kimi_start, matched manifest publication and hashes are pending. Library output is inspection-only, not a native library or cross-Kotonoha ABI. |
 | Runtime | The six operations, seven Windows imports, UTF-8 string handle and normal/Abort exit codes are specified in SPEC §22.5; generated implementations are pending. |
-| Toolchain supply | LLVM 22.1.5 and the versioned backend archive are adoption requirements, not evidence of installed tools or a validated supply package. |
+| Toolchain supply | LLVM 22.1.8 and the versioned backend archive are adoption requirements, not evidence of installed tools or a validated supply package. |
 
 The first execution subset covers ordinary functions, simple locals, Unit, string literals, required Copy/Move and cleanup, and Core.writeLine. Arrays, Dictionary, inheritance, closures, static Property execution, general generic sharing, and multi-Kotonoha linking are later execution coverage; no language rule is relaxed.
 
@@ -204,7 +204,7 @@ Completion requires the **produced executable itself** to emit the 14 bytes `Hel
 
 ### C.13. Remaining implementation selections
 
-The initial design now fixes LLVM 22.1.5, windows-x64-v1, custom __kimi_start, normal exit 0 / Abort 1, the six runtime operations and seven Windows APIs, string storage, internal/C ABI, and the native backend-support contract. These are no longer open design selections. Implementation and supply validation remain incomplete.
+The initial design now fixes LLVM 22.1.8, windows-x64-v1, custom __kimi_start, normal exit 0 / Abort 1, the six runtime operations and seven Windows APIs, string storage, internal/C ABI, and the native backend-support contract. These are no longer open design selections. Implementation and supply validation remain incomplete.
 
 - Obtain and validate the actual toolchain and SDK/library inputs. The backend catalog still needs an adopted immutable packageVersion and actual archive SHA-256 for kimi-backend-windows-x64 ABI 1; examples do not constitute supplied binaries.
 - Implement/check native memcpy, memmove, memset and the special __chkstk ABI, with required unwind information and no hidden CRT, TLS, initialization or extra library dependencies. Supply _fltused once in generated IR, not in the archive.
@@ -390,3 +390,17 @@ ControlFlowAnalysis now supports reanalysis with pooled node/boundary records an
 See the [change record and subset boundary](doc/Changes/2026-09-11%20Ownership%20CFG.md). Loan/Origin/lifetime verification, partial storage, complete cleanup effects, the concrete generation gate, LLVM IR and runtime execution remain pending. No unsupported operation gains an emission certificate.
 
 Validation: 56 ownership cases were added and the old Binding-only let-reassignment expectation moved to CFG checking. All 2,155 tests pass through dotnet test in Debug and Release, including allocation assertions. The new retained-state workloads run separately from other test classes after overlapping allocation measurements showed intermittent failures; zero-byte assertions remain unchanged. Release Benchmark build: zero warnings and errors.
+
+### C.25. Core declaration catalog and native backend candidate (2026-09-11)
+
+Core now exposes an indexed catalog of the 18 required declaration groups, with stable identities and Missing/Invalid/Validated states. Copy, Owned, Callable and writeLine retain their existing Symbols; the other 14 entries remain Missing and supply no lookup candidates. Registration, restoration and shape validation share this catalog. Validation now checks Callable's declaration shape as well as Copy and Owned. IsCompleteLibrary requires every entry to validate and remains false; declaration completeness would still not establish body, layout or runtime completeness.
+
+The catalog uses retained arrays, direct identity indexing and a ReadOnlySpan view. Rebinding checks changed declarations without replacing Symbols or allocating enumeration objects. Six new tests cover catalog states, all three intrinsic shape checks, missing Option lookup and zero-byte warmed Bind/catalog validation. Option/Result bodies and Case operations, Array/collection storage, Iterator/Iterable semantics, and the remaining Core runtime operations are not implemented. General enum Case Binding and ownership provide the next foundation for Option/Result.
+
+The [Windows x64 backend sources and build instructions](backend/windows-x64/README.md) now supply a project-owned native candidate containing memcpy, memmove, memset and __chkstk. Memory operations share the forward-copy loop and use eight-byte chunks with byte tails, without heap allocation or out-of-range accesses. The archive has exactly four strong external symbols, Windows unwind records, no calls or undefined symbols, and no CRT dependency. LLVM 22.1.8 replaces 22.1.5 in SPEC and the retained startup/runtime design.
+
+The build script verifies native COFF members and emitted test IR, links and runs O0/O2 tests with a custom entry and /NODEFAULTLIB, and records source/tool/SDK/archive hashes in bin/verification.json. Both pipelines pass overlap, boundary, return-pointer, guarded-page and stack-probe tests, including a compiler-generated 32 KiB frame. The current archive SHA-256 is `74f87661ca1493fedd9d688df5e64f1346ddf9190a12db2f1b012b2f509b500c`. Tools reporting a version matched 22.1.8; llvm-lib is explicitly recorded as unversioned with its executable hash.
+
+This is a tested candidate, not an adopted backend package: adopted is false and packageVersion is unset. Assembly/unwind review, further register and OS unwind validation, representative Kimigayo-generated modules, and a frozen package version/hash remain adoption work. The compiler still has no LLVM emitter, complete generation gate, runtime execution or native supply catalog. These tests do not establish Hello world execution or a throughput improvement.
+
+Validation: all 2,164 tests pass in Debug and Release, including the new zero-byte allocation assertion. The Release Benchmark build completes with zero warnings and errors. Native O0/O2 tests pass with LLVM 22.1.8 and Windows SDK 10.0.26100.0.

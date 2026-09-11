@@ -6,7 +6,7 @@
 
 対象: Kimigayoコンパイラーの初期実行サブセットと、その後の型対応に使う生成規則
 
-基準: LLVM 22.1.5 / `x86_64-pc-windows-msvc`
+基準: LLVM 22.1.8 / `x86_64-pc-windows-msvc`
 
 本書は、起動方法、型レイアウト、内部・外部ABI、LLVM IR生成、Windows Runtimeを定める。先行案とレビュー結果を統合し、初期実装で採用する契約を確定した。
 
@@ -81,7 +81,7 @@ Kimigayoの実行プログラムができるまで
 | --- | --- |
 | 対象OS・CPU | Windows x64 |
 | ターゲット | `x86_64-pc-windows-msvc` |
-| LLVM互換性の基準 | LLVM 22.1.5 |
+| LLVM互換性の基準 | LLVM 22.1.8 |
 | 出力単位 | 1プロジェクト・1ターゲットにつき`.ll`と`.link.json`の1組 |
 | Runtimeの供給 | 抽象操作の本体を同じLLVMモジュール内に生成 |
 | backend helperの供給 | §11.3の版管理したネイティブstatic library。専用Runtime DLLは不要 |
@@ -102,7 +102,7 @@ Kimigayoコンパイラーの担当
    └─ ProjectName.link.json
 
 利用者が手動で実行
-├─ LLVM 22.1.5によるオブジェクト生成
+├─ LLVM 22.1.8によるオブジェクト生成
 │  └─ ProjectName.obj
 └─ lld-linkによるリンク
    └─ Application.exe
@@ -391,7 +391,7 @@ paddingは言語上のFieldではなく、初期化済みの値でも内容・�
 
 ### 5.2. Windows x64の基本型表現
 
-初期ターゲットはlittle endian、通常のアドレス空間は0、ポインター幅は64ビットとする。次の表を初期実装の対応表として採用し、LLVM 22.1.5の対象DataLayoutとの一致を検証する。
+初期ターゲットはlittle endian、通常のアドレス空間は0、ポインター幅は64ビットとする。次の表を初期実装の対応表として採用し、LLVM 22.1.8の対象DataLayoutとの一致を検証する。
 
 「格納型」はメモリ上のLLVM型、「計算型」はLLVM命令の値として使う型を指す。LLVMの整数型iN自身には符号の区別がないので、符号付き・符号なしの違いは比較・除算・変換などの命令選択に反映する。
 
@@ -1049,7 +1049,7 @@ Application・Libraryとも、FP使用の有無や最適化結果にかかわら
 | abiVersion | 1。供給シンボル・呼出し契約が変われば更新 |
 | packageVersion | 検証した供給物の版。同じ版を別内容に差し替えない |
 | artifactSha256 | 採用する.libの実バイト列のSHA-256 |
-| 対象 | windows-x64-v1 / LLVM 22.1.5 / 本書のCPU・FP・unwind契約 |
+| 対象 | windows-x64-v1 / LLVM 22.1.8 / 本書のCPU・FP・unwind契約 |
 | providedSymbols | __chkstk、memcpy、memmove、memset。強い外部定義を各一つ供給 |
 
 供給物は1シンボル1archive memberを基本とし、不要なhelperを取り込まない。追加外部依存・初期化コードを含めない。パスやファイル名の一致だけで適合とせず、§16.4の記録と実ファイルを手動ビルド時に照合する。カタログの版・ABI・ハッシュが未確定なら、仮の供給物を採用した生成成功にはしない。
@@ -1408,7 +1408,7 @@ llvm.memcpy.inlineは定数長で外部呼出しを禁止する必要がある�
 
 #### 11.12.2. 数値・文字列定数
 
-整数の大きさと十進数の正確な値をfittingまで保持し、決定した型へ一度だけ丸める。fitting前にホストのf64へ落とさず、エミットにはfitting済みのビット列を使う。出力はロケールや既定の文字列変換に依存させない。浮動小数点定数はLLVM 22.1.5が受理する正確な16進表記等で出力し、再読込み後のビット一致を検証する。
+整数の大きさと十進数の正確な値をfittingまで保持し、決定した型へ一度だけ丸める。fitting前にホストのf64へ落とさず、エミットにはfitting済みのビット列を使う。出力はロケールや既定の文字列変換に依存させない。浮動小数点定数はLLVM 22.1.8が受理する正確な16進表記等で出力し、再読込み後のビット一致を検証する。
 
 ```text
 0.1をf32へfitting
@@ -1639,7 +1639,7 @@ declare dllimport void @ExitProcess(i32) noreturn
 
 WindowsのBOOLを`i1`で宣言しない。Runtime内部の論理boolとは別に変換する。また、LLVMの`HeapAlloc()`は「引数型を省略した宣言」ではなく「引数なしの宣言」なので使用しない。
 
-実際のモジュールには、既存IrTargetから得た`target datalayout`も生成する。LLVM 22.1.5との整合を検証し、CPU/OSを無視した共通のDataLayoutを使わない。呼び出し規約は宣言側とcall側で一致させる。
+実際のモジュールには、既存IrTargetから得た`target datalayout`も生成する。LLVM 22.1.8との整合を検証し、CPU/OSを無視した共通のDataLayoutを使わない。呼び出し規約は宣言側とcall側で一致させる。
 
 `dllimport`はインポート参照の生成方法を指定する。必要なライブラリーを自動的にリンクする指示ではない。[LLVM DLL Storage Classes](https://llvm.org/docs/LangRef.html#dll-storage-classes)
 
@@ -1857,7 +1857,7 @@ OutputKind・OutputPath・NativeLibraries・Optimizationは追加予定の設定
 
 ### 16.2. 手動コマンド
 
-以下は、rdtsc.link.jsonのentryが`__kimi_start`、最適化がO2、リンク入力がKernel32.libと専用backend libraryの場合の例である。実際にはmanifestの全入力と§11.3の追加依存を使う。LLVM 22.1.5と、実装・検証済みの専用backend libraryを含むx64用ライブラリーを解決できる環境を前提とする。
+以下は、rdtsc.link.jsonのentryが`__kimi_start`、最適化がO2、リンク入力がKernel32.libと専用backend libraryの場合の例である。実際にはmanifestの全入力と§11.3の追加依存を使う。LLVM 22.1.8と、実装・検証済みの専用backend libraryを含むx64用ライブラリーを解決できる環境を前提とする。
 
 ```powershell
 opt -S -passes="default<O2>" -mtriple=x86_64-pc-windows-msvc rdtsc.ll -o rdtsc.opt.ll
@@ -1877,7 +1877,7 @@ Kernel32.libを検索できない環境では、利用者がライブラリー�
 | 段階 | 確認できたこと |
 | --- | --- |
 | Kimigayoの生成成功 | 対応範囲の意味検査とIR生成が完了し、対応する.llと.link.jsonを出力 |
-| LLVMでの検証・オブジェクト生成成功 | LLVM 22.1.5が生成IRを受理し、オブジェクトへ変換できた |
+| LLVMでの検証・オブジェクト生成成功 | LLVM 22.1.8が生成IRを受理し、オブジェクトへ変換できた |
 | 手動リンク成功 | 必要な外部シンボルを解決し、実行ファイルを生成できた |
 | 実行確認成功 | 実行ファイル自身の出力と終了状態が期待どおりだった |
 
@@ -1913,7 +1913,7 @@ OutputPathの拡張子を.link.jsonへ置き換え、.llと同じディレクト
   "target": "x86_64-pc-windows-msvc",
   "codegen": {
     "profile": "windows-x64-v1",
-    "llvmVersion": "22.1.5",
+    "llvmVersion": "22.1.8",
     "cpu": "x86-64",
     "features": ["+sse2"],
     "relocationModel": "pic",
@@ -1970,7 +1970,7 @@ OutputPathの拡張子を.link.jsonへ置き換え、.llと同じディレクト
 
 | 項目 | 採用値 |
 | --- | --- |
-| LLVM / target | 22.1.5 / x86_64-pc-windows-msvc |
+| LLVM / target | 22.1.8 / x86_64-pc-windows-msvc |
 | CPU / feature指定 | x86-64 / +sse2。通常のx86-64基準とし、AVX等を要求しない |
 | relocation model / code model | pic / small |
 | DataLayout | 上記ターゲットから得る値。§5のTypeLayoutとの一致を検証 |
@@ -2050,7 +2050,7 @@ Windows x64の通常のimage base・ASLRに対応するため、PICでコード�
 
 ### 17.4. LLVMと手動リンク
 
-LLVM 22.1.5の検証器で、関数型、分岐先、基本ブロック終端、SSAの整合を確認する。Applicationは手動でオブジェクト生成・リンク・実行まで確認し、未定義補助シンボルが残らないことを初期サブセットの検証に含める。Libraryは保存用IRのlinkage・署名・本体とオブジェクト生成を確認し、外部リンク・実行の成功を完了条件にしない。
+LLVM 22.1.8の検証器で、関数型、分岐先、基本ブロック終端、SSAの整合を確認する。Applicationは手動でオブジェクト生成・リンク・実行まで確認し、未定義補助シンボルが残らないことを初期サブセットの検証に含める。Libraryは保存用IRのlinkage・署名・本体とオブジェクト生成を確認し、外部リンク・実行の成功を完了条件にしない。
 
 Debug/Release双方について、言語上の検査、出力、終了状態が一致することを確認する。最適化の有無で所有権上の可否を変えない。
 
@@ -2156,7 +2156,7 @@ goldenは全出力の無条件な文字列一致だけにせず、意味を変�
 | 診断・終了 | 非ASCIIパスも固定診断はASCII。利用者の$abort文字列はUTF-8を保持。正常終了0・Abort 1、整数戻り値のmainは診断 |
 | intrinsic | 定数長・可変長のmemcpy、重複を伴うmemmove、memset。命令展開と外部呼出しの両経路が契約を満たす |
 
-LLVM verifierだけでFFI・unwind・helperの適合は証明できない。基準版22.1.5で、IR検証、objectのシンボル・unwind情報、実際のC呼出しと起動・終了まで確認する。別版での予備検証を基準版の合格に置き換えない。
+LLVM verifierだけでFFI・unwind・helperの適合は証明できない。基準版22.1.8で、IR検証、objectのシンボル・unwind情報、実際のC呼出しと起動・終了まで確認する。別版での予備検証を基準版の合格に置き換えない。
 
 <a id="section-18"></a>
 
@@ -2182,7 +2182,7 @@ LLVM verifierだけでFFI・unwind・helperの適合は証明できない。基�
 | SPEC §12.2・§13.7・§16.2・§17.3、Appendix A.6–A.7 | 値・Place、評価順、経路別cleanup、定数評価の既存意味を保ち、生成上の契約を関連づける |
 | STATUSのLowering・layout項目 | 入力確定、生成対象、layout、ABI、CFG・SSA、転送・定数、相互運用の進捗を分けて記録 |
 | STATUSのLLVM・ビルド設定 | windows-x64-v1、unwind、O0/O2、手動optとmanifestのcodegen・backendSupport情報を反映 |
-| STATUS C.13 | LLVM 22.1.5、独自entry、6操作・7APIと別供給のbackend libraryを記録 |
+| STATUS C.13 | LLVM 22.1.8、独自entry、6操作・7APIと別供給のbackend libraryを記録 |
 | SPECの数値・Abort規則、STATUSの対応範囲 | ABI標準FP環境、通常FP命令、128bit演算の初期制限、ASCII固定診断、終了コードの制限を関連づける |
 
 実装状況はSTATUSで管理する。本書に例があることや、設計が確定したことだけを根拠に、Parsing・Binding・Analysis・Lowering・Runtimeの実装済み範囲を拡大しない。
@@ -2231,4 +2231,4 @@ LLVM verifierだけでFFI・unwind・helperの適合は証明できない。基�
 
 本書で初期Windows x64の採用仕様を確定する。後続機能として明示した物理表現・公開ABIは今回の確定範囲に含めない。
 
-本書の確定はコンパイラー・専用backend libraryの実装完了、LLVM 22.1.5での全検証、SPEC・STATUSへの反映完了を意味しない。実装の完了は§16.3と§17の段階別の検証で判断する。
+本書の確定はコンパイラー・専用backend libraryの実装完了、LLVM 22.1.8での全検証、SPEC・STATUSへの反映完了を意味しない。実装の完了は§16.3と§17の段階別の検証で判断する。

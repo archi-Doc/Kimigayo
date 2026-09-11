@@ -25,19 +25,43 @@ public enum CompilerFunctionKind : byte
 /// <summary>The compiler-owned Core identities. This is not the complete runtime Core library.</summary>
 public sealed class CoreIntrinsics
 {
+    private readonly CoreDeclaration[] declarations =
+    [
+        new(CoreDeclarationId.Copy, "Copy", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Owned, "Owned", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Callable, "Callable", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.WriteLine, "writeLine", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Option, "Option", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Result, "Result", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Array, "Array", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Index, "Index", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Range, "Range", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.ResolvedRange, "ResolvedRange", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Slice, "Slice", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Dictionary, "Dictionary", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Stringify, "Stringify", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Equatable, "Equatable", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Comparable, "Comparable", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Iterator, "Iterator", null, CoreDeclarationState.Missing),
+        new(CoreDeclarationId.Iterable, "Iterable", null, CoreDeclarationState.Missing),
+        // The specification defers the public spellings of this operation family.
+        new(CoreDeclarationId.ObjectOwnership, string.Empty, null, CoreDeclarationState.Missing),
+    ];
+
     internal CoreIntrinsics(Compilation compilation)
     {
         this.Kotonoha = new(compilation, "Core", "compiler://Core/" + Compilation.CurrentLanguageVersion);
         var context = new TokenContext(null, ModifierKind.Public, false);
-        this.Kotonoha.RootKoto.GetOrAddGroup("Copy", TokenKind.Contract, context, default);
-        this.Kotonoha.RootKoto.GetOrAddGroup("Owned", TokenKind.Contract, context, default);
-        this.Kotonoha.RootKoto.GetOrAddGroup("Callable", TokenKind.Contract, context, default);
         this.Scope = new(this.Kotonoha.RootKoto);
         this.Module = new("Core", BindingSymbolKind.Container, this.Kotonoha.RootKoto, this.Scope);
-        this.Copy = this.Create(0, IntrinsicKind.Copy);
-        this.Owned = this.Create(1, IntrinsicKind.Owned);
-        this.Callable = this.Create(2, IntrinsicKind.Callable);
+        for (var i = 0; i < 3; i++)
+        {
+            this.Kotonoha.RootKoto.GetOrAddGroup(this.declarations[i].Name, TokenKind.Contract, context, default);
+            this.declarations[i] = this.declarations[i] with { Symbol = this.Create(i, (IntrinsicKind)(i + 1)) };
+        }
+
         this.WriteLine = this.CreateWriteLine();
+        this.declarations[(int)CoreDeclarationId.WriteLine] = this.declarations[(int)CoreDeclarationId.WriteLine] with { Symbol = this.WriteLine };
         this.Restore();
     }
 
@@ -45,30 +69,65 @@ public sealed class CoreIntrinsics
 
     public string Version => Compilation.CurrentLanguageVersion;
 
-    public bool IsCompleteLibrary => false;
+    /// <summary>Gets a value indicating whether all required declarations are validated, separately from body, layout and runtime support.</summary>
+    public bool IsCompleteLibrary => this.IsValid && this.ValidatedDeclarationCount == this.declarations.Length;
+
+    /// <summary>Gets retained catalog entries. States are refreshed by each Bind.</summary>
+    public ReadOnlySpan<CoreDeclaration> Declarations => this.declarations;
+
+    public int ValidatedDeclarationCount { get; private set; }
 
     public BindingSymbol Module { get; }
 
-    public BindingSymbol Copy { get; }
+    public BindingSymbol Copy => this.declarations[(int)CoreDeclarationId.Copy].Symbol!;
 
-    public BindingSymbol Owned { get; }
+    public BindingSymbol Owned => this.declarations[(int)CoreDeclarationId.Owned].Symbol!;
 
-    public BindingSymbol Callable { get; }
+    public BindingSymbol Callable => this.declarations[(int)CoreDeclarationId.Callable].Symbol!;
 
     public BindingSymbol WriteLine { get; }
 
     internal BindingScope Scope { get; }
 
-    internal bool IsValid => this.Kotonoha.GeneratedFunction is null && this.Kotonoha.RootKoto.NestedContainers.Count == 3 &&
-        this.Kotonoha.RootKoto.Members.Count == 1 && ReferenceEquals(this.Kotonoha.RootKoto.Members[0], this.WriteLine.Declaration) &&
-        this.Valid(this.Copy, 0) && this.Valid(this.Owned, 1) && this.ValidWriteLine();
+    internal bool IsValid
+    {
+        get
+        {
+            var valid = this.Kotonoha.GeneratedFunction is null && this.Kotonoha.RootKoto.NestedContainers.Count == 3 &&
+                this.Kotonoha.RootKoto.Members.Count == 1 && ReferenceEquals(this.Kotonoha.RootKoto.Members[0], this.WriteLine.Declaration);
+            this.ValidatedDeclarationCount = 0;
+            for (var i = 0; i < this.declarations.Length; i++)
+            {
+                var entry = this.declarations[i];
+                var state = CoreDeclarationState.Missing;
+                if (entry.Symbol is { } symbol)
+                {
+                    var matches = i < 3 ? this.Valid(symbol, i) : entry.Id == CoreDeclarationId.WriteLine && this.ValidWriteLine();
+                    state = matches ? CoreDeclarationState.Validated : CoreDeclarationState.Invalid;
+                    valid &= matches;
+                    this.ValidatedDeclarationCount += matches ? 1 : 0;
+                }
+
+                this.declarations[i] = entry with { State = state };
+            }
+
+            return valid;
+        }
+    }
+
+    public BindingSymbol? GetSymbol(CoreDeclarationId id) => this.declarations[(int)id].Symbol;
 
     internal void Restore()
     {
         this.Scope.Reset();
-        this.Scope.Types.Add(this.Copy.Name, this.Copy);
-        this.Scope.Types.Add(this.Owned.Name, this.Owned);
-        this.Scope.Types.Add(this.Callable.Name, this.Callable);
+        for (var i = 0; i < this.declarations.Length; i++)
+        {
+            if (this.declarations[i].Symbol is { Kind: BindingSymbolKind.Type } symbol)
+            {
+                this.Scope.Types.Add(symbol.Name, symbol);
+            }
+        }
+
         this.Kotonoha.RootKoto.BoundSymbol = this.Module;
         this.Kotonoha.RootKoto.BindingState = BindingState.Resolved;
     }
@@ -105,7 +164,8 @@ public sealed class CoreIntrinsics
     }
 
     private bool ValidWriteLine()
-        => this.WriteLine.Declaration is FunctionKoto function &&
+        => this.WriteLine.CompilerFunction == CompilerFunctionKind.WriteLine && ReferenceEquals(this.WriteLine.Scope, this.Scope) &&
+        this.WriteLine.Declaration is FunctionKoto function &&
         ReferenceEquals(function.Parent, this.Kotonoha.RootKoto) &&
         function.Name == "writeLine" && function.Modifier == ModifierKind.Public &&
         function.GenericArguments.Count == 0 && function.Origins.Count == 0 && function.Parameters.Count == 1 &&
@@ -118,5 +178,8 @@ public sealed class CoreIntrinsics
         };
 
     private bool Valid(BindingSymbol symbol, int index)
-        => ReferenceEquals(this.Kotonoha.RootKoto.NestedContainers[index], symbol.Declaration) && symbol.Declaration is ContractKoto { Members.Count: 0, ConstraintNodes.Count: 0, Bases.Count: 0, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public } declaration && declaration.Name == symbol.Name;
+        => index < this.Kotonoha.RootKoto.NestedContainers.Count && ReferenceEquals(this.Kotonoha.RootKoto.NestedContainers[index], symbol.Declaration) &&
+        symbol.Intrinsic == (IntrinsicKind)(index + 1) && ReferenceEquals(symbol.Scope, this.Scope) &&
+        symbol.Declaration is ContractKoto { Members.Count: 0, ConstraintNodes.Count: 0, Bases.Count: 0, GenericParameterNodes.Count: 0, OriginNames.Count: 0, NestedContainers.Count: 0, Modifier: ModifierKind.Public, AttributeChain: null } declaration &&
+        declaration.Name == symbol.Name && ReferenceEquals(declaration.Parent, this.Kotonoha.RootKoto);
 }

@@ -941,6 +941,13 @@ A newly owned temporary has exclusive writable capability over its whole Tempora
 
 Unless a construct needs a longer lifetime, a temporary lasts until the outermost expression that created it finishes. Argument temporaries last through the call; iteration sources and `match` subjects last for their required use. Destroy remaining temporaries in reverse creation order. After a Move, the transferred value follows its destination's lifetime, while the original Temporary Place keeps its original lifetime and destroys only remaining Initialized parts.
 
+For temporary-lifetime purposes, conditions in `if` and `while` have the following boundaries:
+
+- Temporaries created while evaluating an `if` condition remain alive until the entire `if` expression finishes, including execution of the selected branch. This also applies to each evaluated `else if` condition; a false condition does not end its temporaries' lifetimes.
+- Each evaluation of a `while` condition is a separate outermost expression for temporary-lifetime purposes. Its remaining temporaries are destroyed after the Boolean result is obtained, before entering the body when true or completing the loop when false. Each subsequent evaluation creates fresh temporaries.
+
+These rules also apply to temporaries created in a condition's header-binding initializer. The header binding itself follows its [separately specified scope](#1472-if). Moves retain the destination-lifetime rule above; outgoing control transfers follow [scope-exit destruction](#162-scope-exit-destruction).
+
 New borrows of owned temporaries depend on their Temporary Places and cannot outlive them. Exclusive capability permits the applicable explicit exclusive borrow; it does not bypass the [Borrow table](#1355-explicit-borrow-and-reborrow).
 
 ```kimi
@@ -4765,6 +4772,8 @@ outer: for x in xs
 
 `for` evaluates its iterable once and executes its body for each supplied value. A single Name binds the value; a parenthesized, comma-separated binding destructures it. `while` evaluates a Boolean condition before each iteration and executes its body while that condition is true. Condition parentheses are optional.
 
+Temporaries in each `while` condition evaluation are destroyed immediately after the test, before body entry or false termination; see [temporary lifetimes](#362-lifetime-and-borrowing).
+
 ```kimi
 for (key, value) in dictionary
     process(key, value)
@@ -4893,6 +4902,8 @@ A selection that does not require a result has only Block bodies, no self-target
 ##### 14.7.2. `if`
 
 `if` tests Boolean conditions in order and executes the first selected branch. It may have subsequent `else if` branches and one final `else`. Condition parentheses are optional. Each branch independently chooses an Expression body or a Block body.
+
+Temporaries in evaluated `if` and `else if` conditions remain alive until the entire `if` expression finishes; see [temporary lifetimes](#362-lifetime-and-borrowing).
 
 In `if` and `while`, a parenthesized condition containing one initialized `let` or `var` tests the bound Boolean value. For example, `if (var z = Func()) => 1 else => 0` requires Boolean `z`. Evaluate the initializer once and enforce any explicit binding Type. Ordinary Block declarations still produce no result.
 
@@ -7193,7 +7204,7 @@ Replace OutputPath's extension with .link.json in the same directory and write U
   "target": "x86_64-pc-windows-msvc",
   "codegen": {
     "profile": "windows-x64-v1",
-    "llvmVersion": "22.1.5",
+    "llvmVersion": "22.1.8",
     "cpu": "x86-64",
     "features": ["+sse2"],
     "relocationModel": "pic",
@@ -7240,7 +7251,7 @@ Complete both temporary outputs before publication, publish the manifest last, a
 
 ##### 20.8.4. Manual toolchain example
 
-With LLVM 22.1.5 and all manifest inputs resolved, including a verified backend archive:
+With LLVM 22.1.8 and all manifest inputs resolved, including a verified backend archive:
 
 ```powershell
 opt -S -passes="default<O2>" -mtriple=x86_64-pc-windows-msvc ProjectName.ll -o ProjectName.opt.ll
@@ -7346,7 +7357,7 @@ Use ordinary LLVM structs, not packed `<{ ... }>`, for C layout. Verify allocati
 
 ##### 21.1.4. Initial scalar representation
 
-windows-x64-v1 is little endian, uses address space 0, and has 64-bit pointers. Validate this table against LLVM 22.1.5's target DataLayout. LLVM integer Types carry width, not signedness; select signed/unsigned operations from the language Type.
+windows-x64-v1 is little endian, uses address space 0, and has 64-bit pointers. Validate this table against LLVM 22.1.8's target DataLayout. LLVM integer Types carry width, not signedness; select signed/unsigned operations from the language Type.
 
 | Language Type | LLVM storage | LLVM computation | Size / alignment / stride, bytes |
 | --- | --- | --- | --- |
@@ -7651,7 +7662,7 @@ call void @llvm.memcpy.p0.p0.i64(ptr align 8 %dst, ptr align 8 %src, i64 24, i1 
 
 ##### 21.5.1. Target and optimization
 
-The initial profile is **windows-x64-v1**: LLVM **22.1.5**, target **x86_64-pc-windows-msvc**, CPU **x86-64**, features **+sse2**, relocation model **pic**, code model **small**, asynchronous unwind tables. Use the target's verified DataLayout (§21.1). Do not infer extra features from the build machine, require AVX, or compensate for absolute 32-bit data references with /FIXED or a low image base. Diagnose static artifacts outside the code-model range separately from heap size limits.
+The initial profile is **windows-x64-v1**: LLVM **22.1.8**, target **x86_64-pc-windows-msvc**, CPU **x86-64**, features **+sse2**, relocation model **pic**, code model **small**, asynchronous unwind tables. Use the target's verified DataLayout (§21.1). Do not infer extra features from the build machine, require AVX, or compensate for absolute 32-bit data references with /FIXED or a low image base. Diagnose static artifacts outside the code-model range separately from heap size limits.
 
 Every generated function definition, including entry and runtime, carries matching target-cpu, target-features, denormal-fp-math=ieee,ieee, and uwtable(async) (LLVM uwtable is equivalent). Emit:
 
@@ -7721,7 +7732,7 @@ br i1 %overflow, label %abort_overflow, label %success
 
 All constants are exact in the source format. Ordered comparisons reject NaN/infinities. Only then execute fptosi/fptoui, which truncates toward zero. No trunc/truncf helper or llvm.trunc is needed; do not speculatively convert and hide poison with select. Thus -128.75 to i8 yields -128, -0.75 to u8 yields 0, while -1 to u8 and f32 2147483648 to i32 Abort.
 
-**128-bit subset.** Support storage/acquisition, internal arguments/results, comparisons, bit operations, shifts, integer conversions, and checked add/subtract/negate/increment/decrement/multiply, subject to verification that LLVM 22.1.5 needs no unsupplied helper. Diagnose i128/u128 division/remainder and both directions of f32/f64 conversion, including compound assignments, before optimization even in unused bodies/branches. Required constant evaluation and fitted constant storage are separate. __divti3, __udivti3, __modti3, __umodti3 and __fix*ti/__float*ti* helpers are not supplied initially. Verify actual multiplication expansion rather than assuming a helper from its name.
+**128-bit subset.** Support storage/acquisition, internal arguments/results, comparisons, bit operations, shifts, integer conversions, and checked add/subtract/negate/increment/decrement/multiply, subject to verification that LLVM 22.1.8 needs no unsupplied helper. Diagnose i128/u128 division/remainder and both directions of f32/f64 conversion, including compound assignments, before optimization even in unused bodies/branches. Required constant evaluation and fitted constant storage are separate. __divti3, __udivti3, __modti3, __umodti3 and __fix*ti/__float*ti* helpers are not supplied initially. Verify actual multiplication expansion rather than assuming a helper from its name.
 
 **Raw pointer operations.** Use the same address-space-0 ptr for allowed pointer-Type casts, icmp eq/ne for same-Type equality/null tests, ptrtoint to i64 and inttoptr from i64 for usize conversions. Use a storage-Type GEP with i64 index for p + n and sub i64 0, n for p - n; no inbounds or nsw/nuw in the initial form. Check GEP spacing against positive stride(T). Zero displacement preserves null as well as other pointers. Arithmetic alone proves neither alignment nor initialization. These operations retain §5's unsafe allocation/provenance, mathematical displacement, and no-wrap conditions; violations need not Abort. Integer reconstruction creates no extra dereference permission. Typed access still needs valid range, alignment, permissions, initialization, and replacement legality. Runtime buffer arithmetic has its own checked contract (§22.5.3).
 
@@ -7743,7 +7754,7 @@ All generated definitions use uwtable(async). Let LLVM produce required .pdata/.
 
 ##### 21.5.6. Constants
 
-Retain exact integer magnitudes and decimal values through fitting; round once to the selected f32/f64 and emit its fitted bits using exact LLVM 22.1.5 syntax. Do not round through host f64 or culture-dependent formatting. Verify bit equality after LLVM rereading (for example, 0.1 fitted to f32 has bits 0x3DCCCCCD).
+Retain exact integer magnitudes and decimal values through fitting; round once to the selected f32/f64 and emit its fitted bits using exact LLVM 22.1.8 syntax. Do not round through host f64 or culture-dependent formatting. Verify bit equality after LLVM rereading (for example, 0.1 fitted to f32 has bits 0x3DCCCCCD).
 
 After source newline/escape processing, encode strings as UTF-8 with byte lengths; embedded NUL is data, with no automatic terminator. Preserve interpolation evaluation order. Share identical byte sequences within the module as private unnamed_addr constants; backing addresses do not define string equality/identity. An empty literal is Static/null/length zero with no allocation. Non-Copy ownership remains unchanged (§22.5.5).
 
@@ -8263,7 +8274,7 @@ Preserve one-time receiver/argument evaluation, index-evaluation protection, exc
 
 #### A.14. Layout, LLVM, and runtime verification
 
-Validate windows-x64-v1 with LLVM 22.1.5, distinguishing semantic acceptance, TypeLayout, IR structure, object ABI/dependencies/unwind, and actual execution. The verifier alone cannot establish layout, foreign ABI, ownership transfer, or correct startup. Keep input/target/settings/expected results together; retain representative golden IR plus structural checks, and normalize only irrelevant internal numbering/paths.
+Validate windows-x64-v1 with LLVM 22.1.8, distinguishing semantic acceptance, TypeLayout, IR structure, object ABI/dependencies/unwind, and actual execution. The verifier alone cannot establish layout, foreign ABI, ownership transfer, or correct startup. Keep input/target/settings/expected results together; retain representative golden IR plus structural checks, and normalize only irrelevant internal numbering/paths.
 
 | Area | Required coverage |
 | --- | --- |
