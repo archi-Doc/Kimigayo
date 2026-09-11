@@ -222,6 +222,8 @@ public func main() -> ()
 
 通常の関数として、Unitを返す`return`や末尾到達が使える。起動時の呼び出しだけに特別な所有権規則は導入しない。
 
+初期版の安全な言語APIでは任意のプロセス終了コードを指定できない。正常終了は0、Abortは1に固定する。mainの整数戻り値やCore.exit等は§19の後続拡張とし、Runtime.Exitは内部操作に留める。
+
 アプリケーション内のRoot直下のpublic mainは、起動用の署名として検査する。不適格な宣言は診断し、overloadの中から都合のよい候補だけを選ばない。ライブラリーではmainを通常の関数として扱い、アプリケーション用の署名を要求しない。
 
 ```kimi
@@ -408,7 +410,7 @@ paddingは言語上のFieldではなく、初期化済みの値でも内容・�
 | raw unsafe/T | ptr | ptr | 8 / 8 / 8 |
 | Unit: () | 物理格納を省略可能 | 通常の値を省略可能 | 0 / 1 / 0 |
 
-これはメモリ表現の表であり、全演算の実装完了やLibraryImportでの許可を意味しない。たとえばi128の演算に補助関数が必要なら、その供給を確認する。Cとの交換で認める型は§9に限定する。safe borrowやobject handleの表現を、このraw pointerの行から推論しない。
+これはメモリ表現の表であり、全演算の対応やLibraryImportでの許可を意味しない。i128/u128の演算範囲は§11.5.2、Cとの交換で認める型は§9に限定する。safe borrowやobject handleの表現を、このraw pointerの行から推論しない。
 
 #### 5.2.1. bool
 
@@ -785,6 +787,8 @@ LibraryImportの第1引数は論理ライブラリー名、第2引数は外部�
 
 引数を左から右へ一度ずつ取得し、正常復帰後は通常cleanupへ戻る。自動marshalling、参照先の保持、確保、解放、所有権の取得を挿入しない。LibraryImport先は、C++例外・SEH unwind・longjmp等によってKimigayoフレームを横断してはならない。callback・再入も禁止し、違反時の動作とcleanupは保証しない。外部内部だけで捕捉・完結する制御移動はこの禁止に含めない。初期エミットではこの契約だけを根拠にnounwindを付けず、例外を捕捉するlandingpadも生成しない。外部呼び出しも既存のLoanを無効化する権限を与えない。
 
+外部接続には§11.6.2のFP環境契約も適用する。ABI上許可される環境変更関数でも、この契約を満たさなければ初期版の接続対象外である。契約違反後の計算結果は保証せず、自動的な環境修復は行わない。
+
 論理名の解決に失敗した場合や対象ABIで扱えない署名はコンパイル時に診断する。必要なリンク入力は.link.jsonで利用者へ渡し、手動リンクまたはロードで未解決シンボルがあれば実行開始前に失敗させる。
 
 ### 9.5. Windows x64のC ABI対応表
@@ -989,8 +993,6 @@ entry:
 
 暗黙方式ではentry bodyがトップレベルコードを実行し、明示方式では明示的mainへ接続する。必要なRuntime初期化がある場合は、entry bodyより前に追加する。初期のheap・標準ハンドル取得は各操作内で行えるため、空の初期化関数を必須にしない。
 
-NeedsKimigayoFpEnvironmentがtrueのApplicationでは、§11.6.2の環境設定もentry bodyより前に生成する。上の断片はその初期化を省略した構造例である。
-
 NeverをLLVMの戻り値型として作らない。戻らない処理は`void`の関数・`noreturn`属性・`unreachable`などで表現する。未解決の解析結果をunreachableへ置換しない。
 
 ### 11.3. 最適化とコード生成に伴う依存
@@ -1003,8 +1005,8 @@ NeverをLLVMの戻り値型として作らない。戻らない処理は`void`�
 | --- | --- |
 | memcpy・memmove・memset | LLVM intrinsicが外部呼出しへ変換された場合の実体を、専用のネイティブstatic libraryから供給 |
 | __chkstk | 同じlibrary内のWindows x64専用アセンブリから供給。必要なprobeを無効化しない |
-| _fltused | §11.3.3の判定で生成.llにデータ定義を一つ供給 |
-| stack protector・その他の演算helper | 供給元とABIを追加検証するまで、必要とする機能を未対応とする |
+| _fltused | Application・Libraryとも、生成.llにデータ定義を一つ供給（§11.3.3） |
+| stack protector・その他の演算helper | 供給元とABIを追加検証するまで、必要とする機能を未対応とする。128bit演算の範囲は§11.5.2 |
 
 通常の一括メモリ操作は§11.12.1のLLVM intrinsicを優先し、命令展開・vector化・外部呼出しの選択をLLVMへ任せる。intrinsicの使用は外部helperが不要になる保証ではない。
 
@@ -1031,17 +1033,13 @@ helper供給物の採用試験には、次を含める。
 
 #### 11.3.3. _fltusedの定義と供給物の識別
 
-最適化前の生成対象にf32/f64、またはinline componentとしてそれらを含む型の値が現れればNeedsFltUsedをtrueとし、それ以外はfalseとする。定数・load/store・演算・変換・call、生成関数の引数・戻り値、生成するglobal initializerを含む。型名の宣言だけやポインターの参照先型は数えない。最適化で値が消えても判定を変更しない。
-
-trueなら次の定義を生成し、providedRuntimeSymbolsへ記録する。これはbackendの参照を解決するmarkerであり、値0をCRT初期化済み・未初期化の判定には使わない。
+Application・Libraryとも、FP使用の有無や最適化結果にかかわらず、生成モジュールに次の定義を一つ出力し、providedRuntimeSymbolsへ記録する。
 
 ```llvm
 @_fltused = global i32 0, align 4
 ```
 
-external linkageの強い定義を一つだけ持ち、dllimport・weak・commonにはしない。専用backend libraryは_fltusedを定義しない。falseの出力で後続LLVMが_fltusedを要求した場合はプロファイルの対応漏れとしてビルドを失敗させ、実装の判定を修正する。
-
-NeedsFltUsedはリンク用、NeedsKimigayoFpEnvironmentは演算環境用（§11.6.2）であり、別の判定である。FP値の転送だけなら前者だけがtrueになり得る。
+これはbackend参照を解決するmarkerであり、値0はCRT初期化状態を表さない。external linkageの強い定義とし、dllimport・weak・commonにはしない。専用backend libraryを含む他のリンク入力は同名を定義してはならない。CRT連携・複数モジュールの外部リンクを追加するときは、定義の所有者を改めて定める。
 
 専用backend libraryの採用情報をコンパイラーのプロファイルカタログに固定する。
 
@@ -1112,7 +1110,7 @@ GEPの要素間隔がstride(T)と一致することをTypeLayoutで確認する�
 
 ### 11.5. 検査付き算術と変換
 
-整数overflow、ゼロ除算、不正shift、数値変換の失敗、評価順序は既存SPECに従う。ここでは、その意味をLLVMへ落とす方法を定める。
+整数overflow、ゼロ除算、不正shift、数値変換の失敗、評価順序は既存SPECに従う。ここでは対応する操作のLLVMへの変換を定める。128bitの初期対応範囲は§11.5.2を優先する。
 
 | 操作 | エミット規則 |
 | --- | --- |
@@ -1156,32 +1154,44 @@ ok:
 
 #### 11.5.1. floatから整数への範囲検査
 
-変換元Fはf32/f64、変換先はNビット整数（N=8,16,32,64,128）とする。Windows x64のisize/usizeにはN=64の規則を使う。
+初期版の変換元Fはf32/f64、変換先はNビット整数（N=8,16,32,64）とする。isize/usizeにはN=64を使う。数学上の規則は、小数部をゼロ方向に切り捨てた整数が変換先に収まることである。
 
-```text
-1. xがNaNまたは±InfinityならAbort
-2. y = truncTowardZero(x) を同じfloat型Fで求める
-3. 下表の下限・上限をyと比較し、範囲外ならAbort
-4. 成功edgeでのみyを整数へ変換する
-```
+実装は丸め関数を呼ばず、変換前のxを次の境界で直接検査する。pはFの有効精度（f32は24、f64は53）とする。
 
-| 変換先 | 下限（以上） | 上限（未満） |
+| 変換先 | 下限条件 | 上限条件 |
 | --- | --- | --- |
-| iN | -2^(N-1) | 2^(N-1) |
-| uN | 0 | 2^N |
+| iN、N ≤ p | x > -2^(N-1) - 1 | x < 2^(N-1) |
+| iN、N > p | x ≥ -2^(N-1) | x < 2^(N-1) |
+| uN | x > -1 | x < 2^N |
 
-truncTowardZeroは整数型への変換ではなく、小数部を落とした値をfloatで返す操作である。結果yはFで正確に表せる。境界も2のべき乗なので正確に表せるが、f32→u128だけは上限2^128が有限f32で表せない。この組では、有限値の検査後に上限比較を省略する。すべての有限f32は2^128未満だからである。
+各境界定数はFで正確に表せる。N > pでは-2^(N-1)のすぐ下に小数の表現可能値がないため、下限を以上で比較できる。orderedなfcmpで両条件を満たす場合だけ成功とし、NaN・±Infinityも拒否する。
 
-この規則はfloatに丸めたInteger.MaxValueを使わない。上限は、切捨て済みyが初めて整数型へ収まらなくなる値として排他的に比較する。検査前のfptosi/fptouiは範囲外でpoisonになり得るため、先に実行してselectで隠す方法は採らない。[LLVM float-to-integer conversion](https://llvm.org/docs/LangRef.html#fptosi-to-instruction)
+成功edgeでのみfptosi/fptouiを実行する。この命令自体がゼロ方向へ切り捨てるため、llvm.truncやtrunc/truncfは不要である。検査前の変換結果をselectで隠す方法は採らない。範囲外変換のpoisonをAbortの代用にしない。[LLVM float-to-integer conversion](https://llvm.org/docs/LangRef.html#fptosi-to-instruction)
 
 | 例 | 判定 |
 | --- | --- |
 | f32の2147483648 → i32 | 上限と等しいためAbort |
-| f64の-128.75 → i8 | y=-128なので許可 |
-| f64の-0.75 → u8 | y=-0なので0へ変換 |
-| f64の-1 → u8 | 下限未満でAbort |
+| f64の-128.75 → i8 | -129より大きいため-128へ変換 |
+| f64の-0.75 → u8 | -1より大きいため0へ変換 |
+| f64の-1 → u8 | 下限と等しいためAbort |
 
-実装では§11.6.3に従い、trunc・比較・整数変換を対応するconstrained intrinsicで生成する。全型組合せについて、境界と隣接float、小数、±0、NaN、±Infinityを数学的な整数範囲判定と照合する。
+対応する全型組合せについて、境界と隣接float、小数、±0、NaN、±Infinityを数学的な整数範囲判定と照合する。
+
+#### 11.5.2. i128/u128の初期対応範囲
+
+言語上の整数型・演算規則は維持し、windows-x64-v1で生成できる操作を次に限定する。
+
+| 操作 | 初期方針 |
+| --- | --- |
+| 格納・取得・引数・戻り値、比較、bit演算、shift、整数間変換 | 対応。通常の内部ABIと検査規則を適用 |
+| 検査付き加算・減算・単項マイナス・増減・乗算 | 対応。overflow intrinsic等を使い、追加外部helperなしで展開できることを採用版LLVMで検証 |
+| 除算・剰余、f32/f64との双方向の数値変換 | 未対応診断。対応する複合代入も含む |
+
+未対応診断は§4.6の最適化前の生成対象に適用し、定数伝播で消える式や実行時の未選択経路も同じ扱いにする。言語が要求するコンパイル時評価・literal fittingは別であり、そこで確定した128bit定数の格納は禁止しない。
+
+除算・剰余の__divti3・__udivti3・__modti3・__umodti3、FP変換の__fix*ti・__float*ti*等は初期供給物に含めない。乗算も名前だけで__muloti4等を必須と判断せず、実際の展開と未定義シンボルを確認する。対応操作から未供給helperへの参照が残れば、§11.3に従って採用検証を失敗させる。
+
+後続対応ではhelperの引数・戻り値・register・stack規則を対象backendと照合する。通常のC ABIや他OSの同名helperと互換だと仮定しない。
 
 ### 11.6. 浮動小数点と実行環境
 
@@ -1191,59 +1201,36 @@ f32/f64はIEEE 754、丸めは最も近い値・中間は偶数側とする。Na
 
 floatの比較では、通常の`==`とEquatableのNaNの扱いが異なるという既存規則も保持する。共通genericコードを特殊化するときに、Equatableの呼び出しを無条件にfcmp oeqへ置き換えない。
 
-#### 11.6.2. Windows x64での環境管理
+#### 11.6.2. Windows x64での環境契約
 
-浮動小数点演算を実装する段階では、SSE2以降の演算を使い、次のMXCSR制御状態を初期実行条件にする。
+SSE2以降の演算を使い、Windows x64 ABIの標準MXCSR制御状態を前提とする。
 
-| 制御項目 | 初期状態 |
+| 制御項目 | 状態 |
 | --- | --- |
 | 丸め方向 | 最も近い値、中間は偶数側 |
 | DAZ: 入力の非正規化数をゼロとみなす | 無効 |
 | FTZ: 小さい結果をゼロへ丸める | 無効 |
 | 浮動小数点のハードウェア例外 | マスクする。言語のAbort検査は別に生成 |
 
-これらはWindows x64 ABIで規定される標準の制御状態とも一致する。[Microsoft MXCSR](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#mxcsr)
+ABIはプログラム開始時の標準制御状態と、呼び出しをまたぐ制御bitの保持を定める。これをApplicationの起動とWindows API・LibraryImportへの接続条件として利用し、起動時のMXCSR設定、呼出しごとの保存・復元adapter、維持保証の個別フラグは生成しない。Libraryの検証用IRも同じ環境を前提とする。[Microsoft MXCSR](https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention?view=msvc-170#mxcsr)
 
-§4.6の最適化前の生成対象から、内部判定NeedsKimigayoFpEnvironmentを一度確定する。未参照関数・未選択の実行時分岐を含め、いずれかの本体にFP演算・比較・丸め・数値変換があればtrueとする。Core・cleanup・Runtimeの本体も含め、最適化後の到達可能性から変更しない。
+外部関数が内部で制御状態を変える場合は、正常復帰までに元へ戻す。制御状態の変更を目的とする関数はABI上の例外だが、初期版では接続対象外とする。外部初期化コードにも同じ接続条件を適用する。将来のexport・callback・追加スレッドの入口条件は別途定める。
 
-f32/f64の型・定数・署名があるだけ、またはload/store・ビット転送だけならtrueにしない。FP分類等を環境非依存のビット操作だけで実装する場合も同様とする。_fltused等のbackend依存の有無はこの判定と別に管理する。
+MXCSRのstatus bitは揮発であり、値や保存を保証しない。言語はこれを公開せず、外部コードもKimigayoのFP計算が残すstatus flagを観測する結果に依存してはならない。違反は§9.4の外部契約違反として扱う。
 
-Applicationでtrueなら、起動本体より前にMXCSRを設定する。falseなら環境管理を省略する。Libraryは検証・保存用なので起動時の設定を生成せず、trueの場合は関数本体の検査・生成で同じFP環境を前提とする。
+#### 11.6.3. 通常FP命令の生成
 
-```text
-浮動小数点を使うApplication
-└─ __kimi_start
-   ├─ MXCSRの制御状態を設定
-   └─ 起動本体
-      ├─ Kimigayoの計算
-      └─ 外部関数呼び出し
-         ├─ 呼び出し直前のMXCSRを保存
-         ├─ 外部関数を呼ぶ
-         ├─ 正常復帰後、保存したMXCSRを復元
-         └─ Kimigayoの計算を続ける
+初期版は通常のfadd・fsub・fmul・fdiv・fcmpと数値変換命令を使う。符号反転にはfnegを使える。fast-mathフラグを付けず、再結合・近似・積和の融合を有効にする設定も使わない。denormal-fp-mathはieee,ieeeとし、f32だけの上書きがある場合も一致させる。
+
+通常命令の既定FP環境は§11.6.2と一致するため、constrained intrinsic・strictfp・FP環境管理のためのnoinlineは付けない。例外statusやtrapの発生を言語の観測対象に含めず、計算結果・明示的なAbort検査・その他の副作用を保つLLVMの最適化を許可する。[LLVM FP environment](https://llvm.org/docs/LangRef.html#floating-point-environment)
+
+```llvm
+; 境界検査が必要な変換は、検査の成功edgeで生成する。
+%sum = fadd double %a, %b
+%less = fcmp olt double %sum, %limit
 ```
 
-FunctionAbiに`PreservesKimigayoFpEnvironment`を持たせる。これはコンパイラー内部の性質であり、利用者向けAttributeではない。NeedsKimigayoFpEnvironmentがtrueのモジュールでは、正常復帰する呼び出しを次の規則で扱う。
-
-| 呼び出し先 | 判定と処理 |
-| --- | --- |
-| Kimigayo内部関数 | 生成規則と必要なadapterにより維持を保証する |
-| Windows API | 初期は未保証。個別の契約を確認した関数だけ維持を保証できる |
-| LibraryImport | 初期は未保証。保存・呼出し・復元を行う |
-| noreturn | 復元edgeを作らない |
-| 将来のexport / callback | 外部入口と出口の保存・設定・復元を別途定義する |
-
-環境を変更する可能性のある呼び出しは、非公開・noinline・strictfpのadapter内に置く。strictfp自体は環境維持の保証ではない。MXCSRの保存と復元は、副作用と順序を表せるターゲットintrinsicまたはinline asmで生成し、間に別のKimigayo計算を入れない。制御レジスター操作にWindows APIを呼ばず、GetLastErrorの値を変えない。保存を省略できるのは維持保証を持つ呼び出しだけである。
-
-#### 11.6.3. 通常FP命令とconstrained intrinsic
-
-初期エミットでは、FP演算・比較・丸め・数値変換を行う関数は全FP操作をconstrained intrinsicへ統一し、strictfpを付ける。該当関数内のcall site、FP環境adapterとその呼び出し元にもLLVM 22.1.5のstrictfp規則を適用する。FPと環境管理に関わらない関数へ一律付与する必要はない。
-
-丸め引数がある操作には`round.tonearest`、例外挙動には初期方針として`fpexcept.strict`を使用する。ゼロ方向への切捨ては専用のtrunc・整数変換操作を選ぶ。MXCSRは§11.6.2の状態を実際に設定・維持し、metadataだけで丸め環境が変わると解釈しない。
-
-同じ関数で通常FP演算とconstrained演算を混在させない。FPのload/storeや値の受け渡しは通常のメモリ操作でよい。符号反転や分類など対応するconstrained操作がない処理は、丸め・例外環境に依存しないbit操作等で実装する。将来通常FP演算を使う最適化を追加する場合は、関数全体で環境不変と同じ計算結果を証明してから行う。[LLVM constrained FP](https://llvm.org/docs/LangRef.html#constrained-floating-point-intrinsics)
-
-言語はFP例外のstatus flagを公開せず、ハードウェア例外をマスクする。初期のstrictな生成は、環境変更をまたぐ移動や投機実行を保守的に防ぐための実装方針である。
+整数への変換は§11.5.1、有限値から無限大になる変換失敗は§11.5の検査を維持する。動的な丸め方向やFP例外の観測を言語に追加するときに、constrained FPと外部境界を再検討する。
 
 ### 11.7. stack、一時領域、最適化用属性
 
@@ -1282,7 +1269,7 @@ llvm.lifetime.start/endは任意の最適化情報である。実際のstorage�
 
 #### 11.7.3. Windowsのunwind情報
 
-全生成関数の定義にuwtable(async)を付け、entry・Runtime・FP環境adapterも対象とする。LLVMの表記uwtableは同じ意味である。必要な.pdata/.xdata、prologue・epilogue、register・stackの復元情報はbackendに生成させ、最適化後のleaf関数に情報が必要かどうかもbackendへ任せる。
+全生成関数の定義にuwtable(async)を付け、entry・Runtimeも対象とする。LLVMの表記uwtableは同じ意味である。必要な.pdata/.xdata、prologue・epilogue、register・stackの復元情報はbackendに生成させ、最適化後のleaf関数に情報が必要かどうかもbackendへ任せる。
 
 これはOSによるstack復元・stack walkのための情報であり、言語の例外処理やAbort時cleanupを追加しない。nounwindの有無とも別に扱う。C++例外・SEH unwind等がKimigayoフレームを横断してよいという変更ではない。
 
@@ -1498,13 +1485,13 @@ Abort(理由, 元の操作の位置)
 ```text
 Alloc(size) @ site:
     if size > MaxObjectSize:
-        Abort("確保量が上限を超えています", site)
+        Abort(KIMI_E_ALLOC_SIZE, site)
     heap = GetProcessHeap()
     if heap == null:
-        Abort("プロセスヒープを取得できません", site)
+        Abort(KIMI_E_PROCESS_HEAP, site)
     memory = HeapAlloc(heap, 0, max(size, 1))
     if memory == null:
-        Abort("メモリを確保できません", site)
+        Abort(KIMI_E_ALLOC, site)
     return memory
 
 Free(memory) @ site:
@@ -1512,10 +1499,10 @@ Free(memory) @ site:
         return
     heap = GetProcessHeap()
     if heap == null:
-        Abort("プロセスヒープを取得できません", site)
+        Abort(KIMI_E_PROCESS_HEAP, site)
     if HeapFree(heap, 0, memory) == 0:
         error = GetLastError()
-        Abort(固定理由とerror, site)
+        Abort(KIMI_E_FREEとerror, site)
 ```
 
 HeapAllocのflagsは0とし、例外生成やprocess heapの同期無効化を要求しない。HeapAllocは失敗時にlast-errorを設定しないため、null時にGetLastErrorの値を確保失敗の理由として利用しない。alignmentなどのAPI契約は[Microsoft HeapAlloc](https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapalloc)を参照する。
@@ -1557,17 +1544,29 @@ while remaining > 0:
 
 ### 12.5. Abortと診断
 
-診断はstderrを使う。初期の表示形式は次の形とする。
+診断はstderrを使う。コンパイラーが生成する固定診断はASCIIの識別コード・英語の理由・ソース位置で表す。初期の表示形式は次とする。
 
 ```text
-Main.kimi:3:5: abort: 標準出力への書き込みに失敗しました (win32=6)
+Main.kimi:3:5: abort KIMI_E_STDOUT: Failed to write to stdout (win32=6)
 ```
 
-これは表示例であり、エラーコード6をすべての出力失敗に使うという意味ではない。OSエラーコードが取得できない場合、その部分は省略する。
+KIMI_E_STDOUTは原因の識別コード、win32=6は取得したOSエラーの例である。OSコードを取得できない場合はその部分を省略する。理由は実装の診断カタログで一意なASCIIコードへ対応づける。
+
+| 固定コードの例 | 英語の理由 |
+| --- | --- |
+| KIMI_E_ALLOC_SIZE | Allocation size exceeds the limit |
+| KIMI_E_PROCESS_HEAP | Failed to get the process heap |
+| KIMI_E_ALLOC | Memory allocation failed |
+| KIMI_E_FREE | Failed to free memory |
+| KIMI_E_STDOUT | Failed to write to stdout |
+| KIMI_E_INT_OVERFLOW | Integer overflow |
+| KIMI_E_ABORT | Explicit abort |
+
+ソース位置の論理パスは、非ASCII文字・制御文字をASCIIの\u{HEX}、バックスラッシュを\\で表示する。表示時だけescapeし、内部のパスやprovenanceは変更しない。これにより日本語のファイル名でも固定診断を読み取れる。
 
 診断理由とソース位置は、定数データ・有効な入力文字列・小さな固定長の作業領域から出力できるようにする。数値変換のために新たなHeapAllocを必須にしない。任意長の診断を1つの動的文字列へ連結する必要もない。
 
-明示的な`$abort(expression)`では、通常の言語規則でexpressionを一度評価し、その結果のstringを診断に使う。引数評価中の失敗や非終了は既存SPECに従う。Abort開始後にその文字列を通常のcleanupで破棄しようとしない。
+明示的な`$abort(expression)`では、通常の言語規則でexpressionを一度評価し、KIMI_E_ABORTに続く利用者の診断文としてその結果のstringをUTF-8のまま出力する。非ASCII表示の制限はwriteLineと同じく§14.3に従い、利用者の文字列を英訳・escapeしない。引数評価中の失敗や非終了は既存SPECに従う。Abort開始後にその文字列を通常のcleanupで破棄しようとしない。
 
 ```text
 WriteStdoutの失敗、確保失敗、言語上の実行時検査の失敗
@@ -1582,7 +1581,7 @@ TryWriteStderrは、失敗してもAbort・WriteStdout・Allocを呼ばない。
 
 ### 12.6. Exit
 
-ExitはExitProcessへ接続する。戻り値はなく、呼び出し側のLLVM基本ブロックは`unreachable`で終える。
+Exitはu32のコードをそのままExitProcessへ渡す内部操作である。初期の言語経路は正常終了0・Abort 1だけを渡す（§2.4）。戻り値はなく、呼び出し側のLLVM基本ブロックは`unreachable`で終える。
 
 ExitはKimigayoのcleanupを実行しない。正常終了経路では呼び出す前に必要なcleanupを済ませ、Abort経路では通常のcleanupを通さず呼び出す。Windows自身が行うプロセス終了処理とは区別する。
 
@@ -1613,7 +1612,7 @@ WindowsRuntimeSymbols
    └─ ExitProcess
 ```
 
-各定義は外部名、物理関数型、calling convention、dllimport、リンク入力、FP環境の維持保証を保持する。§11.8の全体シンボル表でLibraryImportとも照合し、必要な宣言を一度だけ生成する。
+各定義は外部名、物理関数型、calling convention、dllimport、リンク入力を保持する。§11.8の全体シンボル表でLibraryImportとも照合し、必要な宣言を一度だけ生成する。
 
 ### 13.2. LLVM宣言例
 
@@ -1948,12 +1947,12 @@ OutputPathの拡張子を.link.jsonへ置き換え、.llと同じディレクト
 }
 ```
 
-- 外部宣言またはプロファイルが要求するライブラリーを重複排除し、論理名のOrdinal順に記録する。observer、_fltused、__chkstkは必要な場合の例。
+- 外部宣言またはプロファイルが要求するライブラリーを重複排除し、論理名のOrdinal順に記録する。observer・__chkstkは必要な場合の例であり、_fltusedは常に供給する。
 - パス指定のinputはmanifestの位置を基準に書き直す。検索対象名はそのままとする。irFileもmanifest基準とする。
 - Libraryではentryとsubsystemをnullにする。記録は検証用の依存情報であり、外部リンク可能な.lib/DLLや実行可能な成果物を意味しない。
 - codegenは§16.5の必須設定であり、手動ビルドのopt・llcにも適用する。irSha256は最適化前の生成.llに対する値とする。
 - backendSupportは§11.3.3の採用カタログから出力する。libraryはlibrariesのstatic項目を参照し、版・ABI・供給一覧を一致させる。実際にリンクする.libのartifactSha256が一致しなければ使用しない。
-- providedRuntimeSymbolsは、backend向けシンボルのうち生成.llに定義を供給した名前の配列とする。通常の__kimi_内部関数を列挙する用途には使わない。
+- providedRuntimeSymbolsは、backend向けシンボルのうち生成.llに定義を供給した名前の配列とする。_fltusedを常に含め、通常の__kimi_内部関数を列挙する用途には使わない。
 - expectedUndefinedSymbolsは、生成時点で外部参照の発生が予想されるbackend向けシンボルを、symbolとproviderで記録する。providerはlibrariesの論理名を参照し、kimi_backendのシンボルはbackendSupport.providedSymbolsで供給を確認する。供給元不明の既知依存は生成失敗とする。
 - 両配列はシンボル名のOrdinal順とし、同名を重複・両分類へ登録しない。実際のobjectの未定義シンボル一覧を表すものではなく、空でも後続依存なしとは保証しない。通常のLibraryImport・Windows APIのリンク入力はlibrariesに記録する。
 - マニフェストは指定されたリンク入力を記録する。実際に検索で選ばれたSDK・ライブラリーファイルの版や内容は手動ビルドの記録に残す。
@@ -1976,7 +1975,7 @@ OutputPathの拡張子を.link.jsonへ置き換え、.llと同じディレクト
 | CPU / feature指定 | x86-64 / +sse2。通常のx86-64基準とし、AVX等を要求しない |
 | relocation model / code model | pic / small |
 | DataLayout | 上記ターゲットから得る値。§5のTypeLayoutとの一致を検証 |
-| 浮動小数点 | §11.6の丸め・検査・環境契約を維持。fast-mathは禁止 |
+| 浮動小数点 | §11.6の通常FP命令とABI標準環境。fast-math・FP融合は禁止。denormal-fp-math=ieee,ieee |
 | unwind | 全生成定義にuwtable(async)。§11.7.3に従う |
 | stack・外部helper | §11.3のABI版・packageVersion・artifactSha256に従う |
 
@@ -2088,7 +2087,8 @@ C交換用の例は、Windows x64・/Zp16・pragma packなしのCプログラム
 - 整数の境界値、最小値/-1の除算と剰余、不正shift、変換範囲外を正しく診断・Abortする。
 - 負の小数から符号なし整数への変換など、ゼロ方向へ丸めた後の範囲判定を確認する。
 - NaN、無限大、符号付きゼロ、中間値の丸め、非正規化数を扱い、通常比較とEquatableを区別する。
-- 外部関数が浮動小数点環境を変えた後の正常復帰で、Kimigayoの計算規則が維持される。
+- 起動時および外部関数が制御状態を保存・変更・復元した後に、標準FP環境で計算できる。status flagの値は比較しない。
+- 起動時のMXCSR設定・呼出しごとの環境adapter・constrained FP・strictfpが通常出力にない。FPの明示的な失敗検査は残る。
 - 不要なnoalias・inbounds等によって最適化後だけ結果が変わるコードを生成しない。
 - 同一入力から同じlayout・命名・出力順を再現する。
 
@@ -2108,14 +2108,14 @@ goldenは全出力の無条件な文字列一致だけにせず、意味を変�
 
 追加する境界・失敗ケースは以下とする。
 
-- float→整数の全型組合せについて、数学的な範囲判定と境界・隣接float・NaN・±Infinityを照合する。
+- float→整数は初期対応のN=8,16,32,64とisize/usizeについて、数学的な範囲判定と境界・隣接float・NaN・±Infinityを照合する。O0/O2でtrunc/truncf等の未供給参照が残らない。
 - CのFieldを複数fragmentへ分割したエラーと、順序を保って全Fieldを一つのfragmentへ移す場合・メソッドfragmentを改名する場合の配置不変。
 - 同名・異署名、異calling convention、異ライブラリー、予約名のLibraryImport。
 - MaxObjectSizeを超える動的確保・出力量と、アドレス加算overflow。TryWriteStderrはfalseを返す。
 - 空のStatic/Heap string、Move後の旧slot、不正releaseKindを注入した破棄分岐。一般のメモリ破損検出試験とは区別する。
 - aggregate戻り値を確保後、cleanup中にAbort・非終了となるケース。
-- FP使用時の_fltused等と、大きいstack frameの__chkstk等の供給分類・依存解決。backend libraryの採用試験は§11.3.2に従う。
-- FP操作が未参照関数・実行時の未選択分岐にある場合、型・署名・転送だけの場合、選択・生成されたCore内にある場合のNeedsKimigayoFpEnvironment。
+- _fltusedと大きいstack frameの__chkstk等の供給分類・依存解決。backend libraryの採用試験は§11.3.2に従う。
+- i128/u128の対応演算の境界値と未定義シンボルを確認する。除算・剰余・FP変換の未対応診断は、最適化で消える式・未参照本体でも一貫させる。
 - 初期化不要のstatic libraryと、CRT・動的初期化・TLS・終了時handlerの自動実行へ依存する不適合例。後者を接続契約の確認対象として明示する。
 - manifestの未設定論理名・供給元、import/staticの相違、パス解決、供給済み／外部解決候補の重複、ハッシュ不一致、片方の公開失敗。最適化後の参照消滅・新規backend参照も照合する。
 - CPU・feature属性を付けたIRを、§16.2のoptコマンドとllcで処理し、指定LLVM版で属性が保たれること。
@@ -2150,10 +2150,11 @@ goldenは全出力の無条件な文字列一致だけにせず、意味を変�
 | raw pointer | nullの変位0、正負の歩進、one-pastからの有効な復帰、同一型・異なる型・整数との変換。unsafe違反に特定の実行結果を要求しない |
 | 初期化 | raw storageへの合法な初期配置と、初期化済み値のload・置換を区別 |
 | enum | payload alignment 1/2/4/8/16、空payload、親struct・配列への埋込みでsize・offset・alignmentが一致 |
-| unwind | entry・非leaf・stack利用関数・adapter・native helperの.pdata/.xdataと実際のprologueが一致 |
+| unwind | entry・非leaf・stack利用関数・native helperの.pdata/.xdataと実際のprologueが一致 |
 | PIC | 通常の64ビットimage base・ASLRで、global変数・文字列・FP定数の参照がO0/O2とも正しく動く |
-| _fltused | 定義が必要なFP値・不要な整数だけの本体、FP転送だけの本体、最適化でFP操作が消える本体。強い定義が一つである |
+| _fltused | Application・Libraryとも、FPの有無・最適化によらず強い定義が一つで、manifestと一致する |
 | backend供給物 | packageId・ABI・版・ハッシュ・供給一覧の不一致、予約シンボル衝突、未知の追加依存を検出 |
+| 診断・終了 | 非ASCIIパスも固定診断はASCII。利用者の$abort文字列はUTF-8を保持。正常終了0・Abort 1、整数戻り値のmainは診断 |
 | intrinsic | 定数長・可変長のmemcpy、重複を伴うmemmove、memset。命令展開と外部呼出しの両経路が契約を満たす |
 
 LLVM verifierだけでFFI・unwind・helperの適合は証明できない。基準版22.1.5で、IR検証、objectのシンボル・unwind情報、実際のC呼出しと起動・終了まで確認する。別版での予備検証を基準版の合格に置き換えない。
@@ -2183,6 +2184,7 @@ LLVM verifierだけでFFI・unwind・helperの適合は証明できない。基�
 | STATUSのLowering・layout項目 | 入力確定、生成対象、layout、ABI、CFG・SSA、転送・定数、相互運用の進捗を分けて記録 |
 | STATUSのLLVM・ビルド設定 | windows-x64-v1、unwind、O0/O2、手動optとmanifestのcodegen・backendSupport情報を反映 |
 | STATUS C.13 | LLVM 22.1.5、独自entry、6操作・7APIと別供給のbackend libraryを記録 |
+| SPECの数値・Abort規則、STATUSの対応範囲 | ABI標準FP環境、通常FP命令、128bit演算の初期制限、ASCII固定診断、終了コードの制限を関連づける |
 
 実装状況はSTATUSで管理する。本書に例があることや、設計が確定したことだけを根拠に、Parsing・Binding・Analysis・Lowering・Runtimeの実装済み範囲を拡大しない。
 
@@ -2203,6 +2205,7 @@ LLVM verifierだけでFFI・unwind・helperの適合は証明できない。基�
 │  ├─ より大きなalignment・再確保
 │  ├─ ファイル入力・コマンドライン引数・時刻
 │  ├─ コンソールのUnicode表示adapter
+│  ├─ 終了コードの指定（mainの整数戻り値・Core.exit等）
 │  └─ 初期供給物に含まれない演算helperの追加
 └─ ターゲット
    ├─ 上位CPU向けプロファイル・実行時CPU切替
@@ -2222,6 +2225,8 @@ LLVM verifierだけでFFI・unwind・helperの適合は証明できない。基�
 | 外部ABI | C aggregate値渡し、export、callback、可変長引数、platform固有calling convention、外部enum表現 |
 | object・共有コード | handle/header/descriptorの物理契約、参照カウント、汎用generic共有とmetadataの受け渡し |
 | メモリモデル | スレッド生成、thread transfer、外部からの並行再入、同期規則 |
+| FP環境 | 動的な丸め方向・例外観測とconstrained FP、外部境界の契約 |
+| 終了コード | 型・値域と、mainの復帰／Core.exit等でのcleanup・deferの実行規則 |
 
 ### 19.2. この統合文書の状態
 
