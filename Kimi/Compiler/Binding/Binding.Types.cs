@@ -99,7 +99,7 @@ public sealed partial class Binding
         return scope;
     }
 
-    private bool Accessible(BindingSymbol symbol, BindingScope use)
+    private bool Accessible(BindingSymbol symbol, BindingScope use, ModifierKind? operationAccess = null)
     {
         if (ReferenceEquals(symbol, this.Core.Module) || symbol.Intrinsic != IntrinsicKind.None)
         {
@@ -118,7 +118,7 @@ public sealed partial class Binding
             VariableKoto v => v.Modifier,
             _ => ModifierKind.NoModifier,
         };
-        var access = (ModifierKind)((byte)modifier & 7);
+        var access = operationAccess ?? (ModifierKind)((byte)modifier & 7);
         if (access is ModifierKind.Public or ModifierKind.Internal or ModifierKind.ProtectedOrInternal)
         {
             return true;

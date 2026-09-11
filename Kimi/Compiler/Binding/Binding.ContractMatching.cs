@@ -46,7 +46,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private static bool AccessCovers(BindingSymbol member, BindingSymbol a, BindingSymbol b)
+    private static bool AccessCovers(BindingSymbol member, BindingSymbol a, BindingSymbol b, ModifierKind? memberAccess = null)
     {
         for (var current = member; current is not null; current = current.Scope.Owner.BoundSymbol)
         {
@@ -55,7 +55,7 @@ public sealed partial class Binding
                 break;
             }
 
-            var access = DeclarationAccess(current);
+            var access = ReferenceEquals(current, member) && memberAccess is { } specific ? specific : DeclarationAccess(current);
             if (access == ModifierKind.Public)
             {
                 continue;
@@ -84,6 +84,7 @@ public sealed partial class Binding
         {
             DeclarationContainerKoto container => container.Modifier,
             FunctionKoto function => function.Modifier,
+            PropertyAccessorKoto accessor => ((byte)accessor.Modifier & 7) != 0 ? accessor.Modifier : ((PropertyKoto)accessor.Parent!).Modifier,
             VariableKoto variable => variable.Modifier,
             _ => ModifierKind.Public,
         }) & 7);
@@ -128,7 +129,7 @@ public sealed partial class Binding
                 break;
             }
 
-            if (current.Declaration is DeclarationContainerKoto container && !container.IsRoot && ((byte)container.Modifier & 7) is not (1 or 2 or 5))
+            if (DeclarationAccess(current) is not (ModifierKind.Public or ModifierKind.Protected or ModifierKind.ProtectedOrInternal))
             {
                 return false;
             }
@@ -158,6 +159,8 @@ public sealed partial class Binding
         conformance.Checking = true;
         conformance.WitnessStorage.Clear();
         conformance.WitnessMap.Clear();
+        conformance.PropertyWitnessStorage.Clear();
+        conformance.PropertyWitnessMap.Clear();
         try
         {
             var shape = conformance.Contract.Contract!;
@@ -218,6 +221,15 @@ public sealed partial class Binding
                     {
                         conformance.WitnessStorage.Add(new(requirement, inherited));
                         conformance.WitnessMap.Add(requirement, inherited);
+                        for (var w = 0; w < ancestor.PropertyWitnessStorage.Count; w++)
+                        {
+                            var operation = ancestor.PropertyWitnessStorage[w];
+                            if (ReferenceEquals(operation.Requirement.Property.Symbol, requirement))
+                            {
+                                conformance.PropertyWitnessStorage.Add(operation);
+                                conformance.PropertyWitnessMap.Add((requirement, operation.Requirement.Kind), operation);
+                            }
+                        }
                     }
                     else
                     {
@@ -227,9 +239,20 @@ public sealed partial class Binding
                     continue;
                 }
 
+                if (requirement.Property is { } property)
+                {
+                    var propertyProof = this.VerifyPropertyRequirement(conformance, property, self, scope);
+                    if (propertyProof is ConstraintProof.Error or ConstraintProof.Refuted)
+                    {
+                        return Invalid(BindingFailure.IncompatibleImplementation);
+                    }
+
+                    proof = CombineProof(proof, propertyProof, true);
+                    continue;
+                }
+
                 if (requirement.Declaration is not FunctionKoto function)
                 {
-                    // Property bridges have their own rules; no function-shaped synthetic success.
                     return ConstraintProof.Unknown;
                 }
 
@@ -377,37 +400,7 @@ public sealed partial class Binding
                 proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(substituted, premises, self), premises), true);
             }
 
-            // Infer a correspondence from all admitted inputs before checking any result guarantee.
-            for (var i = 0; i < requirement.Parameters.Count; i++)
-            {
-                this.MatchInputOrigins(implementation.Parameters[i].Type.BoundType!, this.ContractType(requirement.Parameters[i].Type.BoundType!, premises, self), implementation, origins, inputs);
-            }
-
-            for (var i = 0; i < requirement.Parameters.Count; i++)
-            {
-                var required = this.ContractType(requirement.Parameters[i].Type.BoundType!, premises, self);
-                var actual = Translate(implementation.Parameters[i].Type.BoundType!);
-                if (actual is null || !FitsType(required, actual))
-                {
-                    return ConstraintProof.Refuted;
-                }
-            }
-
-            var result = implementation.BoundSymbol!.Type is { } output ? Translate(output) : null;
-            var expected = requirement.BoundSymbol!.Type is { } requiredOutput ? this.ContractType(requiredOutput, premises, self) : null;
-            return result is null || expected is null ? ConstraintProof.Unknown : FitsType(result, expected) ? proof : ConstraintProof.Refuted;
-
-            BoundType? Translate(BoundType type)
-            {
-                var substituted = this.SubstituteType(type, implementation, arguments.AsSpan(0, requirement.GenericArguments.Count));
-                if (substituted is null)
-                {
-                    return null;
-                }
-
-                substituted = this.SubstituteStoredOrigins(substituted, implementation, origins.AsSpan(0, implementation.Origins.Count), inputs.AsSpan(0, implementation.Parameters.Count), requirement);
-                return this.ContractType(substituted, premises, self);
-            }
+            return CombineProof(proof, this.CompareCallableContracts(new(requirement), new(implementation), premises, self, null, arguments, origins, inputs), true);
         }
         finally
         {
@@ -417,7 +410,7 @@ public sealed partial class Binding
         }
     }
 
-    private void MatchInputOrigins(BoundType pattern, BoundType actual, FunctionKoto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
+    private void MatchInputOrigins(BoundType pattern, BoundType actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
     {
         if (pattern.Origin is { } p && actual.Origin is { } a)
         {

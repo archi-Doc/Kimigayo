@@ -65,9 +65,16 @@ public sealed class BoundConformance
     /// <summary>Gets explicit, normalized associated-Type bindings.</summary>
     public IReadOnlyDictionary<BindingSymbol, BoundType> AssociatedTypes => this.AssociatedStorage;
 
+    /// <summary>Gets the separately verified get/set mappings, valid only while IsVerified is true.</summary>
+    public IReadOnlyList<BoundPropertyWitness> PropertyWitnesses => this.PropertyWitnessStorage;
+
     internal List<BoundWitness> WitnessStorage { get; } = new();
 
     internal Dictionary<BindingSymbol, BindingSymbol> WitnessMap { get; } = new(ReferenceEqualityComparer.Instance);
+
+    internal List<BoundPropertyWitness> PropertyWitnessStorage { get; } = new();
+
+    internal Dictionary<(BindingSymbol Requirement, PropertyAccessorKind Kind), BoundPropertyWitness> PropertyWitnessMap { get; } = new();
 
     internal Dictionary<BindingSymbol, BoundType> AssociatedStorage { get; } = new(ReferenceEqualityComparer.Instance);
 
@@ -86,4 +93,11 @@ public sealed class BoundConformance
     /// <returns>The selected member, or null while the mapping is unverified or has no such requirement.</returns>
     public BindingSymbol? GetImplementation(BindingSymbol requirement)
         => this.IsVerified ? this.WitnessMap.GetValueOrDefault(requirement) : null;
+
+    /// <summary>Gets a verified operation by requirement identity, without member lookup.</summary>
+    /// <param name="requirement">The Property requirement identity.</param>
+    /// <param name="kind">The requested operation.</param>
+    /// <returns>The operation mapping, or null if unavailable.</returns>
+    public BoundPropertyWitness? GetPropertyWitness(BindingSymbol requirement, PropertyAccessorKind kind)
+        => this.IsVerified && this.PropertyWitnessMap.TryGetValue((requirement, kind), out var witness) ? witness : null;
 }

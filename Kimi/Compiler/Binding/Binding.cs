@@ -89,6 +89,11 @@ public sealed partial class Binding
 
             foreach (var symbol in this.symbols.Values)
             {
+                if (symbol.Property is { } property)
+                {
+                    property.IsVerified = false;
+                }
+
                 if (symbol.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget))
                 {
                     symbol.Type = null;
@@ -122,6 +127,7 @@ public sealed partial class Binding
                 }
             }
 
+            this.ValidateBaseDeclarations();
             this.PrepareStorage();
             this.ComputeOriginRequirements();
             this.ValidateSignatures();
@@ -132,6 +138,7 @@ public sealed partial class Binding
             this.BindNode(this.compilation.Kotonoha.RootKoto, this.rootScope);
             this.ClearCapabilityResults();
             this.ValidateCopyDeclarations(mode);
+            this.ValidateProperties(mode);
             this.ComputeOriginRequirements();
             this.ValidateOriginRequirements();
             this.ValidateConformances(mode, true);
@@ -371,6 +378,10 @@ public sealed partial class Binding
             // Named signatures never infer a result from their body or callers (SPEC 10.5).
             symbol.Type = function.ReturnType is { } result ? this.BindType(result, scope) : BoundType.Unit;
         }
+        else if (symbol.Property is { } property)
+        {
+            this.BindPropertyHeader(property);
+        }
         else if (symbol.Declaration is VariableKoto variable && variable.TypeKoto is { } type)
         {
             symbol.Type = this.BindType(type, symbol.Scope);
@@ -477,8 +488,9 @@ public sealed partial class Binding
 
                     node.BoundSymbol = binding.symbols.GetValueOrDefault(node);
                     break;
-                case PropertyAccessorKoto:
+                case PropertyAccessorKoto accessor:
                     this.Scope = binding.GetScope(node, this.Scope);
+                    binding.IndexAccessor(accessor, this.Scope);
                     break;
                 case CodeBlockKoto:
                     if (node.Parent is not FunctionKoto)
@@ -492,7 +504,15 @@ public sealed partial class Binding
 
                     break;
                 case VariableKoto variable:
-                    binding.Declare(node, variable.NameKoto.IdentifierName, node is PropertyKoto ? BindingSymbolKind.Property : BindingSymbolKind.Local, node, this.Scope);
+                    var variableSymbol = binding.Declare(node, variable.NameKoto.IdentifierName, node is PropertyKoto ? BindingSymbolKind.Property : BindingSymbolKind.Local, node, this.Scope);
+                    if (node is PropertyKoto property)
+                    {
+                        var bound = variableSymbol.Property ??= new(variableSymbol);
+                        bound.IsVerified = false;
+                        Reset(bound.Getter, property.GetAccessor(PropertyAccessorKind.Get), true);
+                        Reset(bound.Setter, property.GetAccessor(PropertyAccessorKind.Set), property.DeclarationKind == PropertyDeclarationKind.Var || property.GetAccessor(PropertyAccessorKind.Set) is not null);
+                    }
+
                     break;
                 case GenericParameterKoto parameter:
                     var typeSymbol = binding.Declare(node, parameter.Identifier, parameter.SemanticsParameter is null ? BindingSymbolKind.TypeParameter : BindingSymbolKind.SemanticsTarget, node, this.Scope);
@@ -527,6 +547,32 @@ public sealed partial class Binding
 
             node.VisitChildren(this);
             this.Scope = previous;
+        }
+
+        private static void Reset(BoundAccessor accessor, PropertyAccessorKoto? declaration, bool present)
+        {
+            accessor.Declaration = declaration;
+            if (accessor.SignatureSymbol is { } signature && !ReferenceEquals(signature.Declaration, declaration))
+            {
+                accessor.SignatureSymbol = null;
+            }
+
+            accessor.IsPresent = present;
+            accessor.Receiver = accessor.Input = accessor.Result = null;
+            if (accessor.SelfSymbol is { } self)
+            {
+                self.Type = null;
+            }
+
+            if (accessor.ValueSymbol is { } value)
+            {
+                value.Type = null;
+            }
+
+            if (accessor.StorageSymbol is { } storage)
+            {
+                storage.Type = null;
+            }
         }
     }
 }

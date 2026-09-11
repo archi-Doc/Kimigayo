@@ -17,6 +17,9 @@ public sealed partial class Binding
 
     private static string InputName(Koto owner, int index) => owner is FunctionKoto f ? f.Parameters[index].InternalName : index == 0 ? "self" : "value";
 
+    private static BoundType? BoundInputType(Koto owner, int index)
+        => owner is PropertyAccessorKoto accessor ? index == 0 ? Accessor(accessor).Receiver : Accessor(accessor).Input : InputType(owner, index)?.BoundType;
+
     private static int CompareOrigins(BoundOrigin a, BoundOrigin b)
     {
         if (ReferenceEquals(a, b))
@@ -302,7 +305,9 @@ public sealed partial class Binding
                     return new(TypePosition.Result, accessor);
                 }
 
-                return new(TypePosition.Parameter, accessor, ReferenceEquals(accessor.ReceiverType, current) ? 0 : 1, true);
+                return ReferenceEquals(accessor.ReceiverType, current) || ReferenceEquals(accessor.ValueType, current)
+                    ? new(TypePosition.Parameter, accessor, ReferenceEquals(accessor.ReceiverType, current) ? 0 : 1, true)
+                    : new(TypePosition.Explicit, accessor);
             }
 
             if (parent is FunctionKoto function)
@@ -325,6 +330,11 @@ public sealed partial class Binding
 
             if (parent is VariableKoto variable)
             {
+                if (variable is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement } property && property.GetAccessor(PropertyAccessorKind.Get) is { } getter)
+                {
+                    return new(TypePosition.Result, getter);
+                }
+
                 return new(variable is PropertyKoto ? scope.Owner is GroupKoto ? TypePosition.StaticStorage : TypePosition.InstanceStorage : TypePosition.Local, variable);
             }
         }
@@ -351,13 +361,13 @@ public sealed partial class Binding
                 for (var i = 0; i < InputCount(current.Owner); i++)
                 {
                     var inputSyntax = InputType(current.Owner, i);
-                    if (inputSyntax is null || InputName(current.Owner, i) != name)
+                    if (InputName(current.Owner, i) != name)
                     {
                         continue;
                     }
 
-                    var type = inputSyntax.BoundType;
-                    if (type is null && !ReferenceEquals(inputSyntax, use))
+                    var type = BoundInputType(current.Owner, i);
+                    if (type is null && inputSyntax is not null && !ReferenceEquals(inputSyntax, use))
                     {
                         type = this.BindType(inputSyntax, current);
                     }
@@ -410,12 +420,12 @@ public sealed partial class Binding
                 for (var i = 0; i < InputCount(current.Owner); i++)
                 {
                     var inputSyntax = InputType(current.Owner, i);
-                    if (inputSyntax is null || InputName(current.Owner, i) != input.IdentifierName)
+                    if (InputName(current.Owner, i) != input.IdentifierName)
                     {
                         continue;
                     }
 
-                    var type = inputSyntax.BoundType ?? this.BindType(inputSyntax, current);
+                    var type = BoundInputType(current.Owner, i) ?? (inputSyntax is null ? null : this.BindType(inputSyntax, current));
                     if (type is { Kind: BoundTypeKind.Semantics })
                     {
                         type = type.Components[0];
@@ -440,6 +450,11 @@ public sealed partial class Binding
                         if (current.Owner is FunctionKoto function)
                         {
                             input.BoundSymbol = this.symbols[function.Parameters[i]];
+                        }
+                        else if (current.Owner is PropertyAccessorKoto accessor)
+                        {
+                            var operation = Accessor(accessor);
+                            input.BoundSymbol = i == 0 ? operation.SelfSymbol : operation.ValueSymbol;
                         }
 
                         target.BoundOrigin = result;
@@ -483,7 +498,7 @@ public sealed partial class Binding
             BoundOrigin? meet = null;
             for (var i = 0; i < InputCount(context.Owner); i++)
             {
-                var type = InputType(context.Owner, i)?.BoundType;
+                var type = BoundInputType(context.Owner, i);
                 if (type?.Origin is not { } input || !IsBorrow(type.Semantics))
                 {
                     continue;

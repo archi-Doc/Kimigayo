@@ -46,6 +46,7 @@ public sealed partial class Binding
         }
 
         this.projectionUses.Clear();
+        this.memberSelections.Clear();
         foreach (var group in this.requirementGroups.Values)
         {
             group.Active = false;
@@ -67,6 +68,8 @@ public sealed partial class Binding
             conformance.DirectClause = null;
             conformance.WitnessStorage.Clear();
             conformance.WitnessMap.Clear();
+            conformance.PropertyWitnessStorage.Clear();
+            conformance.PropertyWitnessMap.Clear();
             conformance.AssociatedStorage.Clear();
         }
     }
@@ -440,6 +443,15 @@ public sealed partial class Binding
     private void ValidateConformances(BindingMode mode, bool final)
     {
         this.contractHeadersReady = true;
+        if (final)
+        {
+            // Body/header validation may invalidate an earlier declaration-side witness.
+            for (var i = 0; i < this.activeConformances.Count; i++)
+            {
+                this.activeConformances[i].IsVerified = false;
+            }
+        }
+
         for (var i = 0; i < this.activeConformances.Count; i++)
         {
             var conformance = this.activeConformances[i];

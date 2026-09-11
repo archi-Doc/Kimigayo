@@ -14,7 +14,7 @@ internal sealed class BindingControlFlowTypes : ControlFlowTypeSystem
         => syntax?.BindingState == BindingState.Resolved ? FlowType(syntax.BoundType) : null;
 
     public override ControlFlowType? GetExpectedResultType(Koto boundary)
-        => boundary is FunctionKoto { IsGenerated: true } ? ControlFlowType.Unit : FlowType(boundary.BoundSymbol?.Type);
+        => boundary is FunctionKoto { IsGenerated: true } ? ControlFlowType.Unit : boundary is PropertyAccessorKoto accessor ? FlowType(accessor.ReturnType?.BoundType ?? accessor.BoundType) : FlowType(boundary.BoundSymbol?.Type);
 
     public override FunctionKoto? GetReferencedFunction(Koto expression)
         => expression.BindingState == BindingState.Resolved ? expression.BoundSymbol?.Declaration as FunctionKoto : null;

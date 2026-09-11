@@ -65,6 +65,8 @@ public sealed partial class Binding
 
         BindingSymbol? typeMember = null;
         BindingSymbol? valueMember = null;
+        MemberSelection typeSelection = default;
+        MemberSelection valueSelection = default;
         var qualifier = this.TypeName(member.Left, scope, false);
         if (qualifier?.Type is { } type && qualifier.Declaration is not ContractKoto)
         {
@@ -73,7 +75,12 @@ public sealed partial class Binding
 
         if (qualifier is not null && qualifier.Declaration is not ContractKoto && this.scopes.TryGetValue(qualifier.Declaration, out var typeScope))
         {
-            if (typeScope.Values.TryGetValue(right.IdentifierName, out var candidate) && this.Accessible(candidate, scope))
+            if (qualifier.Type is { } qualifiedType)
+            {
+                typeSelection = this.LookupTypeMember(qualifiedType, right.IdentifierName);
+                typeMember = typeSelection.Member ?? typeMember;
+            }
+            else if (typeScope.Values.TryGetValue(right.IdentifierName, out var candidate))
             {
                 typeMember = candidate;
             }
@@ -93,13 +100,14 @@ public sealed partial class Binding
                 valueMember = this.RequirementMember(member, scope, receiverType, false);
             }
 
-            if (receiverType?.Symbol is { } typeSymbol && this.scopes.TryGetValue(typeSymbol.Declaration, out var valueScope) && valueScope.Values.TryGetValue(right.IdentifierName, out var candidate) && this.Accessible(candidate, scope))
+            if (receiverType is not null)
             {
-                valueMember = candidate;
+                valueSelection = this.LookupTypeMember(receiverType, right.IdentifierName);
+                valueMember = valueSelection.Member ?? valueMember;
             }
         }
 
-        if (typeMember is not null && valueMember is not null)
+        if (typeSelection.Ambiguous || valueSelection.Ambiguous || (typeMember is not null && valueMember is not null))
         {
             Fail(member, BindingFailure.Ambiguous, true);
             return null;
@@ -108,6 +116,13 @@ public sealed partial class Binding
         var selected = typeMember ?? valueMember;
         if (selected is not null)
         {
+            if (selected.Kind != BindingSymbolKind.Function && !this.Accessible(selected, scope))
+            {
+                Fail(member, BindingFailure.Access);
+                return null;
+            }
+
+            this.memberSelections[member] = typeMember is not null ? typeSelection : valueSelection;
             if (typeMember is not null)
             {
                 member.Left.BoundSymbol = qualifier;

@@ -141,11 +141,11 @@ public class IntrinsicCapabilityTest
     [Fact]
     public void DirectBaseParticipatesInCopyDerivation()
     {
-        var c = Parse("struct Base\n    Self is Copy\n    let x: i32\nstruct Derived: Base\n    Self is Copy\n    let y: bool\nfunc inspect(x: Derived) => ()");
-        c.Bind(); // General inherited member Binding is a separate milestone.
+        var c = Parse("open struct Base\n    Self is Copy\n    let x: i32\nstruct Derived: Base\n    Self is Copy\n    let y: bool\nfunc inspect(x: Derived) => ()");
+        Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
-        var bad = Parse("struct Base\n    let text: string\nstruct Derived: Base\n    Self is Copy");
+        var bad = Parse("open struct Base\n    let text: string\nstruct Derived: Base\n    Self is Copy");
         Assert.False(bad.Bind().IsComplete);
         Assert.Contains(bad.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
     }
@@ -154,7 +154,7 @@ public class IntrinsicCapabilityTest
     public void ComputedMembersDoNotContributeStorage()
     {
         var c = Parse("struct S\n    Self is Copy\n    computed text: string\n        get(self: ref/Self) -> string => \"text\"\nfunc inspect(x: S) => ()");
-        c.Bind(); // Full accessor execution is checked by the later Property implementation.
+        Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
     }

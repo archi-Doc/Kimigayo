@@ -37,6 +37,8 @@ public enum BindingSymbolKind : byte
     SemanticsParameter,
     LengthParameter,
     AssociatedType,
+    Storage,
+    PropertyAccessor,
 }
 
 /// <summary>Classifies normalized semantic types.</summary>
@@ -108,6 +110,9 @@ public sealed class BindingSymbol
 
     /// <summary>Gets effective requirement metadata for a Contract declaration.</summary>
     public BoundContract? Contract { get; internal set; }
+
+    /// <summary>Gets retained Property operation contracts, when this is a Property.</summary>
+    public BoundProperty? Property { get; internal set; }
 
     internal BoundType? WholeType { get; set; }
 

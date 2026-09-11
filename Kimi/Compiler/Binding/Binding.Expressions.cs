@@ -11,6 +11,15 @@ public sealed partial class Binding
     private static bool Writable(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
+        if (node.BoundSymbol is { Kind: BindingSymbolKind.Storage, Scope.Owner: PropertyAccessorKoto syntax })
+        {
+            var accessor = Accessor(syntax);
+            if (accessor.Receiver is { Semantics: not SemanticsKind.Uniq })
+            {
+                return false;
+            }
+        }
+
         return node.BoundSymbol?.Declaration is VariableKoto { VariableKind: VariableKind.Var };
     }
 
@@ -159,7 +168,7 @@ public sealed partial class Binding
                     this.BindNode(generated, scope);
                 }
 
-                if (container is not ContractKoto && container.Bases.Count != 0)
+                if (container is not (ContractKoto or StructKoto) && container.Bases.Count != 0)
                 {
                     return Fail(node, BindingFailure.Unsupported, true);
                 }
@@ -249,9 +258,22 @@ public sealed partial class Binding
                 return Fail(node, BindingFailure.Unsupported, true);
             case JumpKoto jump:
                 BoundType? resultType = expected;
-                if (jump is ReturnKoto && scope.Function is { } enclosing && this.symbols.TryGetValue(enclosing, out var enclosingSymbol))
+                if (jump is ReturnKoto)
                 {
-                    resultType = enclosingSymbol.Type;
+                    for (var boundary = scope; boundary is not null; boundary = boundary.Parent)
+                    {
+                        if (boundary.Owner is PropertyAccessorKoto a)
+                        {
+                            resultType = Accessor(a).Result;
+                            break;
+                        }
+
+                        if (boundary.Owner is FunctionKoto f)
+                        {
+                            resultType = this.symbols.GetValueOrDefault(f)?.Type;
+                            break;
+                        }
+                    }
                 }
 
                 if (jump.Expression is { } expression)
@@ -283,27 +305,7 @@ public sealed partial class Binding
 
                 return array.Elements.Count == expected.Length ? Complete(node, expected) : Fail(node, BindingFailure.TypeMismatch);
             case PropertyAccessorKoto accessor:
-                if (accessor.ReceiverType is { } receiver)
-                {
-                    this.BindType(receiver, scope);
-                }
-
-                if (accessor.ValueType is { } value)
-                {
-                    this.BindType(value, scope);
-                }
-
-                if (accessor.ReturnType is { } result)
-                {
-                    this.BindType(result, scope);
-                }
-
-                if (accessor.Body is { } body)
-                {
-                    this.BindNode(body, scope);
-                }
-
-                return accessor.IsBodyless ? Complete(node, BoundType.Unit) : Fail(node, BindingFailure.Unsupported, true);
+                return this.BindAccessorBody(accessor, scope);
         }
 
         // Unsupported semantics stay explicit and cannot pass final Bound checking.
@@ -382,8 +384,13 @@ public sealed partial class Binding
             return Fail(variable, BindingFailure.Cycle, true);
         }
 
+        if (symbol.Property is not null)
+        {
+            this.BindHeader(symbol);
+        }
+
         symbol.Resolving = true;
-        var declared = variable.TypeKoto is { } type ? this.BindType(type, scope) : null;
+        var declared = symbol.Property is not null ? symbol.Type : variable.TypeKoto is { } type ? this.BindType(type, scope) : null;
         var inferred = variable.InitializerKoto is { } initializer ? this.BindNode(initializer, scope, declared) : null;
         symbol.Resolving = false;
         if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable))
@@ -424,7 +431,7 @@ public sealed partial class Binding
     private BoundType? BindReference(Koto node, BindingSymbol symbol, BindingScope scope)
     {
         node.BoundSymbol = symbol;
-        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter && scope.Function != symbol.Scope.Function)
+        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage && scope.Function != symbol.Scope.Function)
         {
             return Fail(node, BindingFailure.Capture);
         }
@@ -442,7 +449,43 @@ public sealed partial class Binding
             this.BindVariable(variable, symbol.Scope);
         }
 
-        return Complete(node, symbol.Type);
+        if (symbol.Property is { } property)
+        {
+            var target = node;
+            while (target.Parent is ParenthesizedKoto parentheses)
+            {
+                target = parentheses;
+            }
+
+            var assignment = target.Parent is BinaryKoto binary && ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
+            var write = assignment && target.Parent!.Akind == KotoKind.Equals;
+            var update = (assignment && !write) || target.Parent?.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
+            var operation = write ? property.Setter : property.Getter;
+            if (!operation.IsPresent || !this.Accessible(symbol, scope, operation.Access))
+            {
+                return Fail(node, BindingFailure.Access);
+            }
+
+            if (update && (!property.Setter.IsPresent || !this.Accessible(symbol, scope, property.Setter.Access)))
+            {
+                return Fail(node, BindingFailure.Access);
+            }
+
+            if (!operation.IsStandard || (update && !property.Setter.IsStandard))
+            {
+                // Callable Property uses need the operation/Origin plans of expression
+                // checking. A declaration-side witness alone must not bypass that boundary.
+                return Fail(node, BindingFailure.Unsupported, true);
+            }
+        }
+
+        var type = symbol.Type;
+        if (node is MemberAccessKoto member && type is not null && this.memberSelections.TryGetValue(member, out var selection) && selection.DeclaringType is { } declaringType)
+        {
+            type = this.StoredType(type, declaringType);
+        }
+
+        return Complete(node, type);
     }
 
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
