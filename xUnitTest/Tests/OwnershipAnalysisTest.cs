@@ -145,6 +145,25 @@ public class OwnershipAnalysisTest
         Assert.True(secure < cleanup && cleanup < deliver);
     }
 
+    [Theory]
+    [InlineData("\n", false)]
+    [InlineData("\r\n", false)]
+    [InlineData("\r", false)]
+    [InlineData("\n", true)]
+    [InlineData("\r\n", true)]
+    [InlineData("\r", true)]
+    public void ReturnInArgumentCleansInnerLocalBeforeOuterTemporary(string newline, bool trailingNewline)
+    {
+        var source = "func makeText() -> string => \"outer\"\nfunc consume(a: string, b: i32) => ()\nfunc use(c: bool)\n    consume(\n        makeText(),\n        if c\n            let inner = \"inner\"\n            return\n        else => 1\n    )";
+        var c = Parse(source.Replace("\n", newline) + (trailingNewline ? newline : string.Empty));
+        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "use");
+        var steps = body.CleanupSteps.Where(x => x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is ReturnKoto).ToArray();
+        var inner = Array.FindIndex(steps, x => x.Source is FieldKoto);
+        var outer = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.BoundCall?.Target.Name == "makeText");
+        Assert.True(inner >= 0 && outer > inner);
+    }
+
     [Fact]
     public void RebindInvalidatesAllVerification()
     {
@@ -311,7 +330,7 @@ public class OwnershipAnalysisTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.Empty(c.Kotonoha.DiagnosticCollection.GetArray());
+        Assert.True(c.Kotonoha.DiagnosticCollection.GetArray().Length == 0, string.Join("\n", c.Kotonoha.DiagnosticCollection.GetArray().Select(x => x.ToString("source"))));
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         return c;
     }

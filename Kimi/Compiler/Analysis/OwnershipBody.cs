@@ -30,7 +30,7 @@ public sealed partial class OwnershipBody
         var cursor = this.LoadBlock(block);
         while (cursor != operation)
         {
-            this.Transfer(this.OperationStorage[cursor]);
+            this.Transfer(cursor);
             cursor = this.NextInBlock(cursor, block);
         }
 
@@ -213,7 +213,7 @@ public sealed partial class OwnershipBody
                 this.Finalize(operation);
             }
 
-            this.Transfer(this.OperationStorage[operation]);
+            this.Transfer(operation);
             var next = this.NextInBlock(operation, block);
             if (next < 0)
             {
@@ -235,6 +235,22 @@ public sealed partial class OwnershipBody
         var state = this.State(operation.Place);
         switch (operation.Kind)
         {
+            case OwnershipOperationKind.PayloadPlacement:
+                if (operation.Input >= 0)
+                {
+                    this.CheckInitialized(operation, operation.Input, this.State(operation.Input));
+                }
+
+                break;
+            case OwnershipOperationKind.CompleteConstruction:
+                var construction = this.ConstructionStorage[this.OperationSteps[index]];
+                for (var i = 0; i < construction.PayloadCount; i++)
+                {
+                    var payload = construction.PayloadStart + i;
+                    this.CheckInitialized(operation, payload, this.State(payload));
+                }
+
+                break;
             case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver:
                 this.CheckInitialized(operation, operation.Place, state);
                 break;
@@ -277,8 +293,9 @@ public sealed partial class OwnershipBody
         }
     }
 
-    private void Transfer(OwnershipOperation operation)
+    private void Transfer(int index)
     {
+        var operation = this.OperationStorage[index];
         var place = operation.Place;
         if (place < 0)
         {
@@ -287,6 +304,15 @@ public sealed partial class OwnershipBody
 
         switch (operation.Kind)
         {
+            case OwnershipOperationKind.CompleteConstruction:
+                var construction = this.ConstructionStorage[this.OperationSteps[index]];
+                for (var i = 0; i < construction.PayloadCount; i++)
+                {
+                    this.Move(construction.PayloadStart + i);
+                }
+
+                this.Initialize(place);
+                break;
             case OwnershipOperationKind.Declare:
                 // A fresh dynamic binding lifetime, including each loop iteration.
                 this.Clear(place, MustLane);
@@ -316,6 +342,7 @@ public sealed partial class OwnershipBody
 
                 break;
             case OwnershipOperationKind.Write:
+            case OwnershipOperationKind.PayloadPlacement:
                 if (operation.Input >= 0)
                 {
                     this.Move(operation.Input);

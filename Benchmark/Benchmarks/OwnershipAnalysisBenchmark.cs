@@ -16,6 +16,10 @@ public class OwnershipAnalysisBenchmark
     [Params(1, 32, 128)]
     public int Locals { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether each local owns a nested enum instead of a string.</summary>
+    [Params(false, true)]
+    public bool Enums { get; set; }
+
     /// <summary>Builds and warms the same plans used by the allocation regression.</summary>
     [GlobalSetup]
     public void Setup()
@@ -23,7 +27,15 @@ public class OwnershipAnalysisBenchmark
         var source = new StringBuilder("func f(c: bool)\n");
         for (var i = 0; i < this.Locals; i++)
         {
-            source.Append("    var s").Append(i).Append(" = \"a\"\n    if c\n        writeLine(s").Append(i).Append(")\n");
+            source.Append("    var s").Append(i);
+            if (this.Enums)
+            {
+                source.Append(" = Option<Option<string>>.Some(Option<string>.Some(\"a\"))\n    if c\n        let moved").Append(i).Append(" = s").Append(i).Append('\n');
+            }
+            else
+            {
+                source.Append(" = \"a\"\n    if c\n        writeLine(s").Append(i).Append(")\n");
+            }
         }
 
         this.compilation = Compilation.CreateForTest();

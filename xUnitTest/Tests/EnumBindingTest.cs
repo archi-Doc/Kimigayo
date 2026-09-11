@@ -225,7 +225,8 @@ public class EnumBindingTest
     {
         var c = Parse("let x: Option<i32> = .Some(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.False(c.Ownership.Analyze().IsVerified);
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.True(c.Ownership.Analyze().IsVerified);
     }
 
     [Theory]

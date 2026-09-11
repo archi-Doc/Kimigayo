@@ -63,6 +63,11 @@ public abstract class ControlFlowTypeSystem
     /// <returns>The selected declaration, or null when unresolved.</returns>
     public virtual FunctionKoto? GetReferencedFunction(Koto expression) => null;
 
+    /// <summary>Identifies a committed value construction whose designator is not evaluated.</summary>
+    /// <param name="expression">The construction expression.</param>
+    /// <returns>True for a resolved construction.</returns>
+    public virtual bool IsBoundConstruction(Koto expression) => false;
+
     /// <summary>Identifies a selected direct call and its receiver, without treating its callee as a runtime value.</summary>
     /// <param name="call">The call to inspect.</param>
     /// <param name="receiver">The receiver evaluated before explicit arguments, or null for an unbound call.</param>

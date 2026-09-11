@@ -22,6 +22,7 @@ public enum OwnershipPlaceKind : byte
     Parameter,
     Temporary,
     Result,
+    Payload,
 }
 
 public enum PlaceUseKind : byte
@@ -57,6 +58,8 @@ public enum OwnershipOperationKind : byte
     Branch,
     Exit,
     Unsupported,
+    PayloadPlacement,
+    CompleteConstruction,
 }
 
 public enum PlacementKind : byte
@@ -113,7 +116,7 @@ public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Ko
     {
         OwnershipOperationKind.Read => PlaceUseKind.Read,
         OwnershipOperationKind.Consume => PlaceUseKind.Consume,
-        OwnershipOperationKind.Write => PlaceUseKind.Write,
+        OwnershipOperationKind.Write or OwnershipOperationKind.PayloadPlacement => PlaceUseKind.Write,
         OwnershipOperationKind.Borrow => PlaceUseKind.Borrow,
         _ => PlaceUseKind.None,
     };
@@ -125,6 +128,9 @@ public readonly record struct OwnershipCleanupStep(int Operation, int Place, Kot
 
 /// <summary>A cleanup sequence on an edge, in execution order, indexed into CleanupSteps.</summary>
 public readonly record struct OwnershipCleanupPlan(int Edge, int Start, int Count, CleanupReason Reason);
+
+/// <summary>One construction's N-to-one responsibility transfer; payload Places are contiguous.</summary>
+public readonly record struct OwnershipConstructionPlan(int Place, BoundEnumCase Case, int PayloadStart, int PayloadCount);
 
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1);
 
@@ -143,6 +149,7 @@ public sealed partial class OwnershipBody
     internal readonly List<int> OperationSteps = new();
     internal readonly List<OwnershipCleanupStep> CleanupStepStorage = new();
     internal readonly List<OwnershipCleanupPlan> CleanupPlanStorage = new();
+    internal readonly List<OwnershipConstructionPlan> ConstructionStorage = new();
     internal readonly List<OwnershipIssue> IssueStorage = new();
     internal readonly Dictionary<BindingSymbol, int> SymbolPlaces = new(ReferenceEqualityComparer.Instance);
     internal bool[] Reachable = [];
@@ -168,6 +175,8 @@ public sealed partial class OwnershipBody
 
     public IReadOnlyList<OwnershipCleanupPlan> CleanupPlans => this.CleanupPlanStorage;
 
+    public IReadOnlyList<OwnershipConstructionPlan> Constructions => this.ConstructionStorage;
+
     public IReadOnlyList<OwnershipIssue> Issues => this.IssueStorage;
 
     public bool IsVerified { get; internal set; }
@@ -189,6 +198,7 @@ public sealed partial class OwnershipBody
         this.OperationSteps.Clear();
         this.CleanupStepStorage.Clear();
         this.CleanupPlanStorage.Clear();
+        this.ConstructionStorage.Clear();
         this.IssueStorage.Clear();
         this.SymbolPlaces.Clear();
     }

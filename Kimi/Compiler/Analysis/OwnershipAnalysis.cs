@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>Builds and solves whole-Place ownership CFGs using committed Binding operations.</summary>
+/// <summary>Builds and solves whole-value and enum-construction ownership CFGs using committed Binding operations.</summary>
 public sealed partial class OwnershipAnalysis
 {
     private readonly Compilation compilation;
@@ -13,7 +13,7 @@ public sealed partial class OwnershipAnalysis
     private readonly List<OwnershipIssue> issues = new();
     private readonly Collector collector;
     private readonly List<Registration> locals = new();
-    private readonly List<int> temporaries = new();
+    private readonly List<Registration> temporaries = new();
     private readonly List<LoopFrame> loops = new();
     private readonly List<int> arguments = new();
     private ControlFlowAnalysis? flow;
@@ -22,6 +22,7 @@ public sealed partial class OwnershipAnalysis
     private int resultPlace;
     private int normalExit;
     private int abortExit;
+    private int registrationSequence;
 
     internal OwnershipAnalysis(Compilation compilation)
     {
@@ -48,6 +49,8 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.Invalidate();
+        this.supportedTypes.Clear();
+        this.visitingTypes.Clear();
         var root = this.compilation.Kotonoha.RootKoto;
         if (this.flow is null)
         {
@@ -132,6 +135,7 @@ public sealed partial class OwnershipAnalysis
         this.temporaries.Clear();
         this.loops.Clear();
         this.arguments.Clear();
+        this.registrationSequence = 0;
         this.current = -1;
         this.Emit(OwnershipOperationKind.Entry, function);
         this.normalExit = this.New(OwnershipOperationKind.Exit, function);
@@ -148,7 +152,7 @@ public sealed partial class OwnershipAnalysis
             var type = parameter.Type.BoundType;
             var place = this.Place(parameter.Type, type, OwnershipPlaceKind.Parameter, false);
             this.body.SymbolPlaces[this.compilation.Binding.ParameterSymbol(function, i)] = place;
-            this.locals.Add(new(place, parameter.Type));
+            this.locals.Add(new(place, parameter.Type, this.registrationSequence++));
             this.Emit(OwnershipOperationKind.Produce, parameter.Type, place);
             if (parameter.IsOptional || parameter.DefaultValue is not null)
             {
@@ -186,19 +190,28 @@ public sealed partial class OwnershipAnalysis
         this.body.IsVerified = this.body.IssueStorage.Count == 0 && function.BindingState == BindingState.Resolved;
     }
 
-    private int Place(Koto source, BoundType? type, OwnershipPlaceKind kind, bool mutable)
+    private int Place(Koto source, BoundType? type, OwnershipPlaceKind kind, bool mutable, AcquisitionKind? plannedAcquisition = null)
     {
         var id = this.body.PlaceStorage.Count;
         type ??= BoundType.Unit;
-        // Primitive classification needs no Constraint environment (SPEC 3.5.1).
-        var proof = type.Kind == BoundTypeKind.Primitive && !ReferenceEquals(type, BoundType.Never)
-            ? (type.Name == "string" ? ConstraintProof.Refuted : ConstraintProof.Proven)
-            : this.compilation.Binding.ProveCopy(type, source);
-        var acquisition = proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove;
+        // Never has no value storage. Its result marker is only used on unreachable
+        // delivery nodes; control-flow checking rejects any normal completion.
+        var neverResult = kind == OwnershipPlaceKind.Result && ReferenceEquals(type, BoundType.Never);
+        var invalidCopy = false;
+        var acquisition = plannedAcquisition.GetValueOrDefault();
+        if (plannedAcquisition is null)
+        {
+            // Primitive classification needs no Constraint environment (SPEC 3.5.1).
+            var proof = type.Kind == BoundTypeKind.Primitive && (!ReferenceEquals(type, BoundType.Never) || neverResult)
+                ? (type.Name == "string" ? ConstraintProof.Refuted : ConstraintProof.Proven)
+                : this.compilation.Binding.ProveCopy(type, source);
+            invalidCopy = proof == ConstraintProof.Error;
+            acquisition = proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove;
+        }
+
         this.body.PlaceStorage.Add(new(id, source, type, kind, mutable, acquisition));
         this.body.IsConcrete &= type.Kind != BoundTypeKind.Parameter;
-        if (proof == ConstraintProof.Error || !(type.Kind == BoundTypeKind.Parameter ||
-            (type.Kind == BoundTypeKind.Primitive && !ReferenceEquals(type, BoundType.Never))))
+        if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
         {
             this.Unsupported(source);
         }
@@ -209,13 +222,19 @@ public sealed partial class OwnershipAnalysis
     private int Temporary(Koto source, bool produce = true)
     {
         var id = this.Place(source, source.BoundType, OwnershipPlaceKind.Temporary, true);
-        this.temporaries.Add(id);
         if (produce)
         {
             this.Emit(OwnershipOperationKind.Produce, source, id);
+            this.RegisterTemporary(id);
         }
 
         return id;
+    }
+
+    private int RegisterTemporary(int place)
+    {
+        this.temporaries.Add(new(place, this.body.PlaceStorage[place].Source, this.registrationSequence++));
+        return place;
     }
 
     private int Local(Koto source)
@@ -230,7 +249,7 @@ public sealed partial class OwnershipAnalysis
         return -1;
     }
 
-    private int Use(Koto source, int place, PlaceUseKind use)
+    private int Use(Koto source, int place, PlaceUseKind use, AcquisitionKind? acquisition = null)
     {
         if (place < 0)
         {
@@ -244,9 +263,10 @@ public sealed partial class OwnershipAnalysis
         }
 
         // Only locals and parameters reach here; temporaries transfer without a Place use.
+        this.CheckAcquisition(place, acquisition);
         var value = this.Temporary(source, false);
-        this.Emit(OwnershipOperationKind.Consume, source, place, value, this.body.PlaceStorage[place].Acquisition);
-        return value;
+        this.Emit(OwnershipOperationKind.Consume, source, place, value, acquisition ?? this.body.PlaceStorage[place].Acquisition);
+        return this.RegisterTemporary(value);
     }
 
     private void Block(CodeBlockKoto block, int destination = -1)
@@ -289,7 +309,7 @@ public sealed partial class OwnershipAnalysis
                 this.body.SymbolPlaces[symbol] = id;
             }
 
-            this.locals.Add(new(id, field));
+            this.locals.Add(new(id, field, this.registrationSequence++));
             this.Emit(OwnershipOperationKind.Declare, field, id);
             if (field.InitializerKoto is { } initializer)
             {
@@ -299,7 +319,7 @@ public sealed partial class OwnershipAnalysis
         }
         else if (node is DeferredBlockKoto deferred)
         {
-            this.locals.Add(new(-1, deferred));
+            this.locals.Add(new(-1, deferred, this.registrationSequence++));
             this.Unsupported(deferred);
         }
         else if (node is UnsafeBlockKoto unsafeBlock)
@@ -312,14 +332,19 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    private int Expression(Koto node, PlaceUseKind use = PlaceUseKind.Consume)
+    private int Expression(Koto node, PlaceUseKind use = PlaceUseKind.Consume, AcquisitionKind? acquisition = null)
     {
+        if (this.compilation.Binding.TryGetEnumConstruction(node, out var construction))
+        {
+            return this.ConstructEnum(node, construction!);
+        }
+
         switch (node)
         {
             case ParenthesizedKoto parentheses:
-                return this.Expression(parentheses.Operand, use);
+                return this.Expression(parentheses.Operand, use, acquisition);
             case IdentifierNameKoto:
-                return this.Use(node, this.Local(node), use);
+                return this.Use(node, this.Local(node), use, acquisition);
             case StringLiteralKoto or NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto or UnitLiteralKoto:
                 return this.Temporary(node);
             case TupleLiteralKoto tuple when tuple.Elements.Count == 0:
@@ -345,7 +370,7 @@ public sealed partial class OwnershipAnalysis
                     this.Emit(OwnershipOperationKind.Produce, block, blockValue);
                 }
 
-                return blockValue;
+                return this.RegisterTemporary(blockValue);
             case UnaryKoto unary when node.Akind is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus or KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
                 this.Expression(unary.Operand, PlaceUseKind.Read);
                 if (node.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement)
@@ -408,7 +433,7 @@ public sealed partial class OwnershipAnalysis
             this.Emit(OwnershipOperationKind.Produce, binary, output);
             this.Connect(this.current, join);
             this.current = join;
-            return output;
+            return this.RegisterTemporary(output);
         }
 
         var left = this.Expression(binary.Left, PlaceUseKind.Read);
@@ -476,7 +501,7 @@ public sealed partial class OwnershipAnalysis
 
         this.Connect(this.current, join);
         this.current = join;
-        return output;
+        return this.RegisterTemporary(output);
     }
 
     private int Call(InvocationKoto call)
@@ -523,11 +548,13 @@ public sealed partial class OwnershipAnalysis
         return this.Temporary(call);
     }
 
-    private int Argument(Koto argument, ArgumentOperationKind kind)
+    private int Argument(Koto argument, ArgumentOperationKind kind, AcquisitionKind? acquisition = null)
     {
         if (kind == ArgumentOperationKind.Value)
         {
-            return this.Expression(argument);
+            var value = this.Expression(argument, acquisition: acquisition);
+            this.CheckAcquisition(value, acquisition);
+            return value;
         }
 
         // A borrowed source keeps its value and responsibility; it never enters the callee.
@@ -610,20 +637,17 @@ public sealed partial class OwnershipAnalysis
     {
         var start = this.body.CleanupStepStorage.Count;
         var edge = this.current >= 0 ? this.body.EdgeStorage.Count : -1;
-        for (var i = this.temporaries.Count - 1; i >= tempStart; i--)
+        // Merge lexical registrations without allocating or removing live outer entries.
+        // Separate marks let ExpressionEnd clean temporaries without ending a local's lifetime.
+        var temporary = this.temporaries.Count - 1;
+        var local = this.locals.Count - 1;
+        while (temporary >= tempStart || local >= localStart)
         {
-            var place = this.temporaries[i];
-            var operation = this.Emit(OwnershipOperationKind.Cleanup, source, place);
+            var registration = temporary >= tempStart && (local < localStart || this.temporaries[temporary].Sequence > this.locals[local].Sequence)
+                ? this.temporaries[temporary--] : this.locals[local--];
+            var operation = this.Emit(OwnershipOperationKind.Cleanup, source, registration.Place);
             this.body.OperationSteps[operation] = this.body.CleanupStepStorage.Count;
-            this.body.CleanupStepStorage.Add(new(operation, place, this.body.PlaceStorage[place].Source, CleanupAction.Skip));
-        }
-
-        for (var i = this.locals.Count - 1; i >= localStart; i--)
-        {
-            var local = this.locals[i];
-            var operation = this.Emit(OwnershipOperationKind.Cleanup, source, local.Place);
-            this.body.OperationSteps[operation] = this.body.CleanupStepStorage.Count;
-            this.body.CleanupStepStorage.Add(new(operation, local.Place, local.Source, local.Place < 0 ? CleanupAction.Unsupported : CleanupAction.Skip));
+            this.body.CleanupStepStorage.Add(new(operation, registration.Place, registration.Source, registration.Place < 0 ? CleanupAction.Unsupported : CleanupAction.Skip));
         }
 
         var count = this.body.CleanupStepStorage.Count - start;
@@ -669,7 +693,7 @@ public sealed partial class OwnershipAnalysis
         this.body.IssueStorage.Add(new(source, OwnershipFailure.Unsupported));
     }
 
-    private readonly record struct Registration(int Place, Koto Source);
+    private readonly record struct Registration(int Place, Koto Source, int Sequence);
 
     private readonly record struct LoopFrame(Koto Source, int Head, int Exit, int Locals, int Temporaries);
 

@@ -1872,6 +1872,8 @@ let extra: Option<i32> = .None()  // Error: payload-free Case takes no parenthes
 
 Evaluate arguments once each, left to right, and initialize payloads using ordinary argument adaptation, literal fitting, and Copy/Move. Commit a complete enum value only after the Case and all payloads are initialized. On an ordinary transfer out of construction, secure the transfer result and destroy initialized payloads in reverse order; Abort does not unwind. Enum Case construction is a dedicated bound operation; its qualified expression syntax remains ordinary member access/invocation. Case Pattern operands are Patterns, not expressions.
 
+During ordinary abandonment of aggregate construction, interleave cleanup of placed components and still-live expression temporaries in reverse order of completed placement/value acquisition, while preserving inner-to-outer scope exit under §16.2.1; transferring responsibility removes the source from that cleanup order.
+
 #### 6.4. Bindings
 
 Fields and local bindings begin with `let` or `var`. For a local binding, `let` declares an immutable binding and `var` declares a mutable binding. A Type annotation and an initializer are independently optional when the omitted information can be inferred.

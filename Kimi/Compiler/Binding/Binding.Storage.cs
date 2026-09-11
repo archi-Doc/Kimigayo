@@ -8,6 +8,19 @@ public sealed partial class Binding
 {
     private readonly Dictionary<DeclarationContainerKoto, StorageShape> storageShapes = new(ReferenceEqualityComparer.Instance);
 
+    internal IReadOnlyList<Koto>? EnumStorage(BoundType type)
+        => type.Symbol?.Declaration is EnumKoto declaration && this.storageShapes.TryGetValue(declaration, out var shape) ? shape.Types : null;
+
+    internal BoundType? StoredType(Koto syntax, BoundType owner)
+    {
+        if (syntax.BoundType is not { } field || owner.Symbol is null)
+        {
+            return null;
+        }
+
+        return this.StoredType(field, owner);
+    }
+
     private static bool IsStoredVariable(Koto node)
         => node is VariableKoto && node is not PropertyKoto { DeclarationKind: PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement };
 
@@ -120,16 +133,6 @@ public sealed partial class Binding
                 Fail(container, BindingFailure.InvalidTypeFormation);
             }
         }
-    }
-
-    private BoundType? StoredType(Koto syntax, BoundType owner)
-    {
-        if (syntax.BoundType is not { } field || owner.Symbol is null)
-        {
-            return null;
-        }
-
-        return this.StoredType(field, owner);
     }
 
     private BoundType? StoredType(BoundType field, BoundType owner)

@@ -30,7 +30,7 @@ public sealed partial class Binding
     {
         this.compilation = compilation;
         this.indexer = new(this);
-        this.TypeSystem = new BindingControlFlowTypes();
+        this.TypeSystem = new BindingControlFlowTypes(this);
         this.Core = new(compilation);
         this.symbols.Add(this.Core.WriteLine.Declaration, this.Core.WriteLine);
         this.symbols.Add(this.Core.Option.Declaration, this.Core.Option);
@@ -510,7 +510,7 @@ public sealed partial class Binding
                         var symbol = binding.Declare(node, container.Name, kind, node, this.Scope);
                         if (kind == BindingSymbolKind.Type)
                         {
-                            symbol.Type ??= new(container.Name, BoundTypeKind.Nominal, symbol);
+                            symbol.Type ??= binding.InternType(BoundTypeKind.Nominal, symbol, SemanticsKind.Owner, []);
                         }
                     }
 

@@ -266,6 +266,9 @@ public sealed class ControlFlowAnalysis
         Flow flow;
         switch (node)
         {
+            case not InvocationKoto when this.types.IsBoundConstruction(node):
+                flow = new(true, this.types.GetExpressionType(node));
+                break;
             case FunctionKoto function:
                 this.VisitFunction(
                     function,

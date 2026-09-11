@@ -872,12 +872,26 @@ LineContent:
 
         if (this.nonBlockDepth > 0)
         {
+            // A nested executable body has statement boundaries even while its
+            // enclosing argument/element delimiter suppresses continuation separators.
+            if (!separatorInserted && this.tokenAdded > 0 && this.indentCount > 0 && this.indentStack[this.indentCount - 1] == IndentSource.Block)
+            {
+                this.AddToken(new(TokenKind.Separator, this.CurrentRange));
+            }
+
             goto Loop;
         }
         else
         {
             this.currentIndentLevel += this.blockDepth;
             this.blockDepth = 0;
+
+            if (this.span.IsEmpty)
+            {
+                // An outer-aligned closer can consume the last character above.
+                // ReadAll will not call Read again to close the enclosing bodies.
+                goto EndOfFile;
+            }
 
             if (this.tokenAdded > 0 && !separatorInserted)
             {

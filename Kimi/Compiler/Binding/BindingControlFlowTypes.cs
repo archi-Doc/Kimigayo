@@ -5,8 +5,10 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 /// <summary>Supplies retained Binding facts; never resolves names during flow analysis.</summary>
-internal sealed class BindingControlFlowTypes : ControlFlowTypeSystem
+internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowTypeSystem
 {
+    public override bool IsBoundConstruction(Koto expression) => binding.TryGetEnumConstruction(expression, out _);
+
     public override ControlFlowType? GetExpressionType(Koto expression)
         => expression.BindingState == BindingState.Resolved ? FlowType(expression.BoundType) : null;
 
@@ -22,6 +24,12 @@ internal sealed class BindingControlFlowTypes : ControlFlowTypeSystem
 
     public override bool TryGetCallReceiver(InvocationKoto call, out Koto? receiver)
     {
+        if (this.IsBoundConstruction(call))
+        {
+            receiver = null;
+            return true;
+        }
+
         var bound = call.BoundCall;
         receiver = bound?.Receiver;
         return bound is not null;

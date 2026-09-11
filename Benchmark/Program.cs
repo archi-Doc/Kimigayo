@@ -16,6 +16,7 @@ public class Program
             typeof(ParseBenchmark),
             typeof(BindingBenchmark),
             typeof(StartupBindingBenchmark),
+            typeof(OwnershipAnalysisBenchmark),
             typeof(FrontEndBenchmark),
             typeof(DirectiveBenchmark),
             typeof(TokenReaderBenchmark),
