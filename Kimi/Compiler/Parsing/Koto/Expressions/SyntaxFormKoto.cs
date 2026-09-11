@@ -31,6 +31,8 @@ public sealed class SyntaxFormKoto : ExpressionKoto
     /// <summary>Gets the ordered operands without allocating an iterator.</summary>
     public ReadOnlySpan<Koto> Operands => this.children;
 
+    internal bool IsMutablePattern => this.kind == KotoKind.BindingPattern && this.prefix == "var ";
+
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {

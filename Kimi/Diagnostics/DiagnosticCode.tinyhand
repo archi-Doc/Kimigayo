@@ -296,3 +296,13 @@
 
   + Name="UnsupportedOwnership_Kd"
     Message="This operation requires ownership or cleanup analysis outside the implemented subset"
+
+  + Name="InvalidPattern_Kd"
+    Message="The Pattern is not valid for this matched Type, Case, or payload arity"
+
+  + Name="NonExhaustiveMatch_Kd"
+    Message="{0}"
+
+  + Name="UnreachablePattern_Kd"
+    Severity="Warning"
+    Message="This Pattern is covered by earlier unguarded arm {0}"

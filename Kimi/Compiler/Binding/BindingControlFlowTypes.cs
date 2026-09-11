@@ -93,7 +93,10 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
         return FlowType(common ?? BoundType.Never);
     }
 
-    public override bool? IsExhaustive(MatchKoto match) => null;
+    public override bool? IsExhaustive(MatchKoto match) => this.GetMatchCoverage(match, null).IsExhaustive;
+
+    public override MatchCoverage GetMatchCoverage(MatchKoto match, ControlFlowType? subject)
+        => binding.TryGetMatch(match, out var plan) ? plan!.Coverage : default;
 
     private static ControlFlowType? FlowType(BoundType? type)
         => ReferenceEquals(type, BoundType.Unit) ? ControlFlowType.Unit : ReferenceEquals(type, BoundType.Never) ? ControlFlowType.Never : ReferenceEquals(type, BoundType.Boolean) ? ControlFlowType.Boolean : type;

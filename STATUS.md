@@ -2,7 +2,7 @@
 
 Implementation coverage is informative and does not weaken language rules or Compiler requirements. All implementation-progress notes are centralized here; `planned` in a retained snapshot means implementation work, not permission to use an undesigned feature.
 
-Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding; C.24 records whole-Place ownership and cleanup analysis; C.25 records the Core declaration catalog and native backend candidate; C.26 records enum construction Binding and Core.Option/Result declarations. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
+Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding; C.24 records whole-Place ownership and cleanup analysis; C.25 records the Core declaration catalog and native backend candidate; C.26 records enum construction Binding and Core.Option/Result declarations; C.27 records enum ownership; C.28 records positional Pattern Binding and match coverage. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
 
 ### C.1. Coverage summary
 
@@ -21,7 +21,7 @@ This table defines the recorded status of each compiler stage. The notes below d
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | Ordinary Copy / Move acquisition | N/A; no dedicated Move operator | Partial; committed calls and local write permissions | Partial; whole Places, initialization, Move and cleanup, C.24 | Not implemented | Not implemented |
 | Control flow and `defer` | Implemented | Partial; see C.16 | Partial | Not implemented | Not implemented |
-| Enum Cases, Patterns, and guards | Implemented | Partial; Case declarations/construction, C.26; Pattern Binding pending | Partial; payload capabilities, C.19; acquisition plans, C.26 | Not implemented | Not implemented |
+| Enum Cases, Patterns, and guards | Implemented | Partial; Case declarations/construction, C.26; owned-path Patterns and body scopes, C.28; guards pending | Partial; construction ownership, C.27; Pattern coverage and result flow, C.28; match ownership pending | Not implemented | Not implemented |
 | Explicit full specialization and generic code sharing | Source specialization syntax | Not implemented | Not implemented | Not implemented | Not implemented |
 | Core.Option / Result | Implemented declaration/construction syntax | Partial; canonical declarations and construction, C.26 | Partial; payload capability classification | Not implemented | Not implemented |
 | Abort | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
@@ -29,7 +29,7 @@ This table defines the recorded status of each compiler stage. The notes below d
 
 Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
 
-The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.21 and C.23–C.26 record Binding and analysis coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
+The front end retains captures, Callable requirements, runtime `is` targets, `require`, and object declaration syntax as Koto trees. **C.16–C.21 and C.23–C.28 record Binding and analysis coverage and supersede earlier notes for the cases they list.** Refinement, ownership, dispatch, and execution remain incomplete. See C.15 for the Property and Move syntax update; C.8–C.14 retain historical review snapshots.
 
 ### C.2. Builds, modules, and source artifacts
 
@@ -51,7 +51,7 @@ The Parser builds fixed-array Types `[N of T]`, unevaluated length expressions, 
 
 The front end parses recursive Semantics prefixes, distinct grouped and Tuple Types, and independently annotated inner Origins, preserving them through writing and source serialization. Type resolution, layout validation, subtyping, ownership rules, and most Type semantics remain unimplemented; parsing a nested Type or storage-borrow target does not establish its semantic legality. Syntax-level control-flow facts retain supported nested pointer Types and leave unresolved reference/Origin checks pending.
 
-Enum bodies, payload Cases, inferred Case expressions, dedicated Patterns, and guards are parsed and preserved. Qualified Case expressions retain ordinary member/invocation syntax. C.26 implements Case Symbols, construction Binding and payload acquisition plans. Payload Move Paths, construction cleanup, guard Loans, and coverage diagnostics remain unimplemented. Extension declarations are diagnosed as unsupported.
+Enum bodies, payload Cases, inferred Case expressions, dedicated Patterns, and guards are parsed and preserved. Qualified Case expressions retain ordinary member/invocation syntax. C.26 implements Case Symbols, construction Binding and payload acquisition plans; C.27 adds construction cleanup and whole-enum ownership. C.28 adds positional Pattern Binding and coverage diagnostics. Selected payload extraction, partial Moves, guard Loans and match ownership remain unimplemented. Extension declarations are diagnosed as unsupported.
 
 Split-structure integration, generated-source integration, and layout generation are planned, not implemented.
 
@@ -443,3 +443,19 @@ The control-flow bridge recognizes construction designators without evaluating t
 See the [implementation decisions and verification boundaries](doc/Changes/2026-09-11%20Enum%20Ownership.md). Match/guard verification, payload extraction/partial Moves, Loans, type-level drop glue, finite layout validation, the executable generation gate, LLVM and runtime execution remain pending. Ownership verification does not authorize emission.
 
 Validation: 66 new cases cover construction forms, adapted literals, ownership transfer, nested and interrupted construction, interleaved cleanup, all three line endings with/without final newline, loops, Copy/Move, returns, replacement, unsupported storage and changed declarations on reBind. All 2,306 tests pass in Debug and Release. Warm nested-enum analysis and Bind-plus-analysis allocate zero bytes at 1, 32 and 128 locals. OwnershipAnalysisBenchmark now includes nested enums and is registered in the benchmark runner; its Release build has zero warnings and errors. No throughput comparison is claimed.
+
+### C.28. Positional Pattern Binding and match coverage (2026-09-11)
+
+Runtime match now has a positional Pattern binder for Wildcard, Binding, Unit, fitted integer/bool/char/string Literal, exact-arity Tuple and enum Case Patterns, including grouping, generic qualifiers and nested payloads. Pattern syntax shares parser nodes with expressions but never enters ordinary expression Binding. Case lookup, complete stored-Type substitution, integer fitting and Copy proof reuse existing compiler services. Retained preorder positions identify their parent, element, Case, full matched Type, owned/shared access, implicit dereference and body-local Symbol. Generic acquisitions retain Deferred when Copy cannot yet be proved; instantiation-specific effects are not cached as universal plans.
+
+Pattern names are indexed into scopes keyed by the arm's Pattern. SPEC §14.8.2 now explicitly gives Pattern bindings and the immediate arm body one declaration space; nested blocks may shadow. Names do not leak into other arms or Pattern Case lookup. A stored reference can be bound without dereferencing and retains its Origin. Structural shared-reference inspection remains Pending; structurally matching uniq, remaining reference layers, object or raw pointer positions is Invalid. Shared positions publish no owned body acquisition. Case payload trailing commas remain accepted under the existing grammar.
+
+Coverage has Pending, Invalid, NonExhaustive and Exhaustive states with missing-Case, whole-payload and catch-all reasons. Only the specified unguarded proofs apply; invalid Pattern Types/arity suppress nonexhaustiveness cascades. Mandatory containment warnings identify one preceding unguarded arm, compare normalized Literal values and never remove a later arm from checking. Warnings use a separate, final-only reporting path and do not invalidate Binding.
+
+Control-flow analysis consumes retained coverage instead of reinterpreting Patterns as expressions. Syntax-only fallback shares one limited calculator that respects grouping and guards. Guards are traversed for transfer/unsafe checks and stay explicitly Pending. Pattern validation and coverage continue for guarded arms, while candidate reading and guarded bodies await distinct candidate identities and Loan semantics. Unguarded result Types use the existing Join rules, and match-targeted yields contribute while Binding their operands without another body traversal. Nonexhaustive discard Block matches add implicit Unit; result-requiring Blocks still require yield in flow checking.
+
+Rebinding clears Pattern tables, removes obsolete Pattern scope/Symbol keys, retires removed matches and refreshes renamed bindings. Plan objects, position/arm/coverage lists and warning storage retain capacity. Pattern names are declared during the existing index walk. Warm Bind plus control-flow reanalysis allocates zero bytes for 1, 32 and 128 nested-Pattern matches; warning-producing warm Bind also allocates zero. PatternBindingBenchmark provides separate Bind and Bind-plus-flow workloads. No throughput improvement is claimed.
+
+See the [implementation decisions and verification boundary](doc/Changes/2026-09-11%20Match%20Binding.md). Match subject acquisition, selected payload extraction, partial Moves, match cleanup, guard/shared-reading Loans and executable lowering remain pending. The valueOrZero regression binds successfully but ownership reports Unsupported and IsVerified = false.
+
+Validation: 88 new cases; all 2,394 tests pass in Debug and Release, including strict allocation checks. Release Benchmark build: zero warnings and errors.

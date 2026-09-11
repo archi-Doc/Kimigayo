@@ -84,6 +84,8 @@ internal enum BindingFailure : byte
     MissingImplementation,
     IncompatibleImplementation,
     InvalidAssociatedType,
+    InvalidPattern,
+    NonExhaustiveMatch,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>

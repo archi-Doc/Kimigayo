@@ -112,6 +112,13 @@ public abstract class ControlFlowTypeSystem
     /// <param name="match">The selection.</param>
     /// <returns>Exhaustiveness, or null when subject/pattern Binding is required.</returns>
     public abstract bool? IsExhaustive(MatchKoto match);
+
+    /// <summary>Gets Pattern validity, exhaustiveness, and a reason for a missing proof.</summary>
+    /// <param name="match">The selection.</param>
+    /// <param name="subject">The known subject type.</param>
+    /// <returns>A four-state coverage result; Invalid suppresses cascading coverage errors.</returns>
+    public virtual MatchCoverage GetMatchCoverage(MatchKoto match, ControlFlowType? subject)
+        => this.IsExhaustive(match) is { } known ? new(known ? MatchCoverageState.Exhaustive : MatchCoverageState.NonExhaustive) : MatchCoverage.FromSyntax(match, subject);
 }
 
 /// <summary>Provides facts available before general name, overload, and Origin Binding.</summary>
@@ -216,24 +223,11 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
 
     /// <inheritdoc/>
     public override bool? IsExhaustive(MatchKoto match)
-    {
-        var hasTrue = false;
-        var hasFalse = false;
-        foreach (var arm in match.Arms)
-        {
-            switch (arm.Pattern)
-            {
-                case IdentifierNameKoto { IdentifierName: "_" }:
-                    return true;
-                case BoolLiteralKoto literal:
-                    hasTrue |= literal.Value;
-                    hasFalse |= !literal.Value;
-                    break;
-            }
-        }
+        => MatchCoverage.FromSyntax(match, this.GetExpressionType(match.Expression)).IsExhaustive;
 
-        return this.GetExpressionType(match.Expression) == ControlFlowType.Boolean ? hasTrue && hasFalse : null;
-    }
+    /// <inheritdoc/>
+    public override MatchCoverage GetMatchCoverage(MatchKoto match, ControlFlowType? subject)
+        => MatchCoverage.FromSyntax(match, subject);
 
     private static Dictionary<string, ControlFlowType> CreatePrimitiveTypes()
     {

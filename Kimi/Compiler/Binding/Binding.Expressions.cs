@@ -20,7 +20,7 @@ public sealed partial class Binding
             }
         }
 
-        return node.BoundSymbol?.Declaration is VariableKoto { VariableKind: VariableKind.Var };
+        return node.BoundSymbol?.Declaration is VariableKoto { VariableKind: VariableKind.Var } or SyntaxFormKoto { IsMutablePattern: true };
     }
 
     private static bool CanInitializeLocal(Koto node, BindingScope scope)
@@ -70,7 +70,12 @@ public sealed partial class Binding
             return FitsFloat(literal.SourceSpelling, type);
         }
 
-        if (!type.IsInteger || !literal.TryGetIntegerMagnitude(out var magnitude))
+        return literal.TryGetIntegerMagnitude(out var magnitude) && FitsIntegerMagnitude(magnitude, type, negative, pointerWidth);
+    }
+
+    private static bool FitsIntegerMagnitude(UInt128 magnitude, BoundType type, bool negative, int pointerWidth)
+    {
+        if (!type.IsInteger)
         {
             return false;
         }
@@ -159,6 +164,11 @@ public sealed partial class Binding
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
+        if (this.patternNodes.Contains(node))
+        {
+            throw new InvalidOperationException("Pattern syntax must be handled by the positional Pattern binder.");
+        }
+
         scope = this.NodeScope(node, scope);
         if (node is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationContainerKoto } conditionalDeclaration && TryConditionalBlock(conditionalDeclaration, out var implementationBlock))
         {
@@ -290,6 +300,8 @@ public sealed partial class Binding
                 return this.BindUnary(unary, scope, expected);
             case BinaryKoto binary:
                 return this.BindBinary(binary, scope, expected);
+            case MatchKoto match:
+                return this.BindMatch(match, scope, expected);
             case IfKoto conditional:
                 BoundType? common = null;
                 var pending = false;
@@ -315,6 +327,13 @@ public sealed partial class Binding
                 return Fail(node, BindingFailure.Unsupported, true);
             case JumpKoto jump:
                 BoundType? resultType = expected;
+                BoundMatch? yieldPlan = null;
+                if (jump is YieldKoto && KotoHelper.ResolveTransferTarget(jump) is MatchKoto targetMatch && this.matches.TryGetValue(targetMatch, out var targetPlan))
+                {
+                    resultType = targetPlan.ExpectedType;
+                    yieldPlan = targetPlan;
+                }
+
                 if (jump is ReturnKoto)
                 {
                     for (var boundary = scope; boundary is not null; boundary = boundary.Parent)
@@ -336,6 +355,11 @@ public sealed partial class Binding
                 if (jump.Expression is { } expression)
                 {
                     var actual = this.BindNode(expression, scope, resultType);
+                    if (yieldPlan is not null)
+                    {
+                        yieldPlan.ResultType = this.Join(yieldPlan.Syntax, yieldPlan.ResultType, actual);
+                    }
+
                     if (actual is not null && resultType is not null && !Compatible(actual, resultType))
                     {
                         Fail(expression, BindingFailure.TypeMismatch);

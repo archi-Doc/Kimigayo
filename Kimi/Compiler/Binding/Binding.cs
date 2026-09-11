@@ -79,6 +79,7 @@ public sealed partial class Binding
         try
         {
             this.issues.Clear();
+            this.ResetMatches();
             this.ResetStartup();
             this.compilation.InvalidateOwnership();
             this.receiverOperations.Clear();
@@ -121,6 +122,7 @@ public sealed partial class Binding
             this.rootScope = this.GetScope(this.compilation.Kotonoha.RootKoto, null);
             this.indexer.Scope = this.rootScope;
             this.indexer.Visit(this.compilation.Kotonoha.RootKoto);
+            this.PrunePatternScopes();
             this.Core.Restore();
             this.coreValid = this.Core.IsValid;
             if (!this.coreValid)
@@ -168,6 +170,7 @@ public sealed partial class Binding
             this.ValidateConstraintUses(mode);
             this.ClearCapabilityResults();
             this.CompleteEnumAcquisitions();
+            this.CompletePatternAcquisitions();
             this.Result = this.Check(mode);
             return this.Result;
         }
@@ -183,7 +186,23 @@ public sealed partial class Binding
         for (var i = 0; i < this.issues.Count; i++)
         {
             var issue = this.issues[i];
-            issue.Node.AddDiagnostic(issue.Code);
+            if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd && issue.Node is MatchKoto match && this.matches.TryGetValue(match, out var plan))
+            {
+                issue.Node.AddDiagnostic(issue.Code, plan.Coverage.Describe());
+            }
+            else
+            {
+                issue.Node.AddDiagnostic(issue.Code);
+            }
+        }
+
+        if (this.Result.Mode == BindingMode.Final)
+        {
+            for (; this.reportedPatternWarnings < this.patternWarnings.Count; this.reportedPatternWarnings++)
+            {
+                var warning = this.patternWarnings[this.reportedPatternWarnings];
+                warning.Pattern.AddDiagnostic(DiagnosticCode.UnreachablePattern_Kd, warning.CoveringArm + 1);
+            }
         }
     }
 
@@ -315,6 +334,8 @@ public sealed partial class Binding
                     BindingFailure.MissingImplementation => DiagnosticCode.MissingContractImplementation_Kd,
                     BindingFailure.IncompatibleImplementation => DiagnosticCode.IncompatibleContractImplementation_Kd,
                     BindingFailure.InvalidAssociatedType => DiagnosticCode.InvalidAssociatedType_Kd,
+                    BindingFailure.InvalidPattern => DiagnosticCode.InvalidPattern_Kd,
+                    BindingFailure.NonExhaustiveMatch => DiagnosticCode.NonExhaustiveMatch_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 this.issues.Add(new(node, code));
@@ -472,6 +493,8 @@ public sealed partial class Binding
 
     private sealed class IndexVisitor(Binding binding) : KotoVisitor
     {
+        private int patternDepth;
+
         internal BindingScope Scope { get; set; } = null!;
 
         public override void Visit(Koto node)
@@ -486,6 +509,23 @@ public sealed partial class Binding
             }
 
             binding.nodes.Add(node);
+            if (this.patternDepth != 0)
+            {
+                binding.patternNodes.Add(node);
+                if (node is SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern && pattern.Operands[0] is IdentifierNameKoto name)
+                {
+                    if (binding.symbols.TryGetValue(pattern, out var existing) && existing.Name != name.IdentifierName)
+                    {
+                        binding.symbols.Remove(pattern);
+                    }
+
+                    binding.Declare(pattern, name.IdentifierName, BindingSymbolKind.Local, pattern, this.Scope);
+                }
+
+                node.VisitChildren(this);
+                return;
+            }
+
             var previous = this.Scope;
             if (node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } && node.CodeContext.SourceDocument is { } source)
             {
@@ -494,6 +534,31 @@ public sealed partial class Binding
 
             switch (node)
             {
+                case MatchKoto match:
+                    binding.IndexMatch(match);
+                    this.Visit(match.Expression);
+                    var outer = this.Scope;
+                    for (var i = 0; i < match.Arms.Count; i++)
+                    {
+                        var arm = match.Arms[i];
+                        var armScope = binding.GetScope(arm.Pattern, outer);
+                        this.Scope = armScope;
+                        this.patternDepth++;
+                        this.Visit(arm.Pattern);
+                        this.patternDepth--;
+                        if (arm.Guard is { } guard)
+                        {
+                            this.Scope = outer;
+                            this.Visit(guard);
+                        }
+
+                        this.Scope = armScope;
+                        this.Visit(arm.Body);
+                        this.Scope = outer;
+                    }
+
+                    this.Scope = previous;
+                    return;
                 case SyntaxFormKoto { Akind: KotoKind.EnumCase, Parent: EnumKoto } enumeration when TryEnumPayload(enumeration, out _) && enumeration.Operands[0] is IdentifierNameKoto caseName:
                     var caseSymbol = binding.Declare(node, caseName.IdentifierName, BindingSymbolKind.EnumCase, node, this.Scope);
                     caseSymbol.EnumCase ??= new(caseSymbol, this.Scope.Owner.BoundSymbol!);
@@ -560,7 +625,8 @@ public sealed partial class Binding
                     binding.IndexAccessor(accessor, this.Scope);
                     break;
                 case CodeBlockKoto:
-                    if (node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance })
+                    if (node.Parent is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ||
+                        (node.Parent is MatchKoto && binding.patternNodes.Contains(this.Scope.Owner)))
                     {
                         binding.scopes[node] = this.Scope;
                     }

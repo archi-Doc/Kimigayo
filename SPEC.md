@@ -5107,6 +5107,8 @@ Compare Booleans by value, characters by Unicode scalar value, and strings by ex
 
 A Pattern name is visible only in its own arm: as a candidate name in the guard and a separate local in the body. It is not visible in the subject, other arms, after match, or for resolving its Pattern's Types and Case names. Ordinary shadowing and local redeclaration rules apply, and an Expression body also has an arm-local scope. Candidate and body names have distinct Binding Identities, so they may have different Types and acquisition effects. [Guard reading](#1483-guards) determines the former; [selected acquisition](#1516-match-acquisition-and-lifetime) determines the latter.
 
+Pattern body bindings and the immediate arm body share one declaration space: the body cannot redeclare a Pattern binding name, while an explicitly nested block may shadow it.
+
 Binding Type annotations, `name @ Pattern`, and an outer `let` applying to a whole nested Pattern are not introduced. Other Pattern extensions remain [deferred](#d1-enum-and-pattern-extensions).
 
 ##### 14.8.3. Guards

@@ -111,6 +111,10 @@ public enum DiagnosticCode
     ReassignedLet_Kd,
     UnsupportedOwnership_Kd,
 
+    InvalidPattern_Kd,
+    NonExhaustiveMatch_Kd,
+    UnreachablePattern_Kd,
+
     Count, // Last sentinel
 }
 

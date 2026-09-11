@@ -771,21 +771,8 @@ public sealed class ControlFlowAnalysis
         var subject = this.Visit(node.Expression, reachable);
         var boundary = this.Begin(node, expected);
         var required = this.nodes[node].IsResultRequiring;
-        var exhaustive = this.types.IsExhaustive(node);
-        if (exhaustive is null && subject.Type == ControlFlowType.Boolean)
-        {
-            var hasTrue = false;
-            var hasFalse = false;
-            for (var index = 0; index < node.Arms.Count; index++)
-            {
-                var arm = node.Arms[index];
-                var literal = LiteralCondition(arm.Pattern);
-                hasTrue |= literal == true;
-                hasFalse |= literal == false;
-            }
-
-            exhaustive = hasTrue && hasFalse;
-        }
+        var coverage = this.types.GetMatchCoverage(node, subject.Type);
+        var exhaustive = coverage.IsExhaustive;
 
         if (exhaustive is null)
         {
@@ -794,7 +781,7 @@ public sealed class ControlFlowAnalysis
         else if (required && exhaustive == false)
         {
             boundary.InvalidResult = true;
-            this.Error(node, "A Result-requiring match must be exhaustive.");
+            this.Error(node, coverage.Describe());
         }
 
         var normal = exhaustive != true;
@@ -803,12 +790,20 @@ public sealed class ControlFlowAnalysis
         for (var index = 0; index < node.Arms.Count; index++)
         {
             var arm = node.Arms[index];
-            if (arm.Pattern is not IdentifierNameKoto { IdentifierName: "_" } && subject.Type is { } subjectType)
+            var guardNormal = true;
+            if (arm.Guard is { } guard)
             {
-                this.CheckCompatibility(new(arm.Pattern, this.types.GetExpressionType(arm.Pattern), true), subjectType);
+                // Guard acquisition/Loan verification is pending, but transfers and unsafe
+                // operations must still be visited by syntax/control-flow analysis.
+                var guardFlow = this.Visit(guard, reachable && subject.Normal, ControlFlowType.Boolean);
+                this.CheckCompatibility(new(guard, guardFlow.Type, reachable && subject.Normal), ControlFlowType.Boolean);
+                guardNormal = guardFlow.Normal;
+                transfers = Union(transfers, guardFlow.Transfers);
+                this.pending.Add(guard);
+                pendingCompletion = true;
             }
 
-            var body = this.VisitBranch(arm.Body, arm.Body is not CodeBlockKoto, reachable && subject.Normal, required, boundary);
+            var body = this.VisitBranch(arm.Body, arm.Body is not CodeBlockKoto, reachable && subject.Normal && guardNormal, required, boundary);
             normal |= body.Normal;
             pendingCompletion |= subject.Normal && body.Pending;
             if (subject.Normal)
