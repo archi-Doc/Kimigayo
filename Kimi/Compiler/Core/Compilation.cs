@@ -93,6 +93,9 @@ public class Compilation
     /// <summary>Gets reusable ownership CFG analysis. Verification is separate from executable emission.</summary>
     public OwnershipAnalysis Ownership => this.ownership ??= new(this);
 
+    /// <summary>Gets the reusable, checked literal-output emitter.</summary>
+    public MinimalEmission Emission => field ??= new(this);
+
     #endregion
 
     /// <summary>

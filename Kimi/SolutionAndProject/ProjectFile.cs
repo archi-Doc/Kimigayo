@@ -24,6 +24,18 @@ public partial record class ProjectFile
     /// <summary>Gets or sets the exact language version, or null to inherit the solution/compiler default.</summary>
     public string? LangVersion { get; set; }
 
+    /// <summary>Gets or sets the project-relative .ll destination; null selects the profile default.</summary>
+    public string? OutputPath { get; set; }
+
+    /// <summary>Gets or sets O0 or O2 for the separate manual toolchain stage.</summary>
+    public string Optimization { get; set; } = "O2";
+
+    /// <summary>Gets or sets an optional LLVM bin directory recorded as a manual-build hint. The compiler never runs its tools.</summary>
+    public string? LlvmBin { get; set; }
+
+    /// <summary>Gets or sets target-specific logical library mappings, including explicit kernel32 and kimi_backend paths.</summary>
+    public Dictionary<string, Dictionary<string, NativeLibraryInput>> NativeLibraries { get; set; } = new(StringComparer.Ordinal);
+
     /// <summary>Gets or sets explicitly typed compile-time scalar settings.</summary>
     /// <remarks>Preserves written names so preparation can diagnose case-insensitive collisions instead of overwriting entries.</remarks>
     public Dictionary<string, CompileTimeSetting> CompileTimeSettings { get; set; } = new(StringComparer.Ordinal);

@@ -205,7 +205,7 @@ public sealed partial class Kotonoha
             tokenizer.ReadAll();
             var tokenReader = new TokenReader(codeContext, ref tokenizer);
             this.RootKoto.Parse(ref tokenReader);
-            this.HasSourceErrors |= diagnosticCollection.GetArray().Any(x => x.Entry.Severity == DiagnosticSeverity.Error);
+            this.HasSourceErrors |= diagnosticCollection.HasErrors;
         }
         finally
         {

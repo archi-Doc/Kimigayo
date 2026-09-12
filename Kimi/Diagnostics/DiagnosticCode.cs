@@ -117,6 +117,8 @@ public enum DiagnosticCode
     ControlFlowWarning_Kd,
     OuterCloserInBody_Kd,
 
+    GenerationFailed_Kd,
+
     Count, // Last sentinel
 }
 

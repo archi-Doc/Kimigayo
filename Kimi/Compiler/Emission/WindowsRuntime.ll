@@ -1,0 +1,242 @@
+; windows-x64-v1 internal runtime. Definitions receive the emitter's common #0 profile.
+; No buffer allocation, encoding conversion, CRT startup or exception unwinding.
+declare dllimport ptr @GetProcessHeap()
+declare dllimport ptr @HeapAlloc(ptr, i32, i64)
+declare dllimport i32 @HeapFree(ptr, i32, ptr)
+declare dllimport ptr @GetStdHandle(i32)
+declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)
+declare dllimport i32 @GetLastError()
+declare dllimport void @ExitProcess(i32) noreturn
+
+@__kimi_lf = private constant [1 x i8] c"\0A"
+@__kimi_abort_prefix = private constant [8 x i8] c": abort "
+@__kimi_os_prefix = private constant [8 x i8] c" (win32="
+@__kimi_close = private constant [1 x i8] c")"
+@__kimi_reasons = private constant [7 x { ptr, i64 }] [
+  { ptr, i64 } { ptr @__kimi_stdout_reason, i64 40 },
+  { ptr, i64 } { ptr @__kimi_size_reason, i64 48 },
+  { ptr, i64 } { ptr @__kimi_heap_reason, i64 50 },
+  { ptr, i64 } { ptr @__kimi_alloc_reason, i64 39 },
+  { ptr, i64 } { ptr @__kimi_free_reason, i64 34 },
+  { ptr, i64 } { ptr @__kimi_release_reason, i64 50 },
+  { ptr, i64 } { ptr @__kimi_overflow_reason, i64 37 }
+]
+@__kimi_stdout_reason = private constant [40 x i8] c"KIMI_E_STDOUT: Failed to write to stdout"
+@__kimi_size_reason = private constant [48 x i8] c"KIMI_E_ALLOC_SIZE: Allocation size exceeds limit"
+@__kimi_heap_reason = private constant [50 x i8] c"KIMI_E_PROCESS_HEAP: Failed to obtain process heap"
+@__kimi_alloc_reason = private constant [39 x i8] c"KIMI_E_ALLOC: Failed to allocate memory"
+@__kimi_free_reason = private constant [34 x i8] c"KIMI_E_FREE: Failed to free memory"
+@__kimi_release_reason = private constant [50 x i8] c"KIMI_E_STRING_RELEASE: Invalid string release kind"
+@__kimi_overflow_reason = private constant [37 x i8] c"KIMI_E_INT_OVERFLOW: Integer overflow"
+
+define internal void @__kimi_exit(i32 %code) noreturn #0 {
+entry:
+  call void @ExitProcess(i32 %code)
+  unreachable
+}
+
+; -1 = success; -2 = failure without an OS error; otherwise a zero-extended DWORD error.
+; Allocation validity/lifetime is established by checked lowering, not by these numeric checks.
+define internal i64 @__kimi_write_bytes(i32 %which, ptr %data, i64 %length) #0 {
+entry:
+  %empty = icmp eq i64 %length, 0
+  br i1 %empty, label %success, label %range
+range:
+  %too_large = icmp ugt i64 %length, 9223372036854775807
+  %null = icmp eq ptr %data, null
+  %bad = or i1 %too_large, %null
+  br i1 %bad, label %failure, label %address
+address:
+  %base = ptrtoint ptr %data to i64
+  %last_offset = sub i64 %length, 1
+  %last = add i64 %base, %last_offset
+  %overflow = icmp ult i64 %last, %base
+  br i1 %overflow, label %failure, label %handle
+handle:
+  %written_slot = alloca i32, align 4
+  %out = call ptr @GetStdHandle(i32 %which)
+  %null_handle = icmp eq ptr %out, null
+  %invalid_handle = icmp eq ptr %out, inttoptr (i64 -1 to ptr)
+  %bad_handle = or i1 %null_handle, %invalid_handle
+  br i1 %bad_handle, label %failure, label %loop
+loop:
+  %cursor = phi ptr [ %data, %handle ], [ %next, %advance ]
+  %remaining = phi i64 [ %length, %handle ], [ %rest, %advance ]
+  %large = icmp ugt i64 %remaining, 4294967295
+  %chunk64 = select i1 %large, i64 4294967295, i64 %remaining
+  %chunk = trunc i64 %chunk64 to i32
+  store i32 0, ptr %written_slot, align 4
+  %ok = call i32 @WriteFile(ptr %out, ptr %cursor, i32 %chunk, ptr %written_slot, ptr null)
+  %failed = icmp eq i32 %ok, 0
+  br i1 %failed, label %os_failure, label %progress
+progress:
+  %written = load i32, ptr %written_slot, align 4
+  %zero = icmp eq i32 %written, 0
+  %excess = icmp ugt i32 %written, %chunk
+  %bad_progress = or i1 %zero, %excess
+  br i1 %bad_progress, label %failure, label %completed
+completed:
+  %count = zext i32 %written to i64
+  %rest = sub i64 %remaining, %count
+  %done = icmp eq i64 %rest, 0
+  br i1 %done, label %success, label %advance
+advance:
+  ; The checked last address bounds every advance; do not compute a pointer after completion.
+  %next = getelementptr i8, ptr %cursor, i64 %count
+  br label %loop
+os_failure:
+  %error = call i32 @GetLastError()
+  %error64 = zext i32 %error to i64
+  ret i64 %error64
+failure:
+  ret i64 -2
+success:
+  ret i64 -1
+}
+
+define internal i1 @__kimi_try_stderr(ptr %data, i64 %length) #0 {
+entry:
+  %error = call i64 @__kimi_write_bytes(i32 -12, ptr %data, i64 %length)
+  %ok = icmp eq i64 %error, -1
+  ret i1 %ok
+}
+
+define internal void @__kimi_abort(i32 %reason, ptr %location, i64 %location_length, i64 %os_error) noreturn #0 {
+entry:
+  %digits = alloca [10 x i8], align 1
+  %located = call i1 @__kimi_try_stderr(ptr %location, i64 %location_length)
+  br i1 %located, label %prefix, label %exit
+prefix:
+  %prefixed = call i1 @__kimi_try_stderr(ptr @__kimi_abort_prefix, i64 8)
+  br i1 %prefixed, label %message, label %exit
+message:
+  %record = getelementptr [7 x { ptr, i64 }], ptr @__kimi_reasons, i32 0, i32 %reason
+  %record_value = load { ptr, i64 }, ptr %record, align 8
+  %data = extractvalue { ptr, i64 } %record_value, 0
+  %length = extractvalue { ptr, i64 } %record_value, 1
+  %messaged = call i1 @__kimi_try_stderr(ptr %data, i64 %length)
+  br i1 %messaged, label %os, label %exit
+os:
+  %has_error = icmp sge i64 %os_error, 0
+  br i1 %has_error, label %decimal, label %newline
+decimal:
+  %value = phi i64 [ %os_error, %os ], [ %quotient, %decimal ]
+  %index = phi i32 [ 10, %os ], [ %digit_index, %decimal ]
+  %digit_index = sub i32 %index, 1
+  %remainder = urem i64 %value, 10
+  %quotient = udiv i64 %value, 10
+  %byte = trunc i64 %remainder to i8
+  %ascii = add i8 %byte, 48
+  %digit_ptr = getelementptr [10 x i8], ptr %digits, i32 0, i32 %digit_index
+  store i8 %ascii, ptr %digit_ptr, align 1
+  %more = icmp ne i64 %quotient, 0
+  br i1 %more, label %decimal, label %os_prefix
+os_prefix:
+  %os_prefixed = call i1 @__kimi_try_stderr(ptr @__kimi_os_prefix, i64 8)
+  br i1 %os_prefixed, label %number, label %exit
+number:
+  %digit_count = sub i32 10, %digit_index
+  %digit_length = zext i32 %digit_count to i64
+  %numbered = call i1 @__kimi_try_stderr(ptr %digit_ptr, i64 %digit_length)
+  br i1 %numbered, label %close, label %exit
+close:
+  %closed = call i1 @__kimi_try_stderr(ptr @__kimi_close, i64 1)
+  br i1 %closed, label %newline, label %exit
+newline:
+  %ignored = call i1 @__kimi_try_stderr(ptr @__kimi_lf, i64 1)
+  br label %exit
+exit:
+  call void @__kimi_exit(i32 1)
+  unreachable
+}
+
+define internal void @__kimi_stdout(ptr %data, i64 %length, ptr %location, i64 %location_length) #0 {
+entry:
+  %error = call i64 @__kimi_write_bytes(i32 -11, ptr %data, i64 %length)
+  %ok = icmp eq i64 %error, -1
+  br i1 %ok, label %done, label %abort
+abort:
+  call void @__kimi_abort(i32 0, ptr %location, i64 %location_length, i64 %error)
+  unreachable
+done:
+  ret void
+}
+
+define internal ptr @__kimi_alloc(i64 %size, ptr %location, i64 %location_length) #0 {
+entry:
+  %invalid = icmp ugt i64 %size, 9223372036854775807
+  br i1 %invalid, label %size_failure, label %heap
+heap:
+  %process_heap = call ptr @GetProcessHeap()
+  %no_heap = icmp eq ptr %process_heap, null
+  br i1 %no_heap, label %heap_failure, label %allocate
+allocate:
+  %zero = icmp eq i64 %size, 0
+  %actual = select i1 %zero, i64 1, i64 %size
+  %memory = call ptr @HeapAlloc(ptr %process_heap, i32 0, i64 %actual)
+  %failed = icmp eq ptr %memory, null
+  br i1 %failed, label %alloc_failure, label %done
+size_failure:
+  call void @__kimi_abort(i32 1, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+heap_failure:
+  call void @__kimi_abort(i32 2, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+alloc_failure:
+  call void @__kimi_abort(i32 3, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+done:
+  ret ptr %memory
+}
+
+define internal void @__kimi_free(ptr %memory, ptr %location, i64 %location_length) #0 {
+entry:
+  %null = icmp eq ptr %memory, null
+  br i1 %null, label %done, label %heap
+heap:
+  %process_heap = call ptr @GetProcessHeap()
+  %no_heap = icmp eq ptr %process_heap, null
+  br i1 %no_heap, label %heap_failure, label %free
+free:
+  %result = call i32 @HeapFree(ptr %process_heap, i32 0, ptr %memory)
+  %failed = icmp eq i32 %result, 0
+  br i1 %failed, label %free_failure, label %done
+heap_failure:
+  call void @__kimi_abort(i32 2, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+free_failure:
+  %error = call i32 @GetLastError()
+  %error64 = zext i32 %error to i64
+  call void @__kimi_abort(i32 4, ptr %location, i64 %location_length, i64 %error64)
+  unreachable
+done:
+  ret void
+}
+
+define internal void @__kimi_destroy_string(ptr %text, ptr %location, i64 %location_length) #0 {
+entry:
+  %kind_ptr = getelementptr %kimi.string, ptr %text, i32 0, i32 2
+  %kind = load i8, ptr %kind_ptr, align 1
+  switch i8 %kind, label %invalid [ i8 0, label %done
+                                  i8 1, label %heap ]
+heap:
+  %data = load ptr, ptr %text, align 8
+  call void @__kimi_free(ptr %data, ptr %location, i64 %location_length)
+  br label %done
+invalid:
+  call void @__kimi_abort(i32 5, ptr %location, i64 %location_length, i64 -2)
+  unreachable
+done:
+  ret void
+}
+
+define internal void @__kimi_write_line(ptr %text, ptr %location, i64 %location_length) #0 {
+entry:
+  %data = load ptr, ptr %text, align 8
+  %length_ptr = getelementptr %kimi.string, ptr %text, i32 0, i32 1
+  %length = load i64, ptr %length_ptr, align 8
+  call void @__kimi_stdout(ptr %data, i64 %length, ptr %location, i64 %location_length)
+  call void @__kimi_stdout(ptr @__kimi_lf, i64 1, ptr %location, i64 %location_length)
+  call void @__kimi_destroy_string(ptr %text, ptr %location, i64 %location_length)
+  ret void
+}

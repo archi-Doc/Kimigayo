@@ -7161,6 +7161,7 @@ The initial windows-x64-v1 compiler produces one pre-optimization textual .ll an
 | OutputPath | .ll destination; default bin/<target>/<ProjectName>.ll |
 | NativeLibraries | Per-target logical name to kind/input mapping (§20.8.2) |
 | Optimization | O0 or O2 (default); applied during manual build |
+| LlvmBin | Optional host-local LLVM bin directory hint for a separately invoked manual builder; never selects a different profile/version or launches tools during compilation |
 | EntrySource | Not an initial selection setting; use §22.2's unique-candidate rules |
 
 The first execution subset is ordinary functions, simple local bindings, Unit, string literals, required ownership/cleanup, and Core.writeLine. Arrays, Dictionary, inheritance, closures, static Property execution, general generic sharing, and multiple-Kotonoha linking need not be included in this first execution test. Their language rules are not weakened; unsupported required operations fail. Layout computability, physical ABI support, and runtime availability are separate checks.
@@ -7229,6 +7230,8 @@ Hashes must be actual SHA-256 values; placeholders and packageVersion 1.0.0 illu
 - Manual build records retain the actual SDK/library files, versions/content identities, and tool settings selected by linker search.
 
 Complete both temporary outputs before publication, publish the manifest last, and report success only after both are published. A partial publication is failure; old files are not evidence of current success. Consumers check irSha256 because interruption can leave a mixed pair. Success reports both paths, purpose (Application input or Library inspection), entry, and required link inputs.
+
+When LlvmBin is configured, the manifest may additionally contain `"toolchain": { "llvmBin": "<manifest-relative directory>" }`. Resolve a relative setting from the project directory. This is a local manual-build hint, not part of the code-generation profile or evidence of a tool's version. A separately invoked builder may override the location, but must still verify LLVM 22.1.8; a directory name or configured path cannot certify version compatibility. Native library files remain configured separately through NativeLibraries.
 
 ##### 20.8.4. Manual toolchain example
 

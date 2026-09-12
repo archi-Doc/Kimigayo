@@ -46,9 +46,13 @@ public partial class Project
             }
 
             project = new(kimigayo);
-            project.Directory = Path.GetDirectoryName(path) ?? string.Empty;
+            project.Directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
             project.Name = Path.GetFileNameWithoutExtension(path);
             project.ProjectFile = file;
+            foreach (var source in System.IO.Directory.EnumerateFiles(project.Directory, "*.kimi", SearchOption.TopDirectoryOnly))
+            {
+                project.AddKimiFile(source);
+            }
         }
         catch
         {
@@ -122,22 +126,39 @@ public partial class Project
     /// <summary>Builds this project once for each configured target triple.</summary>
     /// <returns>A task that completes after all configured targets have been attempted.</returns>
     public async Task<bool> Build()
+        => await this.BuildCore(false).ConfigureAwait(false);
+
+    /// <summary>Runs front-end checks and publishes checked LLVM/manifest inputs. Does not invoke LLVM, link, or run.</summary>
+    /// <returns>Whether every configured target published both artifacts.</returns>
+    public async Task<bool> Generate()
+        => await this.BuildCore(true).ConfigureAwait(false);
+
+    private async Task<bool> BuildCore(bool emit)
     {
         this.buildMetadata.Clear();
         var targets = this.ProjectFile.Targets.ToArray();
+        if (emit && targets.Length == 0)
+        {
+            this.kimigayo.GlobalDiagnosticCollection.Add(default, DiagnosticCode.GenerationFailed_Kd, "No target is configured.");
+            return false;
+        }
+
         var success = true;
         foreach (var x in targets)
         {
-            success &= await this.BuildTarget(x).ConfigureAwait(false);
+            success &= await this.BuildTarget(x, emit).ConfigureAwait(false);
         }
 
         return success;
     }
 
-    private async Task<bool> BuildTarget(string target)
+    private async Task<bool> BuildTarget(string target, bool emit)
     {
         // Create & Prepare Compilation
         var compilation = new Compilation(this.kimigayo, this);
+        // The service retains named diagnostic collections across attempts, but the new compilation
+        // must not inherit an earlier target's preparation/publication errors.
+        compilation.Kotonoha.DiagnosticCollection.ClearDiagnostic();
         if (!compilation.Prepare(target))
         {
             return false;
@@ -159,8 +180,10 @@ public partial class Project
                 this.kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.InvalidSourceEncoding_Kd);
                 return false;
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                this.kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.GenerationFailed_Kd, ex.Message);
+                return false;
             }
         }
 
@@ -178,10 +201,20 @@ public partial class Project
         controlFlow.ReportDiagnostics();
         compilation.Ownership.ReportDiagnostics();
 
-        // Planned: remaining ownership/lifetime/Origin rules, lowering, backend IR, emission and linking.
-        // This result certifies only the implemented front-end checks, not finalization or a binary.
+        var accepted = binding.IsComplete && startup.IsComplete && ownership.IsVerified && !projectKotonoha.HasSourceErrors &&
+            !projectKotonoha.DiagnosticCollection.HasErrors;
+        if (!accepted || !emit)
+        {
+            return accepted; // Preserve the legacy front-end-only Build API.
+        }
 
-        return binding.IsComplete && startup.IsComplete && ownership.IsVerified && !projectKotonoha.HasSourceErrors &&
-            !projectKotonoha.DiagnosticCollection.GetArray().Any(x => x.Entry.Severity == DiagnosticSeverity.Error);
+        if (!EmissionArtifacts.Publish(compilation, out var pathIr, out var failure))
+        {
+            projectKotonoha.DiagnosticCollection.Add(default, DiagnosticCode.GenerationFailed_Kd, failure);
+            return false;
+        }
+
+        this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Generated partial Application inputs: {pathIr} and {Path.ChangeExtension(pathIr, ".link.json")}; entry __kimi_start; kernel32 + kimi_backend. LLVM/link/run remain separate.");
+        return true;
     }
 }

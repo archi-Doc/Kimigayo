@@ -77,16 +77,21 @@ public class Solution
     /// <summary>Builds every loaded project using the solution options.</summary>
     /// <returns>A task whose result indicates whether build dispatch completed.</returns>
     public async Task<bool> Build()
+        => await this.BuildCore(false).ConfigureAwait(false);
+
+    /// <summary>Generates checked LLVM/manifest pairs for the loaded projects.</summary>
+    /// <returns>Whether every project published its artifacts.</returns>
+    public async Task<bool> Generate()
     {
-        var success = true;
-        foreach (var x in this.Projects.Values)
+        for (var i = 0; i < this.SolutionFile.Projects.Count; i++)
         {
-            x.KimiOptions = this.KimiOptions;
-            x.SolutionLanguageVersion = this.SolutionFile.Configuration.LangVersion;
-            success &= await x.Build();
+            if (!this.Projects.ContainsKey(this.SolutionFile.Projects[i]))
+            {
+                return false;
+            }
         }
 
-        return success;
+        return this.Projects.Count != 0 && await this.BuildCore(true).ConfigureAwait(false);
     }
 
     /// <summary>Discovers solution and project files for a build command.</summary>
@@ -293,5 +298,18 @@ SolutionLoaed:
                 logger.GetWriter(LogLevel.Error)?.Write(Hashed.Project.NoKimiFile, this.SingleFile);
             }
         }
+    }
+
+    private async Task<bool> BuildCore(bool emit)
+    {
+        var success = true;
+        foreach (var x in this.Projects.Values)
+        {
+            x.KimiOptions = this.KimiOptions;
+            x.SolutionLanguageVersion = this.SolutionFile.Configuration.LangVersion;
+            success &= emit ? await x.Generate() : await x.Build();
+        }
+
+        return success;
     }
 }

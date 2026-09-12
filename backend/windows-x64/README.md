@@ -1,6 +1,6 @@
-# Windows x64 backend candidate
+# Windows x64 backend
 
-This directory supplies the native helper candidate for SPEC §21.5.7. It is separate from the six runtime operations emitted into Kimigayo LLVM modules. LLVM **22.1.8** is the current profile version.
+This directory supplies the native helpers for SPEC §21.5.7. The reviewed package is pinned in [profile.json](profile.json); [ADOPTION.md](ADOPTION.md) records its scope and validation. Local builds remain candidates until their actual hash matches the adopted catalog. The helpers are separate from the six runtime operations emitted into Kimigayo LLVM modules. LLVM **22.1.8** is the current profile version.
 
 ## Build and test
 
@@ -37,6 +37,8 @@ The test harness uses additional Windows memory-protection APIs solely for fault
 
 The report is a **tested candidate**, not the compiler's adopted supply catalog: `adopted` stays false and `packageVersion` stays null. Preserve that distinction when consuming it. Hashes are computed from the actual output, never placeholders.
 
-Before adoption, review the assembly and unwind encoding, extend register/OS unwind validation as necessary, test representative generated Kimigayo modules and their actual undefined symbols, and freeze a reviewed package version and archive hash in the future compiler profile catalog. Tests here do not cover all runtime/ABI features, i128 expansion, all possible machine states, or compiler emission. They also do not establish a throughput improvement.
+The current catalog was frozen after assembly/unwind review and generated Kimigayo module validation described in ADOPTION.md. A different archive needs renewed review, native and generated-module verification, and a new immutable catalog version. Helper tests alone do not cover all runtime/ABI features, i128 expansion, all possible machine states, or compiler emission. They do not establish a throughput improvement.
 
 Rebuilding is repeatable from these sources and recorded tools; adoption must compare the resulting archive hash rather than assume filename or timestamp equality. The build script does not publish or install a runtime package.
+
+For the one-line Application, project/toolchain configuration, manual builder and native emission tests, see [the Hello example](../../examples/Hello/README.md). `manual-build.ps1` is invoked separately from the compiler; `test-emission.ps1` verifies the generated modules and test-only runtime fault adapters.

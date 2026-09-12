@@ -24,5 +24,6 @@ public class BuildCommand : ISimpleCommand<KimiOptions>
     {
         this.solution.LoadForBuild(this.logger, options, args);
         this.solution.PrepareProject(this.logger);
+        Environment.ExitCode = await this.solution.Generate() ? 0 : 1;
     }
 }

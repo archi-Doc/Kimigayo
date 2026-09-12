@@ -1,0 +1,10 @@
+{
+  "packageId": "kimi-backend-windows-x64",
+  "abiVersion": 1,
+  "packageVersion": "1.0.0",
+  "profile": "windows-x64-v1",
+  "llvmVersion": "22.1.8",
+  "library": "kimi_backend",
+  "artifactSha256": "74f87661ca1493fedd9d688df5e64f1346ddf9190a12db2f1b012b2f509b500c",
+  "providedSymbols": ["__chkstk", "memcpy", "memmove", "memset"]
+}
