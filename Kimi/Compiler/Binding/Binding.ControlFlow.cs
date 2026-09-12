@@ -10,8 +10,36 @@ public sealed partial class Binding
 
     private readonly List<ResultContext> resultPool = new();
     private readonly List<Koto> resultChildren = new();
+    private readonly List<BoundType> resultTypes = new();
     private ResultCollector? resultCollector;
     private StructuralCompletion? resultStructure;
+
+    /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.1).</summary>
+    /// <param name="types">The non-Never source Types.</param>
+    /// <param name="conflict">Whether no single supplied Type accepts all sources.</param>
+    /// <returns>The common Type, or null when none is supplied or the sources conflict.</returns>
+    internal static BoundType? SelectCommonType(List<BoundType> types, out bool conflict)
+    {
+        conflict = false;
+        for (var i = 0; i < types.Count; i++)
+        {
+            var candidate = types[i];
+            var fitsAll = true;
+            for (var j = 0; j < types.Count && fitsAll; j++)
+            {
+                fitsAll = FitsType(types[j], candidate);
+            }
+
+            if (fitsAll)
+            {
+                return candidate;
+            }
+        }
+
+        // No common base is searched; unrelated sources require an annotation.
+        conflict = types.Count > 0;
+        return null;
+    }
 
     private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected)
     {
@@ -29,10 +57,14 @@ public sealed partial class Binding
         context.Expected = expected;
         context.Invalid = context.Pending = false;
         context.Sources.Clear();
+        context.Evidence.Clear();
         this.resultContexts[target] = context;
         if (expected is null)
         {
             this.FindResultEvidence(target, scope, context);
+            context.Expected = SelectCommonType(context.Evidence, out var conflict);
+            context.Invalid |= conflict;
+            context.Evidence.Clear();
         }
 
         return context;
@@ -140,8 +172,7 @@ public sealed partial class Binding
         var evidence = this.ResultEvidence(expression, scope);
         if (evidence is not null && !ReferenceEquals(evidence, BoundType.Never))
         {
-            context.Invalid |= context.Expected is not null && !ReferenceEquals(context.Expected, evidence);
-            context.Expected ??= evidence;
+            context.Evidence.Add(evidence);
         }
     }
 
@@ -218,32 +249,36 @@ public sealed partial class Binding
             context.Sources.Add(BoundType.Unit);
         }
 
-        var common = context.Expected;
-        var suppliedValue = false;
+        var types = this.resultTypes;
+        types.Clear();
         foreach (var source in context.Sources)
         {
             if (source is null)
             {
                 context.Pending = true;
-                continue;
             }
-
-            if (ReferenceEquals(source, BoundType.Never))
+            else if (!ReferenceEquals(source, BoundType.Never))
             {
-                continue;
-            }
-
-            suppliedValue = true;
-            if (common is null)
-            {
-                common = source;
-            }
-            else if (!FitsType(source, common))
-            {
-                context.Invalid = true;
+                types.Add(source);
             }
         }
 
+        var suppliedValue = types.Count > 0;
+        var common = context.Expected;
+        if (common is null)
+        {
+            common = SelectCommonType(types, out var conflict);
+            context.Invalid |= conflict;
+        }
+        else
+        {
+            for (var i = 0; i < types.Count; i++)
+            {
+                context.Invalid |= !FitsType(types[i], common);
+            }
+        }
+
+        types.Clear();
         if (context.Invalid)
         {
             return Fail(node, BindingFailure.TypeMismatch);
@@ -267,6 +302,8 @@ public sealed partial class Binding
         internal BoundType? Expected { get; set; }
 
         internal List<BoundType?> Sources { get; } = new();
+
+        internal List<BoundType> Evidence { get; } = new();
 
         internal bool Pending { get; set; }
 

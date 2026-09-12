@@ -310,3 +310,7 @@
   + Name="ControlFlowWarning_Kd"
     Severity="Warning"
     Message="{0}"
+
+  + Name="OuterCloserInBody_Kd"
+    Message="An outer closing delimiter cannot close an indented body on the same line"
+    Fix="Dedent on the next effective line before writing the closing delimiter"

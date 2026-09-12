@@ -68,6 +68,11 @@ public abstract class ControlFlowTypeSystem
     /// <returns>True for a resolved construction.</returns>
     public virtual bool IsBoundConstruction(Koto expression) => false;
 
+    /// <summary>Determines whether an expression's complete Type is proven Copy, so discarding it has no destruction effect.</summary>
+    /// <param name="expression">The bound expression.</param>
+    /// <returns>True only for a proven Copy Type; unknown or unresolved Types return false.</returns>
+    public virtual bool IsProvenCopy(Koto expression) => false;
+
     /// <summary>Identifies a selected direct call and its receiver, without treating its callee as a runtime value.</summary>
     /// <param name="call">The call to inspect.</param>
     /// <param name="receiver">The receiver evaluated before explicit arguments, or null for an unbound call.</param>

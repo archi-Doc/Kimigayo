@@ -2286,11 +2286,14 @@ CloseParameters:
         return false;
     }
 
+    // unsafe is contextual: it introduces a statement only before a Body (or an obsolete body colon/missing body
+    // at statement start). A following operator, call, index, or member access keeps it an ordinary Name (SPEC 2.5.1).
     private static bool IsBlockStatementStart(ref TokenReader reader, bool expressionPosition = false)
         => reader.CurrentTokenKind == TokenKind.Defer ||
-            (reader.IsCurrentIdentifier(Constants.UnsafeKeyword) && reader.PeekKind(1) is not (TokenKind.Slash or TokenKind.Func) &&
-                (!expressionPosition || reader.PeekKind(1) is TokenKind.EqualsGreaterThan or TokenKind.StartBlock or TokenKind.Colon ||
-                    (reader.PeekKind(1) == TokenKind.Separator && reader.PeekKind(2) == TokenKind.StartBlock)));
+            (reader.IsCurrentIdentifier(Constants.UnsafeKeyword) &&
+                (reader.PeekKind(1) is TokenKind.EqualsGreaterThan or TokenKind.StartBlock or TokenKind.Colon ||
+                    (reader.PeekKind(1) == TokenKind.Separator && reader.PeekKind(2) == TokenKind.StartBlock) ||
+                    (!expressionPosition && reader.PeekKind(1) is TokenKind.Separator or TokenKind.EndBlock or TokenKind.Invalid)));
 
     private static BlockStatementKoto ParseBlockStatement(ref TokenReader reader)
     {
@@ -2605,6 +2608,16 @@ CloseParameters:
         return ParseRequiredExpression(ref reader);
     }
 
+    /// <summary>Reports a labeled expression whose colon conflicts with an argument name or dictionary separator.</summary>
+    /// <param name="reader">The reader positioned at the value.</param>
+    private static void DiagnoseUngroupedLabel(ref TokenReader reader)
+    {
+        if (reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.Colon)
+        {
+            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "parenthesize a labeled expression");
+        }
+    }
+
     private static string? ParseTransferLabel(ref TokenReader reader, ref int end)
     {
         if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
@@ -2869,6 +2882,12 @@ CloseParameters:
 
     private static Koto ParseLabeledExpression(ref TokenReader reader)
     {
+        if (reader.HeaderRegion)
+        {
+            // A labeled construct is body-bearing; grouping keeps its body separate from the header (SPEC 2.2.1).
+            reader.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "group body-bearing header expressions");
+        }
+
         var token = reader.Read();
         reader.TryGetIdentifier(token, out var label);
         reader.Advance(); // Colon.
@@ -3143,6 +3162,7 @@ ProcessPrefix:
                 }
 
                 labels.Add(label);
+                DiagnoseUngroupedLabel(ref reader);
             }
             else if (hasLabels)
             {
@@ -3604,6 +3624,11 @@ Loop:
             {
                 reader.AddDiagnostic(DiagnosticCode.IncompleteSyntax_Kd);
                 return reader.NewErrorKoto();
+            }
+
+            if (allowLabel)
+            {
+                DiagnoseUngroupedLabel(ref reader);
             }
 
             return ParseExpression(ref reader, allowLabel: allowLabel);

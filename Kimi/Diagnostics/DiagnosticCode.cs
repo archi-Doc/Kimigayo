@@ -115,6 +115,7 @@ public enum DiagnosticCode
     NonExhaustiveMatch_Kd,
     UnreachablePattern_Kd,
     ControlFlowWarning_Kd,
+    OuterCloserInBody_Kd,
 
     Count, // Last sentinel
 }

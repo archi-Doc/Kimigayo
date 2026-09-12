@@ -1094,13 +1094,47 @@ EndOfFile:
 
     private bool PreviousLineStartsBody()
     {
+        if (this.tokenCount > 0 && this.tokens[this.tokenCount - 1].Kind is TokenKind.Colon or TokenKind.EqualsGreaterThan)
+        {
+            return true;
+        }
+
         // Inspect only the preceding logical header; no source strings are created.
+        // Keywords inside delimiters belong to nested expressions, and an outer "=>" has already
+        // supplied a single-item body, whose expression may continue with a leading dot (SPEC 2.2.2).
+        var nesting = 0;
         for (var i = this.tokenCount - 1; i >= 0; i--)
         {
             var kind = this.tokens[i].Kind;
             if (kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock)
             {
                 break;
+            }
+
+            if (kind is TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace)
+            {
+                nesting++;
+                continue;
+            }
+
+            if (kind is TokenKind.OpenParenthesis or TokenKind.OpenBracket or TokenKind.OpenBrace)
+            {
+                if (nesting-- == 0)
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            if (nesting > 0)
+            {
+                continue;
+            }
+
+            if (kind == TokenKind.EqualsGreaterThan)
+            {
+                return false;
             }
 
             if (kind == TokenKind.Identifier && this.sourceText.Slice(this.tokens[i].Span.Start, this.tokens[i].Span.Length).SequenceEqual("unsafe"))
@@ -1114,7 +1148,7 @@ EndOfFile:
             }
         }
 
-        return this.tokenCount > 0 && this.tokens[this.tokenCount - 1].Kind is TokenKind.Colon or TokenKind.EqualsGreaterThan;
+        return false;
     }
 
     private void ReadLiteralKeywordOrIdentifier()
@@ -1385,12 +1419,21 @@ EndOfFile:
 
     private void PopIndentSource(TokenKind expected)
     {
+        var closesBody = false;
         while (this.indentCount > 0)
         {
             var entry = this.indentStack[this.indentCount - 1];
             var indentSource = entry.Source;
             if (indentSource == IndentSource.Block)
             {
+                // A body opens only at a line start, so this closer shares a line with body content.
+                // Close it for recovery, but a dedent must precede the outer closer (SPEC 2.2.1).
+                if (!closesBody)
+                {
+                    closesBody = true;
+                    this.diagnostics.Add(this.NewRange(1), DiagnosticCode.OuterCloserInBody_Kd);
+                }
+
                 this.indentCount--;
                 this.AddToken(new(TokenKind.EndBlock, this.CurrentRange));
                 this.blockDepth--;

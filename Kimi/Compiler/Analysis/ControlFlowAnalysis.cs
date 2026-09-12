@@ -176,6 +176,19 @@ public sealed class ControlFlowAnalysis
     private bool IsEffectFree(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
+
+        // Tuples and Case constructions are effect-free when every nested operand is (SPEC 17.4.2).
+        // A Case construction must also have a proven Copy Type, so its destruction is not observable.
+        if (node is TupleLiteralKoto tuple)
+        {
+            return this.AreEffectFree(tuple.Elements);
+        }
+
+        if (this.types.IsBoundConstruction(node))
+        {
+            return this.types.IsProvenCopy(node) && (node is not InvocationKoto call || this.AreEffectFree(call.ArgumentNodes));
+        }
+
         var type = this.types.GetExpressionType(node) ?? this.nodes.GetValueOrDefault(node)?.ExpressionType;
         var primitive = type?.Name is "bool" or "char" or "integer literal" or "float literal" or
             "i8" or "i16" or "i32" or "i64" or "i128" or "u8" or "u16" or "u32" or "u64" or "u128" or "isize" or "usize" or "f32" or "f64";
@@ -193,6 +206,19 @@ public sealed class ControlFlowAnalysis
                 this.IsEffectFree(((BinaryKoto)node).Left) && this.IsEffectFree(((BinaryKoto)node).Right),
             _ => false,
         };
+    }
+
+    private bool AreEffectFree(IReadOnlyList<Koto> operands)
+    {
+        for (var i = 0; i < operands.Count; i++)
+        {
+            if (!this.IsEffectFree(operands[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void WarnUnitTail(Koto body)

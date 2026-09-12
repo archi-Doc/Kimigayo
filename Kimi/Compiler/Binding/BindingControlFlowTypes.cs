@@ -9,6 +9,9 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
 {
     public override bool IsBoundConstruction(Koto expression) => binding.TryGetEnumConstruction(expression, out _);
 
+    public override bool IsProvenCopy(Koto expression)
+        => expression.BindingState == BindingState.Resolved && expression.BoundType is { } type && binding.ProveCopy(type, expression) == ConstraintProof.Proven;
+
     public override ControlFlowType? GetExpressionType(Koto expression)
         => expression.BindingState == BindingState.Resolved ? FlowType(expression.BoundType) : null;
 
@@ -63,29 +66,37 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
 
     public override ControlFlowType? InferResultType(IReadOnlyList<ControlFlowResultSource> sources)
     {
-        BoundType? common = null;
+        // Choose the supplied Type accepting every other source, independently of source order (SPEC 14.9.1).
         for (var i = 0; i < sources.Count; i++)
         {
-            var source = sources[i];
-            if (SemanticType(source.Type) is not { } type)
+            if (SemanticType(sources[i].Type) is not { } candidate)
             {
                 return null;
             }
 
-            if (ReferenceEquals(type, BoundType.Never))
+            if (ReferenceEquals(candidate, BoundType.Never))
             {
                 continue;
             }
 
-            if (common is not null && !ReferenceEquals(common, type))
+            var fitsAll = true;
+            for (var j = 0; j < sources.Count && fitsAll; j++)
             {
-                return null;
+                if (SemanticType(sources[j].Type) is not { } other)
+                {
+                    return null;
+                }
+
+                fitsAll = Binding.FitsType(other, candidate);
             }
 
-            common = type;
+            if (fitsAll)
+            {
+                return FlowType(candidate);
+            }
         }
 
-        return FlowType(common);
+        return null;
     }
 
     public override bool? IsExhaustive(MatchKoto match) => this.GetMatchCoverage(match, null).IsExhaustive;
