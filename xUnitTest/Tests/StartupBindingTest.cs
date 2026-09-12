@@ -348,7 +348,7 @@ public class StartupBindingTest
     [InlineData("writeLine(\"Hello world\")")]
     [InlineData("::Core.writeLine(text: \"Hello world\")")]
     [InlineData("public func main()\n    let text = \"Hello world\"\n    ::Core.writeLine(text)")]
-    [InlineData("#match\n    #case true\n        writeLine(\"selected\")\n    #case _\n        absent()")]
+    [InlineData("#switch\n    #case true\n        writeLine(\"selected\")\n    #case _\n        absent()")]
     public void WriteLineSuppliesTheExistingControlFlowChecks(string source)
     {
         var c = Parse(source);

@@ -507,6 +507,7 @@ public sealed partial class Binding
             if (node is IsKoto clause)
             {
                 clause.BoundConstraint = null;
+                clause.BoundRuntimeTest = null;
             }
 
             binding.nodes.Add(node);

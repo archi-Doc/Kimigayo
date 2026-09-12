@@ -75,7 +75,7 @@ public class PropertyRevisionParseTest
     [InlineData("contract C\n    property item: T has set, get")]
     [InlineData("contract C\n    property item: ref/T\n        get(self: ref/Self) -> ref/T from self\n        set(self: uniq/Self, value: T) -> ()")]
     [InlineData("struct S\n    #if true\n        computed item: T\n            get(self: ref/Self) -> T => make()")]
-    [InlineData("contract C\n    #match\n        #case true\n            property item: T\n                get(self: ref/Self) -> T")]
+    [InlineData("contract C\n    #switch\n        #case true\n            property item: T\n                get(self: ref/Self) -> T")]
     public void PreservesDeclarationsAndSignatures(string source)
         => RoundTrip(ParseSuccess(source));
 

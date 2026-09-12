@@ -161,7 +161,7 @@ public sealed class ControlFlowAnalysis
             return right;
         }
 
-        left.UnionWith(right);
+        StructuralCompletion.UnionTransfers(left, right);
         return left;
     }
 
@@ -176,6 +176,14 @@ public sealed class ControlFlowAnalysis
     private bool IsEffectFree(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
+
+        if (node is IsKoto { IsRuntimeTest: true } test)
+        {
+            // A stable name needs no acquisition/destruction. Calls and Properties
+            // retain their effects; the target Type is never a value expression.
+            return this.types.IsBoundRuntimeTypeTest(test) && KotoHelper.UnwrapParentheses(test.Left) is
+                IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter };
+        }
 
         // Tuples and Case constructions are effect-free when every nested operand is (SPEC 17.4.2).
         // A Case construction must also have a proven Copy Type, so its destruction is not observable.
@@ -379,7 +387,7 @@ public sealed class ControlFlowAnalysis
             case DeclarationContainerKoto:
                 this.VisitDeclarations(node);
                 return new(true, ControlFlowType.Unit);
-            case CompileTimeMatchKoto:
+            case CompileTimeSwitchKoto:
                 // Invalid groups already have parser diagnostics; their arms are not executable.
                 return new(true, null);
             case FieldKoto field:
@@ -499,6 +507,16 @@ public sealed class ControlFlowAnalysis
                 var right = this.Visit(logical.Right, reachable && left.Normal, ControlFlowType.Boolean);
                 // Runtime short-circuiting may skip the right operand. Do not constant-fold it for reachability.
                 flow = new(left.Normal, ControlFlowType.Boolean, Union(left.Transfers, left.Normal ? right.Transfers : null), left.Pending || right.Pending);
+                break;
+            case IsKoto { IsRuntimeTest: true } test:
+                flow = this.Visit(test.Left, reachable) with { Type = ControlFlowType.Boolean };
+                if (!this.types.IsBoundRuntimeTypeTest(test))
+                {
+                    // bool is known from syntax; target validity still requires Binding.
+                    this.pending.Add(test);
+                    flow = flow with { Pending = true };
+                }
+
                 break;
             case ConversionKoto conversion:
                 flow = this.VisitChildSequence(conversion, reachable);
@@ -704,7 +722,7 @@ public sealed class ControlFlowAnalysis
     /// <summary>Determines whether a body contains an unselected directive group, excluding nested function bodies.</summary>
     private bool HasInvalidDirective(Koto node)
     {
-        if (node is CompileTimeMatchKoto)
+        if (node is CompileTimeSwitchKoto)
         {
             return true;
         }
@@ -1216,6 +1234,11 @@ public sealed class ControlFlowAnalysis
             }
 
             return null;
+        }
+
+        if (node is IsKoto { IsRuntimeTest: true })
+        {
+            return ControlFlowType.Boolean;
         }
 
         if (node is BinaryKoto binary && this.nodes.TryGetValue(binary.Left, out var left) && this.nodes.TryGetValue(binary.Right, out var right))

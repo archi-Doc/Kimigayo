@@ -1077,7 +1077,7 @@ CloseParameters:
                         continue;
                     }
 
-                    if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.Match)
+                    if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.Switch)
                     {
                         isEnd = false;
                         return;
@@ -1085,7 +1085,7 @@ CloseParameters:
 
                     if (reader.PeekKind(1) == TokenKind.Case)
                     {
-                        reader.AddDiagnostic(DiagnosticCode.CompileTimeCaseOutsideMatch_Kd);
+                        reader.AddDiagnostic(DiagnosticCode.CompileTimeCaseOutsideSwitch_Kd);
                         SkipExcludedSyntaxCore(ref reader);
                         reader.ClearContext();
                         continue;
@@ -1499,16 +1499,16 @@ CloseParameters:
         }
     }
 
-    /// <summary>Parses the arms in one explicit compile-time <c>#match</c> body.</summary>
-    /// <param name="reader">The token reader positioned at <c>#match</c>.</param>
+    /// <summary>Parses the arms in one explicit compile-time <c>#switch</c> body.</summary>
+    /// <param name="reader">The token reader positioned at <c>#switch</c>.</param>
     /// <param name="declarationContext">The enclosing Declaration Container, when applicable.</param>
     /// <returns>The selected body or an invalid Case Group retained for error recovery.</returns>
-    internal static Koto ParseCompileTimeMatch(ref TokenReader reader, DeclarationContainerKoto? declarationContext = null)
+    internal static Koto ParseCompileTimeSwitch(ref TokenReader reader, DeclarationContainerKoto? declarationContext = null)
     {
         var context = reader.TakeContext();
         var header = reader.CurrentTokenRange;
         var groupStart = reader.CurrentTokenRange.Start;
-        reader.Advance(2); // #match has no subject or condition on its header.
+        reader.Advance(2); // #switch has no subject or condition on its header.
         var groupEnd = reader.CurrentTokenRange.Start;
         var arms = new List<CompileTimeCaseArmKoto>();
         var selectedIndex = -1;
@@ -1527,12 +1527,12 @@ CloseParameters:
 
         if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
-            reader.Diagnostic.Add(header, DiagnosticCode.EmptyCompileTimeMatch_Kd);
+            reader.Diagnostic.Add(header, DiagnosticCode.EmptyCompileTimeSwitch_Kd);
             reader.RestoreContext(context);
-            return new CompileTimeMatchKoto(ref reader, SourceSpan.FromBounds(groupStart, groupEnd), arms);
+            return new CompileTimeSwitchKoto(ref reader, SourceSpan.FromBounds(groupStart, groupEnd), arms);
         }
 
-        reader.Advance(); // The #match arm list is not a new lookup scope.
+        reader.Advance(); // The #switch arm list is not a new lookup scope.
         var closed = false;
 
         while (reader.CanRead)
@@ -1552,7 +1552,7 @@ CloseParameters:
 
             if (!IsCompileTimeCaseStart(ref reader))
             {
-                reader.AddDiagnostic(DiagnosticCode.InvalidCompileTimeMatchItem_Kd);
+                reader.AddDiagnostic(DiagnosticCode.InvalidCompileTimeSwitchItem_Kd);
                 invalidSyntax = true;
                 SkipCompileTimeHeaderRemainder(ref reader);
                 if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
@@ -1625,7 +1625,7 @@ CloseParameters:
 
         if (arms.Count == 0)
         {
-            reader.Diagnostic.Add(header, DiagnosticCode.EmptyCompileTimeMatch_Kd);
+            reader.Diagnostic.Add(header, DiagnosticCode.EmptyCompileTimeSwitch_Kd);
             invalidSyntax = true;
         }
 
@@ -1637,7 +1637,7 @@ CloseParameters:
             return selectedBody;
         }
 
-        var group = new CompileTimeMatchKoto(
+        var group = new CompileTimeSwitchKoto(
             ref reader,
             SourceSpan.FromBounds(groupStart, groupEnd),
             arms);
@@ -1671,8 +1671,8 @@ CloseParameters:
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool IsCompileTimeMatchStart(ref TokenReader reader)
-        => reader.CurrentTokenKind == TokenKind.Sharp && reader.PeekKind(1) == TokenKind.Match;
+    internal static bool IsCompileTimeSwitchStart(ref TokenReader reader)
+        => reader.CurrentTokenKind == TokenKind.Sharp && reader.PeekKind(1) == TokenKind.Switch;
 
     private static bool IsCompileTimeCaseStart(ref TokenReader reader)
         => reader.CurrentTokenKind == TokenKind.Sharp && reader.PeekKind(1) == TokenKind.Case;
@@ -1697,7 +1697,7 @@ CloseParameters:
 
     private static void SkipExcludedSyntaxCore(ref TokenReader reader)
     {
-        if (IsCompileTimeMatchStart(ref reader) || IsCompileTimeCaseStart(ref reader))
+        if (IsCompileTimeSwitchStart(ref reader) || IsCompileTimeCaseStart(ref reader))
         {
             reader.Advance(2);
             SkipCompileTimeHeaderRemainder(ref reader);
@@ -1737,8 +1737,8 @@ CloseParameters:
         int end,
         bool executableContext,
         bool importedDeclaration = false,
-        bool isMatchBody = false,
-        SourceSpan matchHeader = default)
+        bool isSwitchBody = false,
+        SourceSpan switchHeader = default)
     {
         var caseCount = 0;
         while (reader.Position < end && reader.CanRead && reader.CurrentTokenKind != TokenKind.EndBlock)
@@ -1752,8 +1752,8 @@ CloseParameters:
             var header = reader.CurrentTokenRange;
             var first = reader.CurrentTokenKind;
             var isCase = IsCompileTimeCaseStart(ref reader);
-            var isMatchHeader = IsCompileTimeMatchStart(ref reader);
-            if (isMatchBody)
+            var isSwitchHeader = IsCompileTimeSwitchStart(ref reader);
+            if (isSwitchBody)
             {
                 if (isCase)
                 {
@@ -1761,15 +1761,15 @@ CloseParameters:
                 }
                 else
                 {
-                    reader.AddDiagnostic(DiagnosticCode.InvalidCompileTimeMatchItem_Kd);
+                    reader.AddDiagnostic(DiagnosticCode.InvalidCompileTimeSwitchItem_Kd);
                 }
             }
             else if (isCase)
             {
-                reader.AddDiagnostic(DiagnosticCode.CompileTimeCaseOutsideMatch_Kd);
+                reader.AddDiagnostic(DiagnosticCode.CompileTimeCaseOutsideSwitch_Kd);
             }
 
-            var directive = first == TokenKind.Sharp && reader.PeekKind(1) is TokenKind.If or TokenKind.Case or TokenKind.Match;
+            var directive = first == TokenKind.Sharp && reader.PeekKind(1) is TokenKind.If or TokenKind.Case or TokenKind.Switch;
             var prefix = directive && reader.PeekKind(1) == TokenKind.If;
             var bodyIsExecutable = executableContext;
             var requiresBody = directive && !prefix;
@@ -1797,7 +1797,7 @@ CloseParameters:
                         bodyIsExecutable = true;
                     }
 
-                    if (kind == TokenKind.Match)
+                    if (kind is TokenKind.Match or TokenKind.Switch)
                     {
                         // The arm list is not itself an executable Block.
                         bodyIsExecutable = false;
@@ -1836,7 +1836,7 @@ CloseParameters:
                     reader.Diagnostic.Add(header, DiagnosticCode.IncompleteSyntax_Kd);
                 }
 
-                if (isMatchHeader && last != TokenKind.Match)
+                if (isSwitchHeader && last != TokenKind.Switch)
                 {
                     reader.Diagnostic.Add(header, DiagnosticCode.UnexpectedTrailingToken_Kd);
                 }
@@ -1860,14 +1860,14 @@ CloseParameters:
                 ValidateExcludedBodyStructure(
                     ref reader,
                     end,
-                    isMatchHeader ? executableContext : bodyIsExecutable,
-                    isMatchBody: isMatchHeader,
-                    matchHeader: header);
+                    isSwitchHeader ? executableContext : bodyIsExecutable,
+                    isSwitchBody: isSwitchHeader,
+                    switchHeader: header);
                 reader.TryConsume(TokenKind.EndBlock);
             }
             else if (requiresBody)
             {
-                reader.Diagnostic.Add(header, isMatchHeader ? DiagnosticCode.EmptyCompileTimeMatch_Kd : DiagnosticCode.EmptyExecutableBlock_Kd);
+                reader.Diagnostic.Add(header, isSwitchHeader ? DiagnosticCode.EmptyCompileTimeSwitch_Kd : DiagnosticCode.EmptyExecutableBlock_Kd);
             }
             else if (prefix && (reader.Position >= end || !reader.CanRead || reader.CurrentTokenKind == TokenKind.EndBlock))
             {
@@ -1880,9 +1880,9 @@ CloseParameters:
             }
         }
 
-        if (isMatchBody && caseCount == 0)
+        if (isSwitchBody && caseCount == 0)
         {
-            reader.Diagnostic.Add(matchHeader, DiagnosticCode.EmptyCompileTimeMatch_Kd);
+            reader.Diagnostic.Add(switchHeader, DiagnosticCode.EmptyCompileTimeSwitch_Kd);
         }
     }
 
@@ -2101,9 +2101,9 @@ CloseParameters:
                 continue;
             }
 
-            if (IsCompileTimeMatchStart(ref reader))
+            if (IsCompileTimeSwitchStart(ref reader))
             {
-                var caseGroup = ParseCompileTimeMatch(ref reader);
+                var caseGroup = ParseCompileTimeSwitch(ref reader);
                 items.Add(caseGroup);
                 seenExecutableItem = true;
                 continue;
@@ -2848,17 +2848,18 @@ CloseParameters:
             }
             else if (token.Kind == TokenKind.Is && !reader.IsParsingCompileTimeCondition)
             {
-                var negated = reader.TryConsume(TokenKind.Not, out var notSpan, false);
+                var negated = reader.TryConsume(TokenKind.Not);
                 right = ParseConstraintSubject(ref reader);
                 if (reader.CurrentTokenKind == TokenKind.LessThan && HasAdjacentGenericArguments(ref reader, right.Span))
                 {
                     right = ParseGenericsPostfix(ref reader, right);
                 }
 
-                if (negated)
-                {
-                    right = new NotKoto(ref reader, SourceSpan.FromBounds(notSpan.Start, right.Span.End), right);
-                }
+                var test = (IsKoto)KotoHelper.NewBinaryKoto(ref reader, token, left, right);
+                test.IsRuntimeTest = true;
+                test.IsNegated = negated;
+                left = test;
+                continue;
             }
             else
             {

@@ -41,22 +41,22 @@ public sealed class CompileTimeCaseArmKoto
     }
 }
 
-/// <summary>Stores a compile-time <c>#match</c> retained for error recovery after failed validation or selection.</summary>
-public sealed class CompileTimeMatchKoto : ExpressionKoto
+/// <summary>Stores a compile-time <c>#switch</c> retained for error recovery after failed validation or selection.</summary>
+public sealed class CompileTimeSwitchKoto : ExpressionKoto
 {
     /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.CompileTimeMatch;
+    public override KotoKind Akind => KotoKind.CompileTimeSwitch;
 
     private List<CompileTimeCaseArmKoto> arms;
 
     /// <summary>Gets the arms in source order.</summary>
     public IReadOnlyList<CompileTimeCaseArmKoto> Arms => this.arms;
 
-    /// <summary>Initializes a new instance of the <see cref="CompileTimeMatchKoto"/> class.</summary>
+    /// <summary>Initializes a new instance of the <see cref="CompileTimeSwitchKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete group span.</param>
     /// <param name="arms">The parsed arms.</param>
-    public CompileTimeMatchKoto(
+    public CompileTimeSwitchKoto(
         ref TokenReader reader,
         SourceSpan range,
         List<CompileTimeCaseArmKoto> arms)
@@ -73,7 +73,7 @@ public sealed class CompileTimeMatchKoto : ExpressionKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        builder.Append("#match");
+        builder.Append("#switch");
         builder.AppendLine();
         builder.IncrementIndent();
         for (var i = 0; i < this.arms.Count; i++)

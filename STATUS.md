@@ -2,7 +2,9 @@
 
 Implementation coverage is informative and does not weaken language rules or Compiler requirements. All implementation-progress notes are centralized here; `planned` in a retained snapshot means implementation work, not permission to use an undesigned feature.
 
-Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding; C.24 records whole-Place ownership and cleanup analysis; C.25 records the Core declaration catalog and native backend candidate; C.26 records enum construction Binding and Core.Option/Result declarations; C.27 records enum ownership; C.28 records positional Pattern Binding and match coverage; C.29 records owned match acquisition and cleanup; C.30 records the current control-flow revision. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
+**Borrow-retention specification update (2026-09-12):** SPEC now permits complete borrowed Types in ordinary storage, defines conservative OwnedOrigins including raw pointees and unused Type/Origin arguments, limits new safe mutable-static borrows to finite Origins, and confines checked-cast static bindings to the erasure proof's data-Origin coverage. These are specification changes, not compiler implementation. C.19's storage-only Owned algorithm and static-borrow rejection no longer implement the current contract; its earlier passing tests do not certify this revision. General Loans, container retention, source eligibility, erasure/cast certificates, and shutdown verification remain pending. See the [review decisions](doc/Decisions/2026-09-12%20Borrow%20Retention%20Review.md) and [implementation plan](doc/Design/2026-09-12%20Borrow%20Retention%20and%20Lifetime%20Plan.md).
+
+Section references follow SPEC.md. C.22 records the adopted Lowering/Windows profile; C.23 records startup and Core.writeLine Binding; C.24 records whole-Place ownership and cleanup analysis; C.25 records the Core declaration catalog and native backend candidate; C.26 records enum construction Binding and Core.Option/Result declarations; C.27 records enum ownership; C.28 records positional Pattern Binding and match coverage; C.29 records owned match acquisition and cleanup; C.30 records the current control-flow revision; C.31 records transfer-seeded unreachable ownership checking; C.32 records the compile-time switch spelling; C.33 records runtime Type-test Binding. Specification adoption is separate from implementation. Later progress entries supersede earlier snapshots for their listed cases.
 
 ### C.1. Coverage summary
 
@@ -12,7 +14,7 @@ This table defines the recorded status of each compiler stage. The notes below d
 | --- | --- | --- | --- | --- | --- |
 | Functions and Constraint Clauses | Partial | Partial; see C.16, C.18–C.21 | Partial | Not implemented | Not implemented |
 | Static Contracts and associated Types | Partial; see C.4, C.21 | Partial; see C.20–C.21 | Partial declaration/path verification | Not implemented | N/A |
-| `#if` / `#match` | Implemented | Not implemented | Partial | Not assessed | N/A |
+| `#if` / `#switch` | Implemented | Not implemented | Partial | Not assessed | N/A |
 | Types | Partial | Partial; see C.16–C.19 | Partial | Not implemented | Not implemented |
 | Core intrinsic identities and Copy / Owned classification | Partial; conditional Copy clauses | Partial; see C.19, C.25 | Partial; see C.19 | N/A | N/A |
 | Origins | Partial | Partial; see C.17 | Partial declaration requirements; see C.17 | Not implemented | Not implemented |
@@ -20,7 +22,8 @@ This table defines the recorded status of each compiler stage. The notes below d
 | Constructors and aggregate destruction | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | Ordinary Copy / Move acquisition | N/A; no dedicated Move operator | Partial; committed calls and local write permissions | Partial; whole Places, initialization, Move and cleanup, C.24 | Not implemented | Not implemented |
-| Control flow and `defer` | Implemented; C.30 | Partial; C.16, C.30 | Partial; C.30 | Not implemented | Not implemented |
+| Control flow and `defer` | Implemented; C.30 | Partial; C.16, C.30 | Partial; C.30–C.31 | Not implemented | Not implemented |
+| Runtime `is` / `is not` | Implemented; C.33 | Partial; concrete struct Cores, C.33 | Partial; operand paths and bool results; refinement/Loans pending, C.33 | Not implemented | Not implemented |
 | Enum Cases, Patterns, and guards | Implemented | Partial; Case declarations/construction, C.26; owned-path Patterns and body scopes, C.28; guards pending | Partial; construction ownership, C.27; Pattern coverage and result flow, C.28; concrete owned match ownership, C.29 | Not implemented | Not implemented |
 | Explicit full specialization and generic code sharing | Source specialization syntax | Not implemented | Not implemented | Not implemented | Not implemented |
 | Core.Option / Result | Implemented declaration/construction syntax | Partial; canonical declarations and construction, C.26 | Partial; payload capability classification | Not implemented | Not implemented |
@@ -69,7 +72,7 @@ ContractKoto retains base requirements, function requirements, `property` requir
 
 The implemented static Binding subset, including function/Property witnesses, associated Types, conditional conformance and implementation blocks, is described in C.20–C.21. Complete expression/effect/ownership verification remains pending.
 
-**Current implementation status:** the Parser validates and evaluates environment-only Conditions in one traversal, using only the prepared Compilation values and Project settings. Unknown Names are diagnosed immediately at their source locations; results are True, False, or Error. Both logical operands and all explicit Conditions of a reached #match are validated, including nested Conditions in unselected arms except inside False #if targets. Valid directives select syntax during parsing. Pending-condition storage, deferred #if nodes, and Directive Binding are removed; invalid #match groups remain only for recovery.
+**Current implementation status:** the Parser validates and evaluates environment-only Conditions in one traversal, using only the prepared Compilation values and Project settings. Unknown Names are diagnosed immediately at their source locations; results are True, False, or Error. Both logical operands and all explicit Conditions of a reached #switch are validated, including nested Conditions in unselected arms except inside False #if targets. Valid directives select syntax during parsing. Pending-condition storage, deferred #if nodes, and Directive Binding are removed; invalid #switch groups remain only for recovery.
 
 ### C.5. Properties
 
@@ -93,7 +96,7 @@ Implementation references:
 
 The constructor/destruction coverage row includes only the existing analysis of executable-body control flow. Constructor selection and synthesis, completion checks, general destructor declaration validation, per-component/base cleanup, reentry prevention, and final object release require semantic and runtime implementation. The Parser records `init`, `deinit`, constructor references, and base initializers; these nodes do not establish lifetime support.
 
-**Implementation status:** The Parser preserves explicit branch body forms. Control-flow analysis checks selections, loops, value-producing Labeled Blocks, lexical transfer targets, and the completion effects of explicitly registered Deferred Blocks. It also checks lexical Unsafe permission for known operations and binder-selected function references. The default type provider handles primitive literals, simple declared Types, and basic raw-pointer and contextual `null` checks. General name/overload resolution, conversions, pattern Binding, ownership, automatic destruction, Origin compatibility, and runtime cleanup generation remain planned; unresolved checks are exposed as pending obligations. Valid compile-time directives are selected before analysis; bodies containing invalid #match groups are skipped after parser diagnostics.
+**Implementation status:** The Parser preserves explicit branch body forms. Control-flow analysis checks selections, loops, value-producing Labeled Blocks, lexical transfer targets, and the completion effects of explicitly registered Deferred Blocks. It also checks lexical Unsafe permission for known operations and binder-selected function references. The default type provider handles primitive literals, simple declared Types, and basic raw-pointer and contextual `null` checks. General name/overload resolution, conversions, pattern Binding, ownership, automatic destruction, Origin compatibility, and runtime cleanup generation remain planned; unresolved checks are exposed as pending obligations. Valid compile-time directives are selected before analysis; bodies containing invalid #switch groups are skipped after parser diagnostics.
 
 ### C.8. Specification review integration (2026-09-08)
 
@@ -170,7 +173,7 @@ Documentation only; compiler code and tests are unchanged. These decisions super
 | R2 最小サブセット | C.12に実行可能になるまでの範囲・設定案・検証条件を記載。完全なCoreと部分実装の適合性を§22.4で区別。 | ProjectFile／Projectの現状を確認。現Buildはfront-end結果のみで、実行ファイルは生成しない。 |
 | R3 引数の可変性 | §7で通常引数とsetter valueを初期化済みlet相当とし、参照先の権限とbindingの再代入を区別。 | FunctionParameterKotoには名前・Type・default等はあるが可変性の完成したBindingモデルはない。規則は推奨仕様であり未実装。 |
 | R4 receiver | 新設§7.3でselfの内部名、任意の記載位置、許容Type、禁止するrename/default、receiver-first呼び出し、unbound参照を定義。 | Parserはparameter listを保持するがreceiver indexや意味上の適合性を確定していない。§16.2.1の記載位置順cleanupを維持。 |
-| R5 除外診断 | §19.3／§19.5／A.2／B.2を、prepared environmentとソース上の入れ子だけで診断が決まる規則に統一。False #ifの投機的な通常文法診断は抑制する。 | Parserは条件を即時評価し、未知名を即エラーにする。unselected #match内の到達条件、False #if内の検証省略、積み重ねた#if、診断のソース位置・再デシリアライズをテスト済み。将来の遅延・cache実装も同じ規則に従う。 |
+| R5 除外診断 | §19.3／§19.5／A.2／B.2を、prepared environmentとソース上の入れ子だけで診断が決まる規則に統一。False #ifの投機的な通常文法診断は抑制する。 | Parserは条件を即時評価し、未知名を即エラーにする。unselected #switch内の到達条件、False #if内の検証省略、積み重ねた#if、診断のソース位置・再デシリアライズをテスト済み。将来の遅延・cache実装も同じ規則に従う。 |
 | R6 改行した=> | §14.7.1で論理header行と物理行を区別し、if／else／match armの例を追加。元のheaderからbody深さを測る。 | 既存layout／Parserの対応範囲だけでは各新例の受理を保証しない。grammar-aware continuationの検証が必要。 |
 | R7 空Container | §6.1.1とF.3でgroup／rootgroup／struct／contractのbody省略を許可。comment-only、EOF、選択後の空を定義。enum／実行Blockは除外。 | DeclarationContainerKoto.TryParseDeclarationContainerはStartBlockがある場合のみbodyをparseする。既存の省略経路を確認したが、全Containerの配置・選択後検証は未完成。 |
 | R8 raw delimiter | §2.9.2に最大開始quote run、2個だけの空escaped string、終了runの余剰quoteを内容にする規則を追加。 | StringLiteralHelper.ScanStringLiteral／ScanRawStringLiteralの実装に一致。StringLiteralParseTestは6／8個だけのquoteをInvalidと期待しており、empty rawとするコメントよりassertionを根拠にした。 |
@@ -492,3 +495,35 @@ This entry supersedes earlier control-flow snapshots for the cases listed here. 
 The compiler remains partial. For-protocol Binding, Closure/capture typing and its candidate-specific Unit-discard overload ranking, guarded/borrowed match acquisition, Flow Type refinement, Loans, general aggregate cleanup and executable lowering/runtime remain unimplemented. The separate ownership state for unreachable source (SPEC 14.10.3) also remains pending: Binding still checks its names and result Types, but unreachable local/parameter uses and assignments cannot be certified by ownership merely because the runtime CFG has no input state. These cases report Unsupported instead of passing unchecked. This does not implement the full type-checking continuation.
 
 Regression coverage includes revised syntax and rejection/recovery, grouping/argument/index boundaries, serialization, nested expected Types, dead results, Never, conservative initialization/Move, deferred state and blocked cleanup, warnings and unsupported-analysis gates. Validation: all 2,637 tests pass in Debug and Release, including existing zero-allocation assertions for warmed Binding and analysis. The Release solution build (compiler, tests, Playground and Benchmark) has zero warnings and errors. No runtime execution or throughput improvement is claimed.
+
+### C.31. Transfer-seeded unreachable ownership checking (2026-09-12)
+
+This increment supersedes C.30's blanket unsupported result for the listed unreachable uses. The ownership checker now retains separate source-checking continuations after explicit return/yield/exit/continue. Seeds use the state after operand acquisition and before transfer cleanup, replayed from converged block inputs. Copy/Move, initialization, assignment history, supported concrete enum operations, and deferred source uses share the existing ownership transitions and diagnostics. There is no second syntax tree, no execution edge for a checking seed, and no change to result-source inference.
+
+A continuation is confined to its source lexical body (or single-arm/short-circuit branch). Ordinary branches and loop transfers inside it use their own normal joins and fixed points. A transfer creates a nested continuation; its post-transfer source tail cannot rejoin the parent region, require success, an enclosing loop backedge, or reachable execution. Sequential transfers preserve the previous checking state's effects. Deferred bodies are checked at cleanup with the existing source diagnostic deduplication. The region policy and its limits are recorded in [the implementation decisions](doc/Changes/2026-09-12%20Unreachable%20Ownership.md).
+
+Runtime adjacency, incoming-edge identities, block partitioning, Reachable, GetInputState and executable cleanup/Replacement plans remain separate. Checking uses retained side tables and block input states, shares transfer/join/worklist code, and never calls executable Finalize. HasCheckingState and GetCheckingInputState expose the separate result; Bind invalidates it. Bodies without the existing class of unchecked unreachable source uses skip the checking solver. A shared concrete-HashSet union helper removes transfer-enumerator boxing from both existing control-flow analyses.
+
+This remains a partial implementation of SPEC §14.10.3: Flow Type refinement and Loans are not added. A missing seed after a Never call, exitless loop, cleanup-blocked compound expression, or an outer sequence following wholly terminating branches is not invented from arbitrary CFG state. Unreachable operations still lacking a checking state retain Unsupported under exactly C.30's local/parameter use and Binary-assignment gate. Synthetic function result production/delivery does not require a nonexistent normal result. General continuation joins for other non-completion roots remain pending; this implementation does not redefine their language semantics or certify executable lowering.
+
+Validation: 63 new cases and two updated unsupported expectations; all 2,700 tests pass in Debug and Release. Warm Binding, both analyses, and their combination allocate zero bytes at 1, 32 and 128 nested continuations. Existing allocation regressions remain passing. The Release solution build completes with zero warnings and errors. OwnershipAnalysisBenchmark now includes the unreachable workload; no throughput measurement or runtime execution is claimed.
+
+### C.32. Compile-time switch spelling (2026-09-12)
+
+The compile-time ordered Case Group is now spelled #switch. The reserved switch token, Parser entry points, excluded-source structure validation, recovery Koto/Kind, diagnostics, writer, source-snapshot tests, and directive benchmark use the new name. Runtime match keeps its existing Pattern syntax. The removed #match spelling is not a compatibility alias. SPEC §§2.5.1, 19, A.2, B.2 and F.8, examples and cross-references have been updated.
+
+Tests retain current selection, declaration scopes, immediate Condition validation, excluded syntax, fallback order/exhaustiveness, recovery and serialization guarantees. Three duplicate regression tests were removed, their necessary coverage retained in focused switch/Condition tests. Declaration-context tests no longer accept a deferred recovery-node alternative on valid selected directives. New cases cover first-true selection with runtime match, token spacing, rejection of the removed directive, reservation of switch, and longer identifier names. Debug and Release each pass all 2,706 tests, including the existing allocation regressions. No new throughput measurement is claimed.
+
+The Release solution build completes with zero warnings and errors.
+
+### C.33. Runtime Type-test Binding (2026-09-12)
+
+Runtime is/is not now binds the five object Semantics over concrete struct Cores to bool, retaining a shared-access requirement and the original complete operand/target Types. Parser-selected IsRuntimeTest and IsNegated distinguish runtime tests from Requirement Tests; runtime negation no longer wraps target syntax in a value NotKoto. Writing, local/result inference, ControlFlowAnalysis and StructuralCompletion handle the test explicitly. The target is never walked as an executable operand. Missing Binding evidence remains pending even though the bool result Type is known.
+
+Existing Type binding supplies qualification, alias resolution, complete generic arguments and access checks. Concrete Self is accepted; unresolved generic/associated projections remain Unsupported, and omitted generic arguments are not inferred. Never operands use SPEC 3.8 fitting while retaining target/transfer checks and supplying no Boolean continuation. Alias changes and AST replacement clear retained runtime metadata through the ordinary Binding index reset. See the [implementation decisions](doc/Changes/2026-09-12%20Runtime%20Type%20Tests.md).
+
+This does not implement Flow Type refinement, object Loans/destruction or execution. Ownership explicitly records Unsupported on the test, evaluates only its left operand with shared-borrow use, and preserves call/argument effects without treating the target as a local Place. Object SupportsType gates and C.31's separate unreachable checking states remain unchanged. The normative SPEC is unchanged.
+
+RuntimeTypeTest adds 56 cases, including warm zero-allocation assertions for Binding, reused control-flow analysis and their combination at 1, 32 and 128 test expressions. BindingBenchmark adds a RuntimeTypeTests workload; no throughput improvement is claimed.
+
+Validation: all 2,762 tests pass in Debug and Release. The Release solution build completes with zero warnings and errors; git diff --check is clean.

@@ -1062,7 +1062,7 @@ EndOfFile:
                     break;
                 }
 
-                if (kind is TokenKind.If or TokenKind.Else or TokenKind.Match or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Do or TokenKind.Func or TokenKind.Defer ||
+                if (kind is TokenKind.If or TokenKind.Else or TokenKind.Match or TokenKind.Switch or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Do or TokenKind.Func or TokenKind.Defer ||
                     (kind == TokenKind.Identifier && this.sourceText.Slice(this.tokens[i].Span.Start, this.tokens[i].Span.Length).SequenceEqual("unsafe")))
                 {
                     body = true;
@@ -1142,7 +1142,7 @@ EndOfFile:
                 return true;
             }
 
-            if (kind is TokenKind.Match or TokenKind.If or TokenKind.Else or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Func or TokenKind.Do or TokenKind.Defer or TokenKind.Require)
+            if (kind is TokenKind.Match or TokenKind.Switch or TokenKind.If or TokenKind.Else or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Func or TokenKind.Do or TokenKind.Defer or TokenKind.Require)
             {
                 return true;
             }

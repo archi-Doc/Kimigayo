@@ -78,7 +78,7 @@ public class KotonohaSerializationTest
         var compilation = Compilation.CreateForTest();
         Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
         var original = compilation.Kotonoha;
-        original.AddSource(new SourceDocument("target.kimi", "#match\n    #case windows\n        var windowsValue = 1\n    #case _\n        var otherValue = 2"));
+        original.AddSource(new SourceDocument("target.kimi", "#switch\n    #case windows\n        var windowsValue = 1\n    #case _\n        var otherValue = 2"));
         Assert.Contains("windowsValue", original.GeneratedFunction!.ToString());
 
         var destination = Compilation.CreateForTest();

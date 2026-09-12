@@ -71,7 +71,7 @@ public class CompilationSpecificationTest
     {
         Assert.Empty(Parse("#if false\nvar incomplete =").Kotonoha.DiagnosticCollection.GetArray());
         Assert.NotEmpty(Parse("#if pendingName\nvar incomplete =").Kotonoha.DiagnosticCollection.GetArray());
-        Assert.NotEmpty(Parse("#match\n    #case true\n        ()\n    #case _\n        var incomplete =").Kotonoha.DiagnosticCollection.GetArray());
+        Assert.NotEmpty(Parse("#switch\n    #case true\n        ()\n    #case _\n        var incomplete =").Kotonoha.DiagnosticCollection.GetArray());
         Assert.NotEmpty(Parse("#if false\nvar text = \"unterminated").Kotonoha.DiagnosticCollection.GetArray());
     }
 
@@ -157,7 +157,7 @@ public class CompilationSpecificationTest
                 var builtinSelected = 1
                 #if FEATURE and LIMIT == 2 and FLAVOR == "Vanilla" and flavor != "vanilla"
                 var settingSelected = 2
-                #match
+                #switch
                     #case LiNuX
                         var excluded = 3
                     #case WiNdOwS and fEaTuRe and lImIt == 2 and fLaVoR == "Vanilla"

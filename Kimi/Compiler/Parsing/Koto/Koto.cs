@@ -237,8 +237,8 @@ public enum KotoKind : byte
     /// <summary>An <c>if</c> expression.</summary>
     If,
 
-    /// <summary>An invalid compile-time <c>#match</c> group retained for recovery.</summary>
-    CompileTimeMatch,
+    /// <summary>An invalid compile-time <c>#switch</c> group retained for recovery.</summary>
+    CompileTimeSwitch,
 
     /// <summary>A <c>match</c> expression.</summary>
     Match,

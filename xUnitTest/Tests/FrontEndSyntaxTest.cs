@@ -33,7 +33,7 @@ public class FrontEndSyntaxTest
     [InlineData("let a = source\n    .first()\n    .second()")]
     [InlineData("let a = if ready\n    .Some(1)\nelse\n    .None")]
     [InlineData("group Empty\nstruct EmptyType\ncontract EmptyContract")]
-    [InlineData("enum E\n    #if true\n    A\n    #match\n        #case true\n            B\n        #case _\n            C")]
+    [InlineData("enum E\n    #if true\n    A\n    #switch\n        #case true\n            B\n        #case _\n            C")]
     [InlineData("let a = x is Type and ready")]
     [InlineData("let a = x is not Group.Type or fallback")]
     [InlineData("let a = .Some(1)")]

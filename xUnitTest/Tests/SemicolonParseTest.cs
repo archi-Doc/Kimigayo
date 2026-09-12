@@ -29,7 +29,7 @@ public class SemicolonParseTest
     [InlineData("struct Example\n    var value: i32\n        get\n            ;")]
     [InlineData("#if false\n    public struct Empty\n        ;")]
     [InlineData("#if false\n    work();")]
-    [InlineData("#if false\n    #match\n        ;\n        #case true\n            ()")]
+    [InlineData("#if false\n    #switch\n        ;\n        #case true\n            ()")]
     [InlineData("call(1; 2)")]
     [InlineData("let values = [1; 2]")]
     public void ReportsDedicatedErrorAtEverySemicolon(string source)

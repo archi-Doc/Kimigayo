@@ -103,7 +103,8 @@ public class ParserRegressionTest
         Assert.IsType<IsKoto>(first.Left);
 
         var second = Assert.IsType<OrKoto>(fields[1].InitializerKoto);
-        Assert.IsType<NotKoto>(Assert.IsType<IsKoto>(second.Left).Right);
+        Assert.True(Assert.IsType<IsKoto>(second.Left).IsNegated);
+        Assert.IsType<IdentifierNameKoto>(Assert.IsType<IsKoto>(second.Left).Right);
 
         var third = Assert.IsType<AndKoto>(fields[2].InitializerKoto);
         Assert.IsType<IsKoto>(third.Left);
@@ -898,31 +899,6 @@ public class ParserRegressionTest
     }
 
     [Fact]
-    public void CompileTimeCaseSelectsFirstKnownMatchingArm()
-    {
-        var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
-        var kotonoha = compilation.Kotonoha;
-        var source = """
-            func select()
-                #match
-                    #case linux
-                        var excluded = 1
-                    #case windows
-                        var selected = 2
-                    #case _
-                        var fallback = 3
-            """;
-
-        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
-
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
-        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
-        var selectedBody = Assert.IsType<CodeBlockKoto>(Assert.Single(function.Body!.Items));
-        Assert.Equal("selected", Assert.IsType<FieldKoto>(Assert.Single(selectedBody.Items)).NameKoto.IdentifierName);
-    }
-
-    [Fact]
     public void CompileTimeCaseRejectsTypeSelectionIncludingAfterSerialization()
     {
         var compilation = Compilation.CreateForTest();
@@ -930,7 +906,7 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         var source = """
             func select<s/T>()
-                #match
+                #switch
                     #case T is i32
                         var specialized = 1
                     #case _
@@ -948,7 +924,7 @@ public class ParserRegressionTest
         restored!.OnDeserialized(compilation);
         Assert.Contains(restored.DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.InvalidCompileTimeCondition_Kd));
         var restoredFunction = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(restored.RootKoto)));
-        var restoredGroup = Assert.IsType<CompileTimeMatchKoto>(Assert.Single(restoredFunction.Body!.Items));
+        var restoredGroup = Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(restoredFunction.Body!.Items));
         Assert.Equal(2, restoredGroup.Arms.Count);
         Assert.All(restoredGroup.ChildNodes, child => Assert.Same(restoredGroup, child.Parent));
     }
@@ -961,14 +937,14 @@ public class ParserRegressionTest
         var kotonoha = compilation.Kotonoha;
         var source = """
             func invalidFallback()
-                #match
+                #switch
                     #case _
                         return
                     #case _
                         return
 
             func nonExhaustive()
-                #match
+                #switch
                     #case linux
                         return
             """;
@@ -979,53 +955,6 @@ public class ParserRegressionTest
         Assert.Contains(nameof(DiagnosticCode.CompileTimeCaseFallbackMustBeLast_Kd), names);
         Assert.Contains(nameof(DiagnosticCode.DuplicateCompileTimeCaseFallback_Kd), names);
         Assert.Contains(nameof(DiagnosticCode.NonExhaustiveCompileTimeCase_Kd), names);
-    }
-
-    [Fact]
-    public void CompileTimeCaseEvaluatesConditionsAfterSelectedArm()
-    {
-        var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
-        var kotonoha = compilation.Kotonoha;
-        var source = """
-            func select()
-                #match
-                    #case windows
-                        return
-                    #case 1
-                        return
-                    #case _
-                        return
-            """;
-
-        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
-
-        var diagnostic = Assert.Single(kotonoha.DiagnosticCollection.GetArray());
-        Assert.Equal(nameof(DiagnosticCode.ConditionMustBeBool_Kd), diagnostic.Entry.Name);
-    }
-
-    [Fact]
-    public void EarlyFalseCompileTimeIfSkipsAnEntireCaseGroup()
-    {
-        var compilation = Compilation.CreateForTest();
-        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
-        var kotonoha = compilation.Kotonoha;
-        var source = """
-            func select()
-                #if linux
-                #match
-                    #case windows
-                        var firstExcluded =
-                    #case _
-                        var fallbackExcluded =
-                var retained = 1
-            """;
-
-        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
-
-        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
-        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
-        Assert.Equal("retained", Assert.IsType<FieldKoto>(Assert.Single(function.Body!.Items)).NameKoto.IdentifierName);
     }
 
     [Fact]

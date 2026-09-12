@@ -95,6 +95,7 @@ public static partial class TokenHelper
         Set(TokenKind.While, Constants.WhileKeyword);
         Set(TokenKind.Loop, Constants.LoopKeyword);
         Set(TokenKind.Match, Constants.MatchKeyword);
+        Set(TokenKind.Switch, Constants.SwitchKeyword);
         Set(TokenKind.Return, Constants.ReturnKeyword);
         Set(TokenKind.Exit, Constants.ExitKeyword);
         Set(TokenKind.Continue, Constants.ContinueKeyword);
@@ -404,7 +405,8 @@ public static partial class TokenHelper
             6 => c0 switch
             {
                 'd' => Match(text, "deinit", TokenKind.Deinit),
-                's' => Match(text, Constants.StringKeyword, TokenKind.String, Constants.StructKeyword, TokenKind.Struct, Constants.StaticKeyword, TokenKind.Static),
+                's' => text[1] == 'w' ? Match(text, Constants.SwitchKeyword, TokenKind.Switch) :
+                    Match(text, Constants.StringKeyword, TokenKind.String, Constants.StructKeyword, TokenKind.Struct, Constants.StaticKeyword, TokenKind.Static),
                 'r' => Match(text, Constants.ReturnKeyword, TokenKind.Return),
                 'p' => Match(text, Constants.PublicKeyword, TokenKind.Public),
                 _ => TokenKind.Identifier,

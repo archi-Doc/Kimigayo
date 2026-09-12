@@ -25,15 +25,7 @@ public sealed partial class OwnershipBody
             return PlaceState.None;
         }
 
-        // Only block inputs are stored; replay the block prefix instead of retaining a per-operation matrix.
-        var block = this.BlockOf[operation];
-        var cursor = this.LoadBlock(block);
-        while (cursor != operation)
-        {
-            this.Transfer(cursor);
-            cursor = this.NextInBlock(cursor, block);
-        }
-
+        this.LoadInput(operation, false);
         return this.State(place);
     }
 
@@ -57,44 +49,7 @@ public sealed partial class OwnershipBody
         // Operation 0 is Entry, so block 0 starts the body with every Place empty.
         this.BlockStates.AsSpan(0, width).Clear();
         this.BlockReachable[0] = true;
-        this.BlockQueued[0] = true;
-        this.BlockQueue[0] = 0;
-        var head = 0;
-        var size = 1;
-        while (size > 0)
-        {
-            var block = this.BlockQueue[head];
-            head = head + 1 == blocks ? 0 : head + 1;
-            size--;
-            this.BlockQueued[block] = false;
-            var last = this.RunBlock(block, false);
-            var output = this.Scratch.AsSpan(0, width);
-            for (var e = this.EdgeHeads[last]; e >= 0; e = this.EdgeStorage[e].Next)
-            {
-                // Every successor of the last operation in a block starts a block.
-                var target = this.BlockOf[this.EdgeStorage[e].To];
-                var destination = this.BlockStates.AsSpan(target * width, width);
-                bool changed;
-                if (!this.BlockReachable[target])
-                {
-                    output.CopyTo(destination);
-                    this.BlockReachable[target] = true;
-                    changed = true;
-                }
-                else
-                {
-                    changed = Join(destination, output, this.words);
-                }
-
-                if (changed && !this.BlockQueued[target])
-                {
-                    this.BlockQueued[target] = true;
-                    var tail = head + size;
-                    this.BlockQueue[tail >= blocks ? tail - blocks : tail] = target;
-                    size++;
-                }
-            }
-        }
+        this.Converge(0, false);
 
         // Diagnose and finalize plans only after convergence, never from intermediate loop states.
         for (var block = 0; block < blocks; block++)
@@ -189,32 +144,45 @@ public sealed partial class OwnershipBody
         return next != 0 && this.IncomingCounts[next] == 1 ? next : -1;
     }
 
-    private int NextInBlock(int operation, int block)
+    private int NextInBlock(int operation, int block, bool checking = false)
     {
+        if (checking)
+        {
+            return this.checkingNext[operation];
+        }
+
         var next = this.ChainSuccessor(operation);
         return next >= 0 && this.BlockOf[next] == block ? next : -1;
     }
 
-    private int LoadBlock(int block)
+    private int LoadBlock(int block, bool checking = false)
     {
         var width = this.words * Lanes;
-        this.BlockStates.AsSpan(block * width, width).CopyTo(this.Scratch);
-        return this.BlockLeaders[block];
+        var states = checking ? this.checkingStates : this.BlockStates;
+        states.AsSpan(block * width, width).CopyTo(this.Scratch);
+        return checking ? this.checkingLeaders[block] : this.BlockLeaders[block];
     }
 
-    private int RunBlock(int block, bool finalize)
+    private int RunBlock(int block, bool finalize, bool checking = false)
     {
-        var operation = this.LoadBlock(block);
+        var operation = this.LoadBlock(block, checking);
         while (true)
         {
             if (finalize)
             {
-                this.Reachable[operation] = true;
-                this.Finalize(operation);
+                if (!checking)
+                {
+                    this.Reachable[operation] = true;
+                    this.Finalize(operation);
+                }
+                else if (this.OperationStorage[operation].Kind != OwnershipOperationKind.Deliver)
+                {
+                    this.CheckOperation(operation);
+                }
             }
 
             this.Transfer(operation);
-            var next = this.NextInBlock(operation, block);
+            var next = this.NextInBlock(operation, block, checking);
             if (next < 0)
             {
                 return operation;
@@ -225,6 +193,36 @@ public sealed partial class OwnershipBody
     }
 
     private void Finalize(int index)
+    {
+        this.CheckOperation(index);
+        var operation = this.OperationStorage[index];
+        if (operation.Place < 0)
+        {
+            return;
+        }
+
+        var state = this.State(operation.Place);
+        if (operation.Kind == OwnershipOperationKind.Cleanup)
+        {
+            var step = this.OperationSteps[index];
+            this.CleanupStepStorage[step] = this.CleanupStepStorage[step] with { Action = Destruction(state) };
+        }
+        else if (operation.Kind == OwnershipOperationKind.Write)
+        {
+            var place = this.PlaceStorage[operation.Place];
+            // The input state already follows RHS acquisition, so x = x skips the moved old value.
+            var placement = (state & PlaceState.MustInit) != 0 ? PlacementKind.Replacement :
+                (state & PlaceState.MayInit) != 0 ? PlacementKind.ConditionalReplacement :
+                (state & PlaceState.MayAssigned) == 0 ? PlacementKind.Initialization :
+                (state & PlaceState.MayMoved) != 0 ? PlacementKind.Reinitialization : PlacementKind.EmptyPlacement;
+            this.OperationStorage[index] = operation with { Placement = placement };
+            this.CleanupPlanStorage.Add(new(this.IncomingEdges[index], this.CleanupStepStorage.Count, 1, CleanupReason.Replacement));
+            this.CleanupStepStorage.Add(new(index, operation.Place, place.Source, Destruction(state)));
+        }
+    }
+
+    // Shared diagnostics only: checking continuations must never finalize runtime plans.
+    private void CheckOperation(int index)
     {
         var operation = this.OperationStorage[index];
         if (operation.Place < 0)
@@ -255,10 +253,6 @@ public sealed partial class OwnershipBody
             case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.DecomposeCase or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.PatternTest:
                 this.CheckInitialized(operation, operation.Place, state);
                 break;
-            case OwnershipOperationKind.Cleanup:
-                var step = this.OperationSteps[index];
-                this.CleanupStepStorage[step] = this.CleanupStepStorage[step] with { Action = Destruction(state) };
-                break;
             case OwnershipOperationKind.Write:
                 var place = this.PlaceStorage[operation.Place];
                 if (place.Kind == OwnershipPlaceKind.Local && !place.Mutable && (state & PlaceState.MayAssigned) != 0)
@@ -271,14 +265,6 @@ public sealed partial class OwnershipBody
                     this.CheckInitialized(operation, operation.Input, this.State(operation.Input));
                 }
 
-                // The input state already follows RHS acquisition, so x = x skips the moved old value.
-                var placement = (state & PlaceState.MustInit) != 0 ? PlacementKind.Replacement :
-                    (state & PlaceState.MayInit) != 0 ? PlacementKind.ConditionalReplacement :
-                    (state & PlaceState.MayAssigned) == 0 ? PlacementKind.Initialization :
-                    (state & PlaceState.MayMoved) != 0 ? PlacementKind.Reinitialization : PlacementKind.EmptyPlacement;
-                this.OperationStorage[index] = operation with { Placement = placement };
-                this.CleanupPlanStorage.Add(new(this.IncomingEdges[index], this.CleanupStepStorage.Count, 1, CleanupReason.Replacement));
-                this.CleanupStepStorage.Add(new(index, operation.Place, place.Source, Destruction(state)));
                 break;
         }
     }

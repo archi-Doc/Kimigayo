@@ -9,12 +9,25 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
 {
     private readonly Dictionary<Koto, Completion> cache = new(ReferenceEqualityComparer.Instance);
 
-    internal bool CanComplete(Koto node) => this.Visit(node).Normal;
-
     private readonly List<HashSet<JumpKoto>> transferPool = new();
     private readonly List<Koto> children = new();
     private Collector? collector;
     private int cursor;
+
+    // HashSet.UnionWith accepts IEnumerable and boxes its source enumerator.
+    // Both flow analyses already retain concrete sets; enumerate those directly.
+    internal static void UnionTransfers(HashSet<JumpKoto> destination, HashSet<JumpKoto> source)
+    {
+        if (!ReferenceEquals(destination, source))
+        {
+            foreach (var transfer in source)
+            {
+                destination.Add(transfer);
+            }
+        }
+    }
+
+    internal bool CanComplete(Koto node) => this.Visit(node).Normal;
 
     internal void Clear()
     {
@@ -33,12 +46,12 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
         result.Clear();
         if (a is not null)
         {
-            result.UnionWith(a);
+            UnionTransfers(result, a);
         }
 
         if (b is not null)
         {
-            result.UnionWith(b);
+            UnionTransfers(result, b);
         }
 
         if (jump is not null)
@@ -74,7 +87,7 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
         Completion result;
         switch (node)
         {
-            case FunctionKoto or PropertyAccessorKoto or DeferredBlockKoto or TypeKoto or CompileTimeMatchKoto:
+            case FunctionKoto or PropertyAccessorKoto or DeferredBlockKoto or TypeKoto or CompileTimeSwitchKoto:
                 result = new(true, null);
                 break;
             case LabeledKoto label:
@@ -164,6 +177,9 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
                     result = this.Merge(result, this.Visit(require.ElseBody) with { Normal = false });
                 }
 
+                break;
+            case IsKoto { IsRuntimeTest: true } test:
+                result = this.Visit(test.Left);
                 break;
             case AndKoto or OrKoto:
                 var logical = (BinaryKoto)node;

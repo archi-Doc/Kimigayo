@@ -155,7 +155,7 @@ public sealed partial class Binding
             }
 
             // Never inspect declaration bodies, initializer attributes, or failed compile-time selection.
-            if (item is DeclarationContainerKoto or AliasKoto or CompileTimeMatchKoto)
+            if (item is DeclarationContainerKoto or AliasKoto or CompileTimeSwitchKoto)
             {
                 continue;
             }

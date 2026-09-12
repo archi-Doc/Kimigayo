@@ -17,7 +17,7 @@ public class BindingBenchmark
     public int Calls { get; set; }
 
     /// <summary>Gets or sets the declaration and call workload.</summary>
-    [Params("Calls", "Origins", "Capabilities", "Contracts", "Properties", "ConditionalConformances", "ConditionalMembers", "InheritedReceivers", "Enums")]
+    [Params("Calls", "Origins", "Capabilities", "Contracts", "Properties", "ConditionalConformances", "ConditionalMembers", "InheritedReceivers", "Enums", "RuntimeTypeTests")]
     public string Scenario { get; set; } = "Calls";
 
     /// <summary>Creates and validates syntax and warms reusable semantic storage.</summary>
@@ -26,6 +26,7 @@ public class BindingBenchmark
     {
         var source = new StringBuilder(this.Scenario switch
         {
+            "RuntimeTypeTests" => "struct Dog<T>\nfunc f(x: objref/Dog<i32>)\n",
             "Origins" => "struct View<T> origin a, b\n    let first: ref/T from a\n    let second: ref/T from b\n",
             "Enums" => "enum Entry<T>\n    Value(T, string)\nfunc accept(value: Option<Entry<i32>>) => ()\n",
             "Capabilities" => "struct Box<T>\n    Self is Copy when T is Copy\n    let value: T\nvar input: Box<i32>\nfunc identity<T>(value: T) -> T\n    T is Copy and Owned\n    return value\n",
@@ -38,7 +39,11 @@ public class BindingBenchmark
         });
         for (var i = 0; i < this.Calls; i++)
         {
-            if (this.Scenario == "Enums")
+            if (this.Scenario == "RuntimeTypeTests")
+            {
+                source.Append("    let result").Append(i).Append(" = x is not Dog<i32>\n");
+            }
+            else if (this.Scenario == "Enums")
             {
                 source.Append("accept(.Some(Entry<i32>.Value(").Append(i).Append(", \"x\")))\n");
             }

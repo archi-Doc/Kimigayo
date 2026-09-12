@@ -24,8 +24,8 @@ public class DirectiveConditionValidationTest
             foreach (var directive in new[]
             {
                 $"#if {condition}\n    ()",
-                $"#match\n    #case {condition}\n        ()\n    #case _\n        ()",
-                $"#match\n    #case true\n        ()\n    #case {condition}\n        ()",
+                $"#switch\n    #case {condition}\n        ()\n    #case _\n        ()",
+                $"#switch\n    #case true\n        ()\n    #case {condition}\n        ()",
             })
             {
                 // Check both top-level and genuine generic-body contexts, including later arms.
@@ -51,7 +51,7 @@ public class DirectiveConditionValidationTest
             func f<T>() -> string
                 T is Copy
                 #if pointerWidth == 64
-                    #match
+                    #switch
                         #case windows
                             return "windows"
                         #case linux
@@ -67,7 +67,7 @@ public class DirectiveConditionValidationTest
         Assert.Contains("T is Copy", written);
         Assert.Contains($"return \"{selected}\"", written);
         Assert.DoesNotContain("#if", written);
-        Assert.DoesNotContain("#match", written);
+        Assert.DoesNotContain("#switch", written);
     }
 
     [Theory]
@@ -131,7 +131,7 @@ public class DirectiveConditionValidationTest
     {
         var compilation = Parse($"""
             func select()
-                #match
+                #switch
                     #case true
                         return
                     #case {laterCondition}
@@ -142,13 +142,15 @@ public class DirectiveConditionValidationTest
         var function = Assert.IsType<FunctionKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
         var body = function.Body!;
         Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
-        Assert.IsType<CompileTimeMatchKoto>(Assert.Single(body.Items));
+        Assert.IsType<CompileTimeSwitchKoto>(Assert.Single(body.Items));
     }
 
-    [Fact]
-    public void LaterCaseOperandErrorIsDiagnosedAfterSelection()
+    [Theory]
+    [InlineData("1")]
+    [InlineData("false and 1")]
+    public void LaterCaseOperandErrorIsDiagnosedAfterSelection(string condition)
     {
-        var compilation = Parse("#match\n    #case true\n        ()\n    #case false and 1\n        ()");
+        var compilation = Parse($"#switch\n    #case true\n        ()\n    #case {condition}\n        ()");
 
         Assert.Contains(
             compilation.Kotonoha.DiagnosticCollection.GetArray(),
@@ -211,9 +213,9 @@ public class DirectiveConditionValidationTest
     [InlineData("#if missing\nvar ignored = 1", true)]
     [InlineData("#if false\n    #if missing\n    var incomplete =", false)]
     [InlineData("#if false\n#if missing\nvar incomplete =", false)]
-    public void UnselectedMatchArmsValidateReachedNestedConditions(string nested, bool error)
+    public void UnselectedSwitchArmsValidateReachedNestedConditions(string nested, bool error)
     {
-        var source = "#match\n    #case true\n        ()\n    #case _\n        " + nested.Replace("\n", "\n        ");
+        var source = "#switch\n    #case true\n        ()\n    #case _\n        " + nested.Replace("\n", "\n        ");
         var compilation = Parse(source);
         var diagnostics = compilation.Kotonoha.DiagnosticCollection.GetArray();
         if (error)

@@ -298,6 +298,8 @@ public sealed partial class Binding
                 return Complete(node, this.BindNode(parent.Operand, scope, expected));
             case UnaryKoto unary:
                 return this.BindUnary(unary, scope, expected);
+            case IsKoto { IsRuntimeTest: true } test:
+                return this.BindRuntimeTypeTest(test, scope);
             case BinaryKoto binary:
                 return this.BindBinary(binary, scope, expected);
             case MatchKoto match:

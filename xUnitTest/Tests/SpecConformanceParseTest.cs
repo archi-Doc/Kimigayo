@@ -190,24 +190,19 @@ public class SpecConformanceParseTest
     }
 
     [Theory]
-    [InlineData(false, "true")]
-    [InlineData(true, "true")]
-    public void DirectivesRetainDeclarationContext(bool match, string condition)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DirectivesRetainDeclarationContext(bool useSwitch)
     {
-        var directive = match ? $"#match\n        #case {condition}" : $"#if {condition}";
-        var indent = match ? "            " : "        ";
+        var directive = useSwitch ? "#switch\n        #case true" : "#if true";
+        var indent = useSwitch ? "            " : "        ";
         var parsed = Parse(
             $"struct Sample<T>\n    {directive}\n{indent}var value: T\n{indent}func getValue() -> T => value\n" +
             $"contract Sequence\n    {directive}\n{indent}associate Element is Comparable\n{indent}property count: i32 has get");
         AssertValid(parsed);
         RoundTrip(parsed);
         var sample = Assert.Single(parsed.RootKoto.NestedDeclarationContainers.OfType<StructKoto>());
-        var body = Assert.Single(sample.Members) switch
-        {
-            CompileTimeMatchKoto cases => cases.Arms[0].Body,
-            CodeBlockKoto block => block,
-            _ => throw new InvalidOperationException(),
-        };
+        var body = Assert.IsType<CodeBlockKoto>(Assert.Single(sample.Members));
         Assert.IsType<PropertyKoto>(body.Items[0]);
         Assert.IsType<FunctionKoto>(body.Items[1]);
     }

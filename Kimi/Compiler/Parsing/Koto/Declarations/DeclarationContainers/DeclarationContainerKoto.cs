@@ -570,9 +570,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 continue;
             }
 
-            if (Parser.IsCompileTimeMatchStart(ref reader))
+            if (Parser.IsCompileTimeSwitchStart(ref reader))
             {
-                var caseGroup = Parser.ParseCompileTimeMatch(ref reader, this);
+                var caseGroup = Parser.ParseCompileTimeSwitch(ref reader, this);
                 this.AddLast(caseGroup);
                 continue;
             }

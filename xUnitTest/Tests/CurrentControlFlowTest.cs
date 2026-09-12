@@ -179,14 +179,15 @@ public class CurrentControlFlowTest
     }
 
     [Theory]
-    [InlineData("func f(text: string) -> string\n    return text\n    return text")]
-    [InlineData("func f() -> i32\n    let value: i32\n    return 1\n    return value")]
-    public void MissingUnreachableOwnershipStateCannotVerify(string source)
+    [InlineData("func f(text: string) -> string\n    return text\n    return text", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func f() -> i32\n    let value: i32\n    return 1\n    return value", OwnershipFailure.UninitializedUse)]
+    public void UnreachableOwnershipUsesTheStateBeforeTransferCleanup(string source, OwnershipFailure failure)
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.False(c.Ownership.Analyze().IsVerified);
-        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Ownership.Issues, issue => issue.Failure == failure);
+        Assert.DoesNotContain(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.Unsupported);
     }
 
     private static Compilation Parse(string source)

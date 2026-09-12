@@ -68,6 +68,11 @@ public abstract class ControlFlowTypeSystem
     /// <returns>True for a resolved construction.</returns>
     public virtual bool IsBoundConstruction(Koto expression) => false;
 
+    /// <summary>Determines whether Binding validated a runtime Type test and retained its shared access.</summary>
+    /// <param name="expression">The expression to inspect.</param>
+    /// <returns>True only for a resolved runtime test; syntax alone is not proof.</returns>
+    public virtual bool IsBoundRuntimeTypeTest(Koto expression) => false;
+
     /// <summary>Determines whether an expression's complete Type is proven Copy, so discarding it has no destruction effect.</summary>
     /// <param name="expression">The bound expression.</param>
     /// <returns>True only for a proven Copy Type; unknown or unresolved Types return false.</returns>
@@ -162,7 +167,7 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
     public override ControlFlowType? GetExpressionType(Koto expression) => expression switch
     {
         UnitLiteralKoto => ControlFlowType.Unit,
-        BoolLiteralKoto => ControlFlowType.Boolean,
+        BoolLiteralKoto or IsKoto { IsRuntimeTest: true } => ControlFlowType.Boolean,
         CharLiteralKoto { Value: not null } => CharType,
         StringLiteralKoto or InterpolatedStringKoto => StringType,
         NumberLiteralKoto number => number.IsInteger ? IntegerLiteralType : FloatLiteralType,

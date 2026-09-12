@@ -80,7 +80,7 @@ public sealed partial class Binding
 
         switch (source)
         {
-            case BoolLiteralKoto:
+            case BoolLiteralKoto or IsKoto { IsRuntimeTest: true }:
                 return BoundType.Boolean;
             case StringLiteralKoto:
                 return BoundType.String;
@@ -183,8 +183,14 @@ public sealed partial class Binding
             this.SourceEvidence(expression, scope, context);
         }
 
-        if (node is FunctionKoto or PropertyAccessorKoto or DeferredBlockKoto or CompileTimeMatchKoto)
+        if (node is FunctionKoto or PropertyAccessorKoto or DeferredBlockKoto or CompileTimeSwitchKoto)
         {
+            return;
+        }
+
+        if (node is IsKoto { IsRuntimeTest: true } test)
+        {
+            this.TransferEvidence(test.Left, target, scope, context);
             return;
         }
 

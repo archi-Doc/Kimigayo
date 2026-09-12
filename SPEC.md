@@ -76,7 +76,7 @@ public group Program
         s is ref or obj
         T is Comparable
 
-        #match
+        #switch
             #case windows
                 return "windows"
             #case linux
@@ -281,6 +281,7 @@ These tables define token classes independently of internal enum groupings. Unre
 | Control, tests, and literals | `if`, `else`, `case`, `for`, `while`, `loop`, `do`, `match`, `return`, `exit`, `continue`, `yield`, `require`, `defer`, `is`, `not`, `and`, `or`, `true`, `false`, `null` |
 | Access and inheritance | `public`, `internal`, `private`, `protected`, `open` |
 | Dedicated forms | `Self`, `init`, `deinit`, `base` |
+| Compile-time selection | `switch`; used after `#`, with no runtime switch construct. |
 | Reserved future syntax | `as` |
 
 | Contextual class | Spellings and recognizing context |
@@ -622,7 +623,7 @@ Encoding one `char` as UTF-8 produces one to four bytes:
 
 The source literal `'€'` occupies five bytes (`27 E2 82 AC 27`), including its three-byte UTF-8 content. Its value is U+20AC, stored as a four-byte `char`; encoded length and storage size differ.
 
-`string` is the built-in Core for UTF-8 text. Its exact in-memory container and storage layout are implementation-defined. Owned `string` is always non-Copy; see [Copy capability](#351-copy-capability-and-explicit-duplication).
+`string` is the built-in Core for UTF-8 text. Its exact in-memory container and storage layout are implementation-defined. `owner/string` is always non-Copy; see [Copy capability](#351-copy-capability-and-explicit-duplication).
 
 ##### 3.1.5. Unit and Never types
 
@@ -661,7 +662,7 @@ A Function Type consists of a parenthesized **Function Parameter List**, `->`, a
 
 A **Function Value** is a callable value. Distinguish its concrete Type from a common **Function Type** `(A1, ..., An) -> R`:
 
-| Core | Identity and environment | Owned-value classification |
+| Core | Identity and environment | Value capabilities |
 | --- | --- | --- |
 | Function Item Type | One resolved function declaration and instantiation; no runtime capture environment | Copy, Owned, Shared call |
 | Concrete Closure Type | One anonymous-function expression and instantiation; stores its captures and internal call signature | Copy exactly when every capture's complete Type is Copy |
@@ -718,9 +719,9 @@ A Requirement on a Semantics binding may also name any concrete Semantics listed
 
 `reference` includes every non-`owner` representation, including raw pointers; it establishes no safe-borrow guarantee. `s is borrow` requires an outer safe borrow; `s is owning or borrow` permits every outer Semantics except `unsafe`. These are outer-layer tests, not recursive guarantees about nested Types or payloads. Category `owning` is distinct from the recursive `Owned` guarantee. No category named `owned`, `counted`, `pointer`, `safe`, or `all` is introduced.
 
-##### 3.3.1. Owned values
+##### 3.3.1. Value ownership
 
-`T` and `owner/T` are equivalent: both directly own a value with the data layout of `T`.
+`T` and `owner/T` are equivalent: both directly own a value with the data layout of `T`. In this section, owning a value or object describes its Semantics, not the recursive [Owned capability](#1523-static-and-owned).
 
 ##### 3.3.2. Value borrows
 
@@ -730,7 +731,7 @@ Value borrows provide non-owning access to value data, subject to lifetime const
 
 - `uniq/T` is an exclusive mutable borrow; no conflicting reference may coexist.
 
-##### 3.3.3. Owned objects
+##### 3.3.3. Object ownership
 
 Concurrency and payload synchronization remain under the [deferred memory-model and thread-transfer design](#d2-concurrency-memory-model-and-thread-transfer).
 
@@ -826,7 +827,7 @@ Access Designator -> operation-specific resolution
 
 These are resolution outcomes, not fallback stages. A failed direct Move cannot become a borrow or getter call. Standard Property get exposes permitted Place operations; custom/computed/required get produces its declared result (§11). Permitted function references produce function values. Classify by resolved operation, not spelling; parentheses preserve the category.
 
-Owned Move transfers ownership and destruction responsibility, preventing a second destruction at the source. Borrow-value Copy/Move duplicates or transfers access capability without owning its referent; destroying a borrow does not destroy the referent. Destroying `rc/T` or `arc/T` releases an owning reference under object-lifetime rules. A non-owning `unsafe/T` neither destroys its referent nor frees its storage.
+An ownership Move transfers ownership and destruction responsibility, preventing a second destruction at the source. Borrow-value Copy/Move duplicates or transfers access capability without owning its referent; destroying a borrow does not destroy the referent. Destroying `rc/T` or `arc/T` releases an owning reference under object-lifetime rules. A non-owning `unsafe/T` neither destroys its referent nor frees its storage.
 
 Initialization places a value in an empty place. Destruction ends a value's lifetime and responsibility; if its storage remains, that place becomes Uninitialized after normal completion. No access is possible after the storage's lifetime ends.
 
@@ -861,7 +862,7 @@ node = makeNode()
 
 | Type | Classification |
 | --- | --- |
-| Owned integers, floating-point values, `bool`, `char`, Unit | Copy |
+| Integers, floating-point values, `bool`, `char`, Unit under `owner` Semantics | Copy |
 | `ref/T`, `objref/T`, `unsafe/T` | Copy regardless of referent `T` |
 | `uniq/T`, `objuniq/T` | Non-Copy |
 | `obj/T`, `rc/T`, `arc/T` | Non-Copy even if `T` is Copy |
@@ -869,11 +870,11 @@ node = makeNode()
 | Index, Range, ResolvedRange | Copy |
 | Function Item | Copy |
 | Concrete Closure | Copy exactly when every captured complete Type is Copy; empty environments qualify |
-| Owned common Function Type | Non-Copy regardless of its hidden environment |
-| Owned Tuple / fixed-length array | Copy exactly when every component Type is Copy |
-| Owned user-defined struct | Non-Copy unless explicitly opted in |
-| Owned enum | Non-Copy unless explicitly opted in under [enum derivation](#352-enum-copy) |
-| Owned `string` | Non-Copy regardless of its internal representation |
+| Common Function Type under `owner` Semantics | Non-Copy regardless of its hidden environment |
+| Tuple / fixed-length array under `owner` Semantics | Copy exactly when every component Type is Copy |
+| User-defined struct under `owner` Semantics | Non-Copy unless explicitly opted in |
+| Enum under `owner` Semantics | Non-Copy unless explicitly opted in under [enum derivation](#352-enum-copy) |
+| `owner/string` | Non-Copy regardless of its internal representation |
 
 Never has no values and needs no classification. Other Types require their own rules; sharing elements alone does not establish Copy.
 
@@ -1087,7 +1088,7 @@ With an expected fixed-array Type, an array literal constructs that Type and mus
 
 Without a fixed-array expectation, an independent array literal constructs Array. Call-argument literals remain subject to candidate-local fitting under [length-argument inference](#44-function-length-parameters); do not default them to Array first. Empty literals require an expected element Type. Numeric element defaults follow ordinary inference.
 
-Consequently, an independent literal with safe-borrow elements is invalid as an Array, including static borrows: Array requires Owned and additionally prohibits recursively retained safe borrows. It does not silently become a fixed array. Supply a fixed-array expectation, for example `let views: [2 of ref/i32] = [x@ref, y@ref]` for initialized integer locals x and y; the initializer infers the element Origins under the ordinary local rules.
+An independent literal may form an Array with safe-borrow elements. Infer and preserve complete element Types and their Origins under the ordinary local rules; apply permitted Origin shortening without merging distinct Loans. A fixed-array expectation still selects a fixed array, for example `let views: [2 of ref/i32] = [x@ref, y@ref]` for initialized integer locals x and y.
 
 An annotation-only declaration remains Uninitialized: no zero fill or default element construction occurs. Initial construction requires a whole-array initializer or one whole-array assignment; element-by-element writes into an unconstructed array are forbidden. After completed construction and Partial Move, missing elements may be reinitialized through eligible static Move Paths with ordinary write permissions. Whole-value reads and borrows require completeness.
 
@@ -1175,7 +1176,11 @@ Fixed arrays and Array expose public read-only `length: isize` and `indices: Res
 
 A fixed array is Copy exactly when its complete element Type is Copy. Derive Owned and retain element Origins/Loans recursively. Partial Move follows [Move Paths](#1513-move-paths-and-partial-move). [Aggregate cleanup](#1632-field-cleanup) destroys remaining initialized elements in decreasing index order, including abandoned construction on ordinary control transfer; skip Uninitialized/Moved parts and recursively clean partly built elements. Abort does not guarantee cleanup.
 
-Array is Non-Copy, requires T is Owned, and obeys the separate retained-borrow storage restrictions in [Core declarations](#221-required-core-declarations). To obtain a shared view of either owning array form, explicitly slice it.
+Array is Non-Copy and accepts any valid complete element Type with representable element layout; neither Owned nor Copy is required. Its Type preserves T's Origin dependencies and Loan requirements, and its values preserve the acquired elements' Loans under [ordinary storage](#154-origin-elision-and-return-contracts). To obtain a shared view of either owning array form, explicitly slice it.
+
+The element position preserves Origin variance; compose nested variance normally, while `uniq/Array<T>` remains invariant in its complete Referent Type. This adds no covariance between different element Cores. Structural mutation operations, when supplied by Core, require exclusive access to the Array as a whole. Their incompatibility with active element/storage views follows ordinary Loan overlap, independently of whether reallocation actually occurs. Ordinary indexing does not gain a Non-Copy Move operation.
+
+Array analysis retains a conservative set of element-originated Loans. Removing or replacing an individual element, including clearing the Array, supplies no element-specific proof that a Loan ended; retain dependencies required by subsequent uses and observable destruction of the Array and derived values. A removal operation transfers the result's dependencies as well. Neither emptiness nor mutation changes the declared T or its Owned classification.
 
 **Mutation boundary.** Slice has no mutable/exclusive-element form in this revision. Mutate initialized array elements through authorized access to the owning array or a `uniq` borrow of the whole array; `uniq/Slice<T>` changes only the handle, never the element permissions. To process a mutable subrange, pass a whole-array exclusive borrow plus bounds and index the array, or iterate its saved indices while accessing each element. A non-lending iterator does not prohibit such indexed mutation. Bounds validation, active Loans, and ordinary initialization checks still apply; no disjoint mutable subviews are implied.
 
@@ -1366,7 +1371,7 @@ Under [static Place analysis](#1562-place-overlap-and-conflicts), an array-deriv
 
 Slice owns no elements; handle Copy/destruction neither copies nor destroys them. T need not be Owned, and all dependencies inside T remain intact. source may shorten but cannot lengthen; Slice's own Owned classification uses [ordinary Origin rules](#152-origin-expressions-and-ordering).
 
-**Storage and escape.** A local Slice may refer to heap-backed Array or static data. The restriction is on retaining safe-borrow values, including Slice, in heap storage such as Array elements/object fields or static Fields. `from static` denotes a static-lifetime borrow, not absence of a borrow; Copy/Owned cannot waive this separate structural storage check. Local bindings, valid argument/result lifetime contracts, and local aggregates with explicit Origins follow their ordinary rules.
+**Storage and escape.** Slice may be retained in local aggregates, Array elements, and concrete object payloads under [ordinary storage](#154-origin-elision-and-return-contracts). Preserve its backing Loan and nested element dependencies. Static storage requires Owned and a valid static source under [static storage](#1132-static-storage); copying or storing a Slice never extends the backing lifetime.
 
 Borrowing a temporary never extends its [lifetime](#36-temporary-values-places-and-lifetimes). Do not reject an unused binding solely because it contains a temporary borrow; check whether later use, return, or retention requires the expired dependency.
 
@@ -1842,7 +1847,7 @@ func makeView<T>(value: ref/T)
 
 The result annotation maps the enum's abstract `source` to the input's Origin. It describes borrows stored in an owned enum, whereas `ref/T from value` annotates a direct result borrow. The existing [single-Origin shorthand](#1531-origin-arguments) permits `View<T> from value`; named mapping makes the assignment explicit.
 
-At construction, bind payload dependencies to the enum's Origin arguments and validate every stored value against that contract. Infer variance and Loan requirements from occurrences in all Cases, retaining the ordinary fixed-point rules. Selecting a Case does not weaken the Type's Origin contract. Storing or moving out a `uniq/T` payload transfers the exclusive reference value, not its referent; shared reading reborrows it and suspends conflicting exclusive access. Existing lifetime, unique Loan-anchor, and heap/global escape restrictions still apply.
+At construction, bind payload dependencies to the enum's Origin arguments and validate every stored value against that contract. Infer variance and Loan requirements from occurrences in all Cases, retaining the ordinary fixed-point rules. Selecting a Case does not weaken the Type's Origin contract. Storing or moving out a `uniq/T` payload transfers the exclusive reference value, not its referent; shared reading reborrows it and suspends conflicting exclusive access. Ordinary storage, lifetime, and unique Loan-anchor rules still apply.
 
 Enums initially support owned values and value borrows; constructing or matching enums through Object Semantics is deferred. Their payloads may contain existing Object Semantics. Reject direct or indirect inline recursion without finite size; recursive data requires an existing legal indirection, with no implicit heap allocation. Case changes use whole-value assignment/Replacement, not tag mutation. No ordinary `value.0` or `value.Case` payload extraction is added. Copy follows [enum derivation](#352-enum-copy), and remaining payloads follow [aggregate cleanup](#1632-field-cleanup).
 
@@ -1919,7 +1924,7 @@ A function begins with `func`, followed by its Name, optional generic parameters
 
 The declared function Name is a single, unqualified Name. Its declaration belongs to the lexical Container or executable scope in which it appears. Declare a member inside the relevant Container body, including a permitted fragment; `func View.get(...)` and other qualified function declaration names are compile-time errors. A qualified declaration cannot attach a function to another Container, introduce an extension, or obtain that Container's private access or generic bindings. Qualified Names at use sites and explicit receivers remain governed by their existing rules.
 
-Explicit parameters are initialized, immutable let-like bindings, including anonymous-function, constructor, and receiver parameters; setter value is also immutable. Owned values may Move once, but parameter reassignment, reinitialization, and new exclusive storage borrows are forbidden. Use a var local for mutable work. Existing uniq/T or objuniq/T still permits exclusive referent access/Reborrow; binding immutability does not restrict its referent. Construction/Destruction receivers keep their special privileges. There is no var parameter syntax.
+Explicit parameters are initialized, immutable let-like bindings, including anonymous-function, constructor, and receiver parameters; setter value is also immutable. Non-Copy values may Move once, but parameter reassignment, reinitialization, and new exclusive storage borrows are forbidden. Use a var local for mutable work. Existing uniq/T or objuniq/T still permits exclusive referent access/Reborrow; binding immutability does not restrict its referent. Construction/Destruction receivers keep their special privileges. There is no var parameter syntax.
 
 #### 7.1. Function bodies and results
 
@@ -2099,7 +2104,7 @@ Each concrete Closure has one minimum **Call Receiver Requirement**, inferred fr
 | --- | --- | --- |
 | Shared | `ref/Self` | Shared access to the environment |
 | Exclusive | `uniq/Self` | Exclusive mutation of environment or captured referents |
-| Consuming | Owned `Self` | Move values out of the call's environment |
+| Consuming | `owner/Self` | Move values out of the call's environment |
 
 These are one body's access requirements, not three independently selected implementations. A Move on any possible body path requires Consuming call. Resolve legitimate generic effects before finalizing the requirement. Do not rerun overload resolution for each receiver, relax `let` or Property permissions, or rescue an otherwise invalid body with ownership. Internal `call` and receiver notation introduce no source member or hidden `self` name.
 
@@ -2208,7 +2213,7 @@ For `W = ref/i32 from a`, `s/T from b` forms `ref/i32 from b`. Formation does no
 
 Explicit argument lists supply every slot in declaration order, with optional trailing commas. Omitting the entire list uses only the inference supported by that construct. Partial lists, `_` placeholders, defaults, variadic slots, and general Const generics are not introduced. Only [function length slots](#44-function-length-parameters) admit the specified length arguments. `<s/T, U>` takes two arguments such as `<ref/i32 from a, string>`; `<ref, i32>` cannot supply one pair. Origin parameters have a separate schema and consume no Type argument slots.
 
-A valid Type argument is not permission to use it in every role. Keep constraints on base Types, associated Types, storage, finite layout, Copy derivation, escape, and Object payload erasure. Instance storage may retain Type-argument Origins under [storage contracts](#154-origin-elision-and-return-contracts); static storage still rejects safe-borrow retention. No blanket `Storable` Constraint is added.
+A valid Type argument is not permission to use it in every role. Keep constraints on base Types, associated Types, finite layout, Copy derivation, and Object payload erasure. Ordinary storage preserves complete Type-argument dependencies under [storage contracts](#154-origin-elision-and-return-contracts), without an Owned or Storable requirement. Static storage instead requires Owned and the [static-source rules](#1132-static-storage).
 
 #### 8.2. Constraints
 
@@ -2522,7 +2527,7 @@ Direct member use has a distinct applicability step: after lookup commits a func
 
 Conditions never alter lookup stopping/hiding, and an inapplicable member cannot reopen outer/base lookup. Compare applicable members of the committed group by ordinary overload rules, without ranking condition strength. Loan or initialization failure after selection does not cause reselection. A generic definition cannot restore a member rejected for lack of proof merely because a later instantiation satisfies P. If a legitimate temporary Unknown can affect selection, defer the decision rather than committing an alternative.
 
-Unknown dependencies and deadlines follow §8.7/§8.10. Required proof missing at its deadline is an error. Neither the declaration itself nor circular conformance search supplies evidence. Concrete absence requires completing all relevant paths, including ancestor conformances. Conditional syntax and definitions are checked even if no current Type arguments satisfy P; environment-only `#if`/`#match` cannot replace these checks.
+Unknown dependencies and deadlines follow §8.7/§8.10. Required proof missing at its deadline is an error. Neither the declaration itself nor circular conformance search supplies evidence. Concrete absence requires completing all relevant paths, including ancestor conformances. Conditional syntax and definitions are checked even if no current Type arguments satisfy P; environment-only `#if`/`#switch` cannot replace these checks.
 
 ###### 8.4.8.3. Uniqueness and parent contracts
 
@@ -2595,7 +2600,7 @@ Only requirements accessible through `Speaker` are available from that view. Lif
 | --- | --- | --- |
 | `ref` | `ref/F` | Shared |
 | `uniq` | `uniq/F` | Shared or Exclusive |
-| `owner` | Owned `F` | Shared, Exclusive, or Consuming |
+| `owner` | F acquired by value | Shared, Exclusive, or Consuming |
 
 Admitted Types are Function Items, concrete Closures, and common Function Types with [compatible signatures](#107-callable-signature-compatibility). No user `call` member is searched. `S` is a contract, not a conversion to an erased container. Preserve `F`'s complete dependencies under generic substitution; neither Copy nor Owned is required of `F`. `owner` denotes acquisition, whereas `Owned` denotes absence of non-static dependencies. The result restriction does not constrain direct concrete-Closure calls.
 
@@ -3420,7 +3425,7 @@ Shorthand borrows retain §13.5.5 semantics. For a slot of Type F = ref/U, `@ref
 
 ##### 11.1.1. Access and mutability
 
-Move is destructive access, not assignment. Moving a var requires accessible standard set but does not call it or add a receiver write-capability requirement. An owned let may be consumed; Move does not reset its first-initialization history. A moved let cannot be reinitialized or expose its slot for exclusive borrowing. Restoring var requires ordinary write permission.
+Move is destructive access, not assignment. Moving a var requires accessible standard set but does not call it or add a receiver write-capability requirement. A let binding may be consumed; Move does not reset its first-initialization history. A moved let cannot be reinitialized or expose its slot for exclusive borrowing. Restoring var requires ordinary write permission.
 
 ```kimi
 // Outside the declaring struct; holder is owned and complete.
@@ -3647,7 +3652,9 @@ Preserve base-first construction, declaration-order initializers, no self/constr
 
 ##### 11.3.2. Static storage
 
-Group/rootgroup stored Properties require initializers and retain §22.2's per-slot lazy state machine. Safe-borrow retention in static storage remains forbidden, including static Origins and nested retained data. Check after substitution and retain legitimate generic obligations; Owned alone does not waive this rule. A raw pointer referent or callable signature is not itself retained borrowed data.
+Group/rootgroup stored Properties require initializers, an Owned complete storage Type under §15.2.3, and §22.2's per-slot lazy state machine. Safe shared borrows from eligible immutable static storage may be retained, including inside aggregates. Check acquisition, initialization, and destruction dependencies separately; Owned supplies no Loan or pointer-validity evidence.
+
+Safe code cannot form a `from static` borrow of mutable static storage, including an inline subplace or backing data that safe mutation can invalidate. A new borrow of such storage has a finite use-bounded Origin and cannot be fitted to static, including through generic substitution or an accessor result. Copying an already stored reference preserves its original referent and Origin; it is not a borrow of the mutable slot. An eligible static borrow must be anchored in initialized immutable storage whose referenced path remains protected from safe mutation. Local Loans and shutdown checks remain necessary under §15.6.4 and §22.2.3.
 
 Actual slot access triggers initialization. Calling a custom/computed accessor initializes only slots actually touched by its execution or callees, not every summarized effect. A standard write initializes the slot first, then replaces its value; static let permits no external initialization or replacement. Custom set follows its function effects and may never touch storage. Unused initializers still require validation. Static accessors have no self.
 
@@ -3743,7 +3750,7 @@ Expressions
 Related Syntax
 ├─ Match Pattern
 ├─ Statement: unsafe / defer / require
-├─ Compile-time Directive: #if / #match
+├─ Compile-time Directive: #if / #switch
 ├─ Attribute: #Name
 └─ Composition Root: $
 ```
@@ -3772,7 +3779,7 @@ Evaluate operands once, from left to right, unless a construct specifies an exce
 
 `and`, `or`, and selections evaluate only the required operands or branches. [Simple assignment](#1371-simple-assignment) evaluates and secures its right side before its target; compound assignment retains target-first evaluation. Type arguments, length arguments, and adaptation-target Type formation are not evaluated at runtime.
 
-An abrupt Completion, divergence, or Abort prevents evaluation of later operands and the enclosing operation. Unevaluated syntax still undergoes name, Type, and transfer-target checks; syntax excluded by `#if` / `#match` follows [conditional compilation](#19-compile-time-directives). [Temporary lifetimes](#36-temporary-values-places-and-lifetimes) and scope-exit rules govern retained values.
+An abrupt Completion, divergence, or Abort prevents evaluation of later operands and the enclosing operation. Unevaluated syntax still undergoes name, Type, and transfer-target checks; syntax excluded by `#if` / `#switch` follows [conditional compilation](#19-compile-time-directives). [Temporary lifetimes](#36-temporary-values-places-and-lifetimes) and scope-exit rules govern retained values.
 
 #### 12.3. Primary expressions
 
@@ -3826,7 +3833,7 @@ let message = "first = \(values[0])"
 
 Each embedded value’s complete Type must satisfy the required Stringify Contract. Evaluate it once, borrow it shared for the call, invoke its verified mapping once, and append the owned result before the next interpolation. Printing does not implicitly Move a non-Copy source. End the call Loan on completion; neither returned nor combined strings retain source borrows. Normal temporary cleanup and Abort rules apply. Allocation may be optimized, but independent owned-string semantics must remain.
 
-Owned Scalars, Unit, and string conform to Stringify. Integers use decimal with a minus sign only for negative values; bool uses true/false, char its scalar’s UTF-8 bytes, Unit `()`, and string its contents. Float formatting is locale-independent; finite, NaN, and infinity spellings are implementation-defined and documented. Safe shared/exclusive borrows forward through shared access without taking ownership. User Types need `Self is Stringify` and a matching public implementation. No implicit object-address/raw-pointer formatting is provided; concatenation remains string-only.
+Scalars, Unit, and string under `owner` Semantics conform to Stringify. Integers use decimal with a minus sign only for negative values; bool uses true/false, char its scalar’s UTF-8 bytes, Unit `()`, and string its contents. Float formatting is locale-independent; finite, NaN, and infinity spellings are implementation-defined and documented. Safe shared/exclusive borrows forward through shared access without taking ownership. User Types need `Self is Stringify` and a matching public implementation. No implicit object-address/raw-pointer formatting is provided; concatenation remains string-only.
 
 ##### 12.3.4. Dictionary construction and duplicate keys
 
@@ -4065,7 +4072,7 @@ After the built-in cases in this section, comparison of two operands of the same
 | ==, != | Equatable.equals on shared borrows of both operands | returned bool, or its negation |
 | <, <=, >, >= | Comparable.compare on shared borrows of both operands | compare returned i32 with zero |
 
-Comparable refines Equatable: compare’s sign must agree with equality and a total order. Owned integers, char, and string provide both; bool, Unit, and floats provide Equatable. Floats have built-in relational operators but no Comparable because NaN is unordered. Borrow/Tuple comparisons forward or compose these capabilities. Structs and enums—including payload-free enums—need explicit conformance and members; equality/ordering is not derived. Arithmetic Contracts, user operators, and user-defined arithmetic remain deferred, so arbitrary user-Type arithmetic is an error.
+Comparable refines Equatable: compare’s sign must agree with equality and a total order. Integers, char, and string under `owner` Semantics provide both; bool, Unit, and floats provide Equatable. Floats have built-in relational operators but no Comparable because NaN is unordered. Borrow/Tuple comparisons forward or compose these capabilities. Structs and enums—including payload-free enums—need explicit conformance and members; equality/ordering is not derived. Arithmetic Contracts, user operators, and user-defined arithmetic remain deferred, so arbitrary user-Type arithmetic is an error.
 
 For f32/f64, the intrinsic Equatable.equals mapping uses the NaN-reflexive equality defined for Dictionary in §12.3.4, whereas a built-in `==` expression still returns false for NaN. Generic comparison through an Equatable requirement uses its mapping. Do not specialize such a generic call into a floating `==` instruction that changes its meaning. Borrow/Tuple Equatable conformances compose mappings in the same way, separately from built-in operator semantics.
 
@@ -4141,7 +4148,7 @@ Deferred generic effects follow [Generic Access Effects](#89-generic-access-effe
 | Operation | Condition |
 | --- | --- |
 | Identity Acquisition | Same normalized complete Type; ordinary acquisition is permitted |
-| Numeric Conversion | Owned integer/float values in the numeric table below |
+| Numeric Conversion | Integer/float values under `owner` Semantics in the numeric table below |
 | Borrow / Reborrow | The explicit Borrow table below |
 | Object Upcast | The finite [object upcast tables](#1357-object-upcasts), including their specified borrow forms |
 | Raw Pointer Conversion | The [pointer conversion rules](#54-pointer-conversions) |
@@ -4235,7 +4242,7 @@ modify(exclusive@uniq) // After the previous child Loan ends.
 let transferred = exclusive // Move the reference, not its referent.
 ```
 
-Do not upgrade shared to exclusive, derive exclusive object borrows from `rc`/`arc`, or convert between value-borrow and object-borrow representations. A runtime reference count of one does not grant an exception. Owned temporaries use [materialization and temporary borrowing](#36-temporary-values-places-and-lifetimes).
+Do not upgrade shared to exclusive, derive exclusive object borrows from `rc`/`arc`, or convert between value-borrow and object-borrow representations. A runtime reference count of one does not grant an exception. Temporaries under `owner` Semantics use [materialization and temporary borrowing](#36-temporary-values-places-and-lifetimes).
 
 Custom/computed/required get invokes a getter once. Adapt its declared result Type, including shorthand inference. Borrowing an owned result materializes its temporary and obeys §11.2.3; references retain ordinary Copy/Reborrow rules. Set access grants no hidden-storage borrow. Standard get uses §11.1 Place permissions.
 
@@ -4312,7 +4319,7 @@ Core provides the following explicit intrinsic operations. The names below descr
 | Duplicate non-atomic strong owner | Shared access to an initialized `rc/V` handle | Additional `rc/V` owner of the same object; increment its strong count once |
 | Duplicate atomic strong owner | Shared access to an initialized `arc/V` handle | Additional `arc/V` owner of the same object; atomically increment its strong count once |
 
-**Creation.** Evaluate and acquire the input once by ordinary by-value rules: Copy leaves its source Initialized; Move transfers responsibility and marks the source Moved. Require a complete payload, valid Loans, and `T is Owned`. Because the new ownership can retain storage independently, reject recursively retained safe borrows, including `static` borrows, under the [heap/global escape boundary](#159-lifetime-design-boundaries); `Owned` alone does not waive this restriction. Check after substitution, independently of allocation elimination.
+**Creation.** Evaluate and acquire the input once by ordinary by-value rules: Copy leaves its source Initialized; Move transfers responsibility and marks the source Moved. Require a complete payload and valid Loans. Concrete payload storage needs no Owned requirement: preserve its complete Type and value dependencies under [ordinary storage](#154-origin-elision-and-return-contracts), independently of allocation elimination. Subsequent base/contract erasure has its separate Owned requirement.
 
 After acquisition, secure fresh payload storage and any ownership metadata, then Move the prepared value into it without invoking constructors, accessors, duplication code, or `deinit`. Publish the handle only when payload and metadata are complete. Its initial View Target and Dynamic Type are exactly `T`, and its lifetime has a fresh object identity. Any base/contract upcast is a separate operation with its existing erasure checks.
 
@@ -4364,7 +4371,7 @@ owned animal -> checked cast -> success(dog) or failure(original)
 
 For an exclusive result whose variant is not yet known, conservatively track the possible child Loan; the parent cannot conflict until that dependency ends. An owning cast never restores the source binding on failure. It neither destroys/copies the object nor changes reference counts. Destroying the result follows the normal responsibility of the branch it holds.
 
-Check target validity/accessibility, Semantics preservation, [Owned erasure](#1581-object-payload-erasure), result Origins/Loans, and destruction dependencies statically. Borrowing cannot create ownership or exclusivity; share explicitly before casting when needed. Evaluate/secure the source once. No test or cast reconstructs erased generic lifetime bindings. API names and Option/Result branching syntax remain design boundaries; these guarantees do not define a cast spelling or add checked casts to `@`.
+Check target validity/accessibility, Semantics preservation, [Owned erasure](#1581-object-payload-erasure), result Origins/Loans, and destruction dependencies statically. Borrowing cannot create ownership or exclusivity; share explicitly before casting when needed. Evaluate/secure the source once. For a source certified by Owned payload erasure, a missing data-Origin binding may be supplied only as static where the §15.2.3 proof covered that binding. Thus a cast to a concrete `Box<ref/i32 from static>` may be valid when Runtime Type Identity/Supports and all other checks match. This is a static proof, not runtime recovery of an Origin. Preserve the handle's outer borrow Origin. Do not invent non-static bindings or rewrite callable contracts excluded from that proof; reject a target needing information not preserved or certified. API names and Option/Result branching syntax remain design boundaries; these guarantees do not define a cast spelling or add checked casts to `@`.
 
 #### 13.7. Assignment
 
@@ -4443,7 +4450,7 @@ Operator symbols, precedence, and associativity are fixed by the language. User-
 
 `and`, `or`, `not`, `=`, `@`, `is`, Ranges, and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined. Neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.`, or ternary `?:`; use logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref` / `@uniq`. Prefix `move`, a Move accessor, and a dedicated `<-` Move operator are not defined. Recognition by the lexer alone does not make a token a usable operator.
 
-`#Name` is an Attribute and `#if` / `#match` are compile-time directives, not runtime unary operators. The **Composition Root** is the reserved root for language-provided operations selected by `$`, independently of ordinary Name lookup; it is neither a value nor a macro facility. This revision defines only `$abort(...)`, under [Abort Termination](#173-abort-termination). Other operations, dependency resolution, and extension/lifetime rules are not defined and confer no source-language permission.
+`#Name` is an Attribute and `#if` / `#switch` are compile-time directives, not runtime unary operators. The **Composition Root** is the reserved root for language-provided operations selected by `$`, independently of ordinary Name lookup; it is neither a value nor a macro facility. This revision defines only `$abort(...)`, under [Abort Termination](#173-abort-termination). Other operations, dependency resolution, and extension/lifetime rules are not defined and confer no source-language permission.
 
 ### 14. Control flow
 
@@ -4545,7 +4552,7 @@ defer
 // Valid source body even if the directive selects nothing.
 
 let value: i32 = if ready
-    #match
+    #switch
         #case windows
             yield 1
         #case _
@@ -4742,10 +4749,10 @@ End next’s receiver Loan before the loop body. Results may retain existing ext
 
 | Iterable | Yielded value and acquisition |
 | --- | --- |
-| Owned Array or fixed array | Consume elements as T. |
+| Array or fixed array under `owner` Semantics | Consume elements as T. |
 | ResolvedRange | isize; unresolved Range is not Iterable. |
 | Slice | ref/T from source, even for Copy elements. |
-| Owned Dictionary | Consume (K,V) pairs in insertion order. |
+| Dictionary under `owner` Semantics | Consume (K,V) pairs in insertion order. |
 
 Direct iteration consumes a non-Copy owning collection; use `for item in values[..]` for shared iteration. A consumed source remains unavailable until valid reinitialization. Preserve source Loans while the iterator or escaped yielded references need them; reject overlapping mutation and allow nonconflicting mutation under ordinary Loan rules. See [ranges](#463-range-and-resolvedrange) and [Slice iteration](#467-slice-iteration-and-nested-origins).
 
@@ -4835,7 +4842,7 @@ func positiveOrZero(value: Option<i32>) -> i32
 
 ##### 14.8.1. Patterns
 
-Patterns are dedicated syntax, not general expressions. Initially they occur only in runtime match arms, not declarations, parameters, `for`, `if`, `while`, `require`, or compile-time `#match`.
+Patterns are dedicated syntax, not general expressions. Initially they occur only in runtime match arms, not declarations, parameters, `for`, `if`, `while`, `require`, or compile-time `#switch`.
 
 | Pattern | Example | Meaning |
 | --- | --- | --- |
@@ -5395,7 +5402,7 @@ A **Movable Place** permits ownership/capability transfer from its current value
 
 Borrowed referents, object fields, static storage, unsupported indices, and hidden Property storage cannot supply safe extraction. Generic owned arguments may move as whole values without an extra Contract. Raw dereference retains its Unsafe obligations.
 
-Ordinary acquisition Copies Copy Types and otherwise Moves. A Move marks the source Moved and transfers its complete Type, dependencies, and destruction responsibility; moving a reference transfers capability, not referent ownership. Owned let may Move but cannot be reinitialized. Restoring var needs write permission. There is no forced Move of Copy Types.
+Ordinary acquisition Copies Copy Types and otherwise Moves. A Move marks the source Moved and transfers its complete Type, dependencies, and destruction responsibility; moving a reference transfers capability, not referent ownership. A let binding may supply a Move but cannot be reinitialized. Restoring var needs write permission. There is no forced Move of Copy Types.
 
 ```kimi
 let number: i32 = 10
@@ -5509,16 +5516,22 @@ Renormalize after substitution or changes to proof evidence; cached reductions m
 func empty() -> ref/string from static
 ```
 
-A shared borrow from `static` has no non-static lifetime dependency. Safe code cannot derive `uniq/T from static` from longevity alone: an exclusive borrow also requires a unique Loan anchor. For the same reason, an abstract Origin whose Loan requirement is `uniq` cannot be bound to `static` in safe code.
+A shared borrow from `static` has no non-static lifetime dependency and must satisfy the [static-source rules](#1132-static-storage). A new safe borrow of mutable static storage has a finite Origin. Safe code cannot derive `uniq/T from static` from longevity alone: an exclusive borrow also requires a unique Loan anchor. An abstract Origin whose Loan requirement is `uniq` cannot be bound to `static` in safe code.
 
-`static` describes an Origin; it does not mean that a type contains no non-static borrow. The `Owned` capability expresses that condition:
+`static` describes an Origin. `Owned` expresses independence from non-static lifetime dependencies, not ownership Semantics or permission to allocate storage:
 
 ```kimi
-func spawn<F>(f: F)
+func register<F>(f: F)
     F is Owned
 ```
 
-A type is `Owned` when every reachable Origin dependency is absent or bound to `static`.
+A valid complete Type T is `Owned` exactly when every Origin in **OwnedOrigins(T)** equals static; an empty set satisfies the condition. OwnedOrigins is the conservative dependency closure of the Type's outer Origin, all instantiated Type and Origin arguments (including unused slots), raw-pointer pointee Types, bases, stored Fields, enum payloads, sequence components, and concrete Closure captures. Expand aliases and substitute declaration bindings before traversal. Recursive Types use the structural fixed-point rules, not circular conformance evidence.
+
+Public callable parameter/result Origin contracts, including their per-call binders, are not environment dependencies: Function Items have no captured environment, concrete Closures contribute their captures, and common Function Types certify an Owned erased environment. Such callable contracts remain part of the complete Type and must never be inferred or rewritten from an environment's Owned proof. OwnedOrigins traversal through Type arguments respects this callable boundary.
+
+Use established outlives facts: `a : static` proves a equal to static because static is the maximum Origin. An unbound/unproved abstract Origin yields Unknown, not proof of `not Owned`; resolve required evidence by the ordinary deadline. Empty containers and unselected Cases do not weaken this Type-level check. In particular, `unsafe/(ref/i32 from local)` and a wrapper with that non-static Type argument cannot prove Owned even if no safe-borrow Field is visible. Traversing a pointee Type neither dereferences a pointer nor creates a Loan; unsafe implementations must still expose their actual lifetime dependencies and uphold pointer validity.
+
+This revision requires Owned at static storage, concrete payload erasure into base/runtime-contract views, common Function Type environment erasure, and explicitly declared Owned Constraints. A lifetime-hiding library API states that requirement explicitly; the compiler does not infer an "indefinite retention" capability from a private body. Ordinary storage and concrete object allocation impose no blanket Owned requirement. Owned never discharges acquisition, Loan, destruction-order, unsafe, or concurrency checks.
 
 #### 15.3. Abstract origins
 
@@ -5669,7 +5682,7 @@ Origin omission depends on the position of the complete Type. These rules apply 
 | Local binding with inferred Type | Infer the Type, Origin dependencies, and Loans from the initializer under ordinary acquisition rules. |
 | Explicit local Type containing a borrow or Origin-bearing aggregate | Infer omitted Origins and Origin arguments from the declaration initializer and ordinary Origin/Loan constraints. Without an initializer, omission is a compile-time error. |
 | Instance Field | Require explicit bindings for all borrow layers and required Type Origin arguments; do not infer the storage contract from initialization. |
-| Static Field | Safe-borrow retention is forbidden, including nested borrows and explicitly `static` borrows. |
+| Static Field | Require Owned and §11.3.2's static-source rules. Omitted stored borrow Origins default to static; preserve bound Type/Origin arguments and callable contracts. |
 | Generic Type argument or nested value Type | Recursively apply the enclosing position's rule; being a Type argument does not introduce a separate default. |
 | Enum Case payload declaration | Apply the instance storage rule to every payload element, including nested Origins and required aggregate arguments; see [enum payloads](#63-enums). |
 | Constructor parameter | Apply the ordinary parameter rule; the constructed value retains the containing Type's declared Origin contract under [construction](#623-constructors). |
@@ -5695,7 +5708,11 @@ struct Box<T>
 // No synthetic named Origin parameter is added to Box.
 ```
 
-The constructed Box's lifetime, acquisition, and destruction retain that dependency. This does not permit a directly written field `value: ref/i32` to omit its Origin. Static storage still rejects such a Box even when a is `static`; `Owned` alone is insufficient. Follow the recursive [static storage check](#11-properties), without treating a raw pointer's pointee or a callable signature as an actually retained safe borrow. Finite layout, Copy derivation, heap/global escape, and Object payload erasure remain separate checks.
+The constructed Box's lifetime, acquisition, and destruction retain that dependency. This does not permit a directly written field `value: ref/i32` to omit its Origin. Static storage can retain the Box when its complete Type proves Owned and its values satisfy §11.3.2. Finite layout, Copy derivation, and Object payload erasure remain separate checks.
+
+**Ordinary storage.** Array, Dictionary, Tuple, fixed array, struct, enum, concrete object payloads (`obj`/`rc`/`arc`), and concrete Closure environments accept valid complete stored Types without a blanket Owned or Storable requirement. Preserve Type/Origin arguments and value-level Loan identities, anchors, and Reborrow relationships through acquisition, storage, Move/Copy, calls, and destruction. Conservative OwnedOrigins checks include Type-level dependencies that create no actual Loan; actual Loans still require provenance. Heap placement neither extends a referent's lifetime nor changes these rules. Loan liveness follows required uses and observable destruction (§15.6), not merely the enclosing lexical scope.
+
+For example, `func singleton<T>(value: T) -> Array<T>` with body `return [value]` is valid without Owned or Copy: acquire T once and propagate its complete dependencies. The same applies to a body-local Array even when no Array appears in the public signature. Verify all admitted Types at definition time under §8.10; representation obligations cannot hide new capability requirements. A copied shared-reference element retains its original referent's lifetime, while a borrow of the element slot is also bounded by Array storage (§4.6.6).
 
 ```kimi
 func f<T>(x: ref/T, y: ref/T)
@@ -5714,7 +5731,8 @@ func use<T>(x: ref/T)
     var missing: ref/T  // Error: no initializer to infer the omitted Origin.
 
 group Global
-    var value: ref/i32 from static // Error: static storage may not retain a safe borrow.
+    let number: i32 = 1
+    let value: ref/i32 from static = Global.number@ref
 ```
 
 When a result Origin is omitted, the compiler applies these rules in order:
@@ -5936,11 +5954,11 @@ While the returned `Pair` is live, shared Loans on both `a` and `b` remain activ
 
 A call's receiver and argument Loans begin as each borrow/reborrow is formed in evaluation order, before later arguments and defaults. In particular, an exclusive receiver is active while explicit arguments are evaluated. No two-phase reservation exception is defined; intrinsic Exchange/Swap use the same rule.
 
-**Static call effects.** Summarize each callable’s potentially accessed static Field Identities and read, shared/exclusive borrow, write, replacement, and destruction effects, including callees, defaults, lazy initialization, and cleanup. Compare them with all active caller Loans by normal overlap rules. Returned static borrows retain Field storage anchors and dependency paths—even with Origin static—and create anchored Loans for their uses. Static allocation never permits replacing/destroying a borrowed current value.
+**Static call effects.** Summarize each callable's potentially accessed static Field Identities and read, shared/exclusive borrow, write, replacement, and destruction effects, including callees, defaults, lazy initialization, and cleanup. Compare them with active caller Loans by normal overlap rules. Borrowed results retain Field anchors and dependency paths: immutable-source borrows may be static, whereas mutable-source borrows must retain a finite Origin under §11.3.2. Static allocation never permits replacing/destroying a borrowed current value.
 
 Summaries distinguish first-access initialization effects from ordinary accesses. A live Loan anchored to a Field proves that Field has completed initialization, so its initializer need not be counted again; this proves nothing about an unrelated Field first accessed by the callee. If a result may derive from several static Fields, retain every possible anchor conservatively, independently of the runtime branch selected.
 
-If `let view = State.text@ref` borrows a static string Field, reject State.reset() while view has a later use if reset may replace that Field. A shared Loan still permits read-only calls. Summarize the whole call conservatively; favorable runtime branches need no special analysis. Compute recursive fixed points before acceptance. Separate/indirect calls need validated summaries covering every possible target; unknown effects conflict with all potentially affected active static Loans. Missing summaries never mean no effects. FFI validity and aliasing obligations still apply.
+If `let view = State.text@ref` borrows a mutable static string Field, view has a finite Origin; reject State.reset() while view has a later use if reset may replace that Field. A shared Loan still permits read-only calls. Summarize the whole call conservatively; favorable runtime branches need no special analysis. Compute recursive fixed points before acceptance. Separate/indirect calls consume published validated summaries, or conservatively treat unknown effects as conflicting with every potentially affected active static Loan. Clients need not inspect private bodies. Preserve immutable anchors for shutdown dependencies even after erasure; mutable-source borrows cannot cross an Owned boundary. FFI validity and aliasing obligations still apply.
 
 ##### 15.6.5. Universal regions
 
@@ -6029,7 +6047,7 @@ Unknown relationships are rejected. Do not accept `Swap(a[i], a[j])` merely from
 
 ##### 15.8.1. Object payload erasure
 
-Erasing a concrete payload behind a base or runtime-contract view requires its complete data Type to satisfy `Owned`. Recursively check the base, derived fields, and dependencies retained by generic arguments; the handle's own Origin is not this test. Resolve payload Type/Origin arguments and ordinary exclusive-Loan restrictions before erasure. A local object borrow may still have a local Origin when its payload is Owned.
+Erasing a concrete payload behind a base or runtime-contract view requires its complete data Type to satisfy `Owned` under §15.2.3's conservative OwnedOrigins closure; the handle's own Origin is not this test. Resolve payload Type/Origin arguments and ordinary exclusive-Loan restrictions before erasure. A local object borrow may still have a local Origin when its payload is Owned.
 
 ```text
 Dog owns only i32/string data -> Owned payload -> base/contract erasure allowed
@@ -6037,11 +6055,11 @@ Dog stores a local ref       -> non-Owned     -> initial erasure rejected
 objref/Animal from local     -> borrow remains local even when payload is Owned
 ```
 
-This is not a blanket `from static` requirement on object handles or exact concrete views. Same-target operations retain existing lifetime rules. An already erased view statically certifies that this check succeeded; later upcasts/casts inherit that guarantee without runtime Origin queries. No erased generic lifetime binding is reconstructed from Runtime Type Identity. Existing borrowed-field Types remain valid; hiding their non-static dependencies needs a later existential-view design. Owned does not waive heap/global escape limits, pointer validity, or concurrency checks.
+This is not a blanket `from static` requirement on object handles or exact concrete views. Same-target operations retain existing lifetime rules. An erased view certifies that this check succeeded; later upcasts/casts inherit it without runtime Origin queries. Only proof-covered data-Origin bindings may be supplied as static in a checked cast (§13.6.2); callable contracts and the handle's outer Origin are not reconstructed. Existing borrowed-field Types remain valid; hiding their non-static dependencies needs a later existential-view design. Owned does not waive pointer validity, Loan, destruction, or concurrency checks.
 
 ##### 15.8.2. Closure dependencies and call results
 
-A Closure recursively retains every captured value's Origin and Loan dependencies, not merely the lifetime of its creation Block. Moving an owned value with no borrowed contents does not borrow its old local storage. Copying a shared reference, moving an exclusive reference, reborrowing, or acquiring a borrowed aggregate preserves the corresponding external Origins, child Loans, and parent restrictions. Do not collapse independent dependencies or discard them at generic substitution or type erasure. Owned applies to all reachable environment dependencies.
+A Closure recursively retains every captured value's Origin and Loan dependencies, not merely the lifetime of its creation Block. Moving an owned value with no borrowed contents does not borrow its old local storage. Copying a shared reference, moving an exclusive reference, reborrowing, or acquiring a borrowed aggregate preserves the corresponding external Origins, child Loans, and parent restrictions. Do not collapse independent dependencies or discard them at generic substitution or type erasure. Apply §15.2.3's OwnedOrigins to the captured Types when proving the environment Owned.
 
 Distinguish the Closure's captured dependencies from each call's receiver and result dependencies:
 
@@ -6080,7 +6098,7 @@ Escape describes retention across a creation/call boundary, not a permanent synt
 
 Non-escaping means that the callee retains neither the callable nor its environment dependencies beyond the call. It does not mean one call, no allocation, or waived Loan checks. `ref/F` and an Owned result let a verified callback-only body use a borrowed concrete environment without erasure, but neither `ref/F` nor Callable alone promises that every environment-derived value is unsavable. A separately compiled callee cannot be assumed non-escaping without a verified contract. Non-escaping declaration syntax and borrowed erased callable views remain deferred.
 
-Loan validity includes later uses, results, and dependencies observed by destruction, not just the last body invocation or the lexical end of a binding. Heap/global borrow escape remains outside this revision. `Owned` can constrain indefinite retention but grants no thread-safety guarantee.
+Loan validity includes later uses, results, and dependencies observed by destruction, not just the last body invocation or the lexical end of a binding. Concrete Closure storage follows §15.4. A library API that needs lifetime independence declares an Owned Constraint; no new body-inferred retention requirement is introduced.
 
 #### 15.9. Lifetime design boundaries
 
@@ -6089,7 +6107,6 @@ This revision does not define:
 - abstract Origin parameters on contracts or trait-like abstractions (the [Property getter receiver/result contracts](#1122-computed-properties) do not introduce contract-level Origin parameters);
 - existential object views that hide non-static payload dependencies;
 - general higher-ranked Origins beyond the direct-input quantification of Callable constraints;
-- borrow escape into heap or global storage; in particular, static Fields are forbidden from retaining safe borrows, including `static` borrows and borrows nested in stored values, under [Field storage rules](#113-types-and-origins);
 - lending iterators;
 - cancellation cleanup guarantees.
 
@@ -6664,8 +6681,8 @@ Compile-time Directives select Syntax during compilation without producing runti
 | Form | Purpose |
 | --- | --- |
 | `#if` | Independently includes or excludes one Syntax node. |
-| `#match` | Introduces an ordered Case Group and selects one arm. |
-| `#case` | Introduces an arm directly inside a `#match` body. |
+| `#switch` | Introduces an ordered Case Group and selects one arm. |
+| `#case` | Introduces an arm directly inside a `#switch` body. |
 | `#Name` | Attaches an Attribute; it is not a Compile-time Directive. |
 
 The former `#If(...)` form has Attribute syntax (with semantics still deferred). The lowercase `#if` form specified here is a separate language construct.
@@ -6682,7 +6699,7 @@ Directive placement is restricted to whole items in these categories:
 | contract body | Requirements, associated-Type declarations, Constraints |
 | Executable/function body | Executable items and a function's permitted leading Constraints |
 
-Directives cannot replace part of an expression, Pattern, or Type, or appear directly in runtime match-arm, parameter/argument, generic, accessor, Capture, or Tuple/collection-element lists. An indented executable body nested in an expression remains a permitted item list; a single-item Body cannot directly contain a directive (§14.2). Select a whole allowed item. #case occurs only directly in a #match directive body. Attributes obey §6.5 and do not expand these permissions.
+Directives cannot replace part of an expression, Pattern, or Type, or appear directly in runtime match-arm, parameter/argument, generic, accessor, Capture, or Tuple/collection-element lists. An indented executable body nested in an expression remains a permitted item list; a single-item Body cannot directly contain a directive (§14.2). Select a whole allowed item. #case occurs only directly in a #switch directive body. Attributes obey §6.5 and do not expand these permissions.
 
 `#if` controls either the next Syntax node at the same indentation or one indented Block:
 
@@ -6697,11 +6714,11 @@ alias Kimi.Windows
     let assertions = true
 ```
 
-A **Case Group** is introduced by `#match` and consists of the `#case` arms indented one level under it. The group's extent is the `#match` body; nothing outside that body joins the group, so two Case Groups may appear adjacently. Select the first matching arm in source order. The optional catch-all `#case _` must occur once at most, as the final arm.
+A **Case Group** is introduced by `#switch` and consists of the `#case` arms indented one level under it. The group's extent is the `#switch` body; nothing outside that body joins the group, so two Case Groups may appear adjacently. Select the first matching arm in source order. The optional catch-all `#case _` must occur once at most, as the final arm.
 
 ```kimi
 func useImplementation<T>(value: T) -> ()
-    #match
+    #switch
         #case windows
             useWindowsImplementation(value)
         #case linux
@@ -6709,16 +6726,16 @@ func useImplementation<T>(value: T) -> ()
         #case _
             useGenericImplementation(value)
 
-    #match
+    #switch
         #case pointerWidth == 64
             useWidePath(value)
         #case _
             useNarrowPath(value)
 ```
 
-A `#match` header has no subject expression. Its body must contain at least one `#case` arm and contains only such arms, apart from blank lines and comments. Each arm must have an indented Block. A `#case` outside the direct arm list of a `#match` body is an error; nested selections require their own `#match`. Blank lines and comments do not split a group within its body.
+A `#switch` header has no subject expression. Its body must contain at least one `#case` arm and contains only such arms, apart from blank lines and comments. Each arm must have an indented Block. A `#case` outside the direct arm list of a `#switch` body is an error; nested selections require their own `#switch`. Blank lines and comments do not split a group within its body. Runtime `match subject` retains its separate Pattern syntax (§14.8); `#match` is not a directive or an alias for `#switch`.
 
-A `#match` construct is one Syntax item and may be controlled as a whole by a preceding `#if`. Directive indentation groups source items for selection; it does not introduce a runtime Block or lookup scope. This applies to both indented `#if` targets and `#case` bodies, in executable bodies and Declaration Containers.
+A `#switch` construct is one Syntax item and may be controlled as a whole by a preceding `#if`. Directive indentation groups source items for selection; it does not introduce a runtime Block or lookup scope. This applies to both indented `#if` targets and `#case` bodies, in executable bodies and Declaration Containers.
 
 Every valid Case Group must select an arm for the prepared environment. Without `#case _`, at least one explicit Condition must evaluate to **True**; otherwise report an error. No generic dependency can defer selection. A catch-all supplies an unconditional alternative, but does not suppress errors in other Conditions.
 
@@ -6763,7 +6780,7 @@ Constraint Clauses and ordinary runtime Type tests retain their separate rules. 
 
 #### 19.3. Condition evaluation and selection
 
-`#if` and `#match` Conditions use the same evaluation rules. All valid Condition inputs are fixed by the target and Project settings before source selection. Language evaluation has exactly three outcomes:
+`#if` and `#switch` Conditions use the same evaluation rules. All valid Condition inputs are fixed by the target and Project settings before source selection. Language evaluation has exactly three outcomes:
 
 | Result | Meaning |
 | --- | --- |
@@ -6775,9 +6792,9 @@ There is no Deferred Condition result. Generic Binding and instantiation cannot 
 
 Truth determination does not waive validation. Validate both operands of `and` and `or`, even when one determines truth. **Error** is absorbing for `and`, `or`, and `not`. Otherwise evaluate their ordinary Boolean meaning. For example, `false and missing`, `true or missing`, `debug and missing`, `false and 1`, and `true or (T is i32)` are errors when reached; neither short-circuit truth nor build mode hides the invalid operand.
 
-Evaluate the single Condition of a `#if` and validate every explicit Condition of a reached `#match`, including later arms whose values cannot change the selection. After successful validation, select the first True arm; False arms are skipped. If none is True, select `#case _` when present; otherwise report an error. No arbitrary theorem proving or enumeration of Types is involved.
+Evaluate the single Condition of a `#if` and validate every explicit Condition of a reached `#switch`, including later arms whose values cannot change the selection. After successful validation, select the first True arm; False arms are skipped. If none is True, select `#case _` when present; otherwise report an error. No arbitrary theorem proving or enumeration of Types is involved.
 
-Directive validation reaches source items, True #if targets, and **all arms** of a reached #match; it stops at False #if interiors. Thus an unselected #match arm still validates nested Conditions unless a False #if encloses them. This source traversal is independent of parser scheduling and semantic reachability; [excluded-syntax rules](#195-diagnostics-and-excluded-syntax) specify the remaining checks.
+Directive validation reaches source items, True #if targets, and **all arms** of a reached #switch; it stops at False #if interiors. Thus an unselected #switch arm still validates nested Conditions unless a False #if encloses them. This source traversal is independent of parser scheduling and semantic reachability; [excluded-syntax rules](#195-diagnostics-and-excluded-syntax) specify the remaining checks.
 
 #### 19.4. Name-resolution boundary
 
@@ -6790,7 +6807,7 @@ Environment directives may select declarations, imports, or local syntax for a f
 func platformName() -> string => "windows"
 
 func example<T>() -> i32
-    #match
+    #switch
         #case pointerWidth == 64
             let result = 64
             return result
@@ -6802,11 +6819,11 @@ The selected body of `example` is the same for every `T` in that Compilation. So
 
 #### 19.5. Diagnostics and excluded syntax
 
-**Excluded Syntax.** Tokenize every SourceDocument and diagnose all encoding, token, and indentation errors. Validate each reached #if’s complete Condition before deciding target grammar checks. In a False target, check only balanced Blocks, required executable bodies, and #match/#case structural placement and nonemptiness. Skip ordinary expression/declaration grammar; an incomplete initializer is allowed there. Parse every reached #match arm, applying the same nested False #if exception. Unselected arms skip ordinary semantic checking.
+**Excluded Syntax.** Tokenize every SourceDocument and diagnose all encoding, token, and indentation errors. Validate each reached #if’s complete Condition before deciding target grammar checks. In a False target, check only balanced Blocks, required executable bodies, and #switch/#case structural placement and nonemptiness. Skip ordinary expression/declaration grammar; an incomplete initializer is allowed there. Parse every reached #switch arm, applying the same nested False #if exception. Unselected arms skip ordinary semantic checking.
 
 Speculative parsing cannot change acceptance. Suppress speculative ordinary-grammar errors in confirmed False #if targets; retain mandatory token/layout/structure errors. Validate reached Conditions immediately against the prepared environment; truth cannot hide invalid operands or missing Names. Unknown Names are Error, never False or an instantiation dependency, regardless of caching or evaluation schedule.
 
-| Check | False `#if` target | Unselected arm of a reached `#match` |
+| Check | False `#if` target | Unselected arm of a reached `#switch` |
 | --- | --- | --- |
 | Tokenization and indentation | Required | Required |
 | Block/directive structure and source-level nonempty executable bodies | Required | Required |
@@ -6814,7 +6831,7 @@ Speculative parsing cannot change acceptance. Suppress speculative ordinary-gram
 | Nested Directive Condition evaluation | Skipped | Required under the source-defined traversal, except inside False #if targets |
 | Ordinary Name/Type/ownership checks, lowering and code generation after exclusion | Skipped | Skipped |
 
-The controlling #if Condition and all explicit Conditions of the current #match are checked independently of their targets under [Condition evaluation](#193-condition-evaluation-and-selection). An uppercase-initial #Name has Attribute syntax; other lowercase hash forms are errors under §6.5. Resolving an Attribute is not required in excluded Syntax.
+The controlling #if Condition and all explicit Conditions of the current #switch are checked independently of their targets under [Condition evaluation](#193-condition-evaluation-and-selection). An uppercase-initial #Name has Attribute syntax; other lowercase hash forms are errors under §6.5. Resolving an Attribute is not required in excluded Syntax.
 
 **Error example.**
 
@@ -7493,7 +7510,7 @@ The initial internal ABI is versioned, module-local, and uses LLVM ccc. It appli
 | Language value | Initial internal passing |
 | --- | --- |
 | Integers, floats, bool, char, raw pointer | Direct computation Type from §21.1.4 |
-| Owned struct, Tuple, fixed array, string, enum | ptr to a dedicated initialized argument slot |
+| Struct, Tuple, fixed array, string, enum under `owner` Semantics | ptr to a dedicated initialized argument slot |
 | Aggregate result | First argument is ptr to caller-provided uninitialized result storage; LLVM result is void |
 | Unit | Omit its physical argument slot; return void |
 | Never result | No result storage; void/noreturn and nonreturning CFG |
@@ -7705,12 +7722,12 @@ This is the minimal set named by language rules, not a promise of a general stan
 | --- | --- |
 | `Option<T>` | enum with Some(T), None in that order; `Self is Copy when T is Copy` |
 | `Result<T,E>` | enum with Ok(T), Err(E) in that order |
-| `Array<T>` | Non-Copy owning dynamic sequence requiring T is Owned; public read-only length: isize and indices: ResolvedRange; checked indexing under §4.6, literals, and consuming Iterable conformance |
+| `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length: isize and indices: ResolvedRange; checked indexing under §4.6, literals, and consuming Iterable conformance |
 | `Index` | Copy, Owned, Equatable direction/offset value; constructor, read-only fields, resolve/tryResolve under §4.6.2 and §4.6.4 |
 | `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §4.6.3 and §4.6.4; not Iterable |
 | `ResolvedRange` | Copy, Owned, Equatable validated interval; constructor, read-only fields, and `Iterable` with associated Type `Element = isize` under §4.6.3 |
 | `Slice<T>` origin source | Copy shared view with all public operations in §4.6.6; implements `Iterable` with associated Type `Element = ref/T from source`; backing Origin is explicit or inferred under ordinary rules |
-| `Dictionary<K,V>` | Non-Copy owning collection requiring K is Equatable and Owned, and V is Owned; literal construction and existing-key indexing, public read-only length: isize, and consuming Iterable conformance |
+| `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction and existing-key indexing, public read-only length: isize, and consuming Iterable conformance |
 | `Stringify` | `func stringify(self: ref/Self) -> string`; returns an independent owned string |
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
 | `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`; negative/zero/positive for less/equal/greater |
@@ -7728,7 +7745,7 @@ The primitive keyword string denotes the compiler's UTF-8 string Core, not a sha
 
 The Option/Result payload Copy and Owned classifications follow ordinary enum rules; no extra copying is introduced.
 
-Generic enum payloads and fixed-array elements preserve complete Type/Origin/Loan dependencies through substitution, even without an enum Origin binder. They cannot hide new receiver borrows or permit heap/global escape. Dynamic Array/Dictionary contents additionally prohibit all recursively retained safe borrows, including static (§11); Owned does not waive this check. Checked-cast designs use the required Core Option Identity despite deferred View syntax. Dictionary need not expose hashing. Further allocation/mutation and library APIs are separately specified.
+Array/Dictionary contents, generic enum payloads, and fixed-array elements preserve complete Type/Origin/Loan dependencies under §15.4. Array's Owned classification follows T, Dictionary's follows K and V, independently of runtime contents; both remain Non-Copy. No container grants permission to hide dependencies or extend a referent's lifetime. Checked-cast designs use the required Core Option Identity despite deferred View syntax. Dictionary need not expose hashing. Further allocation/mutation and library APIs are separately specified.
 
 #### 22.2. Program startup and static initialization
 
@@ -8008,10 +8025,10 @@ The Parser validates and evaluates each reached Condition against the prepared C
 
 A validated True #if contributes its Target directly; False contributes none. An invalid #if reports its Condition errors and skips its target for recovery. No #if wrapper or pending-condition storage is needed.
 
-A reached #match validates every explicit arm Condition and parses every arm under §19.3/§19.5, including nested Conditions in unselected arms except inside False #if targets. After successful validation, it contributes the first matching Block directly. Invalid Case Groups may retain this representation for error recovery:
+A reached #switch validates every explicit arm Condition and parses every arm under §19.3/§19.5, including nested Conditions in unselected arms except inside False #if targets. After successful validation, it contributes the first matching Block directly. Invalid Case Groups may retain this representation for error recovery:
 
 ```text
-CompileTimeMatchKoto
+CompileTimeSwitchKoto
     CompileTimeCaseArmKoto[]
         Condition or fallback
         Block
@@ -8084,6 +8101,8 @@ Retain constructor choice, initializer environments, per-layer completion, compo
 Verify fragment/selection deinit duplicates; forbidden placement, modifiers, and calls; implicit-constructor suppression; base-constructor access; completeness before/after constructor cleanup; partial Tuple/array construction; reverse element/base order; no destruction accessors; and skipped Moved components. Also cover partial-value replacement, interrupted cleanup, receiver escape, base slicing/replacement rejection, and one final-reference object cleanup.
 
 #### A.8. Callable and object verification
+
+Verify OwnedOrigins through raw pointees, unused Type/Origin slots, captures, and recursive payloads; test `a : static`, unresolved abstract Origins, and callable-contract exclusions. Reject mutable-static borrows at Owned boundaries, including after capture and across modules. Checked casts may supply only proof-covered data-Origin bindings as static; preserve outer handle Origins and reject unsupported reconstruction of callable contracts. None of these checks may depend on a private body being available to a client.
 
 Verify input-derived Callable results for all three receivers: per-call Origins, multiple-input meets, retained result Loans, rejection of a shared-to-exclusive upgrade, and rejection of hidden-receiver or call-local result dependencies. Common Function Type compatibility uses the same argument/result relation while retaining its separate Owned-environment restriction.
 
@@ -8182,7 +8201,7 @@ Preserve one-time receiver/argument evaluation, index-evaluation protection, exc
 | ResolvedRange | Maximum-isize end, finite and permanently exhausted iteration, rejection of direct Range iteration, reuse against shorter/resized targets |
 | Place acquisition | Copy versus ordinary/explicit Move, literal-only eligibility, runtime/Index shared reading, nested writes without intermediate Copy, reinitialization after Partial Move |
 | Slice boundaries | Zero-based reslicing, split endpoints, None from each try operation, failure inside arguments remaining Abort |
-| Lifetime and storage | Temporary/local escape, views surviving handle variables, nested element Origins, inherited whole-array Loans including empty/split views, static-borrow retention rejection |
+| Lifetime and storage | Borrowed Array/Slice retention, temporary/local escape, copied references versus slot borrows, nested Origins, whole-array Loans including empty/split views, rejection of mutable-static borrows at Owned boundaries |
 | Metadata and iteration | Receiver effects, completeness checks, no result Loan for metadata, stable saved indices, reference iteration independent of element Copy, no iterator-owned borrowed results |
 | Lowering | Identical acceptance, results, effect/Abort order, and Loan legality with optimization enabled/disabled; O(1) view operations without element-proportional allocation or Copy |
 
@@ -8265,10 +8284,10 @@ Parse a directive Condition
     -> resolve all Names and validate all operands against the prepared environment
         -> True #if: parse the controlled Syntax
         -> False #if: scan only required token/layout/body/directive structure
-        -> #match: validate all arm Conditions; parse every arm with nested #if rules
+        -> #switch: validate all arm Conditions; parse every arm with nested #if rules
         -> Error: report required diagnostics and recover structurally
     -> retain any implementation-internal validation work with its source-defined traversal
-    -> complete required nested Conditions even in unselected reached #match arms
+    -> complete required nested Conditions even in unselected reached #switch arms
     -> discard speculative grammar errors only where False #if rules require skipping grammar
     -> diagnose Names absent from the prepared environment; do not retry after generic Binding or instantiation
     -> resolve selections that change a scope's lookup environment before ordinary Name resolution using that environment begins
@@ -8339,7 +8358,7 @@ An implementation may attach the following information to bound Pattern position
 | `CandidateSymbol` / `GuardReadType` | Binding position's candidate Identity and shared-read Type |
 | `BodySymbol` / `BodyBindingType` | Distinct body-local Identity and acquired Type |
 
-AccessMode describes the path, not the value's Semantics. The Subject begins with Owned access; an implicit dereference changes it to Shared, inherited by descendants. Binding a `ref/E` Subject with `let r` uses `Owned` / `None`; a Case Pattern inspecting its referent uses `Shared` / `SharedOnce`. Guard reading remains shared in either mode.
+AccessMode describes the path, not the value's Semantics or the Owned capability. The internal label `Owned` denotes by-value access; an implicit dereference changes it to Shared, inherited by descendants. Binding a `ref/E` Subject with `let r` uses `Owned` / `None`; a Case Pattern inspecting its referent uses `Shared` / `SharedOnce`. Guard reading remains shared in either mode.
 
 Retain Candidate positions, Origin/Loan dependencies, and Copy/Move/Borrow/Reborrow plans alongside these facts. Candidate/body Symbols and binding Types are needed only at Binding positions. Shared position tracking gives no Move authority. Do not reconstruct access effects solely from MatchedType or reuse an instantiation's plan when its effects differ.
 
@@ -8376,7 +8395,7 @@ This index links to design boundaries owned by the language sections. It adds no
 | Automatic toolchain/build/run, debug information, cross-module/DLL ABI, extra CPU/OS profiles | Deferred beyond the initial manual Windows profile | [Initial output](#208-initial-llvm-output-and-manual-build), [LLVM profile](#215-llvm-windows-x64-profile) |
 | Dynamic collections, borrow/object/function handle ABI, rc/arc physical counters/order, general shared-generic metadata | Physical representation must be specified before emission; no implicit one-pointer fallback | [Object metadata](#212-object-metadata), [Internal ABI](#2142-physical-function-signatures) |
 | C aggregate passing/export/callback/varargs, Unicode console adapter, over-aligned allocation, arbitrary exit codes and FP environment control | Deferred extensions | [FFI](#223-foreign-function-imports), [Windows runtime](#225-initial-windows-runtime) |
-| Contract-level abstract Origins, heap/global borrow escape, and lending iterators | Deferred design; ordinary function/struct abstract Origins are defined in §15.3 | [Abstract Origins](#153-abstract-origins), [Lifetime design boundaries](#159-lifetime-design-boundaries) |
+| Contract-level abstract Origins, non-static erased views, and lending iterators | Deferred design; ordinary retained storage is defined in §15.4 | [Abstract Origins](#153-abstract-origins), [Lifetime design boundaries](#159-lifetime-design-boundaries) |
 | Destruction lifetime relaxation | Deferred design | [Destruction lifetime checking](#1566-destruction-lifetime-checking) |
 | Additional dynamic Move Paths | Deferred design | [Move Paths and Partial Move](#1513-move-paths-and-partial-move) |
 | Object ownership API spellings and recoverable creation; general duplication API | Core object creation/strong-owner duplication semantics defined; remaining APIs deferred | [Object ownership operations](#1358-object-ownership-creation-and-sharing), [explicit duplication](#351-copy-capability-and-explicit-duplication) |
@@ -8916,9 +8935,9 @@ An OriginParameter bound declares the [outlives relation](#1522-ordering-and-int
 [Directive syntax](#191-syntax-and-structural-selection), [closed Condition forms](#192-environment-condition-forms), [excluded-syntax parsing](#195-diagnostics-and-excluded-syntax).
 
 ```ebnf
-Directive<Item>      := IfDirective<Item> | MatchDirective<Item>
+Directive<Item>      := IfDirective<Item> | SwitchDirective<Item>
 IfDirective<Item>    := "#" "if" CompileCondition (NEWLINE Item | IndentedList<Item>)
-MatchDirective<Item> := "#" "match" NEWLINE INDENT CaseList<Item> DEDENT
+SwitchDirective<Item> := "#" "switch" NEWLINE INDENT CaseList<Item> DEDENT
 CaseList<Item>       := CaseArm<Item>+ DefaultArm<Item>? | DefaultArm<Item>
 CaseArm<Item>        := "#" "case" CompileCondition IndentedList<Item>
 DefaultArm<Item>     := "#" "case" "_" IndentedList<Item>
@@ -8935,7 +8954,7 @@ PlainString         := ? StringLiteral without interpolation, §19.2 ?
 
 ```
 
-The hash forms use `#` followed by the reserved lowercase keywords `if`, `match`, and `case`. Uppercase-initial `AttributeName` instead selects the Attribute grammar in F.3; other lowercase hash forms are errors. `Item` retains the surrounding syntax category; directives do not make an otherwise forbidden item legal there. Case layout and excluded-target grammar checking follow the linked sections.
+The hash forms use `#` followed by the reserved lowercase keywords `if`, `switch`, and `case`. Uppercase-initial `AttributeName` instead selects the Attribute grammar in F.3; other lowercase hash forms are errors. `Item` retains the surrounding syntax category; directives do not make an otherwise forbidden item legal there. Case layout and excluded-target grammar checking follow the linked sections.
 
 #### F.9. Syntax boundaries
 

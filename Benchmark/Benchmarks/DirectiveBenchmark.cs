@@ -19,9 +19,9 @@ public class DirectiveBenchmark
             return 0
         """;
 
-    public const string MatchSource = """
+    public const string SwitchSource = """
         func selected() -> i32
-            #match
+            #switch
                 #case linux
                     return 0
                 #case windows and pointerWidth == 64
@@ -38,12 +38,12 @@ public class DirectiveBenchmark
     private string source = IfSource;
 
     [Params(false, true)]
-    public bool Match { get; set; }
+    public bool Switch { get; set; }
 
     [GlobalSetup]
     public void Setup()
     {
-        this.source = this.Match ? MatchSource : IfSource;
+        this.source = this.Switch ? SwitchSource : IfSource;
         if (!this.compilation.Prepare("x86_64-pc-windows-msvc"))
         {
             throw new InvalidOperationException("Benchmark environment must be prepared.");

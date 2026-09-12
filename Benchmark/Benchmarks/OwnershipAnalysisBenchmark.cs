@@ -20,11 +20,20 @@ public class OwnershipAnalysisBenchmark
     [Params(false, true)]
     public bool Enums { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether source uses form nested checking continuations after return.</summary>
+    [Params(false, true)]
+    public bool Unreachable { get; set; }
+
     /// <summary>Builds and warms the same plans used by the allocation regression.</summary>
     [GlobalSetup]
     public void Setup()
     {
         var source = new StringBuilder("func f(c: bool)\n");
+        if (this.Unreachable)
+        {
+            source.Append("    return\n");
+        }
+
         for (var i = 0; i < this.Locals; i++)
         {
             source.Append("    var s").Append(i);
@@ -35,6 +44,11 @@ public class OwnershipAnalysisBenchmark
             else
             {
                 source.Append(" = \"a\"\n    if c\n        writeLine(s").Append(i).Append(")\n");
+            }
+
+            if (this.Unreachable)
+            {
+                source.Append("    return\n");
             }
         }
 

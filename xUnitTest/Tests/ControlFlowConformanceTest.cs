@@ -77,7 +77,7 @@ public class ControlFlowConformanceTest
     }
 
     [Theory]
-    [InlineData("let value: i32 = if true\n    #match\n        #case false\n            yield 1\n        #case _\n            yield 2\nelse => 0")]
+    [InlineData("let value: i32 = if true\n    #switch\n        #case false\n            yield 1\n        #case _\n            yield 2\nelse => 0")]
     [InlineData("func f() -> i32\n    loop\n        if true => return 1")]
     [InlineData("func a() -> bool => true\nif true => a() else => ()")]
     [InlineData("let unit: () = if true => ()")]

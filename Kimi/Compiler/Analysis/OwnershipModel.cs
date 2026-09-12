@@ -169,6 +169,8 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipMatchPlan> MatchStorage = new();
     internal readonly List<OwnershipMatchArmPlan> MatchArmStorage = new();
     internal readonly List<OwnershipIssue> IssueStorage = new();
+    internal readonly List<int> OperationRegions = new();
+    internal readonly List<OwnershipCheckingRegion> CheckingRegions = new();
     internal readonly Dictionary<BindingSymbol, int> SymbolPlaces = new(ReferenceEqualityComparer.Instance);
     internal bool[] Reachable = [];
     internal bool[] BlockReachable = [];
@@ -227,6 +229,15 @@ public sealed partial class OwnershipBody
         this.MatchStorage.Clear();
         this.MatchArmStorage.Clear();
         this.IssueStorage.Clear();
+        this.OperationRegions.Clear();
+        this.CheckingRegions.Clear();
+        this.CheckingRegions.Add(new(-1, -1)); // Region zero is ordinary source flow.
+        this.checkingSolved = false;
+        this.ResetCompletion();
         this.SymbolPlaces.Clear();
     }
 }
+
+// A checking-only seed edge. Its source is replayed after its containing region
+// converges; it never enters EdgeStorage or contributes a runtime predecessor.
+internal readonly record struct OwnershipCheckingRegion(int Seed, int Entry);

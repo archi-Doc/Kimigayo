@@ -9,6 +9,9 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
 {
     public override bool IsBoundConstruction(Koto expression) => binding.TryGetEnumConstruction(expression, out _);
 
+    public override bool IsBoundRuntimeTypeTest(Koto expression)
+        => expression is IsKoto { BindingState: BindingState.Resolved, BoundRuntimeTest: not null };
+
     public override bool IsProvenCopy(Koto expression)
         => expression.BindingState == BindingState.Resolved && expression.BoundType is { } type && binding.ProveCopy(type, expression) == ConstraintProof.Proven;
 

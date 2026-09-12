@@ -51,6 +51,7 @@ public static class Constants
     public const string WhileKeyword = "while";
     public const string LoopKeyword = "loop";
     public const string MatchKeyword = "match";
+    public const string SwitchKeyword = "switch";
     public const string ReturnKeyword = "return";
     public const string ExitKeyword = "exit";
     public const string ContinueKeyword = "continue";

@@ -122,6 +122,7 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < plan.Arms.Count; i++)
         {
             var arm = plan.Arms[i];
+            var region = this.checkingRegion;
             this.activeDecompositions[subject] = -1;
             this.current = this.New(OwnershipOperationKind.PatternTest, arm.Syntax.Pattern, subject);
             var test = this.current;
@@ -182,6 +183,7 @@ public sealed partial class OwnershipAnalysis
 
             this.locals.RemoveRange(localMark, this.locals.Count - localMark);
             this.temporaries.RemoveRange(tempMark + 1, this.temporaries.Count - tempMark - 1);
+            this.checkingRegion = region;
         }
 
         this.activeDecompositions[subject] = -1;
@@ -197,6 +199,7 @@ public sealed partial class OwnershipAnalysis
         this.patternStorageNeeded.RemoveRange(neededStart, this.patternStorageNeeded.Count - neededStart);
         this.temporaries.RemoveRange(tempMark, this.temporaries.Count - tempMark);
         this.selections.RemoveAt(this.selections.Count - 1);
+        this.body.RecordCompletion(dispatch, join, this.flow.Nodes[syntax].CanCompleteNormally);
         if (!this.flow.Nodes[syntax].CanCompleteNormally)
         {
             this.current = -1;

@@ -64,6 +64,7 @@ public enum TokenKind : byte
     Deinit,
     Base,
     Do,
+    Switch, // compile-time #switch only
 
     // Contextual keyword
     Alias = 96,
