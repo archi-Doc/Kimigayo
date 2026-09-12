@@ -12,20 +12,29 @@ public class EmissionPlanTest
     public void LinearBodyContainsOnlyPhysicalOperations()
     {
         var c = MinimalEmissionTest.Analyze("writeLine(\"Hello, world!\")");
-        Assert.True(c.Emission.TryPrepare(out var plan, out var error), error);
-        var slot = Assert.Single(plan.Slots);
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
+        Assert.Equal(2, module.FunctionCount);
+        var entry = module.GetFunction(0);
+        Assert.Same(WindowsLowering.Entry, entry.Abi);
+        Assert.False(entry.Exported);
+        var slot = Assert.Single(entry.Slots);
         Assert.Equal(new[] { 0, 8, 16 }, slot.Value.Layout.FieldOffsets.ToArray());
         Assert.Equal((24, 8, 24), (slot.Value.Layout.Size, slot.Value.Layout.Alignment, slot.Value.Layout.Stride));
-        Assert.Equal(2, plan.Instructions.Count);
-        Assert.True(plan.Instructions[0].Operation < plan.Instructions[1].Operation);
-        Assert.Same(WindowsLowering.WriteLine, plan.Instructions[1].Callee);
-        Assert.Equal(slot.Place, plan.Instructions[1].Place);
+        Assert.Equal([EmissionOpcode.StoreStaticString, EmissionOpcode.Call, EmissionOpcode.ReturnVoid], entry.Instructions.Select(x => x.Opcode));
+        Assert.True(entry.Instructions[0].Operation < entry.Instructions[1].Operation);
+        Assert.Same(WindowsLowering.WriteLine, entry.Instructions[1].Callee);
+        Assert.Equal(slot.Place, entry.GetOperands(entry.Instructions[1])[0].Value);
+        var start = module.GetFunction(1);
+        Assert.True(start.Exported);
+        Assert.Same(WindowsLowering.Start, start.Abi);
+        Assert.Equal([EmissionOpcode.Call, EmissionOpcode.Call, EmissionOpcode.Unreachable], start.Instructions.Select(x => x.Opcode));
+
         using var output = new StringWriter();
-        plan.WriteIr(output);
+        module.WriteIr(output);
         var ir = output.ToString();
-        var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
-        var end = ir.IndexOf("define void @__kimi_start", start, StringComparison.Ordinal);
-        Assert.Equal($"define internal void @__kimi_entry_body() #0 {{\nentry:\n  %p{slot.Place} = alloca %kimi.string, align 8\n  store %kimi.string {{ ptr @__kimi_text, i64 13, i8 0 }}, ptr %p{slot.Place}, align 8\n  call void @__kimi_write_line(ptr %p{slot.Place}, ptr @__kimi_location, i64 14)\n  ret void\n}}\n", ir[start..end]);
+        var begin = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
+        var end = ir.IndexOf("attributes #0", begin, StringComparison.Ordinal);
+        Assert.Equal($"define internal void @__kimi_entry_body() #0 {{\nentry:\n  %p{slot.Place} = alloca %kimi.string, align 8\n  store %kimi.string {{ ptr @__kimi_text, i64 13, i8 0 }}, ptr %p{slot.Place}, align 8\n  call void @__kimi_write_line(ptr %p{slot.Place}, ptr @__kimi_location, i64 14)\n  ret void\n}}\ndefine void @__kimi_start() noreturn #0 {{\nentry:\n  call void @__kimi_entry_body()\n  call void @__kimi_exit(i32 0)\n  unreachable\n}}\n", ir[begin..end]);
     }
 
     [Theory]
@@ -107,30 +116,77 @@ public class EmissionPlanTest
         var ir = output.ToString();
         foreach (var abi in new[] { WindowsLowering.Entry, WindowsLowering.Exit, WindowsLowering.WriteLine, WindowsLowering.DestroyString })
         {
-            var signature = new StringBuilder();
-            abi.AppendDefinition(signature);
-            Assert.Contains(signature.ToString(), ir);
+            Assert.Equal(2, ir.Split(abi.GetDefinition(exported: false)).Length); // Exactly one definition, no same-name declare.
         }
 
+        Assert.Contains(WindowsLowering.Start.GetDefinition(exported: true), ir);
+
         Assert.Null(WindowsLowering.Unit.ArgumentType);
-        Assert.Null(WindowsLowering.GetValue(BoundType.I32));
         Assert.DoesNotContain("{{", ir);
-        Assert.Throws<InvalidOperationException>(() => WindowsLowering.WriteLine.AppendCall(new(), []));
+        Assert.Throws<InvalidOperationException>(() => new EmissionFunction().AddCall(-1, WindowsLowering.WriteLine, []));
+    }
+
+    [Theory]
+    [InlineData("bool", "i8", "i1", 1)]
+    [InlineData("char", "i32", "i32", 4)]
+    [InlineData("u16", "i16", "i16", 2)]
+    [InlineData("isize", "i64", "i64", 8)]
+    [InlineData("u128", "i128", "i128", 16)]
+    [InlineData("f32", "float", "float", 4)]
+    [InlineData("f64", "double", "double", 8)]
+    public void ScalarRepresentationsFollowTheInitialProfile(string type, string storage, string computation, int size)
+    {
+        // SPEC 21.1.4: size, alignment and stride are equal; arguments pass the direct computation Type.
+        var value = WindowsLowering.GetValue(BoundType.Primitives[type])!;
+        Assert.Equal((storage, computation, computation), (value.Layout.StorageType, value.ComputationType, value.ArgumentType));
+        Assert.Equal((size, size, size), (value.Layout.Size, value.Layout.Alignment, value.Layout.Stride));
+        Assert.Null(WindowsLowering.GetValue(BoundType.Never));
     }
 
     [Fact]
-    public void ConstantEncodingChangesLengthAndRetainsNulAndSupplementaryCharacters()
+    public void ConstantPoolSharesBytesAndRetainsNulAndSupplementaryCharacters()
     {
-        var constant = new LlvmConstant("test");
-        var text = new StringBuilder();
-        constant.SetValue("😀\0");
-        constant.AppendTo(text);
-        Assert.Equal(5, constant.Length);
-        Assert.Equal("@test = private unnamed_addr constant [5 x i8] c\"\\F0\\9F\\98\\80\\00\", align 1\n", text.ToString());
-        text.Clear();
-        constant.SetValue(string.Empty);
-        constant.AppendTo(text);
-        Assert.Equal(0, constant.Length);
-        Assert.Equal("@test = private unnamed_addr constant [0 x i8] c\"\", align 1\n", text.ToString());
+        var pool = new LlvmConstantPool();
+        var index = pool.Intern("😀\0", LlvmConstantKind.Text);
+        Assert.Equal(5, pool[index].ByteLength);
+        Assert.Equal("@__kimi_text = private unnamed_addr constant [5 x i8] c\"\\F0\\9F\\98\\80\\00\", align 1\n", pool[index].Definition);
+        Assert.Equal(index, pool.Intern("😀\0", LlvmConstantKind.Location));
+        Assert.Equal("__kimi_location", pool[pool.Intern("a", LlvmConstantKind.Location)].Name);
+        Assert.Equal("__kimi_text.1", pool[pool.Intern("b", LlvmConstantKind.Text)].Name);
+        Assert.Equal(3, pool.Count);
+        Assert.Throws<ArgumentException>(() => pool.Intern(string.Empty, LlvmConstantKind.Text));
+
+        pool.Clear();
+        index = pool.Intern("x", LlvmConstantKind.Text);
+        Assert.Equal((1, "__kimi_text", 1), (pool.Count, pool[index].Name, pool[index].ByteLength));
+    }
+
+    [Fact]
+    public void SequentialLiteralCallsShareConstantsAndTransferEachArgument()
+    {
+        var c = MinimalEmissionTest.Analyze("writeLine(\"a\")\nwriteLine(\"a\")\nwriteLine(\"\")");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
+        var entry = module.GetFunction(0);
+        Assert.Equal(3, entry.Slots.Count);
+        Assert.Equal(3, entry.Instructions.Count(x => x.Callee == WindowsLowering.WriteLine));
+        Assert.DoesNotContain(entry.Instructions, x => x.Callee == WindowsLowering.DestroyString);
+        using var output = new StringWriter();
+        module.WriteIr(output);
+        var ir = output.ToString();
+        Assert.Single(ir.Split('\n'), x => x.StartsWith("@__kimi_text", StringComparison.Ordinal));
+        Assert.Equal(2, ir.Split("{ ptr @__kimi_text, i64 1, i8 0 }").Length - 1);
+        Assert.Contains("{ ptr null, i64 0, i8 0 }", ir); // Empty literal: Static/null/length zero (SPEC 21.5.6).
+        Assert.Contains("c\"\\48\\65\\6C\\6C\\6F\\2E\\6B\\69\\6D\\69\\3A\\33\\3A\\31\"", ir); // Hello.kimi:3:1
+    }
+
+    [Fact]
+    public void UnitApplicationLowersToAReturnOnly()
+    {
+        var c = MinimalEmissionTest.Analyze("()");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
+        var entry = module.GetFunction(0);
+        Assert.Empty(entry.Slots);
+        Assert.Equal(EmissionOpcode.ReturnVoid, Assert.Single(entry.Instructions).Opcode);
+        Assert.Equal(0, module.Constants.Count);
     }
 }

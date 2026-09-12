@@ -1,100 +1,160 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using System.Text;
 
 namespace Kimi.Compiler;
 
-#pragma warning disable SA1402 // LLVM text serialization and its retained constant encoding.
-
-internal sealed class LlvmConstant(string name)
+/// <summary>
+/// Serializes a closed <see cref="EmissionModule"/> directly into the destination writer. It never reads Binding,
+/// AST or ownership state, and formats numbers on the stack so warm writes allocate nothing.
+/// </summary>
+internal static class LlvmModuleWriter
 {
-    private readonly StringBuilder encoded = new();
-    private string? value;
+    // Every generated definition carries the same profile attributes (SPEC 21.5.1).
+    private const string Footer =
+        "attributes #0 = { uwtable(" + WindowsProfile.UnwindTables + ") \"target-cpu\"=\"" + WindowsProfile.Cpu + "\" \"target-features\"=\"" + WindowsProfile.Features +
+        "\" \"denormal-fp-math\"=\"ieee,ieee\" }\n!llvm.module.flags = !{!0}\n!0 = !{i32 8, !\"PIC Level\", i32 2}\n";
 
-    internal string Name { get; } = name;
+    // Target information, shared Types, and exactly one strong _fltused definition (SPEC 21.5.7).
+    private static readonly string Header =
+        "; Kimigayo checked pre-optimization IR (" + WindowsProfile.Name + ")\ntarget triple = \"" + WindowsProfile.Target + "\"\ntarget datalayout = \"" + WindowsProfile.DataLayout + "\"\n" +
+        WindowsLowering.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + WindowsProfile.FloatMarker + " = global i32 0, align 4\n";
 
-    internal int Length { get; private set; }
+    private static readonly string Runtime = ReadRuntime();
 
-    internal void SetValue(string value)
+    internal static void Write(EmissionModule module, TextWriter output)
     {
-        if (this.value == value)
+        output.Write(Header);
+        var constants = module.Constants;
+        for (var i = 0; i < constants.Count; i++)
         {
-            return;
+            output.Write(constants[i].Definition);
         }
 
-        this.value = value;
-        this.Length = Encoding.UTF8.GetByteCount(value);
-        var text = this.encoded;
-        text.Clear();
-        text.Append('@').Append(this.Name).Append(" = private unnamed_addr constant [").Append(this.Length).Append(" x i8] c\"");
-        Span<byte> bytes = stackalloc byte[4];
-        const string Hex = "0123456789ABCDEF";
-        foreach (var rune in value.EnumerateRunes())
+        output.Write(Runtime);
+        for (var i = 0; i < module.FunctionCount; i++)
         {
-            var count = rune.EncodeToUtf8(bytes);
-            for (var i = 0; i < count; i++)
-            {
-                text.Append('\\').Append(Hex[bytes[i] >> 4]).Append(Hex[bytes[i] & 15]);
-            }
+            WriteFunction(output, constants, module.GetFunction(i));
         }
 
-        text.Append("\", align 1\n");
+        output.Write(Footer);
     }
 
-    internal void AppendTo(StringBuilder text) => text.Append(this.encoded);
-}
-
-/// <summary>Serializes physical instructions only; never reads Binding, AST or ownership state.</summary>
-internal sealed class LlvmModuleWriter
-{
-    private static readonly string Runtime = ReadRuntime();
-    private readonly StringBuilder text = new(16384);
-
-    internal void Write(EmissionPlan plan, TextWriter output)
+    private static void WriteFunction(TextWriter output, LlvmConstantPool constants, EmissionFunction function)
     {
-        var b = this.text;
-        b.Clear();
-        b.Append("; Kimigayo checked literal-output lowering; pre-optimization inspection IR\ntarget triple = \"").Append(WindowsProfile.Target)
-            .Append("\"\ntarget datalayout = \"").Append(WindowsProfile.DataLayout).Append("\"\n");
-        WindowsLowering.AppendTypes(b);
-        b.Append("@_fltused = global i32 0, align 4\n");
-        plan.Literal.AppendTo(b);
-        plan.Location.AppendTo(b);
-        b.Append(Runtime).Append('\n');
-        WindowsLowering.Entry.AppendDefinition(b);
-        b.Append("entry:\n");
-        foreach (var slot in plan.Slots)
+        output.Write(function.Abi.GetDefinition(function.Exported));
+        output.Write("entry:\n");
+        // Fixed-size allocas precede calls in the entry block (SPEC 21.5.5).
+        foreach (var slot in function.Slots)
         {
-            b.Append("  %p").Append(slot.Place).Append(" = alloca ").Append(slot.Value.Layout.StorageType)
-                .Append(", align ").Append(slot.Value.Layout.Alignment).Append('\n');
+            output.Write("  %p");
+            WriteNumber(output, slot.Place);
+            output.Write(" = alloca ");
+            output.Write(slot.Value.Layout.StorageType);
+            output.Write(", align ");
+            WriteNumber(output, slot.Value.Layout.Alignment);
+            output.Write('\n');
         }
 
-        foreach (var instruction in plan.Instructions)
+        foreach (var instruction in function.Instructions)
         {
-            if (instruction.Callee is { } callee)
+            switch (instruction.Opcode)
             {
-                callee.AppendCall(b, [new("%p", instruction.Place), new("@__kimi_location"), new(null, plan.Location.Length)]);
-            }
-            else
-            {
-                var value = WindowsLowering.String;
-                b.Append("  store ").Append(value.ComputationType).Append(" { ptr @").Append(plan.Literal.Name).Append(", i64 ")
-                    .Append(plan.Literal.Length).Append(", i8 0 }, ptr %p").Append(instruction.Place).Append(", align ").Append(value.Layout.Alignment).Append('\n');
+                case EmissionOpcode.StoreStaticString:
+                    output.Write("  store %kimi.string { ptr ");
+                    if (instruction.Constant < 0)
+                    {
+                        output.Write("null, i64 0");
+                    }
+                    else
+                    {
+                        var constant = constants[instruction.Constant];
+                        output.Write('@');
+                        output.Write(constant.Name);
+                        output.Write(", i64 ");
+                        WriteNumber(output, constant.ByteLength);
+                    }
+
+                    output.Write(", i8 ");
+                    WriteNumber(output, WindowsLowering.StaticReleaseKind);
+                    output.Write(" }, ptr %p");
+                    WriteNumber(output, instruction.Place);
+                    output.Write(", align ");
+                    WriteNumber(output, WindowsLowering.String.Layout.Alignment);
+                    output.Write('\n');
+                    break;
+
+                case EmissionOpcode.Call:
+                    WriteCall(output, constants, instruction.Callee!, function.GetOperands(instruction));
+                    break;
+
+                case EmissionOpcode.ReturnVoid:
+                    output.Write("  ret void\n");
+                    break;
+
+                case EmissionOpcode.Unreachable:
+                    output.Write("  unreachable\n");
+                    break;
+
+                default:
+                    throw new InvalidOperationException("Unknown emission opcode.");
             }
         }
 
-        b.Append("  ret void\n}\n"); // Lowering proved a normal Exit; no fallback terminator.
-        WindowsLowering.Start.AppendDefinition(b, exported: true);
-        b.Append("entry:\n");
-        WindowsLowering.Entry.AppendCall(b, []);
-        WindowsLowering.Exit.AppendCall(b, [new(null, 0)]);
-        b.Append("  unreachable\n}\n")
-            .Append("attributes #0 = { uwtable(async) \"target-cpu\"=\"x86-64\" \"target-features\"=\"+sse2\" \"denormal-fp-math\"=\"ieee,ieee\" }\n")
-            .Append("!llvm.module.flags = !{!0}\n!0 = !{i32 8, !\"PIC Level\", i32 2}\n");
-        foreach (var chunk in b.GetChunks())
+        output.Write("}\n");
+    }
+
+    private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands)
+    {
+        if (callee.Result != WindowsLowering.Unit.ComputationType)
         {
-            output.Write(chunk.Span);
+            throw new InvalidOperationException("Call results need prepared result values.");
         }
+
+        output.Write("  call ");
+        output.Write(callee.Result);
+        output.Write(" @");
+        output.Write(callee.Name);
+        output.Write('(');
+        for (var i = 0; i < operands.Length; i++)
+        {
+            if (i != 0)
+            {
+                output.Write(", ");
+            }
+
+            output.Write(callee.Parameters[i].Type);
+            output.Write(' ');
+            var operand = operands[i];
+            switch (operand.Kind)
+            {
+                case EmissionOperandKind.SlotAddress:
+                    output.Write("%p");
+                    WriteNumber(output, operand.Value);
+                    break;
+                case EmissionOperandKind.ConstantAddress:
+                    output.Write('@');
+                    output.Write(constants[(int)operand.Value].Name);
+                    break;
+                case EmissionOperandKind.ConstantLength:
+                    WriteNumber(output, constants[(int)operand.Value].ByteLength);
+                    break;
+                default:
+                    WriteNumber(output, operand.Value);
+                    break;
+            }
+        }
+
+        output.Write(")\n");
+    }
+
+    // TextWriter.Write(long) formats through a temporary string; format on the stack instead.
+    private static void WriteNumber(TextWriter output, long value)
+    {
+        Span<char> digits = stackalloc char[20];
+        value.TryFormat(digits, out var length, default, CultureInfo.InvariantCulture);
+        output.Write(digits[..length]);
     }
 
     private static string ReadRuntime()
@@ -102,20 +162,24 @@ internal sealed class LlvmModuleWriter
         using var stream = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.WindowsRuntime.ll.in")!;
         using var reader = new StreamReader(stream);
         var runtime = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
-        var signature = new StringBuilder();
-        foreach (var abi in new[] { WindowsLowering.Exit, WindowsLowering.DestroyString, WindowsLowering.WriteLine })
+        foreach (var abi in WindowsLowering.RuntimeDefinitions)
         {
-            signature.Clear();
-            abi.AppendDefinition(signature);
+            // Compiler-facing runtime signatures come from the same FunctionAbi records as calls; each is defined once.
             var marker = "{{" + abi.Name + "}}\n";
-            if (!runtime.Contains(marker, StringComparison.Ordinal))
+            var index = runtime.IndexOf(marker, StringComparison.Ordinal);
+            if (index < 0 || runtime.IndexOf(marker, index + marker.Length, StringComparison.Ordinal) >= 0)
             {
-                throw new InvalidDataException("The runtime template is missing a shared ABI definition.");
+                throw new InvalidDataException("The runtime template must contain each shared ABI definition marker exactly once.");
             }
 
-            runtime = runtime.Replace(marker, signature.ToString(), StringComparison.Ordinal);
+            runtime = runtime.Replace(marker, abi.GetDefinition(exported: false), StringComparison.Ordinal);
         }
 
-        return runtime;
+        if (runtime.Contains("{{", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("The runtime template has an unexpanded ABI definition.");
+        }
+
+        return runtime + "\n";
     }
 }

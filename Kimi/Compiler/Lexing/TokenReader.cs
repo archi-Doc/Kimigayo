@@ -619,29 +619,6 @@ public ref struct TokenReader
     /// <summary>Gets or sets a value indicating whether primitive type names are accepted in a directive condition.</summary>
     internal bool IsParsingCompileTimeCondition { get; set; }
 
-    /// <summary>Creates a bounded reader that cannot consume a following physical line or Block.</summary>
-    /// <param name="tokenCount">The number of tokens owned by the inline body.</param>
-    /// <returns>An independent reader over the same source and diagnostic destination.</returns>
-    internal readonly TokenReader CreateInlineReader(out int tokenCount)
-    {
-        var start = this.CurrentTokenRange.Start;
-        var newline = this.sourceText[start..].IndexOfAny('\r', '\n');
-        var end = newline < 0 ? this.sourceText.Length : start + newline;
-        tokenCount = 0;
-        while (this.Position + tokenCount < this.tokens.Length)
-        {
-            var token = this.tokens[this.Position + tokenCount];
-            if (token.Kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock || token.Span.End > end)
-            {
-                break;
-            }
-
-            tokenCount++;
-        }
-
-        return new TokenReader(this.CodeContext, this.sourceText, this.tokens.Slice(this.Position, tokenCount), Math.Min(end, this.endToken.Start));
-    }
-
     // Split compound operators only in type context; shift/comparison expressions keep
     // their original tokens. The shared token buffer remains immutable.
     internal bool TryConsumeTypeClose(out SourceSpan range)

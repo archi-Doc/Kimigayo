@@ -53,12 +53,6 @@ public static partial class KotoHelper
         return null;
     }
 
-    /// <summary>Classifies a Labeled Block before reachability is considered.</summary>
-    /// <param name="labeled">The attached label and its Block.</param>
-    /// <returns>Whether explicit self-targeted results are required.</returns>
-    public static bool IsResultRequiringLabeledBlock(LabeledKoto labeled)
-        => labeled.Target is DoKoto && IsValueContext(labeled);
-
     /// <summary>Tests lexical unsafe permission without inheriting it across function bodies.</summary>
     /// <param name="node">The operation to inspect.</param>
     /// <returns>Whether an enclosing Unsafe Block grants permission.</returns>

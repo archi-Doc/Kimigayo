@@ -26,7 +26,8 @@ internal ref struct Tokenizer
         LineContinuation, // Implicit continuation, such as a method chain line starting with ".".
     }
 
-    private readonly record struct IndentEntry(IndentSource Source, int Position, bool SharesBodyIndent = false);
+    // HeaderLevel is the absolute indentation of a leading "->" header continuation line, otherwise -1.
+    private readonly record struct IndentEntry(IndentSource Source, int Position, bool SharesBodyIndent = false, int HeaderLevel = -1);
 
     private const int InitialIndentStackCapacity = 32;
     private const int MinimumTokenCapacity = 256;
@@ -157,13 +158,6 @@ internal ref struct Tokenizer
             this.indentStack = [];
         }
     }
-
-    /// <summary>
-    /// Returns the generated tokens as a sequence. The sequence is valid until <see cref="Dispose"/> is called.
-    /// </summary>
-    /// <returns>The generated tokens.</returns>
-    public ReadOnlySequence<Token> ToReadOnlySequence()
-        => new(this.tokens.AsMemory(0, this.tokenCount));
 
     /// <summary>
     /// Tokenizes the complete source document.
@@ -748,6 +742,14 @@ LineContent:
             this.currentIndentLevel = indentLevel;
         }
 
+        // A "->" continuation ends before the next line at or above its own level; that line
+        // starts the body or the next item rather than continuing the header.
+        while (this.indentCount > 0 && this.indentStack[this.indentCount - 1] is { HeaderLevel: >= 0 } header && indentLevel <= header.HeaderLevel)
+        {
+            this.indentCount--;
+            this.nonBlockDepth--;
+        }
+
         // Indentation remains significant even inside grouping constructs.
         // Therefore, both block depth and non-block depth are subtracted when
         // calculating the indentation difference.
@@ -764,10 +766,13 @@ LineContent:
                 this.PushIndentSource(IndentSource.LineContinuation);
                 goto Loop;
             }
-            else if (this.span.Length > 1 &&
-                (this.span[0] == Constants.EqualsChar || this.span[0] == Constants.MinusChar) &&
-                this.span[1] == Constants.GreaterThanChar)
-            {// => or ->
+            else if (this.span.Length > 1 && this.span[0] == Constants.MinusChar && this.span[1] == Constants.GreaterThanChar)
+            {// A header "->" line is one level deeper; delimiters opened on it nest from that line (SPEC 2.2.1).
+                this.PushIndentSource(IndentSource.LineContinuation, indentLevel);
+                goto Loop;
+            }
+            else if (this.span.Length > 1 && this.span[0] == Constants.EqualsChar && this.span[1] == Constants.GreaterThanChar)
+            {// =>
                 goto Loop;
             }
         }
@@ -1396,7 +1401,7 @@ EndOfFile:
             _ => throw new UnreachableException(),
         });
 
-    private void PushIndentSource(IndentSource indentSource)
+    private void PushIndentSource(IndentSource indentSource, int headerLevel = -1)
     {
         if (this.indentCount == this.indentStack.Length)
         {
@@ -1406,7 +1411,7 @@ EndOfFile:
             this.indentStack = larger;
         }
 
-        this.indentStack[this.indentCount++] = new(indentSource, this.position);
+        this.indentStack[this.indentCount++] = new(indentSource, this.position, false, headerLevel);
         if (indentSource == IndentSource.Block)
         {
             this.blockDepth++;

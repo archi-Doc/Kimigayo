@@ -79,6 +79,9 @@ public sealed class OriginParameter(string name, int slot, BoundOrigin origin, S
 
     public SourceSpan Span { get; } = span;
 
+    /// <summary>Gets the declared outlived Origin (SPEC 15.3), resolved by the latest Bind.</summary>
+    public BoundOrigin? Bound { get; internal set; }
+
     public OriginVariance Variance { get; internal set; }
 
     public LoanRequirement LoanRequirement { get; internal set; }

@@ -1,7 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.CompilerServices;
-
 namespace Kimi.Compiler.Helper;
 
 /// <summary>
@@ -38,8 +36,4 @@ public static class IdentifierHelper
 
         return true;
     }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool IsAsciiPart(char c)
-        => (uint)((c | 0x20) - 'a') <= 'z' - 'a' || (uint)(c - '0') <= 9 || c == '_';
 }

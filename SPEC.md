@@ -159,7 +159,7 @@ Track bodies, explicit delimiters, and method-chain continuations separately. At
 
 Within parentheses, brackets, or recognized generic delimiters, continued content uses one additional indentation level per open delimiter beyond the active body/chain level. Matching closers may align with their opening line or remain at content indentation. Comparison angles do not establish continuation. Nested bodies generate their own layout events. An outer comma or closer on the same line cannot close an indented body; dedent on the next effective line first.
 
-Header expressions continued across lines must use delimiters inside that expression; grouping the entire construct does not by itself continue its header. A leading `->` may continue a function/accessor header only where its grammar still expects it, at one extra level from the header baseline. It does not change that baseline or authorize a separate `=>` line.
+Header expressions continued across lines must use delimiters inside that expression; grouping the entire construct does not by itself continue its header. A leading `->` may continue a function/accessor header only where its grammar still expects it, at one extra level from the header baseline. It does not change that baseline or authorize a separate `=>` line. Content inside a delimiter opened on that `->` line uses one additional level beyond the `->` line itself, and the continuation ends before the next effective line at or above the `->` line's level, which starts the body or the next item.
 
 A **delimiter region** governs both single-item body nesting and nested-if grouping:
 
@@ -1853,8 +1853,7 @@ enum MutView<T> origin source
     None
 
 func makeView<T>(value: ref/T)
-    -> View<T> from (source => value)
-    => .Some(value)
+    -> View<T> from (source => value) => .Some(value)
 ```
 
 The result annotation maps the enum's abstract `source` to the input's Origin. It describes borrows stored in an owned enum, whereas `ref/T from value` annotates a direct result borrow. The existing [single-Origin shorthand](#1531-origin-arguments) permits `View<T> from value`; named mapping makes the assignment explicit.
@@ -4664,7 +4663,7 @@ let result = work: do
 
 let direct = do => compute()
 do
-    let resource = open()
+    let resource = openResource() // open is a reserved modifier keyword.
     defer => close(resource)
     use(resource)
 

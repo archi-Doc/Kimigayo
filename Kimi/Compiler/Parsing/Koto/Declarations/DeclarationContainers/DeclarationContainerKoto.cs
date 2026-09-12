@@ -97,7 +97,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     public List<IsKoto> TypeConstraints => this.typeConstraints ??= new(4);
 
     /// <summary>Gets the declared origins.</summary>
-    public List<string> Origins => this.OriginList ??= [];
+    public List<string> Origins => this.OriginList ??= new OriginNameList();
 
     /// <summary>Gets declared Origin names without allocating empty storage.</summary>
     public IReadOnlyList<string> OriginNames => this.OriginList ?? (IReadOnlyList<string>)Array.Empty<string>();
@@ -145,22 +145,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         koto.Parent = this;
     }
 
-    /// <summary>Adds generic parameters to this Declaration Container.</summary>
-    /// <param name="genericArguments">The generic parameters to add.</param>
-    public void AddGenericArguments(IEnumerable<TypeKoto> genericArguments)
-    {
-        if (!this.SupportsGenerics)
-        {
-            return;
-        }
-
-        foreach (var argument in genericArguments)
-        {
-            this.GenericArguments.Add(argument);
-            argument.Parent = this;
-        }
-    }
-
     /// <summary>Adds a type constraint to this Declaration Container.</summary>
     /// <param name="constraint">The constraint to add.</param>
     public void AddTypeConstraint(IsKoto constraint)
@@ -174,16 +158,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         constraint.Parent = this;
     }
 
-    /// <summary>Adds Origin names to this Declaration Container.</summary>
-    /// <param name="origins">The origin names to add.</param>
-    public void AddOrigins(IEnumerable<string> origins)
-    {
-        if (this.SupportsOrigins)
-        {
-            this.Origins.AddRange(origins);
-        }
-    }
-
     /// <summary>Applies a parsed declaration header when the corresponding member kind is still empty.</summary>
     /// <param name="genericArguments">The generic parameters, if declared.</param>
     /// <param name="origins">The origin names, if declared.</param>
@@ -194,16 +168,11 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             // An enum is a closed declaration, even when repeated headers agree.
             this.HasIncompatibleBindingHeader |= this is EnumKoto;
             var count = genericArguments?.Count ?? 0;
-            var originCount = origins?.Count ?? 0;
-            var same = count == this.GenericParameterNodes.Count && originCount == this.OriginNames.Count;
+            var same = count == this.GenericParameterNodes.Count &&
+                OriginNameList.SameParameters((IReadOnlyList<string>?)origins ?? [], this.OriginNames);
             for (var i = 0; same && i < count; i++)
             {
                 same = genericArguments![i].Akind == this.GenericParameterNodes[i].Akind && genericArguments[i].Identifier == this.GenericParameterNodes[i].Identifier && genericArguments[i].SemanticsParameter == this.GenericParameterNodes[i].SemanticsParameter;
-            }
-
-            for (var i = 0; same && i < originCount; i++)
-            {
-                same = origins![i] == this.OriginNames[i];
             }
 
             this.HasIncompatibleBindingHeader |= !same;
@@ -230,6 +199,10 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             if (this.OriginList is null)
             {
                 this.OriginList = origins;
+            }
+            else if (this.OriginList is OriginNameList exposed)
+            {// Keep a previously exposed list instance, including parsed spans and bounds.
+                exposed.AppendFrom(origins);
             }
             else
             {
@@ -295,21 +268,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             }
         }
 
-        if (this.OriginList is { Count: > 0 } origins)
-        {
-            builder.AppendSpace();
-            builder.Append(Constants.OriginKeyword);
-            builder.AppendSpace();
-            for (var i = 0; i < origins.Count; i++)
-            {
-                if (i > 0)
-                {
-                    builder.AppendCommaAndSpace();
-                }
-
-                builder.Append(origins[i]);
-            }
-        }
+        OriginNameList.WriteTo(this.OriginNames, ref builder);
     }
 
     /// <summary>Writes a root-group declaration for this group.</summary>

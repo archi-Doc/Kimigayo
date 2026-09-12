@@ -79,8 +79,6 @@ public enum TokenKind : byte
     Protected,
     Private,
     Internal,
-    ProtectedOrInternal,
-    ProtectedAndInternal,
     Open,
     In, // in; contextual delimiter in a for expression
     Associate,

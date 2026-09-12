@@ -453,12 +453,6 @@ public abstract class Koto
         builder.Append("Koto");
     }
 
-    /// <summary>Resolves an identifier relative to this node.</summary>
-    /// <param name="identifier">The identifier to resolve.</param>
-    /// <returns>The resolved node, or <see langword="null"/>.</returns>
-    public virtual Koto? ResolveIdentifier(ReadOnlySpan<char> identifier)
-        => default;
-
     /// <summary>Gets the current semantic binding state; this does not certify descendants.</summary>
     public BindingState BindingState { get; internal set; }
 
@@ -509,26 +503,6 @@ public abstract class Koto
     /// <param name="obj2">The second optional diagnostic argument.</param>
     public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null)
         => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument);
-
-    /// <summary>Adds an attribute to this node.</summary>
-    /// <param name="attributeKoto">The attribute to add.</param>
-    public void AddAttribute(AttributeKoto attributeKoto)
-    {
-        if (attributeKoto.Parent is not null)
-        {
-            throw new InvalidOperationException();
-        }
-
-        var previous = this.AttributeChain;
-        attributeKoto.Parent = this;
-        attributeKoto.AttributeChain = previous;
-        if (previous is not null)
-        {
-            previous.Parent = attributeKoto;
-        }
-
-        this.AttributeChain = attributeKoto;
-    }
 
     /// <summary>Removes an attribute from this node.</summary>
     /// <param name="attributeKoto">The attribute to remove.</param>

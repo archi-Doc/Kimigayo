@@ -24,7 +24,7 @@ public static class EmissionArtifacts
         string? tempManifest = null;
         try
         {
-            if (!compilation.Emission.TryPrepare(out var plan, out failure))
+            if (!compilation.Emission.TryPrepare(out var module, out failure))
             {
                 return false;
             }
@@ -41,43 +41,7 @@ public static class EmissionArtifacts
             var destination = paths.Ir;
             var manifest = paths.Manifest;
             var outputDirectory = Path.GetDirectoryName(destination)!;
-            var backend = new NativeLibraryInput { Kind = "static", Input = WindowsProfile.BackendFile };
-            if (settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries))
-            {
-                if (libraries is null)
-                {
-                    throw new InvalidDataException("NativeLibraries target entries must be mappings.");
-                }
-
-                foreach (var (name, library) in libraries)
-                {
-                    if (string.IsNullOrWhiteSpace(name) || name.Contains('\0') || library is null || library.Kind is not ("import" or "static"))
-                    {
-                        throw new InvalidDataException("NativeLibraries requires nonempty logical names and import/static entries.");
-                    }
-
-                    CheckPath(library.Input);
-                    if (!Path.GetExtension(library.Input).Equals(".lib", StringComparison.OrdinalIgnoreCase))
-                    {
-                        throw new InvalidDataException("NativeLibraries inputs must be .lib files.");
-                    }
-
-                    if (name == "kernel32")
-                    {
-                        throw new InvalidDataException("kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.");
-                    }
-                    else if (name == "kimi_backend")
-                    {
-                        backend = library;
-                    }
-                }
-            }
-
-            if (backend.Kind != "static")
-            {
-                throw new InvalidDataException("kimi_backend must be static.");
-            }
-
+            var backend = ResolveBackend(settings);
             if (HasDirectory(backend.Input))
             {
                 var actual = Hash(Path.GetFullPath(backend.Input, directory));
@@ -100,69 +64,14 @@ public static class EmissionArtifacts
             tempManifest = manifest + "." + unique + ".tmp";
             using (var writer = new StreamWriter(new FileStream(tempIr, FileMode.CreateNew, FileAccess.Write, FileShare.None), new UTF8Encoding(false), 16384))
             {
-                plan.WriteIr(writer);
+                module.WriteIr(writer);
             }
 
             var hash = Hash(tempIr);
             using (var stream = new FileStream(tempManifest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
             {
-                json.WriteStartObject();
-                json.WriteNumber("schemaVersion", 2);
-                json.WriteString("target", WindowsProfile.Target);
-                json.WriteStartObject("codegen");
-                json.WriteString("profile", WindowsProfile.Name);
-                json.WriteString("llvmVersion", WindowsProfile.LlvmVersion);
-                json.WriteString("cpu", "x86-64");
-                json.WriteStartArray("features");
-                json.WriteStringValue("+sse2");
-                json.WriteEndArray();
-                json.WriteString("relocationModel", "pic");
-                json.WriteString("codeModel", "small");
-                json.WriteString("unwindTables", "async");
-                json.WriteString("optimization", settings.Optimization);
-                json.WriteEndObject();
-                json.WriteStartObject("backendSupport");
-                json.WriteString("packageId", "kimi-backend-windows-x64");
-                json.WriteNumber("abiVersion", 1);
-                json.WriteString("packageVersion", WindowsProfile.BackendVersion);
-                json.WriteString("library", "kimi_backend");
-                json.WriteString("artifactSha256", WindowsProfile.BackendSha256);
-                json.WriteStartArray("providedSymbols");
-                json.WriteStringValue("__chkstk");
-                json.WriteStringValue("memcpy");
-                json.WriteStringValue("memmove");
-                json.WriteStringValue("memset");
-                json.WriteEndArray();
-                json.WriteEndObject();
-                json.WriteString("irFile", Path.GetFileName(destination));
-                json.WriteString("irSha256", hash);
-                json.WriteString("outputKind", "Application");
-                json.WriteString("entry", "__kimi_start");
-                json.WriteString("subsystem", "console");
-                json.WriteStartArray("libraries");
-                json.WriteStartObject();
-                json.WriteString("name", "kernel32");
-                json.WriteString("kind", "import");
-                json.WriteString("generator", Kernel32Imports.Generator);
-                json.WriteString("dll", Kernel32Imports.Dll);
-                json.WriteString("definitionSha256", Kernel32Imports.DefinitionSha256);
-                json.WriteEndObject();
-                WriteLibrary(json, "kimi_backend", backend, directory, outputDirectory);
-                json.WriteEndArray();
-                json.WriteStartArray("providedRuntimeSymbols");
-                json.WriteStringValue("_fltused");
-                json.WriteEndArray();
-                json.WriteStartArray("expectedUndefinedSymbols");
-                json.WriteEndArray();
-                if (llvm is not null)
-                {
-                    json.WriteStartObject("toolchain");
-                    json.WriteString("llvmBin", llvm);
-                    json.WriteEndObject();
-                }
-
-                json.WriteEndObject();
+                WriteManifest(json, settings, backend, Path.GetFileName(destination), hash, directory, outputDirectory, llvm);
             }
 
             File.Move(tempIr, destination, true);
@@ -180,6 +89,114 @@ public static class EmissionArtifacts
             DeleteTemporary(tempIr);
             DeleteTemporary(tempManifest);
         }
+    }
+
+    // Validates every configured library, even when unused, and selects the backend supply (SPEC 20.8.2).
+    private static NativeLibraryInput ResolveBackend(ProjectFile settings)
+    {
+        var backend = new NativeLibraryInput { Kind = "static", Input = WindowsProfile.BackendFile };
+        if (settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries))
+        {
+            if (libraries is null)
+            {
+                throw new InvalidDataException("NativeLibraries target entries must be mappings.");
+            }
+
+            foreach (var (name, library) in libraries)
+            {
+                if (string.IsNullOrWhiteSpace(name) || name.Contains('\0') || library is null || library.Kind is not ("import" or "static"))
+                {
+                    throw new InvalidDataException("NativeLibraries requires nonempty logical names and import/static entries.");
+                }
+
+                CheckPath(library.Input);
+                if (!Path.GetExtension(library.Input).Equals(".lib", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException("NativeLibraries inputs must be .lib files.");
+                }
+
+                if (name == Kernel32Imports.LibraryName)
+                {
+                    throw new InvalidDataException("kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.");
+                }
+                else if (name == WindowsProfile.BackendLibrary)
+                {
+                    backend = library;
+                }
+            }
+        }
+
+        if (backend.Kind != "static")
+        {
+            throw new InvalidDataException("kimi_backend must be static.");
+        }
+
+        return backend;
+    }
+
+    private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, NativeLibraryInput backend, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)
+    {
+        json.WriteStartObject();
+        json.WriteNumber("schemaVersion", 2);
+        json.WriteString("target", WindowsProfile.Target);
+        json.WriteStartObject("codegen");
+        json.WriteString("profile", WindowsProfile.Name);
+        json.WriteString("llvmVersion", WindowsProfile.LlvmVersion);
+        json.WriteString("cpu", WindowsProfile.Cpu);
+        WriteStrings(json, "features", [WindowsProfile.Features]);
+        json.WriteString("relocationModel", WindowsProfile.RelocationModel);
+        json.WriteString("codeModel", WindowsProfile.CodeModel);
+        json.WriteString("unwindTables", WindowsProfile.UnwindTables);
+        json.WriteString("optimization", settings.Optimization);
+        json.WriteEndObject();
+        json.WriteStartObject("backendSupport");
+        json.WriteString("packageId", WindowsProfile.BackendPackageId);
+        json.WriteNumber("abiVersion", WindowsProfile.BackendAbiVersion);
+        json.WriteString("packageVersion", WindowsProfile.BackendVersion);
+        json.WriteString("library", WindowsProfile.BackendLibrary);
+        json.WriteString("artifactSha256", WindowsProfile.BackendSha256);
+        WriteStrings(json, "providedSymbols", WindowsProfile.ProvidedSymbols);
+        json.WriteEndObject();
+        json.WriteString("irFile", irFile);
+        json.WriteString("irSha256", irHash);
+        json.WriteString("outputKind", "Application");
+        json.WriteString("entry", WindowsProfile.EntrySymbol);
+        json.WriteString("subsystem", WindowsProfile.Subsystem);
+        json.WriteStartArray("libraries");
+        json.WriteStartObject();
+        json.WriteString("name", Kernel32Imports.LibraryName);
+        json.WriteString("kind", "import");
+        json.WriteString("generator", Kernel32Imports.Generator);
+        json.WriteString("dll", Kernel32Imports.Dll);
+        json.WriteString("definitionSha256", Kernel32Imports.DefinitionSha256);
+        json.WriteEndObject();
+        json.WriteStartObject();
+        json.WriteString("name", WindowsProfile.BackendLibrary);
+        json.WriteString("kind", backend.Kind);
+        json.WriteString("input", HasDirectory(backend.Input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(backend.Input, projectDirectory)) : backend.Input);
+        json.WriteEndObject();
+        json.WriteEndArray();
+        WriteStrings(json, "providedRuntimeSymbols", [WindowsProfile.FloatMarker]);
+        WriteStrings(json, "expectedUndefinedSymbols", []);
+        if (llvm is not null)
+        {
+            json.WriteStartObject("toolchain");
+            json.WriteString("llvmBin", llvm);
+            json.WriteEndObject();
+        }
+
+        json.WriteEndObject();
+    }
+
+    private static void WriteStrings(Utf8JsonWriter json, string name, ReadOnlySpan<string> values)
+    {
+        json.WriteStartArray(name);
+        foreach (var value in values)
+        {
+            json.WriteStringValue(value);
+        }
+
+        json.WriteEndArray();
     }
 
     private static void DeleteTemporary(string? path)
@@ -200,13 +217,4 @@ public static class EmissionArtifacts
     }
 
     private static bool HasDirectory(string path) => path.Contains('/') || path.Contains('\\');
-
-    private static void WriteLibrary(Utf8JsonWriter json, string name, NativeLibraryInput input, string projectDirectory, string outputDirectory)
-    {
-        json.WriteStartObject();
-        json.WriteString("name", name);
-        json.WriteString("kind", input.Kind);
-        json.WriteString("input", HasDirectory(input.Input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(input.Input, projectDirectory)) : input.Input);
-        json.WriteEndObject();
-    }
 }

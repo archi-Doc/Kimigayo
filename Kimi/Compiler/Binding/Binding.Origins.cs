@@ -292,6 +292,35 @@ public sealed partial class Binding
                     Fail(node, BindingFailure.Duplicate);
                 }
             }
+
+            // Bind the whole list before resolving `name : target`; targets are static or visible abstract Origins.
+            for (var i = 0; i < schema.Origins.Count; i++)
+            {
+                var origin = schema.Origins[i];
+                origin.Bound = null;
+                if (OriginNameList.GetBound(origins, i, out _) is not { } target)
+                {
+                    continue;
+                }
+
+                origin.Bound = target == "static" ? BoundOrigin.Static : FindAbstractOrigin(target, scope);
+                // Declaration and use-site bound proofs (SPEC 15.3.4) are not implemented, so a bounded
+                // declaration is never certified (Invalid survives later node completion); an unknown target is an ordinary error.
+                Fail(node, origin.Bound is null ? BindingFailure.InvalidOrigin : BindingFailure.Unsupported);
+            }
+        }
+
+        static BoundOrigin? FindAbstractOrigin(string name, BindingScope scope)
+        {
+            for (var current = scope; current is not null; current = current.Parent)
+            {
+                if (current.Origins?.TryGetValue(name, out var origin) == true)
+                {
+                    return origin;
+                }
+            }
+
+            return null;
         }
     }
 

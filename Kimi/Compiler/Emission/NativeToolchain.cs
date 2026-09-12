@@ -11,14 +11,13 @@ using static Kimi.Compiler.ArtifactFiles;
 namespace Kimi.Compiler;
 
 /// <summary>Runs the Windows LLVM tools and existing executables without a shell.</summary>
-internal static class NativeToolchain
+internal static partial class NativeToolchain
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
     private static readonly string[] ToolNames = ["opt", "llc", "lld-link", "llvm-nm", "llvm-readobj"];
-    private static readonly string[] BackendSymbols = ["__chkstk", "memcpy", "memmove", "memset"];
-    private static readonly HashSet<string> AllowedUndefined = new(
-        BackendSymbols.Concat(new[] { "__imp_GetProcessHeap", "__imp_HeapAlloc", "__imp_HeapFree", "__imp_GetStdHandle", "__imp_WriteFile", "__imp_GetLastError", "__imp_ExitProcess" }),
-        StringComparer.Ordinal);
+
+    // Actual object dependencies may only be backend helpers or the runtime's kernel32 imports (SPEC 21.5.7, 22.5.6).
+    private static readonly HashSet<string> AllowedUndefined = CreateAllowedUndefined();
 
     internal static bool IsToolchainFailure(Exception ex)
         => ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException or Win32Exception or JsonException or KeyNotFoundException or InvalidOperationException;
@@ -107,8 +106,8 @@ internal static class NativeToolchain
             report(DiagnosticSeverity.Warning, "llvm-dlltool SHA-256 mismatch; continuing with an unverified toolchain.");
         }
 
-        tools.Add("llvm-dlltool", dlltool);
-        identities.Add("llvm-dlltool", new { path = Redact(dlltool, project.Directory), sha256 = dlltoolHash, expectedSha256 = Kernel32Imports.DlltoolSha256, hashMatched = dlltoolMatched });
+        tools.Add(Kernel32Imports.Generator, dlltool);
+        identities.Add(Kernel32Imports.Generator, new { path = Redact(dlltool, project.Directory), sha256 = dlltoolHash, expectedSha256 = Kernel32Imports.DlltoolSha256, hashMatched = dlltoolMatched });
         record["unverifiedToolchain"] = !matched || !dlltoolMatched;
         WriteRecord(paths.Record, record);
         var libraries = new List<string>();
@@ -124,7 +123,7 @@ internal static class NativeToolchain
             }
 
             string path;
-            if (name == "kernel32")
+            if (name == Kernel32Imports.LibraryName)
             {
                 Kernel32Imports.ValidateManifest(item);
                 path = await GenerateKernel32(tools, paths.Stem, report, cancellationToken);
@@ -136,7 +135,7 @@ internal static class NativeToolchain
             }
 
             var hash = Hash(path);
-            if ((name == "kernel32" && kind != "import") || (name == "kimi_backend" && (kind != "static" || hash != WindowsProfile.BackendSha256)))
+            if ((name == Kernel32Imports.LibraryName && kind != "import") || (name == WindowsProfile.BackendLibrary && (kind != "static" || hash != WindowsProfile.BackendSha256)))
             {
                 throw new InvalidDataException("Native library kind or backend SHA-256 mismatch.");
             }
@@ -145,7 +144,7 @@ internal static class NativeToolchain
             libraryIdentities.Add(new { name, path = Redact(path, project.Directory), sha256 = hash });
         }
 
-        if (!seen.Contains("kernel32") || !seen.Contains("kimi_backend"))
+        if (!seen.Contains(Kernel32Imports.LibraryName) || !seen.Contains(WindowsProfile.BackendLibrary))
         {
             throw new InvalidDataException("Missing kernel32 or kimi_backend library.");
         }
@@ -160,17 +159,18 @@ internal static class NativeToolchain
             selectedIr = paths.Stem + ".ll";
             await Tool("opt", "-S", "-passes=default<O2>", "-mtriple=" + WindowsProfile.Target, paths.Ir, "-o", selectedIr);
             var ir = await File.ReadAllTextAsync(selectedIr, cancellationToken);
-            ir = Regex.Replace(ir, @"(?m)^(?:; ModuleID = .*|source_filename = .*|!\d+ = .*!DIFile\(.*)$", m => Redact(m.Value, project.Directory));
+            ir = ModulePathPattern().Replace(ir, m => Redact(m.Value, project.Directory));
             await File.WriteAllTextAsync(selectedIr, ir, new UTF8Encoding(false), cancellationToken);
             await Tool("opt", "-passes=verify", "-disable-output", selectedIr);
         }
 
         var obj = paths.Stem + ".obj";
-        await Tool("llc", "-" + project.ProjectFile.Optimization, "-filetype=obj", "-mtriple=" + WindowsProfile.Target, "-mcpu=x86-64", "-mattr=+sse2", "-relocation-model=pic", "-code-model=small", selectedIr, "-o", Path.GetFileName(obj));
+        await Tool("llc", "-" + project.ProjectFile.Optimization, "-filetype=obj", "-mtriple=" + WindowsProfile.Target, "-mcpu=" + WindowsProfile.Cpu, "-mattr=" + WindowsProfile.Features, "-relocation-model=" + WindowsProfile.RelocationModel, "-code-model=" + WindowsProfile.CodeModel, selectedIr, "-o", Path.GetFileName(obj));
         var undefined = await Tool("llvm-nm", "--undefined-only", "--format=posix", obj);
         foreach (var line in undefined.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
-            if (!AllowedUndefined.Contains(line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[0]))
+            var separator = line.AsSpan().IndexOfAny(' ', '\t');
+            if (!AllowedUndefined.Contains(separator < 0 ? line : line[..separator]))
             {
                 throw new InvalidDataException("Unsupported actual object dependency: " + line);
             }
@@ -178,7 +178,7 @@ internal static class NativeToolchain
 
         var defined = await Tool("llvm-nm", "--defined-only", "--extern-only", "--format=posix", obj);
         var inspection = await Tool("llvm-readobj", "--unwind", "--coff-directives", obj);
-        if (Regex.Matches(defined, @"(?m)^_fltused [BD] ").Count != 1 || !inspection.Contains("RuntimeFunction", StringComparison.Ordinal) || inspection.Contains("DEFAULTLIB", StringComparison.OrdinalIgnoreCase))
+        if (FloatMarkerPattern().Count(defined) != 1 || !inspection.Contains("RuntimeFunction", StringComparison.Ordinal) || inspection.Contains("DEFAULTLIB", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException("Invalid _fltused definition, unwind information or hidden default library.");
         }
@@ -188,7 +188,15 @@ internal static class NativeToolchain
         var temporary = paths.Stem + "." + Guid.NewGuid().ToString("N") + ".exe";
         try
         {
-            await Tool("lld-link", new[] { obj }.Concat(libraries).Concat(new[] { "/entry:__kimi_start", "/subsystem:console", "/nodefaultlib", "/Brepro", "/out:" + temporary }).ToArray());
+            var link = new string[libraries.Count + 6];
+            link[0] = obj;
+            libraries.CopyTo(link, 1);
+            link[^5] = "/entry:" + WindowsProfile.EntrySymbol;
+            link[^4] = "/subsystem:" + WindowsProfile.Subsystem;
+            link[^3] = "/nodefaultlib";
+            link[^2] = "/Brepro";
+            link[^1] = "/out:" + temporary;
+            await Tool("lld-link", link);
             cancellationToken.ThrowIfCancellationRequested();
             File.Move(temporary, paths.Executable, true);
             record["status"] = "linked";
@@ -215,20 +223,26 @@ internal static class NativeToolchain
         var code = root.GetProperty("codegen");
         var support = root.GetProperty("backendSupport");
         if (root.GetProperty("target").GetString() != WindowsProfile.Target ||
-            root.GetProperty("outputKind").GetString() != "Application" || root.GetProperty("entry").GetString() != "__kimi_start" || root.GetProperty("subsystem").GetString() != "console" ||
+            root.GetProperty("outputKind").GetString() != "Application" || root.GetProperty("entry").GetString() != WindowsProfile.EntrySymbol || root.GetProperty("subsystem").GetString() != WindowsProfile.Subsystem ||
             code.GetProperty("profile").GetString() != WindowsProfile.Name || code.GetProperty("llvmVersion").GetString() != WindowsProfile.LlvmVersion ||
-            code.GetProperty("cpu").GetString() != "x86-64" || !code.GetProperty("features").EnumerateArray().Select(x => x.GetString()).SequenceEqual(new[] { "+sse2" }) ||
-            code.GetProperty("relocationModel").GetString() != "pic" || code.GetProperty("codeModel").GetString() != "small" || code.GetProperty("unwindTables").GetString() != "async" ||
+            code.GetProperty("cpu").GetString() != WindowsProfile.Cpu || !WindowsProfile.SequenceEqual(code.GetProperty("features"), [WindowsProfile.Features]) ||
+            code.GetProperty("relocationModel").GetString() != WindowsProfile.RelocationModel || code.GetProperty("codeModel").GetString() != WindowsProfile.CodeModel || code.GetProperty("unwindTables").GetString() != WindowsProfile.UnwindTables ||
             code.GetProperty("optimization").GetString() is not ("O0" or "O2"))
         {
             throw new InvalidDataException("Manifest does not describe the supported Windows Application profile.");
         }
 
-        if (support.GetProperty("packageId").GetString() != "kimi-backend-windows-x64" || support.GetProperty("abiVersion").GetInt32() != 1 ||
-            support.GetProperty("packageVersion").GetString() != WindowsProfile.BackendVersion || support.GetProperty("artifactSha256").GetString() != WindowsProfile.BackendSha256 ||
-            support.GetProperty("library").GetString() != "kimi_backend" || !support.GetProperty("providedSymbols").EnumerateArray().Select(x => x.GetString()).SequenceEqual(BackendSymbols) ||
-            !root.GetProperty("providedRuntimeSymbols").EnumerateArray().Select(x => x.GetString()).SequenceEqual(new[] { "_fltused" }) ||
-            root.GetProperty("expectedUndefinedSymbols").EnumerateArray().Any(x => x.GetProperty("provider").GetString() != "kimi_backend" || !BackendSymbols.Contains(x.GetProperty("symbol").GetString())))
+        var valid = support.GetProperty("packageId").GetString() == WindowsProfile.BackendPackageId && support.GetProperty("abiVersion").GetInt32() == WindowsProfile.BackendAbiVersion &&
+            support.GetProperty("packageVersion").GetString() == WindowsProfile.BackendVersion && support.GetProperty("artifactSha256").GetString() == WindowsProfile.BackendSha256 &&
+            support.GetProperty("library").GetString() == WindowsProfile.BackendLibrary && WindowsProfile.SequenceEqual(support.GetProperty("providedSymbols"), WindowsProfile.ProvidedSymbols) &&
+            WindowsProfile.SequenceEqual(root.GetProperty("providedRuntimeSymbols"), [WindowsProfile.FloatMarker]);
+        foreach (var dependency in root.GetProperty("expectedUndefinedSymbols").EnumerateArray())
+        {
+            valid &= dependency.GetProperty("provider").GetString() == WindowsProfile.BackendLibrary &&
+                Array.IndexOf(WindowsProfile.ProvidedSymbols, dependency.GetProperty("symbol").GetString()) >= 0;
+        }
+
+        if (!valid)
         {
             throw new InvalidDataException("Invalid backend supply identity or runtime dependency.");
         }
@@ -279,9 +293,84 @@ internal static class NativeToolchain
 
     internal static string ParseVersion(string output)
     {
-        var versions = Regex.Matches(output, @"(?im)^\s*(?:.*\b(?:LLVM|clang) version|LLD)\s+([0-9]+\.[0-9]+\.[0-9]+[^\s()]*)")
-            .Select(x => x.Groups[1].Value).Distinct(StringComparer.Ordinal).ToArray();
-        return versions.Length == 1 ? versions[0] : throw new InvalidDataException("Cannot obtain unambiguous LLVM version: " + output.Trim());
+        string? version = null;
+        foreach (Match match in VersionPattern().Matches(output))
+        {
+            var value = match.Groups[1].Value;
+            if (version is not null && version != value)
+            {
+                version = null;
+                break;
+            }
+
+            version = value;
+        }
+
+        return version ?? throw new InvalidDataException("Cannot obtain unambiguous LLVM version: " + output.Trim());
+    }
+
+    /// <summary>Replaces checkout and user-profile roots with stable placeholders in published records.</summary>
+    /// <param name="text">The text to redact.</param>
+    /// <param name="directory">The project directory.</param>
+    /// <returns>The redacted text.</returns>
+    internal static string Redact(string text, string directory)
+    {
+        text = RedactRoot(text, Path.GetFullPath(directory.Length == 0 ? "." : directory), "/_/project");
+        return RedactRoot(text, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "/_/user");
+
+        static string RedactRoot(string text, string root, string replacement)
+        {
+            root = root.TrimEnd('\\', '/');
+            if (root.Length == 0)
+            {
+                return text;
+            }
+
+            // The same root can appear JSON-escaped, with forward slashes, or with native separators.
+            text = ReplaceRoot(text, root.Replace("\\", "\\\\", StringComparison.Ordinal), replacement);
+            text = ReplaceRoot(text, root.Replace('\\', '/'), replacement);
+            return ReplaceRoot(text, root, replacement);
+        }
+
+        static string ReplaceRoot(string text, string root, string replacement)
+        {
+            var index = text.IndexOf(root, StringComparison.OrdinalIgnoreCase);
+            if (index < 0)
+            {
+                return text;
+            }
+
+            var builder = new StringBuilder(text.Length);
+            var copied = 0;
+            while (index >= 0)
+            {
+                // Replace only whole path prefixes, followed by a separator, whitespace, quote or the end.
+                var end = index + root.Length;
+                if (end == text.Length || text[end] is '\\' or '/' or '"' or '\'' || char.IsWhiteSpace(text[end]))
+                {
+                    builder.Append(text, copied, index - copied).Append(replacement);
+                    copied = end;
+                    index = end < text.Length ? text.IndexOf(root, end, StringComparison.OrdinalIgnoreCase) : -1;
+                }
+                else
+                {
+                    index = text.IndexOf(root, index + 1, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+
+            return builder.Append(text, copied, text.Length - copied).ToString();
+        }
+    }
+
+    private static HashSet<string> CreateAllowedUndefined()
+    {
+        var allowed = new HashSet<string>(WindowsProfile.ProvidedSymbols, StringComparer.Ordinal);
+        foreach (var import in WindowsProfile.RuntimeImports)
+        {
+            allowed.Add("__imp_" + import);
+        }
+
+        return allowed;
     }
 
     private static async Task<string> GenerateKernel32(Dictionary<string, string> tools, string stem, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
@@ -291,8 +380,8 @@ internal static class NativeToolchain
         try
         {
             await File.WriteAllTextAsync(Path.Combine(staging, "kernel32.def"), Kernel32Imports.Definition, new UTF8Encoding(false), cancellationToken);
-            await ExecuteTool(tools["llvm-dlltool"], ["-m", "i386:x86-64", "-d", "kernel32.def", "-l", "kernel32.lib"], staging, report, cancellationToken);
-            var dll = await ExecuteTool(tools["llvm-dlltool"], ["-I", "kernel32.lib"], staging, report, cancellationToken);
+            await ExecuteTool(tools[Kernel32Imports.Generator], ["-m", "i386:x86-64", "-d", "kernel32.def", "-l", "kernel32.lib"], staging, report, cancellationToken);
+            var dll = await ExecuteTool(tools[Kernel32Imports.Generator], ["-I", "kernel32.lib"], staging, report, cancellationToken);
             var inspection = await ExecuteTool(tools["llvm-readobj"], ["--file-headers", "kernel32.lib"], staging, report, cancellationToken);
             Kernel32Imports.ValidateLibrary(dll, inspection);
             cancellationToken.ThrowIfCancellationRequested();
@@ -379,21 +468,12 @@ internal static class NativeToolchain
         }
     }
 
-    private static string Redact(string text, string directory)
-    {
-        foreach (var (root, replacement) in new[] { (Path.GetFullPath(directory.Length == 0 ? "." : directory), "/_/project"), (Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "/_/user") })
-        {
-            if (root.Length == 0)
-            {
-                continue;
-            }
+    [GeneratedRegex(@"(?im)^\s*(?:.*\b(?:LLVM|clang) version|LLD)\s+([0-9]+\.[0-9]+\.[0-9]+[^\s()]*)")]
+    private static partial Regex VersionPattern();
 
-            foreach (var form in new[] { root.Replace("\\", "\\\\", StringComparison.Ordinal), root.Replace('\\', '/'), root })
-            {
-                text = Regex.Replace(text, Regex.Escape(form.TrimEnd('\\', '/')) + "(?=[\\\\/\\s\"']|$)", _ => replacement, RegexOptions.IgnoreCase);
-            }
-        }
+    [GeneratedRegex(@"(?m)^(?:; ModuleID = .*|source_filename = .*|!\d+ = .*!DIFile\(.*)$")]
+    private static partial Regex ModulePathPattern();
 
-        return text;
-    }
+    [GeneratedRegex("(?m)^" + WindowsProfile.FloatMarker + " [BD] ")]
+    private static partial Regex FloatMarkerPattern();
 }

@@ -27,11 +27,6 @@ public sealed class CodeBlockKoto : ExpressionKoto
     /// <summary>Gets the block items in source order.</summary>
     public IReadOnlyList<Koto> Items => this.items;
 
-    /// <summary>Replaces a block item by its known index without searching or copying the item collection.</summary>
-    /// <param name="index">The item index.</param>
-    /// <param name="replacement">The detached replacement node.</param>
-    public void ReplaceItem(int index, Koto replacement) => this.ReplaceAt(this.items, index, replacement);
-
     /// <summary>
     /// Gets the single body item before context/result classification, or <see langword="null"/> when there is no implicit result.
     /// </summary>

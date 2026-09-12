@@ -15,6 +15,8 @@ public class MinimalEmissionTest
     [InlineData("::Core.writeLine(\"Hello, world!\")")]
     [InlineData("writeLine(\"\")")]
     [InlineData("writeLine(text: \"日本語\\0\")")]
+    [InlineData("writeLine(\"a\")\nwriteLine(\"b\")")]
+    [InlineData("writeLine((\"a\"))\n()")]
     public void EmitsCheckedLiteralCall(string source)
     {
         var c = Analyze(source);
@@ -35,13 +37,13 @@ public class MinimalEmissionTest
     [InlineData("func unused() => 1\nwriteLine(\"a\")")]
     [InlineData("func unused<T>() => ()\nwriteLine(\"a\")")]
     [InlineData("struct Empty\n    func unused() => ()\nwriteLine(\"a\")")]
-    [InlineData("writeLine(\"a\")\nwriteLine(\"b\")")]
     [InlineData("public func main() => writeLine(\"a\")")]
     [InlineData("if false => writeLine(\"a\")")]
     [InlineData("let x: string\nwriteLine(x)")]
     [InlineData("let x = \"a\"\nwriteLine(x)\nwriteLine(x)")]
     [InlineData("func writeLine(x: string) => ()\nwriteLine(\"a\")")]
-    [InlineData("()")]
+    [InlineData("let x: i32 = 1\nwriteLine(\"a\")")]
+    [InlineData("writeLine(\"a\")\nlet flag = true")]
     [InlineData("")]
     public void UnsupportedOrInvalidInputNeverWritesIr(string source)
     {

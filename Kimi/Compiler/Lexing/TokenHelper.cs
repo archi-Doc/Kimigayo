@@ -18,7 +18,8 @@ public static partial class TokenHelper
     public const int MaxTokens = 256;
 
     private const int MinKeywordLength = 2;
-    private const int MaxKeywordLength = 22;
+    // Compound access specifications are two keyword tokens (SPEC 2.5), so no keyword is longer than nine characters.
+    private const int MaxKeywordLength = 9;
 
     private static readonly string[] TokenTexts;
 
@@ -123,8 +124,6 @@ public static partial class TokenHelper
         Set(TokenKind.Protected, Constants.ProtectedKeyword);
         Set(TokenKind.Private, Constants.PrivateKeyword);
         Set(TokenKind.Internal, Constants.InternalKeyword);
-        Set(TokenKind.ProtectedOrInternal, Constants.ProtectedOrInternalKeyword);
-        Set(TokenKind.ProtectedAndInternal, Constants.ProtectedAndInternalKeyword);
         Set(TokenKind.Open, Constants.OpenKeyword);
         Set(TokenKind.Associate, Constants.AssociateKeyword);
         Set(TokenKind.Get, Constants.GetKeyword);
@@ -313,7 +312,7 @@ public static partial class TokenHelper
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsIdentifierOrContextualKeyword(this TokenKind tokenKind)
         => tokenKind >= TokenKind.Alias && tokenKind <= TokenKind.Identifier &&
-            tokenKind is not (TokenKind.Public or TokenKind.Private or TokenKind.Protected or TokenKind.Internal or TokenKind.Open or TokenKind.ProtectedOrInternal or TokenKind.ProtectedAndInternal);
+            tokenKind is not (TokenKind.Public or TokenKind.Private or TokenKind.Protected or TokenKind.Internal or TokenKind.Open);
 
     /// <summary>
     /// Classifies identifier-like text as a keyword.
@@ -427,8 +426,6 @@ public static partial class TokenHelper
                 'p' => Match(text, Constants.ProtectedKeyword, TokenKind.Protected),
                 _ => TokenKind.Identifier,
             },
-            21 => Match(text, Constants.ProtectedOrInternalKeyword, TokenKind.ProtectedOrInternal),
-            22 => Match(text, Constants.ProtectedAndInternalKeyword, TokenKind.ProtectedAndInternal),
             _ => TokenKind.Identifier,
         };
 

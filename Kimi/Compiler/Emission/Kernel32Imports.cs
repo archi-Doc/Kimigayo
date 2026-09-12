@@ -7,11 +7,16 @@ using System.Text.RegularExpressions;
 
 namespace Kimi.Compiler;
 
-internal static class Kernel32Imports
+/// <summary>The project-owned kernel32 import definition and its generated-library identity (SPEC 20.8.2).</summary>
+internal static partial class Kernel32Imports
 {
+    internal const string LibraryName = "kernel32";
     internal const string Dll = "KERNEL32.dll";
     internal const string Generator = "llvm-dlltool";
-    internal static readonly string[] Symbols = ["GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess", "VirtualAlloc", "VirtualProtect", "VirtualFree"];
+
+    /// <summary>Gets the exports: the seven runtime APIs plus the VirtualAlloc family used only by native tests.</summary>
+    internal static readonly string[] Symbols = [.. WindowsProfile.RuntimeImports, "VirtualAlloc", "VirtualProtect", "VirtualFree"];
+
     internal static readonly string Definition;
     internal static readonly string DefinitionSha256;
     internal static readonly string DlltoolSha256;
@@ -43,13 +48,37 @@ internal static class Kernel32Imports
 
     internal static void ValidateLibrary(string dll, string inspection)
     {
-        var symbols = Regex.Matches(inspection, @"(?m)^Symbol: (\S+)\r?$").Select(x => x.Groups[1].Value).ToArray();
-        var expected = Symbols.Concat(Symbols.Select(x => "__imp_" + x)).ToHashSet(StringComparer.Ordinal);
-        var formats = Regex.Matches(inspection, @"(?m)^Format: (\S+)\r?$").Select(x => x.Groups[1].Value).ToArray();
-        if (dll.Trim() != Dll || symbols.Length != expected.Count || !expected.SetEquals(symbols) ||
-            formats.Length == 0 || formats.Any(x => x is not ("COFF-x86-64" or "COFF-import-file-x86-64")))
+        var expected = new HashSet<string>(Symbols.Length * 2, StringComparer.Ordinal);
+        foreach (var symbol in Symbols)
+        {
+            expected.Add(symbol);
+            expected.Add("__imp_" + symbol);
+        }
+
+        // Exactly the expected symbol set, each once, in x64 COFF members only.
+        var valid = dll.AsSpan().Trim().SequenceEqual(Dll);
+        var seen = new HashSet<string>(expected.Count, StringComparer.Ordinal);
+        foreach (Match match in SymbolPattern().Matches(inspection))
+        {
+            valid &= expected.Contains(match.Groups[1].Value) && seen.Add(match.Groups[1].Value);
+        }
+
+        var formats = 0;
+        foreach (Match match in FormatPattern().Matches(inspection))
+        {
+            formats++;
+            valid &= match.Groups[1].Value is "COFF-x86-64" or "COFF-import-file-x86-64";
+        }
+
+        if (!valid || seen.Count != expected.Count || formats == 0)
         {
             throw new InvalidDataException("Generated kernel32 library has an unexpected DLL, architecture or import symbol set.");
         }
     }
+
+    [GeneratedRegex(@"(?m)^Symbol: (\S+)\r?$")]
+    private static partial Regex SymbolPattern();
+
+    [GeneratedRegex(@"(?m)^Format: (\S+)\r?$")]
+    private static partial Regex FormatPattern();
 }

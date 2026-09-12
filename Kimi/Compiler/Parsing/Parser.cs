@@ -489,6 +489,17 @@ Exit:
                 }
 
                 (list ??= new()).Add(reader.GetIdentifier(token), token.Span);
+                if (reader.TryConsume(TokenKind.Colon))
+                {// OriginParameter := Name (":" OriginBound)?; OriginBound := Name | "static" (SPEC F.3, 15.3).
+                    var target = reader.CanRead ? reader.Read() : default;
+                    if (!target.Kind.IsIdentifierOrContextualKeyword() || !IdentifierHelper.IsValidIdentifier(reader.GetSpan(target)))
+                    {
+                        reader.Diagnostic.Add(target.Kind == TokenKind.Invalid && !reader.CanRead ? originRange : target.Span, DiagnosticCode.IdentifierExpected_Kd);
+                        return list;
+                    }
+
+                    list.SetLastBound(reader.GetIdentifier(target), target.Span);
+                }
 
                 if (!reader.TryConsume(TokenKind.Comma))
                 {
@@ -920,8 +931,6 @@ CloseParameters:
             TokenKind.Protected => ModifierKind.Protected,
             TokenKind.Private => ModifierKind.Private,
             TokenKind.Internal => ModifierKind.Internal,
-            TokenKind.ProtectedOrInternal => ModifierKind.ProtectedOrInternal,
-            TokenKind.ProtectedAndInternal => ModifierKind.ProtectedAndInternal,
             _ => ModifierKind.NoModifier,
         };
 
@@ -1064,8 +1073,6 @@ CloseParameters:
                 case TokenKind.Protected:
                 case TokenKind.Private:
                 case TokenKind.Internal:
-                case TokenKind.ProtectedOrInternal:
-                case TokenKind.ProtectedAndInternal:
                     ReadAccessibility(ref reader, GetAccessibilityModifier(tokenKind));
                     continue;
 

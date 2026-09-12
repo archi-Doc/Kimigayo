@@ -311,20 +311,7 @@ public sealed class FunctionKoto : DeclarationKoto
             builder.Append('>');
         }
 
-        if (this.origins is { Count: > 0 })
-        {
-            builder.Append(" origin ");
-            for (var i = 0; i < this.origins.Count; i++)
-            {
-                if (i > 0)
-                {
-                    builder.AppendCommaAndSpace();
-                }
-
-                builder.Append(this.origins[i]);
-            }
-        }
-
+        OriginNameList.WriteTo(this.Origins, ref builder);
         builder.Append('(');
         if (this.parameters is { } parameters)
         {

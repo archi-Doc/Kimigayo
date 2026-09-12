@@ -1,7 +1,5 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Arc.Crypto;
-
 namespace Kimi.Diagnostics;
 
 public readonly record struct SourceRange : IComparable<SourceRange>
@@ -9,13 +7,6 @@ public readonly record struct SourceRange : IComparable<SourceRange>
     public SourcePosition Start { get; }
 
     public SourcePosition End { get; }
-
-    public static SourceRange FromString(string str)
-    {
-        var hash = (int)FarmHash.Hash64(str);
-        var position = new SourcePosition(hash, 0);
-        return new(position, position);
-    }
 
     public SourceRange(SourcePosition start, SourcePosition end)
     {
