@@ -245,12 +245,14 @@ public class Compilation
     public ControlFlowAnalysis AnalyzeControlFlow(ControlFlowTypeSystem? types = null)
         => ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto, types);
 
-    /// <summary>Runs provisional Binding, the reserved Mod stage, final Binding, and Bound checking.</summary>
+    /// <summary>Runs final Binding and Bound checking for the complete selected source.</summary>
     /// <returns>The final Binding summary; incomplete semantics never certify success.</returns>
     public BindingResult Bind()
     {
-        this.Binding.Bind(BindingMode.Provisional);
-        this.RunMods();
+        // No Mod execution exists yet, so there is no reader or mutation between provisional
+        // and final Binding. The final pass resets every semantic field; do not run it twice.
+        // When Mods are implemented, bind provisionally before their queries and after append,
+        // then run this final pass over the complete selected declaration set (SPEC 20.7.2).
         return this.Binding.Bind(BindingMode.Final);
     }
 
@@ -264,12 +266,5 @@ public class Compilation
     internal bool TryResolveValue(IdentifierNameKoto koto, out BasicValue basicValue)
     {
         return this.Variables.TryGetValue(koto.IdentifierName, out basicValue);
-    }
-
-    private void RunMods()
-    {
-        // Reserved boundary: execute each ready Mod once; after its append phase integrate
-        // declarations and call Binding.Bind(Provisional) before the next Mod reads semantics.
-        // No Mod API or execution is implemented yet. Never mutate syntax during final Binding.
     }
 }

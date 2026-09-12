@@ -1,0 +1,55 @@
+public group SpecTour
+    #Layout("C")
+    public struct NativeRecord
+        public var kind: u8
+        public var value: u64
+        public var flags: u8
+
+        public init(kind: u8, value: u64, flags: u8)
+            self.kind = kind
+            self.value = value
+            self.flags = flags
+
+    public group NativeDemo
+        public func runValues()
+            let record = NativeRecord.init(1, 42, 0)
+            ::Core.writeLine("C layout value=\(record.read())")
+            let pointer: unsafe/NativeRecord = null
+            let copiedPointer = pointer
+            ::Core.writeLine("typed null=\(copiedPointer == null)")
+
+        // Safety: pointer は呼び出し中、有効・初期化済み・適切に整列した
+        // i32 要素を少なくとも 2 個含む同一配列を指すこと。読み取り権限が必要。
+        // ポインターを取得するライブラリー API はこの仕様から仮定しない。
+        public unsafe func sumTwo(pointer: unsafe/i32) -> i64
+            unsafe
+                let first = *pointer
+                let next = pointer + 1
+                let second = next[0]
+                return first@i64 + second@i64
+
+        // Safety: pointer は有効な初期化済み i32 を指し、排他的な書き込み権限を持つ。
+        public unsafe func replace(pointer: unsafe/i32, value: i32) -> i32
+            unsafe
+                let previous = *pointer
+                *pointer = value
+                return previous
+
+        // Safety: 戻ったポインターを使うときも元の有効範囲・寿命・権限が必要。
+        public unsafe func roundTrip(pointer: unsafe/i32) -> unsafe/i32
+            unsafe
+                let bytes = pointer@unsafe/u8
+                let restoredType = bytes@unsafe/i32
+                let address = restoredType@usize
+                return address@unsafe/i32
+
+        #if windows
+            // 初期 FFI は C ABI。外部実装は末尾の README にある observer.c。
+            // Safety: record は呼び出し中に有効な NativeRecord を指し、読み取り可能。
+            #LibraryImport("observer", "observe_record")
+            public unsafe func observe(record: unsafe/NativeRecord) -> u64
+
+            // unsafe func 自体では本体が unsafe context にならない。
+            // Safety: observe と同じ。ポインターを保持する外部処理は行わない。
+            public unsafe func inspectForeign(record: unsafe/NativeRecord) -> u64
+                unsafe => return observe(record)

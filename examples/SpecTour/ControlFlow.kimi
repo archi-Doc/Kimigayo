@@ -1,0 +1,136 @@
+public group SpecTour
+    public enum InputError
+        Self is Copy
+        Empty
+        Negative(i32)
+
+    public enum Command
+        Stop
+        Set(i32)
+        Say(string)
+
+    public struct CountdownIterator
+        Self is Iterator
+        associate Iterator.Element is i32
+        private var remaining: i32
+
+        public init(remaining: i32)
+            self.remaining = remaining
+
+        public func next(self: uniq/Self) -> Option<i32>
+            require self.remaining > 0 else => return .None
+            let current = self.remaining
+            self.remaining -= 1
+            return .Some(current)
+
+    public struct Countdown
+        Self is Iterable
+        associate Iterable.Element is i32
+        associate Iterable.Iterator is CountdownIterator
+        private let start: i32
+
+        public init(start: i32)
+            self.start = start
+
+        public func iterate(self: owner/Self) -> CountdownIterator
+            return CountdownIterator.init(self.start)
+
+    public group ControlFlow
+        public func validate(value: Option<i32>) -> Result<i32, InputError>
+            return match value
+                .Some(let number) if number >= 0 => .Ok(number)
+                .Some(let number) => .Err(InputError.Negative(number))
+                .None => .Err(InputError.Empty)
+
+        public func normalize(value: Option<i32>) -> Result<i64, InputError>
+            return match validate(value)
+                .Ok(let number) => .Ok(number@i64)
+                .Err(let error) => .Err(error)
+
+        public func required(value: Option<i32>) -> i32
+            return match value
+                .Some(let number) => number
+                .None => $abort("Required sample value is missing")
+
+        public func report(command: ref/Command)
+            match command
+                .Say(let message) => ::Core.writeLine("preview: \(message)")
+                .Set(let number) => ::Core.writeLine("preview value: \(number)")
+                .Stop => ::Core.writeLine("preview stop")
+
+        public func execute(command: Command)
+            match command
+                .Say(let message) => ::Core.writeLine(message)
+                .Set(let number) => ::Core.writeLine("set: \(number)")
+                .Stop => ()
+
+        public func securedResult() -> i32
+            var number: i32 = 1
+            defer => number = 2
+            return number // 結果を Copy してから defer を実行するので 1。
+
+        public func run()
+            let command: Command = .Say("borrow first, then move")
+            report(command@ref)
+            execute(command)
+
+            let result = normalize(.Some(-4))
+            match result
+                .Ok(let number) => ::Core.writeLine("ok=\(number)")
+                .Err(let error)
+                    match error
+                        .Empty => ::Core.writeLine("missing input")
+                        .Negative(let number) => ::Core.writeLine("negative=\(number)")
+
+            let nested: Result<Option<i32>, InputError> = .Ok(.Some(7))
+            match nested
+                .Ok(let option)
+                    match option
+                        .Some(let number) => ::Core.writeLine("nested=\(number)")
+                        .None => ()
+                .Err(_) => ()
+
+            let tuple = (true, 10)
+            let score = match tuple
+                (true, let number) => number
+                (_, _) => 0
+
+            let answer: i32 = work: do
+                defer => ::Core.writeLine("leaving labeled do")
+                if score > 0 => exit to work: score
+                exit to work: -1
+
+            let conditional = selection: if answer > 0
+                if answer == 10 => yield to selection: 100
+                yield answer
+            else => 0
+
+            let values: [4 of i32] = [0, 2, 4, 6]
+            let found: i32 = search: loop
+                for i in values.indices
+                    if values[i] < 4 => continue
+                    exit to search: values[i]
+                exit -1
+
+            var iterations: i32 = 0
+            outer: for row in ResolvedRange.init(start: 0, end: 3)
+                for column in ResolvedRange.init(start: 0, end: 3)
+                    if column == 1 => continue to outer
+                    iterations += 1
+
+            var pending: i32
+            if found > 0
+                pending = 1
+            else
+                pending = 0
+            while pending < 3
+                pending++
+
+            // named local function は外側の実行時ローカルを capture しない。
+            let localResult = twice(pending)
+            func twice(value: i32) -> i32 => value * 2
+
+            for value in Countdown.init(3) => ::Core.writeLine("countdown=\(value)")
+            ::Core.writeLine("answer=\(answer), yield=\(conditional), found=\(found)")
+            ::Core.writeLine("iterations=\(iterations), local=\(localResult), secured=\(securedResult())")
+            ::Core.writeLine("required=\(required(.Some(42)))")

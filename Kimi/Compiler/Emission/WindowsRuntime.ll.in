@@ -29,7 +29,8 @@ declare dllimport void @ExitProcess(i32) noreturn
 @__kimi_release_reason = private constant [50 x i8] c"KIMI_E_STRING_RELEASE: Invalid string release kind"
 @__kimi_overflow_reason = private constant [37 x i8] c"KIMI_E_INT_OVERFLOW: Integer overflow"
 
-define internal void @__kimi_exit(i32 %code) noreturn #0 {
+; Compiler-facing definitions are expanded from WindowsLowering FunctionAbi records.
+{{__kimi_exit}}
 entry:
   call void @ExitProcess(i32 %code)
   unreachable
@@ -213,7 +214,7 @@ done:
   ret void
 }
 
-define internal void @__kimi_destroy_string(ptr %text, ptr %location, i64 %location_length) #0 {
+{{__kimi_destroy_string}}
 entry:
   %kind_ptr = getelementptr %kimi.string, ptr %text, i32 0, i32 2
   %kind = load i8, ptr %kind_ptr, align 1
@@ -230,7 +231,7 @@ done:
   ret void
 }
 
-define internal void @__kimi_write_line(ptr %text, ptr %location, i64 %location_length) #0 {
+{{__kimi_write_line}}
 entry:
   %data = load ptr, ptr %text, align 8
   %length_ptr = getelementptr %kimi.string, ptr %text, i32 0, i32 1

@@ -2,6 +2,8 @@
 
 The document has six parts. Numbered headings use **chapter → section → subsection**; appendices separate compiler obligations, optional algorithms, implementation status, design boundaries, terminology, and grammar. Each concept has an owning section; cross-references apply its rules without redefining them.
 
+For a broad, non-normative source walkthrough, see the [specification tour](examples/SpecTour/README.md). It illustrates specified language features beyond current executable support and identifies features whose source APIs remain undefined.
+
 For the first executable program, start with [minimal console output](#224-minimal-console-output), [program startup](#222-program-startup-and-static-initialization), and [LLVM output/native build](#208-llvm-output-native-build-and-execution). The language rules below remain distinct from the implementation milestone in [STATUS.md](STATUS.md#c12-first-executable-milestone).
 
 - [Part I. Introduction and source text](#part-i-introduction-and-source-text)

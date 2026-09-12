@@ -1,0 +1,73 @@
+public group SpecTour
+    public group Callables
+        public func add(left: i32, right: i32) -> i32 => left + right
+
+        public func makeAdder(offset: i32) -> (i32) -> i32
+            return func [offset] (value) => value + offset
+
+        public func applyTwice<F>(value: i32, transform: uniq/F) -> i32
+            F is Callable<uniq, (i32) -> i32>
+            let first = transform(value)
+            return transform(first)
+
+        public func consumeOnce<F>(action: F) -> string
+            F is Callable<owner, () -> string>
+            return action()
+
+        public func retain<F>(action: F) -> F
+            F is Owned
+            return action
+
+        public func keep<T>(value: ref/T) -> ref/T from value => value
+
+        public func selectRef<T, F>(value: ref/T, select: ref/F) -> ref/T from value
+            F is Callable<(ref/T) -> ref/T>
+            return select(value)
+
+        public func run()
+            // 具象 Function Item は Copy。共通 Function Type は Non-Copy。
+            let item = add
+            let copiedItem = item
+            let erased: (i32, i32) -> i32 = add
+            let movedErased = erased
+            ::Core.writeLine("item=\(copiedItem(1, 2)), common=\(movedErased(3, 4))")
+
+            let seed: i32 = 5
+            let inferredCapture = func () => seed * 2
+            let noCapture = func [] (value: i32) => value * 3
+            ::Core.writeLine("implicit=\(inferredCapture()), empty=\(noCapture(4))")
+
+            let callback = retain(makeAdder(10))
+            ::Core.writeLine("callback=\(callback(7))")
+
+            let count: i32 = 0
+            var transform = func [var count] (value: i32) -> i32
+                count += 1
+                return value + count
+            ::Core.writeLine("exclusive calls=\(applyTwice(10, transform@uniq)), outer count=\(count)")
+
+            let text = "captured owner"
+            let reader = func [text] () => text@ref
+            // 結果は隠れた環境 receiver の借用。共通 Function Type へは消去しない。
+            let borrowed = reader()
+            ::Core.writeLine("\(borrowed)")
+
+            let output = "consumed exactly once"
+            let take = func [output] () => output
+            ::Core.writeLine(consumeOnce(take))
+
+            let external = "external borrow"
+            let inspect = func [external@ref] () => ::Core.writeLine("\(external)")
+            inspect()
+            ::Core.writeLine(external)
+
+            var gauge = Gauge.init()
+            do
+                var update = func [gauge@uniq] (value: i32) => gauge.value = value
+                update(12)
+            ::Core.writeLine("captured exclusive borrow=\(gauge.value)")
+
+            let number: i32 = 42
+            let selector = keep<i32>
+            let selected = selectRef(number@ref, selector@ref)
+            ::Core.writeLine("per-call result origin=\(selected)")

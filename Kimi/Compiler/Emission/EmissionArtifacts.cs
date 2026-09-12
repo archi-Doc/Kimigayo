@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using static Kimi.Compiler.ArtifactFiles;
 
 namespace Kimi.Compiler;
 
@@ -15,39 +15,31 @@ public static class EmissionArtifacts
     /// <param name="failure">The diagnostic on failure.</param>
     /// <returns>Whether the complete matched pair was published.</returns>
     public static bool Publish(Compilation compilation, out string? irPath, out string? failure)
+        => Publish(compilation, null, out irPath, out failure);
+
+    internal static bool Publish(Compilation compilation, ArtifactPaths? paths, out string? irPath, out string? failure)
     {
         irPath = null;
-        if (!compilation.Emission.Validate(out failure))
-        {
-            return false;
-        }
-
         string? tempIr = null;
         string? tempManifest = null;
         try
         {
-            var project = compilation.Project;
-            var settings = project.ProjectFile;
-            if (settings.Optimization is not ("O0" or "O2"))
+            if (!compilation.Emission.TryPrepare(out var plan, out failure))
             {
-                throw new InvalidDataException("Optimization must be O0 or O2.");
+                return false;
             }
 
+            var project = compilation.Project;
+            var settings = project.ProjectFile;
             if (WindowsProfile.BackendVersion.Length == 0 || WindowsProfile.BackendSha256.Length != 64)
             {
                 throw new InvalidDataException("The native backend has no adopted version/hash; a candidate cannot certify artifact publication.");
             }
 
             var directory = Path.GetFullPath(string.IsNullOrEmpty(project.Directory) ? "." : project.Directory);
-            var output = settings.OutputPath ?? Path.Combine("bin", WindowsProfile.Target, project.Name + ".ll");
-            CheckPath(output);
-            var destination = Path.GetFullPath(output, directory);
-            if (!Path.GetExtension(destination).Equals(".ll", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidDataException("OutputPath must have a .ll extension.");
-            }
-
-            var manifest = Path.ChangeExtension(destination, ".link.json");
+            paths ??= ArtifactPaths.Create(project);
+            var destination = paths.Ir;
+            var manifest = paths.Manifest;
             var outputDirectory = Path.GetDirectoryName(destination)!;
             var backend = new NativeLibraryInput { Kind = "static", Input = WindowsProfile.BackendFile };
             if (settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries))
@@ -88,7 +80,7 @@ public static class EmissionArtifacts
 
             if (HasDirectory(backend.Input))
             {
-                var actual = HashFile(Path.GetFullPath(backend.Input, directory));
+                var actual = Hash(Path.GetFullPath(backend.Input, directory));
                 if (!actual.Equals(WindowsProfile.BackendSha256, StringComparison.Ordinal))
                 {
                     throw new InvalidDataException("The selected backend archive does not match the adopted SHA-256.");
@@ -108,10 +100,10 @@ public static class EmissionArtifacts
             tempManifest = manifest + "." + unique + ".tmp";
             using (var writer = new StreamWriter(new FileStream(tempIr, FileMode.CreateNew, FileAccess.Write, FileShare.None), new UTF8Encoding(false), 16384))
             {
-                compilation.Emission.WriteValidatedIr(writer);
+                plan.WriteIr(writer);
             }
 
-            var hash = HashFile(tempIr);
+            var hash = Hash(tempIr);
             using (var stream = new FileStream(tempManifest, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
             {
@@ -207,24 +199,7 @@ public static class EmissionArtifacts
         }
     }
 
-    private static string HashFile(string path)
-    {
-        using var stream = File.OpenRead(path);
-        Span<byte> hash = stackalloc byte[32];
-        SHA256.HashData(stream, hash);
-        return Convert.ToHexStringLower(hash);
-    }
-
     private static bool HasDirectory(string path) => path.Contains('/') || path.Contains('\\');
-
-    private static void CheckPath(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path) || path.AsSpan().IndexOfAny("\0\r\n\"") >= 0 || path.StartsWith('-') ||
-            (path.StartsWith('/') && !Path.IsPathFullyQualified(path)))
-        {
-            throw new InvalidDataException("Paths must be nonempty file/directory names, without embedded linker options.");
-        }
-    }
 
     private static void WriteLibrary(Utf8JsonWriter json, string name, NativeLibraryInput input, string projectDirectory, string outputDirectory)
     {

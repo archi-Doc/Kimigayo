@@ -22,11 +22,8 @@ internal static class Kernel32Imports
         using var reader = new StreamReader(stream);
         Definition = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd() + "\n";
         DefinitionSha256 = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Definition)));
-        using var profile = typeof(Kernel32Imports).Assembly.GetManifestResourceStream("Kimi.WindowsBackendProfile.json")!;
-        using var json = JsonDocument.Parse(profile);
-        var kernel = json.RootElement.GetProperty("kernel32");
-        DlltoolSha256 = kernel.GetProperty("dlltoolSha256").GetString()!;
-        if (kernel.GetProperty("definitionSha256").GetString() != DefinitionSha256 || DlltoolSha256.Length != 64)
+        DlltoolSha256 = WindowsProfile.DlltoolSha256;
+        if (WindowsProfile.Kernel32DefinitionSha256 != DefinitionSha256 || DlltoolSha256.Length != 64)
         {
             throw new InvalidDataException("Kernel32 definition or tool identity does not match the profile.");
         }

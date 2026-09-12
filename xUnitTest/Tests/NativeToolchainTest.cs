@@ -49,7 +49,7 @@ public sealed class NativeToolchainTest : IDisposable
         var project = this.Create();
         project.ProjectFile.LlvmBin = "missing LLVM directory";
         Assert.True(await project.Generate(TestContext.Current.CancellationToken));
-        var paths = NativeToolchain.GetArtifacts(project);
+        var paths = ArtifactPaths.Create(project);
         Assert.True(File.Exists(paths.Ir));
         Assert.False(File.Exists(paths.Record));
         File.WriteAllText(paths.Executable, "previous executable");
@@ -65,7 +65,7 @@ public sealed class NativeToolchainTest : IDisposable
     public async Task SemanticFailureInvalidatesPreviousBuildBeforeInvokingTools()
     {
         var project = this.Create("let broken =");
-        var paths = NativeToolchain.GetArtifacts(project);
+        var paths = ArtifactPaths.Create(project);
         Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!);
         File.WriteAllText(paths.Record, "{\"status\":\"linked\"}");
         Assert.False(await project.Build(TestContext.Current.CancellationToken));
@@ -78,7 +78,7 @@ public sealed class NativeToolchainTest : IDisposable
     public async Task RunRequiresBuiltUnmodifiedExecutableWithoutCreatingArtifacts()
     {
         var project = this.Create();
-        var paths = NativeToolchain.GetArtifacts(project);
+        var paths = ArtifactPaths.Create(project);
         await Assert.ThrowsAsync<InvalidDataException>(() => project.Run(TestContext.Current.CancellationToken));
         Assert.False(File.Exists(paths.Ir));
         Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!);

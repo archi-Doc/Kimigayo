@@ -1,0 +1,13 @@
+Targets=
+  "x86_64-pc-windows-msvc"
+OutputKind="Application"
+Optimization="O2"
+LlvmBin="C:/App/llvm"
+NativeLibraries=
+  x86_64-pc-windows-msvc=
+    kimi_backend=
+      Kind="static"
+      Input="../../backend/windows-x64/bin/kimi_backend_windows_x64_v1.lib"
+    observer=
+      Kind="static"
+      Input="native/observer.lib"

@@ -2,11 +2,11 @@
 
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Kimi.Diagnostics;
+using static Kimi.Compiler.ArtifactFiles;
 
 namespace Kimi.Compiler;
 
@@ -20,39 +20,16 @@ internal static class NativeToolchain
         BackendSymbols.Concat(new[] { "__imp_GetProcessHeap", "__imp_HeapAlloc", "__imp_HeapFree", "__imp_GetStdHandle", "__imp_WriteFile", "__imp_GetLastError", "__imp_ExitProcess" }),
         StringComparer.Ordinal);
 
-    internal sealed record Artifacts(string Ir, string Manifest, string Record, string Stem)
-    {
-        internal string Executable => this.Stem + ".exe";
-    }
-
     internal static bool IsToolchainFailure(Exception ex)
         => ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException or Win32Exception or JsonException or KeyNotFoundException or InvalidOperationException;
 
-    internal static Artifacts GetArtifacts(Project project)
-    {
-        if (project.ProjectFile.Optimization is not ("O0" or "O2"))
-        {
-            throw new InvalidDataException("Optimization must be O0 or O2.");
-        }
-
-        var directory = Path.GetFullPath(string.IsNullOrEmpty(project.Directory) ? "." : project.Directory);
-        var ir = ResolvePath(project.ProjectFile.OutputPath ?? Path.Combine("bin", WindowsProfile.Target, project.Name + ".ll"), directory);
-        if (!Path.GetExtension(ir).Equals(".ll", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidDataException("OutputPath must have a .ll extension.");
-        }
-
-        var manifest = Path.ChangeExtension(ir, ".link.json");
-        return new(ir, manifest, Path.ChangeExtension(manifest, ".build.json"), Path.Combine(Path.GetDirectoryName(ir)!, Path.GetFileNameWithoutExtension(ir) + "." + project.ProjectFile.Optimization));
-    }
-
-    internal static void Invalidate(Artifacts paths)
+    internal static void Invalidate(ArtifactPaths paths)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!);
         WriteRecord(paths.Record, new() { ["status"] = "incomplete" });
     }
 
-    internal static async Task Build(Project project, Artifacts paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
+    internal static async Task Build(Project project, ArtifactPaths paths, Action<DiagnosticSeverity, string> report, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -63,7 +40,8 @@ internal static class NativeToolchain
         var manifest = document.RootElement;
         ValidateManifest(manifest);
         var outputDirectory = Path.GetDirectoryName(paths.Ir)!;
-        if (ResolvePath(manifest.GetProperty("irFile").GetString()!, outputDirectory) != paths.Ir || Hash(paths.Ir) != manifest.GetProperty("irSha256").GetString())
+        var irHash = Hash(paths.Ir);
+        if (ResolvePath(manifest.GetProperty("irFile").GetString()!, outputDirectory) != paths.Ir || irHash != manifest.GetProperty("irSha256").GetString())
         {
             throw new InvalidDataException("IR/manifest SHA-256 or path mismatch.");
         }
@@ -81,7 +59,7 @@ internal static class NativeToolchain
         var record = new Dictionary<string, object?>
         {
             ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = WindowsProfile.LlvmVersion,
-            ["tools"] = identities, ["irSha256"] = Hash(paths.Ir), ["optimization"] = project.ProjectFile.Optimization,
+            ["tools"] = identities, ["irSha256"] = irHash, ["optimization"] = project.ProjectFile.Optimization,
         };
         foreach (var name in ToolNames)
         {
@@ -258,7 +236,7 @@ internal static class NativeToolchain
 
     internal static async Task<int> RunProject(Project project, CancellationToken cancellationToken)
     {
-        var paths = GetArtifacts(project);
+        var paths = ArtifactPaths.Create(project);
         if (project.ProjectFile.OutputKind != OutputKind.Application || !File.Exists(paths.Record) || !File.Exists(paths.Executable))
         {
             throw new InvalidDataException("No built Application is available. Run 'kimi build' first.");
@@ -385,22 +363,6 @@ internal static class NativeToolchain
             await process.WaitForExitAsync(CancellationToken.None);
             throw;
         }
-    }
-
-    private static string ResolvePath(string value, string directory)
-    {
-        if (string.IsNullOrWhiteSpace(value) || value.AsSpan().IndexOfAny("\0\r\n\"") >= 0 || value.StartsWith('-'))
-        {
-            throw new InvalidDataException("Invalid artifact/tool/library path.");
-        }
-
-        return Path.GetFullPath(value, directory);
-    }
-
-    private static string Hash(string path)
-    {
-        using var stream = File.OpenRead(path);
-        return Convert.ToHexStringLower(SHA256.HashData(stream));
     }
 
     private static void WriteRecord(string path, Dictionary<string, object?> record)

@@ -18,6 +18,10 @@ public static class WindowsProfile
 
     public static string BackendSha256 { get; }
 
+    internal static string Kernel32DefinitionSha256 { get; }
+
+    internal static string DlltoolSha256 { get; }
+
     static WindowsProfile()
     {
         using var stream = typeof(WindowsProfile).Assembly.GetManifestResourceStream("Kimi.WindowsBackendProfile.json")!;
@@ -38,6 +42,9 @@ public static class WindowsProfile
 
         BackendVersion = CompilerRelease.Version;
         BackendSha256 = root.GetProperty("artifactSha256").GetString()!;
+        var kernel = root.GetProperty("kernel32");
+        Kernel32DefinitionSha256 = kernel.GetProperty("definitionSha256").GetString()!;
+        DlltoolSha256 = kernel.GetProperty("dlltoolSha256").GetString()!;
         var symbols = root.GetProperty("providedSymbols");
         if (symbols.GetArrayLength() != 4 || symbols[0].GetString() != "__chkstk" || symbols[1].GetString() != "memcpy" ||
             symbols[2].GetString() != "memmove" || symbols[3].GetString() != "memset")

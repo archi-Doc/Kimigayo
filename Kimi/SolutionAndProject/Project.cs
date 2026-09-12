@@ -125,8 +125,8 @@ public partial class Project
 
     /// <summary>Checks source semantics without emitting artifacts or invoking native tools.</summary>
     /// <returns>Whether every configured target passes front-end checks.</returns>
-    public async Task<bool> Check()
-        => await this.BuildCore(false).ConfigureAwait(false);
+    public Task<bool> Check()
+        => this.BuildCore(false);
 
     /// <summary>Generates LLVM inputs, verifies them and links a native Application.</summary>
     /// <param name="cancellationToken">Cancels generation and native tool processes.</param>
@@ -135,9 +135,9 @@ public partial class Project
     {
         try
         {
-            var paths = NativeToolchain.GetArtifacts(this);
+            var paths = ArtifactPaths.Create(this);
             NativeToolchain.Invalidate(paths);
-            if (!await this.Generate(cancellationToken).ConfigureAwait(false))
+            if (!await this.BuildCore(true, cancellationToken, paths).ConfigureAwait(false))
             {
                 return false;
             }
@@ -161,13 +161,15 @@ public partial class Project
     /// <summary>Runs front-end checks and publishes checked LLVM/manifest inputs. Does not invoke LLVM, link, or run.</summary>
     /// <param name="cancellationToken">Cancels between compilation targets.</param>
     /// <returns>Whether every configured target published both artifacts.</returns>
-    public async Task<bool> Generate(CancellationToken cancellationToken = default)
-        => await this.BuildCore(true, cancellationToken).ConfigureAwait(false);
+    public Task<bool> Generate(CancellationToken cancellationToken = default)
+        => this.BuildCore(true, cancellationToken);
 
-    private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default)
+    // Retain the Task exception/cancellation contract at the public boundary. Each target
+    // is synchronous; do not build another async state machine around every compilation.
+    private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null)
     {
         this.buildMetadata.Clear();
-        var targets = this.ProjectFile.Targets.ToArray();
+        var targets = this.ProjectFile.Targets;
         if (!string.IsNullOrEmpty(this.KimiOptions.Target))
         {
             if (!targets.Contains(this.KimiOptions.Target, StringComparer.Ordinal))
@@ -189,13 +191,13 @@ public partial class Project
         foreach (var x in targets)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            success &= await this.BuildTarget(x, emit).ConfigureAwait(false);
+            success &= this.BuildTarget(x, emit, paths);
         }
 
         return success;
     }
 
-    private async Task<bool> BuildTarget(string target, bool emit)
+    private bool BuildTarget(string target, bool emit, ArtifactPaths? paths)
     {
         // Create & Prepare Compilation
         var compilation = new Compilation(this.kimigayo, this);
@@ -251,7 +253,7 @@ public partial class Project
             return accepted;
         }
 
-        if (!EmissionArtifacts.Publish(compilation, out var pathIr, out var failure))
+        if (!EmissionArtifacts.Publish(compilation, paths, out var pathIr, out var failure))
         {
             projectKotonoha.DiagnosticCollection.Add(default, DiagnosticCode.GenerationFailed_Kd, failure);
             return false;

@@ -26,7 +26,7 @@ public sealed class Kernel32ImportsTest
         Assert.Equal(definition, Kernel32Imports.Definition);
         var exports = definition.Split('\n', StringSplitOptions.RemoveEmptyEntries).Skip(2).Select(x => x.Trim()).ToHashSet(StringComparer.Ordinal);
         Assert.True(exports.SetEquals(Kernel32Imports.Symbols));
-        var runtime = File.ReadAllText(Path.Combine(repo, "Kimi/Compiler/Emission/WindowsRuntime.ll"));
+        var runtime = File.ReadAllText(Path.Combine(repo, "Kimi/Compiler/Emission/WindowsRuntime.ll.in"));
         foreach (Match match in Regex.Matches(runtime, @"declare dllimport .*?@(\w+)\("))
         {
             Assert.Contains(match.Groups[1].Value, exports);
