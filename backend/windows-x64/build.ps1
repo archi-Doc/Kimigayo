@@ -1,12 +1,12 @@
 [CmdletBinding()]
 param(
     [string] $LlvmBin = '',
-    [Parameter(Mandatory)] [string] $Kernel32,
     [switch] $AllowUnpinnedToolchain
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
 . (Join-Path $PSScriptRoot 'artifact-paths.ps1')
+. (Join-Path $PSScriptRoot 'kernel32.ps1')
 $profile = Read-KimiWindowsProfile
 $expectedVersion = $profile.llvmVersion
 $outDir = Join-Path $PSScriptRoot 'bin'
@@ -14,7 +14,7 @@ New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $reportPath = Join-Path $outDir 'verification.json'
 # Invalidate the previous run before invoking any compiler or executable.
 @{ status = 'incomplete'; adopted = $false } | ConvertTo-Json | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $reportPath -Encoding utf8
-$inputFiles = @($PSCommandPath, (Join-Path $PSScriptRoot 'toolchain.ps1'), (Join-Path $PSScriptRoot 'artifact-paths.ps1'), (Join-Path $PSScriptRoot 'profile.json'), (Join-Path $PSScriptRoot '../../Directory.Build.props')) + @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'src'), (Join-Path $PSScriptRoot 'tests') -File | ForEach-Object { $_.FullName })
+$inputFiles = @($PSCommandPath, (Join-Path $PSScriptRoot 'toolchain.ps1'), (Join-Path $PSScriptRoot 'artifact-paths.ps1'), (Join-Path $PSScriptRoot 'kernel32.ps1'), (Join-Path $PSScriptRoot 'kernel32.def'), (Join-Path $PSScriptRoot 'profile.json'), (Join-Path $PSScriptRoot '../../Directory.Build.props')) + @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'src'), (Join-Path $PSScriptRoot 'tests') -File | ForEach-Object { $_.FullName })
 $sourceIdentities = [ordered]@{}
 foreach ($file in ($inputFiles | Sort-Object -CaseSensitive)) {
     $relative = [IO.Path]::GetRelativePath($PSScriptRoot, $file)
@@ -47,7 +47,12 @@ foreach ($name in $toolNames) {
     }
 }
 @{ status = 'incomplete'; adopted = $false; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = -not $matched; tools = $toolIdentities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $reportPath -Encoding utf8
-$kernelPath = (Resolve-Path -LiteralPath $Kernel32).Path
+$tools['llvm-dlltool'] = Tool 'llvm-dlltool'
+$toolIdentities['llvm-dlltool'] = Get-KimiDlltoolIdentity $tools['llvm-dlltool'] -AllowUnpinnedToolchain:$AllowUnpinnedToolchain
+$unverified = -not $matched -or -not $toolIdentities['llvm-dlltool'].hashMatched
+@{ status = 'incomplete'; adopted = $false; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = $unverified; tools = $toolIdentities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $reportPath -Encoding utf8
+$kernel = New-KimiKernel32Library $tools (Join-Path $outDir 'kernel32.lib')
+$kernelPath = $kernel.path
 $objects = @()
 foreach ($name in @('memcpy', 'memmove', 'memset', 'chkstk')) {
     $obj = Join-Path $outDir "$name.obj"
@@ -109,10 +114,10 @@ foreach ($file in $inputFiles) {
     if ($actual -cne $sourceIdentities[$relative]) { throw "Source changed during verification: $relative" }
 }
 @{
-    status = 'tested-candidate'; adopted = $false; profile = 'windows-x64-v1'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = -not $matched; unversionedTools = @('llvm-lib')
+    status = 'tested-candidate'; adopted = $false; profile = 'windows-x64-v1'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = $unverified; unversionedTools = @('llvm-lib', 'llvm-dlltool')
     packageId = 'kimi-backend-windows-x64'; abiVersion = 1; packageVersion = $profile.packageVersion
     library = 'kimi_backend'; artifactSha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
     providedSymbols = $symbols; tests = @('O0', 'O2'); tools = $toolIdentities; versions = $versions; sources = $sourceIdentities
-    kernel32 = @{ path = $kernelPath; sha256 = (Get-FileHash -LiteralPath $kernelPath -Algorithm SHA256).Hash.ToLowerInvariant() }
+    kernel32 = $kernel
 } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $reportPath -Encoding utf8
 Write-Output "Native tests passed. Candidate report: $reportPath (not an adopted compiler catalog)."

@@ -1,12 +1,12 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $LlvmBin,
-    [Parameter(Mandatory)] [string] $Kernel32,
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Debug'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
 . (Join-Path $PSScriptRoot 'artifact-paths.ps1')
+. (Join-Path $PSScriptRoot 'kernel32.ps1')
 $profile = Read-KimiWindowsProfile
 $expectedVersion = $profile.llvmVersion
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -22,9 +22,14 @@ foreach ($name in @('clang', 'opt', 'llc', 'lld-link', 'llvm-nm', 'llvm-readobj'
     $identities[$name] = Get-KimiLlvmToolIdentity $tools[$name] $expectedVersion
 }
 @{ status = 'incomplete'; llvmVersion = $expectedVersion; reportedVersionsMatched = $true; unverifiedToolchain = $false; tools = $identities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
+$tools['llvm-dlltool'] = Join-Path $LlvmBin 'llvm-dlltool.exe'
+$identities['llvm-dlltool'] = Get-KimiDlltoolIdentity $tools['llvm-dlltool']
+@{ status = 'incomplete'; llvmVersion = $expectedVersion; reportedVersionsMatched = $true; unverifiedToolchain = $false; tools = $identities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
+$kernel = New-KimiKernel32Library $tools (Join-Path $out 'kernel32.lib')
+$Kernel32 = $kernel.path
 $archive = Join-Path $PSScriptRoot 'bin/kimi_backend_windows_x64_v1.lib'
 $candidate = Get-Content (Join-Path $PSScriptRoot 'bin/verification.json') -Raw | ConvertFrom-Json
-if (-not $candidate.reportedVersionsMatched -or $candidate.llvmVersion -cne $expectedVersion -or $candidate.status -cne 'tested-candidate' -or
+if (-not $candidate.reportedVersionsMatched -or $candidate.unverifiedToolchain -or $candidate.llvmVersion -cne $expectedVersion -or $candidate.status -cne 'tested-candidate' -or
     (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $candidate.artifactSha256) { throw 'Run the pinned native backend verification first' }
 function Invoke-Tool([string] $exe, [string[]] $arguments) {
     & $exe @arguments
@@ -137,5 +142,5 @@ foreach ($level in @('O0', 'O2')) {
         $testResults += "runtime.$mode.$level"
     }
 }
-@{ status = 'passed'; compilerConfiguration = $Configuration; llvmVersion = $expectedVersion; reportedVersionsMatched = $true; unverifiedToolchain = $false; tools = $identities; archiveSha256 = $candidate.artifactSha256; tests = $testResults } | ConvertTo-Json -Depth 5 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
+@{ status = 'passed'; compilerConfiguration = $Configuration; llvmVersion = $expectedVersion; reportedVersionsMatched = $true; unverifiedToolchain = $false; tools = $identities; kernel32 = $kernel; archiveSha256 = $candidate.artifactSha256; tests = $testResults } | ConvertTo-Json -Depth 5 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
 Write-Output "Passed $($testResults.Count) native executions ($Configuration): $report"

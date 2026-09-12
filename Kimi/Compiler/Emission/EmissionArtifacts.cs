@@ -49,7 +49,6 @@ public static class EmissionArtifacts
 
             var manifest = Path.ChangeExtension(destination, ".link.json");
             var outputDirectory = Path.GetDirectoryName(destination)!;
-            var kernel = new NativeLibraryInput { Input = "kernel32.lib" };
             var backend = new NativeLibraryInput { Kind = "static", Input = WindowsProfile.BackendFile };
             if (settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries))
             {
@@ -73,7 +72,7 @@ public static class EmissionArtifacts
 
                     if (name == "kernel32")
                     {
-                        kernel = library;
+                        throw new InvalidDataException("kernel32 is generated automatically. Remove the kernel32 entry from NativeLibraries.");
                     }
                     else if (name == "kimi_backend")
                     {
@@ -82,9 +81,9 @@ public static class EmissionArtifacts
                 }
             }
 
-            if (kernel.Kind != "import" || backend.Kind != "static")
+            if (backend.Kind != "static")
             {
-                throw new InvalidDataException("kernel32 must be import and kimi_backend must be static.");
+                throw new InvalidDataException("kimi_backend must be static.");
             }
 
             if (HasDirectory(backend.Input))
@@ -117,7 +116,7 @@ public static class EmissionArtifacts
             using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
             {
                 json.WriteStartObject();
-                json.WriteNumber("schemaVersion", 1);
+                json.WriteNumber("schemaVersion", 2);
                 json.WriteString("target", WindowsProfile.Target);
                 json.WriteStartObject("codegen");
                 json.WriteString("profile", WindowsProfile.Name);
@@ -150,7 +149,13 @@ public static class EmissionArtifacts
                 json.WriteString("entry", "__kimi_start");
                 json.WriteString("subsystem", "console");
                 json.WriteStartArray("libraries");
-                WriteLibrary(json, "kernel32", kernel, directory, outputDirectory);
+                json.WriteStartObject();
+                json.WriteString("name", "kernel32");
+                json.WriteString("kind", "import");
+                json.WriteString("generator", Kernel32Imports.Generator);
+                json.WriteString("dll", Kernel32Imports.Dll);
+                json.WriteString("definitionSha256", Kernel32Imports.DefinitionSha256);
+                json.WriteEndObject();
                 WriteLibrary(json, "kimi_backend", backend, directory, outputDirectory);
                 json.WriteEndArray();
                 json.WriteStartArray("providedRuntimeSymbols");

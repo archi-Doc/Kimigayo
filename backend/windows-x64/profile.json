@@ -5,5 +5,14 @@
   "llvmVersion": "22.1.8",
   "library": "kimi_backend",
   "artifactSha256": "30e6940ecb13b6ca0634d8b99e8596b0d1680aa6bae141adb012721c410401cd",
-  "providedSymbols": ["__chkstk", "memcpy", "memmove", "memset"]
+  "providedSymbols": [
+    "__chkstk",
+    "memcpy",
+    "memmove",
+    "memset"
+  ],
+  "kernel32": {
+    "definitionSha256": "d08872d05e6cd023889982a412ac8fa7e78f056805cd84d3daf8db459a0f494e",
+    "dlltoolSha256": "3733b6d47353a29f18b0e543675d83c525655a7cdfa3fb9c06cfc5d4a1a4fdfc"
+  }
 }

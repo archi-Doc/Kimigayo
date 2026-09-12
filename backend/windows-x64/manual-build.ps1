@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
 . (Join-Path $PSScriptRoot 'artifact-paths.ps1')
+. (Join-Path $PSScriptRoot 'kernel32.ps1')
 $catalog = Read-KimiWindowsProfile
 $expectedVersion = $catalog.llvmVersion
 $manifestPath = (Resolve-Path -LiteralPath $Manifest).Path
@@ -24,7 +25,8 @@ function Resolve-Input([string] $inputName) {
     # Simple linker search names require an explicit local file; never guess SDK installation paths.
     return (Resolve-Path -LiteralPath ([IO.Path]::GetFullPath($inputName, $directory))).Path
 }
-if ($data.schemaVersion -ne 1 -or $data.target -cne 'x86_64-pc-windows-msvc' -or
+if ($data.schemaVersion -ne 2) { throw 'Link manifest schema 2 is required. Re-emit the manifest for generated kernel32 imports.' }
+if ($data.target -cne 'x86_64-pc-windows-msvc' -or
     $data.outputKind -cne 'Application' -or $data.entry -cne '__kimi_start' -or $data.subsystem -cne 'console' -or
     $data.codegen.profile -cne 'windows-x64-v1' -or $data.codegen.llvmVersion -cne $expectedVersion -or
     $data.codegen.cpu -cne 'x86-64' -or ($data.codegen.features -join ',') -cne '+sse2' -or
@@ -48,6 +50,10 @@ foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-nm', 'llvm-readobj')) {
     $identities[$name] = $identity
 }
 @{ status = 'incomplete'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = -not $matched; tools = $identities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $recordPath -Encoding utf8
+$tools['llvm-dlltool'] = Join-Path $LlvmBin 'llvm-dlltool.exe'
+$identities['llvm-dlltool'] = Get-KimiDlltoolIdentity $tools['llvm-dlltool'] -AllowUnpinnedToolchain:$AllowUnpinnedToolchain
+$unverified = -not $matched -or -not $identities['llvm-dlltool'].hashMatched
+@{ status = 'incomplete'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = $unverified; tools = $identities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $recordPath -Encoding utf8
 $ir = Resolve-Input $data.irFile
 $irHash = (Get-FileHash -LiteralPath $ir -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($irHash -cne $data.irSha256) { throw 'IR/manifest SHA-256 mismatch; do not use mixed or stale outputs' }
@@ -65,7 +71,12 @@ $seen = @{}
 foreach ($entry in $data.libraries) {
     if ($seen.ContainsKey($entry.name) -or $entry.kind -cnotin @('import', 'static')) { throw 'Invalid/duplicate library entry' }
     $seen[$entry.name] = $true
-    $path = Resolve-Input $entry.input
+    if ($entry.name -ceq 'kernel32') {
+        Assert-KimiKernel32Manifest $entry
+        $kernel = New-KimiKernel32Library $tools (Join-Path $directory ([IO.Path]::GetFileNameWithoutExtension($ir) + ".$($data.codegen.optimization).kernel32.lib"))
+        $path = $kernel.path
+    }
+    else { $path = Resolve-Input $entry.input }
     $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($entry.name -ceq 'kimi_backend' -and ($entry.kind -cne 'static' -or $hash -cne $support.artifactSha256)) { throw 'Backend archive SHA-256/kind mismatch' }
     if ($entry.name -ceq 'kernel32' -and $entry.kind -cne 'import') { throw 'kernel32 must be an import library' }
@@ -98,7 +109,7 @@ if ($LASTEXITCODE -ne 0 -or $inspection -notmatch 'RuntimeFunction' -or $inspect
 $inspection | ConvertTo-KimiArtifactText | Set-Content -LiteralPath "$stem.inspection.txt" -Encoding utf8
 $exe = "$stem.exe"
 Invoke-Tool $tools['lld-link'] (@($obj) + $libraries + @('/entry:__kimi_start', '/subsystem:console', '/nodefaultlib', '/Brepro', "/out:$exe"))
-$record = @{ status = 'linked'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = -not $matched; irSha256 = $irHash; tools = $identities; libraries = $libraryIdentities; optimization = $level; executable = $exe; objectUndefinedSymbols = $undefined.Trim(); executableSha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() }
+$record = @{ status = 'linked'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = $unverified; irSha256 = $irHash; tools = $identities; libraries = $libraryIdentities; kernel32 = $kernel; optimization = $level; executable = $exe; objectUndefinedSymbols = $undefined.Trim(); executableSha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() }
 if ($Run) {
     & $exe
     $record.exitCode = $LASTEXITCODE

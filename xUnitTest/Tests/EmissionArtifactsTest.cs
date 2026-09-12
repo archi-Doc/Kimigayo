@@ -24,7 +24,6 @@ public sealed class EmissionArtifactsTest : IDisposable
         c.Project.ProjectFile.LlvmBin = "tools/LLVM bin";
         c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new(StringComparer.Ordinal)
         {
-            ["kernel32"] = new() { Input = "sdk/kernel32.lib" },
             ["unused"] = new() { Input = "unused.lib" },
         };
         Assert.True(EmissionArtifacts.Publish(c, out var path, out var error), error);
@@ -40,7 +39,10 @@ public sealed class EmissionArtifactsTest : IDisposable
         var libraries = root.GetProperty("libraries");
         Assert.Equal(2, libraries.GetArrayLength());
         Assert.Equal("kernel32", libraries[0].GetProperty("name").GetString());
-        Assert.Equal(Path.Combine("..", "sdk", "kernel32.lib"), libraries[0].GetProperty("input").GetString());
+        Assert.Equal(2, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal("llvm-dlltool", libraries[0].GetProperty("generator").GetString());
+        Assert.Equal(Kernel32Imports.DefinitionSha256, libraries[0].GetProperty("definitionSha256").GetString());
+        Assert.False(libraries[0].TryGetProperty("input", out _));
         Assert.Equal("kimi_backend", libraries[1].GetProperty("name").GetString());
         Assert.Equal(Path.Combine("..", "tools", "LLVM bin"), root.GetProperty("toolchain").GetProperty("llvmBin").GetString());
         Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(path!)!, "*.tmp"));
@@ -79,6 +81,19 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.False(EmissionArtifacts.Publish(c, out var path, out var error));
         Assert.Null(path);
         Assert.NotNull(error);
+    }
+
+    [Fact]
+    public void ExplicitKernel32PathRequiresMigration()
+    {
+        var c = this.Create();
+        c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new(StringComparer.Ordinal)
+        {
+            ["kernel32"] = new() { Kind = "import", Input = "sdk/kernel32.lib" },
+        };
+        Assert.False(EmissionArtifacts.Publish(c, out _, out var error));
+        Assert.Contains("Remove the kernel32 entry", error);
+        Assert.False(Directory.Exists(Path.Combine(this.directory, "out")));
     }
 
     [Fact]

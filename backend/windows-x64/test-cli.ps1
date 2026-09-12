@@ -1,7 +1,6 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $LlvmBin,
-    [Parameter(Mandatory)] [string] $Kernel32,
     [string] $MismatchedLlvmBin = '',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release'
 )
@@ -17,7 +16,6 @@ $report = Join-Path $work 'verification.json'
 @{ status = 'incomplete' } | ConvertTo-Json | Set-Content -LiteralPath $report
 function Write-Project([string] $Level, [string] $Bin) {
     $binPath = $Bin.Replace('\', '/')
-    $kernelPath = [IO.Path]::GetFullPath($Kernel32).Replace('\', '/')
     $archivePath = [IO.Path]::GetFullPath($archive).Replace('\', '/')
     @"
 Targets=
@@ -27,9 +25,6 @@ Optimization="$Level"
 LlvmBin="$binPath"
 NativeLibraries=
   x86_64-pc-windows-msvc=
-    kernel32=
-      Kind="import"
-      Input="$kernelPath"
     kimi_backend=
       Kind="static"
       Input="$archivePath"
@@ -68,6 +63,8 @@ foreach ($level in @('O0', 'O2')) {
     if ($output -match '(?m)^Hello, world!') { throw 'Build executed the Application' }
     $record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
     if ($record.status -cne 'linked' -or -not $record.reportedVersionsMatched -or $record.unverifiedToolchain) { throw 'Invalid successful build record' }
+    if ($record.kernel32.generator -cne 'llvm-dlltool' -or -not $record.tools.'llvm-dlltool'.hashMatched -or
+        $record.kernel32.sha256 -cne (Get-FileHash (Join-Path (Split-Path $ir) "Hello.$level.kernel32.lib")).Hash.ToLowerInvariant()) { throw 'Missing generated import identity' }
     $exe = Join-Path (Split-Path $ir) "Hello.$level.exe"
     $hash = (Get-FileHash $exe).Hash
     $before = (Get-Item $recordPath).LastWriteTimeUtc
@@ -92,6 +89,22 @@ if ($MismatchedLlvmBin) {
     if (-not $record.unverifiedToolchain -or -not $output.Contains('unverified toolchain')) { throw 'Exploratory mode must warn and record actual versions' }
 }
 # A separate tiny executable verifies that run forwards the child's nonzero exit code.
+# Missing/hash-mismatched dlltool must invalidate success and must never reuse a stale import library.
+$incompleteTools = Join-Path $work 'incomplete tools'
+New-Item -ItemType Directory -Path $incompleteTools | Out-Null
+foreach ($name in @('opt','llc','lld-link','llvm-nm','llvm-readobj')) {
+    Copy-Item -LiteralPath (Join-Path $LlvmBin "$name.exe") -Destination (Join-Path $incompleteTools "$name.exe")
+}
+$output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools) 1
+$output = Invoke-Kimi @('run', $project) 1
+Copy-Item -LiteralPath (Join-Path $LlvmBin 'llvm-readobj.exe') -Destination (Join-Path $incompleteTools 'llvm-dlltool.exe')
+$output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools) 1
+if (-not $output.Contains('SHA-256 mismatch')) { throw 'Missing dlltool identity diagnostic' }
+$output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools, '--AllowUnpinnedToolchain', 'true') 1
+$output = Invoke-Kimi @('run', $project) 1
+$output = Invoke-Kimi @('build', $project, '--LlvmBin', $LlvmBin)
+foreach ($name in @('opt','llc','lld-link','llvm-nm','llvm-readobj','llvm-dlltool')) { Remove-Item -LiteralPath (Join-Path $incompleteTools "$name.exe") -Force }
+Remove-Item -LiteralPath $incompleteTools -Force
 $exitIr = Join-Path $work 'exit.ll'
 @'
 target triple = "x86_64-pc-windows-msvc"
@@ -103,7 +116,8 @@ define void @entry() noreturn {
 '@ | Set-Content -LiteralPath $exitIr -Encoding utf8
 & (Join-Path $LlvmBin 'llc.exe') -filetype=obj $exitIr -o "$exitIr.obj"
 if ($LASTEXITCODE -ne 0) { throw 'Exit fixture object generation failed' }
-& (Join-Path $LlvmBin 'lld-link.exe') "$exitIr.obj" $Kernel32 /entry:entry /subsystem:console /nodefaultlib "/out:$exitIr.exe"
+$kernel32 = Join-Path (Split-Path $ir) 'Hello.O2.kernel32.lib'
+& (Join-Path $LlvmBin 'lld-link.exe') "$exitIr.obj" $kernel32 /entry:entry /subsystem:console /nodefaultlib "/out:$exitIr.exe"
 if ($LASTEXITCODE -ne 0) { throw 'Exit fixture link failed' }
 $output = Invoke-Kimi @('run', "$exitIr.exe") 37
 $output = Invoke-Kimi @('run', (Join-Path $work 'missing.exe')) 1

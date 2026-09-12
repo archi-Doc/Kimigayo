@@ -33,7 +33,7 @@ public partial record class ProjectFile
     /// <summary>Gets or sets the project-relative LLVM bin directory used by build and recorded by emit-llvm.</summary>
     public string? LlvmBin { get; set; }
 
-    /// <summary>Gets or sets target-specific logical library mappings, including explicit kernel32 and kimi_backend paths.</summary>
+    /// <summary>Gets or sets target-specific logical library mappings. kernel32 is generated; kimi_backend accepts an explicit path.</summary>
     public Dictionary<string, Dictionary<string, NativeLibraryInput>> NativeLibraries { get; set; } = new(StringComparer.Ordinal);
 
     /// <summary>Gets or sets explicitly typed compile-time scalar settings.</summary>

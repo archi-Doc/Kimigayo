@@ -20,6 +20,15 @@ function Expect-Failure([object] $data, [string] $bin, [string] $message, [switc
 }
 try {
     $data = $original | ConvertFrom-Json
+    $data.schemaVersion = 1
+    Expect-Failure $data $LlvmBin 'schema 2 is required'
+    $data = $original | ConvertFrom-Json
+    ($data.libraries | Where-Object name -CEQ 'kernel32').definitionSha256 = '0' * 64
+    Expect-Failure $data $LlvmBin 'Invalid generated kernel32 identity'
+    $data = $original | ConvertFrom-Json
+    ($data.libraries | Where-Object name -CEQ 'kernel32') | Add-Member -NotePropertyName input -NotePropertyValue 'kernel32.lib'
+    Expect-Failure $data $LlvmBin 'Invalid generated kernel32 identity'
+    $data = $original | ConvertFrom-Json
     $data.irSha256 = '0' * 64
     Expect-Failure $data $LlvmBin 'IR/manifest SHA-256 mismatch'
     $data = $original | ConvertFrom-Json

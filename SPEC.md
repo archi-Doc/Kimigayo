@@ -7172,7 +7172,9 @@ Generation success certifies the matched IR/manifest pair, not LLVM acceptance, 
 
 Each Ordinal logical key maps to `kind` (import or static) and one .lib `input`, never a DLL file. Import produces dllimport declarations; static does not. A simple filename is a linker search name, a relative path with separators is project-relative, and an absolute path is unchanged. Diagnose empty/NUL values or embedded linker options; never execute these strings as commands.
 
-Reserve kernel32 = import/kernel32.lib and kimi_backend = static/kimi_backend_windows_x64_v1.lib. Explicit paths may select the designated profile supplies, not arbitrary replacements. Other keys require configuration; do not guess .lib names from DLL names.
+Reserve kernel32 as an automatically generated import library and kimi_backend = static/kimi_backend_windows_x64_v1.lib. A kernel32 entry in NativeLibraries is an error with a diagnostic instructing removal; no SDK kernel32.lib or user-provided replacement is used. Other keys require configuration; do not guess .lib names from DLL names. Explicit backend paths must select the adopted supply.
+
+The compiler embeds the project-owned backend/windows-x64/kernel32.def. It contains KERNEL32.dll and the seven runtime APIs in §22.5.6 plus VirtualAlloc, VirtualProtect and VirtualFree for backend tests. Normalize the definition to UTF-8 without BOM, LF line endings and one terminal newline; verify its SHA-256 against profile.json. During native build, materialize the definition in a fresh staging directory and invoke `llvm-dlltool -m i386:x86-64 -d kernel32.def -l kernel32.lib`. Verify the generated DLL name, x64 COFF formats and exact public/__imp_ symbol set before publishing and linking the library. The runtime still uses the OS-provided KERNEL32.dll. Additional kernel32 imports require a reviewed definition/profile update; the current library is not a replacement for the entire SDK export surface.
 
 Static libraries must not depend on CRT startup, automatic C/C++ dynamic initialization, custom TLS initialization/termination, or automatic atexit handlers. Zero-initialized and constant data are allowed. Code needing such startup/termination needs a supported adapter first. DLL initialization follows §22.2.3. These are supplier/user connection contracts: a .lib filename and /NODEFAULTLIB do not establish or perform initialization.
 
@@ -7182,7 +7184,7 @@ Replace OutputPath's extension with .link.json in the same directory and write U
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "target": "x86_64-pc-windows-msvc",
   "codegen": {
     "profile": "windows-x64-v1",
@@ -7208,7 +7210,7 @@ Replace OutputPath's extension with .link.json in the same directory and write U
   "entry": "__kimi_start",
   "subsystem": "console",
   "libraries": [
-    { "name": "kernel32", "kind": "import", "input": "kernel32.lib" },
+    { "name": "kernel32", "kind": "import", "generator": "llvm-dlltool", "dll": "KERNEL32.dll", "definitionSha256": "<64 hex digits for the normalized definition>" },
     { "name": "kimi_backend", "kind": "static", "input": "kimi_backend_windows_x64_v1.lib" },
     { "name": "observer", "kind": "import", "input": "observer.lib" }
   ],
@@ -7227,11 +7229,12 @@ Hashes must be actual SHA-256 values. packageVersion is supplied by Directory.Bu
 - backendSupport comes from the adopted catalog. Its library references a static libraries entry; ABI/version/symbols must agree. Manual builds verify the actual .lib hash before use.
 - providedRuntimeSymbols lists generated backend definitions, always _fltused, not ordinary __kimi_ helpers. expectedUndefinedSymbols lists backend references anticipated at generation, with a known provider in libraries. Verify backend symbols against backendSupport.providedSymbols; unknown providers for known dependencies fail generation.
 - Sort both symbol arrays by Ordinal symbol name, without duplicates or overlap. They are not the final object's undefined-symbol list; even an empty list cannot promise no later dependency. LibraryImport/Windows inputs are recorded in libraries.
-- Manual build records retain the actual SDK/library files, versions/content identities, and tool settings selected by linker search.
+- Generated kernel32 entries have no input path. Validate the generator, DLL and definition hash against the embedded profile; reject substitutions, extra input paths and schema 1 manifests with a re-emission diagnostic. emit-llvm still requires no native tools and publishes no import library.
+- Build records retain actual library hashes, generator/tool identities, normalized definition hashes and tool settings. Each project/optimization writes its own .kernel32.def/.kernel32.lib. Generate into a fresh staging directory, publish only after validation, and fail without linking stale libraries if generation fails. Never embed absolute build paths in the generated library; redact local report paths.
 
 Complete both temporary outputs before publication, publish the manifest last, and report success only after both are published. A partial publication is failure; old files are not evidence of current success. Consumers check irSha256 because interruption can leave a mixed pair. Success reports both paths, purpose (Application input or Library inspection), entry, and required link inputs.
 
-When LlvmBin is configured, the manifest may additionally contain `"toolchain": { "llvmBin": "<manifest-relative directory>" }`. Resolve a relative setting from the project directory. This is a local build-tool location, not part of the code-generation profile or evidence of a tool's version. A build command or separately invoked builder may override the location, but must still check the actual tool versions under §20.8.5; a directory name or configured path cannot certify version compatibility. Native library files remain configured separately through NativeLibraries.
+When LlvmBin is configured, the manifest may additionally contain `"toolchain": { "llvmBin": "<manifest-relative directory>" }`. Resolve a relative setting from the project directory. This is a local build-tool location, not part of the code-generation profile or evidence of a tool's version. A build command or separately invoked builder may override the location, but must still check the actual tool versions under §20.8.5; a directory name or configured path cannot certify version compatibility. External native library files remain configured separately through NativeLibraries; kernel32 is generated from the embedded definition.
 
 ##### 20.8.4. Manual toolchain example
 
@@ -7240,6 +7243,7 @@ With LLVM 22.1.8 and all manifest inputs resolved, including a verified backend 
 ```powershell
 opt -S -passes="default<O2>" -mtriple=x86_64-pc-windows-msvc ProjectName.ll -o ProjectName.opt.ll
 llc -O2 -filetype=obj -mtriple=x86_64-pc-windows-msvc -mcpu=x86-64 -mattr=+sse2 -relocation-model=pic -code-model=small ProjectName.opt.ll -o ProjectName.obj
+llvm-dlltool -m i386:x86-64 -d kernel32.def -l kernel32.lib
 lld-link ProjectName.obj kernel32.lib kimi_backend_windows_x64_v1.lib /entry:__kimi_start /subsystem:console /nodefaultlib /debug /out:Application.exe
 .\Application.exe
 ```
@@ -7252,7 +7256,7 @@ Before adopting a profile, validate it with the pinned LLVM version; another ver
 
 The expected LLVM release has one machine-readable source: `backend/windows-x64/profile.json`, currently 22.1.8. The compiler embeds this catalog, exposes its version through WindowsProfile.LlvmVersion, and writes it as codegen.llvmVersion. Native build and verification scripts read the same catalog; do not duplicate the expected version in executable code. This value describes the intended profile, not a detected installation. Parsing, semantic analysis and IR/manifest generation neither execute LLVM nor require it to be installed.
 
-Immediately before native toolchain work, check every selected version-reporting tool's actual `--version` output. Compare the full release version, including patch level; newer versions are not implicitly supported, and development/prerelease suffixes do not match the release. Parse a recognized tool version banner, not an arbitrary occurrence of the expected number. Missing tools, failed probes, and absent or ambiguous version information are errors even in exploratory mode. Diagnostics identify the tool path, expected version, and actual version or probe failure. The versionless llvm-lib exception remains explicit: retain its executable path/hash and record it as unversioned, never invent a matching version.
+Immediately before native toolchain work, check every selected version-reporting tool's actual `--version` output. Compare the full release version, including patch level; newer versions are not implicitly supported, and development/prerelease suffixes do not match the release. Parse a recognized tool version banner, not an arbitrary occurrence of the expected number. Missing tools, failed probes, and absent or ambiguous version information are errors even in exploratory mode. Diagnostics identify the tool path, expected version, and actual version or probe failure. The versionless llvm-lib exception remains explicit: retain its executable path/hash and record it as unversioned, never invent a matching version. llvm-dlltool also has no version banner: compare its executable SHA-256 against profile.json kernel32.dlltoolSha256 before invocation. Record expectedSha256, sha256 and hashMatched without fabricating actualVersion. An explicit exploratory override permits a different hash with a warning and unverifiedToolchain=true; it does not bypass definition or generated-library validation. reportedVersionsMatched describes only version-reporting tools.
 
 Normal native builds fail on a mismatch before IR verification, optimization, object generation or linking. `kimi build --AllowUnpinnedToolchain true` and the separately invoked manual/backend builders' `-AllowUnpinnedToolchain` permit exploratory work only. Each mismatched tool then produces a visible warning and may continue through the ordinary verification/build steps. This option does not override manifest/profile mismatches, IR/archive hashes, ABI contracts, dependency checks or other errors. Adoption and generated-module profile verification still require matching tools and cannot use this override.
 
