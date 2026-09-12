@@ -33,6 +33,9 @@ public sealed class EmissionArtifactsTest : IDisposable
         var root = manifest.RootElement;
         Assert.Equal(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path!))), root.GetProperty("irSha256").GetString());
         Assert.Equal("Hello.ll", root.GetProperty("irFile").GetString());
+        using var catalog = JsonDocument.Parse(File.ReadAllBytes(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../backend/windows-x64/profile.json"))));
+        Assert.Equal(catalog.RootElement.GetProperty("llvmVersion").GetString(), WindowsProfile.LlvmVersion);
+        Assert.Equal(WindowsProfile.LlvmVersion, root.GetProperty("codegen").GetProperty("llvmVersion").GetString());
         Assert.Equal(WindowsProfile.BackendSha256, root.GetProperty("backendSupport").GetProperty("artifactSha256").GetString());
         var libraries = root.GetProperty("libraries");
         Assert.Equal(2, libraries.GetArrayLength());
@@ -122,7 +125,7 @@ public sealed class EmissionArtifactsTest : IDisposable
     {
         var c = this.Create();
         c.Project.AddSource("Hello.kimi", "::Core.writeLine(\"Hello, world!\")");
-        Assert.True(await c.Project.Generate());
+        Assert.True(await c.Project.Generate(TestContext.Current.CancellationToken));
         Assert.True(File.Exists(Path.Combine(this.directory, "out", "Hello.link.json")));
     }
 
@@ -132,9 +135,9 @@ public sealed class EmissionArtifactsTest : IDisposable
         var c = this.Create();
         c.Project.AddSource("Hello.kimi", "::Core.writeLine(\"Hello, world!\")");
         c.Project.ProjectFile.Optimization = "O3";
-        Assert.False(await c.Project.Generate());
+        Assert.False(await c.Project.Generate(TestContext.Current.CancellationToken));
         c.Project.ProjectFile.Optimization = "O2";
-        Assert.True(await c.Project.Generate());
+        Assert.True(await c.Project.Generate(TestContext.Current.CancellationToken));
     }
 
     [Fact]

@@ -1,12 +1,14 @@
-# Windows x64 backend 1.0.0
+# Windows x64 backend
 
-The supply catalog is `profile.json`, embedded by the compiler and read by the manual builder. Its four-symbol native COFF archive is adopted for windows-x64-v1 / LLVM 22.1.8 with SHA-256:
+The supply catalog is `profile.json`, embedded by the compiler and read by the builders. Its package release follows `Directory.Build.props` Version (currently 0.1.0), shared with Kimigayo; ABI version 1 and LLVM 22.1.8 are independent. Its four-symbol native COFF archive is adopted for windows-x64-v1 with SHA-256:
 
 ```text
-74f87661ca1493fedd9d688df5e64f1346ddf9190a12db2f1b012b2f509b500c
+30e6940ecb13b6ca0634d8b99e8596b0d1680aa6bae141adb012721c410401cd
 ```
 
-Two builds with the pinned toolchain reproduced this hash. `build.ps1` still reports a *tested candidate*: a local rebuild is not authority to change the catalog. Select the existing adopted archive by its actual hash. Replacing it requires new review/verification and an immutable new package version.
+The current archive removes absolute checkout paths from member names by passing only object filenames to llvm-lib. All four COFF member files are byte-identical to the earlier inputs; only the archive container names changed. Two builds with the pinned toolchain reproduced the new hash. Native O0/O2 and generated Debug/Release execution checks were repeated. The former archive hash was `74f87661ca1493fedd9d688df5e64f1346ddf9190a12db2f1b012b2f509b500c` and depended on the build location. There is no separate backend release counter.
+
+`build.ps1` still reports a *tested candidate*: a local rebuild is not authority to change the catalog. Select the existing adopted archive by its actual hash. Replacing it requires new review/verification and an immutable new package version.
 
 ## Review and evidence
 

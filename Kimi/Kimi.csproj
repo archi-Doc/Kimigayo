@@ -16,6 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <AssemblyMetadata Include="KimigayoVersion" Value="$(Version)" />
     <None Remove="Misc\Language\strings-en.tinyhand" />
     <None Remove="Misc\Language\strings-ja.tinyhand" />
   </ItemGroup>

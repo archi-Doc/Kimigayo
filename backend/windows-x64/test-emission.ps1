@@ -5,21 +5,26 @@ param(
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Debug'
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'toolchain.ps1')
+. (Join-Path $PSScriptRoot 'artifact-paths.ps1')
+$profile = Read-KimiWindowsProfile
+$expectedVersion = $profile.llvmVersion
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $fixtures = Join-Path $repo "bin/emission-fixtures/$Configuration"
 $out = Join-Path $repo "bin/emission-native/$Configuration"
 New-Item -ItemType Directory -Force $out | Out-Null
 $report = Join-Path $out 'verification.json'
-@{ status = 'incomplete' } | ConvertTo-Json | Set-Content -LiteralPath $report -Encoding utf8
+@{ status = 'incomplete' } | ConvertTo-Json | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
 $tools = @{}
+$identities = @{}
 foreach ($name in @('clang', 'opt', 'llc', 'lld-link', 'llvm-nm', 'llvm-readobj')) {
     $tools[$name] = Join-Path $LlvmBin "$name.exe"
-    $version = & $tools[$name] --version | Out-String
-    if ($LASTEXITCODE -ne 0 -or $version -notmatch '(?<!\d)22\.1\.8(?!\d)') { throw "$name must be LLVM 22.1.8" }
+    $identities[$name] = Get-KimiLlvmToolIdentity $tools[$name] $expectedVersion
 }
+@{ status = 'incomplete'; llvmVersion = $expectedVersion; reportedVersionsMatched = $true; unverifiedToolchain = $false; tools = $identities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
 $archive = Join-Path $PSScriptRoot 'bin/kimi_backend_windows_x64_v1.lib'
 $candidate = Get-Content (Join-Path $PSScriptRoot 'bin/verification.json') -Raw | ConvertFrom-Json
-if (-not $candidate.reportedVersionsMatched -or $candidate.status -cne 'tested-candidate' -or
+if (-not $candidate.reportedVersionsMatched -or $candidate.llvmVersion -cne $expectedVersion -or $candidate.status -cne 'tested-candidate' -or
     (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $candidate.artifactSha256) { throw 'Run the pinned native backend verification first' }
 function Invoke-Tool([string] $exe, [string[]] $arguments) {
     & $exe @arguments
@@ -30,16 +35,17 @@ function Compile-Ir([string] $ir, [string] $stem, [string] $level) {
     if ($level -eq 'O2') {
         $optimized = "$stem.ll"
         Invoke-Tool $tools.opt @('-S', '-passes=default<O2>', $ir, '-o', $optimized)
+        Protect-KimiLlvmPaths $optimized
         Invoke-Tool $tools.opt @('-passes=verify', '-disable-output', $optimized)
         $ir = $optimized
     }
-    Invoke-Tool $tools.llc @("-$level", '-filetype=obj', '-mtriple=x86_64-pc-windows-msvc', '-mcpu=x86-64', '-mattr=+sse2', '-relocation-model=pic', '-code-model=small', $ir, '-o', "$stem.obj")
+    Invoke-KimiLlvmOutput $tools.llc @("-$level", '-filetype=obj', '-mtriple=x86_64-pc-windows-msvc', '-mcpu=x86-64', '-mattr=+sse2', '-relocation-model=pic', '-code-model=small', $ir) "$stem.obj"
     $undefined = & $tools['llvm-nm'] --undefined-only --format=posix "$stem.obj" | Out-String
     if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect dependencies' }
-    $undefined | Set-Content -LiteralPath "$stem.undefined.txt" -Encoding utf8
+    $undefined | ConvertTo-KimiArtifactText | Set-Content -LiteralPath "$stem.undefined.txt" -Encoding utf8
     $unwind = & $tools['llvm-readobj'] --unwind --coff-directives "$stem.obj" | Out-String
     if ($LASTEXITCODE -ne 0 -or $unwind -notmatch 'RuntimeFunction' -or $unwind -match '(?i)DEFAULTLIB') { throw 'Invalid unwind/CRT dependency' }
-    $unwind | Set-Content -LiteralPath "$stem.unwind.txt" -Encoding utf8
+    $unwind | ConvertTo-KimiArtifactText | Set-Content -LiteralPath "$stem.unwind.txt" -Encoding utf8
 }
 function Execute([string] $exe, [byte[]] $stdout) {
     $start = [Diagnostics.ProcessStartInfo]::new($exe)
@@ -131,5 +137,5 @@ foreach ($level in @('O0', 'O2')) {
         $testResults += "runtime.$mode.$level"
     }
 }
-@{ status = 'passed'; compilerConfiguration = $Configuration; llvmVersion = '22.1.8'; archiveSha256 = $candidate.artifactSha256; tests = $testResults } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $report -Encoding utf8
+@{ status = 'passed'; compilerConfiguration = $Configuration; llvmVersion = $expectedVersion; reportedVersionsMatched = $true; unverifiedToolchain = $false; tools = $identities; archiveSha256 = $candidate.artifactSha256; tests = $testResults } | ConvertTo-Json -Depth 5 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $report -Encoding utf8
 Write-Output "Passed $($testResults.Count) native executions ($Configuration): $report"

@@ -123,29 +123,72 @@ public partial class Project
         this.kimiFiles.Add(path);
     }
 
-    /// <summary>Builds this project once for each configured target triple.</summary>
-    /// <returns>A task that completes after all configured targets have been attempted.</returns>
-    public async Task<bool> Build()
+    /// <summary>Checks source semantics without emitting artifacts or invoking native tools.</summary>
+    /// <returns>Whether every configured target passes front-end checks.</returns>
+    public async Task<bool> Check()
         => await this.BuildCore(false).ConfigureAwait(false);
 
-    /// <summary>Runs front-end checks and publishes checked LLVM/manifest inputs. Does not invoke LLVM, link, or run.</summary>
-    /// <returns>Whether every configured target published both artifacts.</returns>
-    public async Task<bool> Generate()
-        => await this.BuildCore(true).ConfigureAwait(false);
+    /// <summary>Generates LLVM inputs, verifies them and links a native Application.</summary>
+    /// <param name="cancellationToken">Cancels generation and native tool processes.</param>
+    /// <returns>Whether a new native executable was built successfully.</returns>
+    public async Task<bool> Build(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var paths = NativeToolchain.GetArtifacts(this);
+            NativeToolchain.Invalidate(paths);
+            if (!await this.Generate(cancellationToken).ConfigureAwait(false))
+            {
+                return false;
+            }
 
-    private async Task<bool> BuildCore(bool emit)
+            await NativeToolchain.Build(this, paths, (severity, message) => this.kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
+        {
+            this.kimigayo.WriteLine(DiagnosticSeverity.Error, ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>Executes the last successfully built Application without rebuilding.</summary>
+    /// <param name="cancellationToken">Cancels the child process.</param>
+    /// <returns>The application's exit code.</returns>
+    public Task<int> Run(CancellationToken cancellationToken = default)
+        => NativeToolchain.RunProject(this, cancellationToken);
+
+    /// <summary>Runs front-end checks and publishes checked LLVM/manifest inputs. Does not invoke LLVM, link, or run.</summary>
+    /// <param name="cancellationToken">Cancels between compilation targets.</param>
+    /// <returns>Whether every configured target published both artifacts.</returns>
+    public async Task<bool> Generate(CancellationToken cancellationToken = default)
+        => await this.BuildCore(true, cancellationToken).ConfigureAwait(false);
+
+    private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default)
     {
         this.buildMetadata.Clear();
         var targets = this.ProjectFile.Targets.ToArray();
-        if (emit && targets.Length == 0)
+        if (!string.IsNullOrEmpty(this.KimiOptions.Target))
         {
-            this.kimigayo.GlobalDiagnosticCollection.Add(default, DiagnosticCode.GenerationFailed_Kd, "No target is configured.");
+            if (!targets.Contains(this.KimiOptions.Target, StringComparer.Ordinal))
+            {
+                this.kimigayo.WriteLine(DiagnosticSeverity.Error, "The selected target is not configured in this project.");
+                return false;
+            }
+
+            targets = [this.KimiOptions.Target];
+        }
+
+        if (emit && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
+        {
+            this.kimigayo.WriteLine(DiagnosticSeverity.Error, "Emission currently requires exactly one configured Windows x64 target.");
             return false;
         }
 
         var success = true;
         foreach (var x in targets)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             success &= await this.BuildTarget(x, emit).ConfigureAwait(false);
         }
 
@@ -205,7 +248,7 @@ public partial class Project
             !projectKotonoha.DiagnosticCollection.HasErrors;
         if (!accepted || !emit)
         {
-            return accepted; // Preserve the legacy front-end-only Build API.
+            return accepted;
         }
 
         if (!EmissionArtifacts.Publish(compilation, out var pathIr, out var failure))
@@ -214,7 +257,7 @@ public partial class Project
             return false;
         }
 
-        this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Generated partial Application inputs: {pathIr} and {Path.ChangeExtension(pathIr, ".link.json")}; entry __kimi_start; kernel32 + kimi_backend. LLVM/link/run remain separate.");
+        this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Generated LLVM inputs: {pathIr} and {Path.ChangeExtension(pathIr, ".link.json")}; native build has not yet been performed.");
         return true;
     }
 }

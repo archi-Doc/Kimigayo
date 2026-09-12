@@ -407,7 +407,7 @@ public class StartupBindingTest
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.OutputKind = kind;
         c.Project.AddSource("startup.kimi", source);
-        Assert.Equal(expected, await c.Project.Build());
+        Assert.Equal(expected, await c.Project.Check());
     }
 
     private static FunctionKoto GetMain(Compilation c)

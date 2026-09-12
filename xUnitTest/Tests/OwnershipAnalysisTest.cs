@@ -256,7 +256,7 @@ public class OwnershipAnalysisTest
     {
         var c = Compilation.CreateForTest();
         c.Project.AddSource("ownership.kimi", source);
-        Assert.Equal(expected, await c.Project.Build());
+        Assert.Equal(expected, await c.Project.Check());
     }
 
     [Theory]

@@ -24,36 +24,51 @@ NativeLibraries=
       Input="../../backend/windows-x64/bin/kimi_backend_windows_x64_v1.lib"
 ```
 
-The supplied machine path is retained in the example. Its tools actually report **22.1.5**, whereas SPEC requires **22.1.8**. Generation records the location as a manual-build hint and does not execute it. The manual builder rejects the mismatch. Set `LlvmBin` to a 22.1.8 installation, or pass `-LlvmBin` to the manual builder. No system PATH change or automatic tool installation occurs.
+The supplied machine path is retained in the example. Its tools actually report **22.1.5**, whereas the shared [profile catalog](../../backend/windows-x64/profile.json) requires **22.1.8**. `emit-llvm` records the location without executing it. `build` rejects the mismatch by default. Set `LlvmBin` to a matching installation, or pass `--LlvmBin` to `kimi build`. For exploratory work only, `--AllowUnpinnedToolchain true` warns and records `unverifiedToolchain: true` with expected/actual tool versions; other integrity checks still apply. Such a result does not validate the supported profile. Missing tools or unreadable versions always fail. No system PATH change or automatic tool installation occurs.
 
 `kernel32.lib` is configured independently: the file at the supplied path matches Windows SDK 10.0.22621.0's x64 import library. Relative setting paths resolve from the project directory and are rebased relative to the manifest. `OutputPath` defaults to `bin/<target>/Hello.ll`; `Optimization` accepts `O0` or `O2` and defaults to `O2`.
 
 ## Build and run
 
-Run from the repository root with the .NET dependencies restored. In the verified local workspace, LLVM 22.1.8 is extracted under `bin/toolchain/bin`; substitute another actual 22.1.8 bin directory for a fresh checkout.
+Run from the repository root with the .NET dependencies restored. Substitute your actual matching LLVM bin directory. The backend must already have been built and its hash must match the adopted profile. Compiler and backend package releases both come from `Directory.Build.props` Version; LLVM and ABI versions are separate.
 
 ```powershell
-$llvmBin = "$PWD/bin/toolchain/bin"
+$llvmBin = 'C:/App/clang+llvm-22.1.8-x86_64-pc-windows-msvc/bin'
 $kernel32 = 'C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin/kernel32.lib'
 
 ./backend/windows-x64/build.ps1 -LlvmBin $llvmBin -Kernel32 $kernel32
 dotnet build Kimi/Kimi.csproj -c Release
-dotnet Kimi/bin/Release/net10.0/Kimi.dll build examples/Hello/Hello.kimiproj
-./backend/windows-x64/manual-build.ps1 -Manifest examples/Hello/bin/x86_64-pc-windows-msvc/Hello.link.json -LlvmBin $llvmBin -Run
+dotnet Kimi/bin/Release/net10.0/Kimi.dll build examples/Hello/Hello.kimiproj --LlvmBin $llvmBin
+dotnet Kimi/bin/Release/net10.0/Kimi.dll run examples/Hello/Hello.kimiproj
 ```
 
-The compiler only publishes `Hello.ll` and `Hello.link.json`. The explicitly invoked manual script verifies hashes/profile/tool versions, runs LLVM and the linker, records actual libraries/tool identities in `Hello.link.build.json`, and runs the executable only with `-Run`. Without an explicit library path, this script resolves a simple library filename in the manifest directory; provide resolved paths when the libraries reside elsewhere. It does not discover an SDK.
+`build` publishes `Hello.ll` and `Hello.link.json`, verifies tool versions, hashes and native dependencies, and invokes LLVM and the linker directly from C#. No PowerShell runtime is needed by the compiler. It writes `Hello.link.build.json` and publishes the executable only after a successful link. Simple native library filenames resolve in the manifest directory; configure explicit paths for libraries elsewhere. No SDK is discovered automatically.
+
+`run` executes the existing binary without reading or recompiling source contents and without requiring LLVM. A missing executable, incomplete build record, or changed binary hash fails with a diagnostic. After editing sources, run `build` explicitly. You can also execute a binary directly with `kimi run path/to/program.exe`; no project or record is required in that form. The child's stdout/stderr and exit code are forwarded.
+
+For debugging the compiler's pre-optimization IR, use:
+
+```powershell
+dotnet Kimi/bin/Release/net10.0/Kimi.dll emit-llvm examples/Hello/Hello.kimiproj
+```
+
+This performs required semantic/ownership checks and writes only the matched `.ll`/`.link.json` pair. It neither executes LLVM nor links/runs a program. The existing manual builder remains available for separately building this pair:
+
+```powershell
+./backend/windows-x64/manual-build.ps1 -Manifest examples/Hello/bin/x86_64-pc-windows-msvc/Hello.link.json -LlvmBin $llvmBin
+```
 
 The executable is `examples/Hello/bin/x86_64-pc-windows-msvc/Hello.O2.exe` (or `.O0.exe`). The executable itself must emit exactly 14 stdout bytes (`Hello, world!\n`), empty stderr, and exit 0. Compiler and manual-builder status messages are separate from application output.
 
 ## Verify
 
 ```powershell
-dotnet test xUnitTest/xUnitTest.csproj -c Debug
-dotnet test xUnitTest/xUnitTest.csproj -c Release
+dotnet test --project xUnitTest/xUnitTest.csproj -c Debug
+dotnet test --project xUnitTest/xUnitTest.csproj -c Release
 ./backend/windows-x64/test-emission.ps1 -LlvmBin $llvmBin -Kernel32 $kernel32 -Configuration Debug
 ./backend/windows-x64/test-emission.ps1 -LlvmBin $llvmBin -Kernel32 $kernel32 -Configuration Release
 ./backend/windows-x64/test-manual-build.ps1 -Manifest examples/Hello/bin/x86_64-pc-windows-msvc/Hello.link.json -LlvmBin $llvmBin -MismatchedLlvmBin 'C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin'
+./backend/windows-x64/test-cli.ps1 -LlvmBin $llvmBin -Kernel32 $kernel32 -MismatchedLlvmBin 'C:/App/clang+llvm-22.1.5-x86_64-pc-windows-msvc/bin'
 ```
 
 Unit tests export inspection fixtures under ignored `bin/emission-fixtures`. The native harness separately verifies/links/runs O0/O2 fixtures and tests fault-injecting adapters without changing the production Windows imports. Reports under `bin/emission-native` start incomplete and become passed only when every native case succeeds.

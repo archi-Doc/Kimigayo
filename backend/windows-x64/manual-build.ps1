@@ -2,14 +2,19 @@
 param(
     [Parameter(Mandatory)] [string] $Manifest,
     [string] $LlvmBin = '',
-    [switch] $Run
+    [switch] $Run,
+    [switch] $AllowUnpinnedToolchain
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'toolchain.ps1')
+. (Join-Path $PSScriptRoot 'artifact-paths.ps1')
+$catalog = Read-KimiWindowsProfile
+$expectedVersion = $catalog.llvmVersion
 $manifestPath = (Resolve-Path -LiteralPath $Manifest).Path
 $directory = Split-Path -Parent $manifestPath
 $data = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $recordPath = [IO.Path]::ChangeExtension($manifestPath, '.build.json')
-@{ status = 'incomplete' } | ConvertTo-Json | Set-Content -LiteralPath $recordPath -Encoding utf8
+@{ status = 'incomplete' } | ConvertTo-Json | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $recordPath -Encoding utf8
 function Invoke-Tool([string] $exe, [string[]] $arguments) {
     & $exe @arguments
     if ($LASTEXITCODE -ne 0) { throw "$exe failed ($LASTEXITCODE)" }
@@ -21,7 +26,7 @@ function Resolve-Input([string] $inputName) {
 }
 if ($data.schemaVersion -ne 1 -or $data.target -cne 'x86_64-pc-windows-msvc' -or
     $data.outputKind -cne 'Application' -or $data.entry -cne '__kimi_start' -or $data.subsystem -cne 'console' -or
-    $data.codegen.profile -cne 'windows-x64-v1' -or $data.codegen.llvmVersion -cne '22.1.8' -or
+    $data.codegen.profile -cne 'windows-x64-v1' -or $data.codegen.llvmVersion -cne $expectedVersion -or
     $data.codegen.cpu -cne 'x86-64' -or ($data.codegen.features -join ',') -cne '+sse2' -or
     $data.codegen.relocationModel -cne 'pic' -or $data.codegen.codeModel -cne 'small' -or
     $data.codegen.unwindTables -cne 'async' -or $data.codegen.optimization -cnotin @('O0', 'O2')) {
@@ -34,18 +39,19 @@ if (-not $LlvmBin) {
 $LlvmBin = (Resolve-Path -LiteralPath $LlvmBin).Path
 $tools = @{}
 $identities = [ordered]@{}
+$matched = $true
 foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-nm', 'llvm-readobj')) {
     $exe = Join-Path $LlvmBin "$name.exe"
-    $version = (& $exe --version | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $version -notmatch '(?<!\d)22\.1\.8(?!\d)') { throw "$name must be LLVM 22.1.8; actual: $version" }
+    $identity = Get-KimiLlvmToolIdentity $exe $expectedVersion -AllowUnpinnedToolchain:$AllowUnpinnedToolchain
+    $matched = $matched -and $identity.versionMatched
     $tools[$name] = $exe
-    $identities[$name] = @{ path = $exe; version = $version; sha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() }
+    $identities[$name] = $identity
 }
+@{ status = 'incomplete'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = -not $matched; tools = $identities } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $recordPath -Encoding utf8
 $ir = Resolve-Input $data.irFile
 $irHash = (Get-FileHash -LiteralPath $ir -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($irHash -cne $data.irSha256) { throw 'IR/manifest SHA-256 mismatch; do not use mixed or stale outputs' }
 $support = $data.backendSupport
-$catalog = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'profile.json') -Raw | ConvertFrom-Json
 if ($support.packageId -cne 'kimi-backend-windows-x64' -or $support.abiVersion -ne 1 -or
     $support.packageVersion -cne $catalog.packageVersion -or $support.artifactSha256 -cne $catalog.artifactSha256 -or $support.library -cne 'kimi_backend' -or
     ($support.providedSymbols -join ',') -cne '__chkstk,memcpy,memmove,memset') { throw 'Invalid backend supply identity' }
@@ -74,10 +80,11 @@ $selectedIr = $ir
 if ($level -ceq 'O2') {
     $selectedIr = "$stem.ll"
     Invoke-Tool $tools.opt @('-S', '-passes=default<O2>', '-mtriple=x86_64-pc-windows-msvc', $ir, '-o', $selectedIr)
+    Protect-KimiLlvmPaths $selectedIr
     Invoke-Tool $tools.opt @('-passes=verify', '-disable-output', $selectedIr)
 }
 $obj = "$stem.obj"
-Invoke-Tool $tools.llc @("-$level", '-filetype=obj', '-mtriple=x86_64-pc-windows-msvc', '-mcpu=x86-64', '-mattr=+sse2', '-relocation-model=pic', '-code-model=small', $selectedIr, '-o', $obj)
+Invoke-KimiLlvmOutput $tools.llc @("-$level", '-filetype=obj', '-mtriple=x86_64-pc-windows-msvc', '-mcpu=x86-64', '-mattr=+sse2', '-relocation-model=pic', '-code-model=small', $selectedIr) $obj
 $undefined = & $tools['llvm-nm'] --undefined-only --format=posix $obj | Out-String
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect object dependencies' }
 $allowed = @('__chkstk', 'memcpy', 'memmove', 'memset', '__imp_GetProcessHeap', '__imp_HeapAlloc', '__imp_HeapFree', '__imp_GetStdHandle', '__imp_WriteFile', '__imp_GetLastError', '__imp_ExitProcess')
@@ -88,15 +95,15 @@ $defined = & $tools['llvm-nm'] --defined-only --extern-only --format=posix $obj 
 if ($LASTEXITCODE -ne 0 -or [regex]::Matches($defined, '(?m)^_fltused [BD] ').Count -ne 1) { throw 'Expected one strong _fltused definition' }
 $inspection = & $tools['llvm-readobj'] --unwind --coff-directives $obj | Out-String
 if ($LASTEXITCODE -ne 0 -or $inspection -notmatch 'RuntimeFunction' -or $inspection -match '(?i)DEFAULTLIB') { throw 'Invalid unwind information or hidden default library' }
-$inspection | Set-Content -LiteralPath "$stem.inspection.txt" -Encoding utf8
+$inspection | ConvertTo-KimiArtifactText | Set-Content -LiteralPath "$stem.inspection.txt" -Encoding utf8
 $exe = "$stem.exe"
 Invoke-Tool $tools['lld-link'] (@($obj) + $libraries + @('/entry:__kimi_start', '/subsystem:console', '/nodefaultlib', '/Brepro', "/out:$exe"))
-$record = @{ status = 'linked'; irSha256 = $irHash; tools = $identities; libraries = $libraryIdentities; optimization = $level; executable = $exe; objectUndefinedSymbols = $undefined.Trim(); executableSha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() }
+$record = @{ status = 'linked'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = -not $matched; irSha256 = $irHash; tools = $identities; libraries = $libraryIdentities; optimization = $level; executable = $exe; objectUndefinedSymbols = $undefined.Trim(); executableSha256 = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant() }
 if ($Run) {
     & $exe
     $record.exitCode = $LASTEXITCODE
     $record.status = 'executed'
 }
-$record | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $recordPath -Encoding utf8
+$record | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $recordPath -Encoding utf8
 Write-Output "Manual build $($record.status): $exe; record: $recordPath"
 if ($Run -and $record.exitCode -ne 0) { throw "Application exited with code $($record.exitCode)" }

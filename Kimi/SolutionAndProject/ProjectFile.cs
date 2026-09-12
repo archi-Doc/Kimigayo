@@ -27,10 +27,10 @@ public partial record class ProjectFile
     /// <summary>Gets or sets the project-relative .ll destination; null selects the profile default.</summary>
     public string? OutputPath { get; set; }
 
-    /// <summary>Gets or sets O0 or O2 for the separate manual toolchain stage.</summary>
+    /// <summary>Gets or sets O0 or O2 for native code generation.</summary>
     public string Optimization { get; set; } = "O2";
 
-    /// <summary>Gets or sets an optional LLVM bin directory recorded as a manual-build hint. The compiler never runs its tools.</summary>
+    /// <summary>Gets or sets the project-relative LLVM bin directory used by build and recorded by emit-llvm.</summary>
     public string? LlvmBin { get; set; }
 
     /// <summary>Gets or sets target-specific logical library mappings, including explicit kernel32 and kimi_backend paths.</summary>

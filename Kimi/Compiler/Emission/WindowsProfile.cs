@@ -9,9 +9,10 @@ public static class WindowsProfile
 {
     public const string Target = "x86_64-pc-windows-msvc";
     public const string Name = "windows-x64-v1";
-    public const string LlvmVersion = "22.1.8";
     public const string DataLayout = "e-m:w-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
     public const string BackendFile = "kimi_backend_windows_x64_v1.lib";
+
+    public static string LlvmVersion { get; }
 
     public static string BackendVersion { get; }
 
@@ -22,14 +23,20 @@ public static class WindowsProfile
         using var stream = typeof(WindowsProfile).Assembly.GetManifestResourceStream("Kimi.WindowsBackendProfile.json")!;
         using var json = JsonDocument.Parse(stream);
         var root = json.RootElement;
+        LlvmVersion = root.GetProperty("llvmVersion").GetString()!;
+        if (!Version.TryParse(LlvmVersion, out var llvmVersion) || llvmVersion.Build < 0 || llvmVersion.Revision >= 0 || llvmVersion.ToString() != LlvmVersion)
+        {
+            throw new InvalidDataException("The embedded profile requires a major.minor.patch LLVM version.");
+        }
+
         if (root.GetProperty("packageId").GetString() != "kimi-backend-windows-x64" || root.GetProperty("abiVersion").GetInt32() != 1 ||
-            root.GetProperty("profile").GetString() != Name || root.GetProperty("llvmVersion").GetString() != LlvmVersion ||
+            root.GetProperty("profile").GetString() != Name ||
             root.GetProperty("library").GetString() != "kimi_backend")
         {
             throw new InvalidDataException("The embedded native supply catalog does not match windows-x64-v1.");
         }
 
-        BackendVersion = root.GetProperty("packageVersion").GetString()!;
+        BackendVersion = CompilerRelease.Version;
         BackendSha256 = root.GetProperty("artifactSha256").GetString()!;
         var symbols = root.GetProperty("providedSymbols");
         if (symbols.GetArrayLength() != 4 || symbols[0].GetString() != "__chkstk" || symbols[1].GetString() != "memcpy" ||

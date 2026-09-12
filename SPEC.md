@@ -2,7 +2,7 @@
 
 The document has six parts. Numbered headings use **chapter → section → subsection**; appendices separate compiler obligations, optional algorithms, implementation status, design boundaries, terminology, and grammar. Each concept has an owning section; cross-references apply its rules without redefining them.
 
-For the first executable program, start with [minimal console output](#224-minimal-console-output), [program startup](#222-program-startup-and-static-initialization), and [LLVM output/manual build](#208-initial-llvm-output-and-manual-build). The language rules below remain distinct from the implementation milestone in [STATUS.md](STATUS.md#c12-first-executable-milestone).
+For the first executable program, start with [minimal console output](#224-minimal-console-output), [program startup](#222-program-startup-and-static-initialization), and [LLVM output/native build](#208-llvm-output-native-build-and-execution). The language rules below remain distinct from the implementation milestone in [STATUS.md](STATUS.md#c12-first-executable-milestone).
 
 - [Part I. Introduction and source text](#part-i-introduction-and-source-text)
   - [1. Overview](#1-overview)
@@ -31,7 +31,7 @@ For the first executable program, start with [minimal console output](#224-minim
   - [19. Compile-time directives](#19-compile-time-directives)
   - [20. Compilation configuration](#20-compilation-configuration)
     - [Mods: source generation](#207-mods-source-generation)
-    - [Initial LLVM output and manual build](#208-initial-llvm-output-and-manual-build)
+    - [LLVM output, native build and execution](#208-llvm-output-native-build-and-execution)
   - [21. Layout, runtime metadata, and code generation](#21-layout-runtime-metadata-and-code-generation)
     - [Layout modes and representation](#211-structure-layout-and-abi)
     - [Checked lowering and internal ABI](#214-checked-lowering-and-internal-abi)
@@ -7148,11 +7148,11 @@ These nodes retain separate source contexts; no original file is rewritten. Fina
 
 Concrete query and marker-registration types, assembly packaging/compatibility checks, project configuration syntax, cache formats, and IDE presentation remain implementation design work. Parallel Mod execution, arbitrary Koto rewriting, function-body insertion, per-instantiation execution, and automatic retries are outside this initial model. A single invocation and snapshot queries do not prevent a Mod's own infinite loop; cancellation and time-limit mechanisms belong to the host.
 
-#### 20.8. Initial LLVM output and manual build
+#### 20.8. LLVM output, native build and execution
 
 ##### 20.8.1. Output scope and settings
 
-The initial windows-x64-v1 compiler produces one pre-optimization textual .ll and one .link.json per project/target, after final semantic acceptance and supported-operation checks (§21.4). It does not discover/install LLVM or the Windows SDK, run opt/llc/linker commands, or launch the result. A dedicated runtime DLL is not required; runtime bodies are emitted in the same module, with separate native backend support (§21.5.7).
+The windows-x64-v1 compiler produces one pre-optimization textual .ll and one .link.json per project/target, after final semantic acceptance and supported-operation checks (§21.4). The `emit-llvm` command stops after publishing this pair. The `build` command continues through external LLVM verification, optimization, object generation and linking. The `run` command executes an existing binary without compilation. These commands do not discover/install LLVM or the Windows SDK. A dedicated runtime DLL is not required; runtime bodies are emitted in the same module, with separate native backend support (§21.5.7).
 
 | Setting | Initial rule |
 | --- | --- |
@@ -7160,8 +7160,8 @@ The initial windows-x64-v1 compiler produces one pre-optimization textual .ll an
 | OutputKind | Application (default) or inspection-only Library (§22.2.2) |
 | OutputPath | .ll destination; default bin/<target>/<ProjectName>.ll |
 | NativeLibraries | Per-target logical name to kind/input mapping (§20.8.2) |
-| Optimization | O0 or O2 (default); applied during manual build |
-| LlvmBin | Optional host-local LLVM bin directory hint for a separately invoked manual builder; never selects a different profile/version or launches tools during compilation |
+| Optimization | O0 or O2 (default); applied during native build |
+| LlvmBin | Project-relative or absolute LLVM bin directory used by build; emit-llvm records it without executing tools. The CLI --LlvmBin value overrides it and resolves relative to the invoking working directory. Neither changes the target/version contract. |
 | EntrySource | Not an initial selection setting; use §22.2's unique-candidate rules |
 
 The first execution subset is ordinary functions, simple local bindings, Unit, string literals, required ownership/cleanup, and Core.writeLine. Arrays, Dictionary, inheritance, closures, static Property execution, general generic sharing, and multiple-Kotonoha linking need not be included in this first execution test. Their language rules are not weakened; unsupported required operations fail. Layout computability, physical ABI support, and runtime availability are separate checks.
@@ -7197,7 +7197,7 @@ Replace OutputPath's extension with .link.json in the same directory and write U
   "backendSupport": {
     "packageId": "kimi-backend-windows-x64",
     "abiVersion": 1,
-    "packageVersion": "1.0.0",
+    "packageVersion": "0.1.0",
     "library": "kimi_backend",
     "artifactSha256": "<64 hex digits for the adopted archive>",
     "providedSymbols": ["__chkstk", "memcpy", "memmove", "memset"]
@@ -7219,7 +7219,7 @@ Replace OutputPath's extension with .link.json in the same directory and write U
 }
 ```
 
-Hashes must be actual SHA-256 values; placeholders and packageVersion 1.0.0 illustrate the schema, not an available release. observer and the __chkstk expected reference are conditional examples; _fltused is always supplied.
+Hashes must be actual SHA-256 values. packageVersion is supplied by Directory.Build.props Version (currently 0.1.0), not a separate backend release counter. A version alone does not establish an adopted archive; the catalog hash and ABI must also match. observer and the __chkstk expected reference are conditional examples; _fltused is always supplied.
 
 - Deduplicate libraries required by external declarations or the profile and sort by Ordinal logical name. Rewrite path inputs relative to the manifest; preserve linker search names. irFile is manifest-relative.
 - Library uses null entry and subsystem. Its dependency record does not establish an external .lib/DLL ABI or runnable artifact.
@@ -7231,7 +7231,7 @@ Hashes must be actual SHA-256 values; placeholders and packageVersion 1.0.0 illu
 
 Complete both temporary outputs before publication, publish the manifest last, and report success only after both are published. A partial publication is failure; old files are not evidence of current success. Consumers check irSha256 because interruption can leave a mixed pair. Success reports both paths, purpose (Application input or Library inspection), entry, and required link inputs.
 
-When LlvmBin is configured, the manifest may additionally contain `"toolchain": { "llvmBin": "<manifest-relative directory>" }`. Resolve a relative setting from the project directory. This is a local manual-build hint, not part of the code-generation profile or evidence of a tool's version. A separately invoked builder may override the location, but must still verify LLVM 22.1.8; a directory name or configured path cannot certify version compatibility. Native library files remain configured separately through NativeLibraries.
+When LlvmBin is configured, the manifest may additionally contain `"toolchain": { "llvmBin": "<manifest-relative directory>" }`. Resolve a relative setting from the project directory. This is a local build-tool location, not part of the code-generation profile or evidence of a tool's version. A build command or separately invoked builder may override the location, but must still check the actual tool versions under §20.8.5; a directory name or configured path cannot certify version compatibility. Native library files remain configured separately through NativeLibraries.
 
 ##### 20.8.4. Manual toolchain example
 
@@ -7247,6 +7247,37 @@ lld-link ProjectName.obj kernel32.lib kimi_backend_windows_x64_v1.lib /entry:__k
 Use every manifest input, not just the example's libraries. O0 omits opt and passes the original .ll to llc -O0 with the same profile. Verify IR before/after optimization and inspect actual object dependencies. /debug does not create Kimigayo line/variable information; CodeView/PDB emission remains separate from Abort source context.
 
 Before adopting a profile, validate it with the pinned LLVM version; another version's preliminary result is not acceptance. Keep semantic tests, representative IR structure/goldens, object ABI/unwind/dependency checks, and execution results distinct (§A.14). Performance decisions use measured execution time, code size, and build time, never weakened checks.
+
+##### 20.8.5. LLVM version checks and exploratory builds
+
+The expected LLVM release has one machine-readable source: `backend/windows-x64/profile.json`, currently 22.1.8. The compiler embeds this catalog, exposes its version through WindowsProfile.LlvmVersion, and writes it as codegen.llvmVersion. Native build and verification scripts read the same catalog; do not duplicate the expected version in executable code. This value describes the intended profile, not a detected installation. Parsing, semantic analysis and IR/manifest generation neither execute LLVM nor require it to be installed.
+
+Immediately before native toolchain work, check every selected version-reporting tool's actual `--version` output. Compare the full release version, including patch level; newer versions are not implicitly supported, and development/prerelease suffixes do not match the release. Parse a recognized tool version banner, not an arbitrary occurrence of the expected number. Missing tools, failed probes, and absent or ambiguous version information are errors even in exploratory mode. Diagnostics identify the tool path, expected version, and actual version or probe failure. The versionless llvm-lib exception remains explicit: retain its executable path/hash and record it as unversioned, never invent a matching version.
+
+Normal native builds fail on a mismatch before IR verification, optimization, object generation or linking. `kimi build --AllowUnpinnedToolchain true` and the separately invoked manual/backend builders' `-AllowUnpinnedToolchain` permit exploratory work only. Each mismatched tool then produces a visible warning and may continue through the ordinary verification/build steps. This option does not override manifest/profile mismatches, IR/archive hashes, ABI contracts, dependency checks or other errors. Adoption and generated-module profile verification still require matching tools and cannot use this override.
+
+After successful version probing, native build records retain the expected version, actual per-tool versions and executable identities, reportedVersionsMatched, and unverifiedToolchain. Retain these facts even if subsequent native work fails, with status incomplete. A successfully linked or executed exploratory program remains unverified for the pinned profile; do not relabel its manifest with the detected version or count it as profile adoption evidence. Formal support for another LLVM release requires renewed profile validation and a deliberate catalog update.
+
+##### 20.8.6. Compiler commands and artifact lifecycle
+
+| Command | Required behavior |
+| --- | --- |
+| `kimi emit-llvm <project-or-solution>` | Perform the required source/ownership/generation checks and publish the matched pre-optimization .ll/.link.json pair. Never execute LLVM, validate an installed LLVM version, link or run. Successful output reports both paths; LLVM acceptance is a separate stage. |
+| `kimi build <project-or-solution>` | Generate fresh LLVM inputs, validate the actual tool versions and native inputs, run opt verification (and default<O2> only at O2), llc and lld-link, and publish the executable and a successful build record. Never execute the Application. |
+| `kimi run <project>` | Resolve the configured existing executable, require a successful latest build record and matching executable hash, and execute without source analysis, IR generation, LLVM version checks or rebuilding. Source changes do not trigger compilation; users explicitly build when needed. |
+| `kimi run <path.exe>` | Execute the explicitly selected existing binary directly without a project or build record. |
+
+Build and emit-llvm accept configured projects/solutions or discover them in the specified directory (current directory when omitted). Loading any selected project unsuccessfully is failure; empty discovery is not a successful build. Run through project/directory/solution discovery requires exactly one loaded Application. Do not silently choose the first of several projects. Standalone source compilation is not part of run. The current native profile supports Windows x64 Applications; unsupported targets or Library emission must receive diagnostics rather than placeholder binaries. The existing limited emitter remains limited (§21.4); command automation does not add language-feature support.
+
+OutputPath continues to name the pre-optimization .ll. For `Name.ll`, optimization O0/O2 selects `Name.O0.obj` / `Name.O2.obj` and `Name.O0.exe` / `Name.O2.exe`; O2 also retains `Name.O2.ll`. The build record is `Name.link.build.json`. A configured --Target selects one of the project's configured targets; the current emission implementation requires exactly one Windows x64 target. The CLI Boolean option requires an explicit value, e.g. `--AllowUnpinnedToolchain true`.
+
+At the beginning of a native build attempt, invalidate the previous success record before semantic analysis. Link into a fresh temporary executable and publish it only after success. A failed build may retain a prior executable for inspection, but the project run command must not treat it as a successful result of that attempt. An emit-llvm command does not rewrite the native build record. Build records retain version, input/tool identity, optimization and executable hash information; descriptive machine paths are remapped and are not execution inputs. Launch through a project derives the executable path from its current output settings and verifies the recorded hash; changing those settings requires the corresponding built artifact. An explicitly selected .exe path remains independently runnable.
+
+External processes are launched directly with separately supplied arguments, without constructing shell commands. Drain native-tool stdout/stderr concurrently, report failures, propagate cancellation to child process trees, and bound individual native-tool invocations (currently five minutes). Run forwards stdin and the child's stdout/stderr, preserves output bytes, and returns the child exit code. Project runs use the project directory as working directory; direct binary runs use the caller's current directory. Build/emit failures and launch errors return 1, successful build/emit return 0, and command cancellation returns 130. No fixed Application runtime timeout is imposed.
+
+##### 20.8.7. Compiler and backend release version
+
+Directory.Build.props Version is the single release-version source for Kimigayo and its backend package. The compiler embeds that MSBuild value as assembly metadata and uses it for the default version display, compiler build identity prefix and backendSupport.packageVersion. Repository tools combine that same props value with profile.json; profile.json retains the LLVM release, ABI, helper symbols and adopted archive hash, without its own package-version literal. Language version, ABI version and LLVM version are independent identifiers and do not change simply because the package release changes. Candidate reports carry the shared release with adopted=false; release equality never substitutes for native archive/hash validation. Changes to adopted archive contents require renewed validation and a shared release update before distribution.
 
 ### 21. Layout, runtime metadata, and code generation
 
@@ -7770,7 +7801,7 @@ Every Application and Library module, regardless of FP use or optimization, supp
 
 This backend marker is not CRT initialization state. No dllimport, weak, or common definition is allowed; other inputs, including the backend archive, must not define it.
 
-The compiler's profile catalog fixes packageId=kimi-backend-windows-x64, abiVersion=1, an immutable verified packageVersion, the actual archive's SHA-256, the profile/LLVM/CPU/FP/unwind contract, and providedSymbols=[__chkstk, memcpy, memmove, memset]. Update ABI version when symbol/call contracts change. Filename/path equality is insufficient. If version/ABI/hash are not established, do not claim successful generation using a placeholder supply.
+The compiler's profile catalog fixes packageId=kimi-backend-windows-x64, abiVersion=1, the actual archive's SHA-256, the profile/LLVM/CPU/FP/unwind contract, and providedSymbols=[__chkstk, memcpy, memmove, memset]. packageVersion comes from the shared compiler/backend release in Directory.Build.props (§20.8.7). Update ABI version when symbol/call contracts change. Filename/path equality is insufficient. If version/ABI/hash are not established, do not claim successful generation using a placeholder supply.
 
 Record the archive as a profile-wide link input even when no known reference currently needs it; unused archive members need not link. Generated _fltused and externally supplied symbols have separate manifest classifications (§20.8.3). Later LLVM may add/remove references: inspect actual object undefined symbols and verify providers. Unknown/unsupplied dependencies fail adoption or linking, never receive empty stub helpers. This supply does not add to the six runtime operations or seven Windows APIs.
 
@@ -8349,7 +8380,7 @@ Solution -> Project -> Compilation(inputs)
     -> Final acceptance and supported-generation-set validation
     -> Layout / ValueLowering / FunctionAbi / CleanupPlan
     -> LLVM lowering -> pre-optimization .ll + .link.json
-    -> Manual LLVM verification / opt / llc -> object
+    -> build: LLVM verification / opt / llc -> object
     -> Manual native linking -> executable -> execution validation
 ```
 
@@ -8464,7 +8495,7 @@ This index links to design boundaries owned by the language sections. It adds no
 | Const/value arguments beyond function lengths, standalone Semantics slots, partial/default/variadic generic arguments | Not introduced | [Function length parameters](#44-function-length-parameters), [Generic Type parameters](#81-generic-type-parameters) |
 | Partial/conditional explicit specialization, specialization priorities, generic Container specialization | Not introduced | [Full specialization](#88-explicit-full-function-specialization) |
 | Exact precompilation, callee propagation, sharing/ABI formats, and optimization budgets | Implementation-design boundaries | [Generic generation limits](#2135-generation-limits-and-code-merging) |
-| Automatic toolchain/build/run, debug information, cross-module/DLL ABI, extra CPU/OS profiles | Deferred beyond the initial manual Windows profile | [Initial output](#208-initial-llvm-output-and-manual-build), [LLVM profile](#215-llvm-windows-x64-profile) |
+| Automatic toolchain installation, debug information, cross-module/DLL ABI, extra CPU/OS profiles | Deferred beyond the Windows profile; explicit build/run commands are defined in §20.8.6 | [Native build](#208-llvm-output-native-build-and-execution), [LLVM profile](#215-llvm-windows-x64-profile) |
 | Dynamic collections, borrow/object/function handle ABI, rc/arc physical counters/order, general shared-generic metadata | Physical representation must be specified before emission; no implicit one-pointer fallback | [Object metadata](#212-object-metadata), [Internal ABI](#2142-physical-function-signatures) |
 | C aggregate passing/export/callback/varargs, Unicode console adapter, over-aligned allocation, arbitrary exit codes and FP environment control | Deferred extensions | [FFI](#223-foreign-function-imports), [Windows runtime](#225-initial-windows-runtime) |
 | Contract-level abstract Origins, non-static erased views, static-Place Origins, and lending iterators | Deferred design; ordinary retained storage is defined in §15.4 | [Abstract Origins](#153-abstract-origins), [Lifetime design boundaries](#159-lifetime-design-boundaries) |

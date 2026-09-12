@@ -33,6 +33,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 context.AddCommand(typeof(DefaultCommand));
                 context.AddCommand(typeof(LspCommand));
                 context.AddCommand(typeof(BuildCommand));
+                context.AddCommand(typeof(EmitLlvmCommand));
                 context.AddCommand(typeof(RunCommand));
 
                 // Logger
@@ -98,7 +99,13 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
             };
 
             // Main
-            await SimpleParser.ParseAndExecute(this.Context.Commands, param.Args, parserOptions, this.Context.ExecutionRoot.CancellationToken);
+            var parser = new SimpleParser(this.Context.Commands, parserOptions);
+            if (!parser.Parse(param.Args))
+            {
+                Environment.ExitCode = 1;
+            }
+
+            await parser.Execute(this.Context.ExecutionRoot.CancellationToken);
 
             await this.Context.SendStop();
             await this.Context.SendTerminate();

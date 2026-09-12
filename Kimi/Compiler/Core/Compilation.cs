@@ -26,7 +26,7 @@ public class Compilation
 
     /// <summary>Gets the version and deterministic module identity of this compiler build.</summary>
     public static string CompilerVersion { get; } =
-        $"{typeof(Compilation).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion} ({typeof(Compilation).Module.ModuleVersionId:D})";
+        $"{CompilerRelease.Version} ({typeof(Compilation).Module.ModuleVersionId:D})";
 
     #region FieldAndProperty
 

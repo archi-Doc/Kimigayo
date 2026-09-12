@@ -247,11 +247,11 @@ public class CompilationSpecificationTest
         solution.Projects.Add("test", project);
         project.ProjectFile.OutputKind = OutputKind.Library;
         solution.SolutionFile.Configuration.LangVersion = "future";
-        Assert.False(await solution.Build());
+        Assert.False(await solution.Check());
         Assert.Empty(project.BuildMetadata);
         project.ProjectFile.LangVersion = Compilation.CurrentLanguageVersion;
         compilation.Kimigayo.GetOrAddDiagnosticCollection(project.Name).ClearDiagnostic();
-        Assert.True(await solution.Build());
+        Assert.True(await solution.Check());
         Assert.Equal(Compilation.CurrentLanguageVersion, Assert.Single(project.BuildMetadata).LanguageVersion);
     }
 

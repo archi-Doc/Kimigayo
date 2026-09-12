@@ -11,4 +11,10 @@ public class KimiOptions
 
     [SimpleOption("Debug")]
     public bool Debug { get; set; } = false;
+
+    [SimpleOption("LlvmBin")]
+    public string? LlvmBin { get; set; }
+
+    [SimpleOption("AllowUnpinnedToolchain")]
+    public bool AllowUnpinnedToolchain { get; set; }
 }
