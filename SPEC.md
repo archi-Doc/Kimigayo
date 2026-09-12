@@ -127,7 +127,7 @@ Examples illustrate ordinary use, boundaries, or intentional errors; they do not
 
 Unqualified declarative rules and imperative requirements are normative even without `must`. Examples illustrate those rules and do not override them. Compiler requirements preserve required information and invariants; a **Non-normative reference model** is an optional algorithm, not an alternative semantics.
 
-**Specified, not implemented** means settled rules with no available implementation. **Partially specified** identifies remaining design questions; **Deferred design** withholds the feature. Neither design status nor implementation plans grant language permission. Directive Conditions have no Deferred result.
+**Specified, not implemented** means settled rules with no available implementation. **Partially specified** identifies remaining design questions; **Deferred design** withholds the feature. Neither design status nor implementation plans grant language permission.
 
 ### 2. Source and lexical structure
 
@@ -287,11 +287,14 @@ These tables define token classes independently of internal enum groupings. Unre
 | Contextual class | Spellings and recognizing context |
 | --- | --- |
 | Declarations | alias, rootgroup, group, struct, enum, contract, computed, property; declaration/header positions. extension is reserved contextually for a future declaration, which is rejected in this revision. |
+| Unavailable declaration modifiers | virtual, override, abstract; recognized only in a declaration's leading modifier sequence and rejected with the unavailable-feature diagnostic. |
 | Parameters, Origins, accessors | in in a for header; origin in an Origin parameter list; from in an Origin annotation; to immediately after exit, continue, or yield; static as the distinguished Origin in Origin expressions; associate in an associated-Type declaration/specification; has, get, set in accessor syntax; specialize immediately before func; when in conditional conformance. |
 | Semantics and Safety | owner, ref, uniq, obj, rc, arc, objref, objuniq, unsafe in Semantics positions, including requirements; unsafe also before func and before a Body introducing an Unsafe Statement. |
 | Semantics categories | value, valueborrow, object, objectborrow, borrow, owning, reference in Semantics requirements; see [category sets](#33-type-semantics). |
 | Contextual bindings and operations | self, value, storage under receiver/accessor rules; abort after $. |
 | Fixed arrays and lengths | of only between the length and element Type in `[N of T]`; length only at the start of a generic parameter declaration followed by its Name. |
+
+Recognize unavailable modifiers before the existing modifiers and declaration introducer in the same logical header. This includes Type/function/Property declarations, Contract requirements, constructors, deinit, and accessors, even where access/open modifiers are otherwise forbidden. Do not scan across a newline or indent/dedent that separates independent items. Thus `abstract open struct`, `virtual func`, `virtual init`, `override deinit`, and `abstract get` receive the same diagnostic. Ordinary Names remain valid in `struct abstract`, `func virtual(...)`, `let override: i32`, `x.abstract()`, and `virtual(...)`; a standalone `abstract` expression must not consume the next line's declaration. This recognition adds no valid declaration form or globally reserved word.
 
 | Punctuation/operator class | Spellings |
 | --- | --- |
@@ -515,7 +518,7 @@ Type = Semantics/Core from Origin
 | --- | --- |
 | Type | The complete type, including Semantics, its target, and all Origin dependencies. |
 | Semantics | The value's representation, ownership, borrowing, access, and safety rules. |
-| Core | The component that defines the value's kind, structure, and identity; formerly called Core Type. |
+| Core | The component that defines the value's kind, structure, and identity. |
 | Origin | The set of program points where a borrow is guaranteed valid; constrains borrows and values that retain them. |
 
 For example, `ref/Dog from source` has Semantics `ref`, Core `Dog`, and Origin `source`. Semantics and Origins may be omitted only under the language's inference and elision rules; not every layer has an Origin.
@@ -664,7 +667,7 @@ A **Function Value** is a callable value. Distinguish its concrete Type from a c
 
 | Core | Identity and environment | Value capabilities |
 | --- | --- | --- |
-| Function Item Type | One resolved function declaration and instantiation; no runtime capture environment | Copy, Owned, Shared call |
+| Function Item Type | One resolved function declaration and instantiation; no runtime capture environment | Copy, Shared call; Owned when its bound arguments satisfy §15.2.3 |
 | Concrete Closure Type | One anonymous-function expression and instantiation; stores its captures and internal call signature | Copy exactly when every capture's complete Type is Copy |
 | Common Function Type | A shared calling contract and an owned, type-erased environment | Non-Copy, even for an empty or Copy environment |
 
@@ -755,7 +758,7 @@ Object borrows provide non-owning access to objects, subject to lifetime constra
 
 ##### 3.3.5. Object views and identity
 
-References to Contract targets in the object model describe the [runtime Contract extension](#85-runtime-contracts), outside the initial static Contract implementation. Concrete Core targets remain governed by the ordinary Object View rules.
+References to Contract targets in the object model describe the [runtime Contract extension](#85-runtime-contracts), outside the static Contracts defined in this revision. Concrete Core targets remain governed by the ordinary Object View rules.
 
 ```text
 Object View Type = Object Semantics + View Target + Outer Origin (for object borrows)
@@ -783,7 +786,7 @@ objref/Animal from source       Dog object
     └─ Origin: source              └─ Dog type and destruction information
 ```
 
-Object ownership does not require heap allocation. Representation choices must preserve identity, access, lifetime, and cleanup. Neither `arc` nor `Owned` implies safe concurrent access.
+Object ownership does not require heap allocation. Representation choices must preserve identity, access, lifetime, and cleanup.
 
 ##### 3.3.6. Nested Semantics and type grouping
 
@@ -858,7 +861,7 @@ node = makeNode()
 
 `Copy` is a [compiler-intrinsic Contract](#847-intrinsic-contracts-and-guarantees). User-defined Contracts with the same shape do not grant Copy acquisition semantics.
 
-`T` and `owner/T` are the same owned Type. Classify complete Types using Core, Semantics, and stored components:
+Classify complete Types using Core, Semantics, and stored components:
 
 | Type | Classification |
 | --- | --- |
@@ -983,7 +986,7 @@ Kimigayo uses **Origins** instead of lifetime variables. An Origin describes how
 
 The relation `a : b` means that `a` outlives `b`, including equality: `region(a) ⊇ region(b)`. Source declares bounds within an [Origin parameter list](#153-abstract-origins); the same notation is used for derived facts under [Origin ordering](#1522-ordering-and-intersection).
 
-Origin annotations appear in signatures and type declarations. Local Origins may be inferred from initializers and ordinary Origin/Loan constraints. Omission is permitted only by the [position-specific rules](#154-origin-elision-and-return-contracts): direct borrowed inputs introduce input Origins, results use conservative elision, and instance Fields require explicit Origin bindings. Static Fields may not retain safe borrows in this revision.
+Origin annotations appear in signatures and type declarations. Local Origins may be inferred from initializers and ordinary Origin/Loan constraints. Omission is permitted only by the [position-specific rules](#154-origin-elision-and-return-contracts): direct borrowed inputs introduce input Origins, results use conservative elision, and instance Fields require explicit Origin bindings. Static Fields require `Owned` and the [static-source rules](#1132-static-storage).
 
 The safe value-borrow semantics are:
 
@@ -1369,7 +1372,7 @@ Slice indices start at zero; from-end positions and reslicing use the current Sl
 
 Under [static Place analysis](#1562-place-overlap-and-conflicts), an array-derived Slice borrows the array Place as a whole. Reslicing, splitAt, and empty Slices retain that Loan's conflict footprint. Runtime interval resolution neither narrows it nor proves disjointness. Thus a later use of empty from `let empty = values[1..1]` conflicts with `values[3] = 10`, because of the retained shared Loan, not the Origin alone. The Loan ends after all required derived uses end. Source Move, destruction, or reallocation is also forbidden while it would invalidate an active view.
 
-Slice owns no elements; handle Copy/destruction neither copies nor destroys them. T need not be Owned, and all dependencies inside T remain intact. source may shorten but cannot lengthen; Slice's own Owned classification uses [ordinary Origin rules](#152-origin-expressions-and-ordering).
+Slice owns no elements; handle Copy/destruction neither copies nor destroys them. T need not be Owned, and all dependencies inside T remain intact. source may shorten but cannot lengthen; Slice's own Owned classification follows [OwnedOrigins](#1523-static-and-owned), including source and T.
 
 **Storage and escape.** Slice may be retained in local aggregates, Array elements, and concrete object payloads under [ordinary storage](#154-origin-elision-and-return-contracts). Preserve its backing Loan and nested element dependencies. Static storage requires Owned and a valid static source under [static storage](#1132-static-storage); copying or storing a Slice never extends the backing lifetime.
 
@@ -1421,6 +1424,8 @@ New borrows/reborrows are bounded by source storage and existing dependencies. C
 
 For s[index], `@ref` instead borrows the element Place itself. Element writes, Move, and exclusive borrows through Slice are forbidden.
 
+For `s: Slice<Result<i32, i32>>`, `s[0]` is an owned Copy Result, while `s[0]@ref` borrows its slot and `s.tryGet(0)` returns `Option<ref/Result<i32, i32>>`. Adding conditional Copy to an element Type can therefore change inferred read Types, argument fitting, and Origin obligations. Use explicit slot borrowing when an API requires a reference independently of Copy.
+
 For unknown T, retain the correlated result Type, acquisition effect, and Origins as the internal family SharedReadResult(T, source), not a source-spellable Type. Verify the body for all admitted cases; neither assume unknown means Non-Copy nor defer Type checking until a favorable instantiation. Operations/results that do not fit every case require a constraint or explicit borrow.
 
 ```kimi
@@ -1430,6 +1435,9 @@ func first<T> origin source(s: Slice<T> from source) -> T
 
 func firstRef<T> origin source(s: Slice<T> from source) -> ref/T from source
     return s[0]@ref // Borrow the slot regardless of T's Copy capability.
+
+func head<T, E> origin source(s: Slice<Result<T, E>> from source) -> ref/Result<T, E> from source
+    return s[0]@ref // Plain s[0] fails definition checking: Copy bindings return a value.
 
 let values: [4 of i32] = [10, 20, 30, 40]
 let s = values[1..]     // Length 3; s[0] is 20.
@@ -1714,7 +1722,7 @@ Explicit and implicit constructors follow [construction](#623-constructors); all
 
 ##### 6.2.1. Split structures and storage order
 
-A `struct` may be split into compatible declaration fragments, including fragments produced by a [Mod](#207-mods-source-generation). Multiple fragments may contribute Fields under Kimigayo layout; C layout permits only one selected storage-bearing fragment (§21.1.2). Merge fragments for the same declaration, validate their headers and member uniqueness, and identify Fields by declaration kind; computed members add no storage. No primary fragment is required. Detailed declaration identity and header checks follow the [Container integration rules](#612-container-fragments).
+A `struct` may be split into [declaration fragments](#612-container-fragments), including fragments produced by a [Mod](#207-mods-source-generation); identity, header agreement, member uniqueness, and the C-layout single storage-fragment restriction follow that section. Fields are identified by declaration kind; computed members add no storage.
 
 Apply [logical declaration order](#2074-generated-sources-and-declaration-order) to the environment-selected fragments of each instantiation. Only Fields contribute storage slots. This order determines initializer side-effect order independently of physical layout.
 
@@ -1738,19 +1746,23 @@ public struct Leaf : Base
 public struct Invalid : Leaf // Error: Leaf is sealed.
 ```
 
-Inheritance uses the single-base relationship defined here and [access permissions](#93-accessibility-and-reachability), with Kotonoha as the module boundary. Derivation grants no private access and preserves inherited members' declared accessibility. Hiding and overload groups follow [inherited lookup](#95-qualified-and-inherited-lookup); instance access uses its base-subobject receiver projection. `open` does not make members virtual. Access is checked against the statically selected declaration, not a runtime override.
+Inheritance preserves members' declared accessibility and grants no private access. Ordinary functions and accessor calls use the implementation selected statically from the receiver's Effective Type, including through concrete Core Object Views. The Runtime Object Type does not replace that implementation. [Inherited lookup](#95-qualified-and-inherited-lookup) determines the declaration layer; [receiver projection](#951-base-subobject-receiver-projection) supplies eligible instance receivers. Function-value calls retain their own rules.
 
-An override must target an accessible overridable member and preserve its declared accessibility. The cross-Kotonoha exception is a `protected internal` base member: its override in another Kotonoha declares `protected`. The same rule applies to overridden accessors, each of which must be accessible to the overriding code. A private member cannot be overridden, and an internal or private-protected member cannot be overridden from another Kotonoha. These rules do not allow an override to expose an otherwise inaccessible API Type.
+**Inherited Names.** A derived struct cannot declare a Value-role member with the same Name as a member of any ancestor that is accessible from the derived declaration. This covers functions regardless of Signature or instance/type-function kind, Fields, and stored/computed Properties. Conditional premises and overload applicability do not exempt a declared Name. Check a Property's own access, not an individual accessor's; use the derived receiver for protected access.
+
+Check the completed declaration set after environment selection, Mod output, and fragment merging, with a valid base graph. Diagnose a collision at the derived declaration. Same-layer overloads and other namespaces retain their rules. Inaccessible ancestor Names, including private or cross-Kotonoha internal/private-protected members, may be reused. An explicit specialization is an implementation of its original function, not another member; it gains no right to specialize a base member from a derived Container.
+
+Accessible Value-role Names of an open struct are part of its API to derived Types. Name additions or access expansion can invalidate downstream declarations under [dependency revalidation](#2134-artifacts-verification-and-invalidation). Derived Types must tolerate mutations and preconditions exposed by base APIs; stronger application invariants cannot become unchecked memory-safety assumptions.
 
 The direct base is one inline owned subobject, logically preceding the structure's directly declared fields. Base subobjects retain their own field identities and construction-completion facts. Physical offsets remain compiler-selected under [layout rules](#211-structure-layout-and-abi); logical ordering does not require flattening or a fixed ABI. Construction runs base first under [constructors](#623-constructors), and destruction runs the derived layer first under [field cleanup](#1632-field-cleanup). The base subobject cannot independently be Moved, replaced, or reconstructed through a base view of a derived value. Whole-value operations retain the exact owning Type and the responsibility for all layers; they cannot slice a derived value. Access to an inherited field still obeys normal permissions and checks all its containing base and derived ancestors for Partial Move restrictions.
 
-**Design boundary:** Virtual/abstract/override declaration syntax and explicit ordinary base-member invocation remain separately specified. [Virtual semantics](#624-virtual-members-and-overrides), [object dispatch](#1243-object-member-calls), and [explicit object upcasts](#1357-object-upcasts) are defined below; additional ordinary derived/base conversions remain outside this revision. These rules imply no CLR representation, boxing, garbage collection, or value slicing.
+Explicit ordinary base-member invocation and additional ordinary derived/base conversions are not introduced. [Object calls](#1243-object-member-calls) and [explicit object upcasts](#1357-object-upcasts) retain their defined operations. These rules imply no CLR representation, boxing, garbage collection, or value slicing.
 
 ##### 6.2.3. Constructors
 
 Syntactically, a qualified Type-shaped path followed by `.init(` is always a construction expression. `init` is excluded from ordinary member Names, so there is no competing ordinary-call parse. Qualification may begin with `::` and contain Type arguments. A Name-shaped qualifier such as `value` is accepted syntactically, then checked using Type lookup; if it identifies only a value, Binding reports an error. There is no retry as a value-member call and no reinitialization of existing storage.
 
-A constructor is a dedicated structure declaration: an optional access specification, `init`, a parameter list, an optional `: base(arguments)` clause, and a common executable Body (§14.2), either single-item or indented. It has no ordinary Name, explicit receiver, separate generic or Origin parameters, result annotation, or virtual/override modifier. It uses the containing structure's Type parameters, Origins, and Constraints. Parameter labels, defaults, and Type checking follow ordinary function parameters. Access defaults to `private`; constructor parameters obey API signature accessibility. Only a structure's own fragments may declare its constructors; groups, enums, contracts, extensions, and executable Blocks may not.
+A constructor is a dedicated structure declaration: an optional access specification, `init`, a parameter list, an optional `: base(arguments)` clause, and a common executable Body (§14.2), either single-item or indented. It has no ordinary Name, explicit receiver, separate generic or Origin parameters, or result annotation. Unavailable modifiers follow §2.5.1. It uses the containing structure's Type parameters, Origins, and Constraints. Parameter labels, defaults, and Type checking follow ordinary function parameters. Access defaults to `private`; constructor parameters obey API signature accessibility. Only a structure's own fragments may declare its constructors; groups, enums, contracts, extensions, and executable Blocks may not.
 
 ```kimi
 public open struct Named
@@ -1786,29 +1798,27 @@ After merging, synthesize one public zero-parameter constructor iff there is no 
 
 ##### 6.2.4. Virtual members and overrides
 
-An overridable member and each override must be explicitly designated; equal names and signatures do not create an implicit override. Ordinary non-virtual calls use the statically selected implementation. The words `virtual` and `override` here specify semantics; final declaration spellings remain a syntax boundary.
+**Extension design; not active in this revision.** This section owns the proposed virtual/override semantics and their interaction with runtime Contracts. Current declarations use §6.2.2's static selection and inherited-Name rule. Unavailable modifiers are diagnosed under §2.5.1.
 
-An override preserves the shared/exclusive receiver kind and, after normalization and correspondence of receiver `Self`, the parameter and result Types. No covariant-result extension is added. Argument labels and defaults follow the statically selected declaration. Access follows the existing inheritance rules, including the cross-Kotonoha `protected internal` exception. Overrides cannot strengthen preconditions or input-Origin requirements, or weaken result lifetime guarantees. Compare Origin contracts after receiver-name correspondence; accept only compatibility proven by existing rules.
+An overridable declaration and each override require explicit designation. The original declaration identifies the slot; equal Names or Signatures never create one implicitly. Only a valid explicit override would be exempt from the inherited-Name prohibition. Existing ordinary members do not become virtual.
 
-Initial virtual calls are safe operations. Every virtual implementation and each override must independently satisfy [ObjectCompatible](#1244-object-receiver-compatibility) for the declared receiver kind. Do not reuse the base body's proof for an override. Inherited runtime-contract conformance must remain valid after replacement of an implementation.
+An override preserves Shared/Exclusive receiver kind and, after normalization and receiver-Self correspondence, parameter and result Types. No covariant result is added. Labels and defaults follow the statically selected declaration. Overrides cannot strengthen public premises or input-Origin requirements, or weaken result lifetime guarantees; compatibility must follow existing proof rules.
 
-| Operation | Check and failure boundary |
-| --- | --- |
-| Ordinary non-virtual member | Check when generating/using its object entry or [base-subobject receiver projection](#951-base-subobject-receiver-projection); reject that use |
-| Virtual member | Check its declaration; reject an incompatible declaration |
-| Override | Independently check its declaration; reject an incompatible declaration |
-| Runtime-contract implementation | Check `Implements(D, C)`; reject incompatible conformance |
-| Override implementing inherited contract requirements | At the override declaration, also recheck every corresponding requirement; reject the declaration on failure |
+The target and each overridden accessor must be accessible. Preserve their declared access, except that a protected-internal member overridden in another Kotonoha is declared protected there. Private members, and internal/private-protected members outside their Kotonoha, are ineligible. This grants no permission to expose inaccessible API Types.
 
-Check Property accessors separately at their declared receiver kind; standard get/set witnesses use Shared/Exclusive respectively. An invalid virtual/override declaration cannot remain valid merely by disabling object conversion or invocation. Separately compiled callers rely on the declaration guarantee without enumerating all derived Types. Legitimate generic dependencies remain declaration obligations until instantiation finalization; reject a failing instantiation even when it has no object call sites.
+Initial virtual calls are safe. Each virtual implementation and override independently requires [ObjectCompatible Proven](#1244-object-receiver-compatibility), including its implementation family; failure is a declaration error even without object call sites. This is an explicit guarantee, unlike an ordinary member's inferred public status. A base body's proof cannot validate an override.
+
+Static lookup selects the declaration, overload, access, labels, and public contract. Runtime dispatch selects only that slot's implementation for the Dynamic Type; it never repeats lookup or adds derived-only overloads.
 
 ```text
-Animal.reset: Exclusive virtual, ObjectCompatible
-    ├─ Dog.reset changes permitted state -> valid override
-    └─ Dog.reset replaces self entirely  -> invalid override declaration
+Animal.reset: explicit Exclusive virtual slot
+    ├─ Dog.reset mutates permitted state -> valid override
+    └─ Cat.reset replaces all of self    -> invalid override declaration
 ```
 
-Derived Types must tolerate mutations and preconditions exposed by base APIs. Application invariants stronger than those APIs guarantee cannot become unchecked hidden memory-safety assumptions of safe operations.
+When combined with [runtime Contracts](#85-runtime-contracts), a retained requirement mapping follows the corresponding valid override. Recheck every mapped requirement at that override's declaration; reject an incompatible override rather than silently losing conformance or Supports. Runtime Contract Views remain a separate extension owned by §8.5.
+
+Before introduction, settle declaration spellings, eligible members/receivers/generics, accessor designation, abstract construction restrictions, explicit base-implementation calls, and slot/metadata information for separate compilation together. This design adds no active syntax or fixed ABI.
 
 #### 6.3. Enums
 
@@ -1908,7 +1918,7 @@ A local Type must be fixed at declaration, even without an initializer. An expli
 
 #### 6.5. Attributes
 
-**Attribute syntax.** `#Name` accepts an optional parenthesized, comma-separated Argument list with a trailing comma. Name must begin with an uppercase Unicode letter; lowercase if/match/case select directives, and other lowercase forms are errors. Attributes attach in source order to the next same-indentation declaration, on its line or preceding effective lines. Comments/blank lines may intervene; unrelated items and dedents may not. Dangling Attributes are errors.
+**Attribute syntax.** `#Name` accepts an optional parenthesized, comma-separated Argument list with a trailing comma. Name must begin with an uppercase Unicode letter; lowercase if/switch/case select directives, and other lowercase forms are errors. Attributes attach in source order to the next same-indentation declaration, on its line or preceding effective lines. Comments/blank lines may intervene; unrelated items and dedents may not. Dangling Attributes are errors.
 
 Attributes are accepted on ordinary Container, function, Field, and computed declarations, and on function parameters before the parameter Name. Explicit specializations and Contract requirements retain their prohibition on Attributes; expression statements, patterns, arguments, and accessor lists do not accept Attribute prefixes. Excluded syntax follows §19.5: argument and declaration-placement grammar is checked only where ordinary parsing is required, and excluded Attributes undergo no semantic resolution. The recognized Attributes are `#Layout` for struct storage (§21.1.2) and `#LibraryImport` for [foreign functions](#223-foreign-function-imports). Their concrete argument and target rules are checked after selection; no ordinary Name lookup supplies their literal arguments.
 
@@ -2126,7 +2136,7 @@ The internal call signature retains complete receiver/parameter/result Types, pe
 
 ##### 7.6.4. Function references and common-type conversion
 
-A resolved function reference produces its Function Item Type, including its bound generic arguments and Origin contract. Different declarations remain distinct. Function Item ownership is Copy/Owned/Shared and does not erase borrowed parameter/result contracts. A runtime method receiver is not automatically bound; follow explicit receiver argument rules. Unsafe functions and `deinit` cannot be acquired as values.
+A resolved function reference produces its Function Item Type, including its bound generic arguments and Origin contract. Different declarations remain distinct. A Function Item is Copy and Shared-callable, is Owned when its bound arguments satisfy §15.2.3, and does not erase borrowed parameter/result contracts. A runtime method receiver is not automatically bound; follow explicit receiver argument rules. Unsafe functions and `deinit` cannot be acquired as values.
 
 ```kimi
 func add(x: i32, y: i32) -> i32 => x + y
@@ -2283,7 +2293,7 @@ contract SizedSource: Source, Sized
     func reset(self: uniq/Self) -> ()
 ```
 
-The initial implementation covers static conformance checking and generic use. User-defined Contracts have no generic or contract-level Origin parameters and cannot capture an enclosing declaration's generic parameters. Ordinary generic Types/functions and separately specified built-in requirements such as `Callable<...>` are unaffected. Runtime Contract Views remain a [future extension](#85-runtime-contracts).
+This revision defines static conformance checking and generic use. User-defined Contracts have no generic or contract-level Origin parameters and cannot capture an enclosing declaration's generic parameters. Ordinary generic Types/functions and separately specified built-in requirements such as `Callable<...>` are unaffected. Runtime Contract Views remain a [future extension](#85-runtime-contracts).
 
 ##### 8.4.1. Function requirements
 
@@ -2403,6 +2413,22 @@ Unconditional generic Type conformance must hold for every binding allowed by th
 
 Retain the verified requirement-to-Member Identity mapping and associated-Type bindings. Contract calls use this mapping rather than rediscovering members in the caller's source environment or after instantiation. No external registration, replacement conformance, default implementation, or access-bypassing witness thunk is introduced.
 
+**Inherited conformance.** A verified `(B, C)` is inherited by `D : B` only if every requirement, with requirement-side Self replaced by D, is satisfied by the retained mapping. If Member M was declared in A, its implementation-side Self remains A, even through A -> B -> D. Apply Type/Origin substitutions along D's base path to A and retain associated-Type bindings. Only an eligible borrowed receiver may use [base-subobject projection](#951-base-subobject-receiver-projection); other parameters/results gain no base conversion, and owning receivers gain no slicing. Check §8.4.5's access, Origins, Effects, and premises and §11.4's Property rules. Projected calls require published ObjectCompatible Proven (§12.4.4).
+
+| Requirement shape | Inheritance through this path |
+| --- | --- |
+| Self only in a borrowed receiver, as in Stringify | Possible if all other checks and ObjectCompatible succeed |
+| `other: ref/Self`, as in Equatable/Comparable | Fails: ref/A does not match ref/D |
+| `func empty() -> Self` | Fails: A's result does not supply D |
+| `owner/Self`, as in Iterable | Fails: no owning receiver projection |
+| Fixed `Self.Element` normalizes to the same Type | Match the normalized Types; the spelling Self alone does not prohibit inheritance |
+
+One failed inheritance path does not invalidate D's declaration. Determine `(D, C)` from all explicit, conditional, and Contract-refinement paths under §8.7; only a proof that all candidates fail gives Refuted. Unresolved generic dependencies remain Unknown until their deadline; invalid declarations or inconsistent evidence are Error. Successful paths must agree on associated Types and implementation mappings. New explicit conformance uses ordinary implementation lookup; inherited mappings are not replaced by same-named declarations.
+
+Copy, Owned, Callable, and other intrinsic capabilities retain their own derivation rules. In particular, struct Copy requires the derived declaration's opt-in and all stored components; it is not inherited automatically.
+
+Do not warn merely because an open base has a conformance its descendants cannot inherit. At a failing derived `Self is C` or constraint use, identify the requirement and cause: Self mismatch, owning receiver, access/Origin/premise failure, or ObjectCompatible NotProven and its responsible implementation. Diagnose an unresolved proof as Unknown, not Refuted. For example, an Equatable Shape may have a valid `Circle : Shape` without Circle being Equatable; requiring Circle's conformance reports the ref/Shape versus ref/Circle mismatch and the inherited-Name prohibition. When descendants need such Self-dependent Contracts, implementing them on leaf Types or using composition avoids this restriction; the base's own conformance remains valid.
+
 ##### 8.4.5. Implementation matching
 
 Validate ordinary declarations first. Functions differing only in result Type, Origins, Constraints, or `unsafe` cannot coexist in one scope under the existing Signature rules; they are duplicate declarations before conformance matching.
@@ -2415,7 +2441,7 @@ After substituting `Self`, the conforming Type's arguments, and associated Types
 | Function kind | Type function or instance function. |
 | Function generic parameters | Same count, kinds, and order; correspond by position, not spelling. |
 | Ordinary parameters | Same count, order, and external labels; internal names need not match. |
-| Receiver | Same presence and normalized Type structure. |
+| Receiver | Same presence and normalized Type structure, with only the inherited receiver correspondence allowed by §8.4.4. |
 | Parameter Types | Same normalized Type structure. |
 
 Type structure includes resolved Core Identity, Semantics, nested structure, and type arguments. Exclude Origin names, bindings, and lifetime relations from identification, but retain them for compatibility. There is no parameter-structure contravariance. Do not rank implementations by ordinary call overload preferences, adaptations, omitted arguments, Origins, Constraints, conditional-member applicability, or Effects. Conditions are checked after identification, unlike direct-call applicability (§8.4.8).
@@ -2525,7 +2551,7 @@ Direct member use has a distinct applicability step: after lookup commits a func
 | Unknown | Applicability unproven | Evidence for neither conformance nor absence |
 | Error | Diagnose even if another candidate succeeds | Diagnose invalid declaration or condition |
 
-Conditions never alter lookup stopping/hiding, and an inapplicable member cannot reopen outer/base lookup. Compare applicable members of the committed group by ordinary overload rules, without ranking condition strength. Loan or initialization failure after selection does not cause reselection. A generic definition cannot restore a member rejected for lack of proof merely because a later instantiation satisfies P. If a legitimate temporary Unknown can affect selection, defer the decision rather than committing an alternative.
+Conditions never alter lookup's committed layer or the inherited-Name prohibition, and an inapplicable member cannot reopen outer/base lookup. Compare applicable members of the committed group by ordinary overload rules, without ranking condition strength. Loan or initialization failure after selection does not cause reselection. A generic definition cannot restore a member rejected for lack of proof merely because a later instantiation satisfies P. If a legitimate temporary Unknown can affect selection, defer the decision rather than committing an alternative.
 
 Unknown dependencies and deadlines follow §8.7/§8.10. Required proof missing at its deadline is an error. Neither the declaration itself nor circular conformance search supplies evidence. Concrete absence requires completing all relevant paths, including ancestor conformances. Conditional syntax and definitions are checked even if no current Type arguments satisfy P; environment-only `#if`/`#switch` cannot replace these checks.
 
@@ -2552,9 +2578,9 @@ This feature defines static conformance and generic use. It adds no external reg
 
 #### 8.5. Runtime contracts
 
-**Extension scope.** The initial Contract implementation is static. Runtime-use designation and View associated-Type binding syntax remain to be defined; this section preserves the runtime design for that extension, not permission to form such Views in the initial implementation. Object Views with concrete Core targets retain their existing rules. No implicit runtime designation or new `where` syntax is introduced.
+**Extension scope.** Contracts in this revision are static. Runtime-use designation and View associated-Type binding syntax remain to be defined; this section preserves the runtime design for that extension, not permission to form such Views in this revision. Object Views with concrete Core targets retain their existing rules. No implicit runtime designation or new `where` syntax is introduced.
 
-Compile-time conformance and runtime View usability are separate. A runtime Contract exposes requirements through dynamic dispatch without instance state or a separate `virtual` designation for each requirement. A bare Contract name is never a value Type; the extension uses explicit Object Semantics such as `objref/C`, `objuniq/C`, and `obj/C`.
+Compile-time conformance and runtime View usability are separate. A runtime Contract exposes requirements through dynamic dispatch without instance state. A bare Contract name is never a value Type; the extension uses explicit Object Semantics such as `objref/C`, `objuniq/C`, and `obj/C`.
 
 **`RuntimeUsable(C)`** holds exactly when `C` is explicitly designated for runtime use, it has no type-function requirements (including inherited ones), and, after fixing associated Types, every instance requirement satisfies:
 
@@ -2569,9 +2595,9 @@ Compile-time conformance and runtime View usability are separate. A runtime Cont
 
 Check every getter result and setter requirement separately. Forming `objref/C` or another object form requires `RuntimeUsable(C)`, even when the concrete payload is unknown; it does not require searching all implementations. Unsupported requirements cannot simply be removed from the view. For example, `equals(other: Self)` cannot become heterogeneous comparison between arbitrary `objref/C` values.
 
-**`Implements(D, C)`** checks explicit or inherited conformance. Every requirement has one effective implementation for `D`, with compatible signature, access, Origins, and `ObjectCompatible` at the required receiver kind. Retain legitimate generic obligations until finalization; unknown does not mean satisfied.
+**`Implements(D, C)`** checks explicit or [validly inherited conformance](#844-conformance). Every requirement has one implementation for D, with compatible signature, access, Origins, and published ObjectCompatible Proven (§12.4.4). Unknown does not establish this guarantee.
 
-Use the [unique static conformance](#844-conformance) for the concrete Type and Contract Identity; changing View bindings cannot create another conformance. Inherited conformance persists in derived Types: virtual requirements follow valid overrides; added same-named non-overrides do not change the mapping. Reject an override that breaks conformance rather than making `Supports(D, C)` disappear for that derived Type.
+Use the unique static conformance for the concrete Type and Contract Identity; changing View bindings cannot create another conformance. Static conformance does not generally persist in derived Types. This extension must ensure that RuntimeUsable restrictions, fixed associated-Type bindings, and published implementation guarantees preserve its Supports relation through every derived layer. Static conformance alone is not sufficient proof of that invariant.
 
 Contract refinement follows [static refinement](#842-refinement). No replacement conformance, default implementation, or external registration is introduced. Registration and artifact consistency follow [metadata](#2121-type-identity-and-descriptors). Static declarations and associated-Type specifications are defined; only runtime-use designation and View binding syntax remain deferred here.
 
@@ -2671,7 +2697,7 @@ Evidence comes from the current declaration's validated input Constraints, defin
 | Negation | Exchange Proven and Refuted for `not P`; Unknown remains Unknown and Error remains Error. Double negation is normalized as above. |
 | Boolean refutation | Refute `P and Q` if either operand is Refuted; refute `P or Q` if both are Refuted. |
 | Concrete atomic judgment | Use defined concrete Type-identity, Semantics/category, and built-in capability tests, or the closed conformance judgment below. |
-| Verified conformance | Use a verified explicit or inherited mapping after proving its prerequisites, including conditional conformance premises (§8.4.8). Retain legitimate unresolved prerequisites; cyclic declarations alone prove nothing. |
+| Verified conformance | Use a verified explicit or inherited mapping after proving its prerequisites, including inheritance matching (§8.4.4) and conditional premises (§8.4.8). Retain legitimate unresolved prerequisites; cyclic declarations alone prove nothing. |
 | Contract refinement | From available `T is C`, use each ancestor conformance and inherited requirement Constraint, substituting `T` for `Self`. This does not discharge an unverified declaration's implementation obligations. |
 | Associated-Type identity | Substitute and normalize explicit associated-Type specifications and available Type-identity Constraints under [associated-Type rules](#843-associated-types). Do not infer bindings from members or search for a satisfying Type. |
 | Other cases | Unknown, unless validation requires Error. |
@@ -2752,6 +2778,8 @@ find<i32>(10) // Evaluate the original default, then call the specialization.
 The restriction concerns the specialization declaration, not ordinary syntax inside its body. A specialization of an unsafe function inherits its Safety contract, but unsafe operations still need an Unsafe Block. Contract inheritance introduces no unsupported async, exception-Effect, or variadic feature.
 
 Validate all necessary Type Origins before comparison. After matching inherited binders, the body must work for **every Origin binding permitted by the original contract**. Do not add an Origin parameter or lifetime restriction, narrow applicability by Origin, or register another implementation for different Origins. A specialization cannot rescue an invalid ordinary implementation or replace a declaration-required proof; [deferred generic checking](#810-generic-body-checking-and-deferred-obligations) retains its stated design boundary.
+
+Inferred ObjectCompatible is a [common implementation guarantee](#12443-implementation-families), not an additional declaration obligation inherited from the ordinary body. A specialization may make that public guarantee NotProven without being invalid for that reason; declared Signature, Constraints, Safety, and Effect requirements still apply.
 
 ##### 8.8.3. Selection and declaration ownership
 
@@ -2841,6 +2869,8 @@ For example, using the target projection T as a local Type inside `func f<s/T>(x
 
 Concrete layout/representation validity may still depend on substitution or the prepared target, including finite representable storage for an otherwise well-typed body local. Record such dependencies in the definition artifact with their source and target requirements before clients instantiate it. These checks concern representability only and cannot disguise a Type, capability, or lifetime restriction. A call satisfying the public contract must not fail later because its callee newly discovers a semantic body requirement. Ordinary caller-side initialization and Loan checks, specified runtime checks, target representation failures, and documented compiler resource exhaustion remain distinct; resource exhaustion is not semantic invalidity.
 
+ObjectCompatible (§12.4.4) is a completed public operation guarantee used by projection/object-call legality, not a new conditional applicability premise or a deferred body requirement. Verify its common implementation family before publication; caller-specific instantiations cannot strengthen it. Changes use §21.3.4's dependency revalidation.
+
 Diagnostics for definition errors identify the body use and missing declared proof; instantiation diagnostics identify the already-published dependent/representation obligation, definition site, arguments, and failed condition. Preserve verified summaries and plans in compile-time metadata even when runtime keys erase Origins. Do not add caller aliases/extensions, redo overload choice for favorable concrete Types, or use obligation strength to rank candidates. Environment directives provide no Type/capability evidence and retain their earlier selection deadlines.
 
 ### 9. Names, signatures, and access
@@ -2853,9 +2883,8 @@ During [Mod generation](#2072-compilation-and-binding), these rules may produce 
 | --- | --- |
 | Binding / Name resolution | Associating source names and operations with declarations and meanings. |
 | Lookup environment | The declarations and aliases available for a lookup in one scope; extensions are a future design. |
-| Project root | Root of the primary module's declaration hierarchy. |
-| Compilation root | Lookup entry point for the project root and directly referenced module names. |
-| Source environment | The definition-site aliases and lookup context of one source document. |
+
+Module terms, including Compilation root, project root, and source environment, follow [§18](#18-modules-and-dependencies).
 
 Resolve Names before selecting overloads or checking whether an operation can execute:
 
@@ -2908,7 +2937,7 @@ func identity<T>(value: T) -> T => value
 func identity<U>(value: U) -> U => value // Error: same normalized Signature.
 ```
 
-Duplicate Signatures are declaration errors. Distinct Symbols imported from different Containers may have the same shape; a use is ambiguous unless overload rules select one. Fragment header-name agreement is separate from parameter-name normalization between different function declarations. Existing syntax-based Signature structures do not yet implement these semantic checks.
+Duplicate Signatures are declaration errors. Distinct Symbols imported from different Containers may have the same shape; a use is ambiguous unless overload rules select one. Fragment header-name agreement is separate from parameter-name normalization between different function declarations.
 
 #### 9.2. Namespaces, roles, and visibility
 
@@ -3124,9 +3153,9 @@ func read(Config: ref/Settings) -> i32
 
 Member lookup searches ordinary members. An accessible, role-compatible ordinary member commits lookup even if no overload applies. There is no active extension stage in this revision. **Future extension constraint:** ordinary members must precede extensions; inaccessible or wrong-role members alone must not block them. A future design must specify lexical, source-alias, and default-alias enablement stages and must not automatically add argument-associated Containers.
 
-**Inherited ordinary lookup.** After substituting base arguments, search the statically selected struct, then its direct bases, one layer at a time. Commit to the first layer with accessible, role-compatible declarations. Its same-name functions form the entire overload set; do not merge farther base overloads. Inaccessible/wrong-role declarations alone do not commit. Receiver compatibility, generic/argument applicability, accessors, and Loans are later checks and cannot reopen lookup. Instance/type functions share the Value role, so invalid receiver use cannot skip a nearer layer. Use this same layer selection for inherited Contract implementations, then check conformance compatibility and access.
+**Inherited ordinary lookup.** After substituting base arguments, search the statically selected struct, then its direct bases, one layer at a time. Commit to the first layer with accessible, role-compatible declarations. Its same-name functions form the entire overload set; do not merge farther base overloads. Inaccessible/wrong-role declarations alone do not commit. Receiver compatibility, generic/argument applicability, accessors, and Loans are later checks and cannot reopen lookup. Instance/type functions share the Value role, so invalid receiver use cannot skip a nearer layer. Use this selection for a new explicit Contract implementation, followed by conformance checks. Already inherited conformances retain their [verified mapping](#844-conformance).
 
-Thus a derived `f(string)` hides an accessible base `f(i32)` for calls through the derived Type: `derived.f(1)` fails rather than searching the base. With no eligible derived f, the base group is found. Receiver projection below supplies eligible inherited instance receivers without adding an ordinary derived/base conversion.
+A derived `f(string)` with an accessible base `f(i32)` is a declaration error under the [inherited-Name rule](#622-inheritance-and-open-structures), regardless of call sites. Without an eligible derived f, lookup finds the base group. Reuse of a Name inaccessible to the derived author remains possible; the layer-commit rule still governs that case. Receiver projection below adds no ordinary derived/base conversion.
 
 Generic bodies use their [definition-site source environment](#18-modules-and-dependencies), including during deferred instantiation; caller aliases and extensions never enlarge their candidate sets.
 
@@ -3138,9 +3167,9 @@ For a declaration receiver `ref/B` or `uniq/B`, form the corresponding shared Bo
 
 For ordinary value receivers, rank `ref/D -> ref/B` and `uniq/D -> uniq/B` as same-semantics reborrow, and `owner/D -> ref/B`, `owner/D -> uniq/B`, and `uniq/D -> ref/B` as cross-semantics Borrow/Reborrow under [argument adaptation](#102-argument-adaptation-and-literals). These are member-receiver operations only, never Exact conversions. Projection adds no preference based on inheritance depth and cannot reopen lookup. Candidate analysis records operations without committing them before selection.
 
-An ordinary borrowed-receiver implementation used through projection must satisfy [ObjectCompatible](#1244-object-receiver-compatibility) for its receiver kind, including callees and returned borrows. Check this at the projected use; reject unknown or incompatible effects. Thus an ordinary method that replaces all of `self` may work on a complete `B`, but cannot replace the base inside `D`. Neither projection nor an escaping unrestricted exclusive borrow may permit whole-base Move, Replacement, reconstruction, or acquisition of a sliced owner. The body retains its declared `Self = B` and result contract. Receiver-derived results keep the projected Loan and cannot outlive the original storage; inherited access also retains construction, destruction, and ancestor-completeness restrictions.
+An ordinary borrowed-receiver implementation used through projection requires published [ObjectCompatible Proven](#1244-object-receiver-compatibility). Reject a use of NotProven without inspecting the private body or retrying overload selection. A method that replaces all of self may work on a complete B, but cannot replace the base inside D. Neither projection nor an escaping unrestricted exclusive borrow may permit whole-base Move, Replacement, reconstruction, or acquisition of a sliced owner. The body retains its declaration's Self and result contract. Receiver-derived results keep the projected Loan and cannot outlive the original storage; construction, destruction, and ancestor-completeness restrictions still apply.
 
-For Object Semantics, projection is the receiver adjustment of the verified [object entry](#1244-object-receiver-compatibility). Preserve the complete object's identity, Dynamic Type, metadata, and cleanup; dispatch selects the corresponding implementation after static member selection, with any implementation receiver adjustment verified under the same rules. Projection creates no public object view or owning/counting handle and changes no reference count. An owning receiver requirement (`owner/B`, `obj/B`, `rc/B`, or `arc/B`) cannot be satisfied by projection; it needs an independently permitted acquisition or explicit object upcast.
+For Object Semantics, adjust the receiver of the statically selected, ObjectCompatible implementation. Preserve the complete object's identity, Dynamic Type, metadata, and cleanup. Projection creates no public object view or owning/counting handle and changes no reference count. An owning receiver requirement (`owner/B`, `obj/B`, `rc/B`, or `arc/B`) cannot be satisfied by projection; it needs an independently permitted acquisition or explicit object upcast.
 
 Projection is confined to this member operation. It adds no standalone base-view expression, argument/result conversion, subtype relation, bound-method value, or change to the explicit adaptation tables.
 
@@ -3524,7 +3553,7 @@ Accessors inherit Property access unless explicitly restricted. A restriction mu
 | private protected | private |
 | private | None |
 
-Neither accessor must retain the Property's full access domain, and set access need not be contained in get access. API signature, protected-receiver, and override checks still apply. Object receiver calls require verified ObjectCompatible entries (§12.4.4); writing ref/Self or uniq/Self alone supplies no proof.
+Neither accessor must retain the Property's full access domain, and set access need not be contained in get access. API signature and protected-receiver checks still apply. Object/projection calls require published ObjectCompatible Proven (§12.4.4); writing ref/Self or uniq/Self alone supplies no proof.
 
 ##### 11.2.2. Computed properties
 
@@ -3654,11 +3683,9 @@ Preserve base-first construction, declaration-order initializers, no self/constr
 
 Group/rootgroup stored Properties require initializers, an Owned complete storage Type under §15.2.3, and §22.2's per-slot lazy state machine. Safe shared borrows from eligible immutable static storage may be retained, including inside aggregates. Check acquisition, initialization, and destruction dependencies separately; Owned supplies no Loan or pointer-validity evidence.
 
-Safe code cannot form a `from static` borrow of mutable static storage, including an inline subplace or backing data that safe mutation can invalidate. A new borrow of such storage has a finite use-bounded Origin and cannot be fitted to static, including through generic substitution or an accessor result. Copying an already stored reference preserves its original referent and Origin; it is not a borrow of the mutable slot. An eligible static borrow must be anchored in initialized immutable storage whose referenced path remains protected from safe mutation. Local Loans and shutdown checks remain necessary under §15.6.4 and §22.2.3.
+Safe code cannot form a `from static` borrow of mutable static storage, including an inline subplace or backing data that safe mutation can invalidate. A new borrow of such storage has a finite use-bounded Origin and cannot be fitted to static, including through generic substitution or an accessor result. A function or custom getter can expose it only through a result Origin bounded by a borrowed input under §15.4, retaining the Field anchor in its effect summary (§15.6.4); a result Origin elided to static is an error. Copying an already stored reference preserves its original referent and Origin; it is not a borrow of the mutable slot. An eligible static borrow must be anchored in initialized immutable storage whose referenced path remains protected from safe mutation. Local Loans and shutdown checks remain necessary under §15.6.4 and §22.2.3.
 
 Actual slot access triggers initialization. Calling a custom/computed accessor initializes only slots actually touched by its execution or callees, not every summarized effect. A standard write initializes the slot first, then replaces its value; static let permits no external initialization or replacement. Custom set follows its function effects and may never touch storage. Unused initializers still require validation. Static accessors have no self.
-
-Effect summaries include call, initialization, and cleanup effects. Returned borrows keep storage identity and current-value Loan anchors; static allocation does not permit conflicting replacement/destruction.
 
 #### 11.4. Contract property requirements
 
@@ -3679,9 +3706,9 @@ contract ReplaceableItem
 
 ##### 11.4.1. Operation compatibility
 
-Select an implementation by ordinary member lookup, then check the selected let/var/computed operations. Never retry another Name/base candidate because of Type, accessor, or accessibility failure. Substitute Self, generic arguments, and associated Types; apply function requirement compatibility without implicit conversions or stronger implementation preconditions. Check access, receiver, Origins/Loans by bound correspondence, and generic premises. No blanket equality between storage Type and requirement header is imposed.
+Select a new implementation by ordinary member lookup; inherited conformance retains its mapping under §8.4.4. Check the selected let/var/computed operations without retrying another Name/base candidate because of Type, accessor, or accessibility failure. Substitute requirement-side Self, generic arguments, and associated Types while retaining the implementation's declaring Self and permitted receiver correspondence. Apply function requirement compatibility without implicit conversions or stronger implementation preconditions. Check access, Origins/Loans, and generic premises. No blanket equality between storage Type and requirement header is imposed.
 
-Compatible custom/computed accessors implement calls directly. Object calls/conformance additionally need ObjectCompatible and valid runtime conformance. Unknown generic capabilities cannot establish compatibility.
+Compatible custom/computed accessors implement calls directly. Calls through base projections or object borrows require published ObjectCompatible Proven (§12.4.4). A concrete Core Object View does not require runtime Contract conformance. Unknown generic capabilities cannot establish compatibility.
 
 ##### 11.4.2. Standard operation witnesses
 
@@ -3701,7 +3728,7 @@ Requirement + selected Property + Type/Origin substitutions + base path
     -> call or direct lowering preserving the requirement contract
 ```
 
-Retain this mapping without adding concrete accessors or lookup candidates. It is the limited implementation-generation exception of §8.4.4; no runtime witness-table representation is mandated. An unconstrained F slot may implement shared ref/F get but not unconditional by-value F get.
+Retain this mapping and the witness operation Identity/public guarantee under §12.4.4 without adding concrete accessors or lookup candidates. It is the limited implementation-generation exception of §8.4.4; no runtime witness-table representation is mandated. An unconstrained F slot may implement shared ref/F get but not unconditional by-value F get.
 
 Contract calls have function boundaries, not caller-visible storage disjointness. Only required operations are available; implementation storage grants no direct Move/exclusive borrow. Getter owned results retain §11.2.3 restrictions even when their witnesses lower to direct operations. Preserve requirement Types, Origins, Loans, and temporary permissions through lowering.
 
@@ -3892,50 +3919,72 @@ Generic arguments follow [slot binding](#81-generic-type-parameters), [function 
 
 ##### 12.4.3. Object member calls
 
-Select the member, overload, access, and public contract statically from the receiver's [Effective Type](#14101-stable-bindings-and-effective-types). Dynamic dispatch then selects only the corresponding implementation for the Runtime Object Type. It never repeats name lookup or chooses a derived-only overload. Declaration identity distinguishes inherited virtual slots from each runtime contract's requirements.
+Select the ordinary member, overload, access, and public contract statically from the receiver's [Effective Type](#14101-stable-bindings-and-effective-types). Use that implementation even when the Runtime Object Type is more derived. Adjust the receiver to the selected declaration's subobject under §9.5.1; no new lookup or derived-only overload is introduced.
 
-```text
-animal.speak()
-    ├─ static: select Animal.speak and check its public contract
-    └─ dynamic: Dog -> Dog override; Cat -> Cat override
-```
-
-Shared object access admits shared members/getters. Exclusive access may share by Reborrow or invoke an exclusive member/setter under normal Loan rules. A getter-only contract grants no setter. Returned interior references retain their receiver Loan; an exclusive result cannot detach from the current call to enable overlapping reentry.
+Shared object access admits shared members/getters. Exclusive access may share by Reborrow or invoke an exclusive member/setter under normal Loan rules. Returned interior references retain their receiver Loan; an exclusive result cannot enable overlapping reentry. Calls through an object borrow require the public guarantee below.
 
 ##### 12.4.4. Object receiver compatibility
 
-Object borrows may mutate permitted state of the same complete object, but cannot Replace the entire object or base subobject, even with another instance of the same Type, or MoveOut a part leaving it incomplete. Field replacement and initialization-preserving exchange remain state mutation under Field/access/Loan rules. Owning-handle replacement is a different operation:
+Object borrows may mutate permitted state of the same complete object, but cannot Replace the entire object or base subobject, even with the same Type, or MoveOut a part leaving it incomplete. Field Replacement and initialization-preserving Exchange remain state mutation under normal permissions and Loan checks. Replacing an owning handle instead destroys the old object and owns a different one:
 
 ```kimi
 func celebrate(animal: objuniq/Animal) -> ()
     animal.age = animal.age + 1
 
 var animal: obj/Animal = makeDog()@obj/Animal
-animal = makeCat()@obj/Animal // Destroy old Dog, then own a separate Cat.
+animal = makeCat()@obj/Animal // Destroy the old Dog, then own a separate Cat.
 ```
 
-The latter requires the old object's borrowing and destruction conditions; it does not change one object's Dynamic Type. `obj/T` permits exclusive mutation only through valid exclusive access to a writable Place or temporary. `rc/T` and `arc/T` supply shared access; a reference count of one does not create exclusive permission. Ownership responsibility is not unrestricted write authority.
+Owning-handle replacement retains normal borrowing/destruction conditions. Exclusive object access requires a writable Place or eligible temporary; rc/arc supply only shared access, even at count one. No general objuniq/T-to-uniq/T conversion or owning-receiver slicing is added.
 
-**`ObjectCompatible(f, receiverKind)`** holds when static verification, including callees and receiver-derived borrows, establishes all of:
+###### 12.4.4.1. Public status and use
 
-- operations fit the declared Shared or Exclusive access;
-- no whole-object/base Replace or MoveOut leaving the receiver incomplete occurs;
-- no unrestricted ordinary `uniq/Self` escapes or alternative path enables prohibited operations;
-- parameter/result Types, accessor permissions, Origins, Loans, and returned-reference dependencies satisfy their contracts.
+**ObjectCompatible** is the public guarantee that a borrowed-receiver call preserves receiver completeness, access authority, and its Type/Origin/Loan contract. Its key is the **call operation Identity**, not a Type substitution or a separate receiver-kind key; receiver kind belongs to the Signature. Functions and custom/computed get/set each use their declaration Identity.
 
-This is a specification predicate, not source syntax or a prescribed analysis algorithm. Unknown separate or indirect callees cannot be assumed safe. Apply the [declaration/use validation boundaries](#624-virtual-members-and-overrides).
+Direct standard get/set remain Place operations, checked by acquisition and Property permissions; they are not implicit getter functions. In particular, borrowing `Box<T>.item` with `@ref` does not require T is Copy. Standard Contract witnesses are call operations: their generated Identity distinguishes the Requirement Identity, Property Identity, and bridge kind within the conformance mapping. Preserve each witness's result Type and public premises; do not merge different witnesses or publish a status for each concrete instantiation.
 
-Borrowed-receiver accessors and requirement bridges may use verified object entries without a general objuniq/T-to-uniq/T conversion, changed contracts, overload reselection, or duplicated conformance. Owning computed receivers follow their declared acquisition rules and gain no object slicing permission. Accessor calls retain function boundaries; direct stored operations retain Property permissions. Object fields cannot Move out. MoveOut is an effect, not a source operator.
+| Published status | Call through a base-subobject projection or object borrow |
+| --- | --- |
+| Proven | Allowed if the ordinary call, access, Type, Origin, and Loan checks pass |
+| NotProven | Use-site error; calls on complete ordinary values remain subject to their normal rules |
 
-```kimi
-// Structure member excerpt; clamp does not access the receiver.
-private var storedAge: i32 = 0
-public computed age: i32
-    get(self: ref/Self) -> i32 => self.storedAge
-    set(self: uniq/Self, value: i32) -> () => self.storedAge = clamp(value, 0, 150)
-```
+NotProven means absence of a common proof, not Refuted for every binding. Additional caller premises, favorable Type arguments, the exact Dynamic Type, or one selected specialization cannot strengthen this status. A failed use never causes overload reselection. Unknown is internal pending work, never a published status. Invalid bodies, missing mandatory artifact information, and unimplemented verification cannot be hidden as NotProven.
 
-The setter replaces one Field, not the complete receiver. It still needs ObjectCompatible verification; the single-item body does not grant direct-field privileges to callers.
+###### 12.4.4.2. Effect verification
+
+Use resolved operations and acquisition plans before optimization. Under the declaration's Signature, Constraints, and conditional premises, verify every admitted Type/Origin binding using §8.7–§8.10. Do not infer hidden caller Constraints from a body. The following abstract rules determine the public result independently of analysis precision, optimization, and processing order; representations and worklist algorithms are implementation choices.
+
+Summaries retain operation kinds and their relation to receiver/input roots, captures, static anchors (§15.6.4), and returned aliases. A storage relation is a finite set of Whole (the root), Base (base edges only), Part (a path including Field/Tuple/array storage), Separate (proven disjoint), or MayAlias (not established). Preserve normal Origin/Loan and target-Place information alongside these relations.
+
+| Operation or dependency | Required summary/check |
+| --- | --- |
+| Replace, reconstruct, or acquire ownership of receiver Whole/Base | Receiver-preservation violation |
+| MoveOut from receiver storage leaving it incomplete | Violation; later restoration does not cancel it |
+| Completeness-preserving Part Replacement/Exchange, permitted reads/borrows | No preservation violation by itself; retain access, Loan, and cleanup checks |
+| Escape of unrestricted exclusive access capable of operating on receiver/base | Violation; include results, stores, and callee paths |
+| Borrowed result | Retain root/alias correspondence and verify return Origins, Loans, and authority |
+| Separate operation | No violation against the root from which separation is proven |
+| MayAlias or unverified unsafe/indirect effects that may violate receiver preservation | Unproven effect on every potentially affected root |
+| Calls, custom accessors, defaults, cleanup | Map and compose published root effects through actual arguments, captures, and static anchors |
+| Branches and loops | Union all Type-checked paths; omit only environment-excluded syntax, not paths removed by runtime reasoning or optimization |
+
+Base-only path composition yields Base; a storage-element edge yields Part. A Field storing a reference is not that reference's referent: follow retained anchors/aliases, using MayAlias when the referent relation is unknown. Separation from one input proves nothing about another input, capture, or static root. Already proven harmless effects, such as permitted reads, do not become violations merely because their target may alias.
+
+A callee's whole-value replacement mapped onto a caller's Part is not replacement of the whole caller receiver. Keep the actual target's restrictions, however: Part classification cannot erase a base-subobject use check. Summarize defined completeness-preserving Replacement/Exchange as such, rather than counting their internal lowering transfers as separate illegal MoveOut operations. Retain operation summaries instead of simply propagating a callee's NotProven bit.
+
+For same-build calls, propagate direct effects over the finite declaration-schema/root domain to the least union fixed point, including recursion and the implementation families below. Do not enumerate concrete Types or remove specializations based on a particular call. Recursion alone is not an unproven effect; an unfinished empty summary is not a proof. A verified empty summary is valid.
+
+Separate, indirect, and generic-requirement calls use validated public summaries or requirement Effect contracts. Without an optional effect guarantee, propagate unproven effects to potentially affected roots; do not inspect private bodies or enumerate possible implementations. Missing mandatory artifact data is an artifact error, not an optional missing guarantee. Receiverless helpers may publish input-root summaries without an ObjectCompatible status.
+
+An implementation succeeds only when normal semantic checking completes and every admitted binding has no receiver violation or unproven effect. Pending call/conformance obligations remain explicit until resolved. The effect fixed point does not prove a circular conformance declaration; normal proof deadlines and errors still apply.
+
+###### 12.4.4.3. Implementation families
+
+An operation's public status is Proven exactly when the ordinary body and **every implementation in its closed explicit-specialization set** pass §12.4.4.2. Otherwise a semantically valid family is NotProven. Close the set after environment selection, generation, and declaration collection, regardless of whether implementations are currently called.
+
+Verify the ordinary generic body over all admitted bindings independently; do not subtract bindings covered by specializations. Verify each specialization under its substituted inherited contract. The ordinary body's inferred Proven imposes no extra declaration obligation on a specialization. An incompatible specialization makes the family NotProven, but is not a declaration error for that reason; declared Signature, Constraints, Safety, and Effect obligations still apply. Improving the ordinary body therefore cannot invalidate an unchanged specialization.
+
+Check use against the original public contract before selecting an implementation (§8.8.3). A NotProven diagnostic identifies the responsible implementation and reason, including specialization arguments and dependent callee/witness identities where relevant; private bodies need not be exposed. Publish the completed summaries, status, and dependencies under §18.3 and revalidate changes under §21.3.4.
 
 ### 13. Operators and assignment
 
@@ -3960,7 +4009,7 @@ Earlier rows bind more tightly. Left associativity groups `a op b op c` as `(a o
 | 13 | `..` `..=` | Non-associative |
 | 14 | `=`, compound assignments | Right |
 
-In ordinary expressions, `is` / `is not` ends after one named Core; outer `and` / `or` remain Boolean operators. In dedicated compile-time contexts, `is` instead follows the asymmetric [requirement-expression rule](#83-requirement-expressions). Prefix `not` precedence is unchanged: negate a runtime test with `value is not Dog` or `not (value is Dog)`. `as` is reserved.
+In ordinary expressions, `is` / `is not` ends after one named struct Core; outer `and` / `or` remain Boolean operators. In dedicated compile-time contexts, `is` instead follows the asymmetric [requirement-expression rule](#83-requirement-expressions). Prefix `not` precedence is unchanged: negate a runtime test with `value is not Dog` or `not (value is Dog)`. `as` is reserved.
 
 Unparenthesized comparison chains such as `a < b < c`, `a == b == c`, and `a < b == flag` are syntax errors. Write `a < b and b < c` or `(a < b) == flag`; each comparison still requires valid operand Types.
 
@@ -4274,7 +4323,7 @@ Discard still evaluates and checks acquisition/conversion, then destroys the unu
 | Failed runtime numeric conversion | Abort if evaluated |
 | Unsafe memory contract violation | Ordinary Unsafe rules |
 
-Literal fitting is static. Otherwise, constant folding cannot turn specified runtime Abort into a compile-time error outside required constant evaluation, or introduce failure from skipped evaluation.
+Literal fitting is static; other constant evaluation follows [§17.3.4](#1734-checks-builds-and-constant-evaluation).
 
 ```kimi
 let x: i32 = 300
@@ -4285,7 +4334,7 @@ Abort and cleanup follow ordinary failure/lifetime rules; completed Moves and ef
 
 ##### 13.5.7. Object upcasts
 
-Let `S` be the source's static Core View Target and `V` a different target. An upcast requires static proof of `Supports(S, V)`. Inheritance and conformance persist in derived Types, so this guarantee holds even when the actual object is more derived than `S`. Validate [payload erasure](#1581-object-payload-erasure), initialization, access, Origins, and Loans in every row.
+Let `S` be the source's static Core View Target and `V` a different target. An upcast requires static proof of `Supports(S, V)` that remains valid for every more-derived Dynamic Type. Concrete Core support follows the base graph. Static conformance alone does not establish this persistence: [inherited conformance](#844-conformance) is conditional on matching, and the [runtime Contract extension](#85-runtime-contracts) must guarantee persistent Supports for its Views. Validate [payload erasure](#1581-object-payload-erasure), initialization, access, Origins, and Loans in every row.
 
 | Source | Explicit operation | Acquisition/result |
 | --- | --- | --- |
@@ -4371,7 +4420,7 @@ owned animal -> checked cast -> success(dog) or failure(original)
 
 For an exclusive result whose variant is not yet known, conservatively track the possible child Loan; the parent cannot conflict until that dependency ends. An owning cast never restores the source binding on failure. It neither destroys/copies the object nor changes reference counts. Destroying the result follows the normal responsibility of the branch it holds.
 
-Check target validity/accessibility, Semantics preservation, [Owned erasure](#1581-object-payload-erasure), result Origins/Loans, and destruction dependencies statically. Borrowing cannot create ownership or exclusivity; share explicitly before casting when needed. Evaluate/secure the source once. For a source certified by Owned payload erasure, a missing data-Origin binding may be supplied only as static where the §15.2.3 proof covered that binding. Thus a cast to a concrete `Box<ref/i32 from static>` may be valid when Runtime Type Identity/Supports and all other checks match. This is a static proof, not runtime recovery of an Origin. Preserve the handle's outer borrow Origin. Do not invent non-static bindings or rewrite callable contracts excluded from that proof; reject a target needing information not preserved or certified. API names and Option/Result branching syntax remain design boundaries; these guarantees do not define a cast spelling or add checked casts to `@`.
+Check target validity/accessibility, Semantics preservation, [Owned erasure](#1581-object-payload-erasure), result Origins/Loans, and destruction dependencies statically. Borrowing cannot create ownership or exclusivity; share explicitly before casting when needed. Evaluate/secure the source once. For a source certified by Owned payload erasure, a missing fixed Origin binding may be supplied only as static where the §15.2.3 proof covered that binding. Thus a cast to a concrete `Box<ref/i32 from static>` may be valid when Runtime Type Identity/Supports and all other checks match. This is a static proof, not runtime recovery of an Origin. Preserve the handle's outer borrow Origin. Do not invent non-static bindings, bind per-call callable Origins, or rewrite other information excluded from that proof; reject a target needing information not preserved or certified. API names and Option/Result branching syntax remain design boundaries; these guarantees do not define a cast spelling or add checked casts to `@`.
 
 #### 13.7. Assignment
 
@@ -5180,6 +5229,8 @@ func handle(value: objref/Animal) -> ()
 
 The new `dog` binding uses ordinary typing and acquisition of the RHS Effective Type, not transferred flow facts. An owning Non-Copy source would Move on such acquisition. A binding's declaration Type never changes.
 
+The [inherited-Name rule](#622-inheritance-and-open-structures) keeps the declaration layer of an existing member unchanged by refinement when that member is accessible both to the derived author and at the relevant uses. For public Animal.speak, a Dog cannot add the same Name: a parameter/let before refinement, inside it, and after a join, an unrefined var, and Dog/Animal Views all select Animal's layer. Refinement can add access to a differently named Dog.bark. This does not freeze overload choice based on argument Types or promise identical lookup across access boundaries.
+
 ##### 14.10.2. Condition states and joins
 
 **Flow State** describes refinement, initialization/Move state, Loans, and reachability; it need not be one data structure or pass. Let `True(C, I)` and `False(C, I)` be states after condition `C` from input state `I`. Apply evaluation effects first. Refinement cannot restore a Moved value, discard Loans, or create Boolean exits from non-completing evaluation.
@@ -5439,6 +5490,8 @@ Once an arm is selected, initialize its body locals left to right from [Candidat
 
 Resolve dependent read Types and Copy/Move/Borrow/Reborrow effects by the [Generic Access Effects deadline](#89-generic-access-effects). Borrowed access cannot Move a non-Copy referent or grant exclusive authority. In `.Some(let r)`, a stored `ref/T` is copied as a reference; a nested Case Pattern through that reference restricts descendant acquisitions to shared access. New borrows require valid referents and owners; copied references retain their existing Origins/Loans.
 
+For `wrapper: Option<Result<i32, i32>>`, matching `wrapper@ref` with `.Some(let r)` Copies the Result into r; borrowing the subject does not force payload bindings to be borrows. A change to payload Copy capability can change binding Types and generic-body validity. No explicit borrow-binding or ordinary payload projection syntax is provided. APIs that need such a borrow may instead accept the whole enum by reference, potentially changing their public Signature; [Pattern acquisition selection](#d1-enum-and-pattern-extensions) remains a design boundary.
+
 For owned decomposition, track each selected Case Identity and positional payload index as a Move Path inside the Subject, including recursive decomposition. Track remaining initialization and destruction responsibility after each acquisition; do not apply these internal paths to the caller's original enum or invent ordinary payload projection syntax.
 
 The Subject lasts for the match evaluation. Secure a match result or outward transfer value first, clean the arm scope under ordinary Scope Exit, then destroy the Subject's remaining initialized parts. Body bindings enter scope left to right and are destroyed in reverse order, before the Subject; body locals and `defer` retain normal reverse registration order. A Wildcard does not destroy immediately. Unselected arms acquire no body ownership. Match is exhaustive and has no unmatched normal-completion path. Each later step requires earlier cleanup to complete normally; Abort does not unwind.
@@ -5525,11 +5578,11 @@ func register<F>(f: F)
     F is Owned
 ```
 
-A valid complete Type T is `Owned` exactly when every Origin in **OwnedOrigins(T)** equals static; an empty set satisfies the condition. OwnedOrigins is the conservative dependency closure of the Type's outer Origin, all instantiated Type and Origin arguments (including unused slots), raw-pointer pointee Types, bases, stored Fields, enum payloads, sequence components, and concrete Closure captures. Expand aliases and substitute declaration bindings before traversal. Recursive Types use the structural fixed-point rules, not circular conformance evidence.
+A valid complete Type T is `Owned` exactly when every Origin in **OwnedOrigins(T)** equals static; an empty set satisfies the condition. OwnedOrigins is the conservative dependency closure of the Type's outer Origin, its Semantics target (value referent, object payload or View Target, or raw-pointer pointee Type), all instantiated Type and Origin arguments (including unused slots), bases, stored Fields, enum payloads, Tuple components, array elements, and concrete Closure captures. Expand aliases and substitute declaration bindings before traversal. Recursive Types use the structural fixed-point rules, not circular conformance evidence. A base or runtime-contract view contributes its visible Type/Origin arguments; its hidden payload was certified at erasure (§15.8.1).
 
-Public callable parameter/result Origin contracts, including their per-call binders, are not environment dependencies: Function Items have no captured environment, concrete Closures contribute their captures, and common Function Types certify an Owned erased environment. Such callable contracts remain part of the complete Type and must never be inferred or rewritten from an environment's Owned proof. OwnedOrigins traversal through Type arguments respects this callable boundary.
+Callable Types contribute every fixed Origin in their complete Type: a Function Item's bound generic and Origin arguments, a concrete Closure's captures and fixed signature Origins, and fixed Origins written in a common Function Type's parameter/result Types. Only Origins bound per call, such as the direct-input quantification of §8.6 and §15.4, are excluded because they have no fixed binding to prove. A common Function Type's hidden environment is certified Owned at erasure. An Owned proof never infers or rewrites a callable's per-call contract.
 
-Use established outlives facts: `a : static` proves a equal to static because static is the maximum Origin. An unbound/unproved abstract Origin yields Unknown, not proof of `not Owned`; resolve required evidence by the ordinary deadline. Empty containers and unselected Cases do not weaken this Type-level check. In particular, `unsafe/(ref/i32 from local)` and a wrapper with that non-static Type argument cannot prove Owned even if no safe-borrow Field is visible. Traversing a pointee Type neither dereferences a pointer nor creates a Loan; unsafe implementations must still expose their actual lifetime dependencies and uphold pointer validity.
+Use established outlives facts: `a : static` proves a equal to static because static is the maximum Origin. An unbound/unproved abstract Origin yields Unknown, not proof of `not Owned`; resolve required evidence by the ordinary deadline. A generic definition proves Owned for its own Type parameters and abstract Origins only from its declared Constraints and bounds (§8.10); that proof cannot wait for instantiation. Empty containers and unselected Cases do not weaken this Type-level check. In particular, `unsafe/(ref/i32 from local)` and a wrapper with that non-static Type argument cannot prove Owned even if no safe-borrow Field is visible. Traversing a pointee Type neither dereferences a pointer nor creates a Loan; unsafe implementations must still expose their actual lifetime dependencies and uphold pointer validity.
 
 This revision requires Owned at static storage, concrete payload erasure into base/runtime-contract views, common Function Type environment erasure, and explicitly declared Owned Constraints. A lifetime-hiding library API states that requirement explicitly; the compiler does not infer an "indefinite retention" capability from a private body. Ordinary storage and concrete object allocation impose no blanket Owned requirement. Owned never discharges acquisition, Loan, destruction-order, unsafe, or concurrency checks.
 
@@ -5682,7 +5735,7 @@ Origin omission depends on the position of the complete Type. These rules apply 
 | Local binding with inferred Type | Infer the Type, Origin dependencies, and Loans from the initializer under ordinary acquisition rules. |
 | Explicit local Type containing a borrow or Origin-bearing aggregate | Infer omitted Origins and Origin arguments from the declaration initializer and ordinary Origin/Loan constraints. Without an initializer, omission is a compile-time error. |
 | Instance Field | Require explicit bindings for all borrow layers and required Type Origin arguments; do not infer the storage contract from initialization. |
-| Static Field | Require Owned and §11.3.2's static-source rules. Omitted stored borrow Origins default to static; preserve bound Type/Origin arguments and callable contracts. |
+| Static Field | Require Owned and §11.3.2's static-source rules. Omitted shared borrow Origins and aggregate Origin arguments with Loan requirement `none` or `ref` default to static; an exclusive borrow layer or `uniq` Loan requirement is rejected. Preserve bound Type/Origin arguments and callable contracts. |
 | Generic Type argument or nested value Type | Recursively apply the enclosing position's rule; being a Type argument does not introduce a separate default. |
 | Enum Case payload declaration | Apply the instance storage rule to every payload element, including nested Origins and required aggregate arguments; see [enum payloads](#63-enums). |
 | Constructor parameter | Apply the ordinary parameter rule; the constructed value retains the containing Type's declared Origin contract under [construction](#623-constructors). |
@@ -5732,7 +5785,9 @@ func use<T>(x: ref/T)
 
 group Global
     let number: i32 = 1
-    let value: ref/i32 from static = Global.number@ref
+    var counter: i32 = 0
+    let value: ref/i32 = Global.number@ref    // Omitted Origin is static; immutable source.
+    let invalid: ref/i32 = Global.counter@ref // Error: a mutable static source has a finite Origin.
 ```
 
 When a result Origin is omitted, the compiler applies these rules in order:
@@ -5960,6 +6015,8 @@ Summaries distinguish first-access initialization effects from ordinary accesses
 
 If `let view = State.text@ref` borrows a mutable static string Field, view has a finite Origin; reject State.reset() while view has a later use if reset may replace that Field. A shared Loan still permits read-only calls. Summarize the whole call conservatively; favorable runtime branches need no special analysis. Compute recursive fixed points before acceptance. Separate/indirect calls consume published validated summaries, or conservatively treat unknown effects as conflicting with every potentially affected active static Loan. Clients need not inspect private bodies. Preserve immutable anchors for shutdown dependencies even after erasure; mutable-source borrows cannot cross an Owned boundary. FFI validity and aliasing obligations still apply.
 
+Retain these static/capture anchors when composing [receiver-preservation effects](#12442-effect-verification), even when self is not an explicit argument. The same call may affect multiple roots. Published summaries and their dependencies follow §18.3 and §21.3.4.
+
 ##### 15.6.5. Universal regions
 
 Every Origin in a function signature is universally quantified. The implementation must work for every legal caller instantiation, so a local region cannot be widened to satisfy a universal return Origin:
@@ -6055,7 +6112,7 @@ Dog stores a local ref       -> non-Owned     -> initial erasure rejected
 objref/Animal from local     -> borrow remains local even when payload is Owned
 ```
 
-This is not a blanket `from static` requirement on object handles or exact concrete views. Same-target operations retain existing lifetime rules. An erased view certifies that this check succeeded; later upcasts/casts inherit it without runtime Origin queries. Only proof-covered data-Origin bindings may be supplied as static in a checked cast (§13.6.2); callable contracts and the handle's outer Origin are not reconstructed. Existing borrowed-field Types remain valid; hiding their non-static dependencies needs a later existential-view design. Owned does not waive pointer validity, Loan, destruction, or concurrency checks.
+This is not a blanket `from static` requirement on object handles or exact concrete views. Same-target operations retain existing lifetime rules. An erased view certifies that this check succeeded; later upcasts/casts inherit it without runtime Origin queries. Only proof-covered fixed Origin bindings may be supplied as static in a checked cast (§13.6.2); per-call callable Origins and the handle's outer Origin are not reconstructed. Existing borrowed-field Types remain valid; hiding their non-static dependencies needs a later existential-view design. Owned does not waive pointer validity, Loan, destruction, or concurrency checks.
 
 ##### 15.8.2. Closure dependencies and call results
 
@@ -6098,7 +6155,7 @@ Escape describes retention across a creation/call boundary, not a permanent synt
 
 Non-escaping means that the callee retains neither the callable nor its environment dependencies beyond the call. It does not mean one call, no allocation, or waived Loan checks. `ref/F` and an Owned result let a verified callback-only body use a borrowed concrete environment without erasure, but neither `ref/F` nor Callable alone promises that every environment-derived value is unsavable. A separately compiled callee cannot be assumed non-escaping without a verified contract. Non-escaping declaration syntax and borrowed erased callable views remain deferred.
 
-Loan validity includes later uses, results, and dependencies observed by destruction, not just the last body invocation or the lexical end of a binding. Concrete Closure storage follows §15.4. A library API that needs lifetime independence declares an Owned Constraint; no new body-inferred retention requirement is introduced.
+Loan validity includes later uses, results, and dependencies observed by destruction, not just the last body invocation or the lexical end of a binding. Concrete Closure storage follows §15.4; the Owned boundaries are listed in §15.2.3.
 
 #### 15.9. Lifetime design boundaries
 
@@ -6107,6 +6164,7 @@ This revision does not define:
 - abstract Origin parameters on contracts or trait-like abstractions (the [Property getter receiver/result contracts](#1122-computed-properties) do not introduce contract-level Origin parameters);
 - existential object views that hide non-static payload dependencies;
 - general higher-ranked Origins beyond the direct-input quantification of Callable constraints;
+- Origin expressions naming static Places, such as a function result bounded by a mutable static Field; use direct access, an input-bounded result (§11.3.2), a scoped callback, or immutable static storage instead;
 - lending iterators;
 - cancellation cleanup guarantees.
 
@@ -6114,7 +6172,7 @@ These features require extensions to the [Ownership and Origin rules](#15-owners
 
 ### 16. Scope exit and destruction
 
-Scope exit secures results and performs cleanup. A Deferred Block registers code for scope exit; compile-time directive Conditions have no Deferred result.
+Scope exit secures results and performs cleanup. A Deferred Block registers code for scope exit.
 
 #### 16.1. Deferred blocks
 
@@ -6293,7 +6351,7 @@ Forced process termination and undefined behavior provide no cleanup guarantee. 
 
 `deinit` may be declared only directly in a structure body, including a fragment produced by a Mod. It is invalid in a group, enum, contract, extension, constructor, function, accessor, or another `deinit`. After conditional selection and merging, each concrete structure has at most one such declaration. A common Body (§14.2) is required; `deinit => ()` or an indented `()` is an explicit no-op body. A no-op body still counts as user-defined `deinit` for Copy and Partial Move restrictions.
 
-`deinit` accepts no parameters, generics, Origins, result annotation, or access/unsafe/open/virtual/override modifier. Its single-item expression is discarded; explicit return must fit Unit. Unsafe operations need an inner Unsafe Block. Automatic component cleanup applies without deinit. Each derived layer may define its own body; none is inherited or overridden, and machinery processes bases separately. Legal owners need no private access to invoke mandatory destruction, and access modifiers cannot suppress it.
+`deinit` accepts no parameters, generics, Origins, result annotation, or modifiers. Unavailable modifiers follow §2.5.1. Its single-item expression is discarded; explicit return must fit Unit. Unsafe operations need an inner Unsafe Block. Automatic component cleanup applies without deinit. Each derived layer may define its own body; machinery processes each layer separately. Legal owners need no private access to invoke mandatory destruction, and access modifiers cannot suppress it.
 
 ##### 16.3.1. Special receiver
 
@@ -6303,7 +6361,7 @@ Its `self` has exclusive access equivalent to `uniq/Self` for access/Loan checks
 
 The whole receiver cannot be an assignment, Exchange, or Swap target, or be passed as ordinary `uniq/Self`. This includes methods and setters taking the whole receiver exclusively. Whole-self shared borrowing and direct operations/borrows on initialized fields remain subject to ordinary permissions and Partial Move restrictions. No method or borrow may bypass these rules.
 
-A Destruction receiver cannot become an owning/counting handle, be stored for later use, or escape. Helper borrows must end before their storage is destroyed. During layer D’s destruction, Self is D; cleaned derived layers are unavailable. Virtual calls on the under-destruction self are forbidden, even through helper borrows or after devirtualization. Calls on independently live fields remain valid. Prove nonescape and absence of such virtual dispatch from ownership/call effects; reject unknown callees that could violate them. Runtime counts and unchecked assertions cannot replace the proof.
+A Destruction receiver cannot become an owning/counting handle, be stored for later use, or escape. Helper borrows must end before their storage is destroyed. During layer D’s destruction, Self is D; cleaned derived layers are unavailable. Prove nonescape and compliance with the [object lifetime restrictions](#164-closure-and-object-lifetime-boundaries) from ownership/call effects; reject unknown callees that could violate them. Runtime counts and unchecked assertions cannot replace the proof.
 
 ```text
 During deinit (conceptual storage operations):
@@ -6358,7 +6416,7 @@ Destruction claims the target’s remaining responsibility. Until completion, on
 
 Destroy owner/T as exactly T. Destroy obj/T’s object, then release its original storage if required. Destroying rc/T or arc/T releases one strong reference; exactly the zero-count release performs object destruction and storage release, including under atomic arc ownership.
 
-Use the actual owned Type’s complete derived-to-base cleanup, including automatic fields/base and user deinit. Base views retain that dynamic identity and the single destruction responsibility; no virtual-destructor modifier is needed to preserve derived cleanup. Release original storage by its original mechanism, never an adjusted view pointer with a base size. No delayed GC finalizer or finalizer thread is implied.
+Use the actual owned Type’s complete derived-to-base cleanup, including automatic fields/base and user deinit. Base views retain that dynamic identity and the single destruction responsibility. Release original storage by its original mechanism, never an adjusted view pointer with a base size. No delayed GC finalizer or finalizer thread is implied.
 
 Destroying a non-owning borrow or raw pointer ends that value's capability/lifetime and never destroys its referent. Scalar and other trivial Copy values have no user destruction work; copying them does not create a resource-release obligation. Automatic cleanup, replacement, abandoned construction, temporary expiration, and final object release all use the same recursive rules. If a destructor or component cleanup Aborts or diverges, remaining components, base layers, pending replacement, and allocation release do not run; there is no rollback or second cleanup attempt.
 
@@ -6368,7 +6426,7 @@ Destroy initialized captures with remaining responsibility in reverse environmen
 
 Construction completes base layers before derived fields under constructor rules. Until the complete object is initialized, do not form/publish its ordinary object views or perform runtime dispatch, type tests, or checked casts on it. Having metadata is not proof of completion. Failure cleans only initialized components with remaining responsibility, including completed base layers; do not call `deinit` for an incomplete layer, and do not promise cleanup on Abort.
 
-During destruction, prohibit new ordinary views, runtime dispatch, type tests, checked casts, and resurrection of that object, including through helper calls. Do not acquire a new owning handle or increment its count to revive it. The special destruction receiver retains its authorized direct field operations and shared value borrows, without conversion into ordinary object views. Base cleanup never dispatches back into an already destroyed derived layer. These restrictions concern the object being constructed/destroyed, not independent live objects used by that code.
+During destruction, prohibit new ordinary views, runtime dispatch, type tests, checked casts, and resurrection of that object, including through helper calls. An operation remains semantically runtime dispatch even if optimization resolves it to a direct call. Do not acquire a new owning handle or increment its count to revive it. The special destruction receiver retains its authorized direct field operations and shared value borrows, without conversion into ordinary object views. Base cleanup never dispatches back into an already destroyed derived layer. These restrictions concern the object being constructed/destroyed, not independent live objects used by that code.
 
 The shared destruction rules do not promise eventual release on Abort, divergence, forced termination, or an unbroken reference-count cycle. Weak references, cycle collection, and allocator APIs remain separate designs.
 
@@ -6427,10 +6485,12 @@ This is the compiler-recognized Core Result declaration under §22.1. The follow
 
 ```kimi
 enum Result<T, E>
+    Self is Copy when T is Copy, E is Copy
     Ok(T)
     Err(E)
 
 enum FileError
+    Self is Copy
     NotFound
     PermissionDenied
     InvalidData
@@ -6454,6 +6514,8 @@ func lookupUser(id: UserId) -> Result<Option<User>, LookupError>
 
 With this expected Type, `.Ok(.Some(user))` constructs success with a value, `.Ok(.None)` normal absence, and `.Err(error)` a failed lookup operation.
 
+Result uses ordinary [enum Copy derivation](#352-enum-copy). Its conformance requires both complete payload Types to be Copy, independently of the active Case; these premises do not restrict Type formation. `Result<i32, i32>` is Copy, while `Result<i32, string>` remains Non-Copy even when it holds Ok. `Result<Data, FileError>` is Copy only if Data is also Copy. Borrow payloads follow their complete Semantics: shared borrows are Copy and retain their dependencies; exclusive borrows and owning object/counting handles are not Copy. An enclosing handle retains its own formation and acquisition rules. Generic proof follows §8.7: both Proven yield Proven, a valid Refuted operand refutes the conjunction, and remaining unresolved cases are Unknown, never assumed Non-Copy. Invalid Types or evidence remain Error.
+
 ##### 17.2.3. Handling, propagation, and discarding
 
 Recoverable failures are ordinary values: they neither throw exceptions nor propagate implicitly. Handle them with ordinary control flow such as `match`, and propagate them explicitly with `return`:
@@ -6467,7 +6529,7 @@ func loadSize(path: string) -> Result<usize, FileError>
 
 The return Type describes contractual absence or recoverable failure; a function returning `Result` may still Abort on an invariant violation or unrecoverable condition.
 
-Discarding a `Result` expression in Discard Context is allowed but produces a compile-time warning, regardless of its runtime `Ok` / `Err` state. The warning does not change control flow. A caller can explicitly handle both variants with `match` to ignore the outcome intentionally. This section defines no special warning for discarding `Option`.
+Discarding a Core `Result` expression in Discard Context is allowed but produces a compile-time warning, independently of Copy capability or runtime Ok/Err state. Identify it by its Core Symbol, including equivalent resolved paths. [Warning priority](#174-warnings) selects one report if several apply to the same discard. The warning does not change control flow. A caller can explicitly handle both variants with match to ignore the outcome intentionally. This section defines no special warning for discarding Option.
 
 Returning a recoverable failure follows normal [Scope Exit](#162-scope-exit-destruction) rules, including their requirement that earlier cleanup complete normally before remaining cleanup or result delivery proceeds. Use this path for ordinary failures requiring resource cleanup.
 
@@ -6556,7 +6618,7 @@ func parse(source: string) -> Result<ParseReport<Syntax>, ParseError>
 
 This API returns warnings with successful results. To preserve warnings on failure, include them in the error value or an outer report containing the Result.
 
-The following subsections define compiler warnings, not returned API values. They do not change Type fitting, execution, or overload choice. Avoid duplicate reports for the same discarded value, including discarded-Result warnings (§17.2.3).
+The following subsections define compiler warnings, not returned API values. They do not change Type fitting, execution, or overload choice. For the same value at the same discard occurrence, emit only the highest applicable warning: **unintended Unit > Symbol-specific > effect-free**. Each warning keeps its own triggering conditions. Distinct arm/body discards remain separate occurrences; unrelated diagnostics are not suppressed. Future Symbol-specific warnings occupy the middle tier and must define any same-tier priority when introduced.
 
 ##### 17.4.1. Unintended Unit inference
 
@@ -6577,6 +6639,8 @@ let corrected = if useCache => loadCached() else => compute()
 ```
 
 Suggest yield, return, a named exit, or a single-item body as appropriate.
+
+If the two calls in the example return Result, each discarded arm result receives this warning alone, rather than an additional discarded-Result or effect-free warning: supplying the missing result removes the discard itself.
 
 ##### 17.4.2. Discarded effect-free values
 
@@ -6660,9 +6724,11 @@ Portable interchange uses source artifacts or binary interfaces, not serialized 
 
 Private generic dependencies preserve defining Symbols and access context without becoming public Names. These are information categories; encoding, required fields, validation, and compatibility belong to the separate artifact-interface specification.
 
-Callable interfaces additionally preserve concrete environment identities, capture dependencies, internal/public call signatures, receiver acquisition contracts, per-call Origin quantification, and the conservative static-effect summaries and returned storage anchors of §15.6.4 where needed for verification. Object interfaces retain Supports/conformance, validated virtual/contract entries, Runtime Type Identity, and complete destruction/storage-release information. These requirements do not prescribe an effect-summary encoding or fixed ABI.
+Callable interfaces additionally preserve concrete environment identities, capture dependencies, internal/public call signatures, receiver acquisition contracts, per-call Origin quantification, and conservative effects/returned storage anchors (§15.6.4). Borrowed-receiver operations publish §12.4.4's completed root summaries, operation Identity, Proven/NotProven status, and diagnostic cause information; no pending ObjectCompatible state is exported. Object interfaces retain defined Supports relationships, verified conformance mappings, Runtime Type Identity, receiver adjustment, and complete destruction/storage-release information. These requirements prescribe no encoding or fixed ABI.
 
 Generic interfaces also retain complete slot/projection and Origin schemas, deferred obligations, and the defining Kotonoha's closed explicit-specialization set and mappings. Preserve the body and dependency information needed for correct implementation selection and code generation under [generic artifacts](#2134-artifacts-verification-and-invalidation).
+
+Record the declaration-content dependencies used by inherited-Name checks, conformance, and public effect guarantees, including completed Container contents when absence of a declaration matters. Existing Symbol/access information can supply these contents; no separate Name-set encoding is required. Accessible Names of open structs and public compatibility guarantees are API facts. Adding a Name, expanding access, or withdrawing Proven can break a consumer, but does not require upstream diagnosis of unknown downstream code. Revalidation and consumer-side diagnostics follow §21.3.4; ordinary Type/Origin/layout obligations remain distinct from a completed public status.
 
 ### 19. Compile-time directives
 
@@ -6671,10 +6737,8 @@ Compile-time directives choose source syntax without runtime branching. The foll
 | Term | Meaning |
 | --- | --- |
 | Condition | A compile-time Boolean expression controlling syntax selection. |
-| Lookup environment | The declarations and aliases visible to name lookup in a scope; extensions are a future design. |
 | Prepared environment | Fixed target values and configured compile-time settings available before source selection. |
 | Environment selection | A choice fixed by target values and configured Project settings, independently of generic arguments. |
-| Finalization | Acceptance of a declaration, layout, specialization, or body after its required dependencies and checks are resolved. |
 
 Compile-time Directives select Syntax during compilation without producing runtime control flow:
 
@@ -6684,8 +6748,6 @@ Compile-time Directives select Syntax during compilation without producing runti
 | `#switch` | Introduces an ordered Case Group and selects one arm. |
 | `#case` | Introduces an arm directly inside a `#switch` body. |
 | `#Name` | Attaches an Attribute; it is not a Compile-time Directive. |
-
-The former `#If(...)` form has Attribute syntax (with semantics still deferred). The lowercase `#if` form specified here is a separate language construct.
 
 #### 19.1. Syntax and structural selection
 
@@ -6857,8 +6919,6 @@ The build model separates workspace orchestration, project configuration, source
 | Kotonoha | Defines a named module unit for an application or library, built from one or more SourceDocuments. |
 | SourceDocument | An immutable source snapshot, including its path and text. Replacing its text creates a new snapshot. |
 | Compilation | Compiles one Project under one fixed set of source, dependency, target, and build inputs. |
-| Compilation root | The lookup entry point for the project root and direct-dependency reference names. |
-| project root | The root of the primary Kotonoha's declaration hierarchy. |
 
 A Solution discovers and loads Projects. A Project stores target triples, aliases, and external Kotonoha descriptors, and creates one Compilation for each target.
 
@@ -7086,15 +7146,13 @@ Demo                         original source
 
 These nodes retain separate source contexts; no original file is rewritten. Final Binding resolves `Item.getVersion()` and validates the complete program.
 
-The long-term implementation plan is to implement the compiler and Mods in Kimigayo while preserving these contracts. Concrete query and marker-registration types, assembly packaging/compatibility checks, project configuration syntax, cache formats, and IDE presentation remain implementation design work. Parallel Mod execution, arbitrary Koto rewriting, function-body insertion, per-instantiation execution, and automatic retries are outside this initial model. A single invocation and snapshot queries do not prevent a Mod's own infinite loop; cancellation and time-limit mechanisms belong to the host.
+Concrete query and marker-registration types, assembly packaging/compatibility checks, project configuration syntax, cache formats, and IDE presentation remain implementation design work. Parallel Mod execution, arbitrary Koto rewriting, function-body insertion, per-instantiation execution, and automatic retries are outside this initial model. A single invocation and snapshot queries do not prevent a Mod's own infinite loop; cancellation and time-limit mechanisms belong to the host.
 
 #### 20.8. Initial LLVM output and manual build
 
 ##### 20.8.1. Output scope and settings
 
 The initial windows-x64-v1 compiler produces one pre-optimization textual .ll and one .link.json per project/target, after final semantic acceptance and supported-operation checks (§21.4). It does not discover/install LLVM or the Windows SDK, run opt/llc/linker commands, or launch the result. A dedicated runtime DLL is not required; runtime bodies are emitted in the same module, with separate native backend support (§21.5.7).
-
-These are adopted configuration rules, not a claim that the current ProjectFile API implements them; see STATUS C.12.
 
 | Setting | Initial rule |
 | --- | --- |
@@ -7342,8 +7400,7 @@ Every live object can reach immutable metadata for its Dynamic Type, shareable a
 ```text
 Type Descriptor
     ├─ Runtime Type Identity
-    ├─ base relationships and runtime-contract conformance for Supports
-    ├─ virtual/contract requirement -> effective verified implementation
+    ├─ relationships required by defined Supports operations
     ├─ complete dynamic destruction operation
     └─ layout or receiver-adjustment information where required
 ```
@@ -7371,17 +7428,19 @@ An object handle's Runtime Type Identity is `CoreId(D)`, excluding its root `obj
 
 Runtime identity equality does not imply equal value representation, layout, ABI, ownership operations, assignment compatibility, Origins, or Loans. It neither authorizes code sharing nor skips validation. Equal names, layouts, member sets, or descriptor addresses alone also do not define identity. Fixed-array Type structure retains the evaluated length and element-Type key. General Const arguments beyond function lengths are not introduced. Other identity and key purposes are separated under [generation keys](#2132-identity-and-generation-keys).
 
-Conformance is registered by the concrete Type's definition and fixed when metadata is generated. No unrelated extension, module search, or runtime registration changes it. Artifacts for one Type must agree on identity, bases, conformance, and effective implementation mapping; reject disagreement at build/link time rather than using load order. An entry must satisfy the declaration and ObjectCompatible guarantees; receiver adjustment cannot bypass access, Type, Origin, or Loan checks. A destruction entry does not make `deinit` a source-level function value.
+Declared base and conformance relationships are fixed by validated definitions; no unrelated extension, module search, or runtime registration changes them. Revalidate dependent artifacts under §21.3.4 before generating metadata; their identities, bases, and verified mappings must agree, independently of load order. Receiver adjustment cannot bypass public ObjectCompatible, access, Type, Origin, or Loan checks. ObjectCompatible is compile-time interface information, not a required Descriptor field. A destruction entry does not make deinit a source-level function value.
+
+An extension that introduces runtime implementation selection defines its own additional selection information. The current descriptor requirements impose no member slots or fixed ABI.
 
 ##### 21.2.2. Representation and storage responsibilities
 
 Each view must reach the same original object's type identity, the receiver needed by its implementation, a valid adjusted cast result, and preserved Origins/Loans. Owning views must also reach complete destruction and original storage-release information.
 
-Reference counts and allocator state belong to instances/allocations, not the shared immutable Type Descriptor. Logical roles may be co-located physically. A vtable is one dispatch structure, not all metadata. No base offset zero, equal pointer values between views, one-word borrow, fixed table/slot layout, descriptor representation, calling convention, stable ABI, FFI layout, or dynamic-loading compatibility is promised.
+Reference counts and allocator state belong to instances/allocations, not the shared immutable Type Descriptor. Logical roles may be co-located physically. No base offset zero, equal pointer values between views, one-word borrow, fixed table layout, descriptor representation, calling convention, stable ABI, FFI layout, or dynamic-loading compatibility is promised.
 
 Before emitting these representations, define handle width/targets, receiver/base adjustment, allocation headers, descriptor access, rc/arc counter width and overflow, last-owner destruction, and arc atomic ordering. Headers/counts remain outside an owned C-layout payload. Dynamic Array/Dictionary need data/length/capacity, reallocation and element-state contracts; Slice needs reference/length and reslicing rules preserving Loans. Closures/common Function Types need capture/environment storage, call/destruction entries and inline/allocation choices, with logical capture order separate from offsets. None may silently become one ptr; their physical ABI and shared-generic metadata passing remain deferred. Atomic counters introduce no thread facility.
 
-Optimization may share, normalize, omit, or directly resolve metadata only while preserving Type tests, implementation selection, evaluation order/count, effects, failure, Origins/Loans, and destruction. It must not remove information needed by separately compiled consumers. Source legality cannot depend on allocation elimination or devirtualization.
+Optimization may share, normalize, omit, or directly resolve metadata only while preserving Type tests, implementation selection, evaluation order/count, effects, failure, Origins/Loans, and destruction. It must not remove information needed by separately compiled consumers. Source legality cannot depend on allocation elimination or direct resolution of an implementation selection.
 
 #### 21.3. Generic code generation
 
@@ -7466,7 +7525,11 @@ Check every environment-selected explicit specialization's target, Type argument
 
 Consumers use the artifact's closed set and may not register additions. Calls from shared generic code and function references must reach the implementation selected by their static arguments, independently of separate compilation, optimization, or LTO. Callee information passed at runtime, if used, must still come from that static selection, not from the value's Dynamic Type. No particular propagation or compilation mechanism is required.
 
-Specialization additions, deletions, and body changes may alter behavior without changing the API Type. Invalidate dependent selection and generation results, including calls previously mapped to the ordinary implementation. Validate Code Cache Keys and dependency content, not only package versions. Inconsistent artifacts/call-target mappings require rebuilding dependent results or diagnostics, never a load-order choice. Missing correctness information cannot justify an invalid shared fallback.
+**Common dependency validation.** Record the declaration content on which inherited-Name checks, inherited conformance, effect summaries/public ObjectCompatible, and selection/generation depend. Include the completed contents of Containers used to conclude that a Name or specialization is absent, plus environment selection and verification-rule identity. A list of referenced Members alone cannot detect additions. Validate dependency content and Code Cache Keys, not only package versions.
+
+Before reuse, compare recorded dependencies with the actual definitions. A mismatch invalidates affected judgments and generated results, including calls formerly mapped to the ordinary body. Revalidate from the affected stage: accept and update results that still satisfy their requirements; diagnose lost requirements at the dependent declaration, conformance, constraint use, or call. If the required information is unavailable, reject the artifact with a rebuild diagnostic. Never reuse stale proofs, mix old/new mappings, or choose by load order.
+
+Name additions, access expansion, Signature changes, Proven withdrawal, and specialization additions/deletions/body edits can break existing consumers, even without changing a public Type. This is an API compatibility classification, not a requirement that an upstream build know or diagnose all downstream code. Both body-derived and specialization-derived changes use the same validation process. Missing correctness information cannot justify an invalid shared fallback.
 
 Artifacts follow [source and binary interfaces](#183-source-artifacts-and-binary-interfaces); no Koto serialization, fixed ABI, or exact artifact encoding is required.
 
@@ -7635,7 +7698,7 @@ Preserve existing arithmetic, conversion, indexing, and failure order. nsw/nuw, 
 | Integer to float / float width conversion | Required rounding; detect finite-to-infinity failure |
 | Array/index/Range | Required bounds checks before successful address calculation |
 
-Required compile-time evaluation failures are diagnostics. A failing ordinary constant expression still Aborts only if executed; constant propagation cannot turn it into a compile-time error. Prove success before removing a check. Folding a failing path to Abort or removing an unreachable path is allowed; literal fitting remains static.
+Constant evaluation follows §17.3.4. Prove success before removing a check; folding a failing path to Abort or removing an unreachable path is allowed.
 
 ```llvm
 declare { i32, i1 } @llvm.sadd.with.overflow.i32(i32, i32)
@@ -7720,8 +7783,8 @@ This is the minimal set named by language rules, not a promise of a general stan
 
 | Declaration | Required shape or operation |
 | --- | --- |
-| `Option<T>` | enum with Some(T), None in that order; `Self is Copy when T is Copy` |
-| `Result<T,E>` | enum with Ok(T), Err(E) in that order |
+| `Option<T>` | enum with Some(T), None in that order; Self is Copy with condition-atom set {T is Core.Copy} |
+| `Result<T,E>` | enum with Ok(T), Err(E) in that order; Self is Copy with condition-atom set {T is Core.Copy, E is Core.Copy} |
 | `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length: isize and indices: ResolvedRange; checked indexing under §4.6, literals, and consuming Iterable conformance |
 | `Index` | Copy, Owned, Equatable direction/offset value; constructor, read-only fields, resolve/tryResolve under §4.6.2 and §4.6.4 |
 | `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §4.6.3 and §4.6.4; not Iterable |
@@ -7743,7 +7806,9 @@ Fixed arrays implement Iterable with Element = T. Owning Array/Dictionary iterat
 
 The primitive keyword string denotes the compiler's UTF-8 string Core, not a shadowable alias; its required operations here are literal/interpolation construction, concatenation, comparison, and Stringify. No character indexer, mutable string buffer, allocator, or formatting options are implied. Fixed-array syntax and layout follow [sequence Types](#4-arrays-indexing-and-slices); metadata, indexed Place acquisition, and shared reading follow [indexing and slicing](#46-indexing-and-slicing).
 
-The Option/Result payload Copy and Owned classifications follow ordinary enum rules; no extra copying is introduced.
+For Option/Result Copy conditions, compare atom sets using §8.7's proposition identity and conjunction elimination. T/E denote the corresponding parameter slots and Core.Copy the recognized Symbol. Order, transparent grouping, and duplicate atoms do not change the set; missing/unconditional Copy, missing/extra atoms, or different identities are incompatible. Retain all other required-shape checks without general logical-equivalence reasoning. Generated sources may use canonical T, E order, but loaded Core definitions cannot be required to use that order.
+
+Option/Result Copy and Owned follow ordinary enum rules; no extra copying is introduced. A changed Core contract invalidates dependent capability, acquisition, and generation results under §21.3.4. Unchanged Case order and payload structure do not establish binary compatibility with older Core artifacts.
 
 Array/Dictionary contents, generic enum payloads, and fixed-array elements preserve complete Type/Origin/Loan dependencies under §15.4. Array's Owned classification follows T, Dictionary's follows K and V, independently of runtime contents; both remain Non-Copy. No container grants permission to hide dependencies or extend a referent's lifetime. Checked-cast designs use the required Core Option Identity despite deferred View syntax. Dictionary need not expose hashing. Further allocation/mutation and library APIs are separately specified.
 
@@ -8046,12 +8111,17 @@ Complete source parsing and Mod output integration
 -> collect selected declarations, root and scope tables, and alias targets
 -> bind headers, Types, Signatures, and Constraints; validate merges/duplicates
 -> match explicit specialization headers; close their set before final call targets
--> resolve bodies -> test candidates -> select -> check usage
+-> validate inherited Names; retain candidate conformance/receiver mappings
+-> resolve bodies -> test candidates -> select operations; retain pending usage obligations
+-> compute effect-family fixed points; complete public guarantees and conformance proofs
+-> discharge usage obligations without lookup/overload reselection
 -> instantiate static arguments and select the required implementation
 -> retain Symbol references and the selected operation plan for lowering
 ```
 
 Separate Type/Value and Origin/Label tables. Lookup Context retains source, scope, namespace, role, and access; outcomes retain Symbols, function groups, deferred work, or errors. Lowering never resolves strings again. Share normalized Types, but isolate candidate variables, constraints, mappings, tentative bindings, adaptation plans, and rejection reasons; commit only the winner. Early filters must preserve lookup stopping. Pairwise ranking may take O(n²) comparisons, excluding Type-comparison cost.
+
+Pending conformance mappings are not proof evidence. Resolve information needed for lookup before computing effects; an empty or missing summary cannot fill unresolved work. Complete implementation proofs, public statuses, conformance, and use obligations in dependency order. Effect closure cannot justify a cyclic conformance, and no unresolved ObjectCompatible status may be published. Preserve ordinary errors separately from a valid implementation's NotProven status.
 
 Cache only context-independent results or include every relevant dependency:
 
@@ -8063,12 +8133,15 @@ Cache only context-independent results or include every relevant dependency:
 | Applicability | Candidate, argument Effective Types/literal values/labels/forms, expected Type, type arguments and constraints |
 | Environment selection | Compilation target, configured Project settings, selection state; independent of generic arguments |
 | Conditional conformance | Generic declaration, substituted arguments, D/P proof environment, evidence paths, and verified implementation/associated-Type mappings |
+| Receiver guarantees | Call operation Identity, complete implementation-family contents, root summaries, and verification dependencies; concrete caller arguments do not create a new public status |
 
 Do not reuse results across different roles or unrelated access Containers. Source, dependency, alias, selection, or Symbol changes invalidate affected caches. Loans/initialization affect Usage Legality, not overload-cache keys; refinement affects input Effective Types and therefore member/applicability keys.
 
-Verify source isolation, merged private access, duplicates/roles/arities, Type/Value paths, aliases, unavailable extensions, expected results, incomparable candidates, nested inference, generic environments, and no usage-failure fallback. Load, parse, generator-completion, and candidate order must preserve results.
+Apply §21.3.4 to all declaration-dependent judgments, including absence dependencies. Test Name/specialization additions, access expansion, Signature changes, and Proven withdrawal against stale artifacts. Reject consumers that lose a requirement, accept compatible changes after revalidation, and diagnose missing rebuild information without depending on load order.
 
-After merging/inference, check recursive API access domains (§9.3), retaining dependent associated-Type obligations. Cover private Types in internal APIs, restricted enclosing Containers, private generic arguments/helpers across Kotonoha, sealed bases, open-fragment agreement, base access, protected receivers, compound access, and cross-module overrides. Access caches depend on base graphs/modifiers as well as aliases.
+Verify source isolation, merged private access, duplicates/roles/arities, Type/Value paths, aliases, unavailable extensions/modifiers, expected results, incomparable candidates, nested inference, generic environments, and no usage-failure fallback. For §2.5.1, cover declaration, requirement, constructor, deinit, and accessor prefixes while retaining ordinary same-spelled Names and independent next-line declarations. Load, parse, generator-completion, and candidate order must preserve results.
+
+After merging/inference, check recursive API access domains (§9.3), retaining dependent associated-Type obligations. Cover private Types in internal APIs, restricted enclosing Containers, private generic arguments/helpers across Kotonoha, sealed bases, open-fragment agreement, base access, protected receivers, compound access, and §6.2.2's inherited-Name prohibition. Include all ancestor layers, Property access independent of accessor access, conditional members, and fragment/Mod additions. Access caches depend on base graphs/modifiers and completed Container contents as well as aliases.
 
 Retain parameter immutability, receiver index/kind, argument mappings, and default environments (§7). Verify default Loans, partial-call cleanup, and receiver-first evaluation independent of parameter position. Inherited lookup caches preserve the committed layer; applicability/accessor failure cannot add base overloads.
 
@@ -8080,7 +8153,7 @@ Represent let/var storage, standard operations, custom/computed accessor signatu
 
 Validate direct/child Place permissions, implicit receiver adaptations, generic Copy proof and conditional Move states, first-placement history, construction-call bans, getter temporary restrictions, and normal cleanup before lowering. Preserve Contract result restrictions through witness optimization. Update parser, writer, grammar, serialization, diagnostics, and artifact invalidation for accessor syntax and removal of explicit Move.
 
-Cover private-set Move rejection; custom-get result versus storage borrowing; non-Copy custom setters and self-assignment; construction branch joins; partial inherited access and ancestor deinit; reference-result Origins; static accessor effects; and Contract by-value versus shared-slot witnesses. Specification integration does not imply compiler implementation coverage.
+Cover private-set Move rejection; custom-get result versus storage borrowing; non-Copy custom setters and self-assignment; construction branch joins; partial inherited access and ancestor deinit; reference-result Origins; static accessor effects; and Contract by-value versus shared-slot witnesses.
 
 #### A.5. Raw pointer backend requirements
 
@@ -8102,19 +8175,19 @@ Verify fragment/selection deinit duplicates; forbidden placement, modifiers, and
 
 #### A.8. Callable and object verification
 
-Verify OwnedOrigins through raw pointees, unused Type/Origin slots, captures, and recursive payloads; test `a : static`, unresolved abstract Origins, and callable-contract exclusions. Reject mutable-static borrows at Owned boundaries, including after capture and across modules. Checked casts may supply only proof-covered data-Origin bindings as static; preserve outer handle Origins and reject unsupported reconstruction of callable contracts. None of these checks may depend on a private body being available to a client.
+Verify OwnedOrigins through raw pointees, unused Type/Origin slots, captures, and recursive payloads; test `a : static`, unresolved abstract Origins, Function Item bound arguments, and fixed callable signature Origins versus per-call binders. Reject mutable-static borrows at Owned boundaries, including after capture and across modules. Checked casts may supply only proof-covered fixed Origin bindings as static; preserve outer handle Origins and never bind per-call callable Origins. None of these checks may depend on a private body being available to a client.
 
 Verify input-derived Callable results for all three receivers: per-call Origins, multiple-input meets, retained result Loans, rejection of a shared-to-exclusive upgrade, and rejection of hidden-receiver or call-local result dependencies. Common Function Type compatibility uses the same argument/result relation while retaining its separate Owned-environment restriction.
 
 Retain capture bindings, acquisition order/effects, mutability, nested dependencies, environment identities, and capture/call/result Origins and Loans through compilation and artifacts. Resolve required Copy, receiver, Callable, and erasure obligations before finalization. Check concrete Copy independently of receiver kind and erased-container classification.
 
-Verify ObjectCompatible at each specified declaration/use boundary, including base-subobject receiver projection, separately compiled/indirect callees, and inherited contract overrides. Metadata must agree with verified effective implementations and full object identity/cleanup. Unknown effects or artifact disagreement cannot supply proof.
+Verify §12.4.4's single public status per call operation, standard Place/witness distinction, and common implementation-family guarantee. Cover Whole/Base replacement, incomplete MoveOut, exclusive escape, permitted Part replacement/exchange, reference-field versus referent aliases, captures/statics, defaults/cleanup, returned borrows, and separate/indirect/generic calls. Verify recursive fixed points without treating circular conformance as evidence. A NotProven specialization changes the public guarantee without a declaration error for that reason; its cause must be traceable at a failing use. Unknown, missing required data, and unfinished verification cannot supply proof.
 
 Verify multi-level generic base projection, original protected-receiver checks, shared/exclusive access, returned-Loan anchors, direct Field access, and rejection of whole-base replacement, consuming receivers, and unbound derived/base argument conversion. Preserve these results across separate compilation and optimization.
 
 Verify object creation's Copy/Move input states, payload eligibility, fresh identity, initial strong count, allocation failure, and source-storage responsibility. Strong-owner duplication must preserve identity without retaining a Loan on source-handle storage; cover count overflow, release through different views, exactly one final cleanup, and resurrection rejection.
 
-Test capture versus call acquisition, unused/nested explicit captures, let/var, reference/referent lifetimes, Copy/Move-consuming calls, every Callable receiver, per-call Origins, variant cast Loans, inherited overrides, and construction/destruction restrictions.
+Test capture versus call acquisition, unused/nested explicit captures, let/var, reference/referent lifetimes, Copy/Move-consuming calls, every Callable receiver, per-call Origins, variant cast Loans, static inherited calls, and construction/destruction restrictions. Verify public status, use legality, complete dynamic cleanup, and receiver adjustment independently of load order and optimization.
 
 #### A.9. Refinement and require verification
 
@@ -8141,6 +8214,9 @@ Verification must cover at least these boundaries; neither parsing nor optimizat
 | Named/single-Origin mapping and `View<T>.Some` | Equivalent mapping; reject the enum's own Origin annotation in the Case qualifier |
 | Unconditional Copy with unconstrained T / constrained T / only ref/T payloads | Declaration error / valid derivation / no referent Copy premise |
 | Conditional Copy when T is Copy | Type remains usable for non-Copy T; Copy is available only when its condition is Proven |
+| Core Option/Result conditional Copy | Check both Result payloads, nesting and complete Semantics; active Case does not change capability. Verify reuse versus Move, Unknown versus Refuted, and borrow dependencies after Copy |
+| Core condition-atom sets | Accept both orders, grouping, and duplicate atoms; reject missing/unconditional Copy, missing/extra atoms, and wrong Symbol Identity. Check generated and loaded definitions without spelling-based user-enum behavior |
+| Shared reads of Copy Result payloads | Slice and ref-Pattern reads produce values; explicit element @ref retains storage/Origin and tryGet keeps its reference result. Generic head with plain s[0] fails definition checking; no borrow-binding selector is introduced |
 | Child structural Patterns, Grouping, `ref/ref/T`, `ref/uniq/T`, `uniq/T` payloads | One dereference per position; retain shared access; reject direct structural matching of remaining reference layers; allow binding then inner shared match |
 | Same Non-Copy payload Type on owned/shared paths | Body acquisition is Move/shared reading respectively; test string, object, and exclusive-reference payloads |
 | Non-Copy subject with only `_`; false guard followed by acquisition | Initial whole Move even without bindings; preserve payload for the next arm without double destruction |
@@ -8161,6 +8237,8 @@ Verify requirement access/parameters, parent cycles/conflicts, duplicates before
 Test qualified/ambiguous associated Names, diamonds/independent declarations, inherited/missing Type specifications, input/Origin matching, getter covariance/setter structure, redundant/conflicting parent mappings, and static calls/unsupported runtime Views. Cover safe/unsafe functions, defaults, nonstrengthening Constraints/Effects, and public conformance with private implementations.
 
 Conditional conformance checks also cover positive-only syntax, permitted block declarations, Type-use versus conformance premises, condition-scoped signatures, duplicate direct registrations across fragments, cyclic/Unknown evidence, and parent-path agreement. Compare applicability only after committed lookup and substitution; test same-group alternatives, no base fallback, no condition-strength ranking, and no instantiation-time reselection. Verify conditional Copy derivation and Field bridges under their declared premises. Artifacts/cache invalidation preserve conditions, mappings, associated-Type bindings, and proof dependencies independently of environment directives.
+
+Test struct-conformance inheritance under §8.4.4: a compatible Stringify-like mapping succeeds; Self arguments/results and owning receivers fail that path without invalidating the derived declaration. Cover fixed associated-Type normalization, alternative paths, intrinsic exclusions, and Unknown/Error distinctions. Across A -> B -> D, retain A's Member Identity/Self and composed Type/Origin/receiver mapping. Diagnose explicit conformance and constraint-use failures with the failed requirement/cause, without warning on the open base. Generic calls use the retained mapping, not caller-side member lookup.
 
 #### A.12. Generic schemas and specialization verification
 
@@ -8239,9 +8317,9 @@ Preserve Body form, evaluation context, transfer target, result sources, and the
 | Anonymous functions | Explicit/common/unique expectations; Unit fixed by another argument independent of order; no body rechecking, instantiation-time reinterpretation, or result-discard overload priority |
 | Transfers | Nearest-target lookup before context/Type checking; named operand colons/grouping; label activation only in bodies; yield through loops; function/defer barriers; discarded-selection bare-yield rejection |
 | Paths and cleanup | Shared structural paths without literal pruning; while true versus loop; condition cleanup before branching; result acquisition before cleanup/delivery; defer self-exit resumes pending cleanup; cleanup divergence does not change the checked Type |
-| Diagnostics and tools | Unexpected inferred Unit through nested discarded selections/do expressions; effect-free discard without assuming call purity; no warning solely for a final defer; formatter preserves Body form; refactorings preserve results, targets, and destruction order |
+| Diagnostics and tools | Unexpected inferred Unit through nested discarded selections/do expressions; one warning per discard under §17.4's priority, including Copy/Non-Copy Result and separate arm occurrences; effect-free discard without assuming call purity; no warning solely for a final defer; formatter preserves Body form; refactorings preserve results, targets, and destruction order |
 
-Coordinate with the cleanup, refinement, and Pattern checks in A.7, A.9, and A.10. These requirements record compiler work; specification integration alone does not establish implementation coverage.
+Coordinate with the cleanup, refinement, and Pattern checks in A.7, A.9, and A.10.
 
 ### Appendix B. Non-normative reference models
 
@@ -8251,7 +8329,7 @@ Coordinate with the cleanup, refinement, and Pattern checks in A.7, A.9, and A.1
 
 Pass boundaries and scheduling are implementation choices; semantic dependencies remain mandatory.
 
-The logical compilation pipeline, including stages not yet implemented, is:
+The logical compilation pipeline is:
 
 ```text
 Solution -> Project -> Compilation(inputs)
@@ -8260,6 +8338,7 @@ Solution -> Project -> Compilation(inputs)
     -> Declaration/Header Binding and definition-side environments
     -> Body Binding, Type checking and overload selection
     -> CFG construction and symbolic generic-body verification
+    -> Common effect-family fixed points, public guarantees, conformance and usage proofs
     -> Generic instantiation and published dependent/representation obligation resolution
        (without directive reselection or new body-derived semantic conditions)
     -> Explicit implementation selection from the closed defining set
@@ -8271,7 +8350,7 @@ Solution -> Project -> Compilation(inputs)
     -> Manual native linking -> executable -> execution validation
 ```
 
-Select among verified ordinary/specialized bodies, then analyze the selected CFG/effects. Early shared-body planning/caching is allowed; executable lowering waits for resolved effects, Loans, and cleanup. Sharing preserves the finalized operations (§21.3); no unverified body may be emitted. The initial output boundary is §20.8: generic sharing, external Library ABI, and automated linking/running are not implied by this pipeline.
+Before publication, verify §12.4.4's common implementation-family guarantee; selecting one concrete implementation cannot strengthen it. Concrete generation then analyzes the selected body's substituted CFG/effects. Early shared-body planning/caching is allowed; executable lowering waits for resolved effects, Loans, and cleanup. Sharing preserves the finalized operations (§21.3); no unverified body may be emitted. The initial output boundary is §20.8: generic sharing, external Library ABI, and automated linking/running are not implied by this pipeline.
 
 #### B.2. Directive processing sequence
 
@@ -8316,17 +8395,7 @@ The region and Loan analyses may be implemented using Datalog or an equivalent f
 
 **Non-normative.** A Closure may lower to an environment plus a call entry. Keep logical capture initialization/destruction order independently of physical field layout. Common Function Types can use inline or allocated storage with call and destruction entries; allocation removal is an optimization, not a typing rule.
 
-ObjectCompatible can be proven by effects over receiver/base/field paths, callee summaries, finite monotone fixed points for recursion, and generic Access Effect obligations. Separate compilation may preserve verified summaries, bodies, or generated object entries; no particular summary format or whole-program analysis is mandatory. Helpers can use verified object entries rather than creating unrestricted ordinary exclusive receivers.
-
-```text
-one selected method/accessor body
-    ├─ ordinary value entry
-    └─ verified object entry or receiver-adjusting adapter
-
-Dog descriptor
-    ├─ Animal virtual slot -> Dog override entry
-    └─ Speaker requirement -> verified conformance entry
-```
+Implement §12.4.4's required abstract verification with worklists or equivalent fixed-point algorithms. A statically selected method/accessor may have an ordinary entry and a receiver-adjusting adapter. The adapter implements an already permitted call; it supplies neither a new public guarantee nor an unrestricted exclusive receiver. Summary encoding and physical entry sharing are implementation choices.
 
 Descriptor sharing/canonicalization may permit address comparison when it preserves language identity; distinct physical descriptors may still denote one Runtime Type Identity.
 
@@ -8380,8 +8449,8 @@ This index links to design boundaries owned by the language sections. It adds no
 | Dependency configuration and graph diagnostics | Partially specified | [External references and aliases](#181-external-references-and-aliases) |
 | Future Contract fragments and extension identity | Deferred design; Contract splitting and extension declarations are not introduced | [Container fragments](#612-container-fragments) |
 | Mods (source generation) | Execution and semantic rules defined; concrete APIs and host configuration remain design work | [Mods](#207-mods-source-generation) |
-| Virtual/override declaration syntax | Partially specified; ordinary inherited lookup is defined in §9.5 | [Virtual members](#624-virtual-members-and-overrides) |
-| Runtime Contract Views: designation, View associated-Type bindings, contract/exact tests and checked casts | Extension design; outside the initial static Contract implementation | [Runtime contracts](#85-runtime-contracts), [tests and casts](#1362-general-view-tests-and-checked-casts) |
+| Virtual/override members | Extension design; not active in this revision | [Virtual members](#624-virtual-members-and-overrides) |
+| Runtime Contract Views: designation, View associated-Type bindings, contract/exact tests and checked casts | Extension design; outside this revision's static Contracts | [Runtime contracts](#85-runtime-contracts), [tests and casts](#1362-general-view-tests-and-checked-casts) |
 | User-defined generic Contracts, outer generic capture, default implementations, external conformance, qualified requirement calls | Not introduced | [Contracts](#84-static-contracts) |
 | Extra implicit/ordinary base conversions and consuming/generic/type-function runtime requirements | Deferred design | [Object views](#335-object-views-and-identity), [runtime contracts](#85-runtime-contracts) |
 | Struct layout modes | Kimigayo/C specified; special layouts deferred | [Structure layout and ABI](#211-structure-layout-and-abi) |
@@ -8395,7 +8464,7 @@ This index links to design boundaries owned by the language sections. It adds no
 | Automatic toolchain/build/run, debug information, cross-module/DLL ABI, extra CPU/OS profiles | Deferred beyond the initial manual Windows profile | [Initial output](#208-initial-llvm-output-and-manual-build), [LLVM profile](#215-llvm-windows-x64-profile) |
 | Dynamic collections, borrow/object/function handle ABI, rc/arc physical counters/order, general shared-generic metadata | Physical representation must be specified before emission; no implicit one-pointer fallback | [Object metadata](#212-object-metadata), [Internal ABI](#2142-physical-function-signatures) |
 | C aggregate passing/export/callback/varargs, Unicode console adapter, over-aligned allocation, arbitrary exit codes and FP environment control | Deferred extensions | [FFI](#223-foreign-function-imports), [Windows runtime](#225-initial-windows-runtime) |
-| Contract-level abstract Origins, non-static erased views, and lending iterators | Deferred design; ordinary retained storage is defined in §15.4 | [Abstract Origins](#153-abstract-origins), [Lifetime design boundaries](#159-lifetime-design-boundaries) |
+| Contract-level abstract Origins, non-static erased views, static-Place Origins, and lending iterators | Deferred design; ordinary retained storage is defined in §15.4 | [Abstract Origins](#153-abstract-origins), [Lifetime design boundaries](#159-lifetime-design-boundaries) |
 | Destruction lifetime relaxation | Deferred design | [Destruction lifetime checking](#1566-destruction-lifetime-checking) |
 | Additional dynamic Move Paths | Deferred design | [Move Paths and Partial Move](#1513-move-paths-and-partial-move) |
 | Object ownership API spellings and recoverable creation; general duplication API | Core object creation/strong-owner duplication semantics defined; remaining APIs deferred | [Object ownership operations](#1358-object-ownership-creation-and-sharing), [explicit duplication](#351-copy-capability-and-explicit-duplication) |
@@ -8424,6 +8493,7 @@ The initial [enum](#63-enums) and [match](#148-match-expressions-and-patterns) r
 | Public non-exhaustive enum | Require explicit declaration and client catch-all rules; do not silently add unknown Cases to closed enums |
 | Other binding constructs | Specify permitted refutability, failure control flow, and scopes for each construct |
 | Guard candidate capture | Define explicit read-value acquisition syntax/timing and Origin/Loan escape checks; no `@copy` form exists yet |
+| Pattern binding acquisition selection | Define how to borrow a Copy-capable payload from its original Place, including syntax, result Type, Origins/Loans, and acquisition timing. No such binding selector is introduced; this is distinct from guard capture. |
 
 Object-Semantics enum construction/matching, empty enums, and representation/ABI guarantees also remain outside the [initial enum rules](#631-cases-and-payloads).
 
@@ -8493,7 +8563,8 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Lookup environment | Declarations and aliases available for lookup in a scope; extensions are a future design. | [Name resolution](#9-names-signatures-and-access) |
 | Move | Transfer of a value and responsibility or capability, marking its source Moved. | [Copy and Move](#35-copy-and-move) |
 | Move Path | A statically tracked path with independent initialization state and destruction responsibility. | [Move Paths](#1513-move-paths-and-partial-move) |
-| ObjectCompatible | Verified restrictions on object receiver use | [Object calls](#1244-object-receiver-compatibility) |
+| ObjectCompatible | Public receiver-preservation guarantee per call operation | [Object calls](#1244-object-receiver-compatibility) |
+| Owned / OwnedOrigins | Lifetime independence from non-static dependencies / the conservative Origin closure proving it | [static and Owned](#1523-static-and-owned) |
 | Origin | A set of program points where a borrow is guaranteed valid. | [Origin expressions](#1521-origin-expressions) |
 | Partial Move | Transfer of an aggregate's part, leaving the aggregate incomplete. | [Move Paths](#1513-move-paths-and-partial-move) |
 | Pattern / Guard | Structural or binding syntax / an optional Boolean test selecting a match arm | [Match](#148-match-expressions-and-patterns) |
@@ -8750,7 +8821,7 @@ UnattributedDeclaration := GroupDeclaration | RootGroupDeclaration
 
 Modifier placement and compound-access combinations are constrained by [accessibility](#93-accessibility-and-reachability), even where the shared grammar uses `Access`.
 
-AttributePrefix is allowed only on the declarations and parameters enumerated in §6.5; the shared Declaration wrapper does not authorize Attributes on constructors, deinit, or explicit specializations. Attribute-bearing functions in executable/enum lists use AttributedFunctionDefinition. ForeignFunctionDeclaration requires exactly the LibraryImport form of §22.3 and cannot appear in those lists. `open` applies only to structures. `BaseClause` has the semantic restrictions in [inheritance](#622-inheritance-and-open-structures); member-level virtual/override syntax is not supplied by this grammar.
+AttributePrefix is allowed only on the declarations and parameters enumerated in §6.5; the shared Declaration wrapper does not authorize Attributes on constructors, deinit, or explicit specializations. Attribute-bearing functions in executable/enum lists use AttributedFunctionDefinition. ForeignFunctionDeclaration requires exactly the LibraryImport form of §22.3 and cannot appear in those lists. `open` applies only to structures. `BaseClause` has the semantic restrictions in [inheritance](#622-inheritance-and-open-structures); unavailable declaration modifiers use §2.5.1's diagnostic recognition, not grammar productions.
 
 `SpecializationDeclaration` is permitted only in the original generic function's declaration Container and Kotonoha. It adds no Type or Origin binder, Constraints, access/unsafe modifiers, attributes, defaults, or optionality markers. Its body uses ordinary executable syntax; the original function's contract is inherited under [full specialization](#88-explicit-full-function-specialization). Written Type arguments must be closed after normalization, except for Origins governed by that inherited contract.
 
@@ -8907,7 +8978,7 @@ AccessorReceiver     := "self" ":" Type
 AccessorBody         := ExecutableBody
 ```
 
-Each concrete accessor occurs at most once, in either order. Let forbids set; var supplies omitted standard get/set. A bodyless standard accessor has no explicit signature. Custom accessors require full signatures; stored receiver/Copy/Type restrictions follow §11.2. Static accessors omit self. Computed requires a custom get and optional custom set, with no initializer or inline has. Stored Type omission requires an initializer; static storage always requires one. Attributes/containers follow §6.5 and §11. This grammar adds no final virtual/override spelling.
+Each concrete accessor occurs at most once, in either order. Let forbids set; var supplies omitted standard get/set. A bodyless standard accessor has no explicit signature. Custom accessors require full signatures; stored receiver/Copy/Type restrictions follow §11.2. Static accessors omit self. Computed requires a custom get and optional custom set, with no initializer or inline has. Stored Type omission requires an initializer; static storage always requires one. Attributes/containers follow §6.5 and §11; unavailable modifiers follow §2.5.1.
 
 #### F.7. Origin grammar
 
@@ -8963,7 +9034,7 @@ These entries record the limits of a complete syntax summary for this revision. 
 | Form or production | Owning syntax and boundary |
 | --- | --- |
 | Extension declarations | Not introduced; no production or active extension candidate stage exists in this revision. See [Container boundary](#61-declaration-containers). |
-| Virtual/abstract/override declarations and ordinary base-member invocation | Access, compatibility, dispatch, and destruction semantics are specified; final member modifier/body spellings remain deferred. Base clauses and base-constructor initializers are defined in F.3. |
+| Virtual/abstract/override declarations and ordinary base-member invocation | Not introduced; [extension design](#624-virtual-members-and-overrides). Unavailable modifiers are diagnosed under §2.5.1. Base clauses and base-constructor initializers are defined in F.3. |
 | Runtime-contract designations, View associated-type bindings, exact/contract tests and checked casts | The [runtime extension](#85-runtime-contracts) and [object operations](#1362-general-view-tests-and-checked-casts) preserve the design without final source spellings. Static associated-Type specifications/projections are defined in F.3. Ordinary struct `is` and explicit upcasts are defined. |
 | Callable extensions | Borrowed or Exclusive/Consuming erased Types, public lending results, non-escaping declarations, capture aliases/initializers/parts, generic receiver Semantics, and `from environment` remain unintroduced. |
 | Additional Patterns | The [initial forms](#1481-patterns) are defined; Struct, Type, OR, Range, Rest, and other [extensions](#d1-enum-and-pattern-extensions) remain deferred. |

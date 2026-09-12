@@ -31,3 +31,22 @@
 §8.1.3 末尾の旧 static borrow 禁止、Array/Dictionary の Core 条件、heap/global 全体の deferred 記述を更新した。owner の意味の Owned は string、Copy 表、parameter、Closure/Callable receiver、iteration、let、ABI 表まで確認した。ABI 表は現在 §21.4.2 にあり、参照番号の §19 は使わない。内部 AccessMode の既存ラベルは capability と異なることを明記した。
 
 受け入れ条件には RawBox/未使用 slot、a : static/Unknown、排他 Array への短寿命注入、mutable-static 借用の消去/別 module 越え、Origin 引数付き checked cast を追加した。実装テストは未追加であり、設計書のケースを実行済みとは扱わない。
+
+## SPEC 反映後の精査による補正
+
+| 箇所 | 補正 |
+| --- | --- |
+| §15.2.3 OwnedOrigins | 走査対象に Semantics target（値の referent、object payload/View Target）と Tuple component・配列要素を明記。「sequence components」の曖昧さを解消。消去済み view は可視の引数だけを寄与し、隠れた payload は消去時の証明に委ねる |
+| §15.2.3 と §3.2.1 | 「全 instantiated 引数」と「Function Item は常に Owned」の矛盾を解消。Function Item の束縛済み generic/Origin 引数は callable contract に属し、環境依存ではない |
+| §15.2.3 Unknown | generic 定義自身の Type parameter/抽象 Origin の Owned 証明は宣言済み Constraint/bound だけで行い、instantiation まで保留しないと明記（§8.10 と整合） |
+| §11.3.2 mutable static | 有限 Origin の借用を関数/getter から返す手段は borrowed input で上限を与える result Origin と Field anchor に限り、static へ elision される結果はエラーと明記 |
+| §15.4 Static Field | 省略 Origin の static 既定から排他 borrow 層と `uniq` Loan requirement を除外（結果 elision の規則と一致） |
+| §15.4 例 | immutable static からの static 借用の正例と、mutable static からの負例を併記 |
+| §4.6.5 | Slice の Owned 判定の参照先を §15.2 の一般 Origin 規則から OwnedOrigins へ変更 |
+
+## 残った二つの判断
+
+| 論点 | 判断 | 理由・適用内容 |
+| --- | --- | --- |
+| callable signature の Origin | 保守側を採用。上表の Function Item の補正は置き換える | OwnedOrigins は callable Type の固定 Origin（Function Item の束縛済み引数、concrete Closure の capture と固定 signature Origin、common Function Type の引数/結果に書かれた固定 Origin）を含める。除外は §8.6/§15.4 の per-call binder だけ。将来 environment に寿命境界を持つ消去 callable を導入すると signature Origin が実際の保持依存になり、除外規則は健全でなくなるため。Rust も関数ポインター型の自由 lifetime に outlives を要求する。§3.2.1、§7.6.4、§13.6.2、§15.8.1、Appendix A.8 を合わせて更新 |
+| mutable static を返す getter | 現行の制限を維持。新構文は追加しない | 使用箇所での直接 borrow、immutable static、scoped callback、値の取得で代替できる。static Place を Origin として書く構文は、公開 signature への anchor 露出、アクセス検査、別 module の summary 照合を伴うため、§15.9 と Appendix D に deferred として記録。input で上限を与える結果は既存規則から導けるので残すが、推奨パターンとはしない |
