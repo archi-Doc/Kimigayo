@@ -4,7 +4,7 @@ using System.Buffers;
 using System.Buffers.Text;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Kimi.Diagnostics;
 
 namespace Kimi.Lsp;
@@ -16,13 +16,6 @@ public class LspServer
     private readonly Stream input;
     private readonly Stream output;
     private readonly SemaphoreSlim writeLock;
-    private readonly JsonSerializerOptions jsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        WriteIndented = false,
-    };
-
     private readonly Dictionary<string, TextDocument> documents = new(StringComparer.Ordinal);
     private bool shutdownRequested;
 
@@ -104,7 +97,7 @@ public class LspServer
 
                 var span = payload.AsSpan(0, contentLength);
 
-                var message = JsonSerializer.Deserialize<LspMessage>(span, this.jsonOptions);
+                var message = JsonSerializer.Deserialize(span, LspJsonContext.Default.LspMessage);
                 if (message is null)
                 {
                     break;
@@ -247,7 +240,7 @@ public class LspServer
             return;
         }
 
-        var parameters = parametersElement.Value.Deserialize<DidOpenTextDocumentParams>(this.jsonOptions);
+        var parameters = parametersElement.Value.Deserialize(LspJsonContext.Default.DidOpenTextDocumentParams);
         if (parameters?.TextDocument is null)
         {
             return;
@@ -275,7 +268,7 @@ public class LspServer
             return;
         }
 
-        var parameters = parametersElement.Value.Deserialize<DidChangeTextDocumentParams>(this.jsonOptions);
+        var parameters = parametersElement.Value.Deserialize(LspJsonContext.Default.DidChangeTextDocumentParams);
         if (parameters?.TextDocument is null)
         {
             return;
@@ -317,7 +310,7 @@ public class LspServer
             return;
         }
 
-        var parameters = parametersElement.Value.Deserialize<DidCloseTextDocumentParams>(this.jsonOptions);
+        var parameters = parametersElement.Value.Deserialize(LspJsonContext.Default.DidCloseTextDocumentParams);
         if (parameters?.TextDocument is null)
         {
             return;
@@ -353,7 +346,7 @@ public class LspServer
             Result = result,
         };
 
-        await this.SendJsonAsync(response).ConfigureAwait(false);
+        await this.SendJsonAsync(response, LspJsonContext.Default.JsonRpcResponse).ConfigureAwait(false);
     }
 
     private async Task SendNotificationAsync(string method, object? parameters)
@@ -364,7 +357,7 @@ public class LspServer
             Params = parameters,
         };
 
-        await this.SendJsonAsync(notification).ConfigureAwait(false);
+        await this.SendJsonAsync(notification, LspJsonContext.Default.JsonRpcNotification).ConfigureAwait(false);
     }
 
     private async Task SendErrorAsync(JsonElement? id, int code, string message)
@@ -379,12 +372,12 @@ public class LspServer
             },
         };
 
-        await this.SendJsonAsync(response).ConfigureAwait(false);
+        await this.SendJsonAsync(response, LspJsonContext.Default.JsonRpcResponse).ConfigureAwait(false);
     }
 
-    private async Task SendJsonAsync<T>(T value)
+    private async Task SendJsonAsync<T>(T value, JsonTypeInfo<T> typeInfo)
     {
-        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(value, this.jsonOptions);
+        var jsonBytes = JsonSerializer.SerializeToUtf8Bytes(value, typeInfo);
         var headerBytes = Encoding.ASCII.GetBytes($"Content-Length: {jsonBytes.Length}\r\n\r\n");
 
         await this.writeLock.WaitAsync().ConfigureAwait(false);

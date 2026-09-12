@@ -102,7 +102,7 @@ entry:
   ret i1 %ok
 }
 
-define internal void @__kimi_abort(i32 %reason, ptr %location, i64 %location_length, i64 %os_error) noreturn #0 {
+{{__kimi_abort}}
 entry:
   %digits = alloca [10 x i8], align 1
   %located = call i1 @__kimi_try_stderr(ptr %location, i64 %location_length)

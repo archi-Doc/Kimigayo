@@ -38,12 +38,12 @@ public class MinimalEmissionTest
     [InlineData("func unused<T>() => ()\nwriteLine(\"a\")")]
     [InlineData("struct Empty\n    func unused() => ()\nwriteLine(\"a\")")]
     [InlineData("public func main() => writeLine(\"a\")")]
-    [InlineData("if false => writeLine(\"a\")")]
+    [InlineData("if false => 1 / 0")]
     [InlineData("let x: string\nwriteLine(x)")]
     [InlineData("let x = \"a\"\nwriteLine(x)\nwriteLine(x)")]
     [InlineData("func writeLine(x: string) => ()\nwriteLine(\"a\")")]
-    [InlineData("let x: i32 = 1\nwriteLine(\"a\")")]
-    [InlineData("writeLine(\"a\")\nlet flag = true")]
+    [InlineData("let x: u32 = 1\nwriteLine(\"a\")")]
+    [InlineData("writeLine(\"a\")\nlet flag = if true => 1 else => 2")]
     [InlineData("")]
     public void UnsupportedOrInvalidInputNeverWritesIr(string source)
     {
@@ -190,7 +190,7 @@ public class MinimalEmissionTest
         return c;
     }
 
-    private static string Describe(Compilation c, string? error)
+    internal static string Describe(Compilation c, string? error)
         => $"{error}; Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Ownership={c.Ownership.Result}; " +
             string.Join(", ", c.Ownership.Bodies.SelectMany(x => x.Operations).Select(x => $"{x.Kind}:{x.Place}:{x.Source.Akind}"));
 }

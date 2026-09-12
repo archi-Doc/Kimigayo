@@ -162,6 +162,8 @@ public sealed partial class OwnershipBody
     internal readonly List<int> EdgeHeads = new();
     internal readonly List<int> IncomingEdges = new();
     internal readonly List<int> OperationSteps = new();
+    internal readonly List<OwnershipValue> Values = new();
+    internal readonly List<int> ValueOperands = new();
     internal readonly List<OwnershipCleanupStep> CleanupStepStorage = new();
     internal readonly List<OwnershipCleanupPlan> CleanupPlanStorage = new();
     internal readonly List<OwnershipConstructionPlan> ConstructionStorage = new();
@@ -222,6 +224,8 @@ public sealed partial class OwnershipBody
         this.EdgeHeads.Clear();
         this.IncomingEdges.Clear();
         this.OperationSteps.Clear();
+        this.Values.Clear();
+        this.ValueOperands.Clear();
         this.CleanupStepStorage.Clear();
         this.CleanupPlanStorage.Clear();
         this.ConstructionStorage.Clear();
@@ -241,3 +245,16 @@ public sealed partial class OwnershipBody
 // A checking-only seed edge. Its source is replayed after its containing region
 // converges; it never enters EdgeStorage or contributes a runtime predecessor.
 internal readonly record struct OwnershipCheckingRegion(int Seed, int Entry);
+
+// Values use their defining operation ID; Input on OwnershipOperation remains a Place ID.
+internal enum OwnershipValueKind : byte
+{
+    None,
+    Constant,
+    Alias,
+    Unary,
+    Binary,
+    Phi,
+}
+
+internal readonly record struct OwnershipValue(OwnershipValueKind Kind, int Start, int Count, long Constant = 0, KotoKind Operator = default);

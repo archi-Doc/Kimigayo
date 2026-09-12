@@ -9,12 +9,12 @@ namespace Kimi.Compiler;
 /// operation/Place identities and edge cleanup plans, and never guesses a representation, terminator or cleanup.
 /// </summary>
 /// <remarks>
-/// The supported CFG is a straight normal path whose calls may take a terminal abort edge. Every operation,
-/// including unreachable ones, must have a lowering; branches, locals and borrowed values fail preparation.
-/// Extend lowering together with its unsupported-case tests: add explicit blocks for branches, a worklist of
-/// selected implementations for user calls, and a ValueLowering for each new Type.
+/// Supports bool/i32 locals, Unit control flow, short-circuit Boolean values and checked signed arithmetic.
+/// Every operation, including unreachable ones, is validated before physical blocks are assembled.
+/// User calls still require a selected-implementation worklist; borrowed values and general scalar joins
+/// require additional verified plans.
 /// </remarks>
-internal sealed class BodyLowering
+internal sealed partial class BodyLowering
 {
     private const byte NormalMark = 1;
     private const byte AbortMark = 2;
@@ -28,6 +28,11 @@ internal sealed class BodyLowering
     {
         this.arguments.Clear();
         var count = body.Operations.Count;
+        if (!ValidateValues(body))
+        {
+            return Fail("Missing or inconsistent value-flow plan.", out failure);
+        }
+
         if (count == 0 || body.Operations[0].Kind != OwnershipOperationKind.Entry)
         {
             return Fail("The verified CFG has no entry operation.", out failure);
@@ -45,89 +50,7 @@ internal sealed class BodyLowering
             return Fail("Cleanup lowering requires every cleanup operation in exactly one matching edge plan.", out failure);
         }
 
-        for (var p = 0; p < body.Places.Count; p++)
-        {
-            if (WindowsLowering.GetValue(body.Places[p].Type) is not { } value)
-            {
-                return Fail("A Place needs an unsupported layout or value representation.", out failure);
-            }
-
-            if (value.Layout.Size != 0)
-            {
-                function.Slots.Add(new(p, value));
-            }
-        }
-
-        var cursor = 0;
-        while (true)
-        {
-            if ((uint)cursor >= (uint)count || (marks[cursor] & (NormalMark | AbortMark)) != 0 || !body.IsReachable(cursor))
-            {
-                // A missing successor or cycle is an error, never an invented ret/unreachable.
-                return Fail("The verified CFG needs unsupported or incomplete control-flow lowering.", out failure);
-            }
-
-            marks[cursor] |= NormalMark;
-            var operation = body.Operations[cursor];
-            if (!this.LowerOperation(core, body, function, constants, projectDirectory, cursor, marks, out failure))
-            {
-                return false;
-            }
-
-            var next = -1;
-            for (var e = body.EdgeHeads[cursor]; e >= 0; e = body.Edges[e].Next)
-            {
-                var edge = body.Edges[e];
-                if (edge.Kind == OwnershipEdgeKind.Abort)
-                {
-                    // Core's abort is terminal inside the nonreturning runtime path, not a caller continuation.
-                    if (operation.Kind != OwnershipOperationKind.Call || (uint)edge.To >= (uint)count ||
-                        body.Operations[edge.To].Kind != OwnershipOperationKind.Exit || body.EdgeHeads[edge.To] >= 0 || (marks[edge.To] & NormalMark) != 0)
-                    {
-                        return Fail("An abort edge needs unsupported lowering.", out failure);
-                    }
-
-                    marks[edge.To] |= AbortMark;
-                }
-                else if (edge.Kind is not (OwnershipEdgeKind.Normal or OwnershipEdgeKind.Return) || next >= 0)
-                {
-                    return Fail("A control-flow edge needs unsupported branch lowering.", out failure);
-                }
-                else
-                {
-                    next = edge.To;
-                }
-            }
-
-            if (operation.Kind == OwnershipOperationKind.Exit)
-            {
-                if (next >= 0 || this.arguments.Count != 0)
-                {
-                    return Fail("The verified CFG needs unsupported or incomplete control-flow lowering.", out failure);
-                }
-
-                function.Add(EmissionOpcode.ReturnVoid, cursor);
-                break;
-            }
-
-            cursor = next;
-        }
-
-        for (var i = 0; i < count; i++)
-        {
-            var kind = body.Operations[i].Kind;
-            // Unexecuted operations still require a supported lowering (SPEC 21.4.1).
-            if ((body.IsReachable(i) && (marks[i] & (NormalMark | AbortMark)) == 0) ||
-                (kind == OwnershipOperationKind.Cleanup && (marks[i] & CleanupMark) == 0) ||
-                kind is not (OwnershipOperationKind.Entry or OwnershipOperationKind.Exit or OwnershipOperationKind.Deliver or OwnershipOperationKind.Produce or
-                OwnershipOperationKind.CallEntry or OwnershipOperationKind.Call or OwnershipOperationKind.Cleanup))
-            {
-                return Fail("An ownership operation needs unsupported lowering or Loan/Origin verification.", out failure);
-            }
-        }
-
-        failure = null;
-        return true;
+        return this.LowerGraph(core, body, function, constants, projectDirectory, marks, out failure);
     }
 
     private static bool Fail(string message, out string? failure)
@@ -141,7 +64,7 @@ internal sealed class BodyLowering
         for (var p = 0; p < body.CleanupPlans.Count; p++)
         {
             var cleanup = body.CleanupPlans[p];
-            if ((uint)cleanup.Edge >= (uint)body.Edges.Count || cleanup.Count <= 0 || cleanup.Start < 0 ||
+            if (cleanup.Edge < -1 || (cleanup.Edge >= 0 && (uint)cleanup.Edge >= (uint)body.Edges.Count) || cleanup.Count <= 0 || cleanup.Start < 0 ||
                 cleanup.Start > body.CleanupSteps.Count - cleanup.Count)
             {
                 return false;
@@ -159,7 +82,12 @@ internal sealed class BodyLowering
                 marks[step.Operation] |= CleanupMark;
             }
 
-            if (body.Edges[cleanup.Edge].To != body.CleanupSteps[cleanup.Start].Operation)
+            if (cleanup.Edge >= 0 && body.Edges[cleanup.Edge].To != body.CleanupSteps[cleanup.Start].Operation)
+            {
+                return false;
+            }
+
+            if (cleanup.Edge < 0 && body.IsReachable(body.CleanupSteps[cleanup.Start].Operation))
             {
                 return false;
             }
@@ -185,7 +113,19 @@ internal sealed class BodyLowering
 
                 break;
 
+            case OwnershipOperationKind.Declare:
+            case OwnershipOperationKind.Read:
+            case OwnershipOperationKind.Consume:
+            case OwnershipOperationKind.Write:
+            case OwnershipOperationKind.Branch:
+                return this.LowerScalar(body, function, constants, projectDirectory, index, out failure);
+
             case OwnershipOperationKind.Produce:
+                if (operation.Place >= 0 && IsScalar(body.Places[operation.Place].Type))
+                {
+                    return this.LowerScalar(body, function, constants, projectDirectory, index, out failure);
+                }
+
                 if (operation.Place < 0)
                 {
                     return Fail("A produced value has no Place.", out failure);
@@ -209,7 +149,7 @@ internal sealed class BodyLowering
                 return Fail("A produced value needs unsupported value lowering.", out failure);
 
             case OwnershipOperationKind.CallEntry:
-                if (operation.Place < 0 || (body.GetInputState(index, operation.Place) & PlaceState.MustInit) == 0)
+                if (operation.Place < 0 || (body.IsReachable(index) && (body.GetInputState(index, operation.Place) & PlaceState.MustInit) == 0))
                 {
                     return Fail("A call argument is not proven initialized.", out failure);
                 }
@@ -228,9 +168,19 @@ internal sealed class BodyLowering
                 }
 
                 var step = body.CleanupSteps[stepIndex];
-                if (step.Operation != index || step.Place != operation.Place || step.Action is not (CleanupAction.Skip or CleanupAction.Destroy))
+                if (step.Operation != index || step.Place != operation.Place || step.Action is not (CleanupAction.Skip or CleanupAction.Destroy or CleanupAction.Conditional))
                 {
                     return Fail("Cleanup is conditional, mismatched or unsupported.", out failure);
+                }
+
+                if (operation.Place >= 0 && IsScalar(body.Places[operation.Place].Type))
+                {
+                    break;
+                }
+
+                if (step.Action == CleanupAction.Conditional)
+                {
+                    return Fail("Conditional non-scalar destruction is not implemented.", out failure);
                 }
 
                 // Unit has no value and no destructor; its verified cleanup has no physical output.

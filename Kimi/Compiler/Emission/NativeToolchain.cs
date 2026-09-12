@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Kimi.Diagnostics;
 using static Kimi.Compiler.ArtifactFiles;
@@ -53,9 +54,9 @@ internal static partial class NativeToolchain
 
         bin = ResolvePath(bin, project.KimiOptions.LlvmBin is null && project.Directory.Length != 0 ? Path.GetFullPath(project.Directory) : Directory.GetCurrentDirectory());
         var tools = new Dictionary<string, string>(StringComparer.Ordinal);
-        var identities = new Dictionary<string, object>();
+        var identities = new JsonObject();
         var matched = true;
-        var record = new Dictionary<string, object?>
+        var record = new JsonObject
         {
             ["status"] = "incomplete", ["compilerVersion"] = CompilerRelease.Version, ["llvmVersion"] = WindowsProfile.LlvmVersion,
             ["tools"] = identities, ["irSha256"] = irHash, ["optimization"] = project.ProjectFile.Optimization,
@@ -89,7 +90,7 @@ internal static partial class NativeToolchain
 
             matched &= same;
             tools.Add(name, tool);
-            identities.Add(name, new { path = Redact(tool, project.Directory), version = Redact(version, project.Directory), actualVersion = actual, expectedVersion = WindowsProfile.LlvmVersion, versionMatched = same, sha256 = Hash(tool) });
+            identities.Add(name, new JsonObject { ["path"] = Redact(tool, project.Directory), ["version"] = Redact(version, project.Directory), ["actualVersion"] = actual, ["expectedVersion"] = WindowsProfile.LlvmVersion, ["versionMatched"] = same, ["sha256"] = Hash(tool) });
         }
 
         record["reportedVersionsMatched"] = matched;
@@ -107,11 +108,11 @@ internal static partial class NativeToolchain
         }
 
         tools.Add(Kernel32Imports.Generator, dlltool);
-        identities.Add(Kernel32Imports.Generator, new { path = Redact(dlltool, project.Directory), sha256 = dlltoolHash, expectedSha256 = Kernel32Imports.DlltoolSha256, hashMatched = dlltoolMatched });
+        identities.Add(Kernel32Imports.Generator, new JsonObject { ["path"] = Redact(dlltool, project.Directory), ["sha256"] = dlltoolHash, ["expectedSha256"] = Kernel32Imports.DlltoolSha256, ["hashMatched"] = dlltoolMatched });
         record["unverifiedToolchain"] = !matched || !dlltoolMatched;
         WriteRecord(paths.Record, record);
         var libraries = new List<string>();
-        var libraryIdentities = new List<object>();
+        var libraryIdentities = new JsonArray();
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var item in manifest.GetProperty("libraries").EnumerateArray())
         {
@@ -127,7 +128,7 @@ internal static partial class NativeToolchain
             {
                 Kernel32Imports.ValidateManifest(item);
                 path = await GenerateKernel32(tools, paths.Stem, report, cancellationToken);
-                record["kernel32"] = new { generator = Kernel32Imports.Generator, dll = Kernel32Imports.Dll, definitionSha256 = Kernel32Imports.DefinitionSha256, sha256 = Hash(path) };
+                record["kernel32"] = new JsonObject { ["generator"] = Kernel32Imports.Generator, ["dll"] = Kernel32Imports.Dll, ["definitionSha256"] = Kernel32Imports.DefinitionSha256, ["sha256"] = Hash(path) };
             }
             else
             {
@@ -141,7 +142,7 @@ internal static partial class NativeToolchain
             }
 
             libraries.Add(path);
-            libraryIdentities.Add(new { name, path = Redact(path, project.Directory), sha256 = hash });
+            libraryIdentities.Add((JsonNode)new JsonObject { ["name"] = name, ["path"] = Redact(path, project.Directory), ["sha256"] = hash });
         }
 
         if (!seen.Contains(Kernel32Imports.LibraryName) || !seen.Contains(WindowsProfile.BackendLibrary))
@@ -454,12 +455,12 @@ internal static partial class NativeToolchain
         }
     }
 
-    private static void WriteRecord(string path, Dictionary<string, object?> record)
+    private static void WriteRecord(string path, JsonObject record)
     {
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            File.WriteAllText(temporary, JsonSerializer.Serialize(record, JsonOptions), new UTF8Encoding(false));
+            File.WriteAllText(temporary, record.ToJsonString(JsonOptions), new UTF8Encoding(false));
             File.Move(temporary, path, true);
         }
         finally

@@ -122,5 +122,8 @@ public sealed class PublishDiagnosticsParams
 
     public int? Version { get; set; }
 
-    public Diagnostic[] Diagnostics { get; set; } = [];
+    public LspDiagnostic[] Diagnostics { get; set; } = [];
 }
+
+// The wire model must not serialize the compiler's source documents or ownership graph.
+public sealed record LspDiagnostic(SourceRange Range, DiagnosticSeverity Severity, string Message);

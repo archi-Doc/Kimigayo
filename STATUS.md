@@ -4,6 +4,8 @@ Implementation coverage is informative and does not weaken language rules or Com
 
 **Specification examples (2026-09-13):** [SpecTour](examples/SpecTour/README.md) adds a multi-file reading sample covering the major source-expressible language features, including features beyond current Binding, analysis and native generation. It is not an executable milestone or a conformance suite and changes no implementation coverage. APIs and syntax still under design are documented separately instead of invented in the sample.
 
+**Scalar execution and NativeAOT update (2026-09-13):** C.40 extends the implicit Application to bool/i32 locals, Unit conditionals, short-circuit Boolean values, checked addition/subtraction/multiplication, and while/exit/continue. The compiler supports NativeAOT publishing. General scalar branch results, division/remainder, user functions, and owned string locals remain outside this executable slice.
+
 **Compiler review update (2026-09-13):** C.39 records a SPEC-example review of the Tokenizer, Parser and Binder, dead-code removal, and the restructured emitter. The executable subset now covers an implicit Application body made of Unit expressions and sequential `Core.writeLine` calls with string-literal arguments; every other operation still fails before emission.
 
 **Minimal executable update (2026-09-13):** C.34 implements checked LLVM/manifest generation and native execution of the single literal-output Application. It supersedes older no-emission/no-runtime statements only for that narrow subset. General borrowed/object execution and the broader C.12 function/local subset remain pending.
@@ -21,14 +23,14 @@ This table defines the recorded status of each compiler stage. The notes below d
 | Functions and Constraint Clauses | Partial | Partial; see C.16, C.18–C.21 | Partial | Not implemented | Not implemented |
 | Static Contracts and associated Types | Partial; see C.4, C.21 | Partial; see C.20–C.21 | Partial declaration/path verification | Not implemented | N/A |
 | `#if` / `#switch` | Implemented | Not implemented | Partial | Not assessed | N/A |
-| Types | Partial | Partial; see C.16–C.19 | Partial | Not implemented | Not implemented |
+| Types | Partial | Partial; see C.16–C.19 | Partial | Partial; bool/i32 scalar operations, C.40 | Partial; C.40 |
 | Core intrinsic identities and Copy / Owned classification | Partial; conditional Copy clauses | Partial; see C.19, C.25 | Partial; see C.19 | N/A | N/A |
 | Origins | Partial | Partial; see C.17 | Partial declaration requirements; see C.17 | Not implemented | Not implemented |
 | Properties | Implemented | Partial; declarations/witnesses, C.21 | Partial declaration verification | Not implemented | Not implemented |
 | Constructors and aggregate destruction | Implemented | Not implemented | Partial | Not implemented | Not implemented |
 | `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
-| Ordinary Copy / Move acquisition | N/A; no dedicated Move operator | Partial; committed calls and local write permissions | Partial; whole Places, initialization, Move and cleanup, C.24 | Not implemented | Not implemented |
-| Control flow and `defer` | Implemented; C.30 | Partial; C.16, C.30 | Partial; C.30–C.31 | Not implemented | Not implemented |
+| Ordinary Copy / Move acquisition | N/A; no dedicated Move operator | Partial; committed calls and local write permissions | Partial; whole Places, initialization, Move and cleanup, C.24 | Partial; bool/i32 Copy and placement, C.40 | Partial; C.40 |
+| Control flow and `defer` | Implemented; C.30 | Partial; C.16, C.30 | Partial; C.30–C.31 | Partial; Unit control flow and short circuit, C.40 | Partial; C.40 |
 | Runtime `is` / `is not` | Implemented; C.33 | Partial; concrete struct Cores, C.33 | Partial; operand paths and bool results; refinement/Loans pending, C.33 | Not implemented | Not implemented |
 | Enum Cases, Patterns, and guards | Implemented | Partial; Case declarations/construction, C.26; owned-path Patterns and body scopes, C.28; guards pending | Partial; construction ownership, C.27; Pattern coverage and result flow, C.28; concrete owned match ownership, C.29 | Not implemented | Not implemented |
 | Explicit full specialization and generic code sharing | Source specialization syntax | Not implemented | Not implemented | Not implemented | Not implemented |
@@ -606,3 +608,19 @@ The executable subset is an implicit Application body whose items are Unit expre
 **Allocation.** In a local Release probe of fresh Hello compilations, emission fell from 36.6 KB / 17.5 µs to 3.8 KB / 10.9 µs, because the writer no longer builds the module in a 16,384-character StringBuilder. Warm rebinding, reanalysis and re-emission allocate 0 B. Warm Binding of Hello is ~43 µs, spread over fixed Core-catalog steps with no single hotspot. These are informative local measurements, not throughput guarantees.
 
 Validation: all 2,868 C# tests pass in Debug and Release, and both solution builds have zero warnings/errors. LLVM 22.1.8 passes 64 O0/O2 native executions per compiler configuration. CLI `build`/`run` of examples/Hello succeeds. A multi-call project (literal, Unit, empty, `日本語\0x`, repeated literal) prints byte-exact output at O0 and O2 and shares the repeated constant.
+
+### C.40. Scalar control-flow emission and NativeAOT (2026-09-13)
+
+**Executable scope.** The implicit Application now supports bool/i32 literals and locals, initialization/reassignment, scalar Copy acquisition, comparisons, Boolean negation and short-circuit `and`/`or`, Unit if/else, and while with `exit`/`continue`. i32 addition, subtraction, multiplication, unary negation, their compound updates and prefix/postfix increment/decrement use checked overflow operations. Direct signed literals are fitted once from UInt128 magnitude, including -2147483648. The existing literal string/Unit calls remain supported. [Counter](examples/Counter/README.md) is an executable example.
+
+General scalar results from if/do/loop, division/remainder, numeric conversions and other scalar Types, user functions/explicit main, string locals/comparisons and borrowed/object operations remain unsupported. Unsupported operations are checked even under a constant false condition or after a transfer. Transfer-seeded checking-only operations are validated without emitting instructions or adding phi predecessors.
+
+**Value flow and cleanup.** Scalar values use defining Operation IDs with retained operand ranges; existing OwnershipOperation.Input remains a Place ID. Read operations snapshot storage before RHS effects. Replacement cleanup is attached to each Write through OperationSteps, after incoming states join, rather than attached to one arbitrarily retained incoming edge. Conditional cleanup for bool/i32 is physically empty; conditional string destruction remains rejected.
+
+**Physical plan.** Lowering independently counts runtime incoming edges and constructs maximal single-entry chains, excluding call Abort exits from normal continuations. Boolean short-circuit joins check both incoming producers against the actual CFG and emit phi from physical block endings, including success blocks after arithmetic checks. General scalar join construction is deferred. Scalars use SSA temporaries; local/parameter storage and owned literal string argument slots are allocated only in the function entry block. Each operation is lowered once into retained scratch instructions, then copied in physical block order; the writer only serializes this closed plan.
+
+**Failures.** Checked i32 operations call signed LLVM overflow intrinsics and branch before committing updates. The existing KIMI_E_INT_OVERFLOW reason uses the shared compiler-facing Abort FunctionAbi. SPEC §22.5.1 now fixes the diagnostic site to the failing expression's beginning (the complete expression for compound updates/increments), independent of optimization. No division/remainder diagnostic codes were introduced.
+
+**NativeAOT.** Kimi enables IsAotCompatible. CLI commands/options are registered through SimpleCommandLine's static generic registry. LSP JSON uses source-generated metadata and a wire diagnostic DTO, avoiding traversal of compiler SourceDocument/ValueLink graphs. Native toolchain build records use explicitly typed JSON nodes and keep their external schema. NativeAOT CLI integration covers emission, O0/O2 build/run, failed-build invalidation, options, paths with spaces, tool identities and child exit-code propagation. LSP initialization, document open/change/close, error response and shutdown are exercised through the published executable.
+
+**Validation.** All 2,899 C# tests pass in Debug and Release. Both solution builds and the final NativeAOT publish have zero warnings/errors. The published compiler builds/runs Counter successfully. Eighteen scalar fixtures pass LLVM verification and 36 O0/O2 native executions with exact stdout, stderr, exit status and arithmetic source locations; they include a million-iteration loop, nested loops, Read-before-RHS mutation and skipped overflow. The existing runtime suite passes 64 native executions in each compiler configuration. Warm Counter ownership reanalysis and IR writing allocate 0 B; existing Hello zero-allocation checks still pass. No throughput claim is made.

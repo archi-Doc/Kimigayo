@@ -28,13 +28,14 @@ internal static class WindowsLowering
     internal static readonly FunctionAbi Entry = new("__kimi_entry_body", Unit.ComputationType, []);
     internal static readonly FunctionAbi Start = new(WindowsProfile.EntrySymbol, Unit.ComputationType, [], noReturn: true);
     internal static readonly FunctionAbi Exit = new("__kimi_exit", Unit.ComputationType, [new("i32", "code")], noReturn: true);
+    internal static readonly FunctionAbi Abort = new("__kimi_abort", Unit.ComputationType, [new("i32", "reason"), new("ptr", "location"), new("i64", "location_length"), new("i64", "os_error")], noReturn: true);
 
     // Hidden diagnostic context follows the ordinary parameters (SPEC 21.4.2, 22.5.1).
     internal static readonly FunctionAbi WriteLine = new("__kimi_write_line", Unit.ComputationType, [new(String.ArgumentType!, "text"), new("ptr", "location"), new("i64", "location_length")]);
     internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, WriteLine.Parameters);
 
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
-    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine];
+    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort];
 
     private static readonly Dictionary<BoundType, ValueLowering> Values = CreateValues();
 

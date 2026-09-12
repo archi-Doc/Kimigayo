@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory)] [string] $LlvmBin,
     [string] $MismatchedLlvmBin = '',
+    [string] $NativeCompiler = '',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release'
 )
 $ErrorActionPreference = 'Stop'
@@ -31,12 +32,12 @@ NativeLibraries=
 "@ | Set-Content -LiteralPath $project -Encoding utf8
 }
 function Invoke-Kimi([string[]] $Arguments, [int] $ExitCode = 0) {
-    $start = [Diagnostics.ProcessStartInfo]::new((Get-Command dotnet).Source)
+    $start = [Diagnostics.ProcessStartInfo]::new($(if ($NativeCompiler) { [IO.Path]::GetFullPath($NativeCompiler) } else { (Get-Command dotnet).Source }))
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
-    $start.ArgumentList.Add($compiler)
+    if (-not $NativeCompiler) { $start.ArgumentList.Add($compiler) }
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     $process = [Diagnostics.Process]::Start($start)
     $stdout = $process.StandardOutput.ReadToEndAsync()
@@ -99,7 +100,7 @@ $output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools) 1
 $output = Invoke-Kimi @('run', $project) 1
 Copy-Item -LiteralPath (Join-Path $LlvmBin 'llvm-readobj.exe') -Destination (Join-Path $incompleteTools 'llvm-dlltool.exe')
 $output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools) 1
-if (-not $output.Contains('SHA-256 mismatch')) { throw 'Missing dlltool identity diagnostic' }
+if (-not $output.Contains('SHA-256 mismatch')) { throw "Missing dlltool identity diagnostic: $output" }
 $output = Invoke-Kimi @('build', $project, '--LlvmBin', $incompleteTools, '--AllowUnpinnedToolchain', 'true') 1
 $output = Invoke-Kimi @('run', $project) 1
 $output = Invoke-Kimi @('build', $project, '--LlvmBin', $LlvmBin)

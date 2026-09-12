@@ -1,4 +1,4 @@
-﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Command;
 using Kimi.Lsp;
@@ -30,11 +30,11 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 context.AddSingleton<LspServer>();
 
                 // Command
-                context.AddCommand(typeof(DefaultCommand));
-                context.AddCommand(typeof(LspCommand));
-                context.AddCommand(typeof(BuildCommand));
-                context.AddCommand(typeof(EmitLlvmCommand));
-                context.AddCommand(typeof(RunCommand));
+                context.AddCommand<DefaultCommand>();
+                context.AddCommand<LspCommand, LspCommand.Options>();
+                context.AddCommand<BuildCommand, KimiOptions>();
+                context.AddCommand<EmitLlvmCommand, KimiOptions>();
+                context.AddCommand<RunCommand, KimiOptions>();
 
                 // Logger
                 context.ClearLoggerResolver();
@@ -99,7 +99,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
             };
 
             // Main
-            var parser = new SimpleParser(this.Context.Commands, parserOptions);
+            var parser = this.Context.CreateSimpleParser(parserOptions);
             if (!parser.Parse(param.Args))
             {
                 Environment.ExitCode = 1;

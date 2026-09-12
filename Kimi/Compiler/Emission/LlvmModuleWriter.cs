@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 /// Serializes a closed <see cref="EmissionModule"/> directly into the destination writer. It never reads Binding,
 /// AST or ownership state, and formats numbers on the stack so warm writes allocate nothing.
 /// </summary>
-internal static class LlvmModuleWriter
+internal static partial class LlvmModuleWriter
 {
     // Every generated definition carries the same profile attributes (SPEC 21.5.1).
     private const string Footer =
@@ -33,6 +33,7 @@ internal static class LlvmModuleWriter
         }
 
         output.Write(Runtime);
+        output.Write("declare { i32, i1 } @llvm.sadd.with.overflow.i32(i32, i32)\ndeclare { i32, i1 } @llvm.ssub.with.overflow.i32(i32, i32)\ndeclare { i32, i1 } @llvm.smul.with.overflow.i32(i32, i32)\n");
         for (var i = 0; i < module.FunctionCount; i++)
         {
             WriteFunction(output, constants, module.GetFunction(i));
@@ -98,7 +99,8 @@ internal static class LlvmModuleWriter
                     break;
 
                 default:
-                    throw new InvalidOperationException("Unknown emission opcode.");
+                    WriteScalar(output, constants, instruction, function.GetOperands(instruction));
+                    break;
             }
         }
 

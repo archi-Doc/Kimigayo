@@ -9,6 +9,14 @@ namespace Kimi.Compiler;
 /// <summary>A physical instruction. Each opcode has exactly one serialization rule in <see cref="LlvmModuleWriter"/>.</summary>
 internal enum EmissionOpcode : byte
 {
+    Label,
+    Branch,
+    ConditionalBranch,
+    LoadScalar,
+    StoreScalar,
+    Scalar,
+    Phi,
+
     /// <summary>First placement of a Static string literal into <c>Place</c>'s slot; <c>Constant</c> is -1 for the empty literal.</summary>
     StoreStaticString,
 
@@ -24,6 +32,9 @@ internal enum EmissionOpcode : byte
 
 internal enum EmissionOperandKind : byte
 {
+    Value,
+    Block,
+
     /// <summary>The address of the slot prepared for a Place ID.</summary>
     SlotAddress,
 
@@ -42,7 +53,7 @@ internal readonly record struct EmissionOperand(EmissionOperandKind Kind, long V
 internal readonly record struct EmissionSlot(int Place, ValueLowering Value);
 
 /// <summary>One instruction; <c>Operation</c> is the source ownership operation ID, or -1 for synthesized startup control.</summary>
-internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0);
+internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0, string? ScalarType = null, string? ScalarOperator = null);
 
 /// <summary>One physical function definition. Its lists are reused by later preparations.</summary>
 internal sealed class EmissionFunction
@@ -82,6 +93,13 @@ internal sealed class EmissionFunction
         var start = this.Operands.Count;
         this.Operands.AddRange(operands);
         this.Instructions.Add(new(EmissionOpcode.Call, operation, Callee: callee, OperandStart: start, OperandCount: operands.Length));
+    }
+
+    internal void AddScalar(EmissionOpcode opcode, int operation, ReadOnlySpan<EmissionOperand> operands, string? type = null, string? op = null, int place = -1, int location = -1)
+    {
+        var start = this.Operands.Count;
+        this.Operands.AddRange(operands);
+        this.Instructions.Add(new(opcode, operation, Place: place, Constant: location, OperandStart: start, OperandCount: operands.Length, ScalarType: type, ScalarOperator: op));
     }
 }
 
