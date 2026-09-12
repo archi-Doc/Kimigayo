@@ -2284,7 +2284,7 @@ The initial implementation covers static conformance checking and generic use. U
 
 A function requirement declares a Name, optional function Generic and Origin parameters, explicitly typed parameters, and an optional result Type whose omission means Unit. A function with a receiver is an **instance function**; one without a receiver is a **type function**. Receiver, parameter labels, ownership, Origins, and safe/unsafe conditions use ordinary function rules.
 
-Function-specific Constraints occupy an optional indented region immediately after the header. The region contains one or more Constraint Clauses, with no executable statements, `return`, local declarations, or expression body. Its subjects are that function's generic parameters or associated-Type projections rooted in them. Put Contract-wide Constraints at the Contract body level.
+Function-specific Constraints occupy an optional indented region immediately after the header. The region contains one or more Constraint Clauses, with no executable statements, `return`, local declarations, or single-item body. Its subjects are that function's generic parameters or associated-Type projections rooted in them. Put Contract-wide Constraints at the Contract body level.
 
 ```kimi
 contract Factory
@@ -3925,7 +3925,7 @@ public computed age: i32
     set(self: uniq/Self, value: i32) -> () => self.storedAge = clamp(value, 0, 150)
 ```
 
-The setter replaces one Field, not the complete receiver. It still needs ObjectCompatible verification; the expression body does not grant direct-field privileges to callers.
+The setter replaces one Field, not the complete receiver. It still needs ObjectCompatible verification; the single-item body does not grant direct-field privileges to callers.
 
 ### 13. Operators and assignment
 
@@ -6115,7 +6115,7 @@ For true `flag`, output is `branch end`, `after branch`, then `function end`. De
 
 ##### 16.1.1. Deferred control boundary
 
-Each Deferred Block establishes a lookup barrier that no outward transfer may cross. It accepts self-targeted exit with an omitted or Unit-fitting operand, including through nested ordinary or Unsafe Blocks. An omitted operand means `()`.
+Each Deferred Block establishes a lookup barrier that no outward transfer may cross. It accepts self-targeted exit with an omitted or Unit-fitting operand, including through nested selections, block expressions, unsafe statements, and require failure bodies. An omitted operand means `()`.
 
 An unlabeled `exit` targets the nearest Iteration Construct or Deferred Block. Consequently, exits and continues of an inner loop retain their normal meaning, as do results of inner selections and block expressions. A `return` to an outer function, a named transfer to an outer construct, or a `yield` to an outer selection is an error. A separate nested function retains its own Function Boundary and normal returns.
 
@@ -8440,17 +8440,13 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Consume Legality | Whether the current use site may perform an eligible Consume. | [Consume verification](#1514-consume-verification-and-representation) |
 | Contract | A capability declaration containing requirements, associated Types, and Constraints, without implementations or storage. | [Contracts](#84-static-contracts) |
 | Contract refinement | Inheritance of all parent requirements and Constraints; conformance entails ancestor conformance. | [Refinement](#842-refinement) |
-| Transfer target / Lookup barrier | A construct receiving a transfer / a boundary stopping target lookup. | [Target lookup](#1452-target-lookup) |
-| Delimiter region / Body scope | Syntactic nesting region / local name and cleanup scope. | [Layout](#22-lines-indentation-and-continuation), [Body scopes](#1431-body-forms-and-scopes) |
-| Structural Completion / Runtime Reachability | Common structural path model / that model with execution state and cleanup. | [Reachability](#1492-reachability) |
-| Type-checking continuation | Unreachable-code checking that adds no execution edge. | [Unreachable checking](#14103-type-checking-unreachable-code) |
-| Result source / Target Result Type / Expression Type | A value-supplying site / its target constraint / the checked expression's Type. | [Results](#149-result-validation) |
 | Copy | Implicit value duplication that leaves its source initialized. | [Copy and Move](#35-copy-and-move) |
 | Core | A Type's value kind, structure, and identity, distinct from its outer Semantics and Origins. | [Type composition](#3-types-and-values) |
 | Core Kotonoha | The compiler-compatible foundation module referenced as `Core`. | [Required declarations](#221-required-core-declarations) |
 | Declaration Container | A named declaration scope with members permitted by its kind. | [Containers](#61-declaration-containers) |
 | Deferred Block | Cleanup code registered by `defer` for its containing scope's exit. | [Deferred Blocks](#161-deferred-blocks) |
 | Deferred Obligation | A legitimate dependent check retained with its evidence, environment, and deadline. | [Generic checking](#810-generic-body-checking-and-deferred-obligations) |
+| Delimiter region / Body scope | Syntactic nesting region / local name and cleanup scope. | [Layout](#22-lines-indentation-and-continuation), [Body scopes](#1431-body-forms-and-scopes) |
 | Destruction responsibility | Responsibility for ending an owned value's lifetime under the cleanup rules. | [Value model](#34-values-places-and-storage) |
 | Directive Binding | Resolution and validation of compile-time Condition names and dependencies. | [Compiler requirements](#appendix-a-compiler-implementation-requirements) |
 | Discard Context | An evaluation context that does not retain an expression's result. | [Evaluation contexts](#142-blocks-and-evaluation-contexts) |
@@ -8481,15 +8477,19 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Field | The storage slot of a let/var Property; source access obeys its accessor permissions. | [Stored Properties](#11-properties) |
 | Property | A let/var stored member or computed operation member; a Contract property requires operations. | [Properties](#11-properties) |
 | Reborrow | A borrow derived from an existing borrow, subject to the parent's capability and Origin. | [Reborrowing](#1563-reborrowing) |
+| Result source / Target Result Type / Expression Type | A value-supplying site / its target constraint / the checked expression's Type. | [Results](#149-result-validation) |
 | Scalar | Integer, floating-point, Boolean, or Character Core; short for Primitive scalar. | [Primitive cores](#31-primitive-cores) |
 | Semantics | A value's representation, ownership, borrowing, access, and safety rules; also called Type Semantics. | [Type Semantics](#33-type-semantics) |
 | SemanticsTarget | Fixed kind of a pair's direct target: a complete value Type or permitted Object View Target. | [Generic parameters](#81-generic-type-parameters) |
 | Signature | Information distinguishing declarations in the same scope. | [Signatures](#91-signatures) |
 | SourceDocument | One immutable source input, including path and text, belonging to a Kotonoha. | [Source text](#21-source-text-and-encoding) |
+| Structural Completion / Runtime Reachability | Common structural path model / that model with execution state and cleanup. | [Reachability](#1492-reachability) |
 | Subject Place | Internal storage acquired once before match arm selection | [Match lifetime](#1516-match-acquisition-and-lifetime) |
 | Temporary Place | Anonymous storage materializing a Temporary Value. | [Materialization](#361-materialization) |
 | Temporary Value | An expression's temporary result, distinct from its original persistent Place. | [Materialization](#361-materialization) |
+| Transfer target / Lookup barrier | A construct receiving a transfer / a boundary stopping target lookup. | [Target lookup](#1452-target-lookup) |
 | Type | A complete type, including Semantics, its target, and all Origin dependencies. | [Type composition](#3-types-and-values) |
+| Type-checking continuation | Unreachable-code checking that adds no execution edge. | [Unreachable checking](#14103-type-checking-unreachable-code) |
 | Value Context | An evaluation context that requires an expression's value. | [Evaluation contexts](#142-blocks-and-evaluation-contexts) |
 | View Target / Supports | Public object target / concrete-Type relationship to that target | [Object views](#335-object-views-and-identity) |
 
