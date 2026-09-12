@@ -103,6 +103,18 @@ public ref struct TokenReader
     /// </summary>
     public readonly int CurrentTokenLength => this.currentToken.Length;
 
+    // Region-local parsing restrictions; grouping and arm/item boundaries reset these.
+    internal bool SingleBodyRegion { get; set; }
+
+    internal bool IfBodyRegion { get; set; }
+
+    internal bool HeaderRegion { get; set; }
+
+    internal readonly bool SameLine(int end, int start)
+        => start >= end && !this.sourceText[end..start].ContainsAny('\r', '\n');
+
+    internal readonly int PreviousEnd => this.Position > 0 ? this.tokens[this.Position - 1].Span.End : 0;
+
     internal bool AllowArrayElementInference { get; set; }
 
     internal bool HasInferredArrayElement { get; set; }

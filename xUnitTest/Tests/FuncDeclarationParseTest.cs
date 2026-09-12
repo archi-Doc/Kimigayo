@@ -13,7 +13,7 @@ public class FuncDeclarationParseTest
     [InlineData("func Method2() ->")]
     [InlineData("func Method2() ->\n    return\nfunc Next() => 1")]
     [InlineData("func Method2() -> => 1\nfunc Next() => 2")]
-    [InlineData("public group Helper\n    func Method2() ->\n        #if os==\"Windows\"\n        // block\n            var i = if (x == true) => 1 else => 0\n        var i2 = if (x == true)\n            => 1\n        else\n            => 3")]
+    [InlineData("public group Helper\n    func Method2() ->\n        #if os==\"Windows\"\n        // block\n            var i = if (x == true) => 1 else => 0\n        var i2 = if (x == true) => 1\n        else => 3")]
     public void ReportsMissingReturnTypeAtArrow(string source)
     {
         var compilation = Compilation.CreateForTest();

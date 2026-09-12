@@ -169,7 +169,7 @@ public class EnumOwnershipTest
     [Fact]
     public void AbortDoesNotReachCleanupOrConstructionCompletion()
     {
-        var c = Parse("enum E\n    Both(string, i32)\nfunc stop() -> Never\n    while true\n        ()\nfunc use()\n    E.Both(\"a\", stop())");
+        var c = Parse("enum E\n    Both(string, i32)\nfunc stop() -> Never\n    loop\n        ()\nfunc use()\n    E.Both(\"a\", stop())");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c, "use");
         Assert.All(body.Edges.Where(x => x.Kind == OwnershipEdgeKind.Abort), x => Assert.Equal(OwnershipOperationKind.Exit, body.Operations[x.To].Kind));
@@ -211,7 +211,9 @@ public class EnumOwnershipTest
         var result = Array.FindIndex(steps, x => x.Source is IfKoto && body.Places[x.Place].Type.Name == "string");
         var condition = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.BoundCall?.Target.Name == "makeText");
         var payload = Array.FindIndex(steps, x => x.Place == body.Constructions[0].PayloadStart);
-        Assert.True(payload >= 0 && result > payload && condition > result);
+        Assert.True(payload >= 0 && result > payload);
+        Assert.Equal(-1, condition); // Condition temporaries end before entering either branch.
+        Assert.Contains(body.CleanupPlans, p => p.Reason == CleanupReason.ExpressionEnd);
     }
 
     [Fact]

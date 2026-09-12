@@ -282,8 +282,12 @@ public sealed partial class Binding
         this.BindHeader(accessor.Property.Symbol);
         if (syntax.Body is { } body)
         {
-            var actual = this.BindNode(body, scope, accessor.Result);
-            if (body is not CodeBlockKoto && actual is not null && accessor.Result is { } result && !FitsType(actual, result))
+            var discards = ReferenceEquals(accessor.Result, BoundType.Unit);
+            var actual = this.BindNode(body, scope, discards ? null : accessor.Result);
+            var structural = this.resultStructure ??= new(item => ReferenceEquals(item.BoundType, BoundType.Never));
+            structural.Clear();
+            if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
+                actual is not null && accessor.Result is { } result && !FitsType(actual, result))
             {
                 Fail(body, BindingFailure.TypeMismatch);
             }

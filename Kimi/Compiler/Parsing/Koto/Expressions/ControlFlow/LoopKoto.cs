@@ -29,7 +29,7 @@ public sealed class LoopKoto : ExpressionKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append(Constants.LoopKeyword);
-        this.Body.WriteIndentedTo(ref builder);
+        this.Body.WriteBranchTo(ref builder);
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)

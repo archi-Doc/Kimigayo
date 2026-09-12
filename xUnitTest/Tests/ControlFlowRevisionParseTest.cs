@@ -28,16 +28,17 @@ public class ControlFlowRevisionParseTest
         var parsed = Parse(
             """
             func run() -> i32
-                work:
-                    exit from work
+                work: do
+                    exit to work
                 outer: for item in values
                     retry: while ready
-                        continue outer
-                        exit from retry
-                return search: loop
-                    block:
+                        continue to outer
+                        exit to retry
+                return (search: loop
+                    block: do
                         exit value
-                        exit value + 1 from search
+                        exit to search: value + 1
+                )
             """);
         foreach (var tree in Versions(parsed))
         {
@@ -46,7 +47,7 @@ public class ControlFlowRevisionParseTest
             Assert.False(body.HasTrailingExpression);
             var work = Assert.IsType<LabeledKoto>(body.Items[0]);
             Assert.Equal("work", work.Label);
-            var workBody = Assert.IsType<CodeBlockKoto>(work.Target);
+            var workBody = Assert.IsType<DoKoto>(work.Target).Body;
             var blockExit = Assert.IsType<ExitKoto>(Assert.Single(workBody.Items));
             Assert.Null(blockExit.Expression);
             Assert.Equal("work", blockExit.Label);
@@ -58,10 +59,10 @@ public class ControlFlowRevisionParseTest
             Assert.Equal("outer", Assert.IsType<ContinueKoto>(whileLoop.Body.Items[0]).Label);
             Assert.Equal("retry", Assert.IsType<ExitKoto>(whileLoop.Body.Items[1]).Label);
 
-            var result = Assert.IsType<LabeledKoto>(Assert.IsType<ReturnKoto>(body.Items[2]).Expression);
+            var result = Assert.IsType<LabeledKoto>(Assert.IsType<ParenthesizedKoto>(Assert.IsType<ReturnKoto>(body.Items[2]).Expression).Operand);
             var loop = Assert.IsType<LoopKoto>(result.Target);
             Assert.True(KotoHelper.IsValueContext(loop));
-            var block = Assert.IsType<CodeBlockKoto>(Assert.IsType<LabeledKoto>(Assert.Single(loop.Body.Items)).Target);
+            var block = Assert.IsType<DoKoto>(Assert.IsType<LabeledKoto>(Assert.Single(loop.Body.Items)).Target).Body;
             var plainExit = Assert.IsType<ExitKoto>(block.Items[0]);
             Assert.Null(plainExit.Label);
             Assert.IsType<IdentifierNameKoto>(plainExit.Expression);
@@ -122,7 +123,7 @@ public class ControlFlowRevisionParseTest
             Assert.False(KotoHelper.IsValueContext(inner));
             Assert.False(branch.HasTrailingExpression);
             Assert.False(inner.Branches[0].Body.HasTrailingExpression);
-            Assert.True(KotoHelper.IsResultRequiringSelection(inner));
+            Assert.False(KotoHelper.IsResultRequiringSelection(inner));
         }
     }
 
@@ -141,7 +142,7 @@ public class ControlFlowRevisionParseTest
                     3
                 let second = match a
                     .A => if b => 1 else => 2
-                    .B =>
+                    .B
                         3
                 return ()
             """);
@@ -164,7 +165,7 @@ public class ControlFlowRevisionParseTest
     [Fact]
     public void InlineMatchPreservesNestedExpressionResult()
     {
-        foreach (var tree in Versions(Parse("func run() => match x\n    .A => (if b => 1 else => 2)\n    .B => ()")))
+        foreach (var tree in Versions(Parse("func run() -> i32 => match x\n    .A => (if b => 1 else => 2)\n    .B => ()")))
         {
             var match = Assert.IsType<MatchKoto>(Function(tree).ExpressionBody);
             var inner = Assert.IsType<IfKoto>(Assert.IsType<ParenthesizedKoto>(match.Arms[0].Body).Operand);
@@ -176,11 +177,11 @@ public class ControlFlowRevisionParseTest
     [Fact]
     public void DistinguishesDictionaryKeysAndConversionTypesFromLabels()
     {
-        foreach (var tree in Versions(Parse("func run()\n    let map = [key: 1, other: 2]\n    return outer: loop\n        exit value@i32 from outer")))
+        foreach (var tree in Versions(Parse("func run()\n    let map = [key: 1, other: 2]\n    return (outer: loop\n        exit to outer: value@i32\n    )")))
         {
             var body = Function(tree).Body!;
             Assert.IsType<DictionaryLiteralKoto>(Assert.IsType<FieldKoto>(body.Items[0]).InitializerKoto);
-            var label = Assert.IsType<LabeledKoto>(Assert.IsType<ReturnKoto>(body.Items[1]).Expression);
+            var label = Assert.IsType<LabeledKoto>(Assert.IsType<ParenthesizedKoto>(Assert.IsType<ReturnKoto>(body.Items[1]).Expression).Operand);
             var exit = Assert.IsType<ExitKoto>(Assert.Single(Assert.IsType<LoopKoto>(label.Target).Body.Items));
             Assert.Equal("outer", exit.Label);
             Assert.IsType<ConversionKoto>(exit.Expression);
@@ -188,12 +189,12 @@ public class ControlFlowRevisionParseTest
     }
 
     [Theory]
-    [InlineData("exit from")]
-    [InlineData("exit from 1")]
+    [InlineData("exit to")]
+    [InlineData("exit to 1")]
     [InlineData("exit 1 from")]
     [InlineData("continue 10")]
-    [InlineData("yield")]
-    [InlineData("work: if a => 1 else => 2")]
+    [InlineData("yield to")]
+    [InlineData("work: return 1")]
     [InlineData("work:")]
     [InlineData("func nested() =>")]
     public void ReportsMalformedSyntaxAndPreservesFollowingStatement(string malformed)
@@ -221,7 +222,7 @@ public class ControlFlowRevisionParseTest
     [Fact]
     public void PreservesExplicitLabelAfterACompoundOperand()
     {
-        foreach (var tree in Versions(Parse("func run() => outer: loop\n    exit (if flag => 1 else => 2) from outer")))
+        foreach (var tree in Versions(Parse("func run() => outer: loop => exit to outer: (if flag => 1 else => 2)")))
         {
             var labeled = Assert.IsType<LabeledKoto>(Function(tree).ExpressionBody);
             var loop = Assert.IsType<LoopKoto>(labeled.Target);
@@ -235,9 +236,9 @@ public class ControlFlowRevisionParseTest
     [Fact]
     public void DiscardsAWholeNestedIfInABlockBody()
     {
-        foreach (var tree in Versions(Parse("func run() => if flag\n    if other => 1 else => 2\nelse\n    ()")))
+        foreach (var tree in Versions(Parse("func run()\n    if flag\n        if other => 1 else => 2\n    else\n        ()")))
         {
-            var outer = Assert.IsType<IfKoto>(Function(tree).ExpressionBody);
+            var outer = Assert.IsType<IfKoto>(Assert.Single(Function(tree).Body!.Items));
             var branch = outer.Branches[0].Body;
             Assert.False(branch.HasTrailingExpression);
             var inner = branch.Items[0] is ParenthesizedKoto parentheses ? parentheses.Operand : branch.Items[0];

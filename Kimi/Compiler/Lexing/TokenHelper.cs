@@ -99,6 +99,7 @@ public static partial class TokenHelper
         Set(TokenKind.Exit, Constants.ExitKeyword);
         Set(TokenKind.Continue, Constants.ContinueKeyword);
         Set(TokenKind.Yield, Constants.YieldKeyword);
+        Set(TokenKind.Do, "do");
         Set(TokenKind.Null, "null");
         Set(TokenKind.Require, "require");
         Set(TokenKind.Defer, "defer");
@@ -354,6 +355,7 @@ public static partial class TokenHelper
                     _ => TokenKind.Identifier,
                 },
                 'u' => text[1] == '8' ? TokenKind.U8 : TokenKind.Identifier,
+                'd' => text[1] == 'o' ? TokenKind.Do : TokenKind.Identifier,
                 'a' => text[1] == 's' ? TokenKind.As : TokenKind.Identifier,
                 'o' => text[1] == 'r' ? TokenKind.Or : TokenKind.Identifier,
                 _ => TokenKind.Identifier,

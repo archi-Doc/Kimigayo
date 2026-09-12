@@ -26,6 +26,8 @@ internal ref struct Tokenizer
         LineContinuation, // Implicit continuation, such as a method chain line starting with ".".
     }
 
+    private readonly record struct IndentEntry(IndentSource Source, int Position, bool SharesBodyIndent = false);
+
     private const int InitialIndentStackCapacity = 32;
     private const int MinimumTokenCapacity = 256;
 
@@ -66,13 +68,14 @@ internal ref struct Tokenizer
     private readonly int indentationOffset;
     private Token[] tokens;
     private int tokenCount;
-    private IndentSource[] indentStack;
+    private IndentEntry[] indentStack;
     private int indentCount;
     private ReadOnlySpan<char> span;
     private int position;
     private int currentIndentLevel;
     private int blockDepth;
     private int nonBlockDepth;
+    private int sharedBodyIndentDepth;
     private int tokenAdded;
     private int genericLookaheadEnd;
 
@@ -128,7 +131,7 @@ internal ref struct Tokenizer
             this.indentationOffset = BaseHelper.CountLeadingSpaces(sourceDocument.GetLineSpan(line)) / Constants.IndentationSpaces;
         }
 
-        this.indentStack = ArrayPool<IndentSource>.Shared.Rent(InitialIndentStackCapacity);
+        this.indentStack = ArrayPool<IndentEntry>.Shared.Rent(InitialIndentStackCapacity);
 
         // Typical source yields roughly one token per four characters; the array grows on demand.
         this.tokens = ArrayPool<Token>.Shared.Rent(Math.Max(MinimumTokenCapacity, (range.Length >> 2) + 64));
@@ -150,7 +153,7 @@ internal ref struct Tokenizer
 
         if (this.indentStack.Length > 0)
         {
-            ArrayPool<IndentSource>.Shared.Return(this.indentStack);
+            ArrayPool<IndentEntry>.Shared.Return(this.indentStack);
             this.indentStack = [];
         }
     }
@@ -483,7 +486,7 @@ Loop:
 
                 case Constants.GreaterThanChar:
                     {// > >= >> >>=
-                        if (this.indentCount > 0 && this.indentStack[this.indentCount - 1] == IndentSource.AngleBracket)
+                        if (this.indentCount > 0 && this.indentStack[this.indentCount - 1].Source == IndentSource.AngleBracket)
                         {
                             this.PopIndentSource(TokenKind.GreaterThan);
                             this.AddTokenAndSlice(TokenKind.GreaterThan, 1);
@@ -748,7 +751,8 @@ LineContent:
         // Indentation remains significant even inside grouping constructs.
         // Therefore, both block depth and non-block depth are subtracted when
         // calculating the indentation difference.
-        var indentDelta = indentLevel - this.currentIndentLevel - this.blockDepth - this.nonBlockDepth;
+        this.ShareHeaderDelimiterIndent(indentLevel);
+        var indentDelta = indentLevel - this.currentIndentLevel - this.blockDepth - this.nonBlockDepth + this.sharedBodyIndentDepth;
 
         if (indentDelta == 1)
         {
@@ -803,7 +807,14 @@ LineContent:
             {
                 if (this.indentCount > 0)
                 {
-                    var indentSource = this.indentStack[--this.indentCount];
+                    var entry = this.indentStack[--this.indentCount];
+                    var indentSource = entry.Source;
+                    if (entry.SharesBodyIndent)
+                    {
+                        this.sharedBodyIndentDepth--;
+                        i--;
+                    }
+
                     if (indentSource == IndentSource.Block)
                     {
                         this.AddToken(new(TokenKind.EndBlock, this.CurrentRange));
@@ -842,6 +853,8 @@ LineContent:
                     else
                     {
                         this.nonBlockDepth--;
+                        // Close the malformed delimiter before the next source item.
+                        this.AddToken(new(GetClosingTokenKind(indentSource), this.CurrentRange, true));
 
                         this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
                         indentationMismatch = true;
@@ -874,7 +887,7 @@ LineContent:
         {
             // A nested executable body has statement boundaries even while its
             // enclosing argument/element delimiter suppresses continuation separators.
-            if (!separatorInserted && this.tokenAdded > 0 && this.indentCount > 0 && this.indentStack[this.indentCount - 1] == IndentSource.Block)
+            if (!separatorInserted && this.tokenAdded > 0 && this.indentCount > 0 && this.indentStack[this.indentCount - 1].Source == IndentSource.Block)
             {
                 this.AddToken(new(TokenKind.Separator, this.CurrentRange));
             }
@@ -986,7 +999,7 @@ EndOfFile:
 
     private bool IsDeclarationGenericContext()
     {
-        if (this.indentCount > 0 && this.indentStack[this.indentCount - 1] == IndentSource.AngleBracket)
+        if (this.indentCount > 0 && this.indentStack[this.indentCount - 1].Source == IndentSource.AngleBracket)
         {
             return true;
         }
@@ -1009,6 +1022,76 @@ EndOfFile:
         return false;
     }
 
+    // Delimiters opened on a body header share its baseline. Their content does
+    // not add a second indentation level to the executable body.
+    private void ShareHeaderDelimiterIndent(int indentLevel)
+    {
+        if (this.indentCount == 0 || this.tokenCount == 0 || this.indentStack[this.indentCount - 1].Source == IndentSource.AngleBracket)
+        {
+            return;
+        }
+
+        var last = this.tokens[this.tokenCount - 1].Span.Start;
+        var lineStart = this.sourceText[..last].LastIndexOfAny('\r', '\n') + 1;
+        var headerIndent = (CountSpaces(this.sourceText[lineStart..]) / Constants.IndentationSpaces) - this.indentationOffset;
+        if (indentLevel != headerIndent + 1)
+        {
+            return;
+        }
+
+        var nesting = 0;
+        var body = false;
+        for (var i = this.tokenCount - 1; i >= 0 && this.tokens[i].Span.Start >= lineStart; i--)
+        {
+            var kind = this.tokens[i].Kind;
+            if (kind is TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace)
+            {
+                nesting++;
+            }
+            else if (kind is TokenKind.OpenParenthesis or TokenKind.OpenBracket or TokenKind.OpenBrace)
+            {
+                if (nesting-- == 0)
+                {
+                    break;
+                }
+            }
+            else if (nesting == 0)
+            {
+                if (kind == TokenKind.EqualsGreaterThan)
+                {
+                    break;
+                }
+
+                if (kind is TokenKind.If or TokenKind.Else or TokenKind.Match or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Do or TokenKind.Func or TokenKind.Defer ||
+                    (kind == TokenKind.Identifier && this.sourceText.Slice(this.tokens[i].Span.Start, this.tokens[i].Span.Length).SequenceEqual("unsafe")))
+                {
+                    body = true;
+                    break;
+                }
+            }
+        }
+
+        if (!body)
+        {
+            return;
+        }
+
+        for (var i = this.indentCount - 1; i >= 0; i--)
+        {
+            var entry = this.indentStack[i];
+            if (entry.Position < lineStart || entry.Source is IndentSource.Block or IndentSource.LineContinuation)
+            {
+                break;
+            }
+
+            if (!entry.SharesBodyIndent)
+            {
+                this.indentStack[i] = entry with { SharesBodyIndent = true };
+                this.sharedBodyIndentDepth++;
+            }
+        }
+    }
+
     private bool PreviousLineStartsBody()
     {
         // Inspect only the preceding logical header; no source strings are created.
@@ -1020,7 +1103,12 @@ EndOfFile:
                 break;
             }
 
-            if (kind is TokenKind.Match or TokenKind.If or TokenKind.Else or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Func)
+            if (kind == TokenKind.Identifier && this.sourceText.Slice(this.tokens[i].Span.Start, this.tokens[i].Span.Length).SequenceEqual("unsafe"))
+            {
+                return true;
+            }
+
+            if (kind is TokenKind.Match or TokenKind.If or TokenKind.Else or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Func or TokenKind.Do or TokenKind.Defer or TokenKind.Require)
             {
                 return true;
             }
@@ -1278,13 +1366,13 @@ EndOfFile:
     {
         if (this.indentCount == this.indentStack.Length)
         {
-            var larger = ArrayPool<IndentSource>.Shared.Rent(this.indentStack.Length * 2);
+            var larger = ArrayPool<IndentEntry>.Shared.Rent(this.indentStack.Length * 2);
             this.indentStack.AsSpan().CopyTo(larger);
-            ArrayPool<IndentSource>.Shared.Return(this.indentStack);
+            ArrayPool<IndentEntry>.Shared.Return(this.indentStack);
             this.indentStack = larger;
         }
 
-        this.indentStack[this.indentCount++] = indentSource;
+        this.indentStack[this.indentCount++] = new(indentSource, this.position);
         if (indentSource == IndentSource.Block)
         {
             this.blockDepth++;
@@ -1299,7 +1387,8 @@ EndOfFile:
     {
         while (this.indentCount > 0)
         {
-            var indentSource = this.indentStack[this.indentCount - 1];
+            var entry = this.indentStack[this.indentCount - 1];
+            var indentSource = entry.Source;
             if (indentSource == IndentSource.Block)
             {
                 this.indentCount--;
@@ -1316,6 +1405,11 @@ EndOfFile:
 
             if (GetClosingTokenKind(indentSource) == expected)
             {
+                if (entry.SharesBodyIndent)
+                {
+                    this.sharedBodyIndentDepth--;
+                }
+
                 this.indentCount--;
                 this.nonBlockDepth--;
                 return;
@@ -1343,7 +1437,13 @@ EndOfFile:
         var missingRange = this.CurrentRange;
         while (this.indentCount > 0)
         {
-            var indentSource = this.indentStack[--this.indentCount];
+            var entry = this.indentStack[--this.indentCount];
+            var indentSource = entry.Source;
+            if (entry.SharesBodyIndent)
+            {
+                this.sharedBodyIndentDepth--;
+            }
+
             if (indentSource == IndentSource.Block)
             {
                 this.AddToken(new(TokenKind.EndBlock, missingRange, true));

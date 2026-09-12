@@ -342,6 +342,9 @@ public enum KotoKind : byte
     /// <summary>A generic Type parameter or pair.</summary>
     GenericParameter,
 
+    /// <summary>A do expression.</summary>
+    Do,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }

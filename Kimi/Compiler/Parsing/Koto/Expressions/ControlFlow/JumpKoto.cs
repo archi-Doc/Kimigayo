@@ -16,7 +16,7 @@ public abstract class JumpKoto : ExpressionKoto
     /// <summary>Gets the transferred value, if present.</summary>
     public Koto? Expression { get; private set; }
 
-    /// <summary>Gets the explicit target Label of an exit or continue, if present.</summary>
+    /// <summary>Gets the explicit target Label of an exit, continue, or yield, if present.</summary>
     public string? Label { get; private set; }
 
     /// <summary>Gets the source keyword for this expression.</summary>
@@ -45,16 +45,20 @@ public abstract class JumpKoto : ExpressionKoto
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
         builder.Append(this.Keyword);
+        if (this.Label is not null)
+        {
+            builder.Append(" to ");
+            builder.Append(this.Label);
+            if (this.Expression is not null)
+            {
+                builder.Append(':');
+            }
+        }
+
         if (this.Expression is not null)
         {
             builder.AppendSpace();
             this.Expression.WriteTo(ref builder);
-        }
-
-        if (this.Label is not null)
-        {
-            builder.Append(this is ExitKoto ? " from " : " ");
-            builder.Append(this.Label);
         }
     }
 
@@ -136,15 +140,13 @@ public sealed class YieldKoto : JumpKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Yield;
 
-    /// <summary>Gets the value supplied to the target Result-requiring Selection.</summary>
-    public new Koto Expression => base.Expression!;
-
     /// <summary>Initializes a new instance of the <see cref="YieldKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete expression span.</param>
-    /// <param name="expression">The value supplied to the target construct.</param>
-    public YieldKoto(ref TokenReader reader, SourceSpan range, Koto expression)
-        : base(ref reader, range, expression)
+    /// <param name="expression">The value supplied to the target construct, or implicit Unit.</param>
+    /// <param name="label">The optional selection label.</param>
+    public YieldKoto(ref TokenReader reader, SourceSpan range, Koto? expression, string? label = null)
+        : base(ref reader, range, expression, label)
     {
     }
 }

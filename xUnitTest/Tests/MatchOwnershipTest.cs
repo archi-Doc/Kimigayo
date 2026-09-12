@@ -12,11 +12,11 @@ public class MatchOwnershipTest
 {
     [Theory]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => n\n    .None => 0")]
-    [InlineData("func f(x: Option<i32>) -> i32\n    return match x\n        .Some(let n) =>\n            yield n\n        .None =>\n            yield 0")]
+    [InlineData("func f(x: Option<i32>) -> i32\n    return match x\n        .Some(let n)\n            yield n\n        .None\n            yield 0")]
     [InlineData("func f(x: Option<string>) => match x\n    .Some(let text) => writeLine(text)\n    .None => ()")]
     [InlineData("func f(x: Option<Option<string>>) => match x\n    .Some(.Some(let text)) => writeLine(text)\n    .Some(_) => ()\n    .None => ()")]
     [InlineData("func f(x: Option<string>) -> string => match x\n    .Some(let s) => s\n    .None => \"empty\"")]
-    [InlineData("func f(x: Option<string>) -> string => match x\n    .Some(let s) =>\n        return s\n    .None =>\n        return \"empty\"")]
+    [InlineData("func f(x: Option<string>) -> string => match x\n    .Some(let s)\n        return s\n    .None\n        return \"empty\"")]
     [InlineData("func f(x: Option<Option<i32>>) -> i32 => match x\n    .Some(let inner) => match inner\n        .Some(let n) => n\n        .None => 0\n    .None => 0")]
     [InlineData("func f(x: bool) -> i32 => match x\n    true => 1\n    false => 0")]
     [InlineData("func f(x: ()) -> i32 => match x\n    () => 1")]
@@ -24,12 +24,12 @@ public class MatchOwnershipTest
     [InlineData("func f(x: u128) -> i32 => match x\n    340282366920938463463374607431768211455 => 1\n    _ => 0")]
     [InlineData("func f(x: char) -> i32 => match x\n    'A' => 1\n    _ => 0")]
     [InlineData("func f(x: Option<i8>) -> i8 => match x\n    (Option<i8>.Some(let n,)) => n\n    (::Core.Option<i8>.None) => -128")]
-    [InlineData("func f(x: Option<i32>) => match x\n    .Some(var n) =>\n        n = 2\n        yield ()\n    .None =>\n        yield ()")]
-    [InlineData("func f()\n    match Option<string>.Some(\"text\")\n        .None =>\n            ()")]
-    [InlineData("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")\n            .Some(let s) =>\n                writeLine(s)\n                continue\n            .None =>\n                exit")]
-    [InlineData("func f(c: bool, x: Option<string>)\n    match x\n        .Some(let s) =>\n            while c\n                continue\n            writeLine(s)\n        .None =>\n            ()")]
+    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield n\n    .None\n        yield 0")]
+    [InlineData("func f()\n    match Option<string>.Some(\"text\")\n        .None\n            ()\n        .Some(_) => ()")]
+    [InlineData("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")\n            .Some(let s)\n                writeLine(s)\n                continue\n            .None\n                exit")]
+    [InlineData("func f(c: bool, x: Option<string>)\n    match x\n        .Some(let s)\n            while c\n                continue\n            writeLine(s)\n        .None\n            ()")]
     [InlineData("func f(x: string) => match x\n    let s => writeLine(s)")]
-    [InlineData("func f(x: Option<i32>)\n    match x\n        let copy =>\n            ()\n    let again = x")]
+    [InlineData("func f(x: Option<i32>)\n    match x\n        let copy\n            ()\n    let again = x")]
     [InlineData("enum E\n    One(string)\n    Two(string, string)\nfunc f(x: E) -> string => match x\n    .One(let a) => a\n    .Two(_, let b) => b")]
     [InlineData("func f(x: Option<string>) -> Option<string> => match x\n    .Some(let s) => .Some(s)\n    .None => .None")]
     [InlineData("func f(x: bool) -> i32 => match x\n    true => match (yield 1)\n        _ => 2\n    false => 0")]
@@ -57,9 +57,9 @@ public class MatchOwnershipTest
     }
 
     [Theory]
-    [InlineData("func f(s: string)\n    match s\n        _ =>\n            ()\n    writeLine(s)")]
-    [InlineData("func f(s: string)\n    match s\n        \"yes\" =>\n            ()\n    writeLine(s)")]
-    [InlineData("func f(x: Option<string>)\n    match x\n        .Some(let s) =>\n            writeLine(s)\n            writeLine(s)\n        .None =>\n            ()")]
+    [InlineData("func f(s: string)\n    match s\n        _\n            ()\n    writeLine(s)")]
+    [InlineData("func f(s: string)\n    match s\n        \"yes\"\n            ()\n        _ => ()\n    writeLine(s)")]
+    [InlineData("func f(x: Option<string>)\n    match x\n        .Some(let s)\n            writeLine(s)\n            writeLine(s)\n        .None\n            ()")]
     public void AcquisitionStillRejectsMovedUses(string source)
     {
         var c = Parse(source);
@@ -73,7 +73,7 @@ public class MatchOwnershipTest
     [InlineData("if true => fail() else => fail()", 2)]
     public void NeverSubjectCreatesNoValueOrArmStorage(string subject, int calls)
     {
-        var c = Parse($"func fail() -> Never => fail()\nfunc f() -> i32 => match {subject}\n    _ => 1");
+        var c = Parse($"func fail() -> Never => fail()\nfunc f() -> i32 => match ({subject})\n    _ => 1");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         Assert.Equal(calls, body.Operations.Count(o => o.Kind == OwnershipOperationKind.Call));
@@ -150,7 +150,7 @@ public class MatchOwnershipTest
     [Fact]
     public void WarningCoveredArmParticipatesInMovedStateJoin()
     {
-        var c = Parse("func f(x: i32)\n    let s = \"text\"\n    match x\n        _ =>\n            ()\n        0 =>\n            writeLine(s)\n    writeLine(s)");
+        var c = Parse("func f(x: i32)\n    let s = \"text\"\n    match x\n        _\n            ()\n        0\n            writeLine(s)\n    writeLine(s)");
         Assert.Single(c.Binding.PatternWarnings);
         Assert.False(c.Ownership.Analyze().IsVerified);
         var body = Body(c);
@@ -164,7 +164,7 @@ public class MatchOwnershipTest
     [Fact]
     public void SubjectAndPayloadsHaveFreshLifetimesInsideLoops()
     {
-        var c = Parse("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")\n            .Some(let s) =>\n                writeLine(s)\n            .None =>\n                ()");
+        var c = Parse("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")\n            .Some(let s)\n                writeLine(s)\n            .None\n                ()");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var match = Assert.Single(body.Matches);
@@ -199,7 +199,7 @@ public class MatchOwnershipTest
     [InlineData("yield a", CleanupReason.SelectionResult)]
     public void TransfersSecureValueBeforeBodyAndSubjectCleanup(string transfer, CleanupReason reason)
     {
-        var c = Parse($"enum E\n    Pair(string, string)\nfunc f(c: bool, x: E) -> string => match x\n    .Pair(let a, _) =>\n        let local = \"body\"\n        {transfer}");
+        var c = Parse($"enum E\n    Pair(string, string)\nfunc f(c: bool, x: E) -> string => match x\n    .Pair(let a, _)\n        let local = \"body\"\n        {transfer}");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var split = Assert.Single(body.Decompositions);
@@ -214,7 +214,7 @@ public class MatchOwnershipTest
     [Fact]
     public void DeepReturnCleansActiveDecompositionBeforeOuterTemporary()
     {
-        var c = Parse("enum E\n    Pair(string, string)\nfunc make() -> string => \"outer\"\nfunc consume(a: string, b: string) => ()\nfunc f(c: bool, x: E)\n    consume(\n        make(),\n        match x\n            .Pair(let a, _) =>\n                if c\n                    let local = \"inner\"\n                    return\n                yield a\n    )");
+        var c = Parse("enum E\n    Pair(string, string)\nfunc make() -> string => \"outer\"\nfunc consume(a: string, b: string) => ()\nfunc f(c: bool, x: E)\n    consume(\n        make(),\n        match x\n            .Pair(let a, _)\n                if c\n                    let local = \"inner\"\n                    return\n                yield a\n    )");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var split = Assert.Single(body.Decompositions);
@@ -228,7 +228,7 @@ public class MatchOwnershipTest
     [Fact]
     public void NestedSubjectsUseTheirOwnActiveCaseDuringReturn()
     {
-        var c = Parse("enum E\n    Pair(string, string)\nfunc f(x: E, y: E) -> string => match x\n    .Pair(let a, _) => match y\n        .Pair(let b, _) =>\n            return b");
+        var c = Parse("enum E\n    Pair(string, string)\nfunc f(x: E, y: E) -> string => match x\n    .Pair(let a, _) => match y\n        .Pair(let b, _)\n            return b");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         Assert.Equal(2, body.Matches.Count);
@@ -243,7 +243,7 @@ public class MatchOwnershipTest
     [Fact]
     public void OuterLoopContinueCleansTheSelectedSubject()
     {
-        var c = Parse("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")\n            .Some(let s) =>\n                continue\n            .None =>\n                ()");
+        var c = Parse("func f(c: bool)\n    while c\n        match Option<string>.Some(\"text\")\n            .Some(let s)\n                continue\n            .None\n                ()");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var local = body.Places.Single(p => p.Kind == OwnershipPlaceKind.Local && p.Source is SyntaxFormKoto { Akind: KotoKind.BindingPattern });
@@ -254,15 +254,13 @@ public class MatchOwnershipTest
     }
 
     [Fact]
-    public void NonExhaustiveUnmatchedPathDestroysTheWholeSubject()
+    public void DiscardedMatchStillRequiresExhaustiveness()
     {
-        var c = Parse("func f(x: Option<string>)\n    match x\n        .Some(let s) =>\n            writeLine(s)");
-        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
-        var body = Body(c);
-        Assert.Single(body.Edges, e => e.Kind == OwnershipEdgeKind.Unmatched);
-        var subject = body.Matches[0].Subject;
-        Assert.Contains(body.CleanupSteps, s => s.Place == subject && s.Action == CleanupAction.Destroy);
-        Assert.Contains(body.CleanupSteps, s => s.Place == subject && s.Action == CleanupAction.Skip);
+        var c = Compilation.CreateForTest();
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(x: Option<string>)\n    match x\n        .Some(let s) => writeLine(s)");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, i => i.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
+        Assert.False(c.Ownership.Analyze().IsVerified);
     }
 
     [Fact]
@@ -290,11 +288,11 @@ public class MatchOwnershipTest
     [Fact]
     public void YieldToIfIsNotRedirectedIntoTheMatchFrame()
     {
-        var c = Parse("func f(x: bool) -> i32 => match x\n    true => if x\n        yield 1\n    else\n        yield 2\n    false => 0");
-        Assert.False(c.Ownership.Analyze().IsVerified);
-        Assert.Contains(c.Ownership.Issues, i => i.Failure == OwnershipFailure.Unsupported && i.Source is YieldKoto);
+        var c = Parse("func f(x: bool) -> i32 => match x\n    true => (if x\n        yield 1\n    else\n        yield 2\n    )\n    false => 0");
+        Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
+        Assert.Empty(c.Ownership.Issues);
         Assert.All(c.Ownership.ControlFlow!.Targets.Where(t => t.Key is YieldKoto), t => Assert.IsType<IfKoto>(t.Value));
-        Assert.DoesNotContain(Body(c).CleanupPlans, p => p.Reason == CleanupReason.SelectionResult);
+        Assert.All(c.Ownership.ControlFlow!.Targets.Keys, t => Assert.IsType<YieldKoto>(t));
     }
 
     [Theory]
@@ -358,7 +356,7 @@ public class MatchOwnershipTest
         var source = new System.Text.StringBuilder("func f()\n");
         for (var i = 0; i < count; i++)
         {
-            source.Append("    match Option<Option<string>>.Some(.Some(\"text\"))\n        .Some(.Some(let s)) =>\n            writeLine(s)\n        .Some(_) =>\n            ()\n        .None =>\n            ()\n");
+            source.Append("    match Option<Option<string>>.Some(.Some(\"text\"))\n        .Some(.Some(let s))\n            writeLine(s)\n        .Some(_)\n            ()\n        .None\n            ()\n");
         }
 
         var c = Parse(source.ToString());

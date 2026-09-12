@@ -20,10 +20,10 @@ public record ControlFlowType(string Name)
     public static readonly ControlFlowType Boolean = new("bool");
 }
 
-/// <summary>A result source, including sources excluded from inference by reachability.</summary>
+/// <summary>A structural result source; reachability never removes its type constraint.</summary>
 /// <param name="Node">The operand or implicit result expression.</param>
 /// <param name="Type">Its known type, or null while Binding is pending.</param>
-/// <param name="IsReachable">Whether this source contributes to result inference.</param>
+/// <param name="IsReachable">Whether execution can reach this source (informational only).</param>
 public readonly record struct ControlFlowResultSource(Koto Node, ControlFlowType? Type, bool IsReachable)
 {
     internal JumpKoto? Transfer { get; init; }
@@ -83,8 +83,8 @@ public abstract class ControlFlowTypeSystem
     /// <returns>The requirement, or null when operand Types or overloads remain unresolved.</returns>
     public virtual bool? RequiresUnsafeContext(Koto expression) => null;
 
-    /// <summary>Infers a common result type from reachable candidates only.</summary>
-    /// <param name="sources">The reachable result sources.</param>
+    /// <summary>Infers a common result type from all structural sources.</summary>
+    /// <param name="sources">All structural result sources.</param>
     /// <returns>The inferred type, or null if inference requires further Binding.</returns>
     public virtual ControlFlowType? InferResultType(IReadOnlyList<ControlFlowResultSource> sources)
     {
@@ -96,7 +96,10 @@ public abstract class ControlFlowTypeSystem
                 return null;
             }
 
-            result ??= source.Type;
+            if (source.Type != ControlFlowType.Never)
+            {
+                result ??= source.Type;
+            }
         }
 
         return result;

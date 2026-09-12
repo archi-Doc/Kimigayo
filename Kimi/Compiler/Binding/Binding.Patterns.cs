@@ -109,7 +109,8 @@ public sealed partial class Binding
     private BoundType? BindMatch(MatchKoto match, BindingScope scope, BoundType? expected)
     {
         var plan = this.matches[match];
-        plan.ExpectedType = expected;
+        var resultContext = this.BeginResult(match, scope, expected);
+        plan.ExpectedType = resultContext.Expected;
         var subject = this.BindNode(match.Expression, scope);
         if (subject is null)
         {
@@ -168,26 +169,13 @@ public sealed partial class Binding
                 continue;
             }
 
-            var bodyType = this.BindNode(arm.Body, this.scopes[arm.Pattern], expected);
+            var bodyType = this.BindNode(arm.Body, this.scopes[arm.Pattern], required ? resultContext.Expected : null);
             pendingBody |= bodyType is null;
-            if (arm.Body is not CodeBlockKoto)
-            {
-                plan.ResultType = this.Join(match, plan.ResultType, bodyType);
-            }
-            else if (!required && !ReferenceEquals(bodyType, BoundType.Never))
-            {
-                plan.ResultType = this.Join(match, plan.ResultType, BoundType.Unit);
-            }
         }
 
         if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
         {
-            if (required)
-            {
-                return Fail(match, BindingFailure.NonExhaustiveMatch);
-            }
-
-            plan.ResultType = this.Join(match, plan.ResultType, BoundType.Unit);
+            return Fail(match, BindingFailure.NonExhaustiveMatch);
         }
 
         if (plan.Invalid)
@@ -200,7 +188,8 @@ public sealed partial class Binding
             return Fail(match, BindingFailure.Unsupported, true);
         }
 
-        return Complete(match, plan.ResultType ?? BoundType.Never);
+        plan.ResultType = this.FinishResult(match, resultContext);
+        return plan.ResultType;
     }
 
     private int BindPattern(Koto syntax, BoundType matched, BindingScope outer, BoundMatch plan, int parent, int element, bool shared)

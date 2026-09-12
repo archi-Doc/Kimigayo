@@ -46,7 +46,7 @@ public class ControlTransferParseTest
                     30
 
                 var matchResult = match value
-                    0 =>
+                    0
                         trace()
                         yield 40
                     1 => 50
@@ -94,9 +94,9 @@ public class ControlTransferParseTest
 
         Assert.Same(loopExpression, loopExpression.Body.Parent);
         Assert.Same(valueIf.Branches[0].Body, ifYield.Parent);
-        Assert.Same(ifYield, ifYield.Expression.Parent);
+        Assert.Same(ifYield, ifYield.Expression!.Parent);
         Assert.Same(matchArm, matchYield.Parent);
-        Assert.Same(matchYield, matchYield.Expression.Parent);
+        Assert.Same(matchYield, matchYield.Expression!.Parent);
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public class ControlTransferParseTest
                     0
 
                 return match value
-                    0 =>
+                    0
                         yield selected
                     1 => 2
             """;
@@ -139,7 +139,7 @@ public class ControlTransferParseTest
         var valueMatch = Assert.IsType<MatchKoto>(Assert.IsType<ReturnKoto>(body.Items[^1]).Expression);
         var firstArm = Assert.IsType<CodeBlockKoto>(valueMatch.Arms[0].Body);
         var yield = Assert.IsType<YieldKoto>(Assert.Single(firstArm.Items));
-        Assert.Same(yield, yield.Expression.Parent);
+        Assert.Same(yield, yield.Expression!.Parent);
 
         var builder = new IndentedStringBuilder();
         try
@@ -161,7 +161,7 @@ public class ControlTransferParseTest
     }
 
     [Fact]
-    public void RequiresYieldOperandAndRecoversAtTheNextStatement()
+    public void AllowsOmittedYieldOperandWithoutConsumingTheNextStatement()
     {
         const string Source = """
             func Recover()
@@ -176,7 +176,7 @@ public class ControlTransferParseTest
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
 
-        Assert.NotEmpty(kotonoha.DiagnosticCollection.GetArray());
+        Assert.Empty(kotonoha.DiagnosticCollection.GetArray());
         var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(kotonoha.RootKoto)));
         var body = Assert.IsType<CodeBlockKoto>(function.Body);
         Assert.Equal(2, body.Items.Count);
@@ -184,7 +184,7 @@ public class ControlTransferParseTest
         var field = Assert.IsType<FieldKoto>(body.Items[0]);
         var valueIf = Assert.IsType<IfKoto>(field.InitializerKoto);
         var yield = Assert.IsType<YieldKoto>(Assert.Single(valueIf.Branches[0].Body.Items));
-        Assert.IsType<ErrorKoto>(yield.Expression);
+        Assert.Null(yield.Expression);
         Assert.IsType<ReturnKoto>(body.Items[1]);
     }
 

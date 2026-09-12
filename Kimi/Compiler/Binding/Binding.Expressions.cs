@@ -249,8 +249,8 @@ public sealed partial class Binding
                 BoundType? blockType = BoundType.Unit;
                 for (var i = 0; i < block.Items.Count; i++)
                 {
-                    var type = this.BindNode(block.Items[i], scope, block.HasTrailingExpression ? expected : null);
-                    if (block.HasTrailingExpression)
+                    var type = this.BindNode(block.Items[i], scope, block.HasTrailingExpression && KotoHelper.IsValueContext(block) ? expected : null);
+                    if (block.HasTrailingExpression && KotoHelper.IsValueContext(block))
                     {
                         blockType = type;
                     }
@@ -303,70 +303,61 @@ public sealed partial class Binding
             case MatchKoto match:
                 return this.BindMatch(match, scope, expected);
             case IfKoto conditional:
-                BoundType? common = null;
-                var pending = false;
+                var conditionalResult = this.BeginResult(conditional, scope, expected);
                 for (var i = 0; i < conditional.Branches.Count; i++)
                 {
                     var branch = conditional.Branches[i];
                     this.RequireType(branch.Condition, scope, BoundType.Boolean);
-                    var branchType = this.BindNode(branch.Body, scope, expected);
-                    pending |= branchType is null;
-                    common = this.Join(node, common, branchType);
+                    this.BindNode(branch.Body, scope, conditionalResult.Expected);
                 }
 
-                var elseType = conditional.ElseBody is { } elseBody ? this.BindNode(elseBody, scope, expected) : BoundType.Unit;
-                pending |= elseType is null;
-                common = this.Join(node, common, elseType);
-                return Complete(node, pending ? null : common);
+                if (conditional.ElseBody is { } elseBody)
+                {
+                    this.BindNode(elseBody, scope, conditionalResult.Expected);
+                }
+
+                return this.FinishResult(conditional, conditionalResult);
+            case DoKoto scoped:
+                var scopedResult = this.BeginResult(scoped, scope, expected);
+                this.BindNode(scoped.Body, scope, scopedResult.Expected);
+                return this.FinishResult(scoped, scopedResult);
             case WhileKoto loop:
+                var whileResult = this.BeginResult(loop, scope, BoundType.Unit);
                 this.RequireType(loop.Condition, scope, BoundType.Boolean);
                 this.BindNode(loop.Body, scope);
-                return Complete(node, BoundType.Unit);
+                return this.FinishResult(loop, whileResult);
             case LoopKoto loop:
+                var loopResult = this.BeginResult(loop, scope, expected);
                 this.BindNode(loop.Body, scope);
-                return Fail(node, BindingFailure.Unsupported, true);
+                return this.FinishResult(loop, loopResult);
             case JumpKoto jump:
-                BoundType? resultType = expected;
-                BoundMatch? yieldPlan = null;
-                if (jump is YieldKoto && KotoHelper.ResolveTransferTarget(jump) is MatchKoto targetMatch && this.matches.TryGetValue(targetMatch, out var targetPlan))
+                var target = KotoHelper.ResolveTransferTarget(jump);
+                this.resultContexts.TryGetValue(target ?? jump, out var targetResult);
+                var resultType = targetResult?.Expected;
+                if (target is FunctionKoto f)
                 {
-                    resultType = targetPlan.ExpectedType;
-                    yieldPlan = targetPlan;
+                    resultType = this.symbols.GetValueOrDefault(f)?.Type;
+                }
+                else if (target is PropertyAccessorKoto a)
+                {
+                    resultType = Accessor(a).Result;
+                }
+                else if (target is ForKoto or WhileKoto or DeferredBlockKoto)
+                {
+                    resultType = BoundType.Unit;
                 }
 
-                if (jump is ReturnKoto)
+                var actual = jump.Expression is { } operand ? this.BindNode(operand, scope, resultType) : BoundType.Unit;
+                if (jump is not ContinueKoto)
                 {
-                    for (var boundary = scope; boundary is not null; boundary = boundary.Parent)
-                    {
-                        if (boundary.Owner is PropertyAccessorKoto a)
-                        {
-                            resultType = Accessor(a).Result;
-                            break;
-                        }
-
-                        if (boundary.Owner is FunctionKoto f)
-                        {
-                            resultType = this.symbols.GetValueOrDefault(f)?.Type;
-                            break;
-                        }
-                    }
-                }
-
-                if (jump.Expression is { } expression)
-                {
-                    var actual = this.BindNode(expression, scope, resultType);
-                    if (yieldPlan is not null)
-                    {
-                        yieldPlan.ResultType = this.Join(yieldPlan.Syntax, yieldPlan.ResultType, actual);
-                    }
-
+                    targetResult?.Sources.Add(actual);
                     if (actual is not null && resultType is not null && !Compatible(actual, resultType))
                     {
-                        Fail(expression, BindingFailure.TypeMismatch);
+                        Fail(jump, BindingFailure.TypeMismatch);
                     }
                 }
 
-                return Complete(node, BoundType.Never);
+                return Complete(jump, BoundType.Never);
             case BlockStatementKoto statement:
                 this.BindNode(statement.Body, scope);
                 return Complete(node, BoundType.Unit);
@@ -439,10 +430,14 @@ public sealed partial class Binding
 
         if (function.ExpressionBody is { } expression)
         {
-            var result = this.BindNode(expression, scope, symbol?.Type);
+            var discards = KotoHelper.DiscardsFunctionBody(function);
+            var result = this.BindNode(expression, scope, discards ? null : symbol?.Type);
             if (symbol is not null)
             {
-                if (symbol.Type is { } expected && result is not null && !Compatible(result, expected))
+                var structural = this.resultStructure ??= new(item => ReferenceEquals(item.BoundType, BoundType.Never));
+                structural.Clear();
+                if (!discards && (KotoHelper.IsBodyExpression(expression) || structural.CanComplete(expression)) &&
+                    symbol.Type is { } expected && result is not null && !Compatible(result, expected))
                 {
                     Fail(expression, BindingFailure.TypeMismatch);
                 }

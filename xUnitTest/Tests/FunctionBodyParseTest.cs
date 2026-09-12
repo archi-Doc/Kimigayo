@@ -64,7 +64,7 @@ public class FunctionBodyParseTest
             func Describe(x: i32) -> string
                 match (x)
                     0 => "zero"
-                    1 =>
+                    1
                         var text = "one"
                         text
             """);
@@ -163,60 +163,16 @@ public class FunctionBodyParseTest
     }
 
     [Fact]
-    public void RecoversInvalidAttributedBlockAndParsesFollowingSelections()
+    public void RecoversInvalidAttributedDoAndParsesFollowingSelections()
     {
-        const string Source = """
-            public group Helper
-                func Method2() -> i32
-                    #Condition(Os=="Windows")
-                    // block
-                        var i = if (x == true) => 1 else => 0
-                    var i2 = if (x == true)
-                        1
-                    else
-                        3
-
-                    var i3 = if (
-                        var z = Func()
-                        ) => 1 else => 0
-                    var j = match x
-                        true => 1
-                        false => 0
-                    var k = match x
-                        true =>
-                            1
-                        false =>
-                            0
-                    return
-            """;
-        var compilation = Compilation.CreateForTest();
-        var kotonoha = compilation.Kotonoha;
-        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, Source);
-
-        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
-        Assert.True(
-            diagnostics.Length > 0,
-            string.Join(Environment.NewLine, diagnostics.Select(x => $"{x.Span}: {x.Message}")));
-
-        var helper = Assert.IsType<GroupKoto>(
-            kotonoha.RootKoto.GetOrAddGroup("Helper", TokenKind.Group, default, default));
-        var function = Assert.IsType<FunctionKoto>(Assert.Single(GetChildren(helper)));
-        var body = Assert.IsType<CodeBlockKoto>(function.Body);
-
-        var conditionalBlock = Assert.IsType<CodeBlockKoto>(body.Items[0]);
-        Assert.NotNull(conditionalBlock.AttributeChain);
-        Assert.IsType<IfKoto>(Assert.IsType<FieldKoto>(Assert.Single(conditionalBlock.Items)).InitializerKoto);
-
-        Assert.IsType<IfKoto>(Assert.IsType<FieldKoto>(body.Items[1]).InitializerKoto);
-        var conditionWithLocal = Assert.IsType<IfKoto>(
-            Assert.IsType<FieldKoto>(body.Items[2]).InitializerKoto);
-        var parentheses = Assert.IsType<ParenthesizedKoto>(conditionWithLocal.Branches[0].Condition);
-        var conditionBlock = Assert.IsType<CodeBlockKoto>(parentheses.Operand);
-        Assert.IsType<FieldKoto>(Assert.Single(conditionBlock.Items));
-
-        Assert.IsType<MatchKoto>(Assert.IsType<FieldKoto>(body.Items[3]).InitializerKoto);
-        Assert.IsType<MatchKoto>(Assert.IsType<FieldKoto>(body.Items[4]).InitializerKoto);
-        Assert.IsType<ReturnKoto>(body.Items[5]);
+        var tree = ParseTestHelper.Parse("func f()\n    #Inline do => ()\n    let a = if flag => 1 else => 2\n    let b = match flag\n        true => 1\n        false => 2\n    return");
+        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items));
+        var items = function.Body!.Items;
+        Assert.IsType<DoKoto>(items[0]);
+        Assert.IsType<IfKoto>(Assert.IsType<FieldKoto>(items[1]).InitializerKoto);
+        Assert.IsType<MatchKoto>(Assert.IsType<FieldKoto>(items[2]).InitializerKoto);
+        Assert.IsType<ReturnKoto>(items[3]);
     }
 
     [Fact]
@@ -237,7 +193,7 @@ public class FunctionBodyParseTest
                     exit 0
                 match x
                     0 => 10
-                    1 =>
+                    1
                         if x == 1
                             return 20
                         else

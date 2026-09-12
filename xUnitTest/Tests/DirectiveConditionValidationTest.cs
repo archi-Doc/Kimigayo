@@ -252,9 +252,9 @@ public class DirectiveConditionValidationTest
     [Fact]
     public void LabeledBlockReportsUnknownNameWithoutChangingControlFlow()
     {
-        var compilation = Parse("work:\n    #if false and missing\n    var incomplete =\n    exit from work");
+        var compilation = Parse("work: do\n    #if false and missing\n    var incomplete =\n    exit to work");
         var labeled = Assert.IsType<LabeledKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
-        var body = Assert.IsType<CodeBlockKoto>(labeled.Target);
+        var body = Assert.IsType<DoKoto>(labeled.Target).Body;
         var analysis = compilation.AnalyzeControlFlow();
 
         Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);

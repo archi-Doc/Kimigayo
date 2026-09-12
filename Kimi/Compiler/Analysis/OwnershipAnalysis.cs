@@ -173,8 +173,16 @@ public sealed partial class OwnershipAnalysis
         }
         else if (function.ExpressionBody is { } expression)
         {
-            var value = this.Expression(expression);
-            this.Emit(OwnershipOperationKind.Write, expression, this.resultPlace, value);
+            if (KotoHelper.DiscardsFunctionBody(function) || !KotoHelper.IsBodyExpression(expression))
+            {
+                this.Statement(expression);
+                this.Emit(OwnershipOperationKind.Produce, expression, this.resultPlace);
+            }
+            else
+            {
+                var value = this.Expression(expression);
+                this.Emit(OwnershipOperationKind.Write, expression, this.resultPlace, value);
+            }
         }
         else
         {
@@ -185,6 +193,21 @@ public sealed partial class OwnershipAnalysis
         this.Emit(OwnershipOperationKind.Deliver, function, this.resultPlace);
         this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         this.body.Solve();
+        // Runtime-unreachable uses need SPEC 14.10.3's separate checking state.
+        // Until that state solver exists, absence of runtime input is not a proof
+        // that a local is initialized, unmoved, or assignable.
+        for (var i = 0; i < this.body.OperationStorage.Count; i++)
+        {
+            var operation = this.body.OperationStorage[i];
+            if (!this.body.IsReachable(i) && operation.Place >= 0 &&
+                this.body.PlaceStorage[operation.Place].Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter &&
+                (operation.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow ||
+                    (operation.Kind == OwnershipOperationKind.Write && operation.Source is BinaryKoto)))
+            {
+                this.body.IssueStorage.Add(new(operation.Source, OwnershipFailure.Unsupported, operation.Place));
+            }
+        }
+
         for (var i = 0; i < this.body.IssueStorage.Count; i++)
         {
             this.issues.Add(this.body.IssueStorage[i]);
@@ -282,7 +305,7 @@ public sealed partial class OwnershipAnalysis
         {
             var item = block.Items[i];
             var temps = this.temporaries.Count;
-            if (destination >= 0 && block.HasTrailingExpression && i == block.Items.Count - 1)
+            if (destination >= 0 && block.HasTrailingExpression && KotoHelper.IsValueContext(item) && i == block.Items.Count - 1)
             {
                 var value = this.Expression(item);
                 this.Emit(OwnershipOperationKind.Write, item, destination, value);
@@ -302,7 +325,7 @@ public sealed partial class OwnershipAnalysis
 
     private void Statement(Koto node)
     {
-        if (node is FunctionKoto or DeclarationContainerKoto or AliasKoto)
+        if (node is FunctionKoto or DeclarationContainerKoto or AliasKoto or UnitLiteralKoto)
         {
             return;
         }
@@ -326,7 +349,6 @@ public sealed partial class OwnershipAnalysis
         else if (node is DeferredBlockKoto deferred)
         {
             this.locals.Add(new(-1, deferred, this.registrationSequence++));
-            this.Unsupported(deferred);
         }
         else if (node is UnsafeBlockKoto unsafeBlock)
         {
@@ -365,6 +387,14 @@ public sealed partial class OwnershipAnalysis
                 return this.Conditional(conditional);
             case MatchKoto match:
                 return this.Match(match);
+            case LabeledKoto labeled:
+                return this.Expression(labeled.Target);
+            case DoKoto scoped:
+                return this.ScopedBody(scoped, scoped.Body);
+            case LoopKoto repeat:
+                return this.Repeat(repeat);
+            case RequireKoto require:
+                return this.Require(require);
             case WhileKoto loop:
                 this.Loop(loop);
                 return this.Temporary(node);
@@ -379,7 +409,7 @@ public sealed partial class OwnershipAnalysis
                     return -1;
                 }
 
-                if (!block.HasTrailingExpression)
+                if (!block.HasTrailingExpression || !KotoHelper.IsValueContext(block))
                 {
                     this.Emit(OwnershipOperationKind.Produce, block, blockValue);
                 }
@@ -427,17 +457,9 @@ public sealed partial class OwnershipAnalysis
             var evaluate = this.New(OwnershipOperationKind.Branch, binary.Right);
             var skip = this.New(OwnershipOperationKind.Branch, binary);
             var join = this.New(OwnershipOperationKind.Branch, binary);
-            var literal = KotoHelper.UnwrapParentheses(binary.Left) as BoolLiteralKoto;
             var evaluateWhen = binary is AndKoto;
-            if (literal is null || literal.Value == evaluateWhen)
-            {
-                this.Connect(branch, evaluate, evaluateWhen ? OwnershipEdgeKind.True : OwnershipEdgeKind.False);
-            }
-
-            if (literal is null || literal.Value != evaluateWhen)
-            {
-                this.Connect(branch, skip, evaluateWhen ? OwnershipEdgeKind.False : OwnershipEdgeKind.True);
-            }
+            this.Connect(branch, evaluate, evaluateWhen ? OwnershipEdgeKind.True : OwnershipEdgeKind.False);
+            this.Connect(branch, skip, evaluateWhen ? OwnershipEdgeKind.False : OwnershipEdgeKind.True);
 
             this.current = evaluate;
             this.Expression(binary.Right, PlaceUseKind.Read);
@@ -471,27 +493,20 @@ public sealed partial class OwnershipAnalysis
     {
         var output = this.Temporary(conditional, false);
         var join = this.New(OwnershipOperationKind.Branch, conditional);
+        this.selections.Add(new(conditional, output, join, this.locals.Count, this.temporaries.Count));
         for (var i = 0; i < conditional.Branches.Count; i++)
         {
             var branch = conditional.Branches[i];
-            this.Expression(branch.Condition, PlaceUseKind.Read);
+            this.Condition(branch.Condition);
             var test = this.Emit(OwnershipOperationKind.Branch, branch.Condition);
             var yes = this.New(OwnershipOperationKind.Branch, branch.Body);
             var no = this.New(OwnershipOperationKind.Branch, conditional);
-            var literal = KotoHelper.UnwrapParentheses(branch.Condition) as BoolLiteralKoto;
-            if (literal?.Value != false)
-            {
-                this.Connect(test, yes, OwnershipEdgeKind.True);
-            }
-
-            if (literal?.Value != true)
-            {
-                this.Connect(test, no, OwnershipEdgeKind.False);
-            }
+            this.Connect(test, yes, OwnershipEdgeKind.True);
+            this.Connect(test, no, OwnershipEdgeKind.False);
 
             this.current = yes;
             this.Block(branch.Body, output);
-            if (!branch.Body.HasTrailingExpression)
+            if (!branch.Body.HasTrailingExpression || !KotoHelper.IsValueContext(conditional))
             {
                 this.Emit(OwnershipOperationKind.Produce, branch.Body, output);
             }
@@ -503,7 +518,7 @@ public sealed partial class OwnershipAnalysis
         if (conditional.ElseBody is { } otherwise)
         {
             this.Block(otherwise, output);
-            if (!otherwise.HasTrailingExpression)
+            if (!otherwise.HasTrailingExpression || !KotoHelper.IsValueContext(conditional))
             {
                 this.Emit(OwnershipOperationKind.Produce, otherwise, output);
             }
@@ -515,6 +530,7 @@ public sealed partial class OwnershipAnalysis
 
         this.Connect(this.current, join);
         this.current = join;
+        this.selections.RemoveAt(this.selections.Count - 1);
         if (!this.flow!.Nodes[conditional].CanCompleteNormally)
         {
             this.current = -1;
@@ -583,6 +599,72 @@ public sealed partial class OwnershipAnalysis
         return -1;
     }
 
+    private void Condition(Koto condition)
+    {
+        var mark = this.temporaries.Count;
+        this.Expression(condition, PlaceUseKind.Read);
+        this.Cleanup(mark, this.locals.Count, condition, CleanupReason.ExpressionEnd);
+        this.temporaries.RemoveRange(mark, this.temporaries.Count - mark);
+    }
+
+    private int Require(RequireKoto require)
+    {
+        this.Condition(require.Condition);
+        var test = this.Emit(OwnershipOperationKind.Branch, require.Condition);
+        var success = this.New(OwnershipOperationKind.Branch, require);
+        var failure = this.New(OwnershipOperationKind.Branch, require.ElseBody);
+        this.Connect(test, success, OwnershipEdgeKind.True);
+        this.Connect(test, failure, OwnershipEdgeKind.False);
+        this.current = failure;
+        if (require.ElseBody is CodeBlockKoto block)
+        {
+            this.Block(block);
+        }
+        else
+        {
+            var temps = this.temporaries.Count;
+            var locals = this.locals.Count;
+            this.Statement(require.ElseBody);
+            this.Cleanup(temps, locals, require, CleanupReason.ScopeExit);
+            this.temporaries.RemoveRange(temps, this.temporaries.Count - temps);
+            this.locals.RemoveRange(locals, this.locals.Count - locals);
+        }
+
+        this.Connect(this.current, success);
+        this.current = success;
+        return -1;
+    }
+
+    private int ScopedBody(Koto owner, CodeBlockKoto block)
+    {
+        var output = owner is DoKoto ? this.Temporary(owner, false) : -1;
+        var join = this.New(OwnershipOperationKind.Branch, owner);
+        this.selections.Add(new(owner, output, join, this.locals.Count, this.temporaries.Count));
+        this.Block(block, output);
+        if (output >= 0 && (!block.HasTrailingExpression || !KotoHelper.IsValueContext(owner)))
+        {
+            this.Emit(OwnershipOperationKind.Produce, owner, output);
+        }
+
+        this.Connect(this.current, join);
+        this.selections.RemoveAt(this.selections.Count - 1);
+        this.current = this.flow!.Nodes[owner].CanCompleteNormally ? join : -1;
+        return output >= 0 ? this.RegisterTemporary(output) : -1;
+    }
+
+    private int Repeat(LoopKoto loop)
+    {
+        var output = this.Temporary(loop, false);
+        var head = this.Emit(OwnershipOperationKind.Branch, loop);
+        var exit = this.New(OwnershipOperationKind.Branch, loop);
+        this.loops.Add(new(loop, head, exit, this.locals.Count, this.temporaries.Count, output));
+        this.Block(loop.Body);
+        this.Connect(this.current, head, OwnershipEdgeKind.Back);
+        this.loops.RemoveAt(this.loops.Count - 1);
+        this.current = this.flow!.Nodes[loop].CanCompleteNormally ? exit : -1;
+        return this.RegisterTemporary(output);
+    }
+
     private void Loop(WhileKoto loop)
     {
         var head = this.Emit(OwnershipOperationKind.Branch, loop);
@@ -593,16 +675,8 @@ public sealed partial class OwnershipAnalysis
         this.temporaries.RemoveRange(mark, this.temporaries.Count - mark);
         var test = this.Emit(OwnershipOperationKind.Branch, loop.Condition);
         var enter = this.New(OwnershipOperationKind.Branch, loop.Body);
-        var literal = KotoHelper.UnwrapParentheses(loop.Condition) as BoolLiteralKoto;
-        if (literal?.Value != false)
-        {
-            this.Connect(test, enter, OwnershipEdgeKind.True);
-        }
-
-        if (literal?.Value != true)
-        {
-            this.Connect(test, exit, OwnershipEdgeKind.False);
-        }
+        this.Connect(test, enter, OwnershipEdgeKind.True);
+        this.Connect(test, exit, OwnershipEdgeKind.False);
 
         this.loops.Add(new(loop, head, exit, this.locals.Count, this.temporaries.Count));
         this.current = enter;
@@ -623,25 +697,29 @@ public sealed partial class OwnershipAnalysis
             this.Emit(OwnershipOperationKind.Deliver, jump, this.resultPlace);
             this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         }
-        else if (jump is YieldKoto && this.TryGetSelection(target, out var selection))
+        else if (jump is YieldKoto or ExitKoto && this.TryGetSelection(target, out var selection))
         {
-            this.Emit(OwnershipOperationKind.Write, jump, selection.Result, value);
+            if (selection.Result >= 0)
+            {
+                this.Emit(OwnershipOperationKind.Write, jump, selection.Result, value);
+            }
+
             this.Cleanup(selection.Temporaries, selection.Locals, jump, CleanupReason.SelectionResult);
             this.Connect(this.current, selection.Join);
         }
         else
         {
-            if (jump.Expression is not null)
-            {
-                this.Unsupported(jump); // Value-bearing loop transfers need a secured loop-result Place.
-            }
-
             var found = false;
             for (var i = this.loops.Count - 1; i >= 0; i--)
             {
                 var loop = this.loops[i];
                 if (ReferenceEquals(loop.Source, target) && jump is ExitKoto or ContinueKoto)
                 {
+                    if (jump is ExitKoto && loop.Result >= 0)
+                    {
+                        this.Emit(OwnershipOperationKind.Write, jump, loop.Result, value);
+                    }
+
                     this.Cleanup(loop.Temporaries, loop.Locals, jump, CleanupReason.LoopTransfer);
                     this.Connect(this.current, jump is ContinueKoto ? loop.Head : loop.Exit, jump is ContinueKoto ? OwnershipEdgeKind.Back : OwnershipEdgeKind.Normal);
                     found = true;
@@ -690,6 +768,12 @@ public sealed partial class OwnershipAnalysis
 
     private void CleanupPlace(int place, Koto declaration, Koto source)
     {
+        if (declaration is DeferredBlockKoto deferred)
+        {
+            this.ScopedBody(deferred, deferred.Body);
+            return;
+        }
+
         var operation = this.Emit(OwnershipOperationKind.Cleanup, source, place);
         this.body.OperationSteps[operation] = this.body.CleanupStepStorage.Count;
         this.body.CleanupStepStorage.Add(new(operation, place, declaration, place < 0 ? CleanupAction.Unsupported : CleanupAction.Skip));
@@ -733,7 +817,7 @@ public sealed partial class OwnershipAnalysis
 
     private readonly record struct Registration(int Place, Koto Source, int Sequence, bool IsSubject = false);
 
-    private readonly record struct LoopFrame(Koto Source, int Head, int Exit, int Locals, int Temporaries);
+    private readonly record struct LoopFrame(Koto Source, int Head, int Exit, int Locals, int Temporaries, int Result = -1);
 
     private sealed class Collector : KotoVisitor
     {

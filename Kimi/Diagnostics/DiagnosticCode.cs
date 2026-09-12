@@ -114,6 +114,7 @@ public enum DiagnosticCode
     InvalidPattern_Kd,
     NonExhaustiveMatch_Kd,
     UnreachablePattern_Kd,
+    ControlFlowWarning_Kd,
 
     Count, // Last sentinel
 }

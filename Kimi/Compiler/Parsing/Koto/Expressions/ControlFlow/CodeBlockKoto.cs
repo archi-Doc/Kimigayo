@@ -6,7 +6,7 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>
-/// Represents an indentation-delimited expression block.
+/// Retains an indented item sequence or a common single-item Body.
 /// </summary>
 public sealed class CodeBlockKoto : ExpressionKoto
 {
@@ -18,10 +18,10 @@ public sealed class CodeBlockKoto : ExpressionKoto
     /// <summary>Gets the declaration context of a compile-time directive body.</summary>
     public TokenKind DeclarationContext { get; internal set; }
 
-    /// <summary>Gets a value indicating whether this node wraps an explicitly introduced branch Expression body.</summary>
+    /// <summary>Gets a value indicating whether this node wraps an explicitly introduced single-item body.</summary>
     public bool IsExpressionBody { get; internal set; }
 
-    /// <summary>Gets a value indicating whether this explicit Expression body supplies an implicit result.</summary>
+    /// <summary>Gets a value indicating whether this single-item body has one item; its owner determines use or discard.</summary>
     public bool HasTrailingExpression => this.IsExpressionBody && this.items.Count == 1;
 
     /// <summary>Gets the block items in source order.</summary>
@@ -33,7 +33,7 @@ public sealed class CodeBlockKoto : ExpressionKoto
     public void ReplaceItem(int index, Koto replacement) => this.ReplaceAt(this.items, index, replacement);
 
     /// <summary>
-    /// Gets the implicit branch result, or <see langword="null"/> when there is no implicit result.
+    /// Gets the single body item before context/result classification, or <see langword="null"/> when there is no implicit result.
     /// </summary>
     public Koto? TrailingExpression => this.HasTrailingExpression && this.items.Count > 0 ? this.items[^1] : null;
 

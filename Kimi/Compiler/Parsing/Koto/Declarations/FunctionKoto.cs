@@ -210,9 +210,9 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <param name="reader">The token reader.</param>
     public void Parse(ref TokenReader reader)
     {
-        if (reader.TryConsume(TokenKind.EqualsGreaterThan))
+        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
         {
-            this.ExpressionBody = Parser.ParseRequiredExpression(ref reader);
+            this.ExpressionBody = Parser.ParseSingleBodyItem(ref reader);
             this.Adopt(this.ExpressionBody);
             this.Span = SourceSpan.FromBounds(this.Span.Start, this.ExpressionBody.Span.End);
             return;

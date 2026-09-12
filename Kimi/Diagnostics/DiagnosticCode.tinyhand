@@ -306,3 +306,7 @@
   + Name="UnreachablePattern_Kd"
     Severity="Warning"
     Message="This Pattern is covered by earlier unguarded arm {0}"
+
+  + Name="ControlFlowWarning_Kd"
+    Severity="Warning"
+    Message="{0}"

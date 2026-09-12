@@ -8,7 +8,7 @@ namespace Kimi.Compiler.Parsing;
 /// <summary>A statement with an independently scoped inline or indented body.</summary>
 public abstract class BlockStatementKoto : Koto
 {
-    /// <summary>Gets the body, including the scope of a single InlineStatement.</summary>
+    /// <summary>Gets the body, including the scope of a single-item body.</summary>
     public CodeBlockKoto Body { get; private set; }
 
     /// <summary>Gets a value indicating whether the body is written on the header line.</summary>
@@ -21,7 +21,7 @@ public abstract class BlockStatementKoto : Koto
     /// <param name="reader">The owning token reader.</param>
     /// <param name="span">The statement's complete span.</param>
     /// <param name="body">The parsed body.</param>
-    /// <param name="isInline">Whether the body is an InlineStatement.</param>
+    /// <param name="isInline">Whether the body is a single-item body.</param>
     protected BlockStatementKoto(ref TokenReader reader, SourceSpan span, CodeBlockKoto body, bool isInline)
         : base(ref reader, span)
     {
@@ -35,16 +35,7 @@ public abstract class BlockStatementKoto : Koto
     {
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendLineFeed);
         builder.Append(this.Keyword);
-        builder.Append(':');
-        if (this.IsInline)
-        {
-            builder.AppendSpace();
-            this.Body.WriteTo(ref builder);
-        }
-        else
-        {
-            this.Body.WriteIndentedTo(ref builder);
-        }
+        this.Body.WriteBranchTo(ref builder);
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)

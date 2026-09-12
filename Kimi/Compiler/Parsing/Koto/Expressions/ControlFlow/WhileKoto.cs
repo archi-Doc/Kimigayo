@@ -37,7 +37,7 @@ public sealed class WhileKoto : ExpressionKoto
         builder.Append(Constants.WhileKeyword);
         builder.AppendSpace();
         this.Condition.WriteTo(ref builder);
-        this.Body.WriteIndentedTo(ref builder);
+        this.Body.WriteBranchTo(ref builder);
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)

@@ -80,6 +80,7 @@ public sealed partial class Binding
         {
             this.issues.Clear();
             this.ResetMatches();
+            this.resultContexts.Clear();
             this.ResetStartup();
             this.compilation.InvalidateOwnership();
             this.receiverOperations.Clear();

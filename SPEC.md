@@ -193,7 +193,7 @@ if (if a => b else => c) => work()
 func run() => if ready => work() // No enclosing if: grouping is unnecessary.
 ```
 
-Formatters preserve body forms and prefer completing an inline if on one line. Body-form conversion is a separate semantics-checked refactoring (§14.2). If a multiline non-final argument needs a leading comma after a dedent, prefer a typed intermediate local or moving it to the last argument only when evaluation and ownership semantics are preserved.
+Formatters preserve Body forms and prefer keeping an if inside a single-item body, including its else, on one line. If it needs an indented enclosing body, offer a separate semantics-checked refactoring (§14.2); formatting alone must not change result use, transfer targets, or cleanup. If a multiline non-final argument needs a leading comma after a dedent, prefer a typed intermediate local or moving it to the last argument only when evaluation and ownership semantics are preserved.
 
 ##### 2.2.2. Leading-dot continuation and Case references
 
@@ -264,7 +264,7 @@ Contextual keywords may be Names where allowed; reserved keywords may not. `in` 
 
 `init`, `deinit`, and `base` are reserved for [construction](#623-constructors) and destruction. They do not introduce ordinary callable Names or an implicit base receiver.
 
-`require` and `block` are reserved for the [require statement](#1411-require-statement) and [block expression](#1432-block-expressions).
+`require` and `do` are reserved for the [require statement](#1411-require-statement) and [do expression](#1432-do-expressions).
 
 `specialize` is contextual immediately before `func` in an [explicit specialization declaration](#88-explicit-full-function-specialization); it does not reserve the name in unrelated contexts.
 
@@ -278,7 +278,7 @@ These tables define token classes independently of internal enum groupings. Unre
 | --- | --- |
 | Primitive Types | `isize`, `usize`, `i8`, `i16`, `i32`, `i64`, `i128`, `u8`, `u16`, `u32`, `u64`, `u128`, `f32`, `f64`, `bool`, `char`, `string` |
 | Bindings and functions | `let`, `var`, `func` |
-| Control, tests, and literals | `if`, `else`, `case`, `for`, `while`, `loop`, `block`, `match`, `return`, `exit`, `continue`, `yield`, `require`, `defer`, `is`, `not`, `and`, `or`, `true`, `false`, `null` |
+| Control, tests, and literals | `if`, `else`, `case`, `for`, `while`, `loop`, `do`, `match`, `return`, `exit`, `continue`, `yield`, `require`, `defer`, `is`, `not`, `and`, `or`, `true`, `false`, `null` |
 | Access and inheritance | `public`, `internal`, `private`, `protected`, `open` |
 | Dedicated forms | `Self`, `init`, `deinit`, `base` |
 | Reserved future syntax | `as` |
@@ -1942,7 +1942,7 @@ func unused() => 123             // Valid Unit function; warn on unused effect-f
 let twice = func (value: i32) => value * 2 // Anonymous return inference: i32.
 ```
 
-A final selection, loop, or block expression is still discarded in an indented body. Use return with that expression or returns inside its paths. Anonymous return inference and its fixed-context boundary follow §7.6.1 and §10.5. Other function-like targets are listed in §14.5.3; all use common Scope Exit (§16.2).
+A final selection, loop, or do expression is still discarded in an indented body. Use return with that expression or returns inside its paths. Anonymous return inference and its fixed-context boundary follow §7.6.1 and §10.5. Other function-like targets are listed in §14.5.3; all use common Scope Exit (§16.2).
 
 #### 7.2. Parameter names and defaults
 
@@ -3292,6 +3292,9 @@ If the normalized return Type is Unit before body checking, discard the single-i
 func run(action: () -> ()) => action()
 func run(action: () -> i32) => action()
 run(func () => compute()) // Error: differing expectations; compute returns i32.
+run(func ()
+    return compute()
+) // Same error: an explicit return does not select an expected signature.
 run(func () -> i32 => compute()) // Explicit return Type selects the second overload.
 func apply<U>(value: U, action: () -> U) -> U => action()
 apply((), func () => compute()) // U is Unit before checking the lambda; discard its value.
@@ -3734,7 +3737,7 @@ Expressions
 │  ├─ Simple Assignment
 │  └─ Compound Assignment
 ├─ Selection Expression: if / match
-├─ Iteration / Block Expression: for / while / loop / block / Label: block
+├─ Iteration / Do Expression: for / while / loop / do / Label: do
 └─ Control Transfer Expression: return / exit / continue / yield
 
 Related Syntax
@@ -3749,7 +3752,7 @@ Value and access categories follow [Values, places, and storage](#34-values-plac
 
 A normally completing expression produces a typed result, including [Unit](#315-unit-and-never-types). [Value and Discard Contexts](#142-blocks-and-evaluation-contexts) determine how that result is used. Discarding it preserves side effects and type, ownership, and destruction checks. Assignment requires a writable [place](#34-values-places-and-storage) or an accessible Property setter; a readable Property need not expose borrowable storage.
 
-An indented body is a syntax container, not a standalone expression. Use a selection or block expression to obtain a value from several operations. Unsafe, defer, and require are statements, not initializers or arguments. Let/var declarations are not expressions or condition-binding syntax; nested bodies inside conditions retain their normal declaration rules (§14.2.3).
+An indented body is a syntax container, not a standalone expression. Use a selection or do expression to obtain a value from several operations. Unsafe, defer, and require are statements, not initializers or arguments. Let/var declarations are not expressions or condition-binding syntax; nested bodies inside conditions retain their normal declaration rules (§14.2.3).
 
 Source delimiters and continuation follow [Lines, indentation, and continuation](#22-lines-indentation-and-continuation).
 
@@ -3956,7 +3959,7 @@ Unparenthesized comparison chains such as `a < b < c`, `a == b == c`, and `a < b
 
 `@` is one token. All adaptations share this precedence and left associativity, below prefix operators: `-x@i64` means `(-x)@i64`. Targets may contain qualified names, `/`, and generic arguments. Parenthesize an adapted result before selection, calls, or indexing: `(x@T).name`, `(f@T)()`, `(a@T)[0]`. Use `(x@Number) / divisor` for division after adaptation.
 
-Conversion type arguments follow the same adjacent-`<` and matching-`>` rule as generic application: `value@Box<i32>` contains a type argument, whereas `value@i64 < limit` compares the converted value. Selections, iterations, and block expressions have their own body syntax. `return`, `exit`, and `yield` consume a full result expression, so `return a + b` returns the sum.
+Conversion type arguments follow the same adjacent-`<` and matching-`>` rule as generic application: `value@Box<i32>` contains a type argument, whereas `value@i64 < limit` compares the converted value. Selections, iterations, and do expressions have their own body syntax. `return`, `exit`, and `yield` consume a full result expression, so `return a + b` returns the sum.
 
 | Written form | Grouping |
 | --- | --- |
@@ -4444,7 +4447,7 @@ Operator symbols, precedence, and associativity are fixed by the language. User-
 
 ### 14. Control flow
 
-Control-flow expressions are `if`, `match`, `for`, `while`, `loop`, `block`, and the transfers `return`, `exit`, `continue`, and `yield`. `unsafe`, `defer`, and `require` are statements; they cannot be initializers, arguments, or expression operands.
+Control-flow expressions are `if`, `match`, `for`, `while`, `loop`, `do`, and the transfers `return`, `exit`, `continue`, and `yield`. `unsafe`, `defer`, and `require` are statements; they cannot be initializers, arguments, or expression operands.
 
 | Concept | Role |
 | --- | --- |
@@ -4455,7 +4458,7 @@ Control-flow expressions are `if`, `match`, `for`, `while`, `loop`, `block`, and
 | Evaluation Context | Determines whether a value is used or discarded (§14.2). |
 | Completion | Describes normal completion or a transfer to a resolved target. |
 
-Parentheses create a delimiter region, not a body scope, transfer target, or lookup barrier. A block expression receives named exits but does not stop other transfer lookup. An **Iteration Construct** is a `for`, `while`, or `loop`; an **iteration** is one execution of its body. A **selection** is one `if` chain or `match`.
+Parentheses create a delimiter region, not a body scope, transfer target, or lookup barrier. A do expression receives named exits but does not stop other transfer lookup. An **Iteration Construct** is a `for`, `while`, or `loop`; an **iteration** is one execution of its body. A **selection** is one `if` chain or `match`.
 
 #### 14.1. Completions
 
@@ -4465,7 +4468,7 @@ Omitted return, exit, and yield operands mean `()`; continue has no result. Afte
 
 | Target | Received Completion | Action |
 | --- | --- | --- |
-| Iteration or block expression | `Exit(self, result)` | Complete the expression with that result. |
+| Iteration or do expression | `Exit(self, result)` | Complete the expression with that result. |
 | Selection | `Yield(self, result)` | Complete the selection with that result. |
 | Deferred body | `Exit(self, ())` | Finish this body's cleanup and resume pending Scope Exit. |
 | Iteration | `Continue(self)` | Continue at the construct's next iteration point. |
@@ -4484,7 +4487,7 @@ Body := "=>" (Expression | Statement)
 
 A **single-item body** contains one expression or statement starting on the header's ending physical line. It may span more lines through ordinary expression continuation or a match arm list. An **indented body** (also called a Block body) contains declarations, expressions, statements, and permitted compile-time directives evaluated in order. Its direct expressions, including the last, are discarded; structural end arrival supplies Unit where the owner uses the body result. Iteration body completion instead starts the next iteration.
 
-The two forms apply to selection clauses/arms, iteration, block expressions, unsafe, defer, require failure bodies, functions, anonymous functions/Closures, specializations, accessors, init, and deinit. Declarations and directives require the indented form. Preserve each position's declaration restrictions; explicit function Constraints remain at the start of an indented function body (§7.4). Declaration Containers and match arm lists are not executable bodies. Bodyless declarations and standard accessors retain their existing rules.
+The two forms apply to selection clauses/arms, iteration, do expressions, unsafe, defer, require failure bodies, functions, anonymous functions/Closures, specializations, accessors, init, and deinit. Declarations and directives require the indented form. Preserve each position's declaration restrictions; explicit function Constraints remain at the start of an indented function body (§7.4). Declaration Containers and match arm lists are not executable bodies. Bodyless declarations and standard accessors retain their existing rules.
 
 | Concept | Question |
 | --- | --- |
@@ -4500,7 +4503,7 @@ Discarding a general expression destroys its result at the normal lifetime; it i
 | Owner | Single-item expression and normal completion | Explicit result transfer |
 | --- | --- | --- |
 | Function / get | Discard and complete with Unit if its return Type is already fixed as Unit; otherwise use Value Context and return the value. | return |
-| if / match / block | Inherit the owner's context: use the value in Value Context; discard it and complete with Unit in Discard Context. | yield for selections; named exit for block |
+| if / match / do | Inherit the owner's context: use the value in Value Context; discard it and complete with Unit in Discard Context. | yield for selections; named exit for do |
 | for / while / loop | Discard and continue iteration. | exit |
 | unsafe / defer | Discard and complete the body with Unit; defer executes later during cleanup. | exit to defer; unsafe has no target |
 | set / init / deinit | Discard and complete the body with Unit. | return |
@@ -4508,7 +4511,7 @@ Discarding a general expression destroys its result at the normal lifetime; it i
 
 Statements in single-item bodies supply Unit only if they structurally complete normally. Values discarded directly inside a body need not have a common Type. Values supplied to a target must fit its Target Result Type even when the target's result is discarded.
 
-The Target Result Type is fixed as Unit for for, while, defer, set, init, deinit, and discarded if/match/block/loop expressions. Explicit transfers still fit that Type: `return 123` in a Unit function and `loop => exit 1` in Discard Context are errors. A value-used loop takes its result from self-targeted exits, never from its body end. Receiving a transfer does not additionally supply an implicit body result.
+The Target Result Type is fixed as Unit for for, while, defer, set, init, deinit, and discarded if/match/do/loop expressions. Explicit transfers still fit that Type: `return 123` in a Unit function and `loop => exit 1` in Discard Context are errors. A value-used loop takes its result from self-targeted exits, never from its body end. Receiving a transfer does not additionally supply an implicit body result.
 
 ```kimi
 if ready => visited.insert(id)   // A bool result may be discarded.
@@ -4560,8 +4563,8 @@ If, else-if, while, require, and match guards use a bool expression. No `if let 
 Each test evaluates the condition once, secures its bool result, destroys remaining condition temporaries in reverse creation order and ends guard-local temporary Loans, then branches using the secured bool. Cleanup effects update state but do not reevaluate the bool. A transfer, divergence, or Abort during evaluation/cleanup prevents the subsequent test continuation on that path. Match subjects, iterators, and explicit bindings retain their own owning scopes; moved values retain their destination lifetime.
 
 ```kimi
-if (test: block
-    let ready = check() // check returns bool; this is a block-local declaration.
+if (test: do
+    let ready = check() // check returns bool; this declaration belongs to the do body.
     exit to test: ready
 )
     work()
@@ -4576,7 +4579,7 @@ To acquire a new local on every test, use loop with a declaration and require. P
 
 | Construct | Category | Execution |
 | --- | --- | --- |
-| block / Label: block | Expression | Execute now; receive a named exit when labeled. |
+| do / Label: do | Expression | Execute now; receive a named exit when labeled. |
 | unsafe | Statement | Execute now with lexical unsafe permission. |
 | defer | Statement | Register now; execute at Scope Exit (§16.1). |
 
@@ -4592,23 +4595,25 @@ defer => return  // Error: cannot return from the outer function.
 
 `unsafe/T` remains Type Semantics syntax and `unsafe func` a modifier. In statement position, unsafe introduces a Body, not a colon-delimited label. Declaration and lexical role rules remain in force.
 
-##### 14.3.2. Block expressions
+##### 14.3.2. Do expressions
 
-`block Body` executes once and uses the result rules in §14.2. Its optional label permits self-targeted `exit to Label`. Unlabeled exit skips block expressions, so an unlabeled indented block cannot supply a non-Unit result of its own. Outward transfers and divergence are permitted.
+`do Body` executes once and uses the result rules in §14.2. Its optional label permits self-targeted `exit to Label`. Unlabeled exit skips do expressions, so an unlabeled do with an indented body cannot supply a non-Unit result of its own. Outward transfers and divergence are permitted.
 
 ```kimi
-let result = work: block
+let result = work: do
     if cached() => exit to work: cachedValue()
     exit to work: compute()
 
-let direct = block => compute()
-block
+let direct = do => compute()
+do
     let resource = open()
     defer => close(resource)
     use(resource)
+
+let block = readBlock() // Ordinary identifier; no keyword interpretation.
 ```
 
-`block` is reserved, including in variable, function, member, and label names. Header expressions containing a block expression need grouping under §2.2.
+`do` is reserved; `block` is an ordinary Name. Header expressions containing a do expression need grouping under §2.2.
 
 ##### 14.3.3. Unsafe block
 
@@ -4625,7 +4630,7 @@ unsafe
 
 #### 14.4. Labels
 
-An optional `Label:` may prefix if, match, for, while, loop, or block on the same physical line. Labels use a namespace separate from variables and Types. Reject equal label names whose active scopes overlap in one function.
+An optional `Label:` may prefix if, match, for, while, loop, or do on the same physical line. Labels use a namespace separate from variables and Types. Reject equal label names whose active scopes overlap in one function.
 
 A label is active only inside its construct's bodies, not its own conditions, iterable, subject, or guards. A transfer may target only an enclosing construct in the same function, never a sibling, inner, or finished construct. A label names a construct, not an instruction address.
 
@@ -4634,7 +4639,7 @@ Group a labeled expression where its colon conflicts with a named argument or di
 ```kimi
 consume(value: if ready => 1 else => 0)       // Named argument.
 consume((choice: if ready => 1 else => 0))    // Labeled expression.
-return (work: block => compute())
+return (work: do => compute())
 yield to outer: (inner: if ready => 1 else => 0)
 ```
 
@@ -4669,7 +4674,7 @@ Transfers have Type Never. Operands are still checked against their own target, 
 | Transfer | Unlabeled target | Named target | Lookup barrier |
 | --- | --- | --- | --- |
 | return | Nearest function | None | defer |
-| exit | Nearest iteration or defer | Named iteration or block | Function; named lookup also stops at defer. |
+| exit | Nearest iteration or defer | Named iteration or do | Function; named lookup also stops at defer. |
 | continue | Nearest iteration | Named iteration | Function and defer |
 | yield | Nearest if or match | Named if or match | Function and defer |
 
@@ -4677,7 +4682,7 @@ Resolve the target first, then check context, operand, and Type. Never search fa
 
 This extra unlabeled-yield check prevents a conditional yield from accidentally ending only its nearest inner if. It does not alter Type fitting or make Discard Context transparent to lookup.
 
-A construct acts as a target or barrier only inside its bodies. Unsafe and require create neither. A block passes through all transfers except its named exit. Selections pass return/exit/continue, and iterations pass yield. No outward transfer crosses a function or deferred body.
+A construct acts as a target or barrier only inside its bodies. Unsafe and require create neither. A do expression passes through all transfers except its named exit. Selections pass return/exit/continue, and iterations pass yield. No outward transfer crosses a function or deferred body.
 
 ##### 14.5.3. Function boundaries
 
@@ -5111,7 +5116,7 @@ Named functions retain their declared or default Unit return Type. An anonymous 
 | for / while | After acquisition/condition evaluation, consider both iteration and immediate exhaustion/false completion. |
 | loop | Body end/continue repeat; only self-targeted exit completes the loop. |
 | Transfers | Evaluate any operand first, then transfer. Do not continue at the source; follow the target's received transfer. |
-| block / unsafe | Follow the body; block receives its named exit. |
+| do / unsafe | Follow the body; do receives its named exit. |
 | Declaration / defer registration | Perform necessary initialization/acquisition, then continue if normal. Do not execute function/defer bodies at declaration/registration. |
 
 Never-returning calls and Abort do not continue normally. Structural Completion does not incorporate delivery blocked by Scope Exit cleanup.
@@ -5139,7 +5144,7 @@ loop
     if boundPort > 0 => exit
 use(boundPort) // Valid: every delivered exit follows initialization.
 
-let stopped: i32 = work: block
+let stopped: i32 = work: do
     defer => loop => ()
     exit to work: 1
 // Expression Type remains i32; Runtime Reachability stops at cleanup, before delivery.
@@ -6098,7 +6103,7 @@ Scope exit secures results and performs cleanup. A Deferred Block registers code
 
 A **Deferred Block** registers cleanup when execution reaches `defer`. Registration evaluates none of its body, arguments, conditions, or initializers. It uses the common Body forms and has no expression result; body expression use/discard follows §14.2.
 
-A registration belongs to its directly containing executable body scope, including a function, branch, arm, current iteration, block, unsafe, require failure, or executing defer body. Unreached registrations do not run; each iteration registers and cleans up independently. Registrations cannot be cancelled or manually invoked.
+A registration belongs to its directly containing executable body scope, including a function, branch, arm, current iteration, do, unsafe, require failure, or executing defer body. Unreached registrations do not run; each iteration registers and cleans up independently. Registrations cannot be cancelled or manually invoked.
 
 **Basic example.**
 
@@ -6115,9 +6120,9 @@ For true `flag`, output is `branch end`, `after branch`, then `function end`. De
 
 ##### 16.1.1. Deferred control boundary
 
-Each Deferred Block establishes a lookup barrier that no outward transfer may cross. It accepts self-targeted exit with an omitted or Unit-fitting operand, including through nested selections, block expressions, unsafe statements, and require failure bodies. An omitted operand means `()`.
+Each Deferred Block establishes a lookup barrier that no outward transfer may cross. It accepts self-targeted exit with an omitted or Unit-fitting operand, including through nested selections, do expressions, unsafe statements, and require failure bodies. An omitted operand means `()`.
 
-An unlabeled `exit` targets the nearest Iteration Construct or Deferred Block. Consequently, exits and continues of an inner loop retain their normal meaning, as do results of inner selections and block expressions. A `return` to an outer function, a named transfer to an outer construct, or a `yield` to an outer selection is an error. A separate nested function retains its own Function Boundary and normal returns.
+An unlabeled `exit` targets the nearest Iteration Construct or Deferred Block. Consequently, exits and continues of an inner loop retain their normal meaning, as do results of inner selections and do expressions. A `return` to an outer function, a named transfer to an outer construct, or a `yield` to an outer selection is an error. A separate nested function retains its own Function Boundary and normal returns.
 
 ```kimi
 defer
@@ -6544,10 +6549,10 @@ Warn about a possibly missing result when all of the following hold:
 - Unit was not fixed by a declaration, construct rule, or expected Type. Named functions with omitted return Types are excluded from this warning.
 - An indented body supplying Unit has structural end arrival and discards a non-Unit, non-Never value at its end.
 
-Inspect the tail through grouping and labels. For if/match/block, descend into structurally normally completing bodies, checking the single expression or last indented item. Inspect the discarded inner values even when the enclosing discarded construct itself has Type Unit. Stop at explicit `()`, transfers, iterations, statements, and separate functions.
+Inspect the tail through grouping and labels. For if/match/do, descend into structurally normally completing bodies, checking the single expression or last indented item. Inspect the discarded inner values even when the enclosing discarded construct itself has Type Unit. Stop at explicit `()`, transfers, iterations, statements, and separate functions.
 
 ```kimi
-let total = block
+let total = do
     if useCache => loadCached()
     else => compute()
 // If both calls return i32, total is Unit; warn about the discarded tail results.
@@ -6564,6 +6569,8 @@ Consider literals, Copy locals, built-in operations/comparisons, Case constructi
 
 ```kimi
 func isAdult(age: i32) => age >= 18 // Warning: add -> bool if this is the result.
+func answer() => 42               // Warning also with an omitted Unit return Type.
+left == right                    // Warning for initialized i32 locals.
 if ready => 1                     // Warn on the discarded body value.
 func cleanup() => handle.close()  // Do not assume a call is effect-free.
 ```
@@ -8208,12 +8215,12 @@ Preserve Body form, evaluation context, transfer target, result sources, and the
 
 | Area | Required coverage |
 | --- | --- |
-| Layout | Both Body forms for every executable construct; header baseline and wrapped headers; delimiter regions; nested-if grouping; match arm indentation; permitted directives in nested indented bodies and function-leading Constraints; missing items; rejection of old body colons and standalone `=>` lines |
+| Layout | Reserved do and ordinary block identifiers; both Body forms for every executable construct; header baseline and wrapped headers; delimiter regions; nested-if grouping; match arm indentation; permitted directives in nested indented bodies and function-leading Constraints; missing items; rejection of old body colons and standalone `=>` lines |
 | Results | Discarded body values versus explicit transfers; Unit-fixed targets; omitted else; loop exits versus iteration ends; dead result sources; delayed numeric defaults through nested results; declared results versus inferred Never |
 | Anonymous functions | Explicit/common/unique expectations; Unit fixed by another argument independent of order; no body rechecking, instantiation-time reinterpretation, or result-discard overload priority |
 | Transfers | Nearest-target lookup before context/Type checking; named operand colons/grouping; label activation only in bodies; yield through loops; function/defer barriers; discarded-selection bare-yield rejection |
 | Paths and cleanup | Shared structural paths without literal pruning; while true versus loop; condition cleanup before branching; result acquisition before cleanup/delivery; defer self-exit resumes pending cleanup; cleanup divergence does not change the checked Type |
-| Diagnostics and tools | Unexpected inferred Unit through nested discarded selections/blocks; effect-free discard without assuming call purity; no warning solely for a final defer; formatter preserves Body form; refactorings preserve results, targets, and destruction order |
+| Diagnostics and tools | Unexpected inferred Unit through nested discarded selections/do expressions; effect-free discard without assuming call purity; no warning solely for a final defer; formatter preserves Body form; refactorings preserve results, targets, and destruction order |
 
 Coordinate with the cleanup, refinement, and Pattern checks in A.7, A.9, and A.10. These requirements record compiler work; specification integration alone does not establish implementation coverage.
 
@@ -8450,6 +8457,7 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Destruction responsibility | Responsibility for ending an owned value's lifetime under the cleanup rules. | [Value model](#34-values-places-and-storage) |
 | Directive Binding | Resolution and validation of compile-time Condition names and dependencies. | [Compiler requirements](#appendix-a-compiler-implementation-requirements) |
 | Discard Context | An evaluation context that does not retain an expression's result. | [Evaluation contexts](#142-blocks-and-evaluation-contexts) |
+| Do expression | Executes a scoped body once; an optional label receives named exit. | [Do expressions](#1432-do-expressions) |
 | Dynamic Type / Runtime Type Identity | Actual constructed Core / its runtime comparison identity | [Object views](#335-object-views-and-identity), [metadata](#2121-type-identity-and-descriptors) |
 | Effective access domain | Source contexts permitted by a declaration's access and enclosing restrictions. | [Access domains](#931-effective-access-domains-and-protected-receivers) |
 | Effective Type / Flow State | Point-specific guaranteed Type / coordinated analysis facts | [Refinement](#1410-type-refinement) |
@@ -8784,7 +8792,7 @@ ConstantIndexExpression := IntegerLiteral | "(" ConstantIndexExpression ")"
 Argument             := (Name ":")? Expression
 Primary              := "::"? Name | Literal | "(" Expression ")" | TupleExpression
                       | ArrayExpression | DictionaryExpression | FunctionExpression
-                      | IfExpression | MatchExpression | LabeledSelection | Iteration | BlockExpression
+                      | IfExpression | MatchExpression | LabeledSelection | Iteration | DoExpression
                       | Transfer | CompositionRootExpression | ConstructionExpression
                       | InferredCaseExpression
 ConstructionExpression := NamedType "." "init"
@@ -8826,7 +8834,7 @@ UnsafeStatement      := "unsafe" ExecutableBody
 DeferStatement       := "defer" ExecutableBody
 RequireStatement     := "require" Expression RequireJoin "else" ExecutableBody
 RequireJoin          := ? same-line or next effective aligned line, §2.2.1 ?
-BlockExpression      := (Name ":")? "block" ExecutableBody
+DoExpression         := (Name ":")? "do" ExecutableBody
 LabeledSelection     := Name ":" (IfExpression | MatchExpression)
 Iteration            := (Name ":")? (ForExpression | WhileExpression | LoopExpression)
 ForExpression        := "for" ForBinding "in" Expression ExecutableBody
@@ -8859,7 +8867,7 @@ Transfer             := "return" Expression?
 DeinitDeclaration    := "deinit" ExecutableBody
 ```
 
-Conditions and guards must fit bool. Body headers, operand starts, delimiter regions, and required grouping follow §2.2 and §14.5. A label and its construct share a physical line. Block is reserved; to is contextual immediately after exit/continue/yield. SingleItem does not include declarations or directives. Function-like bodies use the corresponding Body item category, not the declaration-container list grammar.
+Conditions and guards must fit bool. Body headers, operand starts, delimiter regions, and required grouping follow §2.2 and §14.5. A label and its construct share a physical line. The keyword do is reserved; to is contextual immediately after exit/continue/yield. SingleItem does not include declarations or directives. Function-like bodies use the corresponding Body item category, not the declaration-container list grammar.
 
 CaseReference qualifiers identify enum Cores without the enum's own Origin annotations; their generic argument Types retain complete Type information. Case existence, expected-Type resolution, payload presence/count, access, and Semantics follow §6.3.2. Payload Cases require parentheses; payload-free Cases prohibit them. Binding and acquisition follow §14.8. Match arm lists and enum bodies remain nonempty after selection.
 

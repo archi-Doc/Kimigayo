@@ -24,9 +24,9 @@ public class OwnershipAnalysisTest
     [InlineData("func f()\n    while true\n        let s = \"a\"\n        exit")]
     [InlineData("func f()\n    while true\n        ()")]
     [InlineData("let s = \"a\"\nif s == \"a\"\n    writeLine(s)")]
-    [InlineData("let s: string\nif true\n    s = \"a\"\nwriteLine(s)")]
-    [InlineData("#if false\nfunc excluded()\n    defer: writeLine(\"later\")\nwriteLine(\"selected\")")]
+    [InlineData("#if false\nfunc excluded()\n    defer => writeLine(\"later\")\nwriteLine(\"selected\")")]
     [InlineData("func sink<T>(x: T) => ()\nfunc twice<T>(x: T)\n    T is Copy\n    sink(x)\n    sink(x)")]
+    [InlineData("defer => writeLine(\"later\")")]
     public void SupportedProgramsVerify(string source)
     {
         var c = Parse(source);
@@ -44,6 +44,7 @@ public class OwnershipAnalysisTest
     [InlineData("func f(c: bool)\n    let s: string\n    if c\n        s = \"a\"\n    s = \"b\"", OwnershipFailure.ReassignedLet)]
     [InlineData("func f(c: bool)\n    let s = \"a\"\n    while c\n        writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f(c: bool)\n    let s: string\n    while c\n        s = \"a\"", OwnershipFailure.ReassignedLet)]
+    [InlineData("let s: string\nif true\n    s = \"a\"\nwriteLine(s)", OwnershipFailure.UninitializedUse)]
     public void StateErrorsAreDiagnosedAfterConvergence(string source, OwnershipFailure failure)
     {
         var c = Parse(source);
@@ -56,7 +57,6 @@ public class OwnershipAnalysisTest
     [InlineData("func show(s: ref/string) => ()\nlet s = \"a\"\nshow(s)")]
     [InlineData("let s = \"a\" + \"b\"")]
     [InlineData("var s = \"a\"\ns += \"b\"")]
-    [InlineData("defer: writeLine(\"later\")")]
     [InlineData("func f(x?: string = \"x\") => ()\nf()")]
     [InlineData("func echo(s: string) -> string => s\nlet s = \"a\"\nif s == echo(s)\n    ()")]
     public void UnsupportedOwnershipCannotBecomeVerified(string source)

@@ -5,7 +5,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
-/// <summary>Attaches a lexical Label to a Block or Loop.</summary>
+/// <summary>Attaches a lexical Label to a control-flow construct.</summary>
 public sealed class LabeledKoto : ExpressionKoto
 {
     /// <inheritdoc/>
@@ -14,14 +14,14 @@ public sealed class LabeledKoto : ExpressionKoto
     /// <summary>Gets the Label name.</summary>
     public string Label { get; private set; }
 
-    /// <summary>Gets the labeled Block or Loop.</summary>
+    /// <summary>Gets the labeled control-flow construct.</summary>
     public Koto Target { get; private set; }
 
     /// <summary>Initializes a new instance of the <see cref="LabeledKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="span">The complete source span.</param>
     /// <param name="label">The Label name.</param>
-    /// <param name="target">The labeled Block or Loop.</param>
+    /// <param name="target">The labeled control-flow construct.</param>
     public LabeledKoto(ref TokenReader reader, SourceSpan span, string label, Koto target)
         : base(ref reader, span)
     {
@@ -35,15 +35,8 @@ public sealed class LabeledKoto : ExpressionKoto
     {
         builder.Append(this.Label);
         builder.Append(':');
-        if (this.Target is CodeBlockKoto block)
-        {
-            block.WriteIndentedTo(ref builder);
-        }
-        else
-        {
-            builder.AppendSpace();
-            this.Target.WriteTo(ref builder);
-        }
+        builder.AppendSpace();
+        this.Target.WriteTo(ref builder);
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)
@@ -55,7 +48,7 @@ public sealed class LabeledKoto : ExpressionKoto
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
-        if (this.Target != oldKoto || newKoto is not (CodeBlockKoto or ForKoto or WhileKoto or LoopKoto or ErrorKoto))
+        if (this.Target != oldKoto || newKoto is not (DoKoto or IfKoto or MatchKoto or ForKoto or WhileKoto or LoopKoto or ErrorKoto))
         {
             return false;
         }

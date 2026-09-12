@@ -22,10 +22,10 @@ public class PatternBindingTest
     [InlineData("func f(x: char) -> i32 => match x\n    'A' => 1\n    _ => 0")]
     [InlineData("func f(x: Option<Option<i32>>) -> i32 => match x\n    .Some(.Some(let n)) => n\n    .Some(_) => 1\n    .None => 0")]
     [InlineData("func f(x: Option<(i32, bool)>) -> i32 => match x\n    .Some((let n, _)) => n\n    .None => 0")]
-    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n) =>\n        n = 2\n        yield n\n    .None => 0")]
-    [InlineData("func f(x: Option<i32>) -> i32\n    return match x\n        .Some(let n) =>\n            yield n\n        .None =>\n            yield 0")]
+    [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(var n)\n        n = 2\n        yield n\n    .None => 0")]
+    [InlineData("func f(x: Option<i32>) -> i32\n    return match x\n        .Some(let n)\n            yield n\n        .None\n            yield 0")]
     [InlineData("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => if n > 0 => n else => 0\n    .None => 0")]
-    [InlineData("func f(x: Option<i32>)\n    match x\n        .Some(_) =>\n            ()")]
+    [InlineData("func f(x: Option<i32>)\n    match x\n        .Some(_)\n            ()\n        .None => ()")]
     [InlineData("func f<T>(x: Option<T>) => match x\n    .Some(let value) => ()\n    .None => ()")]
     [InlineData("func f(x: ref/i32 from static) => match x\n    let r => ()")]
     [InlineData("func f(x: uniq/i32) => match x\n    _ => ()")]
@@ -149,7 +149,7 @@ public class PatternBindingTest
     [Fact]
     public void PatternAndImmediateBodyShareDeclarationSpace()
     {
-        var c = Parse("func f(x: Option<i32>) => match x\n    .Some(let n) =>\n        let n = 1\n    .None =>\n        ()");
+        var c = Parse("func f(x: Option<i32>) => match x\n    .Some(let n)\n        let n = 1\n    .None\n        ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.DuplicateBinding_Kd);
     }
@@ -157,7 +157,7 @@ public class PatternBindingTest
     [Fact]
     public void NestedBlocksMayShadowAndOtherArmsCannotSeeBindings()
     {
-        var valid = Parse("func f(x: Option<i32>) => match x\n    .Some(let n) =>\n        if true\n            let n = 1\n        ()\n    .None =>\n        ()");
+        var valid = Parse("func f(x: Option<i32>) => match x\n    .Some(let n)\n        if true\n            let n = 1\n        ()\n    .None\n        ()");
         Assert.True(valid.Bind().IsComplete, Describe(valid));
         var invalid = Parse("func f(x: Option<i32>) -> i32 => match x\n    .Some(let n) => n\n    .None => n");
         Assert.False(invalid.Bind().IsComplete);
@@ -332,10 +332,10 @@ public class PatternBindingTest
     [Fact]
     public void ResultRequiringBlockMustYieldAndLetPatternIsInitialized()
     {
-        var c = Parse("func f(x: bool) -> i32 => match x\n    true =>\n        ()\n    false => 0");
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Contains(c.AnalyzeControlFlow(c.Binding.TypeSystem).Issues, i => i.Message.Contains("must yield", StringComparison.Ordinal));
-        var immutable = Parse("func f(x: i32) => match x\n    let n =>\n        n = 2");
+        var c = Parse("func f(x: bool) -> i32 => match x\n    true\n        ()\n    false => 0");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, i => i.Code == DiagnosticCode.TypeMismatch_Kd);
+        var immutable = Parse("func f(x: i32) => match x\n    let n\n        n = 2");
         Assert.False(immutable.Bind().IsComplete);
         Assert.Contains(immutable.Binding.Issues, i => i.Code == DiagnosticCode.InvalidAssignment_Kd);
     }

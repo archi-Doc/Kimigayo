@@ -84,14 +84,13 @@ public sealed class MatchKoto : ExpressionKoto
                 arm.Guard.WriteTo(ref builder);
             }
 
-            builder.Append(" =>");
             if (arm.Body is CodeBlockKoto block)
             {
-                block.WriteIndentedTo(ref builder);
+                block.WriteBranchTo(ref builder);
             }
             else
             {
-                builder.AppendSpace();
+                builder.Append(" => ");
                 arm.Body.WriteTo(ref builder);
             }
         }

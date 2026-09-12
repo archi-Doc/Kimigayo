@@ -63,6 +63,7 @@ public enum TokenKind : byte
     Init,
     Deinit,
     Base,
+    Do,
 
     // Contextual keyword
     Alias = 96,

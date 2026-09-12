@@ -34,11 +34,11 @@ public sealed class RequireKoto : Koto
         builder.Append(" else");
         if (this.ElseBody is CodeBlockKoto block)
         {
-            block.WriteIndentedTo(ref builder);
+            block.WriteBranchTo(ref builder);
         }
         else
         {
-            builder.AppendSpace();
+            builder.Append(" => ");
             this.ElseBody.WriteTo(ref builder);
         }
     }

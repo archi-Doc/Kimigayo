@@ -41,7 +41,7 @@ public class FrontEndSyntaxTest
     [InlineData("let a = func(x) => x")]
     [InlineData("let a = func[](x: i32) -> i32 => x")]
     [InlineData("let a = func[source@ref, var count, value@uniq](x) => x")]
-    [InlineData("func f()\n    require valid else return\n    work()")]
+    [InlineData("func f()\n    require valid else => return\n    work()")]
     [InlineData("func f()\n    require valid\n    else\n        return\n    work()")]
     [InlineData("enum Option<T>\n    None\n    Some(T)")]
     [InlineData("enum E origin a\n    A\n    B(ref/T from a)\n    func f() => ()")]

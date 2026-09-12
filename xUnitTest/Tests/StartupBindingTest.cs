@@ -361,7 +361,7 @@ public class StartupBindingTest
 
     [Theory]
     [InlineData("unsafe func risky() => ()\nrisky()", true)]
-    [InlineData("unsafe func risky() => ()\nunsafe:\n    risky()", false)]
+    [InlineData("unsafe func risky() => ()\nunsafe\n    risky()", false)]
     public void CommittedCallsRetainUnsafePermissionChecks(string source, bool error)
     {
         var c = Parse(source);

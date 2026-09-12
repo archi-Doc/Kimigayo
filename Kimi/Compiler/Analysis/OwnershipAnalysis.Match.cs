@@ -138,10 +138,7 @@ public sealed partial class OwnershipAnalysis
                 this.Block(block);
                 if (this.flow.Nodes[block].CanCompleteNormally)
                 {
-                    if (!this.flow.Nodes[syntax].IsResultRequiring)
-                    {
-                        this.Emit(OwnershipOperationKind.Produce, block, output);
-                    }
+                    this.Emit(OwnershipOperationKind.Produce, block, output);
                 }
                 else
                 {
@@ -150,10 +147,26 @@ public sealed partial class OwnershipAnalysis
             }
             else
             {
-                var value = this.Expression(arm.Syntax.Body);
+                var value = -1;
+                if (arm.Syntax.Body is ExpressionKoto && (arm.Syntax.Body is not UnitLiteralKoto || KotoHelper.IsValueContext(syntax)))
+                {
+                    value = this.Expression(arm.Syntax.Body);
+                }
+                else
+                {
+                    this.Statement(arm.Syntax.Body);
+                }
+
                 if (this.flow.Nodes[arm.Syntax.Body].CanCompleteNormally)
                 {
-                    this.Emit(OwnershipOperationKind.Write, arm.Syntax.Body, output, value);
+                    if (KotoHelper.IsValueContext(syntax) && arm.Syntax.Body is ExpressionKoto)
+                    {
+                        this.Emit(OwnershipOperationKind.Write, arm.Syntax.Body, output, value);
+                    }
+                    else
+                    {
+                        this.Emit(OwnershipOperationKind.Produce, arm.Syntax.Body, output);
+                    }
                 }
                 else
                 {

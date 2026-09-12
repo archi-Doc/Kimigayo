@@ -80,7 +80,7 @@ public sealed class ForKoto : ExpressionKoto
         builder.Append(Constants.InKeyword);
         builder.AppendSpace();
         this.Iterable.WriteTo(ref builder);
-        this.Body.WriteIndentedTo(ref builder);
+        this.Body.WriteBranchTo(ref builder);
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)

@@ -65,7 +65,7 @@ public class BindingTest
     [InlineData("func f<T>(x: T) => x\nfunc f<U>(x: U) => x", DiagnosticCode.DuplicateBinding_Kd)]
     [InlineData("func f() -> i32 => 1\nfunc g()\n    let f = 1\n    f()", DiagnosticCode.NotCallable_Kd)]
     [InlineData("group Values\n    var a = b\n    var b = a", DiagnosticCode.CyclicBinding_Kd)]
-    [InlineData("func f() => 1", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func f() => return 1", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("let x: i8 = 128", DiagnosticCode.InvalidNumericLiteral_Kd)]
     [InlineData("let x: f32 = 1e100", DiagnosticCode.InvalidNumericLiteral_Kd)]
     [InlineData("let x = 1\nfunc f() => x", DiagnosticCode.InvalidCaptureBinding_Kd)]

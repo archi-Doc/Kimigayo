@@ -475,26 +475,11 @@ public static partial class Parser
     private static Koto ParseRequire(ref TokenReader reader)
     {
         var start = reader.Read().Span.Start;
-        var condition = ParseRequiredExpression(ref reader);
+        var condition = ParseHeaderExpression(ref reader);
         reader.TrySkipSeparatorsTo(TokenKind.Else);
         reader.TryConsume(TokenKind.Else, out _, true);
-        Koto body;
-        if (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
-        {
-            var inline = reader.CreateInlineReader(out var count);
-            body = ParseBlockItem(ref inline) ?? inline.NewErrorKoto();
-            if (inline.CanRead)
-            {
-                inline.AddDiagnostic(DiagnosticCode.InvalidInlineStatement_Kd);
-            }
-
-            reader.Advance(count);
-        }
-        else
-        {
-            body = ParseRequiredBlock(ref reader);
-        }
-
+        var parsedBody = ParseRequiredBody(ref reader);
+        Koto body = parsedBody.IsExpressionBody ? parsedBody.Items[0] : parsedBody;
         return new RequireKoto(ref reader, SourceSpan.FromBounds(start, body.Span.End), condition, body);
     }
 

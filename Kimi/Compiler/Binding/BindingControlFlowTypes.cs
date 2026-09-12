@@ -67,11 +67,6 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
         for (var i = 0; i < sources.Count; i++)
         {
             var source = sources[i];
-            if (!source.IsReachable)
-            {
-                continue;
-            }
-
             if (SemanticType(source.Type) is not { } type)
             {
                 return null;
@@ -90,7 +85,7 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
             common = type;
         }
 
-        return FlowType(common ?? BoundType.Never);
+        return FlowType(common);
     }
 
     public override bool? IsExhaustive(MatchKoto match) => this.GetMatchCoverage(match, null).IsExhaustive;

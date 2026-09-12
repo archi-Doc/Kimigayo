@@ -15,17 +15,17 @@ public class BlockSyntaxParseTest
     {
         var tree = ParseSuccess("""
             func process()
-                unsafe:
+                unsafe
                     work()
-                defer: close()
-                defer: unsafe: releaseRaw(pointer)
-                defer:
-                    defer: log("end")
+                defer => close()
+                defer => unsafe => releaseRaw(pointer)
+                defer
+                    defer => log("end")
                     exit
-                let result = resolve:
+                let result = resolve: do
                     if ready()
-                        exit 1 from resolve
-                    exit 2 from resolve
+                        exit to resolve: 1
+                    exit to resolve: 2
             """);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(Items(tree)));
         var body = function.Body!;
@@ -43,11 +43,11 @@ public class BlockSyntaxParseTest
         Assert.IsType<ExitKoto>(cleanup.Body.Items[1]);
         var field = Assert.IsType<FieldKoto>(body.Items[4]);
         var labeled = Assert.IsType<LabeledKoto>(field.InitializerKoto);
-        var labeledBody = Assert.IsType<CodeBlockKoto>(labeled.Target);
+        var labeledBody = Assert.IsType<DoKoto>(labeled.Target).Body;
         var resultExit = Assert.IsType<ExitKoto>(labeledBody.Items[1]);
         Assert.Equal("resolve", resultExit.Label);
         Assert.IsType<NumberLiteralKoto>(resultExit.Expression);
-        Assert.Same(labeledBody, KotoHelper.ResolveTransferTarget(resultExit));
+        Assert.Same(labeled.Target, KotoHelper.ResolveTransferTarget(resultExit));
 
         var text = function.ToString();
         var roundTrip = ParseSuccess(text);
@@ -55,51 +55,51 @@ public class BlockSyntaxParseTest
     }
 
     [Theory]
-    [InlineData("defer: ()")]
-    [InlineData("unsafe: ()")]
-    [InlineData("defer: let value = 1")]
-    [InlineData("defer: count += 1")]
-    [InlineData("defer: defer: work()")]
-    [InlineData("defer: let result = if ready() => 1 else => 2")]
-    [InlineData("unsafe: return *pointer")]
+    [InlineData("defer => ()")]
+    [InlineData("unsafe => ()")]
+    [InlineData("unsafe => call(\n    1)")]
+    [InlineData("defer\n    let value = 1")]
+    [InlineData("defer => count += 1")]
+    [InlineData("defer => defer => work()")]
+    [InlineData("defer\n    let result = if ready() => 1 else => 2")]
+    [InlineData("unsafe => return *pointer")]
     [InlineData("let unsafe = 1\nlet from = unsafe")]
     [InlineData("let pointer: unsafe/i32 = obtainPointer()")]
-    [InlineData("let dictionary = [unsafe:1, from:2]")]
+    [InlineData("let dictionary = [unsafe: 1, from:2]")]
     [InlineData("call(from: work(), unsafe: 1)")]
     public void AcceptsInlineStatementsAndContextualNames(string source)
         => ParseSuccess(source);
 
     [Theory]
-    [InlineData("let value = unsafe: work()")]
-    [InlineData("call((defer: work()))")]
-    [InlineData("let value = 1 + unsafe: work()")]
-    [InlineData("return defer: work()")]
-    [InlineData("let value = unsafe:\n    work()")]
+    [InlineData("let value = unsafe => work()")]
+    [InlineData("call((defer => work()))")]
+    [InlineData("let value = 1 + unsafe => work()")]
+    [InlineData("return defer => work()")]
+    [InlineData("let value = unsafe\n    work()")]
     public void RejectsStatementBlocksInValuePositions(string source)
         => Assert.Contains(Parse(source).DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.BlockStatementInExpression_Kd));
 
     [Theory]
-    [InlineData("defer: work(); other()")]
-    [InlineData("unsafe: func helper() => 1")]
-    [InlineData("defer: group Example")]
-    [InlineData("defer: label:\n    work()")]
-    [InlineData("defer: if ready()\n    work()")]
-    [InlineData("unsafe: call(\n    1)")]
-    [InlineData("defer: ;")]
+    [InlineData("defer => work(); other()")]
+    [InlineData("unsafe => func helper() => 1")]
+    [InlineData("defer => group Example")]
+    [InlineData("defer => label:\n    work()")]
+    [InlineData("defer => if ready()\n    work()")]
+    [InlineData("defer => ;")]
     public void RejectsInvalidInlineBodies(string source)
         => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
 
     [Theory]
-    [InlineData("defer:")]
-    [InlineData("unsafe:")]
-    [InlineData("blockA:")]
+    [InlineData("defer => ")]
+    [InlineData("unsafe => ")]
+    [InlineData("blockA: do")]
     [InlineData("if ready()")]
     [InlineData("while ready()")]
     [InlineData("loop")]
     [InlineData("for value in values")]
     [InlineData("func empty()")]
-    [InlineData("defer:\n    // Only a comment.")]
-    [InlineData("unsafe:\n    // Empty body")]
+    [InlineData("defer\n    // Only a comment.")]
+    [InlineData("unsafe\n    // Empty body")]
     [InlineData("if ready()\n    ()\nelse")]
     [InlineData("match value\n    0 =>")]
     [InlineData("struct Example\n    func empty()")]
@@ -107,9 +107,9 @@ public class BlockSyntaxParseTest
         => Assert.Contains(Parse(source).DiagnosticCollection.GetArray(), x => x.Entry.Name == nameof(DiagnosticCode.EmptyExecutableBlock_Kd));
 
     [Theory]
-    [InlineData("defer:")]
-    [InlineData("unsafe:")]
-    [InlineData("blockA:")]
+    [InlineData("defer => ")]
+    [InlineData("unsafe => ")]
+    [InlineData("blockA: do")]
     [InlineData("if ready()")]
     [InlineData("while ready()")]
     [InlineData("loop")]
@@ -123,22 +123,22 @@ public class BlockSyntaxParseTest
     }
 
     [Theory]
-    [InlineData("defer:\n    #if false\n        work()")]
-    [InlineData("unsafe:\n    #if false\n    work()")]
+    [InlineData("defer\n    #if false\n        work()")]
+    [InlineData("unsafe\n    #if false\n    work()")]
     [InlineData("func process()\n    #if false\n        work()")]
     [InlineData("if ready()\n    #if false\n        work()")]
-    [InlineData("defer:\n    #match\n        #case false\n            work()\n        #case _\n            ()")]
+    [InlineData("defer\n    #match\n        #case false\n            work()\n        #case _\n            ()")]
     public void ChecksSourceItemsBeforeConditionalSelection(string source)
         => ParseSuccess(source);
 
     [Theory]
-    [InlineData("defer:\n    #if false")]
-    [InlineData("defer:\n    #match\n        #case true")]
-    [InlineData("defer:\n    #Inline")]
-    [InlineData("defer:\n    public")]
-    [InlineData("defer:\n    #if false\n        ;")]
+    [InlineData("defer\n    #if false")]
+    [InlineData("defer\n    #match\n        #case true")]
+    [InlineData("defer\n    #Inline")]
+    [InlineData("defer\n    public")]
+    [InlineData("defer\n    #if false\n        ;")]
     [InlineData("#if false\ndefer:")]
-    [InlineData("#if false\n    defer:\n    nextProcess()")]
+    [InlineData("#if false\n    defer\n    nextProcess()")]
     [InlineData("#if false\n    #if\n        work()")]
     [InlineData("#if false\n    if ready() => 1 else")]
     [InlineData("#if false\n    func missing()")]
@@ -156,9 +156,9 @@ public class BlockSyntaxParseTest
         => ParseSuccess(source);
 
     [Theory]
-    [InlineData("defer: call(")]
-    [InlineData("defer: let value =")]
-    [InlineData("let value = unsafe: call()")]
+    [InlineData("defer => call(")]
+    [InlineData("defer => let value =")]
+    [InlineData("let value = unsafe => call()")]
     public void InvalidInlineBodyDoesNotConsumeFollowingStatement(string source)
     {
         var tree = Parse(source + "\nnextProcess()");
@@ -171,7 +171,7 @@ public class BlockSyntaxParseTest
     {
         var tree = ParseSuccess("""
             public unsafe func read(pointer: unsafe/i32) -> i32
-                unsafe: return *pointer
+                unsafe => return *pointer
             """);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(Items(tree)));
         Assert.True(function.Modifier.HasFlag(ModifierKind.Unsafe));
@@ -180,8 +180,8 @@ public class BlockSyntaxParseTest
     }
 
     [Theory]
-    [InlineData("group Example\n    defer: close()")]
-    [InlineData("struct Example\n    unsafe:\n        work()")]
+    [InlineData("group Example\n    defer => close()")]
+    [InlineData("struct Example\n    unsafe\n        work()")]
     public void StatementBlocksAreNotDeclarationContainerMembers(string source)
         => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
 
