@@ -26,6 +26,7 @@ foreach ($fixture in Get-ChildItem -LiteralPath $fixtures -Filter '*.ll') {
     $expected = [IO.File]::ReadAllText("$stem.stdout")
     $exit = [int][IO.File]::ReadAllText("$stem.exit")
     $expectedError = [IO.File]::ReadAllText("$stem.stderr")
+    $timeout = if (Test-Path -LiteralPath "$stem.timeout") { [int][IO.File]::ReadAllText("$stem.timeout") } else { 0 }
     foreach ($level in @('O0', 'O2')) {
         $target = Join-Path $out ($fixture.BaseName + '.' + $level)
         $ir = $fixture.FullName
@@ -43,15 +44,25 @@ foreach ($fixture in Get-ChildItem -LiteralPath $fixtures -Filter '*.ll') {
         $start.RedirectStandardOutput = $true
         $start.RedirectStandardError = $true
         $process = [Diagnostics.Process]::Start($start)
-        $stdout = $process.StandardOutput.ReadToEndAsync()
-        $stderr = $process.StandardError.ReadToEndAsync()
-        if (-not $process.WaitForExit(30000)) { $process.Kill(); throw "Timed out: $target" }
-        $actual = $stdout.GetAwaiter().GetResult()
-        $errorText = $stderr.GetAwaiter().GetResult()
-        if ($process.ExitCode -ne $exit -or $actual -cne $expected -or $errorText -cne $expectedError) {
-            throw "Failed: $target, exit=$($process.ExitCode), stdout=$actual, stderr=$errorText"
+        try {
+            $stdout = $process.StandardOutput.ReadToEndAsync()
+            $stderr = $process.StandardError.ReadToEndAsync()
+            if ($timeout -gt 0) {
+                if ($process.WaitForExit($timeout)) { throw "Divergent fixture returned: $target, exit=$($process.ExitCode)" }
+                $process.Kill($true)
+                $process.WaitForExit()
+            }
+            elseif (-not $process.WaitForExit(30000)) { throw "Timed out: $target" }
+            $actual = $stdout.GetAwaiter().GetResult()
+            $errorText = $stderr.GetAwaiter().GetResult()
+            if (($timeout -eq 0 -and $process.ExitCode -ne $exit) -or $actual -cne $expected -or $errorText -cne $expectedError) {
+                throw "Failed: $target, exit=$($process.ExitCode), stdout=$actual, stderr=$errorText"
+            }
         }
-        $process.Dispose()
+        finally {
+            if (-not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
+            $process.Dispose()
+        }
         $runs++
     }
 }

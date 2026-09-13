@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 /// <summary>Builds and solves whole-value and enum-construction ownership CFGs using committed Binding operations.</summary>
 public sealed partial class OwnershipAnalysis
 {
+    internal const int DeferredOperationLimit = 8192;
     private readonly Compilation compilation;
     private readonly List<OwnershipBody> bodies = new();
     private readonly List<OwnershipBody> bodyPool = new();
@@ -24,6 +25,10 @@ public sealed partial class OwnershipAnalysis
     private int abortExit;
     private int registrationSequence;
     private int checkingRegion;
+    private int deferredLoopBase;
+    private int deferredSelectionBase;
+    private int deferredDepth;
+    private int activeDeferred;
 
     internal OwnershipAnalysis(Compilation compilation)
     {
@@ -72,7 +77,7 @@ public sealed partial class OwnershipAnalysis
         var unsupported = 0;
         for (var i = 0; i < this.issues.Count; i++)
         {
-            if (this.issues[i].Failure == OwnershipFailure.Unsupported)
+            if (this.issues[i].Failure is OwnershipFailure.Unsupported or OwnershipFailure.ExpansionLimit)
             {
                 unsupported++;
             }
@@ -105,6 +110,7 @@ public sealed partial class OwnershipAnalysis
                 OwnershipFailure.UninitializedUse => DiagnosticCode.UninitializedPlace_Kd,
                 OwnershipFailure.PossiblyMovedUse => DiagnosticCode.MovedPlace_Kd,
                 OwnershipFailure.ReassignedLet => DiagnosticCode.ReassignedLet_Kd,
+                OwnershipFailure.ExpansionLimit => DiagnosticCode.DeferredExpansionLimit_Kd,
                 _ => DiagnosticCode.UnsupportedOwnership_Kd,
             });
         }
@@ -124,6 +130,19 @@ public sealed partial class OwnershipAnalysis
     }
 
     private void Build(FunctionKoto function)
+    {
+        try
+        {
+            this.BuildBody(function);
+        }
+        catch (DeferredExpansionLimitException limit)
+        {
+            this.body.ReportIssue(new(limit.SourceNode, OwnershipFailure.ExpansionLimit));
+            this.issues.AddRange(this.body.IssueStorage);
+        }
+    }
+
+    private void BuildBody(FunctionKoto function)
     {
         if (this.bodies.Count == this.bodyPool.Count)
         {
@@ -146,6 +165,10 @@ public sealed partial class OwnershipAnalysis
         this.patternStorageNeeded.Clear();
         this.registrationSequence = 0;
         this.checkingRegion = 0;
+        this.deferredLoopBase = 0;
+        this.deferredSelectionBase = 0;
+        this.deferredDepth = 0;
+        this.activeDeferred = -1;
         this.current = -1;
         this.Emit(OwnershipOperationKind.Entry, function);
         this.normalExit = this.New(OwnershipOperationKind.Exit, function);
@@ -274,6 +297,24 @@ public sealed partial class OwnershipAnalysis
         return -1;
     }
 
+    private int LocalPlace(BindingSymbol? symbol, Koto source, BoundType? type, bool mutable, AcquisitionKind? acquisition = null)
+    {
+        // Deferred replicas have separate operation/value IDs but nonoverlapping lifetimes
+        // of the same lexical binding. Declare resets the shared Place on each execution.
+        if (symbol is not null && this.body.SymbolPlaces.TryGetValue(symbol, out var existing))
+        {
+            return existing;
+        }
+
+        var place = this.Place(source, type, OwnershipPlaceKind.Local, mutable, acquisition);
+        if (symbol is not null)
+        {
+            this.body.SymbolPlaces.Add(symbol, place);
+        }
+
+        return place;
+    }
+
     private int Use(Koto source, int place, PlaceUseKind use, AcquisitionKind? acquisition = null)
     {
         if (place < 0)
@@ -334,11 +375,7 @@ public sealed partial class OwnershipAnalysis
 
         if (node is FieldKoto field)
         {
-            var id = this.Place(field, field.BoundType, OwnershipPlaceKind.Local, field.VariableKind == VariableKind.Var);
-            if (field.BoundSymbol is { } symbol)
-            {
-                this.body.SymbolPlaces[symbol] = id;
-            }
+            var id = this.LocalPlace(field.BoundSymbol, field, field.BoundType, field.VariableKind == VariableKind.Var);
 
             this.locals.Add(new(id, field, this.registrationSequence++));
             this.Emit(OwnershipOperationKind.Declare, field, id);
@@ -736,7 +773,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var target = this.flow!.Targets.GetValueOrDefault(jump);
-        if (jump is ReturnKoto && ReferenceEquals(target, this.body.Function))
+        if (jump is ReturnKoto && this.deferredDepth == 0 && ReferenceEquals(target, this.body.Function))
         {
             this.Emit(OwnershipOperationKind.Write, jump, this.resultPlace, value);
             this.Cleanup(0, 0, jump, CleanupReason.Return);
@@ -753,7 +790,7 @@ public sealed partial class OwnershipAnalysis
         else
         {
             var found = false;
-            for (var i = this.loops.Count - 1; i >= 0; i--)
+            for (var i = this.loops.Count - 1; i >= this.deferredLoopBase; i--)
             {
                 var loop = this.loops[i];
                 if (ReferenceEquals(loop.Source, target) && jump is ExitKoto or ContinueKoto)
@@ -790,7 +827,6 @@ public sealed partial class OwnershipAnalysis
     private void Cleanup(int tempStart, int localStart, Koto source, CleanupReason reason)
     {
         var start = this.body.CleanupStepStorage.Count;
-        var edge = this.current >= 0 ? this.body.EdgeStorage.Count : -1;
         // Merge lexical registrations without allocating or removing live outer entries.
         // Separate marks let ExpressionEnd clean temporaries without ending a local's lifetime.
         var temporary = this.temporaries.Count - 1;
@@ -799,7 +835,13 @@ public sealed partial class OwnershipAnalysis
         {
             var registration = temporary >= tempStart && (local < localStart || this.temporaries[temporary].Sequence > this.locals[local].Sequence)
                 ? this.temporaries[temporary--] : this.locals[local--];
-            if (registration.IsSubject)
+            if (registration.Source is DeferredBlockKoto deferred)
+            {
+                this.FinishCleanupSegment(start, reason);
+                this.ExecuteDeferred(deferred);
+                start = this.body.CleanupStepStorage.Count;
+            }
+            else if (registration.IsSubject)
             {
                 this.CleanupSubject(registration.Place, source);
             }
@@ -809,21 +851,21 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
+        this.FinishCleanupSegment(start, reason);
+    }
+
+    private void FinishCleanupSegment(int start, CleanupReason reason)
+    {
         var count = this.body.CleanupStepStorage.Count - start;
         if (count != 0)
         {
-            this.body.CleanupPlanStorage.Add(new(edge < this.body.EdgeStorage.Count ? edge : -1, start, count, reason));
+            var operation = this.body.CleanupStepStorage[start].Operation;
+            this.body.CleanupPlanStorage.Add(new(this.body.IncomingEdges[operation], start, count, reason));
         }
     }
 
     private void CleanupPlace(int place, Koto declaration, Koto source)
     {
-        if (declaration is DeferredBlockKoto deferred)
-        {
-            this.ScopedBody(deferred, deferred.Body);
-            return;
-        }
-
         var operation = this.Emit(OwnershipOperationKind.Cleanup, source, place);
         this.body.OperationSteps[operation] = this.body.CleanupStepStorage.Count;
         this.body.CleanupStepStorage.Add(new(operation, place, declaration, place < 0 ? CleanupAction.Unsupported : CleanupAction.Skip));
@@ -832,6 +874,11 @@ public sealed partial class OwnershipAnalysis
     private int New(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None)
     {
         var id = this.body.OperationStorage.Count;
+        if (id >= DeferredOperationLimit && this.body.DeferredPlans.Count != 0)
+        {
+            throw new DeferredExpansionLimitException(source);
+        }
+
         this.body.OperationStorage.Add(new(kind, source, place, input, acquisition));
         this.resultHeads.Add(-1);
         this.RecordValue(id, kind, source, place, input);
@@ -872,7 +919,7 @@ public sealed partial class OwnershipAnalysis
     private void Unsupported(Koto source)
     {
         this.Emit(OwnershipOperationKind.Unsupported, source);
-        this.body.IssueStorage.Add(new(source, OwnershipFailure.Unsupported));
+        this.body.ReportIssue(new(source, OwnershipFailure.Unsupported));
     }
 
     private readonly record struct Registration(int Place, Koto Source, int Sequence, bool IsSubject = false);

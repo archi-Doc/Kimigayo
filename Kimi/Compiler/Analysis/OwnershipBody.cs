@@ -263,7 +263,7 @@ public sealed partial class OwnershipBody
                 var place = this.PlaceStorage[operation.Place];
                 if (place.Kind == OwnershipPlaceKind.Local && !place.Mutable && (state & PlaceState.MayAssigned) != 0)
                 {
-                    this.IssueStorage.Add(new(operation.Source, OwnershipFailure.ReassignedLet, operation.Place));
+                    this.ReportIssue(new(operation.Source, OwnershipFailure.ReassignedLet, operation.Place));
                 }
 
                 if (operation.Input >= 0)
@@ -279,7 +279,7 @@ public sealed partial class OwnershipBody
     {
         if ((state & PlaceState.MustInit) == 0)
         {
-            this.IssueStorage.Add(new(
+            this.ReportIssue(new(
                 operation.Source,
                 (state & PlaceState.MayMoved) != 0 ? OwnershipFailure.PossiblyMovedUse : OwnershipFailure.UninitializedUse,
                 place));

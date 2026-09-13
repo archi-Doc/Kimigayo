@@ -89,7 +89,14 @@ public sealed class GroupKoto : DeclarationContainerKoto
             {
                 hasNonAliasDeclaration = true;
                 var caseGroup = Parser.ParseCompileTimeSwitch(ref reader);
-                this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, caseGroup);
+                this.AddSelectedRuntimeItems(reader.CodeContext, caseGroup);
+                continue;
+            }
+
+            if (reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock)
+            {
+                hasNonAliasDeclaration = true;
+                this.AddSelectedRuntimeItems(reader.CodeContext, Parser.ParseBlock(ref reader));
                 continue;
             }
 
@@ -147,6 +154,21 @@ public sealed class GroupKoto : DeclarationContainerKoto
             {
                 reader.Advance();
             }
+        }
+    }
+
+    private void AddSelectedRuntimeItems(CodeContext context, Koto selected)
+    {
+        if (selected is CodeBlockKoto block)
+        {
+            for (var i = 0; i < block.Items.Count; i++)
+            {
+                this.Kotonoha.AddGeneratedFunctionItem(context, block.Items[i]);
+            }
+        }
+        else
+        {
+            this.Kotonoha.AddGeneratedFunctionItem(context, selected);
         }
     }
 }

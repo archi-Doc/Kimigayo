@@ -172,7 +172,7 @@ public class CompilationSpecificationTest
                 compilation.Kotonoha.GeneratedFunction!.Body!.Items,
                 node => Assert.Equal("builtinSelected", Assert.IsType<FieldKoto>(node).NameKoto.IdentifierName),
                 node => Assert.Equal("settingSelected", Assert.IsType<FieldKoto>(node).NameKoto.IdentifierName),
-                node => Assert.Equal("matchSelected", Assert.IsType<FieldKoto>(Assert.Single(Assert.IsType<CodeBlockKoto>(node).Items)).NameKoto.IdentifierName));
+                node => Assert.Equal("matchSelected", Assert.IsType<FieldKoto>(node).NameKoto.IdentifierName));
         }
         finally
         {

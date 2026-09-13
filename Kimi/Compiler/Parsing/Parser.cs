@@ -2111,7 +2111,7 @@ CloseParameters:
             if (IsCompileTimeSwitchStart(ref reader))
             {
                 var caseGroup = ParseCompileTimeSwitch(ref reader);
-                items.Add(caseGroup);
+                AddSelectedItems(ref items, caseGroup);
                 seenExecutableItem = true;
                 continue;
             }
@@ -2141,11 +2141,19 @@ CloseParameters:
 
             seenExecutableItem = true;
             var oldPosition = reader.Position;
-            var item = reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock
+            var directiveBlock = reader.HasCompileTimeIfPrefix && reader.CurrentTokenKind == TokenKind.StartBlock;
+            var item = directiveBlock
                 ? ParseBlock(ref reader) : ParseBlockItem(ref reader);
             if (item is not null)
             {
-                items.Add(item);
+                if (directiveBlock)
+                {
+                    AddSelectedItems(ref items, item);
+                }
+                else
+                {
+                    items.Add(item);
+                }
             }
 
             if (reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock))
@@ -2166,6 +2174,21 @@ CloseParameters:
             ref reader,
             SourceSpan.FromBounds(start.Start, Math.Max(start.End, eof)),
             items.ToArray());
+    }
+
+    private static void AddSelectedItems(ref TemporaryKotoList items, Koto selected)
+    {
+        if (selected is CodeBlockKoto block)
+        {
+            for (var i = 0; i < block.Items.Count; i++)
+            {
+                items.Add(block.Items[i]);
+            }
+        }
+        else
+        {
+            items.Add(selected); // Invalid switches retain recovery syntax and diagnostics.
+        }
     }
 
     internal static Koto? ParseBlockItem(ref TokenReader reader)

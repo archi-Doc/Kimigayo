@@ -222,8 +222,7 @@ public sealed partial class OwnershipAnalysis
         {
             var acquisition = PatternAcquisitionKind(pattern);
             this.CheckAcquisition(input, acquisition);
-            var local = this.Place(pattern.Source, pattern.MatchedType, OwnershipPlaceKind.Local, pattern.Source is SyntaxFormKoto { IsMutablePattern: true }, acquisition);
-            this.body.SymbolPlaces[pattern.BodySymbol!] = local;
+            var local = this.LocalPlace(pattern.BodySymbol, pattern.Source, pattern.MatchedType, pattern.Source is SyntaxFormKoto { IsMutablePattern: true }, acquisition);
             this.Emit(OwnershipOperationKind.Declare, pattern.Source, local);
             this.locals.Add(new(local, pattern.Source, this.registrationSequence++));
             this.Emit(OwnershipOperationKind.AcquirePattern, pattern.Source, input, local, acquisition);
@@ -284,7 +283,7 @@ public sealed partial class OwnershipAnalysis
 
     private bool TryGetSelection(Koto? target, out SelectionFrame frame)
     {
-        for (var i = this.selections.Count - 1; i >= 0; i--)
+        for (var i = this.selections.Count - 1; i >= this.deferredSelectionBase; i--)
         {
             if (ReferenceEquals(this.selections[i].Source, target))
             {

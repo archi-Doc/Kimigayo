@@ -119,6 +119,8 @@ public enum DiagnosticCode
 
     GenerationFailed_Kd,
 
+    DeferredExpansionLimit_Kd,
+
     Count, // Last sentinel
 }
 

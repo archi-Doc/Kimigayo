@@ -297,6 +297,9 @@
   + Name="UnsupportedOwnership_Kd"
     Message="This operation requires ownership or cleanup analysis outside the implemented subset"
 
+  + Name="DeferredExpansionLimit_Kd"
+    Message="Deferred cleanup expansion exceeds the implementation limit of 8192 ownership operations per function"
+
   + Name="InvalidPattern_Kd"
     Message="The Pattern is not valid for this matched Type, Case, or payload arity"
 

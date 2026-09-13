@@ -19,10 +19,13 @@ internal sealed partial class BodyLowering
     private const byte NormalMark = 1;
     private const byte AbortMark = 2;
     private const byte CleanupMark = 4;
+    private const byte DeferredEntryMark = 8;
+    private const byte DeferredContinuationMark = 16;
 
     private readonly SourceLocationTable locations = new();
     private readonly List<int> arguments = new();
     private byte[] marks = [];
+    private int[] deferredOwners = [];
 
     internal bool Lower(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, out string? failure)
     {
@@ -59,8 +62,93 @@ internal sealed partial class BodyLowering
         return false;
     }
 
+    private bool MarkDeferredPlans(OwnershipBody body, Span<byte> marks)
+    {
+        for (var d = 0; d < body.DeferredPlans.Count; d++)
+        {
+            var deferred = body.DeferredPlans[d];
+            if (deferred.Source is not DeferredBlockKoto || (uint)deferred.Entry >= (uint)marks.Length ||
+                deferred.Continuation != deferred.Entry + 1 || deferred.End <= deferred.Continuation || deferred.End > marks.Length ||
+                deferred.Parent < -1 || deferred.Parent >= d || (d > 0 && deferred.Entry <= body.DeferredPlans[d - 1].Entry) ||
+                marks[deferred.Entry] != 0 || marks[deferred.Continuation] != 0 ||
+                body.Operations[deferred.Entry].Kind != OwnershipOperationKind.Branch || body.Operations[deferred.Continuation].Kind != OwnershipOperationKind.Branch ||
+                !ReferenceEquals(body.Operations[deferred.Entry].Source, deferred.Source) || !ReferenceEquals(body.Operations[deferred.Continuation].Source, deferred.Source) ||
+                deferred.Edge < -1 || (deferred.Edge >= 0 && ((uint)deferred.Edge >= (uint)body.Edges.Count || body.Edges[deferred.Edge].To != deferred.Entry)) ||
+                (deferred.Edge < 0 && body.IsReachable(deferred.Entry)) ||
+                (body.IsReachable(deferred.Entry) && body.IsReachable(deferred.Continuation) != deferred.CanComplete))
+            {
+                return false;
+            }
+
+            marks[deferred.Entry] |= DeferredEntryMark;
+            marks[deferred.Continuation] |= DeferredContinuationMark;
+        }
+
+        // Preorder intervals identify the innermost body in one pass; nested cleanup
+        // does not repeatedly scan the same operation or edge at each nesting level.
+        Grow(ref this.deferredOwners, marks.Length);
+        var active = -1;
+        var next = 0;
+        for (var op = 0; op < marks.Length; op++)
+        {
+            while (active >= 0 && op >= body.DeferredPlans[active].End)
+            {
+                active = body.DeferredPlans[active].Parent;
+            }
+
+            if (next < body.DeferredPlans.Count && body.DeferredPlans[next].Entry == op)
+            {
+                var plan = body.DeferredPlans[next];
+                if (plan.Parent != active || (active >= 0 && plan.End > body.DeferredPlans[active].End))
+                {
+                    return false;
+                }
+
+                active = next++;
+            }
+
+            this.deferredOwners[op] = active;
+        }
+
+        for (var e = 0; e < body.Edges.Count; e++)
+        {
+            var edge = body.Edges[e];
+            if ((uint)edge.From >= (uint)marks.Length || (uint)edge.To >= (uint)marks.Length)
+            {
+                return false;
+            }
+
+            if (edge.Kind != OwnershipEdgeKind.Abort)
+            {
+                var from = this.deferredOwners[edge.From];
+                var to = this.deferredOwners[edge.To];
+                if (to >= 0 && edge.To == body.DeferredPlans[to].Entry && e != body.DeferredPlans[to].Edge)
+                {
+                    return false;
+                }
+
+                if (from >= 0 && edge.From == body.DeferredPlans[from].Continuation)
+                {
+                    from = body.DeferredPlans[from].Parent;
+                }
+
+                if (to != from && !(to >= 0 && body.DeferredPlans[to].Parent == from && body.DeferredPlans[to].Entry == edge.To))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     private bool MarkCleanupPlans(OwnershipBody body, Span<byte> marks)
     {
+        if (body.DeferredPlans.Count > 0 && !this.MarkDeferredPlans(body, marks))
+        {
+            return false;
+        }
+
         for (var p = 0; p < body.CleanupPlans.Count; p++)
         {
             var cleanup = body.CleanupPlans[p];
@@ -80,6 +168,14 @@ internal sealed partial class BodyLowering
                 }
 
                 marks[step.Operation] |= CleanupMark;
+                if (s + 1 < cleanup.Start + cleanup.Count)
+                {
+                    var edge = body.EdgeHeads[step.Operation];
+                    if (edge < 0 || body.Edges[edge].Next >= 0 || body.Edges[edge].To != body.CleanupSteps[s + 1].Operation)
+                    {
+                        return false;
+                    }
+                }
             }
 
             if (cleanup.Edge >= 0 && body.Edges[cleanup.Edge].To != body.CleanupSteps[cleanup.Start].Operation)
@@ -118,6 +214,11 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Consume:
             case OwnershipOperationKind.Write:
             case OwnershipOperationKind.Branch:
+                if (operation.Source is DeferredBlockKoto && (marks[index] & (DeferredEntryMark | DeferredContinuationMark)) == 0)
+                {
+                    return Fail("A deferred boundary has no execution plan.", out failure);
+                }
+
                 return this.LowerScalar(body, function, constants, projectDirectory, index, out failure);
 
             case OwnershipOperationKind.Produce:

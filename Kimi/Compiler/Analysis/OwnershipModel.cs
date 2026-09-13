@@ -114,6 +114,7 @@ public enum OwnershipFailure : byte
     PossiblyMovedUse,
     ReassignedLet,
     Unsupported,
+    ExpansionLimit,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition);
@@ -137,6 +138,9 @@ public readonly record struct OwnershipCleanupStep(int Operation, int Place, Kot
 
 /// <summary>A cleanup sequence on an edge, in execution order, indexed into CleanupSteps.</summary>
 public readonly record struct OwnershipCleanupPlan(int Edge, int Start, int Count, CleanupReason Reason);
+
+/// <summary>One deferred execution, including empty bodies; endpoints are explicit CFG operations.</summary>
+public readonly record struct OwnershipDeferredPlan(Koto Source, int Edge, int Entry, int Continuation, int End, int Parent, bool CanComplete);
 
 /// <summary>One construction's N-to-one responsibility transfer; payload Places are contiguous.</summary>
 public readonly record struct OwnershipConstructionPlan(int Place, BoundEnumCase Case, int PayloadStart, int PayloadCount);
@@ -167,6 +171,7 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipPhiInput> PhiInputs = new();
     internal readonly List<OwnershipCleanupStep> CleanupStepStorage = new();
     internal readonly List<OwnershipCleanupPlan> CleanupPlanStorage = new();
+    internal readonly List<OwnershipDeferredPlan> DeferredPlanStorage = new();
     internal readonly List<OwnershipConstructionPlan> ConstructionStorage = new();
     internal readonly List<OwnershipConstructionPlan> DecompositionStorage = new();
     internal readonly List<OwnershipMatchPlan> MatchStorage = new();
@@ -185,6 +190,7 @@ public sealed partial class OwnershipBody
     internal ulong[] BlockStates = [];
     internal ulong[] Scratch = [];
 #pragma warning restore SA1401
+    private readonly HashSet<(Koto Source, OwnershipFailure Failure)> reportedIssues = new();
 
     public FunctionKoto Function { get; internal set; } = null!;
 
@@ -197,6 +203,8 @@ public sealed partial class OwnershipBody
     public IReadOnlyList<OwnershipCleanupStep> CleanupSteps => this.CleanupStepStorage;
 
     public IReadOnlyList<OwnershipCleanupPlan> CleanupPlans => this.CleanupPlanStorage;
+
+    public IReadOnlyList<OwnershipDeferredPlan> DeferredPlans => this.DeferredPlanStorage;
 
     public IReadOnlyList<OwnershipConstructionPlan> Constructions => this.ConstructionStorage;
 
@@ -230,17 +238,27 @@ public sealed partial class OwnershipBody
         this.PhiInputs.Clear();
         this.CleanupStepStorage.Clear();
         this.CleanupPlanStorage.Clear();
+        this.DeferredPlanStorage.Clear();
         this.ConstructionStorage.Clear();
         this.DecompositionStorage.Clear();
         this.MatchStorage.Clear();
         this.MatchArmStorage.Clear();
         this.IssueStorage.Clear();
+        this.reportedIssues.Clear();
         this.OperationRegions.Clear();
         this.CheckingRegions.Clear();
         this.CheckingRegions.Add(new(-1, -1)); // Region zero is ordinary source flow.
         this.checkingSolved = false;
         this.ResetCompletion();
         this.SymbolPlaces.Clear();
+    }
+
+    internal void ReportIssue(OwnershipIssue issue)
+    {
+        if (this.reportedIssues.Add((issue.Source, issue.Failure)))
+        {
+            this.IssueStorage.Add(issue);
+        }
     }
 }
 

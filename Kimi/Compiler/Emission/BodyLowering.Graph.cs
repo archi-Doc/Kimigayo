@@ -226,7 +226,7 @@ internal sealed partial class BodyLowering
                 }
 
                 var next = this.successor[cursor];
-                if (next >= 0 && this.blocks[next] == i)
+                if (next >= 0 && next != i && this.blocks[next] == i)
                 {
                     cursor = next;
                     continue;

@@ -28,8 +28,7 @@ public class CompileTimeSwitchParseTest
                     var fallback = 4
             """);
         AssertValid(compilation);
-        var selected = Assert.IsType<CodeBlockKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
-        var function = Assert.IsType<FunctionKoto>(Assert.Single(selected.Items));
+        var function = Assert.IsType<FunctionKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
         Assert.IsType<MatchKoto>(function.ExpressionBody);
         Assert.Contains("match flag", function.ToString());
     }
@@ -205,7 +204,7 @@ public class CompileTimeSwitchParseTest
     {
         var compilation = Parse("#if outerCondition\n#switch\n    #case innerCondition\n        ()\n    #case _\n        ()\n#switch\n    #case _\n        ()");
         Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(compilation.Kotonoha.DiagnosticCollection.GetArray()).Entry.Name);
-        Assert.IsType<CodeBlockKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
+        Assert.IsType<UnitLiteralKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
     }
 
     [Theory]
@@ -229,7 +228,7 @@ public class CompileTimeSwitchParseTest
 
         AssertValid(compilation);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(compilation.Kotonoha.GeneratedFunction!.Body!.Items));
-        Assert.Empty(Assert.IsType<CodeBlockKoto>(Assert.Single(function.Body!.Items)).Items);
+        Assert.Empty(function.Body!.Items);
     }
 
     [Fact]
@@ -251,7 +250,7 @@ public class CompileTimeSwitchParseTest
     }
 
     private static string SelectedFieldName(Koto item)
-        => Assert.IsType<FieldKoto>(Assert.Single(Assert.IsType<CodeBlockKoto>(item).Items)).NameKoto.IdentifierName;
+        => Assert.IsType<FieldKoto>(item).NameKoto.IdentifierName;
 
     private static void AssertValid(Compilation compilation)
         => Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());

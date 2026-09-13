@@ -99,13 +99,13 @@ public class ResultEmissionTest
     [Theory]
     [InlineData("var x = 1\nif true\n    defer => x = 2\n    ()")]
     [InlineData("var x = 1\nlet y = work: do\n    defer => x = 2\n    exit to work: x")]
-    public void DeferredCleanupRemainsExplicitlyUnsupported(string source)
+    public void DeferredCleanupUsesVerifiedExitPlans(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Ownership.Result.IsVerified);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Equal(string.Empty, writer.ToString());
+        Assert.True(c.Emission.WriteIr(writer, out var error), error);
+        Assert.NotEmpty(writer.ToString());
     }
 
     [Theory]

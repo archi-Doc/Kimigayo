@@ -10,6 +10,7 @@ public sealed partial class OwnershipBody
 #if DEBUG
     private readonly List<(int Entry, int Exit, bool CanComplete)> completionChecks = new();
 #endif
+    private readonly HashSet<(Koto Source, OwnershipOperationKind Kind, int Place)> checkedUses = new();
     private int[] checkingBlockOf = [];
     private int[] checkingLeaders = [];
     private int[] checkingNext = [];
@@ -68,12 +69,25 @@ public sealed partial class OwnershipBody
             this.SolveChecking();
         }
 
+        this.checkedUses.Clear();
         for (var i = 0; i < this.OperationStorage.Count; i++)
         {
             var operation = this.OperationStorage[i];
-            if (!this.Reachable[i] && !this.HasCheckingState(i) && this.NeedsSourceState(operation))
+            if ((this.Reachable[i] || this.HasCheckingState(i)) && this.NeedsSourceState(operation))
             {
-                this.IssueStorage.Add(new(operation.Source, OwnershipFailure.Unsupported, operation.Place));
+                this.checkedUses.Add((operation.Source, operation.Kind, operation.Place));
+            }
+        }
+
+        for (var i = 0; i < this.OperationStorage.Count; i++)
+        {
+            var operation = this.OperationStorage[i];
+            // An orphan replica at lexical completion is not a new source use. Every
+            // actual runtime/checking execution was checked above, including failures.
+            if (!this.Reachable[i] && !this.HasCheckingState(i) && this.NeedsSourceState(operation) &&
+                !this.checkedUses.Contains((operation.Source, operation.Kind, operation.Place)))
+            {
+                this.ReportIssue(new(operation.Source, OwnershipFailure.Unsupported, operation.Place));
             }
         }
     }

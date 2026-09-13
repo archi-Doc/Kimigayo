@@ -135,7 +135,7 @@ public class ScalarEmissionTest
         Assert.Equal(string.Empty, writer.ToString());
     }
 
-    internal static string EmitFixture(string name, string source, string stdout, int exit = 0)
+    internal static string EmitFixture(string name, string source, string stdout, int exit = 0, string? stderr = null, int timeoutMilliseconds = 0)
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
@@ -148,8 +148,9 @@ public class ScalarEmissionTest
         File.WriteAllText(Path.Combine(path, name + ".ll"), ir);
         File.WriteAllText(Path.Combine(path, name + ".stdout"), stdout);
         File.WriteAllText(Path.Combine(path, name + ".exit"), exit.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        File.WriteAllText(Path.Combine(path, name + ".timeout"), timeoutMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
         var column = name is "OverflowAdd" or "OverflowNeg" ? 5 : 1;
-        File.WriteAllText(Path.Combine(path, name + ".stderr"), exit == 0 ? string.Empty : $"Hello.kimi:2:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
+        File.WriteAllText(Path.Combine(path, name + ".stderr"), stderr ?? (exit == 0 ? string.Empty : $"Hello.kimi:2:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n"));
         return ir;
     }
 }
