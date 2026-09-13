@@ -8,7 +8,7 @@ internal sealed partial class BodyLowering
     {
         var operation = body.Operations[id];
         var place = operation.Kind == OwnershipOperationKind.Consume ? operation.Input : operation.Place;
-        return place >= 0 ? body.Places[place].Type : body.Values[id].Kind == OwnershipValueKind.Phi ? BoundType.Boolean : null;
+        return place >= 0 ? body.Places[place].Type : null;
     }
 
     private static bool ValidateValues(OwnershipBody body)
@@ -25,10 +25,12 @@ internal sealed partial class BodyLowering
             {
                 OwnershipValueKind.None or OwnershipValueKind.Constant => 0,
                 OwnershipValueKind.Alias or OwnershipValueKind.Unary => 1,
-                OwnershipValueKind.Binary or OwnershipValueKind.Phi => 2,
+                OwnershipValueKind.Binary => 2,
+                OwnershipValueKind.Phi => value.Count,
                 _ => -1,
             };
-            if (value.Count != expected || value.Start < 0 || value.Start > body.ValueOperands.Count - value.Count)
+            var length = value.Kind == OwnershipValueKind.Phi ? body.PhiInputs.Count : body.ValueOperands.Count;
+            if (value.Count < 0 || value.Count != expected || value.Start < 0 || value.Start > length - value.Count)
             {
                 return false;
             }
@@ -36,6 +38,17 @@ internal sealed partial class BodyLowering
             // Non-scalar operations retain ownership-only Place flow until their lowering is implemented.
             var operation = body.Operations[id];
             var scalar = IsScalar(ValueType(body, id)!);
+            if (scalar && operation.Kind == OwnershipOperationKind.Branch && value.Kind != OwnershipValueKind.Phi)
+            {
+                return false;
+            }
+
+            if (value.Kind == OwnershipValueKind.Phi && (!scalar || operation.Kind != OwnershipOperationKind.Branch ||
+                !ReferenceEquals(ValueType(body, id), operation.Source.BoundType)))
+            {
+                return false;
+            }
+
             if (!scalar && operation.Kind != OwnershipOperationKind.Branch)
             {
                 continue;
@@ -51,6 +64,16 @@ internal sealed partial class BodyLowering
 
                 var producer = body.Operations[input].Kind;
                 if (producer is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce) && body.Values[input].Kind != OwnershipValueKind.Phi)
+                {
+                    return false;
+                }
+
+                if (value.Kind == OwnershipValueKind.Phi && (body.Values[input].Kind == OwnershipValueKind.Alias || !ReferenceEquals(ValueType(body, id), ValueType(body, input))))
+                {
+                    return false;
+                }
+
+                if (value.Kind == OwnershipValueKind.Alias && !ReferenceEquals(operation.Kind == OwnershipOperationKind.Branch ? BoundType.Boolean : ValueType(body, id), ValueType(body, input)))
                 {
                     return false;
                 }

@@ -27,15 +27,22 @@ internal sealed partial class BodyLowering
         }
     }
 
-    private static int Input(OwnershipBody body, int operation, int index) => body.ValueOperands[body.Values[operation].Start + index];
+    private static int Input(OwnershipBody body, int operation, int index) => body.Values[operation].Kind == OwnershipValueKind.Phi
+        ? body.PhiInputs[body.Values[operation].Start + index].Value : body.ValueOperands[body.Values[operation].Start + index];
 
-    private static EmissionOperand Operand(OwnershipBody body, int id)
+    private static int Definition(OwnershipBody body, int id)
     {
         while (body.Values[id].Kind == OwnershipValueKind.Alias)
         {
             id = Input(body, id, 0);
         }
 
+        return id;
+    }
+
+    private static EmissionOperand Operand(OwnershipBody body, int id)
+    {
+        id = Definition(body, id);
         return body.Values[id].Kind == OwnershipValueKind.Constant ? new(EmissionOperandKind.Integer, body.Values[id].Constant) : new(EmissionOperandKind.Value, id);
     }
 
@@ -150,15 +157,20 @@ internal sealed partial class BodyLowering
             this.blockEnds[i] = end;
         }
 
+        this.BuildDominators(body);
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
+            if (ReferenceEquals(place.Type, BoundType.Never) && place.Kind == OwnershipPlaceKind.Result)
+            {
+                continue;
+            }
+
             if (WindowsLowering.GetValue(place.Type) is not { } value ||
                 (!IsScalar(place.Type) && !ReferenceEquals(place.Type, BoundType.Unit) && !ReferenceEquals(place.Type, BoundType.String)) ||
-                (ReferenceEquals(place.Type, BoundType.String) && place.Kind != OwnershipPlaceKind.Temporary) ||
-                (IsScalar(place.Type) && place.Source is IfKoto or DoKoto or LoopKoto))
+                (ReferenceEquals(place.Type, BoundType.String) && place.Kind != OwnershipPlaceKind.Temporary))
             {
-                return Fail("This slice supports bool/i32 locals and Unit control flow, plus literal string temporaries.", out failure);
+                return Fail("This slice supports bool/i32 values and literal string temporaries.", out failure);
             }
 
             if (value.Layout.Size != 0 && (!IsScalar(place.Type) || place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
@@ -286,6 +298,11 @@ internal sealed partial class BodyLowering
             {
                 return Fail("Missing scalar input value.", out failure);
             }
+
+            if (value.Kind != OwnershipValueKind.Phi && body.IsReachable(id) && !this.Dominates(input, id))
+            {
+                return Fail("Scalar input does not dominate its use.", out failure);
+            }
         }
 
         switch (operation.Kind)
@@ -302,6 +319,12 @@ internal sealed partial class BodyLowering
                 function.AddScalar(EmissionOpcode.LoadScalar, id, [], llvm, place: operation.Place);
                 return true;
             case OwnershipOperationKind.Write:
+                if (body.Places[operation.Place].Kind == OwnershipPlaceKind.Result)
+                {
+                    return value.Count == 1 && (!body.IsReachable(id) || operation.Placement == PlacementKind.Initialization)
+                        ? true : Fail("Result delivery requires a value and initialization placement.", out failure);
+                }
+
                 if (body.Places[operation.Place].Kind != OwnershipPlaceKind.Local || value.Count != 1)
                 {
                     return Fail("Scalar result placement is not implemented.", out failure);
@@ -323,25 +346,7 @@ internal sealed partial class BodyLowering
 
         if (value.Kind == OwnershipValueKind.Phi)
         {
-            if (value.Count != 2 || !ReferenceEquals(type, BoundType.Boolean))
-            {
-                return Fail("Only short-circuit Boolean phi is implemented.", out failure);
-            }
-
-            if (!body.IsReachable(id))
-            {
-                return true;
-            }
-
-            var left = Input(body, id, 0);
-            var right = Input(body, id, 1);
-            if (this.incoming[id] != 2 || this.successor[left] != id || this.successor[right] != id || this.blocks[left] == this.blocks[right])
-            {
-                return Fail("Phi inputs do not match actual predecessors.", out failure);
-            }
-
-            function.AddScalar(EmissionOpcode.Phi, id, [Operand(body, left), new(EmissionOperandKind.Block, this.blockEnds[this.blocks[left]]), Operand(body, right), new(EmissionOperandKind.Block, this.blockEnds[this.blocks[right]])], llvm);
-            return true;
+            return this.LowerPhi(body, function, id, llvm, out failure);
         }
 
         if (value.Kind is not (OwnershipValueKind.Binary or OwnershipValueKind.Unary))

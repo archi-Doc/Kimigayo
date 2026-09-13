@@ -1,0 +1,20 @@
+var count = 0
+let found = search: loop
+    count += 1
+    let candidate = if count < 3 => 0 else => count * 2
+    if candidate == 0 => continue
+    exit to search: candidate
+
+let result = work: do
+    if found == 6 => exit to work: found + 1
+    exit to work: 0
+
+let ready = if result == 7
+    yield true
+else
+    yield false
+
+if ready and count == 3
+    writeLine("ok")
+else
+    writeLine("unexpected")

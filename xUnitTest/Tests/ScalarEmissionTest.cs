@@ -34,25 +34,11 @@ public class ScalarEmissionTest
     [Theory]
     [MemberData(nameof(Fixtures))]
     public void EmitsVerifiedScalarFixtures(string name, string source, string stdout, int exit)
-    {
-        var c = MinimalEmissionTest.Analyze(source);
-        using var writer = new StringWriter();
-        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
-        var ir = writer.ToString();
-        Assert.DoesNotContain("select i1", ir[ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal)..]);
-        Assert.DoesNotContain("store i1", ir);
-        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../bin/scalar-fixtures"));
-        Directory.CreateDirectory(path);
-        File.WriteAllText(Path.Combine(path, name + ".ll"), ir);
-        File.WriteAllText(Path.Combine(path, name + ".stdout"), stdout);
-        File.WriteAllText(Path.Combine(path, name + ".exit"), exit.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        var column = name is "OverflowAdd" or "OverflowNeg" ? 5 : 1;
-        File.WriteAllText(Path.Combine(path, name + ".stderr"), exit == 0 ? string.Empty : $"Hello.kimi:2:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
-    }
+        => EmitFixture(name, source, stdout, exit);
 
     [Theory]
     [InlineData("let x: u32 = 1")]
-    [InlineData("let x = if true => 1 else => 2")]
+    [InlineData("let x: u32 = if true => 1 else => 2")]
     [InlineData("var x = 1\nx = x / 1")]
     [InlineData("if false\n    let x: u32 = 1")]
     [InlineData("while true\n    exit\n    let x: u32 = 1")]
@@ -140,12 +126,30 @@ public class ScalarEmissionTest
         else
         {
             var phi = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Phi);
-            body.ValueOperands[body.Values[phi].Start] = body.ValueOperands[body.Values[phi].Start + 1];
+            body.PhiInputs[body.Values[phi].Start] = body.PhiInputs[body.Values[phi].Start + 1];
         }
 
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out error));
         Assert.NotNull(error);
         Assert.Equal(string.Empty, writer.ToString());
+    }
+
+    internal static string EmitFixture(string name, string source, string stdout, int exit = 0)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        using var writer = new StringWriter();
+        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
+        var ir = writer.ToString();
+        Assert.DoesNotContain("select i1", ir[ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal)..]);
+        Assert.DoesNotContain("store i1", ir);
+        var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../bin/scalar-fixtures"));
+        Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(path, name + ".ll"), ir);
+        File.WriteAllText(Path.Combine(path, name + ".stdout"), stdout);
+        File.WriteAllText(Path.Combine(path, name + ".exit"), exit.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var column = name is "OverflowAdd" or "OverflowNeg" ? 5 : 1;
+        File.WriteAllText(Path.Combine(path, name + ".stderr"), exit == 0 ? string.Empty : $"Hello.kimi:2:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
+        return ir;
     }
 }

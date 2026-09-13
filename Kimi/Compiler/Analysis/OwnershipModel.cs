@@ -164,6 +164,7 @@ public sealed partial class OwnershipBody
     internal readonly List<int> OperationSteps = new();
     internal readonly List<OwnershipValue> Values = new();
     internal readonly List<int> ValueOperands = new();
+    internal readonly List<OwnershipPhiInput> PhiInputs = new();
     internal readonly List<OwnershipCleanupStep> CleanupStepStorage = new();
     internal readonly List<OwnershipCleanupPlan> CleanupPlanStorage = new();
     internal readonly List<OwnershipConstructionPlan> ConstructionStorage = new();
@@ -226,6 +227,7 @@ public sealed partial class OwnershipBody
         this.OperationSteps.Clear();
         this.Values.Clear();
         this.ValueOperands.Clear();
+        this.PhiInputs.Clear();
         this.CleanupStepStorage.Clear();
         this.CleanupPlanStorage.Clear();
         this.ConstructionStorage.Clear();
@@ -257,4 +259,8 @@ internal enum OwnershipValueKind : byte
     Phi,
 }
 
+// Start/Count address PhiInputs for Phi, otherwise ValueOperands.
 internal readonly record struct OwnershipValue(OwnershipValueKind Kind, int Start, int Count, long Constant = 0, KotoKind Operator = default);
+
+// Value is a defining operation, Edge is the actual arrival after cleanup, Write secures a result or is -1.
+internal readonly record struct OwnershipPhiInput(int Value, int Edge, int Write);

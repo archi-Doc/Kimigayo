@@ -9,9 +9,9 @@ namespace Kimi.Compiler;
 /// operation/Place identities and edge cleanup plans, and never guesses a representation, terminator or cleanup.
 /// </summary>
 /// <remarks>
-/// Supports bool/i32 locals, Unit control flow, short-circuit Boolean values and checked signed arithmetic.
+/// Supports bool/i32 locals and control-flow results, Unit control flow and checked signed arithmetic.
 /// Every operation, including unreachable ones, is validated before physical blocks are assembled.
-/// User calls still require a selected-implementation worklist; borrowed values and general scalar joins
+/// User calls still require a selected-implementation worklist; borrowed and aggregate values
 /// require additional verified plans.
 /// </remarks>
 internal sealed partial class BodyLowering

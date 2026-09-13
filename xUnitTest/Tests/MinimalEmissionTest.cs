@@ -43,7 +43,7 @@ public class MinimalEmissionTest
     [InlineData("let x = \"a\"\nwriteLine(x)\nwriteLine(x)")]
     [InlineData("func writeLine(x: string) => ()\nwriteLine(\"a\")")]
     [InlineData("let x: u32 = 1\nwriteLine(\"a\")")]
-    [InlineData("writeLine(\"a\")\nlet flag = if true => 1 else => 2")]
+    [InlineData("writeLine(\"a\")\nlet flag = if true => \"a\" else => \"b\"")]
     [InlineData("")]
     public void UnsupportedOrInvalidInputNeverWritesIr(string source)
     {

@@ -82,15 +82,18 @@ internal static partial class LlvmModuleWriter
                 return;
             case EmissionOpcode.Phi:
                 Name(output, "  %v", id);
-                output.Write(" = phi i1 [ ");
-                WriteOperand(output, operands[0]);
-                output.Write(", ");
-                WriteOperand(output, operands[1]);
-                output.Write(" ], [ ");
-                WriteOperand(output, operands[2]);
-                output.Write(", ");
-                WriteOperand(output, operands[3]);
-                output.Write(" ]\n");
+                output.Write(" = phi ");
+                output.Write(type);
+                for (var i = 0; i < operands.Length; i += 2)
+                {
+                    output.Write(i == 0 ? " [ " : ", [ ");
+                    WriteOperand(output, operands[i]);
+                    output.Write(", ");
+                    WriteOperand(output, operands[i + 1]);
+                    output.Write(" ]");
+                }
+
+                output.Write('\n');
                 return;
             case EmissionOpcode.Scalar:
                 break;

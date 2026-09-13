@@ -216,6 +216,11 @@ public sealed partial class OwnershipBody
                 (state & PlaceState.MayAssigned) == 0 ? PlacementKind.Initialization :
                 (state & PlaceState.MayMoved) != 0 ? PlacementKind.Reinitialization : PlacementKind.EmptyPlacement;
             this.OperationStorage[index] = operation with { Placement = placement };
+            if (place.Kind == OwnershipPlaceKind.Result)
+            {
+                return;
+            }
+
             // Replacement belongs to the Write point, after all incoming states join.
             this.OperationSteps[index] = this.CleanupStepStorage.Count;
             this.CleanupStepStorage.Add(new(index, operation.Place, place.Source, Destruction(state)));
