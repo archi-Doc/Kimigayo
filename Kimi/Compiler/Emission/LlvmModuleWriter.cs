@@ -62,6 +62,15 @@ internal static partial class LlvmModuleWriter
 
         output.Write(Runtime);
         output.Write(OverflowDeclarations);
+        if (module.Aggregates.Count != 0)
+        {
+            output.Write("declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)\n");
+            foreach (var aggregate in module.Aggregates)
+            {
+                WriteAggregateDestructor(output, aggregate);
+            }
+        }
+
         if (module.NeedsStringComparison)
         {
             output.Write(StringComparisons);
@@ -97,10 +106,24 @@ internal static partial class LlvmModuleWriter
             output.Write(" = alloca i8, align 1\n");
         }
 
+        foreach (var slot in function.Subslots)
+        {
+            Name(output, "  %p", slot.Place);
+            output.Write(" = getelementptr i8, ptr ");
+            WriteSlot(output, function, slot.Parent);
+            output.Write(", i64 ");
+            WriteNumber(output, slot.Offset);
+            output.Write('\n');
+        }
+
         foreach (var instruction in function.Instructions)
         {
             switch (instruction.Opcode)
             {
+                case EmissionOpcode.TransferAggregate:
+                case EmissionOpcode.DestroyAggregate:
+                    WriteAggregate(output, constants, function, instruction);
+                    break;
                 case EmissionOpcode.StringPattern:
                     WriteStringPattern(output, constants, function, instruction);
                     continue;
@@ -165,6 +188,7 @@ internal static partial class LlvmModuleWriter
         switch (address.Kind)
         {
             case EmissionOperandKind.SlotAddress:
+            case EmissionOperandKind.ProjectedSlot:
                 Name(output, "%p", (int)address.Value);
                 break;
             case EmissionOperandKind.Argument:

@@ -29,9 +29,14 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (instruction.Place >= 0 && instruction.Opcode is EmissionOpcode.LoadScalar or EmissionOpcode.StoreScalar or EmissionOpcode.MoveString or EmissionOpcode.DestroyStringIfLive or EmissionOpcode.StoreStaticString or EmissionOpcode.StringPattern)
+            if (instruction.Place >= 0 && instruction.Opcode is EmissionOpcode.LoadScalar or EmissionOpcode.StoreScalar or EmissionOpcode.MoveString or EmissionOpcode.DestroyStringIfLive or EmissionOpcode.StoreStaticString or EmissionOpcode.StringPattern or EmissionOpcode.TransferAggregate or EmissionOpcode.DestroyAggregate)
             {
                 this.UseMatchStorage(function, instruction.Place);
+            }
+
+            if (instruction.Opcode == EmissionOpcode.TransferAggregate)
+            {
+                this.UseMatchStorage(function, instruction.Constant);
             }
 
             foreach (var operand in this.validation.GetOperands(instruction))
@@ -40,6 +45,19 @@ internal sealed partial class BodyLowering
                 {
                     this.UseMatchStorage(function, (int)operand.Value);
                 }
+            }
+        }
+
+        for (var i = function.Subslots.Count - 1; i >= 0; i--)
+        {
+            var slot = function.Subslots[i];
+            if (this.slotUses[slot.Place] == 0)
+            {
+                function.Subslots.RemoveAt(i);
+            }
+            else
+            {
+                this.UseMatchStorage(function, slot.Parent);
             }
         }
 
@@ -55,7 +73,7 @@ internal sealed partial class BodyLowering
     private void UseMatchStorage(EmissionFunction function, int place)
     {
         var address = function.SlotAddresses[place];
-        if (address.Kind == EmissionOperandKind.SlotAddress)
+        if (address.Kind is EmissionOperandKind.SlotAddress or EmissionOperandKind.ProjectedSlot)
         {
             this.slotUses[(int)address.Value] = 1;
         }
@@ -202,7 +220,7 @@ internal sealed partial class BodyLowering
 
                 this.matchTests[arm.Test] = armIndex;
                 var guarded = binding.Arms[n].Syntax.Guard is not null;
-                if (guarded && !ScalarTypes.Supports(pattern.MatchedType) && !ReferenceEquals(pattern.MatchedType, BoundType.Unit))
+                if (guarded && !MatchTypes.SupportsGuard(pattern.MatchedType))
                 {
                     return Fail("Unsupported guarded Subject Type.", out failure);
                 }
@@ -250,6 +268,12 @@ internal sealed partial class BodyLowering
                 if (guarded)
                 {
                     var guard = binding.Arms[n].Syntax.Guard!;
+                    if (ReferenceEquals(pattern.MatchedType, BoundType.String) &&
+                        ((uint)arm.GuardLoan >= (uint)body.ComparisonLoans.Count || body.ComparisonLoans[arm.GuardLoan].Guard != armIndex))
+                    {
+                        return Fail("String guard has no Subject protection plan.", out failure);
+                    }
+
                     if ((uint)arm.GuardEntry >= (uint)body.Operations.Count || body.Edges[success].To != arm.GuardEntry ||
                         body.Operations[arm.GuardEntry].Kind != OwnershipOperationKind.Branch || !ReferenceEquals(body.Operations[arm.GuardEntry].Source, guard))
                     {
@@ -273,11 +297,18 @@ internal sealed partial class BodyLowering
                         for (var cleanup = arm.GuardCleanupStart; cleanup < arm.GuardBranch; cleanup++)
                         {
                             var next = body.EdgeHeads[cleanup];
-                            if (body.Operations[cleanup].Kind != OwnershipOperationKind.Cleanup || !ReferenceEquals(body.Operations[cleanup].Source, guard) ||
+                            if (body.Operations[cleanup].Kind is not (OwnershipOperationKind.Cleanup or OwnershipOperationKind.EndComparisonLoans) || !ReferenceEquals(body.Operations[cleanup].Source, guard) ||
                                 next < 0 || body.Edges[next].Next >= 0 || body.Edges[next].Kind != OwnershipEdgeKind.Normal || body.Edges[next].To != cleanup + 1)
                             {
                                 return Fail("Guard continuation bypasses temporary cleanup.", out failure);
                             }
+                        }
+
+                        if (arm.GuardLoan >= 0 && (body.HasComparisonLoan(arm.GuardBranch, arm.GuardLoan) ||
+                            body.Operations[arm.GuardBranch - 1].Kind != OwnershipOperationKind.EndComparisonLoans ||
+                            !body.HasComparisonLoan(arm.GuardBranch - 1, arm.GuardLoan)))
+                        {
+                            return Fail("Guard protection must end after cleanup and before acquisition.", out failure);
                         }
                     }
                 }
@@ -502,22 +533,47 @@ internal sealed partial class BodyLowering
         failure = null;
         var operation = body.Operations[id];
         var index = body.OperationSteps[id];
-        if (!this.hasMatches || (uint)index >= (uint)body.MatchArms.Count)
+        if ((uint)index >= (uint)body.MatchArms.Count)
         {
             return Fail("Candidate read has no selected Pattern position.", out failure);
         }
 
         var arm = body.MatchArms[index];
+        if ((uint)arm.Match >= (uint)body.Matches.Count || (uint)arm.Pattern >= (uint)body.Matches[arm.Match].Binding.Positions.Count)
+        {
+            return Fail("Candidate read has no matching Subject plan.", out failure);
+        }
+
         var match = body.Matches[arm.Match];
         var pattern = match.Binding.Positions[arm.Pattern];
         var scalar = ScalarTypes.Supports(pattern.MatchedType);
         if (arm.GuardEntry < 0 || operation.Place != match.Subject || operation.Source.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate ||
-            !ReferenceEquals(operation.Source.BoundSymbol, pattern.CandidateSymbol) || !ReferenceEquals(operation.Source.BoundType, pattern.MatchedType) ||
+            !ReferenceEquals(operation.Source.BoundSymbol, pattern.CandidateSymbol) || !ReferenceEquals(operation.Source.BoundType, pattern.CandidateSymbol?.Type) ||
             (body.IsReachable(id) && !this.Dominates(arm.GuardEntry, id)) ||
             (scalar && (body.Values[id].Kind != OwnershipValueKind.Alias || Input(body, id, 0) != this.subjectInitializers[match.Subject])) ||
-            (!scalar && !ReferenceEquals(pattern.MatchedType, BoundType.Unit)))
+            (!scalar && !ReferenceEquals(pattern.MatchedType, BoundType.Unit) && !ReferenceEquals(pattern.MatchedType, BoundType.String)))
         {
             return Fail("Candidate read does not inspect its protected Subject snapshot.", out failure);
+        }
+
+        if (ReferenceEquals(pattern.MatchedType, BoundType.String))
+        {
+            var type = operation.Source.BoundType;
+            var protection = body.LoanStates[id];
+            while (protection >= 0 && body.ComparisonLoans[protection].Guard != index)
+            {
+                protection = body.ComparisonLoans[protection].Parent;
+            }
+
+            if (!ReferenceTypes.IsString(type) || body.Values[id].Kind != OwnershipValueKind.Borrow ||
+                operation.Acquisition != AcquisitionKind.None || operation.LoanMode != LoanRequirement.None ||
+                (uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(body.Places[operation.Input].Type, type) ||
+                body.Places[operation.Input].Kind != OwnershipPlaceKind.Temporary || !ReferenceEquals(body.Places[operation.Input].Source, operation.Source) ||
+                type!.Origin is not { Kind: OriginKind.Projection } origin || !ReferenceEquals(origin.Binder, pattern.CandidateSymbol!.Declaration) || origin.Slot != pattern.CandidateSymbol.Slot ||
+                (uint)arm.GuardLoan >= (uint)body.ComparisonLoans.Count || protection < 0)
+            {
+                return Fail("Candidate reference has no active Subject Loan or matching Origin.", out failure);
+            }
         }
 
         return true;

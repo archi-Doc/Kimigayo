@@ -328,6 +328,7 @@ public sealed partial class OwnershipBody
             case OwnershipOperationKind.Consume:
             case OwnershipOperationKind.AcquirePattern:
             case OwnershipOperationKind.Borrow:
+            case OwnershipOperationKind.Read:
                 if (operation.Acquisition == AcquisitionKind.Move)
                 {
                     this.Move(place);

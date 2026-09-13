@@ -100,6 +100,11 @@ internal sealed partial class BodyLowering
 
             switch (operation.Kind)
             {
+                case OwnershipOperationKind.Read when value.Kind == OwnershipValueKind.Borrow:
+                    // Candidate provenance and dominance are checked while lowering,
+                    // after match preparation has built the semantic dominators.
+                    this.referenceRoots[id] = id;
+                    break;
                 case OwnershipOperationKind.Produce when value.Kind == OwnershipValueKind.Parameter:
                     if (place.Kind != OwnershipPlaceKind.Parameter || (ulong)value.Constant >= (ulong)body.Function.Parameters.Count || id != parameterStart + value.Constant ||
                         !ReferenceEquals(place.Source, body.Function.Parameters[(int)value.Constant].Type) || !ReferenceEquals(operation.Source, place.Source) ||
@@ -115,8 +120,9 @@ internal sealed partial class BodyLowering
                     if ((uint)operation.Place >= (uint)body.Places.Count || place.Kind != OwnershipPlaceKind.Temporary || operation.LoanMode != LoanRequirement.Ref ||
                         operation.Acquisition != AcquisitionKind.None || loan < 0 || body.ComparisonLoans[loan].Read != id || body.ComparisonLoans[loan].Call is null ||
                         !ReferenceEquals(body.Places[operation.Place].Type, BoundType.String) ||
-                        operation.Source is not IdentifierNameKoto { BoundSymbol: { } symbol } || !body.SymbolPlaces.TryGetValue(symbol, out var anchor) || anchor != operation.Place ||
-                        type!.Origin is not { Kind: OriginKind.Projection } origin || !ReferenceEquals(origin.Binder, symbol.Declaration) || origin.Slot != symbol.Slot)
+                        !this.ValidateBorrowSource(body, operation) ||
+                        type!.Origin is not { Kind: OriginKind.Projection } origin ||
+                        !ReferenceEquals(origin.Binder, operation.Source.BoundSymbol?.Declaration ?? operation.Source) || origin.Slot != (operation.Source.BoundSymbol?.Slot ?? 0))
                     {
                         return Fail("Reference formation lacks its source and argument Loan.", out failure);
                     }
@@ -144,6 +150,25 @@ internal sealed partial class BodyLowering
         return true;
     }
 
+    private bool ValidateBorrowSource(OwnershipBody body, OwnershipOperation operation)
+    {
+        var source = body.Places[operation.Place];
+        if (source.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter)
+        {
+            return operation.Source is IdentifierNameKoto { BoundSymbol: { } symbol } &&
+                body.SymbolPlaces.TryGetValue(symbol, out var anchor) && anchor == operation.Place;
+        }
+
+        var expression = operation.Source;
+        while (expression is LabeledKoto labeled)
+        {
+            expression = KotoHelper.UnwrapParentheses(labeled.Target);
+        }
+
+        // Storage authorization is checked after the string plans are prepared.
+        return source.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && ReferenceEquals(source.Source, expression);
+    }
+
     private EmissionOperand ReferenceOperand(OwnershipBody body, int value)
     {
         var root = this.referenceRoots[value];
@@ -161,7 +186,21 @@ internal sealed partial class BodyLowering
         }
 
         var root = this.referenceRoots[value];
-        return body.Values[root].Kind == OwnershipValueKind.Parameter || !body.IsReachable(at) || body.HasComparisonLoan(at, body.LoanStates[root]);
+        if (body.Values[root].Kind == OwnershipValueKind.Parameter || !body.IsReachable(at))
+        {
+            return true;
+        }
+
+        var loan = body.LoanStates[root];
+        if (body.Operations[root].Kind == OwnershipOperationKind.Read)
+        {
+            while (loan >= 0 && body.ComparisonLoans[loan].Guard != body.OperationSteps[root])
+            {
+                loan = body.ComparisonLoans[loan].Parent;
+            }
+        }
+
+        return body.HasComparisonLoan(at, loan);
     }
 
     private bool LowerReference(OwnershipBody body, int id, out string? failure)
@@ -180,7 +219,12 @@ internal sealed partial class BodyLowering
 
         if (operation.Kind == OwnershipOperationKind.Borrow)
         {
-            return this.referenceRoots[id] == id;
+            return this.referenceRoots[id] == id && this.IsStringStorage(body.Places[operation.Place]);
+        }
+
+        if (body.Values[id].Kind == OwnershipValueKind.Borrow)
+        {
+            return this.ValidateCandidateRead(body, id, out failure);
         }
 
         return this.ValidateReferenceUse(body, Input(body, id, 0), id) || Fail("Reference source does not dominate its use or has expired.", out failure);

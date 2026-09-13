@@ -19,4 +19,4 @@ hello
 
 The current slice supports required `ref/string` parameters of direct functions, owner-local/parameter argument borrowing, reference-parameter forwarding and all six string comparisons. A reference points to the string handle; it neither copies nor destroys that handle. Calls return only independent values.
 
-Borrowed locals/results, explicit `@ref`, temporary materialization, `uniq`, static/captured/indirect access and string guard candidates remain outside execution coverage. Borrowing an owned temporary participates in Binding and overload selection, then receives an unsupported ownership diagnostic. The compiler does not silently choose another overload to avoid this implementation limit.
+C.55 also supports borrowing owned string temporaries and reading string guard candidates; see [StringGuards](../StringGuards/README.md). Borrowed locals/results, explicit `@ref`, `uniq` and static/captured/indirect access remain outside execution coverage. Unsupported operations do not trigger another overload selection.

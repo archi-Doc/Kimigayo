@@ -27,6 +27,8 @@ internal enum EmissionOpcode : byte
     StringEquals,
     StringCompare,
     StringPattern,
+    TransferAggregate,
+    DestroyAggregate,
 
     /// <summary>A direct call of <c>Callee</c> with prepared operands.</summary>
     Call,
@@ -48,6 +50,7 @@ internal enum EmissionOperandKind : byte
 
     /// <summary>The address of the slot prepared for a Place ID.</summary>
     SlotAddress,
+    ProjectedSlot,
 
     /// <summary>The address of a pooled constant.</summary>
     ConstantAddress,
@@ -63,6 +66,8 @@ internal readonly record struct EmissionOperand(EmissionOperandKind Kind, long V
 
 internal readonly record struct EmissionSlot(int Place, ValueLowering Value);
 
+internal readonly record struct EmissionSubslot(int Place, int Parent, int Offset);
+
 internal enum ArithmeticCheckKind : byte
 {
     None,
@@ -74,7 +79,7 @@ internal enum ArithmeticCheckKind : byte
 }
 
 /// <summary>One instruction; <c>Operation</c> is the source ownership operation ID, or -1 for synthesized startup control.</summary>
-internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0, string? ScalarType = null, string? ScalarOperator = null, ArithmeticCheckKind Check = ArithmeticCheckKind.None, bool IsComparison = false, ValueLowering? Representation = null, ValueLowering? CountRepresentation = null, string? LowerPredicate = null, string? UpperPredicate = null);
+internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0, string? ScalarType = null, string? ScalarOperator = null, ArithmeticCheckKind Check = ArithmeticCheckKind.None, bool IsComparison = false, ValueLowering? Representation = null, ValueLowering? CountRepresentation = null, string? LowerPredicate = null, string? UpperPredicate = null, AggregateLayout? Aggregate = null, int Continuation = -1);
 
 /// <summary>One physical function definition. Its lists are reused by later preparations.</summary>
 internal sealed class EmissionFunction
@@ -86,6 +91,8 @@ internal sealed class EmissionFunction
     internal bool NeedsStringComparison { get; set; }
 
     internal List<EmissionSlot> Slots { get; } = new();
+
+    internal List<EmissionSubslot> Subslots { get; } = new();
 
     /// <summary>Gets Place-indexed physical storage: local slot, logical parameter or hidden result.</summary>
     internal List<EmissionOperand> SlotAddresses { get; } = new();
@@ -105,6 +112,7 @@ internal sealed class EmissionFunction
         this.Exported = exported;
         this.NeedsStringComparison = false;
         this.Slots.Clear();
+        this.Subslots.Clear();
         this.SlotAddresses.Clear();
         this.LiveFlags.Clear();
         this.Instructions.Clear();
@@ -145,6 +153,8 @@ internal sealed class EmissionModule
 
     internal LlvmConstantPool Constants { get; } = new();
 
+    internal HashSet<AggregateLayout> Aggregates { get; } = new(ReferenceEqualityComparer.Instance);
+
     internal bool IsComplete { get; private set; }
 
     internal bool NeedsStringComparison { get; set; }
@@ -160,6 +170,7 @@ internal sealed class EmissionModule
         this.NeedsStringComparison = false;
         this.functionCount = 0;
         this.Constants.Clear();
+        this.Aggregates.Clear();
     }
 
     internal EmissionFunction AddFunction(FunctionAbi abi, bool exported)

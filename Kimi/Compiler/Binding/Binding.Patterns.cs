@@ -166,7 +166,7 @@ public sealed partial class Binding
 
             if (arm.Guard is { } guard)
             {
-                if (plan.Pending || (!ScalarTypes.Supports(subject) && !ReferenceEquals(subject, BoundType.Unit)))
+                if (plan.Pending || !MatchTypes.SupportsGuard(subject))
                 {
                     this.MarkPatternTree(guard);
                     this.MarkPatternTree(arm.Body);
@@ -252,7 +252,9 @@ public sealed partial class Binding
                 position = position with { Kind = BoundPatternKind.Binding, BodySymbol = symbol, WholePosition = true };
                 if (this.symbols.TryGetValue(binding.Operands[0], out var candidate) && candidate.Kind == BindingSymbolKind.PatternCandidate)
                 {
-                    candidate.Type = ScalarTypes.Supports(matched) || ReferenceEquals(matched, BoundType.Unit) ? matched : null;
+                    candidate.Type = ReferenceEquals(matched, BoundType.String)
+                        ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched], origin: this.OriginAtom(candidate.Declaration, OriginKind.Projection, candidate.Slot))
+                        : ScalarTypes.Supports(matched) || ReferenceEquals(matched, BoundType.Unit) ? matched : null;
                     position = position with { CandidateSymbol = candidate };
                 }
 

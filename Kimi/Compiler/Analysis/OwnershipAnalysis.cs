@@ -436,6 +436,10 @@ public sealed partial class OwnershipAnalysis
                 return this.Temporary(node);
             case TupleLiteralKoto tuple when tuple.Elements.Count == 0:
                 return this.Temporary(node);
+            case TupleLiteralKoto tuple:
+                return this.ConstructAggregate(tuple, tuple.Elements);
+            case ArrayLiteralKoto array when array.BoundType?.Kind == BoundTypeKind.FixedArray:
+                return this.ConstructAggregate(array, array.Elements);
             case TupleTypeKoto { ElementNodes.Count: 0 }:
                 return this.Temporary(node);
             case InvocationKoto call:

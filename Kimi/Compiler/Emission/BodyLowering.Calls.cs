@@ -17,6 +17,7 @@ internal sealed partial class BodyLowering
         this.functions = null;
         this.flow = null;
         this.arguments.Clear();
+        this.aggregateLayouts.Clear();
     }
 
     private bool LowerCall(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
@@ -102,7 +103,8 @@ internal sealed partial class BodyLowering
                 if (acquisition.Kind == ArgumentOperationKind.Borrow
                     ? this.callLoanPlans[id] < 0 || body.Values[root].Kind != OwnershipValueKind.Borrow || !ReferenceEquals(body.ComparisonLoans[body.LoanStates[root]].Call, call) ||
                         !ReferenceEquals(body.Operations[root].Source, KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]))
-                    : body.Values[root].Kind != OwnershipValueKind.Parameter || !ReferenceEquals(ValueType(body, root), acquisition.SourceType))
+                    : (body.Values[root].Kind != OwnershipValueKind.Parameter && body.Operations[root].Kind != OwnershipOperationKind.Read) ||
+                        !ReferenceEquals(ValueType(body, root), acquisition.SourceType))
                 {
                     return Fail("Reference acquisition does not match its source.", out failure);
                 }

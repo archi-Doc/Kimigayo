@@ -9,7 +9,7 @@ public sealed partial class OwnershipAnalysis
     private readonly List<SelectionFrame> selections = new();
     private readonly List<int> activeDecompositions = new();
     private readonly List<bool> patternStorageNeeded = new();
-    private readonly List<(BindingSymbol Symbol, int Subject, int Value, int Arm)> candidates = new();
+    private readonly List<(BindingSymbol Symbol, int Subject, int Value, int Arm, int Loan)> candidates = new();
 
     private static AcquisitionKind PatternAcquisitionKind(BoundPattern pattern) => pattern.Acquisition switch
     {
@@ -32,7 +32,7 @@ public sealed partial class OwnershipAnalysis
 
         for (var i = 0; i < plan.Arms.Count; i++)
         {
-            if (plan.Arms[i].Syntax.Guard is not null && !ScalarTypes.Supports(plan.Syntax.Expression.BoundType) && !ReferenceEquals(plan.Syntax.Expression.BoundType, BoundType.Unit))
+            if (plan.Arms[i].Syntax.Guard is not null && !MatchTypes.SupportsGuard(plan.Syntax.Expression.BoundType))
             {
                 return false;
             }
@@ -42,6 +42,7 @@ public sealed partial class OwnershipAnalysis
         {
             var position = plan.Positions[i];
             if (position.AccessMode != PatternAccessMode.Owned || position.ImplicitDeref != PatternImplicitDeref.None ||
+                position.Kind == BoundPatternKind.Tuple ||
                 position.Acquisition == PatternAcquisition.Deferred || !this.SupportsType(position.MatchedType) ||
                 (position.Kind == BoundPatternKind.Binding && position.Acquisition is not (PatternAcquisition.Copy or PatternAcquisition.Move)))
             {
@@ -141,18 +142,30 @@ public sealed partial class OwnershipAnalysis
             var guardBranch = -1;
             var guardValue = -1;
             var guardCleanupStart = -1;
+            var guardLoan = -1;
             if (arm.Syntax.Guard is { } guard)
             {
                 guardEntry = this.New(OwnershipOperationKind.Branch, guard);
                 this.Connect(test, guardEntry, OwnershipEdgeKind.True);
                 this.current = guardEntry;
+                var guardDepth = this.comparisonDepth++;
+                if (ReferenceEquals(syntax.Expression.BoundType, BoundType.String))
+                {
+                    // Pure tests inspect private owned Subject storage. Once guard
+                    // code can observe it, retain shared protection through cleanup.
+                    this.Emit(OwnershipOperationKind.Read, guard, subject);
+                    guardLoan = this.BeginStringLoan(subject, guard: armStart + i);
+                }
+
                 var candidateMark = this.candidates.Count;
                 if (plan.Positions[arm.Pattern].CandidateSymbol is { } candidate)
                 {
-                    this.candidates.Add((candidate, subject, this.Value(subject), armStart + i));
+                    this.candidates.Add((candidate, subject, this.Value(subject), armStart + i, guardLoan));
                 }
 
                 var condition = this.Condition(guard, out guardCleanupStart);
+                this.EndComparisonLoans(guardDepth, guard);
+                this.comparisonDepth = guardDepth;
                 guardValue = condition;
                 this.candidates.RemoveRange(candidateMark, this.candidates.Count - candidateMark);
                 if (condition >= 0 && this.current >= 0 && this.flow.Nodes[guard].CanCompleteNormally)
@@ -177,19 +190,36 @@ public sealed partial class OwnershipAnalysis
                 this.current = seed;
                 this.checkingRegion = this.body.CheckingRegions.Count;
                 this.body.CheckingRegions.Add(new(seed, -1));
+                // A noncompleting guard has no selected continuation. End only
+                // its protection in the checking region before inspecting the body.
+                if (guardLoan >= 0 && this.CurrentLoanHead >= 0)
+                {
+                    var end = this.EndComparisonLoans(this.comparisonDepth, arm.Syntax.Guard!);
+                    if (end >= 0)
+                    {
+                        this.body.CheckingRegions[this.checkingRegion] = this.body.CheckingRegions[this.checkingRegion] with { Entry = end };
+                    }
+                }
             }
 
             var bodyEntry = this.New(OwnershipOperationKind.Branch, arm.Syntax.Body);
             if (checkingBody)
             {
-                this.body.CheckingRegions[this.checkingRegion] = this.body.CheckingRegions[this.checkingRegion] with { Entry = bodyEntry };
+                if (this.body.CheckingRegions[this.checkingRegion].Entry < 0)
+                {
+                    this.body.CheckingRegions[this.checkingRegion] = this.body.CheckingRegions[this.checkingRegion] with { Entry = bodyEntry };
+                }
+                else
+                {
+                    this.Connect(this.current, bodyEntry);
+                }
             }
 
             this.Connect(arm.Syntax.Guard is null ? test : guardBranch, bodyEntry, OwnershipEdgeKind.True);
             this.current = bodyEntry;
             var decompositionStart = this.body.DecompositionStorage.Count;
             this.AcquirePattern(plan, arm.Pattern, subject, neededStart);
-            this.body.MatchArmStorage[armStart + i] = new(matchIndex, arm.Pattern, test, decompositionStart, this.body.DecompositionStorage.Count - decompositionStart, guardEntry, guardBranch, bodyEntry, guardValue, guardCleanupStart);
+            this.body.MatchArmStorage[armStart + i] = new(matchIndex, arm.Pattern, test, decompositionStart, this.body.DecompositionStorage.Count - decompositionStart, guardEntry, guardBranch, bodyEntry, guardValue, guardCleanupStart, guardLoan);
 
             var secured = -1;
             if (arm.Syntax.Body is CodeBlockKoto block)
@@ -354,6 +384,30 @@ public sealed partial class OwnershipAnalysis
             var candidate = this.candidates[i];
             if (ReferenceEquals(candidate.Symbol, source.BoundSymbol) && use != PlaceUseKind.Borrow)
             {
+                if (ReferenceTypes.IsString(source.BoundType))
+                {
+                    var reference = this.Place(source, source.BoundType, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
+                    var inspect = this.Emit(OwnershipOperationKind.Read, source, candidate.Subject, reference);
+                    this.body.OperationSteps[inspect] = candidate.Arm;
+                    var protection = this.CurrentLoanHead;
+                    while (protection >= 0 && this.body.ComparisonLoans[protection].Guard != candidate.Arm)
+                    {
+                        protection = this.body.ComparisonLoans[protection].Parent;
+                    }
+
+                    if (protection < 0)
+                    {
+                        // A transfer ended the original protection. A new read in
+                        // its checking continuation forms a fresh Loan, not a restore.
+                        var depth = this.comparisonDepth;
+                        this.comparisonDepth = this.body.ComparisonLoans[candidate.Loan].Depth;
+                        this.BeginStringLoan(candidate.Subject, guard: candidate.Arm);
+                        this.comparisonDepth = depth;
+                    }
+
+                    return this.RegisterTemporary(reference);
+                }
+
                 var read = this.Emit(OwnershipOperationKind.Read, source, candidate.Subject);
                 this.body.OperationSteps[read] = candidate.Arm;
                 if (ScalarTypes.Supports(source.BoundType))

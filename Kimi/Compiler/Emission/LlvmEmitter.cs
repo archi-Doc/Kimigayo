@@ -84,6 +84,7 @@ public sealed class LlvmEmitter
                 }
 
                 module.NeedsStringComparison |= function.NeedsStringComparison;
+                this.lowering.RegisterAggregates(module);
             }
 
             if (!this.functions.TryGetValue(c.Binding.Startup.Function!, out var entry))

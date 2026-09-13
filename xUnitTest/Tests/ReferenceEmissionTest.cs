@@ -32,16 +32,33 @@ public class ReferenceEmissionTest
         => ScalarEmissionTest.EmitFixture("Reference" + name, source, expected);
 
     [Theory]
-    [InlineData(Same + "let a = \"a\"\nsame(\"a\", a)")]
-    [InlineData(Same + "func echo(a: string) -> string => a\nlet a = \"a\"\nsame(echo(\"a\"), a)")]
-    public void TemporaryBorrowIsBoundButNotEmitted(string source)
+    [InlineData("Literal", "\"a\"")]
+    [InlineData("Call", "echo(\"a\")")]
+    [InlineData("If", "(if true => \"a\" else => \"b\")")]
+    [InlineData("Do", "(work: do\n    exit to work: \"a\"\n)")]
+    [InlineData("Loop", "(loop\n    exit \"a\"\n)")]
+    [InlineData("Match", "(match 1\n    1 => \"a\"\n    _ => \"b\"\n)")]
+    public void TemporaryBorrowUsesAcquiredStorage(string name, string expression)
     {
+        var source = Same + "func echo(a: string) -> string => a\nlet a = \"a\"\nif same(" + expression + ", a) => writeLine(\"ok\")\nwriteLine(a)";
+        ScalarEmissionTest.EmitFixture("ReferenceTemporary" + name, source, "ok\na\n");
+    }
+
+    [Theory]
+    [InlineData("ShortCircuit", "var flag = false\nif flag and same(\"a\", \"a\") => ()\nif true or same(\"b\", \"b\") => writeLine(\"ok\")", "ok\n", "a=0;b=0;ok=1")]
+    [InlineData("Both", "if same(\"a\", \"a\") => writeLine(\"ok\")", "ok\n", "a=2;ok=1")]
+    [InlineData("Transfer", "func test(a: ref/string, b: bool) -> bool => b\nfunc run() -> string\n    test(\"held\", (return \"ok\"))\n    return \"bad\"\nwriteLine(run())", "ok\n", "held=1;ok=1;bad=0")]
+    [InlineData("EvaluationOrder", "func echo(s: string) -> string\n    writeLine(\"evaluate\")\n    return s\nif same(right: echo(\"b\"), left: echo(\"a\")) => ()", "evaluate\nevaluate\n", "a=1;b=1;evaluate=2")]
+    public void TemporaryLoansPreserveExpressionCleanup(string name, string source, string stdout, string audit)
+    {
+        source = Same + source;
+        // Short circuit may need conditional temporary-destruction flags.
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Empty(c.Binding.Issues);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
         using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
+        var ir = writer.ToString();
+        ScalarEmissionTest.WriteFixture("ReferenceTemporary" + name, ir, stdout);
+        StringEmissionTest.WriteAuditedFixture("ReferenceTemporary" + name, source, ir, stdout, audit);
     }
 
     [Theory]

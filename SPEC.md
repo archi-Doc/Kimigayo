@@ -40,6 +40,7 @@ For the first executable program, start with [minimal console output](#224-minim
     - [LLVM output, native build and execution](#208-llvm-output-native-build-and-execution)
   - [21. Layout, runtime metadata, and code generation](#21-layout-runtime-metadata-and-code-generation)
     - [Layout modes and representation](#211-structure-layout-and-abi)
+    - [Generic code generation](#213-generic-code-generation)
     - [Checked lowering and internal ABI](#214-checked-lowering-and-internal-abi)
     - [LLVM Windows x64 profile](#215-llvm-windows-x64-profile)
   - [22. Core, program execution, and foreign functions](#22-core-program-execution-and-foreign-functions)
@@ -572,7 +573,7 @@ Primitive Cores are built in. Listed sizes are storage sizes.
 
 **Scalar** (short for **Primitive scalar**) is the closed subset consisting of the integer Cores (`i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`, `i128`, `u128`, `isize`, `usize`), floating-point Cores (`f32`, `f64`), `bool`, and `char`. `string`, Unit, and Never are not Scalars. Scalar is a specification category, not a source-level Type or Constraint name.
 
-Scalar operations use the [generic code generation policy](#213-generic-code-generation). Its default automatic specialization preserves the selected implementation's meaning; it is distinct from an explicitly declared full specialization.
+Scalar operations use the [generic code generation policy](#213-generic-code-generation). Typed helpers may preserve sharing; optional automatic specialization fixes facts without changing the selected implementation. Explicit full specialization remains a separate static selection rule.
 
 ##### 3.1.1. Integer types
 
@@ -5234,6 +5235,16 @@ match packet
 
 Here the first `data` is `ref/Data` in the guard and `Data` in the body. Writing `data@ref` in the guard copies that shared reference.
 
+```kimi
+func same(a: ref/string, b: ref/string) -> bool => a == b
+
+match "hello"
+    let text if same(text, "hello") => writeLine(text)
+    _ => ()
+```
+
+The guard reads `text` as `ref/string`; the literal argument is also borrowed for the call. After guard cleanup, the selected body acquires the owned string from the Subject. Comparing `text == "hello"` directly would mix a borrow with an owned value, which built-in comparisons do not adapt (§13.4).
+
 1. On a Pattern mismatch, skip the guard and try the next arm.
 2. On a match, expose candidate names in the guard scope and evaluate the guard once.
 3. On `true`, clean up guard temporaries and newly created Loans, then initialize body locals from the original Candidate Places, not guard read results, and run the body.
@@ -7187,7 +7198,7 @@ A Solution discovers and loads Projects. A Project stores target triples, aliase
 
 #### 20.2. Build inputs
 
-Compilation inputs comprise the full target triple (including ABI/environment), backend/layout, build mode and code-affecting options, Project settings, language/compiler version, source snapshots, resolved dependency versions/interfaces, and [Mod registrations, implementations, and additional inputs](#2075-inputs-and-regeneration). Reuse requires all relevant inputs to agree; OS/architecture alone is insufficient. Changed inputs require fresh analysis. Artifact cache formats are separately specified.
+Compilation inputs comprise the full target triple (including ABI/environment), backend/layout, build mode and code-affecting options, Project settings, language/compiler version, source snapshots, resolved dependency versions/interfaces, and [Mod registrations, implementations, and additional inputs](#2075-inputs-and-regeneration). Reuse requires all inputs relevant to the reused judgment to agree; OS/architecture alone is insufficient. Invalidate the affected stages when inputs change. A generation-only multiplier change can reuse still-valid semantic plans, while target-dependent proofs and semantic settings remain validation inputs (§21.3.4). Artifact cache formats are separately specified.
 
 #### 20.3. Target preparation
 
@@ -7828,7 +7839,7 @@ There is no separate stride or Copy/Move entry. All current Copy Types have no u
 
 Partial cleanup may batch only contiguous complete segments compatible with the required logical order. Dictionary reverse-insertion value/key cleanup is not an address sort; use separate calls, including count = 1, where needed. A range of strings can use one indirect entry and a reverse loop, without eliminating each value's required free or nested dynamic dispatch.
 
-TypeContext supplies everything the entry needs independently of the original caller's stack/context: component/Case metadata, selected operation and specialization callees with their contexts, or equivalent information embedded in code. If shared access needs offsets, provide a logical-element map from the **whole instantiated layout**, including fields whose declared Types were already fixed. Omit unused maps. Producer and consumer agree on its schema; no instance length, partial state, Origin or Loan is stored here. GenericContext is defined in §21.3.3.
+TypeContext supplies everything the entry needs independently of the original caller's stack/context: component/Case metadata, selected operation and specialization callees with their contexts, or equivalent information embedded in code. If a Type operation needs offsets, provide a logical-element map from the **whole instantiated layout**, including Fields whose declared Types were already fixed. Omit unused maps. Its reader and producer agree on the schema; no instance length, partial state, Origin or Loan is stored here. Fixed-array TypeContext retains elementMetadata and N. Ordinary shared-body layout and length reads use direct GenericContext slots (§21.3.3), derived from the same TypeLayout.
 
 **ObjectDescriptor: 24 bytes, alignment 8.** Share it across obj/rc/arc objects of the same complete Dynamic Type and layout.
 
@@ -7948,134 +7959,266 @@ For conversion directly from Closure syntax, prepare uninitialized final F/envir
 
 In §7.6.4's makeAdder example, the i32 capture occupies four inline bytes and the common function handle occupies 16 bytes. Repeated Shared calls retain that environment; moving the handle transfers its ownership.
 
-Known Function Items/Closures call their selected entries directly; F uses callEntry. Shared generic Callable witnesses may pass a callee record without constructing F. Definitions, calls and adapters share one FunctionAbi mapping for logical receiver, arguments, result and context; matching ptr signatures alone are insufficient. Adapters never reevaluate source arguments, add a language Copy or reselect overloads/specializations. Shared destruction, free and adapter cleanup retain the original operation's source location; user deinit body failures retain their own locations.
+Known Function Items/Closures call their selected entries directly; F uses callEntry. A shared generic Callable call uses the compile-time witness plan's selected entry/context pair without constructing F or a runtime witness table. Definitions, calls and adapters share one FunctionAbi mapping for logical receiver, arguments, result and context; matching ptr signatures alone are insufficient. Adapters never reevaluate source arguments, add a language Copy or reselect overloads/specializations. Shared destruction, free and adapter cleanup retain the original operation's source location; user deinit body failures retain their own locations.
 
 Allocation count/location is not a language guarantee. Elision need not reproduce failure of a removed allocation/free, but must preserve acceptance, required checks, captures, user effects and destruction order; surviving resource operations keep their Abort and source-location contracts. Heap-to-stack environment promotion requires tracing all uses and cleanup and replacing entries with matching direct code. Never pass stack storage to a heap-free entry or add operation-table variants just for promotion; otherwise keep the heap representation. Physical ABI choices remain compiler-controlled under §21.4.2.
 
 #### 21.3. Generic code generation
 
+This section integrates the adopted [Generic Sharing and Specialization design](doc/Design/2026-09-13%20Generic%20Sharing%20and%20Specialization.md), which takes precedence over earlier specifications in its scope. The rules here and in §21.4.6 are normative; [Appendix B.7](#b7-generic-generation-and-specialization-strategy) records initial compiler guidance. Internal names describe plans, not new syntax, reflection, JIT, or a stable external ABI.
+
 ##### 21.3.1. Policy and sharing conditions
 
-**Instantiation** binds generic arguments. **Explicit full specialization** selects a user-written implementation under [function specialization](#88-explicit-full-function-specialization). **Automatic specialization** generates Type-specific code while preserving that selected implementation's meaning. Instantiation does not require a separate machine-code body.
+**Instantiation** binds generic arguments. **Explicit full specialization** selects a user-written implementation under §8.8. **Automatic specialization** fixes facts in generated code while preserving that selected implementation. Neither instantiation nor a scalar operation alone requires a separate machine-code body.
 
-Use **shared implementations with automatic specialization where needed**:
+Generation has these logical dependencies, without prescribing compiler passes:
 
-| Policy | Condition |
+1. Verify the generic body universally under its declared premises (§8.10), including operations, ownership, Loans and cleanup.
+2. Check each use and select its implementation from the closed explicit-specialization set.
+3. Substitute the verified plan and resolve concrete layout, acquisition, effects and cleanup.
+4. Build a correct baseline sharing plan, then apply bounded optional optimization.
+
+Sharing and budget changes preserve semantic acceptance, selected implementations, results, evaluation/effect order, checks, ownership and cleanup. Runtime metadata executes verified operations; it never performs lookup, proves Constraints or validates source Loans. Keep Origins in semantic proofs and dependencies even when generation keys erase them. Pattern coverage and required unreachable-code diagnostics are unchanged.
+
+| Generation choice | Condition |
 | --- | --- |
-| Required separation | Shared code, metadata, helpers, and adapters cannot preserve a semantic or representation difference |
-| Default automatic specialization | Scalar value representation or operations; use Type-specific code or adapters under the policies below |
-| Optional automatic specialization | Inlining, removal of indirect calls, or other optimizations preserve meaning |
+| Baseline sharing | Common representations, typed helpers, operations, storage and ABI adaptation preserve the verified plan |
+| Required separation | Those mechanisms cannot preserve a semantic or representation difference |
+| Optional specialization | Fixing facts improves the baseline without changing its meaning |
 
-Sharing must preserve the selected ordinary or explicit implementation, environment-selected syntax, resolved overloads and Contract mappings; parameter/result representations, layout and receiver adjustments; and Copy/Move/Consume, borrowing, reference counts, failure, and destruction paths. Differences may be moved to common-format metadata or helpers, but must not be lost. Equal representation is insufficient to share implementations with different observable behavior.
+Scalar arithmetic and typed load/store may use small typed helpers while a larger body remains shared. Helpers retain the original checks, failure order and source location. No policy grants writes through ref, implicit Copy through uniq, or pointer comparison in place of a required referent operation. Diagnose unsupported paths before emission instead of generating a semantic substitute.
 
-Metadata executes validated operations; it does not defer source legality, Origin/Loan checks, or environment selection to runtime. Sharing must preserve evaluation order and count, results, side effects, ownership, and failure behavior. It does not expand runtime Pattern exhaustiveness proofs or mandatory unreachable-pattern diagnostics.
+~~~kimi
+func classify<T>(value: ref/T) -> i32 => 0
+specialize func classify<i32>(value: ref/i32) -> i32 => 1
+
+func forward<T>(value: ref/T) -> i32 => classify<T>(value)
+// forward<i32> calls the explicit implementation even with specialization budget 0.
+~~~
 
 ##### 21.3.2. Identity and generation keys
 
-The following are logical distinctions, not prescribed APIs or binary encodings:
+Keep semantic identity, implementation selection and generated representation distinct:
 
-| Identity or key | Purpose and retained information |
+| Identity or plan | Required information |
 | --- | --- |
-| Complete static Type identity | Normalized nominal identity, all Semantics layers, nested Types, and Origins; used for semantic checks alongside Loan information |
-| Implementation Selection Key | Original function declaration Identity plus ordered ArgKey / LengthKey values for all its own generic slots; select a matching explicit implementation from the closed definition-side set |
-| Runtime Object Type Identity | CoreId of the actual payload, with the special root-handle rule in [object metadata](#2121-type-identity-and-descriptors) |
-| Code Generation Key | Distinguish the selected implementation's meaning and representation, scalar operations, calling convention, embedded operations, and ownership effects that change generated code |
-| Code Cache Key | Generation key plus declaration/Kotonoha identity and version, closed specialization set and selection mappings, selected body and dependency content identities, target, compiler build, and optimization/generation settings |
+| Complete static Type identity | Normalized nominal identity, every Semantics layer, nested Types and Origins; use alongside Loan information |
+| Implementation Selection Key | Original function Identity and ordered ArgKey / LengthKey values for its own generic slots; select within the closed definition-side set |
+| Runtime Object Type Identity | CoreId of the actual payload, using §21.2.1's root-handle rule |
+| Generation plan | Selected implementation, typed operations and cleanup, entry/body ABI, reader schema and all embedded facts needed to preserve meaning |
 
-Form, normalize, and validate complete Type arguments before computing an Origin-erased key. Ordinary bindings and semantic metadata retain every Origin and Loan. An Implementation Selection Key retains outer handle Semantics; it is not Runtime Object Type Identity. Origin differences alone neither select another implementation nor require duplicated machine code.
+Normalize and validate complete arguments before forming an Origin-erased key. Selection retains outer handle Semantics; it is not object identity. Origin differences alone neither select another implementation nor require machine-code duplication. Equal size or pointer representation proves no semantic equivalence.
 
-A Code Generation Key may omit concrete Type differences handled entirely through metadata or helpers, provided their correspondence remains available. Embedded scalar operations distinguish `i32` from `u32` even when their sizes match. Any merging across selected implementations must prove preservation of their observable behavior. None of these keys replaces Constraint, Type, Origin, or Loan validation.
+A body may omit concrete Types handled wholly by context or helpers. Embedded signed arithmetic must still distinguish i32 from u32; direct destruction must retain the exact entry and embedded context. When destruction remains indirect, supply the actual operation/context pair. Equal size and a hasDestructor flag cannot justify erasing different destructors. Type identity, offsets, witnesses and other used facts each need a valid sharing plan.
+
+[Appendix B.7.1](#b71-plan-keys-and-generation-order) separates semantic, body, entry and context keys for the initial compiler. These are in-memory generation roles, not a persistent object-cache format. Persistence follows §21.3.4.
 
 ##### 21.3.3. Shared operations and Type policies
 
-Shared inputs must expose the required information in a common form, directly or through adapters:
+###### 21.3.3.1. Requirements and fixed facts
 
-| Purpose | Logical information or operation |
+Shared, fully fixed and partly fixed bodies use the same lowering. Each typed operation obtains only its required facts from the verified substitution plan:
+
+| Binding | Lowering |
 | --- | --- |
-| Layout | Size, alignment, stride, and required field offsets |
-| Initialization | Move-initialize; copy-initialize only where Copy is permitted |
-| Destruction and replacement | Destroy; move-assign/copy-assign when appropriate |
-| Type-dependent operations | Member/Contract implementation, receiver adjustment, required identity and dynamic destruction entries |
+| Fixed(value) | Use a constant, direct instruction or known entry |
+| FromContext(slot) | Read the schema-defined slot Type |
+| No requirement | Generate no slot |
 
-Initialization writes uninitialized storage; Move transfers responsibility and Copy preserves the source. Destroy only initialized parts whose responsibility remains. Combined assignment helpers must preserve [assignment order](#137-assignment), including securing the right side before evaluating and replacing the left side, and its failure behavior. This is not a requirement for function-pointer tables, a new Copy capability, user-defined Copy, or unrestricted byte copying. Values may be addressed without mandatory heap boxing. Concrete layouts and identities survive sharing; runtime Origin representations are not required.
+Requirements need not correspond one-to-one with Type parameters. A body may need a size, Field offset, length or selected callee independently. Borrow transfer alone needs no referent metadata; value transfer needs its size and valid storage; destruction, Contract operations and calls use selected entry/context pairs. Typed helpers supply scalar operations and ABI adaptation.
 
-Let P be an integer Type, `f32`, `f64`, `bool`, or `char`. `string`, Unit, Never, and nominal wrappers containing scalars are not P. Normalize transparent aliases and redundant owner notation without erasing nominal identity.
+Derive sizes, alignments, offsets, identity, acquisition conditions and operation pairs from the **same substitution**. Record every premise of embedded instructions and attributes as a fixed fact, and prove it for every connected substitution. Matching slot storage Types or sizes is insufficient.
 
-| Type or operation | Default generation policy |
-| --- | --- |
-| P passing, results, storage, and temporary Copy/Move | Type-specific automatic specialization or adapters |
-| P arithmetic, conversion, and comparison | Type-correct instructions or helpers; automatic specialization by default |
-| Only passing or returning `ref/P` or `uniq/P` | Share if representation and borrow operations permit |
-| Load/store through `ref/P` or `uniq/P` | Type-correct instructions or helpers; automatic specialization by default |
-| `string`, struct, enum, Tuple, and non-scalar value borrows | Share through metadata when the required operations permit |
-| `unsafe/T` | Share while retaining pointee size, access operations, and Unsafe preconditions |
-| Other existing Type forms | Apply the same representation and operation conditions; introduce no new Type form |
+~~~text
+Fixed facts:
+    size(T) = 16
+    source and destination are valid, nonoverlapping 16-byte ranges
+    both alignments are at least 8
 
-No policy gives writes through `ref` or implicit Copy through `uniq`. Reference comparison follows the allowed language operation, not an assumption that pointer comparison is sufficient. A helper may isolate Type-specific operations so the caller remains shared. A nested scalar, as in `Box<i32>`, does not force whole-body duplication, nor does a fixed `i32` in a declaration require expanding unrelated slots.
+Allowed: memcpy 16 bytes with align 8
+Unproven: align 16, a derived Field offset, or a particular destructor
+~~~
 
-Keep `obj`, `rc`, `arc`, `objref`, and `objuniq` separate in ownership-aware intermediate representations. After making ownership, borrowing, and count operations explicit, equivalent low-level code may merge. Sharing within one Semantics still requires a common form for View Targets, preserving member calls, receiver adjustment, dynamic identity, destruction/release, and non-atomic versus atomic counts. Use §21.2's specified handle storage without assuming identical ownership operations or callees.
+Use proven constant bounds for LLVM align and dereferenceable. Weaken or omit attributes when the common guarantee is insufficient; a runtime alignment slot is not a constant attribute. Stronger facts may apply within a proved branch, helper or specialization. Prove noalias under §21.5.5 and inbounds under its own pointer contract.
 
-Unit retains §3.1.5’s zero-sized logical storage even if the calling convention omits transfer or reserves padding; preserve effects and required places without promising distinct addresses or slots. Never has no value: non-completing argument evaluation prevents the call but preserves earlier effects/transfers. Never-returning functions do not return normally; unreachable code still receives required static checks.
+Retain width, signedness, floating-point rules, Semantics, effects and partial state in the typed plan. Keep obj/rc/arc/objref/objuniq acquisition and count operations distinct until equivalent low-level operations can safely merge. Unit retains zero-sized state and effects; Never has no value or normal return. Preserve raw-pointer pointee layout and Unsafe preconditions.
 
-```kimi
-func pair<P, T>(number: P, value: T) -> (P, T) => (number, value)
-// Without explicit specializations, pair<i32, A> and pair<i32, B> may share
-// a body if metadata preserves T operations and Tuple layout. Selection keys
-// distinguish A/B; a generation key need not embed that metadata-only difference.
+Metadata only runs acquisition plans already proved valid under §8.10. A conditional Copy/Move plan may use HasCopy, but runtime flags do not establish source legality. SharedReadResult (§4.6.6) remains a full-Semantics plan: owner Copy elements yield values, owner Non-Copy elements yield ref, object owners yield objref without retaining counts, and exclusive borrows yield shared Reborrows. Preserve correlated result Types, Origins and ABI mappings; slot borrowing is a different operation.
 
+The Copy/Move and duplication examples in §8.10 also apply to shared lowering. In contrast, a pure borrow transfer can omit referent metadata entirely:
+
+~~~kimi
 func keepBorrow<T>(value: ref/T) -> ref/T from value => value
-// No referent access: compatible borrow representations can share immediately.
-```
+// No referent access, so no T metadata is required.
+~~~
 
-**GenericContext.** Use an immutable array of pointers to ValueMetadata, verified witnesses and callee records. Windows slots are 8 bytes at offset 8 * index; check size/offset arithmetic. Fix and verify the schema, slot count and Type-argument correspondence between producer and consumer. Pass null when no context is needed. A callee record contains its entry plus its **own** context; never reuse another schema's positions without a verified mapping adapter. Reuse contexts for a closed substitution without per-call allocation or runtime Type search. TypeContext supports operations on a Type; GenericContext supports a particular body/entry.
+###### 21.3.3.2. GenericContext and operation pairs
 
-Metadata executes only definition-proven plans. Unconditional Copy needs proof; ordinary acquisition valid for both Copy and Non-Copy may retain a verified conditional HasCopy plan. Runtime flags do not decide source legality. All current initialized values permit §21.4.5's byte transfer, so physical Copy/Move paths may merge; Copy's null destructor may eliminate a physical branch, but source state and Loans remain distinct.
+GenericContext contains only the facts its reader needs. In windows-x64-v1 it is an immutable schema-defined sequence of 8-byte slots, at offset 8 * index:
 
-```kimi
-func transfer<T>(value: T) -> T => value
+| Logical slot kind | Contents |
+| --- | --- |
+| 64-bit integer | Nonnegative isize lengths, sizes, alignments and offsets; full-width u64 Type tokens; Boolean 0 or 1 |
+| Entry pointer | Selected operation entry |
+| Context pointer | That entry's private context, required metadata, or null |
 
-func duplicate<T>(value: T) -> (T, T)
-    T is Copy
-    return (value, value)
-// transfer admits the definition-checked Copy/Move alternatives.
-// duplicate requires static Copy evidence, not a runtime HasCopy test.
-```
+The typed schema fixes each integer's signedness and purpose; LLVM storage is i64. Check layout/length values and slot arithmetic against profile limits at generation time. Never narrow a u64 Type token to nonnegative isize, convert pointers to integers, or add runtime slot tags.
 
-SharedReadResult (§4.6.6) is a separate full-Semantics plan, not a HasCopy branch: owner Copy T yields T, owner Non-Copy T yields ref/T, object owners yield objref without retaining counts, and exclusive value/object borrows yield shared Reborrows. Explicit slot borrowing remains distinct; ref/(rc/T) cannot replace an ordinary objref/T read. Preserve result Type, Origins, effects and ABI/context mappings and verify every generic case. Missing metadata never permits changing source acquisition, selecting a different overload/specialization or using payload metadata for a handle.
+An operation uses adjacent entry/context slots when both components are dynamic. Fixed components and unused requirements may be omitted. Contract witnesses and FrameLayout are compile-time correspondence plans, not runtime tables reached from GenericContext. Related Types, requirements and selected implementations remain in the semantic plan.
+
+Ordinary shared bodies read size, offset and length directly, without traversing TypeContext. Facts used only by a callee stay in that callee's context. Merge identical semantic requirements; do not merge distinct requirements merely because their current values happen to match.
+
+~~~text
+Example context for a body using comparison, instantiated with T = i32:
+    [0] isize   size(T)          = 4
+    [1] entry   selected compare = compare_i32
+    [2] context compare context = null
+    [3] isize   offset(temp1)    = 4
+
+If temp1's offset is fixed for every member of the body, omit slot 3.
+Invoke slots 1 and 2 using the comparison entry's ABI.
+~~~
+
+A direct integer needs one slot read; a fully dynamic operation pair needs at most two. This describes the access path, not final instruction counts or a speed guarantee; the operation may read its own metadata, and flattened contexts may use more bytes.
+
+###### 21.3.3.3. Type metadata, schemas and cycles
+
+ValueMetadata retains §21.2.2's 48-byte format. TypeContext serves the **Type operation entry**: it may hold Field offsets, element/Case metadata and selected operation pairs. Fixed-array TypeContext includes elementMetadata and N. Compute the entire derived TypeLayout from the closed substitution; derive body integer slots from that same plan instead of rebuilding layout at runtime. Handle metadata cannot substitute for object payload metadata.
+
+A schema describes reader requirements, definition-side bindings, normalized Type/length expressions, operations and slot Types. Deduplicate and order by stable structural requirement keys, keeping each dynamic operation pair adjacent. Source occurrence, registration order and parallel completion do not determine the schema. The callee's internal schema is not part of the caller's schema.
+
+Generate and validate each entry together with its own context. The caller passes that context opaquely and never interprets its schema. Reader changes may remove unused slots without schema-only adapters. ABI differences still require §21.3.6's adaptation.
+
+Metadata and contexts are immutable constants for closed substitutions and may form finite cycles, including mutual recursion. Do not require a DAG. After optional choices, resolve final references and validate all pairs and fixed facts before executable output; do not publish incomplete records. A changed callee context need not change the caller ABI or optimization choice.
+
+Keep records and entries alive through every use and cleanup, independently of caller stack storage. No per-call context construction or runtime Type search is required. Store no instance initialization state, Loans or dynamic collection lengths in shared metadata; null context denotes no required context.
+
+###### 21.3.3.4. Lengths and fixed-array destruction
+
+Length meaning and formation proofs remain owned by §4.4:
+
+| Use | Source |
+| --- | --- |
+| Explicit-specialization selection | Static LengthKey |
+| Body N, bounds, Slice length and element loops | Integer slot or Fixed |
+| Array transfer size | Integer slot or Fixed from the same TypeLayout |
+| Fixed-array destruction | elementMetadata and N in the array's TypeContext |
+| Length needed only by a callee | That callee's private context |
+
+Identify length requirements by normalized expressions and definition-side bindings. Prove Type formation from declared premises and check concrete evaluation; body-only Type formation cannot wait for favorable arguments. Do not infer N from size/stride or make a body read N through TypeContext. Keeping N both in body slots and destruction metadata is permitted when both readers need it.
+
+~~~kimi
+func keepArray<length N, T>(value: [N of T]) -> [N of T] => value
+
+func lengthAfterOffset<length N>(value: ref/[(N + 4) of u8]) -> isize
+    return N + 4
+
+func twiceLength<length N>() -> isize => N * 2
+// keepArray transfer needs size only.
+// The signature's ValidLength proof can eliminate the N + 4 calculation.
+// N * 2 is ordinary checked arithmetic: overflow remains runtime Abort.
+~~~
+
+Authorized transfers follow §21.4.5; fixing a length alone does not remove unrelated arithmetic checks. For example, specializing this loop for a small N may remove proven bounds checks or unroll it, but must retain any unproved total overflow check:
+
+~~~kimi
+func sum<length N>(values: ref/[N of i32]) -> i64
+    var total: i64 = 0
+    for i in values.indices
+        total += values[i]@i64
+    return total
+~~~
+
+For byte-offset multiplication attributes such as nuw, prove that 0 <= i < N for the same array dominates the multiplication, stride is nonnegative, N * stride fits the operation width and layout limit, and operands are defined. Pointer provenance, addition and inbounds need separate proof. Zero stride does not remove logical bounds checks.
+
+Destruction uses the pair {destroyValues, metadata}; metadata is the existing entry's context argument in destroyValues(first, count, metadata, location), not an extra argument. Its operation ABI need not order arguments like an ordinary call. Apply §21.2.2's null-entry, zero-count, complete-range, reverse-order and source-location rules.
+
+A fixed-array entry reads elementMetadata and N from its own metadata's TypeContext. It destroys the outer count arrays in reverse order and each array's N elements in reverse order, skipping calls for null element entries or N = 0. Storage release is separate.
+
+~~~text
+arrayDestroy(first, count, arrayMetadata, location):
+    elementMetadata, N = arrayMetadata.TypeContext
+    for each array in reverse logical order:
+        if N != 0 and elementMetadata.destroyValues != null:
+            elementMetadata.destroyValues(arrayFirst, N, elementMetadata, location)
+~~~
+
+A complete contiguous range may become one count * N element-destruction call only when metadata, range, reverse order and failure location agree. If that product exceeds the count width, retain the original loops without adding an Abort. Preserve all logical destruction effects even at zero stride.
 
 ##### 21.3.4. Artifacts, verification, and invalidation
 
-The defining Kotonoha collects and closes its explicit specialization set under [declaration ownership](#883-selection-and-declaration-ownership). Artifacts retain the original declarations, set and mappings, complete contracts, body information, and legitimate [deferred obligations](#810-generic-body-checking-and-deferred-obligations). Preserve defining Symbols, source environments, dependencies, and verification deadlines; private dependencies do not become caller-addressable names.
+###### 21.3.4.1. Closed selection and dependency validation
 
-Check every environment-selected explicit specialization's target, Type arguments, Constraints, inherited contract, and body before finalizing the defining artifact, even if unused or unreachable. Excluded declarations follow [excluded-syntax rules](#195-diagnostics-and-excluded-syntax). A validated unused body need not have machine code; a validated body need not be rechecked at every call. Each use still checks its own contract and lifetime conditions.
+The defining Kotonoha closes its explicit-specialization set under §8.8.3. Artifacts retain declarations, selection sets/mappings, complete contracts, verified bodies and legitimate deferred obligations. Preserve defining Symbols, environments and dependencies without exposing private names to callers.
 
-Consumers use the artifact's closed set and may not register additions. Calls from shared generic code and function references must reach the implementation selected by their static arguments, independently of separate compilation, optimization, or LTO. Callee information passed at runtime, if used, must still come from that static selection, not from the value's Dynamic Type. No particular propagation or compilation mechanism is required.
+Check every environment-selected specialization's target, arguments, Constraints, inherited contract and body before finalizing its artifact, even if unused. Excluded syntax follows §19.5. Unused verified bodies need no machine code; every use still checks its own contract, initialization and Loans. Shared calls and function references reach the statically selected implementation, never one selected from a value's Dynamic Type or registration/load order.
 
-**Common dependency validation.** Record the declaration content on which inherited-Name checks, inherited conformance, effect summaries/public ObjectCompatible, and selection/generation depend. Include the completed contents of Containers used to conclude that a Name or specialization is absent, plus environment selection and verification-rule identity. A list of referenced Members alone cannot detect additions. Validate dependency content and Code Cache Keys, not only package versions.
+Record all declaration content actually read by a judgment: selected bodies, closed selection sets, inherited-Name and conformance checks, effect/public ObjectCompatible summaries, environment selection and verification-rule identity. Include completed Containers when absence matters; referenced-member lists alone miss additions.
 
-Before reuse, compare recorded dependencies with the actual definitions. A mismatch invalidates affected judgments and generated results, including calls formerly mapped to the ordinary body. Revalidate from the affected stage: accept and update results that still satisfy their requirements; diagnose lost requirements at the dependent declaration, conformance, constraint use, or call. If the required information is unavailable, reject the artifact with a rebuild diagnostic. Never reuse stale proofs, mix old/new mappings, or choose by load order.
+Before reuse, compare actual identity, content and verification conditions, not only package versions or declaration correspondence across versions. Additions, removals, access changes, Signature edits, Proven withdrawal and specialization edits may invalidate previous judgments. Revalidate the affected stage; update still-valid results and diagnose lost requirements at the dependent use. If necessary information is unavailable, require a rebuild. Never reuse stale proofs, mix selection sets or choose an incorrect shared fallback.
 
-Name additions, access expansion, Signature changes, Proven withdrawal, and specialization additions/deletions/body edits can break existing consumers, even without changing a public Type. This is an API compatibility classification, not a requirement that an upstream build know or diagnose all downstream code. Both body-derived and specialization-derived changes use the same validation process. Missing correctness information cannot justify an invalid shared fallback.
+###### 21.3.4.2. Persistence and composition
 
-Artifacts follow [source and binary interfaces](#183-source-artifacts-and-binary-interfaces); no Koto serialization, fixed ABI, or exact artifact encoding is required.
+The initial persistent cache for semantic/generation processing stops at **verified semantic plans**, following the adopted [dependency/artifact design §5](doc/Design/2026-09-13%20Dependencies%20and%20Artifacts.md#5-検証と再利用). Preserve proofs, ownership, effects, cleanup, token-relative source references and legitimate unresolved representation obligations. Rebind diagnostic/generated locations and displayed expressions to current source; source text observed by a Mod is a separate dependency. Validate use-site Loans and initialization in that use's environment.
+
+Rebuild ABI plans, schemas, contexts, frames, budget choices, IR and machine code under the current generation scheme. A generation-only multiplier change need not invalidate semantic plans; target-dependent proofs and settings that change meaning remain validation inputs. Native content-analysis summaries may be stored separately as input indexes.
+
+Persisting product generation choices requires measured search cost and a defined validation contract for baseline plans, candidate sets, budgets and all generation dependencies. Object-code caches and persistent context graphs are not introduced here; see Appendix D.1.
+
+Separate Provider-independent Library semantic plans from final [Composition Root](doc/Decisions/2026-09-13%20Composition%20Root%20Review.md) connections. Record operations, implementations, schemas and constants actually used by generated artifacts. Do not add the whole CompositionId to every body key. Provider changes must revalidate/regenerate affected witnesses, inlined bodies and entry/context pairs; conservative invalidation is allowed until precise dependencies exist. Source/binary interchange remains governed by §18.3 and the artifact design.
 
 ##### 21.3.5. Generation limits and code merging
 
-Generate needed bodies without enumerating the Cartesian product of Type arguments. Under the same declaration/build conditions, deduplicate generation plans by Code Generation Key; recursion to a key already being generated refers to that plan. Reuse existing code only after Code Cache Key validation.
+Separate **mandatory generation resource limits** from **optional optimization growth budgets**. Identical inputs, compiler/profile and settings reproduce logical plans and budget allocation independently of enumeration, parallel completion and cache presence. This does not promise identical behavior under actual OS resource exhaustion.
 
-Limit growing automatic specialization, including Type-growing recursion, with a finite optimization budget and use a verified shared fallback when it preserves the selected implementation. Required separation needs no shared fallback. Metadata/helpers also require finite generation. Budgets cannot change source validity or replace explicit specialization with the ordinary body. Scalar defaults promise neither one final body per Type nor public ABI entries.
+Required closed substitutions, layouts, metadata, contexts and plans must fit finite generation limits. Distinguish finite graph cycles, growth of distinct keys such as `T -> Box<T>`, and invalid infinite inline layout. Body sharing alone does not bound metadata generation. Reuse existing logical plans for already registered keys; do not enumerate the full Cartesian product of arguments or use fake pointers for missing facts.
 
-A shared path cannot discharge unresolved Type, ownership, or layout obligations. Reject infinite value layout under existing rules. Diagnose unresolved obligations separately from resource exhaustion; Type-growing recursion is not otherwise banned by this section.
+Failed or exhausted optional exploration keeps the verified baseline and cannot by itself reject source. If required baseline generation also exceeds limits, issue a resource diagnostic, separately from semantic or representation errors. Retain required checks and unsupported-feature diagnostics even for definitions with no emitted machine code. Budgets never replace an explicit specialization with the ordinary body.
 
-Equivalent code may merge only while preserving observable Type/function identity and the selected implementation's results, side effects, failure, ownership, and destruction behavior. Separate entry points may share an internal body. No new function-address comparison, reflection, or stack-trace guarantee follows.
+Equivalent code and entries may merge only while preserving identity, results, effects, failures, ownership and cleanup. Emit needed immutable metadata/operation/context records as private unnamed_addr constants when their addresses are unobservable. Constant folding and direct calls retain the typed plan and consumer contract. Reuse TypeLayout, ValueLowering, FunctionAbi and CleanupPlan rather than cloning syntax.
 
-Generate needed immutable metadata/operation/context records as private unnamed_addr constants when their contracts permit address-insensitive sharing. Fold/directly resolve loads only after preserving Type identity, verified operations and consumer requirements. Record schema, selected implementation, layout, operations, cleanup, context contents, FunctionAbi, compiler/profile and content dependencies in reusable plans/cache keys; schema changes invalidate producers and consumers. Reuse TypeLayout, ValueLowering, FunctionAbi and CleanupPlan instead of cloning syntax trees.
+[Appendix B.7](#b7-generic-generation-and-specialization-strategy) gives the initial bounded selection and accounting method. Budget numbers and estimates are not fixed language constants or exact limits on final binary size or compilation time. Local specialization hints, dynamic storage for unknown substitutions and object caches remain deferred under Appendix D.1; no new require/forbid-specialization syntax is added.
 
-Recursive references among a finite set of metadata/context keys are allowed. Growing distinct Type/context keys require a documented resource-limit diagnostic, not fake pointers or unverified records. Keep entries and records alive through every use and cleanup. Infinite inline value layout remains an error.
+##### 21.3.6. Entry ABI and call responsibility
 
-Layout-class sharing may start from selected implementation, size/alignment, required HasCopy and cleanup requirements, but must preserve every typed semantic plan. Indirect destruction uses the actual metadata/context. Direct destruction requires the exact entry and embedded context in the sharing key: a hasDestructor Boolean and equal size are insufficient. Type keys, witnesses and offset maps each need their own valid sharing plan.
+###### 21.3.6.1. Budget-independent entries
 
-Exact precompilation, artifact formats, physical context passing, inlining budgets and further sharing mechanisms remain implementation choices within the specified schemas and FunctionAbi agreement. Common Function Type/runtime-contract restrictions remain unchanged; ordinary-body legality follows [universal generic verification](#810-generic-body-checking-and-deferred-obligations).
+Choose the caller-facing entry ABI from the call contract:
+
+| Call | Entry ABI |
+| --- | --- |
+| Fixed callee and known substituted signature representations | The same FunctionAbi rules as a nongeneric function |
+| Context callee pair, or unresolved signature representation | Shared ABI based on the generic declaration's signature |
+| Common function value | Existing Function Type contract (§21.2.5) |
+
+The shared ABI passes representation-dependent acquired values by storage pointer and results by pointer to caller-provided uninitialized storage. Use a declaration-known common representation directly; ref/uniq keep their existing one-pointer form. A Fixed entry alone does not make an unresolved signature scalar.
+
+Optional budgets change entry implementations and internal adaptation, **not the entry ABI used by callers**. Generate needed entries per call contract and connect them to shared or specialized bodies. Merge entries only when their ABI and complete implementation facts agree.
+
+~~~text
+concrete caller -> direct_i32_entry(i32, i32) -> i32
+                       -> adapt to storage -> shared body
+                       or -> specialized body
+
+shared caller -> {shared_entry, private context}
+                       -> shared body or adapted specialized body
+~~~
+
+When ordinary FunctionAbi uses scalar passing, the concrete caller keeps it even at budget zero; extra transfers/calls inside the entry may remain. Reverting an optional candidate reconnects its entries to baseline bodies without specializing or rolling back a recursive caller group. Generic scratch frames follow §21.4.6.
+
+###### 21.3.6.2. Connection validation and adapters
+
+The logical call unit is {entry, context}. Pair generation and opaque context handling follow §21.3.3.3. At every connection, statically match the **generation scheme identity** and entry ABI. The scheme covers compiler build, target/profile, ABI/metadata/context generation rules and settings that change those rules.
+
+Entry ABI records logical arguments/results, ownership and context plus their physical Types, positions, calling convention and attributes. Indirect calls need this typed contract, not runtime ABI tags per slot. Callee schema changes are internal to the entry/context pair; no adapter exists solely to translate schemas.
+
+Within one scheme, adapt real ABI differences such as scalar results versus result storage. Regenerate or reject artifacts from another scheme rather than adding scheme adapters or runtime checks. OS startup, FFI and external backend helpers retain their external contracts. Later argument elimination or calling-convention changes require proof of compatibility across all uses; symbols, unused-entry emission and physical argument positions are not public guarantees.
+
+###### 21.3.6.3. Acquisition and cleanup
+
+Apply §21.4.3's responsibility transitions at the **logical callee entry**, regardless of entry/adapter/body splitting. Evaluate and acquire receiver/arguments once in language order; adaptation adds no language Copy/Move or duplicate cleanup. Owned argument pointers, ref, uniq and result storage keep distinct contracts despite identical pointer representation.
+
+The same normal-return and caller-storage rules apply to generic scratch reserved by an entry (§21.4.6).
 
 #### 21.4. Checked lowering and internal ABI
 
@@ -8100,13 +8243,13 @@ Unused nongeneric bodies and unexecuted branches within generated bodies still r
 
 ##### 21.4.2. Physical function signatures
 
-The internal function ABI is compiler-controlled, module-local, and deliberately unfixed. It applies to user functions, Core, and private runtime helpers in Application and inspection-only Library output. No physical calling convention, parameter/result representation or ordering, hidden-context position, symbol spelling, or stable ABI version is a language guarantee. The compiler may change these choices between builds, targets, optimization settings, or individual generated functions without a language-version change, provided all language semantics and external contracts remain satisfied. No binary compatibility between independently generated modules or compiler builds is promised.
+The internal function ABI is compiler-controlled, module-local, and deliberately unfixed. It applies to user functions, Core, and private runtime helpers in Application and inspection-only Library output. No physical calling convention, parameter/result representation or ordering, hidden-context position, symbol spelling, or stable ABI version is a language guarantee. The compiler may choose different physical signatures across builds, targets and generated functions without a language-version change, subject to all language and external contracts. Within a generation scheme, generic callers use §21.3.6's entry contracts: changing the optional specialization budget changes internal implementations, not their caller-facing entry ABI. No binary compatibility between independently generated modules or compiler builds is promised.
 
-Direct or indirect passing, aggregate splitting/coercion, result storage, omitted slots, calling conventions such as LLVM ccc or fastcc, and ABI attributes such as byval or sret are implementation choices, not prescribed defaults. Storage layouts defined elsewhere do not fix function passing: this includes scalars, string, object handles, and Core.Weak<S>. Unit still has its logical value/effects, and Never still has no normal result or return edge. Every emitted representation requires an implemented ValueLowering and its complete validity, ownership, and cleanup operations; implementation freedom does not permit guessing an unsupported representation.
+Within the entry rules of §21.3.6, direct or indirect passing, aggregate splitting/coercion, result storage, omitted slots, calling conventions such as LLVM ccc or fastcc, and ABI attributes such as byval or sret are compiler choices. Storage layouts defined elsewhere do not fix function passing: this includes scalars, string, object handles, and Core.Weak<S>. Unit still has its logical value/effects, and Never still has no normal result or return edge. Every emitted representation requires an implemented ValueLowering and its complete validity, ownership, and cleanup operations; implementation freedom does not permit guessing an unsupported representation.
 
 Derive definitions and all calls, including indirect entries and adapters when supported, from the same FunctionAbi contract. Physical rearrangement must preserve the mapping to logical parameters and results. Evaluate and acquire explicit arguments once in source order. A value receiver is evaluated once before explicit arguments (§7.3); a Type-qualified unbound call supplies self in ordinary argument order. Physical slot order does not determine evaluation order. Select ABI attributes according to the actual backend contract and prove any additional validity or optimization premises; a calling convention or attribute cannot grant source-level Copy, Move, or alias permissions.
 
-An ABI change must update every affected definition, caller, adapter, and compiler-generated runtime helper consistently, and invalidate incompatible generated/cache artifacts. A private implementation identity or content key is sufficient; no separately published internal ABI version or compatibility window is required. The specified OS entry, foreign C calls, backend-support symbols, and externally observable storage retain their own contracts. In particular, backendSupport.abiVersion identifies the external backend supply, not a stable Kimigayo function ABI.
+An ABI change must update every affected definition, caller, adapter, and compiler-generated runtime helper consistently, and invalidate incompatible generated/cache artifacts. Use §21.3.6's generation scheme identity and typed entry contracts; no separately published internal ABI version or compatibility window is required. This initial design rebuilds generation artifacts rather than persisting them (§21.3.4). The specified OS entry, foreign C calls, backend-support symbols, and externally observable storage retain their own contracts. In particular, backendSupport.abiVersion identifies the external backend supply, not a stable Kimigayo function ABI.
 
 **Non-normative example.** One compiler implementation can use direct scalar passing and caller-provided aggregate slots as follows. These signatures illustrate a possible lowering, not a required or frozen ABI.
 
@@ -8169,6 +8312,8 @@ Direct construction into an uninitialized final slot may remove intermediate tra
 
 ##### 21.4.5. Cleanup and physical transfer
 
+Tuple and fixed-array construction may place components directly in their final subslots. Each completed placement retains its own cleanup responsibility until whole-value completion transfers those responsibilities to the aggregate; completion need not copy bytes again. Physical offsets follow TypeLayout, while acquisition and cleanup keep their logical order. This optimization does not publish a partially constructed whole value.
+
 Each scope-leaving edge secures its result, performs exactly the cleanup of scopes left, then delivers the result/transfer. Follow §16.2's inner-to-outer, reverse lexical order of locals and defer; process only registered defer and initialized parts still owned. Use edge-known state directly; introduce runtime flags only where paths must remain distinguishable after a join. Equal cleanup sequences may share code when state and destination match. A heap stack or closure per defer is not required. Never infer partial construction/Move/base state from value bits or addresses, reorder cleanup by physical offsets, or move destruction to last use.
 
 Abort stops cleanup; nontermination blocks subsequent cleanup and delivery. Lack of visible side effects does not license removing a language-permitted infinite loop.
@@ -8184,6 +8329,46 @@ declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1 immarg)
 ; Inside a function: valid, nonoverlapping 24-byte ranges.
 call void @llvm.memcpy.p0.p0.i64(ptr align 8 %dst, ptr align 8 %src, i64 24, i1 false)
 ```
+
+##### 21.4.6. Generic scratch storage and fixed frames
+
+###### 21.4.6.1. Reuse and lifetime
+
+Prefer direct result construction, reuse of acquired owned-argument storage and removal of intermediate transfers under §21.4.4's evaluation, alias, Loan, storage-identity and cleanup conditions. Keep a Copy source separate from the callee's acquired value; never write a live replacement target early.
+
+After an owned argument is Moved, its storage may be reused only when no old responsibility or reference remains and capacity/alignment fit. This does not permit assignment to an immutable source parameter. Values with overlapping lifetimes, including cleanup and final references, need distinct regions. Loop temporaries may reuse a region across nonoverlapping iterations without moving destruction to the last read.
+
+###### 21.4.6.2. Exact entry reservations
+
+A temporary whose size and alignment are fixed in a body may use that body's static frame. Lay out remaining storage for each closed substitution. Its entry reserves the **exact required capacity**, rounded to the maximum required alignment, using fixed-size entry alloca. Do not use another instance's maximum or a capacity bucket.
+
+Pass per-call scratch to the shared body as a separate internal pointer argument. Supply offsets as Fixed facts or integer context slots. Include storage required for ABI adaptation, such as materialized scalar arguments and result slots, in the plan.
+
+~~~text
+directEntry(x: i32, ...) -> i32:
+    reserve fixed argument/result adaptation storage as needed
+    scratch = fixed alloca(capacity, alignment)  // omit when capacity is zero
+    sharedBody(adaptedArguments, resultStorage, privateContext, scratch)
+    return the result after normal cleanup completion
+
+sharedBody(..., context, scratch):
+    temporary = scratch + context[offsetSlot]
+    construct, use and clean it according to the verified plan
+~~~
+
+Statically validate every offset, capacity and alignment against the entry's reservation. The shared body performs no runtime scratch layout or dynamic scratch allocation; ordinary source-required heap allocation keeps its existing contract. Loops do not accumulate per-iteration stack allocations, and recursive invocations have independent live storage.
+
+Share entries only when entry ABI, capacity/alignment, destination body, adaptation and all embedded constants/context references agree. Capacity zero removes the allocation, but ABI/context differences may still require an adapter.
+
+Never store scratch in shared context or let a borrow into it escape in a result or Closure. Moving its values out, including values containing legal references to external storage, remains allowed. Normal return releases the frame without duplicate destruction; prohibit a tail call that discards the frame while scratch is still used.
+
+###### 21.4.6.3. Initial profile boundary
+
+The initial fixed-stack path supports alignment at most 16. Do not reduce a Type's alignment; diagnose unsupported representation when no valid path exists. Generate required Windows stack probes and unwind information for fixed frames.
+
+Zero-sized values use §21.2.4's aligned substitute storage while retaining state, Loans and destruction counts. Substitute addresses prove neither positive dereferenceable ranges nor noalias. Exact capacity describes the planned reservation, not the final machine frame including spills and call areas.
+
+Dynamic alloca, heap fallback for scratch and new stack-exhaustion/allocation-failure contracts are not introduced. Preserve the existing Library output boundary; unknown substitutions are outside this generation scope.
 
 #### 21.5. LLVM Windows x64 profile
 
@@ -8220,7 +8405,7 @@ Emit one definition for each generated function, without a same-name declare. Ex
 
 Use one module symbol table. Same-named external declarations share only if physical Type, calling convention, ABI attributes, dllimport, and resolved library all agree; otherwise diagnose. Function/data and declaration/generated-definition collisions are errors. Reserve __kimi_ for compiler internals, llvm. for LLVM, and _fltused, __chkstk, memcmp, memcpy, memmove, memset for profile supplies; reject these external names in user LibraryImport. Match exact ABI symbol names. Quote/escape LLVM identifiers and UTF-8 bytes; never insert raw source strings into IR. Shared ptr signatures do not merge source unsafe contracts; attach only guarantees true for every use.
 
-Deterministic output and cache keys retain compiler/layout identities, the selected internal ABI implementation and per-function contracts, target/DataLayout/codegen settings, backend package version/hash, selected fragments/generated sources, complete arguments and selected implementations, cleanup, callees, and helper dependencies. Content identities may cover internal ABI choices without a public version number; changed choices invalidate dependent artifacts. Size/alignment alone is never a sufficient key. Do not depend on absolute working directories, host locale, enumeration order, or host CPU.
+Deterministic generation records retain compiler/layout and generation-scheme identities, entry/body ABI contracts, target/DataLayout/codegen settings, backend package version/hash, selected fragments/generated sources, complete arguments and selected implementations, cleanup, callees and helper dependencies. Validate content identities without requiring a public internal ABI version. Under §21.3.4, persistent semantic plans validate their own dependencies; generation records and code are rebuilt under the current scheme, not restored from an object cache. Size/alignment alone is never a sufficient key. Do not depend on absolute working directories, host locale, enumeration order, or host CPU.
 
 ##### 21.5.3. Checked instructions and raw pointers
 
@@ -8273,7 +8458,7 @@ MXCSR status bits are volatile and not exposed. External code must not depend on
 
 ##### 21.5.5. Storage, attributes, and unwind information
 
-Keep address-free scalar values in SSA, using phi at joins; mutable locals may use promotable fixed slots. Put required fixed-size allocas in function entry before calls with explicit alignment, while initialization and cleanup stay at their source execution points. Dynamic stack allocation is initially unsupported. Reuse storage only after cleanup and final reference use. Optional lifetime.start/end markers follow actual storage lifetime, not an Origin spelling or Move alone; omit unproven markers.
+Keep address-free scalar values in SSA, using phi at joins; mutable locals may use promotable fixed slots. Put required fixed-size allocas in function entry before calls with explicit alignment, while initialization and cleanup stay at their source execution points. Dynamic stack allocation is initially unsupported. Reuse storage only after old destruction responsibility and final references have ended; a completed Move may discharge the old responsibility without destruction. Generic entry reservations follow §21.4.6. Optional lifetime.start/end markers follow actual storage lifetime, not an Origin spelling or Move alone; omit unproven markers.
 
 **Safe value-borrow call contract.** Verify ref/V and uniq/V Loans from receiver/argument formation through the entire call, extended by result uses where required. Check overlaps among arguments, captures and storage anchors, including all direct/indirect static effects, defaults, initialization, cleanup and reentry (§15.6.4). Do not shorten caller protection to the callee's last use. Unknown potentially conflicting effects cause rejection. Owned environments still retain relevant static/capture anchors.
 
@@ -8865,6 +9050,11 @@ Internal-function IR/signature expectations test the selected compiler implement
 | Callable storage | Empty/inline/heap and zero-size over-aligned environments; capture order, direct-syntax versus general-expression allocation order, consuming partial cleanup, repeated Shared calls and common-value Move; consistent entries/adapters and safe allocation elision |
 | Metadata and sharing | Full ArgKey versus payload CoreId, token collisions/retokenization, metadata/context schemas and lifetime, zero-count/null-entry destruction, partial/range cleanup, recursive keys and resource limits, exact destructor/context sharing keys |
 | Safe value borrows | Immediate slot versus loaded referent, zero-size substitute addresses, call-wide ref/uniq protection and attributes, duplicate shared arguments, static/indirect/cleanup reentry, no unproven element alias attributes |
+| Generic entry ABI | Explicit selection at budget zero; concrete scalar entries, partly fixed unresolved signatures, function values, opaque callee schemas, external contracts and candidate rollback without caller-group specialization |
+| Generic context and fixed facts | Integer slots and adjacent operation pairs; slot deletion, different callee schemas, finite mutual recursion versus growing keys, full-width u64 identity; equal sizes with different alignment/destruction/derived layout; SharedReadResult and attribute proofs |
+| Generic scratch frames | Copy-source separation, Loans/Partial Move, exact per-substitution capacity independent of added instances, zero-capacity adapters, recursive/loop lifetimes, nonescape, zero-size storage, alignment limits, stack probes and unwind |
+| Generic lengths and destruction | N = 0, stride = 0, negative index, formation versus ordinary arithmetic overflow, body-slot versus destruction-context lengths, reverse destruction and count * N overflow without a new Abort |
+| Generic budgets and reuse | Exclusive all-member assignments, shared/small-specialized coexistence, body work moved into entries/helpers, post-selection deduplication, bounded exploration, enumeration/cache independence, multiplier-only reuse, use-site Loans and product/test budget isolation |
 | Weak and objects | No empty constructor; Option absence versus expired Weak; complete dependencies/Owned cyclic payload; builder cleanup before publication; all-mode payload +16, count limits and migration, upgrade/final-release races, guard lifetime and no freed-pointer reads; weak-memory ordering proofs separately from IR/native tests |
 | ABI and ownership | Scalar/aggregate/zero-size passing; separate Copy source; acquisition transfers; result secured before cleanup; Abort/divergence before delivery; partial construction/Move; literal backing never freed; Heap ownership released once |
 | Owned string lifetimes | Local-to-temporary Move, self-assignment, replacement after conditional Move, and declaration resets across loop backedges; destruction precedes placement and its live-state update; abrupt assignment operands produce no placement; conditional cleanup preserves scalar phi predecessors |
@@ -9011,6 +9201,97 @@ AccessMode describes the path, not the value's Semantics or the Owned capability
 
 Retain Candidate positions, Origin/Loan dependencies, and Copy/Move/Borrow/Reborrow plans alongside these facts. Candidate/body Symbols and binding Types are needed only at Binding positions. Shared position tracking gives no Move authority. Do not reconstruct access effects solely from MatchedType or reuse an instantiation's plan when its effects differ.
 
+#### B.7. Generic generation and specialization strategy
+
+**Initial compiler guidance, not additional language rules.** This implements §21.3 and §21.4.6 with bounded exploration. Numerical defaults, setting names and report formats require implementation measurements.
+
+##### B.7.1. Plan keys and generation order
+
+Within one generation scheme, distinguish these key roles rather than prescribing four hashes:
+
+| Plan | Key contents |
+| --- | --- |
+| Semantic | Compiler build/verification rules, definitions/bindings, semantic environment, closed selection sets and dependencies |
+| Body | Selected implementation, typed operations/cleanup, internal ABI, reader schema and embedded fixed facts |
+| Entry | Entry ABI, destination body, capacity/alignment, adaptation and embedded constants/references |
+| Context content | Reader schema and its integers, operation pairs, metadata contents and references |
+
+Omit concrete Types and frame capacities unused by the body; retain exact entries/contexts embedded by direct operations. Register logical nodes before resolving cyclic contents and edges. Do not recursively expand all referenced contents into keys. Resolve hash collisions by structural comparison, recording visited node pairs for cycles; memory addresses and registration IDs have no semantic meaning.
+
+1. Register and validate required closed substitutions/dependencies and check mandatory resources.
+2. Group substitutions representable by common typed operations and internal ABI into baseline sharing classes. Apply light simplification, then fix baseline bodies, entry contracts and resource estimates.
+3. Within each class, form a bounded set of choices from small, operation-consistent fixed-fact sets. Each choice assigns **every member** to a body, including unspecialized members.
+4. Select one choice per class under B.7.2–3, preserve entry ABIs, and finalize each reader's schema/context.
+5. Recheck resources, fixed facts and every connection; emit only needed artifacts. If optional choices exceed resources, revert in stable reverse adoption order without adopting the same choice again.
+
+During selection, class-to-class calls use stable entries. Do not make caller choices depend on incorporating a callee's internal body/schema at this stage. Recursive generation still requires finiteness checks, but an entire recursive strongly connected component is not one specialization candidate.
+
+##### B.7.2. Exclusive accounting within a class
+
+Use estimated instruction counts from the common plan; do not trial-run later lowering or LLVM to evaluate candidates.
+
+~~~text
+growthCost = max(0, instructions in the choice's required bodies
+                   - instructions in the baseline class)
+
+Baseline shared body: 100 instructions. Specialized body: 60.
+    Shared body still used: 100 + 60 - 100 = 60 growth.
+    All uses replaced:      max(0, 60 - 100) = 0 growth.
+~~~
+
+Count identical bodies once within a class. Subtract the baseline shared body only when **all uses** are replaced. Estimate each choice against the baseline, not the previous choice; do not credit savings to another class.
+
+Exclude routine entry/adapter ABI adaptation, fixed reservation and context data from the growth budget, but include them in mandatory resource accounting. Body duplication or expansion moved into an entry/helper still counts as body instructions; only routine boundary work is excluded.
+
+Estimate required helpers as part of each class's self-contained body group. Deduplicate across classes after selection without refunding savings or revising costs. Resource limits cover counts, instructions and bytes of entries/contexts as well as bodies; their cost need not grow linearly with instance count.
+
+Estimate benefit as context-dependent operations removed from the lightly simplified baseline. Weight operations remaining in loops by bounded nesting depth; a hoisted load counts once. Do not anticipate another candidate's adoption or future LLVM inlining. Reject negative-benefit and unchanged choices; positive cost requires positive benefit.
+
+##### B.7.3. Two growth limits and deterministic selection
+
+Before optional choices, fix baseline instruction quantities Bf for each original generic function and B for the generation unit. Aggregate all of a function's classes into Bf; B also includes internal nongeneric code. Use B.7.2's estimates before cross-class deduplication. Count bodies generated from external source dependencies, but not separately linked existing native code.
+
+The generation unit is the planning/budget unit and need not be one final LLVM module. Follow the [dependency/artifact design §6.2](doc/Design/2026-09-13%20Dependencies%20and%20Artifacts.md#62-生成要求と予算): keep product and test generation requests, sharing classes and budgets separate. Fix the product first under current Composition. Test-only substitutions do not rebuild product entries, schemas, frames or budget choices. Reused product code contributes neither B nor Bf to tests; candidates and unused budgets never transfer between them. Later omission of code unnecessary to tests preserves the generation dependency closure without redistributing product budgets.
+
+| Growth limit | Formula |
+| --- | --- |
+| Per original generic function | m * k * Bf |
+| Whole generation unit | m * r * B |
+
+Expose one finite nonnegative multiplier m. Internal coefficient k, rate r and rounding are deterministic; zero Bf or B gives zero growth allowance. Do not add an independent body-count optimization budget.
+
+Sort finite choices as follows:
+
+1. Effective zero-cost choices first, by descending benefit.
+2. Positive-cost choices by descending benefit/cost.
+3. Break ties by stable semantic-plan, class and choice keys.
+
+Visit this order once. Adopt a choice only if both limits and resource conditions permit it, then discard all other choices for that class. Unselected classes retain their baseline. Compare ratios without overflow and never divide by zero. Fixed costs and one choice per class avoid post-adoption reevaluation; this greedy method does not guarantee optimal allocation.
+
+Sorting/selecting n generated choices can take O(n log n), excluding candidate construction, member assignment and connection/resource validation. Bound candidate count, assignment description size, fixed-fact sets and search work; do not enumerate full Cartesian products.
+
+| Profile policy | Multiplier and exploration |
+| --- | --- |
+| O0 | m = 0; skip optional search, retain mandatory generation and light simplification |
+| O2 | Default multiplier chosen by measurement |
+| Size-focused | Default m = 0; prefer nongrowing simplification and replacement |
+
+Zero growth still permits concrete caller entries, mandatory separation and reuse. Backend optimization is controlled separately; this multiplier does not prohibit every final machine-code duplication or set an exact binary-size limit.
+
+##### B.7.4. Implementation efficiency and reporting
+
+Before new duplication, propagate Fixed facts, directly resolve calls and remove unused branches, transfers and slots. Reuse or hoist context loads only where valid, without unconditional loads on null paths or excessive register pressure.
+
+Place fixed-size temporaries in the body frame. Align scratch to its maximum requirement; the first positive-size region can then have offset zero. Use stable greedy storage coloring or a similar bounded reuse algorithm; optimal coloring is unnecessary.
+
+Make small entries easy to inline, without blanket alwaysinline. Verify that entry fusion reduces calls/frames while preserving scratch lifetime, loop stack behavior and accounting for body expansion.
+
+Reuse requirements, TypeLayout, FunctionAbi and CleanupPlan. Store candidates as differences from baseline plans rather than full copies. Create needed nodes with a worklist and reuse array/search-buffer capacity.
+
+Generation reports should explain sharing, fixed facts and required separation; candidate costs, benefits and rejection; budget consumption; entry/body/adapter counts; context/metadata bytes; and frame reservations. Resource diagnostics should identify the limit kind, configured limit, consumption, definition location and growth path in bounded output.
+
+Measure runtime, code/frame size, compilation time and peak memory, and compare results, effect order and cleanup. Check flattening's data cost, concrete-entry adaptation, semantic-cache reuse, context loads, stack probes/unwind and post-optimization code. Conformance cases are centralized in Appendix A.14; this guidance makes no claim of completed implementation or measured gains.
+
 ### Appendix C. Implementation status
 
 Implementation coverage is maintained in [STATUS.md](STATUS.md), separately from language conformance. Parser support alone establishes neither Binding, constant evaluation, ownership checking, nor execution.
@@ -9040,7 +9321,10 @@ This index links to design boundaries owned by the language sections. It adds no
 | Associated-Type inference beyond explicit identity facts, arbitrary complete-Type bindings, and stronger symbolic Constraint reasoning | Not introduced | [Associated Types](#843-associated-types), [proof boundaries](#87-constraint-proof-system) |
 | Const/value arguments beyond function lengths, standalone Semantics slots, partial/default/variadic generic arguments | Not introduced | [Function length parameters](#44-function-length-parameters), [Generic Type parameters](#81-generic-type-parameters) |
 | Partial/conditional explicit specialization, specialization priorities, generic Container specialization | Not introduced | [Full specialization](#88-explicit-full-function-specialization) |
-| Exact precompilation, artifact encoding, physical context passing and optimization budgets | Implementation choices within the specified metadata/context schemas and FunctionAbi agreement | [Generic generation limits](#2135-generation-limits-and-code-merging) |
+| Generic budget defaults, setting names, reporting and physical internal argument positions | Compiler choices within the adopted generation contracts and initial selection guidance | [Generic entries](#2136-entry-abi-and-call-responsibility), [budget strategy](#b73-two-growth-limits-and-deterministic-selection) |
+| Persistent generation choices and object-code caches | Deferred until measured need and contracts for formats, keys and all generation dependencies; the initial cache retains verified semantic plans only | [Persistence](#21342-persistence-and-composition) |
+| Storage for unknown generic substitutions | Deferred; must jointly define layout computation, dynamic stack/heap storage, limits, failure and effect order before introduction | [Fixed frames](#2146-generic-scratch-storage-and-fixed-frames) |
+| Local automatic-specialization hints | Deferred until measured local needs cannot be met acceptably by the global multiplier; any future hint must be safe to ignore and preserve semantics/resource limits | [Generation limits](#2135-generation-limits-and-code-merging) |
 | Automatic toolchain installation, debug information, cross-module/DLL ABI, extra CPU/OS profiles | Deferred beyond the Windows profile; explicit build/run commands are defined in §20.8.6 | [Native build](#208-llvm-output-native-build-and-execution), [LLVM profile](#215-llvm-windows-x64-profile) |
 | Stack exhaustion detection, diagnostics, and recovery | Unspecified; no guaranteed conversion to Kimi Abort or recovery contract | [Storage and unwind information](#2155-storage-attributes-and-unwind-information) |
 | Dynamic collection and Slice storage ABI; additional collection APIs | Mutation, capacity, Loans/effects and complexity are specified in §4.7; concrete collection storage and the extensions listed there remain design work. Value-borrow, callable and metadata storage are specified in §21.2–3; implementation coverage is separate | [Dynamic mutation](#47-dynamic-collection-mutation), [Runtime representations](#212-runtime-representations-and-metadata) |

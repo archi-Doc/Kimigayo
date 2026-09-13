@@ -33,6 +33,13 @@ public sealed partial class OwnershipAnalysis
     private void RecordValue(int id, OwnershipOperationKind kind, Koto source, int place, int input)
     {
         this.body.Values.Add(default);
+        if (kind == OwnershipOperationKind.Read && input >= 0 && ReferenceTypes.IsString(this.body.Places[input].Type))
+        {
+            this.placeValues[input] = id;
+            this.SetValue(id, OwnershipValueKind.Borrow, []);
+            return;
+        }
+
         if (kind is OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.AcquirePattern && place >= 0 && ScalarResult(this.body.Places[place].Type))
         {
             var sourcePlace = kind == OwnershipOperationKind.InitializeSubject ? input : place;
@@ -54,7 +61,7 @@ public sealed partial class OwnershipAnalysis
             this.SetValue(id, OwnershipValueKind.Alias, [parameter]);
         }
 
-        if (kind == OwnershipOperationKind.Write && input >= 0)
+        if (kind is OwnershipOperationKind.Write or OwnershipOperationKind.PayloadPlacement && input >= 0)
         {
             this.SetValue(id, OwnershipValueKind.Alias, [this.Value(input)]);
         }

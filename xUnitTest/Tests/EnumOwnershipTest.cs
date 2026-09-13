@@ -222,7 +222,7 @@ public class EnumOwnershipTest
         var c = Parse("struct S\n    var value: i32\nenum E\n    Empty\nlet x = E.Empty");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
-        var declaration = (EnumKoto)body.Constructions[0].Case.Owner.Declaration;
+        var declaration = (EnumKoto)Assert.IsType<BoundEnumCase>(body.Constructions[0].Case).Owner.Declaration;
         c.Kotonoha.CreateCodeContext().Parse(declaration, "Full(S)");
         Assert.True(c.Bind().IsComplete);
         Assert.False(body.IsVerified);
@@ -290,7 +290,7 @@ public class EnumOwnershipTest
         Assert.Equal(Body(baseline).Operations.Select(x => x.Kind), body.Operations.Select(x => x.Kind));
         if (body.Places[construction.Place].Type.Kind == BoundTypeKind.Nominal)
         {
-            Assert.Same(construction.Case.Owner.Type, body.Places[construction.Place].Type);
+            Assert.Same(Assert.IsType<BoundEnumCase>(construction.Case).Owner.Type, body.Places[construction.Place].Type);
         }
 
         if (count != 0)

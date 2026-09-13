@@ -75,7 +75,7 @@ public class MatchEmissionTest
     [InlineData("match 0\n    _ => ()\n    0 => 1.0 + 2.0")]
     [InlineData("let text = \"a\"\ntext == (match text\n    _ => \"a\"\n)")]
     [InlineData("match \"a\"\n    let text\n        writeLine(text)\n        writeLine(text)")]
-    [InlineData("match \"a\"\n    _ if true => ()\n    _ => ()")]
+    [InlineData("match 1.0\n    _ if true => ()\n    _ => ()")]
     public void RejectsUnsupportedAndConflictingArms(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

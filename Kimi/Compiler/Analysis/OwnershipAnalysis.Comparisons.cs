@@ -35,7 +35,7 @@ public sealed partial class OwnershipAnalysis
         return place;
     }
 
-    private int BeginStringLoan(int place, InvocationKoto? call = null)
+    private int BeginStringLoan(int place, InvocationKoto? call = null, int guard = -1)
     {
         var parent = this.CurrentLoanHead;
         while (this.body.LoanStates.Count < this.body.Operations.Count)
@@ -45,7 +45,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var loan = this.body.ComparisonLoans.Count;
-        this.body.ComparisonLoans.Add(new(this.current, place, parent, this.comparisonDepth, Call: call));
+        this.body.ComparisonLoans.Add(new(this.current, place, parent, this.comparisonDepth, Call: call, Guard: guard));
         this.body.LoanStates[this.current] = loan;
         return loan;
     }
@@ -53,15 +53,17 @@ public sealed partial class OwnershipAnalysis
     private int BorrowArgument(InvocationKoto call, BoundArgumentOperation argument)
     {
         var source = KotoHelper.UnwrapParentheses(argument.Source!);
-        if (source is not IdentifierNameKoto || !ReferenceEquals(source.BoundType, BoundType.String) ||
-            source.BoundSymbol?.Kind is not (BindingSymbolKind.Local or BindingSymbolKind.Parameter))
+        if (!ReferenceEquals(source.BoundType, BoundType.String))
         {
             this.Expression(source, PlaceUseKind.Read);
-            this.Unsupported(source); // Temporary materialization is bound, but not executable in this increment.
+            this.Unsupported(source);
             return -1;
         }
 
-        var place = this.Local(source);
+        // An owned expression already materializes its result and registers its
+        // enclosing-expression cleanup. Borrow that storage without another Move.
+        var place = source is IdentifierNameKoto && source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter
+            ? this.Local(source) : this.Expression(source, PlaceUseKind.Read);
         if (place < 0)
         {
             return -1;

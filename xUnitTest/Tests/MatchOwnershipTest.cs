@@ -338,7 +338,7 @@ public class MatchOwnershipTest
         var body = Body(c);
         var matches = body.Matches;
         var decompositions = body.Decompositions;
-        var declaration = (EnumKoto)decompositions[0].Case.Owner.Declaration;
+        var declaration = (EnumKoto)Assert.IsType<BoundEnumCase>(decompositions[0].Case).Owner.Declaration;
         c.Kotonoha.CreateCodeContext().Parse(declaration, "Borrowed(ref/i32 from static)");
         Assert.True(c.Bind().IsComplete);
         Assert.False(body.IsVerified);

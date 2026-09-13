@@ -10,7 +10,8 @@ internal sealed partial class BodyLowering
         return place >= 0 ? body.Places[place].Type : null;
     }
 
-    private static int ValuePlace(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.Borrow ? operation.Input : operation.Place;
+    private static int ValuePlace(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.Borrow ||
+        (operation.Kind == OwnershipOperationKind.Read && operation.Input >= 0) ? operation.Input : operation.Place;
 
     private static bool ValidateValues(OwnershipBody body)
     {

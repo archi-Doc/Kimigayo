@@ -6,8 +6,8 @@ public sealed partial class OwnershipBody
 {
     internal static bool ConflictsWithComparison(OwnershipOperationKind kind, int place, int input, AcquisitionKind acquisition, int borrowed, LoanRequirement mode = LoanRequirement.Ref, LoanRequirement access = LoanRequirement.None) => kind switch
     {
-        OwnershipOperationKind.Consume => place == borrowed && acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove,
-        OwnershipOperationKind.Write => place == borrowed || input == borrowed,
+        OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => place == borrowed && acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove,
+        OwnershipOperationKind.Write or OwnershipOperationKind.InitializeSubject => place == borrowed || input == borrowed,
         OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.Declare or OwnershipOperationKind.Produce => place == borrowed,
         OwnershipOperationKind.Borrow => place == borrowed && (mode != LoanRequirement.Ref || access != LoanRequirement.Ref),
         OwnershipOperationKind.Read => place == borrowed && mode == LoanRequirement.Uniq,
@@ -47,11 +47,22 @@ public sealed partial class OwnershipBody
         for (var i = 0; i < this.ComparisonLoans.Count; i++)
         {
             var loan = this.ComparisonLoans[i];
-            if ((uint)loan.Read >= (uint)this.Operations.Count || (uint)loan.Place >= (uint)this.Places.Count || loan.Parent < -1 || loan.Parent >= i || loan.Depth <= 0 ||
+            if ((uint)loan.Read >= (uint)this.Operations.Count || (uint)loan.Place >= (uint)this.Places.Count || loan.Parent < -1 || loan.Parent >= i || loan.Depth <= 0 || loan.Guard < -1 ||
                 this.Operations[loan.Read].Kind != (loan.Call is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Borrow) ||
                 loan.Mode != LoanRequirement.Ref || this.Operations[loan.Read].Place != loan.Place ||
-                this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) || !ReferenceEquals(this.Places[loan.Place].Type, BoundType.String) ||
+                (loan.Guard < 0 && this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) &&
+                    (loan.Call is null || this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result))) ||
+                !ReferenceEquals(this.Places[loan.Place].Type, BoundType.String) ||
                 this.LoanStates[loan.Read] != i || this.LoanInputs[loan.Read] != loan.Parent)
+            {
+                return false;
+            }
+
+            if (loan.Guard >= 0 && ((uint)loan.Guard >= (uint)this.MatchArms.Count || loan.Call is not null ||
+                (uint)this.MatchArms[loan.Guard].Match >= (uint)this.Matches.Count ||
+                (uint)this.MatchArms[loan.Guard].GuardEntry >= (uint)this.Operations.Count ||
+                this.Matches[this.MatchArms[loan.Guard].Match].Subject != loan.Place || this.Places[loan.Place].Kind != OwnershipPlaceKind.Subject ||
+                !this.ValidGuardLoan(i)))
             {
                 return false;
             }
@@ -121,5 +132,22 @@ public sealed partial class OwnershipBody
         }
 
         return true;
+    }
+
+    private bool ValidGuardLoan(int index)
+    {
+        var loan = this.ComparisonLoans[index];
+        var arm = this.MatchArms[loan.Guard];
+        if (arm.GuardLoan == index)
+        {
+            return arm.GuardEntry + 1 == loan.Read && ReferenceEquals(this.Operations[loan.Read].Source, this.Operations[arm.GuardEntry].Source);
+        }
+
+        // Only a new candidate read in a transfer-seeded checking region may
+        // establish replacement protection after the original Loan has ended.
+        return !this.IsReachable(loan.Read) && this.OperationRegions[loan.Read] > 0 &&
+            (uint)arm.GuardLoan < (uint)index && this.ComparisonLoans[arm.GuardLoan].Depth == loan.Depth &&
+            this.OperationSteps[loan.Read] == loan.Guard && this.Operations[loan.Read].Input >= 0 &&
+            this.Values[loan.Read].Kind == OwnershipValueKind.Borrow;
     }
 }

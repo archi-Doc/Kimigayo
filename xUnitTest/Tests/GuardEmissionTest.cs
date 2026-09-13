@@ -42,7 +42,7 @@ public class GuardEmissionTest
 
     [Theory]
     [InlineData("match 1\n    var n if (check: do\n        n = 2\n        exit to check: true\n    ) => ()\n    _ => ()")]
-    [InlineData("match \"a\"\n    _ if true => ()\n    _ => ()")]
+    [InlineData("match 1.0\n    _ if true => ()\n    _ => ()")]
     [InlineData("match 1\n    _ if true => ()")]
     [InlineData("match 1\n    _ => ()\n    _ if 1.0 + 2.0 > 0.0 => ()")]
     [InlineData("let result = work: match 1\n    _ if (yield to work: true) => true\n    _ => false")]

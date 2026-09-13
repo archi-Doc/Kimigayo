@@ -20,6 +20,27 @@ public sealed partial class OwnershipAnalysis
         return depth + 1;
     }
 
+    private static bool AggregateCanComplete(BoundType type)
+    {
+        if (ReferenceEquals(type, BoundType.Never))
+        {
+            return false;
+        }
+
+        if (type.Kind == BoundTypeKind.Tuple)
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (!AggregateCanComplete(type.Components[i]))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     // This is a conservative subset gate, not the language's finite-storage validation.
     // Every Case is checked because a whole value can arrive from a parameter or branch.
     private bool SupportsType(BoundType type)
@@ -36,6 +57,18 @@ public sealed partial class OwnershipAnalysis
 
         if (this.supportedTypes.TryGetValue(type, out var supported))
         {
+            return supported;
+        }
+
+        if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
+        {
+            supported = type.Semantics == SemanticsKind.Owner && type.Origin is null && type.OriginArguments.Count == 0;
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                supported &= this.SupportsType(type.Components[i]);
+            }
+
+            this.supportedTypes[type] = supported;
             return supported;
         }
 
@@ -112,6 +145,58 @@ public sealed partial class OwnershipAnalysis
             this.Emit(OwnershipOperationKind.PayloadPlacement, operation.Source!, payload, value);
             // Placement completes after evaluation, interleaving with surviving temporaries.
             this.RegisterTemporary(payload);
+        }
+
+        var complete = this.Emit(OwnershipOperationKind.CompleteConstruction, source, output);
+        this.body.OperationSteps[complete] = plan;
+        return this.RegisterTemporary(output);
+    }
+
+    private int ConstructAggregate(Koto source, List<Koto> elements)
+    {
+        if (source.BoundType is { } sourceType && !AggregateCanComplete(sourceType))
+        {
+            // Binding retains Never components in a tuple's inferred Type. Such a
+            // tuple has no completed representation; earlier acquired temporaries
+            // still participate in the transfer's ordinary reverse-order cleanup.
+            for (var i = 0; i < elements.Count; i++)
+            {
+                this.Expression(elements[i]);
+            }
+
+            return -1;
+        }
+
+        var output = this.Temporary(source, false);
+        this.Emit(OwnershipOperationKind.Declare, source, output);
+        var type = this.body.Places[output].Type;
+        var start = this.body.Places.Count;
+        for (var i = 0; i < elements.Count; i++)
+        {
+            var component = type.Kind == BoundTypeKind.FixedArray ? type.Components[0] : type.Components[i];
+            var payload = this.Place(elements[i], component, OwnershipPlaceKind.Payload, true);
+            this.Emit(OwnershipOperationKind.Declare, source, payload);
+        }
+
+        var plan = this.body.ConstructionStorage.Count;
+        this.body.ConstructionStorage.Add(new(output, null, start, elements.Count));
+        var completes = true;
+        for (var i = 0; i < elements.Count; i++)
+        {
+            var value = this.Expression(elements[i]);
+            if (value < 0)
+            {
+                completes = false;
+                continue;
+            }
+
+            this.Emit(OwnershipOperationKind.PayloadPlacement, elements[i], start + i, value);
+            this.RegisterTemporary(start + i);
+        }
+
+        if (!completes)
+        {
+            return -1;
         }
 
         var complete = this.Emit(OwnershipOperationKind.CompleteConstruction, source, output);

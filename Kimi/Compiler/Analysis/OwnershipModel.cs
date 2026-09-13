@@ -144,15 +144,15 @@ public readonly record struct OwnershipCleanupPlan(int Edge, int Start, int Coun
 /// <summary>One deferred execution, including empty bodies; endpoints are explicit CFG operations.</summary>
 public readonly record struct OwnershipDeferredPlan(Koto Source, int Edge, int Entry, int Continuation, int End, int Parent, bool CanComplete);
 
-/// <summary>One construction's N-to-one responsibility transfer; payload Places are contiguous.</summary>
-public readonly record struct OwnershipConstructionPlan(int Place, BoundEnumCase Case, int PayloadStart, int PayloadCount);
+/// <summary>One construction's N-to-one responsibility transfer; payload Places are contiguous. Case is null for tuples and fixed arrays.</summary>
+public readonly record struct OwnershipConstructionPlan(int Place, BoundEnumCase? Case, int PayloadStart, int PayloadCount);
 
 /// <summary>Analysis fans out to every arm; runtime selection tests these Patterns in source order.</summary>
 public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject, int Result, int ArmStart, int ArmCount);
 
 /// <summary>One successful Pattern test and its ownership decomposition before the arm body.</summary>
 public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int DecompositionStart, int DecompositionCount,
-    int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1);
+    int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1, int GuardLoan = -1);
 
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1);
 
@@ -325,7 +325,7 @@ internal readonly record struct OwnershipResultWrite(int Operation, int Declare)
 
 // Persistent stack links preserve independent branch and checking-region environments.
 // One shared lexical chain; a null Call identifies a comparison-only inspection.
-internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null);
+internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
 

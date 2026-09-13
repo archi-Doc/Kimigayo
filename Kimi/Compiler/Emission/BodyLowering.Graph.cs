@@ -83,7 +83,7 @@ internal sealed partial class BodyLowering
             return false;
         }
 
-        if (!this.PrepareStringFunctions(body, function, out failure) || !this.PrepareStringResults(body, out failure) || !this.PrepareMatches(body, function, out failure) || !this.PrepareStrings(body, function, out failure))
+        if (!this.PrepareStringFunctions(body, function, out failure) || !this.PrepareAggregates(body, function, out failure) || !this.PrepareStringResults(body, out failure) || !this.PrepareMatches(body, function, out failure) || !this.PrepareStrings(body, function, out failure))
         {
             return false;
         }
@@ -230,7 +230,7 @@ internal sealed partial class BodyLowering
             this.BuildDominators(body);
         }
 
-        if (!this.ValidateStringResults(body, out failure))
+        if (!this.ValidateStringResults(body, out failure) || !this.ValidateAggregateDominance(body, out failure))
         {
             return false;
         }
@@ -243,8 +243,8 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (WindowsLowering.GetValue(place.Type) is not { } value ||
-                (!IsScalar(place.Type) && !ReferenceEquals(place.Type, BoundType.Unit) && !ReferenceEquals(place.Type, BoundType.String) && !ReferenceTypes.IsString(place.Type)) ||
+            if ((this.aggregatePlaces[p]?.Value ?? WindowsLowering.GetValue(place.Type)) is not { } value ||
+                (this.aggregatePlaces[p] is null && !IsScalar(place.Type) && !ReferenceEquals(place.Type, BoundType.Unit) && !ReferenceEquals(place.Type, BoundType.String) && !ReferenceTypes.IsString(place.Type)) ||
                 (ReferenceTypes.IsString(place.Type) && place.Kind is not (OwnershipPlaceKind.Parameter or OwnershipPlaceKind.Temporary)) ||
                 (ReferenceEquals(place.Type, BoundType.String) && !this.IsStringStorage(place)))
             {

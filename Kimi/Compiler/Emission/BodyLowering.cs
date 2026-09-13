@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 /// operation/Place identities and edge cleanup plans, and never guesses a representation, terminator or cleanup.
 /// </summary>
 /// <remarks>
-/// Supports bool/8–64-bit integer values, Unit control flow, checked arithmetic and owned string locals.
+/// Supports bool/8–64-bit integers, Unit control flow, owned strings and whole tuple/fixed-array storage.
 /// Every operation, including unreachable ones, is validated before physical blocks are assembled.
 /// Direct scalar calls use the module's pre-registered signatures; borrowed values and general aggregate
 /// results require additional verified plans.
@@ -225,6 +225,11 @@ internal sealed partial class BodyLowering
             return true;
         }
 
+        if (operation.Place >= 0 && (this.aggregatePlaces[operation.Place] is not null || operation.Kind == OwnershipOperationKind.PayloadPlacement))
+        {
+            return this.LowerAggregate(body, function, constants, projectDirectory, index, marks, out failure);
+        }
+
         if (operation.Kind == OwnershipOperationKind.Borrow || (ReferenceTypes.IsString(ValueType(body, index)) &&
             operation.Kind is OwnershipOperationKind.Produce or OwnershipOperationKind.Read or OwnershipOperationKind.Consume))
         {
@@ -257,7 +262,7 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Entry when index == 0:
                 foreach (var flagged in function.LiveFlags)
                 {
-                    if (IsComparisonTemporary(body, flagged))
+                    if (IsBorrowedStringTemporary(body, flagged))
                     {
                         function.Add(EmissionOpcode.InitializeLiveFlag, 0, flagged, 0);
                     }
