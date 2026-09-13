@@ -37,7 +37,7 @@ function Save-State {
 }
 
 function Get-WorkspaceSnapshot {
-    $paths = & git -C $ProjectRoot -c core.quotepath=false ls-files --cached --others --exclude-standard -- ':!:doc/**' ':!:.codex-loop/**'
+    $paths = & git -C $ProjectRoot -c core.quotepath=false ls-files --cached --others --exclude-standard -- ':!:.codex-loop/**'
     if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate repository files.' }
     $snapshot = @{}
     foreach ($relativePath in ($paths | Sort-Object -Unique)) {
@@ -59,7 +59,8 @@ function Assert-EditScope([string]$Stage, [hashtable]$Before, [hashtable]$After)
     foreach ($path in (@($Before.Keys) + @($After.Keys) | Sort-Object -Unique)) {
         if ($Before[$path] -eq $After[$path]) { continue }
         if (($Stage -ne 'implementation' -and $path -notin $allowed) -or
-            ($Stage -eq 'implementation' -and $path -like 'automation/*')) {
+            ($Stage -eq 'implementation' -and ($path -like 'automation/*' -or $path -like 'doc/*' -or
+                $path -eq 'AGENTS.md' -or $path -like '*/AGENTS.md' -or $path -like '.codex/*' -or $path -like '.agents/*'))) {
             throw "Stage $Stage changed a protected file: $path. Changes were preserved for review."
         }
     }
@@ -107,6 +108,9 @@ function Assert-Result([string]$Stage, $Result) {
     if ($Result.status -eq 'approved' -and $Result.finding_ids.Count -gt 0) {
         throw 'An approved plan must have no unresolved findings.'
     }
+    if ($Result.status -in @('ready', 'approved') -and $Result.evidence.Count -eq 0) {
+        throw 'Planning and approval require concrete evidence.'
+    }
     if ($Result.finding_ids.Count -gt 0) {
         $findingsPath = Join-Path $ProjectRoot 'AUDIT_FINDINGS.md'
         if (-not (Test-Path -LiteralPath $findingsPath -PathType Leaf)) { throw 'AUDIT_FINDINGS.md is missing.' }
@@ -117,6 +121,7 @@ function Assert-Result([string]$Stage, $Result) {
             }
         }
     }
+    Assert-DurableResult $Result
 }
 
 function Invoke-Stage {
@@ -135,6 +140,7 @@ function Invoke-Stage {
     Write-JsonFile $schemaPath (New-StageSchema $stage)
     $commonText = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'common-prompt.md'))
     $roleText = [IO.File]::ReadAllText((Join-Path $PSScriptRoot "$stage-prompt.md"))
+    $deadline = [DateTime]::UtcNow.AddMinutes($StageTimeoutMinutes).ToString('o')
     $context = @"
 
 # Automation context
@@ -148,6 +154,9 @@ Reason: $($state.reason)
 Previous validated result: $($state.last_result)
 Previous attempt output (may be missing or invalid): $previousOutput
 Current evidence prefix: $logBase
+Stage time limit: $StageTimeoutMinutes minutes. Hard deadline (UTC): $deadline
+Reserve the final 5 minutes (or 10% for shorter stages) for verification, durable handoff and the final JSON.
+Read $PSScriptRoot/verification-guide.md for repository-specific test commands and fixture precautions.
 State belongs to the runner. Do not edit .codex-loop/state.json or runner-owned files.
 Use IMPLEMENTATION_PLAN.md, STATUS.md and AUDIT_FINDINGS.md for durable handoff.
 "@
@@ -179,11 +188,13 @@ Use IMPLEMENTATION_PLAN.md, STATUS.md and AUDIT_FINDINGS.md for durable handoff.
     $started = $false
     $outCopy = $null
     $errCopy = $null
+    $stageError = $null
+    $copyCancellation = [Threading.CancellationTokenSource]::new()
     try {
         Write-Host "Round $($state.round), cycle $($state.cycle): $stage (slot $($state.implementation_slot)). Logs: $logBase"
         $started = $process.Start()
-        $outCopy = $process.StandardOutput.BaseStream.CopyToAsync($stdout)
-        $errCopy = $process.StandardError.BaseStream.CopyToAsync($stderr)
+        $outCopy = $process.StandardOutput.BaseStream.CopyToAsync($stdout, $copyCancellation.Token)
+        $errCopy = $process.StandardError.BaseStream.CopyToAsync($stderr, $copyCancellation.Token)
         $watch = [Diagnostics.Stopwatch]::StartNew()
         while (-not $process.WaitForExit(1000)) {
             if ($watch.Elapsed.TotalMinutes -ge $StageTimeoutMinutes) {
@@ -192,13 +203,25 @@ Use IMPLEMENTATION_PLAN.md, STATUS.md and AUDIT_FINDINGS.md for durable handoff.
                 throw [TimeoutException]::new("Stage $stage exceeded $StageTimeoutMinutes minutes.")
             }
         }
-        [void]$outCopy.GetAwaiter().GetResult()
-        [void]$errCopy.GetAwaiter().GetResult()
+        # A descendant can retain the pipes even after the CLI exits. Bound log draining too.
+        $remaining = [TimeSpan]::FromMinutes($StageTimeoutMinutes) - $watch.Elapsed
+        if ($remaining -le [TimeSpan]::Zero) { throw [TimeoutException]::new("Stage $stage exhausted its time budget.") }
+        $copies = [Threading.Tasks.Task]::WhenAll([Threading.Tasks.Task[]]@($outCopy, $errCopy))
+        try { [void]$copies.WaitAsync($remaining).GetAwaiter().GetResult() }
+        catch [TimeoutException] { throw [TimeoutException]::new("Stage $stage exceeded its time budget while draining CLI logs.") }
         if ($process.ExitCode -ne 0) { throw "Codex exited with code $($process.ExitCode). See $logBase.stderr.log" }
+    } catch {
+        $stageError = $_
     } finally {
         if ($started -and -not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
-        if ($null -ne $outCopy) { [void]$outCopy.GetAwaiter().GetResult() }
-        if ($null -ne $errCopy) { [void]$errCopy.GetAwaiter().GetResult() }
+        $copyCancellation.Cancel()
+        foreach ($copy in @($outCopy, $errCopy)) {
+            if ($null -ne $copy) {
+                try { [void]$copy.GetAwaiter().GetResult() }
+                catch [OperationCanceledException] { }
+            }
+        }
+        $copyCancellation.Dispose()
         $stdout.Dispose()
         $stderr.Dispose()
         $process.Dispose()
@@ -206,6 +229,7 @@ Use IMPLEMENTATION_PLAN.md, STATUS.md and AUDIT_FINDINGS.md for durable handoff.
     $after = Get-WorkspaceSnapshot
     Write-JsonFile "$logBase.after.json" $after
     Assert-EditScope $stage $before $after
+    if ($null -ne $stageError) { throw $stageError }
     if (-not (Test-Path -LiteralPath $state.last_output -PathType Leaf)) { throw 'Codex did not create a final result.' }
     $json = [IO.File]::ReadAllText($state.last_output)
     if (-not (Test-Json -Json $json -SchemaFile $schemaPath -ErrorAction Stop)) { throw 'Invalid result schema.' }
@@ -240,9 +264,13 @@ try {
     }
     $commandInfo = Get-Command $CodexCommand -CommandType Application, ExternalScript -ErrorAction Stop
     $resolvedCodex = $commandInfo.Source
-    foreach ($name in @('common-prompt.md', 'plan-prompt.md', 'plan-audit-prompt.md', 'implementation-prompt.md', 'completion-audit-prompt.md', 'invoke-codex.ps1')) {
+    foreach ($name in @('common-prompt.md', 'plan-prompt.md', 'plan-audit-prompt.md', 'implementation-prompt.md', 'completion-audit-prompt.md', 'invoke-codex.ps1', 'result-contract.ps1', 'verification-guide.md')) {
         if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot $name) -PathType Leaf)) { throw "Missing automation file: $name" }
     }
+    foreach ($name in @('AGENTS.md', 'SPEC.md', 'STATUS.md')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $ProjectRoot $name) -PathType Leaf)) { throw "Missing project input: $name" }
+    }
+    . (Join-Path $PSScriptRoot 'result-contract.ps1')
     [IO.Directory]::CreateDirectory($stateDir) | Out-Null
     $lock = [IO.File]::Open((Join-Path $stateDir 'loop.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
     $stateIgnore = Join-Path $stateDir '.gitignore'
@@ -256,7 +284,7 @@ try {
             'reason', 'last_result', 'last_output', 'updated_at')) {
             if (-not $state.Contains($key)) { throw "Missing state field: $key" }
         }
-        if ($state.version -ne 2 -or $state.project_root -ne $ProjectRoot -or
+        if ($state.version -ne 3 -or $state.project_root -ne $ProjectRoot -or
             ($state.round -isnot [long] -and $state.round -isnot [int])) { throw 'Invalid or incompatible state.' }
         if ($state.round -lt 1 -or $state.cycle -notin 1, 2, 3 -or
             $state.stage -notin @('plan', 'plan-audit', 'implementation', 'completion-audit')) { throw 'Invalid stage counters.' }
@@ -296,7 +324,7 @@ try {
         $runDir = Join-Path (Join-Path $stateDir 'runs') $runId
         [IO.Directory]::CreateDirectory($runDir) | Out-Null
         $state = [ordered]@{
-            version = 2; project_root = $ProjectRoot; run_id = $runId; run_dir = $runDir
+            version = 3; project_root = $ProjectRoot; run_id = $runId; run_dir = $runDir
             round = 1; cycle = 1; implementation_slot = 1; sequence = 0; stage = 'plan'
             no_progress = 0; in_flight = $false; stop_reason = 'running'
             reason = 'Start from the current repository and previous audit findings.'

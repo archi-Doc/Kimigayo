@@ -7,10 +7,10 @@
 SPEC.md 本文の確定済み規則を、字句・構文解析、Binding、所有権検証、コード生成、通常native実行まで接続し、既存CLI・LSP・エディター拡張を含むプロジェクトの完了条件を定める。
 
 - 根拠は [AGENTS.md](AGENTS.md)、[SPEC.md](SPEC.md)、実ソースと実行したテスト。 [STATUS.md](STATUS.md) は調査の索引に使い、実装の証拠とは区別する。
-- doc/ 以下は読み込まず、仕様判断にも使用していない。SPECから同フォルダーへのリンクも追っていない。Design/ の旧例も言語仕様の根拠にしない。
-- SPECに詳細がなく外部設計書への参照だけがある契約は、SPEC-02で本文の仕様確定を先行させる。名前やコメントからAPIを創作しない。
+- 初回調査ではdoc/ 以下を読み込まず、SPECからのリンクも追っていない。以後の自動実装ではSPECが採用済み・優先と明記する文書だけを該当契約の確認に使用し、参照先と優先理由を記録する。Design/の旧例や未採用案は根拠にしない。
+- SPECに詳細がなく外部設計書への参照だけがある契約は、SPEC-02で採用済み設計の本文統合と本当に未決定の事項を分ける。既決事項の再承認を求めず、名前やコメントから未設計APIを創作しない。
 - 初期の実行対象は SPEC §21.5 の windows-x64-v1。ほかの出力profile、runtime Contract Views、source concurrency、未導入の演算子拡張、re-export、動的generic格納、永続object cache等、SPECが明示的に将来事項とする機能は今回の必須完了範囲に含めない。未実装と未設計を区別する。
-- 本作業の成果物はこのファイルだけ。ソース、テスト、SPEC、STATUS、設定を変更していない。ビルド・既存テストの生成物と調査ログは作業用出力であり、実装変更ではない。
+- 初回計画調査の成果物はこのファイルだけで、製品ソース等は変更していない。これは調査時の記録であり、以後のImplementationの編集制限ではない。以後はautomation/の段階別編集範囲を適用する。
 - AGENTS.mdに従い、性能・割り当てを各段階で確認する。NativeAOTのpublish／テストは実行していない。将来の実行も明示的な指定がある場合に限る。
 
 ## 2. 調査結果
@@ -102,6 +102,8 @@ node --check KimiCode/extension.js
 
 IDは一意で、表の上から依存関係順に並べる。同一段階でも先行IDを参照する。依存欄は直接の前提であり、その依存先の前提も引き継ぐ。独立項目は順序を入れ替えてよい。
 
+自動実装では状態・IDの表形式を維持し、任意・条件付き項目だけOPTIONAL-接頭辞を使う。runnerは必須[ ]が残る完成報告や存在しないtask_idsを拒否する。計画・監査は全体を毎回作り直さず、着手済み作業、前回の指摘、次の2実装枠の依存範囲を優先する。現在の操作はSTATUS先頭の引継ぎに保存する。検証起動の注意は[verification-guide](automation/verification-guide.md)を参照する。
+
 [x] は記載した限定範囲について今回の実装・検証を確認済み。[ ] は部分実装を含めて未完了。一つの関数ではなく、独立した受け入れ条件を持つ機能単位で分割した。
 
 各未完了項目は、個別条件に加えて次を満たすこと:
@@ -130,7 +132,7 @@ IDは一意で、表の上から依存関係順に並べる。同一段階でも
 | 状態・ID | 実装内容 | 完了条件 | 依存 | 検証方法 |
 | --- | --- | --- | --- | --- |
 | [ ] SPEC-01 | SPEC本文・Appendix A/Fと実装段階の要件台帳を維持する | 全必須規則に実装IDと正負テストを対応付ける。将来事項を必須実装へ混入させない | BASE-08 | §12の章対応を各節・文法へ展開し、未対応gateの漏れを確認 |
-| [ ] SPEC-02 | SPEC内だけでは決められない契約を本文で確定する | Composition Root/Entry、言語test機能、外部配布・永続化の具体形式、未定義Core API等の不足を列挙し、合意済み本文または明確な対象外判断を得る。docを暗黙採用しない | SPEC-01 | 本文・文法・コード例で独立して受入テストが書けるか確認。曖昧な節参照も修正 |
+| [ ] SPEC-02 | 採用済み契約をSPEC本文へ統合し、未決定事項を分離する | Composition Root/Entry、言語test機能はSPECが明示採用する文書に従って統合。外部配布・永続化の具体形式、未定義Core API等は不足ごとに確定済み・未決定・対象外を記録し、未採用案を暗黙採用しない。無関係な実装は止めない | SPEC-01 | 本文・文法・コード例で独立して受入テストが書けるか確認。採用元と本文の対応、未決事項の影響・解除条件、曖昧な節参照も確認 |
 | [ ] MAINT-01 | E11の未使用・未接続debug経路と実験コードを整理する | unitContext、dump、不要async/usingを削除・接続・明示隔離のいずれかで処理。generator/DI登録経路を壊さない | BASE-08 | 参照・生成コード確認、IDE解析、全build、CLI/LSPの起動終了と割り当て比較 |
 | [ ] MAINT-02 | CIで構成・対象・結果を一致させる | PR検証、Debug/Releaseの明示、Windows通常native検証、テスト件数0の検知、ログ保存を接続する | BASE-07, MAINT-01 | clean環境のworkflowを実行。LinuxのmanagedとWindows nativeを区別し、NativeAOTは勝手に追加しない |
 
@@ -252,7 +254,7 @@ catalogの「18枠が埋まった」だけでCore完成としない。SPEC §22.
 | [ ] MOD-01 | Mod登録・provisional query・snapshot・実行順を実装 | §20.7の決定的登録、scope別照会、失敗/cancellation、変更禁止境界を実現 | SPEC-02, MODULE-02, BIND-03 | 登録重複、順序、未知照会、selected/excluded syntax、失敗・再実行 |
 | [ ] MOD-02 | 生成sourceの追加・統合・final再検証・無効化を実装 | 生成sourceのidentity/provenanceを保持し、古い出力の残留、二重生成、無検証公開を防ぐ | MOD-01, LAYOUT-01, GEN-01 | §20.7、断片追加/削除、生成診断位置、Mod入力変更、古いキャッシュ拒否、列挙順不変 |
 | [ ] CACHE-01 | 検証済み意味計画だけの永続再利用を実装 | 実際に読んだ依存・不存在・proof・source対応を照合。使用時Loanは再検証し、ABI/context/frame/IRは再生成 | MODULE-02, MOD-02, GCODE-03, SPEC-02 | §21.3.4、cache有無/壊れた内容/版変更/原文位置/target変更/mだけ変更、変更しない依存の再利用 |
-| [ ] COMPOSE-01 | SPEC本文で確定したroot/Entry/Providerの宣言・接続検証 | 非置換root、限定参照、静的適合、一意接続を本文で確定した構文と診断で実現 | SPEC-02, MODULE-02, BIND-03, OBJECT-01 | 定義不足/重複/不適合/不正参照、Provider非依存Libraryの検証。docの例をテスト根拠にしない |
+| [ ] COMPOSE-01 | SPEC本文で確定したroot/Entry/Providerの宣言・接続検証 | 非置換root、限定参照、静的適合、一意接続を本文で確定した構文と診断で実現 | SPEC-02, MODULE-02, BIND-03, OBJECT-01 | 定義不足/重複/不適合/不正参照、Provider非依存Libraryの検証。採用元の例だけで済ませず統合後の規範からテストを導く |
 | [ ] COMPOSE-02 | 最終接続と生成依存・予算・Core出力経路を統合 | 接続変更に影響されるentry/context/inlineだけを再生成し、必要時は保守的失効。現行Core.writeLineを確定した接続へ適応 | COMPOSE-01, MODULE-03, CACHE-01, GCODE-04, CORE-03 | Provider変更、接続不足、再利用、source location、同入力の再現性、誤った古い生成物拒否 |
 | [ ] BUILD-01 | 複数source/module、static、Modを含むbuild/runの原子性を完成 | failed buildで旧成功を誤認せず、取消し・部分生成・外部依存変更・出力pathを一貫処理 | COMPOSE-02, STATIC-01, MOD-02, FFI-01 | NativeToolchain/EmissionArtifacts/ToolchainResolverとCLI、失敗注入、空白path、hash/ABI不一致 |
 
@@ -313,7 +315,7 @@ OPTIONAL-AOT-01は本計画の通常完了を妨げる必須依存ではない�
 | Appendix B 実装指針 | GCODE-04, QUALITY-01。参考algorithmを言語の追加受理条件にしない |
 | Appendix C 実装状況 | BASE各項目、ACCEPT-03 |
 | Appendix D/E/F 将来範囲・用語・文法 | SPEC-01, SPEC-02, FRONT-01, ACCEPT-03 |
-| 冒頭のComposition/test参照 | SPEC-02, COMPOSE-01, COMPOSE-02, LANGTEST-01, LANGTEST-02。doc以下を参照せず本文で契約を確定 |
+| 冒頭のComposition/test参照 | SPEC-02, COMPOSE-01, COMPOSE-02, LANGTEST-01, LANGTEST-02。明示採用された参照先を本文へ統合し、未決事項と分離 |
 | 言語仕様外の既存製品部品 | MAINT-01, MAINT-02, LSP-01, LSP-02, EDITOR-01, QUALITY-01 |
 
 完了の根拠はチェック数ではなく、選定した必須仕様を実ソースと実行結果で満たしたことである。新たな不具合・仕様不足が見つかった場合は、該当IDの条件を具体化し依存順を維持して更新する。

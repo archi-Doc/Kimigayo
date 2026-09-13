@@ -18,13 +18,28 @@ $outputPath = $args[[Array]::IndexOf($args, '-o') + 1]
 $config = Get-Content (Join-Path $rootPath '.codex-loop/mock.json') -Raw | ConvertFrom-Json
 $stage = [regex]::Match($promptText, '(?m)^Stage: (.+)\r?$').Groups[1].Value.Trim()
 if (-not $promptText.Contains('doc/ 以下') -or -not $promptText.Contains('未コミット')) { exit 21 }
+foreach ($flag in @('exec', '--ephemeral', '--approve-for-me', '--sandbox', 'workspace-write', '--output-schema', '-')) {
+    if ($flag -notin $args) { throw "Missing invocation flag: $flag" }
+}
+if (-not $promptText.Contains('Hard deadline (UTC):') -or -not $promptText.Contains('verification-guide.md')) { exit 22 }
 $callPath = Join-Path $rootPath '.codex-loop/calls.jsonl'
 $priorCalls = if (Test-Path $callPath) { @(Get-Content $callPath | ForEach-Object { $_ | ConvertFrom-Json }) } else { @() }
 $occurrence = @($priorCalls | Where-Object stage -eq $stage).Count + 1
 @{ stage = $stage; occurrence = $occurrence } | ConvertTo-Json -Compress | Add-Content $callPath
 $mode = $config.mode
-if ($mode -eq 'timeout') { Start-Sleep -Seconds 75 }
-if ($mode -eq 'process-error') { [Console]::Error.WriteLine('fake failure'); exit 7 }
+if ($mode -eq 'timeout') {
+    $childInfo = [Diagnostics.ProcessStartInfo]::new((Join-Path $PSHOME $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })))
+    $childInfo.UseShellExecute = $false
+    $childInfo.CreateNoWindow = $true
+    foreach ($arg in @('-NoProfile', '-NonInteractive', '-Command', 'Start-Sleep -Seconds 100')) { $childInfo.ArgumentList.Add($arg) }
+    $child = [Diagnostics.Process]::Start($childInfo)
+    Set-Content (Join-Path $rootPath '.codex-loop/child.pid') $child.Id
+    Start-Sleep -Seconds 75
+}
+if ($mode -eq 'process-error') {
+    Add-Content (Join-Path $rootPath 'STATUS.md') 'partial work before failure'
+    [Console]::Error.WriteLine('fake failure'); exit 7
+}
 if ($mode -eq 'missing-result') { exit 0 }
 if ($mode -eq 'malformed') { Set-Content $outputPath '{broken'; exit 0 }
 $status = switch ($stage) {
@@ -34,6 +49,7 @@ $status = switch ($stage) {
     'completion-audit' { 'verified_complete' }
 }
 if ($mode -eq 'early' -and $stage -eq 'implementation') { $status = 'complete' }
+if ($mode -eq 'pending-complete' -and $stage -eq 'implementation') { $status = 'complete' }
 if ($mode -eq 'repeat' -and $stage -eq 'completion-audit' -and $occurrence -eq 1) { $status = 'not_complete' }
 if ($mode -eq 'limit' -and $stage -eq 'completion-audit') { $status = 'not_complete' }
 if ($mode -eq 'replan' -and $stage -eq 'implementation' -and $occurrence -eq 1) { $status = 'replan' }
@@ -41,11 +57,22 @@ if ($mode -eq 'late-replan' -and $stage -eq 'implementation' -and $occurrence -e
 if ($mode -eq 'findings' -and $stage -eq 'plan-audit') { $status = 'findings' }
 if ($mode -eq "blocked-$stage") { $status = 'blocked' }
 if ($mode -eq 'bad-status') { $status = 'invented' }
-$findings = @()
+$ledgerPath = Join-Path $rootPath 'AUDIT_FINDINGS.md'
+if (-not (Test-Path $ledgerPath)) { Set-Content $ledgerPath '# Audit findings' }
 if ($status -in @('not_complete', 'findings')) {
-    $findings = @('AF-0001')
-    Set-Content (Join-Path $rootPath 'AUDIT_FINDINGS.md') 'AF-0001: required, open. A-01 needs a missing test.'
+    Set-Content $ledgerPath '| AF-0001 | required | open | A-01 | Missing test |'
 }
+if ($stage -eq 'implementation') {
+    if ($mode -notin @('pending-complete', 'pending-verified')) {
+        Set-Content (Join-Path $rootPath 'IMPLEMENTATION_PLAN.md') "| [x] A-01 | Implemented | Verified | none | fake |`n| [ ] OPTIONAL-AOT-01 | Not requested |"
+    }
+    if ((Get-Content $ledgerPath -Raw).Contains('AF-0001')) {
+        Set-Content $ledgerPath '| AF-0001 | required | resolved | A-01 | Test passed |'
+    }
+}
+$findings = @()
+if ((Get-Content $ledgerPath -Raw) -match '\| required \| open \|') { $findings = @('AF-0001') }
+if ($stage -eq 'plan-audit' -and $status -eq 'approved' -and $findings.Count -gt 0) { $status = 'findings' }
 Set-Content (Join-Path $rootPath 'STATUS.md') "$stage $occurrence"
 if ($mode -eq 'forbidden' -and $stage -eq 'plan') {
     Set-Content (Join-Path $rootPath 'sample.cs') 'unauthorized modification'
@@ -53,6 +80,23 @@ if ($mode -eq 'forbidden' -and $stage -eq 'plan') {
 if ($mode -eq 'audit-plan-edit' -and $stage -eq 'plan-audit') {
     Set-Content (Join-Path $rootPath 'IMPLEMENTATION_PLAN.md') 'unauthorized plan edit'
 }
+if ($mode -eq 'doc-edit' -and $stage -eq 'implementation') {
+    Set-Content (Join-Path $rootPath 'doc/adopted.md') 'unauthorized doc edit'
+}
+if ($mode -eq 'automation-edit' -and $stage -eq 'implementation') {
+    Set-Content (Join-Path $rootPath 'automation/protected.ps1') 'unauthorized runner edit'
+}
+if ($mode -eq 'agents-edit' -and $stage -eq 'implementation') {
+    Set-Content (Join-Path $rootPath 'AGENTS.md') 'unauthorized instructions edit'
+}
+if ($mode -eq 'omitted-finding') { Set-Content $ledgerPath '| AF-0001 | required | planned | A-01 | Missing test |' }
+if ($mode -eq 'legacy-finding') { Set-Content $ledgerPath 'AF-0001: required, open. Missing test.' }
+if ($mode -eq 'duplicate-finding') {
+    Set-Content $ledgerPath @('| AF-0001 | advisory | open | A-01 | Advice |', '| AF-0001 | advisory | open | A-01 | Advice |')
+}
+if ($mode -eq 'advisory') { Set-Content $ledgerPath '| AF-0001 | advisory | open | A-01 | Optional advice |' }
+if ($mode -eq 'duplicate-task') { Add-Content (Join-Path $rootPath 'IMPLEMENTATION_PLAN.md') '| [x] A-01 | duplicate |' }
+if ($mode -eq 'empty-plan') { Set-Content (Join-Path $rootPath 'IMPLEMENTATION_PLAN.md') '# No tasks' }
 $result = @{
     status = $status; summary = '疑似応答による遷移テスト'
     next_task = 'A-01: next action'; task_ids = @('A-01')
@@ -73,6 +117,11 @@ if ($mode -eq 'missing-finding' -and $stage -eq 'plan-audit') {
     $result.status = 'findings'; $result.finding_ids = @('AF-9999')
 }
 if ($mode -eq 'bad-next') { $result.next_task = $null }
+if ($mode -eq 'unknown-task') { $result.task_ids = @('NONEXISTENT-01') }
+if ($mode -eq 'resolved-finding') {
+    Set-Content $ledgerPath '| AF-0001 | required | resolved | A-01 | Already fixed |'
+    $result.finding_ids = @('AF-0001')
+}
 $result | ConvertTo-Json -Depth 10 | Set-Content $outputPath -Encoding utf8
 Write-Output 'fake stdout must not enter the structured result'
 [Console]::Error.WriteLine('fake stderr')
@@ -91,6 +140,11 @@ function New-Case([string]$Name, [string]$Mode) {
     foreach ($name in @('AGENTS.md', 'SPEC.md', 'STATUS.md', 'IMPLEMENTATION_PLAN.md', 'sample.cs')) {
         Set-Content (Join-Path $caseRoot $name) 'initial'
     }
+    Set-Content (Join-Path $caseRoot 'IMPLEMENTATION_PLAN.md') '| [ ] A-01 | Implement | Verified | none | fake |'
+    [IO.Directory]::CreateDirectory((Join-Path $caseRoot 'doc')) | Out-Null
+    Set-Content (Join-Path $caseRoot 'doc/adopted.md') 'adopted design'
+    [IO.Directory]::CreateDirectory((Join-Path $caseRoot 'automation')) | Out-Null
+    Set-Content (Join-Path $caseRoot 'automation/protected.ps1') '# protected'
     @{ mode = $Mode } | ConvertTo-Json | Set-Content (Join-Path $caseRoot '.codex-loop/mock.json')
     return $caseRoot
 }
@@ -120,6 +174,31 @@ try {
     @{ mode = 'early' } | ConvertTo-Json | Set-Content (Join-Path $normal '.codex-loop/mock.json')
     $null = Run-Case $normal 0 -ResumeRun
     Assert ((Get-Stages $normal).Count -eq 17) 'Changed completed inputs were not re-audited'
+    Add-Content (Join-Path $normal 'doc/adopted.md') 'changed adopted contract'
+    $null = Run-Case $normal 0 -ResumeRun
+    Assert ((Get-Stages $normal).Count -eq 21) 'Changed adopted document was not re-audited'
+    $passed++
+
+    $missingInput = New-Case 'missing-input' 'normal'
+    Remove-Item -LiteralPath (Join-Path $missingInput 'SPEC.md')
+    & $pwshPath -NoProfile -File $runnerPath -ProjectRoot $missingInput -CodexCommand $fakePath *> (Join-Path $missingInput '.codex-loop/test-output.log')
+    Assert ($LASTEXITCODE -eq 5) 'Missing SPEC input was not rejected'
+    Assert (-not (Test-Path (Join-Path $missingInput '.codex-loop/calls.jsonl'))) 'Missing input invoked Codex'
+    $passed++
+
+    $oldState = New-Case 'old-state' 'early'
+    $savedState = Run-Case $oldState 0
+    $savedState.version = 2
+    $oldStatePath = Join-Path $oldState '.codex-loop/state.json'
+    $savedState | ConvertTo-Json -Depth 10 | Set-Content $oldStatePath
+    $oldHash = (Get-FileHash -LiteralPath $oldStatePath).Hash
+    $null = Run-Case $oldState 5 -ResumeRun
+    Assert ((Get-FileHash -LiteralPath $oldStatePath).Hash -eq $oldHash) 'Rejected legacy state was overwritten'
+    Assert ((Get-Stages $oldState).Count -eq 4) 'Legacy resume invoked Codex'
+    $passed++
+
+    $advisory = New-Case 'advisory' 'advisory'
+    $null = Run-Case $advisory 0
     $passed++
 
     $lateReplan = New-Case 'late-replan' 'late-replan'
@@ -178,13 +257,21 @@ try {
     $passed++
 
     foreach ($mode in @('malformed', 'bad-status', 'missing-result', 'process-error', 'forbidden',
-        'audit-plan-edit', 'no-evidence', 'extra-key', 'bad-type', 'missing-finding', 'bad-next')) {
+        'audit-plan-edit', 'no-evidence', 'extra-key', 'bad-type', 'missing-finding', 'bad-next',
+        'pending-complete', 'pending-verified', 'doc-edit', 'automation-edit', 'agents-edit',
+        'omitted-finding', 'legacy-finding', 'duplicate-finding', 'duplicate-task', 'empty-plan',
+        'unknown-task', 'resolved-finding')) {
         $bad = New-Case $mode $mode
         $badState = Run-Case $bad 5
         Assert ($badState.stop_reason -eq 'error') "$mode did not preserve an error state"
-        Assert (@(Get-Stages $bad).Count -le 3) "$mode was retried automatically"
+        $expectedMaximum = if ($mode -eq 'pending-verified') { 13 } else { 3 }
+        Assert (@(Get-Stages $bad).Count -le $expectedMaximum) "$mode was retried automatically"
+        Assert (Test-Path (Join-Path $badState.run_dir ('{0:D4}-{1}.after.json' -f $badState.sequence, $badState.stage))) "$mode did not preserve the post-attempt snapshot"
         if ($mode -eq 'forbidden') {
             Assert ((Get-Content (Join-Path $bad 'sample.cs') -Raw).Contains('unauthorized')) 'Forbidden edit was silently rolled back'
+        }
+        if ($mode -eq 'process-error') {
+            Assert ((Get-Content (Join-Path $bad 'STATUS.md') -Raw).Contains('partial work')) 'Partial failed work was lost'
         }
         $passed++
     }
@@ -202,6 +289,9 @@ try {
         $timeout = New-Case 'timeout' 'timeout'
         $timeoutState = Run-Case $timeout 6
         Assert ($timeoutState.stop_reason -eq 'timeout') 'Timeout state was not persisted'
+        $childId = [int](Get-Content (Join-Path $timeout '.codex-loop/child.pid'))
+        Assert ($null -eq (Get-Process -Id $childId -ErrorAction SilentlyContinue)) 'Timeout left a child process running'
+        Assert (Test-Path (Join-Path $timeoutState.run_dir '0001-plan.after.json')) 'Timeout did not save the post-attempt snapshot'
         $passed++
     }
     Write-Host "PASS: $passed cases. No real Codex/API/compiler calls. Logs: $testRoot"
