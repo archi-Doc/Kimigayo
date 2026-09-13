@@ -46,13 +46,9 @@ internal static partial class NativeToolchain
             throw new InvalidDataException("IR/manifest SHA-256 or path mismatch.");
         }
 
-        var bin = project.KimiOptions.LlvmBin ?? project.ProjectFile.LlvmBin;
-        if (string.IsNullOrWhiteSpace(bin))
-        {
-            throw new InvalidDataException("Configure LlvmBin in the project or specify --LlvmBin. LLVM is not installed automatically.");
-        }
-
-        bin = ResolvePath(bin, project.KimiOptions.LlvmBin is null && project.Directory.Length != 0 ? Path.GetFullPath(project.Directory) : Directory.GetCurrentDirectory());
+        var toolchainRoot = ToolchainResolver.ResolveRoot(project.KimiOptions.ToolchainRoot);
+        var configuredBin = project.KimiOptions.LlvmBin ?? project.ProjectFile.LlvmBin;
+        var bin = configuredBin is null ? toolchainRoot : ResolvePath(configuredBin, project.KimiOptions.LlvmBin is null && project.Directory.Length != 0 ? Path.GetFullPath(project.Directory) : Directory.GetCurrentDirectory());
         var tools = new Dictionary<string, string>(StringComparer.Ordinal);
         var identities = new JsonObject();
         var matched = true;
@@ -73,7 +69,7 @@ internal static partial class NativeToolchain
             }
             catch (Exception ex) when (IsToolchainFailure(ex))
             {
-                throw new InvalidDataException($"Cannot obtain LLVM version: tool={tool}; expected={WindowsProfile.LlvmVersion}; {ex.Message}", ex);
+                throw new InvalidDataException($"Cannot obtain LLVM version: tool={tool}; expected={WindowsProfile.LlvmVersion}; {ex.Message} Configure --ToolchainRoot or KIMI_TOOLCHAIN_ROOT, or prepare the compiler's toolchain directory.", ex);
             }
 
             var same = actual == WindowsProfile.LlvmVersion;
@@ -129,6 +125,14 @@ internal static partial class NativeToolchain
                 Kernel32Imports.ValidateManifest(item);
                 path = await GenerateKernel32(tools, paths.Stem, report, cancellationToken);
                 record["kernel32"] = new JsonObject { ["generator"] = Kernel32Imports.Generator, ["dll"] = Kernel32Imports.Dll, ["definitionSha256"] = Kernel32Imports.DefinitionSha256, ["sha256"] = Hash(path) };
+            }
+            else if (name == WindowsProfile.BackendLibrary)
+            {
+                path = ToolchainResolver.ResolveBackend(item, toolchainRoot, outputDirectory);
+                if (!File.Exists(path))
+                {
+                    throw new InvalidDataException($"Backend archive not found: {path}. Run backend/windows-x64/build.ps1 for this toolchain, or install the matching compiler toolchain package.");
+                }
             }
             else
             {
@@ -216,9 +220,9 @@ internal static partial class NativeToolchain
 
     internal static void ValidateManifest(JsonElement root)
     {
-        if (root.GetProperty("schemaVersion").GetInt32() != 2)
+        if (root.GetProperty("schemaVersion").GetInt32() != 3)
         {
-            throw new InvalidDataException("Link manifest schema 2 is required. Re-emit the manifest for generated kernel32 imports.");
+            throw new InvalidDataException("Link manifest schema 3 is required. Re-emit the manifest for automatic backend toolchain resolution.");
         }
 
         var code = root.GetProperty("codegen");

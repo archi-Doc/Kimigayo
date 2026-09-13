@@ -1,7 +1,9 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)] [string] $LlvmBin)
+param([string] $ToolchainRoot = '', [string] $LlvmBin = '')
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
+$ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
+if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 . (Join-Path $PSScriptRoot 'kernel32.ps1')
 function Expect-Failure([scriptblock] $Action, [string] $Message) {
     try { & $Action | Out-Null } catch {

@@ -15,6 +15,9 @@ public class KimiOptions
     [SimpleOption("LlvmBin")]
     public string? LlvmBin { get; set; }
 
+    [SimpleOption("ToolchainRoot")]
+    public string? ToolchainRoot { get; set; }
+
     [SimpleOption("AllowUnpinnedToolchain")]
     public bool AllowUnpinnedToolchain { get; set; }
 }

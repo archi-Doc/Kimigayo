@@ -1,34 +1,30 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string] $LlvmBin,
+    [string] $ToolchainRoot = '', [string] $LlvmBin = '',
     [string] $MismatchedLlvmBin = '',
     [string] $NativeCompiler = '',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release'
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'toolchain.ps1')
+$ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
+if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $compiler = Join-Path $repo "Kimi/bin/$Configuration/net10.0/Kimi.dll"
 $work = Join-Path $repo ('bin/cli-tests/' + [guid]::NewGuid().ToString('N') + '/project with spaces')
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 $project = Join-Path $work 'Hello.kimiproj'
 $source = Join-Path $work 'Hello.kimi'
-$archive = Join-Path $PSScriptRoot 'bin/kimi_backend_windows_x64_v1.lib'
 $report = Join-Path $work 'verification.json'
 @{ status = 'incomplete' } | ConvertTo-Json | Set-Content -LiteralPath $report
 function Write-Project([string] $Level, [string] $Bin) {
-    $binPath = $Bin.Replace('\', '/')
-    $archivePath = [IO.Path]::GetFullPath($archive).Replace('\', '/')
+    $binSetting = if ($Bin) { 'LlvmBin="' + $Bin.Replace('\', '/') + '"' } else { '' }
     @"
 Targets=
   "x86_64-pc-windows-msvc"
 OutputKind="Application"
 Optimization="$Level"
-LlvmBin="$binPath"
-NativeLibraries=
-  x86_64-pc-windows-msvc=
-    kimi_backend=
-      Kind="static"
-      Input="$archivePath"
+$binSetting
 "@ | Set-Content -LiteralPath $project -Encoding utf8
 }
 function Invoke-Kimi([string[]] $Arguments, [int] $ExitCode = 0) {
@@ -37,6 +33,7 @@ function Invoke-Kimi([string[]] $Arguments, [int] $ExitCode = 0) {
     $start.CreateNoWindow = $true
     $start.RedirectStandardOutput = $true
     $start.RedirectStandardError = $true
+    $start.Environment['KIMI_TOOLCHAIN_ROOT'] = $ToolchainRoot
     if (-not $NativeCompiler) { $start.ArgumentList.Add($compiler) }
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     $process = [Diagnostics.Process]::Start($start)
@@ -50,14 +47,35 @@ function Invoke-Kimi([string[]] $Arguments, [int] $ExitCode = 0) {
     return $output
 }
 
+Write-Project 'O2' ''
+'::Core.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
+$output = Invoke-Kimi @('build', $project)
+$output = Invoke-Kimi @('run', $project)
+if (-not $output.Contains('Hello, world!')) { throw "Automatic toolchain resolution failed: $output" }
+$output = Invoke-Kimi @('build', $project, '--ToolchainRoot', (Join-Path $work 'missing toolchain')) 1
+if (-not $output.Contains('Cannot obtain LLVM version')) { throw 'Explicit toolchain root must override the environment' }
+$missingRoot = Join-Path $work 'missing backend'
+$output = Invoke-Kimi @('build', $project, '--ToolchainRoot', $missingRoot, '--LlvmBin', $LlvmBin) 1
+if (-not $output.Contains('Backend archive not found')) { throw 'Missing backend must not fall back to the installed library' }
+$badDirectory = Join-Path $missingRoot 'windows_x64'
+New-Item -ItemType Directory -Path $badDirectory -Force | Out-Null
+$badArchive = Join-Path $badDirectory 'kimi_backend_windows_x64_v1.lib'
+'not the adopted backend' | Set-Content -LiteralPath $badArchive
+$output = Invoke-Kimi @('build', $project, '--ToolchainRoot', $missingRoot, '--LlvmBin', $LlvmBin) 1
+if (-not $output.Contains('backend SHA-256 mismatch')) { throw 'A substituted automatic backend must fail its hash check' }
+Remove-Item -LiteralPath $badArchive -Force
+Remove-Item -LiteralPath $badDirectory -Force
+Remove-Item -LiteralPath $missingRoot -Force
+$output = Invoke-Kimi @('build', $project, '--ToolchainRoot', $ToolchainRoot)
 Write-Project 'O2' 'missing LLVM directory'
 '::Core.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
 $ir = Join-Path $work 'bin/x86_64-pc-windows-msvc/Hello.ll'
 $recordPath = [IO.Path]::ChangeExtension($ir, '.link.build.json')
+$previousRecord = [IO.File]::ReadAllText($recordPath)
 $output = Invoke-Kimi @('emit-llvm', $project)
-if (-not (Test-Path $ir) -or (Test-Path $recordPath)) { throw 'emit-llvm must only publish LLVM inputs' }
-$output = Invoke-Kimi @('run', $project) 1
+if (-not (Test-Path $ir) -or [IO.File]::ReadAllText($recordPath) -cne $previousRecord) { throw 'emit-llvm must only publish LLVM inputs' }
 $output = Invoke-Kimi @('build', $project) 1
+$output = Invoke-Kimi @('run', $project) 1
 foreach ($level in @('O0', 'O2')) {
     Write-Project $level 'missing LLVM directory'
     $output = Invoke-Kimi @('build', $project, '--LlvmBin', $LlvmBin)

@@ -6,7 +6,7 @@ The supply catalog is `profile.json`, embedded by the compiler and read by the b
 4ef5b90f70bf22dea6fd2a6fb495f11025e3ecf4b7afa68b356801c9252c5d26
 ```
 
-This replaces the ABI 1 four-symbol archive `30e6940ecb13b6ca0634d8b99e8596b0d1680aa6bae141adb012721c410401cd`. The existing four members are unchanged. Filename-only archive member names avoid checkout-path dependence. Local builds still report a *tested candidate*: their actual hash must match the catalog before use. A different archive needs renewed review, verification and an immutable shared package release. These changes do not publish a package.
+This replaces the ABI 1 four-symbol archive `30e6940ecb13b6ca0634d8b99e8596b0d1680aa6bae141adb012721c410401cd`. The existing four members are unchanged. Filename-only archive member names avoid checkout-path dependence. Local builds still report a *tested candidate*: their actual hash must match the catalog before use. Pinned, verified reproductions are installed into the selected toolchain's `windows_x64` directory; other candidates remain in `bin/` without replacing the installed archive. A different archive needs renewed review, verification and an immutable shared package release. These changes do not publish a package.
 
 ## Assembly and ABI review
 

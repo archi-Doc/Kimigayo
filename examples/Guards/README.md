@@ -3,7 +3,7 @@
 This example prints `negative`, `zero` and `positive`, each followed by LF, and exits 0.
 
 ```powershell
-dotnet run --project Kimi -c Release --no-build -- build examples/Guards/Guards.kimiproj --LlvmBin C:/App/llvm
+dotnet run --project Kimi -c Release --no-build -- build examples/Guards/Guards.kimiproj
 dotnet run --project Kimi -c Release --no-build -- run examples/Guards/Guards.kimiproj
 ```
 

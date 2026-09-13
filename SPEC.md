@@ -7415,16 +7415,16 @@ Concrete query and marker-registration types, assembly packaging/compatibility c
 
 ##### 20.8.1. Output scope and settings
 
-The windows-x64-v1 compiler produces one pre-optimization textual .ll and one .link.json per project/target, after final semantic acceptance and supported-operation checks (§21.4). The `emit-llvm` command stops after publishing this pair. The `build` command continues through external LLVM verification, optimization, object generation and linking. The `run` command executes an existing binary without compilation. These commands do not discover/install LLVM or the Windows SDK. A dedicated runtime DLL is not required; runtime bodies are emitted in the same module, with separate native backend support (§21.5.7).
+The windows-x64-v1 compiler produces one pre-optimization textual .ll and one .link.json per project/target, after final semantic acceptance and supported-operation checks (§21.4). The `emit-llvm` command stops after publishing this pair. The `build` command continues through external LLVM verification, optimization, object generation and linking. The `run` command executes an existing binary without compilation. Build resolves the compiler-managed toolchain under §20.8.8; these commands never download/install LLVM or the Windows SDK. A dedicated runtime DLL is not required; runtime bodies are emitted in the same module, with separate native backend support (§21.5.7).
 
 | Setting | Initial rule |
 | --- | --- |
 | Targets | x86_64-pc-windows-msvc |
 | OutputKind | Application (default) or inspection-only Library (§22.2.2) |
 | OutputPath | .ll destination; default bin/<target>/<ProjectName>.ll |
-| NativeLibraries | Per-target logical name to kind/input mapping (§20.8.2) |
+| NativeLibraries | Optional per-target logical name to kind/input mapping (§20.8.2); kimi_backend is resolved automatically when omitted |
 | Optimization | O0 or O2 (default); applied during native build |
-| LlvmBin | Project-relative or absolute LLVM bin directory used by build; emit-llvm records it without executing tools. The CLI --LlvmBin value overrides it and resolves relative to the invoking working directory. Neither changes the target/version contract. |
+| LlvmBin | Optional legacy LLVM-only override; omitted by normal projects using §20.8.8. A relative project value is project-relative; CLI --LlvmBin overrides it and is invocation-relative. emit-llvm records a project value without executing tools. Neither changes the target/version contract or the default backend location. |
 | EntrySource | Not an initial selection setting; use §22.2's unique-candidate rules |
 
 The first execution subset is ordinary functions, simple local bindings, Unit, string literals, required ownership/cleanup, and Core.writeLine. Arrays, Dictionary, inheritance, closures, static Property execution, general generic sharing, and multiple-Kotonoha linking need not be included in this first execution test. Their language rules are not weakened; unsupported required operations fail. Layout computability, physical ABI support, and runtime availability are separate checks.
@@ -7435,7 +7435,7 @@ Generation success certifies the matched IR/manifest pair, not LLVM acceptance, 
 
 Each Ordinal logical key maps to `kind` (import or static) and one .lib `input`, never a DLL file. Import produces dllimport declarations; static does not. A simple filename is a linker search name, a relative path with separators is project-relative, and an absolute path is unchanged. Diagnose empty/NUL values or embedded linker options; never execute these strings as commands.
 
-Reserve kernel32 as an automatically generated import library and kimi_backend = static/kimi_backend_windows_x64_v1.lib. A kernel32 entry in NativeLibraries is an error with a diagnostic instructing removal; no SDK kernel32.lib or user-provided replacement is used. Other keys require configuration; do not guess .lib names from DLL names. Explicit backend paths must select the adopted supply.
+Reserve kernel32 as an automatically generated import library and kimi_backend as the compiler-managed static library at `<toolchain root>/windows_x64/kimi_backend_windows_x64_v1.lib` (§20.8.8). Neither requires a NativeLibraries entry. A kernel32 entry in NativeLibraries is an error with a diagnostic instructing removal; no SDK kernel32.lib or user-provided replacement is used. Other keys require configuration; do not guess .lib names from DLL names. An explicit kimi_backend path remains a compatibility override and must select the adopted supply.
 
 The compiler embeds the project-owned backend/windows-x64/kernel32.def. It contains KERNEL32.dll and the seven runtime APIs in §22.5.6 plus VirtualAlloc, VirtualProtect and VirtualFree for backend tests. Normalize the definition to UTF-8 without BOM, LF line endings and one terminal newline; verify its SHA-256 against profile.json. During native build, materialize the definition in a fresh staging directory and invoke `llvm-dlltool -m i386:x86-64 -d kernel32.def -l kernel32.lib`. Verify the generated DLL name, x64 COFF formats and exact public/__imp_ symbol set before publishing and linking the library. The runtime still uses the OS-provided KERNEL32.dll. Additional kernel32 imports require a reviewed definition/profile update; the current library is not a replacement for the entire SDK export surface.
 
@@ -7447,7 +7447,7 @@ Replace OutputPath's extension with .link.json in the same directory and write U
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "target": "x86_64-pc-windows-msvc",
   "codegen": {
     "profile": "windows-x64-v1",
@@ -7474,7 +7474,7 @@ Replace OutputPath's extension with .link.json in the same directory and write U
   "subsystem": "console",
   "libraries": [
     { "name": "kernel32", "kind": "import", "generator": "llvm-dlltool", "dll": "KERNEL32.dll", "definitionSha256": "<64 hex digits for the normalized definition>" },
-    { "name": "kimi_backend", "kind": "static", "input": "kimi_backend_windows_x64_v1.lib" },
+    { "name": "kimi_backend", "kind": "static", "resolution": "toolchain" },
     { "name": "observer", "kind": "import", "input": "observer.lib" }
   ],
   "providedRuntimeSymbols": ["_fltused"],
@@ -7490,24 +7490,26 @@ Hashes must be actual SHA-256 values. packageVersion is supplied by Directory.Bu
 - Library uses null entry and subsystem. Its dependency record does not establish an external .lib/DLL ABI or runnable artifact.
 - codegen is mandatory and matches §21.5.1; irSha256 hashes pre-optimization .ll.
 - backendSupport comes from the adopted catalog. Its library references a static libraries entry; ABI/version/symbols must agree. Manual builds verify the actual .lib hash before use.
+- The default kimi_backend entry uses resolution=toolchain and has no input path. Build resolves it under §20.8.8, preserving manifest portability and LLVM-free emission. An explicit legacy backend override instead has input and no resolution. Reject unknown resolution values and entries combining resolution with input. Schema 3 is required; schema 1/2 inputs must be re-emitted.
 - providedRuntimeSymbols lists generated backend definitions, always _fltused, not ordinary __kimi_ helpers. expectedUndefinedSymbols lists backend references anticipated at generation, with a known provider in libraries. Verify backend symbols against backendSupport.providedSymbols; unknown providers for known dependencies fail generation.
 - Sort both symbol arrays by Ordinal symbol name, without duplicates or overlap. They are not the final object's undefined-symbol list; even an empty list cannot promise no later dependency. LibraryImport/Windows inputs are recorded in libraries.
-- Generated kernel32 entries have no input path. Validate the generator, DLL and definition hash against the embedded profile; reject substitutions, extra input paths and schema 1 manifests with a re-emission diagnostic. emit-llvm still requires no native tools and publishes no import library.
+- Generated kernel32 entries have no input path. Validate the generator, DLL and definition hash against the embedded profile; reject substitutions and extra input paths. emit-llvm still requires no native tools and publishes no import library.
 - Build records retain actual library hashes, generator/tool identities, normalized definition hashes and tool settings. Each project/optimization writes its own .kernel32.def/.kernel32.lib. Generate into a fresh staging directory, publish only after validation, and fail without linking stale libraries if generation fails. Never embed absolute build paths in the generated library; redact local report paths.
 
 Complete both temporary outputs before publication, publish the manifest last, and report success only after both are published. A partial publication is failure; old files are not evidence of current success. Consumers check irSha256 because interruption can leave a mixed pair. Success reports both paths, purpose (Application input or Library inspection), entry, and required link inputs.
 
-When LlvmBin is configured, the manifest may additionally contain `"toolchain": { "llvmBin": "<manifest-relative directory>" }`. Resolve a relative setting from the project directory. This is a local build-tool location, not part of the code-generation profile or evidence of a tool's version. A build command or separately invoked builder may override the location, but must still check the actual tool versions under §20.8.5; a directory name or configured path cannot certify version compatibility. External native library files remain configured separately through NativeLibraries; kernel32 is generated from the embedded definition.
+When the legacy LlvmBin setting is configured, the manifest may additionally contain `"toolchain": { "llvmBin": "<manifest-relative directory>" }`. Resolve a relative setting from the project directory. This is a local build-tool location, not part of the code-generation profile or evidence of a tool's version. A build command or separately invoked builder may override the location, but must still check the actual tool versions under §20.8.5; a directory name or configured path cannot certify version compatibility. Default projects record no local toolchain path. External user library files remain configured through NativeLibraries; kimi_backend resolves from the toolchain and kernel32 is generated from the embedded definition.
 
 ##### 20.8.4. Manual toolchain example
 
 With LLVM 22.1.8 and all manifest inputs resolved, including a verified backend archive:
 
 ```powershell
-opt -S -passes="default<O2>" -mtriple=x86_64-pc-windows-msvc ProjectName.ll -o ProjectName.opt.ll
-llc -O2 -filetype=obj -mtriple=x86_64-pc-windows-msvc -mcpu=x86-64 -mattr=+sse2 -relocation-model=pic -code-model=small ProjectName.opt.ll -o ProjectName.obj
-llvm-dlltool -m i386:x86-64 -d kernel32.def -l kernel32.lib
-lld-link ProjectName.obj kernel32.lib kimi_backend_windows_x64_v1.lib /entry:__kimi_start /subsystem:console /nodefaultlib /debug /out:Application.exe
+$tools = 'C:/path/to/Kimigayo/toolchain'
+& "$tools/opt.exe" -S -passes="default<O2>" -mtriple=x86_64-pc-windows-msvc ProjectName.ll -o ProjectName.opt.ll
+& "$tools/llc.exe" -O2 -filetype=obj -mtriple=x86_64-pc-windows-msvc -mcpu=x86-64 -mattr=+sse2 -relocation-model=pic -code-model=small ProjectName.opt.ll -o ProjectName.obj
+& "$tools/llvm-dlltool.exe" -m i386:x86-64 -d kernel32.def -l kernel32.lib
+& "$tools/lld-link.exe" ProjectName.obj kernel32.lib "$tools/windows_x64/kimi_backend_windows_x64_v1.lib" /entry:__kimi_start /subsystem:console /nodefaultlib /debug /out:Application.exe
 .\Application.exe
 ```
 
@@ -7545,6 +7547,65 @@ External processes are launched directly with separately supplied arguments, wit
 ##### 20.8.7. Compiler and backend release version
 
 Directory.Build.props Version is the single release-version source for Kimigayo and its backend package. The compiler embeds that MSBuild value as assembly metadata and uses it for the default version display, compiler build identity prefix and backendSupport.packageVersion. Repository tools combine that same props value with profile.json; profile.json retains the LLVM release, ABI, helper symbols and adopted archive hash, without its own package-version literal. Language version, ABI version and LLVM version are independent identifiers and do not change simply because the package release changes. Candidate reports carry the shared release with adopted=false; release equality never substitutes for native archive/hash validation. Changes to adopted archive contents require renewed validation and a shared release update before distribution.
+
+##### 20.8.8. Toolchain storage and native library lifecycle
+
+Kimigayo manages the LLVM executables and adopted native backend as one relocatable toolchain. In a source checkout the canonical location is `Kimigayo/toolchain`; a standalone compiler distribution places `toolchain` beside Kimi.exe (or Kimi.dll). Normal .kimiproj files specify language/build choices such as Targets, OutputKind and Optimization, with no LlvmBin or kimi_backend path.
+
+```text
+Kimigayo/
+  toolchain/
+    opt.exe
+    llc.exe
+    lld-link.exe
+    llvm-nm.exe
+    llvm-readobj.exe
+    llvm-dlltool.exe
+    clang.exe
+    llvm-lib.exe
+    llvm-objdump.exe
+    <supporting LLVM DLLs, when required>
+    windows_x64/
+      kimi_backend_windows_x64_v1.lib
+```
+
+**Location resolution.** A compiler build selects the root in this order: explicit `--ToolchainRoot`, `KIMI_TOOLCHAIN_ROOT`, then an executable-adjacent toolchain. Relative explicit/environment roots are relative to the invoking working directory. For source builds only, if the adjacent directory is absent, walk ancestors of the executing compiler/test-host directory to the checkout identified by Kimigayo.slnx, Kimi/Kimi.csproj and backend/windows-x64/profile.json, and use its toolchain. Never discover a toolchain by walking the user's project or current working directory, searching PATH, or guessing an SDK installation. An explicitly selected missing or incomplete root fails rather than falling back. A standalone installation without tools reports the expected executable-adjacent path.
+
+Repository PowerShell builders share the same root layout: `-ToolchainRoot`, then KIMI_TOOLCHAIN_ROOT, then the checkout's toolchain located relative to the script. Their `-LlvmBin` option and the compiler's CLI/project LlvmBin remain optional LLVM-only compatibility overrides; they do not relocate the backend. The compiler applies CLI --LlvmBin before project LlvmBin before the selected root. The manual builder applies -LlvmBin before the manifest's legacy toolchain.llvmBin before the selected root. Normal use needs none of these overrides. Root configuration is local installation state, not a new .kimiproj field or a language/ABI version.
+
+**Initial setup.** `backend/windows-x64/setup.ps1 -LlvmBin <existing LLVM directory>` validates the complete selected LLVM tool set against the embedded profile, copies the nine executables above and adjacent support DLLs to the selected toolchain root, then invokes backend build/verification using those copies. Without -LlvmBin it validates and uses tools already in the root. The helper sources and freestanding test harness require no Windows SDK or additional Clang headers. This setup command uses an existing local installation; it does not download tools or change PATH. It succeeds only if this run produces the adopted backend and the installed archive matches the catalog. Missing tools, failed version probes and mismatches are errors; setup has no exploratory override. Distribution of LLVM must retain its applicable license notices. Generated/copied toolchain contents are ignored by Git; sources, scripts and the authoritative catalog remain version-controlled.
+
+```powershell
+# Once per toolchain installation, from the Kimigayo checkout:
+./backend/windows-x64/setup.ps1 -LlvmBin C:/App/llvm
+
+# Rebuild the native backend after changing its sources:
+./backend/windows-x64/build.ps1
+
+# Ordinary project builds need no tool or native-library path settings:
+dotnet run --project Kimi -c Release -- build examples/Hello/Hello.kimiproj
+dotnet run --project Kimi -c Release -- run examples/Hello/Hello.kimiproj
+```
+
+**Backend generation and installation.** build.ps1 explicitly assembles the project-owned src/memcmp.S, memcpy.S, memmove.S, memset.S and chkstk.S with `clang --target=x86_64-pc-windows-msvc -c`, producing one native COFF .obj per helper. llvm-readobj checks x64 format, unwind records and absence of CRT/TLS/default-library directives; llvm-nm checks absent undefined symbols; llvm-objdump checks absent calls. llvm-lib archives the five objects using filename-only member names. The archive must export exactly __chkstk, memcmp, memcpy, memmove and memset, with no _fltused. These assembly bodies stay outside LLVM IR optimization, preventing memory loops from becoming recursive libcalls (§21.5.7).
+
+The script creates kernel32.lib from the reviewed kernel32.def with llvm-dlltool for its test harness. It compiles tests/native.c to LLVM IR and tests/probe.S to COFF, verifies IR, builds both O0 and O2 variants with opt/llc, links through lld-link with a custom entry and /NODEFAULTLIB, and requires zero native exit codes within the timeout. Tests cover memory boundaries/overlap/returns, guard pages and the special __chkstk ABI. Source/tool/archive hashes and diagnostics are retained under backend/windows-x64/bin; verification.json begins incomplete and becomes tested-candidate only after this run's checks, including unchanged source identities.
+
+After successful verification with pinned tools, an archive matching profile.json's adopted SHA-256 is copied through a fresh temporary file, rehashed, and published at toolchain/windows_x64/kimi_backend_windows_x64_v1.lib. The verification report remains adopted=false: successful reproduction does not create a new catalog adoption. An exploratory or different-hash candidate remains in backend/windows-x64/bin with a warning and does not replace the installed library. A changed archive requires native/generated-module review, a catalog update and the shared release policy in §20.8.7 before installation. A failed candidate build does not make old output evidence of current verification. Setup additionally rejects a non-installable candidate even when an older installed file exists.
+
+**Reference and Application build.** emit-llvm writes the schema 3 logical kimi_backend entry and expected catalog identity, without locating the default toolchain or reading its archive. Thus semantic checking/emission works before setup. `kimi build` resolves LLVM from the selected root and the backend from its windows_x64 subdirectory, validates tool versions, catalog ABI/release and the actual archive hash, and creates a separate validated kernel32 import library for each project/optimization. The generated kernel32.def/.lib remain beside project build outputs; they are not a shared mutable toolchain cache. Explicit legacy NativeLibraries backend paths undergo the same hash/ABI checks.
+
+```text
+backend src/*.S -> clang -> COFF objects -> llvm-lib -> candidate .lib
+  -> O0/O2 native verification -> adopted-hash check -> toolchain/windows_x64/*.lib
+
+Kimigayo source -> semantic checks -> .ll + .link.json
+  -> opt verification / optional O2 -> llc -> Application.obj
+  -> lld-link(Application.obj, toolchain/windows_x64/backend.lib, generated kernel32.lib)
+  -> Application.exe + successful build record
+```
+
+The linker receives the backend as a profile-wide static input; only needed members are extracted. Build records retain the actual resolved tool/library paths with the report's path-redaction policy, their hashes, selected settings and executable identity. The executable contains the selected helpers and does not need the .lib at execution time. run uses the existing executable and performs no LLVM/backend regeneration. Neither dotnet build, ordinary kimi build, nor the current .NET CI workflows invoke backend build.ps1 automatically; setup or explicit backend regeneration supplies the library. This toolchain packages build inputs and adds no dedicated runtime DLL, extra runtime operation or stable language-function ABI.
 
 ### 21. Layout, runtime metadata, and code generation
 
@@ -8248,6 +8309,8 @@ After source newline/escape processing, encode strings as UTF-8 with byte length
 ```
 
 ##### 21.5.7. Backend support supply
+
+Toolchain storage, native generation/verification, adopted-archive installation and Application build/reference flow are defined together in §20.8.8.
 
 Memory intrinsics may become external libcalls. Supply memcmp, memcpy, memmove, memset and Windows x64 assembly __chkstk from the versioned native COFF static archive **kimi_backend_windows_x64_v1.lib**, logical name **kimi_backend**. Do not generate their loop bodies in .ll or use bitcode/LTO members; keep them outside O2 to avoid recursive libcalls. optnone alone is insufficient. Prefer one strong symbol per archive member.
 

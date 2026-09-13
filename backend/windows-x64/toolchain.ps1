@@ -1,4 +1,20 @@
 # Shared by the native builders; loading this file never executes LLVM.
+function Resolve-KimiToolchainRoot([string] $ToolchainRoot = '') {
+    if (-not $ToolchainRoot) { $ToolchainRoot = [Environment]::GetEnvironmentVariable('KIMI_TOOLCHAIN_ROOT') }
+    if (-not $ToolchainRoot) { $ToolchainRoot = Join-Path $PSScriptRoot '../../toolchain' }
+    if ([string]::IsNullOrWhiteSpace($ToolchainRoot) -or $ToolchainRoot -match '[\x00\r\n"]' -or $ToolchainRoot.StartsWith('-')) { throw 'Invalid toolchain root' }
+    return [IO.Path]::GetFullPath($ToolchainRoot, (Get-Location).ProviderPath)
+}
+
+function Resolve-KimiBackendLibrary($Entry, [string] $ToolchainRoot, [string] $ManifestDirectory) {
+    if ($Entry.PSObject.Properties['resolution']) {
+        if ($Entry.resolution -cne 'toolchain' -or $Entry.PSObject.Properties['input']) { throw 'Invalid backend toolchain resolution: an input path is not permitted.' }
+        return Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib'
+    }
+    if ([string]::IsNullOrWhiteSpace($Entry.input) -or $Entry.input -match '[\x00\r\n"]' -or $Entry.input.StartsWith('-')) { throw 'Invalid backend input path' }
+    return [IO.Path]::GetFullPath($Entry.input, $ManifestDirectory)
+}
+
 function Read-KimiWindowsProfile {
     $profile = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'profile.json') -Raw | ConvertFrom-Json
     [xml] $props = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../Directory.Build.props') -Raw

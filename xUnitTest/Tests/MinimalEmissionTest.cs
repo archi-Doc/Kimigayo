@@ -153,8 +153,8 @@ public class MinimalEmissionTest
         var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../examples/Hello/Hello.kimiproj"));
         var read = TinyhandSerializer.DeserializeFromUtf8<ProjectFile>(File.ReadAllBytes(path))!;
         Assert.Equal(WindowsProfile.Target, Assert.Single(read.Targets));
-        Assert.False(read.NativeLibraries[WindowsProfile.Target].ContainsKey("kernel32"));
-        Assert.Equal("C:/App/llvm", read.LlvmBin);
+        Assert.Empty(read.NativeLibraries);
+        Assert.Null(read.LlvmBin);
     }
 
     [Fact]

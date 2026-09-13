@@ -1,6 +1,6 @@
 # Kimigayo の依存設定・配布・検証済み成果物
 
-2026-09-13 改訂。[初回レビュー](../Decisions/2026-09-13%20Dependencies%20and%20Artifacts%20Review.md)と[追加修正案の採否](../Decisions/2026-09-13%20Dependencies%20and%20Artifacts%20Revision.md)を統合した。**本書の対象では本書が SPEC と先行設計文書に優先する。SPEC.md 本体は変更しない。**
+2026-09-13 改訂。依存・成果物の規則と追加案 M1–M8、S1–S4 の採否を本書へ集約した。**本書の対象では本書が SPEC と先行設計文書に優先する。SPEC.md 本体は変更しない。**
 
 これは設計仕様であり、設定・コマンド・コード例は実装済みであることを示さない。実装状況は [STATUS](../../STATUS.md)、変更しない言語規則は [SPEC](../../SPEC.md) に従う。
 
@@ -13,11 +13,13 @@
 
 | 初期対応 | 後続の機能 |
 | --- | --- |
-| Project 参照、ソースパッケージ、完全一致の版、複数版の併存 | レジストリ、版範囲の自動解決 |
+| Project 参照、ソースパッケージ、ローカル発行ストア、完全一致の版、複数版の併存 | ネットワークレジストリ、版範囲の自動解決 |
 | ソースからの検証・最終生成、意味計画の任意キャッシュ | 機械語キャッシュ、ソース非公開バイナリ |
 | 既存の native 接続契約 | 安定した外部 Kimigayo ABI、DLL・動的ロード、re-export |
 
 一つの配布パッケージは一つの Library Kotonoha を持つ。現在の検査用 Library `.ll` は配布形式にしない。必要な型・Loan・効果・cleanup・生成経路が未対応なら診断する。
+
+既知の制約として、発行済み Package の Project override はない。子の配布内容を変えて同じストアへ再発行する場合は、依存辺が変わる発行済みの祖先も版の更新が必要になる。試作の pack にはこの制限を課さない。
 
 ## 2. 依存と名前
 
@@ -54,6 +56,7 @@ ReferenceName は通常の言語識別子であり、project root の宣言や�
 OutputKind="Library"
 PackageId="example.geometry"
 PackageVersion="1.0.0"
+LangVersion="0.0.1"
 Targets=
   "x86_64-pc-windows-msvc"
 Dependencies=
@@ -64,15 +67,19 @@ Dependencies=
   }
 ```
 
-Dependencies は ReferenceName をキーとする map。値は ID／Version と、Project（`.kimiproj`）または Package（`.kimipkg`）のどちらか一つを持つ。相対パスは記述したプロジェクト基準とし、読み込んだ ID／Version を照合する。
+Dependencies は ReferenceName をキーとする map。ID／Version は必須とし、Project（`.kimiproj`）と Package（`.kimipkg`）は併記しない。どちらも省略した参照は PackageSources から Package を解決する。相対パスは記述したプロジェクト基準とする。
 
-PackageSources は取得元の配列であり、各要素は ID／Version／Package、または Store（ディレクトリ）のどちらかを持つ。Package 指定を初回の ID／Version 解決に使い、manifest／lock に SourceId がある依存は `<Store>/<SourceId>.kimipkg` を直接開ける。Store から版や内容を推測しない。
+PackageSources は取得元の配列であり、各要素は ID／Version／Package、または Store（ディレクトリ）のどちらかを持つ。SourceId が未固定なら、明示 Package と発行ストアの対応表を候補として完全一致の ID／Version を解決する。候補の SourceId が一意でなければ取得元を示して拒否し、先勝ちにしない。対応表は取得の索引であり、採用時に manifest の ID／Version と内容を照合する。
 
-直接依存の Package 指定と、到達した Project の取得元も候補に加える。必要区分の Project 設定を先に集め、同版の異なる内容を診断してから解決する。読込順で選択を変えず、テスト側の候補を製品の解決に使わない。候補登録だけでは名前で参照できない。総当たり検索・版の自動選択はせず、要求された内容がなければ診断する。
+manifest に SourceId がある参照と、build 等が有効な lock を読む場合は、その内容だけを候補とし、`<Store>/<SourceId>.kimipkg` を直接取得する。対応表が違う内容を示しても固定を更新せず、その取得元の不整合として診断する。対応表を持たない pack 出力も、SourceId 指定時の取得元には使える。利用者単位の管理キャッシュは版の選択候補にせず、決まった SourceId の取得を高速化するだけとする。
+
+直接依存の Package 指定と、到達した Project の取得元も候補に加える。必要区分の Project 設定を先に集め、読込順で選択を変えない。テスト側の候補を製品の解決に使わず、候補登録だけでは名前で参照できない。総当たり検索・版の自動選択はせず、要求された内容がなければ診断する。
 
 ```text
 PackageSources=
   { Store="packages" }
+Dependencies=
+  Math={ PackageId="example.math" PackageVersion="1.2.0" }
 ```
 
 未実装の旧 KotonohaArray は Dependencies に置き換える。非空の旧設定には移行診断を出し、取得元や参照名を推測しない。
@@ -81,9 +88,11 @@ PackageSources=
 
 target と debug/release はグラフ全体で統一し、target は各依存の対応対象でもなければならない。CompileTimeSettings と default alias は定義側のものを使う。依存辺での設定上書き、暗黙の feature 統合、条件付き依存は初期版に導入しない。別構成を別モジュールとして提供する場合は別 PackageId を使う。
 
-未指定の LangVersion はルートと同じ solution／compiler の既定値で解決し、別 solution を暗黙探索しない。配布 manifest には確定した LangVersion を保存する。初期グラフは一つの実効言語版と現在の compiler build で検証する。発行者と同じ compiler build は要求しない。
+通常の build では、未指定の LangVersion はルートと同じ solution／compiler の既定値で解決し、別 solution を暗黙探索しない。pack する各 Project には LangVersion と Targets を明示する。配布する他の意味設定も外側から継承せず、自身の明示値またはその言語版・成果物形式で固定した既定値だけを使う。省略された CompileTimeSettings は空の map とする。周囲や compiler build によって変わる既定値が必要なら、明示を要求する。
 
-各内容 ID は、その対象に含まれる設定の確定した実効値を使う。省略と明示が同じ値なら区別しない。ただし配布内容に含まれない利用側の target／mode／compiler は SourceId に加えず、ModuleInputId に記録する。設定の既定値が変わって配布内容が変われば、発行済みの版は再使用できない（§4.4）。
+配布 manifest には確定した設定を保存する。初期グラフは一つの実効言語版と現在の compiler build で検証する。発行者と同じ compiler build は要求しない。
+
+各内容 ID は、その対象に含まれる設定の確定した実効値を使う。省略と明示が同じ値なら区別しない。利用側の target／mode／compiler は SourceId に加えず、ModuleInputId に記録する。版の不変性を要求する範囲は発行先ストアとする（§4.4）。
 
 ```kimi
 // Math/Arithmetic.kimi
@@ -107,12 +116,16 @@ public group Measure
 | --- | --- |
 | `restore <project>` | 製品を先に、ルートのテスト拡張を次に解決し、区分ごとの結果を一括保存 |
 | check／build／emit-llvm／test | lock を読み、今回の入力を記録。lock は更新しない |
-| `pack <project>` | lock を基に配布グラフを作り、検証して公開（§4） |
+| `pack <project>` | lock を基に配布グラフを作り、検証して内容を保存。版の対応表は更新しない |
+| `publish <package> --store <directory>` | 作成済みパッケージの閉包をローカルストアへ発行し、版の対応表を更新 |
+| `store verify` | 利用者単位の管理キャッシュの全内容と保存形式を再検査 |
 | run | 既存成果物を実行。依存解決・再構築はしない |
 
 restore は宣言されたローカル取得元を読み、ネットワーク・Mod・対象ソースの実行は行わない。製品の解決失敗は非ゼロ終了とする。製品が解決できれば、テストだけの失敗は理由を表示して記録し、製品の restore は成功させる。設定全体を解釈できないエラーは区分へ隔離せず失敗する。
 
-入力を使うコマンドは必要区分の有効な lock を要求する。必要区分の依存宣言が空なら解決結果は一意なので、lock がなくても空の解決結果として扱う。製品コマンドは TestDependencies の有無に左右されず、test は製品とテストの両方を必要区分とする。既存 lock の破損を空扱いで隠さない。
+restore は Project に宣言された Package 参照を現在の取得元から再解決する。既存 lock は更新前の状態であり、試作の Package パスを変更して restore すれば同版の別内容へ固定し直せる。ただし取り込む Package の manifest が固定した子の SourceId は変更しない。これ以外のコマンドは lock を固定したまま使う。
+
+Project を入力とするコマンドは、lock があれば必要区分を必ず照合する。依存宣言を空にしても、古い非空の lock があれば restore を要求する。lock がない場合に限り、必要区分の依存宣言が空なら空の解決結果として扱う。製品コマンドは TestDependencies の有無に左右されず、test は両区分を必要とする。既存 lock の破損は空扱いしない。publish は確定済み Package の閉包を読み、Project の lock は使わない。
 
 `--locked` は「restore が必要な差分があれば失敗する」の明示指定とする。通常の入力コマンドも自動 restore は行わないため同じ検査を行い、Project のソース編集を禁止する追加条件は持たない。check や test の `--list` にコード生成は要求しない。
 
@@ -147,7 +160,7 @@ ProjectSnapshotId は、製品ソースの論理パス・順序・byte 列と、
 
 入力記録は内容 ID ごとの不変データとし、入力 byte 列を複製せず、内容ストアの ID／hash と必要な構造・設定を保存する。依存 lock の一致だけで、ルート、native、toolchain、実行時環境まで固定されたとは扱わない。
 
-管理キャッシュの回収では、最新ポインター、保存指定した記録・lock、実行・検証中の処理を起点に参照先を残す。処理は利用前に入力・成果物を pin し、回収と競合させない。参照されない記録と内容は回収できる。hash だけでは消えた入力を再現できず、再現を要求する記録は入力の閉包も保存する。利用者の配布ディレクトリは自動回収せず、発行済み版の対応表も回収しない（§4.4）。
+管理キャッシュの回収では、最新ポインター、保存指定した記録・lock、実行・検証中の処理を起点に参照先を残す。処理は利用前に入力・成果物を pin し、回収と競合させない。参照されない記録と内容は回収できる。hash だけでは消えた入力を再現できず、再現を要求する記録は入力の閉包も保存する。pack 出力と発行ストアは管理キャッシュの自動回収対象にせず、発行済み版の対応表も回収しない（§4.4）。
 
 ## 4. ソース配布
 
@@ -155,11 +168,11 @@ ProjectSnapshotId は、製品ソースの論理パス・順序・byte 列と、
 
 pack は Library を対象とし、次の順に処理する。
 
-1. 製品区分の lock を照合し、ルートと必要な Project の現在の入力を固定する。
+1. 製品区分の lock と配布設定の明示を照合し、ルートと必要な Project の現在の入力を固定する。設定不足は各ノードについてまとめて報告する。
 2. Project 依存を末端から配布用の論理入力へ変換し、最終 SourceId を計算する。既存 Package は内容を照合して再利用する。
-3. 親の依存辺を、子の PackageId／Version／SourceId へ固定する。全体と既知の発行済み版の一意性を確認する（§4.4）。
+3. 親の依存辺を、子の PackageId／Version／SourceId へ固定し、今回のグラフ内の一意性を確認する。
 4. 通常の package loader と意味検証器で、最終グラフを検証する。
-5. 既存 Package も含む依存の閉包を出力ストアへ保存する。子を先に、親を最後に公開し、各 ID と保存先を報告する。
+5. 既存 Package も含む依存の閉包を出力ディレクトリへ保存する。子を先に、親を最後に配置し、各 ID と保存先を報告する。過去の pack と同版でも別の SourceId として保存できる。
 
 変換ではソースの論理パス・順序、製品所属、実効 LangVersion、CompileTimeSettings、default alias、native 要求を保存し、取得パスを取り除く。環境で選択した枝だけを残したソースに書き換えず、元の条件付きソースを配布する。ProjectSnapshotId や ID／Version だけを根拠に、別の pack 済み成果物を選ばない。既存 Package を Project で置換する一般機能にはしない。
 
@@ -168,20 +181,27 @@ Geometry -> Project Math
   1. Math の現在の配布入力を確定       -> SourceId = h_math
   2. Geometry の Math 参照を h_math に固定 -> SourceId = h_geometry
   3. 確定したグラフを検証
-  4. h_math.kimipkg、h_geometry.kimipkg の順に公開
+  4. h_math.kimipkg、h_geometry.kimipkg の順に保存
 ```
 
-上の h_math／h_geometry は実際には64桁の内容 ID である。出力ディレクトリにはソースパッケージの閉包を揃え、同じ SourceId は一つにまとめる。native ファイル・実行時 DLL・toolchain はこの閉包に含めない。親の公開時点で、その参照する子が同じストアから取得可能でなければならない。
+上の h_math／h_geometry は実際には64桁の内容 ID である。出力ディレクトリにはソースパッケージの閉包を揃え、同じ SourceId は一つにまとめる。native ファイル・実行時 DLL・toolchain はこの閉包に含めない。親の配置時点で、その参照する子が同じディレクトリから取得可能でなければならない。
 
-検証には archive 書き出し前の論理 manifest／file view を使える。検証済みの同じ byte 列を writer へ渡し、ZIP の作成・再展開を挟まない。通常は選択した target／mode を意味検証する。`pack --verify-all` は宣言した target × {debug, release} のすべてを要求し、未対応環境や一つでも検証失敗があれば公開しない。コード生成・native link・実行は要求しない。
+検証には archive 書き出し前の論理 manifest／file view を使える。検証済みの同じ byte 列を writer へ渡し、ZIP の作成・再展開を挟まない。通常は選択した target／mode を意味検証する。単一環境の選択は build と共通とし、`--Target` を優先、未指定で Targets が一つならそれを使い、複数なら指定を要求する。mode は release が既定で、`--Debug` 指定時は debug とする。
 
-manifest の targets は利用を許す対象であり、検証済み一覧ではない。実際に成功した組合せは SourceId・compiler build・実効設定とともに別の検証記録へ保存し、未検証を成功と表示しない。利用側は自分の環境で必ず検証する。upload や実行は行わない。
+`pack --verify-all` は宣言した target × {debug, release} のすべてを検証し、`--Target`／`--Debug` と併用しない。未対応環境や一つでも検証失敗があれば出力を確定しない。コード生成・native link・実行は要求しない。
+
+manifest の targets は利用を許す対象であり、検証済み一覧ではない。実際に成功した組合せは SourceId・compiler build・実効設定とともに別の検証記録へ保存し、未検証を成功と表示しない。利用側は自分の環境で必ず検証する。
 
 ```powershell
-# 依存一式を packages に保存。宣言した全 target・両 mode の検証も要求する。
-kimi pack Geometry.kimiproj --output packages --verify-all
-# Math の配布内容を編集した再発行では、Math と Geometry の版を更新して restore する。
+# 配布設定を各 Project に明示した後、試作品と依存一式を作る。
+kimi pack Geometry.kimiproj --output trial --verify-all
+# 内容を編集しても、試作中は同じ版で繰り返せる。
+kimi pack Geometry.kimiproj --output trial --verify-all
+# 発行時は、pack が報告したルートのパスを指定する。
+kimi publish "trial/<SourceId>.kimipkg" --store packages
 ```
+
+`<SourceId>` は pack が報告した64桁の ID に置き換える。Project 依存の Math 側にも LangVersion／Targets を明示する。
 
 初期 pack は Mod を必要としない入力に限る。生成結果だけを原ソースへ偽装しない。Mod 対応を追加するときは、登録、実装、host API、追加入力、target、順序、provenance を含む既存の再生成契約を適用する。
 
@@ -224,17 +244,33 @@ manifest は全ファイルの path／size／sha256 を持つため、この ID 
 
 writer は JSON の map を UTF-8 key 順、files を path 順、集合の配列を要素順に並べる。sources の意味上の順序は保存する。整数は10進数、空白・BOM なし、末尾 LF 一つとする。文字列は quote・backslash・制御文字だけを escape し、制御文字には小文字の `\u00xx` を使う。reader は他の合法 JSON 表記も読めるが、manifest bytes が違えば別 SourceId である。
 
-外部入力を compiler 管理ストアへ登録する際は、全 entry の形式・長さ・実 hash を検証し、同じ snapshot をコピーして不変に保管する。検証済みの管理領域内では内容 ID で再利用できる。外部ファイルの名前・read-only 属性・manifest hash だけではこの検証を省かない。不変性を保証できなくなった内容は再検証する。完全性検証と意味検証の記録は別にする。
+外部入力を管理キャッシュへ登録する際は、全 entry の形式・長さ・実 hash を検証し、同じ snapshot をコピーする。完全性検証と意味検証の記録は別にする。キャッシュは利用者単位とし、Windows の既定位置は `%LOCALAPPDATA%/Kimigayo/Cache/v1`。内容は SourceId 等の内容 ID で保存し、版の対応表を持たない。
+
+再検査を省く前提は「登録後の内容を compiler 以外が書き換えない」ことであり、変更を自動検出できる保証ではない。読み込み時の構造不正は破損として扱い、`store verify` は全内容の形式・実 hash と参照を再検査する。破損は隔離し、依存するキャッシュ結果を失効させ、元入力の再取得・再検証を要求する。外部の pack 出力や発行ストアはこの信頼範囲に含めず、read-only 属性・manifest hash だけで登録時の検証を省かない。
+
+archive writer は形式版ごとに、entry の UTF-8 path 順、固定時刻（1980-01-01 00:00:00）、属性・extra field、圧縮方式・設定・実装を固定し、同じ入力から同じ byte 列を作る。host 固有の属性や時刻を入れず、形式版と archive 全体の SHA-256 は SourceId と分けて記録する。
+
+既存の外部 archive は、検証済みコピーまたは今回の writer 出力から得た信頼できる全体 hash と、実 byte 列の順次 hash が一致すれば展開を省ける。形式版や外部の hash 申告だけでは省略しない。不一致なら entry ごとの完全性検査へ進み、同じ SourceId の合法な別圧縮表現は再利用できる。比較に使った snapshot を後続にも使う。
 
 ### 4.4 発行とストア
 
-発行済み PackageId／Version は一つの SourceId にだけ結び付く。restore・登録・pack は、関連 lock、指定された取得元、管理ストア・出力ストアで確認できる対応を照合し、同版の別内容を拒否する。pack の診断は変更したパッケージの版の更新を案内する。子の SourceId 更新で親の配布入力も変われば、発行済みの親の版も更新する。未確認の別ストアまで世界全体の一意性を保証する規則ではない。
+| 状態 | 更新する操作 | 範囲 |
+| --- | --- | --- |
+| 依存 lock | restore | プロジェクトの解決結果 |
+| 発行済み ID／Version → SourceId | publish | 指定した発行先ストア |
+| 内容ファイル | pack／取得・登録／publish | 内容 ID ごとの不変データ |
 
-ストアにはこの対応表を永続保存する。内容ファイルを回収しても対応を忘れず、登録・発行の排他区間で再照合する。外部ストアの表を信頼の根拠にせず、採用するパッケージの manifest・内容を照合する。Project は発行前の編集対象なので、ProjectSnapshotId を SourceId とみなしたり Package と暗黙統合したりしない。
+pack と登録は版を予約しない。同版の別内容が一つの利用グラフへ入る場合だけ §2.2 と lock で拒否し、無関係なプロジェクトの過去の内容には拘束されない。ProjectSnapshotId を SourceId とみなしたり Package と暗黙統合したりしない。
 
-既定の出力先は `bin/packages/<SourceId>.kimipkg`。`pack --output <directory>` は出力ストアを指定する。ルートも子も内容 ID 名で保存し、ID／Version をそのままファイル名にしない。
+pack の既定の出力先は `bin/packages/<SourceId>.kimipkg`。`--output <directory>` は出力ディレクトリを指定する。ルートも子も内容 ID 名で保存する。一時ファイルを完成・検証した後、上書きしない atomic rename で配置し、既存・競合ファイルは §4.3 で内容を確認する。
 
-一時ファイルを完成・検証した後、上書きしない atomic rename で公開する。既存ファイルや競合した書き手があれば完全性を検査し、同じ内容だけを再利用する。対応表の予約・公開は同じ排他と回復可能な記録で管理し、中断しても同版の別内容を通さない。親の公開前に閉包を揃えるが、途中で中断した場合に正しい子まで削除する必要はない。
+publish は指定したルート Package と、同じ入力ディレクトリ内の SourceId 名の依存閉包を読み、完全性・manifest・グラフを検査する。現在の Project を再 pack せず、確定済み内容だけを発行する。意味検証の実績や native link 成功を新しく主張する操作ではない。
+
+発行先の `releases.json` は schemaVersion=1 と entries（packageId／packageVersion／sourceId の配列）を持つ。同じ ID／Version の重複を拒否し、順序は ID、Version の UTF-8 順に固定する。一つの発行先では既存の対応を変更せず、同じ対応の再発行は成功扱いとする。別の発行先との対応を世界共通にはしない。
+
+発行前に閉包全体を照合し、同版の別内容がある全ノード・旧新 SourceId・依存経路を一度に報告する。版や Project 設定を自動編集しない。子の更新で内容が変わる発行済みの祖先も対象に含む。衝突があれば対応表を一件も更新しない。
+
+内容ファイルを先に揃え、発行先の排他下で対応を再照合し、対応表を一括で atomic replace する。読者は表の一つの snapshot を使う。中断しても表が未完成の閉包を指さないようにし、配置済みの正しい内容を巻き戻す必要はない。表が壊れている場合は空のストアとして初期化せず診断する。発行済みの対応は内容の回収後も保持する。初期 publish は明示したローカルディレクトリだけを対象とし、ネットワークへ送信しない。
 
 ## 5. 検証と再利用
 
@@ -289,7 +325,7 @@ private body を変更
 
 ### 5.4 キャッシュの境界
 
-初期の永続キャッシュは compiler 専用の検証済み意味計画だけとし、同じ形式版・compiler build・検証規則で使う。ABI、context、frame、予算選択、IR、機械語は現在の生成方式で作り直す。生成だけに影響する設定変更で意味計画を失効させない。
+意味・生成処理の初期永続キャッシュは、compiler 専用の検証済み意味計画までとする。同じ形式版・compiler build・検証規則で使い、ABI、context、frame、予算選択、IR、機械語は現在の方式で作り直す。生成だけに影響する設定変更で意味計画を失効させない。内容の完全性記録や native の入力要約（§7.4）は生成結果ではなく、これと別に保存できる。
 
 外部パッケージに同梱された「検証済み」の申告は採用しない。hash は内容の一致を示すもので、証明の正しさや発行者を証明しない。Koto の object graph、host pointer、runtime context graph を保存形式にしない。
 
@@ -297,9 +333,11 @@ private body を変更
 
 ### 5.5 ソース位置
 
-SourceId／ProjectSnapshotId は原文の変更を記録する。一方、細粒度の意味比較では製品所属の token 列・インデント構造を使い、意味を変えないコメントや空行を除ける。literal の内容、意味に関係する改行・所属・ソース順は保存する。この比較だけで再利用を確定せず、§5.2 の束縛・環境・内容依存も照合する。
+SourceId／ProjectSnapshotId は原文の変更を記録する。細粒度の比較から除けるのは、その判断を使う compiler・Mod・生成物のいずれからも観測されない情報だけとする。製品の意味だけを比較する場合は token 列・インデント構造を使えるが、literal、意味に関係する改行・所属・ソース順は残し、§5.2 の束縛・環境・依存も照合する。
 
-意味計画内の位置は、論理ファイルと宣言に属する token の参照で持つ。現在の原文への対応表から行・桁を得て、テストの token が増えても製品の参照をずらさない。必要な字句・構文検査は現在の入力に対して行う。対応が確定できなければ位置情報を作り直し、古い診断位置を流用しない。Abort などに埋め込む位置は生成段階で結び付け、位置が変わった生成物を更新する。
+Mod がコメントや位置を読める場合は、そのモジュールの Mod 入力を原文 byte 列で照合し、変更時は再実行する。観測する範囲を完全に記録できるまでは、Mod の結果を token の一致だけで再利用しない。再生成後の製品の意味が同じなら、通常の内容依存規則で後続の再利用を判断できる。
+
+意味計画内の位置は、論理ファイルと宣言に属する token の参照で持つ。現在の原文への対応表から行・桁を得て、テストの token が増えても製品の参照をずらさない。必要な字句・構文検査は現在の入力に対して行い、対応が確定できなければ位置情報を作り直す。Abort の位置や Testing の SiteId テーブルに載せる式の文字列は、生成段階で現在の原文へ結び付ける。これらが変われば該当生成物・診断テーブルとその成果物 ID を更新し、古い表示を流用しない。
 
 ## 6. 製品とテスト
 
@@ -353,7 +391,9 @@ native の論理名は宣言元の Kotonoha に属し、大小文字を区別す
 
 各要求は Kind（static／import）を必須とし、任意の ContractId、Sha256 を持つ。JSON では kind／contractId／sha256 と表記する。契約 ID は空でない識別文字列として完全一致で比較する。要求 hash は追加の受入条件であり、省略できる。異なる target の要求は別に照合する。
 
-その処理で選択されたソースの非予約 `#LibraryImport` は、必ず同名の要求を持つ。欠落や呼出条件との不一致は診断する。native 内部の外部参照を満たす補助ライブラリの要求も明示できるため、ソースから直接 import されない要求を一律に誤りとはしない。供給設定だけから要求を増やさない。配布時には要求だけを残し、Input の host パスを含めない。
+その処理で選択されたソースの非予約 `#LibraryImport` は、必ず同名の要求を持つ。要求は NativeRequirements に明示するか、自身向けの NativeLibraries にまとめて記述できる。後者の Kind／ContractId／Sha256 は、同じ定義者の要求と供給の両方へ展開する。両方に記述した項目は一致を要求し、欠落した Kind や呼出条件との不一致は診断する。他モジュール向け供給から定義側の要求を補わない。
+
+native 内部の外部参照を満たす補助ライブラリの要求も明示できるため、直接 import されない要求を一律に誤りとはしない。配布時には確定した要求だけを残し、Input の host パスを含めない。
 
 ```text
 NativeRequirements=
@@ -361,9 +401,16 @@ NativeRequirements=
     codec={ Kind="static" ContractId="example.codec.v1" }
 ```
 
+```text
+// 自分の Application で使う場合は、要求と供給を一度に記述できる。
+NativeLibraries=
+  x86_64-pc-windows-msvc=
+    observer={ Kind="static" Input="native/observer.lib" }
+```
+
 ### 7.2 target ごとの供給
 
-供給は NativeLibraries に統一し、target ごとに Name／Kind／Input の配列を持つ。任意の Package={PackageId, PackageVersion} で供給先を指定し、省略時は記述した Project 自身とする。Name はそのモジュールの native 論理名であり、利用側の ReferenceName ではない。ContractId と Sha256 も指定できる。
+供給は NativeLibraries に統一し、target ごとに Name／Input の配列を持つ。任意の Package={PackageId, PackageVersion} で供給先を指定し、省略時は記述した Project 自身とする。Name はそのモジュールの native 論理名であり、利用側の ReferenceName ではない。ContractId と Sha256 も指定できる。Kind は定義側の要求なので、自身向けの統合記述だけに認め、他モジュール向けの供給には書かない。
 
 ```text
 NativeLibraries=
@@ -371,15 +418,16 @@ NativeLibraries=
     {
       Package={ PackageId="example.codec" PackageVersion="1.0.0" }
       Name="codec"
-      Kind="static"
       ContractId="example.codec.v1"
       Input="native/codec.lib"
     }
 ```
 
-既存の「論理名 → Kind／Input」map は Package 省略・Name=キーの短縮表記として同じ供給表へ展開する。旧設計の NativeBindings は採用せず、設定されていれば移行を案内する。非予約 import に NativeRequirements がなければ追加を案内し、Kind を供給側から推測しない。
+既存の「論理名 → Kind／Input」map は Package 省略・Name=キーの短縮表記として、同じ要求・供給表へ展開する。旧設計の NativeBindings は採用せず、設定されていれば移行を案内する。
 
-相対 Input は記述した Project 基準とし、単純ファイル名の既存 linker 検索も使用前に実ファイルへ解決する。必要な ContractId は供給側にも明示し、欠落・不一致を拒否する。同じ供給先への複数指定は、実内容・Kind・契約が一致する場合だけ統合する。未使用の供給候補の存在は要求や生成を増やさない。
+相対 Input は記述した Project 基準とし、単純ファイル名の既存 linker 検索も使用前に実ファイルへ解決する。ContractId は供給者の実装契約の申告であり、要求されていれば欠落・不一致を拒否する。別モジュールの要求を供給側の申告で書き換えない。同じ供給先への複数指定は、実内容・契約が一致する場合だけ統合する。単なる他モジュール向け供給候補の存在は要求や生成を増やさない。
+
+Kind の実照合は native を使う段階で、接続する symbol の static 定義／import 経路を解析して行う。short import header だけでなく long import object と補助 record を区別する。archive 全体を一つの Kind に推測分類せず、異種 member の共存だけでは拒否しない。必要な接続が定義側の Kind と合わない場合や、形式未対応で判定できない場合は診断する。意味検証・pack は実ファイルに依存せず定義側の要求で行える。
 
 native ファイルを実際に使う段階で解決し、実内容の SHA-256 を入力記録へ保存する。指定された要求 hash と供給側 hash は両方照合する。同じ内容の検証済みコピーが管理ストアにあれば再利用し、なければ不変の staging へコピーする。元ファイルとの hard link は作らない。外部 linker はこの内容を使い、元パスを読み直さない。Input の移動だけでは意味を変えず、同じパスでも内容が変われば link 入力を更新する。
 
@@ -389,15 +437,36 @@ Kind・契約・宣言した呼出条件は関連する検証・生成計画の�
 
 実 symbol の共有には、function／data 区分、物理型、calling convention、属性、provider の一致を要求する。異なるモジュールの同名 native 論理名を、名前だけで統合しない。
 
-link 前に必要な native 供給を内容 hash でまとめ、archive 内の全 member の外部定義・参照・import 情報を調べる。生成した object と予約供給も対象に含め、各 import が指定した供給に存在することと、同じ実 symbol の解決が一意であることを確認する。必要な補助供給も閉包へ加え、暗黙の未検査ライブラリを linker に追加させない。
+link 前に必要な供給を内容 hash でまとめ、全 member の定義・参照・import・再配置・directive を索引化する。取り込みは生成した object、entry、予約供給の必須入力から始め、未定義参照と有効な directive で必要になる member を固定点まで辿る。取り込まれない member 同士の未使用 symbol の重複だけでは拒否しない。
 
-異なる供給の定義衝突は linker の archive 選択順に任せず診断する。import の公開 symbol と `__imp_` も対象とする。ただし単なる symbol 名の重複と、COFF の正当な統合を混同しない。weak／COMDAT／import 補助 record は、対応する形式規則に従って解決先・再配置を含む同一供給または等価な定義と確認できる場合だけ統合する。「weak だから」「同じサイズだから」という理由で許可しない。未対応で一意性を判定できない場合は、その理由を診断する。供給内容の共有で呼び出し側の ABI・unsafe 契約を省略しない。
+必要になった symbol は索引全体から候補を確認し、異なる供給に非等価な候補があれば先勝ちにせず診断する。取り込んだ member が持つ他の外部定義も、既に取り込んだ定義と照合する。各 Kimigayo import が指定した供給に結び付くことを確認し、生成 object と予約供給を除外しない。linker profile の選択規則を再現できない場合は、推測せず未対応として診断する。
+
+import の公開 symbol と `__imp_` も同じ規則で扱う。weak／COMDAT／import 補助 record は、形式規則に従って解決先・再配置を含む同一供給または等価な定義と確認できる場合だけ統合する。「weak だから」「同じサイズだから」という理由では許可しない。供給内容の共有で呼び出し側の ABI・unsafe 契約を省略しない。
+
+`.drectve` は、生成 object と取り込んだ member でだけ有効にし、採用した linker profile の規則で解釈する。
+
+| 指定 | 初期の扱い |
+| --- | --- |
+| `/INCLUDE` | 指定 symbol を必須参照へ加える |
+| `/ALTERNATENAME` | weak／別名の解決として扱い、候補・循環・競合を検査する |
+| `/FAILIFMISMATCH` | 同じキーの要求値を照合し、不一致を拒否する |
+| `/DEFAULTLIB` | profile の `/NODEFAULTLIB` で無効なら取り込みを増やさない。有効な暗黙取得は初期未対応として、明示供給への移行を案内する |
+| `/EXPORT` | 初期の export 範囲外として診断する |
+| その他 | profile で意味を定義したものだけ受理し、未対応の指定・符号化は理由付きで拒否する |
+
+最終 linker の入力・option も同じ profile と閉包に固定する。対応外の option や暗黙ライブラリで検査を迂回させない。
 
 Core／backend／kernel32 の予約供給は compiler がグラフ全体で一度だけ行う。任意の package で置換しない。既存の明示 backend パス指定も採用済み内容との一致を要求し、kernel32 の独自設定は禁止する。契約 ID や hash は、初期化・FP・unwind・所有権などの供給契約を満たす証明にはならない。import library の固定は実行時 DLL・OS 全体の固定を意味しない。
 
 各 Kotonoha の検証済み意味計画は、共通の最終生成へ渡せる。public 宣言を native export と解釈せず、Library の main を自動実行しない。トップレベル実行文の禁止、static の初回アクセス初期化・循環検出・実際の初期化順に基づく shutdown は既存規則を維持する。依存の読込順を実行順にしない。
 
 最終ビルド記録はモジュール入力、実際の native 供給、toolchain、IR、link 結果を結び付ける。意味キャッシュと `.link.json` は別の役割であり、link manifest に必須情報を追加する実装では schema を改訂する。
+
+### 7.4 native 入力要約
+
+member 単位の定義・参照・import・weak／COMDAT・再配置・`.drectve` と索引を、native ファイルの内容 hash、要約形式版、parser／解釈規則版、対象 COFF profile をキーに管理キャッシュへ保存できる。未使用 member も索引化するが、解決結果や「衝突なし」の結論は別グラフへ流用しない。
+
+再利用時も現在の root object・供給集合・呼出契約・linker option で閉包と競合を計算する。内容変更・形式不一致・破損時は再解析し、不明な情報を空の定義・参照集合として扱わない。供給ごとの索引と整数 ID を共有し、各 link で全 archive を解析し直さない。
 
 ## 8. 実装・性能・検証
 
@@ -429,11 +498,11 @@ Core／backend／kernel32 の予約供給は compiler がグラフ全体で一�
 | --- | --- |
 | 解決・identity | 同一依存への複数経路・別名、同版の別内容、複数版、循環、推移名の非公開 |
 | lock | 編集・移動で不変、依存変更、空の区分、テストだけの解決失敗、両区分の再照合、同時 restore |
-| pack | 同版の再発行拒否、子更新に伴う親の版更新、継承設定の実効値、既存 Package を含む閉包、全環境検証の失敗 |
-| 保存形式 | Unicode 衝突、大小文字が異なる版、manifest と実内容の不一致、同時公開・中断回復、回収と pin の競合 |
+| pack／publish | 同版の試作反復、発行先ごとの競合、閉包全体の一括診断、配布設定の明示、全環境検証の失敗、対応表の同時更新 |
+| 保存形式 | Unicode 衝突、同内容の異なる圧縮、archive hash の高速確認と entry 検査への切替、破損・store verify、回収と pin の競合 |
 | 証明 | 版更新時の対応と型の分離、効果が同じ／異なる private 編集、不在依存の変化、Proven 撤回、再帰群、位置だけの変更 |
 | テスト | 無関係な追加、新しい generic 代入、同版の競合、Provider 変更、cleanup を含む出力閉包。製品の共有・frame・予算を維持 |
-| native | target 別供給、同パスの変更、同内容の移動、kind／契約不一致、archive 内衝突、weak／COMDAT／import 補助 record |
+| native | 自身向け統合記述、short／long import、混在 archive、未使用 member の重複と必要 symbol の曖昧性、directive の閉包、要約の失効 |
 | 性能 | 多数経路からの共有、巨大 library の一部使用、生成倍率だけの変更、外部の小関数・generic の反復使用 |
 
 所要時間は取得・字句解析・意味検証・生成・link に分ける。読込 bytes、hash 回数、再検証件数、body 展開数、allocation、最大メモリ、コード量、実行時間を測る。改善効果と上限値は未測定であり、数値保証は置かない。
@@ -445,3 +514,28 @@ Core／backend／kernel32 の予約供給は compiler がグラフ全体で一�
 導入前に、外部の検証結果を信頼する条件、コードとの対応、再検査可能な証拠、再構築不能な依存更新の扱いを決める。独立した証明書や署名基盤は今回導入しない。
 
 実装は、入力と解決 → モジュール境界と意味検証 → 配布・最終生成 → 永続意味キャッシュの順に進める。本書の採用と実装完了は区別し、SPEC 本体への統合は別の作業とする。
+
+## 9. 今回の修正案の採否
+
+規則と例は上記の各節へ統合した。以下は原案からの変更理由だけを記録する。
+
+| 案 | 判定 | 反映先・理由 |
+| --- | --- | --- |
+| M1 pack と発行の分離 | 採用 | §3.1、§4.4。版の対応表は publish だけが発行先ごとに更新し、試作・共有キャッシュは版を予約しない |
+| M2 配布設定の明示・版更新の一括診断 | 修正採用 | §1、§2.4、§4.4。外側からの既定値継承は禁止。固定した言語・形式の既定値は許す。衝突一覧は発行先が決まる publish で報告し、pack には版更新を要求しない |
+| M3 ID／Version による取得 | 採用 | §2.3。発行ストアの対応表も候補に使い、manifest と照合する。複数候補は一意性を確認し、lock に固定した内容を先勝ちで更新しない |
+| M4 native 設定の重複削減 | 修正採用 | §7.1–7.2。自身向け記述を要求・供給へ展開し、他モジュール向け供給には Kind を書かない。ヘッダーだけの種別推測と混在 archive の一律拒否は不採用 |
+| M5 member の閉包と directive の検査 | 修正採用 | §7.3。必要な member の閉包で判定し、全 member は候補探索の索引に使う。未使用の重複は許すが、必要 symbol の曖昧な先勝ち選択は許さない。directive は対応範囲を明示 |
+| M6 観測可能な原文の保持 | 採用 | §5.5。Mod 入力は保守的に原文を比較し、表示する式・位置は現在の生成入力へ結び付ける |
+| M7 管理ストアの信頼と場所 | 採用 | §4.3。利用者単位の内容キャッシュとし、外部変更しない前提・store verify・破損時の失効を明記 |
+| M8 lock と検証環境の既定 | 採用 | §3.1、§4.1。既存 lock は空の依存宣言でも照合。単一 target は自動選択、複数は指定必須、mode は release を既定とする |
+| S1 決定的 archive と全体 hash | 採用 | §4.3。信頼できる完成済み byte 列の hash を使い、一致すれば展開を省略。不一致は entry 検査へ進む |
+| S2 通知・USN による読み直し省略 | 保留 | 下記の正しさ検証が済むまでは導入しない。属性一致で内容確認を省く規則にも戻さない |
+| S3 native symbol 要約の永続化 | 採用 | §7.4。内容・形式・解釈規則・対象ごとの入力要約を保存し、解決と競合は毎回現在の閉包で判断する |
+| S4 製品の生成選択結果の永続化 | 保留 | 候補探索が支配的という測定がないため、初期の意味計画までの保存を維持する |
+
+M4 の判定では、import library に short／long 形式と補助 record がある点を考慮した。archive 全体への二択の分類では必要な接続を十分に表せないため、symbol の実際の定義・import 経路を照合する。[Microsoft PE/COFF 仕様](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#import-library-format)
+
+S2 の cookie は通知の同期方法であり、すべての OS・ファイルシステムで変更通知の完全性を保証するものではない。[Watchman の説明](https://facebook.github.io/watchman/docs/cookies)にも適用条件と制限がある。導入前に監視開始時の全読込、通知順序、rename・別名経由の更新、開いた書込ハンドル、同期点と入力確定の競合を検証する。overflow・監視切断・cookie の失敗・journal 世代変更は全再読込へ戻す。[ファイル単位 USN](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_read_file_usn_data)も記録済み更新番号であり、単独で未変更の証拠にはしない。
+
+S4 は測定で効果が見込めた場合に再検討する。基準計画だけでなく、候補集合・順序・見積り方式・予算・compiler・profile・実際に読む Composition 接続と生成依存を照合する必要がある。保存する選択肢が小さくても、この検証ができなければ再利用せず再計画する。

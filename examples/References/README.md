@@ -5,7 +5,7 @@ This C.54 example borrows owned string locals, forwards shared parameters, and c
 From the repository root, with the backend archive prepared:
 
 ```powershell
-dotnet run --project Kimi/Kimi.csproj -c Release -- build examples/References/References.kimiproj --LlvmBin C:/App/llvm
+dotnet run --project Kimi/Kimi.csproj -c Release -- build examples/References/References.kimiproj
 dotnet run --project Kimi/Kimi.csproj -c Release -- run examples/References/References.kimiproj
 ```
 

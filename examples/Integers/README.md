@@ -3,7 +3,7 @@
 An explicit Unit main passes negative i8 and high-bit u8 arguments, divides the maximum u64 value, shifts a u8 using an i64 count, and returns a secured u64 before deferred mutation. It prints `ok` and `done`, each followed by LF.
 
 ```powershell
-dotnet run --project Kimi -c Release -- build examples/Integers/Integers.kimiproj --LlvmBin C:/App/llvm
+dotnet run --project Kimi -c Release -- build examples/Integers/Integers.kimiproj
 dotnet run --project Kimi -c Release -- run examples/Integers/Integers.kimiproj
 ```
 

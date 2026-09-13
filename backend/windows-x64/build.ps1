@@ -1,5 +1,6 @@
 [CmdletBinding()]
 param(
+    [string] $ToolchainRoot = '',
     [string] $LlvmBin = '',
     [switch] $AllowUnpinnedToolchain
 )
@@ -9,6 +10,8 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'kernel32.ps1')
 $profile = Read-KimiWindowsProfile
 $expectedVersion = $profile.llvmVersion
+$ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
+if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 $outDir = Join-Path $PSScriptRoot 'bin'
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
 $reportPath = Join-Path $outDir 'verification.json'
@@ -21,8 +24,7 @@ foreach ($file in ($inputFiles | Sort-Object -CaseSensitive)) {
     $sourceIdentities[$relative] = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 function Tool([string] $name) {
-    if ($LlvmBin) { return (Join-Path $LlvmBin "$name.exe") }
-    return (Get-Command "$name.exe" -ErrorAction Stop).Source
+    return [IO.Path]::GetFullPath((Join-Path $LlvmBin "$name.exe"), (Get-Location).ProviderPath)
 }
 function Run([string] $exe, [string[]] $arguments) {
     & $exe @arguments
@@ -121,3 +123,20 @@ foreach ($file in $inputFiles) {
     kernel32 = $kernel
 } | ConvertTo-Json -Depth 8 | ConvertTo-KimiArtifactText | Set-Content -LiteralPath $reportPath -Encoding utf8
 Write-Output "Native tests passed. Candidate report: $reportPath (not an adopted compiler catalog)."
+$archiveHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($unverified -or $archiveHash -cne $profile.artifactSha256) {
+    Write-Warning 'Candidate retained in backend/windows-x64/bin; toolchain library was not updated. Installation requires pinned tools and the adopted archive hash.'
+}
+else {
+    $libraryDirectory = Join-Path $ToolchainRoot 'windows_x64'
+    New-Item -ItemType Directory -Force -Path $libraryDirectory | Out-Null
+    $installed = Join-Path $libraryDirectory 'kimi_backend_windows_x64_v1.lib'
+    $temporary = $installed + '.' + [guid]::NewGuid().ToString('N') + '.tmp'
+    try {
+        Copy-Item -LiteralPath $archive -Destination $temporary
+        if ((Get-FileHash -LiteralPath $temporary -Algorithm SHA256).Hash.ToLowerInvariant() -cne $profile.artifactSha256) { throw 'Backend changed during toolchain installation' }
+        [IO.File]::Move($temporary, $installed, $true)
+    }
+    finally { if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } }
+    Write-Output "Installed verified backend: $installed"
+}

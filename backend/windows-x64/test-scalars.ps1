@@ -1,10 +1,12 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string] $LlvmBin,
+    [string] $ToolchainRoot = '', [string] $LlvmBin = '',
     [string] $FixturePattern = '*.ll'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
+$ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
+if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 . (Join-Path $PSScriptRoot 'kernel32.ps1')
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $fixtures = Join-Path $repo 'bin/scalar-fixtures'
@@ -16,7 +18,8 @@ $profile = Read-KimiWindowsProfile
 foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-readobj', 'llvm-nm')) { $null = Get-KimiLlvmToolIdentity $tools[$name] $profile.llvmVersion }
 $null = Get-KimiDlltoolIdentity $tools['llvm-dlltool']
 $kernel = New-KimiKernel32Library $tools (Join-Path $out 'kernel32.lib')
-$archive = Join-Path $PSScriptRoot 'bin/kimi_backend_windows_x64_v1.lib'
+$archive = Join-Path $ToolchainRoot 'windows_x64/kimi_backend_windows_x64_v1.lib'
+if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $profile.artifactSha256) { throw 'Installed backend SHA-256 mismatch' }
 $allowedSymbols = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($symbol in $profile.providedSymbols) { $null = $allowedSymbols.Add($symbol) }
 foreach ($line in ((Get-KimiKernel32Definition) -split "`n" | Select-Object -Skip 2)) {

@@ -39,11 +39,13 @@ public sealed class EmissionArtifactsTest : IDisposable
         var libraries = root.GetProperty("libraries");
         Assert.Equal(2, libraries.GetArrayLength());
         Assert.Equal("kernel32", libraries[0].GetProperty("name").GetString());
-        Assert.Equal(2, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(3, root.GetProperty("schemaVersion").GetInt32());
         Assert.Equal("llvm-dlltool", libraries[0].GetProperty("generator").GetString());
         Assert.Equal(Kernel32Imports.DefinitionSha256, libraries[0].GetProperty("definitionSha256").GetString());
         Assert.False(libraries[0].TryGetProperty("input", out _));
         Assert.Equal("kimi_backend", libraries[1].GetProperty("name").GetString());
+        Assert.Equal("toolchain", libraries[1].GetProperty("resolution").GetString());
+        Assert.False(libraries[1].TryGetProperty("input", out _));
         Assert.Equal(Path.Combine("..", "tools", "LLVM bin"), root.GetProperty("toolchain").GetProperty("llvmBin").GetString());
         Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(path!)!, "*.tmp"));
     }
@@ -94,6 +96,20 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.False(EmissionArtifacts.Publish(c, out _, out var error));
         Assert.Contains("Remove the kernel32 entry", error);
         Assert.False(Directory.Exists(Path.Combine(this.directory, "out")));
+    }
+
+    [Fact]
+    public void DefaultManifestNeedsNoToolchainAndRejectsOldSchema()
+    {
+        var c = this.Create();
+        c.Project.KimiOptions.ToolchainRoot = Path.Combine(this.directory, "absent tools");
+        Assert.True(EmissionArtifacts.Publish(c, out var path, out var error), error);
+        var json = File.ReadAllText(Path.ChangeExtension(path!, ".link.json"));
+        using var manifest = JsonDocument.Parse(json);
+        Assert.False(manifest.RootElement.TryGetProperty("toolchain", out _));
+        NativeToolchain.ValidateManifest(manifest.RootElement);
+        using var oldManifest = JsonDocument.Parse(json.Replace("\"schemaVersion\": 3", "\"schemaVersion\": 2", StringComparison.Ordinal));
+        Assert.Contains("schema 3", Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(oldManifest.RootElement)).Message);
     }
 
     [Fact]

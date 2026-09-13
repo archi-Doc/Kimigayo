@@ -3,7 +3,7 @@
 An explicit Unit main uses i32 masks, compound bit operations, checked shifts, and a return value secured before deferred mutation. It prints `ok` and `done`, each followed by LF.
 
 ```powershell
-dotnet run --project Kimi -c Release -- build examples/Bits/Bits.kimiproj --LlvmBin C:/App/llvm
+dotnet run --project Kimi -c Release -- build examples/Bits/Bits.kimiproj
 dotnet run --project Kimi -c Release -- run examples/Bits/Bits.kimiproj
 ```
 

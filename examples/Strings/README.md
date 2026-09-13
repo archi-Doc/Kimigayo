@@ -3,7 +3,7 @@
 Owned string locals with Move, replacement, conditional cleanup, self-assignment and deferred output. Prints `next`, `done`, then `next`, each followed by LF.
 
 ```powershell
-dotnet run --project Kimi -c Release --no-build -- build examples/Strings/Strings.kimiproj --LlvmBin C:/App/llvm
+dotnet run --project Kimi -c Release --no-build -- build examples/Strings/Strings.kimiproj
 dotnet run --project Kimi -c Release --no-build -- run examples/Strings/Strings.kimiproj
 ```
 

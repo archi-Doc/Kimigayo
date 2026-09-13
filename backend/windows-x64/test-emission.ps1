@@ -1,10 +1,12 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string] $LlvmBin,
+    [string] $ToolchainRoot = '', [string] $LlvmBin = '',
     [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Debug'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
+$ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
+if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 . (Join-Path $PSScriptRoot 'artifact-paths.ps1')
 . (Join-Path $PSScriptRoot 'kernel32.ps1')
 $profile = Read-KimiWindowsProfile

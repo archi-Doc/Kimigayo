@@ -42,7 +42,7 @@ public static class EmissionArtifacts
             var manifest = paths.Manifest;
             var outputDirectory = Path.GetDirectoryName(destination)!;
             var backend = ResolveBackend(settings);
-            if (HasDirectory(backend.Input))
+            if (backend is not null && HasDirectory(backend.Input))
             {
                 var actual = Hash(Path.GetFullPath(backend.Input, directory));
                 if (!actual.Equals(WindowsProfile.BackendSha256, StringComparison.Ordinal))
@@ -92,9 +92,9 @@ public static class EmissionArtifacts
     }
 
     // Validates every configured library, even when unused, and selects the backend supply (SPEC 20.8.2).
-    private static NativeLibraryInput ResolveBackend(ProjectFile settings)
+    private static NativeLibraryInput? ResolveBackend(ProjectFile settings)
     {
-        var backend = new NativeLibraryInput { Kind = "static", Input = WindowsProfile.BackendFile };
+        NativeLibraryInput? backend = null;
         if (settings.NativeLibraries.TryGetValue(WindowsProfile.Target, out var libraries))
         {
             if (libraries is null)
@@ -126,7 +126,7 @@ public static class EmissionArtifacts
             }
         }
 
-        if (backend.Kind != "static")
+        if (backend is not null && backend.Kind != "static")
         {
             throw new InvalidDataException("kimi_backend must be static.");
         }
@@ -134,10 +134,10 @@ public static class EmissionArtifacts
         return backend;
     }
 
-    private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, NativeLibraryInput backend, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)
+    private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, NativeLibraryInput? backend, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)
     {
         json.WriteStartObject();
-        json.WriteNumber("schemaVersion", 2);
+        json.WriteNumber("schemaVersion", 3);
         json.WriteString("target", WindowsProfile.Target);
         json.WriteStartObject("codegen");
         json.WriteString("profile", WindowsProfile.Name);
@@ -172,8 +172,16 @@ public static class EmissionArtifacts
         json.WriteEndObject();
         json.WriteStartObject();
         json.WriteString("name", WindowsProfile.BackendLibrary);
-        json.WriteString("kind", backend.Kind);
-        json.WriteString("input", HasDirectory(backend.Input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(backend.Input, projectDirectory)) : backend.Input);
+        json.WriteString("kind", "static");
+        if (backend is null)
+        {
+            json.WriteString("resolution", "toolchain");
+        }
+        else
+        {
+            json.WriteString("input", HasDirectory(backend.Input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(backend.Input, projectDirectory)) : backend.Input);
+        }
+
         json.WriteEndObject();
         json.WriteEndArray();
         WriteStrings(json, "providedRuntimeSymbols", [WindowsProfile.FloatMarker]);

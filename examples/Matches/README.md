@@ -3,7 +3,7 @@
 This example uses exhaustive matches on owned strings and integers. It prints `accepted`, `other` and `matched`, each followed by LF, and exits 0.
 
 ```powershell
-dotnet run --project Kimi -c Release --no-build -- build examples/Matches/Matches.kimiproj --LlvmBin C:/App/llvm
+dotnet run --project Kimi -c Release --no-build -- build examples/Matches/Matches.kimiproj
 dotnet run --project Kimi -c Release --no-build -- run examples/Matches/Matches.kimiproj
 ```
 

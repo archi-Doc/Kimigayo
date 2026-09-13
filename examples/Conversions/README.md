@@ -3,7 +3,7 @@
 Explicit integer adaptation with `E@T`: direct literal fitting, signed and unsigned widening, checked narrowing, mixed-width shifts, and a secured return before deferred mutation. Prints `ok` followed by LF.
 
 ```powershell
-dotnet run --project Kimi -c Release --no-build -- build examples/Conversions/Conversions.kimiproj --LlvmBin C:/App/llvm
+dotnet run --project Kimi -c Release --no-build -- build examples/Conversions/Conversions.kimiproj
 dotnet run --project Kimi -c Release --no-build -- run examples/Conversions/Conversions.kimiproj
 ```
 

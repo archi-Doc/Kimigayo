@@ -3,7 +3,7 @@
 A Unit-returning explicit `public func main()` calls ordinary i32 functions. The example checks source-order acquisition of reordered named arguments, shallow recursion, and a return value secured before deferred mutation. It prints `ok` and `done`, each followed by LF.
 
 ```powershell
-dotnet run --project Kimi -c Release -- build examples/Functions/Functions.kimiproj --LlvmBin C:/App/llvm
+dotnet run --project Kimi -c Release -- build examples/Functions/Functions.kimiproj
 dotnet run --project Kimi -c Release -- run examples/Functions/Functions.kimiproj
 ```
 

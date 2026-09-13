@@ -3,7 +3,7 @@
 An implicit Application demonstrating a secured i32 result, reverse deferred execution, a nested defer, and self-targeted `exit` from cleanup. It prints `cleanup` and `ok`, each followed by LF. The result retains `1` while cleanup changes the original local to `2`.
 
 ```powershell
-dotnet run --project Kimi -- build examples/Cleanup/Cleanup.kimiproj --LlvmBin C:/App/llvm
+dotnet run --project Kimi -- build examples/Cleanup/Cleanup.kimiproj
 dotnet run --project Kimi -- run examples/Cleanup/Cleanup.kimiproj
 ```
 

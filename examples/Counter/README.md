@@ -3,7 +3,7 @@
 An executable implicit Application exercising i32 locals, checked addition, a while loop and a Unit if/else. It prints `tick` three times, then `done`, each followed by LF.
 
 ```powershell
-dotnet run --project Kimi -- build examples/Counter/Counter.kimiproj --LlvmBin C:/App/llvm
+dotnet run --project Kimi -- build examples/Counter/Counter.kimiproj
 dotnet run --project Kimi -- run examples/Counter/Counter.kimiproj
 ```
 

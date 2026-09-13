@@ -1,17 +1,20 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $Manifest,
-    [Parameter(Mandatory)] [string] $LlvmBin,
+    [string] $ToolchainRoot = '', [string] $LlvmBin = '',
     [string] $MismatchedLlvmBin = ''
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'toolchain.ps1')
+$ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
+if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 $manifestPath = (Resolve-Path -LiteralPath $Manifest).Path
 $original = Get-Content -LiteralPath $manifestPath -Raw
 $testPath = Join-Path (Split-Path -Parent $manifestPath) ('negative-' + [guid]::NewGuid().ToString('N') + '.link.json')
 function Expect-Failure([object] $data, [string] $bin, [string] $message, [switch] $AllowUnpinnedToolchain) {
     $data | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $testPath -Encoding utf8
     $failed = $false
-    try { & (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $testPath -LlvmBin $bin -AllowUnpinnedToolchain:$AllowUnpinnedToolchain | Out-Null }
+    try { & (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $testPath -ToolchainRoot $ToolchainRoot -LlvmBin $bin -AllowUnpinnedToolchain:$AllowUnpinnedToolchain | Out-Null }
     catch {
         if ($_.Exception.Message -notmatch $message) { throw "Unexpected rejection: $($_.Exception.Message)" }
         $failed = $true
@@ -21,7 +24,15 @@ function Expect-Failure([object] $data, [string] $bin, [string] $message, [switc
 try {
     $data = $original | ConvertFrom-Json
     $data.schemaVersion = 1
-    Expect-Failure $data $LlvmBin 'schema 2 is required'
+    Expect-Failure $data $LlvmBin 'schema 3 is required'
+    $data.schemaVersion = 2
+    Expect-Failure $data $LlvmBin 'schema 3 is required'
+    $data = $original | ConvertFrom-Json
+    ($data.libraries | Where-Object name -CEQ 'kimi_backend') | Add-Member -NotePropertyName input -NotePropertyValue 'override.lib'
+    Expect-Failure $data $LlvmBin 'Invalid backend toolchain resolution'
+    $data = $original | ConvertFrom-Json
+    ($data.libraries | Where-Object name -CEQ 'kimi_backend').resolution = 'unknown'
+    Expect-Failure $data $LlvmBin 'Invalid backend toolchain resolution'
     $data = $original | ConvertFrom-Json
     ($data.libraries | Where-Object name -CEQ 'kernel32').definitionSha256 = '0' * 64
     Expect-Failure $data $LlvmBin 'Invalid generated kernel32 identity'
@@ -51,7 +62,7 @@ try {
         $warnings = @()
         try {
             $data | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $testPath -Encoding utf8
-            & (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $testPath -LlvmBin $MismatchedLlvmBin -AllowUnpinnedToolchain -WarningVariable warnings -WarningAction SilentlyContinue | Out-Null
+            & (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $testPath -ToolchainRoot $ToolchainRoot -LlvmBin $MismatchedLlvmBin -AllowUnpinnedToolchain -WarningVariable warnings -WarningAction SilentlyContinue | Out-Null
             throw 'Expected integrity rejection after exploratory version probes'
         }
         catch { if ($_.Exception.Message -notlike '*IR/manifest SHA-256 mismatch*') { throw } }

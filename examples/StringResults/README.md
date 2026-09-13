@@ -3,7 +3,7 @@
 String-valued selections and named do exits secure their result before cleanup. This example moves `original` into a nested result, reinitializes it in defer, then prints the secured `before` and the new `after`. A conditional self-replacement prints `new` last. Each line ends with LF.
 
 ```powershell
-dotnet run --project Kimi -c Release --no-build -- build examples/StringResults/StringResults.kimiproj --LlvmBin C:/App/llvm
+dotnet run --project Kimi -c Release --no-build -- build examples/StringResults/StringResults.kimiproj
 dotnet run --project Kimi -c Release --no-build -- run examples/StringResults/StringResults.kimiproj
 ```
 

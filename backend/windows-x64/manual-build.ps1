@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)] [string] $Manifest,
+    [string] $ToolchainRoot = '',
     [string] $LlvmBin = '',
     [switch] $Run,
     [switch] $AllowUnpinnedToolchain
@@ -11,6 +12,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'kernel32.ps1')
 $catalog = Read-KimiWindowsProfile
 $expectedVersion = $catalog.llvmVersion
+$ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 $manifestPath = (Resolve-Path -LiteralPath $Manifest).Path
 $directory = Split-Path -Parent $manifestPath
 $data = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
@@ -25,7 +27,7 @@ function Resolve-Input([string] $inputName) {
     # Simple linker search names require an explicit local file; never guess SDK installation paths.
     return (Resolve-Path -LiteralPath ([IO.Path]::GetFullPath($inputName, $directory))).Path
 }
-if ($data.schemaVersion -ne 2) { throw 'Link manifest schema 2 is required. Re-emit the manifest for generated kernel32 imports.' }
+if ($data.schemaVersion -ne 3) { throw 'Link manifest schema 3 is required. Re-emit the manifest for automatic backend toolchain resolution.' }
 if ($data.target -cne 'x86_64-pc-windows-msvc' -or
     $data.outputKind -cne 'Application' -or $data.entry -cne '__kimi_start' -or $data.subsystem -cne 'console' -or
     $data.codegen.profile -cne 'windows-x64-v1' -or $data.codegen.llvmVersion -cne $expectedVersion -or
@@ -36,7 +38,7 @@ if ($data.target -cne 'x86_64-pc-windows-msvc' -or
 }
 if (-not $LlvmBin) {
     if ($data.toolchain.llvmBin) { $LlvmBin = [IO.Path]::GetFullPath($data.toolchain.llvmBin, $directory) }
-    else { throw 'Specify -LlvmBin or configure LlvmBin in the .kimiproj file' }
+    else { $LlvmBin = $ToolchainRoot }
 }
 $LlvmBin = (Resolve-Path -LiteralPath $LlvmBin).Path
 $tools = @{}
@@ -76,6 +78,7 @@ foreach ($entry in $data.libraries) {
         $kernel = New-KimiKernel32Library $tools (Join-Path $directory ([IO.Path]::GetFileNameWithoutExtension($ir) + ".$($data.codegen.optimization).kernel32.lib"))
         $path = $kernel.path
     }
+    elseif ($entry.name -ceq 'kimi_backend') { $path = Resolve-KimiBackendLibrary $entry $ToolchainRoot $directory }
     else { $path = Resolve-Input $entry.input }
     $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($entry.name -ceq 'kimi_backend' -and ($entry.kind -cne 'static' -or $hash -cne $support.artifactSha256)) { throw 'Backend archive SHA-256/kind mismatch' }

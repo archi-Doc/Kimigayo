@@ -3,7 +3,7 @@
 An implicit Application using i32 `if` results inside a loop, labeled `loop`/`do` exits, Boolean `yield` and short-circuit evaluation. It prints `ok` followed by LF. Result temporaries use typed SSA phi instructions even at O0; local storage is allocated in the entry block.
 
 ```powershell
-dotnet run --project Kimi -- build examples/Results/Results.kimiproj --LlvmBin C:/App/llvm
+dotnet run --project Kimi -- build examples/Results/Results.kimiproj
 dotnet run --project Kimi -- run examples/Results/Results.kimiproj
 ```
 

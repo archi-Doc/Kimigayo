@@ -19,7 +19,7 @@
 | [Objects.kimi](Objects.kimi) | open struct、base constructor、protected Field、静的メソッド選択、obj / rc / arc / objref / objuniq、上方変換、is / is not、refinement | §3.3、6.2、12.4、13.5–13.6、14.10 |
 | [Native.kimi](Native.kimi)、[Native.Methods.kimi](Native.Methods.kimi) | C layout、struct fragment、rootgroup、raw pointer、null、読み書き・算術・変換、unsafe、LibraryImport | §5、6.1、21.1、22.3 |
 | [native/observer.c](native/observer.c) | NativeRecord を読み取る最小の外部 C 実装 | §21.1、22.3 |
-| [SpecTour.kimiproj](SpecTour.kimiproj) | Application、target、O2、LlvmBin、native library 指定 | §20.8 |
+| [SpecTour.kimiproj](SpecTour.kimiproj) | Application、target、O2（toolchain は自動解決） | §20.8 |
 
 ## 読み方と期待結果
 

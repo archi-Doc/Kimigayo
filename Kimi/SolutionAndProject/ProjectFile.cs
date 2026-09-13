@@ -30,10 +30,10 @@ public partial record class ProjectFile
     /// <summary>Gets or sets O0 or O2 for native code generation.</summary>
     public string Optimization { get; set; } = "O2";
 
-    /// <summary>Gets or sets the project-relative LLVM bin directory used by build and recorded by emit-llvm.</summary>
+    /// <summary>Gets or sets a legacy project-relative LLVM tool override; null uses the compiler toolchain.</summary>
     public string? LlvmBin { get; set; }
 
-    /// <summary>Gets or sets target-specific logical library mappings. kernel32 is generated; kimi_backend accepts an explicit path.</summary>
+    /// <summary>Gets or sets target-specific library overrides. kernel32 is generated; kimi_backend defaults to the compiler toolchain.</summary>
     public Dictionary<string, Dictionary<string, NativeLibraryInput>> NativeLibraries { get; set; } = new(StringComparer.Ordinal);
 
     /// <summary>Gets or sets explicitly typed compile-time scalar settings.</summary>
