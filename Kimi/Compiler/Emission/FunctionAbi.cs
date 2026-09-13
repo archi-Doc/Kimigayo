@@ -5,7 +5,7 @@ using System.Text;
 namespace Kimi.Compiler;
 
 /// <summary>A physical signature shared by definitions and calls (SPEC 21.4.2). ccc is LLVM's default; identity is by reference.</summary>
-internal sealed class FunctionAbi(string name, string result, AbiParameter[] parameters, bool noReturn = false)
+internal sealed class FunctionAbi(string name, string result, AbiParameter[] parameters, bool noReturn = false, bool resultSlot = false)
 {
     private string? internalDefinition;
     private string? exportedDefinition;
@@ -17,6 +17,15 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
     internal AbiParameter[] Parameters { get; } = parameters;
 
     internal bool NoReturn { get; } = noReturn;
+
+    internal bool ResultSlot { get; } = resultSlot;
+
+    // Passing mode is a pure function of the complete Type in this compiler profile.
+    // The ABI pool's Type/ordinal key therefore also fixes every passing choice.
+    internal static bool Supports(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String);
+
+    internal static string? ResultType(BoundType type) => ReferenceEquals(type, BoundType.Never) || ReferenceEquals(type, BoundType.String)
+        ? "void" : Supports(type) ? WindowsLowering.GetValue(type)!.ComputationType : null;
 
     /// <summary>Gets the cached <c>define ... {</c> line, including the profile attribute group.</summary>
     /// <param name="exported">Whether the definition has external linkage instead of internal.</param>

@@ -39,6 +39,7 @@ internal enum EmissionOperandKind : byte
 {
     Value,
     Argument,
+    ReturnAddress,
     Block,
 
     /// <summary>The address of the slot prepared for a Place ID.</summary>
@@ -80,6 +81,9 @@ internal sealed class EmissionFunction
 
     internal List<EmissionSlot> Slots { get; } = new();
 
+    /// <summary>Gets Place-indexed physical storage: local slot, logical parameter or hidden result.</summary>
+    internal List<EmissionOperand> SlotAddresses { get; } = new();
+
     internal List<int> LiveFlags { get; } = new();
 
     internal List<EmissionInstruction> Instructions { get; } = new();
@@ -94,6 +98,7 @@ internal sealed class EmissionFunction
         this.Abi = abi;
         this.Exported = exported;
         this.Slots.Clear();
+        this.SlotAddresses.Clear();
         this.LiveFlags.Clear();
         this.Instructions.Clear();
         this.Operands.Clear();

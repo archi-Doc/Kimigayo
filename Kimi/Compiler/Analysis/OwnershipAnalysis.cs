@@ -660,9 +660,15 @@ public sealed partial class OwnershipAnalysis
         }
 
         var result = this.Temporary(call);
-        if (ScalarResult(this.body.Places[result].Type))
+        var scalar = ScalarResult(this.body.Places[result].Type);
+        if (scalar || ReferenceEquals(call.BoundType, BoundType.String))
         {
+            // A string Call names storage; only its normal successor Produce initializes it.
             this.body.OperationStorage[invoke] = this.body.Operations[invoke] with { Place = result };
+        }
+
+        if (scalar)
+        {
             this.SetValue(invoke, OwnershipValueKind.Call, []);
             this.SetValue(this.Value(result), OwnershipValueKind.Alias, [invoke]);
         }

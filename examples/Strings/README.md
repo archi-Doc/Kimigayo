@@ -9,4 +9,4 @@ dotnet run --project Kimi -c Release --no-build -- run examples/Strings/Strings.
 
 Requires the pinned tools and Windows backend archive in [backend setup](../../backend/windows-x64/README.md). `writeLine(text)` acquires the string by Move. Reusing that binding requires reinitialization; assignment destroys any old value still owned before placing its replacement. Moving a Static string still transfers responsibility even though its backing bytes need no free.
 
-This increment constructs strings only from literals. String-valued control-flow results, user-function string parameters/results, concatenation, interpolation and explicit ownership adaptations remain unsupported. See [STATUS C.48](../../STATUS.md#c48-owned-string-locals-and-conditional-cleanup-2026-09-13).
+This example constructs strings only from literals. See [StringResults](../StringResults/README.md) for control-flow results and [StringFunctions](../StringFunctions/README.md) for owned parameters/results. Concatenation, interpolation and explicit ownership adaptations remain unsupported. See [STATUS C.48](../../STATUS.md#c48-owned-string-locals-and-conditional-cleanup-2026-09-13).

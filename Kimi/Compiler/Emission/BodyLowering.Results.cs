@@ -46,6 +46,23 @@ internal sealed partial class BodyLowering
         }
 
         var delivery = body.Deliveries[this.deliveries[id]];
+        if (ReferenceEquals(type, BoundType.String))
+        {
+            if (!function.Abi.ResultSlot || this.stringFunctionPlaces[operation.Place] != 2 || delivery.Value != -1 ||
+                (uint)delivery.Write >= (uint)body.Operations.Count ||
+                body.Operations[delivery.Write] is not { Kind: OwnershipOperationKind.Write, Placement: PlacementKind.Initialization } secured ||
+                secured.Place != operation.Place || (uint)secured.Input >= (uint)body.Places.Count ||
+                !ReferenceEquals(body.Places[secured.Input].Type, type) || !this.IsStringValue(body.Places[secured.Input]) ||
+                (body.GetInputState(delivery.Write, secured.Input) & PlaceState.MustInit) == 0 ||
+                (body.GetInputState(id, operation.Place) & PlaceState.MustInit) == 0 || !this.Dominates(delivery.Write, id))
+            {
+                return Fail("String return was not secured before cleanup.", out failure);
+            }
+
+            function.Add(EmissionOpcode.ReturnVoid, id);
+            return true;
+        }
+
         if (!IsScalar(type) || (uint)delivery.Value >= (uint)body.Values.Count || (uint)delivery.Write >= (uint)body.Operations.Count ||
             !ReferenceEquals(ValueType(body, delivery.Value), type) ||
             body.Operations[delivery.Write] is not { Kind: OwnershipOperationKind.Write, Placement: PlacementKind.Initialization } write ||

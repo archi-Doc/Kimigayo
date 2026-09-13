@@ -65,7 +65,7 @@ public class FunctionEmissionTest
     [InlineData("group G\n    func f() => ()\n()")]
     [InlineData("func f(x?: i32 = 1) => ()\n()")]
     [InlineData("func f<T>() => ()\n()")]
-    [InlineData("func f(x: string) => ()\n()")]
+    [InlineData("func f(x: ref/string) => ()\n()")]
     [InlineData("func unused() -> ()\n    " + MinimalEmissionTest.UnsupportedExpression + "\n()")]
     [InlineData("public func main() -> i32 => 0")]
     [InlineData("public func main() => ()\n()")]
@@ -179,17 +179,19 @@ public class FunctionEmissionTest
         Assert.True(c.Emission.Validate(out error), MinimalEmissionTest.Describe(c, error));
     }
 
-    [Fact]
-    public void AbiPoolReusesSignaturesWithoutRetainingSyntax()
+    [Theory]
+    [InlineData("i32")]
+    [InlineData("string")]
+    public void AbiPoolReusesSignaturesWithoutRetainingSyntax(string type)
     {
         var pool = new FunctionAbiPool();
-        var old = RegisterTemporary(pool);
+        var old = RegisterTemporary(pool, type);
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
         Assert.False(old.Source.TryGetTarget(out _));
 
-        var c = MinimalEmissionTest.Analyze("func renamed(x: i32) -> i32 => x\n()");
+        var c = MinimalEmissionTest.Analyze($"func renamed(x: {type}) -> {type} => x\n()");
         var function = Assert.Single(c.Ownership.Bodies, x => !x.Function.IsGenerated).Function;
         var abi = pool.Get(0, function);
         Assert.Same(old.Abi, abi);
@@ -227,9 +229,9 @@ public class FunctionEmissionTest
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static (WeakReference<FunctionKoto> Source, FunctionAbi Abi) RegisterTemporary(FunctionAbiPool pool)
+    private static (WeakReference<FunctionKoto> Source, FunctionAbi Abi) RegisterTemporary(FunctionAbiPool pool, string type)
     {
-        var c = MinimalEmissionTest.Analyze("func temporary(x: i32) -> i32 => x\n()");
+        var c = MinimalEmissionTest.Analyze($"func temporary(x: {type}) -> {type} => x\n()");
         var function = Assert.Single(c.Ownership.Bodies, x => !x.Function.IsGenerated).Function;
         return (new(function), pool.Get(0, function));
     }

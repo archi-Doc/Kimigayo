@@ -226,7 +226,7 @@ public class StringResultEmissionTest
     [Theory]
     [InlineData("let text = if true => \"a\"")]
     [InlineData("if false\n    let text = if true => \"a\"")]
-    [InlineData("func f() -> string => if true => \"a\" else => \"b\"\nwriteLine(\"ok\")")]
+    [InlineData("func f() -> string => if true => \"a\" else => " + MinimalEmissionTest.UnsupportedExpression + "\nwriteLine(\"ok\")")]
     [InlineData("let text = if true => \"a\" else => \"b\"\nwriteLine(text)\nwriteLine(text)")]
     public void InvalidAndOutOfScopeResultsPublishNoIr(string source)
     {

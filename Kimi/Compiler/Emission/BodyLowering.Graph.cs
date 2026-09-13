@@ -78,7 +78,7 @@ internal sealed partial class BodyLowering
         }
 
         this.PrepareConversions(body);
-        if (!this.PrepareStringResults(body, out failure) || !this.PrepareStrings(body, function, out failure))
+        if (!this.PrepareStringFunctions(body, function, out failure) || !this.PrepareStringResults(body, out failure) || !this.PrepareStrings(body, function, out failure))
         {
             return false;
         }
@@ -214,7 +214,7 @@ internal sealed partial class BodyLowering
                 return Fail("Unsupported value storage or string result/parameter.", out failure);
             }
 
-            if (value.Layout.Size != 0 && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
+            if (value.Layout.Size != 0 && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
             {
                 function.Slots.Add(new(p, value));
             }

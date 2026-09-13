@@ -13,7 +13,7 @@ internal static partial class LlvmModuleWriter
         WriteNumber(output, field);
     }
 
-    private static void WriteString(TextWriter output, LlvmConstantPool constants, EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
+    private static void WriteString(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
     {
         var id = instruction.Operation;
         if (instruction.Opcode == EmissionOpcode.StoreLiveFlag)
@@ -40,7 +40,7 @@ internal static partial class LlvmModuleWriter
             output.Write('\n');
             Name(output, "destroy", id);
             output.Write(":\n");
-            WriteCall(output, constants, WindowsLowering.DestroyString, [new(EmissionOperandKind.SlotAddress, instruction.Place), new(EmissionOperandKind.ConstantAddress, instruction.Constant), new(EmissionOperandKind.ConstantLength, instruction.Constant)]);
+            WriteCall(output, constants, WindowsLowering.DestroyString, [new(EmissionOperandKind.SlotAddress, instruction.Place), new(EmissionOperandKind.ConstantAddress, instruction.Constant), new(EmissionOperandKind.ConstantLength, instruction.Constant)], function: function);
             output.Write("  br label ");
             WriteOperand(output, operands[0]);
             output.Write('\n');
@@ -59,7 +59,8 @@ internal static partial class LlvmModuleWriter
         for (var field = 0; field < StringFieldTypes.Length; field++)
         {
             StringFieldName(output, "  %strSource", id, field);
-            Name(output, " = getelementptr %kimi.string, ptr %p", (int)operands[0].Value);
+            output.Write(" = getelementptr %kimi.string, ptr ");
+            WriteSlot(output, function, (int)operands[0].Value);
             output.Write(", i32 0, i32 ");
             WriteNumber(output, field);
             output.Write('\n');
@@ -73,7 +74,8 @@ internal static partial class LlvmModuleWriter
         for (var field = 0; field < StringFieldTypes.Length; field++)
         {
             StringFieldName(output, "  %strDestination", id, field);
-            Name(output, " = getelementptr %kimi.string, ptr %p", instruction.Place);
+            output.Write(" = getelementptr %kimi.string, ptr ");
+            WriteSlot(output, function, instruction.Place);
             output.Write(", i32 0, i32 ");
             WriteNumber(output, field);
             output.Write("\n  store ");

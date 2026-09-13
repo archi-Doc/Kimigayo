@@ -109,8 +109,6 @@ public sealed class LlvmEmitter
         }
     }
 
-    private static bool ScalarOrUnit(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit);
-
     private bool SkipGenerated(OwnershipBody body) => ReferenceEquals(body.Function, this.compilation.Kotonoha.GeneratedFunction) && this.compilation.Binding.Startup.Kind == StartupKind.Explicit;
 
     private string? CheckInputs()
@@ -155,7 +153,7 @@ public sealed class LlvmEmitter
             var function = body.Function;
             var result = function.BoundSymbol?.Type ?? (function.IsGenerated ? BoundType.Unit : null);
             if (!body.IsConcrete || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
-                (!ScalarOrUnit(result) && !ReferenceEquals(result, BoundType.Never)) || function.AttributeChain is not null ||
+                (!FunctionAbi.Supports(result) && !ReferenceEquals(result, BoundType.Never)) || function.AttributeChain is not null ||
                 function.IsAnonymous || function.IsSpecialization || function.IsRequirement || function.Captures is { Length: > 0 } ||
                 function.GenericArguments.Count != 0 || function.Origins.Count != 0 || function.TypeConstraints.Count != 0)
             {
@@ -165,9 +163,9 @@ public sealed class LlvmEmitter
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 var parameter = function.Parameters[i];
-                if (!ScalarOrUnit(parameter.Type.BoundType) || parameter.IsOptional || parameter.DefaultValue is not null)
+                if (!FunctionAbi.Supports(parameter.Type.BoundType) || parameter.IsOptional || parameter.DefaultValue is not null)
                 {
-                    return "Only required bool/8-64-bit integer/Unit value parameters are implemented.";
+                    return "Only required bool/8-64-bit integer/Unit/owned string value parameters are implemented.";
                 }
             }
         }

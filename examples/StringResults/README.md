@@ -9,4 +9,4 @@ dotnet run --project Kimi -c Release --no-build -- run examples/StringResults/St
 
 Requires the pinned tools and backend archive in [backend setup](../../backend/windows-x64/README.md). A common result slot receives only the selected value; cleanup must complete before the enclosing expression can consume it. Abort or nontermination during cleanup prevents delivery and subsequent destruction. String results from if/else, yield, do and valued loop exits can initialize/replace locals, enter another result, or be consumed directly by Core.writeLine.
 
-User-function string parameters/results, concatenation/interpolation, string comparisons, explicit ownership adaptations and Heap-string construction remain unsupported. See [STATUS C.49](../../STATUS.md#c49-owned-string-control-flow-results-2026-09-13).
+User-function string parameters/results are demonstrated in [StringFunctions](../StringFunctions/README.md). Concatenation/interpolation, string comparisons, explicit ownership adaptations and Heap-string construction remain unsupported. See [STATUS C.49](../../STATUS.md#c49-owned-string-control-flow-results-2026-09-13).

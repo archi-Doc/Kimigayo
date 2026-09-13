@@ -43,7 +43,7 @@ public class MinimalEmissionTest
     [InlineData("if false => " + UnsupportedExpression)]
     [InlineData("let x: string\nwriteLine(x)")]
     [InlineData("let x = \"a\"\nwriteLine(x)\nwriteLine(x)")]
-    [InlineData("func writeLine(x: string) => ()\nwriteLine(\"a\")")]
+    [InlineData("func writeLine(x: string) => " + UnsupportedExpression + "\nwriteLine(\"a\")")]
     [InlineData("let x = " + UnsupportedExpression + "\nwriteLine(\"a\")")]
     [InlineData("writeLine(\"a\")\nlet flag = " + UnsupportedExpression)]
     [InlineData("")]

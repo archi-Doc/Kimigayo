@@ -1,0 +1,11 @@
+func echo(text: string) -> string => text
+
+func choose(first: string, second: string, takeFirst: bool) -> string
+    defer => writeLine("cleanup")
+    return if takeFirst => first else => second
+
+public func main()
+    var text = echo(echo("before"))
+    text = choose(second: "after", first: text, takeFirst: false)
+    writeLine(text)
+    echo("discarded")

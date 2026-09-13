@@ -83,6 +83,12 @@ internal sealed partial class BodyLowering
                 return Fail("Call argument value is unavailable at acquisition.", out failure);
             }
 
+            if (ReferenceEquals(type, BoundType.String) && (!this.IsStringValue(body.Places[place]) ||
+                (body.IsReachable(entry) && (body.GetInputState(entry, place) & PlaceState.MustInit) == 0)))
+            {
+                return Fail("Owned string argument is not an initialized acquired value.", out failure);
+            }
+
             this.parameterArguments[parameter] = entry;
         }
 
@@ -98,48 +104,72 @@ internal sealed partial class BodyLowering
         }
 
         this.callOperands.Clear();
-        for (var i = 0; i < target.Parameters.Count; i++)
+        var location = -1;
+        for (var i = 0; i < callee.Parameters.Length; i++)
         {
-            var entry = this.parameterArguments[i];
-            var type = target.Parameters[i].Type.BoundType!;
-            if (IsScalar(type))
+            var physical = callee.Parameters[i];
+            if (physical.Kind == AbiParameterKind.ResultSlot)
+            {
+                if (!ReferenceEquals(plan.ReturnType, BoundType.String) || !this.ValidateStringCallResult(body, id, out failure))
+                {
+                    return false;
+                }
+
+                this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
+                continue;
+            }
+
+            if (physical.Kind is AbiParameterKind.Location or AbiParameterKind.LocationLength)
+            {
+                if (!runtime || (location < 0 && !this.TryGetLocation(call, directory, constants, out location)))
+                {
+                    return Fail("A runtime call has no diagnostic source location.", out failure);
+                }
+
+                this.callOperands.Add(new(physical.Kind == AbiParameterKind.Location ? EmissionOperandKind.ConstantAddress : EmissionOperandKind.ConstantLength, location));
+                continue;
+            }
+
+            if ((uint)physical.LogicalIndex >= (uint)target.Parameters.Count)
+            {
+                return Fail("Physical parameter has no logical argument.", out failure);
+            }
+
+            var entry = this.parameterArguments[physical.LogicalIndex];
+            var type = target.Parameters[physical.LogicalIndex].Type.BoundType!;
+            if (body.IsReachable(id) && !this.Dominates(entry, id))
+            {
+                return Fail("Call argument does not dominate the call.", out failure);
+            }
+
+            if (physical.Kind == AbiParameterKind.Value && IsScalar(type))
             {
                 var value = Input(body, entry, 0);
-                if (body.IsReachable(id) && (!this.Dominates(entry, id) || !this.Dominates(value, id)))
+                if (body.IsReachable(id) && !this.Dominates(value, id))
                 {
                     return Fail("Call argument does not dominate the call.", out failure);
                 }
 
                 this.callOperands.Add(this.PhysicalOperand(body, value));
             }
-            else if (runtime && ReferenceEquals(type, BoundType.String))
+            else if (physical.Kind == AbiParameterKind.OwnedSlot && ReferenceEquals(type, BoundType.String))
             {
-                if (!this.IsStringValue(body.Places[body.Operations[entry].Place]))
+                if (callee.ResultSlot && body.Operations[entry].Place == operation.Place)
                 {
-                    return Fail("Owned string arguments require their acquired temporary.", out failure);
+                    return Fail("A call cannot share its argument and result storage.", out failure);
                 }
 
                 this.callOperands.Add(new(EmissionOperandKind.SlotAddress, body.Operations[entry].Place));
             }
-            else if (!ReferenceEquals(type, BoundType.Unit))
+            else
             {
                 return Fail("Unsupported physical call argument.", out failure);
             }
         }
 
-        if (runtime)
-        {
-            if (!this.TryGetLocation(call, directory, constants, out var location))
-            {
-                return Fail("A runtime call has no diagnostic source location.", out failure);
-            }
-
-            this.callOperands.Add(new(EmissionOperandKind.ConstantAddress, location));
-            this.callOperands.Add(new(EmissionOperandKind.ConstantLength, location));
-        }
-
-        var expectedResult = ReferenceEquals(plan.ReturnType, BoundType.Never) ? "void" : WindowsLowering.GetValue(plan.ReturnType)?.ComputationType;
+        var expectedResult = FunctionAbi.ResultType(plan.ReturnType);
         if (expectedResult != callee.Result || callee.NoReturn != ReferenceEquals(plan.ReturnType, BoundType.Never) ||
+            callee.ResultSlot != ReferenceEquals(plan.ReturnType, BoundType.String) ||
             this.callOperands.Count != callee.Parameters.Length ||
             (IsScalar(plan.ReturnType) && (body.Values[id].Kind != OwnershipValueKind.Call || !ReferenceEquals(ValueType(body, id), plan.ReturnType))))
         {

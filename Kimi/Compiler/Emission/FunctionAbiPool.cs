@@ -19,7 +19,8 @@ internal sealed class FunctionAbiPool
         }
 
         var logical = new BoundType[function.Parameters.Count];
-        var count = 0;
+        var resultSlot = ReferenceEquals(result, BoundType.String);
+        var count = resultSlot ? 1 : 0;
         for (var i = 0; i < logical.Length; i++)
         {
             logical[i] = function.Parameters[i].Type.BoundType!;
@@ -28,16 +29,21 @@ internal sealed class FunctionAbiPool
 
         var parameters = new AbiParameter[count];
         var physical = 0;
+        if (resultSlot)
+        {
+            parameters[physical++] = new("ptr", "ret", AbiParameterKind.ResultSlot);
+        }
+
         for (var i = 0; i < logical.Length; i++)
         {
             if (!ReferenceEquals(logical[i], BoundType.Unit))
             {
-                parameters[physical++] = new(WindowsLowering.GetValue(logical[i])!.ComputationType, "a" + i.ToString(CultureInfo.InvariantCulture));
+                parameters[physical++] = new(WindowsLowering.GetValue(logical[i])!.ArgumentType!, "a" + i.ToString(CultureInfo.InvariantCulture), ReferenceEquals(logical[i], BoundType.String) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value, i);
             }
         }
 
         var never = ReferenceEquals(result, BoundType.Never);
-        var abi = new FunctionAbi("__kimi_f" + ordinal.ToString(CultureInfo.InvariantCulture), never ? "void" : WindowsLowering.GetValue(result)!.ComputationType, parameters, never);
+        var abi = new FunctionAbi("__kimi_f" + ordinal.ToString(CultureInfo.InvariantCulture), FunctionAbi.ResultType(result)!, parameters, never, resultSlot);
         var signature = new Signature(result, logical, abi);
         if (ordinal == this.signatures.Count)
         {

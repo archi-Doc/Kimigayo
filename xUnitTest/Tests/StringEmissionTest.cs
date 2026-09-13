@@ -61,8 +61,8 @@ public class StringEmissionTest
     }
 
     [Theory]
-    [InlineData("func unused() -> string => \"a\"\nwriteLine(\"ok\")")]
-    [InlineData("func unused(text: string) => ()\nwriteLine(\"ok\")")]
+    [InlineData("func unused() -> string => " + MinimalEmissionTest.UnsupportedExpression + "\nwriteLine(\"ok\")")]
+    [InlineData("func unused(text: ref/string) => ()\nwriteLine(\"ok\")")]
     [InlineData("let text = \"a\"\ntext@string")]
     [InlineData("let text = \"a\"\nwriteLine(text)\nwriteLine(text)")]
     [InlineData("var text: string\nvar c = true\nif c => text = \"a\"\nwriteLine(text)")]
@@ -220,7 +220,7 @@ public class StringEmissionTest
         ScalarEmissionTest.WriteFixture("StringAuditMissing", missing, "single\n", 120, string.Empty);
     }
 
-    internal static void WriteAuditedFixture(string name, string source, string ir, string stdout, string destructions, int exit = 0, string? stderr = null)
+    internal static void WriteAuditedFixture(string name, string source, string ir, string stdout, string destructions, int exit = 0, string? stderr = null, int[]? order = null)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
@@ -231,6 +231,6 @@ public class StringEmissionTest
             var constant = text.Length == 0 ? null : Enumerable.Range(0, module.Constants.Count).Select(i => module.Constants[i]).Single(x => x.Value == text);
             return (Symbol: constant?.Name, Length: constant?.ByteLength ?? 0, Count: int.Parse(item.AsSpan(separator + 1), System.Globalization.CultureInfo.InvariantCulture));
         }).ToArray();
-        ScalarEmissionTest.WriteFixture(name + "Audit", StringLifetimeAudit.Instrument(ir, entries), stdout, exit, stderr);
+        ScalarEmissionTest.WriteFixture(name + "Audit", StringLifetimeAudit.Instrument(ir, entries, order: order), stdout, exit, stderr);
     }
 }

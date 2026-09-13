@@ -12,7 +12,16 @@ internal sealed record TypeLayout(string StorageType, int Size, int Alignment, i
 /// <summary>Computation representation and internal-ABI argument form (SPEC 21.4.1); a null ArgumentType omits the slot.</summary>
 internal sealed record ValueLowering(TypeLayout Layout, string ComputationType, string? ArgumentType);
 
-internal readonly record struct AbiParameter(string Type, string Name);
+internal enum AbiParameterKind : byte
+{
+    Value,
+    OwnedSlot,
+    ResultSlot,
+    Location,
+    LocationLength,
+}
+
+internal readonly record struct AbiParameter(string Type, string Name, AbiParameterKind Kind = AbiParameterKind.Value, int LogicalIndex = -1);
 
 /// <summary>The implemented windows-x64-v1 representations. Types without an entry have no fallback representation.</summary>
 internal static partial class WindowsLowering
@@ -31,7 +40,7 @@ internal static partial class WindowsLowering
     internal static readonly FunctionAbi Abort = new("__kimi_abort", Unit.ComputationType, [new("i32", "reason"), new("ptr", "location"), new("i64", "location_length"), new("i64", "os_error")], noReturn: true);
 
     // Hidden diagnostic context follows the ordinary parameters (SPEC 21.4.2, 22.5.1).
-    internal static readonly FunctionAbi WriteLine = new("__kimi_write_line", Unit.ComputationType, [new(String.ArgumentType!, "text"), new("ptr", "location"), new("i64", "location_length")]);
+    internal static readonly FunctionAbi WriteLine = new("__kimi_write_line", Unit.ComputationType, [new(String.ArgumentType!, "text", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
     internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, WriteLine.Parameters);
 
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>

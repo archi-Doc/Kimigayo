@@ -99,7 +99,7 @@ internal static partial class LlvmModuleWriter
                 case EmissionOpcode.MoveString:
                 case EmissionOpcode.DestroyStringIfLive:
                 case EmissionOpcode.StoreLiveFlag:
-                    WriteString(output, constants, instruction, function.GetOperands(instruction));
+                    WriteString(output, constants, function, instruction, function.GetOperands(instruction));
                     break;
                 case EmissionOpcode.StoreStaticString:
                     output.Write("  store %kimi.string { ptr ");
@@ -118,15 +118,15 @@ internal static partial class LlvmModuleWriter
 
                     output.Write(", i8 ");
                     WriteNumber(output, WindowsLowering.StaticReleaseKind);
-                    output.Write(" }, ptr %p");
-                    WriteNumber(output, instruction.Place);
+                    output.Write(" }, ptr ");
+                    WriteSlot(output, function, instruction.Place);
                     output.Write(", align ");
                     WriteNumber(output, WindowsLowering.String.Layout.Alignment);
                     output.Write('\n');
                     break;
 
                 case EmissionOpcode.Call:
-                    WriteCall(output, constants, instruction.Callee!, function.GetOperands(instruction), instruction.Operation);
+                    WriteCall(output, constants, instruction.Callee!, function.GetOperands(instruction), instruction.Operation, function);
                     break;
 
                 case EmissionOpcode.ReturnVoid:
@@ -146,7 +146,26 @@ internal static partial class LlvmModuleWriter
         output.Write("}\n");
     }
 
-    private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1)
+    private static void WriteSlot(TextWriter output, EmissionFunction function, int place)
+    {
+        var address = function.SlotAddresses[place];
+        switch (address.Kind)
+        {
+            case EmissionOperandKind.SlotAddress:
+                Name(output, "%p", (int)address.Value);
+                break;
+            case EmissionOperandKind.Argument:
+                WriteOperand(output, address);
+                break;
+            case EmissionOperandKind.ReturnAddress:
+                output.Write("%ret");
+                break;
+            default:
+                throw new InvalidOperationException("Unprepared slot address.");
+        }
+    }
+
+    private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1, EmissionFunction? function = null)
     {
         if (callee.Result != WindowsLowering.Unit.ComputationType)
         {
@@ -181,8 +200,7 @@ internal static partial class LlvmModuleWriter
                     WriteOperand(output, operand);
                     break;
                 case EmissionOperandKind.SlotAddress:
-                    output.Write("%p");
-                    WriteNumber(output, operand.Value);
+                    WriteSlot(output, function ?? throw new InvalidOperationException("Slot argument without a function."), (int)operand.Value);
                     break;
                 case EmissionOperandKind.ConstantAddress:
                     output.Write('@');
