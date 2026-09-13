@@ -704,6 +704,13 @@ public sealed partial class Binding
             return left.IsInteger && right.IsInteger ? Complete(binary, result) : Fail(binary, BindingFailure.TypeMismatch);
         }
 
+        // Shared references compare their immediate referents, independently of the two input Origins.
+        if (comparison && ((ReferenceTypes.IsString(left) && (ReferenceTypes.IsString(right) || ReferenceEquals(right, BoundType.Never))) ||
+            (ReferenceEquals(left, BoundType.Never) && ReferenceTypes.IsString(right))))
+        {
+            return Complete(binary, BoundType.Boolean);
+        }
+
         if (!Compatible(right, left))
         {
             return Fail(binary, BindingFailure.TypeMismatch);

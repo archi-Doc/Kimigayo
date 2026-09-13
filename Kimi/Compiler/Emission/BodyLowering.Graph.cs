@@ -78,7 +78,7 @@ internal sealed partial class BodyLowering
         }
 
         this.PrepareConversions(body);
-        if (!this.PrepareStringComparisons(body, out failure))
+        if (!this.PrepareStringComparisons(body, out failure) || !this.PrepareReferences(body, out failure))
         {
             return false;
         }
@@ -244,13 +244,14 @@ internal sealed partial class BodyLowering
             }
 
             if (WindowsLowering.GetValue(place.Type) is not { } value ||
-                (!IsScalar(place.Type) && !ReferenceEquals(place.Type, BoundType.Unit) && !ReferenceEquals(place.Type, BoundType.String)) ||
+                (!IsScalar(place.Type) && !ReferenceEquals(place.Type, BoundType.Unit) && !ReferenceEquals(place.Type, BoundType.String) && !ReferenceTypes.IsString(place.Type)) ||
+                (ReferenceTypes.IsString(place.Type) && place.Kind is not (OwnershipPlaceKind.Parameter or OwnershipPlaceKind.Temporary)) ||
                 (ReferenceEquals(place.Type, BoundType.String) && !this.IsStringStorage(place)))
             {
                 return Fail("Unsupported value storage or string result/parameter.", out failure);
             }
 
-            if (value.Layout.Size != 0 && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
+            if (!ReferenceTypes.IsString(place.Type) && value.Layout.Size != 0 && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
             {
                 function.Slots.Add(new(p, value));
             }

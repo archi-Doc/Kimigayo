@@ -4,12 +4,13 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipBody
 {
-    internal static bool ConflictsWithComparison(OwnershipOperationKind kind, int place, int input, AcquisitionKind acquisition, int borrowed) => kind switch
+    internal static bool ConflictsWithComparison(OwnershipOperationKind kind, int place, int input, AcquisitionKind acquisition, int borrowed, LoanRequirement mode = LoanRequirement.Ref, LoanRequirement access = LoanRequirement.None) => kind switch
     {
         OwnershipOperationKind.Consume => place == borrowed && acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove,
         OwnershipOperationKind.Write => place == borrowed || input == borrowed,
         OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.Declare or OwnershipOperationKind.Produce => place == borrowed,
-        OwnershipOperationKind.Borrow => place == borrowed, // Explicit borrow operations remain outside this slice.
+        OwnershipOperationKind.Borrow => place == borrowed && (mode != LoanRequirement.Ref || access != LoanRequirement.Ref),
+        OwnershipOperationKind.Read => place == borrowed && mode == LoanRequirement.Uniq,
         _ => false,
     };
 
@@ -47,7 +48,8 @@ public sealed partial class OwnershipBody
         {
             var loan = this.ComparisonLoans[i];
             if ((uint)loan.Read >= (uint)this.Operations.Count || (uint)loan.Place >= (uint)this.Places.Count || loan.Parent < -1 || loan.Parent >= i || loan.Depth <= 0 ||
-                this.Operations[loan.Read].Kind != OwnershipOperationKind.Read || this.Operations[loan.Read].Place != loan.Place ||
+                this.Operations[loan.Read].Kind != (loan.Call is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Borrow) ||
+                loan.Mode != LoanRequirement.Ref || this.Operations[loan.Read].Place != loan.Place ||
                 this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) || !ReferenceEquals(this.Places[loan.Place].Type, BoundType.String) ||
                 this.LoanStates[loan.Read] != i || this.LoanInputs[loan.Read] != loan.Parent)
             {
@@ -93,7 +95,7 @@ public sealed partial class OwnershipBody
 
             for (var head = input; head >= 0; head = this.ComparisonLoans[head].Parent)
             {
-                if (ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, this.ComparisonLoans[head].Place))
+                if (ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, this.ComparisonLoans[head].Place, this.ComparisonLoans[head].Mode, operation.LoanMode))
                 {
                     return false;
                 }

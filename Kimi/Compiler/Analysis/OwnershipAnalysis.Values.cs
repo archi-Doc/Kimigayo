@@ -42,9 +42,16 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume && place >= 0 &&
-            this.body.Places[place].Kind == OwnershipPlaceKind.Parameter && ScalarResult(this.body.Places[place].Type))
+            this.body.Places[place].Kind == OwnershipPlaceKind.Parameter && (ScalarResult(this.body.Places[place].Type) || ReferenceTypes.IsString(this.body.Places[place].Type)))
         {
-            this.SetValue(id, OwnershipValueKind.Alias, [this.Value(place)]);
+            // Parameters are immutable incoming SSA values. A read in another arm need not dominate this read.
+            var parameter = this.Value(place);
+            while (parameter >= 0 && this.body.Values[parameter].Kind == OwnershipValueKind.Alias)
+            {
+                parameter = this.body.ValueOperands[this.body.Values[parameter].Start];
+            }
+
+            this.SetValue(id, OwnershipValueKind.Alias, [parameter]);
         }
 
         if (kind == OwnershipOperationKind.Write && input >= 0)
@@ -52,7 +59,7 @@ public sealed partial class OwnershipAnalysis
             this.SetValue(id, OwnershipValueKind.Alias, [this.Value(input)]);
         }
 
-        if (kind == OwnershipOperationKind.CallEntry && place >= 0 && ScalarResult(this.body.Places[place].Type))
+        if (kind == OwnershipOperationKind.CallEntry && place >= 0 && (ScalarResult(this.body.Places[place].Type) || ReferenceTypes.IsString(this.body.Places[place].Type)))
         {
             this.SetValue(id, OwnershipValueKind.Alias, [this.Value(place)]);
         }
@@ -64,6 +71,12 @@ public sealed partial class OwnershipAnalysis
             {
                 this.placeValues[destination] = id;
             }
+        }
+
+        if (kind == OwnershipOperationKind.Borrow && input >= 0)
+        {
+            this.placeValues[input] = id;
+            this.SetValue(id, OwnershipValueKind.Borrow, []);
         }
 
         if (kind == OwnershipOperationKind.Produce)

@@ -165,9 +165,11 @@ public sealed class LlvmEmitter
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 var parameter = function.Parameters[i];
-                if (!FunctionAbi.Supports(parameter.Type.BoundType) || parameter.IsOptional || parameter.DefaultValue is not null)
+                if (!FunctionAbi.SupportsParameter(parameter.Type.BoundType) || parameter.IsOptional || parameter.DefaultValue is not null ||
+                    (ReferenceTypes.IsString(parameter.Type.BoundType) && (parameter.Type.BoundType!.Origin is not { Kind: OriginKind.Input } origin ||
+                        !ReferenceEquals(origin.Binder, function) || origin.Slot != i)))
                 {
-                    return "Only required bool/8-64-bit integer/Unit/owned string value parameters are implemented.";
+                    return "Only required scalar, Unit, owned string and shared string parameters are implemented.";
                 }
             }
         }

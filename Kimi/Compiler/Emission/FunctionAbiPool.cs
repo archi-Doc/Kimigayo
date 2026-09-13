@@ -18,13 +18,13 @@ internal sealed class FunctionAbiPool
             return this.signatures[ordinal].Abi;
         }
 
-        var logical = new BoundType[function.Parameters.Count];
+        var logical = new ParameterShape[function.Parameters.Count];
         var resultSlot = ReferenceEquals(result, BoundType.String);
         var count = resultSlot ? 1 : 0;
         for (var i = 0; i < logical.Length; i++)
         {
-            logical[i] = function.Parameters[i].Type.BoundType!;
-            count += ReferenceEquals(logical[i], BoundType.Unit) ? 0 : 1;
+            logical[i] = Shape(function.Parameters[i].Type.BoundType!);
+            count += logical[i].Type is null ? 0 : 1;
         }
 
         var parameters = new AbiParameter[count];
@@ -36,15 +36,15 @@ internal sealed class FunctionAbiPool
 
         for (var i = 0; i < logical.Length; i++)
         {
-            if (!ReferenceEquals(logical[i], BoundType.Unit))
+            if (logical[i].Type is not null)
             {
-                parameters[physical++] = new(WindowsLowering.GetValue(logical[i])!.ArgumentType!, "a" + i.ToString(CultureInfo.InvariantCulture), ReferenceEquals(logical[i], BoundType.String) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value, i);
+                parameters[physical++] = new(logical[i].Type!, "a" + i.ToString(CultureInfo.InvariantCulture), logical[i].Kind, i);
             }
         }
 
         var never = ReferenceEquals(result, BoundType.Never);
         var abi = new FunctionAbi("__kimi_f" + ordinal.ToString(CultureInfo.InvariantCulture), FunctionAbi.ResultType(result)!, parameters, never, resultSlot);
-        var signature = new Signature(result, logical, abi);
+        var signature = new Signature(FunctionAbi.ResultType(result)!, resultSlot, never, logical, abi);
         if (ordinal == this.signatures.Count)
         {
             this.signatures.Add(signature);
@@ -57,18 +57,24 @@ internal sealed class FunctionAbiPool
         return abi;
     }
 
-    private sealed record Signature(BoundType Result, BoundType[] Parameters, FunctionAbi Abi)
+    // Only physical facts survive reparse. Complete Types and Origins remain in the current call plans.
+    private static ParameterShape Shape(BoundType type) => new(WindowsLowering.GetValue(type)!.ArgumentType, ReferenceTypes.IsString(type) ? AbiParameterKind.SharedReference : ReferenceEquals(type, BoundType.String) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value);
+
+    private readonly record struct ParameterShape(string? Type, AbiParameterKind Kind);
+
+    private sealed record Signature(string Result, bool ResultSlot, bool NoReturn, ParameterShape[] Parameters, FunctionAbi Abi)
     {
         internal bool Matches(FunctionKoto function, BoundType result)
         {
-            if (!ReferenceEquals(this.Result, result) || this.Parameters.Length != function.Parameters.Count)
+            if (this.Result != FunctionAbi.ResultType(result) || this.ResultSlot != ReferenceEquals(result, BoundType.String) ||
+                this.NoReturn != ReferenceEquals(result, BoundType.Never) || this.Parameters.Length != function.Parameters.Count)
             {
                 return false;
             }
 
             for (var i = 0; i < this.Parameters.Length; i++)
             {
-                if (!ReferenceEquals(this.Parameters[i], function.Parameters[i].Type.BoundType))
+                if (this.Parameters[i] != Shape(function.Parameters[i].Type.BoundType!))
                 {
                     return false;
                 }

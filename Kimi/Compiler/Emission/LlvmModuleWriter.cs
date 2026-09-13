@@ -204,6 +204,7 @@ internal static partial class LlvmModuleWriter
             }
 
             output.Write(callee.Parameters[i].Type);
+            output.Write(callee.Parameters[i].Attributes);
             output.Write(' ');
             var operand = operands[i];
             switch (operand.Kind)

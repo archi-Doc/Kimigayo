@@ -16,12 +16,16 @@ internal enum AbiParameterKind : byte
 {
     Value,
     OwnedSlot,
+    SharedReference,
     ResultSlot,
     Location,
     LocationLength,
 }
 
-internal readonly record struct AbiParameter(string Type, string Name, AbiParameterKind Kind = AbiParameterKind.Value, int LogicalIndex = -1);
+internal readonly record struct AbiParameter(string Type, string Name, AbiParameterKind Kind = AbiParameterKind.Value, int LogicalIndex = -1)
+{
+    internal string Attributes => this.Kind == AbiParameterKind.SharedReference ? " noundef nonnull align 8 dereferenceable(24)" : string.Empty;
+}
 
 /// <summary>The implemented windows-x64-v1 representations. Types without an entry have no fallback representation.</summary>
 internal static partial class WindowsLowering
@@ -33,6 +37,8 @@ internal static partial class WindowsLowering
 
     // { data, byteLength, releaseKind }: size/stride 24, alignment 8, offsets 0/8/16 (SPEC 22.5.5).
     internal static readonly ValueLowering String = new(new("%kimi.string", 24, 8, 24, new[] { 0, 8, 16 }), "%kimi.string", "ptr");
+
+    internal static readonly ValueLowering StringReference = new(new("ptr", 8, 8, 8, ReadOnlyMemory<int>.Empty), "ptr", "ptr");
 
     internal static readonly FunctionAbi Entry = new("__kimi_entry_body", Unit.ComputationType, []);
     internal static readonly FunctionAbi Start = new(WindowsProfile.EntrySymbol, Unit.ComputationType, [], noReturn: true);
@@ -52,7 +58,7 @@ internal static partial class WindowsLowering
     /// <param name="type">The complete Type.</param>
     /// <returns>The value lowering.</returns>
     internal static ValueLowering? GetValue(BoundType type)
-        => Values.GetValueOrDefault(type);
+        => ReferenceTypes.IsString(type) ? StringReference : Values.GetValueOrDefault(type);
 
     /// <summary>Gets the physical implementation of a compiler-provided Core function.</summary>
     /// <param name="kind">The compiler function identity.</param>

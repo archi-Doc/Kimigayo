@@ -41,6 +41,18 @@ internal static partial class LlvmModuleWriter
         }
         """ + "\n";
 
+    private static void WriteStringAddress(TextWriter output, EmissionFunction function, EmissionOperand operand)
+    {
+        if (operand.Kind == EmissionOperandKind.SlotAddress)
+        {
+            WriteSlot(output, function, (int)operand.Value);
+        }
+        else
+        {
+            WriteOperand(output, operand);
+        }
+    }
+
     private static void WriteStringComparison(TextWriter output, EmissionFunction function, EmissionInstruction instruction)
     {
         var id = instruction.Operation;
@@ -50,11 +62,11 @@ internal static partial class LlvmModuleWriter
         {
             StringFieldName(output, "  %compareLengthPtr", id, side);
             output.Write(" = getelementptr %kimi.string, ptr ");
-            WriteSlot(output, function, (int)operands[side].Value);
+            WriteStringAddress(output, function, operands[side]);
             output.Write(", i32 0, i32 1\n");
             StringFieldName(output, "  %compareData", id, side);
             output.Write(" = load ptr, ptr ");
-            WriteSlot(output, function, (int)operands[side].Value);
+            WriteStringAddress(output, function, operands[side]);
             output.Write(", align 8\n");
             StringFieldName(output, "  %compareLength", id, side);
             output.Write(" = load i64, ptr ");

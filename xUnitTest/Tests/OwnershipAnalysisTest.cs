@@ -54,7 +54,7 @@ public class OwnershipAnalysisTest
     }
 
     [Theory]
-    [InlineData("func show(s: ref/string) => ()\nlet s = \"a\"\nshow(s)")]
+    [InlineData("func show(s: uniq/string) => ()\nvar s = \"a\"\nshow(s)")]
     [InlineData("let s = \"a\" + \"b\"")]
     [InlineData("var s = \"a\"\ns += \"b\"")]
     [InlineData("func f(x?: string = \"x\") => ()\nf()")]
@@ -183,7 +183,7 @@ public class OwnershipAnalysisTest
         var c = Parse("func show(s: ref/string) => ()\nlet s = \"a\"\nshow(s)\nshow(s)");
         c.Ownership.Analyze();
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure != OwnershipFailure.Unsupported);
-        Assert.Equal(2, c.Ownership.Issues.Count(x => x.Source is IdentifierNameKoto));
+        Assert.Empty(c.Ownership.Issues);
         Assert.DoesNotContain(Body(c).Operations, x => x.Kind == OwnershipOperationKind.CallEntry && Body(c).Places[x.Place].Kind != OwnershipPlaceKind.Temporary);
     }
 

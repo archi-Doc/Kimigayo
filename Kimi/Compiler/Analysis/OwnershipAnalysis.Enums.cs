@@ -24,6 +24,11 @@ public sealed partial class OwnershipAnalysis
     // Every Case is checked because a whole value can arrive from a parameter or branch.
     private bool SupportsType(BoundType type)
     {
+        if (ReferenceTypes.IsString(type))
+        {
+            return true;
+        }
+
         if (type.Kind == BoundTypeKind.Primitive)
         {
             return !ReferenceEquals(type, BoundType.Never);

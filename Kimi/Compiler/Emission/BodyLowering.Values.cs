@@ -10,7 +10,7 @@ internal sealed partial class BodyLowering
         return place >= 0 ? body.Places[place].Type : null;
     }
 
-    private static int ValuePlace(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern ? operation.Input : operation.Place;
+    private static int ValuePlace(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.Borrow ? operation.Input : operation.Place;
 
     private static bool ValidateValues(OwnershipBody body)
     {
@@ -24,7 +24,7 @@ internal sealed partial class BodyLowering
             var value = body.Values[id];
             var expected = value.Kind switch
             {
-                OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison => 0,
+                OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow => 0,
                 OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert => 1,
                 OwnershipValueKind.Binary => 2,
                 OwnershipValueKind.Phi => value.Count,

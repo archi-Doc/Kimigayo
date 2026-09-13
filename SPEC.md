@@ -4268,6 +4268,8 @@ Floating-point `+0.0 == -0.0` is true. With a NaN operand, `== < <= > >=` are fa
 
 Comparisons may borrow their operands and do not Move non-Copy owned values solely to compare them. User-defined comparison requires an explicit Type capability. Safe borrows compare referent values of the same Type using that Type's comparison capability. Tuples support elementwise equality and lexicographic ordering when all corresponding elements support the required comparison.
 
+Built-in comparisons do not implicitly adapt an owned operand to match a safe-borrow operand. Compare two owned values or two safe borrows with matching immediate referent Types. The two outer borrow Origins need not be identical; each operand must remain valid through the comparison.
+
 For a built-in comparison that inspects a non-Copy owned Place, form an implicit shared Loan when that operand is evaluated. Operands are evaluated left to right: the left operand's Loan begins before evaluation of the right operand and remains active through the comparison. Both inspections require Initialized values. Apply the normal [Loan conflict rules](#1562-place-overlap-and-conflicts) throughout operand evaluation; a later operand cannot Move, replace, destroy, or exclusively borrow the earlier borrowed Place. Optimization cannot change this acceptance rule.
 
 On normal completion, comparison-only Loans end after the comparison; its bool result retains no operand Loan. They also end if a control transfer abandons the comparison. Existing Loans retain their own lifetimes, and temporary operands retain their [normal temporary lifetimes](#362-lifetime-and-borrowing); ending an inspection Loan does not destroy a temporary early. Abort follows §17.3.
@@ -4280,6 +4282,15 @@ let same = text == "a" // Shared inspection; text is not Moved.
 // let invalid = text == take(text)
 // Error: the left operand's shared Loan is active when take acquires text by Move.
 writeLine(text) // Allowed: the completed comparison's Loan has ended.
+```
+
+```kimi
+func same(left: ref/string, right: ref/string) -> bool
+    return left == right // UTF-8 contents, not reference addresses.
+
+let text = "hello"
+if same(text, text) => writeLine("equal") // Two shared argument Loans may overlap.
+writeLine(text) // The call's independent bool result retains neither Loan.
 ```
 
 Value equality and object identity are separate operations; `==` does not implicitly become an address comparison for object Types. Raw-pointer `== !=` are the explicit exception, following [pointer equality](#51-null-and-equality).

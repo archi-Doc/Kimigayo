@@ -86,6 +86,11 @@ public sealed partial class Binding
         adapted = actual;
         quality = ArgumentAdaptation.Exact;
         kind = ArgumentOperationKind.Value;
+        if (ReferenceEquals(actual, BoundType.Never))
+        {
+            return true; // A noncompleting argument forms no borrow or reference value.
+        }
+
         var projected = path is not null;
         if (pattern.Kind != BoundTypeKind.Semantics || pattern.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq))
         {
@@ -110,7 +115,9 @@ public sealed partial class Binding
             quality = actual.Semantics == target ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Reborrow;
         }
-        else if (actual.Semantics == SemanticsKind.Owner && this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq))
+        else if (actual.Semantics == SemanticsKind.Owner && (this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) ||
+            ((source.BoundSymbol is null || KotoHelper.UnwrapParentheses(source) is InvocationKoto) &&
+                KotoHelper.UnwrapParentheses(source) is not IdentifierNameKoto && source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never))))
         {
             referent = actual;
             quality = ArgumentAdaptation.CrossSemanticsBorrow;

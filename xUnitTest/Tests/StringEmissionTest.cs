@@ -62,7 +62,7 @@ public class StringEmissionTest
 
     [Theory]
     [InlineData("func unused() -> string => " + MinimalEmissionTest.UnsupportedExpression + "\nwriteLine(\"ok\")")]
-    [InlineData("func unused(text: ref/string) => ()\nwriteLine(\"ok\")")]
+    [InlineData("func unused(text: uniq/string) => ()\nwriteLine(\"ok\")")]
     [InlineData("let text = \"a\"\ntext@string")]
     [InlineData("let text = \"a\"\nwriteLine(text)\nwriteLine(text)")]
     [InlineData("var text: string\nvar c = true\nif c => text = \"a\"\nwriteLine(text)")]

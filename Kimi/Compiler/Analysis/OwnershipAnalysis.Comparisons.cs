@@ -26,11 +26,17 @@ public sealed partial class OwnershipAnalysis
     {
         var place = this.Expression(source, PlaceUseKind.Read);
         loan = -1;
-        if (place < 0 || this.body.Places[place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
+        if (place < 0 || ReferenceTypes.IsString(this.body.Places[place].Type) || this.body.Places[place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
         {
             return place;
         }
 
+        loan = this.BeginStringLoan(place);
+        return place;
+    }
+
+    private int BeginStringLoan(int place, InvocationKoto? call = null)
+    {
         var parent = this.CurrentLoanHead;
         while (this.body.LoanStates.Count < this.body.Operations.Count)
         {
@@ -38,24 +44,49 @@ public sealed partial class OwnershipAnalysis
             this.body.LoanStates.Add(-1);
         }
 
-        loan = this.body.ComparisonLoans.Count;
-        this.body.ComparisonLoans.Add(new(this.current, place, parent, this.comparisonDepth));
+        var loan = this.body.ComparisonLoans.Count;
+        this.body.ComparisonLoans.Add(new(this.current, place, parent, this.comparisonDepth, Call: call));
         this.body.LoanStates[this.current] = loan;
-        return place;
+        return loan;
+    }
+
+    private int BorrowArgument(InvocationKoto call, BoundArgumentOperation argument)
+    {
+        var source = KotoHelper.UnwrapParentheses(argument.Source!);
+        if (source is not IdentifierNameKoto || !ReferenceEquals(source.BoundType, BoundType.String) ||
+            source.BoundSymbol?.Kind is not (BindingSymbolKind.Local or BindingSymbolKind.Parameter))
+        {
+            this.Expression(source, PlaceUseKind.Read);
+            this.Unsupported(source); // Temporary materialization is bound, but not executable in this increment.
+            return -1;
+        }
+
+        var place = this.Local(source);
+        if (place < 0)
+        {
+            return -1;
+        }
+
+        var result = this.Place(source, argument.ParameterType, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
+        this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: LoanRequirement.Ref);
+        this.BeginStringLoan(place, call);
+        return this.RegisterTemporary(result);
     }
 
     private int StringComparison(BinaryKoto comparison)
     {
         var depth = this.comparisonDepth++;
         var left = this.InspectString(comparison.Left, out var leftLoan);
+        var leftValue = ReferenceTypes.IsString(comparison.Left.BoundType) ? this.Value(left) : -1;
         var right = this.InspectString(comparison.Right, out var rightLoan);
+        var rightValue = ReferenceTypes.IsString(comparison.Right.BoundType) ? this.Value(right) : -1;
         var result = -1;
         if (left >= 0 && right >= 0 && this.flow!.Nodes[comparison].CanCompleteNormally)
         {
             result = this.Temporary(comparison);
             var operation = this.Value(result);
             this.SetValue(operation, OwnershipValueKind.StringComparison, [], comparison.Akind);
-            this.body.StringComparisons.Add(new(operation, left, right, leftLoan, rightLoan));
+            this.body.StringComparisons.Add(new(operation, left, right, leftLoan, rightLoan, leftValue, rightValue));
         }
 
         this.EndComparisonLoans(depth, comparison);
@@ -63,7 +94,7 @@ public sealed partial class OwnershipAnalysis
         return result;
     }
 
-    private void EndComparisonLoans(int depth, Koto source)
+    private int EndComparisonLoans(int depth, Koto source)
     {
         var before = this.CurrentLoanHead;
         var after = before;
@@ -76,7 +107,10 @@ public sealed partial class OwnershipAnalysis
         {
             var id = this.Emit(OwnershipOperationKind.EndComparisonLoans, source);
             this.body.LoanStates[id] = after;
+            return id;
         }
+
+        return -1;
     }
 
     private void RecordComparisonState(OwnershipOperationKind kind, Koto source, int place, int input, AcquisitionKind acquisition)
@@ -91,7 +125,7 @@ public sealed partial class OwnershipAnalysis
         this.body.LoanStates.Add(head);
         for (var loan = head; loan >= 0; loan = this.body.ComparisonLoans[loan].Parent)
         {
-            if (OwnershipBody.ConflictsWithComparison(kind, place, input, acquisition, this.body.ComparisonLoans[loan].Place))
+            if (OwnershipBody.ConflictsWithComparison(kind, place, input, acquisition, this.body.ComparisonLoans[loan].Place, this.body.ComparisonLoans[loan].Mode, this.body.Operations[^1].LoanMode))
             {
                 // The diagnostic is deliberately Place-independent, matching ReportIssue's key.
                 this.body.ReportIssue(new(source, OwnershipFailure.ComparisonLoanConflict));

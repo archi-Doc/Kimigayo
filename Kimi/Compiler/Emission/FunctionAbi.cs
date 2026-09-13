@@ -20,9 +20,11 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
 
     internal bool ResultSlot { get; } = resultSlot;
 
-    // Passing mode is a pure function of the complete Type in this compiler profile.
-    // The ABI pool's Type/ordinal key therefore also fixes every passing choice.
+    // Passing mode and attributes are fixed by the implemented representation in this profile.
+    // The pool caches physical shapes; current call plans separately validate complete Types and Origins.
     internal static bool Supports(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String);
+
+    internal static bool SupportsParameter(BoundType? type) => Supports(type) || ReferenceTypes.IsString(type);
 
     internal static string? ResultType(BoundType type) => ReferenceEquals(type, BoundType.Never) || ReferenceEquals(type, BoundType.String)
         ? "void" : Supports(type) ? WindowsLowering.GetValue(type)!.ComputationType : null;
@@ -44,7 +46,7 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
                 text.Append(", ");
             }
 
-            text.Append(this.Parameters[i].Type).Append(" %").Append(this.Parameters[i].Name);
+            text.Append(this.Parameters[i].Type).Append(this.Parameters[i].Attributes).Append(" %").Append(this.Parameters[i].Name);
         }
 
         return text.Append(this.NoReturn ? ") noreturn #0 {\n" : ") #0 {\n").ToString();

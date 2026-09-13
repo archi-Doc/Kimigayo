@@ -192,7 +192,7 @@ public sealed partial class OwnershipAnalysis
             this.body.SymbolPlaces[this.compilation.Binding.ParameterSymbol(function, i)] = place;
             this.locals.Add(new(place, parameter.Type, this.registrationSequence++));
             var initialized = this.Emit(OwnershipOperationKind.Produce, parameter.Type, place);
-            if (type is not null && ScalarResult(type))
+            if (type is not null && (ScalarResult(type) || ReferenceTypes.IsString(type)))
             {
                 this.SetValue(initialized, OwnershipValueKind.Parameter, [], constant: i);
             }
@@ -492,7 +492,7 @@ public sealed partial class OwnershipAnalysis
 
     private int Binary(BinaryKoto binary)
     {
-        if (ReferenceEquals(binary.Left.BoundType, BoundType.String) && ReferenceEquals(binary.BoundType, BoundType.Boolean))
+        if ((ReferenceEquals(binary.Left.BoundType, BoundType.String) || ReferenceTypes.IsString(binary.Left.BoundType) || ReferenceTypes.IsString(binary.Right.BoundType)) && ReferenceEquals(binary.BoundType, BoundType.Boolean))
         {
             return this.StringComparison(binary);
         }
@@ -641,6 +641,8 @@ public sealed partial class OwnershipAnalysis
         }
 
         var mark = this.arguments.Count;
+        var loanDepth = this.comparisonDepth++;
+        var borrows = false;
         if (plan.Receiver is { } receiver)
         {
             this.arguments.Add(this.Argument(receiver, plan.ReceiverOperation.Kind));
@@ -648,7 +650,10 @@ public sealed partial class OwnershipAnalysis
 
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
-            this.arguments.Add(this.Argument(call.ArgumentNodes[i], plan.ArgumentOperations[i].Kind));
+            var argument = plan.ArgumentOperations[i];
+            borrows |= argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType);
+            this.arguments.Add(argument.Kind == ArgumentOperationKind.Borrow && ReferenceTypes.IsString(argument.ParameterType)
+                ? this.BorrowArgument(call, argument) : this.Argument(call.ArgumentNodes[i], argument.Kind));
         }
 
         if (plan.Target.Declaration is FunctionKoto target && target.Parameters.Count != this.arguments.Count - mark)
@@ -667,9 +672,22 @@ public sealed partial class OwnershipAnalysis
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         var invoke = this.Emit(OwnershipOperationKind.Call, call);
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
+        if (borrows && !ReferenceTypes.IndependentResult(plan.ReturnType))
+        {
+            this.Unsupported(call); // A dependent result needs a verified extending Loan contract.
+        }
+
         if (ReferenceEquals(call.BoundType, BoundType.Never))
         {
+            if (borrows)
+            {
+                this.body.CallLoans.Add(new(invoke, -1, -1, LoanRequirement.None));
+            }
+
             this.current = -1;
+            this.EndComparisonLoans(loanDepth, call);
+            this.current = -1;
+            this.comparisonDepth = loanDepth;
             return -1;
         }
 
@@ -686,6 +704,16 @@ public sealed partial class OwnershipAnalysis
             this.SetValue(invoke, OwnershipValueKind.Call, []);
             this.SetValue(this.Value(result), OwnershipValueKind.Alias, [invoke]);
         }
+
+        // Normal return first initializes the independent result, then releases argument Loans.
+        // Dependent-result signatures need extension of this lifetime and remain unsupported.
+        var loanEnd = this.EndComparisonLoans(loanDepth, call);
+        if (borrows)
+        {
+            this.body.CallLoans.Add(new(invoke, this.Value(result), loanEnd, LoanRequirement.None));
+        }
+
+        this.comparisonDepth = loanDepth;
 
         return result;
     }
@@ -940,7 +968,7 @@ public sealed partial class OwnershipAnalysis
         this.body.CleanupStepStorage.Add(new(operation, place, declaration, place < 0 ? CleanupAction.Unsupported : CleanupAction.Skip));
     }
 
-    private int New(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None)
+    private int New(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None, LoanRequirement loanMode = LoanRequirement.None)
     {
         var id = this.body.OperationStorage.Count;
         if (id >= DeferredOperationLimit && this.body.DeferredPlans.Count != 0)
@@ -948,7 +976,7 @@ public sealed partial class OwnershipAnalysis
             throw new DeferredExpansionLimitException(source);
         }
 
-        this.body.OperationStorage.Add(new(kind, source, place, input, acquisition));
+        this.body.OperationStorage.Add(new(kind, source, place, input, acquisition, LoanMode: loanMode));
         this.RecordComparisonState(kind, source, place, input, acquisition);
         this.resultHeads.Add(-2);
         this.RecordValue(id, kind, source, place, input);
@@ -959,9 +987,9 @@ public sealed partial class OwnershipAnalysis
         return id;
     }
 
-    private int Emit(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None)
+    private int Emit(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None, LoanRequirement loanMode = LoanRequirement.None)
     {
-        var id = this.New(kind, source, place, input, acquisition);
+        var id = this.New(kind, source, place, input, acquisition, loanMode);
         if (this.checkingRegion > 0 && this.body.CheckingRegions[this.checkingRegion].Entry < 0)
         {
             var region = this.body.CheckingRegions[this.checkingRegion];

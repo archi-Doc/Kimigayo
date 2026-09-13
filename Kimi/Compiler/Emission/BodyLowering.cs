@@ -225,6 +225,12 @@ internal sealed partial class BodyLowering
             return true;
         }
 
+        if (operation.Kind == OwnershipOperationKind.Borrow || (ReferenceTypes.IsString(ValueType(body, index)) &&
+            operation.Kind is OwnershipOperationKind.Produce or OwnershipOperationKind.Read or OwnershipOperationKind.Consume))
+        {
+            return this.LowerReference(body, index, out failure);
+        }
+
         if (operation.Kind is OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.MatchDispatch or OwnershipOperationKind.PatternTest or OwnershipOperationKind.AcquirePattern)
         {
             return this.LowerMatchOperation(body, function, constants, index, out failure);
@@ -321,7 +327,7 @@ internal sealed partial class BodyLowering
                     return Fail("Cleanup is conditional, mismatched or unsupported.", out failure);
                 }
 
-                if (operation.Place >= 0 && IsScalar(body.Places[operation.Place].Type))
+                if (operation.Place >= 0 && (IsScalar(body.Places[operation.Place].Type) || ReferenceTypes.IsString(body.Places[operation.Place].Type)))
                 {
                     break;
                 }

@@ -38,8 +38,10 @@ internal sealed partial class BodyLowering
             var plan = body.StringComparisons[i];
             if ((uint)plan.Operation >= (uint)body.Operations.Count || this.stringComparisons[plan.Operation] >= 0 ||
                 body.Operations[plan.Operation].Kind != OwnershipOperationKind.Produce || body.Values[plan.Operation].Kind != OwnershipValueKind.StringComparison ||
-                body.Operations[plan.Operation].Source is not BinaryKoto source || !ReferenceEquals(source.Left.BoundType, BoundType.String) ||
-                !ReferenceEquals(source.Right.BoundType, BoundType.String) || !ReferenceEquals(ValueType(body, plan.Operation), BoundType.Boolean) ||
+                body.Operations[plan.Operation].Source is not BinaryKoto source ||
+                !((ReferenceEquals(source.Left.BoundType, BoundType.String) && ReferenceEquals(source.Right.BoundType, BoundType.String)) ||
+                    (ReferenceTypes.IsString(source.Left.BoundType) && ReferenceTypes.IsString(source.Right.BoundType))) ||
+                !ReferenceEquals(ValueType(body, plan.Operation), BoundType.Boolean) ||
                 source.Akind != body.Values[plan.Operation].Operator)
             {
                 return Fail("Invalid string comparison result plan.", out failure);
@@ -63,8 +65,19 @@ internal sealed partial class BodyLowering
         return true; // Physical fields are read later, while the inspection Loan still protects them.
     }
 
-    private bool ValidateStringInspection(OwnershipBody body, int id, int place, int loan, Koto operand)
+    private bool ValidateStringInspection(OwnershipBody body, int id, int place, int loan, Koto operand, int reference)
     {
+        if (ReferenceTypes.IsString(operand.BoundType))
+        {
+            return loan == -1 && this.ValidateReferenceUse(body, reference, id) && ValuePlace(body.Operations[reference]) == place &&
+                ReferenceEquals(body.Operations[reference].Source, KotoHelper.UnwrapParentheses(operand)) && ReferenceEquals(ValueType(body, reference), operand.BoundType);
+        }
+
+        if (reference != -1)
+        {
+            return false;
+        }
+
         if ((uint)place >= (uint)body.Places.Count || !ReferenceEquals(body.Places[place].Type, BoundType.String) || !this.IsStringStorage(body.Places[place]) ||
             (body.IsReachable(id) && (body.GetInputState(id, place) & PlaceState.MustInit) == 0))
         {
@@ -91,7 +104,7 @@ internal sealed partial class BodyLowering
 
         var plan = body.StringComparisons[this.stringComparisons[id]];
         var source = (BinaryKoto)body.Operations[id].Source;
-        if (!this.ValidateStringInspection(body, id, plan.Left, plan.LeftLoan, source.Left) || !this.ValidateStringInspection(body, id, plan.Right, plan.RightLoan, source.Right))
+        if (!this.ValidateStringInspection(body, id, plan.Left, plan.LeftLoan, source.Left, plan.LeftValue) || !this.ValidateStringInspection(body, id, plan.Right, plan.RightLoan, source.Right, plan.RightValue))
         {
             return Fail("String comparison is not protected through its physical reads.", out failure);
         }
@@ -111,7 +124,9 @@ internal sealed partial class BodyLowering
             return Fail("Unsupported string comparison operator.", out failure);
         }
 
-        function.AddScalar(predicate is "eq" or "ne" ? EmissionOpcode.StringEquals : EmissionOpcode.StringCompare, id, [new(EmissionOperandKind.SlotAddress, plan.Left), new(EmissionOperandKind.SlotAddress, plan.Right)], op: predicate);
+        var left = plan.LeftValue >= 0 ? this.ReferenceOperand(body, plan.LeftValue) : new(EmissionOperandKind.SlotAddress, plan.Left);
+        var right = plan.RightValue >= 0 ? this.ReferenceOperand(body, plan.RightValue) : new(EmissionOperandKind.SlotAddress, plan.Right);
+        function.AddScalar(predicate is "eq" or "ne" ? EmissionOpcode.StringEquals : EmissionOpcode.StringCompare, id, [left, right], op: predicate);
         return true;
     }
 }

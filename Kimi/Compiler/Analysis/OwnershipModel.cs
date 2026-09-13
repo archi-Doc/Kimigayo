@@ -122,7 +122,7 @@ public enum OwnershipFailure : byte
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition);
 
 /// <summary>One CFG program point; Place/Input are IDs in its body's Place table.</summary>
-public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Koto Source, int Place = -1, int Input = -1, AcquisitionKind Acquisition = AcquisitionKind.None, PlacementKind Placement = PlacementKind.None)
+public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Koto Source, int Place = -1, int Input = -1, AcquisitionKind Acquisition = AcquisitionKind.None, PlacementKind Placement = PlacementKind.None, LoanRequirement LoanMode = LoanRequirement.None)
 {
     public PlaceUseKind Use => this.Kind switch
     {
@@ -187,6 +187,7 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipIssue> IssueStorage = new();
     internal readonly List<OwnershipStringComparison> StringComparisons = new();
     internal readonly List<OwnershipComparisonLoan> ComparisonLoans = new();
+    internal readonly List<OwnershipCallLoans> CallLoans = new();
     internal readonly List<int> LoanInputs = new();
     internal readonly List<int> LoanStates = new();
     internal readonly List<int> OperationRegions = new();
@@ -263,6 +264,7 @@ public sealed partial class OwnershipBody
         this.IssueStorage.Clear();
         this.StringComparisons.Clear();
         this.ComparisonLoans.Clear();
+        this.CallLoans.Clear();
         this.LoanInputs.Clear();
         this.LoanStates.Clear();
         this.reportedIssues.Clear();
@@ -299,6 +301,7 @@ internal enum OwnershipValueKind : byte
     Unary,
     Binary,
     StringComparison,
+    Borrow,
     Phi,
 }
 
@@ -321,6 +324,9 @@ internal readonly record struct OwnershipResultArrival(int Edge, int Write);
 internal readonly record struct OwnershipResultWrite(int Operation, int Declare);
 
 // Persistent stack links preserve independent branch and checking-region environments.
-internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth);
+// One shared lexical chain; a null Call identifies a comparison-only inspection.
+internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null);
 
-internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan);
+internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
+
+internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);

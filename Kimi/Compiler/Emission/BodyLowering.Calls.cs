@@ -48,8 +48,9 @@ internal sealed partial class BodyLowering
             var parameter = plan.ArgumentToParameter[i];
             var acquisition = plan.ArgumentOperations[i];
             if ((uint)parameter >= (uint)target.Parameters.Count || this.parameterArguments[parameter] != -1 ||
-                acquisition.Kind != ArgumentOperationKind.Value || acquisition.ParameterIndex != parameter ||
-                !ReferenceEquals(acquisition.ParameterType, target.Parameters[parameter].Type.BoundType))
+                acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.Borrow) || acquisition.ParameterIndex != parameter ||
+                (!ReferenceEquals(acquisition.ParameterType, target.Parameters[parameter].Type.BoundType) && !ReferenceParameterFits(plan, target, parameter, acquisition)) ||
+                (acquisition.Kind == ArgumentOperationKind.Borrow && !ReferenceTypes.IsString(acquisition.ParameterType)))
             {
                 return Fail("Invalid call argument mapping or acquisition.", out failure);
             }
@@ -87,6 +88,24 @@ internal sealed partial class BodyLowering
                 (body.IsReachable(entry) && (body.GetInputState(entry, place) & PlaceState.MustInit) == 0)))
             {
                 return Fail("Owned string argument is not an initialized acquired value.", out failure);
+            }
+
+            if (ReferenceTypes.IsString(type))
+            {
+                if (!ReferenceParameterFits(plan, target, parameter, acquisition) || !this.ValidateReferenceUse(body, entry, id) ||
+                    !ReferenceEquals(acquisition.Source, call.ArgumentNodes[i]) || !ReferenceEquals(acquisition.SourceType, call.ArgumentNodes[i].BoundType))
+                {
+                    return Fail("Reference argument lacks its call-wide Loan or Origin substitution.", out failure);
+                }
+
+                var root = this.referenceRoots[entry];
+                if (acquisition.Kind == ArgumentOperationKind.Borrow
+                    ? this.callLoanPlans[id] < 0 || body.Values[root].Kind != OwnershipValueKind.Borrow || !ReferenceEquals(body.ComparisonLoans[body.LoanStates[root]].Call, call) ||
+                        !ReferenceEquals(body.Operations[root].Source, KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]))
+                    : body.Values[root].Kind != OwnershipValueKind.Parameter || !ReferenceEquals(ValueType(body, root), acquisition.SourceType))
+                {
+                    return Fail("Reference acquisition does not match its source.", out failure);
+                }
             }
 
             this.parameterArguments[parameter] = entry;
@@ -151,6 +170,10 @@ internal sealed partial class BodyLowering
                 }
 
                 this.callOperands.Add(this.PhysicalOperand(body, value));
+            }
+            else if (physical.Kind == AbiParameterKind.SharedReference && ReferenceTypes.IsString(type))
+            {
+                this.callOperands.Add(this.ReferenceOperand(body, entry));
             }
             else if (physical.Kind == AbiParameterKind.OwnedSlot && ReferenceEquals(type, BoundType.String))
             {

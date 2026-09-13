@@ -48,7 +48,7 @@ internal sealed partial class BodyLowering
                 return Fail("Parameter storage does not match its logical signature.", out failure);
             }
 
-            if (!ReferenceEquals(place.Type, BoundType.Unit))
+            if (!ReferenceEquals(place.Type, BoundType.Unit) && !ReferenceTypes.IsString(place.Type))
             {
                 function.SlotAddresses[place.Id] = new(EmissionOperandKind.Argument, i);
             }
