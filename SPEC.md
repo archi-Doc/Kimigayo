@@ -8054,7 +8054,7 @@ Fixed diagnostics use an ASCII identifier, English reason, and source location, 
 Main.kimi:3:5: abort KIMI_E_STDOUT: Failed to write to stdout (win32=6)
 ```
 
-Use unique catalog codes, including KIMI_E_ALLOC_SIZE (allocation size exceeds limit), KIMI_E_PROCESS_HEAP, KIMI_E_ALLOC, KIMI_E_FREE, KIMI_E_STDOUT, and KIMI_E_INT_OVERFLOW. Omit unavailable OS codes; do not use FormatMessageW. In displayed logical paths, escape non-ASCII/control characters as `\u{HEX}` and backslash as `\\`; preserve the actual path/provenance internally.
+Use unique catalog codes, including KIMI_E_ALLOC_SIZE (allocation size exceeds limit), KIMI_E_PROCESS_HEAP, KIMI_E_ALLOC, KIMI_E_FREE, KIMI_E_STDOUT, KIMI_E_INT_OVERFLOW (Integer overflow), and KIMI_E_INT_DIV_ZERO (Integer division or remainder by zero). Integer division/remainder by zero uses KIMI_E_INT_DIV_ZERO; signed minimum with divisor -1 uses KIMI_E_INT_OVERFLOW for both operations. Omit unavailable OS codes; do not use FormatMessageW. In displayed logical paths, escape non-ASCII/control characters as `\u{HEX}` and backslash as `\\`; preserve the actual path/provenance internally.
 
 Output diagnostics from constants, valid input strings, and small fixed work areas without requiring heap allocation or one concatenated dynamic string. Explicit `$abort(expression)` retains ordinary one-time argument evaluation and outputs the resulting UTF-8 string after KIMI_E_ABORT without translation or escaping its contents. Once Abort starts, do not normally destroy that string.
 

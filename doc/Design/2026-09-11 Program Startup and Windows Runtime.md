@@ -1560,6 +1560,9 @@ KIMI_E_STDOUTは原因の識別コード、win32=6は取得したOSエラーの�
 | KIMI_E_FREE | Failed to free memory |
 | KIMI_E_STDOUT | Failed to write to stdout |
 | KIMI_E_INT_OVERFLOW | Integer overflow |
+| KIMI_E_INT_DIV_ZERO | Integer division or remainder by zero |
+
+整数の除算・剰余のゼロ除数はKIMI_E_INT_DIV_ZERO、符号付き最小値と除数-1の組み合わせは両演算ともKIMI_E_INT_OVERFLOWを使う。診断位置は実際に失敗した演算式に対応する。
 
 ソース位置の論理パスは、非ASCII文字・制御文字をASCIIの`\u{HEX}`、バックスラッシュを`\\`で表示する。表示時だけescapeし、内部のパスやprovenanceは変更しない。これにより日本語のファイル名でも固定診断を読み取れる。
 

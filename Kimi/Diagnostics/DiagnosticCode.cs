@@ -42,6 +42,7 @@ public enum DiagnosticCode
     CompileTimeCaseFallbackMustBeLast_Kd,
     DuplicateCompileTimeCaseFallback_Kd,
     DeclarationOrderWarning_Kd,
+    // Reserved for required constant evaluation; runtime arithmetic uses Abort reason codes.
     DivisionByZero_Kd,
     DuplicateModifier_Kd,
     DuplicatePropertyAccessor_Kd,

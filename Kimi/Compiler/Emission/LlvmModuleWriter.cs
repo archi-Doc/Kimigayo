@@ -131,6 +131,10 @@ internal static partial class LlvmModuleWriter
             var operand = operands[i];
             switch (operand.Kind)
             {
+                case EmissionOperandKind.Value:
+                    output.Write("%v");
+                    WriteNumber(output, operand.Value);
+                    break;
                 case EmissionOperandKind.SlotAddress:
                     output.Write("%p");
                     WriteNumber(output, operand.Value);
@@ -163,7 +167,7 @@ internal static partial class LlvmModuleWriter
     {
         using var stream = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.WindowsRuntime.ll.in")!;
         using var reader = new StreamReader(stream);
-        var runtime = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
+        var runtime = WindowsLowering.ExpandAbortReasons(reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal));
         foreach (var abi in WindowsLowering.RuntimeDefinitions)
         {
             // Compiler-facing runtime signatures come from the same FunctionAbi records as calls; each is defined once.

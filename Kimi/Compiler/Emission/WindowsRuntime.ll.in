@@ -12,22 +12,7 @@ declare dllimport void @ExitProcess(i32) noreturn
 @__kimi_abort_prefix = private constant [8 x i8] c": abort "
 @__kimi_os_prefix = private constant [8 x i8] c" (win32="
 @__kimi_close = private constant [1 x i8] c")"
-@__kimi_reasons = private constant [7 x { ptr, i64 }] [
-  { ptr, i64 } { ptr @__kimi_stdout_reason, i64 40 },
-  { ptr, i64 } { ptr @__kimi_size_reason, i64 48 },
-  { ptr, i64 } { ptr @__kimi_heap_reason, i64 50 },
-  { ptr, i64 } { ptr @__kimi_alloc_reason, i64 39 },
-  { ptr, i64 } { ptr @__kimi_free_reason, i64 34 },
-  { ptr, i64 } { ptr @__kimi_release_reason, i64 50 },
-  { ptr, i64 } { ptr @__kimi_overflow_reason, i64 37 }
-]
-@__kimi_stdout_reason = private constant [40 x i8] c"KIMI_E_STDOUT: Failed to write to stdout"
-@__kimi_size_reason = private constant [48 x i8] c"KIMI_E_ALLOC_SIZE: Allocation size exceeds limit"
-@__kimi_heap_reason = private constant [50 x i8] c"KIMI_E_PROCESS_HEAP: Failed to obtain process heap"
-@__kimi_alloc_reason = private constant [39 x i8] c"KIMI_E_ALLOC: Failed to allocate memory"
-@__kimi_free_reason = private constant [34 x i8] c"KIMI_E_FREE: Failed to free memory"
-@__kimi_release_reason = private constant [50 x i8] c"KIMI_E_STRING_RELEASE: Invalid string release kind"
-@__kimi_overflow_reason = private constant [37 x i8] c"KIMI_E_INT_OVERFLOW: Integer overflow"
+{{abort_reasons}}
 
 ; Compiler-facing definitions are expanded from WindowsLowering FunctionAbi records.
 {{__kimi_exit}}
@@ -105,13 +90,16 @@ entry:
 {{__kimi_abort}}
 entry:
   %digits = alloca [10 x i8], align 1
+  %known = icmp ult i32 %reason, {{abort_reason_count}}
+  br i1 %known, label %location_output, label %exit
+location_output:
   %located = call i1 @__kimi_try_stderr(ptr %location, i64 %location_length)
   br i1 %located, label %prefix, label %exit
 prefix:
   %prefixed = call i1 @__kimi_try_stderr(ptr @__kimi_abort_prefix, i64 8)
   br i1 %prefixed, label %message, label %exit
 message:
-  %record = getelementptr [7 x { ptr, i64 }], ptr @__kimi_reasons, i32 0, i32 %reason
+  %record = getelementptr [{{abort_reason_count}} x { ptr, i64 }], ptr @__kimi_reasons, i32 0, i32 %reason
   %record_value = load { ptr, i64 }, ptr %record, align 8
   %data = extractvalue { ptr, i64 } %record_value, 0
   %length = extractvalue { ptr, i64 } %record_value, 1
@@ -157,7 +145,7 @@ entry:
   %ok = icmp eq i64 %error, -1
   br i1 %ok, label %done, label %abort
 abort:
-  call void @__kimi_abort(i32 0, ptr %location, i64 %location_length, i64 %error)
+  call void @__kimi_abort(i32 {{reason_stdout}}, ptr %location, i64 %location_length, i64 %error)
   unreachable
 done:
   ret void
@@ -178,13 +166,13 @@ allocate:
   %failed = icmp eq ptr %memory, null
   br i1 %failed, label %alloc_failure, label %done
 size_failure:
-  call void @__kimi_abort(i32 1, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
   unreachable
 heap_failure:
-  call void @__kimi_abort(i32 2, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_heap}}, ptr %location, i64 %location_length, i64 -2)
   unreachable
 alloc_failure:
-  call void @__kimi_abort(i32 3, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_alloc}}, ptr %location, i64 %location_length, i64 -2)
   unreachable
 done:
   ret ptr %memory
@@ -203,12 +191,12 @@ free:
   %failed = icmp eq i32 %result, 0
   br i1 %failed, label %free_failure, label %done
 heap_failure:
-  call void @__kimi_abort(i32 2, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_heap}}, ptr %location, i64 %location_length, i64 -2)
   unreachable
 free_failure:
   %error = call i32 @GetLastError()
   %error64 = zext i32 %error to i64
-  call void @__kimi_abort(i32 4, ptr %location, i64 %location_length, i64 %error64)
+  call void @__kimi_abort(i32 {{reason_free}}, ptr %location, i64 %location_length, i64 %error64)
   unreachable
 done:
   ret void
@@ -225,7 +213,7 @@ heap:
   call void @__kimi_free(ptr %data, ptr %location, i64 %location_length)
   br label %done
 invalid:
-  call void @__kimi_abort(i32 5, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_release}}, ptr %location, i64 %location_length, i64 -2)
   unreachable
 done:
   ret void

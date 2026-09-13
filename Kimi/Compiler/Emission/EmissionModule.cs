@@ -52,8 +52,15 @@ internal readonly record struct EmissionOperand(EmissionOperandKind Kind, long V
 
 internal readonly record struct EmissionSlot(int Place, ValueLowering Value);
 
+internal enum ArithmeticCheckKind : byte
+{
+    None,
+    Overflow,
+    Division,
+}
+
 /// <summary>One instruction; <c>Operation</c> is the source ownership operation ID, or -1 for synthesized startup control.</summary>
-internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0, string? ScalarType = null, string? ScalarOperator = null);
+internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int Operation, int Place = -1, int Constant = -1, FunctionAbi? Callee = null, int OperandStart = 0, int OperandCount = 0, string? ScalarType = null, string? ScalarOperator = null, ArithmeticCheckKind Check = ArithmeticCheckKind.None);
 
 /// <summary>One physical function definition. Its lists are reused by later preparations.</summary>
 internal sealed class EmissionFunction
@@ -95,11 +102,11 @@ internal sealed class EmissionFunction
         this.Instructions.Add(new(EmissionOpcode.Call, operation, Callee: callee, OperandStart: start, OperandCount: operands.Length));
     }
 
-    internal void AddScalar(EmissionOpcode opcode, int operation, ReadOnlySpan<EmissionOperand> operands, string? type = null, string? op = null, int place = -1, int location = -1)
+    internal void AddScalar(EmissionOpcode opcode, int operation, ReadOnlySpan<EmissionOperand> operands, string? type = null, string? op = null, int place = -1, int location = -1, ArithmeticCheckKind check = ArithmeticCheckKind.None)
     {
         var start = this.Operands.Count;
         this.Operands.AddRange(operands);
-        this.Instructions.Add(new(opcode, operation, Place: place, Constant: location, OperandStart: start, OperandCount: operands.Length, ScalarType: type, ScalarOperator: op));
+        this.Instructions.Add(new(opcode, operation, Place: place, Constant: location, OperandStart: start, OperandCount: operands.Length, ScalarType: type, ScalarOperator: op, Check: check));
     }
 }
 

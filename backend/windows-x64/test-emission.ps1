@@ -99,8 +99,14 @@ $faultIr += @'
 declare ptr @test_memory()
 declare void @test_layout(i64, i64, i64, i64)
 '@
-for ($mode = 0; $mode -le 28; $mode++) {
+$reasonCount = [regex]::Match($faultIr, '@__kimi_reasons = private constant \[(\d+) x').Groups[1].Value
+if (-not $reasonCount) { throw 'Missing Abort reason table' }
+for ($mode = 0; $mode -le 30; $mode++) {
     $body = switch ($mode) {
+        { $_ -eq 29 -or $_ -eq 30 } {
+            $reason = if ($mode -eq 29) { $reasonCount } else { '-1' }
+            "  call void @__kimi_abort(i32 $reason, ptr @test_location, i64 13, i64 -2)`n  unreachable"
+        }
         { $_ -ge 8 -and $_ -le 12 } {
             $ptr, $length = switch ($mode) {
                 8 { 'null', '0' }
@@ -135,7 +141,7 @@ Invoke-Tool $tools.clang @('--target=x86_64-pc-windows-msvc', '-c', '-O2', '-ffr
 foreach ($level in @('O0', 'O2')) {
     $stem = Join-Path $out "faults.$level"
     Compile-Ir $faultPath $stem $level
-    for ($mode = 0; $mode -le 28; $mode++) {
+    for ($mode = 0; $mode -le 30; $mode++) {
         $exe = "$stem.$mode.exe"
         Invoke-Tool $tools['lld-link'] @("$stem.obj", $adapter, $archive, $Kernel32, "/entry:test_entry_$mode", '/subsystem:console', '/nodefaultlib', '/Brepro', "/out:$exe")
         Execute $exe ([byte[]]@())

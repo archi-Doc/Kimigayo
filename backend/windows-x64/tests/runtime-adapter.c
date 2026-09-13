@@ -77,6 +77,11 @@ int test_WriteFile(void* handle, const char* bytes, u32 count, u32* written, voi
     return 1;
 }
 __declspec(noreturn) void test_ExitProcess(u32 code) {
+    if (test_mode == 29 || test_mode == 30) {
+        require(code == 1 && stdout_count == 0 && stderr_count == 0 && handles == 0 && heap_calls == 0);
+        ExitProcess(0);
+        __builtin_unreachable();
+    }
     int aborting = (test_mode >= 2 && test_mode <= 7) || (test_mode >= 15 && test_mode <= 20) || test_mode >= 23;
     if (test_mode == 24) aborting = 0;
     require(code == (aborting ? 1U : 0U));

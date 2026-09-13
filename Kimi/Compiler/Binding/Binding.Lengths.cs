@@ -70,6 +70,9 @@ public sealed partial class Binding
 
     private BoundLength? BindLength(Koto syntax, BindingScope scope, bool final = true)
     {
+        var bits = this.compilation.PointerWidth;
+        var maximum = bits == 16 ? short.MaxValue : bits == 32 ? int.MaxValue : long.MaxValue;
+        var minimum = bits == 16 ? short.MinValue : bits == 32 ? int.MinValue : long.MinValue;
         BoundLength? result = null;
         if (syntax is ParenthesizedKoto parent)
         {
@@ -115,6 +118,15 @@ public sealed partial class Binding
             {
                 if (left.IsConstant && right.IsConstant)
                 {
+                    // Required constant evaluation rejects the same exceptional inputs for
+                    // both division and remainder, before executing host arithmetic.
+                    if (binary.Akind is KotoKind.Slash or KotoKind.Percent &&
+                        (right.Value == 0 || (left.Value == minimum && right.Value == -1)))
+                    {
+                        Fail(syntax, BindingFailure.InvalidTypeFormation);
+                        return null;
+                    }
+
                     try
                     {
                         var value = binary.Akind switch
@@ -127,7 +139,7 @@ public sealed partial class Binding
                         };
                         result = this.InternLength(KotoKind.NumberLiteral, value);
                     }
-                    catch (ArithmeticException)
+                    catch (OverflowException)
                     {
                     }
                 }
@@ -138,9 +150,6 @@ public sealed partial class Binding
             }
         }
 
-        var bits = this.compilation.PointerWidth;
-        var maximum = bits == 16 ? short.MaxValue : bits == 32 ? int.MaxValue : long.MaxValue;
-        var minimum = bits == 16 ? short.MinValue : bits == 32 ? int.MinValue : long.MinValue;
         if (result is null || (result.IsConstant && (result.Value < (final ? 0 : minimum) || result.Value > maximum)))
         {
             Fail(syntax, BindingFailure.InvalidTypeFormation);

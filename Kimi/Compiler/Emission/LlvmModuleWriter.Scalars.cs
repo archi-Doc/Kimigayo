@@ -102,7 +102,7 @@ internal static partial class LlvmModuleWriter
         }
 
         var op = instruction.ScalarOperator!;
-        if (instruction.Constant >= 0)
+        if (instruction.Check == ArithmeticCheckKind.Overflow)
         {
             Name(output, "  %checked", id);
             output.Write(" = call { i32, i1 } @llvm.");
@@ -118,22 +118,29 @@ internal static partial class LlvmModuleWriter
             Name(output, "  %overflow", id);
             Name(output, " = extractvalue { i32, i1 } %checked", id);
             output.Write(", 1\n");
-            Name(output, "  br i1 %overflow", id);
-            Name(output, ", label %abort", id);
-            Name(output, ", label %b", instruction.Place);
-            output.Write('\n');
-            Name(output, "abort", id);
-            output.Write(":\n");
-            WriteCall(output, constants, WindowsLowering.Abort, [new(EmissionOperandKind.Integer, 6), new(EmissionOperandKind.ConstantAddress, instruction.Constant), new(EmissionOperandKind.ConstantLength, instruction.Constant), new(EmissionOperandKind.Integer, -2)]);
-            output.Write("  unreachable\n");
-            Name(output, "b", instruction.Place);
-            output.Write(":\n");
+            WriteArithmeticFailure(output, constants, instruction, "%overflow");
             return;
+        }
+
+        if (instruction.Check == ArithmeticCheckKind.Division)
+        {
+            WriteEquality(output, "%zero", id, operands[1], 0);
+            WriteEquality(output, "%minimum", id, operands[0], int.MinValue);
+            WriteEquality(output, "%minusone", id, operands[1], -1);
+            Name(output, "  %overflow", id);
+            Name(output, " = and i1 %minimum", id);
+            Name(output, ", %minusone", id);
+            output.Write('\n');
+            Name(output, "  %invalid", id);
+            Name(output, " = or i1 %zero", id);
+            Name(output, ", %overflow", id);
+            output.Write('\n');
+            WriteArithmeticFailure(output, constants, instruction, "%invalid");
         }
 
         Name(output, "  %v", id);
         output.Write(" = ");
-        if (op is not ("xor" or "add"))
+        if (op is not ("xor" or "add" or "sdiv" or "srem"))
         {
             output.Write("icmp ");
         }
@@ -146,5 +153,47 @@ internal static partial class LlvmModuleWriter
         output.Write(", ");
         WriteOperand(output, operands[1]);
         output.Write('\n');
+    }
+
+    private static void WriteEquality(TextWriter output, string name, int id, EmissionOperand operand, int constant)
+    {
+        output.Write("  ");
+        Name(output, name, id);
+        output.Write(" = icmp eq i32 ");
+        WriteOperand(output, operand);
+        output.Write(", ");
+        WriteNumber(output, constant);
+        output.Write('\n');
+    }
+
+    private static void WriteArithmeticFailure(TextWriter output, LlvmConstantPool constants, EmissionInstruction instruction, string condition)
+    {
+        var id = instruction.Operation;
+        output.Write("  br i1 ");
+        Name(output, condition, id);
+        Name(output, ", label %abort", id);
+        Name(output, ", label %b", instruction.Place);
+        output.Write('\n');
+        Name(output, "abort", id);
+        output.Write(":\n");
+        var reason = new EmissionOperand(EmissionOperandKind.Integer, WindowsLowering.IntegerOverflowReason);
+        if (instruction.Check == ArithmeticCheckKind.Division)
+        {
+            // The synthetic success-label ID is outside the ownership value ID range.
+            // Labels use %b, so its %v name can hold this failure-only ABI argument.
+            Name(output, "  %v", instruction.Place);
+            Name(output, " = select i1 %zero", id);
+            output.Write(", i32 ");
+            WriteNumber(output, WindowsLowering.IntegerDivisionZeroReason);
+            output.Write(", i32 ");
+            WriteNumber(output, WindowsLowering.IntegerOverflowReason);
+            output.Write('\n');
+            reason = new(EmissionOperandKind.Value, instruction.Place);
+        }
+
+        WriteCall(output, constants, WindowsLowering.Abort, [reason, new(EmissionOperandKind.ConstantAddress, instruction.Constant), new(EmissionOperandKind.ConstantLength, instruction.Constant), new(EmissionOperandKind.Integer, -2)]);
+        output.Write("  unreachable\n");
+        Name(output, "b", instruction.Place);
+        output.Write(":\n");
     }
 }

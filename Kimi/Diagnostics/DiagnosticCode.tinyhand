@@ -121,6 +121,7 @@
     Severity="Warning"
     Message="Declarations should appear in this order: type constraints, Properties, functions"
 
+  // Reserved for required constant evaluation, not runtime arithmetic Abort.
   + Name="DivisionByZero_Kd"
     Message="Cannot divide by zero"
 

@@ -48,21 +48,6 @@ public sealed partial class Binding
     private static bool LiteralCategoryMatches(NumberLiteralKoto literal, BoundType type)
         => literal.IsInteger ? type.IsInteger : type.IsFloatingPoint;
 
-    private static KotoKind CompoundOperation(KotoKind assignment) => assignment switch
-    {
-        KotoKind.PlusEquals => KotoKind.Plus,
-        KotoKind.MinusEquals => KotoKind.Minus,
-        KotoKind.AsteriskEquals => KotoKind.Asterisk,
-        KotoKind.SlashEquals => KotoKind.Slash,
-        KotoKind.PercentEquals => KotoKind.Percent,
-        KotoKind.AmpersandEquals => KotoKind.Ampersand,
-        KotoKind.CaretEquals => KotoKind.Caret,
-        KotoKind.BarEquals => KotoKind.Bar,
-        KotoKind.LessThanLessThanEquals => KotoKind.LessThanLessThan,
-        KotoKind.GreaterThanGreaterThanEquals => KotoKind.GreaterThanGreaterThan,
-        _ => assignment,
-    };
-
     private static bool FitsLiteral(NumberLiteralKoto literal, BoundType type, bool negative, int pointerWidth)
     {
         if (!literal.IsInteger)
@@ -674,7 +659,7 @@ public sealed partial class Binding
 
         var logical = kind is KotoKind.And or KotoKind.Or;
         var assignment = kind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
-        var operation = assignment ? CompoundOperation(kind) : kind;
+        var operation = assignment && kind != KotoKind.Equals ? KotoHelper.CompoundOperation(kind) : kind;
         var comparison = operation is KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals or KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
         var shift = operation is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan;
         BoundType? left;

@@ -15,7 +15,7 @@ internal sealed record ValueLowering(TypeLayout Layout, string ComputationType, 
 internal readonly record struct AbiParameter(string Type, string Name);
 
 /// <summary>The implemented windows-x64-v1 representations. Types without an entry have no fallback representation.</summary>
-internal static class WindowsLowering
+internal static partial class WindowsLowering
 {
     /// <summary>The Static string releaseKind: compiler constant backing that is never freed (SPEC 22.5.5).</summary>
     internal const int StaticReleaseKind = 0;

@@ -14,10 +14,17 @@ internal sealed partial class BodyLowering
     private int[] blockEnds = [];
     private int[] queue = [];
     private int[] instructionStarts = [];
+    private ArithmeticCheckKind[] checks = [];
 
     private static bool IsScalar(BoundType? type) => ReferenceEquals(type, BoundType.I32) || ReferenceEquals(type, BoundType.Boolean);
 
-    private static bool Checked(OwnershipValue value) => (value.Kind == OwnershipValueKind.Binary && value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk) || (value.Kind == OwnershipValueKind.Unary && value.Operator == KotoKind.PrefixMinus);
+    private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value) => value.Kind switch
+    {
+        OwnershipValueKind.Binary when value.Operator is KotoKind.Slash or KotoKind.Percent => ArithmeticCheckKind.Division,
+        OwnershipValueKind.Binary when value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk => ArithmeticCheckKind.Overflow,
+        OwnershipValueKind.Unary when value.Operator == KotoKind.PrefixMinus => ArithmeticCheckKind.Overflow,
+        _ => ArithmeticCheckKind.None,
+    };
 
     private static void Grow(ref int[] array, int count)
     {
@@ -57,6 +64,16 @@ internal sealed partial class BodyLowering
         Grow(ref this.blockEnds, count);
         Grow(ref this.queue, count);
         Grow(ref this.instructionStarts, count + 1);
+        if (this.checks.Length < count)
+        {
+            Array.Resize(ref this.checks, Math.Max(count, Math.Max(16, this.checks.Length * 2)));
+        }
+
+        for (var i = 0; i < count; i++)
+        {
+            this.checks[i] = ClassifyCheck(body.Values[i]);
+        }
+
         this.incoming.AsSpan(0, count).Clear();
         this.blocks.AsSpan(0, count).Fill(-1);
         this.successor.AsSpan(0, count).Fill(-1);
@@ -140,7 +157,7 @@ internal sealed partial class BodyLowering
             for (var cursor = i; ;)
             {
                 this.blocks[cursor] = i;
-                if (Checked(body.Values[cursor]))
+                if (this.checks[cursor] != ArithmeticCheckKind.None)
                 {
                     end = count + cursor;
                 }
@@ -357,6 +374,7 @@ internal sealed partial class BodyLowering
         var op = value.Operator switch
         {
             KotoKind.Plus => "sadd", KotoKind.Minus or KotoKind.PrefixMinus => "ssub", KotoKind.Asterisk => "smul",
+            KotoKind.Slash => "sdiv", KotoKind.Percent => "srem",
             KotoKind.EqualsEquals => "eq", KotoKind.ExclamationEquals => "ne",
             KotoKind.LessThan => "slt", KotoKind.LessThanEquals => "sle", KotoKind.GreaterThan => "sgt", KotoKind.GreaterThanEquals => "sge",
             KotoKind.Not => "xor", KotoKind.PrefixPlus => "add",
@@ -374,15 +392,25 @@ internal sealed partial class BodyLowering
             return Fail("Unsupported scalar operand Type.", out failure);
         }
 
+        var comparison = op is "eq" or "ne" or "slt" or "sle" or "sgt" or "sge";
+        if (!ReferenceEquals(type, comparison ? BoundType.Boolean : operandType) ||
+            (value.Kind == OwnershipValueKind.Binary && !ReferenceEquals(operandType, ValueType(body, Input(body, id, 1)))) ||
+            ((value.Kind == OwnershipValueKind.Unary) != (value.Operator is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus)) ||
+            (op == "xor" && !ReferenceEquals(operandType, BoundType.Boolean)))
+        {
+            return Fail("Inconsistent scalar operator or operand Types.", out failure);
+        }
+
         var leftOperand = value.Operator == KotoKind.PrefixMinus ? new(EmissionOperandKind.Integer, 0) : Operand(body, first);
         var rightOperand = value.Kind == OwnershipValueKind.Binary ? Operand(body, Input(body, id, 1)) : value.Operator == KotoKind.PrefixMinus ? Operand(body, first) : new(EmissionOperandKind.Integer, value.Operator == KotoKind.Not ? 1 : 0);
         var location = -1;
-        if (Checked(value) && !this.TryGetLocation(operation.Source, directory, constants, out location))
+        var check = this.checks[id];
+        if (check != ArithmeticCheckKind.None && !this.TryGetLocation(operation.Source, directory, constants, out location))
         {
             return Fail("Arithmetic check has no source location.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Scalar, id, [leftOperand, rightOperand], ReferenceEquals(operandType, BoundType.Boolean) ? "i1" : "i32", op, place: body.Operations.Count + id, location: location);
+        function.AddScalar(EmissionOpcode.Scalar, id, [leftOperand, rightOperand], ReferenceEquals(operandType, BoundType.Boolean) ? "i1" : "i32", op, place: body.Operations.Count + id, location: location, check: check);
         return true;
     }
 }

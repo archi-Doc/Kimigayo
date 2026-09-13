@@ -478,10 +478,11 @@ public sealed partial class OwnershipAnalysis
         {
             var target = KotoHelper.UnwrapParentheses(binary.Left);
             var previous = -1;
+            var op = KotoHelper.CompoundOperation(binary.Akind);
             if (binary.Akind != KotoKind.Equals)
             {
                 previous = this.Value(this.Expression(binary.Left, PlaceUseKind.Read));
-                if (binary.Left.BoundType?.IsNumeric != true)
+                if (binary.Left.BoundType?.IsNumeric != true || op == KotoKind.Invalid)
                 {
                     this.Unsupported(binary);
                 }
@@ -494,13 +495,6 @@ public sealed partial class OwnershipAnalysis
                 input = this.Place(binary, binary.Left.BoundType, OwnershipPlaceKind.Temporary, true);
                 this.Emit(OwnershipOperationKind.Produce, binary, input);
                 this.RegisterTemporary(input);
-                var op = binary.Akind switch
-                {
-                    KotoKind.PlusEquals => KotoKind.Plus,
-                    KotoKind.MinusEquals => KotoKind.Minus,
-                    KotoKind.AsteriskEquals => KotoKind.Asterisk,
-                    _ => binary.Akind,
-                };
                 this.SetValue(this.Value(input), OwnershipValueKind.Binary, [previous, rhs], op);
             }
 
