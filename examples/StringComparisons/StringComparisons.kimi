@@ -1,0 +1,7 @@
+func echo(text: string) -> string => text
+
+public func main()
+    let text = "apple"
+    if text == "apple" => writeLine("equal")
+    if text < echo("banana") => writeLine("ordered")
+    writeLine(text)

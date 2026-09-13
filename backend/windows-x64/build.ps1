@@ -54,7 +54,7 @@ $unverified = -not $matched -or -not $toolIdentities['llvm-dlltool'].hashMatched
 $kernel = New-KimiKernel32Library $tools (Join-Path $outDir 'kernel32.lib')
 $kernelPath = $kernel.path
 $objects = @()
-foreach ($name in @('memcpy', 'memmove', 'memset', 'chkstk')) {
+foreach ($name in @('memcmp', 'memcpy', 'memmove', 'memset', 'chkstk')) {
     $obj = Join-Path $outDir "$name.obj"
     Run $tools.clang @('--target=x86_64-pc-windows-msvc', '-c', (Join-Path $PSScriptRoot "src/$name.S"), '-o', $obj)
     $objects += $obj
@@ -77,13 +77,13 @@ try {
 }
 finally { Pop-Location }
 $members = @(& $librarian /list $archive)
-if ($LASTEXITCODE -ne 0 -or (($members | Sort-Object) -join ',') -cne 'chkstk.obj,memcpy.obj,memmove.obj,memset.obj') {
+if ($LASTEXITCODE -ne 0 -or (($members | Sort-Object) -join ',') -cne 'chkstk.obj,memcmp.obj,memcpy.obj,memmove.obj,memset.obj') {
     throw 'Archive members must use filenames without build directory paths'
 }
 $defined = & $tools['llvm-nm'] --defined-only --extern-only --format=posix $archive | Out-String
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect archive exports' }
 $symbols = @([regex]::Matches($defined, '(?m)^(\S+) T ') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -CaseSensitive)
-if (($symbols -join ',') -cne '__chkstk,memcpy,memmove,memset' -or $defined -match '_fltused') { throw "Wrong archive exports: $defined" }
+if (($symbols -join ',') -cne '__chkstk,memcmp,memcpy,memmove,memset' -or $defined -match '_fltused') { throw "Wrong archive exports: $defined" }
 
 $probe = Join-Path $outDir 'probe.obj'
 Run $tools.clang @('--target=x86_64-pc-windows-msvc', '-c', (Join-Path $PSScriptRoot 'tests/probe.S'), '-o', $probe)
@@ -115,7 +115,7 @@ foreach ($file in $inputFiles) {
 }
 @{
     status = 'tested-candidate'; adopted = $false; profile = 'windows-x64-v1'; llvmVersion = $expectedVersion; reportedVersionsMatched = $matched; unverifiedToolchain = $unverified; unversionedTools = @('llvm-lib', 'llvm-dlltool')
-    packageId = 'kimi-backend-windows-x64'; abiVersion = 1; packageVersion = $profile.packageVersion
+    packageId = 'kimi-backend-windows-x64'; abiVersion = $profile.abiVersion; packageVersion = $profile.packageVersion
     library = 'kimi_backend'; artifactSha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
     providedSymbols = $symbols; tests = @('O0', 'O2'); tools = $toolIdentities; versions = $versions; sources = $sourceIdentities
     kernel32 = $kernel

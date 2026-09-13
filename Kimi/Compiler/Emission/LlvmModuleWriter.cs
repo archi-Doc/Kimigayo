@@ -62,6 +62,11 @@ internal static partial class LlvmModuleWriter
 
         output.Write(Runtime);
         output.Write(OverflowDeclarations);
+        if (module.NeedsStringComparison)
+        {
+            output.Write(StringComparisons);
+        }
+
         for (var i = 0; i < module.FunctionCount; i++)
         {
             WriteFunction(output, constants, module.GetFunction(i));
@@ -96,10 +101,18 @@ internal static partial class LlvmModuleWriter
         {
             switch (instruction.Opcode)
             {
+                case EmissionOpcode.StringPattern:
+                    WriteStringPattern(output, constants, function, instruction);
+                    continue;
                 case EmissionOpcode.MoveString:
                 case EmissionOpcode.DestroyStringIfLive:
                 case EmissionOpcode.StoreLiveFlag:
+                case EmissionOpcode.InitializeLiveFlag:
                     WriteString(output, constants, function, instruction, function.GetOperands(instruction));
+                    break;
+                case EmissionOpcode.StringEquals:
+                case EmissionOpcode.StringCompare:
+                    WriteStringComparison(output, function, instruction);
                     break;
                 case EmissionOpcode.StoreStaticString:
                     output.Write("  store %kimi.string { ptr ");

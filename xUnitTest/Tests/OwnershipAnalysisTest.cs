@@ -58,7 +58,6 @@ public class OwnershipAnalysisTest
     [InlineData("let s = \"a\" + \"b\"")]
     [InlineData("var s = \"a\"\ns += \"b\"")]
     [InlineData("func f(x?: string = \"x\") => ()\nf()")]
-    [InlineData("func echo(s: string) -> string => s\nlet s = \"a\"\nif s == echo(s)\n    ()")]
     public void UnsupportedOwnershipCannotBecomeVerified(string source)
     {
         var c = Parse(source);

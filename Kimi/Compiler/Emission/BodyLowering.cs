@@ -21,6 +21,7 @@ internal sealed partial class BodyLowering
     private const byte CleanupMark = 4;
     private const byte DeferredEntryMark = 8;
     private const byte DeferredContinuationMark = 16;
+    private const byte DispatchOmittedMark = 32;
 
     private readonly SourceLocationTable locations = new();
     private readonly List<int> arguments = new();
@@ -218,6 +219,27 @@ internal sealed partial class BodyLowering
             return Fail("Call entries must be consecutive and immediately precede their call.", out failure);
         }
 
+        if (operation.Kind == OwnershipOperationKind.EndComparisonLoans)
+        {
+            failure = null;
+            return true;
+        }
+
+        if (operation.Kind is OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.MatchDispatch or OwnershipOperationKind.PatternTest or OwnershipOperationKind.AcquirePattern)
+        {
+            return this.LowerMatchOperation(body, function, constants, index, out failure);
+        }
+
+        if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0 && ReferenceEquals(body.Places[operation.Place].Type, BoundType.String))
+        {
+            return this.LowerStringRead(body, index, out failure);
+        }
+
+        if (body.Values[index].Kind == OwnershipValueKind.StringComparison)
+        {
+            return this.LowerStringComparison(body, function, index, out failure);
+        }
+
         if (operation.Place >= 0 && ReferenceEquals(body.Places[operation.Place].Type, BoundType.String) &&
             operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.Consume or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup)
         {
@@ -227,6 +249,15 @@ internal sealed partial class BodyLowering
         switch (operation.Kind)
         {
             case OwnershipOperationKind.Entry when index == 0:
+                foreach (var flagged in function.LiveFlags)
+                {
+                    if (IsComparisonTemporary(body, flagged))
+                    {
+                        function.Add(EmissionOpcode.InitializeLiveFlag, 0, flagged, 0);
+                    }
+                }
+
+                break;
             case OwnershipOperationKind.Exit:
                 break;
 

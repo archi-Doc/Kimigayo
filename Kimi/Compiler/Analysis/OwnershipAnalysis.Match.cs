@@ -19,7 +19,7 @@ public sealed partial class OwnershipAnalysis
 
     private bool SupportsMatch(BoundMatch plan)
     {
-        if (!plan.IsCurrent || plan.Coverage.State is not (MatchCoverageState.Exhaustive or MatchCoverageState.NonExhaustive))
+        if (!plan.IsCurrent || plan.Coverage.State != MatchCoverageState.Exhaustive)
         {
             return false;
         }
@@ -58,6 +58,7 @@ public sealed partial class OwnershipAnalysis
         if (ReferenceEquals(syntax.Expression.BoundType, BoundType.Never))
         {
             this.Expression(syntax.Expression);
+            this.CheckAbandonedMatchArms(syntax);
             this.current = -1;
             return -1;
         }
@@ -82,8 +83,7 @@ public sealed partial class OwnershipAnalysis
 
         var tempMark = this.temporaries.Count;
         var localMark = this.locals.Count;
-        var output = this.Place(syntax, syntax.BoundType, OwnershipPlaceKind.Result, true);
-        this.Emit(OwnershipOperationKind.Declare, syntax, output);
+        var output = this.ResultPlace(syntax);
         var subject = this.Place(syntax.Expression, syntax.Expression.BoundType, OwnershipPlaceKind.Subject, false, this.body.PlaceStorage[input].Acquisition);
         this.PrepareDecompositionSlots();
         this.Emit(OwnershipOperationKind.Declare, syntax, subject);
@@ -100,8 +100,8 @@ public sealed partial class OwnershipAnalysis
         this.body.MatchStorage.Add(new(plan, subject, output, armStart, plan.Arms.Count));
         var dispatch = this.Emit(OwnershipOperationKind.MatchDispatch, syntax, subject);
         this.body.OperationSteps[dispatch] = matchIndex;
-        var join = this.New(OwnershipOperationKind.Branch, syntax);
-        this.selections.Add(new(syntax, output, join, localMark, tempMark));
+        var join = this.ResultJoin(syntax, output);
+        this.selections.Add(new(syntax, output, join, localMark, tempMark, this.comparisonDepth));
 
         // Propagate Binding presence once, backwards through the retained preorder.
         // Both Copy and Move need real input Places along their Case paths.
@@ -124,6 +124,7 @@ public sealed partial class OwnershipAnalysis
             var arm = plan.Arms[i];
             var region = this.checkingRegion;
             this.activeDecompositions[subject] = -1;
+            this.current = dispatch;
             this.current = this.New(OwnershipOperationKind.PatternTest, arm.Syntax.Pattern, subject);
             var test = this.current;
             this.body.OperationSteps[test] = armStart + i;
@@ -134,12 +135,13 @@ public sealed partial class OwnershipAnalysis
             this.AcquirePattern(plan, arm.Pattern, subject, neededStart);
             this.body.MatchArmStorage[armStart + i] = new(matchIndex, arm.Pattern, test, decompositionStart, this.body.DecompositionStorage.Count - decompositionStart);
 
+            var secured = -1;
             if (arm.Syntax.Body is CodeBlockKoto block)
             {
                 this.Block(block);
                 if (this.flow.Nodes[block].CanCompleteNormally)
                 {
-                    this.Emit(OwnershipOperationKind.Produce, block, output);
+                    secured = this.WriteResult(block, output, -1);
                 }
                 else
                 {
@@ -162,11 +164,11 @@ public sealed partial class OwnershipAnalysis
                 {
                     if (KotoHelper.IsValueContext(syntax) && arm.Syntax.Body is ExpressionKoto)
                     {
-                        this.Emit(OwnershipOperationKind.Write, arm.Syntax.Body, output, value);
+                        secured = this.WriteResult(arm.Syntax.Body, output, value);
                     }
                     else
                     {
-                        this.Emit(OwnershipOperationKind.Produce, arm.Syntax.Body, output);
+                        secured = this.WriteResult(arm.Syntax.Body, output, -1);
                     }
                 }
                 else
@@ -178,7 +180,7 @@ public sealed partial class OwnershipAnalysis
             if (this.current >= 0)
             {
                 this.Cleanup(tempMark, localMark, syntax, CleanupReason.ScopeExit);
-                this.Connect(this.current, join);
+                this.ConnectResult(join, secured);
             }
 
             this.locals.RemoveRange(localMark, this.locals.Count - localMark);
@@ -187,15 +189,6 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.activeDecompositions[subject] = -1;
-        if (plan.Coverage.State == MatchCoverageState.NonExhaustive)
-        {
-            this.current = this.New(OwnershipOperationKind.Branch, syntax);
-            this.Connect(dispatch, this.current, OwnershipEdgeKind.Unmatched);
-            this.Cleanup(tempMark, localMark, syntax, CleanupReason.ScopeExit);
-            this.Emit(OwnershipOperationKind.Produce, syntax, output);
-            this.Connect(this.current, join);
-        }
-
         this.patternStorageNeeded.RemoveRange(neededStart, this.patternStorageNeeded.Count - neededStart);
         this.temporaries.RemoveRange(tempMark, this.temporaries.Count - tempMark);
         this.selections.RemoveAt(this.selections.Count - 1);
@@ -206,8 +199,48 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        this.current = join;
-        return this.RegisterTemporary(output);
+        return this.CompleteResult(syntax, output, join);
+    }
+
+    private void CheckAbandonedMatchArms(MatchKoto syntax)
+    {
+        // There is no Subject value. Retain each arm's checking continuation so
+        // an abrupt Subject cannot hide unsupported operations or invalid uses.
+        var region = this.checkingRegion;
+        var seed = this.current >= 0 ? this.current : region > 0 ? this.body.CheckingRegions[region].Seed : -1;
+        var temps = this.temporaries.Count;
+        var locals = this.locals.Count;
+        var output = this.ResultPlace(syntax);
+        var join = this.ResultJoin(syntax, output);
+        this.selections.Add(new(syntax, output, join, locals, temps, this.comparisonDepth));
+        for (var i = 0; i < syntax.Arms.Count; i++)
+        {
+            var arm = syntax.Arms[i];
+            this.current = -1;
+            this.checkingRegion = this.body.CheckingRegions.Count;
+            this.body.CheckingRegions.Add(new(seed, -1));
+            if (arm.Guard is not null)
+            {
+                this.Unsupported(arm.Guard);
+            }
+
+            if (arm.Body is CodeBlockKoto block)
+            {
+                this.Block(block);
+            }
+            else
+            {
+                this.Statement(arm.Body);
+            }
+
+            this.Cleanup(temps, locals, syntax, CleanupReason.ScopeExit);
+            this.locals.RemoveRange(locals, this.locals.Count - locals);
+            this.temporaries.RemoveRange(temps, this.temporaries.Count - temps);
+        }
+
+        this.selections.RemoveAt(this.selections.Count - 1);
+        this.checkingRegion = region;
+        this.current = -1;
     }
 
     private void AcquirePattern(BoundMatch plan, int index, int input, int neededStart)
@@ -296,5 +329,5 @@ public sealed partial class OwnershipAnalysis
         return false;
     }
 
-    private readonly record struct SelectionFrame(Koto Source, int Result, int Join, int Locals, int Temporaries);
+    private readonly record struct SelectionFrame(Koto Source, int Result, int Join, int Locals, int Temporaries, int Comparisons);
 }

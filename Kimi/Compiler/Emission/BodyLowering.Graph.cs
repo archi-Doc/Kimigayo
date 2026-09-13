@@ -78,11 +78,38 @@ internal sealed partial class BodyLowering
         }
 
         this.PrepareConversions(body);
-        if (!this.PrepareStringFunctions(body, function, out failure) || !this.PrepareStringResults(body, out failure) || !this.PrepareStrings(body, function, out failure))
+        if (!this.PrepareStringComparisons(body, out failure))
         {
             return false;
         }
 
+        if (!this.PrepareStringFunctions(body, function, out failure) || !this.PrepareStringResults(body, out failure) || !this.PrepareMatches(body, function, out failure) || !this.PrepareStrings(body, function, out failure))
+        {
+            return false;
+        }
+
+        // Semantic dominance remains on the verification graph, including covered arms.
+        if (this.hasMatches)
+        {
+            this.logicalIncoming.AsSpan(0, count).Clear();
+            for (var i = 0; i < count; i++)
+            {
+                this.blocks[i] = body.IsReachable(i) ? i : -1;
+            }
+
+            for (var e = 0; e < body.Edges.Count; e++)
+            {
+                var edge = body.Edges[e];
+                if (body.IsReachable(edge.From) && edge.Kind != OwnershipEdgeKind.Abort)
+                {
+                    this.logicalIncoming[edge.To]++;
+                }
+            }
+
+            this.BuildDominators(body);
+        }
+
+        var edges = this.ExecutionEdges(body);
         this.incoming.AsSpan(0, count).Clear();
         this.blocks.AsSpan(0, count).Fill(-1);
         this.successor.AsSpan(0, count).Fill(-1);
@@ -96,9 +123,9 @@ internal sealed partial class BodyLowering
             var yes = 0;
             var no = 0;
             var aborts = 0;
-            for (var e = body.EdgeHeads[op]; e >= 0; e = body.Edges[e].Next)
+            for (var e = this.ExecutionHead(body, op); e >= 0; e = edges[e].Next)
             {
-                var edge = body.Edges[e];
+                var edge = edges[e];
                 if ((uint)edge.To >= (uint)count || edge.From != op)
                 {
                     return Fail("Invalid CFG edge.", out failure);
@@ -150,7 +177,7 @@ internal sealed partial class BodyLowering
 
             if (successors == 2)
             {
-                if (body.Operations[op].Kind != OwnershipOperationKind.Branch || body.Values[op].Kind != OwnershipValueKind.Alias)
+                if (body.Operations[op].Kind != OwnershipOperationKind.PatternTest && (body.Operations[op].Kind != OwnershipOperationKind.Branch || body.Values[op].Kind != OwnershipValueKind.Alias))
                 {
                     return Fail("Conditional branch has no verified condition value.", out failure);
                 }
@@ -164,7 +191,12 @@ internal sealed partial class BodyLowering
         {
             if (body.IsReachable(i) != ((marks[i] & (NormalMark | AbortMark)) != 0))
             {
-                return Fail("CFG reachability does not match verified analysis.", out failure);
+                if (!this.hasMatches || !body.IsReachable(i))
+                {
+                    return Fail("CFG reachability does not match verified analysis.", out failure);
+                }
+
+                marks[i] |= DispatchOmittedMark;
             }
 
             if ((marks[i] & NormalMark) == 0 || (i != 0 && this.incoming[i] == 1 && this.successor[this.predecessor[i]] == i && body.Values[i].Kind != OwnershipValueKind.Phi))
@@ -193,7 +225,11 @@ internal sealed partial class BodyLowering
             this.blockEnds[i] = end;
         }
 
-        this.BuildDominators(body);
+        if (!this.hasMatches)
+        {
+            this.BuildDominators(body);
+        }
+
         if (!this.ValidateStringResults(body, out failure))
         {
             return false;
@@ -214,7 +250,7 @@ internal sealed partial class BodyLowering
                 return Fail("Unsupported value storage or string result/parameter.", out failure);
             }
 
-            if (value.Layout.Size != 0 && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
+            if (value.Layout.Size != 0 && function.SlotAddresses[p].Kind == EmissionOperandKind.SlotAddress && function.SlotAddresses[p].Value == p && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
             {
                 function.Slots.Add(new(p, value));
             }
@@ -245,6 +281,41 @@ internal sealed partial class BodyLowering
             return Fail("Incomplete call argument plan.", out failure);
         }
 
+        if (this.hasMatches)
+        {
+            // A covered arm retains its complete checking plan, but contributes no
+            // physical lifetime updates or otherwise unused flag slots.
+            this.PruneMatchStorage(body, function, marks);
+            for (var id = 0; id < count; id++)
+            {
+                if ((marks[id] & NormalMark) == 0)
+                {
+                    continue;
+                }
+
+                StringFlagTransition(body.Operations[id], out var clear, out var initialize);
+                if (clear >= 0 && this.liveFlags[clear] != 0)
+                {
+                    this.liveFlags[clear] |= 4;
+                }
+
+                if (initialize >= 0 && this.liveFlags[initialize] != 0)
+                {
+                    this.liveFlags[initialize] |= 4;
+                }
+            }
+
+            for (var i = function.LiveFlags.Count - 1; i >= 0; i--)
+            {
+                var place = function.LiveFlags[i];
+                if ((this.liveFlags[place] & 4) == 0)
+                {
+                    this.liveFlags[place] = 0;
+                    function.LiveFlags.RemoveAt(i);
+                }
+            }
+        }
+
         function.AddScalar(EmissionOpcode.Branch, -1, [new(EmissionOperandKind.Block, 0)]);
         for (var i = 0; i < count; i++)
         {
@@ -261,9 +332,16 @@ internal sealed partial class BodyLowering
                 for (var n = this.instructionStarts[cursor]; n < this.instructionStarts[cursor + 1]; n++)
                 {
                     var instruction = this.validation.Instructions[n];
+                    if (instruction.Opcode is EmissionOpcode.StoreLiveFlag or EmissionOpcode.InitializeLiveFlag && this.liveFlags[instruction.Place] == 0)
+                    {
+                        continue;
+                    }
+
                     var start = function.Operands.Count;
                     function.Operands.AddRange(this.validation.GetOperands(instruction));
                     function.Instructions.Add(instruction with { OperandStart = start });
+                    function.NeedsStringComparison |= instruction.Opcode is EmissionOpcode.StringEquals or EmissionOpcode.StringCompare ||
+                        (instruction.Opcode == EmissionOpcode.StringPattern && instruction.Constant >= 0);
                 }
 
                 if (body.Operations[cursor].Kind == OwnershipOperationKind.Deliver ||
@@ -287,9 +365,9 @@ internal sealed partial class BodyLowering
                 {
                     var yes = -1;
                     var no = -1;
-                    for (var e = body.EdgeHeads[cursor]; e >= 0; e = body.Edges[e].Next)
+                    for (var e = this.ExecutionHead(body, cursor); e >= 0; e = edges[e].Next)
                     {
-                        var edge = body.Edges[e];
+                        var edge = edges[e];
                         if (edge.Kind == OwnershipEdgeKind.True)
                         {
                             yes = this.blocks[edge.To];
@@ -301,14 +379,16 @@ internal sealed partial class BodyLowering
                         }
                     }
 
-                    function.AddScalar(EmissionOpcode.ConditionalBranch, cursor, [this.PhysicalOperand(body, Input(body, cursor, 0)), new(EmissionOperandKind.Block, yes), new(EmissionOperandKind.Block, no)]);
+                    var condition = this.PhysicalOperandForBranch(body, cursor, ref yes, ref no);
+                    function.AddScalar(EmissionOpcode.ConditionalBranch, cursor, [condition, new(EmissionOperandKind.Block, yes), new(EmissionOperandKind.Block, no)]);
                 }
 
                 break;
             }
         }
 
-        return true;
+        return !this.hasMatches || ValidateStringFlags(body, function, this.flagValidation.AsSpan(0, count + body.Places.Count), marks) ||
+            Fail("Physical string flags do not match dispatch reachability.", out failure);
     }
 
     private bool LowerScalar(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)

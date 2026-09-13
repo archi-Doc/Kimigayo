@@ -11,12 +11,18 @@ $fixtures = Join-Path $repo 'bin/scalar-fixtures'
 $out = Join-Path $repo 'bin/scalar-native'
 New-Item -ItemType Directory -Force $out | Out-Null
 $tools = @{}
-foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-dlltool', 'llvm-readobj')) { $tools[$name] = Join-Path $LlvmBin "$name.exe" }
+foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-dlltool', 'llvm-readobj', 'llvm-nm')) { $tools[$name] = Join-Path $LlvmBin "$name.exe" }
 $profile = Read-KimiWindowsProfile
-foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-readobj')) { $null = Get-KimiLlvmToolIdentity $tools[$name] $profile.llvmVersion }
+foreach ($name in @('opt', 'llc', 'lld-link', 'llvm-readobj', 'llvm-nm')) { $null = Get-KimiLlvmToolIdentity $tools[$name] $profile.llvmVersion }
 $null = Get-KimiDlltoolIdentity $tools['llvm-dlltool']
 $kernel = New-KimiKernel32Library $tools (Join-Path $out 'kernel32.lib')
 $archive = Join-Path $PSScriptRoot 'bin/kimi_backend_windows_x64_v1.lib'
+$allowedSymbols = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($symbol in $profile.providedSymbols) { $null = $allowedSymbols.Add($symbol) }
+foreach ($line in ((Get-KimiKernel32Definition) -split "`n" | Select-Object -Skip 2)) {
+    $symbol = $line.Trim()
+    if ($symbol) { $null = $allowedSymbols.Add($symbol); $null = $allowedSymbols.Add("__imp_$symbol") }
+}
 function Invoke-Tool([string] $exe, [string[]] $arguments) {
     & $exe @arguments
     if ($LASTEXITCODE -ne 0) { throw "$exe failed ($LASTEXITCODE)" }
@@ -38,6 +44,13 @@ foreach ($fixture in Get-ChildItem -LiteralPath $fixtures -Filter $FixturePatter
             Invoke-Tool $tools.opt @('-passes=verify', '-disable-output', $ir)
         }
         Invoke-Tool $tools.llc @("-$level", '-filetype=obj', '-mtriple=x86_64-pc-windows-msvc', '-mcpu=x86-64', '-mattr=+sse2', '-relocation-model=pic', '-code-model=small', $ir, '-o', "$target.obj")
+        $undefined = @(& $tools['llvm-nm'] --undefined-only --format=posix "$target.obj")
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect scalar object dependencies' }
+        $undefined | Set-Content -LiteralPath "$target.undefined.txt" -Encoding utf8
+        foreach ($line in $undefined) {
+            $symbol = ($line -split '\s+', 2)[0]
+            if (-not $allowedSymbols.Contains($symbol)) { throw "Unexpected dependency in ${target}: $symbol" }
+        }
         Invoke-Tool $tools['lld-link'] @("$target.obj", $archive, $kernel.path, '/entry:__kimi_start', '/subsystem:console', '/nodefaultlib', '/Brepro', "/out:$target.exe")
         $start = [Diagnostics.ProcessStartInfo]::new("$target.exe")
         $start.UseShellExecute = $false

@@ -23,6 +23,10 @@ internal enum EmissionOpcode : byte
     MoveString,
     DestroyStringIfLive,
     StoreLiveFlag,
+    InitializeLiveFlag,
+    StringEquals,
+    StringCompare,
+    StringPattern,
 
     /// <summary>A direct call of <c>Callee</c> with prepared operands.</summary>
     Call,
@@ -79,6 +83,8 @@ internal sealed class EmissionFunction
 
     internal bool Exported { get; private set; }
 
+    internal bool NeedsStringComparison { get; set; }
+
     internal List<EmissionSlot> Slots { get; } = new();
 
     /// <summary>Gets Place-indexed physical storage: local slot, logical parameter or hidden result.</summary>
@@ -97,6 +103,7 @@ internal sealed class EmissionFunction
     {
         this.Abi = abi;
         this.Exported = exported;
+        this.NeedsStringComparison = false;
         this.Slots.Clear();
         this.SlotAddresses.Clear();
         this.LiveFlags.Clear();
@@ -140,6 +147,8 @@ internal sealed class EmissionModule
 
     internal bool IsComplete { get; private set; }
 
+    internal bool NeedsStringComparison { get; set; }
+
     internal int FunctionCount => this.functionCount;
 
     internal EmissionFunction GetFunction(int index)
@@ -148,6 +157,7 @@ internal sealed class EmissionModule
     internal void Clear()
     {
         this.IsComplete = false;
+        this.NeedsStringComparison = false;
         this.functionCount = 0;
         this.Constants.Clear();
     }

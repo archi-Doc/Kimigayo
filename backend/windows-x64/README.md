@@ -20,7 +20,7 @@ Saved native diagnostics, build/verification JSON reports, and LLVM source metad
 
 ## Implementation
 
-Each archive member defines exactly one strong external symbol: `memcpy`, `memmove`, `memset`, or `__chkstk`. The memory functions use baseline x64 integer loads/stores in eight-byte chunks and byte tails, with no overread, heap allocation, calls, or nonvolatile register changes. The forward copy loop is shared in assembly source. Memmove selects direction from the actual overlap and returns immediately for identical addresses. These are baseline implementations; SIMD tuning requires separate measurements and acceptance tests.
+Each archive member defines exactly one strong external symbol: `memcmp`, `memcpy`, `memmove`, `memset`, or `__chkstk`. The memory functions use baseline x64 integer accesses in eight-byte chunks and byte tails, with no overread, heap allocation, calls, or nonvolatile register changes. The forward copy loop is shared in assembly source. Memmove selects direction from the actual overlap and returns immediately for identical addresses. Memcmp finds the first differing byte in each chunk and returns its unsigned-byte difference; zero count accesses neither pointer. String comparison uses this helper after checking lengths. These are baseline implementations; SIMD tuning requires separate measurements and acceptance tests.
 
 The helpers are assembled directly to native COFF, so the user's LLVM optimization pipeline cannot turn their bodies into recursive libcalls. They contain no bitcode, CRT startup, TLS, default library directives, stack protector dependencies, or `_fltused`. Each has Windows unwind metadata. `__chkstk` takes and preserves RAX, preserves the other general registers, probes downward in 4096-byte steps, and leaves the caller to allocate its frame. It uses no ordinary C wrapper around the special probe ABI.
 
@@ -29,8 +29,9 @@ The sources are project-owned MIT-licensed implementations, not copied compiler-
 ## Current checks
 
 - Enforce the version of tools that report it; llvm-lib exposes no version switch and is explicitly recorded as unversioned with its executable hash. Pin the versionless llvm-dlltool binary hash; retain source, build-script, normalized definition and generated kernel32 hashes, and reject source changes during verification.
-- Inspect every member for native COFF, unwind records, absent undefined symbols/default-library dependencies, and no calls. Check the archive's four exported symbols and absence of `_fltused`.
+- Inspect every member for native COFF, unwind records, absent undefined symbols/default-library dependencies, and no calls. Check the archive's five exported symbols and absence of `_fltused`.
 - Test memory operations across byte/word boundaries, offsets 0–15, both overlap directions, self-move, exact return pointers, byte truncation and unchanged surrounding storage.
+- Test memcmp equality and unsigned order at every difference position through 65 bytes, both pointer alignments 0–15, and null pointers with zero count.
 - Test zero through 4096-byte buffers immediately adjacent to inaccessible pages, detecting overreads and overwrites.
 - Check probe sizes around page boundaries and across multiple pages, RAX/RCX/RDX preservation, and a compiler-generated 32 KiB stack frame.
 - Verify test LLVM IR, run O0 and `default<O2>`/llc O2, link with a custom entry and `/NODEFAULTLIB`, and require native process exit code zero.

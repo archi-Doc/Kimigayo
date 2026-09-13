@@ -298,6 +298,9 @@
   + Name="UnsupportedOwnership_Kd"
     Message="This operation requires ownership or cleanup analysis outside the implemented subset"
 
+  + Name="ComparisonLoanConflict_Kd"
+    Message="This operation conflicts with an active shared comparison loan"
+
   + Name="DeferredExpansionLimit_Kd"
     Message="Deferred cleanup expansion exceeds the implementation limit of 8192 ownership operations per function"
 

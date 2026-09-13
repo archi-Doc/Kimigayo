@@ -111,6 +111,7 @@ public sealed partial class OwnershipAnalysis
                 OwnershipFailure.PossiblyMovedUse => DiagnosticCode.MovedPlace_Kd,
                 OwnershipFailure.ReassignedLet => DiagnosticCode.ReassignedLet_Kd,
                 OwnershipFailure.ExpansionLimit => DiagnosticCode.DeferredExpansionLimit_Kd,
+                OwnershipFailure.ComparisonLoanConflict => DiagnosticCode.ComparisonLoanConflict_Kd,
                 _ => DiagnosticCode.UnsupportedOwnership_Kd,
             });
         }
@@ -162,6 +163,7 @@ public sealed partial class OwnershipAnalysis
         this.resultDeclarations.Clear();
         this.pendingResults.Clear();
         this.selections.Clear();
+        this.comparisonDepth = 0;
         this.activeDecompositions.Clear();
         this.patternStorageNeeded.Clear();
         this.registrationSequence = 0;
@@ -483,6 +485,11 @@ public sealed partial class OwnershipAnalysis
 
     private int Binary(BinaryKoto binary)
     {
+        if (ReferenceEquals(binary.Left.BoundType, BoundType.String) && ReferenceEquals(binary.BoundType, BoundType.Boolean))
+        {
+            return this.StringComparison(binary);
+        }
+
         var assignment = binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
         if (assignment)
         {
@@ -574,7 +581,7 @@ public sealed partial class OwnershipAnalysis
         var entry = this.current;
         var output = this.ResultPlace(conditional);
         var join = this.ResultJoin(conditional, output);
-        this.selections.Add(new(conditional, output, join, this.locals.Count, this.temporaries.Count));
+        this.selections.Add(new(conditional, output, join, this.locals.Count, this.temporaries.Count, this.comparisonDepth));
         for (var i = 0; i < conditional.Branches.Count; i++)
         {
             var branch = conditional.Branches[i];
@@ -736,7 +743,7 @@ public sealed partial class OwnershipAnalysis
         var entry = this.current;
         var output = owner is DoKoto ? this.ResultPlace(owner) : -1;
         var join = this.ResultJoin(owner, output);
-        this.selections.Add(new(owner, output, join, this.locals.Count, this.temporaries.Count));
+        this.selections.Add(new(owner, output, join, this.locals.Count, this.temporaries.Count, this.comparisonDepth));
         var result = this.Block(block, output);
         if (output >= 0 && ReferenceEquals(this.body.Places[output].Type, BoundType.Unit))
         {
@@ -754,7 +761,7 @@ public sealed partial class OwnershipAnalysis
         var output = this.ResultPlace(loop);
         var head = this.Emit(OwnershipOperationKind.Branch, loop);
         var exit = this.ResultJoin(loop, output);
-        this.loops.Add(new(loop, head, exit, this.locals.Count, this.temporaries.Count, output));
+        this.loops.Add(new(loop, head, exit, this.locals.Count, this.temporaries.Count, output, this.comparisonDepth));
         this.Block(loop.Body);
         this.Connect(this.current, head, OwnershipEdgeKind.Back);
         this.loops.RemoveAt(this.loops.Count - 1);
@@ -776,7 +783,7 @@ public sealed partial class OwnershipAnalysis
         this.Connect(test, enter, OwnershipEdgeKind.True);
         this.Connect(test, exit, OwnershipEdgeKind.False);
 
-        this.loops.Add(new(loop, head, exit, this.locals.Count, this.temporaries.Count));
+        this.loops.Add(new(loop, head, exit, this.locals.Count, this.temporaries.Count, Comparisons: this.comparisonDepth));
         this.current = enter;
         this.Block(loop.Body);
         this.Connect(this.current, head, OwnershipEdgeKind.Back);
@@ -797,6 +804,34 @@ public sealed partial class OwnershipAnalysis
         }
 
         var target = this.flow!.Targets.GetValueOrDefault(jump);
+        var loanDepth = this.comparisonDepth;
+        if (jump is ReturnKoto && this.deferredDepth == 0 && ReferenceEquals(target, this.body.Function))
+        {
+            loanDepth = 0;
+        }
+        else if (this.TryGetSelection(target, out var loanSelection))
+        {
+            loanDepth = loanSelection.Comparisons;
+        }
+        else
+        {
+            for (var i = this.loops.Count - 1; i >= this.deferredLoopBase; i--)
+            {
+                if (ReferenceEquals(this.loops[i].Source, target))
+                {
+                    loanDepth = this.loops[i].Comparisons;
+                    break;
+                }
+            }
+        }
+
+        var beforeEnd = this.current;
+        this.EndComparisonLoans(loanDepth, jump);
+        if (this.current != beforeEnd)
+        {
+            seed = this.current; // Ownership state is unchanged; abandoned Loans stay ended in checking code.
+        }
+
         if (jump is ReturnKoto && this.deferredDepth == 0 && ReferenceEquals(target, this.body.Function))
         {
             var secured = this.WriteResult(jump, this.resultPlace, value);
@@ -904,6 +939,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.body.OperationStorage.Add(new(kind, source, place, input, acquisition));
+        this.RecordComparisonState(kind, source, place, input, acquisition);
         this.resultHeads.Add(-2);
         this.RecordValue(id, kind, source, place, input);
         this.body.EdgeHeads.Add(-1);
@@ -948,7 +984,7 @@ public sealed partial class OwnershipAnalysis
 
     private readonly record struct Registration(int Place, Koto Source, int Sequence, bool IsSubject = false);
 
-    private readonly record struct LoopFrame(Koto Source, int Head, int Exit, int Locals, int Temporaries, int Result = -1);
+    private readonly record struct LoopFrame(Koto Source, int Head, int Exit, int Locals, int Temporaries, int Result = -1, int Comparisons = 0);
 
     private sealed class Collector : KotoVisitor
     {

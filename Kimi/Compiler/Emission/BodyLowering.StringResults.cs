@@ -41,7 +41,7 @@ internal sealed partial class BodyLowering
             var declaration = body.Operations[result.Declare];
             var join = body.Operations[result.Join];
             if (place.Kind != OwnershipPlaceKind.Result || !ReferenceEquals(place.Type, BoundType.String) ||
-                place.Source is not (IfKoto or DoKoto or LoopKoto) || !ReferenceEquals(place.Source.BoundType, place.Type) ||
+                place.Source is not (IfKoto or DoKoto or LoopKoto or MatchKoto) || !ReferenceEquals(place.Source.BoundType, place.Type) ||
                 declaration.Kind != OwnershipOperationKind.Declare || declaration.Place != result.Place || !ReferenceEquals(declaration.Source, place.Source) ||
                 join.Kind != OwnershipOperationKind.Branch || join.Place != -1 || !ReferenceEquals(join.Source, place.Source) || body.Values[result.Join].Kind != OwnershipValueKind.None)
             {
@@ -116,12 +116,13 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (result.Count == 0 || result.Count != this.incoming[result.Join] || !this.Dominates(result.Declare, result.Join) ||
+            if (result.Count == 0 || result.Count != this.LogicalIncoming(result.Join) || !this.Dominates(result.Declare, result.Join) ||
                 (body.GetInputState(result.Join, result.Place) & PlaceState.MustInit) == 0)
             {
                 return Fail("String result is not initialized on every arrival.", out failure);
             }
 
+            var physicalArrivals = 0;
             for (var n = 0; n < result.Count; n++)
             {
                 var arrival = body.ResultArrivals[result.Start + n];
@@ -139,6 +140,12 @@ internal sealed partial class BodyLowering
                 }
 
                 this.stringArrivalSeen[arrival.Edge] = 1;
+                physicalArrivals += this.blocks[edge.From] >= 0 ? 1 : 0;
+            }
+
+            if (physicalArrivals != this.incoming[result.Join])
+            {
+                return Fail("String arrivals do not cover execution predecessors.", out failure);
             }
         }
 

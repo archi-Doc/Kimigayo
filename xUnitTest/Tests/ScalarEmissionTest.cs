@@ -43,7 +43,7 @@ public class ScalarEmissionTest
     [InlineData("if false\n    " + MinimalEmissionTest.UnsupportedExpression)]
     [InlineData("while true\n    exit\n    " + MinimalEmissionTest.UnsupportedExpression)]
     [InlineData("while true\n    continue\n    " + MinimalEmissionTest.UnsupportedExpression)]
-    [InlineData("if true and (\"x\" == \"x\") => writeLine(\"bad\")")]
+    [InlineData("if true and ((" + MinimalEmissionTest.UnsupportedExpression + ") == 0.0) => writeLine(\"bad\")")]
     public void UnsupportedOperationsNeverWriteIr(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

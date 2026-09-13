@@ -24,7 +24,7 @@ public sealed partial class OwnershipAnalysis
         var entry = this.Emit(OwnershipOperationKind.Branch, deferred);
         var edge = this.body.IncomingEdges[entry];
         var join = this.New(OwnershipOperationKind.Branch, deferred);
-        this.selections.Add(new(deferred, -1, join, this.locals.Count, this.temporaries.Count));
+        this.selections.Add(new(deferred, -1, join, this.locals.Count, this.temporaries.Count, this.comparisonDepth));
         this.Block(deferred.Body);
         this.Connect(this.current, join);
         this.selections.RemoveAt(this.selections.Count - 1);

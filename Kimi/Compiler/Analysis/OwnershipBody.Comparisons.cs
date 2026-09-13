@@ -1,0 +1,123 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+namespace Kimi.Compiler;
+
+public sealed partial class OwnershipBody
+{
+    internal static bool ConflictsWithComparison(OwnershipOperationKind kind, int place, int input, AcquisitionKind acquisition, int borrowed) => kind switch
+    {
+        OwnershipOperationKind.Consume => place == borrowed && acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove,
+        OwnershipOperationKind.Write => place == borrowed || input == borrowed,
+        OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.Declare or OwnershipOperationKind.Produce => place == borrowed,
+        OwnershipOperationKind.Borrow => place == borrowed, // Explicit borrow operations remain outside this slice.
+        _ => false,
+    };
+
+    internal bool HasComparisonLoan(int operation, int loan)
+    {
+        if ((uint)operation >= (uint)this.LoanInputs.Count || (uint)loan >= (uint)this.ComparisonLoans.Count)
+        {
+            return false;
+        }
+
+        for (var head = this.LoanInputs[operation]; head >= 0; head = this.ComparisonLoans[head].Parent)
+        {
+            if (head == loan)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal bool ValidateComparisonLoans()
+    {
+        if (this.ComparisonLoans.Count == 0)
+        {
+            return this.LoanInputs.Count == 0 && this.LoanStates.Count == 0;
+        }
+
+        if (this.LoanInputs.Count != this.Operations.Count || this.LoanStates.Count != this.Operations.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < this.ComparisonLoans.Count; i++)
+        {
+            var loan = this.ComparisonLoans[i];
+            if ((uint)loan.Read >= (uint)this.Operations.Count || (uint)loan.Place >= (uint)this.Places.Count || loan.Parent < -1 || loan.Parent >= i || loan.Depth <= 0 ||
+                this.Operations[loan.Read].Kind != OwnershipOperationKind.Read || this.Operations[loan.Read].Place != loan.Place ||
+                this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) || !ReferenceEquals(this.Places[loan.Place].Type, BoundType.String) ||
+                this.LoanStates[loan.Read] != i || this.LoanInputs[loan.Read] != loan.Parent)
+            {
+                return false;
+            }
+
+            if (loan.Parent >= 0 && this.ComparisonLoans[loan.Parent].Depth > loan.Depth)
+            {
+                return false;
+            }
+        }
+
+        for (var id = 0; id < this.Operations.Count; id++)
+        {
+            var input = this.LoanInputs[id];
+            var output = this.LoanStates[id];
+            if (input < -1 || input >= this.ComparisonLoans.Count || output < -1 || output >= this.ComparisonLoans.Count)
+            {
+                return false;
+            }
+
+            var operation = this.Operations[id];
+            if (input != output)
+            {
+                if (operation.Kind == OwnershipOperationKind.EndComparisonLoans)
+                {
+                    var head = input;
+                    while (head >= 0 && head != output)
+                    {
+                        head = this.ComparisonLoans[head].Parent;
+                    }
+
+                    if (head != output)
+                    {
+                        return false;
+                    }
+                }
+                else if (output < 0 || this.ComparisonLoans[output].Read != id || this.ComparisonLoans[output].Parent != input)
+                {
+                    return false;
+                }
+            }
+
+            for (var head = input; head >= 0; head = this.ComparisonLoans[head].Parent)
+            {
+                if (ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, this.ComparisonLoans[head].Place))
+                {
+                    return false;
+                }
+            }
+        }
+
+        foreach (var edge in this.EdgeStorage)
+        {
+            // A checking-only tail can point at a runtime join without arriving there.
+            if (edge.Kind != OwnershipEdgeKind.Abort && (this.IsReachable(edge.From) || (!this.IsReachable(edge.To) && this.OperationRegions[edge.From] == this.OperationRegions[edge.To])) &&
+                this.LoanStates[edge.From] != this.LoanInputs[edge.To])
+            {
+                return false;
+            }
+        }
+
+        foreach (var region in this.CheckingRegions)
+        {
+            if (region.Seed >= 0 && region.Entry >= 0 && this.LoanStates[region.Seed] != this.LoanInputs[region.Entry])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}

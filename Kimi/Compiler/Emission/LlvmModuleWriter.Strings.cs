@@ -16,7 +16,7 @@ internal static partial class LlvmModuleWriter
     private static void WriteString(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
     {
         var id = instruction.Operation;
-        if (instruction.Opcode == EmissionOpcode.StoreLiveFlag)
+        if (instruction.Opcode is EmissionOpcode.StoreLiveFlag or EmissionOpcode.InitializeLiveFlag)
         {
             output.Write("  store i8 ");
             WriteNumber(output, instruction.Constant);

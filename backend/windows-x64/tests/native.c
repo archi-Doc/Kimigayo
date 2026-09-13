@@ -8,6 +8,7 @@ __declspec(dllimport) int VirtualFree(void *, size_t, unsigned int);
 void *memcpy(void *, const void *, size_t);
 void *memmove(void *, const void *, size_t);
 void *memset(void *, int, size_t);
+int memcmp(const void *, const void *, size_t);
 int test_probe(size_t);
 int _fltused = 0; // Test executable owns the marker; never the backend archive.
 static unsigned char actual[4096];
@@ -46,6 +47,12 @@ static int guard_tests(void) {
             unsigned char *src = b + (end ? 8192 - n : 4096);
             memset(src, 0x57, n);
             if (memcpy(dst, src, n) != dst) return 10;
+            if (memcmp(dst, src, n) != 0) return 16;
+            if (n) {
+                dst[n - 1] = 0xff;
+                if (memcmp(dst, src, n) <= 0 || memcmp(src, dst, n) >= 0) return 17;
+                dst[n - 1] = 0x57;
+            }
             for (size_t i = 0; i < n; ++i) if (dst[i] != 0x57) return 11;
             if (memmove(dst, dst, n) != dst) return 12;
             if (memset(dst, -1, n) != dst) return 13;
@@ -62,6 +69,23 @@ __declspec(noinline) static int large_frame(void) {
     return 0;
 }
 static unsigned int run(void) {
+    if (memcmp(0, 0, 0) != 0) return 18;
+    // Both alignments, every first-difference position, tails and unsigned byte ordering.
+    for (size_t a = 0; a < 16; ++a) {
+        for (size_t b = 0; b < 16; ++b) {
+            for (size_t n = 1; n <= 65; ++n) {
+                memset(actual + a, 0x7f, n);
+                memset(source + b, 0x7f, n);
+                if (memcmp(actual + a, source + b, n) != 0) return 19;
+                for (size_t i = 0; i < n; ++i) {
+                    actual[a + i] = 0x80;
+                    if (memcmp(actual + a, source + b, n) <= 0 || memcmp(source + b, actual + a, n) >= 0) return 20;
+                    actual[a + i] = 0x7f;
+                }
+            }
+        }
+    }
+
     for (size_t n = 0; n <= 257; ++n) {
         for (size_t offset = 0; offset < 16; ++offset) {
             reset();

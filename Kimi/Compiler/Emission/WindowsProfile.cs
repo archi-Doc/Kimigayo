@@ -21,14 +21,14 @@ public static class WindowsProfile
 
     // Backend supply (SPEC 21.5.7) and Application entry (SPEC 22.2.3) identities.
     internal const string BackendPackageId = "kimi-backend-windows-x64";
-    internal const int BackendAbiVersion = 1;
+    internal const int BackendAbiVersion = 2;
     internal const string BackendLibrary = "kimi_backend";
     internal const string EntrySymbol = "__kimi_start";
     internal const string Subsystem = "console";
     internal const string FloatMarker = "_fltused";
 
     /// <summary>Gets the helper symbols supplied by the backend archive, in catalog order.</summary>
-    internal static readonly string[] ProvidedSymbols = ["__chkstk", "memcpy", "memmove", "memset"];
+    internal static readonly string[] ProvidedSymbols = ["__chkstk", "memcmp", "memcpy", "memmove", "memset"];
 
     /// <summary>Gets the seven Windows APIs imported by the generated runtime (SPEC 22.5.6).</summary>
     internal static readonly string[] RuntimeImports = ["GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess"];

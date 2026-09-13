@@ -1,133 +1,389 @@
-# ジェネリック共有コードと自動特殊化の設計案
+# ジェネリック共有コードと自動特殊化の仕様
 
-2026-09-13。共有を基本とし、意味を保存する自動特殊化を有限の予算内で行う方針は採用済み。本書はその具体化案を記録する。**SPEC.md には未反映であり、本書による既存仕様の上書きはない。** 個別の追加提案と実装前の判断点は以下に区別する。実行対応を追加する変更ではない。
+2026-09-13 改訂。[決定記録](../Decisions/2026-09-13%20Generic%20Sharing%20Review.md)の精査結果を統合した。**本書の対象では本書がSPEC.mdと先行設計文書に優先する。** SPEC.md本体への同期とコンパイラー実装は未実施。
 
-既存の契約は [SPEC §8.10](../../SPEC.md#810-generic-body-checking-and-deferred-obligations)、[§21.3](../../SPEC.md#213-generic-code-generation)、[§21.4](../../SPEC.md#214-checked-lowering-and-internal-abi)。ValueMetadata、TypeContext、GenericContext の骨格は既に仕様にある。本書では新たな source 構文、公開 reflection、安定した外部 ABI を追加しない。
+第I部は生成の正しさを定める規範、第II部は初期コンパイラーの実装指針、第III部は将来の検討範囲である。内部名は説明用であり、新しい構文、reflection、JIT、安定した外部ABIを追加しない。kimiの例は言語仕様上の例、textの例は内部の疑似コードである。
 
-## 1. 意味と生成を分ける
+## 第I部　規範
 
-論理的な依存順を次のようにする。実際の pass 分割は固定しない。
+### 1. 意味の確定
 
-1. 定義時に、宣言した制約の下で body の操作・型・所有権・cleanup を普遍的に検証する。
-2. 使用時に引数と契約を検証し、閉じた明示 specialization 集合から実装を選ぶ。
-3. 検証済みの計画へ代入し、具体的な配置・操作・効果・cleanup を確定する。
-4. その意味を保存する共有／自動特殊化計画を選び、ABI と context を接続する。
-5. 未解決の必須義務がない計画だけをコード生成する。
+1. 宣言した制約の下で、generic bodyの型・操作・所有権・Loan・cleanupを普遍的に検証する。
+2. 使用時の引数と契約を検証し、閉じた明示specialization集合から実装を選ぶ。
+3. 検証済み計画へ代入し、具体的な配置・取得・効果・cleanupを確定する。
+4. 意味を保存する基準共有計画を作り、その上で有限の任意最適化を行う。
 
-共有計画の早期解析・cache は許すが、未検証の executable body は生成しない。共有経路でも同じ明示 specialization を選び、予算不足を理由に通常実装へ戻さない。Source の lookup、overload 選択、Copy の合法性、Loan の検証を runtime metadata に委ねない。
+この順序は論理的な依存であり、pass分割を固定しない。共有・特殊化・予算変更で、意味上の受理、実装選択、結果、効果順、cleanupを変えない。lookupや制約・Loanの検証を実行時へ移さず、生成キーで消去するOriginも意味の検証と依存には保持する。
 
-## 2. 情報の担当と共有 ABI
+変更しない言語規則はSPECの[汎用body検証](../../SPEC.md#810-generic-body-checking-and-deferred-obligations)、[長さ引数](../../SPEC.md#44-function-length-parameters)、[取得・cleanupと内部ABI](../../SPEC.md#214-checked-lowering-and-internal-abi)に従う。
 
-| 情報 | 担当 |
+~~~kimi
+func classify<T>(value: ref/T) -> i32 => 0
+specialize func classify<i32>(value: ref/i32) -> i32 => 1
+
+func forward<T>(value: ref/T) -> i32 => classify<T>(value)
+~~~
+
+forwardのbodyを共有しても、T=i32では選択済みの明示specializationを呼ぶ。自動特殊化の予算0でもこの選択は変わらない。
+
+### 2. 代入計画と共通lowering
+
+#### 2.1 要求と束縛
+
+共有・全固定・部分固定は同じloweringを使う。型付き操作が必要とする事実を、検証済み代入計画から取得する。
+
+| 束縛 | 処理 |
 | --- | --- |
-| ValueMetadata | Origin のみを除いた完全な値の identity、size、alignment、flags、破棄 entry、TypeContext |
-| TypeContext | 要素 metadata、論理 Field と offset の対応、型の操作・破棄に必要な追加情報 |
-| witness | 静的に検証済みの Contract requirement と実装の対応 |
-| callee record | 選択済み entry と、その entry 自身の context |
-| GenericContext | 特定の共有 body／entry が必要とする上記レコードへの不変 pointer 列 |
-| FunctionAbi | 論理 receiver・引数・結果・context と物理位置、passing mode、属性の対応 |
+| `Fixed(value)` | 定数・直接命令・既知entryとして使う |
+| `FromContext(slot)` | schemaが定める型で読む |
+| 要求なし | slotを作らない |
 
-ValueMetadata は既存の48 bytesの形式を利用する。現仕様では stride は size と同じで、別の Copy/Move entry は置かない。型の違いだけを理由に新たな汎用操作表を増やさず、既存の値転送・破棄・callee record を使う。所有状態、部分初期化、Loan は共有 metadata の内容にしない。
+要求は型引数と一対一ではなく、size、offset、長さ、選択済みcallee等を個別に表せる。符号・幅、浮動小数点規則、Semantics、SharedReadResult、所有権・部分状態は型付き計画に残す。具体型を見て意味を選び直さない。
 
-**共有 ABI の初期案:** hidden context を一つ渡す。body から配置が未知の所有値は取得済みの格納領域への pointer、未知配置の結果は呼び出し側が用意した未初期化領域への pointer とする。既知の値の直接渡しは FunctionAbi が選択する。借用は既存の1 pointer表現を維持する。
-
-同じ物理 pointer でも、所有値の引数領域、ref、uniq、結果領域は異なる論理契約として保持する。引数取得は source 順に一度だけ行い、callee entry で取得済み引数の責任を渡す。結果の責任は cleanup が正常完了して戻るときに渡す。caller の格納領域を callee が解放してはならない。Unknown-size の値を借用 pointer だけで所有値へ置き換えない。
-
-物理順序・calling convention・slot省略・属性は言語保証にしない。定義・直接／間接 call・adapter は同じ FunctionAbi を使う。context が不要な場合の論理値は null。物理引数を省略する entry は、それを含む entry と自動的には ABI 互換にならない。
-
-## 3. Context schema と呼び出し先
-
-**追加提案:** 検証済み body の操作から必要情報を収集し、次の生成時 schema を作る。
-
-- 各 slot の種別、意味を識別する静的 identity、型／長さ引数との対応。
-- 参照先 metadata・witness・callee の契約。callee には FunctionAbi と参照先 context schema も含む。
-- 固定した slot 順と schema identity。slot は Windows x64 では8 bytes。
-
-情報の必要性は、body の直接操作だけでなく、呼び先・adapter・cleanup が必要とする依存も含めて求める。同一の要求は共有できるが、型や名前が同じという理由だけで別の操作を同一視しない。schema は生成側と使用側を静的に照合し、実行時の schema 探索を要求しない。
-
-body が借用を転送するだけなら参照先 metadata は不要。callee record 経由の呼び出しだけなら、呼び先自身が必要情報を持つ限り、caller に同じ metadata を重複して渡す必要はない。未使用 slot の除去後も、producer・consumer・cache の schema を一致させる。
-
-```text
-共有 caller body:
-    selected = context[0]
-    selected.entry(selected.context, arguments...)
-
-caller<i32> 用 context:
-    slot 0 -> { classify_i32_entry, classify_i32_context }
-
-caller<string> 用 context:
-    slot 0 -> { classify_shared_entry, classify_string_context }
-```
-
-これは内部処理の疑似コードである。classify の entry は静的な実装選択の結果であり、引数の Dynamic Type から選ばない。接続先の schema や ABI が異なる場合は正しい record または検証済み adapter を生成する。caller の列を位置だけで流用しない。
-
-閉じた代入の context は不変定数として生成・再利用し、呼び出しごとの context 確保や runtime の型検索を要求しない。TypeContext は呼び出し元の stack に依存せず、値の全使用・破棄まで有効でなければならない。この規則は値自身や関数環境に必要な格納領域の確保まで禁止するものではない。
-
-## 4. 共有可能性と特殊化の単位
-
-同じ entry を共有できるのは、選択済み実装の意味、ABI、評価順、配置アクセス、操作、所有権、失敗、cleanup のすべてを、body と渡す情報で保存できる場合である。同じ size・alignment は十分条件ではない。SharedReadResult の結果型・Semantics・Origin の相関も保持する。
-
-生成キーは、body に埋め込む差を残す。metadata／callee record だけで扱える型の違いは body のキーから除けるが、context の内容と対応は失わない。意味の異なる選択済み実装を統合する場合は別途同値性の証明が必要であり、初期実装では実装 identity を区別する。
-
-例えば f<P, T> で P の算術を直接生成し、T を転送・破棄にだけ使うなら、P=i32 に固定した body と T ごとの context を組み合わせられる。これは生成上の部分的な固定であり、source の部分 specialization を追加するものではない。型引数の全直積を列挙しない。
-
-破棄が metadata 経由なら、実際の型の metadata/context を渡す。破棄を直接化するなら、正確な entry と埋め込む context を生成キーに含める。HasCopy、破棄の有無、size だけでは間接破棄を消せない。型 identity、Field offset、witness、callee にも同じ区別を適用する。
-
-**初期の最適化優先案:** スカラーの算術・比較・変換、ループ内の間接 call／配置参照の除去、小関数のインライン化で転送を消せる箇所。これは性能の仮説であり、最終的な順位と費用式は計測で調整する。コードを増やさない直接化・定数伝播・既存計画の再利用を、新規 body 複製の予算と混同しない。
-
-## 5. 生成予算と切り替え
-
-| 制限 | 対象 | 到達時 |
-| --- | --- | --- |
-| 自動特殊化予算 | 最適化のための追加 body 数、推定コード増加量、再帰的な複製展開 | 新規の任意特殊化を止め、検証済み共有経路を使う |
-| コンパイラ資源上限 | 必須 body、共有 body、metadata、context、helper、adapter、解析・生成計画全体 | 資源不足として診断する |
-
-**追加提案:** 自動特殊化予算は元の generic 関数単位と最終生成単位全体の両方に設ける。前者は別の共有クラスを作っても同じ元関数へ課金する。型ごと・calleeごとに予算をリセットして無制限に増殖させない。共有経路の生成費用も全体資源上限へ含める。
-
-```text
-同じ有効な生成キーの計画がある      -> 再利用
-新規特殊化に効果があり、予算内      -> 自動特殊化
-意味を保存する共有経路がある        -> 共有 entry + context
-共有では保存できず、分離が必須      -> 必須の分離生成
-必要な生成が資源上限を超える        -> 資源不足の診断
-```
-
-切り替えはコンパイル時に行う。実行時の回数による tier 切り替えや JIT は追加しない。共有 fallback の成立を確認せずに依存生成を打ち切らない。共有可能性を示す計画は必要だが、特殊化で全用途を満たす場合に未使用の共有機械語まで必ず出力する必要はない。未実装の共有・操作を実装済みと扱うこともできない。
-
-明示 specialization の選択と必須分離は任意最適化の予算では取り消せない。特殊化予算0でも、生成資源が足りる範囲で、同じ source 合法性と意味を守る。資源不足は型エラーや所有権エラーと区別する。
-
-**再現性の追加提案:** 同じ入力・compiler/profile・設定では、列挙順や並列処理の完了順で予算配分を変えない。安定した候補順と費用モデルを記録し、cache の有無でも論理的な予算配分を変えない。具体的な費用単位や既定値は compiler の設定であり、言語仕様へ固定しない。
-
-有限個の metadata/context キーによる再帰は、計画を先に登録して参照で閉じる。未完成の record を executable 出力として公開しない。T -> Box<T> -> Box<Box<T>> のように異なるキーが増える場合は、コードを共有できても別途生成上限が必要になる。共有に戻すだけで無限の metadata 生成が解決したとみなさない。無限の inline 値配置は既存の配置エラーである。
-
-## 6. 観測と検証
-
-生成レポートを compiler 機能として用意する案を推奨する。少なくとも元関数・選択済み実装、再利用／共有／特殊化／必須分離の理由、予算の費用と残量、context slot数、body・metadata・adapter の件数を確認できるようにする。通常成功時の大量出力は不要で、具体的な CLI 名やファイル形式は実装時に決める。
-
-資源不足の診断は、上限の種類、設定値、消費量、元の定義、代表的な型／context の増殖経路を有限の長さで示す。未解決の証明・未対応機能はそれぞれ別の診断とする。
-
-| 検証例 | 守る性質 |
+| 操作 | 基準の共有経路 |
 | --- | --- |
-| 借用の単純転送 | 不要な metadata/context を省ける |
-| サイズ・破棄が異なる値の転送 | 転送・cleanup が正しく、型数だけ body が増えない |
-| 同じ size で破棄の動作が異なる型 | metadata の取り違えや不正な直接化がない |
-| 共有 caller と関数参照からの明示 specialization | 予算0／通常予算、最適化有無に関係なく選択が一致する |
-| 複数 slot の一部だけを固定 | 全直積を作らず、未固定 slot の操作を保存する |
-| SharedReadResult と独立した ref/uniq/所有引数 | 結果型・取得・Loan・ABI を混同しない |
-| 有限再帰と増殖再帰 | 再利用、資源不足、無限 inline 配置を区別する |
-| schema・specialization集合・cleanup依存の変更 | stale な cache と producer/consumer の混在を拒否する |
-| 候補列挙順・cache有無を変えた生成 | 予算配分と生成計画が再現する |
+| 借用の単純転送 | 参照先情報は不要 |
+| 値の転送・配置 | size・offset等の整数と、検証済み格納領域 |
+| 破棄・Contract操作・選択済みcall | 操作ごとのentryと専用contextの組 |
+| スカラー演算・型付きload/store | 型付きhelperと必要なABI適応 |
 
-性能計測は実行時間、生成コード量、コンパイル時間、コンパイラの最大メモリ使用量を対象とする。正しさと未実装境界の検証を先に行い、その後で予算の数値を決める。NativeAOT テストを要求する設計ではない。
+helperは元の演算の検査、失敗順、source locationを保存する。共有表現・操作・ABI・格納経路で意味を保存できない場合だけ基準を分離する。スカラー演算であることだけを理由に大型bodyを型別複製しない。未対応経路は診断し、意味を変える代用品を生成しない。
 
-## 7. 実装前に詰める事項と推奨
+#### 2.2 固定事実の整合性
 
-| 項目 | 推奨と残る判断 |
+size、alignment、offset、型identity、取得条件、操作の組は同じ代入から導出する。bodyに埋め込む命令・属性の前提も固定事実として記録し、接続するすべての代入で成立することを静的に証明する。slotの物理型が同じだけでは接続しない。
+
+~~~text
+固定事実:
+    size(T) = 16
+    転送元・転送先は16 bytesの有効な範囲で、互いに重ならない
+    転送元・転送先のalignment >= 8
+
+許可: memcpy 16 bytes, align 8
+不可: sizeだけを根拠にalign 16を付ける
+~~~
+
+sizeの一致から派生型のoffset、破棄、符号付き演算を固定してはならない。LLVMのalign・dereferenceable等には証明済みの定数を使う。共通の保証が弱ければ属性を弱めるか省略し、runtime slotの値をそのまま定数属性へ指定しない。より強い属性はその前提を証明できる分岐・helper・特殊化で使う。noaliasやinboundsもそれぞれの契約から証明する。
+
+~~~kimi
+func transfer<T>(value: T) -> T => value
+
+func duplicate<T>(value: T) -> (T, T)
+    T is Copy
+    return (value, value)
+
+func keepBorrow<T>(value: ref/T) -> ref/T from value => value
+~~~
+
+transferは代入に対応するCopy／Move計画を実行する。duplicateには静的Copy証明が必要で、runtimeのHasCopyはsourceの合法性を決めない。keepBorrowは参照先を読まないため、そのmetadataを省ける。
+
+### 3. 入口ABIと呼び出し責任
+
+#### 3.1 予算に依存しない入口
+
+入口ABIは呼び出しの契約から決める。
+
+| 呼び出し | 入口ABI |
 | --- | --- |
-| 配置未知のローカル・一時値 | 呼び出し側の既存領域を再利用できるか先に調べる。残る領域の確保・alignment・生存期間・stack回収を具体化する。動的stack確保の上限やheapへの退避は、失敗契約も含めて別途決める。context の無確保とは別問題 |
-| 長さ引数の runtime 表現 | LengthKey と選択は静的に維持。body に必要な長さは固定配列の TypeContext 等から明示的に供給する案。ゼロサイズ要素があるため size / elementStride から推定しない。専用 slot を足すかを含め、既存の pointer列schemaと整合する格納形式を決める |
-| 自動特殊化の費用・既定値 | 関数ごとの追加body上限と推定コード増加量、全体上限を計測で定める。再帰の深さだけに依存しない。設定範囲とレポート形式は実装時に決める |
-| 特殊化を要求／禁止する source 機能 | 今回は追加しない案。既存の明示 specialize は実装選択の機能として維持。最適化指定の必要性は計測後に判断する |
-| 別コンパイル・cache の表現 | 閉じた実装集合・意味の依存・schema・ABI の照合は既存契約を守る。保存形式、symbol配置、再生成とlinkの担当は後で決める。安定した外部 generic ABI は今回追加しない |
+| calleeがFixedで、代入後の署名の表現を確定できる | 非generic関数と同じFunctionAbi規則 |
+| contextのcallee pair経由、または署名の表現が未確定 | generic宣言の署名に基づく共有ABI |
+| 共通関数値 | Function Typeの既存契約（SPEC §21.2.5） |
 
-最初の実装では共有 ABI、context schema と依存収集、検証済み共有経路を先に完成させる。その後、同じ計画からの直接化、一部slotの固定、新規body複製を順に追加する。共有コード生成を導入する前に、少なくとも未知配置の一時領域と必要な長さ情報の供給方法を具体化する。
+共有ABIでは、代入で表現が変わる値を取得済み領域へのpointer、結果をcallerの未初期化領域へのpointerで渡す。宣言から共通表現が分かる値はその表現を使い、ref・uniqの借用は既存の1 pointerを維持する。entryがFixedでも、それだけでは未確定の署名をscalar ABIにしない。
+
+予算が変えるのは入口の実装先と内部適応であり、callerが使う入口ABIは変えない。必要な入口を呼び出し契約ごとに生成し、内部の共有body・特殊化bodyへ接続する。同じ契約と実装を満たせば入口を統合できる。
+
+~~~text
+具体caller → direct_i32_entry(i32, i32) -> i32
+                          ├ 共有body向けに領域へ格納 → sharedBody
+                          └ 特殊化body
+
+共有caller → {erased_entry, 専用context}
+                          → sharedBody または適応後の特殊化body
+~~~
+
+具体callerのscalar受け渡しは予算0でも維持する。ただし入口内部のメモリ転送や追加callまでなくなる保証ではない。候補を取り消す場合は入口の実装先を基準へ戻せるため、再帰するcaller群を一括特殊化する必要はない。
+
+#### 3.2 Entryと専用context
+
+呼び出しの論理単位は`{entry, context}`である。entryと、そのentryが読むcontextは一緒に生成・検証する。callerはcalleeのcontextを不透明なpointerとして渡し、そのschemaを解釈しない。schema変更は読み手とcontextの内部で完結し、不要slotを削除できる。schemaだけの違いを適応するadapterは作らない。
+
+最終生成単位の内部生成方式identityは、compiler build、target/profile、ABI・metadata・contextの生成規則とそれらを変える設定から決める。接続ごとに、この方式と入口ABIの一致をコンパイル時に照合する。入口ABIには論理引数、結果、所有権、context引数と物理型・位置・呼び出し規約・属性の対応を含める。間接callの型付き契約は必要であり、slotごとのruntime ABI tagは不要である。
+
+同じ方式内でもscalar返却と結果領域返却等にはABI adapterが必要になる。異なる方式の生成物は再生成または拒否し、方式間adapterやruntime照合は導入しない。OS入口、FFI、外部backend helperは既存の外部契約を維持する。
+
+内部の引数除去・calling convention変更は全使用との互換性を証明した後段最適化として許す。引数の物理位置、symbol名、未使用入口の出力は公開仕様へ固定しない。
+
+#### 3.3 取得・結果・cleanup
+
+receiverと引数は言語規則の順に一度だけ評価・取得し、論理callee入口で責任を渡す。入口・adapter・bodyの分割は追加のCopy／Moveや二重cleanupを生まない。所有引数・ref・uniq・結果領域は、同じpointer型でも異なる契約である。
+
+結果は必要なcleanupの正常完了後にcallerへ渡す。Abort・非終了では後続cleanupや結果受け取りを行わない。calleeはcaller所有の格納領域を解放しない。
+
+### 4. 情報の供給
+
+#### 4.1 整数と操作の組
+
+GenericContextには、読み手が必要とする事実だけを直接置く。Windows x64ではschema付きの8-byte slot列とし、論理種別を三つにする。
+
+| slot種別 | 内容 |
+| --- | --- |
+| 64-bit整数 | 長さ、size、alignment、offsetはisize、型token等はu64、真偽値は0／1 |
+| entry ptr | 選択済み操作の入口 |
+| context ptr | その入口専用のcontext、操作が要求するmetadata、またはnull |
+
+長さ・配置の整数は非負で、profileの表現上限をコンパイル時に検査する。整数の符号と用途はschema・型付き計画で定め、LLVMでは共通のi64に格納する。整数とpointerを区別し、pointerの整数化やruntime tagは使わない。
+
+呼ぶ操作はentry・contextの隣接2 slotにする。ContractのwitnessとFrameLayoutはコンパイル時の対応計画とし、GenericContextから辿る実行時tableにはしない。関連型とrequirement・実装の対応は意味計画に保持する。Fixedの成分や不要な要求は省ける。
+
+通常の共有bodyはsize・offset・長さを直接読み、TypeContextを辿らない。calleeだけが必要とする情報はcalleeの専用contextに残す。同じ意味の要求は一つにまとめるが、異なる要求を現在の値が偶然同じという理由だけで統合しない。
+
+~~~text
+比較操作を使う共有bodyのcontext例（T=i32）:
+    [0] isize  size(T)                  = 4
+    [1] entry  選択済みcompare入口      = compare_i32
+    [2] ctx    compare_i32専用context   = null
+    [3] isize  offset(temp1)            = 4
+
+offsetがbodyの全代入で一定ならFixedにして[3]を省く。
+callでは[1]と[2]を読み、compareの入口ABIに従って引数を渡す。
+~~~
+
+直接の整数取得は1 slot、操作の組の取得は最大2 slotのloadで済む。操作内部のmetadata参照や値の読み取りは別であり、実際のload命令数・速度を保証するものではない。平坦化でcontextが大きくなる可能性も計測する。
+
+#### 4.2 Metadataと派生型
+
+ValueMetadataの既存48-byte形式を維持する。完全な値のArgKeyに対応するtypeKey、size、alignment、flags、destroyValues、TypeContextを保持し、strideはsizeと同じとする。値のmetadataとobject payloadのmetadataを混同しない。
+
+TypeContextは型操作のentryが読む。Field offset、要素／Case metadata等を持ち、`[N of T]`では`{elementMetadata, N}`を含む。派生型の配置は閉じた代入から全体のTypeLayoutで計算する。body用の整数slotもこの同じ計画から導出し、runtimeで配置を組み直さない。
+
+型identityが必要なら完全幅のu64として整数slotまたはFixedで供給し、isizeの非負値へ縮めない。metadata固有の処理には操作が必要とする不透明なmetadataを渡す。検証済み条件分岐に真偽値を供給できるが、SharedReadResultを単なるHasCopy判定に置き換えない。instanceの初期化状態・Loan・動的collectionの長さは共有metadataへ入れない。
+
+#### 4.3 Schemaと循環
+
+schemaは読み手の要求、定義側の束縛、正規化した型／長さ式、操作とslot型の対応を表す。要求キーの安定した構造順で重複排除・配列化し、操作の2 slotは組として並べる。出現順・並列処理の完了順に依存させない。calleeの内部schemaはcallerのschemaへ含めない。
+
+metadata/contextは閉じた代入に対応する不変定数であり、有限の循環を許す。相互再帰をDAGへ制限しない。選択後にすべてのentry・専用contextの組と固定事実を検証し、未完成の定数を実行可能な出力へ公開しない。候補変更でcalleeのcontextが変われば最終参照を解決し直すが、callerのABIや最適化選択を変更する必要はない。
+
+contextとmetadataは全使用・cleanupまで有効とし、callerのstackへ依存させない。呼び出しごとのcontext構築やruntimeの型検索は要求しない。
+
+### 5. 作業領域と固定フレーム
+
+#### 5.1 再利用と生存期間
+
+結果領域への直接構築、取得済み所有引数領域の利用、中間転送の除去を優先する。評価順、別名、Loan、格納identity、生存期間、部分初期化、cleanupを保存する。
+
+Copy sourceとcalleeの取得値を同居させず、生きた再代入対象へ先に書かない。所有引数をMoveした後も、旧値の責任と残存参照がなく、容量・alignmentが適合すれば領域を再利用できる。変更不能なsource引数への代入を許す規則ではない。
+
+cleanup・最終参照まで含む生存期間が重なる値には別領域を使う。反復間で同時生存しないloop一時値は同じ領域を再利用できるが、破棄を最後の読み取りへ繰り上げない。
+
+#### 5.2 正確な容量と共有body
+
+bodyでsize・alignmentが固定された一時値はbody自身の静的フレームへ置ける。残る領域は閉じた代入ごとに配置し、その入口が必要な正確な容量を最大alignmentで丸めて固定サイズのentry allocaで確保する。容量を他のinstanceの最大値やbucketで決めない。
+
+共有bodyには呼び出し固有の`scratch` pointerを別の内部引数で渡す。offsetはFixedまたは整数slotで供給する。scalar引数の領域化等、ABI適応に必要な領域も計画へ含める。
+
+~~~text
+directEntry(x: i32, ...) -> i32:
+    引数・結果のABI適応用領域を必要な分だけ固定確保
+    scratch = 固定alloca(capacity, alignment)  // 容量0なら省略
+    sharedBody(適応済み引数, 結果領域, 専用context, scratch)
+    cleanup完了後の結果を返す
+
+sharedBody(..., ctx, scratch):
+    temporary = scratch + load(ctx[offsetSlot])
+    // 検証済み計画に従って構築・使用・cleanup
+~~~
+
+各領域のoffset・容量・alignmentを入口の予約範囲と静的に照合する。共有bodyは作業領域をruntimeに配置計算・動的確保せず、sourceが要求する通常のheap確保は既存規則に従う。loop内で反復ごとにstackを積み増さず、再帰呼び出しごとに必要な独立領域を持つ。
+
+入口はABI、容量・alignment、接続先body、適応処理、埋め込む定数・context参照がすべて適合する場合だけ共有できる。容量0ならフレーム確保を省くが、入口とbodyのABIやcontext渡しが異なればadapterは残す。
+
+scratchを共有contextへ保存せず、そこへの借用を結果・Closureへescapeさせない。格納値のMoveや、その値が持つ外部への合法な参照の返却は維持する。正常returnでframeを戻し、入口で二重破棄しない。scratch使用中にそのframeを破棄するtail callは許さない。
+
+#### 5.3 初期profileの範囲
+
+初期profileはalignment<=16の固定stack経路を対象とする。型のalignmentを切り下げず、超過時は対応経路がなければ表現未対応を診断する。固定frameにも必要なWindows stack probeとunwind情報を生成する。
+
+ゼロサイズには既存のalignment付き代替格納を使い、論理状態・Loan・破棄回数を維持する。代替領域の存在から正のdereferenceable範囲やnoaliasを導かない。正確な容量は計画上の予約量であり、spill・call領域等を含む最終machine frame全体のサイズではない。
+
+動的alloca、heap退避、新しいstack枯渇・確保失敗契約は導入しない。既存のLibrary出力範囲を維持し、未知の代入は今回の生成対象に含めない。
+
+### 6. 長さ、転送、破棄
+
+#### 6.1 長さの供給
+
+| 用途 | 供給元 |
+| --- | --- |
+| 明示specialization選択 | 静的LengthKey |
+| bodyのN、境界検査、Slice長、要素loop | 整数slotまたはFixed |
+| 配列の転送size | 同じTypeLayoutから計算した整数slotまたはFixed |
+| 固定配列の破棄 | 配列TypeContextのelementMetadataとN |
+| calleeだけが使う長さ | callee自身のcontext |
+
+長さ要求はSPEC §4.4の正規化済み式と定義側束縛で識別する。型形成の合法性は宣言上の前提から証明し、具体代入では検査付き評価を行う。body-onlyの型形成を都合のよい代入まで保留しない。
+
+~~~kimi
+func keepArray<length N, T>(value: [N of T]) -> [N of T] => value
+
+func lengthAfterOffset<length N>(value: ref/[(N + 4) of u8]) -> isize
+    return N + 4
+
+func twiceLength<length N>() -> isize => N * 2
+~~~
+
+keepArrayの転送はsizeだけで足りる。lengthAfterOffsetは署名のValidLengthの証明を使ってN+4の計算を省ける。twiceLengthのN*2は通常のchecked isize算術であり、runtime Abortを型形成エラーへ変えない。
+
+size / strideからNを逆算せず、bodyが読むNをTypeContext経由で供給しない。body用整数と破棄用Nの必要な重複は許す。
+
+#### 6.2 転送と検査除去
+
+合法な非重複の完全値Copy／Moveはsize bytesのmemcpy相当で実行できる。許可された重複範囲の再配置はmemmove相当とする。転送そのものにallocation、count増加、ユーザーCopy関数を加えない。paddingを意味のある値として読み取らず、ゼロbyteでも責任の遷移を消さない。
+
+~~~kimi
+func sum<length N>(values: ref/[N of i32]) -> i64
+    var total: i64 = 0
+    for i in values.indices
+        total += values[i]@i64
+    return total
+~~~
+
+小さいNの固定は検査除去・loop展開の候補となるが、Nを固定しただけでtotalのoverflow検査を除いてはならない。
+
+byte offsetの乗算にnuw等を付けるには、同じ配列の0<=i<Nが乗算を支配し、strideが非負、N*strideが演算幅・配置上限内、値がdefinedであることを証明する。pointer加算、provenance、inboundsは別途証明する。stride=0でも論理的な境界検査を維持する。
+
+#### 6.3 破棄の組
+
+破棄の組は`{destroyValues, metadata}`とする。既存の`destroyValues(first, count, metadata, location)`においてmetadata引数が専用contextに当たる。通常関数と物理引数順まで同一にせず、操作の入口ABIに従う。
+
+count=0またはentry=nullならcallと範囲走査のアドレス計算を省く。null entryは破棄不要の証明としてのみ使う。完全にInitializedの範囲を逆論理順に破棄し、Moved・部分状態・予備領域はCleanupPlanで除外する。source locationと失敗順を保存する。
+
+固定配列のentryは、自身のmetadataのTypeContextからelementMetadataとNを読む。外側count個の配列を逆順に走査し、各配列について内側N個の要素を破棄する。破棄後の格納領域解放は別操作とする。
+
+~~~text
+{arrayDestroyEntry, arrayMetadata}で外側count個を破棄:
+    elementMetadata, N = arrayMetadata.TypeContext
+    配列を逆順に:
+        elementMetadata.destroyValues(arrayFirst, N, elementMetadata, location)
+        // 要素entry=nullまたはN=0なら省略
+~~~
+
+完全な連続固定配列では、metadata・範囲・逆論理順・失敗位置が一致すればcount*N個の要素への一回の範囲破棄にまとめられる。積がcount幅を超えれば元のloopを保ち、新しいAbortを加えない。ゼロstrideでも効果の回数を保つ。
+
+### 7. 有限生成・予算・cacheの契約
+
+必須生成の資源上限と任意最適化の増加予算を分ける。同じ入力・compiler/profile・設定では、列挙順・並列完了順・cache有無によらず論理計画と予算配分を再現する。OSの実資源不足まで同じ結果を保証しない。
+
+必須生成の閉じた代入、metadata/context、配置・計画は有限でなければならない。有限の循環、T→Box<T>等の異なるキーの増殖、無限のinline値配置を区別する。コード共有だけではmetadata生成の有限性を保証できない。
+
+任意探索の上限・不成立では基準計画を維持し、最適化の失敗だけを理由にsourceを拒否しない。必要な基準生成も上限を超える場合は資源不足を診断する。機械語を出さない定義も必須の意味検証・未対応診断を省略しない。
+
+予算の数値と見積り方法は言語仕様の固定値にしない。最終binaryサイズやコンパイル時間の厳密な上限を、推定命令数から保証しない。
+
+初期の永続cacheは検証済みの意味計画だけを保存する。キーと全依存内容が一致する場合だけ再利用し、定義・選択集合・環境の変更、追加・削除も検出する。証明、所有権、効果、cleanup、source位置、正当な未解決の表現義務を保持する。使用時のLoan・初期化検証はその使用環境で行う。
+
+ABI、schema、context、frame、予算選択、IR・機械語は現在の生成方式で作り直す。生成だけに影響する倍率変更は意味計画を不要に失効させず、target依存の証明や意味を変える設定は検証条件に含める。
+
+## 第II部　初期コンパイラーの実装指針
+
+### 8. 生成計画と特殊化予算
+
+#### 8.1 キーと生成順
+
+| キーの分類 | 内容 |
+| --- | --- |
+| 意味計画 | compiler build・検証規則、定義・束縛・意味環境、選択集合と依存 |
+| body | 選択済み実装、型付き操作・cleanup、内部ABI、読むschema、埋め込む固定事実 |
+| 入口 | 入口ABI、接続先body、容量・alignment、適応処理、埋め込む定数・参照 |
+| context内容 | 読み手schemaに対応する整数・操作の組・metadata内容と参照先 |
+
+これらはキーの役割の分類であり、四つのhashだけですべてを判定する指定ではない。方式identityは生成域の前提とする。bodyに不要な具体型・容量をキーへ入れず、直接破棄等へ埋め込むentry・contextは省略しない。
+
+循環する定数は論理nodeを先に登録し、内容と辺を後で確定する。参照先の内容を再帰的にキーへ展開しない。hash衝突は構造比較で判別し、メモリアドレス・登録順IDに意味を依存させない。
+
+1. 必要な閉じた代入と依存を登録・検証し、必須資源を確認する。
+2. 共通の型付き操作と内部ABIで表現できる代入を基準共有クラスへまとめる。軽い簡約後の基準body、入口契約、基準資源量を固定する。
+3. 各クラス内で、操作の依存を満たす少数の固定集合から選択肢を作る。選択肢は全メンバーをどのbodyへ割り当てるかを示し、未特殊化メンバーも含める。
+4. §8.2–8.3の予算内でクラスごとに一つを選ぶ。入口ABIを維持して接続し、entry専用schemaとcontextを確定する。
+5. 資源・固定事実・全接続を再確認し、必要な生成物だけを出力する。任意選択による超過は安定した逆採用順で基準へ戻し、同じ選択肢を再採用しない。
+
+選択前後でクラス間の呼び出しは安定した入口契約を通す。calleeの内部body・schemaをcallerの候補へ取り込む最適化はこの選択段階では行わない。再帰の有限性確認は必要だが、再帰SCC全体を一つの特殊化候補にはしない。
+
+#### 8.2 クラス内の排他的な会計
+
+費用の単位は共通計画の推定命令数だけとする。候補評価のために後段loweringやLLVMを試行しない。各選択肢の費用を次で固定する。
+
+~~~text
+追加費用 = max(0, 選択肢が必要とするbody群の命令数 − 基準クラスの命令数)
+
+基準共有body 100命令、特殊化body 60命令:
+    未特殊化メンバーが残る → 100 + 60 − 100 = 60
+    全メンバーを置き換える → max(0, 60 − 100) = 0
+~~~
+
+クラス内の同一bodyは一度だけ数える。共有bodyを差し引けるのは全用途が置き換わった場合だけで、選択肢から別の選択肢への差分会計はしない。削減量を他クラスの予算へ加算しない。
+
+入口・adapterのABI適応と固定確保、contextのデータは増加予算から外し、基準を含め生成資源として数える。ただし本体の複製・展開を入口やhelperへ移しても、その命令はbody群の費用に含める。除外対象は呼び出し境界の定型処理に限る。
+
+helperを含むbody群はクラス内で完結する計画として見積もる。クラスをまたぐ生成物の重複排除は選択後に行い、その削減を費用・予算枠へ還元しない。これにより他クラスの採用に伴う費用再評価をなくす。入口・contextの件数だけでなく命令数・bytesも資源として制限し、instance数への単純比例は仮定しない。
+
+利益は基準に対して消せるcontext依存操作を、軽い簡約後に数える。残るloop内の操作には上限付きの深さ重みを掛け、loop外へ移したloadは一回分とする。外部の候補採用や将来のLLVMインライン化による利益を先取りせず、負の利益・変化のない候補は採らない。正の費用には正の利益を要求する。
+
+#### 8.3 二つの上限と決定的な選択
+
+任意選択前に元generic関数ごとの基準命令量Bfと生成単位の基準命令量Bを固定する。複数クラスのBfを同じ元関数へ集計し、Bは非genericの内部コードも含める。これらは§8.2の会計に従うクラス間重複排除前の推定量であり、外部libraryのコード量を含めない。
+
+| 増加上限 | 計算形 |
+| --- | --- |
+| 元generic関数ごと | 倍率m × 内部係数k × Bf |
+| 生成単位全体 | 倍率m × 内部増加率r × B |
+
+利用者向け設定は有限・非負の倍率m一つとする。係数・丸めは決定的にし、BfまたはBが0なら対応する増加枠も0。body数の独立した最適化予算は作らない。
+
+有限の選択肢を、まず費用0の有効な候補、次に利益÷正の費用の降順に並べる。同順位は意味計画・クラス・選択肢の安定キーで決める。費用0同士は利益の降順とする。上から両上限と資源条件を満たすものを採用し、採用済みクラスの残りの選択肢は捨てる。未採用クラスは基準を使う。比はoverflowを避けて比較し、費用0で除算しない。
+
+クラスは一度だけ確定するため、採用後の再評価は不要である。この貪欲法は最適な配分を保証しない。生成済み選択肢数nに対するsort・選択はO(n log n)にできるが、候補の構築、全メンバーの評価、資源・接続検証は別の費用である。候補数、割当記述量、固定集合、探索作業量を制限し、全直積を列挙しない。
+
+| profile方針 | 倍率と探索 |
+| --- | --- |
+| O0 | m=0。任意探索を省き、必須生成と軽い簡約を行う |
+| O2 | 実測で定める既定倍率 |
+| サイズ優先 | m=0を既定とし、非増加の簡約・置換を優先 |
+
+倍率0でも具体callerの入口ABI、必須分離、再利用は維持する。LLVMの後段最適化は別の方針で制御され、この倍率だけで最終binaryの複製を全面禁止しない。数値、設定名、レポート形式は実装時の計測で決める。
+
+### 9. 性能改善と検証
+
+新規複製より先に、Fixed情報の定数伝播、直接call、不要分岐・転送・slotの除去を試す。context loadは有効な範囲で共通化・loop外移動し、null経路への無条件移動とregister圧力の増大を避ける。
+
+固定サイズの一時値をbodyへ分離し、scratch先頭を必要な最大alignmentへそろえると、先頭の正サイズ領域のoffsetを0にできる。領域の再利用には安定した貪欲彩色等を使い、最適彩色を要求しない。
+
+小さな入口はインライン化しやすいIRにし、一律alwaysinlineにはしない。融合によりcallとframeを減らせるか、生成物で確認する。融合後もloop反復ごとのstack増加、scratchの寿命違反、費用計上からの本体複製漏れを生じさせない。
+
+要求・TypeLayout・FunctionAbi・CleanupPlanを再利用し、候補は基準の複製でなく差分として保持する。必要nodeをworklistで作り、配列・探索用領域の容量を再利用する。循環比較では訪問済みnode対を記録する。
+
+| 確認対象 | 代表例 |
+| --- | --- |
+| 意味・ABI | 明示specialization、予算0のscalar入口、部分固定で未確定の署名、関数値、外部ABI、取消し |
+| Context | slot削除、隣接pair、異なる専用schema、相互再帰、型増殖、完全幅の型identity |
+| 固定事実 | 同sizeで異なるalignment・破棄・派生配置、SharedReadResult、属性の前提 |
+| 格納 | Loan・部分Move・Copy source、容量0でも必要なadapter、再帰、loop、非escape、ゼロサイズ |
+| 配置・破棄 | 他instance追加時の容量独立性、N=0、stride=0、負のi、通常算術overflow、count×Nのoverflow |
+| 予算・cache | 排他的な割当、小さい特殊化と共有版の併存、入口内への本体移動、クラス間重複排除、有限探索、列挙順・cache有無、倍率変更、使用時Loan |
+| 生成物 | 直接化、load数、context bytes、固定frameのprobe・unwind、入口融合、後段最適化後のコード量 |
+
+生成レポートでは共有・固定・必須分離の理由、候補の費用・利益と非採用理由、予算消費、入口／body／adapter数、context・metadata bytes、frame量を示す。資源不足は上限種別・設定値・消費量・定義位置・増殖経路を有限長で示す。
+
+実行時間、コード量、frame量、コンパイル時間・最大メモリを測り、結果・効果順・cleanupの一致を確認する。平坦化によるデータ増加、具体入口のABI適応コスト、意味計画cacheの効果も実測する。現時点でこれらの実装・性能検証は完了していない。
+
+## 第III部　将来導入時に決める事項
+
+### 10. 未導入の機能
+
+- **Object cache:** 機械語再生成の費用を実測して必要になった段階で、保存形式・生成物キー・依存検証を定義する。今回の意味計画cacheに、永続contextグラフやCode Cache Keyの保存規則を持ち込まない。
+- **未知代入の動的格納:** 別コンパイル等で必要になった段階で、配置計算、動的stack／heap、上限、確保失敗と本文の効果順序を一緒に定義する。失敗順を無条件に未規定としない。
+- **局所的な最適化ヒント:** ホットな箇所の特殊化不足・不要複製を実測し、全体倍率では他の箇所のコード量・コンパイル時間が許容範囲を外れる場合に再検討する。追加する場合も無視して正しいヒントとし、意味や資源上限を変えない。
+
+今回は特殊化を要求・禁止する構文を追加しない。倍率と生成レポートを使い、既存の`specialize func`は静的実装選択として維持する。
+
+backend上の証明条件は[LLVMの引数属性](https://releases.llvm.org/22.1.0/docs/LangRef.html#parameter-attributes)、[メモリ転送](https://releases.llvm.org/22.1.0/docs/LangRef.html#llvm-memcpy-intrinsic)、[整数乗算](https://releases.llvm.org/22.1.0/docs/LangRef.html#mul-instruction)に従う。固定frameの生成は[Windows prologとstack probe](https://learn.microsoft.com/en-us/cpp/build/prolog-and-epilog?view=msvc-170)も確認する。

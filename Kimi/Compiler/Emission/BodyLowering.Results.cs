@@ -224,7 +224,7 @@ internal sealed partial class BodyLowering
         }
     }
 
-    private bool Dominates(int definition, int use) => this.blocks[definition] >= 0 &&
+    private bool Dominates(int definition, int use) => this.ranks[definition] >= 0 && this.ranks[use] >= 0 &&
         this.domStart[definition] <= this.domStart[use] && this.domStart[use] < this.domEnd[definition];
 
     private bool LowerPhi(OwnershipBody body, EmissionFunction function, int id, string llvm, out string? failure)
@@ -236,7 +236,7 @@ internal sealed partial class BodyLowering
             return value.Count == 0 || Fail("Unreachable result has incoming values.", out failure);
         }
 
-        if (value.Count == 0 || value.Count != this.incoming[id])
+        if (value.Count == 0 || value.Count != this.LogicalIncoming(id))
         {
             return Fail("Phi inputs do not cover actual predecessors.", out failure);
         }
@@ -257,13 +257,17 @@ internal sealed partial class BodyLowering
             }
 
             var block = this.blocks[edge.From];
-            if (edge.To != id || edge.Kind != OwnershipEdgeKind.Normal || block < 0 || this.phiSeen[block] == id ||
+            if (edge.To != id || edge.Kind != OwnershipEdgeKind.Normal || (block >= 0 && this.phiSeen[block] == id) ||
                 !this.Dominates(input.Value, edge.From))
             {
                 return Fail("Phi value is unavailable at its actual predecessor.", out failure);
             }
 
-            this.phiSeen[block] = id;
+            if (block >= 0)
+            {
+                this.phiSeen[block] = id;
+            }
+
             if (input.Write >= 0)
             {
                 if ((uint)input.Write >= (uint)body.Operations.Count || body.Operations[input.Write] is not { Kind: OwnershipOperationKind.Write, Placement: PlacementKind.Initialization } write ||
@@ -278,11 +282,25 @@ internal sealed partial class BodyLowering
                 return Fail("Missing result acquisition operation.", out failure);
             }
 
+            if (block < 0)
+            {
+                continue;
+            }
+
             this.phiOperands.Add(this.PhysicalOperand(body, input.Value));
             this.phiOperands.Add(new(EmissionOperandKind.Block, this.blockEnds[block]));
         }
 
-        function.AddScalar(EmissionOpcode.Phi, id, CollectionsMarshal.AsSpan(this.phiOperands), llvm);
+        if (this.phiOperands.Count / 2 != this.incoming[id])
+        {
+            return Fail("Phi inputs do not cover execution predecessors.", out failure);
+        }
+
+        if (this.blocks[id] >= 0)
+        {
+            function.AddScalar(EmissionOpcode.Phi, id, CollectionsMarshal.AsSpan(this.phiOperands), llvm);
+        }
+
         return true;
     }
 }

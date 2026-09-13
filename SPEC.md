@@ -5514,6 +5514,8 @@ Continue checking unreachable source items with a **type-checking continuation**
 
 After a transfer, use the state after operand evaluation/acquisition but before that transfer's scope-exit cleanup, at the source's lexical scope. Do not retain facts already invalidated by assignment, Move, or destruction. Do not restore uninitialized/moved values or ended Loans, or import outer refinement across a Function Boundary.
 
+Comparison-only Loans abandoned by that transfer end after its operand acquisition and before its cleanup; they are also absent from its type-checking continuation. Loans for comparisons that the transfer does not abandon remain active.
+
 These continuations add no Structural Completion or Runtime Reachability edges, implicit Unit results, or normal successor to a require failure. Do not merge their states into reachable execution paths; still include their result-source Types under §14.9.
 
 ~~~kimi
@@ -7446,11 +7448,11 @@ Replace OutputPath's extension with .link.json in the same directory and write U
   },
   "backendSupport": {
     "packageId": "kimi-backend-windows-x64",
-    "abiVersion": 1,
-    "packageVersion": "0.1.0",
+    "abiVersion": 2,
+    "packageVersion": "0.1.1",
     "library": "kimi_backend",
     "artifactSha256": "<64 hex digits for the adopted archive>",
-    "providedSymbols": ["__chkstk", "memcpy", "memmove", "memset"]
+    "providedSymbols": ["__chkstk", "memcmp", "memcpy", "memmove", "memset"]
   },
   "irFile": "ProjectName.ll",
   "irSha256": "<64 hex digits for the generated IR>",
@@ -7469,7 +7471,7 @@ Replace OutputPath's extension with .link.json in the same directory and write U
 }
 ```
 
-Hashes must be actual SHA-256 values. packageVersion is supplied by Directory.Build.props Version (currently 0.1.0), not a separate backend release counter. A version alone does not establish an adopted archive; the catalog hash and ABI must also match. observer and the __chkstk expected reference are conditional examples; _fltused is always supplied.
+Hashes must be actual SHA-256 values. packageVersion is supplied by Directory.Build.props Version (currently 0.1.1), not a separate backend release counter. A version alone does not establish an adopted archive; the catalog hash and ABI must also match. observer and the __chkstk expected reference are conditional examples; _fltused is always supplied.
 
 - Deduplicate libraries required by external declarations or the profile and sort by Ordinal logical name. Rewrite path inputs relative to the manifest; preserve linker search names. irFile is manifest-relative.
 - Library uses null entry and subsystem. Its dependency record does not establish an external .lib/DLL ABI or runnable artifact.
@@ -8085,6 +8087,8 @@ Use CFG edges for short circuit, branches, match guards, and loops. Evaluate con
 
 A non-Never Expression Type does not guarantee a normal CFG predecessor: required cleanup may prevent delivery (§14.9). Do not manufacture an incoming value or change the checked Type to Never in that case.
 
+Keep match verification reachability distinct from ordered runtime dispatch. Arms excluded by earlier Patterns still receive required checking, but contribute no runtime predecessor, result arrival or lifetime update. A separate dispatch plan must preserve the verified state at every selected arm. Unguarded Pattern tests have no acquisition or cleanup effects; guards require their own state transitions. When prior tests and exhaustiveness guarantee the next arm succeeds, dispatch may enter it directly without inventing an unmatched value or failure path.
+
 Direct construction into an uninitialized final slot may remove intermediate transfers only if evaluation order, aliasing, Loans, storage identity/lifetime, intermediate observations, partial initialization, and cleanup remain unchanged. Otherwise keep an independent temporary; never overwrite a live replacement target early.
 
 ##### 21.4.5. Cleanup and physical transfer
@@ -8138,7 +8142,7 @@ One project/target emits one .ll with target information, private constants, req
 
 Emit one definition for each generated function, without a same-name declare. Explanatory signature-only fragments are not complete modules. Mangle source names with Kotonoha/declaration Identity, arguments, and implementation selection.
 
-Use one module symbol table. Same-named external declarations share only if physical Type, calling convention, ABI attributes, dllimport, and resolved library all agree; otherwise diagnose. Function/data and declaration/generated-definition collisions are errors. Reserve __kimi_ for compiler internals, llvm. for LLVM, and _fltused, __chkstk, memcpy, memmove, memset for profile supplies; reject these external names in user LibraryImport. Match exact ABI symbol names. Quote/escape LLVM identifiers and UTF-8 bytes; never insert raw source strings into IR. Shared ptr signatures do not merge source unsafe contracts; attach only guarantees true for every use.
+Use one module symbol table. Same-named external declarations share only if physical Type, calling convention, ABI attributes, dllimport, and resolved library all agree; otherwise diagnose. Function/data and declaration/generated-definition collisions are errors. Reserve __kimi_ for compiler internals, llvm. for LLVM, and _fltused, __chkstk, memcmp, memcpy, memmove, memset for profile supplies; reject these external names in user LibraryImport. Match exact ABI symbol names. Quote/escape LLVM identifiers and UTF-8 bytes; never insert raw source strings into IR. Shared ptr signatures do not merge source unsafe contracts; attach only guarantees true for every use.
 
 Deterministic output and cache keys retain compiler/layout identities, the selected internal ABI implementation and per-function contracts, target/DataLayout/codegen settings, backend package version/hash, selected fragments/generated sources, complete arguments and selected implementations, cleanup, callees, and helper dependencies. Content identities may cover internal ABI choices without a public version number; changed choices invalidate dependent artifacts. Size/alignment alone is never a sufficient key. Do not depend on absolute working directories, host locale, enumeration order, or host CPU.
 
@@ -8230,9 +8234,11 @@ After source newline/escape processing, encode strings as UTF-8 with byte length
 
 ##### 21.5.7. Backend support supply
 
-Memory intrinsics may become external libcalls. Supply memcpy, memmove, memset and Windows x64 assembly __chkstk from the versioned native COFF static archive **kimi_backend_windows_x64_v1.lib**, logical name **kimi_backend**. Do not generate their loop bodies in .ll or use bitcode/LTO members; keep them outside O2 to avoid recursive libcalls. optnone alone is insufficient. Prefer one strong symbol per archive member.
+Memory intrinsics may become external libcalls. Supply memcmp, memcpy, memmove, memset and Windows x64 assembly __chkstk from the versioned native COFF static archive **kimi_backend_windows_x64_v1.lib**, logical name **kimi_backend**. Do not generate their loop bodies in .ll or use bitcode/LTO members; keep them outside O2 to avoid recursive libcalls. optnone alone is insufficient. Prefer one strong symbol per archive member.
 
 Memory helpers meet Windows x64 C argument/result contracts, including both overlap directions for memmove. __chkstk uses the backend's special ABI, not an ordinary C function: validate the RAX size input/preservation, stack and register restoration, and guard-page probing against emitted calls. Never disable required probes or substitute a similar name from another ABI. All helpers meet this profile's CPU, MXCSR, and unwind contracts, with no extra external dependencies, CRT startup, or dynamic initialization.
+
+`memcmp(const void*, const void*, size_t) -> int` compares exactly the requested byte range as unsigned bytes and returns a negative, zero or positive value according to the first difference. It performs no writes or allocation and never reads beyond either range. This supplied implementation accepts zero count without accessing either pointer, including null. String equality first compares lengths; string ordering compares the common byte prefix and then lengths. The release tag and padding are not comparison data. Backend supply ABI 2 adds memcmp; the archive filename retains the windows-x64-v1 profile name, while ABI and content identity are checked separately.
 
 Do not emit ssp/sspstrong/sspreq initially. Stack-protector cookies/failure handling and other arithmetic helpers require separately validated supplies before enabling dependent features.
 
@@ -8244,7 +8250,7 @@ Every Application and Library module, regardless of FP use or optimization, supp
 
 This backend marker is not CRT initialization state. No dllimport, weak, or common definition is allowed; other inputs, including the backend archive, must not define it.
 
-The compiler's profile catalog fixes packageId=kimi-backend-windows-x64, abiVersion=1, the actual archive's SHA-256, the profile/LLVM/CPU/FP/unwind contract, and providedSymbols=[__chkstk, memcpy, memmove, memset]. packageVersion comes from the shared compiler/backend release in Directory.Build.props (§20.8.7). Update ABI version when symbol/call contracts change. Filename/path equality is insufficient. If version/ABI/hash are not established, do not claim successful generation using a placeholder supply.
+The compiler's profile catalog fixes packageId=kimi-backend-windows-x64, abiVersion=2, the actual archive's SHA-256, the profile/LLVM/CPU/FP/unwind contract, and providedSymbols=[__chkstk, memcmp, memcpy, memmove, memset]. packageVersion comes from the shared compiler/backend release in Directory.Build.props (§20.8.7). Update ABI version when symbol/call contracts change. Filename/path equality is insufficient. If version/ABI/hash are not established, do not claim successful generation using a placeholder supply.
 
 Record the archive as a profile-wide link input even when no known reference currently needs it; unused archive members need not link. Generated _fltused and externally supplied symbols have separate manifest classifications (§20.8.3). Later LLVM may add/remove references: inspect actual object undefined symbols and verify providers. Unknown/unsupplied dependencies fail adoption or linking, never receive empty stub helpers. This supply does not add to the six runtime operations or seven Windows APIs.
 
@@ -8784,6 +8790,8 @@ Internal-function IR/signature expectations test the selected compiler implement
 | Weak and objects | No empty constructor; Option absence versus expired Weak; complete dependencies/Owned cyclic payload; builder cleanup before publication; all-mode payload +16, count limits and migration, upgrade/final-release races, guard lifetime and no freed-pointer reads; weak-memory ordering proofs separately from IR/native tests |
 | ABI and ownership | Scalar/aggregate/zero-size passing; separate Copy source; acquisition transfers; result secured before cleanup; Abort/divergence before delivery; partial construction/Move; literal backing never freed; Heap ownership released once |
 | Owned string lifetimes | Local-to-temporary Move, self-assignment, replacement after conditional Move, and declaration resets across loop backedges; destruction precedes placement and its live-state update; abrupt assignment operands produce no placement; conditional cleanup preserves scalar phi predecessors |
+| String comparisons | All six operators, exact UTF-8/NUL content, empty values, unsigned byte order and length-first equality; shared inspection from Read through comparison, duplicate/nested Loans, right-operand effects and deferred cleanup, transfer operand acquisition before Loan abandonment, and ended Loans absent from checking continuations; temporary cleanup after Boolean capture, including skipped and repeated short-circuit operands |
+| Match execution | One Subject acquisition; source-order first match; covered arms checked without runtime arrivals/updates; final-arm success proved by coverage; fitted integer and decoded string literals, bool/Unit/empty-string tests; binding declaration/acquisition only after selection; Subject storage reuse, arm cleanup before remaining Subject destruction, secured results and actual phi predecessors; Abort/divergence and Never subjects do not hide unsupported arms |
 | Owned aggregate results | Secure before cleanup and deliver only on normal arrival; every arrival matches its acquisition; nested result transfers, conditional self-replacement, unconsumed-result cleanup, and loop/deferred storage reuse; Abort/divergence after securing does not cause enclosing consumption or destruction |
 | Owned function calls | Logical argument order with named arguments and omitted Unit storage; caller cleanup in reverse acquisition order versus callee cleanup in reverse parameter order; conditional parameter lifetimes; results initialized only on normal return; nested calls, discarded results, shallow recursion and return snapshots across defer. For slot-based implementations, verify fresh result storage at each call, distinct argument/result storage within that call, correct physical addresses and no premature result forwarding |
 | Instructions | All checked integer boundaries, signed minimum/-1, invalid shifts; float-to-integer boundaries and adjacent floats for every supported pair, NaN/infinities/fractions/signed zero; finite-to-infinity conversion; i128 supported/unsupported operations and helper dependencies |
@@ -8791,7 +8799,7 @@ Internal-function IR/signature expectations test the selected compiler implement
 | Constants and FP | Exact reread fitted bits and UTF-8/NUL lengths; literal sharing; NaN Equatable distinction; subnormals/ties/signed zero; ABI-standard MXCSR after external save/change/restore, without comparing status flags |
 | FFI and pointer operations | Clang C signatures; signed small integers, maximum unsigned values, mixed FP/integer and 5+ arguments; symbol/library/ABI collisions; null zero-displacement and valid positive/negative/one-past arithmetic; no expected result for unsafe violations |
 | Runtime failures | Partial/zero-progress writes, missing stdout, failed stderr without recursion, allocation/free failures, size/address overflow, invalid releaseKind, empty Static/Heap strings, source provenance and ASCII path diagnostics |
-| Backend supply | Native COFF only, disassembly and dependency inspection, no self/cyclic libcalls; memcpy/memmove/memset boundaries/alignment/results and both overlap directions; __chkstk page/multipage frames, guard probes and register/stack preservation |
+| Backend supply | Native COFF only, disassembly and dependency inspection, no self/cyclic libcalls; memcmp unsigned first-difference results, equal ranges, null zero-count and alignment/guard boundaries; memcpy/memmove/memset boundaries/alignment/results and both overlap directions; __chkstk page/multipage frames, guard probes and register/stack preservation |
 | Profile and publication | CPU/features independent of host, PIC/ASLR at ordinary 64-bit image bases, .pdata/.xdata consistent with prologues, one strong _fltused in both output kinds, package/ABI/hash/supply mismatch, unknown dependencies, mixed publication/hash failure |
 
 Use fault-injecting test adapters where needed without expanding the production six-operation/seven-API set. Compare O0/O2 stdout, stderr, exit status, and observable effect/cleanup order; compiler Debug/Release must preserve acceptance and runtime checks. Run nontermination tests with bounded test-harness time and inspect optimized CFG. Separate required constant evaluation from ordinary constant expressions, and diagnose unsupported generated operations before optimization even in unused bodies.

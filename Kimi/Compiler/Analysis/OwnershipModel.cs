@@ -66,6 +66,7 @@ public enum OwnershipOperationKind : byte
     AcquirePattern,
     MatchDispatch,
     PatternTest,
+    EndComparisonLoans,
 }
 
 public enum PlacementKind : byte
@@ -115,6 +116,7 @@ public enum OwnershipFailure : byte
     ReassignedLet,
     Unsupported,
     ExpansionLimit,
+    ComparisonLoanConflict,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition);
@@ -182,6 +184,10 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipMatchPlan> MatchStorage = new();
     internal readonly List<OwnershipMatchArmPlan> MatchArmStorage = new();
     internal readonly List<OwnershipIssue> IssueStorage = new();
+    internal readonly List<OwnershipStringComparison> StringComparisons = new();
+    internal readonly List<OwnershipComparisonLoan> ComparisonLoans = new();
+    internal readonly List<int> LoanInputs = new();
+    internal readonly List<int> LoanStates = new();
     internal readonly List<int> OperationRegions = new();
     internal readonly List<OwnershipCheckingRegion> CheckingRegions = new();
     internal readonly Dictionary<BindingSymbol, int> SymbolPlaces = new(ReferenceEqualityComparer.Instance);
@@ -254,6 +260,10 @@ public sealed partial class OwnershipBody
         this.MatchStorage.Clear();
         this.MatchArmStorage.Clear();
         this.IssueStorage.Clear();
+        this.StringComparisons.Clear();
+        this.ComparisonLoans.Clear();
+        this.LoanInputs.Clear();
+        this.LoanStates.Clear();
         this.reportedIssues.Clear();
         this.OperationRegions.Clear();
         this.CheckingRegions.Clear();
@@ -287,6 +297,7 @@ internal enum OwnershipValueKind : byte
     Convert,
     Unary,
     Binary,
+    StringComparison,
     Phi,
 }
 
@@ -307,3 +318,8 @@ internal readonly record struct OwnershipResultArrival(int Edge, int Write);
 
 // Includes secured results whose cleanup prevents arrival.
 internal readonly record struct OwnershipResultWrite(int Operation, int Declare);
+
+// Persistent stack links preserve independent branch and checking-region environments.
+internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth);
+
+internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan);

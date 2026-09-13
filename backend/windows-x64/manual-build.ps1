@@ -58,9 +58,9 @@ $ir = Resolve-Input $data.irFile
 $irHash = (Get-FileHash -LiteralPath $ir -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($irHash -cne $data.irSha256) { throw 'IR/manifest SHA-256 mismatch; do not use mixed or stale outputs' }
 $support = $data.backendSupport
-if ($support.packageId -cne 'kimi-backend-windows-x64' -or $support.abiVersion -ne 1 -or
+if ($support.packageId -cne 'kimi-backend-windows-x64' -or $support.abiVersion -ne 2 -or
     $support.packageVersion -cne $catalog.packageVersion -or $support.artifactSha256 -cne $catalog.artifactSha256 -or $support.library -cne 'kimi_backend' -or
-    ($support.providedSymbols -join ',') -cne '__chkstk,memcpy,memmove,memset') { throw 'Invalid backend supply identity' }
+    ($support.providedSymbols -join ',') -cne '__chkstk,memcmp,memcpy,memmove,memset') { throw 'Invalid backend supply identity' }
 if (($data.providedRuntimeSymbols -join ',') -cne '_fltused') { throw 'Invalid generated runtime symbol list' }
 foreach ($dependency in $data.expectedUndefinedSymbols) {
     if ($dependency.provider -cne 'kimi_backend' -or $dependency.symbol -cnotin $support.providedSymbols) { throw 'Unknown anticipated backend dependency' }
@@ -98,7 +98,7 @@ $obj = "$stem.obj"
 Invoke-KimiLlvmOutput $tools.llc @("-$level", '-filetype=obj', '-mtriple=x86_64-pc-windows-msvc', '-mcpu=x86-64', '-mattr=+sse2', '-relocation-model=pic', '-code-model=small', $selectedIr) $obj
 $undefined = & $tools['llvm-nm'] --undefined-only --format=posix $obj | Out-String
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect object dependencies' }
-$allowed = @('__chkstk', 'memcpy', 'memmove', 'memset', '__imp_GetProcessHeap', '__imp_HeapAlloc', '__imp_HeapFree', '__imp_GetStdHandle', '__imp_WriteFile', '__imp_GetLastError', '__imp_ExitProcess')
+$allowed = @('__chkstk', 'memcmp', 'memcpy', 'memmove', 'memset', '__imp_GetProcessHeap', '__imp_HeapAlloc', '__imp_HeapFree', '__imp_GetStdHandle', '__imp_WriteFile', '__imp_GetLastError', '__imp_ExitProcess')
 foreach ($line in ($undefined -split '\r?\n')) {
     if ($line.Trim() -and ($line.Trim() -split '\s+')[0] -cnotin $allowed) { throw "Unsupported actual object dependency: $line" }
 }

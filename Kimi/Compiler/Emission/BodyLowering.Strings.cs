@@ -9,7 +9,7 @@ internal sealed partial class BodyLowering
     private int[] liveFlags = [];
     private int[] flagValidation = [];
 
-    internal static bool ValidateStringFlags(OwnershipBody body, EmissionFunction function, Span<int> scratch)
+    internal static bool ValidateStringFlags(OwnershipBody body, EmissionFunction function, Span<int> scratch, ReadOnlySpan<byte> execution = default)
     {
         if (scratch.Length < body.Places.Count + body.Operations.Count)
         {
@@ -21,7 +21,7 @@ internal sealed partial class BodyLowering
         var seen = scratch[body.Places.Count..];
         foreach (var place in function.LiveFlags)
         {
-            if ((uint)place >= (uint)flags.Length || flags[place] != 0 || body.Places[place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) ||
+            if ((uint)place >= (uint)flags.Length || flags[place] != 0 || (body.Places[place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) && !IsComparisonTemporary(body, place)) ||
                 !ReferenceEquals(body.Places[place].Type, BoundType.String))
             {
                 return false;
@@ -33,7 +33,7 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < body.CleanupSteps.Count; i++)
         {
             var step = body.CleanupSteps[i];
-            if (step.Action == CleanupAction.Conditional && ReferenceEquals(body.Places[step.Place].Type, BoundType.String) && flags[step.Place] == 0)
+            if ((execution.IsEmpty || (execution[step.Operation] & NormalMark) != 0) && step.Action == CleanupAction.Conditional && ReferenceEquals(body.Places[step.Place].Type, BoundType.String) && flags[step.Place] == 0)
             {
                 return false;
             }
@@ -41,6 +41,17 @@ internal sealed partial class BodyLowering
 
         foreach (var instruction in function.Instructions)
         {
+            if (instruction.Opcode == EmissionOpcode.InitializeLiveFlag)
+            {
+                if (instruction.Operation != 0 || instruction.Constant != 0 || (uint)instruction.Place >= (uint)flags.Length || flags[instruction.Place] != 1 || !IsComparisonTemporary(body, instruction.Place))
+                {
+                    return false;
+                }
+
+                flags[instruction.Place] = 3;
+                continue;
+            }
+
             if (instruction.Opcode != EmissionOpcode.StoreLiveFlag)
             {
                 continue;
@@ -63,6 +74,16 @@ internal sealed partial class BodyLowering
 
         for (var id = 0; id < body.Operations.Count; id++)
         {
+            if (!execution.IsEmpty && (execution[id] & NormalMark) == 0)
+            {
+                if (seen[id] != 0)
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
             var operation = body.Operations[id];
             if (StartsStringLifetime(body, operation) && flags[operation.Place] != 0)
             {
@@ -96,6 +117,24 @@ internal sealed partial class BodyLowering
             _ => false,
         };
 
+    private static bool IsComparisonTemporary(OwnershipBody body, int place)
+    {
+        if (body.Places[place].Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result))
+        {
+            return false;
+        }
+
+        foreach (var comparison in body.StringComparisons)
+        {
+            if (comparison.Left == place || comparison.Right == place)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // The two sides mirror whole-Place responsibility changes in OwnershipBody.Transfer.
     // Clearing the source is independent from initializing the acquired destination.
     private static void StringFlagTransition(OwnershipOperation operation, out int clear, out int initialize)
@@ -113,17 +152,19 @@ internal sealed partial class BodyLowering
                 initialize = operation.Place;
                 break;
             case OwnershipOperationKind.Consume:
+            case OwnershipOperationKind.AcquirePattern:
                 clear = operation.Acquisition == AcquisitionKind.Move ? operation.Place : -1;
                 initialize = operation.Input;
                 break;
             case OwnershipOperationKind.Write:
+            case OwnershipOperationKind.InitializeSubject:
                 clear = operation.Input;
                 initialize = operation.Place;
                 break;
         }
     }
 
-    private bool IsStringStorage(OwnershipPlace place) => this.stringFunctionPlaces[place.Id] != 0 || place.Kind switch
+    private bool IsStringStorage(OwnershipPlace place) => this.stringFunctionPlaces[place.Id] != 0 || (this.hasMatches && this.matchPlaces[place.Id] != 0) || place.Kind switch
     {
         OwnershipPlaceKind.Local => place.Source is FieldKoto,
         OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or IdentifierNameKoto,
@@ -160,7 +201,7 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (!this.IsStringStorage(body.Places[step.Place]) || body.Places[step.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) ||
+            if (!this.IsStringStorage(body.Places[step.Place]) || (body.Places[step.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) && !IsComparisonTemporary(body, step.Place)) ||
                 body.Operations[step.Operation].Kind is not (OwnershipOperationKind.Cleanup or OwnershipOperationKind.Write) ||
                 this.continuations[step.Operation] >= 0)
             {
@@ -182,6 +223,11 @@ internal sealed partial class BodyLowering
 
         for (var p = 0; p < body.Places.Count; p++)
         {
+            if (this.liveFlags[p] == 1 && IsComparisonTemporary(body, p))
+            {
+                this.liveFlags[p] = 2; // Entry zeroing covers paths that skip this temporary entirely.
+            }
+
             if (this.liveFlags[p] == 1)
             {
                 return Fail("Conditional string lifetime has no declaration or parameter initialization.", out failure);
@@ -224,7 +270,7 @@ internal sealed partial class BodyLowering
         switch (operation.Kind)
         {
             case OwnershipOperationKind.Declare:
-                if (place.Kind != OwnershipPlaceKind.Local && this.stringResultDeclarations[id] == 0)
+                if (place.Kind != OwnershipPlaceKind.Local && this.stringResultDeclarations[id] == 0 && (!this.hasMatches || this.matchPlaces[place.Id] != 1))
                 {
                     return Fail("String Declare requires a local.", out failure);
                 }

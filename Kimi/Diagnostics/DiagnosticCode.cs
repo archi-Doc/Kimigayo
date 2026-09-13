@@ -121,6 +121,7 @@ public enum DiagnosticCode
     GenerationFailed_Kd,
 
     DeferredExpansionLimit_Kd,
+    ComparisonLoanConflict_Kd,
 
     Count, // Last sentinel
 }

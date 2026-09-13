@@ -134,7 +134,7 @@ internal sealed partial class BodyLowering
             }
         }
 
-        if (body.IsReachable(id) && (normal != 1 || !this.Dominates(id, produce) || this.incoming[produce] != 1))
+        if (body.IsReachable(id) && (normal != 1 || !this.Dominates(id, produce) || this.LogicalIncoming(produce) != 1))
         {
             return Fail("String result initialization has an invalid predecessor.", out failure);
         }
