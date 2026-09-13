@@ -71,9 +71,9 @@ downgrade は元の strong handle の格納領域に新たな長期 Loan を残�
 
 空・期限切れの upgrade は通常の None。生存中でも strong 上限での増加は Abort であり、None とは区別する。allocation failure と weak count overflow も Abort。入力は一度だけ評価・取得し、結果は取得処理が完了してから公開する。
 
-Weak<S> は payload の field/member への直接アクセス、暗黙 dereference、object borrow 生成、runtime `is`、checked cast の入力にならない。最初に upgrade し、得た S を通して既存の操作を行う。weak の view 変換も初期案では提供しない。必要なら strong の状態で view を変えてから downgrade する。
+Weak<S> は payload の field/member への直接アクセス、暗黙 dereference、object borrow 生成、runtime `is`、checked cast の入力にならない。最初に upgrade し、得た S を通して既存の操作を行う。weak の view 変換も初期仕様では提供しない。必要なら strong の状態で view を変えてから downgrade する。
 
-生存確認だけを行う public API は初期案に含めない。確認と使用を分けても寿命は確保できない。成功した upgrade が得た strong owner だけが使用期間を確保する。
+生存確認だけを行う public API は初期仕様に含めない。確認と使用を分けても寿命は確保できない。成功した upgrade が得た strong owner だけが使用期間を確保する。
 
 ### 2.2 借用・Owned・Closure
 
