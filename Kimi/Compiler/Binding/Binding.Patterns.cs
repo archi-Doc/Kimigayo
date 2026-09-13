@@ -10,6 +10,7 @@ public sealed partial class Binding
     private readonly List<BoundMatch> matchPool = new();
     private readonly HashSet<Koto> patternNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<Koto> previousPatternNodes = new();
+    private readonly HashSet<Koto> candidateScopes = new();
     private readonly List<PatternWarning> patternWarnings = new();
     private PatternMarker? patternMarker;
     private int reportedPatternWarnings;
@@ -66,6 +67,12 @@ public sealed partial class Binding
         }
 
         this.matches.Clear();
+        foreach (var guard in this.candidateScopes)
+        {
+            this.previousPatternNodes.Add(guard);
+        }
+
+        this.candidateScopes.Clear();
         foreach (var node in this.patternNodes)
         {
             this.previousPatternNodes.Add(node);
@@ -80,7 +87,7 @@ public sealed partial class Binding
     {
         foreach (var node in this.previousPatternNodes)
         {
-            if (!this.patternNodes.Contains(node))
+            if (!this.patternNodes.Contains(node) && !this.candidateScopes.Contains(node))
             {
                 this.scopes.Remove(node);
                 this.symbols.Remove(node);
@@ -159,14 +166,23 @@ public sealed partial class Binding
 
             if (arm.Guard is { } guard)
             {
-                // Candidate reading needs its own identities and Loan checks. Still retain
-                // the validated Pattern and coverage, but do not bind with body-local types.
-                this.MarkPatternTree(guard);
-                this.MarkPatternTree(arm.Body);
-                Fail(guard, BindingFailure.Unsupported, true);
-                Fail(arm.Body, BindingFailure.Unsupported, true);
-                pendingBody = true;
-                continue;
+                if (plan.Pending || (!ScalarTypes.Supports(subject) && !ReferenceEquals(subject, BoundType.Unit)))
+                {
+                    this.MarkPatternTree(guard);
+                    this.MarkPatternTree(arm.Body);
+                    Fail(guard, BindingFailure.Unsupported, true);
+                    Fail(arm.Body, BindingFailure.Unsupported, true);
+                    pendingBody = true;
+                    continue;
+                }
+
+                var guardType = this.BindNode(guard, this.scopes[guard], BoundType.Boolean);
+                pendingBody |= guardType is null;
+                if (guardType is not null && !Compatible(guardType, BoundType.Boolean))
+                {
+                    Fail(guard, BindingFailure.TypeMismatch);
+                    plan.Invalid = true;
+                }
             }
 
             var bodyType = this.BindNode(arm.Body, this.scopes[arm.Pattern], required ? resultContext.Expected : null);
@@ -234,6 +250,12 @@ public sealed partial class Binding
                 binding.Operands[0].BoundSymbol = symbol;
                 Complete(binding.Operands[0], matched);
                 position = position with { Kind = BoundPatternKind.Binding, BodySymbol = symbol, WholePosition = true };
+                if (this.symbols.TryGetValue(binding.Operands[0], out var candidate) && candidate.Kind == BindingSymbolKind.PatternCandidate)
+                {
+                    candidate.Type = ScalarTypes.Supports(matched) || ReferenceEquals(matched, BoundType.Unit) ? matched : null;
+                    position = position with { CandidateSymbol = candidate };
+                }
+
                 unsupported |= shared;
                 break;
             case UnitLiteralKoto when ReferenceEquals(type, BoundType.Unit):

@@ -40,6 +40,7 @@ public enum BindingSymbolKind : byte
     Storage,
     PropertyAccessor,
     EnumCase,
+    PatternCandidate,
 }
 
 /// <summary>Classifies normalized semantic types.</summary>

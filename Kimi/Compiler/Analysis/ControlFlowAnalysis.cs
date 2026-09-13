@@ -891,14 +891,17 @@ public sealed class ControlFlowAnalysis
             var guardNormal = true;
             if (arm.Guard is { } guard)
             {
-                // Guard acquisition/Loan verification is pending, but transfers and unsafe
-                // operations must still be visited by syntax/control-flow analysis.
+                // Visit even checked-only guards, but propagate transfers only after
+                // normally completing Subject evaluation.
                 var guardFlow = this.Visit(guard, reachable && subject.Normal, ControlFlowType.Boolean);
                 this.CheckCompatibility(new(guard, guardFlow.Type, reachable && subject.Normal), ControlFlowType.Boolean);
                 guardNormal = guardFlow.Normal;
-                transfers = Union(transfers, guardFlow.Transfers);
-                this.pending.Add(guard);
-                pendingCompletion = true;
+                if (subject.Normal)
+                {
+                    transfers = Union(transfers, guardFlow.Transfers);
+                }
+
+                pendingCompletion |= subject.Normal && guardFlow.Pending;
             }
 
             var body = this.VisitBranch(arm.Body, arm.Body is not CodeBlockKoto, reachable && subject.Normal && guardNormal, required, boundary);

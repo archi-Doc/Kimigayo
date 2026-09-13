@@ -52,7 +52,8 @@ public readonly record struct PatternLiteral(PatternLiteralKind Kind, UInt128 Ma
 public readonly record struct BoundPattern(Koto Source, BoundType MatchedType, BoundPatternKind Kind, int Parent, int Element, int End,
     BoundEnumCase? Case = null, BindingSymbol? BodySymbol = null, PatternAcquisition Acquisition = PatternAcquisition.None,
     bool WholePosition = false, PatternLiteral Literal = default,
-    PatternAccessMode AccessMode = PatternAccessMode.Owned, PatternImplicitDeref ImplicitDeref = PatternImplicitDeref.None);
+    PatternAccessMode AccessMode = PatternAccessMode.Owned, PatternImplicitDeref ImplicitDeref = PatternImplicitDeref.None,
+    BindingSymbol? CandidateSymbol = null);
 
 public readonly record struct BoundMatchArm(MatchArmKoto Syntax, int Pattern);
 

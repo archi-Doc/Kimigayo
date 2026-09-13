@@ -96,8 +96,8 @@ internal sealed partial class BodyLowering
         this.executionHeads[from] = index;
     }
 
-    // Only dispatch edges change. Pattern testing has no ownership or Loan effects;
-    // every selected arm therefore starts in the same state as its verification edge.
+    // Pure Pattern tests may be pruned. Guard evaluation and cleanup retain their
+    // verification edges and effects before either runtime continuation.
     private bool PrepareMatches(OwnershipBody body, EmissionFunction function, out string? failure)
     {
         failure = null;
@@ -170,29 +170,15 @@ internal sealed partial class BodyLowering
                 return Fail("Match dispatch changes the verified Subject state.", out failure);
             }
 
-            var edgeCount = 0;
-            for (var e = body.EdgeHeads[dispatch]; e >= 0; e = body.Edges[e].Next)
+            var first = body.EdgeHeads[dispatch];
+            if (first < 0 || body.Edges[first].Next >= 0 || body.Edges[first].Kind != OwnershipEdgeKind.MatchArm || body.Edges[first].To != body.MatchArms[match.ArmStart].Test)
             {
-                var edge = body.Edges[e];
-                if (edge.Kind != OwnershipEdgeKind.MatchArm || body.Operations[edge.To].Kind != OwnershipOperationKind.PatternTest ||
-                    body.OperationSteps[edge.To] < match.ArmStart || body.OperationSteps[edge.To] >= match.ArmStart + match.ArmCount || this.matchTests[edge.To] != -1)
-                {
-                    return Fail("Invalid verification arm edge.", out failure);
-                }
-
-                this.matchTests[edge.To] = -2;
-                edgeCount++;
+                return Fail("Invalid verification dispatch entry.", out failure);
             }
 
-            if (edgeCount != match.ArmCount)
-            {
-                return Fail("Missing verification arm edge.", out failure);
-            }
-
-            this.executionHeads[dispatch] = -1;
+            this.executionEdges[first] = body.Edges[first] with { Kind = OwnershipEdgeKind.Normal };
             this.matchNumbers.Clear();
             this.matchTexts.Clear();
-            var previous = dispatch;
             var finished = false;
             var booleanMask = 0;
             for (var n = 0; n < match.ArmCount; n++)
@@ -200,7 +186,7 @@ internal sealed partial class BodyLowering
                 var armIndex = match.ArmStart + n;
                 var arm = body.MatchArms[armIndex];
                 if (arm.Match != m || arm.Pattern != binding.Arms[n].Pattern || (uint)arm.Pattern >= (uint)binding.Positions.Count ||
-                    (uint)arm.Test >= (uint)body.Operations.Count || this.matchTests[arm.Test] != -2 || arm.DecompositionCount != 0 || binding.Arms[n].Syntax.Guard is not null)
+                    (uint)arm.Test >= (uint)body.Operations.Count || this.matchTests[arm.Test] != -1 || arm.DecompositionCount != 0)
                 {
                     return Fail("Unsupported match arm or guard.", out failure);
                 }
@@ -215,24 +201,33 @@ internal sealed partial class BodyLowering
                 }
 
                 this.matchTests[arm.Test] = armIndex;
+                var guarded = binding.Arms[n].Syntax.Guard is not null;
+                if (guarded && !ScalarTypes.Supports(pattern.MatchedType) && !ReferenceEquals(pattern.MatchedType, BoundType.Unit))
+                {
+                    return Fail("Unsupported guarded Subject Type.", out failure);
+                }
+
                 var unconditional = pattern.Kind is BoundPatternKind.Wildcard or BoundPatternKind.Binding or BoundPatternKind.Unit;
                 var duplicate = false;
                 if (pattern.Kind == BoundPatternKind.Literal)
                 {
                     if (pattern.Literal.Kind == PatternLiteralKind.String && ReferenceEquals(pattern.MatchedType, BoundType.String) && pattern.Literal.Text is { } text)
                     {
-                        duplicate = !this.matchTexts.Add(text);
+                        duplicate = guarded ? this.matchTexts.Contains(text) : !this.matchTexts.Add(text);
                     }
                     else if (pattern.Literal.Kind == PatternLiteralKind.Boolean && ReferenceEquals(pattern.MatchedType, BoundType.Boolean) && pattern.Literal.Magnitude <= 1)
                     {
                         var bit = 1 << (int)pattern.Literal.Magnitude;
                         duplicate = (booleanMask & bit) != 0;
-                        unconditional = !duplicate && booleanMask != 0;
-                        booleanMask |= bit;
+                        unconditional = !guarded && !duplicate && booleanMask != 0;
+                        if (!guarded)
+                        {
+                            booleanMask |= bit;
+                        }
                     }
                     else if (pattern.Literal.Kind == PatternLiteralKind.Integer && ScalarTypes.TryLiteral(pattern.MatchedType, pattern.Literal.Magnitude, pattern.Literal.Negative, this.pointerWidth, out var bits))
                     {
-                        duplicate = !this.matchNumbers.Add(bits);
+                        duplicate = guarded ? this.matchNumbers.Contains(bits) : !this.matchNumbers.Add(bits);
                     }
                     else
                     {
@@ -244,16 +239,63 @@ internal sealed partial class BodyLowering
                     return Fail("Unsupported decomposition pattern.", out failure);
                 }
 
-                var success = body.EdgeHeads[arm.Test];
-                if (success < 0 || body.Edges[success].Next >= 0 || body.Edges[success].Kind != OwnershipEdgeKind.Normal)
+                var nextTest = n + 1 < match.ArmCount ? body.MatchArms[armIndex + 1].Test : -1;
+                var success = this.MatchSuccess(body, arm.Test, nextTest);
+                if (success < 0 || (uint)arm.BodyEntry >= (uint)body.Operations.Count || body.Operations[arm.BodyEntry].Kind != OwnershipOperationKind.Branch ||
+                    !ReferenceEquals(body.Operations[arm.BodyEntry].Source, binding.Arms[n].Syntax.Body))
                 {
-                    return Fail("Pattern test has no unique success entry.", out failure);
+                    return Fail("Pattern test has invalid verification continuations.", out failure);
+                }
+
+                if (guarded)
+                {
+                    var guard = binding.Arms[n].Syntax.Guard!;
+                    if ((uint)arm.GuardEntry >= (uint)body.Operations.Count || body.Edges[success].To != arm.GuardEntry ||
+                        body.Operations[arm.GuardEntry].Kind != OwnershipOperationKind.Branch || !ReferenceEquals(body.Operations[arm.GuardEntry].Source, guard))
+                    {
+                        return Fail("Pattern success does not enter its guard.", out failure);
+                    }
+
+                    if (arm.GuardBranch >= 0)
+                    {
+                        var selected = this.MatchSuccess(body, arm.GuardBranch, nextTest);
+                        if (selected < 0 || body.Edges[selected].To != arm.BodyEntry || body.Operations[arm.GuardBranch].Kind != OwnershipOperationKind.Branch ||
+                            !ReferenceEquals(body.Operations[arm.GuardBranch].Source, guard) || body.Values[arm.GuardBranch].Kind != OwnershipValueKind.Alias)
+                        {
+                            return Fail("Guard does not select its body after evaluation and cleanup.", out failure);
+                        }
+
+                        if (arm.GuardValue < 0 || Input(body, arm.GuardBranch, 0) != arm.GuardValue || arm.GuardCleanupStart <= arm.GuardEntry || arm.GuardCleanupStart > arm.GuardBranch)
+                        {
+                            return Fail("Guard does not retain its pre-cleanup Boolean.", out failure);
+                        }
+
+                        for (var cleanup = arm.GuardCleanupStart; cleanup < arm.GuardBranch; cleanup++)
+                        {
+                            var next = body.EdgeHeads[cleanup];
+                            if (body.Operations[cleanup].Kind != OwnershipOperationKind.Cleanup || !ReferenceEquals(body.Operations[cleanup].Source, guard) ||
+                                next < 0 || body.Edges[next].Next >= 0 || body.Edges[next].Kind != OwnershipEdgeKind.Normal || body.Edges[next].To != cleanup + 1)
+                            {
+                                return Fail("Guard continuation bypasses temporary cleanup.", out failure);
+                            }
+                        }
+                    }
+                }
+                else if (arm.GuardEntry != -1 || arm.GuardBranch != -1 || arm.GuardValue != -1 || arm.GuardCleanupStart != -1 || body.Edges[success].To != arm.BodyEntry)
+                {
+                    return Fail("Unguarded Pattern has an unexpected guard plan.", out failure);
                 }
 
                 if (pattern.Kind == BoundPatternKind.Binding)
                 {
                     var expectedAcquisition = ReferenceEquals(pattern.MatchedType, BoundType.String) ? PatternAcquisition.Move : PatternAcquisition.Copy;
-                    var declaration = body.Edges[success].To;
+                    var entry = body.EdgeHeads[arm.BodyEntry];
+                    if (entry < 0 || body.Edges[entry].Next >= 0 || body.Edges[entry].Kind != OwnershipEdgeKind.Normal)
+                    {
+                        return Fail("Selected binding has no unique declaration entry.", out failure);
+                    }
+
+                    var declaration = body.Edges[entry].To;
                     var next = body.EdgeHeads[declaration];
                     if (pattern.Acquisition != expectedAcquisition || pattern.BodySymbol is null || !body.SymbolPlaces.TryGetValue(pattern.BodySymbol, out var local) ||
                         body.Operations[declaration].Kind != OwnershipOperationKind.Declare || body.Operations[declaration].Place != local ||
@@ -273,20 +315,30 @@ internal sealed partial class BodyLowering
                     this.patternAcquisitions[acquisition] = match.Subject + 1;
                 }
 
+                this.executionHeads[arm.Test] = -1;
                 if (finished || duplicate)
                 {
+                    if (nextTest >= 0)
+                    {
+                        this.AddExecutionEdge(arm.Test, nextTest, OwnershipEdgeKind.Normal);
+                    }
+
                     continue; // Still validated and lowered into checking scratch, never serialized.
                 }
 
-                this.AddExecutionEdge(previous, arm.Test, previous == dispatch ? OwnershipEdgeKind.Normal : OwnershipEdgeKind.False);
+                this.AddExecutionEdge(arm.Test, body.Edges[success].To, unconditional ? OwnershipEdgeKind.Normal : OwnershipEdgeKind.True);
                 if (unconditional)
                 {
-                    finished = true; // Coverage proves success; no synthetic failure/unreachable block.
+                    finished |= !guarded; // A true Pattern does not prove a true guard.
                 }
                 else
                 {
-                    this.executionEdges[success] = body.Edges[success] with { Kind = OwnershipEdgeKind.True };
-                    previous = arm.Test;
+                    if (nextTest < 0)
+                    {
+                        return Fail("Conditional final Pattern has no continuation.", out failure);
+                    }
+
+                    this.AddExecutionEdge(arm.Test, nextTest, OwnershipEdgeKind.False);
                 }
             }
 
@@ -318,6 +370,35 @@ internal sealed partial class BodyLowering
     private bool PureMatchTest(OwnershipBody body, int id) => body.Values[id].Kind == OwnershipValueKind.None && body.Operations[id].Input == -1 &&
         (body.LoanInputs.Count == 0 || body.LoanInputs[id] == body.LoanStates[id]);
 
+    private int MatchSuccess(OwnershipBody body, int test, int next)
+    {
+        if ((uint)test >= (uint)body.Operations.Count)
+        {
+            return -1;
+        }
+
+        var success = -1;
+        var failure = false;
+        for (var e = body.EdgeHeads[test]; e >= 0; e = body.Edges[e].Next)
+        {
+            var edge = body.Edges[e];
+            if (edge.Kind == OwnershipEdgeKind.True && success < 0)
+            {
+                success = e;
+            }
+            else if (edge.Kind == OwnershipEdgeKind.False && next >= 0 && edge.To == next && !failure)
+            {
+                failure = true;
+            }
+            else
+            {
+                return -1;
+            }
+        }
+
+        return failure == (next >= 0) ? success : -1;
+    }
+
     private bool LowerMatchOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
@@ -328,6 +409,25 @@ internal sealed partial class BodyLowering
         }
 
         var type = body.Places[operation.Place].Type;
+        if (operation.Kind == OwnershipOperationKind.PatternTest)
+        {
+            var verifiedArm = body.MatchArms[this.matchTests[id]];
+            var selected = verifiedArm.GuardEntry < 0 || verifiedArm.GuardBranch >= 0;
+            if (this.LogicalIncoming(verifiedArm.BodyEntry) != (selected && body.IsReachable(id) ? 1 : 0))
+            {
+                return Fail("Body acquisition has an unexpected incoming path.", out failure);
+            }
+
+            if (verifiedArm.GuardBranch >= 0 && body.IsReachable(verifiedArm.GuardBranch))
+            {
+                if (!this.Dominates(verifiedArm.GuardEntry, verifiedArm.GuardBranch) || !this.Dominates(verifiedArm.GuardValue, verifiedArm.GuardBranch) ||
+                    (verifiedArm.GuardCleanupStart < verifiedArm.GuardBranch && !this.Dominates(verifiedArm.GuardCleanupStart, verifiedArm.GuardBranch)))
+                {
+                    return Fail("Guard selection is not dominated by its evaluation and cleanup.", out failure);
+                }
+            }
+        }
+
         if (operation.Kind == OwnershipOperationKind.InitializeSubject)
         {
             if (this.subjectInitializers[operation.Place] != id || (body.IsReachable(id) && ((body.GetInputState(id, operation.Input) & PlaceState.MustInit) == 0 ||
@@ -392,6 +492,32 @@ internal sealed partial class BodyLowering
         {
             ScalarTypes.TryLiteral(type, pattern.Literal.Magnitude, pattern.Literal.Negative, this.pointerWidth, out var bits);
             function.AddScalar(EmissionOpcode.Scalar, id, [this.PhysicalOperand(body, Input(body, this.subjectInitializers[operation.Place], 0)), new(EmissionOperandKind.Integer, bits)], WindowsLowering.GetValue(type)!.ComputationType, "eq", comparison: true);
+        }
+
+        return true;
+    }
+
+    private bool ValidateCandidateRead(OwnershipBody body, int id, out string? failure)
+    {
+        failure = null;
+        var operation = body.Operations[id];
+        var index = body.OperationSteps[id];
+        if (!this.hasMatches || (uint)index >= (uint)body.MatchArms.Count)
+        {
+            return Fail("Candidate read has no selected Pattern position.", out failure);
+        }
+
+        var arm = body.MatchArms[index];
+        var match = body.Matches[arm.Match];
+        var pattern = match.Binding.Positions[arm.Pattern];
+        var scalar = ScalarTypes.Supports(pattern.MatchedType);
+        if (arm.GuardEntry < 0 || operation.Place != match.Subject || operation.Source.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate ||
+            !ReferenceEquals(operation.Source.BoundSymbol, pattern.CandidateSymbol) || !ReferenceEquals(operation.Source.BoundType, pattern.MatchedType) ||
+            (body.IsReachable(id) && !this.Dominates(arm.GuardEntry, id)) ||
+            (scalar && (body.Values[id].Kind != OwnershipValueKind.Alias || Input(body, id, 0) != this.subjectInitializers[match.Subject])) ||
+            (!scalar && !ReferenceEquals(pattern.MatchedType, BoundType.Unit)))
+        {
+            return Fail("Candidate read does not inspect its protected Subject snapshot.", out failure);
         }
 
         return true;

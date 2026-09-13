@@ -407,6 +407,11 @@ internal sealed partial class BodyLowering
             return true;
         }
 
+        if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0 && body.Places[operation.Place].Kind == OwnershipPlaceKind.Subject)
+        {
+            return this.ValidateCandidateRead(body, id, out failure);
+        }
+
         if (ReferenceEquals(type, BoundType.Unit))
         {
             return true;

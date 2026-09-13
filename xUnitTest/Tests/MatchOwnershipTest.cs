@@ -89,7 +89,8 @@ public class MatchOwnershipTest
         var body = Body(c);
         var match = Assert.Single(body.Matches);
         var dispatch = body.Operations.Select((o, i) => (o, i)).Single(x => x.o.Kind == OwnershipOperationKind.MatchDispatch).i;
-        Assert.Equal(2, body.Edges.Count(e => e.From == dispatch && e.Kind == OwnershipEdgeKind.MatchArm));
+        Assert.Single(body.Edges, e => e.From == dispatch && e.Kind == OwnershipEdgeKind.MatchArm);
+        Assert.Contains(body.Edges, e => e.From == body.MatchArms[0].Test && e.To == body.MatchArms[1].Test && e.Kind == OwnershipEdgeKind.False);
         Assert.DoesNotContain(body.Edges, e => e.From == dispatch && e.Kind == OwnershipEdgeKind.Unmatched);
         foreach (var arm in body.MatchArms)
         {

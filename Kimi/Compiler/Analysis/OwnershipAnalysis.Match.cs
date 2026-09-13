@@ -9,6 +9,7 @@ public sealed partial class OwnershipAnalysis
     private readonly List<SelectionFrame> selections = new();
     private readonly List<int> activeDecompositions = new();
     private readonly List<bool> patternStorageNeeded = new();
+    private readonly List<(BindingSymbol Symbol, int Subject, int Value, int Arm)> candidates = new();
 
     private static AcquisitionKind PatternAcquisitionKind(BoundPattern pattern) => pattern.Acquisition switch
     {
@@ -31,7 +32,7 @@ public sealed partial class OwnershipAnalysis
 
         for (var i = 0; i < plan.Arms.Count; i++)
         {
-            if (plan.Arms[i].Syntax.Guard is not null)
+            if (plan.Arms[i].Syntax.Guard is not null && !ScalarTypes.Supports(plan.Syntax.Expression.BoundType) && !ReferenceEquals(plan.Syntax.Expression.BoundType, BoundType.Unit))
             {
                 return false;
             }
@@ -119,21 +120,76 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
+        var previousTest = -1;
+        var previousGuard = -1;
         for (var i = 0; i < plan.Arms.Count; i++)
         {
             var arm = plan.Arms[i];
             var region = this.checkingRegion;
             this.activeDecompositions[subject] = -1;
-            this.current = dispatch;
+            this.current = previousTest < 0 ? dispatch : previousTest;
             this.current = this.New(OwnershipOperationKind.PatternTest, arm.Syntax.Pattern, subject);
             var test = this.current;
             this.body.OperationSteps[test] = armStart + i;
-            // This is the SPEC verification graph, not runtime first-match dispatch.
-            // Warning-covered arms receive the same intact Subject state too.
-            this.Connect(dispatch, test, OwnershipEdgeKind.MatchArm);
+            // Every nonfinal Pattern can fail in the conservative verification graph,
+            // even a catch-all. False guards retain their independent side effects.
+            this.Connect(previousTest < 0 ? dispatch : previousTest, test, previousTest < 0 ? OwnershipEdgeKind.MatchArm : OwnershipEdgeKind.False);
+            this.Connect(previousGuard, test, OwnershipEdgeKind.False);
+            previousTest = test;
+            previousGuard = -1;
+            var guardEntry = -1;
+            var guardBranch = -1;
+            var guardValue = -1;
+            var guardCleanupStart = -1;
+            if (arm.Syntax.Guard is { } guard)
+            {
+                guardEntry = this.New(OwnershipOperationKind.Branch, guard);
+                this.Connect(test, guardEntry, OwnershipEdgeKind.True);
+                this.current = guardEntry;
+                var candidateMark = this.candidates.Count;
+                if (plan.Positions[arm.Pattern].CandidateSymbol is { } candidate)
+                {
+                    this.candidates.Add((candidate, subject, this.Value(subject), armStart + i));
+                }
+
+                var condition = this.Condition(guard, out guardCleanupStart);
+                guardValue = condition;
+                this.candidates.RemoveRange(candidateMark, this.candidates.Count - candidateMark);
+                if (condition >= 0 && this.current >= 0 && this.flow.Nodes[guard].CanCompleteNormally)
+                {
+                    guardBranch = this.Emit(OwnershipOperationKind.Branch, guard);
+                    this.SetValue(guardBranch, OwnershipValueKind.Alias, [condition]);
+                    previousGuard = guardBranch;
+                }
+                else
+                {
+                    this.current = -1;
+                }
+            }
+
+            var checkingBody = arm.Syntax.Guard is not null && guardBranch < 0;
+            if (checkingBody)
+            {
+                // Check the unselected body without inventing a runtime selection.
+                // A transfer's seed has its operand effects and already-ended Loans,
+                // but excludes scope-exit cleanup, as required by §14.10.3.
+                var seed = this.checkingRegion != region ? this.body.CheckingRegions[this.checkingRegion].Seed : guardCleanupStart - 1;
+                this.current = seed;
+                this.checkingRegion = this.body.CheckingRegions.Count;
+                this.body.CheckingRegions.Add(new(seed, -1));
+            }
+
+            var bodyEntry = this.New(OwnershipOperationKind.Branch, arm.Syntax.Body);
+            if (checkingBody)
+            {
+                this.body.CheckingRegions[this.checkingRegion] = this.body.CheckingRegions[this.checkingRegion] with { Entry = bodyEntry };
+            }
+
+            this.Connect(arm.Syntax.Guard is null ? test : guardBranch, bodyEntry, OwnershipEdgeKind.True);
+            this.current = bodyEntry;
             var decompositionStart = this.body.DecompositionStorage.Count;
             this.AcquirePattern(plan, arm.Pattern, subject, neededStart);
-            this.body.MatchArmStorage[armStart + i] = new(matchIndex, arm.Pattern, test, decompositionStart, this.body.DecompositionStorage.Count - decompositionStart);
+            this.body.MatchArmStorage[armStart + i] = new(matchIndex, arm.Pattern, test, decompositionStart, this.body.DecompositionStorage.Count - decompositionStart, guardEntry, guardBranch, bodyEntry, guardValue, guardCleanupStart);
 
             var secured = -1;
             if (arm.Syntax.Body is CodeBlockKoto block)
@@ -289,6 +345,37 @@ public sealed partial class OwnershipAnalysis
         {
             this.AcquirePattern(plan, child, payloadStart + element++, neededStart);
         }
+    }
+
+    private int ReadCandidate(Koto source, PlaceUseKind use)
+    {
+        for (var i = this.candidates.Count - 1; i >= 0; i--)
+        {
+            var candidate = this.candidates[i];
+            if (ReferenceEquals(candidate.Symbol, source.BoundSymbol) && use != PlaceUseKind.Borrow)
+            {
+                var read = this.Emit(OwnershipOperationKind.Read, source, candidate.Subject);
+                this.body.OperationSteps[read] = candidate.Arm;
+                if (ScalarTypes.Supports(source.BoundType))
+                {
+                    this.SetValue(read, OwnershipValueKind.Alias, [candidate.Value]);
+                }
+
+                this.placeValues[candidate.Subject] = candidate.Value;
+                // A Copy read acquires a value, not the Subject's responsibility.
+                // Its logical temporary has no scalar alloca or physical copy.
+                var value = this.Temporary(source);
+                if (ScalarTypes.Supports(source.BoundType))
+                {
+                    this.SetValue(this.Value(value), OwnershipValueKind.Alias, [read]);
+                }
+
+                return value;
+            }
+        }
+
+        this.Unsupported(source);
+        return -1;
     }
 
     private void CleanupSubject(int place, Koto source)

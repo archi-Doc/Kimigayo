@@ -4,6 +4,8 @@ The document has six parts. Numbered headings use **chapter → section → subs
 
 For a broad, non-normative source walkthrough, see the [specification tour](examples/SpecTour/README.md). It illustrates specified language features beyond current executable support and identifies features whose source APIs remain undefined.
 
+The adopted [Composition Root specification](doc/Decisions/2026-09-13%20Composition%20Root%20Review.md) takes precedence over this document for root operations, Entry declarations and references, Provider selection, final composition, and composition-dependent artifacts. It fixes root functions as nonreplaceable, connects Core.writeLine to the selected Std Entry, and separates module identity from final composition. Detailed integration into the sections and grammar below remains pending; this is specified design, not executable support.
+
 The adopted [testing specification](doc/Design/2026-09-13%20Testing.md) takes precedence over this document for test-mode extensions: `#Test`, `$expect`, `$require`, and `kimi test`. It defines one-way product/test dependencies, common verification and cleanup, process isolation, bounded reporting and recovery, and artifact reuse. Detailed integration into the sections and grammar below remains pending. This records design, not executable support; see [STATUS.md](STATUS.md).
 
 For the first executable program, start with [minimal console output](#224-minimal-console-output), [program startup](#222-program-startup-and-static-initialization), and [LLVM output/native build](#208-llvm-output-native-build-and-execution). The language rules below remain distinct from the implementation milestone in [STATUS.md](STATUS.md#c12-first-executable-milestone).
@@ -8088,6 +8090,8 @@ Use CFG edges for short circuit, branches, match guards, and loops. Evaluate con
 A non-Never Expression Type does not guarantee a normal CFG predecessor: required cleanup may prevent delivery (§14.9). Do not manufacture an incoming value or change the checked Type to Never in that case.
 
 Keep match verification reachability distinct from ordered runtime dispatch. Arms excluded by earlier Patterns still receive required checking, but contribute no runtime predecessor, result arrival or lifetime update. A separate dispatch plan must preserve the verified state at every selected arm. Unguarded Pattern tests have no acquisition or cleanup effects; guards require their own state transitions. When prior tests and exhaustiveness guarantee the next arm succeeds, dispatch may enter it directly without inventing an unmatched value or failure path.
+
+Verification must carry earlier false-guard effects, after guard cleanup, into later arm checking. A source-ordered verification chain may conservatively retain mismatch edges even for irrefutable or covered Patterns, joining those states with guard-false states at the next test. It must not add an unmatched normal completion. Runtime pruning removes only proved-impossible paths; it must not reset earlier guard effects or initialize body bindings before successful guard cleanup.
 
 Direct construction into an uninitialized final slot may remove intermediate transfers only if evaluation order, aliasing, Loans, storage identity/lifetime, intermediate observations, partial initialization, and cleanup remain unchanged. Otherwise keep an independent temporary; never overwrite a live replacement target early.
 

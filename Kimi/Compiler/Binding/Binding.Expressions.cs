@@ -11,6 +11,11 @@ public sealed partial class Binding
     private static bool Writable(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
+        if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
+        {
+            return false;
+        }
+
         if (node.BoundSymbol is { Kind: BindingSymbolKind.Storage, Scope.Owner: PropertyAccessorKoto syntax })
         {
             var accessor = Accessor(syntax);
@@ -512,7 +517,7 @@ public sealed partial class Binding
             }
         }
 
-        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage && scope.Function != symbol.Scope.Function)
+        if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate && scope.Function != symbol.Scope.Function)
         {
             return Fail(node, BindingFailure.Capture);
         }

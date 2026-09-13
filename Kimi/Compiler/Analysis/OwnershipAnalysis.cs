@@ -128,6 +128,7 @@ public sealed partial class OwnershipAnalysis
 
         this.bodies.Clear();
         this.issues.Clear();
+        this.candidates.Clear();
     }
 
     private void Build(FunctionKoto function)
@@ -163,6 +164,7 @@ public sealed partial class OwnershipAnalysis
         this.resultDeclarations.Clear();
         this.pendingResults.Clear();
         this.selections.Clear();
+        this.candidates.Clear();
         this.comparisonDepth = 0;
         this.activeDecompositions.Clear();
         this.patternStorageNeeded.Clear();
@@ -424,6 +426,11 @@ public sealed partial class OwnershipAnalysis
             case ParenthesizedKoto parentheses:
                 return this.Expression(parentheses.Operand, use, acquisition);
             case IdentifierNameKoto:
+                if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate)
+                {
+                    return this.ReadCandidate(node, use);
+                }
+
                 return this.Use(node, this.Local(node), use, acquisition);
             case StringLiteralKoto or NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto or UnitLiteralKoto:
                 return this.Temporary(node);
@@ -698,10 +705,13 @@ public sealed partial class OwnershipAnalysis
         return -1;
     }
 
-    private int Condition(Koto condition)
+    private int Condition(Koto condition) => this.Condition(condition, out _);
+
+    private int Condition(Koto condition, out int cleanupStart)
     {
         var mark = this.temporaries.Count;
         var value = this.Value(this.Expression(condition, PlaceUseKind.Read));
+        cleanupStart = this.body.Operations.Count;
         this.Cleanup(mark, this.locals.Count, condition, CleanupReason.ExpressionEnd);
         this.temporaries.RemoveRange(mark, this.temporaries.Count - mark);
         return value;

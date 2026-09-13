@@ -555,8 +555,25 @@ public sealed partial class Binding
                         this.patternDepth--;
                         if (arm.Guard is { } guard)
                         {
-                            this.Scope = outer;
+                            this.Scope = binding.GetScope(guard, outer);
+                            binding.candidateScopes.Add(guard);
+                            if (KotoHelper.UnwrapParentheses(arm.Pattern) is SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern && pattern.Operands[0] is IdentifierNameKoto name)
+                            {
+                                if (binding.symbols.TryGetValue(name, out var candidate) && candidate.Name != name.IdentifierName)
+                                {
+                                    binding.symbols.Remove(name);
+                                }
+
+                                var bodySymbol = pattern.BoundSymbol;
+                                binding.Declare(name, name.IdentifierName, BindingSymbolKind.PatternCandidate, pattern, this.Scope);
+                                pattern.BoundSymbol = bodySymbol;
+                            }
+
                             this.Visit(guard);
+                        }
+                        else if (KotoHelper.UnwrapParentheses(arm.Pattern) is SyntaxFormKoto { Akind: KotoKind.BindingPattern } unguarded)
+                        {
+                            binding.symbols.Remove(unguarded.Operands[0]);
                         }
 
                         this.Scope = armScope;

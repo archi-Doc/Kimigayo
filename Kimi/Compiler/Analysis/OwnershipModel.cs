@@ -151,7 +151,8 @@ public readonly record struct OwnershipConstructionPlan(int Place, BoundEnumCase
 public readonly record struct OwnershipMatchPlan(BoundMatch Binding, int Subject, int Result, int ArmStart, int ArmCount);
 
 /// <summary>One successful Pattern test and its ownership decomposition before the arm body.</summary>
-public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int DecompositionStart, int DecompositionCount);
+public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int Test, int DecompositionStart, int DecompositionCount,
+    int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1);
 
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1);
 
