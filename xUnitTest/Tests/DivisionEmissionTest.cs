@@ -108,7 +108,7 @@ public class DivisionEmissionTest
     [InlineData("let x: u32 = 1 / 0")]
     [InlineData("var x: i64 = 7\nx %= 2")]
     [InlineData("if false => 1.0 / 0.0")]
-    [InlineData("var x = 1\nx <<= 2")]
+    [InlineData(MinimalEmissionTest.UnsupportedExpression)]
     public void OtherTypesAndOperatorsStillFailBeforeWriting(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -148,8 +148,9 @@ public class DivisionEmissionTest
         using var writer = new StringWriter();
         Assert.True(c.Emission.WriteIr(writer, out var error), error);
         var ir = writer.ToString();
-        Assert.Equal(8, WindowsLowering.AbortReasons.Length);
-        Assert.Equal(2, Regex.Matches(ir, @"\[8 x \{ ptr, i64 \}\]").Count);
+        Assert.Equal(9, WindowsLowering.AbortReasons.Length);
+        var count = WindowsLowering.AbortReasons.Length;
+        Assert.Equal(2, Regex.Matches(ir, $@"\[{count} x \{{ ptr, i64 \}}\]").Count);
         foreach (var reason in WindowsLowering.AbortReasons)
         {
             Assert.Contains($"{{ ptr, i64 }} {{ ptr @__kimi_{reason.Name}_reason, i64 {reason.Text.Length} }}", ir);
@@ -158,7 +159,8 @@ public class DivisionEmissionTest
 
         Assert.Equal(OverflowReason, WindowsLowering.AbortReasons[WindowsLowering.IntegerOverflowReason].Text);
         Assert.Equal(ZeroReason, WindowsLowering.AbortReasons[WindowsLowering.IntegerDivisionZeroReason].Text);
-        Assert.Contains("%known = icmp ult i32 %reason, 8", ir);
+        Assert.Equal("KIMI_E_INT_SHIFT_COUNT: Shift count out of range", WindowsLowering.AbortReasons[WindowsLowering.IntegerShiftCountReason].Text);
+        Assert.Contains($"%known = icmp ult i32 %reason, {count}", ir);
         Assert.DoesNotContain("{{", ir);
     }
 

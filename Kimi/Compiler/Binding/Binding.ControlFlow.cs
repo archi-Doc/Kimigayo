@@ -94,6 +94,8 @@ public sealed partial class Binding
                 return this.ResultEvidence(((UnaryKoto)source).Operand, scope);
             case BinaryKoto binary when binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals:
                 return BoundType.Unit;
+            case BinaryKoto binary when binary.Akind is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan:
+                return this.ResultEvidence(binary.Left, scope);
             case BinaryKoto binary when binary.Akind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret:
                 return this.ResultEvidence(binary.Left, scope) ?? this.ResultEvidence(binary.Right, scope);
             case ConversionKoto conversion:

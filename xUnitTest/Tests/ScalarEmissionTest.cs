@@ -39,10 +39,10 @@ public class ScalarEmissionTest
     [Theory]
     [InlineData("let x: u32 = 1")]
     [InlineData("let x: u32 = if true => 1 else => 2")]
-    [InlineData("var x = 1\nx = x << 1")]
+    [InlineData(MinimalEmissionTest.UnsupportedExpression)]
     [InlineData("if false\n    let x: u32 = 1")]
     [InlineData("while true\n    exit\n    let x: u32 = 1")]
-    [InlineData("while true\n    continue\n    let x = 2 << 1")]
+    [InlineData("while true\n    continue\n    " + MinimalEmissionTest.UnsupportedExpression)]
     [InlineData("if true and (\"x\" == \"x\") => writeLine(\"bad\")")]
     public void UnsupportedOperationsNeverWriteIr(string source)
     {

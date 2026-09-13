@@ -149,10 +149,22 @@ internal static partial class LlvmModuleWriter
             output.Write('\n');
             WriteArithmeticFailure(output, constants, instruction, "%invalid");
         }
+        else if (instruction.Check == ArithmeticCheckKind.Shift)
+        {
+            Name(output, "  %invalid", id);
+            output.Write(" = icmp uge i32 ");
+            WriteOperand(output, operands[1]);
+            output.Write(", 32\n");
+            WriteArithmeticFailure(output, constants, instruction, "%invalid");
+        }
+        else if (instruction.Check != ArithmeticCheckKind.None)
+        {
+            throw new InvalidOperationException("Unknown arithmetic check.");
+        }
 
         Name(output, "  %v", id);
         output.Write(" = ");
-        if (op is not ("xor" or "add" or "sdiv" or "srem"))
+        if (instruction.IsComparison)
         {
             output.Write("icmp ");
         }
@@ -188,7 +200,13 @@ internal static partial class LlvmModuleWriter
         output.Write('\n');
         Name(output, "abort", id);
         output.Write(":\n");
-        var reason = new EmissionOperand(EmissionOperandKind.Integer, WindowsLowering.IntegerOverflowReason);
+        var reasonId = instruction.Check switch
+        {
+            ArithmeticCheckKind.Overflow or ArithmeticCheckKind.Division => WindowsLowering.IntegerOverflowReason,
+            ArithmeticCheckKind.Shift => WindowsLowering.IntegerShiftCountReason,
+            _ => throw new InvalidOperationException("Unknown arithmetic failure reason."),
+        };
+        var reason = new EmissionOperand(EmissionOperandKind.Integer, reasonId);
         if (instruction.Check == ArithmeticCheckKind.Division)
         {
             // The synthetic success-label ID is outside the ownership value ID range.

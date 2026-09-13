@@ -90,6 +90,10 @@ public class BindingTest
 
     [Theory]
     [InlineData("let x: u64 = 1\nlet count: u8 = 3\nlet y = x << count", "u64")]
+    [InlineData("let x: i64 = 1\nlet n: u8 = 3\nlet y = if true => x << n else => x >> n", "i64")]
+    [InlineData("let x: i64 = 1\nlet n: u8 = 3\nlet y = if true => x << n else => 0", "i64")]
+    [InlineData("let x: i32 = 1\nlet y = x << -1", "i32")]
+    [InlineData("let n: u8 = 3\nlet y = if true => 1 << n else => 0", "i32")]
     [InlineData("var x: i16 = 1\nlet count: u32 = 3\nx >>= count\nlet y = x", "i16")]
     [InlineData("let y = \"a\" + \"b\"", "string")]
     [InlineData("var s = \"a\"\ns += \"b\"\nlet y = s", "string")]
@@ -104,6 +108,21 @@ public class BindingTest
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var result = All(compilation.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "y");
         Assert.Equal(type, result.BoundType!.Name);
+    }
+
+    [Theory]
+    [InlineData("i8", "3")]
+    [InlineData("i16", "3")]
+    [InlineData("i32", "-1")]
+    [InlineData("i64", "3")]
+    [InlineData("u32", "3")]
+    public void UntypedShiftCountsFitTheLeftType(string type, string count)
+    {
+        var compilation = Parse($"let x: {type} = 1\nlet y = x << {count}");
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        var shift = Assert.Single(All(compilation.Kotonoha.RootKoto).OfType<LessThanLessThanKoto>());
+        Assert.Equal(type, shift.Right.BoundType!.Name);
+        Assert.Same(shift.Left.BoundType, shift.BoundType);
     }
 
     [Fact]

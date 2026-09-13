@@ -106,9 +106,9 @@ public class DeferredEmissionTest
     }
 
     [Theory]
-    [InlineData("defer => 1 << 1\ndefer => loop => ()")]
-    [InlineData("defer => loop => ()\nlet x = 1 << 1")]
-    [InlineData("if false => defer => 1 << 1")]
+    [InlineData("defer => " + MinimalEmissionTest.UnsupportedExpression + "\ndefer => loop => ()")]
+    [InlineData("defer => loop => ()\n" + MinimalEmissionTest.UnsupportedExpression)]
+    [InlineData("if false => defer => " + MinimalEmissionTest.UnsupportedExpression)]
     public void UnsupportedCleanupNeverWritesIr(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

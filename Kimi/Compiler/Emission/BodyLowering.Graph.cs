@@ -20,6 +20,7 @@ internal sealed partial class BodyLowering
 
     private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value) => value.Kind switch
     {
+        OwnershipValueKind.Binary when value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan => ArithmeticCheckKind.Shift,
         OwnershipValueKind.Binary when value.Operator is KotoKind.Slash or KotoKind.Percent => ArithmeticCheckKind.Division,
         OwnershipValueKind.Binary when value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk => ArithmeticCheckKind.Overflow,
         OwnershipValueKind.Unary when value.Operator == KotoKind.PrefixMinus => ArithmeticCheckKind.Overflow,
@@ -395,6 +396,8 @@ internal sealed partial class BodyLowering
         {
             KotoKind.Plus => "sadd", KotoKind.Minus or KotoKind.PrefixMinus => "ssub", KotoKind.Asterisk => "smul",
             KotoKind.Slash => "sdiv", KotoKind.Percent => "srem",
+            KotoKind.Ampersand => "and", KotoKind.Bar => "or", KotoKind.Caret => "xor",
+            KotoKind.LessThanLessThan => "shl", KotoKind.GreaterThanGreaterThan => "ashr",
             KotoKind.EqualsEquals => "eq", KotoKind.ExclamationEquals => "ne",
             KotoKind.LessThan => "slt", KotoKind.LessThanEquals => "sle", KotoKind.GreaterThan => "sgt", KotoKind.GreaterThanEquals => "sge",
             KotoKind.Not => "xor", KotoKind.PrefixPlus => "add",
@@ -407,16 +410,19 @@ internal sealed partial class BodyLowering
 
         var first = Input(body, id, 0);
         var operandType = ValueType(body, first)!;
-        if (!IsScalar(operandType) || (!ReferenceEquals(operandType, BoundType.I32) && op is not ("eq" or "ne" or "xor")))
+        if (!IsScalar(operandType) || (!ReferenceEquals(operandType, BoundType.I32) && value.Operator is not (KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.Not)))
         {
             return Fail("Unsupported scalar operand Type.", out failure);
         }
 
         var comparison = op is "eq" or "ne" or "slt" or "sle" or "sgt" or "sge";
+        var shift = value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan;
         if (!ReferenceEquals(type, comparison ? BoundType.Boolean : operandType) ||
-            (value.Kind == OwnershipValueKind.Binary && !ReferenceEquals(operandType, ValueType(body, Input(body, id, 1)))) ||
+            (value.Kind == OwnershipValueKind.Binary && (shift
+                ? !ReferenceEquals(ValueType(body, Input(body, id, 1)), BoundType.I32) // Count Type is independent; only i32 is implemented here.
+                : !ReferenceEquals(operandType, ValueType(body, Input(body, id, 1))))) ||
             ((value.Kind == OwnershipValueKind.Unary) != (value.Operator is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus)) ||
-            (op == "xor" && !ReferenceEquals(operandType, BoundType.Boolean)))
+            (value.Operator == KotoKind.Not && !ReferenceEquals(operandType, BoundType.Boolean)))
         {
             return Fail("Inconsistent scalar operator or operand Types.", out failure);
         }
@@ -430,7 +436,7 @@ internal sealed partial class BodyLowering
             return Fail("Arithmetic check has no source location.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Scalar, id, [leftOperand, rightOperand], ReferenceEquals(operandType, BoundType.Boolean) ? "i1" : "i32", op, place: body.Operations.Count + id, location: location, check: check);
+        function.AddScalar(EmissionOpcode.Scalar, id, [leftOperand, rightOperand], ReferenceEquals(operandType, BoundType.Boolean) ? "i1" : "i32", op, place: body.Operations.Count + id, location: location, check: check, comparison: comparison);
         return true;
     }
 }

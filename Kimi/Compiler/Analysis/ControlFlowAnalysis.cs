@@ -1295,6 +1295,12 @@ public sealed class ControlFlowAnalysis
                 return null;
             }
 
+            // Shift results come only from the left. Count Types are independent (SPEC 13.3).
+            if (node is LessThanLessThanKoto or GreaterThanGreaterThanKoto or LessThanLessThanEqualsKoto or GreaterThanGreaterThanEqualsKoto)
+            {
+                return node is LessThanLessThanEqualsKoto or GreaterThanGreaterThanEqualsKoto ? ControlFlowType.Unit : left.ExpressionType;
+            }
+
             if (left.ExpressionType is { } type)
             {
                 this.Constrain(binary.Right, type);
@@ -1308,6 +1314,11 @@ public sealed class ControlFlowAnalysis
             if (node is EqualsEqualsKoto or ExclamationEqualsKoto or LessThanKoto or LessThanEqualsKoto or GreaterThanKoto or GreaterThanEqualsKoto)
             {
                 return ControlFlowType.Boolean;
+            }
+
+            if (node is AmpersandKoto or BarKoto or CaretKoto)
+            {
+                return left.ExpressionType;
             }
 
             if (node is PlusKoto or MinusKoto or AsteriskKoto or SlashKoto or PercentKoto)

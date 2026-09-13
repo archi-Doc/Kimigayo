@@ -66,7 +66,7 @@ public class FunctionEmissionTest
     [InlineData("func f(x?: i32 = 1) => ()\n()")]
     [InlineData("func f<T>() => ()\n()")]
     [InlineData("func f(x: string) => ()\n()")]
-    [InlineData("func unused() => 1 << 1\n()")]
+    [InlineData("func unused() -> ()\n    " + MinimalEmissionTest.UnsupportedExpression + "\n()")]
     [InlineData("public func main() -> i32 => 0")]
     [InlineData("public func main() => ()\n()")]
     [InlineData("func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => ()\nvar x = 1\nf(spin(), x++)")]

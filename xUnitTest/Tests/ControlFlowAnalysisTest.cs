@@ -10,6 +10,34 @@ namespace XunitTest;
 public class ControlFlowAnalysisTest
 {
     [Theory]
+    [InlineData("<<", "u8")]
+    [InlineData(">>", "u8")]
+    [InlineData("&", "i64")]
+    [InlineData("|", "i64")]
+    [InlineData("^", "i64")]
+    public void IntegerResultsComeFromLeftWithoutConstrainingShiftCounts(string op, string countType)
+    {
+        var analysis = Analyze($"func f(x: i64, n: {countType}) -> i64 => x {op} n");
+        Assert.Empty(analysis.Issues);
+        var expression = Assert.Single(analysis.Nodes, x => x.Key is BinaryKoto);
+        Assert.Equal("i64", expression.Value.ExpressionType?.Name);
+        var right = ((BinaryKoto)expression.Key).Right;
+        Assert.Equal(countType, analysis.Nodes[right].ExpressionType?.Name);
+    }
+
+    [Theory]
+    [InlineData("<<=")]
+    [InlineData(">>=")]
+    public void CompoundShiftsKeepIndependentCountAndUnitResult(string op)
+    {
+        var analysis = Analyze($"func f(n: u8) -> ()\n    var x: i64 = 1\n    x {op} n");
+        Assert.Empty(analysis.Issues);
+        var expression = Assert.Single(analysis.Nodes, x => x.Key is BinaryKoto);
+        Assert.Equal(ControlFlowType.Unit, expression.Value.ExpressionType);
+        Assert.Equal("u8", analysis.Nodes[((BinaryKoto)expression.Key).Right].ExpressionType?.Name);
+    }
+
+    [Theory]
     [InlineData("bool", false)]
     [InlineData("i32", true)]
     [InlineData("Never", false)]

@@ -15,6 +15,7 @@ internal static partial class WindowsLowering
     internal const int StringReleaseReason = 5;
     internal const int IntegerOverflowReason = 6;
     internal const int IntegerDivisionZeroReason = 7;
+    internal const int IntegerShiftCountReason = 8;
 
     // Indices are stable internal ABI values. The template's table, lengths and call sites
     // are expanded once from these records; the warm writer only copies the resulting text.
@@ -30,6 +31,7 @@ internal static partial class WindowsLowering
         new(StringReleaseReason, "release", "KIMI_E_STRING_RELEASE: Invalid string release kind"),
         new(IntegerOverflowReason, "overflow", "KIMI_E_INT_OVERFLOW: Integer overflow"),
         new(IntegerDivisionZeroReason, "division_zero", "KIMI_E_INT_DIV_ZERO: Integer division or remainder by zero"),
+        new(IntegerShiftCountReason, "shift_count", "KIMI_E_INT_SHIFT_COUNT: Shift count out of range"),
     ];
 
     internal static string ExpandAbortReasons(string runtime)
