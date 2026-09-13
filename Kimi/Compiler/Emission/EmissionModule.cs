@@ -25,6 +25,7 @@ internal enum EmissionOpcode : byte
 
     /// <summary>A normal return, emitted only after lowering proves a normal Exit.</summary>
     ReturnVoid,
+    ReturnScalar,
 
     /// <summary>Terminates a block after a proven nonreturning call.</summary>
     Unreachable,
@@ -33,6 +34,7 @@ internal enum EmissionOpcode : byte
 internal enum EmissionOperandKind : byte
 {
     Value,
+    Argument,
     Block,
 
     /// <summary>The address of the slot prepared for a Place ID.</summary>

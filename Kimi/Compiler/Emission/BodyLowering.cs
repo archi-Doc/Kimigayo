@@ -11,8 +11,8 @@ namespace Kimi.Compiler;
 /// <remarks>
 /// Supports bool/i32 locals and control-flow results, Unit control flow and checked signed arithmetic.
 /// Every operation, including unreachable ones, is validated before physical blocks are assembled.
-/// User calls still require a selected-implementation worklist; borrowed and aggregate values
-/// require additional verified plans.
+/// Direct scalar calls use the module's pre-registered signatures; borrowed and aggregate
+/// values require additional verified plans.
 /// </remarks>
 internal sealed partial class BodyLowering
 {
@@ -26,11 +26,27 @@ internal sealed partial class BodyLowering
     private readonly List<int> arguments = new();
     private byte[] marks = [];
     private int[] deferredOwners = [];
+    private int[] deliveries = [];
 
-    internal bool Lower(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, out string? failure)
+    internal bool Lower(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, out string? failure)
     {
+        this.functions = functions;
+        this.flow = flow;
         this.arguments.Clear();
         var count = body.Operations.Count;
+        Grow(ref this.deliveries, count);
+        this.deliveries.AsSpan(0, count).Fill(-1);
+        for (var i = 0; i < body.Deliveries.Count; i++)
+        {
+            var id = body.Deliveries[i].Operation;
+            if ((uint)id >= (uint)count || this.deliveries[id] >= 0 || body.Operations[id].Kind != OwnershipOperationKind.Deliver)
+            {
+                return Fail("Invalid function delivery plan.", out failure);
+            }
+
+            this.deliveries[id] = i;
+        }
+
         if (!ValidateValues(body))
         {
             return Fail("Missing or inconsistent value-flow plan.", out failure);
@@ -195,6 +211,11 @@ internal sealed partial class BodyLowering
     private bool LowerOperation(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, ReadOnlySpan<byte> marks, out string? failure)
     {
         var operation = body.Operations[index];
+        if (this.arguments.Count != 0 && operation.Kind is not (OwnershipOperationKind.CallEntry or OwnershipOperationKind.Call))
+        {
+            return Fail("Call entries must be consecutive and immediately precede their call.", out failure);
+        }
+
         switch (operation.Kind)
         {
             case OwnershipOperationKind.Entry when index == 0:
@@ -202,12 +223,7 @@ internal sealed partial class BodyLowering
                 break;
 
             case OwnershipOperationKind.Deliver:
-                if (operation.Place >= 0 && !ReferenceEquals(body.Places[operation.Place].Type, BoundType.Unit))
-                {
-                    return Fail("Aggregate or scalar function results need unsupported result lowering.", out failure);
-                }
-
-                break;
+                return this.LowerReturn(body, function, index, out failure);
 
             case OwnershipOperationKind.Declare:
             case OwnershipOperationKind.Read:
@@ -255,7 +271,7 @@ internal sealed partial class BodyLowering
                     return Fail("A call argument is not proven initialized.", out failure);
                 }
 
-                this.arguments.Add(operation.Place);
+                this.arguments.Add(index);
                 break;
 
             case OwnershipOperationKind.Call:
@@ -302,32 +318,6 @@ internal sealed partial class BodyLowering
                 return Fail("An ownership operation needs unsupported lowering or Loan/Origin verification.", out failure);
         }
 
-        failure = null;
-        return true;
-    }
-
-    private bool LowerCall(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, int index, out string? failure)
-    {
-        var operation = body.Operations[index];
-        // Only compiler-provided Core implementations are callable; user bodies need the selected-implementation worklist.
-        if (operation.Source is not InvocationKoto { AttributeChain: null, BoundCall: { } plan } call ||
-            !ReferenceEquals(plan.Target, core.WriteLine) || WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) is not { } callee ||
-            plan.Receiver is not null || plan.TypeArguments.Length != 0 || plan.Origins.Length != 0 || !ReferenceEquals(plan.ReturnType, BoundType.Unit) ||
-            plan.ArgumentOperations.Length != 1 || this.arguments.Count != 1 || plan.ArgumentToParameter[0] != 0 ||
-            plan.ArgumentOperations[0].Kind != ArgumentOperationKind.Value || !ReferenceEquals(plan.ArgumentOperations[0].ParameterType, BoundType.String) ||
-            !ReferenceEquals(body.Places[this.arguments[0]].Type, BoundType.String))
-        {
-            return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
-        }
-
-        if (!this.TryGetLocation(call, projectDirectory, constants, out var location))
-        {
-            return Fail("A call has no source provenance for runtime diagnostics.", out failure);
-        }
-
-        // The owned string argument transfers to the callee, whose normal path destroys it once (SPEC 21.4.3, 22.5.5).
-        function.AddCall(index, callee, [new(EmissionOperandKind.SlotAddress, this.arguments[0]), new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
-        this.arguments.Clear();
         failure = null;
         return true;
     }

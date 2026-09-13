@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)] [string] $LlvmBin
+    [Parameter(Mandatory)] [string] $LlvmBin,
+    [string] $FixturePattern = '*.ll'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
@@ -21,7 +22,7 @@ function Invoke-Tool([string] $exe, [string[]] $arguments) {
     if ($LASTEXITCODE -ne 0) { throw "$exe failed ($LASTEXITCODE)" }
 }
 $runs = 0
-foreach ($fixture in Get-ChildItem -LiteralPath $fixtures -Filter '*.ll') {
+foreach ($fixture in Get-ChildItem -LiteralPath $fixtures -Filter $FixturePattern) {
     $stem = [IO.Path]::Combine($fixtures, $fixture.BaseName)
     $expected = [IO.File]::ReadAllText("$stem.stdout")
     $exit = [int][IO.File]::ReadAllText("$stem.exit")

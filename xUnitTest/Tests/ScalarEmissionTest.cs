@@ -142,7 +142,9 @@ public class ScalarEmissionTest
         Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
         var ir = writer.ToString();
         // Only the failure-block Abort reason may use select; source control flow still branches.
-        Assert.DoesNotMatch($@"select i1 (?!%zero\d+, i32 {WindowsLowering.IntegerDivisionZeroReason}, i32 {WindowsLowering.IntegerOverflowReason}\n)", ir[ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal)..]);
+        var bodyStart = System.Text.RegularExpressions.Regex.Match(ir, @"define internal (?:void|i1|i32) @__kimi_(?:entry_body|f\d+)\(");
+        Assert.True(bodyStart.Success);
+        Assert.DoesNotMatch($@"select i1 (?!%zero\d+, i32 {WindowsLowering.IntegerDivisionZeroReason}, i32 {WindowsLowering.IntegerOverflowReason}\n)", ir[bodyStart.Index..]);
         Assert.DoesNotContain("store i1", ir);
         var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../bin/scalar-fixtures"));
         Directory.CreateDirectory(path);

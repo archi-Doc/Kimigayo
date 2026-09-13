@@ -6,10 +6,11 @@ internal sealed partial class BodyLowering
 {
     private static BoundType? ValueType(OwnershipBody body, int id)
     {
-        var operation = body.Operations[id];
-        var place = operation.Kind == OwnershipOperationKind.Consume ? operation.Input : operation.Place;
+        var place = ValuePlace(body.Operations[id]);
         return place >= 0 ? body.Places[place].Type : null;
     }
+
+    private static int ValuePlace(OwnershipOperation operation) => operation.Kind == OwnershipOperationKind.Consume ? operation.Input : operation.Place;
 
     private static bool ValidateValues(OwnershipBody body)
     {
@@ -23,7 +24,7 @@ internal sealed partial class BodyLowering
             var value = body.Values[id];
             var expected = value.Kind switch
             {
-                OwnershipValueKind.None or OwnershipValueKind.Constant => 0,
+                OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call => 0,
                 OwnershipValueKind.Alias or OwnershipValueKind.Unary => 1,
                 OwnershipValueKind.Binary => 2,
                 OwnershipValueKind.Phi => value.Count,
@@ -63,7 +64,7 @@ internal sealed partial class BodyLowering
                 }
 
                 var producer = body.Operations[input].Kind;
-                if (producer is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce) && body.Values[input].Kind != OwnershipValueKind.Phi)
+                if (producer is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce or OwnershipOperationKind.Call) && body.Values[input].Kind != OwnershipValueKind.Phi)
                 {
                     return false;
                 }
@@ -77,6 +78,20 @@ internal sealed partial class BodyLowering
                 {
                     return false;
                 }
+            }
+
+            if (value.Kind == OwnershipValueKind.Call && operation.Kind != OwnershipOperationKind.Call)
+            {
+                return false;
+            }
+
+            if (value.Kind == OwnershipValueKind.Parameter &&
+                (operation.Kind != OwnershipOperationKind.Produce || body.Places[operation.Place].Kind != OwnershipPlaceKind.Parameter ||
+                (ulong)value.Constant >= (ulong)body.Function.Parameters.Count ||
+                !ReferenceEquals(operation.Source, body.Function.Parameters[(int)value.Constant].Type) ||
+                !ReferenceEquals(ValueType(body, id), body.Function.Parameters[(int)value.Constant].Type.BoundType)))
+            {
+                return false;
             }
 
             if (value.Kind == OwnershipValueKind.Constant && (ReferenceEquals(ValueType(body, id), BoundType.Boolean) ? value.Constant is < 0 or > 1 : value.Constant is < int.MinValue or > int.MaxValue))

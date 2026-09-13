@@ -1,0 +1,19 @@
+func factorial(n: i32) -> i32
+    if n == 0 => return 1
+    return n * factorial(n - 1)
+
+func pair(left => first: i32, right => second: i32) -> i32 => first * 10 + second
+
+func snapshot() -> i32
+    var value = 21
+    defer => value /= 3
+    return value / 2
+
+public func main() -> ()
+    defer => writeLine("done")
+    var next = 1
+    if pair(right: next++, left: next++) == 21 and next == 3
+        if factorial(6) == 720 and snapshot() == 10
+            writeLine("ok")
+            return
+    writeLine("unexpected")

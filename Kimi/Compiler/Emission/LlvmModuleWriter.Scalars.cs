@@ -12,6 +12,11 @@ internal static partial class LlvmModuleWriter
 
     private static void WriteOperand(TextWriter output, EmissionOperand operand)
     {
+        if (operand.Kind == EmissionOperandKind.Argument)
+        {
+            output.Write("%a");
+        }
+
         if (operand.Kind == EmissionOperandKind.Value)
         {
             output.Write("%v");
@@ -31,6 +36,13 @@ internal static partial class LlvmModuleWriter
         var type = instruction.ScalarType;
         switch (instruction.Opcode)
         {
+            case EmissionOpcode.ReturnScalar:
+                output.Write("  ret ");
+                output.Write(type);
+                output.Write(' ');
+                WriteOperand(output, operands[0]);
+                output.Write('\n');
+                return;
             case EmissionOpcode.Label:
                 Name(output, "b", id);
                 output.Write(":\n");

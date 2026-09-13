@@ -50,7 +50,12 @@ internal sealed partial class BodyLowering
     private static EmissionOperand Operand(OwnershipBody body, int id)
     {
         id = Definition(body, id);
-        return body.Values[id].Kind == OwnershipValueKind.Constant ? new(EmissionOperandKind.Integer, body.Values[id].Constant) : new(EmissionOperandKind.Value, id);
+        return body.Values[id].Kind switch
+        {
+            OwnershipValueKind.Constant => new(EmissionOperandKind.Integer, body.Values[id].Constant),
+            OwnershipValueKind.Parameter => new(EmissionOperandKind.Argument, body.Values[id].Constant),
+            _ => new(EmissionOperandKind.Value, id),
+        };
     }
 
     private bool LowerGraph(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, Span<byte> marks, out string? failure)
@@ -86,6 +91,7 @@ internal sealed partial class BodyLowering
             var successors = 0;
             var yes = 0;
             var no = 0;
+            var aborts = 0;
             for (var e = body.EdgeHeads[op]; e >= 0; e = body.Edges[e].Next)
             {
                 var edge = body.Edges[e];
@@ -102,12 +108,19 @@ internal sealed partial class BodyLowering
                     }
 
                     marks[edge.To] |= AbortMark;
+                    aborts++;
                     continue;
                 }
 
                 if (edge.Kind is not (OwnershipEdgeKind.Normal or OwnershipEdgeKind.Return or OwnershipEdgeKind.Back or OwnershipEdgeKind.True or OwnershipEdgeKind.False))
                 {
                     return Fail("Unsupported control-flow edge.", out failure);
+                }
+
+                if ((body.Operations[op].Kind == OwnershipOperationKind.Deliver) != (edge.Kind == OwnershipEdgeKind.Return) ||
+                    ((edge.Kind == OwnershipEdgeKind.Return) != (body.Operations[edge.To].Kind == OwnershipOperationKind.Exit)))
+                {
+                    return Fail("Only result delivery may reach a normal function exit.", out failure);
                 }
 
                 successors++;
@@ -124,7 +137,9 @@ internal sealed partial class BodyLowering
             }
 
             var exit = body.Operations[op].Kind == OwnershipOperationKind.Exit;
-            if (exit ? successors != 0 : successors == 0 || (successors != 1 && (successors != 2 || yes != 1 || no != 1)) || (successors == 1 && yes + no != 0))
+            var call = body.Operations[op].Kind == OwnershipOperationKind.Call;
+            var neverCall = call && body.Operations[op].Source is InvocationKoto invocation && ReferenceEquals(invocation.BoundCall?.ReturnType, BoundType.Never);
+            if (aborts != (call ? 1 : 0) || (exit || neverCall ? successors != 0 : successors == 0 || (successors != 1 && (successors != 2 || yes != 1 || no != 1)) || (successors == 1 && yes + no != 0)))
             {
                 return Fail("Missing or inconsistent CFG terminator.", out failure);
             }
@@ -190,7 +205,7 @@ internal sealed partial class BodyLowering
                 return Fail("This slice supports bool/i32 values and literal string temporaries.", out failure);
             }
 
-            if (value.Layout.Size != 0 && (!IsScalar(place.Type) || place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
+            if (value.Layout.Size != 0 && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
             {
                 function.Slots.Add(new(p, value));
             }
@@ -218,7 +233,7 @@ internal sealed partial class BodyLowering
         function.AddScalar(EmissionOpcode.Branch, -1, [new(EmissionOperandKind.Block, 0)]);
         for (var i = 0; i < count; i++)
         {
-            if (this.blocks[i] != i)
+            if (this.blocks[i] != i || body.Operations[i].Kind == OwnershipOperationKind.Exit)
             {
                 continue;
             }
@@ -236,9 +251,9 @@ internal sealed partial class BodyLowering
                     function.Instructions.Add(instruction with { OperandStart = start });
                 }
 
-                if (body.Operations[cursor].Kind == OwnershipOperationKind.Exit)
+                if (body.Operations[cursor].Kind == OwnershipOperationKind.Deliver ||
+                    (body.Operations[cursor].Kind == OwnershipOperationKind.Call && ReferenceEquals(body.Operations[cursor].Source.BoundType, BoundType.Never)))
                 {
-                    function.Add(EmissionOpcode.ReturnVoid, cursor);
                     break;
                 }
 
@@ -328,6 +343,11 @@ internal sealed partial class BodyLowering
                 return true;
             case OwnershipOperationKind.Read:
             case OwnershipOperationKind.Consume:
+                if (body.Places[operation.Place].Kind == OwnershipPlaceKind.Parameter)
+                {
+                    return value.Kind == OwnershipValueKind.Alias || Fail("Parameter read has no incoming SSA value.", out failure);
+                }
+
                 if (body.Places[operation.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
                 {
                     return Fail("Scalar load requires local storage.", out failure);
@@ -356,7 +376,7 @@ internal sealed partial class BodyLowering
                 return true;
         }
 
-        if (value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias)
+        if (value.Kind is OwnershipValueKind.Constant or OwnershipValueKind.Alias or OwnershipValueKind.Parameter)
         {
             return true;
         }

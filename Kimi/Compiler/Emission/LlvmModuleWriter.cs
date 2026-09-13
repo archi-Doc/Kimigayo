@@ -87,7 +87,7 @@ internal static partial class LlvmModuleWriter
                     break;
 
                 case EmissionOpcode.Call:
-                    WriteCall(output, constants, instruction.Callee!, function.GetOperands(instruction));
+                    WriteCall(output, constants, instruction.Callee!, function.GetOperands(instruction), instruction.Operation);
                     break;
 
                 case EmissionOpcode.ReturnVoid:
@@ -107,14 +107,20 @@ internal static partial class LlvmModuleWriter
         output.Write("}\n");
     }
 
-    private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands)
+    private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1)
     {
         if (callee.Result != WindowsLowering.Unit.ComputationType)
         {
-            throw new InvalidOperationException("Call results need prepared result values.");
+            if (result < 0)
+            {
+                throw new InvalidOperationException("Call results need prepared result values.");
+            }
+
+            Name(output, "  %v", result);
+            output.Write(" = ");
         }
 
-        output.Write("  call ");
+        output.Write(callee.Result == WindowsLowering.Unit.ComputationType ? "  call " : "call ");
         output.Write(callee.Result);
         output.Write(" @");
         output.Write(callee.Name);
@@ -132,8 +138,8 @@ internal static partial class LlvmModuleWriter
             switch (operand.Kind)
             {
                 case EmissionOperandKind.Value:
-                    output.Write("%v");
-                    WriteNumber(output, operand.Value);
+                case EmissionOperandKind.Argument:
+                    WriteOperand(output, operand);
                     break;
                 case EmissionOperandKind.SlotAddress:
                     output.Write("%p");

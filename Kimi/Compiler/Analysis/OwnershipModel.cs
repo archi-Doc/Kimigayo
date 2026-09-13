@@ -169,6 +169,7 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipValue> Values = new();
     internal readonly List<int> ValueOperands = new();
     internal readonly List<OwnershipPhiInput> PhiInputs = new();
+    internal readonly List<OwnershipDelivery> Deliveries = new();
     internal readonly List<OwnershipCleanupStep> CleanupStepStorage = new();
     internal readonly List<OwnershipCleanupPlan> CleanupPlanStorage = new();
     internal readonly List<OwnershipDeferredPlan> DeferredPlanStorage = new();
@@ -236,6 +237,7 @@ public sealed partial class OwnershipBody
         this.Values.Clear();
         this.ValueOperands.Clear();
         this.PhiInputs.Clear();
+        this.Deliveries.Clear();
         this.CleanupStepStorage.Clear();
         this.CleanupPlanStorage.Clear();
         this.DeferredPlanStorage.Clear();
@@ -271,6 +273,8 @@ internal enum OwnershipValueKind : byte
 {
     None,
     Constant,
+    Parameter,
+    Call,
     Alias,
     Unary,
     Binary,
@@ -282,3 +286,6 @@ internal readonly record struct OwnershipValue(OwnershipValueKind Kind, int Star
 
 // Value is a defining operation, Edge is the actual arrival after cleanup, Write secures a result or is -1.
 internal readonly record struct OwnershipPhiInput(int Value, int Edge, int Write);
+
+// The value is captured before cleanup; Write is the operation that secured it.
+internal readonly record struct OwnershipDelivery(int Operation, int Value, int Write);

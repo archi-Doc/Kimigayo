@@ -40,6 +40,13 @@ public sealed partial class OwnershipAnalysis
     private int WriteResult(Koto source, int place, int input)
         => input >= 0 || ReferenceEquals(this.body.Places[place].Type, BoundType.Unit) ? this.Emit(OwnershipOperationKind.Write, source, place, input) : -1;
 
+    private void Deliver(Koto source, int secured)
+    {
+        var value = secured >= 0 && this.body.Values[secured].Kind == OwnershipValueKind.Alias ? this.body.ValueOperands[this.body.Values[secured].Start] : -1;
+        var delivery = this.Emit(OwnershipOperationKind.Deliver, source, this.resultPlace);
+        this.body.Deliveries.Add(new(delivery, value, secured));
+    }
+
     private void ConnectResult(int join, int operation)
     {
         var edge = this.Connect(this.current, join);

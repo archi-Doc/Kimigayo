@@ -186,13 +186,19 @@ public sealed partial class OwnershipAnalysis
             var place = this.Place(parameter.Type, type, OwnershipPlaceKind.Parameter, false);
             this.body.SymbolPlaces[this.compilation.Binding.ParameterSymbol(function, i)] = place;
             this.locals.Add(new(place, parameter.Type, this.registrationSequence++));
-            this.Emit(OwnershipOperationKind.Produce, parameter.Type, place);
+            var initialized = this.Emit(OwnershipOperationKind.Produce, parameter.Type, place);
+            if (type is not null && ScalarResult(type))
+            {
+                this.SetValue(initialized, OwnershipValueKind.Parameter, [], constant: i);
+            }
+
             if (parameter.IsOptional || parameter.DefaultValue is not null)
             {
                 this.Unsupported(parameter.DefaultValue ?? parameter.Type);
             }
         }
 
+        var secured = -1;
         if (function.Body is { } block)
         {
             this.Block(block);
@@ -211,7 +217,7 @@ public sealed partial class OwnershipAnalysis
             else
             {
                 var value = this.Expression(expression);
-                this.Emit(OwnershipOperationKind.Write, expression, this.resultPlace, value);
+                secured = this.WriteResult(expression, this.resultPlace, value);
             }
         }
         else
@@ -220,7 +226,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.Cleanup(0, 0, function, CleanupReason.Return);
-        this.Emit(OwnershipOperationKind.Deliver, function, this.resultPlace);
+        this.Deliver(function, secured);
         this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         this.body.Solve();
         this.FinalizeResults();
@@ -643,7 +649,15 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        return this.Temporary(call);
+        var result = this.Temporary(call);
+        if (ScalarResult(this.body.Places[result].Type))
+        {
+            this.body.OperationStorage[invoke] = this.body.Operations[invoke] with { Place = result };
+            this.SetValue(invoke, OwnershipValueKind.Call, []);
+            this.SetValue(this.Value(result), OwnershipValueKind.Alias, [invoke]);
+        }
+
+        return result;
     }
 
     private int Argument(Koto argument, ArgumentOperationKind kind, AcquisitionKind? acquisition = null)
@@ -769,9 +783,9 @@ public sealed partial class OwnershipAnalysis
         var target = this.flow!.Targets.GetValueOrDefault(jump);
         if (jump is ReturnKoto && this.deferredDepth == 0 && ReferenceEquals(target, this.body.Function))
         {
-            this.Emit(OwnershipOperationKind.Write, jump, this.resultPlace, value);
+            var secured = this.WriteResult(jump, this.resultPlace, value);
             this.Cleanup(0, 0, jump, CleanupReason.Return);
-            this.Emit(OwnershipOperationKind.Deliver, jump, this.resultPlace);
+            this.Deliver(jump, secured);
             this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
         }
         else if (jump is YieldKoto or ExitKoto && this.TryGetSelection(target, out var selection))

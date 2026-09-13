@@ -34,10 +34,10 @@ public class MinimalEmissionTest
 
     [Theory]
     [InlineData("let x = \"a\"\nwriteLine(x)")]
-    [InlineData("func unused() => 1\nwriteLine(\"a\")")]
+    [InlineData("func unused() => 1 << 1\nwriteLine(\"a\")")]
     [InlineData("func unused<T>() => ()\nwriteLine(\"a\")")]
     [InlineData("struct Empty\n    func unused() => ()\nwriteLine(\"a\")")]
-    [InlineData("public func main() => writeLine(\"a\")")]
+    [InlineData("public func main(x: i32) => writeLine(\"a\")")]
     [InlineData("if false => 1 << 0")]
     [InlineData("let x: string\nwriteLine(x)")]
     [InlineData("let x = \"a\"\nwriteLine(x)\nwriteLine(x)")]

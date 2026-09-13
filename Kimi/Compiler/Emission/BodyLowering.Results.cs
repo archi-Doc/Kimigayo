@@ -17,6 +17,48 @@ internal sealed partial class BodyLowering
     private int[] domStart = [];
     private int[] domEnd = [];
 
+    private bool LowerReturn(OwnershipBody body, EmissionFunction function, int id, out string? failure)
+    {
+        failure = null;
+        var operation = body.Operations[id];
+        if (this.deliveries[id] < 0 || operation.Place < 0 || body.Places[operation.Place].Kind != OwnershipPlaceKind.Result ||
+            !ReferenceEquals(body.Places[operation.Place].Source, body.Function))
+        {
+            return Fail("Missing function result delivery.", out failure);
+        }
+
+        // Checking-only deliveries are not returns, and may follow an operand with no value.
+        if (!body.IsReachable(id))
+        {
+            return true;
+        }
+
+        var type = body.Places[operation.Place].Type;
+        if (function.Abi.NoReturn || !ReferenceEquals(type, body.Function.BoundSymbol?.Type ?? (body.Function.IsGenerated ? BoundType.Unit : null)))
+        {
+            return Fail("A function returns contrary to its signature.", out failure);
+        }
+
+        if (ReferenceEquals(type, BoundType.Unit))
+        {
+            function.Add(EmissionOpcode.ReturnVoid, id);
+            return true;
+        }
+
+        var delivery = body.Deliveries[this.deliveries[id]];
+        if (!IsScalar(type) || (uint)delivery.Value >= (uint)body.Values.Count || (uint)delivery.Write >= (uint)body.Operations.Count ||
+            !ReferenceEquals(ValueType(body, delivery.Value), type) ||
+            body.Operations[delivery.Write] is not { Kind: OwnershipOperationKind.Write, Placement: PlacementKind.Initialization } write ||
+            write.Place != operation.Place || body.Values[delivery.Write].Kind != OwnershipValueKind.Alias ||
+            Input(body, delivery.Write, 0) != delivery.Value || !this.Dominates(delivery.Value, delivery.Write) || !this.Dominates(delivery.Write, id))
+        {
+            return Fail("Return value was not secured before cleanup.", out failure);
+        }
+
+        function.AddScalar(EmissionOpcode.ReturnScalar, id, [Operand(body, delivery.Value)], function.Abi.Result);
+        return true;
+    }
+
     // Cooper's reverse-postorder immediate dominators, using retained linear scratch storage.
     // Intervals in the resulting tree make every subsequent value-availability check constant time.
     private void BuildDominators(OwnershipBody body)
