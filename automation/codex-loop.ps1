@@ -1,717 +1,343 @@
+#requires -Version 7.4
+<#
+.SYNOPSIS
+Runs (Plan -> Plan Audit -> Implementation -> Implementation) three times,
+then Completion Audit. See automation/README.md for limits and recovery.
+#>
 [CmdletBinding()]
 param(
-    # Repository root
-    [string]$ProjectRoot = (Get-Location).Path,
-
-    # Maximum number of Implementation Codex runs
-    [int]$MaxImplementationRuns = 1,
-
-    # Run Plan Audit after this many implementation runs
-    [int]$AuditInterval = 4,
-
-    # Run Plan Audit after this many consecutive Codex failures
-    [int]$FailureAuditThreshold = 2,
-
-    # Prompt files
-    [string]$ImplementationPrompt = "automation/implementation-prompt.md",
-    [string]$PlanAuditPrompt = "automation/plan-audit-prompt.md",
-    [string]$CompletionAuditPrompt = "automation/completion-audit-prompt.md"
+    [string]$ProjectRoot = (Split-Path $PSScriptRoot -Parent),
+    [ValidateRange(1, 1000)][int]$MaxRounds = 10,
+    [ValidateRange(1, 1440)][int]$StageTimeoutMinutes = 90,
+    [string]$CodexCommand = 'codex',
+    [switch]$Resume
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
+$ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
+$stateDir = Join-Path $ProjectRoot '.codex-loop'
+$statePath = Join-Path $stateDir 'state.json'
+$lock = $null
+$state = $null
+$exitCode = 5
+$ownsState = $false
 
-# ============================================================
-# Initialization
-# ============================================================
+function Write-JsonFile([string]$Path, $Value) {
+    $temporaryPath = "$Path.tmp"
+    [IO.File]::WriteAllText($temporaryPath, ($Value | ConvertTo-Json -Depth 20), [Text.UTF8Encoding]::new($false))
+    [IO.File]::Move($temporaryPath, $Path, $true)
+}
 
-$ProjectRoot = (Resolve-Path $ProjectRoot).Path
+function Save-State {
+    $state.updated_at = [DateTime]::UtcNow.ToString('o')
+    Write-JsonFile $statePath $state
+    Write-JsonFile (Join-Path $state.run_dir 'state.json') $state
+}
 
-$StateDir = Join-Path $ProjectRoot ".codex-loop"
-$SchemaDir = Join-Path $StateDir "schemas"
-$LogDir = Join-Path $StateDir "logs"
-
-New-Item -ItemType Directory -Force -Path $StateDir | Out-Null
-New-Item -ItemType Directory -Force -Path $SchemaDir | Out-Null
-New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-
-
-function Resolve-ProjectPath {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Path
-    )
-
-    if ([System.IO.Path]::IsPathRooted($Path)) {
-        return $Path
+function Get-WorkspaceSnapshot {
+    $paths = & git -C $ProjectRoot -c core.quotepath=false ls-files --cached --others --exclude-standard -- ':!:doc/**' ':!:.codex-loop/**'
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot enumerate repository files.' }
+    $snapshot = @{}
+    foreach ($relativePath in ($paths | Sort-Object -Unique)) {
+        $path = Join-Path $ProjectRoot $relativePath
+        $snapshot[$relativePath] = if (Test-Path -LiteralPath $path -PathType Leaf) {
+            (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+        } else { '<missing>' }
     }
-
-    return Join-Path $ProjectRoot $Path
+    return $snapshot
 }
 
-
-$ImplementationPrompt = Resolve-ProjectPath $ImplementationPrompt
-$PlanAuditPrompt = Resolve-ProjectPath $PlanAuditPrompt
-$CompletionAuditPrompt = Resolve-ProjectPath $CompletionAuditPrompt
-
-
-# ============================================================
-# Prerequisite checks
-# ============================================================
-
-if (-not (Get-Command "codex" -ErrorAction SilentlyContinue)) {
-    throw "codex command was not found in PATH."
-}
-
-foreach ($file in @(
-    $ImplementationPrompt,
-    $PlanAuditPrompt,
-    $CompletionAuditPrompt
-)) {
-    if (-not (Test-Path $file)) {
-        throw "Required prompt file not found: $file"
+function Assert-EditScope([string]$Stage, [hashtable]$Before, [hashtable]$After) {
+    $allowed = switch ($Stage) {
+        'plan' { @('IMPLEMENTATION_PLAN.md', 'STATUS.md', 'AUDIT_FINDINGS.md') }
+        'plan-audit' { @('AUDIT_FINDINGS.md', 'STATUS.md') }
+        'completion-audit' { @('AUDIT_FINDINGS.md', 'STATUS.md') }
+        default { @() }
+    }
+    foreach ($path in (@($Before.Keys) + @($After.Keys) | Sort-Object -Unique)) {
+        if ($Before[$path] -eq $After[$path]) { continue }
+        if (($Stage -ne 'implementation' -and $path -notin $allowed) -or
+            ($Stage -eq 'implementation' -and $path -like 'automation/*')) {
+            throw "Stage $Stage changed a protected file: $path. Changes were preserved for review."
+        }
     }
 }
 
-
-# ============================================================
-# JSON Schemas
-# ============================================================
-
-$ImplementationSchema = Join-Path $SchemaDir "implementation.schema.json"
-$PlanAuditSchema = Join-Path $SchemaDir "plan-audit.schema.json"
-$CompletionAuditSchema = Join-Path $SchemaDir "completion-audit.schema.json"
-
-
-@'
-{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "status": {
-      "type": "string",
-      "enum": [
-        "continue",
-        "complete",
-        "blocked"
-      ]
-    },
-    "milestone_completed": {
-      "type": "boolean"
-    },
-    "milestone": {
-      "type": ["string", "null"]
-    },
-    "summary": {
-      "type": "string"
-    },
-    "next_task": {
-      "type": ["string", "null"]
-    },
-    "needs_plan_audit": {
-      "type": "boolean"
+function New-StageSchema([string]$Stage) {
+    $statuses = switch ($Stage) {
+        'plan' { @('ready', 'blocked') }
+        'plan-audit' { @('approved', 'findings', 'blocked') }
+        'implementation' { @('continue', 'complete', 'replan', 'blocked') }
+        'completion-audit' { @('verified_complete', 'not_complete', 'blocked') }
     }
-  },
-  "required": [
-    "status",
-    "milestone_completed",
-    "milestone",
-    "summary",
-    "next_task",
-    "needs_plan_audit"
-  ]
-}
-'@ | Set-Content -Encoding UTF8 $ImplementationSchema
-
-
-@'
-{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "status": {
-      "type": "string",
-      "enum": [
-        "plan_ok",
-        "plan_updated",
-        "blocked"
-      ]
-    },
-    "summary": {
-      "type": "string"
+    $properties = [ordered]@{
+        status = @{ type = 'string'; enum = @($statuses) }
+        summary = @{ type = 'string'; minLength = 1 }
+        next_task = @{ type = @('string', 'null') }
+        task_ids = @{ type = 'array'; items = @{ type = 'string'; minLength = 1 } }
+        finding_ids = @{ type = 'array'; items = @{ type = 'string'; minLength = 1 } }
+        evidence = @{ type = 'array'; items = @{ type = 'string'; minLength = 1 } }
     }
-  },
-  "required": [
-    "status",
-    "summary"
-  ]
-}
-'@ | Set-Content -Encoding UTF8 $PlanAuditSchema
-
-
-@'
-{
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "status": {
-      "type": "string",
-      "enum": [
-        "verified_complete",
-        "not_complete",
-        "blocked"
-      ]
-    },
-    "summary": {
-      "type": "string"
-    },
-    "plan_updated": {
-      "type": "boolean"
+    if ($Stage -eq 'implementation') { $properties.progress = @{ type = 'boolean' } }
+    return @{
+        type = 'object'
+        additionalProperties = $false
+        properties = $properties
+        required = @($properties.Keys)
     }
-  },
-  "required": [
-    "status",
-    "summary",
-    "plan_updated"
-  ]
 }
-'@ | Set-Content -Encoding UTF8 $CompletionAuditSchema
 
+function Assert-Result([string]$Stage, $Result) {
+    $finished = $Result.status -in @('complete', 'verified_complete')
+    if ($finished) {
+        if ($null -ne $Result.next_task -or $Result.finding_ids.Count -gt 0 -or $Result.evidence.Count -eq 0) {
+            throw 'Completion requires next_task=null, no unresolved findings and verification evidence.'
+        }
+    } elseif ([string]::IsNullOrWhiteSpace($Result.next_task)) {
+        throw 'A non-complete result must identify the next action or unblock condition.'
+    }
+    if ($Stage -eq 'implementation' -and $Result.progress -and $Result.evidence.Count -eq 0) {
+        throw 'Progress requires concrete evidence.'
+    }
+    if ($Result.status -in @('findings', 'not_complete') -and $Result.finding_ids.Count -eq 0) {
+        throw 'Audit findings must have persistent finding IDs.'
+    }
+    if ($Result.status -eq 'approved' -and $Result.finding_ids.Count -gt 0) {
+        throw 'An approved plan must have no unresolved findings.'
+    }
+    if ($Result.finding_ids.Count -gt 0) {
+        $findingsPath = Join-Path $ProjectRoot 'AUDIT_FINDINGS.md'
+        if (-not (Test-Path -LiteralPath $findingsPath -PathType Leaf)) { throw 'AUDIT_FINDINGS.md is missing.' }
+        $findingsText = [IO.File]::ReadAllText($findingsPath)
+        foreach ($id in $Result.finding_ids) {
+            if ($id -notmatch '^AF-\d{4,}$' -or $findingsText -notmatch ('(?<![\w-])' + [regex]::Escape($id) + '(?![\w-])')) {
+                throw "Finding ID is invalid or not recorded: $id"
+            }
+        }
+    }
+}
 
-# ============================================================
-# Codex execution
-# ============================================================
-
-function Invoke-CodexRun {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Kind,
-
-        [Parameter(Mandatory)]
-        [string]$PromptPath,
-
-        [Parameter(Mandatory)]
-        [string]$SchemaPath,
-
-        [Parameter(Mandatory)]
-        [int]$Sequence,
-
-        [string]$ExtraContext = ""
-    )
-
-    $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
-
-    $outputPath = Join-Path `
-        $LogDir `
-        ("{0}-{1:D3}-{2}.json" -f $Kind, $Sequence, $timestamp)
-
-    $prompt = Get-Content $PromptPath -Raw
-
-    $prompt += @"
-
+function Invoke-Stage {
+    $stage = $state.stage
+    $state.sequence++
+    $state.in_flight = $true
+    $state.stop_reason = 'running'
+    $prefix = '{0:D4}-{1}' -f $state.sequence, $stage
+    $logBase = Join-Path $state.run_dir $prefix
+    $state.last_output = "$logBase.result.json"
+    Save-State
+    $before = Get-WorkspaceSnapshot
+    Write-JsonFile "$logBase.before.json" $before
+    $schemaPath = "$logBase.schema.json"
+    Write-JsonFile $schemaPath (New-StageSchema $stage)
+    $commonText = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'common-prompt.md'))
+    $roleText = [IO.File]::ReadAllText((Join-Path $PSScriptRoot "$stage-prompt.md"))
+    $context = @"
 
 # Automation context
-
-This is an automated Codex execution.
-
-Project root:
-$ProjectRoot
-
-Execution type:
-$Kind
-
-Execution number:
-$Sequence
-
-Persistent project state must be stored in the repository,
-especially IMPLEMENTATION_PLAN.md and STATUS.md.
-
-Do not rely on previous Codex conversation state.
-Inspect the current repository state yourself.
-
-The automation state directory is:
-
-.codex-loop/
-
-If .codex-loop/verification.log exists, inspect it when relevant.
-
-$ExtraContext
+Project root: $ProjectRoot
+Stage: $stage
+Round: $($state.round) / $MaxRounds
+Cycle: $($state.cycle) / 3
+Implementation slot: $($state.implementation_slot) / 2
+Consecutive implementation runs without progress: $($state.no_progress)
+Reason: $($state.reason)
+Previous validated result: $($state.last_result)
+Current evidence prefix: $logBase
+State belongs to the runner. Do not edit .codex-loop/state.json or runner-owned files.
+Use IMPLEMENTATION_PLAN.md, STATUS.md and AUDIT_FINDINGS.md for durable handoff.
 "@
-
-    Write-Host ""
-    Write-Host "============================================================"
-    Write-Host " Codex: $Kind #$Sequence"
-    Write-Host "============================================================"
-    Write-Host ""
-
-    $codexArgs = @(
-        "exec",
-        "--ephemeral",
-        "--approve-for-me",
-        "--sandbox", "workspace-write",
-        "--color", "never",
-        "-C", $ProjectRoot,
-        "--output-schema", $SchemaPath,
-        "-o", $outputPath,
-        "-"
-    )
-
-    # Prompt is supplied through stdin.
-    $prompt | & codex @codexArgs
-
-    $exitCode = $LASTEXITCODE
-
-    if ($exitCode -ne 0) {
-        Write-Warning "Codex exited with code $exitCode."
-
-        return [PSCustomObject]@{
-            Success = $false
-            ExitCode = $exitCode
-            OutputPath = $outputPath
-            Data = $null
-        }
+    $promptPath = "$logBase.prompt.md"
+    [IO.File]::WriteAllText($promptPath, (@($commonText, $roleText, $context) -join [Environment]::NewLine), [Text.UTF8Encoding]::new($false))
+    $invocationPath = "$logBase.invocation.json"
+    Write-JsonFile $invocationPath @{
+        command = $resolvedCodex
+        arguments = @('exec', '--ephemeral', '--approve-for-me', '--sandbox', 'workspace-write',
+            '--color', 'never', '-C', $ProjectRoot, '--output-schema', $schemaPath, '-o', $state.last_output, '-')
+        prompt_path = $promptPath
     }
 
-    if (-not (Test-Path $outputPath)) {
-        Write-Warning "Codex did not create an output file."
-
-        return [PSCustomObject]@{
-            Success = $false
-            ExitCode = $exitCode
-            OutputPath = $outputPath
-            Data = $null
-        }
+    $startInfo = [Diagnostics.ProcessStartInfo]::new()
+    $pwshName = if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' }
+    $startInfo.FileName = Join-Path $PSHOME $pwshName
+    $startInfo.WorkingDirectory = $ProjectRoot
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($argument in @('-NoProfile', '-NonInteractive', '-File', (Join-Path $PSScriptRoot 'invoke-codex.ps1'), '-InvocationPath', $invocationPath)) {
+        $startInfo.ArgumentList.Add($argument)
     }
-
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+    $stdout = [IO.File]::Create("$logBase.stdout.log")
+    $stderr = [IO.File]::Create("$logBase.stderr.log")
+    $started = $false
     try {
-        $json = Get-Content $outputPath -Raw
-        $data = $json | ConvertFrom-Json
-    }
-    catch {
-        Write-Warning "Could not parse Codex output as JSON."
-        Write-Warning $_
-
-        return [PSCustomObject]@{
-            Success = $false
-            ExitCode = $exitCode
-            OutputPath = $outputPath
-            Data = $null
-        }
-    }
-
-    Write-Host ""
-    Write-Host "Result:"
-    $data | ConvertTo-Json -Depth 10 | Write-Host
-
-    return [PSCustomObject]@{
-        Success = $true
-        ExitCode = 0
-        OutputPath = $outputPath
-        Data = $data
-    }
-}
-
-
-# ============================================================
-# Plan Audit
-# ============================================================
-
-function Invoke-PlanAudit {
-    param(
-        [Parameter(Mandatory)]
-        [int]$Sequence,
-
-        [Parameter(Mandatory)]
-        [string]$Reason
-    )
-
-    Write-Host ""
-    Write-Host ">>> PLAN AUDIT"
-    Write-Host "Reason: $Reason"
-
-    return Invoke-CodexRun `
-        -Kind "plan-audit" `
-        -PromptPath $PlanAuditPrompt `
-        -SchemaPath $PlanAuditSchema `
-        -Sequence $Sequence `
-        -ExtraContext @"
-Plan Audit was triggered for the following reason:
-
-$Reason
-"@
-}
-
-
-# ============================================================
-# Completion Audit
-# ============================================================
-
-function Invoke-CompletionAudit {
-    param(
-        [Parameter(Mandatory)]
-        [int]$Sequence
-    )
-
-    Write-Host ""
-    Write-Host ">>> COMPLETION AUDIT"
-
-    return Invoke-CodexRun `
-        -Kind "completion-audit" `
-        -PromptPath $CompletionAuditPrompt `
-        -SchemaPath $CompletionAuditSchema `
-        -Sequence $Sequence `
-        -ExtraContext @"
-The Implementation Codex has claimed that the project is COMPLETE.
-
-Do not trust that claim.
-
-Act as an independent reviewer and actively try to prove that
-the project is still incomplete.
-"@
-}
-
-
-# ============================================================
-# External verification
-# ============================================================
-
-function Invoke-ExternalVerification {
-
-    $verificationLog = Join-Path $StateDir "verification.log"
-
-    $log = @()
-
-    Write-Host ""
-    Write-Host "============================================================"
-    Write-Host " EXTERNAL VERIFICATION"
-    Write-Host "============================================================"
-    Write-Host ""
-
-    Push-Location $ProjectRoot
-
-    try {
-        # ----------------------------------------------------
-        # Build
-        # ----------------------------------------------------
-
-        Write-Host ">>> dotnet build"
-
-        $buildOutput = & dotnet build 2>&1
-        $buildExitCode = $LASTEXITCODE
-
-        $buildOutput | Write-Host
-
-        $log += "===== dotnet build ====="
-        $log += $buildOutput
-        $log += ""
-        $log += "Exit code: $buildExitCode"
-        $log += ""
-
-        if ($buildExitCode -ne 0) {
-            $log | Set-Content -Encoding UTF8 $verificationLog
-
-            Write-Warning "External build verification failed."
-            return $false
-        }
-
-
-        # ----------------------------------------------------
-        # Tests
-        # ----------------------------------------------------
-
-        Write-Host ""
-        Write-Host ">>> dotnet test --no-build"
-
-        $testOutput = & dotnet test --no-build 2>&1
-        $testExitCode = $LASTEXITCODE
-
-        $testOutput | Write-Host
-
-        $log += "===== dotnet test --no-build ====="
-        $log += $testOutput
-        $log += ""
-        $log += "Exit code: $testExitCode"
-        $log += ""
-
-        if ($testExitCode -ne 0) {
-            $log | Set-Content -Encoding UTF8 $verificationLog
-
-            Write-Warning "External test verification failed."
-            return $false
-        }
-
-
-        # ----------------------------------------------------
-        # Add Kimigayo-specific E2E verification here.
-        # ----------------------------------------------------
-
-        # Example:
-        #
-        # & dotnet run `
-        #     --project ./src/Kimigayo.Compiler `
-        #     -- ./tests/e2e/hello.kimi
-        #
-        # if ($LASTEXITCODE -ne 0) {
-        #     ...
-        # }
-
-
-        $log += "===== RESULT ====="
-        $log += "VERIFIED"
-
-        $log | Set-Content -Encoding UTF8 $verificationLog
-
-        Write-Host ""
-        Write-Host "External verification succeeded."
-
-        return $true
-    }
-    finally {
-        Pop-Location
-    }
-}
-
-
-# ============================================================
-# Main loop
-# ============================================================
-
-$implementationRun = 0
-$planAuditRun = 0
-$completionAuditRun = 0
-
-$consecutiveFailures = 0
-
-
-while ($implementationRun -lt $MaxImplementationRuns) {
-
-    $implementationRun++
-
-    Write-Host ""
-    Write-Host ""
-    Write-Host "############################################################"
-    Write-Host " IMPLEMENTATION RUN $implementationRun / $MaxImplementationRuns"
-    Write-Host "############################################################"
-
-
-    # --------------------------------------------------------
-    # Implementation
-    # --------------------------------------------------------
-
-    $result = Invoke-CodexRun `
-        -Kind "implementation" `
-        -PromptPath $ImplementationPrompt `
-        -SchemaPath $ImplementationSchema `
-        -Sequence $implementationRun
-
-
-    # --------------------------------------------------------
-    # Codex execution failure
-    # --------------------------------------------------------
-
-    if (-not $result.Success) {
-
-        $consecutiveFailures++
-
-        Write-Warning `
-            "Consecutive Codex failures: $consecutiveFailures"
-
-        if ($consecutiveFailures -ge $FailureAuditThreshold) {
-
-            $planAuditRun++
-
-            $audit = Invoke-PlanAudit `
-                -Sequence $planAuditRun `
-                -Reason "$consecutiveFailures consecutive Codex execution failures."
-
-            $consecutiveFailures = 0
-        }
-
-        continue
-    }
-
-    $consecutiveFailures = 0
-
-    $data = $result.Data
-
-
-    # --------------------------------------------------------
-    # Blocked
-    # --------------------------------------------------------
-
-    if ($data.status -eq "blocked") {
-
-        Write-Warning "Implementation Codex reported BLOCKED."
-
-        $planAuditRun++
-
-        $audit = Invoke-PlanAudit `
-            -Sequence $planAuditRun `
-            -Reason "Implementation Codex reported BLOCKED."
-
-        continue
-    }
-
-
-    # --------------------------------------------------------
-    # COMPLETE claimed
-    # --------------------------------------------------------
-
-    if ($data.status -eq "complete") {
-
-        Write-Host ""
-        Write-Host "Implementation Codex claims COMPLETE."
-        Write-Host "Running independent Completion Audit..."
-
-        $completionAuditRun++
-
-        $completion = Invoke-CompletionAudit `
-            -Sequence $completionAuditRun
-
-        if (-not $completion.Success) {
-            Write-Warning "Completion Audit failed to execute."
-            continue
-        }
-
-
-        # Completion Audit found missing work
-        if ($completion.Data.status -eq "not_complete") {
-
-            Write-Warning "Completion Audit rejected COMPLETE."
-            Write-Host $completion.Data.summary
-
-            continue
-        }
-
-
-        if ($completion.Data.status -eq "blocked") {
-
-            Write-Warning "Completion Audit was blocked."
-
-            $planAuditRun++
-
-            $audit = Invoke-PlanAudit `
-                -Sequence $planAuditRun `
-                -Reason "Completion Audit was blocked."
-
-            continue
-        }
-
-
-        # ----------------------------------------------------
-        # Independent audit says complete.
-        # Verify from the outer orchestrator.
-        # ----------------------------------------------------
-
-        if ($completion.Data.status -eq "verified_complete") {
-
-            Write-Host ""
-            Write-Host "Completion Audit reports VERIFIED_COMPLETE."
-            Write-Host "Running external verification..."
-
-            $verified = Invoke-ExternalVerification
-
-            if ($verified) {
-
-                Write-Host ""
-                Write-Host "############################################################"
-                Write-Host " PROJECT VERIFIED COMPLETE"
-                Write-Host "############################################################"
-                Write-Host ""
-
-                exit 0
+        Write-Host "Round $($state.round), cycle $($state.cycle): $stage (slot $($state.implementation_slot)). Logs: $logBase"
+        $started = $process.Start()
+        $outCopy = $process.StandardOutput.BaseStream.CopyToAsync($stdout)
+        $errCopy = $process.StandardError.BaseStream.CopyToAsync($stderr)
+        $watch = [Diagnostics.Stopwatch]::StartNew()
+        while (-not $process.WaitForExit(1000)) {
+            if ($watch.Elapsed.TotalMinutes -ge $StageTimeoutMinutes) {
+                $process.Kill($true)
+                $process.WaitForExit()
+                throw [TimeoutException]::new("Stage $stage exceeded $StageTimeoutMinutes minutes.")
             }
-
-
-            # External verification disproved completion
-            Write-Warning `
-                "External verification disproved project completion."
-
-            $planAuditRun++
-
-            $audit = Invoke-PlanAudit `
-                -Sequence $planAuditRun `
-                -Reason @"
-Completion Audit reported VERIFIED_COMPLETE,
-but external build/test verification failed.
-
-Inspect:
-
-.codex-loop/verification.log
-
-Update IMPLEMENTATION_PLAN.md accordingly.
-"@
-
-            continue
         }
+        $outCopy.GetAwaiter().GetResult()
+        $errCopy.GetAwaiter().GetResult()
+        if ($process.ExitCode -ne 0) { throw "Codex exited with code $($process.ExitCode). See $logBase.stderr.log" }
+    } finally {
+        if ($started -and -not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
+        $stdout.Dispose()
+        $stderr.Dispose()
+        $process.Dispose()
     }
-
-
-    # --------------------------------------------------------
-    # Decide whether Plan Audit is needed
-    # --------------------------------------------------------
-
-    $auditReasons = @()
-
-
-    # Periodic audit
-    if (
-        $AuditInterval -gt 0 -and
-        ($implementationRun % $AuditInterval) -eq 0
-    ) {
-        $auditReasons += `
-            "Periodic audit after $implementationRun implementation runs."
-    }
-
-
-    # Milestone completion audit
-    if ($data.milestone_completed -eq $true) {
-
-        $milestoneName = $data.milestone
-
-        if ([string]::IsNullOrWhiteSpace($milestoneName)) {
-            $milestoneName = "(unnamed milestone)"
-        }
-
-        $auditReasons += `
-            "Milestone completed: $milestoneName"
-    }
-
-
-    # Codex-requested audit
-    if ($data.needs_plan_audit -eq $true) {
-        $auditReasons += `
-            "Implementation Codex requested a Plan Audit."
-    }
-
-
-    # --------------------------------------------------------
-    # Run one audit even if several conditions fired
-    # --------------------------------------------------------
-
-    if ($auditReasons.Count -gt 0) {
-
-        $planAuditRun++
-
-        $reason = $auditReasons -join "`n"
-
-        $audit = Invoke-PlanAudit `
-            -Sequence $planAuditRun `
-            -Reason $reason
-
-        if (-not $audit.Success) {
-            Write-Warning "Plan Audit execution failed."
-        }
-    }
+    $after = Get-WorkspaceSnapshot
+    Write-JsonFile "$logBase.after.json" $after
+    Assert-EditScope $stage $before $after
+    if (-not (Test-Path -LiteralPath $state.last_output -PathType Leaf)) { throw 'Codex did not create a final result.' }
+    $json = [IO.File]::ReadAllText($state.last_output)
+    if (-not (Test-Json -Json $json -SchemaFile $schemaPath -ErrorAction Stop)) { throw 'Invalid result schema.' }
+    $result = ConvertFrom-Json -InputObject $json -AsHashtable
+    Assert-Result $stage $result
+    $state.in_flight = $false
+    $state.last_result = $state.last_output
+    Write-Host "$($result.status): $($result.summary)"
+    return $result
 }
 
+function Start-NextCycle([string]$Reason) {
+    $state.cycle++
+    $state.implementation_slot = 1
+    $state.reason = $Reason
+    if ($state.cycle -gt 3) {
+        $state.cycle = 3
+        $state.stage = 'completion-audit'
+    } else { $state.stage = 'plan' }
+}
 
-# ============================================================
-# Maximum iterations reached
-# ============================================================
-
-Write-Host ""
-Write-Warning `
-    "Maximum implementation run count ($MaxImplementationRuns) reached."
-
-exit 2
+try {
+    $gitRoot = & git -C $ProjectRoot rev-parse --show-toplevel
+    if ($LASTEXITCODE -ne 0 -or [IO.Path]::GetFullPath($gitRoot) -ne [IO.Path]::GetFullPath($ProjectRoot)) {
+        throw 'ProjectRoot must be the Git repository root.'
+    }
+    $commandInfo = Get-Command $CodexCommand -CommandType Application, ExternalScript -ErrorAction Stop
+    $resolvedCodex = $commandInfo.Source
+    foreach ($name in @('common-prompt.md', 'plan-prompt.md', 'plan-audit-prompt.md', 'implementation-prompt.md', 'completion-audit-prompt.md', 'invoke-codex.ps1')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $PSScriptRoot $name) -PathType Leaf)) { throw "Missing automation file: $name" }
+    }
+    [IO.Directory]::CreateDirectory($stateDir) | Out-Null
+    $lock = [IO.File]::Open((Join-Path $stateDir 'loop.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    if ($Resume) {
+        $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json -AsHashtable
+        if ($state.version -ne 2 -or $state.project_root -ne $ProjectRoot -or
+            ($state.round -isnot [long] -and $state.round -isnot [int])) { throw 'Invalid or incompatible state.' }
+        if ($state.round -lt 1 -or $state.cycle -notin 1, 2, 3 -or
+            $state.stage -notin @('plan', 'plan-audit', 'implementation', 'completion-audit')) { throw 'Invalid stage counters.' }
+        $expectedRunDir = Join-Path (Join-Path $stateDir 'runs') $state.run_id
+        if ($state.run_id -notmatch '^[a-f0-9]{32}$' -or $state.run_dir -ne $expectedRunDir) { throw 'Invalid run directory.' }
+        $ownsState = $true
+        if ($state.stop_reason -eq 'verified_complete') {
+            Write-Host 'This run is already complete. Omit -Resume to audit a new repository state.'
+            $exitCode = 0
+        } else {
+            $state.stage = 'plan'
+            $state.implementation_slot = 1
+            $state.no_progress = 0
+            $state.in_flight = $false
+            $state.reason = 'Explicit resume: inspect preserved partial work and external changes before continuing.'
+            $state.stop_reason = 'running'
+        }
+    } else {
+        $runId = [Guid]::NewGuid().ToString('N')
+        $runDir = Join-Path (Join-Path $stateDir 'runs') $runId
+        [IO.Directory]::CreateDirectory($runDir) | Out-Null
+        $state = [ordered]@{
+            version = 2; project_root = $ProjectRoot; run_id = $runId; run_dir = $runDir
+            round = 1; cycle = 1; implementation_slot = 1; sequence = 0; stage = 'plan'
+            no_progress = 0; in_flight = $false; stop_reason = 'running'
+            reason = 'Start from the current repository and previous audit findings.'
+            last_result = $null; last_output = $null; updated_at = $null
+        }
+        $ownsState = $true
+    }
+    if ($state.stop_reason -ne 'verified_complete') {
+        Save-State
+        while ($state.round -le $MaxRounds) {
+            $result = Invoke-Stage
+            if ($result.status -eq 'blocked') {
+                $state.stop_reason = 'blocked'
+                $state.reason = $result.next_task
+                $exitCode = 3
+                break
+            }
+            switch ($state.stage) {
+                'plan' {
+                    $state.stage = 'plan-audit'
+                    $state.reason = 'Critique the plan before implementation; record findings without editing the plan.'
+                }
+                'plan-audit' {
+                    $state.stage = 'implementation'
+                    $state.implementation_slot = 1
+                    $state.reason = 'Resolve or document audit findings in the plan before implementing the selected scope.'
+                }
+                'implementation' {
+                    if ($result.progress) { $state.no_progress = 0 } else { $state.no_progress++ }
+                    if ($result.status -eq 'complete') {
+                        $state.stage = 'completion-audit'
+                        $state.reason = 'Early completion claim: independently verify all required scope.'
+                    } elseif ($state.no_progress -ge 4) {
+                        $state.stop_reason = 'stalled'
+                        $state.reason = 'Four implementation runs made no progress, including an opportunity to replan.'
+                        $exitCode = 4
+                    } elseif ($result.status -eq 'replan' -or $state.no_progress -ge 2) {
+                        Start-NextCycle 'Replan after a material plan issue or repeated lack of progress.'
+                    } elseif ($state.implementation_slot -eq 1) {
+                        $state.implementation_slot = 2
+                        $state.reason = 'Continue unfinished implementation and verification from slot 1 before selecting another item.'
+                    } else {
+                        Start-NextCycle 'The two implementation slots ended. Update the plan from the resulting repository.'
+                    }
+                }
+                'completion-audit' {
+                    if ($result.status -eq 'verified_complete') {
+                        $state.stop_reason = 'verified_complete'
+                        $state.reason = $result.summary
+                        $exitCode = 0
+                    } else {
+                        $state.round++
+                        $state.cycle = 1
+                        $state.implementation_slot = 1
+                        $state.stage = 'plan'
+                        $state.reason = 'Completion audit found missing work. Incorporate AUDIT_FINDINGS.md into the plan.'
+                    }
+                }
+            }
+            Save-State
+            if ($state.stop_reason -ne 'running') { break }
+        }
+        if ($state.stop_reason -eq 'running') {
+            $state.stop_reason = 'limit_reached'
+            $state.reason = 'Round limit reached without verified completion. Increase MaxRounds when resuming.'
+            $exitCode = 2
+        }
+        Save-State
+    }
+} catch {
+    $exitCode = if ($_.Exception -is [TimeoutException]) { 6 } else { 5 }
+    Write-Warning $_.Exception.Message
+    if ($ownsState) {
+        $state.stop_reason = if ($exitCode -eq 6) { 'timeout' } else { 'error' }
+        $state.reason = $_.Exception.Message
+        Save-State
+    }
+} finally {
+    if ($null -ne $lock) { $lock.Dispose() }
+}
+Write-Host "Loop stopped (exit $exitCode). State: $statePath"
+exit $exitCode
