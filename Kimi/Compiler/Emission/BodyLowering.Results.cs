@@ -55,7 +55,7 @@ internal sealed partial class BodyLowering
             return Fail("Return value was not secured before cleanup.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.ReturnScalar, id, [Operand(body, delivery.Value)], function.Abi.Result);
+        function.AddScalar(EmissionOpcode.ReturnScalar, id, [this.PhysicalOperand(body, delivery.Value)], function.Abi.Result);
         return true;
     }
 
@@ -261,7 +261,7 @@ internal sealed partial class BodyLowering
                 return Fail("Missing result acquisition operation.", out failure);
             }
 
-            this.phiOperands.Add(Operand(body, input.Value));
+            this.phiOperands.Add(this.PhysicalOperand(body, input.Value));
             this.phiOperands.Add(new(EmissionOperandKind.Block, this.blockEnds[block]));
         }
 

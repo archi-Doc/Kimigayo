@@ -690,13 +690,13 @@ An empty environment or `func []` does not imply purity, a function-pointer ABI,
 
 ##### 3.2.2. Weak reference values
 
-`Core.Weak<S>` is a compiler-known, Non-Copy owning value Core. Its complete Type argument S must have outer Semantics `rc` or `arc` after normalization, with an otherwise valid object View Target. Thus `Weak<rc/T>` upgrades to `Core.Option<rc/T>`, and `Weak<arc/T>` upgrades to `Core.Option<arc/T>`. A generic definition must prove this argument requirement. A bare payload Core, `obj/T`, an object borrow, or another Weak is not an eligible S.
+`Core.Weak<S>` は compiler が管理する Non-Copy の struct Core。正規化後の S は外側 Semantics が rc または arc の完全な型で、既存の object View Target 条件を満たす必要がある。generic 定義にもその証拠を要求する。`Weak<rc/T>` の昇格結果は `Option<rc/T>`、`Weak<arc/T>` は `Option<arc/T>`。裸の payload Core、obj、object borrow、Weak 自体は S にできない。
 
-Weak owns responsibility for weak-management storage, without strongly owning or borrowing the object payload. It introduces no new Semantics: outer `owner` and the existing category sets apply normally. `ref/Weak<S>` borrows the Weak value's storage. Empty and expired Weak values are still Non-Copy; ordinary acquisition Moves them, and duplication is explicit. Weak has compiler-managed storage and cleanup, without user-replaceable Fields or deinit.
+Weak は weak 管理領域を保持し、payload の strong 所有権を持たない。外側は通常の owner であり、新しい Semantics や category を追加しない。`ref/Weak<S>` は Weak 値の格納領域への借用。空・構築中・期限切れでも Non-Copy とし、通常取得は Move、複製は明示的な `Core.clone` を使う。格納・cleanup は compiler が管理し、ユーザーが Fields や deinit を置換できない。
 
-Weak preserves S's complete View Type, ownership mode, and Type/Origin arguments. OwnedOrigins traverses S under the ordinary generic-argument rule, including for empty and expired values. No blanket Owned requirement is added to concrete Weak storage. Creation and use retain external Loan dependencies needed by later upgrades and their results, without a new long-lived Loan on the source handle's storage or a new exclusive Loan anchor. Automatic Weak cleanup observes only management storage, not the payload. Runtime expiration does not by itself erase static dependencies or justify a new lifetime refinement. Existing Owned erasure proofs remain required and preserved.
+S の完全な View Type、mode、Type/Origin 引数を保持する。OwnedOrigins は空値も含め S 全体を走査し、操作の Loan 伝播は [§13.5.9](#1359-weak-reference-operations) に従う。Weak を所有 capture した Closure は Non-Copy、共有借用の capture は通常の Copy/Loan 規則に従う。
 
-Weak does not directly expose payload Fields, member calls, object borrows, runtime `is`, or checked casts. First obtain a strong owner through [weak operations](#1359-weak-reference-operations), then apply the existing object rules. Weak view conversions are not introduced; change the strong view before creating Weak. Type-level non-Copy and Owned rules apply normally when a Weak value is captured in a Closure.
+Weak から payload の Field・member・object borrow・runtime `is`・checked cast へ直接アクセスできない。まず upgrade し、strong を通して既存の操作を行う。Weak の直接 view 変換は導入しない。
 
 #### 3.3. Type semantics
 
@@ -911,7 +911,7 @@ func duplicate<T>(value: T) -> (T, T)
 
 Unknown Copy capability follows [Generic Access Effects](#89-generic-access-effects), preserving conditional acquisition plans and separate shared element-read rules.
 
-Duplication requiring allocation, reference-count increments, or resource duplication uses explicit operations. Core defines [strong-owner duplication](#1358-object-ownership-creation-and-sharing) for `rc`/`arc`; general duplication contracts and final API spellings remain unspecified.
+allocation・参照カウント増加・resource 複製を伴う複製には明示的な操作を使う。rc/arc と Weak は [Core.clone](#1358-object-ownership-creation-and-sharing) を使う。それ以外の一般的な複製 API は未定義。
 
 ```kimi
 let text: string = "Hello"
@@ -4195,6 +4195,8 @@ Resolve the operation from the explicit designation and operand Type/category, t
 
 Targets may guide permitted literal/generic inference but cannot change an established operand or result Type. An outer expected Type cannot cancel the selected operation. Preserve normal inference boundaries; do not introduce cyclic inference or candidate-by-candidate retries. Check subsequent result fitting statically.
 
+For numeric adaptation, target guidance is limited to the direct unresolved literal cases in §13.5.4. Do not pass the conversion target as an expected Type into a general operand expression, including arithmetic or a generic call. Infer that operand independently before applying the numeric conversion: `(200 + 100)@u8` computes an i32 value and then fails its conversion range check; `id(300)@u8` likewise does not infer the call's numeric Type from u8.
+
 ```kimi
 // handler is an overloaded function name; the annotation selects its reference.
 let f: (i32) -> () = handler
@@ -4251,6 +4253,8 @@ Float-to-float conversion preserves signed zero, including the sign of a nonzero
 For direct unresolved literals, `@` performs literal fitting in these cases: integer literals with integer targets must fit the target range; floating literals with `f32`/`f64` targets follow [single-rounding rules](#26-number-literals); integer literals with `@f32`/`@f64` round once from the exact integer value, without an intermediate default Type. Failure to fit, including floating overflow to infinity, is a compile-time error, not a runtime numeric-conversion failure. Parentheses alone and a direct sign preserve this treatment; the language's literal representation limits still apply.
 
 Floating literals with integer targets first get their ordinary floating source Type, then undergo truncation and range checking. Typed values and general arithmetic expressions use ordinary numeric conversion. Explicit literal adaptation does not widen implicit argument fitting or overload candidate comparison.
+
+The direct-literal category unwraps surrounding parentheses and then permits one unary sign directly attached to the number literal (§12.3.4). Thus `(-128)@i8` and `((-128))@i8` fit the signed literal, while `-(128)@i8` converts an ordinary negation result; `-(128)@u8` fails at runtime. A completed adaptation such as `1@u8` is a typed expression for subsequent argument fitting and overload comparison.
 
 ```kimi
 let minimum = -128@i8
@@ -4370,44 +4374,64 @@ Use a checked cast when the source view cannot guarantee the target, including c
 
 ##### 13.5.8. Object ownership creation and sharing
 
-Core provides the following explicit intrinsic operations. The names below describe semantic operations, not final API spellings or new `@` forms. `T` is the exact concrete Core of the input owner and must already be admitted as an object payload; these operations do not extend object support to enums or runtime-contract payloads. `V` is an existing valid View Target.
+**公開 API。** 以下は Core の public intrinsic。T は既存規則で object payload にできる具体 Core、S は外側 Semantics が rc または arc の完全な handle 型。これらの適格性は intrinsic の型形成条件であり、新しいユーザー Contract は追加しない。現行の struct/object・runtime Contract の導入境界を越えない。
 
-| Operation | Input | Result and responsibility |
+| 関数 | 入力 → 結果 | 契約 |
 | --- | --- | --- |
-| Create exclusive object | `owner/T` by value | Fresh `obj/T` owning the complete payload |
-| Create non-atomic counted object | `owner/T` by value | Fresh `rc/T` with one strong owner |
-| Create atomic counted object | `owner/T` by value | Fresh `arc/T` with one strong owner |
-| Duplicate non-atomic strong owner | Shared access to an initialized `rc/V` handle | Additional `rc/V` owner of the same object; increment its strong count once |
-| Duplicate atomic strong owner | Shared access to an initialized `arc/V` handle | Additional `arc/V` owner of the same object; atomically increment its strong count once |
+| `Core.makeObj<T>(value)` | `T → obj/T` | 完成した値を新しい排他的 object に格納 |
+| `Core.makeRc<T>(value)` | `T → rc/T` | 非 atomic な strong=1 で生成 |
+| `Core.makeArc<T>(value)` | `T → arc/T` | atomic な strong=1 で生成 |
+| `Core.clone<S>(value)` | `ref/S → S` | 同じ object/view/mode の strong を一つ増やす |
+| `Core.makeRcCyclic<T,F>(build)` | `F → rc/T` | 以下の循環構築 |
+| `Core.makeArcCyclic<T,F>(build)` | `F → arc/T` | 同じ契約を arc に適用 |
 
-**Creation.** Evaluate and acquire the input once by ordinary by-value rules: Copy leaves its source Initialized; Move transfers responsibility and marks the source Moved. Require a complete payload and valid Loans. Concrete payload storage needs no Owned requirement: preserve its complete Type and value dependencies under [ordinary storage](#154-origin-elision-and-return-contracts), independently of allocation elimination. Subsequent base/contract erasure has its separate Owned requirement.
+表の型引数は通常の推論を使う。引数名は `value` / `build`、省略時の名前付き引数規則は通常どおり。`Core.clone` は §13.5.9 の Weak 版との overload とし、一般の値の深い複製、obj の複製、rc/arc の相互変換、borrow からの所有権生成は行わない。
 
-After acquisition, secure fresh payload storage and any ownership metadata, then Move the prepared value into it without invoking constructors, accessors, duplication code, or `deinit`. Publish the handle only when payload and metadata are complete. Its initial View Target and Dynamic Type are exactly `T`, and its lifetime has a fresh object identity. Any base/contract upcast is a separate operation with its existing erasure checks.
+**通常生成。** 入力を一度だけ通常の Copy/Move で取得し、新しい object 領域と metadata を確保して完成した payload を Move する。入力の格納領域の所有権は移さず、constructor・accessor・deinit を再実行しない。payload の破棄責任と生成した object allocation の解放方法を保持し、metadata と payload の完成後に新しい object identity の handle を公開する。初期 View Target と動的型は正確に T。具体的 payload に一律の Owned 制約は置かず、通常の借用依存を保持する。view の型消去には別途既存の Owned 証明が必要。
 
-The new owner takes the payload's destruction responsibility and records the original storage-release mechanism. Moving the payload does not transfer ownership of the source's enclosing storage: that storage remains under its original local, temporary, or containing owner's management, with no second destruction of the moved payload. On normal object release, destroy the complete payload before releasing its original object storage under §16.3.3. Physical allocation may be eliminated only while preserving these semantics.
+**複製と借用。** strong の clone は入力 handle の共有アクセスを操作中保持し、strong を一つ増やして独立した所有責任を返す。入力は Initialized のまま。結果は完全な View Type・動的型・payload の外部 Loan を保持し、入力 handle の格納領域への長期 Loan は作らない。allocation、payload のコピー、view 変更、ユーザーコード呼び出しは行わない。Move と object borrow は count を変えない。rc/arc は count=1 でも共有アクセスのみ。
 
-**Strong-owner duplication.** Evaluate the source once and hold shared access to its owning handle for the operation. Leave that handle Initialized with its responsibility unchanged. Do not copy payload data, allocate a new object, change views, or invoke user code. Internal count-storage promotion at the inline representation limit may allocate a side table under §21.2.3; ordinary duplication otherwise needs no allocation. The result preserves the source's complete View Type, object identity, Dynamic Type, and payload dependencies, but retains no new Loan on the source handle's storage. Releasing either handle relinquishes one strong reference; only the final release destroys the payload. Duplication grants no exclusive access and cannot create ownership from `objref`/`objuniq`, duplicate `obj`, or convert `rc` and `arc` into each other.
+**共通の寿命。** 通常生成と循環構築は `構築中 → 生存中 → 破棄中 → object 解放済み` に従う。構築完了時に一度だけ strong=1 を公開する。生存中の最後の release が strong=0 にして破棄を開始し、その後は復活できない。§16 の順序で動的な完全型を一度だけ破棄し、元の object allocation を解放する。必要な weak 管理領域だけを残すことは object の生存ではない。
 
-**Failure and boundaries.** Required storage/metadata allocation failure and an unrepresentable strong-count increment Abort before publishing a result; counts must never wrap. Abort performs no unwinding, input restoration, or promised cleanup. Ordinary non-Abort transfers during operand evaluation retain normal pending-value and temporary cleanup. Recoverable creation, allocator selection, raw-storage adoption, ownership-representation conversion, and cycle collection remain separate designs. Weak references follow §13.5.9. No creation or duplication may publish an incomplete object or resurrect one undergoing destruction.
+**循環構築。** rc 版は `T is Owned` と `F is Callable<owner, (Weak<rc/T>) -> T>` を要求する。arc 版は対応する型に置き換える。F は通常の Copy/Move で取得し、一度だけ所有 receiver で呼ぶ。F 自体に Copy/Owned は要求しない。payload の依存元が確定する前に Weak を渡すため、T の Owned 証明で非 static の未確定 Loan を公開しない。
+
+1. object 領域と side table を確保する。table は構築中、内部 guard と builder 用の所有 Weak を一つずつ保持する。
+2. builder にその Weak を渡す。通常の Move/clone で保持できるが、構築中の upgrade は None。通常の object view・未初期化 payload・構築 receiver は渡さない。
+3. builder の正常な戻りと呼び出し cleanup が完了してから、返された完全な T を payload へ Move する。
+4. 構築完了を一度だけ公開し、最初の strong handle を返す。builder の格納領域を借りる結果は許可しない。
+
+**失敗。** 必要な allocation の失敗と count 上限での増加は、結果を公開せず Abort。count を wrap させない。builder の Abort/非終了でも公開しない。通常の Abort 契約に従い、巻き戻しや後続 cleanup は保証しない。引数評価中の通常の制御移動は既存の一時値・cleanup 規則を使う。回復可能な生成、allocator 選択、raw 領域の取り込み、cycle collection は導入しない。
 
 ##### 13.5.9. Weak reference operations
 
-Core supplies these intrinsic semantic operations for eligible `Weak<S>` (§3.2.2). Final API spellings remain deferred; they are not new `@` forms.
+以下は Core の public intrinsic。S の適格性は §3.2.2 に従う。関数の型引数は通常の推論を使い、constructor の S は明記する。
 
-| Operation | Input | Result and responsibility |
+| API | 入力 → 結果 | 契約 |
 | --- | --- | --- |
-| Empty Weak | Eligible complete S | Empty `Weak<S>` without allocation |
-| Downgrade | Shared access to an initialized strong handle S | `Weak<S>` for the same object/view/mode; retain weak-management storage without changing strong count |
-| Upgrade | Shared access to `Weak<S>` | `Option<S>`; Some secures one new strong owner, None means empty or expired; source Weak remains Initialized |
-| Duplicate Weak | Shared access to `Weak<S>` | New `Weak<S>` retaining the same management storage; empty input needs no count operation |
+| `Weak<S>.init()` | 引数なし → `Weak<S>` | 空の Weak。allocation なし |
+| `Core.downgrade<S>(value)` | `ref/S → Weak<S>` | strong を変えず、同じ対象の weak を保持 |
+| `Core.upgrade<S>(value)` | `ref/Weak<S> → Option<S>` | 生存中なら strong +1 して Some、それ以外は None |
+| `Core.clone<S>(value)` | `ref/Weak<S> → Weak<S>` | 同じ管理領域の weak を一つ増やす。空なら count 操作なし |
 
-Evaluate each operand once and acquire its required access before performing the operation. Downgrade accepts only a completed object reached through its `rc`/`arc` strong handle; it may lazily allocate management storage. Borrowed access to that handle lasts through the operation. It does not convert `obj`, object borrows, or raw pointers into Weak.
+各入力を一度だけ評価し、必要な共有アクセスを操作中保持する。downgrade は完成済み object の strong handle に限り、最初の side table を確保することがある。obj・object borrow・raw pointer からは生成しない。upgrade と clone は allocation しない。結果を得ても入力は Initialized のまま。
 
-Upgrade secures a strong count increment before accessing the object pointer, payload, or metadata. It preserves every static dependency and grants only the access available through S. Its successful count update and the last strong release are ordered atomically for arc: if upgrade wins, the new owner keeps the object alive; if final release wins, upgrade returns None. Once the last owner sets strong count to zero, subsequent upgrades permanently fail. An increment at the count maximum Aborts without wrapping or publishing a result; it is not ordinary None. Required allocation failure and weak-count overflow also Abort.
+upgrade は生存中の strong を確保してから object pointer に触れる。arc では昇格と最後の release の更新順で成否が決まる。成功結果は同じ object/view/mode の所有権を持ち、失敗は通常の None。構築中の None は将来の公開を否定しないが、最終 release 後の昇格は永久に失敗する。生存中でも count 上限での増加は Abort とし、None とは区別する。
 
-Moving Weak changes no count. Destroying a nonempty Weak releases one weak responsibility and never destroys the payload. The last strong owner destroys the complete object and frees its original allocation even if Weak values remain; only the side table survives until all external Weak values and its internal destruction guard have been released (§21.2.3). Empty Weak destruction is trivial. The guard prevents cleanup of Weak fields inside the payload from freeing the table during object destruction. Abort/nontermination retains ordinary no-cleanup/no-rollback guarantees.
+**依存の伝播。** 型の Origin と実際の Loan の由来を区別し、次の表を格納・generic 呼び出しにも適用する。
 
-No separate liveness-test API, implicit weak duplication, unsafe weak-pointer API, unowned reference, or cycle collection is introduced. Source concurrency remains subject to Appendix D.2. Cyclic construction with an initially non-upgradeable Weak requires a separately specified factory; ordinary downgrade cannot expose an incomplete object.
+| 操作 | 引き継ぐ依存 |
+| --- | --- |
+| downgrade | payload の外部 Loan。元の handle の格納領域への長期 Loan は作らない |
+| Weak の clone | 同じ外部 Loan。新しい排他的 Loan anchor は作らない |
+| Move | 保持責任と依存を移す |
+| upgrade 成功 | 対象の依存を S の結果へ引き継ぐ。Weak 値の格納領域の借用は残さない |
+| Weak の自動破棄 | 管理領域のみを操作し、payload は観測しない |
+
+後続の upgrade と結果の使用に必要な依存を保持する。Origin 名だけで Loan の由来を代用せず、runtime の期限切れだけで静的な依存を消去しない。空値も含め OwnedOrigins は S 全体を走査する。通常の downgrade・格納には一律の Owned 制約を追加せず、型消去には既存の Owned 証明を使う。
+
+Weak の Move は count を変えず、非空の自動破棄は weak の責任を一つ解放する。payload の破棄や strong の減算はしない。object 解放まで内部 guard が table を保持し、最後の weak release が table だけを解放する（§21.2.3）。空値の破棄は何もしない。失敗・Abort は §13.5.8 に従う。
+
+生存確認だけの API、暗黙の複製、直接 dereference/view 変換、unsafe weak pointer、unowned、cycle collection は追加しない。source concurrency は Appendix D.2 に従う。例は [rc・arc・Weak の仕様 §4](doc/Design/2026-09-13%20Weak%20References%20and%20Object%20Runtime.md#4-例) を参照。
 
 #### 13.6. Runtime type tests and checked casts
 
@@ -5615,7 +5639,7 @@ Callable Types contribute every fixed Origin in their complete Type: a Function 
 
 Use established outlives facts: `a : static` proves a equal to static because static is the maximum Origin. An unbound/unproved abstract Origin yields Unknown, not proof of `not Owned`; resolve required evidence by the ordinary deadline. A generic definition proves Owned for its own Type parameters and abstract Origins only from its declared Constraints and bounds (§8.10); that proof cannot wait for instantiation. Empty containers and unselected Cases do not weaken this Type-level check. In particular, `unsafe/(ref/i32 from local)` and a wrapper with that non-static Type argument cannot prove Owned even if no safe-borrow Field is visible. Traversing a pointee Type neither dereferences a pointer nor creates a Loan; unsafe implementations must still expose their actual lifetime dependencies and uphold pointer validity.
 
-This revision requires Owned at static storage, concrete payload erasure into base/runtime-contract views, common Function Type environment erasure, and explicitly declared Owned Constraints. A lifetime-hiding library API states that requirement explicitly; the compiler does not infer an "indefinite retention" capability from a private body. Ordinary storage and concrete object allocation impose no blanket Owned requirement. Owned never discharges acquisition, Loan, destruction-order, unsafe, or concurrency checks.
+This revision requires Owned at static storage, concrete payload erasure into base/runtime-contract views, common Function Type environment erasure, cyclic-factory payloads (§13.5.8), and explicitly declared Owned Constraints. A lifetime-hiding library API states that requirement explicitly; the compiler does not infer an "indefinite retention" capability from a private body. Ordinary storage and concrete object allocation impose no blanket Owned requirement. Owned never discharges acquisition, Loan, destruction-order, unsafe, or concurrency checks.
 
 #### 15.3. Abstract origins
 
@@ -6459,7 +6483,7 @@ Construction completes base layers before derived fields under constructor rules
 
 During destruction, prohibit new ordinary views, runtime dispatch, type tests, checked casts, and resurrection of that object, including through helper calls. An operation remains semantically runtime dispatch even if optimization resolves it to a direct call. Do not acquire a new owning handle or increment its count to revive it. The special destruction receiver retains its authorized direct field operations and shared value borrows, without conversion into ordinary object views. Base cleanup never dispatches back into an already destroyed derived layer. These restrictions concern the object being constructed/destroyed, not independent live objects used by that code.
 
-The shared destruction rules do not promise eventual release on Abort, divergence, forced termination, or an unbroken reference-count cycle. Weak references follow §13.5.9; cycle collection, cyclic-construction factories, and allocator APIs remain separate designs.
+The shared destruction rules do not promise eventual release on Abort, divergence, forced termination, or an unbroken reference-count cycle. Weak references follow §13.5.9 and cyclic construction follows §13.5.8; cycle collection and allocator APIs remain separate designs.
 
 ### 17. Failure handling
 
@@ -7318,6 +7342,8 @@ Directory.Build.props Version is the single release-version source for Kimigayo 
 
 Physical representation and code sharing must preserve the language rules for Type identity, ownership, evaluation, and cleanup. The following requirements constrain backend choices without prescribing one internal representation.
 
+**Draft under review.** [Value borrows, Closures, function values, and metadata](doc/Design/2026-09-13%20Value%20Borrows%20Closures%20and%20Metadata.md) proposes the remaining storage and metadata contracts in that order. It is not yet normative and does not change §7.6's capture/call restrictions or §21.4.2's compiler-controlled function ABI.
+
 #### 21.1. Structure layout and ABI
 
 Storage layout, valid value representation, and function ABI are separate contracts. A layout Attribute selects storage rules; it does not select a calling convention, grant Copy, or make a Type safe for foreign construction. The initial physical rules below belong to the versioned [Windows profile](#215-llvm-windows-x64-profile), not a stable cross-version ABI.
@@ -7513,25 +7539,33 @@ Optimization may share, normalize, omit, or directly resolve metadata only while
 
 ##### 21.2.3. Windows x64 object and weak profile
 
-This versioned, module-local internal representation is independent of a stable external ABI. Adoption does not certify compiler implementation. See the [object runtime design](doc/Design/2026-09-13%20Weak%20References%20and%20Object%20Runtime.md) for the detailed migration, release, alignment, and validation protocol.
+以下は versioned・module-local の格納表現。外部 ABI の安定性や実装完了を保証しない。引数・戻り値は §21.4.2 の FunctionAbi に従う。詳細と検証条件は [object runtime 設計 §3–5](doc/Design/2026-09-13%20Weak%20References%20and%20Object%20Runtime.md#3-windows-x64-の内部表現) を参照。
 
-| Representation | Initial storage |
-| --- | --- |
-| `obj` / `rc` / `arc` / `objref` / `objuniq` handle | One non-null ptr to the original object header, unchanged by a view change |
-| `obj` header | Immutable descriptor ptr at offset 0; size/alignment 8 |
-| `rc` / `arc` header | Immutable descriptor ptr at offset 0, u64 control at offset 8; size 16, alignment 8 |
-| `Weak<S>` value | One nullable ptr to a side table; size/alignment 8; null means empty |
-| Side table | u64 strong at offset 0, u64 weak at offset 8, immutable object-header ptr at offset 16; size 24, alignment 8 |
+| 対象 | 格納表現 | サイズ / alignment |
+| --- | --- | --- |
+| obj/rc/arc/objref/objuniq handle | 元の object header への non-null ptr。view 変更で基点を変えない | 8 / 8 bytes |
+| Weak 値 | side table への ptr。空だけ null | 8 / 8 bytes |
+| obj header | +0 不変 descriptor ptr | 8 / 8 bytes |
+| rc/arc header | +0 不変 descriptor ptr、+8 u64 control | 16 / 8 bytes |
+| side table | +0 u64 strong state、+8 u64 weak count、+16 不変 object ptr | 24 / 8 bytes |
 
-Payload begins at alignUp(headerSize, payloadAlignment). The descriptor reaches dynamic Type identity, payload layout, base/receiver adjustment, complete destruction, and original allocation release. Different allocation-layout descriptors may reference the same Runtime Type Identity. In particular, object borrows cannot infer payload offset from an erased ownership mode. Allocate header and payload together initially; check all size/alignment calculations and preserve the original allocation pointer for over-aligned blocks. No per-instance counter resides in shared immutable metadata.
+descriptor は動的型の identity、payload offset/alignment、base 調整、完全型の破棄と元領域の解放方法に到達できる。配置 descriptor と型の identity は別。object borrow は消去された所有 mode から offset を推測しない。
 
-Control's low bit selects representation: even means `strong << 1`, odd means a side-table pointer tagged with bit 0. Initially control=2, representing one strong owner. Decode the table by clearing bit 0; do not truncate upper pointer bits or assume a 48-bit address space. This encoding requires the Windows x64 integral address-space-0 pointer and table alignment. Inline strong ranges from 1 to 2^63-1; zero is final release. The first downgrade or an increment past the inline limit promotes the current count, unchanged, into one shared side table. Promotion is permanent. The logical strong maximum remains 2^64-1; promotion failure Aborts, and an increment at the logical maximum Aborts before modification.
+payloadOffset は alignUp(headerSize, payloadAlignment)。header と payload を一括確保し、全サイズ計算を検査する。§22.5.2 の allocator 上限・alignment に従い、16 bytes を超える alignment は未対応として生成時に診断する。独自の prefix や過剰確保は追加しない。
 
-Table weak count includes one internal guard until complete object destruction and allocation release. Its u64 maximum is 2^64-1 including the guard. External Weak duplication/downgrade increments it explicitly; Move does not. The last strong release sets strong to zero, destroys the complete payload, frees the original object allocation, then releases the guard. The last weak release frees only the side table. An expired table's object pointer is never accessed; upgrade must first secure a positive strong count. The table's own cleanup does not inspect that pointer. No table reuse is permitted while a live Weak retains it.
+**count。** 全カウンターは u64 領域を使い、上限を `MaxRefCount = 2^63−1` に統一する。weak count は内部 guard を含む。上限での増加は更新前に Abort。count 上限を理由とする side table 移行は行わない。
 
-rc uses non-atomic operations. arc uses atomic control and table counts, with no mixed atomic/non-atomic count accesses to the same allocation. Inline updates use CAS on the complete control word so they cannot overwrite a published table pointer. Promotion prepares a private table with the observed strong count and weak=1, then publishes it with AcqRel CAS; failure retries with the current count or frees the losing unpublished table and uses the winner. Every path resolving a published table performs an Acquire observation before table access. Promotion leaves logical strong responsibility unchanged.
+**header control。** 最下位 bit が 0 なら inline の `strong << 1`、1 なら `sideTablePointer | 1`。pointer 復元では最下位 bit だけを外し、上位 bit を切り捨てない。Windows x64 の integral address-space-0 pointer と table の 8-byte alignment を前提とする。通常生成は未公開の control=0 から、構築完了時に control=2（strong=1）を公開する。最終 release 後の 0 は再利用しない。
 
-Strong and weak increments use checked CAS (Relaxed for duplication; Acquire on successful upgrade). Upgrade returns None on zero and never accesses the object before succeeding. Inline strong decrement uses Release CAS; side strong/weak decrement uses Release fetch_sub. Each last decrement performs an Acquire fence before the corresponding destruction/free. CAS failure paths must obey LLVM ordering constraints and re-resolve a changed representation. The destruction guard remains held through payload cleanup, including destruction of any contained Weak values. Count one never grants exclusive payload access. Allocation, user destruction, and source thread-safety have no lock-free or concurrency guarantee from this protocol.
+**table strong state。** `Building = 1 << 63` は循環構築中で論理 strong=0、`1 .. MaxRefCount` は生存中、0 は破棄開始済み。Building は count ではない。factory だけが Building→1 を一度実行でき、最終 release 後の 0→1 は禁止する。循環構築は最初から table を持ち、weak=2（guard と builder 用 Weak）で開始する。
+
+**共通処理。** runtime は ensureSideTable、retainStrong、tryRetainStrong、retainWeak、releaseStrong、releaseWeak、publishObject の契約を全呼び出し元で共有する。rc は非 atomic、arc は atomic で同じ状態遷移を実行し、同じ allocation に両方式の count アクセスを混在させない。正しい strong count の保管場所は常に一つとし、各操作は必要な所有・借用・構築・破棄権限を保持する。
+
+**移行。** 通常生成では最初の downgrade だけが side table を作る。既存 strong を保持し、観測した inline count=n、weak=1、object=header の未公開 table を準備する。control 全体の CAS 成功時に table が唯一の count 保管場所となる。競合時は最新 count で再試行するか、他の公開済み table を使って未公開候補を解放する。inline の増減も control CAS とし、古い count を公開済み pointer に書き戻さない。移行自体で strong は増減せず、以後 inline に戻さない。
+
+**arc の ordering。** table pointer の解決は Acquire、移行公開 CAS は成功 AcqRel。clone の count CAS は成功 Relaxed、upgrade は成功 Acquire / 失敗 Relaxed。失敗後は表現を再判定し、必要な Acquire 観測をしてから table に触れる。減算は Release（inline は CAS、table は fetch_sub）、最後なら破棄・解放前に Acquire fence。構築完了は inline の Release store、または Building→1 の Release CAS とする。CAS の失敗 ordering は LLVM の制約を満たす。
+
+**昇格と解放。** 空・Building・0 の upgrade は None。生存 count の検査付き増加に成功してからだけ table.object を読む。最後の strong release は strong=0、完全型の破棄、object 解放、guard 解放の順。guard は payload 内の Weak の cleanup 中も保持する。最後の weak release は table のみ解放し、失効した object pointer に触れない。既存の責任なしの減算は不変条件違反。allocation・destructor の lock-free 性や source の thread safety は保証しない。
 
 #### 21.3. Generic code generation
 
@@ -7877,7 +7911,7 @@ This is the minimal set named by language rules, not a promise of a general stan
 | --- | --- |
 | `Option<T>` | enum with Some(T), None in that order; Self is Copy with condition-atom set {T is Core.Copy} |
 | `Result<T,E>` | enum with Ok(T), Err(E) in that order; Self is Copy with condition-atom set {T is Core.Copy, E is Core.Copy} |
-| `Weak<S>` | Compiler-managed Non-Copy value Core for complete rc/arc handle S; empty, downgrade, upgrade and explicit duplication semantics in §3.2.2 and §13.5.9; final operation spellings deferred |
+| `Weak<S>` | rc/arc の完全な型 S を取る compiler 管理の Non-Copy struct Core。空の `.init()`、Core.downgrade / upgrade / clone は §3.2.2 と §13.5.9 |
 | `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length: isize and indices: ResolvedRange; checked indexing under §4.6, literals, and consuming Iterable conformance |
 | `Index` | Copy, Owned, Equatable direction/offset value; constructor, read-only fields, resolve/tryResolve under §4.6.2 and §4.6.4 |
 | `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §4.6.3 and §4.6.4; not Iterable |
@@ -7890,7 +7924,7 @@ This is the minimal set named by language rules, not a promise of a general stan
 | `Iterator` | `associate Element`; `func next(self: uniq/Self) -> Option<Self.Element>` |
 | `Iterable` | `associate Element`; `associate Iterator is ::Core.Iterator`; `Self.Iterator.Element is Self.Element`; `func iterate(self: owner/Self) -> Self.Iterator` |
 | Copy, Owned, Callable | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership, and call rules; they are not ordinary user-implementable replacements |
-| Object ownership intrinsics | Creation of `obj`/`rc`/`arc` and duplication of `rc`/`arc` strong owners with exactly the contracts in §13.5.8; final source names/signatures remain deferred |
+| Object ownership intrinsics | Core.makeObj / makeRc / makeArc、strong と Weak の Core.clone、Core.downgrade / upgrade、Core.makeRcCyclic / makeArcCyclic。§13.5.8–9 の公開名・型・取得契約に従う |
 | `writeLine` | `public func writeLine(text: string) -> ()`; standard-output operation under §22.4, with ordinary owned-argument acquisition |
 
 Iterator and Iterable are static, non-lending Contracts. Their Element requirement is the sole complete-Type exception (§8.4.3) and may bind ref/T from an existing external source; Iterable.Iterator still binds a Core. Table signatures follow normal associated-Type, receiver, result-Origin, and lifetime rules.
@@ -8108,7 +8142,7 @@ Fixed diagnostics use an ASCII identifier, English reason, and source location, 
 Main.kimi:3:5: abort KIMI_E_STDOUT: Failed to write to stdout (win32=6)
 ```
 
-Use unique catalog codes, including KIMI_E_ALLOC_SIZE (allocation size exceeds limit), KIMI_E_PROCESS_HEAP, KIMI_E_ALLOC, KIMI_E_FREE, KIMI_E_STDOUT, KIMI_E_INT_OVERFLOW (Integer overflow), KIMI_E_INT_DIV_ZERO (Integer division or remainder by zero), and KIMI_E_INT_SHIFT_COUNT (Shift count out of range). Integer division/remainder by zero uses KIMI_E_INT_DIV_ZERO; signed minimum with divisor -1 uses KIMI_E_INT_OVERFLOW for both operations. A shift count outside `0 <= count < left operand bit width` uses KIMI_E_INT_SHIFT_COUNT. Discarded left-shift bits do not trigger overflow. Omit unavailable OS codes; do not use FormatMessageW. In displayed logical paths, escape non-ASCII/control characters as `\u{HEX}` and backslash as `\\`; preserve the actual path/provenance internally.
+Use unique catalog codes, including KIMI_E_ALLOC_SIZE (allocation size exceeds limit), KIMI_E_PROCESS_HEAP, KIMI_E_ALLOC, KIMI_E_FREE, KIMI_E_STDOUT, KIMI_E_INT_OVERFLOW (Integer overflow), KIMI_E_INT_DIV_ZERO (Integer division or remainder by zero), KIMI_E_INT_SHIFT_COUNT (Shift count out of range), and KIMI_E_INT_CONVERSION (Integer conversion out of range). Integer division/remainder by zero uses KIMI_E_INT_DIV_ZERO; signed minimum with divisor -1 uses KIMI_E_INT_OVERFLOW for both operations. A shift count outside `0 <= count < left operand bit width` uses KIMI_E_INT_SHIFT_COUNT. Discarded left-shift bits do not trigger overflow. A runtime integer conversion outside the target range uses KIMI_E_INT_CONVERSION; direct literal fitting failures remain compile-time errors. Omit unavailable OS codes; do not use FormatMessageW. In displayed logical paths, escape non-ASCII/control characters as `\u{HEX}` and backslash as `\\`; preserve the actual path/provenance internally.
 
 Output diagnostics from constants, valid input strings, and small fixed work areas without requiring heap allocation or one concatenated dynamic string. Explicit `$abort(expression)` retains ordinary one-time argument evaluation and outputs the resulting UTF-8 string after KIMI_E_ABORT without translation or escaping its contents. Once Abort starts, do not normally destroy that string.
 
@@ -8565,8 +8599,8 @@ This index links to design boundaries owned by the language sections. It adds no
 | Contract-level abstract Origins, non-static erased views, static-Place Origins, and lending iterators | Deferred design; ordinary retained storage is defined in §15.4 | [Abstract Origins](#153-abstract-origins), [Lifetime design boundaries](#159-lifetime-design-boundaries) |
 | Destruction lifetime relaxation | Deferred design | [Destruction lifetime checking](#1566-destruction-lifetime-checking) |
 | Additional dynamic Move Paths | Deferred design | [Move Paths and Partial Move](#1513-move-paths-and-partial-move) |
-| Object ownership API spellings and recoverable creation; general duplication API | Core object creation/strong-owner duplication semantics defined; remaining APIs deferred | [Object ownership operations](#1358-object-ownership-creation-and-sharing), [explicit duplication](#351-copy-capability-and-explicit-duplication) |
-| Weak operation spellings and cyclic-construction factory | Weak Type, ordinary operations and Windows x64 storage specified; API spellings and cyclic construction deferred | [Weak values](#322-weak-reference-values), [weak operations](#1359-weak-reference-operations), [object profile](#2123-windows-x64-object-and-weak-profile) |
+| Recoverable object creation, allocator selection and general value duplication | Object/Weak public operations specified; these extensions remain deferred | [Object ownership operations](#1358-object-ownership-creation-and-sharing), [explicit duplication](#351-copy-capability-and-explicit-duplication) |
+| Additional Weak operations | Direct Weak view conversion, liveness-only tests, unsafe weak pointers and unowned references remain unintroduced | [Weak values](#322-weak-reference-values), [weak operations](#1359-weak-reference-operations), [object profile](#2123-windows-x64-object-and-weak-profile) |
 | Exchange API and concurrency guarantees | Partially specified | [Initialization-preserving exchange](#157-initialization-preserving-exchange) |
 | Raw pointer and FFI APIs | Partially specified | [Raw pointer API design boundaries](#56-raw-pointer-api-design-boundaries) |
 | Dedicated Option / Result propagation syntax | Deferred design | [Error policy](#171-error-policy) |

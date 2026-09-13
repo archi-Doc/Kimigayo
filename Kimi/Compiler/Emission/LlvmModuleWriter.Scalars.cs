@@ -113,6 +113,9 @@ internal static partial class LlvmModuleWriter
                 return;
             case EmissionOpcode.Scalar:
                 break;
+            case EmissionOpcode.Convert:
+                WriteConversion(output, constants, instruction, operands);
+                return;
             default:
                 throw new InvalidOperationException("Unknown physical opcode.");
         }
@@ -262,6 +265,7 @@ internal static partial class LlvmModuleWriter
             ArithmeticCheckKind.Overflow or ArithmeticCheckKind.Division => WindowsLowering.IntegerOverflowReason,
             ArithmeticCheckKind.UnsignedDivision => WindowsLowering.IntegerDivisionZeroReason,
             ArithmeticCheckKind.Shift => WindowsLowering.IntegerShiftCountReason,
+            ArithmeticCheckKind.Conversion => WindowsLowering.IntegerConversionReason,
             _ => throw new InvalidOperationException("Unknown arithmetic failure reason."),
         };
         var reason = new EmissionOperand(EmissionOperandKind.Integer, reasonId);

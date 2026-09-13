@@ -110,7 +110,7 @@ internal sealed partial class BodyLowering
                     return Fail("Call argument does not dominate the call.", out failure);
                 }
 
-                this.callOperands.Add(Operand(body, value));
+                this.callOperands.Add(this.PhysicalOperand(body, value));
             }
             else if (runtime && ReferenceEquals(type, BoundType.String))
             {

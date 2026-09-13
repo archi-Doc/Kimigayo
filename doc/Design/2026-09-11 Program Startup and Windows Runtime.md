@@ -1568,10 +1568,13 @@ KIMI_E_STDOUTは原因の識別コード、win32=6は取得したOSエラーの�
 | KIMI_E_INT_OVERFLOW | Integer overflow |
 | KIMI_E_INT_DIV_ZERO | Integer division or remainder by zero |
 | KIMI_E_INT_SHIFT_COUNT | Shift count out of range |
+| KIMI_E_INT_CONVERSION | Integer conversion out of range |
 
 整数の除算・剰余のゼロ除数はKIMI_E_INT_DIV_ZERO、符号付き最小値と除数-1の組み合わせは両演算ともKIMI_E_INT_OVERFLOWを使う。診断位置は実際に失敗した演算式に対応する。
 
 シフト数が`0 <= count < 左辺のビット幅`を満たさない場合はKIMI_E_INT_SHIFT_COUNTを使う。左シフトで上位ビットが捨てられることは整数overflowとして扱わない。
+
+整数間の明示的変換で、評価済みの値が変換先の範囲に入らない場合はKIMI_E_INT_CONVERSIONを使う。直接リテラルの当てはめ失敗はコンパイル時エラーであり、この実行時診断にはしない。変換の失敗地点でAbortし、残りのcleanupを実行しない。
 
 ソース位置の論理パスは、非ASCII文字・制御文字をASCIIの`\u{HEX}`、バックスラッシュを`\\`で表示する。表示時だけescapeし、内部のパスやprovenanceは変更しない。これにより日本語のファイル名でも固定診断を読み取れる。
 
@@ -1807,7 +1810,7 @@ LLVMのpayload storageは、alignmentを保持するゼロ長要素とPバイト
 
 Kimigayoレイアウトでは、初期の直接base部分をoffset 0へ配置する。これは初期実装の選択であり、言語上の永続保証ではない。baseから派生先までの所有権を切り離したり、baseだけをMoveしたりできる根拠にもならない。
 
-object対応時には次の物理契約を定める。
+object の handle/header/count/Weak の初期 Windows x64 契約は [SPEC §21.2.3](../../SPEC.md#2123-windows-x64-object-and-weak-profile) と [rc・arc・Weak 設計](2026-09-13%20Weak%20References%20and%20Object%20Runtime.md) で決定済み。以下は表現の責務の区分であり、すべてを未決定とする一覧ではない。descriptor の具体配置と共有 generic metadata は別途具体化する。
 
 ```text
 objectの表現
@@ -1823,7 +1826,7 @@ objectの表現
    └─ Copy・Move・破棄の補助処理
 ```
 
-C指定が固定するのはpayload内の配置だけである。ヘッダーや参照カウントをC payloadへ混ぜない。rc/arcのcounter幅、overflow検査、最後の所有者の破棄手順、arcのatomic orderingはobject対応前に確定する。arcのatomic操作があるだけで、言語のスレッド機能を許可しない。
+C指定が固定するのはpayload内の配置だけである。ヘッダーや参照カウントをC payloadへ混ぜない。決定済み profile では obj/rc/arc/objref/objuniq は元の header への 1 pointer、obj header は 8 bytes、rc/arc header は 16 bytes、必要時の side table は 24 bytes。count は u64 領域、上限は `2^63−1`、上限での増加は更新前に Abort。最後の strong release は strong=0、完全 payload の破棄、object 解放、side-table guard 解放の順とする。arc の CAS・公開・増減・最終解放の atomic ordering は SPEC §21.2.3 の決定に従う。仕様採用は runtime 実装完了を意味せず、arc の atomic 操作だけで言語のスレッド機能を許可しない。
 
 ### 15.4. 動的配列・Slice・closure
 
@@ -2234,7 +2237,7 @@ LLVM verifierだけでFFI・unwind・helperの適合は証明できない。基�
 | 型の特殊配置 | packed、align、transparent、union、bit-field、明示offset、flexible array member |
 | レイアウト公開API | size・alignment・offset照会の構文、評価時期、generic条件、Modsとの関係 |
 | 外部ABI | C aggregate値渡し、export、callback、可変長引数、platform固有calling convention、外部enum表現 |
-| object・共有コード | handle/header/descriptorの物理契約、参照カウント、汎用generic共有とmetadataの受け渡し |
+| object・共有コード | descriptorの具体配置、汎用generic共有とmetadataの受け渡し。handle/header/count/Weak は SPEC §21.2.3 で決定済み |
 | メモリモデル | スレッド生成、thread transfer、外部からの並行再入、同期規則 |
 | FP環境 | 動的な丸め方向・例外観測とconstrained FP、外部境界の契約 |
 | 終了コード | 型・値域と、mainの復帰／Core.exit等でのcleanup・deferの実行規則 |

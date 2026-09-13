@@ -435,6 +435,8 @@ public sealed partial class OwnershipAnalysis
                 this.Expression(test.Left, PlaceUseKind.Borrow);
                 this.Unsupported(test);
                 return this.Temporary(test);
+            case ConversionKoto conversion:
+                return this.ConversionValue(conversion);
             case BinaryKoto binary:
                 return this.Binary(binary);
             case IfKoto conditional:

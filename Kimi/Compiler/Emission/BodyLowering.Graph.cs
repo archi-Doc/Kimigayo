@@ -18,8 +18,9 @@ internal sealed partial class BodyLowering
 
     private static bool IsScalar(BoundType? type) => ScalarTypes.Supports(type);
 
-    private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type) => value.Kind switch
+    private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => value.Kind switch
     {
+        OwnershipValueKind.Convert when conversion.Checked => ArithmeticCheckKind.Conversion,
         OwnershipValueKind.Binary when value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan => ArithmeticCheckKind.Shift,
         OwnershipValueKind.Binary when value.Operator is KotoKind.Slash or KotoKind.Percent => type is not null && ScalarTypes.Signed(type) ? ArithmeticCheckKind.Division : ArithmeticCheckKind.UnsignedDivision,
         OwnershipValueKind.Binary when value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk => ArithmeticCheckKind.Overflow,
@@ -75,11 +76,7 @@ internal sealed partial class BodyLowering
             Array.Resize(ref this.checks, Math.Max(count, Math.Max(16, this.checks.Length * 2)));
         }
 
-        for (var i = 0; i < count; i++)
-        {
-            this.checks[i] = ClassifyCheck(body.Values[i], ValueType(body, i));
-        }
-
+        this.PrepareConversions(body);
         this.incoming.AsSpan(0, count).Clear();
         this.blocks.AsSpan(0, count).Fill(-1);
         this.successor.AsSpan(0, count).Fill(-1);
@@ -287,7 +284,7 @@ internal sealed partial class BodyLowering
                         }
                     }
 
-                    function.AddScalar(EmissionOpcode.ConditionalBranch, cursor, [Operand(body, Input(body, cursor, 0)), new(EmissionOperandKind.Block, yes), new(EmissionOperandKind.Block, no)]);
+                    function.AddScalar(EmissionOpcode.ConditionalBranch, cursor, [this.PhysicalOperand(body, Input(body, cursor, 0)), new(EmissionOperandKind.Block, yes), new(EmissionOperandKind.Block, no)]);
                 }
 
                 break;
@@ -374,7 +371,7 @@ internal sealed partial class BodyLowering
                     return Fail("Missing replacement plan at Write.", out failure);
                 }
 
-                function.AddScalar(EmissionOpcode.StoreScalar, id, [Operand(body, Input(body, id, 0))], llvm, place: operation.Place, representation: representation);
+                function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, Input(body, id, 0))], llvm, place: operation.Place, representation: representation);
                 return true;
         }
 
@@ -386,6 +383,11 @@ internal sealed partial class BodyLowering
         if (value.Kind == OwnershipValueKind.Phi)
         {
             return this.LowerPhi(body, function, id, llvm, out failure);
+        }
+
+        if (value.Kind == OwnershipValueKind.Convert)
+        {
+            return this.LowerConversion(body, function, constants, directory, id, out failure);
         }
 
         if (value.Kind is not (OwnershipValueKind.Binary or OwnershipValueKind.Unary))
@@ -431,8 +433,8 @@ internal sealed partial class BodyLowering
             return Fail("Inconsistent scalar operator or operand Types.", out failure);
         }
 
-        var leftOperand = value.Operator == KotoKind.PrefixMinus ? new(EmissionOperandKind.Integer, 0) : Operand(body, first);
-        var rightOperand = value.Kind == OwnershipValueKind.Binary ? Operand(body, Input(body, id, 1)) : value.Operator == KotoKind.PrefixMinus ? Operand(body, first) : new(EmissionOperandKind.Integer, value.Operator == KotoKind.Not ? 1 : 0);
+        var leftOperand = value.Operator == KotoKind.PrefixMinus ? new(EmissionOperandKind.Integer, 0) : this.PhysicalOperand(body, first);
+        var rightOperand = value.Kind == OwnershipValueKind.Binary ? this.PhysicalOperand(body, Input(body, id, 1)) : value.Operator == KotoKind.PrefixMinus ? this.PhysicalOperand(body, first) : new(EmissionOperandKind.Integer, value.Operator == KotoKind.Not ? 1 : 0);
         var location = -1;
         var check = this.checks[id];
         if (check != ArithmeticCheckKind.None && !this.TryGetLocation(operation.Source, directory, constants, out location))

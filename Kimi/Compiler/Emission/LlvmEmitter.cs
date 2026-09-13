@@ -78,7 +78,7 @@ public sealed class LlvmEmitter
                 }
 
                 var function = module.AddFunction(this.functions[body.Function], exported: false);
-                if (!this.lowering.Lower(c.Core, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, out failure))
+                if (!this.lowering.Lower(c.Core, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure))
                 {
                     return false;
                 }

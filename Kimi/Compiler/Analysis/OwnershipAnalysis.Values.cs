@@ -96,4 +96,28 @@ public sealed partial class OwnershipAnalysis
         this.SetValue(this.Value(output), OwnershipValueKind.Unary, [input], unary.Akind);
         return output;
     }
+
+    private int ConversionValue(ConversionKoto conversion)
+    {
+        var input = this.Expression(conversion.Left, PlaceUseKind.Read);
+        if (conversion.ConversionBinding == ConversionBinding.None)
+        {
+            this.Unsupported(conversion);
+            return -1;
+        }
+
+        if (input < 0 || conversion.ConversionBinding == ConversionBinding.Abrupt)
+        {
+            return -1;
+        }
+
+        if (conversion.ConversionBinding == ConversionBinding.Literal)
+        {
+            return input;
+        }
+
+        var output = this.Temporary(conversion);
+        this.SetValue(this.Value(output), OwnershipValueKind.Convert, [this.Value(input)]);
+        return output;
+    }
 }

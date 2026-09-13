@@ -205,6 +205,8 @@ public sealed class ConversionKoto : BinaryKoto
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Conversion;
 
+    internal ConversionBinding ConversionBinding { get; set; }
+
     /// <summary>Initializes a new instance of the <see cref="ConversionKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>

@@ -534,7 +534,7 @@ public sealed class ControlFlowAnalysis
                     }
                 }
 
-                flow = flow with { Type = destinationType, Pending = flow.Pending || destinationType is null };
+                flow = flow with { Type = flow.Normal ? destinationType : ControlFlowType.Never, Pending = flow.Pending || destinationType is null };
                 if (destinationType is null)
                 {
                     this.pending.Add(conversion);

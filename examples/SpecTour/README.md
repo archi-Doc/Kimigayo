@@ -38,7 +38,7 @@
 
 | 領域 | このサンプルでの扱い |
 | --- | --- |
-| obj / rc / arc の生成、強参照の複製 | §13.5.8 は意味を定義していますが最終 API 名は未確定です。Objects の関数は取得済みの handle を受け取ります。`Sensor.init(...)@obj` のような生成構文を捏造していません。 |
+| obj / rc / arc の生成、強参照の複製、Weak | §13.5.8–9 に Core.makeObj / makeRc / makeArc / clone と Weak 操作・循環構築を定義しました。現在は未実装です。Objects の関数は取得済みの handle を受け取ります。仕様上の例は [rc・arc・Weak の仕様](../../doc/Design/2026-09-13%20Weak%20References%20and%20Object%20Runtime.md#4-例) を参照してください。 |
 | Exchange / Swap | §15.7 の初期化を保つ交換は、最終 API 名・解決規則が未確定です。通常の Move / 再初期化と混同せず、呼び出し例は含めていません。 |
 | Mods | §20.7 の生成・順序・再検証の規則はありますが、具体的ホスト API / 登録方法は設計中です。ソース追加後の形は NativeRecord の fragment で示し、存在しない Mod 実装は加えていません。 |
 | Runtime Contract、virtual / override、checked cast | active な構文に含まれません。静的 Contract と具象 Core の object view / `is` を使っています。 |

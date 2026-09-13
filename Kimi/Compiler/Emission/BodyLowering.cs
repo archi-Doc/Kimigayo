@@ -27,9 +27,11 @@ internal sealed partial class BodyLowering
     private byte[] marks = [];
     private int[] deferredOwners = [];
     private int[] deliveries = [];
+    private int pointerWidth;
 
-    internal bool Lower(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, out string? failure)
+    internal bool Lower(CoreIntrinsics core, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string projectDirectory, Dictionary<FunctionKoto, FunctionAbi> functions, ControlFlowAnalysis flow, int pointerWidth, out string? failure)
     {
+        this.pointerWidth = pointerWidth;
         this.functions = functions;
         this.flow = flow;
         this.arguments.Clear();

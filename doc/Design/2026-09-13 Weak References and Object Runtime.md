@@ -1,239 +1,295 @@
-# Weak references と rc / arc の object runtime 設計
+# rc・arc・Weak の仕様
 
-2026-09-13。**採用した設計。** `Core.Weak<rc/T>` / `Core.Weak<arc/T>`、遅延 side table、以下の通常の生成・昇格・解放 protocol を採用し、言語契約と内部配置の要点を SPEC に反映した。公開 API の最終的な綴りと §6 の cyclic factory は引き続き別途設計する。コンパイラー実装は未変更であり、この文書は実装完了を意味しない。
+2026-09-13 改訂。本書はレビュー結果を適用した設計案。**SPEC.md は変更していない。** 現行 SPEC との差分と各案の採否は §6 にまとめる。既存の型・借用・取得規則は [SPEC](../../SPEC.md)、実装状況は [STATUS](../../STATUS.md) を参照する。コードは設計上の例であり、現時点で実行可能なサンプルではない。
 
-## 1. 採用範囲
+## 1. 型と操作
 
-合意済み: strong/object-borrow handle は共通 header を指す 1 pointer。object の動的型・完全な破棄責任を保持する。rc は非 atomic、arc は atomic。strong count は Windows x64 で 64 bit を使い、初期値 1、Move では増減せず、明示的複製で増加する。最大値での増加は wrap させず Abort。最後の release は完全な破棄後に元の object allocation を解放する。
+### 1.1 所有権
 
-追加採用: Core.Weak<S>、遅延 side table、inline count の tagging、64 bit 論理上限、昇格と最終解放の protocol、weak の借用依存。新しい `weak` Semantics は導入しない。
-
-従来の SPEC §3.3 / §13.5.8 / §15.2.3 / §15.8.1 / §16.3.3 / §21.2 / §21.4 を土台とする。現在の single-thread execution と未設計の source concurrency（Appendix D.2）は維持する。以下の arc protocol は runtime の並行操作を設計するもので、thread-transfer や payload の並行変更を許可するものではない。
-
-### 1.1 rc / arc の簡単な設計
-
-`rc/T` と `arc/T` は、同じ object を複数の strong owner で共有する Non-Copy handle。どちらも object header を指す 1 pointer で、payload の Copy 性によって handle が Copy になることはない。
-
-| 項目 | rc/T | arc/T |
+| 型 | 保持するもの | 対象へのアクセス |
 | --- | --- | --- |
-| 参照カウント | 非 atomic | atomic |
-| 用途 | 同一スレッド内の共有所有 | atomic な所有権管理が必要な共有所有。source の thread-transfer 許可とは別 |
-| payload へのアクセス | 共有のみ | 共有のみ。payload の同期機構を自動で追加しない |
-| 対応する weak | Weak<rc/T> | Weak<arc/T> |
-| object header | descriptor + control、16 bytes | 同じ配置、control と table の count が atomic |
+| `obj/T` | object の排他的な所有権 | 通常の借用規則に従う共有・排他アクセス |
+| `rc/T` | 非 atomic な strong 所有権 | 共有のみ |
+| `arc/T` | atomic な strong 所有権 | 共有のみ |
+| `Weak<rc/T>` / `Weak<arc/T>` | 対応する weak 管理領域 | 昇格して得た strong を通してアクセス |
 
-生成は完成した owner/T を通常の Copy/Move で一度取得し、新しい object 領域に Move して、metadata と payload の完成後に strong=1 の handle を公開する。payload と header は通常一つの allocation にまとめる。具体的 payload の生成に blanket Owned 制約は置かず、借用依存を保持する。
+これらはすべて Non-Copy。通常の取得は Move となり、count は変わらない。rc と arc は同じ寿命規則を使い、count 更新の atomic 性だけが異なる。count が 1 でも排他アクセスは与えない。rc と arc の相互変換、obj の共有所有への変換、strong だけの循環の自動回収は導入しない。
 
-| 操作 | strong count と責任 |
-| --- | --- |
-| 通常の代入・引数・戻り値 | Move。元の handle は消費され、count は変化しない |
-| 明示的な strong 複製 | 同じ object / view / mode の owner を追加し、count +1。payload をコピーしない |
-| objref/T への借用 | count は変えず、通常の Loan で owner による生存を保証する |
-| Weak への downgrade | strong は変えず、weak の保持を追加する |
-| Weak からの upgrade | 生存中だけ strong +1、成功結果が新しい所有責任を持つ |
-| handle の破棄 | strong -1。最後の owner だけが完全型を破棄して object allocation を解放する |
+`Core.Weak<S>` は compiler が管理する struct Core。型引数 S は、外側 Semantics が rc または arc の完全な型に限る。型別名は展開して判定する。generic では `<s/T>` と `s is rc or arc` で証明し、`Weak<s/T>` と記す。Weak は通常の owner 値であり、新しい Semantics ではない。`ref/Weak<S>` は Weak 値の格納領域への借用。
 
-weak が残る場合は object 本体を保持せず、side table だけを保持する。strong 複製・Weak 昇格・weak 複製の上限超過は wrap させず Abort。最初の Weak または inline count の表現上限でのみ通常経路から side table に移行するため、その場合の必要な allocation は失敗し得る。
+Weak は常に特定の object の管理領域を保持する。値がない場合は `Option<Weak<S>>` の None とし、空の Weak や引数なし constructor は設けない。構築中・期限切れの Weak は存在するが、いずれも upgrade は None を返す。Option の niche 最適化や 8-byte 表現は保証しない。
 
-count=1 でも排他的 payload access は与えない。rc と arc の相互変換、obj からの所有 mode 変更、borrow からの strong 生成は追加しない。view を変更しても動的型・元の領域・破棄責任を保持する。strong だけの循環は自動回収しない。詳細な配置・atomic ordering・競合処理は §3–§5 に定める。
+現在は rc/arc の payload に共有アクセスしかできず、内部可変性も未導入。主な用途は構築時に確定する自己リンク・親への逆リンクと、外部の排他的なコンテナに保持する Weak。rc/arc payload 内のリンクの後付け・書き換えや observer 登録は、この API だけでは行えない。内部可変性を追加する場合も、破棄開始後の昇格禁止・復活禁止・guard による table 保護を引き継ぐ。「strong 循環を回収しない」は回収保証の境界であり、循環を作る操作の許可ではない。
 
-## 2. 型: Core.Weak<S>
+arc の atomic 性は payload の同期や thread-transfer の許可を意味しない。source の thread/task とメモリモデルは [SPEC Appendix D.2](../../SPEC.md#d2-concurrency-memory-model-and-thread-transfer) の境界を維持する。
 
-`S` は正規化後の外側 Semantics が rc または arc の完全な strong handle Type に限る。初期の payload/View Target の適格性は既存の object 規則に従う。
+### 1.2 公開 API
 
-| 型 | 昇格の結果 |
-| --- | --- |
-| Weak<rc/T> | Core.Option<rc/T> |
-| Weak<arc/T> | Core.Option<arc/T> |
+T は既存規則で object payload として適格な具体 Core、S は rc/arc の完全な handle 型。下表の関数は Core の公開 intrinsic とし、同名のユーザー関数には特別な意味を与えない。`value` は入力引数名、`build` は builder 引数名。
 
-T が裸の payload Core である Weak<T>、Weak<obj/T>、Weak<objref/T>、Weak<Weak<arc/T>> は不適格。generic 引数が完全な strong handle Type なら適格であり、generic 定義ではその外側 Semantics が rc/arc である証拠を要求する。型別名は展開して判定する。runtime Contract View の利用は既存の導入境界を越えない。rc と arc の変換や統合は行わない。
-
-Weak は compiler-known Core の値型とし、新しい Semantics は導入しない。外側は通常の owner であり、既存の value/owning 分類に属する。この owning は weak 管理領域の責任を所有するという意味で、payload の strong ownership を持つという意味ではない。`reference` / `object` / `borrow` の分類集合を拡張しない。`ref/Weak<S>` は weak 値の格納領域への共有借用である。
-
-Weak<S> は空の場合も含め常に Non-Copy。代入・引数・戻り値では通常の Move。明示的な複製は weak count を増やすため、Copy にしてはならない。Core 型として自動 cleanup を持ち、ユーザーが field 配置や deinit を置換できないようにする。強参照と同様、空か否かで型の Copy 性は変わらない。
-
-完全型の identity と generic generation key は S の rc/arc、View Target、全 Type/Origin 引数を保持する。Weak 型自体の runtime representation と object の Runtime Type Identity は別の概念である。
-
-### 2.1 操作の契約
-
-以下の操作名は設計上の名称。公開 API の綴りは別途選定する。候補は Core.downgrade、Weak<S>.upgrade、Weak<S>.clone、空の Weak<S> constructor。
-
-| 操作 | 入力 | 結果・効果 |
+| API | 入力 → 結果 | 効果 |
 | --- | --- | --- |
-| 空の weak | 適格な S | 空の Weak<S>。allocation なし |
-| downgrade | 初期化済み S handle の共有借用 | 同じ object / view / mode の Weak<S>。strong は変えない。必要なら side table を確保 |
-| upgrade | Weak<S> の共有借用 | Core.Option<S>。成功時のみ strong を 1 増やす。weak 自体は保持 |
-| weak 複製 | Weak<S> の共有借用 | 同一 table を保持する新しい Weak<S>。空なら count 操作なし |
-| weak Move | 所有する Weak<S> | 責任だけ移転。count 操作なし |
-| weak 破棄 | 所有する Weak<S> | 外部 weak count を 1 減らす。payload の破棄や strong 減算は行わない |
+| `Core.makeObj(value)` | `T → obj/T` | 完成した値から新しい object を生成 |
+| `Core.makeRc(value)` / `Core.makeArc(value)` | `T → rc/T` / `T → arc/T` | strong=1 で生成 |
+| `Core.clone(value)` | `ref/S → S` | strong +1。payload はコピーしない |
+| `Core.clone(value)` | `ref/Weak<S> → Weak<S>` | weak +1 |
+| `Core.downgrade(value)` | `ref/S → Weak<S>` | strong は変えず、weak の保持を追加 |
+| `Core.upgrade(value)` | `ref/Weak<S> → Option<S>` | 生存中なら strong +1 して Some、それ以外は None |
+| `Core.makeRcCyclic(build)` / `Core.makeArcCyclic(build)` | builder → `rc/T` / `arc/T` | §2.2 の循環構築 |
 
-downgrade は元の strong handle の格納領域に新たな長期 Loan を残さない。処理中は通常の共有アクセスを確保し、元の所有責任が失われないようにする。初期仕様では obj、object borrow、raw pointer からの生成を認めない。
+`Core.clone` は入力の値を明示的に複製する。rc/arc なら handle、Weak なら weak の保持責任の複製であり、payload の深い複製ではない。対象は上表の二種類に限り、string 等の一般的な複製 API は追加しない。関数の T/S/F は通常の推論を使う。共有入力には `value@ref` を渡し、入力の格納領域への借用は操作中だけ保持する。結果の外部依存は §1.3 に従う。
 
-空・期限切れの upgrade は通常の None。生存中でも strong 上限での増加は Abort であり、None とは区別する。allocation failure と weak count overflow も Abort。入力は一度だけ評価・取得し、結果は取得処理が完了してから公開する。
+生成は入力を通常の Copy/Move で一度取得し、payload を新しい格納領域へ Move する。`clone` と `upgrade` は allocation しない。`downgrade` は最初の side table を確保することがある。必要な allocation の失敗と count 上限での増加は、結果を公開せず Abort。
 
-Weak<S> は payload の field/member への直接アクセス、暗黙 dereference、object borrow 生成、runtime `is`、checked cast の入力にならない。最初に upgrade し、得た S を通して既存の操作を行う。weak の view 変換も初期仕様では提供しない。必要なら strong の状態で view を変えてから downgrade する。
+解放は通常の自動破棄で行う。生存確認だけの API、Weak からの直接 dereference・object borrow・型検査・view 変換は追加しない。view を変える場合は strong を通して既存の操作を行う。将来の Weak upcast は §13.5.7 の静的な view 関係・Owned 証明・依存保持を再利用できる。ただし同じ pointer 表現だけでは許可せず、Move/clone と count の契約も定める。runtime の型検査が必要な downcast は別の設計とする。
 
-生存確認だけを行う public API は初期仕様に含めない。確認と使用を分けても寿命は確保できない。成功した upgrade が得た strong owner だけが使用期間を確保する。
+### 1.3 借用依存
 
-### 2.2 借用・Owned・Closure
+Weak は object 本体を生かさないが、昇格先 S の外部依存を隠さない。Origin の型情報と、実際の借用先を表す Loan を両方保持する。
 
-Weak は object 本体を生かさないが、S の Type/Origin 引数と payload の外部 Loan 依存を消去しない。upgrade はその依存を引き継ぐ S を返す。新しい非 static Origin や独立した排他的 Loan anchor を生成しない。
+| 操作 | 依存の扱い |
+| --- | --- |
+| strong の clone・downgrade | 対象 payload の外部依存を引き継ぐ。元の handle の格納領域に長期 Loan を作らない |
+| Weak の clone | 同じ外部依存を引き継ぐ。新しい排他的 Loan anchor を作らない |
+| Move | 保持責任と依存を移す |
+| upgrade 成功 | 対象の依存を strong 結果へ引き継ぐ。Weak 値の格納領域は借用し続けない |
+| Weak の自動破棄 | 管理領域だけを操作し、payload は観測しない |
 
-Weak<S> の OwnedOrigins には既存の generic 引数走査によって S 全体が寄与する。Owned は S の依存がすべて static と証明できるときに限り成立する。空の Weak や runtime で期限切れになった値にも、型レベルのこの規則を適用する。普通の具体的 Weak 生成・格納に blanket Owned 制約は置かない。
+generic 呼び出しや格納にもこの表を適用し、Loan の由来を Origin 名だけで代用しない。後続の upgrade と結果の使用に必要な依存を保つ。runtime で期限切れになったという期待だけでは依存を消去しない。
 
-非 Owned payload の weak は、後で upgrade できる使用やその結果を通じた観測に必要な外部 Loan を保持する。object 本体が既に破棄されたはずだという期待だけで、期限切れ分岐の依存を消す解析は導入しない。weak の自動破棄自体は side table だけを操作し、payload を観測しない。最後の使用と cleanup の依存は既存の Loan / destruction analysis で区別する。
+Owned は既存の OwnedOrigins で判定し、S 全体を走査する。構築中・期限切れでも型の条件は変わらない。通常の生成・downgrade・格納には一律の Owned 制約を置かない。型消去は既存の Owned 証明を必要とする。
 
-base/runtime-contract への payload erasure は従来どおり Owned 証明を必要とし、weak 化はこの検査の迂回手段にならない。既に証明された erased view の証明は維持する。
+Weak 値を所有 capture した Closure は Non-Copy。`ref/Weak<S>` の capture は通常の共有借用規則に従う。Owned な Weak の所有 capture は、common Function Type の Owned 環境に格納できる。
 
-Weak 値を所有 capture した Closure は Non-Copy。capture は明示 Move または weak の明示複製から行う。ref/Weak<S> の capture は通常の共有借用の Copy/Loan 規則に従う。Owned な Weak<S> の所有 capture は common Function Type の Owned 環境と両立する。Weak<S> の lifetime independence と thread safety は別である。
+## 2. 寿命と構築
 
-## 3. Windows x64 の配置
-
-strong / objref / objuniq は object header への non-null 1 pointer。Weak<S> は side table への nullable 1 pointer。null は空の weak を表し、source の null literal を安全な参照型に許可するものではない。
+### 2.1 共通の状態遷移
 
 ```text
-ObjHeader (size 8, align 8)
-  +0  descriptor: ptr
-  ... payload alignment padding
-      complete payload
-
-CountedHeader (size 16, align 8)
-  +0  descriptor: ptr
-  +8  control: u64                  // arc は atomic
-  ... payload alignment padding
-      complete payload
-
-SideTable (size 24, align 8)
-  +0  strong: u64                   // arc は atomic
-  +8  weak: u64                     // arc は atomic
-  +16 object: ptr                   // 初期化後は不変
+構築中 → 生存中 → 破棄中 → object 解放済み
 ```
 
-metadata / allocator 内部領域はこのサイズに含めない。rc/arc は同じ配置だが atomic 性が異なり、同じ allocation に atomic と非 atomic の count 操作を混在させない。Weak<S> の S から mode を静的に選ぶ。動的な mode tag は不要。
+| 状態 | strong の公開・昇格 | 保証 |
+| --- | --- | --- |
+| 構築中 | strong を公開しない。upgrade は None | 通常の object view や未初期化 payload を渡さない |
+| 生存中 | strong を公開できる。upgrade は上限内で成功 | payload が完全に初期化されている |
+| 破棄中 | 最後の release で strong=0。upgrade は None | 完全型の破棄を一度だけ実行 |
+| object 解放済み | upgrade は None | Weak が残る間は管理領域だけを保持 |
 
-object の descriptor は不変で、Runtime Type Identity、payload offset / alignment、base adjustment、完全型の破棄、allocation 解放方針に到達できる。obj と rc/arc では payload offset が異なるため、配置 descriptor と共通の型識別情報を区別する。objref から所有 mode を推測して offset を決めてはならない。
+構築完了による公開は一度だけ。破棄中・解放済みから生存中へは戻らない。通常生成と循環構築に同じ規則を適用する。構築中の None は将来の公開を否定せず、破棄開始後の None は永久に続く。
 
-### 3.1 control の encoding と上限
+### 2.2 循環構築
 
-control は 64 bit word。最下位 bit を representation tag にする。
+`Core.makeRcCyclic<T,F>` は `F is Callable<owner, (Weak<rc/T>) -> T>` を要求する。arc 版は rc を arc に置き換える。builder は通常の Copy/Move で取得し、所有 receiver で一度だけ呼ぶ。F 自体に Owned や Copy は要求しない。
 
-- bit 0 = 0: `control = strong << 1`。inline strong は 1 .. 2^63-1。0 は最終 release 済み。
-- bit 0 = 1: `control = ptrtoint(sideTable) | 1`。mask で bit 0 を外して pointer を復元する。table は少なくとも 8-byte aligned。
+**T は Owned を必要とする。** この操作は、payload の実際の借用先が確定する前に Weak を builder へ渡す。非 static 依存を持たないことを型で証明し、出所が未確定の Loan を公開しない。通常生成にこの制約を広げない。
 
-これは Windows x64 の integral address-space-0 pointer に限定した内部 encoding。48-bit address の仮定、上位 bit の切り捨て、調整済み object/view pointer の格納は行わない。
+1. object 領域と side table を確保する。table は構築中とし、内部 guard と builder 用 Weak を一つずつ保持する。
+2. 所有する Weak を builder に渡す。builder は通常の Move/clone でそれを保持できるが、upgrade は None。
+3. builder の正常な戻りと呼び出し cleanup を完了し、返された完全な T を payload に Move する。
+4. 生存中・strong=1 に一度だけ遷移し、結果 handle を返す。
 
-**論理 strong 上限は 2^64-1 のまま。** inline が 2^63-1 で増加を要求された場合、現在の count をそのまま side table に移行し、その table 上で checked increment を行う。したがって inline の上限は言語上の count overflow ではない。最初の weak 作成だけでなく、この極端に大きい count でも table allocation が生じ得る。
+builder が Abort / 非終了なら公開しない。回復可能な失敗結果を返す生成 API は設けず、通常の Abort・cleanup 規則に従う。成功後も未初期化格納領域の公開、自己を指す raw pointer の生成、排他的な object view の付与は行わない。
 
-side table は一度公開したら inline に戻さない。table 上の strong は u64 全体を使い、状態 bit を共用しない。weak counter は「外部 Weak の数 + object の解放完了まで保持する内部 guard 1」。合計の上限は 2^64-1。guard がある間は外部 Weak の上限がその分 1 小さい。上限を超える increment は更新前に Abort。
+### 2.3 最後の解放
 
-### 3.2 allocation と alignment
+side table がある object の最終 release は、次の順序を守る。
 
-通常の object は header と payload の一括 allocation 一つ。最初の weak で別 allocation の side table を追加し、その後は共有する。候補 table の並行確保が競合した場合、一時的に複数確保されることはあるが、公開されるのは一つだけ。弱参照一個ごとの allocation はしない。
-
-payloadOffset = alignUp(headerSize, payloadAlignment)。allocation alignment は max(8, payloadAlignment)。サイズ計算・round-up は checked にする。Windows HeapAlloc が保証する alignment を超える場合は、header/payload block を overallocate して整列し、header の直前に元の allocation pointer を保存する。header 自体を動かして handle の基点とし、descriptor の解放方針から prefix の有無を決める。サイズは prefix と最大 padding を含めて検査する。
-
-side table は通常の 8-byte alignment で十分。object 解放は元の allocation pointer を使い、payload/view pointer を HeapFree に渡さない。allocation elimination は identity と全 weak/strong 使用、最後の解放までの有効性を証明できる場合に限る。
-
-## 4. 遅延 side table への移行
-
-初期の CountedHeader.control は 2（logical strong 1）。inline と side のどちらか一方だけを正しい count の保管場所とする。
-
-1. 操作を行う既存 strong owner を生存させて header を読む。
-2. inline count n に対して未公開 table を準備する。strong=n、weak=1（guard）、object=header。
-3. header.control を、読んだ inline word から tagged table pointer に CAS する。
-4. 成功した瞬間に table が唯一の count 保管場所になる。移行自体では logical count を変えない。
-5. count 更新との競合で失敗したら最新値に合わせて private table を再準備して再試行する。他の table が公開済みなら未公開候補を解放し、その table を使う。
-6. downgrade は公開 table の weak を checked increment して外部 Weak を返す。overflow 移行なら移行後の strong を checked increment する。
-
-inline の strong 更新も control 全体への CAS にする。事前に inline と読んだ処理が移行後に古い場所へ fetch_add/fetch_sub してはならない。CAS の失敗時に再読して side path に切り替える。
-
-arc の control 読み取りは Acquire、移行の成功 CAS は AcqRel。これにより table 初期化を公開し、移行前の release の同期も引き継ぐ。rc は同じ論理 protocol を非 atomic 操作で実装する。移行中にユーザーコードは呼ばない。
-
-## 5. upgrade と release
-
-### 5.1 upgrade
-
-非空の Weak は table 自体の寿命を保証する。**object pointer を読む前に table.strong の増加に成功しなければならない。**
-
-```text
-upgrade(weak):
-    if weak is empty: return None
-    loop:
-        n = table.strong.load(Relaxed)
-        if n == 0: return None
-        if n == UINT64_MAX: Abort
-        if CAS(table.strong, n, n + 1, Acquire, Relaxed):
-            // この取得済み strong 責任により object は生存している。
-            return Some(strongHandle(table.object))
-```
-
-成功時の CAS が昇格の確定点。object と結果の static View Target は元のものを保持する。コピーした payload、別 object、別 ownership mode を返さない。None は source weak を消費しない。Weak の Clone/Move/upgrade が対象 lifetime を復活させることはない。
-
-### 5.2 strong release
-
-inline は count を 1 減らす control CAS。side は table.strong の fetch_sub。arc は Release、最後の 1 -> 0 を行った処理だけが Acquire fence 後に完全型の破棄を始める。普通の release は有効な strong 責任を一つ持つことが前提で、0 からの減算は runtime/compiler 不変条件違反。
-
-side の最後の release は次の順序を守る。
-
-1. strong を 1 -> 0 に確定し、その後の upgrade を失敗させる。
-2. 由来する動的な完全型を一度だけ破棄する。
+1. strong を 1 から 0 にして、以後の upgrade を禁止する。
+2. 動的な完全型を破棄する。
 3. 元の object allocation を解放する。
-4. table の内部 weak guard を一つ release する。
-5. それが最後の weak count なら table を解放する。
+4. side table の内部 guard を release する。
 
-payload 自身に Weak が格納されていて、その cleanup が最後の外部 Weak を release しても、guard が手順 4 まで table を保護する。破棄が Abort / diverge した場合、後続の cleanup / object 解放 / guard release は実行されない。通常の Abort 契約に従い leak-free を保証しない。
+weak count は「外部 Weak の数 + 内部 guard」。最後の weak release で table を解放する。payload 内の Weak が破棄されても、guard が手順 4 まで table を保護する。table のない rc/arc は strong=0 の後に payload と object 領域だけを解放する。obj は count 操作なしで完全型を破棄し、object 領域を解放する。
 
-table.object は不変のままでよい。object 解放後は stale pointer となるが、成功した upgrade 以外から読み出し・比較・dereference・metadata 参照に使わない。table の解放処理もこの pointer を使用しない。
+破棄が Abort / 非終了になれば、残りの cleanup と解放は実行されない。元の格納領域を解放する際に、base view や payload の途中を指す pointer を使ってはならない。
 
-### 5.3 weak release と atomic ordering
+## 3. Windows x64 の内部表現
 
-外部 Weak と guard の release は同じ weak counter を減らす。arc は Release fetch_sub、最後なら Acquire fence の後に table を解放。通常の weak 複製は上限検査付き Relaxed CAS。空の weak の操作は no-op。
+### 3.1 配置
 
-strong 複製は既存 strong を保持し、inline なら checked control CAS、side なら checked count CAS。増加自体は Relaxed でよいが、header の side pointer 解決には Acquire 読み取りを使う。CAS 失敗で side pointer を得る経路も Acquire を満たしてから table に触れる。成功/失敗 ordering が LLVM の cmpxchg 制約に適合するよう、Relaxed failure 後に新たな Acquire load でループする実装を許す。
+| 対象 | 配置 | サイズ / alignment |
+| --- | --- | --- |
+| obj / rc / arc / objref / objuniq handle | 元の object header への non-null pointer | 8 / 8 bytes |
+| Weak 値 | side table への non-null pointer | 8 / 8 bytes |
+| obj header | `+0 descriptor pointer`, `+8 予約領域（0 で初期化）` | 16 / 8 bytes |
+| rc / arc header | `+0 descriptor pointer`, `+8 control word` | 16 / 8 bytes |
+| side table | `+0 strong count`, `+8 weak count`, `+16 object pointer` | 24 / 8 bytes |
 
-upgrade が先に 1 -> 2 を確定すれば release 後にも strong 1 が残る。release が先に 1 -> 0 を確定すれば upgrade は失敗する。object への投機的アクセスや raw pointer の存在検査で代用しない。生きた Weak が table を保持するため、同じ table address を別 lifetime に再利用する ABA は発生させない。
+全 mode の header を 16 bytes に統一する。rc と arc は同じ配置で、arc の control・strong・weak の公開後のアクセスを atomic にする。未公開で他から観測できない領域は通常の書き込みで初期化できる。mode は所有 handle の完全な型から選び、公開後の count に atomic / 非 atomic アクセスを混在させない。
 
-この protocol は lock-free な atomic 操作で構成できるが、allocation や destructor の実行まで lock-free / wait-free とは保証しない。rc/arc は count 1 でも shared payload access のみ。weak の存在確認や count の観測から排他 access を付与しない。
+descriptor は不変で、動的型の identity、payload のサイズ・alignment、base の位置、完全型の破棄と元領域の解放方法に到達できる。同じ動的完全型・配置では全 mode で共有し、mode の処理は所有 handle 側で選ぶ。descriptor のアドレスを型 identity と同一視しない。
 
-## 6. 空、期限切れ、構築中の境界
+object allocation を 16-byte aligned とし、完全 payload は常に `header + 16` に置く。全サイズ計算を検査し、`2^63−1` bytes の上限超過・確保失敗は既存の runtime 規則で Abort。16 bytes を超える payload alignment は生成時に未対応診断とする。独自の過剰確保や prefix は追加しない。
 
-基本の状態遷移は `LiveInline -> LiveSide -> Destroying -> Expired -> TableFreed`。weak を作らない場合は LiveInline から直接 Destroying と object 解放に進む。side への移行だけでは lifetime や view は変わらない。Expired から Live へ戻さない。
+これで完全 payload の基点を得るための descriptor 読み取りは不要になる。base view の位置調整・動的型検査には引き続き metadata が必要。従来案より obj の論理確保サイズが増えるのは payload alignment が 8 以下の場合の 8 bytes で、16 の場合は既存の padding を使う。実際の速度・heap 消費は最適化と allocator にも依存する。配置の統一だけでは obj→rc 変換を許可しない。
 
-空の Weak は table がない。期限切れ Weak は table があり strong が 0。いずれも upgrade は None。公開の null、raw weak pointer、unowned、GC、cycle collection は導入しない。全てが strong の循環は残るので、必要な辺を明示的に weak にする。
+この表は格納表現を定義する。引数・戻り値の渡し方は [SPEC §21.4.2](../../SPEC.md#2142-physical-function-signatures) に従って FunctionAbi が決める。1 pointer の格納だけから、直接渡しや slot 渡しを固定しない。
 
-**循環構築には別の決定が必要。** 現行 rc/arc は共有アクセスだけなので、「完成後に自分への Weak を field に書き込む」例を無条件に受理できない。通常の downgrade は完成済み object のみを対象とし、この規則を破らない。
+### 3.2 count と状態の符号化
 
-自己 weak や immutable な親子の back-reference まで初期 API で扱うなら、Core の cyclic factory を追加する案を推奨する。意味は、factory が構築専用 table と object 領域を用意し、所有する Weak<S> を一度だけ builder に渡し、builder が返す完成した T を格納してから strong 1 を公開すること。構築中の upgrade は None。builder に通常の object view や未初期化 payload は渡さない。
+全カウンターは 64 bit 領域を使い、**共通上限 `MaxRefCount = 2^63−1`** を適用する。weak count は guard を含む。上限での増加は更新前に Abort。表現を変えて上限を拡張する処理は設けない。
 
-この factory は未採用の追加案である。採用する場合は Building(strong=0) -> Live(strong=1) という構築専用の一回限りの遷移を定義し、最終 release 後の 0 -> 1 と区別する。外部 Weak を渡した後の初期化の公開は Release、upgrade 成功は Acquire。構築 guard、builder の Copy/Move receiver、戻り値取得と cleanup、失敗時に不完全 payload を破棄しないことを正式な Core 契約に統合する必要がある。通常の downgrade/upgrade 実装だけでこの API が完成したとは扱わない。
+header.control の最下位 bit を表現 tag とする。
 
-## 7. 内部 ABI と実装境界
+- 偶数: inline strong count を `count << 1` で格納。未公開の 0 を、構築完了時に 2（strong=1）へ設定する。最終 release 後の 0 は再利用しない。
+- 奇数: `sideTablePointer | 1`。最下位 bit を外して復元する。table は 8-byte aligned であり、pointer の上位 bit は切り捨てない。
 
-Weak<S> の storage は 8 bytes / align 8、内部表現は nullable ptr。関数の受け渡しは [SPEC §21.4.2](../../SPEC.md#2142-physical-function-signatures) に従ってコンパイラー実装が選択し、aggregate 引数スロットや先頭 result slot に固定しない。1 word の storage も外側 owner の Core aggregate という分類も、物理引数方式を決定しない。explicit ValueLowering で storage/computation/cleanup を記録する。
+side table も通常の strong count を使う。
 
-strong と object borrow の直接 pointer passing、Option<S> の間接結果渡しは実装上の選択肢であり、固定契約にはしない。null niche optimization を自動的な ABI 保証にしない。runtime helper は同一 FunctionAbi 契約から定義と呼び出しを生成する。診断 context の物理位置は実装が決め、元のsource情報とAbort契約を維持する。関数ABI変更だけで本書のobject/header/side-table storage配置やcount・所有権の契約を変更しない。
+| 値 | 意味 |
+| --- | --- |
+| `1 .. MaxRefCount` | 生存中の strong count |
+| `0` | 生存していない。構築中または破棄開始済みで、upgrade は None |
 
-実装は Type formation / Core declaration、Copy・Owned / Loan 解析、ownership cleanup、TypeLayout / ValueLowering、runtime lowering の順に行う。未対応段階では generation を拒否し、Weak を trivially-copyable pointer と仮定して通さない。source artifacts と runtime profile の互換性を明示的に改訂し、古い証明や配置 cache を流用しない。
+循環構築は strong=0、weak=2（guard と builder 用 Weak）で開始する。0→1 を許すのは、strong handle をまだ公開していない factory の構築完了処理だけで、一度に限る。公開時に構築権限を消費し、strong=0 の観測から権限を再取得してはならない。strong の clone は既存 strong を必要とし、upgrade は 0 を増やさない。§2.1 の意味上の状態は count 値だけから復元しない。
 
-## 8. 実装時の検証条件
+### 3.3 共通処理と移行
 
-- Weak<rc/T> / Weak<arc/T> 以外の型引数拒否、alias 正規化、generic inference、通常 Move と明示 Clone、空値の Non-Copy。
-- downgrade は strong を変えない。upgrade 成功のみ strong +1。source Weak の責任は維持される。
-- borrowed payload の非 static 依存、erased view の Owned 証明、空値/期限切れ値による依存隠しの拒否、Closure capture の Copy/Owned 判定。
-- 最後の release と upgrade の両方の確定順序、複数 downgrade と retain/release の移行競合、未公開候補 table の cleanup。
-- payload 内の最後の Weak の破棄でも guard が table を保護する。Derived の完全破棄、base view、high-alignment allocation の元領域解放。
-- strong / weak 最大値の checked 増加、inline 閾値での移行、allocation failure。テスト専用の小さい上限で境界を再現し、production 上限の算術も検査する。
-- 期限切れ Weak が残っていても object allocation は解放され、最後の Weak で table のみ解放される。空値は allocation しない。
-- 破棄途中の upgrade は None、復活は不可能。Abort / divergence で後続 cleanup を走らせない。
-- cyclic factory を採用する場合は構築中の None、完成公開後の成功、builder 失敗、外部へ退避された Weak、self Weak cleanup を追加する。
+runtime の共通処理を `ensureSideTable`、`retainStrong`、`tryRetainStrong`、`retainWeak`、`releaseStrong`、`releaseWeak`、`publishObject` に分ける。これらは内部名であり、source API ではない。次を全経路の不変条件とする。
 
-この文書のケースは受け入れ条件であり、実行済みのテストではない。NativeAOT テストは明示指定がない限り実行しない。
+1. 正しい strong count の保管場所は常に一つ。arc の count 操作・移行・昇格は、全体として一つの確定点を持つ（線形化可能）。
+2. object に触れる処理は、有効な所有・借用・構築・破棄の権限を持つ。初回公開以外の 0→1 は禁止する。
+3. 公開済み table の利用前にその初期化を観測し、upgrade 成功後は完成した payload を観測できる。最終破棄は、それまでの適法に同期されたアクセスを引き継ぐ。count の atomic 性だけでこれらを代用しない。
+4. object の解放完了まで guard を保持する。Weak または guard が残る間は table を解放・再利用しない。
 
-## 9. 比較に用いた一次資料
+通常生成では最初の downgrade だけが table を作る。既存 strong を生存させ、観測した count=n、weak=1、object=header の未公開 table を準備する。arc では control 全体への CAS で公開し、その時点から table が唯一の count 保管場所となる。失敗時は最新 count で再試行し、他の table が公開されていれば自分の未公開候補を解放してそれを使う。最後に weak を増やして Weak を返す。
 
-- [Rust Weak<Arc>](https://doc.rust-lang.org/std/sync/struct.Weak.html): weak は値の破棄を妨げないが、Rust の元 allocation は保持する。
-- [Rust Weak<Rc>](https://doc.rust-lang.org/std/rc/struct.Weak.html): 非 atomic weak の型と操作。
-- [Swift RefCount.h](https://github.com/swiftlang/swift/blob/main/stdlib/public/SwiftShims/swift/shims/RefCount.h): 遅延 side table と object/table の寿命の分離。本案は Swift の unowned、圧縮 count 配置、ObjC 関連 flags を移植しない。
-- [Rust Arc::new_cyclic](https://doc.rust-lang.org/std/sync/struct.Arc.html#method.new_cyclic): 未完成 object の通常 access を渡さずに weak な自己参照を構築する API の参考。
-- [LLVM atomic guide](https://llvm.org/docs/Atomics.html): runtime の ordering と IR への対応。
-- [Windows HeapAlloc](https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapalloc): allocator の alignment と元領域の解放前提。
+arc の inline 増減も control 全体への CAS とし、移行済みの場所へ古い count を書き戻さない。rc は同じ状態遷移を非 atomic 操作で行う。移行は永久で、inline に戻さない。循環構築は最初から table を使う。どちらも公開済み table は一つで、Weak ごとの allocation は行わない。
+
+upgrade は strong=0 なら None、上限なら更新前に Abort。それ以外は n→n+1 を試み、競合時は再判定する。**成功後にだけ table.object を読み**、Some(strong handle) を返す。最終 release が先なら失敗し、upgrade が先なら新しい strong が寿命を保持する。table.object は初期化後不変で、期限切れの table の解放時も参照しない。
+
+### 3.4 実装ノート：atomic ordering（非規範）
+
+以下は §3.3 を満たすための arc 実装候補。具体的な ordering を言語の保証にせず、採用時には初期化の可視性・移行・最終解放の同期を証明し、§5 の検証を行う。rc の非 atomic 実装と状態遷移を共有する。
+
+| 操作 | ordering |
+| --- | --- |
+| header から公開済み table を解決 | Acquire |
+| inline → table の公開 CAS | 成功 AcqRel。初期化と移行前の release の同期を引き継ぐ |
+| strong / weak の複製 CAS | 成功 Relaxed |
+| upgrade の CAS | 成功 Acquire、失敗 Relaxed |
+| strong / weak の減算 | Release。最後なら破棄・解放前に Acquire fence |
+| 通常生成の初期化 | 外部から観測不能な間に通常の初期化を完了 |
+| 循環構築の完了 | factory が table.strong を 0→1 に Release store。公開済み Weak からの成功した upgrade と同期 |
+
+この候補では CAS 失敗を Relaxed とし、最新の表現を再判定する。失敗で得た side pointer に直接触れず、Acquire 観測を経て table に進む。inline 減算は control CAS、table の減算は fetch_sub と最後の Acquire fence を使う。既存の責任を持たない減算は不変条件違反。
+
+LLVM IR では Relaxed を `monotonic` と表す。`cmpxchg` の両 ordering は少なくとも monotonic、失敗側には release / acq_rel を指定できない。上表を IR に落とす際は使用する LLVM 版の verifier でも確認する。[LLVM LangRef](https://llvm.org/docs/LangRef.html#cmpxchg-instruction)、[Atomic ordering](https://llvm.org/docs/Atomics.html#monotonic)
+
+## 4. 例
+
+各例の constructor は単純化のため公開している。例4.2は例4.1の Item を使う。
+
+### 4.1 生成・複製・Move・借用
+
+```kimi
+struct Item
+    public let number: i32
+    public init(number: i32)
+        self.number = number
+
+func sharedExample()
+    let first: rc/Item = Core.makeRc(Item.init(7))
+    let second = Core.clone(first@ref)      // strong +1
+    let moved = second                     // count は変わらない。second は消費済み
+    let weak = Core.downgrade(first@ref)    // strong は変わらない
+    let weakCopy = Core.clone(weak@ref)     // weak +1
+    let view = moved@objref                 // count を変えない共有借用
+
+    match Core.upgrade(weakCopy@ref)
+        .Some(let acquired) => Core.writeLine("生存中") // acquired はこの arm の終了時に破棄
+        .None => Core.writeLine("昇格できない")
+    // 関数を出るときは、残るローカルの所有責任を通常の順序で解放する。
+```
+
+### 4.2 strong がなくなった後の Weak
+
+```kimi
+func expiredExample() -> Weak<arc/Item>
+    let value: arc/Item = Core.makeArc(Item.init(1))
+    return Core.downgrade(value@ref)
+    // Weak の戻り値を確保した後、value の最後の strong を解放する。
+
+let expired = expiredExample()
+match Core.upgrade(expired@ref)
+    .Some(let value) => Core.writeLine("生存中")
+    .None => Core.writeLine("期限切れ")     // この例はこちら
+
+let absent: Option<Weak<arc/Item>> = .None
+// absent は Weak を保持しない。expired は対象の管理領域を保持する。
+```
+
+### 4.3 自分への Weak を持つ object
+
+```kimi
+struct Node
+    public let selfLink: Weak<rc/Node>
+    public init(selfLink: Weak<rc/Node>)
+        self.selfLink = selfLink
+
+let build = func [] (selfWeak: Weak<rc/Node>) -> Node
+    match Core.upgrade(selfWeak@ref)
+        .Some(let unexpected) => $abort("構築中には昇格できない")
+        .None => ()
+    return Node.init(selfWeak)              // Weak を field へ Move
+
+let node: rc/Node = Core.makeRcCyclic(build)
+match Core.upgrade(node.selfLink@ref)
+    .Some(let sameNode) => Core.writeLine("構築完了")
+    .None => Core.writeLine("期限切れ")
+```
+
+Node の自己リンクは strong を増やさない。最後の strong がなくなれば、Node 内の Weak も cleanup され、guard の解放後に table を解放できる。
+
+### 4.4 借用依存は Weak にしても消えない（不正例）
+
+```kimi
+struct View origin source
+    public let value: ref/i32 from source
+    public init(value: ref/i32 from source)
+        self.value = value
+
+func invalidEscape() -> Weak<rc/(View from static)>
+    let local: i32 = 42
+    let object: rc/View = Core.makeRc(View.init(local@ref))
+    return Core.downgrade(object@ref)       // エラー: local の借用を static にできない
+```
+
+同じスコープ内で非 static の依存を保持する通常の Weak は許可する。期限切れになる予定でも、型の依存を static に変更する理由にはならない。
+
+## 5. 実装時の確認事項
+
+| 分類 | 必須の確認 |
+| --- | --- |
+| 型と取得 | 不適格な Weak 引数、Move 後使用、Option による不在、clone の対象、pair generic の制約・推論 |
+| 借用 | §1.3 の依存伝播、非 static の不正 escape、型消去、Closure、cyclic の T-is-Owned 条件 |
+| 構築と解放 | 構築中の None、公開後の成功、builder cleanup 後の公開、完全型の一度だけの破棄、payload 内の最後の Weak と guard |
+| count と競合 | 上限で更新せず Abort、0→1 の初回公開限定、移行と複製・解放の競合、upgrade と最終 release、未公開候補 table の解放 |
+| 同期 | table 初期化と pointer 公開、循環構築完了と upgrade、移行前の release を引き継ぐ最終破棄、最後の weak release と解放 |
+| 配置と ABI | 全 mode の payload+16、base 調整、元領域の解放、alignment 上限、失効 pointer 非参照、FunctionAbi の一致 |
+
+小さいテスト用上限でも共通 count 規則を検査する。操作の順序を列挙するテストだけでは弱いメモリ順序を証明できない。メモリモデル上の検証、LLVM IR の検査、最適化後の機械語・runtime テストを分ける。構文解析の成功を Borrow Check や実行の成功と扱わない。NativeAOT テストは明示指定がない限り実行しない。
+
+## 6. レビュー結果と現行 SPEC との差分
+
+本書内では次の改訂を採用する。現行 SPEC の規範を書き換えたものではなく、実装時には対応箇所との同期が必要。
+
+| 案 | 判断・理由 | SPEC との関係 |
+| --- | --- | --- |
+| 1. header を 16 bytes に統一 | 採用。完全 payload の位置を mode によらず固定できる。base 調整は残り、各アクセスの速度向上や descriptor の物理的な唯一性は保証しない | §21.2.3 の obj header / offset を更新する改訂案 |
+| 2. cyclic の Owned 制約を撤廃 | 見送り。結果の実際の Loan は capture の依存だけからは定まらない。下記参照 | §13.5.8・§15.2.3 の T-is-Owned を維持 |
+| 3. Building 番兵を廃止 | 採用。構築権限と一度だけの公開で復活を防ぎ、count=0 を共通化できる | §21.2.3 の符号化・公開手順を更新する改訂案 |
+| 4. 空 Weak を廃止 | 採用。不在は Option に統一。Option のサイズ増加の可能性は受け入れる | §3.2.2・§13.5.9・§21.2.3・§22.1 の空値・constructor を削除する改訂案 |
+| 5. 適用範囲を明記 | 採用。ただし「用途は二つだけ」「safe な strong 循環は絶対に作れない」という網羅的な断定はしない | 既存の共有アクセス・機能導入境界を説明 |
+| 6. ordering を実装ノートへ移動 | 一部採用。具体表を非規範化し、観測不能な初期化を簡略化。count の原子性だけでは保証できない可視性・最終破棄前の同期は必須条件として残す | §21.2.3 の ordering 規定を再構成する改訂案。D.2 の単一スレッド境界は維持 |
+
+**案2をそのまま適用しない理由。** [SPEC §11.3.2](../../SPEC.md#1132-static-storage)・[§15.6.4](../../SPEC.md#1564-calls-and-origin-propagation) は、入力の寿命に制限した mutable static field の借用を helper が返す場合を認め、結果に実際の Field anchor を保持させる。builder が capture した参照をその入力に使っても、返される payload の Loan は別の Field を指す。したがって「非 static の依存は F の capture からしか来ない」は成立しない。
+
+capture 由来でも、共有参照の Copy、排他的参照の Reborrow、参照値の Move では Loan の責任が異なる（§15.8.2）。F 全体の依存保持という方針は使えるが、それだけでは結果の Loan と宣言済み Origin の対応を代用できない。問題は保守的に多く保持することではなく、必要な依存をすべて含むと保証できない点にある。
+
+制約を緩和するには、builder の公開された結果契約から **T に残る依存と Loan の移譲を特定し、呼び出し前の Weak にも同じ依存を付けられる** 規則が必要。呼び出し先の本体を調べず generic 呼び出しでも検証でき、循環・表現不能な依存を拒否する設計まで揃えてから扱う。現在は T-is-Owned を維持し、通常生成には広げない。
+
+文書上の修正として、generic の証明方法、Weak upcast の将来境界、arm 終了時の破棄、obj を含む handle の列挙を追記した。clone は本書内を `Core.clone(x@ref)` に統一。SPEC §3.5.1 の `text.clone()` は一般複製の説明用の例であり、本書の二種類の intrinsic と同じ API とは定義されていない。string 版 Core.clone の追加はせず、SPEC の例も変更していない。
+
+参考: [Rust の循環構築](https://doc.rust-lang.org/std/sync/struct.Arc.html#method.new_cyclic)、[Swift の side table](https://github.com/swiftlang/swift/blob/main/stdlib/public/SwiftShims/swift/shims/RefCount.h)、[LLVM atomic ordering](https://llvm.org/docs/Atomics.html)、[Windows HeapAlloc](https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapalloc)。これらの実装全体を移植するものではない。

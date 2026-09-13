@@ -25,7 +25,7 @@ internal sealed partial class BodyLowering
             var expected = value.Kind switch
             {
                 OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call => 0,
-                OwnershipValueKind.Alias or OwnershipValueKind.Unary => 1,
+                OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert => 1,
                 OwnershipValueKind.Binary => 2,
                 OwnershipValueKind.Phi => value.Count,
                 _ => -1,
@@ -39,6 +39,11 @@ internal sealed partial class BodyLowering
             // Non-scalar operations retain ownership-only Place flow until their lowering is implemented.
             var operation = body.Operations[id];
             var scalar = IsScalar(ValueType(body, id)!);
+            if (value.Kind == OwnershipValueKind.Convert && !scalar)
+            {
+                return false;
+            }
+
             if (scalar && operation.Kind == OwnershipOperationKind.Branch && value.Kind != OwnershipValueKind.Phi)
             {
                 return false;
@@ -81,6 +86,16 @@ internal sealed partial class BodyLowering
             }
 
             if (value.Kind == OwnershipValueKind.Call && operation.Kind != OwnershipOperationKind.Call)
+            {
+                return false;
+            }
+
+            if (value.Kind == OwnershipValueKind.Convert &&
+                (operation.Kind != OwnershipOperationKind.Produce ||
+                operation.Source is not Parsing.ConversionKoto { ConversionBinding: ConversionBinding.Integer } conversion ||
+                !ReferenceEquals(ValueType(body, id), conversion.BoundType) ||
+                !ReferenceEquals(ValueType(body, Input(body, id, 0)), conversion.Left.BoundType) ||
+                ScalarTypes.Width(ValueType(body, id)) == 0 || ScalarTypes.Width(ValueType(body, Input(body, id, 0))) == 0))
             {
                 return false;
             }

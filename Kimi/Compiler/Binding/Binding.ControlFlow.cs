@@ -99,6 +99,11 @@ public sealed partial class Binding
             case BinaryKoto binary when binary.Akind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret:
                 return this.ResultEvidence(binary.Left, scope) ?? this.ResultEvidence(binary.Right, scope);
             case ConversionKoto conversion:
+                if (!this.ConversionCanComplete(conversion.Left, scope))
+                {
+                    return BoundType.Never;
+                }
+
                 return this.BindType(conversion.Right, this.NodeScope(source, scope));
             case IdentifierNameKoto name:
                 var symbol = this.Lookup(name.IdentifierName, this.NodeScope(name, scope), name, false);
@@ -222,7 +227,7 @@ public sealed partial class Binding
 
     private BoundType? FinishResult(Koto node, ResultContext context)
     {
-        var structural = this.resultStructure ??= new(item => ReferenceEquals(item.BoundType, BoundType.Never));
+        var structural = this.resultStructure ??= new(this.ResultNeverEvidence);
         structural.Clear();
         switch (node)
         {

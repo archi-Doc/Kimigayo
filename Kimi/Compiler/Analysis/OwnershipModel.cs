@@ -276,6 +276,7 @@ internal enum OwnershipValueKind : byte
     Parameter,
     Call,
     Alias,
+    Convert,
     Unary,
     Binary,
     Phi,

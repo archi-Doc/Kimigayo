@@ -148,7 +148,7 @@ public class DivisionEmissionTest
         using var writer = new StringWriter();
         Assert.True(c.Emission.WriteIr(writer, out var error), error);
         var ir = writer.ToString();
-        Assert.Equal(9, WindowsLowering.AbortReasons.Length);
+        Assert.Equal(10, WindowsLowering.AbortReasons.Length);
         var count = WindowsLowering.AbortReasons.Length;
         Assert.Equal(2, Regex.Matches(ir, $@"\[{count} x \{{ ptr, i64 \}}\]").Count);
         foreach (var reason in WindowsLowering.AbortReasons)
@@ -160,6 +160,7 @@ public class DivisionEmissionTest
         Assert.Equal(OverflowReason, WindowsLowering.AbortReasons[WindowsLowering.IntegerOverflowReason].Text);
         Assert.Equal(ZeroReason, WindowsLowering.AbortReasons[WindowsLowering.IntegerDivisionZeroReason].Text);
         Assert.Equal("KIMI_E_INT_SHIFT_COUNT: Shift count out of range", WindowsLowering.AbortReasons[WindowsLowering.IntegerShiftCountReason].Text);
+        Assert.Equal("KIMI_E_INT_CONVERSION: Integer conversion out of range", WindowsLowering.AbortReasons[WindowsLowering.IntegerConversionReason].Text);
         Assert.Contains($"%known = icmp ult i32 %reason, {count}", ir);
         Assert.DoesNotContain("{{", ir);
     }

@@ -504,6 +504,11 @@ public sealed partial class Binding
             node.BindingFailure = BindingFailure.None;
             node.BoundMeaning = null;
             node.BoundSymbol = null;
+            if (node is ConversionKoto conversion)
+            {
+                conversion.ConversionBinding = ConversionBinding.None;
+            }
+
             if (node is IsKoto clause)
             {
                 clause.BoundConstraint = null;
