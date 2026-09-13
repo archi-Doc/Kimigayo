@@ -2,6 +2,10 @@
 
 ## 現在の自動実装引継ぎ（2026-09-14）
 
+**起動引数の修正:** `--approve-for-me`と`--sandbox workspace-write`の併用で実CLIがexit 2になる不具合を修正。前者だけでworkspace-writeと自動承認レビューを選択するため、後者を削除した。以前の疑似CLIは誤って両方を要求しており、この互換性不具合を検出できていなかった。疑似CLIも併用を拒否するよう変更し、短時間の`-Smoke`検証を追加した。保存済みversion 3のエラー状態は`-Resume`で再開できる。
+
+今回の検証: `pwsh -NoProfile -File automation/test-codex-loop.ps1 -Smoke`は2シナリオ成功（exit 0）。競合引数の拒否と、エラー後に同じ実行IDでPlan / Plan Audit / Implementation / Completion Auditを通る再開を確認した。ログ: `C:\Users\bwff1\AppData\Local\Temp\kimi-loop-tests-d98833f8f5a04a3198f4991ceaf10041`。実CLIでも旧引数の競合を再現し、修正形では引数解析後のhome解決へ進むことを確認した。この検証環境ではhome解決で停止するため、実モデル実行の成功は主張しない。以下の41ケースは前回の全体検証記録であり、今回の起動互換性を保証していたものではない。
+
 - 今回の対象はautomationの精査・改善。製品の計画IDは完了扱いにしていない。現在の計画は91 ID、必須未完了82 ID、任意未実行1 ID。
 - [自動実装手順](automation/README.md)のPlan → Plan Audit → Implementation → Implementationを3サイクル、その後Completion Auditという遷移を維持。必須の未完了行、存在しない計画ID、指摘の省略・重複・状態不一致を機械検査する。意味的な完成・証拠の正しさは監査で確認する。
 - SPECが明示採用する文書を必要範囲だけ参照できるようにし、既決事項の本文統合と未決定事項を分離。doc/・automation/・AGENTS.md等の変更はrunnerで検出する。CLI失敗後のhash保存、実行時間とログ回収の上限、引継ぎ時間の確保を追加。

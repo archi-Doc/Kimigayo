@@ -165,7 +165,8 @@ Use IMPLEMENTATION_PLAN.md, STATUS.md and AUDIT_FINDINGS.md for durable handoff.
     $invocationPath = "$logBase.invocation.json"
     Write-JsonFile $invocationPath @{
         command = $resolvedCodex
-        arguments = @('exec', '--ephemeral', '--approve-for-me', '--sandbox', 'workspace-write',
+        # --approve-for-me already selects workspace-write; --sandbox conflicts with it.
+        arguments = @('exec', '--ephemeral', '--approve-for-me',
             '--color', 'never', '-C', $ProjectRoot, '--output-schema', $schemaPath, '-o', $state.last_output, '-')
         prompt_path = $promptPath
     }

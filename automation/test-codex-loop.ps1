@@ -1,7 +1,7 @@
 #requires -Version 7.4
 # Exercises the real runner with a local fake CLI. No Codex/API/compiler is invoked.
 [CmdletBinding()]
-param([switch]$IncludeTimeout)
+param([switch]$IncludeTimeout, [switch]$Smoke)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
@@ -12,13 +12,17 @@ $pwshPath = Join-Path $PSHOME $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })
 $fakePath = Join-Path $testRoot 'fake codex.ps1'
 $fakeText = @'
 $ErrorActionPreference = 'Stop'
+if ('--approve-for-me' -in $args -and ('--sandbox' -in $args -or '-s' -in $args)) {
+    [Console]::Error.WriteLine("error: --approve-for-me cannot be used with --sandbox")
+    exit 2
+}
 $promptText = ($input | Out-String)
 $rootPath = $args[[Array]::IndexOf($args, '-C') + 1]
 $outputPath = $args[[Array]::IndexOf($args, '-o') + 1]
 $config = Get-Content (Join-Path $rootPath '.codex-loop/mock.json') -Raw | ConvertFrom-Json
 $stage = [regex]::Match($promptText, '(?m)^Stage: (.+)\r?$').Groups[1].Value.Trim()
 if (-not $promptText.Contains('doc/ 以下') -or -not $promptText.Contains('未コミット')) { exit 21 }
-foreach ($flag in @('exec', '--ephemeral', '--approve-for-me', '--sandbox', 'workspace-write', '--output-schema', '-')) {
+foreach ($flag in @('exec', '--ephemeral', '--approve-for-me', '--output-schema', '-')) {
     if ($flag -notin $args) { throw "Missing invocation flag: $flag" }
 }
 if (-not $promptText.Contains('Hard deadline (UTC):') -or -not $promptText.Contains('verification-guide.md')) { exit 22 }
@@ -164,6 +168,20 @@ function Get-Stages([string]$Root) {
 $normalSequence = (@('plan', 'plan-audit', 'implementation', 'implementation') * 3) + @('completion-audit')
 $passed = 0
 try {
+    & $pwshPath -NoProfile -File $fakePath exec --approve-for-me --sandbox workspace-write *> (Join-Path $testRoot 'argument-conflict.log')
+    Assert ($LASTEXITCODE -eq 2) 'Fake CLI must reject the real CLI argument conflict'
+    $passed++
+    if ($Smoke) {
+        $smokeRoot = New-Case 'smoke-error-resume' 'process-error'
+        $failedState = Run-Case $smokeRoot 5
+        @{ mode = 'early' } | ConvertTo-Json | Set-Content (Join-Path $smokeRoot '.codex-loop/mock.json')
+        $resumedState = Run-Case $smokeRoot 0 -ResumeRun
+        Assert ($failedState.run_id -eq $resumedState.run_id) 'Resume replaced the failed run'
+        Assert (((Get-Stages $smokeRoot) -join ',') -eq 'plan,plan,plan-audit,implementation,completion-audit') 'Error resume did not traverse all four stages'
+        $passed++
+        Write-Host "PASS: $passed smoke scenarios (argument conflict and error/resume through all four stages). Logs: $testRoot"
+        exit 0
+    }
     $normal = New-Case 'normal' 'normal'
     $normalState = Run-Case $normal 0
     Assert (((Get-Stages $normal) -join ',') -eq ($normalSequence -join ',')) 'Normal order is incorrect'

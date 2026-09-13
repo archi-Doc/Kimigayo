@@ -35,6 +35,7 @@ pwsh -NoProfile -File ./automation/codex-loop.ps1 -Resume -MaxRounds 10
 
 必要なものはGit、利用可能な認証・設定を持つCodex CLI、対象プロジェクトの開発環境です。
 モデルはCLI設定を引き継ぎます。起動にはstdin、ephemeral、workspace-write、自動承認レビュー、JSON Schema、最終応答ファイルを使用します。
+`--approve-for-me`自体がworkspace-writeと自動承認レビューを選択するため、`--sandbox workspace-write`は併記しません。両方を渡すとCLIの引数解析で終了コード2になります。
 使用中のCLIがこれらの引数を提供することは codex exec --help で確認できます。
 CLIの非対話・構造化出力については[公式ドキュメント](https://learn.chatgpt.com/docs/non-interactive-mode)を参照してください。
 起動前にAGENTS.md、SPEC.md、STATUS.mdと必要なautomationファイルの存在を検査します。計画と指摘台帳は初回Planで作成できます。既存の認証・モデル設定を用い、このスクリプトから設定や認証を変更しません。
@@ -94,6 +95,9 @@ SPEC・STATUSは章索引と現行引継ぎから必要範囲を読み、毎回�
 ## 検証
 
 ~~~powershell
+# 起動引数と、実行エラーから全4段階を経る再開を短時間で検証
+pwsh -NoProfile -File ./automation/test-codex-loop.ps1 -Smoke
+
 # 一時Gitリポジトリと疑似CLIだけで順序・状態・停止・異常系を検証
 pwsh -NoProfile -File ./automation/test-codex-loop.ps1
 
