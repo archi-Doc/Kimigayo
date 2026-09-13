@@ -121,6 +121,7 @@ function Assert-Result([string]$Stage, $Result) {
 
 function Invoke-Stage {
     $stage = $state.stage
+    $previousOutput = $state.last_output
     $state.sequence++
     $state.in_flight = $true
     $state.stop_reason = 'running'
@@ -145,6 +146,7 @@ Implementation slot: $($state.implementation_slot) / 2
 Consecutive implementation runs without progress: $($state.no_progress)
 Reason: $($state.reason)
 Previous validated result: $($state.last_result)
+Previous attempt output (may be missing or invalid): $previousOutput
 Current evidence prefix: $logBase
 State belongs to the runner. Do not edit .codex-loop/state.json or runner-owned files.
 Use IMPLEMENTATION_PLAN.md, STATUS.md and AUDIT_FINDINGS.md for durable handoff.
@@ -175,6 +177,8 @@ Use IMPLEMENTATION_PLAN.md, STATUS.md and AUDIT_FINDINGS.md for durable handoff.
     $stdout = [IO.File]::Create("$logBase.stdout.log")
     $stderr = [IO.File]::Create("$logBase.stderr.log")
     $started = $false
+    $outCopy = $null
+    $errCopy = $null
     try {
         Write-Host "Round $($state.round), cycle $($state.cycle): $stage (slot $($state.implementation_slot)). Logs: $logBase"
         $started = $process.Start()
@@ -188,11 +192,13 @@ Use IMPLEMENTATION_PLAN.md, STATUS.md and AUDIT_FINDINGS.md for durable handoff.
                 throw [TimeoutException]::new("Stage $stage exceeded $StageTimeoutMinutes minutes.")
             }
         }
-        $outCopy.GetAwaiter().GetResult()
-        $errCopy.GetAwaiter().GetResult()
+        [void]$outCopy.GetAwaiter().GetResult()
+        [void]$errCopy.GetAwaiter().GetResult()
         if ($process.ExitCode -ne 0) { throw "Codex exited with code $($process.ExitCode). See $logBase.stderr.log" }
     } finally {
         if ($started -and -not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
+        if ($null -ne $outCopy) { [void]$outCopy.GetAwaiter().GetResult() }
+        if ($null -ne $errCopy) { [void]$errCopy.GetAwaiter().GetResult() }
         $stdout.Dispose()
         $stderr.Dispose()
         $process.Dispose()
@@ -211,13 +217,19 @@ Use IMPLEMENTATION_PLAN.md, STATUS.md and AUDIT_FINDINGS.md for durable handoff.
     return $result
 }
 
-function Start-NextCycle([string]$Reason) {
+function Start-NextCycle([string]$Reason, [switch]$Replan) {
     $state.cycle++
     $state.implementation_slot = 1
     $state.reason = $Reason
     if ($state.cycle -gt 3) {
-        $state.cycle = 3
-        $state.stage = 'completion-audit'
+        if ($Replan) {
+            $state.round++
+            $state.cycle = 1
+            $state.stage = 'plan'
+        } else {
+            $state.cycle = 3
+            $state.stage = 'completion-audit'
+        }
     } else { $state.stage = 'plan' }
 }
 
@@ -233,24 +245,50 @@ try {
     }
     [IO.Directory]::CreateDirectory($stateDir) | Out-Null
     $lock = [IO.File]::Open((Join-Path $stateDir 'loop.lock'), [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+    $stateIgnore = Join-Path $stateDir '.gitignore'
+    if (-not (Test-Path -LiteralPath $stateIgnore)) {
+        [IO.File]::WriteAllText($stateIgnore, '*' + [Environment]::NewLine)
+    }
     if ($Resume) {
         $state = Get-Content -LiteralPath $statePath -Raw | ConvertFrom-Json -AsHashtable
+        foreach ($key in @('version', 'project_root', 'round', 'cycle', 'stage', 'run_id', 'run_dir',
+            'sequence', 'implementation_slot', 'no_progress', 'in_flight', 'stop_reason',
+            'reason', 'last_result', 'last_output', 'updated_at')) {
+            if (-not $state.Contains($key)) { throw "Missing state field: $key" }
+        }
         if ($state.version -ne 2 -or $state.project_root -ne $ProjectRoot -or
             ($state.round -isnot [long] -and $state.round -isnot [int])) { throw 'Invalid or incompatible state.' }
         if ($state.round -lt 1 -or $state.cycle -notin 1, 2, 3 -or
             $state.stage -notin @('plan', 'plan-audit', 'implementation', 'completion-audit')) { throw 'Invalid stage counters.' }
+        foreach ($key in @('cycle', 'sequence', 'implementation_slot', 'no_progress')) {
+            if (($state[$key] -isnot [long] -and $state[$key] -isnot [int]) -or $state[$key] -lt 0) {
+                throw "Invalid state counter: $key"
+            }
+        }
+        if ($state.implementation_slot -notin 1, 2 -or $state.in_flight -isnot [bool]) { throw 'Invalid state fields.' }
         $expectedRunDir = Join-Path (Join-Path $stateDir 'runs') $state.run_id
         if ($state.run_id -notmatch '^[a-f0-9]{32}$' -or $state.run_dir -ne $expectedRunDir) { throw 'Invalid run directory.' }
         $ownsState = $true
         if ($state.stop_reason -eq 'verified_complete') {
-            Write-Host 'This run is already complete. Omit -Resume to audit a new repository state.'
-            $exitCode = 0
-        } else {
+            $completedSnapshotPath = Join-Path $state.run_dir ('{0:D4}-completion-audit.after.json' -f $state.sequence)
+            $completedSnapshot = Get-Content -LiteralPath $completedSnapshotPath -Raw | ConvertFrom-Json -AsHashtable
+            $currentSnapshot = Get-WorkspaceSnapshot
+            $changed = @(@($completedSnapshot.Keys) + @($currentSnapshot.Keys) | Sort-Object -Unique |
+                Where-Object { $completedSnapshot[$_] -ne $currentSnapshot[$_] })
+            if ($changed.Count -eq 0) {
+                Write-Host 'This run is already complete and the recorded repository inputs are unchanged.'
+                $exitCode = 0
+            } else {
+                $state.stop_reason = 'changed_after_completion'
+            }
+        }
+        if ($state.stop_reason -ne 'verified_complete') {
+            $resumeReason = "Explicit resume after $($state.stop_reason): $($state.reason)"
             $state.stage = 'plan'
             $state.implementation_slot = 1
             $state.no_progress = 0
             $state.in_flight = $false
-            $state.reason = 'Explicit resume: inspect preserved partial work and external changes before continuing.'
+            $state.reason = "$resumeReason. Inspect preserved partial work and external changes before continuing."
             $state.stop_reason = 'running'
         }
     } else {
@@ -296,7 +334,7 @@ try {
                         $state.reason = 'Four implementation runs made no progress, including an opportunity to replan.'
                         $exitCode = 4
                     } elseif ($result.status -eq 'replan' -or $state.no_progress -ge 2) {
-                        Start-NextCycle 'Replan after a material plan issue or repeated lack of progress.'
+                        Start-NextCycle 'Replan after a material plan issue or repeated lack of progress.' -Replan
                     } elseif ($state.implementation_slot -eq 1) {
                         $state.implementation_slot = 2
                         $state.reason = 'Continue unfinished implementation and verification from slot 1 before selecting another item.'
