@@ -169,6 +169,10 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipValue> Values = new();
     internal readonly List<int> ValueOperands = new();
     internal readonly List<OwnershipPhiInput> PhiInputs = new();
+    internal readonly List<OwnershipStringResult> StringResults = new();
+    internal readonly List<OwnershipResultArrival> ResultArrivals = new();
+    internal readonly List<OwnershipResultWrite> ResultWrites = new();
+    internal readonly Dictionary<Koto, int> StringResultPlaces = new(ReferenceEqualityComparer.Instance);
     internal readonly List<OwnershipDelivery> Deliveries = new();
     internal readonly List<OwnershipCleanupStep> CleanupStepStorage = new();
     internal readonly List<OwnershipCleanupPlan> CleanupPlanStorage = new();
@@ -237,6 +241,10 @@ public sealed partial class OwnershipBody
         this.Values.Clear();
         this.ValueOperands.Clear();
         this.PhiInputs.Clear();
+        this.StringResults.Clear();
+        this.ResultArrivals.Clear();
+        this.ResultWrites.Clear();
+        this.StringResultPlaces.Clear();
         this.Deliveries.Clear();
         this.CleanupStepStorage.Clear();
         this.CleanupPlanStorage.Clear();
@@ -291,3 +299,11 @@ internal readonly record struct OwnershipPhiInput(int Value, int Edge, int Write
 
 // The value is captured before cleanup; Write is the operation that secured it.
 internal readonly record struct OwnershipDelivery(int Operation, int Value, int Write);
+
+// A dynamic expression result lifetime; deferred replicas can share Place but not Declare/Join.
+internal readonly record struct OwnershipStringResult(int Place, int Declare, int Join, int Start, int Count);
+
+internal readonly record struct OwnershipResultArrival(int Edge, int Write);
+
+// Includes secured results whose cleanup prevents arrival.
+internal readonly record struct OwnershipResultWrite(int Operation, int Declare);

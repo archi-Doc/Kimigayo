@@ -159,6 +159,7 @@ public sealed partial class OwnershipAnalysis
         this.placeValues.Clear();
         this.resultHeads.Clear();
         this.resultJoins.Clear();
+        this.resultDeclarations.Clear();
         this.pendingResults.Clear();
         this.selections.Clear();
         this.activeDecompositions.Clear();
@@ -261,6 +262,7 @@ public sealed partial class OwnershipAnalysis
 
         this.body.PlaceStorage.Add(new(id, source, type, kind, mutable, acquisition));
         this.placeValues.Add(-1);
+        this.resultDeclarations.Add(-1);
         this.body.IsConcrete &= type.Kind != BoundTypeKind.Parameter;
         if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
         {
@@ -497,6 +499,12 @@ public sealed partial class OwnershipAnalysis
             }
 
             var input = this.Expression(binary.Right);
+            if (input < 0)
+            {
+                // Like a local initializer, an abrupt RHS has no value to place.
+                return -1;
+            }
+
             if (binary.Akind != KotoKind.Equals)
             {
                 var rhs = this.Value(input);
@@ -890,7 +898,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.body.OperationStorage.Add(new(kind, source, place, input, acquisition));
-        this.resultHeads.Add(-1);
+        this.resultHeads.Add(-2);
         this.RecordValue(id, kind, source, place, input);
         this.body.EdgeHeads.Add(-1);
         this.body.IncomingEdges.Add(-1);

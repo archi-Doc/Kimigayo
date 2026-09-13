@@ -36,7 +36,6 @@ public class MinimalEmissionTest
     }
 
     [Theory]
-    [InlineData("let x = \"a\"\nwriteLine(x)")]
     [InlineData("func unused() -> ()\n    " + UnsupportedExpression + "\nwriteLine(\"a\")")]
     [InlineData("func unused<T>() => ()\nwriteLine(\"a\")")]
     [InlineData("struct Empty\n    func unused() => ()\nwriteLine(\"a\")")]
@@ -46,7 +45,7 @@ public class MinimalEmissionTest
     [InlineData("let x = \"a\"\nwriteLine(x)\nwriteLine(x)")]
     [InlineData("func writeLine(x: string) => ()\nwriteLine(\"a\")")]
     [InlineData("let x = " + UnsupportedExpression + "\nwriteLine(\"a\")")]
-    [InlineData("writeLine(\"a\")\nlet flag = if true => \"a\" else => \"b\"")]
+    [InlineData("writeLine(\"a\")\nlet flag = " + UnsupportedExpression)]
     [InlineData("")]
     public void UnsupportedOrInvalidInputNeverWritesIr(string source)
     {

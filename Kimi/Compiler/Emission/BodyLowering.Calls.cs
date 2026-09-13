@@ -114,6 +114,11 @@ internal sealed partial class BodyLowering
             }
             else if (runtime && ReferenceEquals(type, BoundType.String))
             {
+                if (!this.IsStringValue(body.Places[body.Operations[entry].Place]))
+                {
+                    return Fail("Owned string arguments require their acquired temporary.", out failure);
+                }
+
                 this.callOperands.Add(new(EmissionOperandKind.SlotAddress, body.Operations[entry].Place));
             }
             else if (!ReferenceEquals(type, BoundType.Unit))

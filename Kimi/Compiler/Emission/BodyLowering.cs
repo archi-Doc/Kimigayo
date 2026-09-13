@@ -9,10 +9,10 @@ namespace Kimi.Compiler;
 /// operation/Place identities and edge cleanup plans, and never guesses a representation, terminator or cleanup.
 /// </summary>
 /// <remarks>
-/// Supports bool/i32 locals and control-flow results, Unit control flow and checked signed arithmetic.
+/// Supports bool/8–64-bit integer values, Unit control flow, checked arithmetic and owned string locals.
 /// Every operation, including unreachable ones, is validated before physical blocks are assembled.
-/// Direct scalar calls use the module's pre-registered signatures; borrowed and aggregate
-/// values require additional verified plans.
+/// Direct scalar calls use the module's pre-registered signatures; borrowed values and general aggregate
+/// results require additional verified plans.
 /// </remarks>
 internal sealed partial class BodyLowering
 {
@@ -218,6 +218,12 @@ internal sealed partial class BodyLowering
             return Fail("Call entries must be consecutive and immediately precede their call.", out failure);
         }
 
+        if (operation.Place >= 0 && ReferenceEquals(body.Places[operation.Place].Type, BoundType.String) &&
+            operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.Consume or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup)
+        {
+            return this.LowerString(body, function, constants, projectDirectory, index, marks, out failure);
+        }
+
         switch (operation.Kind)
         {
             case OwnershipOperationKind.Entry when index == 0:
@@ -256,15 +262,6 @@ internal sealed partial class BodyLowering
                     break; // Unit retains its verified effects but has no physical value (SPEC 21.3.3).
                 }
 
-                if (ReferenceEquals(place.Type, BoundType.String) && place.Kind == OwnershipPlaceKind.Temporary &&
-                    operation.Source is StringLiteralKoto { AttributeChain: null } literal)
-                {
-                    // An empty literal is Static/null/length zero with no backing constant (SPEC 21.5.6).
-                    var constant = literal.Literal.Length == 0 ? -1 : constants.Intern(literal.Literal, LlvmConstantKind.Text);
-                    function.Add(EmissionOpcode.StoreStaticString, index, operation.Place, constant);
-                    break;
-                }
-
                 return Fail("A produced value needs unsupported value lowering.", out failure);
 
             case OwnershipOperationKind.CallEntry:
@@ -274,6 +271,7 @@ internal sealed partial class BodyLowering
                 }
 
                 this.arguments.Add(index);
+                this.AddStringFlags(function, operation, index);
                 break;
 
             case OwnershipOperationKind.Call:
@@ -305,13 +303,7 @@ internal sealed partial class BodyLowering
                 // Unit has no value and no destructor; its verified cleanup has no physical output.
                 if (step.Action == CleanupAction.Destroy && !(operation.Place >= 0 && ReferenceEquals(body.Places[operation.Place].Type, BoundType.Unit)))
                 {
-                    if (operation.Place < 0 || !ReferenceEquals(body.Places[operation.Place].Type, BoundType.String) ||
-                        !this.TryGetLocation(operation.Source, projectDirectory, constants, out var location))
-                    {
-                        return Fail("Destruction needs unsupported Type lowering or source provenance.", out failure);
-                    }
-
-                    function.AddCall(index, WindowsLowering.DestroyString, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
+                    return Fail("Destruction needs unsupported Type lowering.", out failure);
                 }
 
                 break;

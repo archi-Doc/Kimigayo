@@ -20,6 +20,9 @@ internal enum EmissionOpcode : byte
 
     /// <summary>First placement of a Static string literal into <c>Place</c>'s slot; <c>Constant</c> is -1 for the empty literal.</summary>
     StoreStaticString,
+    MoveString,
+    DestroyStringIfLive,
+    StoreLiveFlag,
 
     /// <summary>A direct call of <c>Callee</c> with prepared operands.</summary>
     Call,
@@ -77,6 +80,8 @@ internal sealed class EmissionFunction
 
     internal List<EmissionSlot> Slots { get; } = new();
 
+    internal List<int> LiveFlags { get; } = new();
+
     internal List<EmissionInstruction> Instructions { get; } = new();
 
     internal List<EmissionOperand> Operands { get; } = new();
@@ -89,6 +94,7 @@ internal sealed class EmissionFunction
         this.Abi = abi;
         this.Exported = exported;
         this.Slots.Clear();
+        this.LiveFlags.Clear();
         this.Instructions.Clear();
         this.Operands.Clear();
     }

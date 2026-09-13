@@ -15,6 +15,7 @@ internal sealed partial class BodyLowering
     private int[] queue = [];
     private int[] instructionStarts = [];
     private ArithmeticCheckKind[] checks = [];
+    private int[] continuations = [];
 
     private static bool IsScalar(BoundType? type) => ScalarTypes.Supports(type);
 
@@ -77,6 +78,11 @@ internal sealed partial class BodyLowering
         }
 
         this.PrepareConversions(body);
+        if (!this.PrepareStringResults(body, out failure) || !this.PrepareStrings(body, function, out failure))
+        {
+            return false;
+        }
+
         this.incoming.AsSpan(0, count).Clear();
         this.blocks.AsSpan(0, count).Fill(-1);
         this.successor.AsSpan(0, count).Fill(-1);
@@ -170,9 +176,9 @@ internal sealed partial class BodyLowering
             for (var cursor = i; ;)
             {
                 this.blocks[cursor] = i;
-                if (this.checks[cursor] != ArithmeticCheckKind.None)
+                if (this.continuations[cursor] >= 0)
                 {
-                    end = count + cursor;
+                    end = this.continuations[cursor];
                 }
 
                 var next = this.successor[cursor];
@@ -188,6 +194,11 @@ internal sealed partial class BodyLowering
         }
 
         this.BuildDominators(body);
+        if (!this.ValidateStringResults(body, out failure))
+        {
+            return false;
+        }
+
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
@@ -198,9 +209,9 @@ internal sealed partial class BodyLowering
 
             if (WindowsLowering.GetValue(place.Type) is not { } value ||
                 (!IsScalar(place.Type) && !ReferenceEquals(place.Type, BoundType.Unit) && !ReferenceEquals(place.Type, BoundType.String)) ||
-                (ReferenceEquals(place.Type, BoundType.String) && place.Kind != OwnershipPlaceKind.Temporary))
+                (ReferenceEquals(place.Type, BoundType.String) && !this.IsStringStorage(place)))
             {
-                return Fail("This slice supports bool/i32 values and literal string temporaries.", out failure);
+                return Fail("Unsupported value storage or string result/parameter.", out failure);
             }
 
             if (value.Layout.Size != 0 && (!IsScalar(place.Type) || place.Kind == OwnershipPlaceKind.Local))
@@ -211,6 +222,7 @@ internal sealed partial class BodyLowering
 
         // Validate even unexecuted operations. The retained scratch function is never serialized.
         this.validation.Reset(function.Abi, false);
+        this.validation.LiveFlags.AddRange(function.LiveFlags);
         this.arguments.Clear();
         for (var i = 0; i < count; i++)
         {
@@ -222,6 +234,11 @@ internal sealed partial class BodyLowering
         }
 
         this.instructionStarts[count] = this.validation.Instructions.Count;
+        Grow(ref this.flagValidation, count + body.Places.Count);
+        if (!ValidateStringFlags(body, this.validation, this.flagValidation.AsSpan(0, count + body.Places.Count)))
+        {
+            return Fail("Missing or inconsistent string lifetime flag updates.", out failure);
+        }
 
         if (this.arguments.Count != 0)
         {

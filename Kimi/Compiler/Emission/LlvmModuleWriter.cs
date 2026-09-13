@@ -86,10 +86,21 @@ internal static partial class LlvmModuleWriter
             output.Write('\n');
         }
 
+        foreach (var place in function.LiveFlags)
+        {
+            Name(output, "  %liveSlot", place);
+            output.Write(" = alloca i8, align 1\n");
+        }
+
         foreach (var instruction in function.Instructions)
         {
             switch (instruction.Opcode)
             {
+                case EmissionOpcode.MoveString:
+                case EmissionOpcode.DestroyStringIfLive:
+                case EmissionOpcode.StoreLiveFlag:
+                    WriteString(output, constants, instruction, function.GetOperands(instruction));
+                    break;
                 case EmissionOpcode.StoreStaticString:
                     output.Write("  store %kimi.string { ptr ");
                     if (instruction.Constant < 0)

@@ -1,0 +1,12 @@
+public func main()
+    var original = "before"
+    let selected = work: do
+        defer => original = "after"
+        exit to work: (if true => original else => "unused")
+    writeLine(selected)
+    writeLine(original)
+
+    var text = "old"
+    var keep = false
+    text = if keep => text else => "new"
+    writeLine(text)

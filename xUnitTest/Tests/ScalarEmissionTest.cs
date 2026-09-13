@@ -146,6 +146,12 @@ public class ScalarEmissionTest
         Assert.True(bodyStart.Success);
         Assert.DoesNotMatch($@"select i1 (?!%zero\d+, i32 {WindowsLowering.IntegerDivisionZeroReason}, i32 {WindowsLowering.IntegerOverflowReason}\n)", ir[bodyStart.Index..]);
         Assert.DoesNotMatch(@"store i1\b", ir);
+        WriteFixture(name, ir, stdout, exit, stderr, timeoutMilliseconds);
+        return ir;
+    }
+
+    internal static void WriteFixture(string name, string ir, string stdout, int exit = 0, string? stderr = null, int timeoutMilliseconds = 0)
+    {
         var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../bin/scalar-fixtures"));
         Directory.CreateDirectory(path);
         File.WriteAllText(Path.Combine(path, name + ".ll"), ir);
@@ -154,6 +160,5 @@ public class ScalarEmissionTest
         File.WriteAllText(Path.Combine(path, name + ".timeout"), timeoutMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
         var column = name is "OverflowAdd" or "OverflowNeg" ? 5 : 1;
         File.WriteAllText(Path.Combine(path, name + ".stderr"), stderr ?? (exit == 0 ? string.Empty : $"Hello.kimi:2:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n"));
-        return ir;
     }
 }

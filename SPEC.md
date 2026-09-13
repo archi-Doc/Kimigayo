@@ -4,6 +4,8 @@ The document has six parts. Numbered headings use **chapter → section → subs
 
 For a broad, non-normative source walkthrough, see the [specification tour](examples/SpecTour/README.md). It illustrates specified language features beyond current executable support and identifies features whose source APIs remain undefined.
 
+The adopted [testing specification](doc/Design/2026-09-13%20Testing.md) takes precedence over this document for test-mode extensions: `#Test`, `$expect`, `$require`, and `kimi test`. It defines one-way product/test dependencies, common verification and cleanup, process isolation, bounded reporting and recovery, and artifact reuse. Detailed integration into the sections and grammar below remains pending. This records design, not executable support; see [STATUS.md](STATUS.md).
+
 For the first executable program, start with [minimal console output](#224-minimal-console-output), [program startup](#222-program-startup-and-static-initialization), and [LLVM output/native build](#208-llvm-output-native-build-and-execution). The language rules below remain distinct from the implementation milestone in [STATUS.md](STATUS.md#c12-first-executable-milestone).
 
 - [Part I. Introduction and source text](#part-i-introduction-and-source-text)
@@ -686,17 +688,17 @@ Function Item or concrete Closure
          └─ acquire and own the erased environment and its cleanup responsibility
 ```
 
-An empty environment or `func []` does not imply purity, a function-pointer ABI, fixed size, no allocation, or concurrency safety. A borrow of an existing common function value uses ordinary Semantics: `ref/F` is Copy and `uniq/F` is Non-Copy. It neither erases a borrowed concrete Closure nor exposes additional call capabilities.
+An empty environment or `func []` does not imply purity, a function-pointer ABI, no allocation or concurrency safety. Windows storage is specified in §21.2.5 independently of function passing. A borrow of an existing common function value uses ordinary Semantics: `ref/F` is Copy and `uniq/F` is Non-Copy. It neither erases a borrowed concrete Closure nor exposes additional call capabilities.
 
 ##### 3.2.2. Weak reference values
 
-`Core.Weak<S>` は compiler が管理する Non-Copy の struct Core。正規化後の S は外側 Semantics が rc または arc の完全な型で、既存の object View Target 条件を満たす必要がある。generic 定義にもその証拠を要求する。`Weak<rc/T>` の昇格結果は `Option<rc/T>`、`Weak<arc/T>` は `Option<arc/T>`。裸の payload Core、obj、object borrow、Weak 自体は S にできない。
+`Core.Weak<S>` is a compiler-managed Non-Copy struct Core. After normalization, S must be a complete rc/T or arc/T satisfying the existing object View Target rules. Generic definitions need the same evidence; a pair `<s/T>` requires s to be rc or arc. A bare payload Core, obj, object borrow or Weak itself is not a valid S.
 
-Weak は weak 管理領域を保持し、payload の strong 所有権を持たない。外側は通常の owner であり、新しい Semantics や category を追加しない。`ref/Weak<S>` は Weak 値の格納領域への借用。空・構築中・期限切れでも Non-Copy とし、通常取得は Move、複製は明示的な `Core.clone` を使う。格納・cleanup は compiler が管理し、ユーザーが Fields や deinit を置換できない。
+A Weak owns one responsibility for a particular weak management area, never strong payload ownership. Its outer Semantics is ordinary owner; `ref/Weak<S>` borrows the Weak slot. Normal acquisition Moves it, and Core.clone explicitly duplicates its weak responsibility. Users cannot replace its fields or deinit.
 
-S の完全な View Type、mode、Type/Origin 引数を保持する。OwnedOrigins は空値も含め S 全体を走査し、操作の Loan 伝播は [§13.5.9](#1359-weak-reference-operations) に従う。Weak を所有 capture した Closure は Non-Copy、共有借用の capture は通常の Copy/Loan 規則に従う。
+Every Weak has a target management area. **There is no empty Weak and no zero-argument Weak constructor.** Use `Option<Weak<S>>` with None for absence. An expired Weak is a present value whose target cannot be upgraded; neither expiration nor construction state changes Non-Copy classification. No niche or one-word Option representation is promised.
 
-Weak から payload の Field・member・object borrow・runtime `is`・checked cast へ直接アクセスできない。まず upgrade し、strong を通して既存の操作を行う。Weak の直接 view 変換は導入しない。
+Retain S's complete View Type, mode, Type/Origin arguments and actual Loan dependencies (§13.5.9). OwnedOrigins scans the full S, without construction/expiration exceptions. A Closure capturing an owned Weak is Non-Copy; capturing a shared borrow follows normal Copy/Loan rules. Weak provides no direct payload member access, object borrow, runtime is, checked cast or view conversion: upgrade first, then use the strong result.
 
 #### 3.3. Type semantics
 
@@ -740,7 +742,7 @@ A Requirement on a Semantics binding may also name any concrete Semantics listed
 
 ##### 3.3.2. Value borrows
 
-Value borrows provide non-owning access to value data, subject to lifetime constraints.
+Value borrows provide non-owning access to the immediate complete Referent Type's storage, subject to lifetime constraints. They do not automatically follow a pointer stored there: `ref/(rc/T)` borrows a handle slot, while `objref/T` borrows the object. Physical storage follows §21.2.4.
 
 - `ref/T` is a shared borrow; multiple shared references may coexist.
 
@@ -886,10 +888,11 @@ Classify complete Types using Core, Semantics, and stored components:
 | Function Item | Copy |
 | Concrete Closure | Copy exactly when every captured complete Type is Copy; empty environments qualify |
 | Common Function Type under `owner` Semantics | Non-Copy regardless of its hidden environment |
-| `Core.Weak<S>` under `owner` Semantics | Non-Copy, including empty and expired values; explicit duplication retains weak-management storage |
+| `Core.Weak<S>` under `owner` Semantics | Non-Copy in every state, including expiration; explicit duplication retains weak-management storage |
 | Tuple / fixed-length array under `owner` Semantics | Copy exactly when every component Type is Copy |
 | User-defined struct under `owner` Semantics | Non-Copy unless explicitly opted in |
 | Enum under `owner` Semantics | Non-Copy unless explicitly opted in under [enum derivation](#352-enum-copy) |
+| Array<T> / Dictionary<K,V> under owner Semantics | Non-Copy regardless of contents |
 | `owner/string` | Non-Copy regardless of its internal representation |
 
 Never has no values and needs no classification. Other Types require their own rules; sharing elements alone does not establish Copy.
@@ -911,13 +914,7 @@ func duplicate<T>(value: T) -> (T, T)
 
 Unknown Copy capability follows [Generic Access Effects](#89-generic-access-effects), preserving conditional acquisition plans and separate shared element-read rules.
 
-allocation・参照カウント増加・resource 複製を伴う複製には明示的な操作を使う。rc/arc と Weak は [Core.clone](#1358-object-ownership-creation-and-sharing) を使う。それ以外の一般的な複製 API は未定義。
-
-```kimi
-let text: string = "Hello"
-let copy = text.clone() // Illustrative explicit duplication API.
-let moved = text        // Move; text is no longer usable.
-```
+Duplication that allocates, increments a reference count or duplicates a resource requires an explicit operation. rc/arc and Weak use [Core.clone](#1358-object-ownership-creation-and-sharing); no general duplication API is defined.
 
 ##### 3.5.2. Enum Copy
 
@@ -1194,9 +1191,9 @@ A fixed array is Copy exactly when its complete element Type is Copy. Derive Own
 
 Array is Non-Copy and accepts any valid complete element Type with representable element layout; neither Owned nor Copy is required. Its Type preserves T's Origin dependencies and Loan requirements, and its values preserve the acquired elements' Loans under [ordinary storage](#154-origin-elision-and-return-contracts). To obtain a shared view of either owning array form, explicitly slice it.
 
-The element position preserves Origin variance; compose nested variance normally, while `uniq/Array<T>` remains invariant in its complete Referent Type. This adds no covariance between different element Cores. Structural mutation operations, when supplied by Core, require exclusive access to the Array as a whole. Their incompatibility with active element/storage views follows ordinary Loan overlap, independently of whether reallocation actually occurs. Ordinary indexing does not gain a Non-Copy Move operation.
+The element position preserves Origin variance; compose nested variance normally, while `uniq/Array<T>` remains invariant in its complete Referent Type. This adds no covariance between different element Cores. Core's dynamic mutation operations are defined in §4.7; they require exclusive access to the Array as a whole, independently of reallocation. Ordinary indexing does not gain a Non-Copy Move operation.
 
-Array analysis retains a conservative set of element-originated Loans. Removing or replacing an individual element, including clearing the Array, supplies no element-specific proof that a Loan ended; retain dependencies required by subsequent uses and observable destruction of the Array and derived values. A removal operation transfers the result's dependencies as well. Neither emptiness nor mutation changes the declared T or its Owned classification.
+Array analysis retains element-originated Loans under §4.7.5's common collection dependency contract, including after removal, replacement and clear.
 
 **Mutation boundary.** Slice has no mutable/exclusive-element form in this revision. Mutate initialized array elements through authorized access to the owning array or a `uniq` borrow of the whole array; `uniq/Slice<T>` changes only the handle, never the element permissions. To process a mutable subrange, pass a whole-array exclusive borrow plus bounds and index the array, or iterate its saved indices while accessing each element. A non-lending iterator does not prohibit such indexed mutation. Bounds validation, active Loans, and ordinary initialization checks still apply; no disjoint mutable subviews are implied.
 
@@ -1500,6 +1497,163 @@ Index/Range/ResolvedRange construction, resolution and Copy, and Slice creation,
 A Slice's semantic representation retains backing-element location or equivalent provenance, nonnegative isize length, and static Origins/Loans. Element spacing is stride(T). Empty Slices and zero-sized elements retain source provenance. No universal pointer-plus-length ABI, runtime lifetime tag, or pointer to a disappearing handle variable is required. Use logical counts/positions rather than subtracting element pointers to recover length; never form invalid pointers before checking.
 
 Checks may be eliminated, shared, or optimized in loops only when safety is proven without changing effects, Abort behavior, or borrow legality. Constant-folding Index/Range operations does not expand the literal-only static Move Path rule.
+
+#### 4.7. Dynamic collection mutation
+
+##### 4.7.1. Common acquisition and outcomes
+
+`Array<T>` and `Dictionary<K,V>` are Non-Copy owning collections. They accept valid complete stored Types without blanket Copy or Owned constraints. Dictionary requires K is Equatable and §12.3.4's key stability, not a public Hash constraint. Types and Origins are fixed at declaration; mutation never restarts inference.
+
+These are public instance APIs. Mutations use self: uniq/Self unless stated otherwise. Value parameters acquire once by ordinary Copy/Move, without deep cloning or implicit count increments. Rejected Moves are not restored; returned inputs can be recovered from Result. Removal transfers stored responsibility even for Copy elements. Owning a reference value neither owns nor extends its referent's lifetime.
+
+Precondition failures Abort. Ordinary absence uses Option; recoverable rejection with inputs uses Result. A try name promises only its specified recoverable outcome and need not have a corresponding Abort API. Discarded Result follows the normal warning rule.
+
+| Normal outcome | Postcondition |
+| --- | --- |
+| Add | Increase length, preserve prior relative order, grow capacity if needed |
+| Replace | Change only the value; preserve stored key, order, length and capacity |
+| Remove | Decrease length; preserve remaining order and capacity |
+| Clear | Destroy all elements; set length to zero; preserve capacity |
+| Reserve / shrink | Preserve values, order and length; change capacity/placement only as specified |
+| Lookup, absence or duplicate rejection | Preserve values, order, length and capacity |
+
+These postconditions do not roll back external effects from arguments, equality or destructors.
+
+##### 4.7.2. Array operations
+
+| Operation | Behavior |
+| --- | --- |
+| `append(value: T) -> ()` | Add at the end |
+| `insert(index: isize, value: T) -> ()` | Insert before the resolved position |
+| `insert(index: Index, value: T) -> ()` | Same, with a directional Index |
+| `pop() -> Option<T>` | Remove and return the last element, or None when empty |
+| `remove(index: isize) -> T` | Remove and return the selected element |
+| `remove(index: Index) -> T` | Same, with a directional Index |
+| `clear() -> ()` | Destroy all elements in §4.7.6 order |
+
+Resolve the index once in the body against entry length L. For a from-end Index, require offset <= L before p = L - offset. Insert requires 0 <= p <= L; remove requires 0 <= p < L. Invalid indices Abort. There is no implicit isize/Index conversion or Range overload.
+
+insert(^0, value) appends, including to an empty Array. On a nonempty Array, insert(^1, value) inserts before the last element and remove(^1) removes it. remove(^0) is always invalid. Failure constructing an Index prevents later argument evaluation. Indexed reading still cannot Move a Non-Copy dynamic element; indexed assignment destroys the old value, unlike remove.
+
+```kimi
+var values: Array<i32> = []
+values.reserve(additional: 3)
+values.append(10)
+values.insert(^0, 30)
+values.insert(^1, 20) // [10, 20, 30]
+let last = values.remove(^1) // 30; capacity is unchanged.
+let first = values[0]
+values.append(first)
+// values.append(values[0]) is invalid: the exclusive receiver is already active.
+```
+
+##### 4.7.3. Dictionary operations and indexed replacement
+
+| Operation | Absent key | Equal stored key |
+| --- | --- | --- |
+| `tryInsert(key: K, value: V) -> Result<(), (K, V)>` | Append; Ok(()) | Unchanged; Err((input key, input value)) |
+| `insertOrReplace(key: K, value: V) -> Option<V>` | Append; None | Keep stored key and position; Some(old value) |
+| `remove(key: ref/K) -> Option<(K, V)>` | None | Remove and return stored key and value |
+| `tryGet(self: ref/Self, key: ref/K) -> Option<ref/V from self>` | None | Shared reference to stored value |
+| `clear() -> ()` | Destroy all entries in §4.7.6 order | Same |
+
+Duplicates are tryInsert's only Err outcome; no dedicated error Type is introduced. Both value arguments are acquired before lookup, unlike Dictionary literals (§12.3.4). insertOrReplace secures the old result, stores the new value, then destroys the unused input key; delivery follows cleanup. Removing and later re-adding an equal key appends a new position. No API mutates a stored key.
+
+tryGet always returns ref/V, including for Copy V. It never copies, moves or removes a stored value. Its result protects the whole Dictionary storage and preserves V's dependencies, with no operation-only Loan on the search key. A lookup or saved Boolean observation reserves no future access.
+
+`map[key] = value` replaces an existing value and returns Unit; absence Aborts. It shared-borrows the key as ref/K rather than consuming it:
+
+1. Evaluate and acquire the right-hand V once.
+2. Identify the receiver and evaluate the key left to right, once each.
+3. Search with shared access and Abort if absent.
+4. Obtain exclusive access to the value slot, destroy the old value, and place the new one.
+
+From receiver identification through placement, prevent structural mutation, Move and destruction of the Dictionary. Keep shared access during lookup and check all Loans, including the key's, before writing; do not pretend that borrow ended. Temporary lifetimes follow §3.6 and §10.2. Reject replacement if old-value destruction would invalidate dependencies of the secured right side or retained temporaries. Abort/nontermination during destruction prevents placement. Compound assignment follows §13.7's target-first order, with one search, read, right-side evaluation and write.
+
+```kimi
+var names: Dictionary<i32, string> = [:]
+match names.tryInsert(1, "first")
+    .Ok(()) => ()
+    .Err(let entry) => Core.writeLine(entry.1)
+names[1] = "replacement" // Existing-key replacement, not insertion.
+let removed = names.remove(1) // A temporary key is borrowed under §10.2.
+```
+
+##### 4.7.4. Capacity and allocation
+
+Both collections expose read-only capacity: isize through shared access: the maximum element/entry count supported without internal allocation, not bytes or buckets. The result is a snapshot without a Loan. Maintain 0 <= length <= capacity <= isize.MaxValue. Typed empty [] and [:] have length/capacity zero and no internal allocation; fixed handle-management cost remains permitted.
+
+| Operation | Contract |
+| --- | --- |
+| `reserve(additional: isize) -> ()` | Require nonnegative additional; checked R = body-entry length + additional. Abort on failure. Ensure capacity >= R without shrinking. If R <= capacity, preserve internal placement too; zero is always a no-op. |
+| `shrinkToFit() -> ()` | Attempt length <= new capacity <= old capacity. Neither exact fit nor returning memory to the OS is guaranteed. |
+
+reserve accepts positional arguments, but examples/diagnostics should explain its **additional** meaning. No reserveCapacity API taking a total is introduced.
+
+No internal allocation is permitted for addition within capacity, reserve with sufficient capacity, empty construction, lookup, existing-value replacement, pop/remove/clear, absence or duplicate rejection. This includes same-capacity reallocation, scratch and Dictionary auxiliary storage. Deletion/re-addition churn must reuse existing storage. Arguments, equality and destructors retain their own effects.
+
+Addition beyond capacity and reserve needing growth may Abort on required allocation failure. Growth follows §4.7.7. Clamp optional overshoot/rounding to representable capacity; rounding overflow alone cannot reject a representable request.
+
+shrinkToFit may allocate. Candidate allocation or candidate-size representation failure returns normally with values, order, length, capacity **and internal placement** unchanged. Prepare while old storage is intact and transfer only after success. This does not catch arbitrary Abort and is outside the growth amortization guarantee.
+
+##### 4.7.5. Loans, retained dependencies and call effects
+
+Acquire the whole-collection exclusive receiver before later arguments, even for runtime no-ops. Active element, Slice and empty-Slice Loans conflict with mutation. Duration follows later uses and observable destruction, not necessarily lexical scope. No two-phase reservation exists: obtain an owned Copy or removal result first, then mutate in a separate expression.
+
+Use these public dependency rules without inspecting private bodies:
+
+| Operation | Conservative propagation |
+| --- | --- |
+| Add / replace | Union input dependencies into the collection's prior set |
+| tryInsert | Union both input sets regardless of success; Err also retains input dependencies |
+| Remove / return old value | Return pre-update potential dependencies of stored full Types; do not mix replacement-input dependencies into the old result |
+| Remove / replace / clear | Do not subtract individual collection dependencies |
+| Capacity operations | Preserve dependencies |
+| tryGet | Result adds outer storage Loan and V dependencies; collection set unchanged |
+
+Do not refine by literal index or roll back dependencies for None/Err. Emptiness never changes Type, Origin or Owned classification. Owned return values retain no operation-only receiver/key Loan but keep full-Type dependencies. Preserve actual Loan identities, storage anchors and Reborrow relationships; equal Origin names do not merge Loans. Duplicating dependency information does not duplicate exclusive authority. In particular, do not assume a removed uniq/T is independent of remaining `Array<uniq/T>` dependencies; reject conservative conflicts until normal Loan liveness permits use.
+
+Publish these user-code effects, composed with argument/default evaluation and later temporary/result cleanup:
+
+| Operation | User-code effects inside the operation |
+| --- | --- |
+| Array append/insert/pop/remove; both collections' reserve/shrink | None |
+| Dictionary tryGet/tryInsert/remove | K equality |
+| Dictionary insertOrReplace | K equality and unused input K destruction |
+| Dictionary indexed replacement | K equality and old V destruction |
+| Array clear/destruction/indexed replacement | Relevant T destruction |
+| Dictionary clear/destruction | V and K destruction |
+
+Generic summaries expose parameter-dependent equality and recursive destruction. Verify at definition checking and substitute validated specialization mappings; do not rescan private bodies or defer legality. Union effects across permitted branches/implementations. A proven empty summary invents no static access. Receiver authority does not excuse external static reentry; unknown possibly conflicting mutable-static effects are rejected under §15.6.4.
+
+##### 4.7.6. Commit, failure and destruction order
+
+After normal acquisition, resolve bounds/search and decide absence, duplicate, replacement or addition. Rejection/absence leave the collection unchanged before capacity work. Replacement/removal do not run addition limits: duplicate rejection and replacement work even at maximum length. Only addition checks increased length, required byte sizes and allocation, with checked arithmetic.
+
+Relocation introduces no user Copy, Move or deinit calls. Equality sees consistent structure; no partially moved state or conflicting reentry may be exposed. These are operation invariants, not source concurrency guarantees.
+
+Normal transfer during argument evaluation secures its transfer result, then cleans previously acquired caller arguments/temporaries as required; the operation is not called. Abort supplies no result, rollback or later cleanup. Nontermination prevents later work and delivery.
+
+Array clear/destruction uses reverse current index order. Dictionary clear/destruction uses reverse insertion order, each value before its key. Owning iterators destroy remaining entries in the same order. Normal abandonment of partial construction cleans completed acquisitions/placements in reverse order. Never read or destroy moved elements, spare capacity or uninitialized buckets.
+
+##### 4.7.7. Performance and extension boundary
+
+For fixed Types, let n be length, c capacity and d the number of live elements/entries whose complete Types cannot prove cleanup-free destruction. Charge allocator internals, input generation and destruction bodies separately from collection management. Count release is cleanup; inspecting a runtime enum Case is not a free proof.
+
+| Operation | Required bound, excluding separately charged user-code cost |
+| --- | --- |
+| Array append / pop | Amortized O(1) / O(1) |
+| Array stable insert/remove | O(1 + n) |
+| Array clear | O(1 + d); O(1) for a cleanup-free element Type |
+| Dictionary lookup | Search cost + O(1) management |
+| Dictionary mutation | Search cost + amortized O(1) management |
+| Dictionary clear | O(1 + c + d) is permitted |
+
+For m operations without shrink, let C be the maximum of initial capacity, observed lengths and reserve requests R. Total growth preparation and transfer management is O(m + C). Repeated reserve(additional: 1) followed by append from empty is O(n), not quadratic; reserve itself has no per-call O(1) promise.
+
+Dictionary search cost includes key-content equality/internal-hash work and candidate/bucket probing for every operation; linear search is permitted. This introduces neither a public Hash constraint nor user-defined hash calls. Relocation, index rewriting and order maintenance remain management cost. Reindexing across growth, tombstones and allocation-free cleanup processes O(m + C) keys in total, not O(1) per key's lifetime. Charge variable-length key work at actual search cost; cached versus recomputed hashes is an implementation choice. Known-entry deletion, placement and order maintenance remain amortized O(1), including allocation-free full-capacity churn. O(c) auxiliary indices/free lists/linked slots and noncontiguous storage are permitted. Avoid temporary arrays or per-element allocations just to preserve order.
+
+Fixed-capacity mutation, mutable Slice/new borrowing iterators, bulk/resize/unordered removal, contains, an Abort-only Dictionary insert, entry/factory APIs, recoverable allocators and a fixed collection ABI remain outside this contract. tryGet followed by indexed replacement may search twice; a future one-search update must define lookup and reference-write authority together.
 
 ### 5. Raw pointers and unsafe memory
 
@@ -2170,7 +2324,7 @@ callback(5)               // Error: Moved.
 let result = next(5)      // 15.
 ```
 
-Erasure is an owning-container conversion distinct from source Copy/Move; it does not change the definition of Copy. No allocation count, size, physical layout, ABI, or inlining is guaranteed. Inline, stack, or heap placement and allocation elimination must preserve acquisition, validity, and cleanup. Required allocation failure causes ordinary Abort Termination, with no Move rollback or normal cleanup guarantee. Concrete `Callable` use creates no such erased container, but does not promise zero runtime cost.
+Erasure is an owning-container conversion distinct from source Copy/Move; it does not change the definition of Copy. No target-independent layout, allocation count or inlining is guaranteed. The Windows storage/conversion rules are specified in §21.2.5, separately from function ABI. Allocation elision preserves acquisition, validity and cleanup under that section's explicit failure-observability rule. Required allocation failure causes ordinary Abort Termination, with no Move rollback or normal cleanup guarantee. Concrete `Callable` use creates no such erased container, but does not promise zero runtime cost.
 
 ### 8. Generics, constraints, and contracts
 
@@ -3230,11 +3384,12 @@ Compare adaptations in this order, best first:
 
 Exact describes Type adaptation, not value transfer: an Exact by-value argument still Copies or Moves under [Copy and Move](#35-copy-and-move). Copy versus Move adds no ranking preference. Origin subtyping that needs no value operation remains permitted.
 
-The initial borrow adaptations are listed below. In the first two rows `T` has owner Semantics; in value-reborrow rows it is the complete immediate Referent Type. Adding a layer around an existing reference or object handle requires a fully specified explicit [storage-borrow target](#1355-explicit-borrow-and-reborrow); it is not an additional implicit argument adaptation.
+The initial borrow adaptations are listed below. In the owner-Place and owner-temporary rows `T` has owner Semantics; in value-reborrow rows it is the complete immediate Referent Type. Adding a layer around an existing reference or object handle requires a fully specified explicit [storage-borrow target](#1355-explicit-borrow-and-reborrow); it is not an additional implicit argument adaptation.
 
 | Input | Expected | Operation/class |
 | --- | --- | --- |
 | Readable `T` place | `ref/T` | Shared borrow / cross |
+| Owner `T` temporary | `ref/T` | Materialize once and shared-borrow / cross |
 | Exclusively writable `T` place | `uniq/T` | Exclusive borrow / cross |
 | `uniq/T` | `uniq/T` | Call reborrow / same |
 | `uniq/T` | `ref/T` | Shared reborrow / cross |
@@ -3243,7 +3398,7 @@ The initial borrow adaptations are listed below. In the first two rows `T` has o
 | `objuniq/T` | `objuniq/T` | Object call reborrow / same |
 | `objuniq/T` | `objref/T` | Shared object reborrow / cross |
 
-A required exclusive reborrow is not Exact even when the written Types match. Check Type/declaration permissions and place-versus-temporary form during applicability; check flow-dependent initialization and active Loan conflicts after selection. Borrow adaptations neither extend lifetimes nor duplicate ownership. Do not infer missing `rc`/`arc` or temporary adaptations from this table; the complete finite adaptation table remains a separate requirement.
+A required exclusive reborrow is not Exact even when the written Types match. Check Type/declaration permissions and place-versus-temporary form during applicability; check flow-dependent initialization and active Loan conflicts after selection. Borrow adaptations neither extend lifetimes nor duplicate ownership. Do not infer further rc/arc, exclusive-temporary or outer-layer borrow adaptations from this table.
 
 [Inherited receiver projection](#951-base-subobject-receiver-projection) defines its member-only operations and rankings separately; those rows do not apply to ordinary arguments or unbound calls.
 
@@ -3258,6 +3413,23 @@ choose(1)      // Error: both integer Types fit.
 let x = 1      // Independently defaults to i32.
 choose(x)      // Exact i32.
 choose(1@i64)  // Exact i64.
+```
+
+An owner temporary can be shared-borrowed for **any** ref/T argument, not only collection keys. Evaluate once and materialize a Temporary Place. A known source Type can infer T as for an owner Place; the target need not already be fixed. For an unfitted literal, process receiver, other-argument and known-result constraints, then candidate fitting and ordinary value defaults as above. Rank the result as cross-semantics borrowing, below Exact and direct literal fitting; defaults do not break ties.
+
+Existing reference Copy/Reborrow takes priority over adding a layer: this rule adds no implicit uniq temporary borrow, outer borrow of an object handle, or outer layer around an existing reference. For example, a key K = ref/X needs an explicit @ref/ref/X to borrow its slot.
+
+The materialized owner lasts through the normal outermost expression/condition/match temporary boundary (§3.6), at least through the call. Do not shorten it to call end or extend it to retain a returned borrow. On escape failure, identify the borrow, temporary end and required use; suggest a named local only when its Type/Origin constraints can work.
+
+```kimi
+func inspect<T>(value: ref/T) -> () => ()
+func makeValue() -> i64 => 1
+inspect(makeValue()) // Infer T = i64 and borrow the temporary.
+inspect(1) // T defaults to i32 after constraints.
+
+func chooseBorrow(value: ref/i32) -> () => ()
+func chooseBorrow(value: ref/i64) -> () => ()
+chooseBorrow(1) // Error: both fit; default i32 does not break the tie.
 ```
 
 #### 10.3. Expected results
@@ -3888,7 +4060,7 @@ Names (including constant-readable let), arithmetic, conversions, Tuples, floats
 
 Equivalence follows dictionary key equality; matching hash values alone do not make keys duplicates.
 
-The Core Dictionary uses the Equatable mapping for key equality. An implementation may use linear search and requires no source Hash contract. If it uses hashing internally, equal keys must have equal hashes; hashing must not change which keys are equivalent. User-defined key equality must be an equivalence relation, in addition to the stability conditions below. The key Type must guarantee that the logical equality and hash value of a stored key remain unchanged while the dictionary holds it. Later entries never overwrite existing values.
+The Core Dictionary uses the Equatable mapping for key equality. An implementation may use linear search and requires no source Hash contract. If it uses hashing internally, equal keys must have equal hashes; hashing must not change which keys are equivalent. User-defined key equality must be an equivalence relation, in addition to the stability conditions below. The key Type must guarantee that the logical equality and hash value of a stored key remain unchanged while the dictionary holds it. Later literal entries never overwrite existing values. Mutation and indexed replacement have the distinct contracts in §4.7.
 
 The intrinsic Equatable mapping for f32/f64 treats all NaN values of the same Type as equal and also treats signed zeros as equal. Other values follow numeric equality. This makes floating keys usable without changing the built-in IEEE `==`/`!=` operators or adding Comparable. Equatable mappings for shared borrows and Tuples compose these Contract mappings; their built-in comparison expressions still follow §13.4. Internal hashes, when used, must agree for all NaNs and for both zeros. Floating keys undergo runtime duplicate checking even when written as literals.
 
@@ -4374,64 +4546,85 @@ Use a checked cast when the source view cannot guarantee the target, including c
 
 ##### 13.5.8. Object ownership creation and sharing
 
-**公開 API。** 以下は Core の public intrinsic。T は既存規則で object payload にできる具体 Core、S は外側 Semantics が rc または arc の完全な handle 型。これらの適格性は intrinsic の型形成条件であり、新しいユーザー Contract は追加しない。現行の struct/object・runtime Contract の導入境界を越えない。
+These public Core intrinsics use ordinary inference and argument labels value/build. T is a valid concrete object payload Core; S is a valid complete rc/arc handle Type. Eligibility is an intrinsic formation rule, not a new user Contract, and does not expand the current object/runtime-Contract boundary. Same-named user functions gain no intrinsic behavior.
 
-| 関数 | 入力 → 結果 | 契約 |
+| API | Input -> result | Contract |
 | --- | --- | --- |
-| `Core.makeObj<T>(value)` | `T → obj/T` | 完成した値を新しい排他的 object に格納 |
-| `Core.makeRc<T>(value)` | `T → rc/T` | 非 atomic な strong=1 で生成 |
-| `Core.makeArc<T>(value)` | `T → arc/T` | atomic な strong=1 で生成 |
-| `Core.clone<S>(value)` | `ref/S → S` | 同じ object/view/mode の strong を一つ増やす |
-| `Core.makeRcCyclic<T,F>(build)` | `F → rc/T` | 以下の循環構築 |
-| `Core.makeArcCyclic<T,F>(build)` | `F → arc/T` | 同じ契約を arc に適用 |
+| `Core.makeObj<T>(value)` | T -> obj/T | Store a complete value in a new exclusive object |
+| `Core.makeRc<T>(value)` | T -> rc/T | Create non-atomic strong ownership, initially one |
+| `Core.makeArc<T>(value)` | T -> arc/T | Same with atomic counting |
+| `Core.clone<S>(value)` | ref/S -> S | Retain one strong for the same object/view/mode |
+| `Core.makeRcCyclic<T,F>(build)` | F -> rc/T | Cyclic construction below |
+| `Core.makeArcCyclic<T,F>(build)` | F -> arc/T | Corresponding arc construction |
 
-表の型引数は通常の推論を使う。引数名は `value` / `build`、省略時の名前付き引数規則は通常どおり。`Core.clone` は §13.5.9 の Weak 版との overload とし、一般の値の深い複製、obj の複製、rc/arc の相互変換、borrow からの所有権生成は行わない。
+Normal creation acquires the complete input once by ordinary Copy/Move, allocates object storage, and Moves T into the payload without transferring ownership of its original storage or repeating constructors/accessors/deinit. Publish the initial exact-T view only after metadata and payload initialization. No blanket Owned constraint applies to concrete payload creation; preserve normal external dependencies. View erasure separately requires the existing Owned proof.
 
-**通常生成。** 入力を一度だけ通常の Copy/Move で取得し、新しい object 領域と metadata を確保して完成した payload を Move する。入力の格納領域の所有権は移さず、constructor・accessor・deinit を再実行しない。payload の破棄責任と生成した object allocation の解放方法を保持し、metadata と payload の完成後に新しい object identity の handle を公開する。初期 View Target と動的型は正確に T。具体的 payload に一律の Owned 制約は置かず、通常の借用依存を保持する。view の型消去には別途既存の Owned 証明が必要。
+Strong clone shared-borrows its input for the operation, leaves it Initialized, and returns independent responsibility without allocation, payload copying, user-code calls or view changes. Preserve the full View Type, Dynamic Type and payload dependencies, without a lasting Loan on the input handle slot. Move/object borrowing never changes counts. rc/arc provides shared payload access even when the count is one. These operations introduce no general deep clone, obj duplication, rc/arc conversion or ownership creation from a borrow.
 
-**複製と借用。** strong の clone は入力 handle の共有アクセスを操作中保持し、strong を一つ増やして独立した所有責任を返す。入力は Initialized のまま。結果は完全な View Type・動的型・payload の外部 Loan を保持し、入力 handle の格納領域への長期 Loan は作らない。allocation、payload のコピー、view 変更、ユーザーコード呼び出しは行わない。Move と object borrow は count を変えない。rc/arc は count=1 でも共有アクセスのみ。
+Objects follow Building -> Alive -> Destroying -> Freed. Building exposes no ordinary strong/payload access. Publish strong = 1 once; the last live strong changes one to zero and begins irreversible destruction. Destroy the complete Dynamic Type, then free the original allocation (§21.2.3). A surviving weak table does not keep the object alive. obj has the corresponding construction/destruction boundary without a strong count.
 
-**共通の寿命。** 通常生成と循環構築は `構築中 → 生存中 → 破棄中 → object 解放済み` に従う。構築完了時に一度だけ strong=1 を公開する。生存中の最後の release が strong=0 にして破棄を開始し、その後は復活できない。§16 の順序で動的な完全型を一度だけ破棄し、元の object allocation を解放する。必要な weak 管理領域だけを残すことは object の生存ではない。
+**Cyclic construction.** The rc factory requires T is Owned and F is `Callable<owner, (Weak<rc/T>) -> T>`; substitute arc for the arc factory. Acquire F normally and call it once with an owned receiver; F itself need not be Copy or Owned. The T constraint is specific to this factory: its dependencies are not yet known when Weak is published to the builder. Inferring them only from F's captures would miss distinct Loans obtained through helpers or mutable static state.
 
-**循環構築。** rc 版は `T is Owned` と `F is Callable<owner, (Weak<rc/T>) -> T>` を要求する。arc 版は対応する型に置き換える。F は通常の Copy/Move で取得し、一度だけ所有 receiver で呼ぶ。F 自体に Copy/Owned は要求しない。payload の依存元が確定する前に Weak を渡すため、T の Owned 証明で非 static の未確定 Loan を公開しない。
+1. Allocate unpublished object storage and a side table holding a construction guard and one builder Weak.
+2. Pass that Weak by value to the builder. It may be moved/cloned, but upgrade returns None during Building. Do not expose an uninitialized payload or construction receiver.
+3. Wait for the builder's normal result **and call cleanup** to complete, then Move the complete T into the payload.
+4. Use the factory's construction authority to publish Alive with the first strong exactly once, then return it. No result may borrow builder storage.
 
-1. object 領域と side table を確保する。table は構築中、内部 guard と builder 用の所有 Weak を一つずつ保持する。
-2. builder にその Weak を渡す。通常の Move/clone で保持できるが、構築中の upgrade は None。通常の object view・未初期化 payload・構築 receiver は渡さない。
-3. builder の正常な戻りと呼び出し cleanup が完了してから、返された完全な T を payload へ Move する。
-4. 構築完了を一度だけ公開し、最初の strong handle を返す。builder の格納領域を借りる結果は許可しない。
-
-**失敗。** 必要な allocation の失敗と count 上限での増加は、結果を公開せず Abort。count を wrap させない。builder の Abort/非終了でも公開しない。通常の Abort 契約に従い、巻き戻しや後続 cleanup は保証しない。引数評価中の通常の制御移動は既存の一時値・cleanup 規則を使う。回復可能な生成、allocator 選択、raw 領域の取り込み、cycle collection は導入しない。
+Required allocation failure or increment at the count maximum Aborts before publishing a result; counts never wrap. Builder Abort/nontermination prevents publication and all subsequent work. There is no rollback/cleanup guarantee on Abort. Normal transfer during argument evaluation retains ordinary temporary cleanup. Recoverable creation, allocator choice, raw-storage adoption and strong-cycle collection remain outside this contract.
 
 ##### 13.5.9. Weak reference operations
 
-以下は Core の public intrinsic。S の適格性は §3.2.2 に従う。関数の型引数は通常の推論を使い、constructor の S は明記する。
+S has §3.2.2's eligibility. Each public Core intrinsic evaluates its input once and holds the required shared access during the operation:
 
-| API | 入力 → 結果 | 契約 |
+| API | Input -> result | Contract |
 | --- | --- | --- |
-| `Weak<S>.init()` | 引数なし → `Weak<S>` | 空の Weak。allocation なし |
-| `Core.downgrade<S>(value)` | `ref/S → Weak<S>` | strong を変えず、同じ対象の weak を保持 |
-| `Core.upgrade<S>(value)` | `ref/Weak<S> → Option<S>` | 生存中なら strong +1 して Some、それ以外は None |
-| `Core.clone<S>(value)` | `ref/Weak<S> → Weak<S>` | 同じ管理領域の weak を一つ増やす。空なら count 操作なし |
+| `Core.downgrade<S>(value)` | ref/S -> `Weak<S>` | Retain a weak responsibility for the same target; do not change strong count |
+| `Core.upgrade<S>(value)` | `ref/Weak<S>` -> `Option<S>` | Retain a live strong and return Some, otherwise None |
+| `Core.clone<S>(value)` | `ref/Weak<S>` -> `Weak<S>` | Retain another responsibility for the same weak table |
 
-各入力を一度だけ評価し、必要な共有アクセスを操作中保持する。downgrade は完成済み object の strong handle に限り、最初の side table を確保することがある。obj・object borrow・raw pointer からは生成しない。upgrade と clone は allocation しない。結果を得ても入力は Initialized のまま。
+Inputs remain Initialized. downgrade accepts only a completed strong rc/arc handle, not obj, object borrows or raw pointers; its first side table may require allocation. upgrade and clone do not allocate. Their result retains the same object/view/mode. upgrade secures a live strong before reading the table's object pointer; its race with final arc release determines success (§21.2.3). None during Building may precede later publication, whereas failure after final release is permanent. Maximum-count failure Aborts rather than returning None.
 
-upgrade は生存中の strong を確保してから object pointer に触れる。arc では昇格と最後の release の更新順で成否が決まる。成功結果は同じ object/view/mode の所有権を持ち、失敗は通常の None。構築中の None は将来の公開を否定しないが、最終 release 後の昇格は永久に失敗する。生存中でも count 上限での増加は Abort とし、None とは区別する。
-
-**依存の伝播。** 型の Origin と実際の Loan の由来を区別し、次の表を格納・generic 呼び出しにも適用する。
-
-| 操作 | 引き継ぐ依存 |
+| Operation | Dependency/responsibility propagation |
 | --- | --- |
-| downgrade | payload の外部 Loan。元の handle の格納領域への長期 Loan は作らない |
-| Weak の clone | 同じ外部 Loan。新しい排他的 Loan anchor は作らない |
-| Move | 保持責任と依存を移す |
-| upgrade 成功 | 対象の依存を S の結果へ引き継ぐ。Weak 値の格納領域の借用は残さない |
-| Weak の自動破棄 | 管理領域のみを操作し、payload は観測しない |
+| downgrade | Retain payload external dependencies, not a lasting Loan on the source handle slot |
+| Weak clone | Retain the same dependencies; do not create an exclusive Loan anchor |
+| Move | Transfer responsibility and dependencies, without a count change |
+| Successful upgrade | Retain target dependencies in S, not an operation-only borrow of the Weak slot |
+| Weak destruction | Release one weak responsibility; touch the management area only, never the payload or strong count |
 
-後続の upgrade と結果の使用に必要な依存を保持する。Origin 名だけで Loan の由来を代用せず、runtime の期限切れだけで静的な依存を消去しない。空値も含め OwnedOrigins は S 全体を走査する。通常の downgrade・格納には一律の Owned 制約を追加せず、型消去には既存の Owned 証明を使う。
+Preserve full-Type Origins and actual Loan provenance through generic calls, storage and all these operations. Expected runtime expiration cannot erase dependencies potentially required by later upgrade/use. OwnedOrigins scans full S in every state. Normal creation, downgrade and storage impose no blanket Owned requirement; erased storage uses its existing proof. The weak guard survives through object free; final weak release frees only the table. Failure follows §13.5.8.
 
-Weak の Move は count を変えず、非空の自動破棄は weak の責任を一つ解放する。payload の破棄や strong の減算はしない。object 解放まで内部 guard が table を保持し、最後の weak release が table だけを解放する（§21.2.3）。空値の破棄は何もしない。失敗・Abort は §13.5.8 に従う。
+```kimi
+struct Item
+    let value: i32
+    public init(value: i32)
+        self.value = value
 
-生存確認だけの API、暗黙の複製、直接 dereference/view 変換、unsafe weak pointer、unowned、cycle collection は追加しない。source concurrency は Appendix D.2 に従う。例は [rc・arc・Weak の仕様 §4](doc/Design/2026-09-13%20Weak%20References%20and%20Object%20Runtime.md#4-例) を参照。
+func expired() -> Weak<rc/Item>
+    let strong = Core.makeRc(Item.init(7))
+    return Core.downgrade(strong@ref)
+
+let weak = expired() // Present Weak; the local strong has been destroyed.
+let absent: Option<Weak<rc/Item>> = .None // Absence is a different value.
+let result = Core.upgrade(weak) // None; no resurrection.
+let other = Core.clone(weak) // Shares the table, not the payload.
+let moved = other // Move, with no count increment.
+```
+
+```kimi
+struct Node
+    public let selfWeak: Weak<rc/Node>
+    public init(selfWeak: Weak<rc/Node>)
+        self.selfWeak = selfWeak
+
+let build = func [] (weak: Weak<rc/Node>) -> Node
+    let before = Core.upgrade(weak) // None while Building.
+    return Node.init(weak)
+let node = Core.makeRcCyclic(build)
+let after = Core.upgrade(node.selfWeak@ref) // Some after publication.
+```
+
+A stored Weak to a payload retaining a local borrow cannot escape that borrow's lifetime merely because the strong is expected to expire. Upgrade is required before payload access or view operations. No liveness-only API, implicit duplication, direct Weak view conversion, unsafe weak pointer, unowned reference or cycle collection is introduced. Any future Weak upcast must define Move/count effects; pointer equality grants no conversion. Atomic arc counting does not authorize source concurrency (Appendix D.2).
 
 #### 13.6. Runtime type tests and checked casts
 
@@ -6062,7 +6255,7 @@ func make(a: ref/A, b: ref/B)
 
 While the returned `Pair` is live, shared Loans on both `a` and `b` remain active. A dependency requiring `uniq` propagates an exclusive Loan. The spelling `static` alone creates no parameter-root Loan; it does not erase the storage anchors and conflicts of a borrow into static Field storage.
 
-A call's receiver and argument Loans begin as each borrow/reborrow is formed in evaluation order, before later arguments and defaults. In particular, an exclusive receiver is active while explicit arguments are evaluated. No two-phase reservation exception is defined; intrinsic Exchange/Swap use the same rule.
+A call's receiver and argument Loans begin as each borrow/reborrow is formed in evaluation order, before later arguments and defaults. In particular, an exclusive receiver is active while explicit arguments are evaluated. Keep receiver/argument borrow protection through the entire call, not merely the callee's last use, and extend it for dependent results. No two-phase reservation exception is defined; intrinsic Exchange/Swap and dynamic collection mutation use the same rule. These language checks supply the common value-borrow attribute proof in §21.5.5.
 
 **Static call effects.** Summarize each callable's potentially accessed static Field Identities and read, shared/exclusive borrow, write, replacement, and destruction effects, including callees, defaults, lazy initialization, and cleanup. Compare them with active caller Loans by normal overlap rules. Borrowed results retain Field anchors and dependency paths: immutable-source borrows may be static, whereas mutable-source borrows must retain a finite Origin under §11.3.2. Static allocation never permits replacing/destroying a borrowed current value.
 
@@ -6477,7 +6670,7 @@ Destroying a non-owning borrow or raw pointer ends that value's capability/lifet
 
 #### 16.4. Closure and object lifetime boundaries
 
-Destroy initialized captures with remaining responsibility in reverse environment-initialization order. Consumed captures are not destroyed twice; remaining values in a Consuming call use normal Scope Exit. Destroying a captured reference does not destroy its referent. Capture-construction failure follows ordinary temporary, partial-initialization, cleanup, and Abort rules without rollback of completed Moves or effects. Retain dependencies observed by captured destructors.
+Destroy initialized captures with remaining responsibility in reverse environment-initialization order. Consumed captures are not destroyed twice. In a Consuming call, the implicit environment binding precedes explicit parameters, so its remaining captures are cleaned last, after body locals/defer and parameters, before result delivery. Shared/Exclusive calls do not own the environment's destruction. Destroying a captured reference does not destroy its referent. Capture-construction failure follows ordinary temporary, partial-initialization, cleanup and Abort rules without rollback of completed Moves or effects. Retain dependencies observed by captured destructors, including zero-sized captures.
 
 Construction completes base layers before derived fields under constructor rules. Until the complete object is initialized, do not form/publish its ordinary object views or perform runtime dispatch, type tests, or checked casts on it. Having metadata is not proof of completion. Failure cleans only initialized components with remaining responsibility, including completed base layers; do not call `deinit` for an incomplete layer, and do not promise cleanup on Abort.
 
@@ -7340,9 +7533,9 @@ Directory.Build.props Version is the single release-version source for Kimigayo 
 
 ### 21. Layout, runtime metadata, and code generation
 
-Physical representation and code sharing must preserve the language rules for Type identity, ownership, evaluation, and cleanup. The following requirements constrain backend choices without prescribing one internal representation.
+Physical representation and code sharing must preserve Type identity, ownership, evaluation and cleanup. This chapter separates language-wide requirements, Windows storage contracts and compiler-controlled function passing.
 
-**Draft under review.** [Value borrows, Closures, function values, and metadata](doc/Design/2026-09-13%20Value%20Borrows%20Closures%20and%20Metadata.md) proposes the remaining storage and metadata contracts in that order. It is not yet normative and does not change §7.6's capture/call restrictions or §21.4.2's compiler-controlled function ABI.
+The Windows storage and metadata contracts below are normative for this profile. They retain §7.6's capture/call restrictions and §21.4.2's compiler-controlled function passing. Specification adoption does not establish implementation coverage (STATUS.md).
 
 #### 21.1. Structure layout and ABI
 
@@ -7385,9 +7578,18 @@ struct Invalid
 
 ##### 21.1.3. Kimigayo and C modes
 
-**Kimigayo.** Each Field/base meets its natural alignment; the aggregate alignment is at least their maximum. Reserved component ranges fit inside the struct. Physical reordering is permitted, but no declaration-order layout, minimum size, base offset zero, C compatibility, or stable ABI across compiler/input changes is promised. This is Kimigayo's own contract, not rustc layout or Rust ABI.
+**Kimigayo.** Each Field/base meets its natural alignment; the aggregate alignment is at least their maximum. Reserved component ranges fit inside the struct. The profile algorithm below fixes its layout; it promises no target-independent offsets, globally minimum size, C compatibility or stable ABI across compiler/input changes. This is Kimigayo's own contract, not rustc layout or Rust ABI.
 
-The initial algorithm places the direct base first, then own Fields in logical order, each naturally aligned, and rounds the total to the maximum alignment. Size equals stride. If every component has size zero, size/stride are zero and alignment is the maximum component alignment, or 1 for an empty struct. Base offset zero is an initial implementation choice only.
+The Windows algorithm reserves the complete direct base at offset zero, then places own Fields in **descending natural alignment**, breaking ties by logical order. Align each component and round the total to the maximum alignment with checked arithmetic. Size equals stride. Never reuse base or nested tail padding. If all components are zero-sized, size/stride are zero and alignment is their maximum, or 1 when empty.
+
+Use the same alignment-sorted algorithm for concrete Closure captures, Tuple elements and each enum Case payload. It does not reorder C fields, array positions, the base or enum tag. Keep logical initialization, access identities, Partial Move and reverse destruction order unchanged at every optimization level. Generic offsets depend on the whole instantiated layout, including fields with fixed declared Types.
+
+```text
+Logical components: a: u8, b: u64, c: u8, d: u64
+Physical order:     b @ 0, d @ 8, a @ 16, c @ 17
+Size/stride: 24; alignment: 8 (rather than 32 in logical order).
+Acquisition: a, b, c, d; destruction: d, c, b, a.
+```
 
 **C.** The initial contract is Windows x64 MSVC layout with effective packing 16 (/Zp16), without pragma pack, explicit alignment, or bit-fields. Do not inherit host packing settings. Nested Types keep their own modes. Require natural Field alignment at most 16; larger alignment is unsupported, not silently reduced.
 
@@ -7450,15 +7652,15 @@ windows-x64-v1 is little endian, uses address space 0, and has 64-bit pointers. 
 
 Valid stored bool bytes are only 0 and 1. Under that validity premise, load i8 and truncate to i1; store by zero-extending i1 to i8. This does not sanitize invalid bytes. Windows BOOL is i32 and converts by comparison with zero. char stores an unsigned Unicode scalar value: surrogates and values above U+10FFFF are invalid. Neither representation establishes compatibility with C char or WCHAR.
 
-This table does not authorize all operations or FFI uses. Safe borrows and object handles must not be inferred to be one raw pointer. Heap alignment support is separately limited to 16 (§22.5.2); never round down a Type's alignment.
+This table does not authorize all operations or FFI uses. Safe borrow and object-handle storage follows §21.2; equal pointer representation does not grant raw-pointer permissions. Heap alignment support is separately limited to 16 (§22.5.2); never round down a Type's alignment.
 
 ##### 21.1.5. Tuple and enum layout
 
-Initial Tuples place elements in logical index order at natural alignment and round the total to the maximum alignment. All-zero-sized elements yield size/stride zero. Keep logical indices separate from physical indices/offsets. Future internal reordering must preserve evaluation/destruction order; Tuple has no Layout Attribute or C ABI. For example, (u8, u64) initially has offsets 0 and 8, size/stride 16, alignment 8.
+Tuples use §21.1.3's alignment-sorted aggregate algorithm, keeping logical indices and evaluation/destruction order separate from physical offsets. All-zero-sized elements yield size/stride zero. Tuple has no Layout Attribute or C ABI. For example, (u8, u64) has logical-element offsets 8 and 0, size/stride 16, alignment 8.
 
 Initial enums use an explicit i32 tag and an aligned payload area, without niche optimization. Number selected Cases from zero in declaration order; more than 2^32 Cases is unsupported. These internal tags introduce no source discriminants or integer conversion.
 
-Lay out each Case payload in logical element order. Let A be the maximum payload alignment and P the maximum payload size rounded up to A; if all payloads are empty, use A = 1, P = 0. The payload starts at alignUp(4, A); enum alignment is max(4, A), and total size/stride is rounded to that alignment. Only a selected tag paired with its valid active payload is a valid enum value. Initialization, Move, match, and cleanup use that active Case, never unused payload bytes.
+Lay out each Case payload using §21.1.3's alignment-sorted algorithm, without moving the enum tag. Let A be the maximum payload alignment and P the maximum payload size rounded up to A; if all payloads are empty, use A = 1, P = 0. The payload starts at alignUp(4, A); enum alignment is max(4, A), and total size/stride is rounded to that alignment. Only a selected tag paired with its valid active payload is a valid enum value. Initialization, Move, match, and cleanup use that active Case, never unused payload bytes.
 
 Preserve payload alignment in LLVM with a zero-length alignment carrier followed by P bytes: use [0 x i8/i16/i32/i64/i128] for alignment 1/2/4/8/16. The carrier is not a language Field or cleanup target.
 
@@ -7486,7 +7688,7 @@ A pointer guarantees its value representation only; its pointee may remain opaqu
 
 For ABI comparison, retain target ABI, recursively eligible Field Types, merged order/content, and layout options. Aggregate arguments/results remain excluded from LibraryImport (§22.3), even when storage is C-exchangeable. Packed/transparent layouts, explicit alignment/offsets, unions, bit-fields, flexible array members, external enum representations, and public layout queries remain extensions.
 
-#### 21.2. Object metadata
+#### 21.2. Runtime representations and metadata
 
 ##### 21.2.1. Type identity and descriptors
 
@@ -7525,47 +7727,154 @@ Runtime identity equality does not imply equal value representation, layout, ABI
 
 Declared base and conformance relationships are fixed by validated definitions; no unrelated extension, module search, or runtime registration changes them. Revalidate dependent artifacts under §21.3.4 before generating metadata; their identities, bases, and verified mappings must agree, independently of load order. Receiver adjustment cannot bypass public ObjectCompatible, access, Type, Origin, or Loan checks. ObjectCompatible is compile-time interface information, not a required Descriptor field. A destruction entry does not make deinit a source-level function value.
 
-An extension that introduces runtime implementation selection defines its own additional selection information. The current descriptor requirements impose no member slots or fixed ABI.
+An extension that introduces runtime implementation selection defines its own additional selection information. The current descriptor adds no runtime member-dispatch slots; its Windows storage is specified below, independently of function ABI.
 
-##### 21.2.2. Representation and storage responsibilities
+##### 21.2.2. Value metadata and object descriptors
 
-Each view must reach the same original object's type identity, the receiver needed by its implementation, a valid adjusted cast result, and preserved Origins/Loans. Owning views must also reach complete destruction and original storage-release information.
+The following immutable, module-local records belong to windows-x64-v1. They define storage and entry contracts, not a stable external calling convention; all physical signatures use §21.4.2's FunctionAbi. Instance counts, allocation state, initialization state and Loans do not belong in shared metadata.
 
-Reference counts and allocator state belong to instances/allocations, not the shared immutable Type Descriptor. Logical roles may be co-located physically. The internal Windows x64 object profile in §21.2.3 fixes its handle/header representations. No target-independent base offset zero, equal pointer values between views, one-word borrow, fixed table layout, descriptor representation, calling convention, stable ABI, FFI layout, or dynamic-loading compatibility is promised.
+**Type keys.** Value metadata uses ArgKey of the full normalized Type, recursively erasing Origins only and retaining all Semantics. Object payload metadata uses CoreId(D) of the complete Dynamic Type D; this equals ArgKey(owner/D). It is independent of the handle mode and static View Target. Assign distinct nonzero u64 tokens deterministically within the final generation unit. Check hash collisions against original keys. Artifacts retain those keys and dependencies; integration may retokenize all references. Tokens have no public numeric, persistence or dynamic-linking contract. Multiple records for one key are allowed; shared code/layout does not merge Type identities, and equal tokens prove no static Type, Origin, Loan or code-sharing judgment.
 
-Before emitting an operation, implement its complete layout/receiver adjustment, metadata, ownership, and ABI contract. The object/count/Weak profile is defined in §21.2.3; headers/counts remain outside an owned C-layout payload. Dynamic Array/Dictionary need data/length/capacity, reallocation and element-state contracts; Slice needs reference/length and reslicing rules preserving Loans. Closures/common Function Types need capture/environment storage, call/destruction entries and inline/allocation choices, with logical capture order separate from offsets. These remaining representations and shared-generic metadata passing must not silently become one ptr. Atomic counters introduce no thread facility.
+**ValueMetadata: 48 bytes, alignment 8.**
 
-Optimization may share, normalize, omit, or directly resolve metadata only while preserving Type tests, implementation selection, evaluation order/count, effects, failure, Origins/Loans, and destruction. It must not remove information needed by separately compiled consumers. Source legality cannot depend on allocation elimination or direct resolution of an implementation selection.
+| Offset | Field | Contract |
+| --- | --- | --- |
+| 0 | typeKey: u64 | Nonzero full-value Type token |
+| 8 | size: u64 | Inline size including tail padding; already aligned, hence also stride |
+| 16 | alignment: u64 | Positive power of two, equal to TypeLayout alignment |
+| 24 | flags: u64 | Bit 0 is HasCopy; all other bits zero |
+| 32 | destroyValues: ptr | Null exactly when all values of the full Type need no runtime destruction |
+| 40 | typeContext: ptr | Immutable required Type information; null when unnecessary |
+
+There is no separate stride or Copy/Move entry. All current Copy Types have no user deinit and recursively cleanup-free components, so HasCopy implies null destroyValues; the converse is false. Zero size and the current enum Case do not prove the full Type cleanup-free. Never has no value metadata, although its static identity and constraints remain meaningful.
+
+`destroyValues(first, count, metadata, location)` is the sole metadata destruction entry; one value uses count = 1. For count = 0 or a null entry, skip the call and address calculation. Otherwise first is nonnull, aligned and live, pointing to count complete initialized values at metadata.size stride. The caller checks count/range/offset arithmetic and excludes moved, partial and spare storage. Destroy in reverse logical order, count - 1 through zero; a zero stride still requires every logical destruction. Complete each value's deinit and component cleanup before the preceding value. Abort or nontermination stops subsequent work. This entry destroys values but never frees the enclosing storage.
+
+Partial cleanup may batch only contiguous complete segments compatible with the required logical order. Dictionary reverse-insertion value/key cleanup is not an address sort; use separate calls, including count = 1, where needed. A range of strings can use one indirect entry and a reverse loop, without eliminating each value's required free or nested dynamic dispatch.
+
+TypeContext supplies everything the entry needs independently of the original caller's stack/context: component/Case metadata, selected operation and specialization callees with their contexts, or equivalent information embedded in code. If shared access needs offsets, provide a logical-element map from the **whole instantiated layout**, including fields whose declared Types were already fixed. Omit unused maps. Producer and consumer agree on its schema; no instance length, partial state, Origin or Loan is stored here. GenericContext is defined in §21.3.3.
+
+**ObjectDescriptor: 24 bytes, alignment 8.** Share it across obj/rc/arc objects of the same complete Dynamic Type and layout.
+
+| Offset | Field | Contract |
+| --- | --- | --- |
+| 0 | payloadMetadata: ptr | Nonnull ValueMetadata for complete D; typeKey is CoreId(D) |
+| 8 | freeStorage: ptr | Nonnull operation releasing the original object allocation only |
+| 16 | viewMap: ptr | Nullable verified Supports/base/receiver-adjustment information |
+
+viewMap introduces no new runtime method dispatch. The logical free entry is `freeStorage(header, descriptor, location)`; it performs no value destruction, count operation or side-table release. The fixed header in §21.2.3 makes the complete payload address header + 16 without a descriptor load. Allocation size is checked 16 + payloadMetadata.size, constant when concrete and otherwise checked at runtime. Free needs no size argument. Do not duplicate allocation size, payload offset or allocation alignment in the descriptor; payload alignment remains in ValueMetadata. Metadata for rc/D describes a handle and cannot replace metadata for payload D.
+
+Each view must reach original identity, valid receiver/cast adjustments and complete dynamic destruction/storage release while preserving Origins/Loans. Descriptor addresses are not Type identity. Dynamic Array/Dictionary and Slice still require their own complete storage/element-state plans before emission; §4.7 does not prescribe their ABI. The value-borrow and callable layouts below are now specified, with no implicit unsupported one-pointer fallback.
 
 ##### 21.2.3. Windows x64 object and weak profile
 
-以下は versioned・module-local の格納表現。外部 ABI の安定性や実装完了を保証しない。引数・戻り値は §21.4.2 の FunctionAbi に従う。詳細と検証条件は [object runtime 設計 §3–5](doc/Design/2026-09-13%20Weak%20References%20and%20Object%20Runtime.md#3-windows-x64-の内部表現) を参照。
+###### 21.2.3.1. Storage and count representation
 
-| 対象 | 格納表現 | サイズ / alignment |
+All allocations use §22.5.2's 16-byte-aligned allocator. These are internal storage contracts, not FFI or cross-version ABI guarantees.
+
+| Value/storage | Fields or pointer target | Size / alignment, bytes |
 | --- | --- | --- |
-| obj/rc/arc/objref/objuniq handle | 元の object header への non-null ptr。view 変更で基点を変えない | 8 / 8 bytes |
-| Weak 値 | side table への ptr。空だけ null | 8 / 8 bytes |
-| obj header | +0 不変 descriptor ptr | 8 / 8 bytes |
-| rc/arc header | +0 不変 descriptor ptr、+8 u64 control | 16 / 8 bytes |
-| side table | +0 u64 strong state、+8 u64 weak count、+16 不変 object ptr | 24 / 8 bytes |
+| obj/rc/arc/objref/objuniq | Nonnull pointer to the original object header, unchanged by views | 8 / 8 |
+| `Weak<S>` | Nonnull pointer to its side table | 8 / 8 |
+| Every object header | +0 nonnull ObjectDescriptor pointer; +8 u64 control (reserved zero for obj) | 16 / 8 |
+| Side table | +0 u64 strong; +8 u64 weak; +16 immutable original object pointer | 24 / 8 |
 
-descriptor は動的型の identity、payload offset/alignment、base 調整、完全型の破棄と元領域の解放方法に到達できる。配置 descriptor と型の identity は別。object borrow は消去された所有 mode から offset を推測しない。
+The complete payload begins at header + 16 for every mode. Check 16 + payload size against 2^63 - 1 and allocation limits; allocation failure Aborts. Payload alignment above 16 is unsupported and diagnosed before generation. Do not add over-allocation, a private prefix or mode-dependent payload offsets. The handle's static Semantics, not the descriptor, selects count behavior.
 
-payloadOffset は alignUp(headerSize, payloadAlignment)。header と payload を一括確保し、全サイズ計算を検査する。§22.5.2 の allocator 上限・alignment に従い、16 bytes を超える alignment は未対応として生成時に診断する。独自の prefix や過剰確保は追加しない。
+Every count uses u64 with MaxRefCount = 2^63 - 1, including the internal weak guard. Increment at the maximum Aborts before update; never wrap or migrate just to extend the maximum. An even counted-header control stores strong << 1; an odd control stores sideTablePointer | 1. Clear only the low bit to recover the aligned address-space-0 pointer, preserving all high bits. Normal unpublished control starts at zero and publishes 2 for strong = 1 after construction. Final zero is never reused.
 
-**count。** 全カウンターは u64 領域を使い、上限を `MaxRefCount = 2^63−1` に統一する。weak count は内部 guard を含む。上限での増加は更新前に Abort。count 上限を理由とする side table 移行は行わない。
+Side-table strong is 1..MaxRefCount while Alive and zero both while Building and after final release. **There is no Building sentinel.** Only a factory holding unpublished construction authority may change zero to one, exactly once; observing zero grants no such authority. Cyclic construction starts with strong = 0 and weak = 2: one guard plus the builder's Weak. Do not infer the complete lifecycle solely from count bits.
 
-**header control。** 最下位 bit が 0 なら inline の `strong << 1`、1 なら `sideTablePointer | 1`。pointer 復元では最下位 bit だけを外し、上位 bit を切り捨てない。Windows x64 の integral address-space-0 pointer と table の 8-byte alignment を前提とする。通常生成は未公開の control=0 から、構築完了時に control=2（strong=1）を公開する。最終 release 後の 0 は再利用しない。
+###### 21.2.3.2. Migration, promotion and release
 
-**table strong state。** `Building = 1 << 63` は循環構築中で論理 strong=0、`1 .. MaxRefCount` は生存中、0 は破棄開始済み。Building は count ではない。factory だけが Building→1 を一度実行でき、最終 release 後の 0→1 は禁止する。循環構築は最初から table を持ち、weak=2（guard と builder 用 Weak）で開始する。
+Share the internal contracts ensureSideTable, retainStrong, tryRetainStrong, retainWeak, releaseStrong, releaseWeak and publishObject across all callers; these names are not public APIs. Each access requires valid ownership, borrowing or construction/destruction authority. Maintain exactly one authoritative strong-count location. rc is non-atomic; arc operations/transitions are linearizable. Published arc control/strong/weak accesses are atomic without mixing non-atomic accesses. Ordinary initialization is allowed only while storage is unpublished and inaccessible.
 
-**共通処理。** runtime は ensureSideTable、retainStrong、tryRetainStrong、retainWeak、releaseStrong、releaseWeak、publishObject の契約を全呼び出し元で共有する。rc は非 atomic、arc は atomic で同じ状態遷移を実行し、同じ allocation に両方式の count アクセスを混在させない。正しい strong count の保管場所は常に一つとし、各操作は必要な所有・借用・構築・破棄権限を保持する。
+On the first downgrade, keep a valid strong reference and prepare an unpublished table with observed inline count n, weak = 1 and object = header. For arc, publish by CAS of the **whole control word**; only success transfers count authority to the table. On failure, retry the latest count or free the unpublished candidate and reuse another published table. Then retain a Weak and return it. Exactly one table is published; migration changes no strong count and never reverses. Cyclic objects have a table from the start. Inline increments/decrements also CAS the whole control, rechecking representation rather than overwriting a newly published table pointer with an old count. rc preserves the same transitions without atomics.
 
-**移行。** 通常生成では最初の downgrade だけが side table を作る。既存 strong を保持し、観測した inline count=n、weak=1、object=header の未公開 table を準備する。control 全体の CAS 成功時に table が唯一の count 保管場所となる。競合時は最新 count で再試行するか、他の公開済み table を使って未公開候補を解放する。inline の増減も control CAS とし、古い count を公開済み pointer に書き戻さない。移行自体で strong は増減せず、以後 inline に戻さない。
+upgrade returns None for strong zero, Aborts at the maximum, and otherwise attempts a checked increment, retrying an arc CAS race. **Read table.object only after successful strong retention.** If final release wins, upgrade fails; if upgrade wins, its strong keeps the object alive. clone requires an existing strong and upgrade never resurrects zero. An expired table retains an immutable stale object pointer, which Weak cleanup must not dereference.
 
-**arc の ordering。** table pointer の解決は Acquire、移行公開 CAS は成功 AcqRel。clone の count CAS は成功 Relaxed、upgrade は成功 Acquire / 失敗 Relaxed。失敗後は表現を再判定し、必要な Acquire 観測をしてから table に触れる。減算は Release（inline は CAS、table は fetch_sub）、最後なら破棄・解放前に Acquire fence。構築完了は inline の Release store、または Building→1 の Release CAS とする。CAS の失敗 ordering は LLVM の制約を満たす。
+Final strong release changes one to zero, retains required descriptor/table information locally, destroys the complete dynamic payload using destroyValues when needed, frees the original allocation through freeStorage, then releases the weak guard. Never reload the header after free. Payload Weak cleanup cannot free the table prematurely because the guard survives object free. Final weak release frees only the table. Without a table, final strong release needs only payload destruction and object free. obj similarly destroys/frees without count decrement. Abort/nontermination prevents remaining cleanup/free; adjusted base addresses are never freed. Release without corresponding responsibility is an invariant violation.
 
-**昇格と解放。** 空・Building・0 の upgrade は None。生存 count の検査付き増加に成功してからだけ table.object を読む。最後の strong release は strong=0、完全型の破棄、object 解放、guard 解放の順。guard は payload 内の Weak の cleanup 中も保持する。最後の weak release は table のみ解放し、失効した object pointer に触れない。既存の責任なしの減算は不変条件違反。allocation・destructor の lock-free 性や source の thread safety は保証しない。
+###### 21.2.3.3. Runtime ordering
+
+The following completion/effect ordering is normative for arc. An arrow requires program order or synchronization, including transitive effects; elapsed wall-clock order is insufficient:
+
+```text
+initialize side table -> publish control/Weak -> use table
+initialize metadata/payload and finish builder cleanup
+    -> publish completed object -> payload use through a runtime-acquired strong
+all earlier strong releases -> final strong release -> complete payload destruction
+free object -> release weak guard
+all earlier weak releases -> final weak release -> free side table
+```
+
+The strong-release guarantee must survive inline-to-table migration. These obligations cover runtime initialization, counting, cleanup calls and frees; they do not define source-level concurrent payload access, thread transfer or a language memory model (Appendix D.2).
+
+**Non-normative implementation candidate:**
+
+| Operation | Candidate ordering |
+| --- | --- |
+| Resolve published table from control | Acquire |
+| Publish migration CAS | AcqRel on success, carrying earlier releases |
+| Strong/weak retain CAS | Relaxed |
+| Successful upgrade CAS | Acquire; failure Relaxed |
+| Strong/weak decrement | Release, with Acquire fence before final destruction/free |
+| Unpublished initialization | Ordinary stores |
+| Publish cyclic strong 0 -> 1 | Release |
+
+On CAS failure, recheck the latest representation. A failure that discovers a table pointer still needs an Acquire observation before accessing the table. Inline decrement uses control CAS; table decrement may use fetch_sub. LLVM spells Relaxed as monotonic; compare-exchange orderings must meet its verifier constraints, including no release/acq_rel failure ordering. Alternative implementations must prove the normative arrows. Validate weak-memory behavior, not just possible interleavings, and verify generated IR/native count protocols separately. Allocation and destructors have no lock-free guarantee.
+
+##### 21.2.4. Value-borrow storage
+
+ref/V and uniq/V point to the storage of the **immediate complete V**, without implicit dereference. On windows-x64-v1 each is one nonnull address-space-0 pointer, size/alignment/stride 8/8/8, aligned for V. It contains no metadata, length, count, Origin or Loan ID. A borrow of Array or Slice points to its complete handle. ref/(rc/T) points to a handle slot; objref/T points to the original object header. uniq/(rc/T) grants exclusive handle-slot access, not unique payload ownership. Nested dependencies stay distinct; ordinary @ref on an existing shared borrow copies it rather than adding a layer.
+
+Zero-sized V keeps logical initialization, Loans and destruction. Use nonnull aligned substitute storage alive for the required uses; a static substitute per alignment may serve several distinct Places. Pointer equality does not merge those Places or their logical overlap. Size/stride remain zero, lifetimes do not extend, and substitute bytes justify no positive dereferenceable attribute. noalias follows the call contract of §21.5.5, not substitute addresses.
+
+An unknown-layout generic V still uses one borrow pointer. Pass a separate GenericContext only if operations on V need it; transferring the borrow alone needs no V metadata. Direct value layouts must be finite. If materializing a required temporary needs unsupported storage, use a verified adapter/specialization or diagnose; do not silently box it or introduce an unsized value.
+
+##### 21.2.5. Concrete Closures and common function values
+
+###### 21.2.5.1. Concrete environment
+
+A concrete Closure environment E is a direct aggregate of its complete captured Types. Keep Binding Identity, logical capture order, mutability, Move Paths and Origin/Loan information separate from physical offsets. Apply §21.1.3's alignment-sorted aggregate layout. E has no embedded call pointer/header, user deinit, public fields or reflection members. Parameters, results and aggregate storage do not force it onto the heap. E is Copy exactly when all captured complete Types are Copy. Empty E and Function Items have size/alignment/stride 0/1/0; zero-sized captures keep their maximum alignment. Function Item identity, bound arguments and selected implementation are static information.
+
+Calls use §7.6.3's Shared ref/E, Exclusive uniq/E or Consuming owner/E receiver. An owning Callable contract acquires E normally before adapting to a weaker implementation requirement. Shared/Exclusive calls do not own or destroy E and cannot Move owned captures. Consuming calls clean only the remaining initialized captures, in reverse logical acquisition order. Treat the implicit owned E binding as preceding explicit parameters: secure the result, clean body locals/defer, clean parameters, then clean remaining E last. Partial environments use CFG state and flags only where joins require them, not a mandatory per-Closure bitmap; no incomplete E can be acquired, erased or called. Zero-sized captures still run every required destructor.
+
+###### 21.2.5.2. Common function storage and entries
+
+A common Function Type F remains Owned-environment, Shared-callable and Non-Copy (§7.6.4). Its Windows handle has size/alignment/stride **16/8/16**:
+
+| Offset | Field | Meaning |
+| --- | --- | --- |
+| 0 | environmentWord, 8 bytes | Inline E when size(E) <= 8 and alignment(E) <= 8; otherwise a nonnull pointer to E |
+| 8 | operations: ptr | Nonnull immutable FunctionOperations pointer, aligned to 8 |
+
+The environment's layout selects the mode; there is no tag. Unused inline bytes are unspecified, and the word need not be an integer or pointer. Even a zero-sized E with alignment 16 uses heap mode. Allocate heap E with Alloc(size(E)), using the allocator's zero-size backing and 16-byte alignment, without a header/prefix/alignment argument. Alignment above 16 is unsupported.
+
+FunctionOperations is 24 bytes, aligned to 8: +0 nonnull callEntry, +8 nullable immutable context, +16 destroyEnvironment. Key it by E, F's contract, selected implementation, context schema/contents and FunctionAbi, not E alone. Its first two fields have the callee-record shape (§21.3.3), which alone proves no ABI compatibility. destroyEnvironment is null exactly when neither environment cleanup nor heap free is needed; a heap entry is nonnull even for cleanup-free E.
+
+The logical entry arguments are below; their physical positions remain FunctionAbi choices:
+
+```text
+callEntry(environmentWord, arguments..., context) -> result
+destroyEnvironment(environmentWord, context, location) -> ()
+```
+
+Both entries receive the **environmentWord value**, not the F slot address, through the matching FunctionAbi. Heap mode addresses E directly. Inline mode may spill the valid E bytes when an address is needed, preserving pointer provenance rather than prescribing an integer register. This ABI transfer is not a language Copy or capture reacquisition. An inline Shared-call spill is a temporary view, without destruction responsibility. The receiver Loan protects original F and its environment through the whole call. No borrow into hidden E may escape and no cross-call environment address is promised; pointers to external captures retain their original targets. Calls need no per-invocation allocation.
+
+Destroying F consumes its responsibility and invokes its destruction entry at most once: destroy inline E only, or destroy heap E then free it. Null-entry destruction still consumes F logically. Moving F transfers its 16 bytes without a self-pointer into the inline word, capture reacquisition, allocation, count increments or required source clearing.
+
+###### 21.2.5.3. Erasure, direct calls and optimization
+
+Only a complete, Owned, Shared-compatible environment with a compatible signature may be erased. Results may borrow public arguments but not the hidden environment. Borrowed environments, Exclusive/Consuming common Types, common-value cloning and FFI callbacks are not introduced.
+
+For conversion directly from Closure syntax, prepare uninitialized final F/environment storage before acquiring captures, then acquire them directly there in source order. Capture entries are binding Copy/Move/Borrow/Reborrow, not arbitrary user expressions; preserve their static effects and failure order. Required allocation failure reports the conversion site. For a general source expression, evaluate it once **before** any conversion allocation. An F-to-same-F acquisition is ordinary Move, not re-erasure. Combine completed E acquisition and final transfer only when §21.4.4's alias, lifetime, ordering and partial-state conditions hold; never overwrite live F early.
+
+In §7.6.4's makeAdder example, the i32 capture occupies four inline bytes and the common function handle occupies 16 bytes. Repeated Shared calls retain that environment; moving the handle transfers its ownership.
+
+Known Function Items/Closures call their selected entries directly; F uses callEntry. Shared generic Callable witnesses may pass a callee record without constructing F. Definitions, calls and adapters share one FunctionAbi mapping for logical receiver, arguments, result and context; matching ptr signatures alone are insufficient. Adapters never reevaluate source arguments, add a language Copy or reselect overloads/specializations. Shared destruction, free and adapter cleanup retain the original operation's source location; user deinit body failures retain their own locations.
+
+Allocation count/location is not a language guarantee. Elision need not reproduce failure of a removed allocation/free, but must preserve acceptance, required checks, captures, user effects and destruction order; surviving resource operations keep their Abort and source-location contracts. Heap-to-stack environment promotion requires tracing all uses and cleanup and replacing entries with matching direct code. Never pass stack storage to a heap-free entry or add operation-table variants just for promotion; otherwise keep the heap representation. Physical ABI choices remain compiler-controlled under §21.4.2.
 
 #### 21.3. Generic code generation
 
@@ -7628,7 +7937,7 @@ Let P be an integer Type, `f32`, `f64`, `bool`, or `char`. `string`, Unit, Never
 
 No policy gives writes through `ref` or implicit Copy through `uniq`. Reference comparison follows the allowed language operation, not an assumption that pointer comparison is sufficient. A helper may isolate Type-specific operations so the caller remains shared. A nested scalar, as in `Box<i32>`, does not force whole-body duplication, nor does a fixed `i32` in a declaration require expanding unrelated slots.
 
-Keep `obj`, `rc`, `arc`, `objref`, and `objuniq` separate in ownership-aware intermediate representations. After making ownership, borrowing, and count operations explicit, equivalent low-level code may merge. Sharing within one Semantics still requires a common form for View Targets, preserving member calls, receiver adjustment, dynamic identity, destruction/release, and non-atomic versus atomic counts. Do not assume one-word handles or identical callees.
+Keep `obj`, `rc`, `arc`, `objref`, and `objuniq` separate in ownership-aware intermediate representations. After making ownership, borrowing, and count operations explicit, equivalent low-level code may merge. Sharing within one Semantics still requires a common form for View Targets, preserving member calls, receiver adjustment, dynamic identity, destruction/release, and non-atomic versus atomic counts. Use §21.2's specified handle storage without assuming identical ownership operations or callees.
 
 Unit retains §3.1.5’s zero-sized logical storage even if the calling convention omits transfer or reserves padding; preserve effects and required places without promising distinct addresses or slots. Never has no value: non-completing argument evaluation prevents the call but preserves earlier effects/transfers. Never-returning functions do not return normally; unreachable code still receives required static checks.
 
@@ -7641,6 +7950,22 @@ func pair<P, T>(number: P, value: T) -> (P, T) => (number, value)
 func keepBorrow<T>(value: ref/T) -> ref/T from value => value
 // No referent access: compatible borrow representations can share immediately.
 ```
+
+**GenericContext.** Use an immutable array of pointers to ValueMetadata, verified witnesses and callee records. Windows slots are 8 bytes at offset 8 * index; check size/offset arithmetic. Fix and verify the schema, slot count and Type-argument correspondence between producer and consumer. Pass null when no context is needed. A callee record contains its entry plus its **own** context; never reuse another schema's positions without a verified mapping adapter. Reuse contexts for a closed substitution without per-call allocation or runtime Type search. TypeContext supports operations on a Type; GenericContext supports a particular body/entry.
+
+Metadata executes only definition-proven plans. Unconditional Copy needs proof; ordinary acquisition valid for both Copy and Non-Copy may retain a verified conditional HasCopy plan. Runtime flags do not decide source legality. All current initialized values permit §21.4.5's byte transfer, so physical Copy/Move paths may merge; Copy's null destructor may eliminate a physical branch, but source state and Loans remain distinct.
+
+```kimi
+func transfer<T>(value: T) -> T => value
+
+func duplicate<T>(value: T) -> (T, T)
+    T is Copy
+    return (value, value)
+// transfer admits the definition-checked Copy/Move alternatives.
+// duplicate requires static Copy evidence, not a runtime HasCopy test.
+```
+
+SharedReadResult (§4.6.6) is a separate full-Semantics plan, not a HasCopy branch: owner Copy T yields T, owner Non-Copy T yields ref/T, object owners yield objref without retaining counts, and exclusive value/object borrows yield shared Reborrows. Explicit slot borrowing remains distinct; ref/(rc/T) cannot replace an ordinary objref/T read. Preserve result Type, Origins, effects and ABI/context mappings and verify every generic case. Missing metadata never permits changing source acquisition, selecting a different overload/specialization or using payload metadata for a handle.
 
 ##### 21.3.4. Artifacts, verification, and invalidation
 
@@ -7668,7 +7993,13 @@ A shared path cannot discharge unresolved Type, ownership, or layout obligations
 
 Equivalent code may merge only while preserving observable Type/function identity and the selected implementation's results, side effects, failure, ownership, and destruction behavior. Separate entry points may share an internal body. No new function-address comparison, reflection, or stack-trace guarantee follows.
 
-Exact precompilation, callee-information passing, artifact/ABI formats, inlining budgets, and sharing mechanisms remain implementation-design boundaries. Current common Function Type and runtime-contract restrictions are unchanged; ordinary-body legality and remaining representation obligations follow [universal generic verification](#810-generic-body-checking-and-deferred-obligations).
+Generate needed immutable metadata/operation/context records as private unnamed_addr constants when their contracts permit address-insensitive sharing. Fold/directly resolve loads only after preserving Type identity, verified operations and consumer requirements. Record schema, selected implementation, layout, operations, cleanup, context contents, FunctionAbi, compiler/profile and content dependencies in reusable plans/cache keys; schema changes invalidate producers and consumers. Reuse TypeLayout, ValueLowering, FunctionAbi and CleanupPlan instead of cloning syntax trees.
+
+Recursive references among a finite set of metadata/context keys are allowed. Growing distinct Type/context keys require a documented resource-limit diagnostic, not fake pointers or unverified records. Keep entries and records alive through every use and cleanup. Infinite inline value layout remains an error.
+
+Layout-class sharing may start from selected implementation, size/alignment, required HasCopy and cleanup requirements, but must preserve every typed semantic plan. Indirect destruction uses the actual metadata/context. Direct destruction requires the exact entry and embedded context in the sharing key: a hasDestructor Boolean and equal size are insufficient. Type keys, witnesses and offset maps each need their own valid sharing plan.
+
+Exact precompilation, artifact formats, physical context passing, inlining budgets and further sharing mechanisms remain implementation choices within the specified schemas and FunctionAbi agreement. Common Function Type/runtime-contract restrictions remain unchanged; ordinary-body legality follows [universal generic verification](#810-generic-body-checking-and-deferred-obligations).
 
 #### 21.4. Checked lowering and internal ABI
 
@@ -7750,7 +8081,7 @@ let ok = divisor != 0 and (100 / divisor > 1)
 // Division and its checks run only on the true edge of divisor != 0.
 ```
 
-Use CFG edges for short circuit, branches, match guards, and loops. Evaluate conditions/subjects once. Scalar joins use phi from actual normal predecessor blocks; aggregate joins initialize a common uninitialized result slot only on arriving edges. Unit needs no phi, and Never supplies no fictional value/edge. phi predecessors are the blocks after cleanup. select may replace conditional evaluation only when evaluating both alternatives early is proven legal.
+Use CFG edges for short circuit, branches, match guards, and loops. Evaluate conditions/subjects once. Scalar joins use phi from actual normal predecessor blocks; aggregate joins use a common initially uninitialized result slot, secured on every normally arriving path. A path may secure its result directly in that slot before its required cleanup; this does not deliver the result to the enclosing expression until cleanup completes and the path arrives. If cleanup Aborts or diverges, the enclosing expression neither reads nor destroys the secured result. This permits avoiding an additional transfer on the arrival edge while preserving §16.2's acquisition, cleanup and delivery order. Unit needs no phi, and Never supplies no fictional value/edge. phi predecessors are the blocks after cleanup. select may replace conditional evaluation only when evaluating both alternatives early is proven legal.
 
 A non-Never Expression Type does not guarantee a normal CFG predecessor: required cleanup may prevent delivery (§14.9). Do not manufacture an incoming value or change the checked Type to Never in that case.
 
@@ -7762,7 +8093,11 @@ Each scope-leaving edge secures its result, performs exactly the cleanup of scop
 
 Abort stops cleanup; nontermination blocks subsequent cleanup and delivery. Lack of visible side effects does not license removing a language-permitted infinite loop.
 
-Prefer direct Field/scalar operations and avoid slots created only to use a memory intrinsic. For semantically valid bulk transfers, prefer nonvolatile llvm.memcpy on nonoverlapping ranges, llvm.memmove if overlap is permitted, and llvm.memset for required byte filling. Preserve alignment and constant lengths. These operations do not authorize Copy/Move, constructors, or whole-value reads of partially initialized/moved data. Zero-size data transfers may disappear while state updates and cleanup remain. LLVM chooses expansion/vectorization/libcalls; memcpy.inline is reserved for specific constant-length sites that require no libcall.
+Every currently storable complete value supports an authorized Copy or Move by transferring its size bytes, without user calls, allocation, count increments or pointer fixups. Copy preserves source responsibility; Move transfers it. For nonzero size, source and uninitialized destination ranges must not overlap. Moving an object handle leaves the object body and pointers to it in place. A future address-dependent value representation must revise this contract and metadata schema rather than silently requiring relocation callbacks. Padding and unused environment bytes are transferable but not semantic values or automatically defined ABI-coercion bits.
+
+For a contiguous range relocation, checked count * stride bytes may use memmove-equivalent transfer under exclusive move authority. Dispose of overwritten responsibility before relocation, preserve exactly one responsibility per logical element under overlap, and expose no intermediate partially moved state. Zero-sized elements retain logical transfer and cleanup effects.
+
+Prefer direct Field/scalar operations and avoid slots created only to use a memory intrinsic. For valid transfers, prefer nonvolatile llvm.memcpy on nonoverlapping ranges, llvm.memmove on authorized overlapping ranges, and llvm.memset for required filling. Preserve alignment and constant lengths. These operations implement already-authorized acquisition; they grant no Copy/Move or whole-value read of partial data. Zero-byte instructions may disappear while state updates and destruction remain. LLVM chooses expansion/vectorization/libcalls; memcpy.inline is reserved for constant-length sites requiring no libcall. Metadata range destruction follows §21.2.2; destroying a value and freeing its enclosing storage are separate operations, with free occurring only after normal destruction.
 
 ```llvm
 declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1 immarg)
@@ -7860,7 +8195,23 @@ MXCSR status bits are volatile and not exposed. External code must not depend on
 
 Keep address-free scalar values in SSA, using phi at joins; mutable locals may use promotable fixed slots. Put required fixed-size allocas in function entry before calls with explicit alignment, while initialization and cleanup stay at their source execution points. Dynamic stack allocation is initially unsupported. Reuse storage only after cleanup and final reference use. Optional lifetime.start/end markers follow actual storage lifetime, not an Origin spelling or Move alone; omit unproven markers.
 
-Prove each optimization attribute separately: actual alignment for align; guaranteed non-nullness for nonnull; valid byte range for dereferenceable; LLVM alias conditions for noalias, not merely uniq; defined bits/no poison for noundef, including padding in any coercion; full GEP conditions for inbounds; no signed/unsigned overflow for nsw/nuw. Do not apply mustprogress, willreturn, or loop.mustprogress uniformly to ordinary functions or loops.
+**Safe value-borrow call contract.** Verify ref/V and uniq/V Loans from receiver/argument formation through the entire call, extended by result uses where required. Check overlaps among arguments, captures and storage anchors, including all direct/indirect static effects, defaults, initialization, cleanup and reentry (§15.6.4). Do not shorten caller protection to the callee's last use. Unknown potentially conflicting effects cause rejection. Owned environments still retain relevant static/capture anchors.
+
+ref/V keeps V's immediate inline storage unchanged throughout the call. uniq/V permits no conflicting independent access; access through its derived child Reborrows remains valid. This common call-wide proof supports noalias for **both** borrow modes, consistently on definitions, calls and adapters with pointer provenance preserved; it requires no separate private-body reproof per call. Passing the same shared reference twice is legal: the modified-memory premise of noalias still applies.
+
+| Attribute on a normal safe value-borrow pointer | Required premise |
+| --- | --- |
+| nonnull, noundef | Valid initialized borrow pointer |
+| align | Proven constant alignment, or a known lower bound for generic V |
+| dereferenceable | Positive constant valid byte range; never inferred from zero-size substitute storage |
+| readonly for ref/V | No writes to V's inline storage through the argument or derived pointers; not function purity |
+| noalias for ref/V and uniq/V | The complete call-wide contract above |
+
+These guarantees cover immediate V storage only. Targets reached through loaded pointers retain their own rights: another rc handle may share its payload and update counts without writing the borrowed handle slot. Array/Slice handle noalias does not prove their element pointers disjoint; vectorization needs separate provenance, range and Loan proofs. Do not apply this table to object-borrow headers, uninitialized internal pointers or an entire environmentWord.
+
+Unsafe/FFI implementations receiving these borrows must satisfy the same promises: raw pointers derived from ref cannot write its inline storage, and uniq permits no conflicting independent access during the call. Diagnose missing Loan/effect verification before emission. Future interior mutability/concurrency requires revisiting the shared proof.
+
+For other optimization attributes, separately prove defined bits/no poison for noundef, including padding in coercions; full GEP conditions for inbounds; and no signed/unsigned overflow for nsw/nuw. Do not apply mustprogress, willreturn or loop.mustprogress uniformly to ordinary functions or loops.
 
 All generated definitions use uwtable(async). Let LLVM produce required .pdata/.xdata, prologue/epilogue and register/stack recovery information, including decisions for optimized leaf functions. This enables OS stack recovery/walking, not language exceptions, Abort cleanup, or foreign unwind permission. Treat nounwind separately; the initial emitter does not infer it merely from LibraryImport's no-unwind contract and generates no exception-catching landingpad. Native assembly needs appropriate Windows unwind information for its own stack/nonvolatile-register operations.
 
@@ -7911,25 +8262,25 @@ This is the minimal set named by language rules, not a promise of a general stan
 | --- | --- |
 | `Option<T>` | enum with Some(T), None in that order; Self is Copy with condition-atom set {T is Core.Copy} |
 | `Result<T,E>` | enum with Ok(T), Err(E) in that order; Self is Copy with condition-atom set {T is Core.Copy, E is Core.Copy} |
-| `Weak<S>` | rc/arc の完全な型 S を取る compiler 管理の Non-Copy struct Core。空の `.init()`、Core.downgrade / upgrade / clone は §3.2.2 と §13.5.9 |
-| `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length: isize and indices: ResolvedRange; checked indexing under §4.6, literals, and consuming Iterable conformance |
+| `Weak<S>` | Compiler-managed Non-Copy struct over a valid complete rc/arc S; always holds a target table, with no empty constructor. Core.downgrade / upgrade / clone follow §3.2.2 and §13.5.9 |
+| `Array<T>` | Non-Copy owning dynamic sequence over a valid complete T; no Owned requirement; public read-only length/capacity: isize and indices: ResolvedRange; §4.6 indexing, §4.7 mutation/capacity APIs, literals and consuming Iterable conformance |
 | `Index` | Copy, Owned, Equatable direction/offset value; constructor, read-only fields, resolve/tryResolve under §4.6.2 and §4.6.4 |
 | `Range` | Copy, Owned, Equatable unresolved boundaries; syntax construction, read-only fields, resolve/tryResolve under §4.6.3 and §4.6.4; not Iterable |
 | `ResolvedRange` | Copy, Owned, Equatable validated interval; constructor, read-only fields, and `Iterable` with associated Type `Element = isize` under §4.6.3 |
 | `Slice<T>` origin source | Copy shared view with all public operations in §4.6.6; implements `Iterable` with associated Type `Element = ref/T from source`; backing Origin is explicit or inferred under ordinary rules |
-| `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction and existing-key indexing, public read-only length: isize, and consuming Iterable conformance |
+| `Dictionary<K,V>` | Non-Copy owning collection over valid complete K/V requiring K is Equatable; no Owned requirement; literal construction, existing-key indexing, public read-only length/capacity: isize, §4.7 lookup/mutation/capacity APIs and consuming Iterable conformance |
 | `Stringify` | `func stringify(self: ref/Self) -> string`; returns an independent owned string |
 | `Equatable` | `func equals(self: ref/Self, other: ref/Self) -> bool` |
 | `Comparable: Equatable` | `func compare(self: ref/Self, other: ref/Self) -> i32`; negative/zero/positive for less/equal/greater |
 | `Iterator` | `associate Element`; `func next(self: uniq/Self) -> Option<Self.Element>` |
 | `Iterable` | `associate Element`; `associate Iterator is ::Core.Iterator`; `Self.Iterator.Element is Self.Element`; `func iterate(self: owner/Self) -> Self.Iterator` |
 | Copy, Owned, Callable | Compiler-intrinsic requirement identities with exactly their existing derivation, ownership, and call rules; they are not ordinary user-implementable replacements |
-| Object ownership intrinsics | Core.makeObj / makeRc / makeArc、strong と Weak の Core.clone、Core.downgrade / upgrade、Core.makeRcCyclic / makeArcCyclic。§13.5.8–9 の公開名・型・取得契約に従う |
+| Object ownership intrinsics | Core.makeObj / makeRc / makeArc, strong and Weak Core.clone, Core.downgrade / upgrade, Core.makeRcCyclic / makeArcCyclic, with §13.5.8–9 names, Types and acquisition contracts |
 | `writeLine` | `public func writeLine(text: string) -> ()`; standard-output operation under §22.4, with ordinary owned-argument acquisition |
 
 Iterator and Iterable are static, non-lending Contracts. Their Element requirement is the sole complete-Type exception (§8.4.3) and may bind ref/T from an existing external source; Iterable.Iterator still binds a Core. Table signatures follow normal associated-Type, receiver, result-Origin, and lifetime rules.
 
-Fixed arrays implement Iterable with Element = T. Owning Array/Dictionary iterators retain and destroy unyielded elements. ResolvedRange and Slice use concrete Core iterator identities with §4.6’s element Types and dependencies: range iterators store position/end; Slice iterators store a copied handle, position, and external source Loan. Neither owns yielded elements, and both stay exhausted after None. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving next’s result extends no lifetime. These requirements add no public iterator constructors or other changes to associated-requirement kinds.
+Fixed arrays implement Iterable with Element = T. Owning Array/Dictionary iterators retain and destroy unyielded elements in §4.7.6 order. ResolvedRange and Slice use concrete Core iterator identities with §4.6’s element Types and dependencies: range iterators store position/end; Slice iterators store a copied handle, position, and external source Loan. Neither owns yielded elements, and both stay exhausted after None. Dependent Types preserve source dependencies through associated Types and Option payloads. Receiving next’s result extends no lifetime. These requirements add no public iterator constructors or other changes to associated-requirement kinds.
 
 The primitive keyword string denotes the compiler's UTF-8 string Core, not a shadowable alias; its required operations here are literal/interpolation construction, concatenation, comparison, and Stringify. No character indexer, mutable string buffer, allocator, or formatting options are implied. Fixed-array syntax and layout follow [sequence Types](#4-arrays-indexing-and-slices); metadata, indexed Place acquisition, and shared reading follow [indexing and slicing](#46-indexing-and-slicing).
 
@@ -7937,7 +8288,7 @@ For Option/Result Copy conditions, compare atom sets using §8.7's proposition i
 
 Option/Result Copy and Owned follow ordinary enum rules; no extra copying is introduced. A changed Core contract invalidates dependent capability, acquisition, and generation results under §21.3.4. Unchanged Case order and payload structure do not establish binary compatibility with older Core artifacts.
 
-Array/Dictionary contents, generic enum payloads, and fixed-array elements preserve complete Type/Origin/Loan dependencies under §15.4. Array's Owned classification follows T, Dictionary's follows K and V, independently of runtime contents; both remain Non-Copy. No container grants permission to hide dependencies or extend a referent's lifetime. Checked-cast designs use the required Core Option Identity despite deferred View syntax. Dictionary need not expose hashing. Further allocation/mutation and library APIs are separately specified.
+Array/Dictionary contents, generic enum payloads, and fixed-array elements preserve complete Type/Origin/Loan dependencies under §15.4. Array's Owned classification follows T, Dictionary's follows K and V, independently of runtime contents; both remain Non-Copy. No container grants permission to hide dependencies or extend a referent's lifetime. Checked-cast designs use the required Core Option Identity despite deferred View syntax. Dictionary need not expose hashing. Dynamic mutation, allocation, ordering, retained dependencies, effects and complexity follow §4.7; further library APIs remain separate designs.
 
 #### 22.2. Program startup and static initialization
 
@@ -8411,6 +8762,10 @@ Preserve one-time receiver/argument evaluation, index-evaluation protection, exc
 | Lifetime and storage | Borrowed Array/Slice retention, temporary/local escape, copied references versus slot borrows, nested Origins, whole-array Loans including empty/split views, rejection of mutable-static borrows at Owned boundaries |
 | Metadata and iteration | Receiver effects, completeness checks, no result Loan for metadata, stable saved indices, reference iteration independent of element Copy, no iterator-owned borrowed results |
 | Lowering | Identical acceptance, results, effect/Abort order, and Loan legality with optimization enabled/disabled; O(1) view operations without element-proportional allocation or Copy |
+| Dynamic mutations | §4.7's success/absence/duplicate outcomes, ^0/^1 and maximum-length cases, RHS-first Dictionary replacement versus argument-first insertion, stored-key identity and remove/re-add order |
+| Capacity and cost | No internal allocation within capacity, including deletion churn; reserve additional arithmetic and overshoot; shrink failure preserves placement; growth/reindex operation counts meet amortized bounds; cleanup-free Array clear is O(1) |
+| Dependencies and effects | No dependency subtraction after clear/None/Err, old-result versus new-input dependencies, uniq element conflicts, receiver-before-argument Loans, generic equality/destructor summaries and static reentry |
+| Temporary argument borrowing | Typed/generic/unfitted inputs, candidate ambiguity, normal temporary expiry and rejected escape, no implicit extra reference/handle layer or exclusive-temporary extension |
 
 #### A.14. Layout, LLVM, and runtime verification
 
@@ -8422,7 +8777,14 @@ Internal-function IR/signature expectations test the selected compiler implement
 | --- | --- |
 | Startup | Unique implicit/explicit body; uninitialized top-level let/var and Unit; empty/declaration-only documents; invalid/duplicate main; mixed forms; selected/generated items; Library restrictions; static-only documents |
 | Layout | Attribute errors and fragment conflicts; single C storage fragment; moving the entire fragment/renaming method fragments; nested/zero-sized/aligned Types; generic substitution; inline cycles; overflow; C size/alignment/offsetof under packing 16 |
+| Aggregate order | Alignment sorting with logical-order ties across own Fields, captures, Tuples and Case payloads; fixed base/tag/array positions; whole-instantiation offset maps including fixed-Type fields; zero-sized destructor order |
+| Callable storage | Empty/inline/heap and zero-size over-aligned environments; capture order, direct-syntax versus general-expression allocation order, consuming partial cleanup, repeated Shared calls and common-value Move; consistent entries/adapters and safe allocation elision |
+| Metadata and sharing | Full ArgKey versus payload CoreId, token collisions/retokenization, metadata/context schemas and lifetime, zero-count/null-entry destruction, partial/range cleanup, recursive keys and resource limits, exact destructor/context sharing keys |
+| Safe value borrows | Immediate slot versus loaded referent, zero-size substitute addresses, call-wide ref/uniq protection and attributes, duplicate shared arguments, static/indirect/cleanup reentry, no unproven element alias attributes |
+| Weak and objects | No empty constructor; Option absence versus expired Weak; complete dependencies/Owned cyclic payload; builder cleanup before publication; all-mode payload +16, count limits and migration, upgrade/final-release races, guard lifetime and no freed-pointer reads; weak-memory ordering proofs separately from IR/native tests |
 | ABI and ownership | Scalar/aggregate/zero-size passing; separate Copy source; acquisition transfers; result secured before cleanup; Abort/divergence before delivery; partial construction/Move; literal backing never freed; Heap ownership released once |
+| Owned string lifetimes | Local-to-temporary Move, self-assignment, replacement after conditional Move, and declaration resets across loop backedges; destruction precedes placement and its live-state update; abrupt assignment operands produce no placement; conditional cleanup preserves scalar phi predecessors |
+| Owned aggregate results | Secure before cleanup and deliver only on normal arrival; every arrival matches its acquisition; nested result transfers, conditional self-replacement, unconsumed-result cleanup, and loop/deferred storage reuse; Abort/divergence after securing does not cause enclosing consumption or destruction |
 | Instructions | All checked integer boundaries, signed minimum/-1, invalid shifts; float-to-integer boundaries and adjacent floats for every supported pair, NaN/infinities/fractions/signed zero; finite-to-infinity conversion; i128 supported/unsupported operations and helper dependencies |
 | CFG and optimization | Short circuit/guards, scalar/aggregate/Never joins, actual phi predecessors, assignment/setter evaluation count, self-assignment, first placement, direct construction, edge cleanup/defer flags, nontermination, partial values/padding/overlap |
 | Constants and FP | Exact reread fitted bits and UTF-8/NUL lengths; literal sharing; NaN Equatable distinction; subnormals/ties/signed zero; ABI-standard MXCSR after external save/change/restore, without comparing status flags |
@@ -8524,7 +8886,7 @@ The region and Loan analyses may be implemented using Datalog or an equivalent f
 
 #### B.4. Callable and object implementation strategies
 
-**Non-normative.** A Closure may lower to an environment plus a call entry. Keep logical capture initialization/destruction order independently of physical field layout. Common Function Types can use inline or allocated storage with call and destruction entries; allocation removal is an optimization, not a typing rule.
+**Non-normative strategy notes.** Use the concrete environment and common-function storage/entry contracts of §21.2.5. Keep logical capture initialization/destruction order separate from physical offsets. Direct resolution and allocation removal are optimizations under those contracts, not changes to typing.
 
 Implement §12.4.4's required abstract verification with worklists or equivalent fixed-point algorithms. A statically selected method/accessor may have an ordinary entry and a receiver-adjusting adapter. The adapter implements an already permitted call; it supplies neither a new public guarantee nor an unrestricted exclusive receiver. Summary encoding and physical entry sharing are implementation choices.
 
@@ -8591,10 +8953,10 @@ This index links to design boundaries owned by the language sections. It adds no
 | Associated-Type inference beyond explicit identity facts, arbitrary complete-Type bindings, and stronger symbolic Constraint reasoning | Not introduced | [Associated Types](#843-associated-types), [proof boundaries](#87-constraint-proof-system) |
 | Const/value arguments beyond function lengths, standalone Semantics slots, partial/default/variadic generic arguments | Not introduced | [Function length parameters](#44-function-length-parameters), [Generic Type parameters](#81-generic-type-parameters) |
 | Partial/conditional explicit specialization, specialization priorities, generic Container specialization | Not introduced | [Full specialization](#88-explicit-full-function-specialization) |
-| Exact precompilation, callee propagation, sharing/ABI formats, and optimization budgets | Implementation-design boundaries | [Generic generation limits](#2135-generation-limits-and-code-merging) |
+| Exact precompilation, artifact encoding, physical context passing and optimization budgets | Implementation choices within the specified metadata/context schemas and FunctionAbi agreement | [Generic generation limits](#2135-generation-limits-and-code-merging) |
 | Automatic toolchain installation, debug information, cross-module/DLL ABI, extra CPU/OS profiles | Deferred beyond the Windows profile; explicit build/run commands are defined in §20.8.6 | [Native build](#208-llvm-output-native-build-and-execution), [LLVM profile](#215-llvm-windows-x64-profile) |
 | Stack exhaustion detection, diagnostics, and recovery | Unspecified; no guaranteed conversion to Kimi Abort or recovery contract | [Storage and unwind information](#2155-storage-attributes-and-unwind-information) |
-| Dynamic collections, value-borrow/common-function storage, general shared-generic metadata | Remaining representations require complete design and implementation before emission; the object/count/Weak storage profile is defined in §21.2.3. Internal function passing is compiler-controlled under §21.4.2, not a fixed language ABI; no implicit unsupported one-pointer fallback | [Object metadata](#212-object-metadata), [Internal ABI](#2142-physical-function-signatures) |
+| Dynamic collection and Slice storage ABI; additional collection APIs | Mutation, capacity, Loans/effects and complexity are specified in §4.7; concrete collection storage and the extensions listed there remain design work. Value-borrow, callable and metadata storage are specified in §21.2–3; implementation coverage is separate | [Dynamic mutation](#47-dynamic-collection-mutation), [Runtime representations](#212-runtime-representations-and-metadata) |
 | C aggregate passing/export/callback/varargs, Unicode console adapter, over-aligned allocation, arbitrary exit codes and FP environment control | Deferred extensions | [FFI](#223-foreign-function-imports), [Windows runtime](#225-initial-windows-runtime) |
 | Contract-level abstract Origins, non-static erased views, static-Place Origins, and lending iterators | Deferred design; ordinary retained storage is defined in §15.4 | [Abstract Origins](#153-abstract-origins), [Lifetime design boundaries](#159-lifetime-design-boundaries) |
 | Destruction lifetime relaxation | Deferred design | [Destruction lifetime checking](#1566-destruction-lifetime-checking) |
@@ -8632,7 +8994,7 @@ Object-Semantics enum construction/matching, empty enums, and representation/ABI
 
 #### D.2. Concurrency, memory model, and thread transfer
 
-**Deferred design.** Source threads/tasks, a language memory model, data-race rules, atomic ordering operations, thread-transfer/shared-access capabilities analogous to Send/Sync, and cross-thread static initialization are not specified. The initial execution model is single-threaded under §22.2. arc guarantees atomic reference-count updates only; it does not guarantee thread-safe payload access, publication, destruction, or transfer. Owned proves lifetime independence, not thread safety. Future concurrency capability requirements may reject programs or foreign integrations previously accepted by a pre-alpha compiler; neither arc nor Owned preauthorizes those integrations.
+**Deferred design.** Source threads/tasks, a language memory model, data-race rules, atomic ordering operations, thread-transfer/shared-access capabilities analogous to Send/Sync, and cross-thread static initialization are not specified. The initial execution model is single-threaded under §22.2. arc guarantees atomic reference-count protocols and the runtime initialization/release ordering of §21.2.3.3. This does not authorize thread-safe source payload access, publication, destruction or transfer. Owned proves lifetime independence, not thread safety. Future concurrency capability requirements may reject programs or foreign integrations previously accepted by a pre-alpha compiler; neither arc nor Owned preauthorizes those integrations.
 
 ### Appendix E. Terminology index
 
