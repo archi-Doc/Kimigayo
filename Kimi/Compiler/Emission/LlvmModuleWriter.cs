@@ -16,6 +16,34 @@ internal static partial class LlvmModuleWriter
         "attributes #0 = { uwtable(" + WindowsProfile.UnwindTables + ") \"target-cpu\"=\"" + WindowsProfile.Cpu + "\" \"target-features\"=\"" + WindowsProfile.Features +
         "\" \"denormal-fp-math\"=\"ieee,ieee\" }\n!llvm.module.flags = !{!0}\n!0 = !{i32 8, !\"PIC Level\", i32 2}\n";
 
+    // Fixed profile vocabulary: no per-module tracking or warm declaration construction.
+    private const string OverflowDeclarations = """
+        declare { i8, i1 } @llvm.sadd.with.overflow.i8(i8, i8)
+        declare { i8, i1 } @llvm.ssub.with.overflow.i8(i8, i8)
+        declare { i8, i1 } @llvm.smul.with.overflow.i8(i8, i8)
+        declare { i8, i1 } @llvm.uadd.with.overflow.i8(i8, i8)
+        declare { i8, i1 } @llvm.usub.with.overflow.i8(i8, i8)
+        declare { i8, i1 } @llvm.umul.with.overflow.i8(i8, i8)
+        declare { i16, i1 } @llvm.sadd.with.overflow.i16(i16, i16)
+        declare { i16, i1 } @llvm.ssub.with.overflow.i16(i16, i16)
+        declare { i16, i1 } @llvm.smul.with.overflow.i16(i16, i16)
+        declare { i16, i1 } @llvm.uadd.with.overflow.i16(i16, i16)
+        declare { i16, i1 } @llvm.usub.with.overflow.i16(i16, i16)
+        declare { i16, i1 } @llvm.umul.with.overflow.i16(i16, i16)
+        declare { i32, i1 } @llvm.sadd.with.overflow.i32(i32, i32)
+        declare { i32, i1 } @llvm.ssub.with.overflow.i32(i32, i32)
+        declare { i32, i1 } @llvm.smul.with.overflow.i32(i32, i32)
+        declare { i32, i1 } @llvm.uadd.with.overflow.i32(i32, i32)
+        declare { i32, i1 } @llvm.usub.with.overflow.i32(i32, i32)
+        declare { i32, i1 } @llvm.umul.with.overflow.i32(i32, i32)
+        declare { i64, i1 } @llvm.sadd.with.overflow.i64(i64, i64)
+        declare { i64, i1 } @llvm.ssub.with.overflow.i64(i64, i64)
+        declare { i64, i1 } @llvm.smul.with.overflow.i64(i64, i64)
+        declare { i64, i1 } @llvm.uadd.with.overflow.i64(i64, i64)
+        declare { i64, i1 } @llvm.usub.with.overflow.i64(i64, i64)
+        declare { i64, i1 } @llvm.umul.with.overflow.i64(i64, i64)
+        """ + "\n";
+
     // Target information, shared Types, and exactly one strong _fltused definition (SPEC 21.5.7).
     private static readonly string Header =
         "; Kimigayo checked pre-optimization IR (" + WindowsProfile.Name + ")\ntarget triple = \"" + WindowsProfile.Target + "\"\ntarget datalayout = \"" + WindowsProfile.DataLayout + "\"\n" +
@@ -33,7 +61,7 @@ internal static partial class LlvmModuleWriter
         }
 
         output.Write(Runtime);
-        output.Write("declare { i32, i1 } @llvm.sadd.with.overflow.i32(i32, i32)\ndeclare { i32, i1 } @llvm.ssub.with.overflow.i32(i32, i32)\ndeclare { i32, i1 } @llvm.smul.with.overflow.i32(i32, i32)\n");
+        output.Write(OverflowDeclarations);
         for (var i = 0; i < module.FunctionCount; i++)
         {
             WriteFunction(output, constants, module.GetFunction(i));

@@ -94,9 +94,14 @@ internal sealed partial class BodyLowering
                 return false;
             }
 
-            if (value.Kind == OwnershipValueKind.Constant && (ReferenceEquals(ValueType(body, id), BoundType.Boolean) ? value.Constant is < 0 or > 1 : value.Constant is < int.MinValue or > int.MaxValue))
+            if (value.Kind == OwnershipValueKind.Constant)
             {
-                return false;
+                var type = ValueType(body, id);
+                var width = ScalarTypes.Width(type);
+                if (ReferenceEquals(type, BoundType.Boolean) ? value.Constant is < 0 or > 1 : width == 0 || ScalarTypes.Normalize(value.Constant, width) != value.Constant)
+                {
+                    return false;
+                }
             }
         }
 

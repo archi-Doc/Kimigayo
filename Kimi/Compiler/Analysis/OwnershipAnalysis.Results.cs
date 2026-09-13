@@ -10,7 +10,7 @@ public sealed partial class OwnershipAnalysis
     private readonly List<int> resultJoins = new();
     private readonly List<PendingResult> pendingResults = new();
 
-    private static bool ScalarResult(BoundType type) => ReferenceEquals(type, BoundType.I32) || ReferenceEquals(type, BoundType.Boolean);
+    private static bool ScalarResult(BoundType type) => ScalarTypes.Supports(type);
 
     private int ResultJoin(Koto source, int place)
     {

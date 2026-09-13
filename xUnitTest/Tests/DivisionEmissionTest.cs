@@ -105,8 +105,8 @@ public class DivisionEmissionTest
     }
 
     [Theory]
-    [InlineData("let x: u32 = 1 / 0")]
-    [InlineData("var x: i64 = 7\nx %= 2")]
+    [InlineData("let x = " + MinimalEmissionTest.UnsupportedExpression)]
+    [InlineData("var x = " + MinimalEmissionTest.UnsupportedExpression)]
     [InlineData("if false => 1.0 / 0.0")]
     [InlineData(MinimalEmissionTest.UnsupportedExpression)]
     public void OtherTypesAndOperatorsStillFailBeforeWriting(string source)

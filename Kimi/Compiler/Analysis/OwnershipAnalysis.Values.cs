@@ -8,14 +8,13 @@ public sealed partial class OwnershipAnalysis
 {
     private readonly List<int> placeValues = new();
 
-    private static bool TryScalarLiteral(Koto source, out long value)
+    private bool TryScalarLiteral(Koto source, out long value)
     {
         var negative = source is PrefixMinusKoto;
         var number = source is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)source).Operand as NumberLiteralKoto : source as NumberLiteralKoto;
-        if (number is { IsInteger: true } && number.TryGetIntegerMagnitude(out var magnitude) && magnitude <= (negative ? 2147483648UL : 2147483647UL))
+        if (number is { IsInteger: true } && number.TryGetIntegerMagnitude(out var magnitude))
         {
-            value = negative ? -(long)magnitude : (long)magnitude;
-            return true;
+            return ScalarTypes.TryLiteral(source.BoundType, magnitude, negative, this.compilation.PointerWidth, out value);
         }
 
         value = 0;
@@ -65,7 +64,7 @@ public sealed partial class OwnershipAnalysis
             {
                 this.SetValue(id, OwnershipValueKind.Constant, [], constant: boolean.Value ? 1 : 0);
             }
-            else if (ReferenceEquals(source.BoundType, BoundType.I32) && TryScalarLiteral(source, out var value))
+            else if (this.TryScalarLiteral(source, out var value))
             {
                 this.SetValue(id, OwnershipValueKind.Constant, [], constant: value);
             }
@@ -74,7 +73,7 @@ public sealed partial class OwnershipAnalysis
 
     private int UnaryValue(UnaryKoto unary)
     {
-        // Binding fits a directly signed literal once, including i32.MinValue.
+        // Binding fits a directly signed literal once, including each signed minimum.
         if (unary is PrefixMinusKoto or PrefixPlusKoto && unary.Operand is NumberLiteralKoto)
         {
             return this.Temporary(unary);

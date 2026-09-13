@@ -109,8 +109,8 @@ public class BitwiseEmissionTest
     }
 
     [Theory]
-    [InlineData("let x: i32 = 1\nlet n: i64 = 1\nx << n", true)]
-    [InlineData("let x: u32 = 1\nx >> 1", true)]
+    [InlineData(MinimalEmissionTest.UnsupportedExpression, true)]
+    [InlineData("if false => " + MinimalEmissionTest.UnsupportedExpression, true)]
     [InlineData("if false => true & false", false)]
     [InlineData("true | false", false)]
     [InlineData("true ^ false", false)]

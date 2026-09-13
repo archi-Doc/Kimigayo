@@ -109,7 +109,7 @@ public sealed class LlvmEmitter
         }
     }
 
-    private static bool ScalarOrUnit(BoundType? type) => ReferenceEquals(type, BoundType.I32) || ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Unit);
+    private static bool ScalarOrUnit(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit);
 
     private bool SkipGenerated(OwnershipBody body) => ReferenceEquals(body.Function, this.compilation.Kotonoha.GeneratedFunction) && this.compilation.Binding.Startup.Kind == StartupKind.Explicit;
 
@@ -117,7 +117,7 @@ public sealed class LlvmEmitter
     {
         var c = this.compilation;
         var startup = c.Binding.Startup;
-        if (c.BuildMetadata?.TargetTriple != WindowsProfile.Target || c.IrTarget.DataLayout != WindowsProfile.DataLayout)
+        if (c.BuildMetadata?.TargetTriple != WindowsProfile.Target || c.IrTarget.DataLayout != WindowsProfile.DataLayout || c.PointerWidth != 64)
         {
             return "Emission requires the verified windows-x64-v1 target and DataLayout.";
         }
@@ -167,7 +167,7 @@ public sealed class LlvmEmitter
                 var parameter = function.Parameters[i];
                 if (!ScalarOrUnit(parameter.Type.BoundType) || parameter.IsOptional || parameter.DefaultValue is not null)
                 {
-                    return "Only required bool/i32/Unit value parameters are implemented.";
+                    return "Only required bool/8-64-bit integer/Unit value parameters are implemented.";
                 }
             }
         }

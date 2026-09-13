@@ -37,11 +37,11 @@ public class ScalarEmissionTest
         => EmitFixture(name, source, stdout, exit);
 
     [Theory]
-    [InlineData("let x: u32 = 1")]
-    [InlineData("let x: u32 = if true => 1 else => 2")]
+    [InlineData("let x = " + MinimalEmissionTest.UnsupportedExpression)]
+    [InlineData("let x = if true => " + MinimalEmissionTest.UnsupportedExpression + " else => 2.0")]
     [InlineData(MinimalEmissionTest.UnsupportedExpression)]
-    [InlineData("if false\n    let x: u32 = 1")]
-    [InlineData("while true\n    exit\n    let x: u32 = 1")]
+    [InlineData("if false\n    " + MinimalEmissionTest.UnsupportedExpression)]
+    [InlineData("while true\n    exit\n    " + MinimalEmissionTest.UnsupportedExpression)]
     [InlineData("while true\n    continue\n    " + MinimalEmissionTest.UnsupportedExpression)]
     [InlineData("if true and (\"x\" == \"x\") => writeLine(\"bad\")")]
     public void UnsupportedOperationsNeverWriteIr(string source)
@@ -142,10 +142,10 @@ public class ScalarEmissionTest
         Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
         var ir = writer.ToString();
         // Only the failure-block Abort reason may use select; source control flow still branches.
-        var bodyStart = System.Text.RegularExpressions.Regex.Match(ir, @"define internal (?:void|i1|i32) @__kimi_(?:entry_body|f\d+)\(");
+        var bodyStart = System.Text.RegularExpressions.Regex.Match(ir, @"define internal (?:void|i1|i8|i16|i32|i64) @__kimi_(?:entry_body|f\d+)\(");
         Assert.True(bodyStart.Success);
         Assert.DoesNotMatch($@"select i1 (?!%zero\d+, i32 {WindowsLowering.IntegerDivisionZeroReason}, i32 {WindowsLowering.IntegerOverflowReason}\n)", ir[bodyStart.Index..]);
-        Assert.DoesNotContain("store i1", ir);
+        Assert.DoesNotMatch(@"store i1\b", ir);
         var path = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../bin/scalar-fixtures"));
         Directory.CreateDirectory(path);
         File.WriteAllText(Path.Combine(path, name + ".ll"), ir);

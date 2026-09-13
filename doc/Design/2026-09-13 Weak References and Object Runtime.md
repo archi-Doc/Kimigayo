@@ -209,9 +209,9 @@ upgrade が先に 1 -> 2 を確定すれば release 後にも strong 1 が残る
 
 ## 7. 内部 ABI と実装境界
 
-Weak<S> の storage は 8 bytes / align 8、内部表現は nullable ptr。ただし外側 owner の Core aggregate なので、初期 ABI は既存の aggregate 引数スロット・先頭 result slot 規則を使う。1 word の型をすべて scalar 引数にする新ルールは導入しない。explicit ValueLowering で storage/computation/cleanup を記録する。
+Weak<S> の storage は 8 bytes / align 8、内部表現は nullable ptr。関数の受け渡しは [SPEC §21.4.2](../../SPEC.md#2142-physical-function-signatures) に従ってコンパイラー実装が選択し、aggregate 引数スロットや先頭 result slot に固定しない。1 word の storage も外側 owner の Core aggregate という分類も、物理引数方式を決定しない。explicit ValueLowering で storage/computation/cleanup を記録する。
 
-strong と object borrow は今回合意した直接 pointer passing を使う。Option<S> の戻り値は既存の enum ABI。null niche optimization を自動的な ABI 保証にしない。runtime helper は同一 FunctionAbi から定義と呼び出しを生成する。診断 context は既存の ABI 位置と Abort 契約を維持する。
+strong と object borrow の直接 pointer passing、Option<S> の間接結果渡しは実装上の選択肢であり、固定契約にはしない。null niche optimization を自動的な ABI 保証にしない。runtime helper は同一 FunctionAbi 契約から定義と呼び出しを生成する。診断 context の物理位置は実装が決め、元のsource情報とAbort契約を維持する。関数ABI変更だけで本書のobject/header/side-table storage配置やcount・所有権の契約を変更しない。
 
 実装は Type formation / Core declaration、Copy・Owned / Loan 解析、ownership cleanup、TypeLayout / ValueLowering、runtime lowering の順に行う。未対応段階では generation を拒否し、Weak を trivially-copyable pointer と仮定して通さない。source artifacts と runtime profile の互換性を明示的に改訂し、古い証明や配置 cache を流用しない。
 

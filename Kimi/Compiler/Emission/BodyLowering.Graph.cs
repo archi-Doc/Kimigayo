@@ -16,12 +16,12 @@ internal sealed partial class BodyLowering
     private int[] instructionStarts = [];
     private ArithmeticCheckKind[] checks = [];
 
-    private static bool IsScalar(BoundType? type) => ReferenceEquals(type, BoundType.I32) || ReferenceEquals(type, BoundType.Boolean);
+    private static bool IsScalar(BoundType? type) => ScalarTypes.Supports(type);
 
-    private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value) => value.Kind switch
+    private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type) => value.Kind switch
     {
         OwnershipValueKind.Binary when value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan => ArithmeticCheckKind.Shift,
-        OwnershipValueKind.Binary when value.Operator is KotoKind.Slash or KotoKind.Percent => ArithmeticCheckKind.Division,
+        OwnershipValueKind.Binary when value.Operator is KotoKind.Slash or KotoKind.Percent => type is not null && ScalarTypes.Signed(type) ? ArithmeticCheckKind.Division : ArithmeticCheckKind.UnsignedDivision,
         OwnershipValueKind.Binary when value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk => ArithmeticCheckKind.Overflow,
         OwnershipValueKind.Unary when value.Operator == KotoKind.PrefixMinus => ArithmeticCheckKind.Overflow,
         _ => ArithmeticCheckKind.None,
@@ -77,7 +77,7 @@ internal sealed partial class BodyLowering
 
         for (var i = 0; i < count; i++)
         {
-            this.checks[i] = ClassifyCheck(body.Values[i]);
+            this.checks[i] = ClassifyCheck(body.Values[i], ValueType(body, i));
         }
 
         this.incoming.AsSpan(0, count).Clear();
@@ -323,7 +323,8 @@ internal sealed partial class BodyLowering
             return Fail("Unsupported scalar operation Type.", out failure);
         }
 
-        var llvm = ReferenceEquals(type, BoundType.Boolean) ? "i1" : "i32";
+        var representation = WindowsLowering.GetValue(type!)!;
+        var llvm = representation.ComputationType;
         for (var n = 0; n < value.Count; n++)
         {
             var input = Input(body, id, n);
@@ -354,7 +355,7 @@ internal sealed partial class BodyLowering
                     return Fail("Scalar load requires local storage.", out failure);
                 }
 
-                function.AddScalar(EmissionOpcode.LoadScalar, id, [], llvm, place: operation.Place);
+                function.AddScalar(EmissionOpcode.LoadScalar, id, [], llvm, place: operation.Place, representation: representation);
                 return true;
             case OwnershipOperationKind.Write:
                 if (body.Places[operation.Place].Kind == OwnershipPlaceKind.Result)
@@ -373,7 +374,7 @@ internal sealed partial class BodyLowering
                     return Fail("Missing replacement plan at Write.", out failure);
                 }
 
-                function.AddScalar(EmissionOpcode.StoreScalar, id, [Operand(body, Input(body, id, 0))], llvm, place: operation.Place);
+                function.AddScalar(EmissionOpcode.StoreScalar, id, [Operand(body, Input(body, id, 0))], llvm, place: operation.Place, representation: representation);
                 return true;
         }
 
@@ -392,14 +393,18 @@ internal sealed partial class BodyLowering
             return Fail("Missing scalar computation.", out failure);
         }
 
+        var first = Input(body, id, 0);
+        var operandType = ValueType(body, first)!;
+        var integer = ScalarTypes.Width(operandType) != 0;
+        var signed = integer && ScalarTypes.Signed(operandType);
         var op = value.Operator switch
         {
-            KotoKind.Plus => "sadd", KotoKind.Minus or KotoKind.PrefixMinus => "ssub", KotoKind.Asterisk => "smul",
-            KotoKind.Slash => "sdiv", KotoKind.Percent => "srem",
+            KotoKind.Plus => signed ? "sadd" : "uadd", KotoKind.Minus or KotoKind.PrefixMinus => signed ? "ssub" : "usub", KotoKind.Asterisk => signed ? "smul" : "umul",
+            KotoKind.Slash => signed ? "sdiv" : "udiv", KotoKind.Percent => signed ? "srem" : "urem",
             KotoKind.Ampersand => "and", KotoKind.Bar => "or", KotoKind.Caret => "xor",
-            KotoKind.LessThanLessThan => "shl", KotoKind.GreaterThanGreaterThan => "ashr",
+            KotoKind.LessThanLessThan => "shl", KotoKind.GreaterThanGreaterThan => signed ? "ashr" : "lshr",
             KotoKind.EqualsEquals => "eq", KotoKind.ExclamationEquals => "ne",
-            KotoKind.LessThan => "slt", KotoKind.LessThanEquals => "sle", KotoKind.GreaterThan => "sgt", KotoKind.GreaterThanEquals => "sge",
+            KotoKind.LessThan => signed ? "slt" : "ult", KotoKind.LessThanEquals => signed ? "sle" : "ule", KotoKind.GreaterThan => signed ? "sgt" : "ugt", KotoKind.GreaterThanEquals => signed ? "sge" : "uge",
             KotoKind.Not => "xor", KotoKind.PrefixPlus => "add",
             _ => null,
         };
@@ -408,21 +413,20 @@ internal sealed partial class BodyLowering
             return Fail("Unsupported scalar operator.", out failure);
         }
 
-        var first = Input(body, id, 0);
-        var operandType = ValueType(body, first)!;
-        if (!IsScalar(operandType) || (!ReferenceEquals(operandType, BoundType.I32) && value.Operator is not (KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.Not)))
+        if (!IsScalar(operandType) || (!integer && value.Operator is not (KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.Not)))
         {
             return Fail("Unsupported scalar operand Type.", out failure);
         }
 
-        var comparison = op is "eq" or "ne" or "slt" or "sle" or "sgt" or "sge";
+        var comparison = op is "eq" or "ne" or "slt" or "sle" or "sgt" or "sge" or "ult" or "ule" or "ugt" or "uge";
         var shift = value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan;
         if (!ReferenceEquals(type, comparison ? BoundType.Boolean : operandType) ||
             (value.Kind == OwnershipValueKind.Binary && (shift
-                ? !ReferenceEquals(ValueType(body, Input(body, id, 1)), BoundType.I32) // Count Type is independent; only i32 is implemented here.
+                ? ScalarTypes.Width(ValueType(body, Input(body, id, 1))) == 0
                 : !ReferenceEquals(operandType, ValueType(body, Input(body, id, 1))))) ||
             ((value.Kind == OwnershipValueKind.Unary) != (value.Operator is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus)) ||
-            (value.Operator == KotoKind.Not && !ReferenceEquals(operandType, BoundType.Boolean)))
+            (value.Operator == KotoKind.Not && !ReferenceEquals(operandType, BoundType.Boolean)) ||
+            (value.Operator == KotoKind.PrefixMinus && !signed))
         {
             return Fail("Inconsistent scalar operator or operand Types.", out failure);
         }
@@ -436,7 +440,9 @@ internal sealed partial class BodyLowering
             return Fail("Arithmetic check has no source location.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Scalar, id, [leftOperand, rightOperand], ReferenceEquals(operandType, BoundType.Boolean) ? "i1" : "i32", op, place: body.Operations.Count + id, location: location, check: check, comparison: comparison);
+        var operandRepresentation = WindowsLowering.GetValue(operandType)!;
+        var countRepresentation = shift ? WindowsLowering.GetValue(ValueType(body, Input(body, id, 1))!) : null;
+        function.AddScalar(EmissionOpcode.Scalar, id, [leftOperand, rightOperand], operandRepresentation.ComputationType, op, place: body.Operations.Count + id, location: location, check: check, comparison: comparison, representation: operandRepresentation, countRepresentation: countRepresentation);
         return true;
     }
 }

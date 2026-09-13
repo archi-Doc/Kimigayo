@@ -282,6 +282,7 @@ internal enum OwnershipValueKind : byte
 }
 
 // Start/Count address PhiInputs for Phi, otherwise ValueOperands.
+// Constant holds the signed-extended N-bit integer payload, or the logical index for Parameter.
 internal readonly record struct OwnershipValue(OwnershipValueKind Kind, int Start, int Count, long Constant = 0, KotoKind Operator = default);
 
 // Value is a defining operation, Edge is the actual arrival after cleanup, Write secures a result or is -1.

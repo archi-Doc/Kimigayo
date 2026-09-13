@@ -7659,20 +7659,15 @@ Unused nongeneric bodies and unexecuted branches within generated bodies still r
 
 ##### 21.4.2. Physical function signatures
 
-The initial internal ABI is versioned, module-local, and uses LLVM ccc. It applies to user functions, Core, and private runtime helpers in Application and inspection-only Library output. It is not the C ABI or a published inter-module ABI. Derive definitions and calls from the same FunctionAbi.
+The internal function ABI is compiler-controlled, module-local, and deliberately unfixed. It applies to user functions, Core, and private runtime helpers in Application and inspection-only Library output. No physical calling convention, parameter/result representation or ordering, hidden-context position, symbol spelling, or stable ABI version is a language guarantee. The compiler may change these choices between builds, targets, optimization settings, or individual generated functions without a language-version change, provided all language semantics and external contracts remain satisfied. No binary compatibility between independently generated modules or compiler builds is promised.
 
-| Language value | Initial internal passing |
-| --- | --- |
-| Integers, floats, bool, char, raw pointer | Direct computation Type from §21.1.4 |
-| Struct, Tuple, fixed array, string, enum under `owner` Semantics | ptr to a dedicated initialized argument slot |
-| Aggregate result | First argument is ptr to caller-provided uninitialized result storage; LLVM result is void |
-| Unit | Omit its physical argument slot; return void |
-| Never result | No result storage; void/noreturn and nonreturning CFG |
-| Object handle and object borrow | Direct ptr under §21.2.3, with an explicit implemented ValueLowering and ownership operations |
-| `Core.Weak<S>` under `owner` Semantics | Aggregate argument/result slot rules despite its one-word storage; explicit implemented ValueLowering and cleanup required |
-| Value borrow, common function value | Requires an explicit implemented ValueLowering; never assume one ptr |
+Direct or indirect passing, aggregate splitting/coercion, result storage, omitted slots, calling conventions such as LLVM ccc or fastcc, and ABI attributes such as byval or sret are implementation choices, not prescribed defaults. Storage layouts defined elsewhere do not fix function passing: this includes scalars, string, object handles, and Core.Weak<S>. Unit still has its logical value/effects, and Never still has no normal result or return edge. Every emitted representation requires an implemented ValueLowering and its complete validity, ownership, and cleanup operations; implementation freedom does not permit guessing an unsupported representation.
 
-Preserve logical parameter order, including the analyzed receiver slot. A value receiver is evaluated once before explicit arguments (§7.3); a Type-qualified unbound call supplies self in ordinary argument order. Hidden diagnostic context follows ordinary physical parameters. Argument and result pointers are ordinary ptr parameters: do not add byval or sret automatically. A future ABI change must update both sides.
+Derive definitions and all calls, including indirect entries and adapters when supported, from the same FunctionAbi contract. Physical rearrangement must preserve the mapping to logical parameters and results. Evaluate and acquire explicit arguments once in source order. A value receiver is evaluated once before explicit arguments (§7.3); a Type-qualified unbound call supplies self in ordinary argument order. Physical slot order does not determine evaluation order. Select ABI attributes according to the actual backend contract and prove any additional validity or optimization premises; a calling convention or attribute cannot grant source-level Copy, Move, or alias permissions.
+
+An ABI change must update every affected definition, caller, adapter, and compiler-generated runtime helper consistently, and invalidate incompatible generated/cache artifacts. A private implementation identity or content key is sufficient; no separately published internal ABI version or compatibility window is required. The specified OS entry, foreign C calls, backend-support symbols, and externally observable storage retain their own contracts. In particular, backendSupport.abiVersion identifies the external backend supply, not a stable Kimigayo function ABI.
+
+**Non-normative example.** One compiler implementation can use direct scalar passing and caller-provided aggregate slots as follows. These signatures illustrate a possible lowering, not a required or frozen ABI.
 
 ```kimi
 group Samples
@@ -7692,19 +7687,21 @@ entry:
 
 ##### 21.4.3. Slot responsibility and normal return
 
-Acquire arguments once in source order. Copy preserves its source; Move transfers responsibility into the argument temporary. Allocating a slot is not Copy. A Copy source cannot share a slot that the callee may consume or modify.
+The following responsibilities are language semantics, independent of the physical ABI. Argument temporaries and secured results are logical values; the compiler need not allocate a separate physical slot for each. The table also describes a caller-provided result-slot implementation when one is used.
 
-| Point | Argument temporaries | Aggregate result slot |
+Acquire arguments once in source order. Copy preserves its source; Move transfers responsibility into the argument temporary. Allocating a slot is not Copy. A Copy source cannot share mutable storage with the callee's acquired value when that would expose consumption or modification of the source.
+
+| Point | Acquired argument values | Secured result / optional result storage |
 | --- | --- | --- |
-| Acquisition / just before call | Acquired values are caller responsibility | Uninitialized |
-| Callee entry | Responsibility transfers to callee | Uninitialized |
-| Result secured, cleanup running | Remaining parts are callee responsibility | Initialized, still callee responsibility |
+| Acquisition / just before call | Acquired values are caller responsibility | No result yet; optional storage is uninitialized |
+| Callee entry | Responsibility transfers to callee | No result yet; optional storage is uninitialized |
+| Result secured, cleanup running | Remaining parts are callee responsibility | Secured, still callee responsibility |
 | Normal return edge | Consumed or cleaned; caller must not destroy again | Responsibility transfers to caller; caller's Initialized fact begins here |
 | Abort or nontermination | No later normal cleanup/return | Caller neither reads nor destroys it |
 
 Transfers during argument acquisition use the caller's cleanup plan for already acquired temporaries. A callee that was never entered cannot perform their cleanup. The callee never frees caller-owned stack storage. Securing a result before cleanup does not make it available to the caller: cleanup must finish before return. If it Aborts or diverges, later cleanup and result delivery do not occur.
 
-If a zero-sized value needs an address, initially use a one-byte substitute slot with the original Type's alignment, such as `alloca i8, align 8`. This changes neither size nor stride. Shared substitute slots meet maximum alignment and remain alive through the last use; Place Identities retain separate state and responsibility. Their existence grants no positive dereferenceable guarantee for the semantic zero-byte value.
+If a zero-sized value needs an address, the implementation must satisfy its alignment and lifetime without changing its language size or stride. One possible implementation uses a one-byte substitute slot, such as `alloca i8, align 8`. Shared substitute slots meet maximum alignment and remain alive through the last use; Place Identities retain separate state and responsibility. Their existence grants no positive dereferenceable guarantee for the semantic zero-byte value.
 
 ##### 21.4.4. Values, Places, and control flow
 
@@ -7774,7 +7771,7 @@ Emit one definition for each generated function, without a same-name declare. Ex
 
 Use one module symbol table. Same-named external declarations share only if physical Type, calling convention, ABI attributes, dllimport, and resolved library all agree; otherwise diagnose. Function/data and declaration/generated-definition collisions are errors. Reserve __kimi_ for compiler internals, llvm. for LLVM, and _fltused, __chkstk, memcpy, memmove, memset for profile supplies; reject these external names in user LibraryImport. Match exact ABI symbol names. Quote/escape LLVM identifiers and UTF-8 bytes; never insert raw source strings into IR. Shared ptr signatures do not merge source unsafe contracts; attach only guarantees true for every use.
 
-Deterministic output and cache keys retain compiler/layout/internal-ABI versions, target/DataLayout/codegen settings, backend package version/hash, selected fragments/generated sources, complete arguments and selected implementations, cleanup, callees, and helper dependencies. Size/alignment alone is never a sufficient key. Do not depend on absolute working directories, host locale, enumeration order, or host CPU.
+Deterministic output and cache keys retain compiler/layout identities, the selected internal ABI implementation and per-function contracts, target/DataLayout/codegen settings, backend package version/hash, selected fragments/generated sources, complete arguments and selected implementations, cleanup, callees, and helper dependencies. Content identities may cover internal ABI choices without a public version number; changed choices invalidate dependent artifacts. Size/alignment alone is never a sufficient key. Do not depend on absolute working directories, host locale, enumeration order, or host CPU.
 
 ##### 21.5.3. Checked instructions and raw pointers
 
@@ -7836,6 +7833,8 @@ All generated definitions use uwtable(async). Let LLVM produce required .pdata/.
 ##### 21.5.6. Constants
 
 Retain exact integer magnitudes and decimal values through fitting; round once to the selected f32/f64 and emit its fitted bits using exact LLVM 22.1.8 syntax. Do not round through host f64 or culture-dependent formatting. Verify bit equality after LLVM rereading (for example, 0.1 fitted to f32 has bits 0x3DCCCCCD).
+
+For integer constants, validate the fitted value against its language Type before lowering and validate the selected-width bit representation before LLVM serialization. LLVM parser acceptance is not proof that a constant was within range; emission must not rely on implicit truncation to repair an invalid constant plan.
 
 After source newline/escape processing, encode strings as UTF-8 with byte lengths; embedded NUL is data, with no automatic terminator. Preserve interpolation evaluation order. Share identical byte sequences within the module as private unnamed_addr constants; backing addresses do not define string equality/identity. An empty literal is Static/null/length zero with no allocation. Non-Copy ownership remains unchanged (§22.5.5).
 
@@ -8070,7 +8069,7 @@ Abort(reason: DiagnosticText, sourceLocation: SourceLocation) -> Never
 
 Alloc, detected Free failures, and WriteStdout fail by Abort. TryWriteStderr returns false without initiating Abort. Abort attempts diagnostics then Exit(1); Exit never returns and performs no Kimigayo cleanup. The normal language path calls Exit(0) only after cleanup.
 
-Physical helpers may append private diagnostic context after ordinary parameters. Lowering passes static logical path/line/column information for the original operation, including failures inside Alloc/Free/WriteStdout and generated-source CodeContext provenance. This does not depend on PDBs or stack traces.
+Physical helpers carry any required private diagnostic context using the compiler-selected internal ABI (§21.4.2); its position and representation are not fixed. Lowering preserves static logical path/line/column information for the original operation, including failures inside Alloc/Free/WriteStdout and generated-source CodeContext provenance. This does not depend on PDBs or stack traces.
 
 Generated arithmetic checks report the start of the failing arithmetic expression. Compound assignment and increment/decrement report the start of the complete update expression. These locations remain the same across optimization levels.
 
@@ -8117,7 +8116,7 @@ TryWriteStderr failure truncates diagnostics and proceeds to Exit(1), with no re
 
 ##### 22.5.5. String handle and writeLine
 
-The initial internal string representation is `{ ptr, i64, i8 }`: data, byteLength, releaseKind. Use DataLayout for padding/alignment and the aggregate internal ABI. It is not a public FFI/binary ABI.
+The initial internal string storage representation is `{ ptr, i64, i8 }`: data, byteLength, releaseKind. Use DataLayout for padding/alignment. Function passing is selected independently under §21.4.2 and need not use aggregate argument/result slots. This storage representation is not a public FFI/binary ABI.
 
 | Component/state | Validity and responsibility |
 | --- | --- |
@@ -8383,6 +8382,8 @@ Preserve one-time receiver/argument evaluation, index-evaluation protection, exc
 
 Validate windows-x64-v1 with LLVM 22.1.8, distinguishing semantic acceptance, TypeLayout, IR structure, object ABI/dependencies/unwind, and actual execution. The verifier alone cannot establish layout, foreign ABI, ownership transfer, or correct startup. Keep input/target/settings/expected results together; retain representative golden IR plus structural checks, and normalize only irrelevant internal numbering/paths.
 
+Internal-function IR/signature expectations test the selected compiler implementation, not a stable language ABI. When its choices change, update those expectations and verify matching definitions/calls/adapters, artifact invalidation, source-order acquisition, ownership/result delivery, and unchanged external contracts. No cross-build internal ABI compatibility test is required.
+
 | Area | Required coverage |
 | --- | --- |
 | Startup | Unique implicit/explicit body; uninitialized top-level let/var and Unit; empty/declaration-only documents; invalid/duplicate main; mixed forms; selected/generated items; Library restrictions; static-only documents |
@@ -8559,7 +8560,7 @@ This index links to design boundaries owned by the language sections. It adds no
 | Exact precompilation, callee propagation, sharing/ABI formats, and optimization budgets | Implementation-design boundaries | [Generic generation limits](#2135-generation-limits-and-code-merging) |
 | Automatic toolchain installation, debug information, cross-module/DLL ABI, extra CPU/OS profiles | Deferred beyond the Windows profile; explicit build/run commands are defined in §20.8.6 | [Native build](#208-llvm-output-native-build-and-execution), [LLVM profile](#215-llvm-windows-x64-profile) |
 | Stack exhaustion detection, diagnostics, and recovery | Unspecified; no guaranteed conversion to Kimi Abort or recovery contract | [Storage and unwind information](#2155-storage-attributes-and-unwind-information) |
-| Dynamic collections, borrow/object/function handle ABI, rc/arc physical counters/order, general shared-generic metadata | Physical representation must be specified before emission; no implicit one-pointer fallback | [Object metadata](#212-object-metadata), [Internal ABI](#2142-physical-function-signatures) |
+| Dynamic collections, value-borrow/common-function storage, general shared-generic metadata | Remaining representations require complete design and implementation before emission; the object/count/Weak storage profile is defined in §21.2.3. Internal function passing is compiler-controlled under §21.4.2, not a fixed language ABI; no implicit unsupported one-pointer fallback | [Object metadata](#212-object-metadata), [Internal ABI](#2142-physical-function-signatures) |
 | C aggregate passing/export/callback/varargs, Unicode console adapter, over-aligned allocation, arbitrary exit codes and FP environment control | Deferred extensions | [FFI](#223-foreign-function-imports), [Windows runtime](#225-initial-windows-runtime) |
 | Contract-level abstract Origins, non-static erased views, static-Place Origins, and lending iterators | Deferred design; ordinary retained storage is defined in §15.4 | [Abstract Origins](#153-abstract-origins), [Lifetime design boundaries](#159-lifetime-design-boundaries) |
 | Destruction lifetime relaxation | Deferred design | [Destruction lifetime checking](#1566-destruction-lifetime-checking) |
