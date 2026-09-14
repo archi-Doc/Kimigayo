@@ -1,7 +1,7 @@
 ## Kimigayo
 Work in progress
 
-See [SPEC.md](SPEC.md) for language rules and [STATUS.md](STATUS.md) for executable coverage.
+See the [specification index](SPEC.md) and its chapter files in `spec/` for language rules and [STATUS.md](STATUS.md) for executable coverage.
 
 Build and test with the .NET 10 SDK:
 
@@ -17,7 +17,7 @@ Prepare the shared LLVM/backend toolchain once from an existing LLVM 22.1.8 dire
 dotnet run --project Kimi -c Release -- build examples/Hello/Hello.kimiproj
 ```
 
-Tools are stored in `toolchain/`, and the verified backend library in `toolchain/windows_x64/`. Projects need no machine-specific paths. See [SPEC §20.8.8](SPEC.md#2088-toolchain-storage-and-native-library-lifecycle) for generation, installation, lookup and linking. When distributing the compiler outside this checkout, place the toolchain beside Kimi.exe/Kimi.dll or select it with `--ToolchainRoot` / `KIMI_TOOLCHAIN_ROOT`.
+Tools are stored in `toolchain/`, and the verified backend library in `toolchain/windows_x64/`. Projects need no machine-specific paths. See [SPEC §20.8.8](spec/20-compilation-configuration.md#2088-toolchain-storage-and-native-library-lifecycle) for generation, installation, lookup and linking. When distributing the compiler outside this checkout, place the toolchain beside Kimi.exe/Kimi.dll or select it with `--ToolchainRoot` / `KIMI_TOOLCHAIN_ROOT`.
 
 Publish the compiler with NativeAOT on Windows x64 using the .NET NativeAOT C++ toolchain prerequisites:
 

@@ -109,7 +109,7 @@ pointer と metadata の対応は型代入・生成計画で保証する。V の
 
 具体 Closure E は取得済み capture を直接格納する集約値。各 capture の完全な型、Binding Identity、論理順、mutability、Move Path、Origin・Loan を物理配置と別に保持する。capture は利用者の Field ではなく、E に利用者定義の `deinit`・Layout Attribute・反射 API は追加しない。
 
-取得は明示 capture の記述順、推論 capture の解決済み初出順に一度ずつ行う。未使用の明示 capture も取得する。推論 capture の Copy 要求、外部借用、自分の owned capture への自己借用禁止は [SPEC §7.6](../../SPEC.md#76-function-expressions) に従う。環境は完成してから公開する。
+取得は明示 capture の記述順、推論 capture の解決済み初出順に一度ずつ行う。未使用の明示 capture も取得する。推論 capture の Copy 要求、外部借用、自分の owned capture への自己借用禁止は [SPEC §7.6](../../spec/07-functions-and-callable-values.md#76-function-expressions) に従う。環境は完成してから公開する。
 
 #### 3.1.2 集約の共通配置
 
@@ -184,7 +184,7 @@ func demonstrate() -> ()
 
 方式は E の配置で決まり、tag は不要。空環境にも同じ条件を使い、size 0・alignment 16 の E は heap 側とする。inline の環境語は pointer とは限らず、未使用 byte は未規定。
 
-heap 側は `Alloc(size(E))` で確保する。allocator は16-byte alignment と size 0 の代替 byte を保証し、alignment 引数・header・独自 prefix は追加しない。16を超える alignment は生成時に未対応診断とし、[確保上限](../../SPEC.md#2252-allocation-and-release)を適用する。
+heap 側は `Alloc(size(E))` で確保する。allocator は16-byte alignment と size 0 の代替 byte を保証し、alignment 引数・header・独自 prefix は追加しない。16を超える alignment は生成時に未対応診断とし、[確保上限](../../spec/22-core-execution-and-foreign-functions.md#2252-allocation-and-release)を適用する。
 
 #### 4.1.2 操作表
 
@@ -258,7 +258,7 @@ freeStorage(header, descriptor, location)
 
 ### 5.1 型 identity
 
-ValueMetadata の型 key は、別名等を正規化し、Origin だけを再帰的に除いた完全な値の ArgKey。外側を含む Semantics、型構造、名目 identity、束縛済み引数を残す。object の動的型 identity は実際の payload D の CoreId とする。payload の owner/D は通常の正規化で冗長な owner を除くため、その ArgKey は CoreId(D) と一致する。view や handle の所有 mode で置き換えない。詳細な正規化は [SPEC §21.2.1](../../SPEC.md#2121-type-identity-and-descriptors) に従う。
+ValueMetadata の型 key は、別名等を正規化し、Origin だけを再帰的に除いた完全な値の ArgKey。外側を含む Semantics、型構造、名目 identity、束縛済み引数を残す。object の動的型 identity は実際の payload D の CoreId とする。payload の owner/D は通常の正規化で冗長な owner を除くため、その ArgKey は CoreId(D) と一致する。view や handle の所有 mode で置き換えない。詳細な正規化は [SPEC §21.2.1](../../spec/21-layout-runtime-and-code-generation.md#2121-type-identity-and-descriptors) に従う。
 
 最終生成単位で、異なる正規化 key に異なる非ゼロ u64 token を決定的に割り当てる。hash 衝突は生成時に元の key で照合する。artifact に key と依存を保持し、生成単位の統合時は token と全参照を更新する。数値の外部公開・永続化・動的 link は対象外とする。
 
@@ -353,7 +353,7 @@ let moved = transfer(text) // string は Non-Copy。text は Move 済み。
 
 共有 body の取得と cleanup は同じ静的計画から生成する。通常取得の物理転送は Copy/Move で共通であり、Copy の元値は破棄不要なので、この選択だけの runtime 分岐は省ける。ただし、元値の Initialized/Moved、再利用、Loan の違いは保持する。
 
-**SharedReadResult は通常取得と区別する。** [SPEC §4.6.6](../../SPEC.md#466-slice-operations-and-element-results) の完全な型の Semantics に従う。owner の要素は Copy なら値、Non-Copy なら格納領域の ref を返すが、rc/arc/obj は objref、uniq/objuniq は共有 Reborrow になる。
+**SharedReadResult は通常取得と区別する。** [SPEC §4.6.6](../../spec/04-arrays-indexing-and-slices.md#466-slice-operations-and-element-results) の完全な型の Semantics に従う。owner の要素は Copy なら値、Non-Copy なら格納領域の ref を返すが、rc/arc/obj は objref、uniq/objuniq は共有 Reborrow になる。
 
 HasCopy は owner の分岐に必要だが、一般の T の取得方法をそれだけで決めない。型代入と context/adapter の計画に、Semantics ごとの結果型・取得効果・Origin・ABI の対応を保持する。共有 body は許される全ケースについて定義時に検証する。
 
@@ -395,7 +395,7 @@ heap 環境の stack 配置は、全使用・破棄経路を静的に追跡で�
 
 **呼び出し全体の共通証明。** 通常の安全な値借用を物理 pointer で渡す場合、**ref/V・uniq/V の noalias は、呼び出し全体の借用契約から共通に証明する。** FunctionAbi はこの証明を定義・call・adapter で共有し、pointer の由来を保つ。callee 内の最後の使用だけで、呼び出し側の保護を解除しない。
 
-receiver・引数の Loan は評価中の形成時から call の終了まで保護し、結果が依存する分はさらに延長する。引数同士と capture の依存・storage anchor を通常の重なり規則で照合する。static への直接・間接アクセス、再入、default、初期化、cleanup は [SPEC §15.6.4](../../SPEC.md#1564-calls-and-origin-propagation) の呼び出し全体の効果要約で照合する。不明な効果は競合し得る active static Loan に対して保守的に拒否する。Owned 環境でも残る static anchor や、capture 内の依存を省かない。
+receiver・引数の Loan は評価中の形成時から call の終了まで保護し、結果が依存する分はさらに延長する。引数同士と capture の依存・storage anchor を通常の重なり規則で照合する。static への直接・間接アクセス、再入、default、初期化、cleanup は [SPEC §15.6.4](../../spec/15-ownership-and-lifetime-analysis.md#1564-calls-and-origin-propagation) の呼び出し全体の効果要約で照合する。不明な効果は競合し得る active static Loan に対して保守的に拒否する。Owned 環境でも残る static anchor や、capture 内の依存を省かない。
 
 ref/V の inline bytes は call 中に変更されず、uniq/V には独立した経路からアクセスできない。uniq 引数に由来する子 Reborrow は許す。LLVM の noalias は関数実行中に変更される領域を制約するため、同じ値を二つの ref 引数で読むことは合法となる。
 

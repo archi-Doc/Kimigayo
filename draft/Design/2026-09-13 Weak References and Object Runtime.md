@@ -52,7 +52,7 @@ Loan の由来を Origin 名だけで代用しない。後続の upgrade と結�
 
 Owned は既存の OwnedOrigins で判定し、S 全体を走査する。構築中・期限切れでも型の条件は変わらない。通常の生成・downgrade・格納には一律の Owned 制約を置かない。型消去は既存の Owned 証明を必要とする。
 
-Weak を所有 capture した Closure は Non-Copy。`ref/Weak<S>` の capture は共有借用規則に従う。共通関数値への変換には、環境全体の Owned に加え、Shared 呼び出しなど [SPEC §7.6.4](../../SPEC.md#764-function-references-and-common-type-conversion) の全条件が必要。
+Weak を所有 capture した Closure は Non-Copy。`ref/Weak<S>` の capture は共有借用規則に従う。共通関数値への変換には、環境全体の Owned に加え、Shared 呼び出しなど [SPEC §7.6.4](../../spec/07-functions-and-callable-values.md#764-function-references-and-common-type-conversion) の全条件が必要。
 
 ### 1.4 適用範囲と未導入の機能
 
@@ -62,9 +62,9 @@ Weak を所有 capture した Closure は Non-Copy。`ref/Weak<S>` の capture �
 
 - rc↔arc・obj→共有所有の変換、string 等の一般的な複製 API、strong 循環の自動回収。
 - 生存確認だけの API、Weak から payload への直接アクセス・object borrow・型検査・view 変換。アクセスや view 変更には、upgrade で得た strong を使う。
-- source の thread/task・payload 同期・thread-transfer。arc の atomic 性はこれらを許可せず、[SPEC D.2](../../SPEC.md#d2-concurrency-memory-model-and-thread-transfer) に従う。
+- source の thread/task・payload 同期・thread-transfer。arc の atomic 性はこれらを許可せず、[SPEC D.2](../../spec/appendices/D-deferred-features.md#d2-concurrency-memory-model-and-thread-transfer) に従う。
 
-将来の内部可変性も §2–3 の寿命・guard 規則を引き継ぐ。Weak upcast には [SPEC §13.5.7](../../SPEC.md#1357-object-upcasts) の静的な view 関係・Owned 証明・依存保持を再利用できるが、Move/clone・count の契約が別途必要。同じ pointer 表現だけでは許可せず、runtime の検査を要する downcast とも区別する。
+将来の内部可変性も §2–3 の寿命・guard 規則を引き継ぐ。Weak upcast には [SPEC §13.5.7](../../spec/13-operators-and-assignment.md#1357-object-upcasts) の静的な view 関係・Owned 証明・依存保持を再利用できるが、Move/clone・count の契約が別途必要。同じ pointer 表現だけでは許可せず、runtime の検査を要する downcast とも区別する。
 
 ## 2. 寿命と構築
 
@@ -98,7 +98,7 @@ Weak を所有 capture した Closure は Non-Copy。`ref/Weak<S>` の capture �
 
 builder が Abort / 非終了なら strong を公開せず、巻き戻しや後続 cleanup は保証しない。回復可能な失敗結果を返す生成 API、自己を指す raw pointer、排他的な object view は追加しない。
 
-Owned 制約を外して F の capture の依存だけを引き継ぐ案は採用しない。[SPEC §11.3.2](../../SPEC.md#1132-static-storage)・[§15.6.4](../../SPEC.md#1564-calls-and-origin-propagation) は、入力の寿命に制限した mutable static field の借用を helper が返す場合を認める。この Field の Loan は capture の Loan とは別であり、Copy・Reborrow・Move による責任の違いも残る。緩和には、builder の公開された結果契約から実際の Loan と移譲を特定し、呼び出し前の Weak にも同じ依存を付ける規則が必要。
+Owned 制約を外して F の capture の依存だけを引き継ぐ案は採用しない。[SPEC §11.3.2](../../spec/11-properties.md#1132-static-storage)・[§15.6.4](../../spec/15-ownership-and-lifetime-analysis.md#1564-calls-and-origin-propagation) は、入力の寿命に制限した mutable static field の借用を helper が返す場合を認める。この Field の Loan は capture の Loan とは別であり、Copy・Reborrow・Move による責任の違いも残る。緩和には、builder の公開された結果契約から実際の Loan と移譲を特定し、呼び出し前の Weak にも同じ依存を付ける規則が必要。
 
 ### 2.3 最後の解放
 
@@ -135,7 +135,7 @@ object allocation を 16-byte aligned とし、完全 payload は常に `header 
 
 完全 payload の基点は descriptor を読まずに求められるが、base view の調整・動的型検査には metadata が必要。旧配置に比べ、obj は payload alignment が 8 以下なら論理確保サイズが 8 bytes 増え、16 なら変わらない。実際の速度・heap 消費は最適化と allocator にも依存する。
 
-この表は格納表現を定義する。引数・戻り値の渡し方は [SPEC §21.4.2](../../SPEC.md#2142-physical-function-signatures) に従って FunctionAbi が決める。1 pointer の格納だけから、直接渡しや slot 渡しを固定しない。
+この表は格納表現を定義する。引数・戻り値の渡し方は [SPEC §21.4.2](../../spec/21-layout-runtime-and-code-generation.md#2142-physical-function-signatures) に従って FunctionAbi が決める。1 pointer の格納だけから、直接渡しや slot 渡しを固定しない。
 
 ### 3.2 count と状態の符号化
 

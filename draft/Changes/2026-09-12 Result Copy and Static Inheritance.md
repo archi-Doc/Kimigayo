@@ -65,6 +65,6 @@
 
 ## Decision — 最終決定
 
-上記を採用し、SPEC.md に反映した。コンパイラー実装は別作業とし、[確定変更案・実装計画](<../Design/2026-09-12 Result Copy and Virtual Scope.md>) の段階別受入条件に従う。Result の変更は静的継承の変更から独立して実装できる。
+上記を採用し、SPEC.md に反映した。コンパイラー実装は別作業とし、[確定変更案・実装計画](<../Design/2026-09-12%20Result%20Copy%20and%20Virtual%20Scope.md>) の段階別受入条件に従う。Result の変更は静的継承の変更から独立して実装できる。
 
 virtual/override、runtime Contract View、Pattern の借用取得指定は今回導入しない。未実装の解析や未解決義務を Proven / NotProven に読み替えて受理せず、仕様採用と実装完了を区別する。

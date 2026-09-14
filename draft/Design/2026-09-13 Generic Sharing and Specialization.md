@@ -15,7 +15,7 @@
 
 この順序は論理的な依存であり、pass分割を固定しない。共有・特殊化・予算変更で、意味上の受理、実装選択、結果、効果順、cleanupを変えない。lookupや制約・Loanの検証を実行時へ移さず、生成キーで消去するOriginも意味の検証と依存には保持する。
 
-変更しない言語規則はSPECの[汎用body検証](../../SPEC.md#810-generic-body-checking-and-deferred-obligations)、[長さ引数](../../SPEC.md#44-function-length-parameters)、[取得・cleanupと内部ABI](../../SPEC.md#214-checked-lowering-and-internal-abi)に従う。
+変更しない言語規則はSPECの[汎用body検証](../../spec/08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations)、[長さ引数](../../spec/04-arrays-indexing-and-slices.md#44-function-length-parameters)、[取得・cleanupと内部ABI](../../spec/21-layout-runtime-and-code-generation.md#214-checked-lowering-and-internal-abi)に従う。
 
 ~~~kimi
 func classify<T>(value: ref/T) -> i32 => 0

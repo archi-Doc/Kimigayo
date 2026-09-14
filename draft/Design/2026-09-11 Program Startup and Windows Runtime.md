@@ -4,7 +4,7 @@
 
 状態: 最終採用仕様（初期Windows x64プロファイル）。実装状況はSTATUS.mdで別途管理する。
 
-2026-09-13 内部関数ABI方針改訂: 内部関数の物理的な受け渡しは固定せず、コンパイラー実装に委ねる。§10の具体的な署名・slot方式・LLVM例は実装例として読み、[SPEC §21.4.2](../../SPEC.md#2142-physical-function-signatures)を現行方針とする。引数評価・所有権・cleanup・結果の引き渡し、およびstorage配置・OS entry・外部C ABI・backend供給ABIの契約はそれぞれ維持する。
+2026-09-13 内部関数ABI方針改訂: 内部関数の物理的な受け渡しは固定せず、コンパイラー実装に委ねる。§10の具体的な署名・slot方式・LLVM例は実装例として読み、[SPEC §21.4.2](../../spec/21-layout-runtime-and-code-generation.md#2142-physical-function-signatures)を現行方針とする。引数評価・所有権・cleanup・結果の引き渡し、およびstorage配置・OS entry・外部C ABI・backend供給ABIの契約はそれぞれ維持する。
 
 対象: Kimigayoコンパイラーの初期実行サブセットと、その後の型対応に使う生成規則
 
@@ -277,7 +277,7 @@ static Propertiesの実行をまだ実装していない段階では、必要な
 
 Abortは、診断の出力を試みてから異常終了する。初期Windows実装の終了コードは`1`とする。
 
-Abort開始後は通常のスコープ終了処理やスタックを遡る破棄処理（stack unwinding）を行わない。cleanup中にAbortした場合も、その先のdefer・デストラクター・確保済み戻り値のcleanupを実行しない。詳細は[既存SPEC §17.3](../../SPEC.md#173-abort-termination)に従う。
+Abort開始後は通常のスコープ終了処理やスタックを遡る破棄処理（stack unwinding）を行わない。cleanup中にAbortした場合も、その先のdefer・デストラクター・確保済み戻り値のcleanupを実行しない。詳細は[既存SPEC §17.3](../../spec/17-failure-handling.md#173-abort-termination)に従う。
 
 <a id="section-4"></a>
 
@@ -310,7 +310,7 @@ Runtimeはコンパイラー内部の抽象化であり、新しいソース言�
 
 ### 4.3. 配置・値の表現・関数ABI
 
-[SPEC §21.1](../../SPEC.md#211-structure-layout-and-abi)には既にsize・alignment・stride、同一入力での再現性、有限なinline storage、物理配置と初期化・破棄順序の分離がある。Unitのsize 0・alignment 1・stride 0も確定している。
+[SPEC §21.1](../../spec/21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi)には既にsize・alignment・stride、同一入力での再現性、有限なinline storage、物理配置と初期化・破棄順序の分離がある。Unitのsize 0・alignment 1・stride 0も確定している。
 
 本書では、配置方式の選択、方式ごとの保証、Cとの互換性の判定を追加する。「Rustに準じる」は配置自由度を持つ保証モデルを意味し、rustcと同じoffsetやRust ABIを約束しない。
 
@@ -1112,7 +1112,7 @@ GEPの要素間隔がstride(T)と一致することをTypeLayoutで確認する�
 
 ポインターを整数化してから加算・再変換する形を、ポインター算術の基本実装にしない。LLVMのptrtoint/inttoptrを使っても、言語上のprovenance・寿命・アクセス権限の回復は保証しない。本プロファイルは、整数から復元したという事実だけでdereference可能とする追加保証を与えない。
 
-型付きアクセスは有効な範囲・alignment・アクセス権限を必要とする。loadには初期化済みの有効値、storeには§11.9の初期配置・置換の条件を適用する。alias保証をポインターの型名やアドレス比較から作らない。[既存SPEC §5](../../SPEC.md#5-raw-pointers-and-unsafe-memory)、[LLVM pointer conversions](https://llvm.org/docs/LangRef.html#ptrtoint-to-instruction)
+型付きアクセスは有効な範囲・alignment・アクセス権限を必要とする。loadには初期化済みの有効値、storeには§11.9の初期配置・置換の条件を適用する。alias保証をポインターの型名やアドレス比較から作らない。[既存SPEC §5](../../spec/05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory)、[LLVM pointer conversions](https://llvm.org/docs/LangRef.html#ptrtoint-to-instruction)
 
 ### 11.5. 検査付き算術と変換
 
@@ -1156,7 +1156,7 @@ ok:
 }
 ```
 
-言語が要求するコンパイル時評価での失敗は診断する。通常の実行式は、定数伝播で失敗が判明してもコンパイルエラーに変えず、その経路を実行した場合だけAbortする。検査を省いて通常処理へ進めるのは、成功が証明できる場合だけとする。到達しない処理は除去でき、失敗が確定した経路はAbortへ簡約できる。literal fitting等の静的検査は最適化によらず適用する。[既存SPEC §17.3.4](../../SPEC.md#1734-checks-builds-and-constant-evaluation)
+言語が要求するコンパイル時評価での失敗は診断する。通常の実行式は、定数伝播で失敗が判明してもコンパイルエラーに変えず、その経路を実行した場合だけAbortする。検査を省いて通常処理へ進めるのは、成功が証明できる場合だけとする。到達しない処理は除去でき、失敗が確定した経路はAbortへ簡約できる。literal fitting等の静的検査は最適化によらず適用する。[既存SPEC §17.3.4](../../spec/17-failure-handling.md#1734-checks-builds-and-constant-evaluation)
 
 #### 11.5.1. floatから整数への範囲検査
 
@@ -1330,7 +1330,7 @@ values[index()] = makeValue()
 // makeValue → index → 旧値のcleanup → 配置
 ```
 
-単純代入は右辺優先、複合代入はtarget優先という既存の違いを保つ。自己代入も型に応じた取得・消費・cleanupの結果に従い、アドレス一致だけで省略しない。旧値のcleanupが完了しなければ配置しない。[既存SPEC §13.7.1](../../SPEC.md#1371-simple-assignment)
+単純代入は右辺優先、複合代入はtarget優先という既存の違いを保つ。自己代入も型に応じた取得・消費・cleanupの結果に従い、アドレス一致だけで省略しない。旧値のcleanupが完了しなければ配置しない。[既存SPEC §13.7.1](../../spec/13-operators-and-assignment.md#1371-simple-assignment)
 
 新しい未初期化の最終slotへ直接構築できる場合は、aggregateの中間slotと転送を省く。適用には、評価順、alias・Loan、storageの同一性・寿命、途中の参照からの見え方、部分初期化とcleanupが変わらないことを必要とする。置換先へ旧値を残したまま戻り値を書かせたり、左辺を早く評価したりしない。条件を証明できない場合は独立した一時値を使う。
 
@@ -1381,7 +1381,7 @@ if condition
 // 分岐外へcleanupを移す必要も、登録フラグを持つ必要もない。
 ```
 
-上のcleanup・workは説明用関数である。cleanupがAbortまたは非終了になれば、それ以降のcleanupと結果引き渡しへ進まない。言語が許す無限ループを、観測可能な副作用がないという理由だけで消さない。mustprogress・willreturn等は§11.7.2に従う。[既存SPEC §16.2.1](../../SPEC.md#1621-cleanup-order)、[LLVM function attributes](https://llvm.org/docs/LangRef.html#function-attributes)
+上のcleanup・workは説明用関数である。cleanupがAbortまたは非終了になれば、それ以降のcleanupと結果引き渡しへ進まない。言語が許す無限ループを、観測可能な副作用がないという理由だけで消さない。mustprogress・willreturn等は§11.7.2に従う。[既存SPEC §16.2.1](../../spec/16-scope-exit-and-destruction.md#1621-cleanup-order)、[LLVM function attributes](https://llvm.org/docs/LangRef.html#function-attributes)
 
 ### 11.12. aggregateの転送と定数
 
@@ -1429,7 +1429,7 @@ llvm.memcpy.inlineは定数長で外部呼出しを禁止する必要がある�
 @kimi_text_a = private unnamed_addr constant [3 x i8] c"\E3\81\82", align 1
 ```
 
-同一のUTF-8バイト列はモジュール内で共有する。リテラルbackingのアドレス一意性は保証せず、unnamed_addrを使える。文字列値の同一性・等値をbackingのアドレスで判定しない。空のリテラルはStatic・null・長さ0とし、領域を確保しない。stringのNon-Copyと各handleの責任は§14のままとする。[既存SPEC Appendix A.6](../../SPEC.md#a6-literal-representation)
+同一のUTF-8バイト列はモジュール内で共有する。リテラルbackingのアドレス一意性は保証せず、unnamed_addrを使える。文字列値の同一性・等値をbackingのアドレスで判定しない。空のリテラルはStatic・null・長さ0とし、領域を確保しない。stringのNon-Copyと各handleの責任は§14のままとする。[既存SPEC Appendix A.6](../../spec/appendices/A-compiler-requirements.md#a6-literal-representation)
 
 <a id="section-12"></a>
 
@@ -1730,7 +1730,7 @@ public func main() -> ()
     // この後にmessageを再利用すると、消費後使用としてエラー。
 ```
 
-UTF-8、NULをデータとして扱うこと、LFのみの付加、非atomicな出力、引数破棄の規則は[既存SPEC §22.4](../../SPEC.md#224-minimal-console-output)に従う。
+UTF-8、NULをデータとして扱うこと、LFのみの付加、非atomicな出力、引数破棄の規則は[既存SPEC §22.4](../../spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output)に従う。
 
 ### 14.3. 初期版のコンソール対応範囲
 
@@ -1810,7 +1810,7 @@ LLVMのpayload storageは、alignmentを保持するゼロ長要素とPバイト
 
 Kimigayoレイアウトでは、初期の直接base部分をoffset 0へ配置する。これは初期実装の選択であり、言語上の永続保証ではない。baseから派生先までの所有権を切り離したり、baseだけをMoveしたりできる根拠にもならない。
 
-object の handle/header/count/Weak の初期 Windows x64 契約は [SPEC §21.2.3](../../SPEC.md#2123-windows-x64-object-and-weak-profile) と [rc・arc・Weak 設計](2026-09-13%20Weak%20References%20and%20Object%20Runtime.md) で決定済み。以下は表現の責務の区分であり、すべてを未決定とする一覧ではない。descriptor の具体配置と共有 generic metadata は別途具体化する。
+object の handle/header/count/Weak の初期 Windows x64 契約は [SPEC §21.2.3](../../spec/21-layout-runtime-and-code-generation.md#2123-windows-x64-object-and-weak-profile) と [rc・arc・Weak 設計](2026-09-13%20Weak%20References%20and%20Object%20Runtime.md) で決定済み。以下は表現の責務の区分であり、すべてを未決定とする一覧ではない。descriptor の具体配置と共有 generic metadata は別途具体化する。
 
 ```text
 objectの表現

@@ -1,0 +1,72 @@
+# Appendix D. Deferred feature index
+
+[Specification index](../../SPEC.md)
+
+This index links to design boundaries owned by the language sections. It adds no syntax or permissions. Implementation coverage is independent and recorded in [Appendix C](../../SPEC.md#appendix-c-implementation-status). Language-version selection is specified under [Language-version selection](../20-compilation-configuration.md#205-language-version-selection).
+
+| Feature | Status | Owning section |
+| --- | --- | --- |
+| Fixed-array fill/repetition and element-generator construction | Deferred design; whole initialized inputs/results and element literals remain available | [Fixed-array initialization](../04-arrays-indexing-and-slices.md#43-initialization-and-inference) |
+| Mutable/exclusive-element Slice | Not introduced; mutate through authorized whole-array access and indices | [Sequence operations](../04-arrays-indexing-and-slices.md#45-operations-and-ownership) |
+| Source transparent Type aliases | Not introduced; source alias opens a Container only | [Alias boundary](../18-modules-and-dependencies.md#181-external-references-and-aliases) |
+| Re-export syntax | Deferred design | [Re-exports](../18-modules-and-dependencies.md#182-re-exports) |
+| Binary artifact format | Partially specified | [Source artifacts and binary interfaces](../18-modules-and-dependencies.md#183-source-artifacts-and-binary-interfaces) |
+| Dependency configuration and graph diagnostics | Partially specified | [External references and aliases](../18-modules-and-dependencies.md#181-external-references-and-aliases) |
+| Future Contract fragments and extension identity | Deferred design; Contract splitting and extension declarations are not introduced | [Container fragments](../06-declarations-and-containers.md#612-container-fragments) |
+| Mods (source generation) | Execution and semantic rules defined; concrete APIs and host configuration remain design work | [Mods](../20-compilation-configuration.md#207-mods-source-generation) |
+| Virtual/override members | Extension design; not active in this revision | [Virtual members](../06-declarations-and-containers.md#624-virtual-members-and-overrides) |
+| Runtime Contract Views: designation, View associated-Type bindings, contract/exact tests and checked casts | Extension design; outside this revision's static Contracts | [Runtime contracts](../08-generics-constraints-and-contracts.md#85-runtime-contracts), [tests and casts](../13-operators-and-assignment.md#1362-general-view-tests-and-checked-casts) |
+| User-defined generic Contracts, outer generic capture, default implementations, external conformance, qualified requirement calls | Not introduced | [Contracts](../08-generics-constraints-and-contracts.md#84-static-contracts) |
+| Extra implicit/ordinary base conversions and consuming/generic/type-function runtime requirements | Deferred design | [Object views](../03-types-and-values.md#335-object-views-and-identity), [runtime contracts](../08-generics-constraints-and-contracts.md#85-runtime-contracts) |
+| Struct layout modes | Kimigayo/C specified; special layouts deferred | [Structure layout and ABI](../21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi) |
+| Concurrency, memory model, and thread-transfer capabilities | Deferred design | [Concurrency boundary](#d2-concurrency-memory-model-and-thread-transfer) |
+| User-defined arithmetic and general Attribute semantics | Deferred beyond specified comparison, Layout, LibraryImport, and Mod marker behavior | [Operator boundaries](../13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax), [Attributes](../06-declarations-and-containers.md#65-attributes) |
+| String concatenation and string compound-assignment ownership | Deferred to a common operator model; executable acceptance requires defined acquisition, Loans, result ownership and failure rules | [Arithmetic operators](../13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators) |
+| Associated-Type inference beyond explicit identity facts, arbitrary complete-Type bindings, and stronger symbolic Constraint reasoning | Not introduced | [Associated Types](../08-generics-constraints-and-contracts.md#843-associated-types), [proof boundaries](../08-generics-constraints-and-contracts.md#87-constraint-proof-system) |
+| Const/value arguments beyond function lengths, standalone Semantics slots, partial/default/variadic generic arguments | Not introduced | [Function length parameters](../04-arrays-indexing-and-slices.md#44-function-length-parameters), [Generic Type parameters](../08-generics-constraints-and-contracts.md#81-generic-type-parameters) |
+| Partial/conditional explicit specialization, specialization priorities, generic Container specialization | Not introduced | [Full specialization](../08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization) |
+| Generic budget defaults, setting names, reporting and physical internal argument positions | Compiler choices within the adopted generation contracts and initial selection guidance | [Generic entries](../21-layout-runtime-and-code-generation.md#2136-entry-abi-and-call-responsibility), [budget strategy](B-reference-models.md#b73-two-growth-limits-and-deterministic-selection) |
+| Persistent generation choices and object-code caches | Deferred until measured need and contracts for formats, keys and all generation dependencies; the initial cache retains verified semantic plans only | [Persistence](../21-layout-runtime-and-code-generation.md#21342-persistence-and-composition) |
+| Storage for unknown generic substitutions | Deferred; must jointly define layout computation, dynamic stack/heap storage, limits, failure and effect order before introduction | [Fixed frames](../21-layout-runtime-and-code-generation.md#2146-generic-scratch-storage-and-fixed-frames) |
+| Local automatic-specialization hints | Deferred until measured local needs cannot be met acceptably by the global multiplier; any future hint must be safe to ignore and preserve semantics/resource limits | [Generation limits](../21-layout-runtime-and-code-generation.md#2135-generation-limits-and-code-merging) |
+| Automatic toolchain installation, debug information, cross-module/DLL ABI, extra CPU/OS profiles | Deferred beyond the Windows profile; explicit build/run commands are defined in §20.8.6 | [Native build](../20-compilation-configuration.md#208-llvm-output-native-build-and-execution), [LLVM profile](../21-layout-runtime-and-code-generation.md#215-llvm-windows-x64-profile) |
+| Stack exhaustion detection, diagnostics, and recovery | Unspecified; no guaranteed conversion to Kimi Abort or recovery contract | [Storage and unwind information](../21-layout-runtime-and-code-generation.md#2155-storage-attributes-and-unwind-information) |
+| Dynamic collection and Slice storage ABI; additional collection APIs | Mutation, capacity, Loans/effects and complexity are specified in §4.7; concrete collection storage and the extensions listed there remain design work. Value-borrow, callable and metadata storage are specified in §21.2–3; implementation coverage is separate | [Dynamic mutation](../04-arrays-indexing-and-slices.md#47-dynamic-collection-mutation), [Runtime representations](../21-layout-runtime-and-code-generation.md#212-runtime-representations-and-metadata) |
+| C aggregate passing/export/callback/varargs, Unicode console adapter, over-aligned allocation, arbitrary exit codes and FP environment control | Deferred extensions | [FFI](../22-core-execution-and-foreign-functions.md#223-foreign-function-imports), [Windows runtime](../22-core-execution-and-foreign-functions.md#225-initial-windows-runtime) |
+| Contract-level abstract Origins, non-static erased views, static-Place Origins, and lending iterators | Deferred design; ordinary retained storage is defined in §15.4 | [Abstract Origins](../15-ownership-and-lifetime-analysis.md#153-abstract-origins), [Lifetime design boundaries](../15-ownership-and-lifetime-analysis.md#159-lifetime-design-boundaries) |
+| Destruction lifetime relaxation | Deferred design | [Destruction lifetime checking](../15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking) |
+| Additional dynamic Move Paths | Deferred design | [Move Paths and Partial Move](../15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) |
+| Recoverable object creation, allocator selection and general value duplication | Object/Weak public operations specified; these extensions remain deferred | [Object ownership operations](../13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing), [explicit duplication](../03-types-and-values.md#351-copy-capability-and-explicit-duplication) |
+| Additional Weak operations | Direct Weak view conversion, liveness-only tests, unsafe weak pointers and unowned references remain unintroduced | [Weak values](../03-types-and-values.md#322-weak-reference-values), [weak operations](../13-operators-and-assignment.md#1359-weak-reference-operations), [object profile](../21-layout-runtime-and-code-generation.md#2123-windows-x64-object-and-weak-profile) |
+| Exchange API and concurrency guarantees | Partially specified | [Initialization-preserving exchange](../15-ownership-and-lifetime-analysis.md#157-initialization-preserving-exchange) |
+| Raw pointer and FFI APIs | Partially specified | [Raw pointer API design boundaries](../05-raw-pointers-and-unsafe-memory.md#56-raw-pointer-api-design-boundaries) |
+| Dedicated Option / Result propagation syntax | Deferred design | [Error policy](../17-failure-handling.md#171-error-policy) |
+| Additional enum and Pattern forms | Deferred design | [Enum and Pattern extensions](#d1-enum-and-pattern-extensions) |
+| String indexing and library indexers | Partially specified | [Indexing and slicing](../04-arrays-indexing-and-slices.md#46-indexing-and-slicing) |
+| Borrowed/Exclusive/Consuming erased callable Types, opaque returns, receiver-dependent public results | Deferred design | [Callable Types](../03-types-and-values.md#321-callable-value-types), [Closure lifetimes](../15-ownership-and-lifetime-analysis.md#1582-closure-dependencies-and-call-results) |
+| Non-escaping declarations, extended capture syntax, concurrency capabilities, general higher-ranked Callable contracts | Deferred design | [Capture rules](../07-functions-and-callable-values.md#762-capture-acquisition-and-environment), [escape](../15-ownership-and-lifetime-analysis.md#1583-escape-and-retention) |
+| Direct-match versus callable-erasure overload ranking | Deferred design | [Callable compatibility](../10-overload-resolution-and-inference.md#107-callable-signature-compatibility) |
+| Composition Root extensions | Partially specified | [Extension boundaries and reserved syntax](../13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax) |
+
+## D.1. Enum and Pattern extensions
+
+The initial [enum](../06-declarations-and-containers.md#63-enums) and [match](../14-control-flow.md#148-match-expressions-and-patterns) rules do not introduce the following extensions. Future designs must preserve these boundaries:
+
+| Extension | Required design |
+| --- | --- |
+| Struct Pattern | Distinguish Fields from computed operations and respect private storage and Move permissions. Getter-based decomposition needs explicit evaluation, effects, and coverage rules; it is not inverse constructor execution. `{}` remains reserved. |
+| Named payload | Define stable element names and declaration order without changing positional payload meaning |
+| Type Pattern | Share runtime `is`/Effective Type rules, Type identity, and Origin preservation; define Pattern binding/coverage separately. Do not infer exhaustive open hierarchies from known subclasses or require hidden dynamic metadata on value borrows. |
+| OR Pattern | Agree on binding names, Types, mutability, and acquisition across alternatives; define guard evaluation count |
+| Range / Rest / Array | Extend coverage explicitly; Rest lengths and dynamic indices do not become implicit Move Paths |
+| Structural Patterns on `uniq` candidates / exclusive decomposition | Define syntax, shared/exclusive Reborrow, overlapping Loans, and invalidation by Case replacement |
+| Public non-exhaustive enum | Require explicit declaration and client catch-all rules; do not silently add unknown Cases to closed enums |
+| Other binding constructs | Specify permitted refutability, failure control flow, and scopes for each construct |
+| Guard candidate capture | Define explicit read-value acquisition syntax/timing and Origin/Loan escape checks; no `@copy` form exists yet |
+| Pattern binding acquisition selection | Define how to borrow a Copy-capable payload from its original Place, including syntax, result Type, Origins/Loans, and acquisition timing. No such binding selector is introduced; this is distinct from guard capture. |
+
+Object-Semantics enum construction/matching, empty enums, and representation/ABI guarantees also remain outside the [initial enum rules](../06-declarations-and-containers.md#631-cases-and-payloads).
+
+## D.2. Concurrency, memory model, and thread transfer
+
+**Deferred design.** Source threads/tasks, a language memory model, data-race rules, atomic ordering operations, thread-transfer/shared-access capabilities analogous to Send/Sync, and cross-thread static initialization are not specified. The initial execution model is single-threaded under §22.2. arc guarantees atomic reference-count protocols and the runtime initialization/release ordering of §21.2.3.3. This does not authorize thread-safe source payload access, publication, destruction or transfer. Owned proves lifetime independence, not thread safety. Future concurrency capability requirements may reject programs or foreign integrations previously accepted by a pre-alpha compiler; neither arc nor Owned preauthorizes those integrations.

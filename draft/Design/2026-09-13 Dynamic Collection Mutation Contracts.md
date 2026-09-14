@@ -112,7 +112,7 @@ tryInsert の Err は重複だけを表す。専用エラー型は追加しな�
 
 insertOrReplace は既存キーと挿入位置を保持する。旧値を結果へ確保し、新値を格納してから、使わなかった入力キーを破棄する。None は追加成功であり、未変更を意味しない。
 
-remove は検索キーを借用し、格納されていた K/V を返す。削除した同値キーの再追加は新しい末尾位置になる。格納キーを変更する API は追加しない。等値判定・キーの安定性・法則違反時の扱いは [SPEC §12.3.4](../../SPEC.md#1234-dictionary-construction-and-duplicate-keys) に従う。
+remove は検索キーを借用し、格納されていた K/V を返す。削除した同値キーの再追加は新しい末尾位置になる。格納キーを変更する API は追加しない。等値判定・キーの安定性・法則違反時の扱いは [SPEC §12.3.4](../../spec/12-expressions.md#1234-dictionary-construction-and-duplicate-keys) に従う。
 
 ```kimi
 var names: Dictionary<i32, string> = [1: "first"]
