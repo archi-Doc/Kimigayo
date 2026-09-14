@@ -13,10 +13,11 @@ public class FuncDeclarationParseTest
     [InlineData("func Method2() ->")]
     [InlineData("func Method2() ->\n    return\nfunc Next() => 1")]
     [InlineData("func Method2() -> => 1\nfunc Next() => 2")]
-    [InlineData("public group Helper\n    func Method2() ->\n        #if os==\"Windows\"\n        // block\n            var i = if (x == true) => 1 else => 0\n        var i2 = if (x == true)\n            => 1\n        else\n            => 3")]
+    [InlineData("public group Helper\n    func Method2() ->\n        #if os==\"Windows\"\n        // block\n            var i = if (x == true) => 1 else => 0\n        var i2 = if (x == true) => 1\n        else => 3")]
     public void ReportsMissingReturnTypeAtArrow(string source)
     {
         var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare("x86_64-pc-windows-msvc"));
         var kotonoha = compilation.Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
 
@@ -41,7 +42,7 @@ public class FuncDeclarationParseTest
 
         var source = """
             private func find<s/T, T2>(
-                value?: T,
+                value?: T = fallback,
                 owned: owner/T,
                 sharedValue: ref/T,
                 exclusiveValue: uniq/T,
@@ -72,7 +73,7 @@ public class FuncDeclarationParseTest
             kotonoha.RootKoto.UnparseAll(ref builder);
             var text = builder.ToString();
             Assert.Contains(
-                "private func find<s/T, T2>(value?: T, owned: owner/T, sharedValue: ref/T, exclusiveValue: uniq/T, object: obj/T, sharedObject: rc/T, atomicObject: arc/T, sharedObjectBorrow: objref/T, exclusiveObjectBorrow: objuniq/T, raw: unsafe/T, in => collection: Collection<s/T>, using => comparer: (s/T, T2) -> ref/Bool) -> owner/i32",
+                "private func find<s/T, T2>(value?: T = fallback, owned: owner/T, sharedValue: ref/T, exclusiveValue: uniq/T, object: obj/T, sharedObject: rc/T, atomicObject: arc/T, sharedObjectBorrow: objref/T, exclusiveObjectBorrow: objuniq/T, raw: unsafe/T, in => collection: Collection<s/T>, using => comparer: (s/T, T2) -> ref/Bool) -> owner/i32",
                 text);
             Assert.Contains("public func Main() -> ()", text);
         }

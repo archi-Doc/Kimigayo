@@ -1,217 +1,175 @@
-# Kimigayo Compiler Implementation Status
+# Kimigayo Implementation Status
 
-Implementation coverage is informative and does not weaken language rules or Compiler requirements. All implementation-progress notes are centralized here; `planned` in a retained snapshot means implementation work, not permission to use an undesigned feature.
+更新: 2026-09-14。確認対象: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42` の製品コード。
 
-Section references follow the reorganized SPEC.md. This editorial reorganization changes no recorded implementation status.
+現ソースと対応テストで確認した範囲を記す。字句/構文、Binding、所有権、LLVM生成、native実行は別段階であり、前段の対応だけで実行可能とはしない。仕様は [SPEC.md](SPEC.md)、残作業は [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)。旧C.*リンクは対応分野へ接続する。
 
-### C.1. Coverage summary
+<a id="c1-coverage-summary"></a>
+<a id="c3-lexical-forms-and-types"></a>
+<a id="c8-specification-review-integration-2026-09-08"></a>
+<a id="c9-follow-up-specification-review-items-16"></a>
+<a id="c10-type-and-literal-review-items-314"></a>
+<a id="c14-tokenizeparse-increment-2026-09-09"></a>
+<a id="c15-property-and-move-syntax-update-2026-09-10"></a>
+<a id="c32-compile-time-switch-spelling-2026-09-12"></a>
 
-This table defines the recorded status of each compiler stage. The notes below describe covered cases and specific remaining work; they do not assign a separate stage status. Parsing alone does not guarantee execution. **Implemented** and **Partial** are limited to the coverage described below. **Not implemented** means the recorded stage is unavailable; it does not imply that all related design details are settled; **Not assessed** means the recorded notes do not establish that stage's coverage. **N/A** means the feature has no such stage.
+## 1. 字句・構文・コンパイル条件
 
-| Feature | Parsing | Binding | Analysis | Lowering | Runtime |
-| --- | --- | --- | --- | --- | --- |
-| Functions and Constraint Clauses | Partial | Not implemented | Partial | Not implemented | Not implemented |
-| Static Contracts and associated Types | Partial; see C.4 | Not implemented | Not implemented | Not implemented | N/A |
-| `#if` / `#match` | Implemented | Not implemented | Partial | Not assessed | N/A |
-| Types | Partial | Not implemented | Partial | Not implemented | Not implemented |
-| Origins | Partial | Not implemented | Not implemented | Not implemented | Not implemented |
-| Properties | Implemented | Not implemented | Partial | Not implemented | Not implemented |
-| Constructors and aggregate destruction | Not assessed | Not implemented | Partial | Not implemented | Not implemented |
-| `@Type` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
-| `@move` / Consume | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
-| Control flow and `defer` | Implemented | Not implemented | Partial | Not implemented | Not implemented |
-| Enum Cases, Patterns, and guards | Not implemented | Not implemented | Not implemented | Not implemented | Not implemented |
-| Explicit full specialization and generic code sharing | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
-| Option / Result / Abort | Not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
-| Core.writeLine and executable startup | Source forms only; dedicated support not assessed | Not implemented | Not implemented | Not implemented | Not implemented |
-
-Build inputs, source snapshots, strings, generated sources, and backend restrictions are described in the detailed notes. A stage marked Implemented does not certify a fully checked or executable program. A rule's design status is listed separately under Deferred features.
-
-The integrated Closure/capture/Callable model, runtime `is` and refinement, `require`, and Object Type System are language specifications, not implementation completion claims. Their complete parser, Binding, ownership, lowering, and runtime coverage has not been assessed here; existing broad coverage rows do not certify these additions.
-
-### C.2. Builds, modules, and source artifacts
-
-**Current implementation status:** project loading, target preparation, tokenization, parsing, early directive selection, and partial control-flow/type analysis are implemented. The current LLVM backend preparation requires a supported pointer width and LLVM data-layout string. The current `Build` API reports front-end checks only; it does not certify a finalized program or produce a binary.
-
-Loading external Kotonoha libraries is not yet implemented.
-
-The recorded compiler supports only its current language version. Exact version selection, fallback defaults, rejection of unsupported versions, and build metadata are specified.
-
-The current source-snapshot serialization/reparse facility is not a [binary interface](SPEC.md#183-source-artifacts-and-binary-interfaces).
-
-### C.3. Lexical forms and types
-
-The current front end parses escaped strings, raw strings, and string interpolation, including nested expressions. Escape sequences are validated during parsing; evaluating interpolated strings is deferred to later compilation stages.
-
-Compile-time basic-value evaluation currently supports integer representations fitting `i64` and finite literals parsed as `f64`; exact decimal retention and contextual single rounding remain unimplemented (C.10).
-
-固定長配列の `[N of T]`、要素型の `_` 推論、長さの定数式、関数の長さジェネリクスの仕様本文は[SPEC §4](SPEC.md#4-arrays-indexing-and-slices)、Index・Range・Sliceは[SPEC §4.6](SPEC.md#46-indexing-and-slicing)に統合済み。今回の変更は文書のみ。専用の構文解析・定数束縛と評価・長さ推論・配置・所有権解析・コード生成は未実装であり、既存の基本値評価や配列リテラルの解析だけでは対応済みとしない。
-
-The front end parses recursive Semantics prefixes, distinct grouped and Tuple Types, and independently annotated inner Origins, preserving them through writing and source serialization. Type resolution, layout validation, subtyping, ownership rules, and most Type semantics remain unimplemented; parsing a nested Type or storage-borrow target does not establish its semantic legality. Syntax-level control-flow facts retain supported nested pointer Types and leave unresolved reference/Origin checks pending.
-
-Body parsing for `enum` and `extension` is not implemented.
-
-The enum Case, construction, Pattern, guard, and coverage rules are specified but not implemented. `EnumKoto` skips its body, and `MatchArmKoto.Pattern` stores a general `Koto`; this does not implement dedicated Pattern parsing. Case Symbols, candidate/body binding plans, whole-Subject acquisition, payload Move Paths, guard Loans, and coverage diagnostics remain required. The general control-flow row does not certify these features.
-
-Split-structure integration, generated-source integration, and layout generation are planned, not implemented.
-
-Inheritance access domains, recursive API signature accessibility, and protected-receiver checks are specified but not implemented by general Binding. Lexing has modifier token kinds, which does not establish complete parsing or semantic support for `open struct`, base clauses, compound access, or overrides. Inheritance parsing coverage is not assessed here. Inherited lookup and virtual/override declaration spellings retain their syntax boundaries. Object dispatch, metadata, upcasts, casts, compatibility, base lifetime, and Copy rules are specified; this documentation integration does not establish their implementation.
-
-The Parser supports Origin lists on structures and functions, simple and qualified annotations, intersections, and named arguments. Origin name resolution, inference, variance analysis, and borrow checking are not implemented.
-
-### C.4. Declarations and compile-time directives
-
-Complete-Type slot/pair binding, structural Signature normalization, explicit `specialize func` selection, and the generic code-sharing policy are specified by this revision, not implemented by this documentation change. Parser acceptance alone does not establish these binding, validation, metadata, or backend guarantees.
-
-The current Parser stores leading Constraint Clauses separately from executable body items and preserves deferred directives on them. It checks clause subjects against the declared generic parameters and diagnoses clauses placed after executable items. Semantic validation of Constraints during Binding and specialization is not implemented.
-
-The static Contract model is specified, not implemented by this documentation change. `ContractKoto` currently accepts inline Property requirements and `associate Name is requirement`; it does not implement function requirements or bare associated-Type declarations. Refinement, qualified specifications/projections, signature-first Constraint collection, and conformance matching/mappings/access checks require implementation. Any accepted generic Contract headers do not establish language support; user-defined generic Contracts are excluded. Runtime Contract Views remain outside the initial Contract implementation.
-
-**Current implementation status:** the Parser validates the environment-only Condition expression set, evaluates known scalar operations, and propagates Errors before short-circuit truth results. Every directive `is` test is rejected; there is no requirement evaluation, Type narrowing, or generic-dependent selection. Its internal **Pending** result currently retains unresolved scalar Names as validation obligations; this is an implementation limitation, not a valid language dependency. Such Names can only resolve in the prepared environment and must otherwise be diagnosed before finalization. Pending nodes and control-flow PendingBinding reporting retain those validation obligations; unknown-Name finalization remains unimplemented.
-
-### C.5. Properties
-
-The Parser records Properties, inline and block accessors, explicit getter result annotations, and basic syntax errors. Control-flow analysis checks known accessor result Types. Accessor expansion, contextual binding of `self`, `storage`, and `value`, storage classification, access and initialization checks, general accessor type checking, Property Consume, and field-scoped standard operations are not implemented; successful parsing alone does not validate them.
-
-### C.6. Expressions and operators
-
-The Parser supports `@Type` precedence, left associativity, and generic/comparison boundaries. Treating a `@move` operand as a Type does not implement a lifetime operation; its stage status is listed in the coverage table. Basic expressions, argument labels/defaults, collections, and anonymous functions have syntax-tree support. Member-name restrictions still need additional validation.
-
-General type inference, overload and argument matching, function-value execution, numeric checks, dictionary duplicate detection, evaluation order during execution, and single-access Property updates require semantic analysis and runtime implementation. Abort name/type validation, diagnostics, and common termination handling are also planned. Control-flow and cleanup coverage is detailed below. Examples using application-specific functions or Types illustrate semantics rather than promise standard-library APIs.
-
-Implementation references:
-
-- [Parser.cs](Kimi/Compiler/Parsing/Parser.cs) and [expression Koto nodes](Kimi/Compiler/Parsing/Koto/Expressions): syntax and precedence.
-- [ControlFlowAnalysis.cs](Kimi/Compiler/Analysis/ControlFlowAnalysis.cs): results, transfers, short-circuit paths, and partial unsafe checks.
-- [ExpressionPrecedenceTest.cs](xUnitTest/Tests/ExpressionPrecedenceTest.cs), [ParserRegressionTest.cs](xUnitTest/Tests/ParserRegressionTest.cs), and [SpecConformanceParseTest.cs](xUnitTest/Tests/SpecConformanceParseTest.cs): grouping, diagnostics, generic boundaries, and expression syntax.
-- [CollectionLiteralParseTest.cs](xUnitTest/Tests/CollectionLiteralParseTest.cs) and [RangeIndexParseTest.cs](xUnitTest/Tests/RangeIndexParseTest.cs): collection and boundary syntax.
-- [ControlFlowAnalysisTest.cs](xUnitTest/Tests/ControlFlowAnalysisTest.cs) and [ControlFlowRevisionParseTest.cs](xUnitTest/Tests/ControlFlowRevisionParseTest.cs): control constructs and result checks.
-
-### C.7. Control flow and failure handling
-
-The constructor/destruction coverage row includes only the existing analysis of executable-body control flow. Constructor selection and synthesis, completion checks, general destructor declaration validation, per-component/base cleanup, reentry prevention, and final object release require semantic and runtime implementation. Complete parsing coverage for `init` declarations, `Type.init` calls, and base-constructor initializers is not assessed; body parsing or a recognized keyword does not establish lifetime support.
-
-**Implementation status:** The Parser preserves explicit branch body forms. Control-flow analysis checks selections, loops, value-producing Labeled Blocks, lexical transfer targets, and the completion effects of explicitly registered Deferred Blocks. It also checks lexical Unsafe permission for known operations and binder-selected function references. The default type provider handles primitive literals, simple declared Types, and basic raw-pointer and contextual `null` checks. General name/overload resolution, conversions, pattern Binding, ownership, automatic destruction, Origin compatibility, and runtime cleanup generation remain planned; unresolved checks are exposed as pending obligations. Bodies containing deferred compile-time directives await directive selection before analysis.
-
-### C.8. Specification review integration (2026-09-08)
-
-This documentation revision changes no compiler implementation. New recommendations adopted as language rules must not be mistaken for implemented features.
-
-| Review items | Evidence and decision |
+| 確認した実装 | 制限・根拠 |
 | --- | --- |
-| A-1, A-6 | Tokenizer.ReadLine measures four-space levels, ignores comment-only lines, diagnoses misalignment, tracks delimiter/chain indentation, and closes blocks at EOF. Strict one-level body increases and grammar-aware Case/body precedence are adopted requirements; current raw leading-dot recognition and multi-level increase recovery do not fully enforce them. |
-| A-2 | Tokenizer diagnoses every semicolon and emits a Separator only for recovery. 固定長配列は `[N of T]` に改訂し、セミコロンを許可する例外は削除した。 |
-| A-3 | TokenKind/TokenHelper provide the punctuation and keyword baseline. The normative reserved set also incorporates existing prose (Self, init, access words, require, defer); internal contextual classification is not full enforcement. Root :: token handling remains required. |
-| A-4 | NumberLiteralHelper currently scans an ordinary fraction after a member dot. The dedicated digit-only Tuple index split is a new specified requirement. |
-| A-5 | Parser.ParseType consumes identifier/slash Semantics prefixes without lookup, stops slash after primitive or grouped heads, and recognizes adjacent generics. The specification records this commitment and mandatory grouping for ambiguous division; newer array/root-qualified targets still require support. |
-| A-7, B-8 | Parser.ParseIfExpression joins across separators; ParseCodeBlock separates leading generic Constraints and diagnoses invalid subjects/late clauses. The specification makes layout/subject commitment explicit, including associated projections beyond current simple-name coverage. |
-| A-8, A-10 | Root-qualified expression/Type and reserved construction suffix rules are specified; complete parsing/Binding coverage is not established by this revision. |
-| A-9, C-2 | Parser.ParseAttributeKoto and HasLibraryImport already retain Attributes and allow bodyless imports; BlockSyntaxParseTest covers that exception. Restricted Attribute placement, exact import arguments, unsafe requirement, C ABI validation/linking and calls are newly specified, not implemented. |
-| B-1, B-2, B-4, B-5, B-6 | Fixed-array Types, required Core identities, non-lending iteration (with a narrowly specified complete-Type Element exception), Stringify, and minimal comparison mappings are adopted recommendations. General Binding, protocol acquisition, collection/runtime support and lowering remain unavailable. |
-| B-3 | Kimi/Misc/SemanticsMask.cs supplies the exact category sets. In particular reference includes object owners and unsafe, value is owner only, and object excludes object borrows. Internal Safe/All masks have no source category spelling. |
-| B-7 | ExtensionKoto does not implement a body. The revision explicitly excludes extension declarations/candidates and retains their rules as future constraints. |
-| C-1, C-3 | ProjectFile has no entry selection or static-initialization setting; no executable backend is completed. Single-entry startup, lazy static initialization, and explicit deferred concurrency are specification decisions. |
-| D-1 | The abort production now requires exactly one Expression; this is not a claim of completed intrinsic argument validation. |
-| D-2, D-3 | StringLiteralHelper preserves literal text and skips nested strings/chars/comments while finding interpolation ends. SpecConformanceParseTest checks nested interpolation and physical newline/indentation preservation. The scanner currently rejects recursive interpolation scanning at its internal depth counter >= 128; this counter is not a language-level nesting count. |
-| D-4 | Condition binding scope and per-iteration identity are adopted rules; general Binding and associated cleanup remain unimplemented. |
-| D-5, D-6 | Directive placement is enumerated without expanding the accepted item categories. The former Appendix C snapshot is preserved in this file, with a link remaining in SPEC.md. |
+| UTF-8 source、元位置/診断、固定Unicode 15.0の識別子・NFC検査、インデント/括弧/継続行・回復 | [Lexing](Kimi/Compiler/Lexing)、[SourceDocument](Kimi/Compiler/Core/SourceDocument.cs)、UnicodeIdentifier / SourceEncoding / ParserRegression各テスト |
+| 型・generic/length/Origin、宣言/Property/accessor、capture、literal/collection、式・制御フローのKoto構築とparse/write/parse・保存/再読込 | [Parsing](Kimi/Compiler/Parsing)、FrontEndSyntax / PropertyRevisionParse / NestedTypeParse / KotonohaSerialization。構文の存在は意味解析・実行の完成を示さない。source artifactとportable交換形式も別 |
+| 数値の原文・exact magnitudeを保持し、float literalは対象精度へ直接丸める。文字/文字列escapeを検査 | [NumberLiteralHelper](Kimi/Compiler/Helper/NumberLiteralHelper.cs)、[FloatingTypes](Kimi/Compiler/FloatingTypes.cs)、NumberLiteral / CharLiteralParse / StringLiteralParse |
+| `#if`・`#switch`の選択・条件検査。条件Nameはcase-sensitive、完全一致の重複/組込み衝突を拒否 | [Compilation](Kimi/Compiler/Core/Compilation.cs)、[条件評価](Kimi/Compiler/Parsing/BasicValue/CompileTimeConditionEvaluator.cs)、CompilationSpecification / DirectiveConditionValidation。短絡/非選択Caseの検査とfalse `#if`の除外境界を区別 |
 
-Open design remains for concurrency/memory ordering/thread transfer, extension declarations, user-defined arithmetic, general Attribute semantics other than LibraryImport, and the FFI extensions listed in SPEC §22.3. These are explicit boundaries, not missing permissions supplied by parser acceptance. Previously deferred features outside this review remain deferred.
+現構文は`#switch`、Property/accessor、通常の型適応。旧`#match`・専用`@move`は互換構文にしない。`alias`はContainerを開き、型別名は導入しない。
 
-### C.9. Follow-up specification review (items 1–6)
+<a id="c4-declarations-and-compile-time-directives"></a>
+<a id="c5-properties"></a>
+<a id="c16-initial-binding-pipeline-2026-09-10"></a>
+<a id="c17-complete-type-representation-and-declaration-origins-2026-09-10"></a>
+<a id="c18-constraint-proof-foundation-and-declaration-validation-2026-09-11"></a>
+<a id="c19-core-intrinsic-identities-and-copy--owned-2026-09-11"></a>
+<a id="c20-static-function-contracts-and-associated-types-2026-09-11"></a>
+<a id="c21-property-conditional-conformance-and-inherited-member-binding-2026-09-11"></a>
+<a id="c26-enum-case-construction-and-coreoptionresult-2026-09-11"></a>
+<a id="c28-positional-pattern-binding-and-match-coverage-2026-09-11"></a>
+<a id="c33-runtime-type-test-binding-2026-09-12"></a>
 
-This revision changes documentation only. The settled language rules below do not establish compiler support. Earlier snapshot entries describe the implementation observed at that review.
+## 2. Binding・型・Core
 
-| Item | Implementation evidence and specification decision |
-| --- | --- |
-| 1. Qualified enum Cases | Parser.TryParsePostfixExpression already constructs MemberAccessKoto and InvocationKoto without Case/Type lookup. Qualified expressions now have exactly that syntax; only leading-dot expressions have dedicated inferred-Case grammar. Binding classification and enum validation remain unimplemented. |
-| 2. Generic body verification | ControlFlowTypeSystem exposes pending Type/getter facts; SyntaxControlFlowTypes leaves generic/user Copy and getter semantics unresolved. These hooks do not prove universal generic validity. Adopt definition-time universal verification, proved symbolic effect/getter families, and no hidden body capability conditions. General Binding, symbolic ownership proofs, and concrete finalization still require implementation. |
-| 3. Static fixed-array indices | No fixed-array Move Path or overlap analyzer is implemented. Adopt integer-literal/grouping-only recognition; keep bounds failure and literal fitting distinct from static path eligibility. General constant folding must not expand accepted paths. |
-| 4. static | Parser.ConsumeAttributeAndModifier and WriteModifier recognize/preserve ModifierKind.Static; PropertyParseTest covers this permissive syntax. There is no completed semantic model for struct static Properties. Adopt Origin-only contextual use of static and reject declaration modifiers; parser acceptance must be tightened accordingly. |
-| 5. Pipeline | Compilation exposes front-end/control-flow analysis; the recorded Build API does not emit a binary. Correct the reference pipeline so concrete effects and cleanup precede lowering and shared executable code generation. This is a scheduling requirement, not completed backend work. |
-| 6. Contract fragments | ContractKoto parses a declaration body; this does not establish merged Contract identity validation. Specify duplicate selected Contract declarations as errors and retain fragments only as a future feature. |
+現 [Compilation.Bind](Kimi/Compiler/Core/Compilation.cs) はfinal Bindingを一回実行し、再Bind時に古い意味情報と所有権の確認結果を無効化する。Koto上の型/Symbol/呼出計画と再利用可能な表を使い、別のBound treeは作らない。
 
-No unresolved design decision remains for these six items. 長さに必要な限定的な定数評価はSPEC §4に従う。General constant evaluation, struct static-member modifiers, and future Contract fragments are not introduced; existing unrelated deferred designs retain their previous status.
-
-### C.10. Type and literal review (items 3–14)
-
-Documentation only; compiler code and tests are unchanged. These decisions supersede conflicting earlier specification snapshots.
-
-| Items | Decision and implementation gap |
-| --- | --- |
-| 3. Function parameters | Require a distinct parenthesized parameter list: `() -> U` has zero parameters; `(T,) -> U` has one `T` parameter. Parser.ParseDeclarationType and NestedTypeParseTest still accept the now-invalid `ref/(i32) -> bool`; dedicated list enforcement remains required. |
-| 4–5. Semantics requirements | Clarify concrete-name equality already allowed by §8.2. Keep the existing category sets: `reference` includes `unsafe`; `owning or borrow` excludes only outer `unsafe`. Neither proves recursive safety. Requirement Binding is unimplemented; directive Conditions still reject every `is` test. |
-| 6–7, 14. Origins | Clarify object-borrow-only outer Origins, explanatory pair projection `o`, and reflexive outlives notation. No new Origin binding or constraint-declaration syntax is introduced; semantic Origin support remains unimplemented. |
-| 8–9. Numeric literals | Adopt exact decimal retention and one rounding to the determined floating Type; direct literal fitting failures are compile-time errors. NumberLiteralHelper.ParseFloat and NumberLiteralKoto.Literal currently parse/write via `f64`; representation, serialization, and contextual fitting require updates. |
-| 10. Base prefixes | Require at least one valid digit. NumberLiteralScanTest and NumberLiteralParseTest still accept empty/separator-only prefixes as zero. Existing malformed-suffix scanning already rejects examples such as `0xg`. |
-| 11. String newlines | Normalize physical LF/CRLF/CR to LF in both string forms, preserving spaces, escapes, and interpolated values. StringLiteralHelper and StringLiteralParseTest currently preserve physical newline sequences; value normalization and test expectations require updates. |
-| 12. Unicode | Pin category and NFC data to Unicode 15.0.0; a minimum version with optional newer characters would retain acceptance differences. IdentifierHelper currently uses host Unicode APIs; fixed-data validation is unimplemented. |
-| 13. Boolean validity | Specify `0x00`/`0x01` as the only valid `bool` storage representations. Backend valid-value enforcement is not established by the current front-end coverage. |
-
-### C.11. Executable preparation and sequence review (2026-09-09)
-
-今回の変更はSPEC.md／STATUS.mdのみ。コンパイラー・ランタイム・テストコードは変更していない。下表の「採用」は言語仕様または実装計画としての決定であり、実装完了ではない。S1–S10は添付の配列関連リストの順番、R1–R16は添付の全体レビューの番号に対応する。以前のスナップショットにある異なる仕様説明は、今回の決定で置き換わる。
-
-| 項目 | 判断・反映先 | 実装上の根拠／残る実装 |
+| 分野 | 確認した範囲 | 残る制限 |
 | --- | --- | --- |
-| S1 充填構築 | §4.3–§4.4に未導入の境界を明記。workの配列は型形成の例であり、初期化済みbufferではない。既存の配列全体を引数・戻り値等から取得する手段と、その配列への操作は可能。 | 専用の充填・generator構築はない。評価回数、Copy条件、部分構築cleanupを含む新機能は当面導入しない。 |
-| S2 / R13 layout | §4.1、§5.3、§21.1でsize／alignment／strideを定義し、固定配列sizeをN * stride(T)、ポインター歩進をstride(T)に統一。 | IrTargetはpointer width／LLVM DataLayoutを用意するが、言語aggregate layoutを実装していない。規則は推奨仕様として採用。 |
-| S3 長さ式の型 | §4.2で既知の整数型からの推論を先行し、型情報がない場合だけisizeを既定にする。例のWidth／Heightはisize。 | 定数の既存Typeは維持する。暗黙に全定数をisizeへ変換する案は採らず、型の混在と既存Typeでのoverflowを明記。専用evaluatorは未実装。 |
-| S4 長さの正規化 | §4.4でtyped +／*の二項の交換正規化を採用。N + 4と4 + Nは同じdependent Type／formation obligationになる。結合・分配・相殺は行わない。 | 記号的長さのBinding／正規化は未実装。通常の実行時演算順序は変えない。 |
-| S5 private長さ定数 | §4.2の既存の展開許可を維持。公開signatureに使用した展開値は公開APIの一部で、変更は利用側を壊し得ることと理由を明記。 | privateの名前を公開する必要はない。artifactへの値・依存関係の保存と無効化は未実装。 |
-| S6 Unit | §3.1.5／§21.1でsize 0、alignment 1、stride 0を採用。§21.3の物理ABI記述と整合させ、zero-sized Typeでも必要なcleanupを残す。 | ControlFlowType.Unitは意味上のTypeで、物理layoutの根拠ではない。推奨仕様として採用し、unsafe/()の歩進・indexを禁止。 |
-| S7 可変Slice | §4.5とAppendix Dに未導入の境界と代替手段を明記。 | 所有配列だけに限定せず、既存§4.6の権限に従うwhole-array uniq経由のindex更新も可能。lending iteratorなしでもindex走査による変更はできる。 |
-| S8 リテラル候補／借用要素 | §4.3–§4.4で固定配列注釈、typed intermediate、候補の区別方法を追加。Array優先の新しい順位は採用しない。 | 既定の独立式と候補ごとのfittingは区別する。staticを含むsafe borrowのArray格納は禁止されるので、Ownedだけで説明しない。 |
-| S9 length syntax | §4.4を「§4.2の長さ定数式、lengthキーワードなし」に修正。 | 文言整理。専用の構文・slot Bindingは引き続き未実装。 |
-| S10 統合先リンク | C.3をSPEC §4／§4.6へ修正。 | 存在しない統合前文書への参照を解消。 |
-| R1 出力経路 | §22.1／新設§22.4でCore.writeLine(text: string) -> ()を採用。所有引数、UTF-8＋LF、NUL、書き込み失敗時Abortを定義し、完全な1行アプリ例を追加。 | Kimi.ConsoleServiceやPlaygroundのConsole.WriteLineはホストC#用であり言語APIではない。Core identity、string runtime、I/O、Lowering、linkは未実装。 |
-| R2 最小サブセット | C.12に実行可能になるまでの範囲・設定案・検証条件を記載。完全なCoreと部分実装の適合性を§22.4で区別。 | ProjectFile／Projectの現状を確認。現Buildはfront-end結果のみで、実行ファイルは生成しない。 |
-| R3 引数の可変性 | §7で通常引数とsetter valueを初期化済みlet相当とし、参照先の権限とbindingの再代入を区別。 | FunctionParameterKotoには名前・Type・default等はあるが可変性の完成したBindingモデルはない。規則は推奨仕様であり未実装。 |
-| R4 receiver | 新設§7.3でselfの内部名、任意の記載位置、許容Type、禁止するrename/default、receiver-first呼び出し、unbound参照を定義。 | Parserはparameter listを保持するがreceiver indexや意味上の適合性を確定していない。§16.2.1の記載位置順cleanupを維持。 |
-| R5 除外診断 | §19.3／§19.5／A.2／B.2を、prepared environmentとソース上の入れ子だけで診断が決まる規則に統一。False #ifの投機的な通常文法診断は抑制する。 | ParserのPending分岐とCompilationSpecificationTestの既存テストは新しい全条件を保証しない。unselected #match内もFalse #ifの内部を除きConditionを検証する規則、遅延・cache時の同一結果の検証が必要。 |
-| R6 改行した=> | §14.7.1で論理header行と物理行を区別し、if／else／match armの例を追加。元のheaderからbody深さを測る。 | 既存layout／Parserの対応範囲だけでは各新例の受理を保証しない。grammar-aware continuationの検証が必要。 |
-| R7 空Container | §6.1.1とF.3でgroup／rootgroup／struct／contractのbody省略を許可。comment-only、EOF、選択後の空を定義。enum／実行Blockは除外。 | DeclarationContainerKoto.TryParseDeclarationContainerはStartBlockがある場合のみbodyをparseする。既存の省略経路を確認したが、全Containerの配置・選択後検証は未完成。 |
-| R8 raw delimiter | §2.9.2に最大開始quote run、2個だけの空escaped string、終了runの余剰quoteを内容にする規則を追加。 | StringLiteralHelper.ScanStringLiteral／ScanRawStringLiteralの実装に一致。StringLiteralParseTestは6／8個だけのquoteをInvalidと期待しており、empty rawとするコメントよりassertionを根拠にした。 |
-| R9 default所有権 | §7.2でpending argument slots、先行引数へのMove／変更禁止、新規Loanをdefault結果に保持しない制限、失敗時の逆取得順cleanupを定義。 | default式の構文保持はあるが実行・所有権解析はない。既存shared borrowのCopyと、結果に残らないshared inspectionは許可。 |
-| R10 継承検索 | §9.5で最初のaccessible・role-compatibleな宣言層へ確定し、基底overloadを混合しない規則を採用。deferred indexも修正。 | 継承Bindingは未実装。候補の発見はref/Derivedからref/Baseへの未定義変換を追加しない。virtual等の最終構文は引き続き保留。 |
-| R11 定数重複キー | §12.3.4で組み込みliteral／Unit／整数の直接符号／groupingに限定し、§17.3.4の最適化非依存規則と整合。 | DictionaryのBinding・重複検査は未実装。定数let・計算式・float等はこの静的検査に含めない。 |
-| R12 floatキー | §12.3.4／§13.4.1でEquatableのNaN-reflexive equalityとsigned-zero equalityを採用。IEEE組み込み比較は維持。 | floatを禁止する追加型制約は採用しない。generic Contract呼び出しの特殊化、Tuple等のContract合成、hash整合性に注意。user equality法則違反だけでmemory unsafetyを許可しない。 |
-| R14 static Loan | §15.6.4／A.3でcallee・default・initializer・cleanupを含む保守的なstatic effect summaryと、戻り値のstorage anchorを要求。 | 別Kotonoha・間接呼び出し・再帰を含む効果解析は未実装。欠けたsummaryを無効果と解釈しない。最初の実行サブセットではstatic Propertiesを扱わない。 |
-| R15 Type alias | §18.1／Appendix Dでsource Type aliasは未導入と明記。aliasはContainerを開くだけ。moveというTypeの回避例はqualificationへ修正。 | AliasKoto／GroupKotoの経路はContainer pathを保持する。新しいType別名構文を実装する根拠ではない。 |
-| R16 例と文法 | §6.2のViewにOriginを追加し、§8.3の混在Requirement／Boolean式を削除。F.3、関連本文・境界一覧を同期。 | 完全な言語例と宣言抜粋を区別する。今回追加した仕様例を現在のParserがすべて受理するという意味ではない。 |
+| 名前・呼出 | Type/Value分離、source-local scope/alias、前方関数、Core identity、可視性、positional/named/default対応、通常generic推論・候補選択 | 完全なアクセス/断片検証、default実行、general Origin推論、specialization、constructor/deinit、間接callは未完成 |
+| 完全Type・Origin | nested Semantics、owner正規化、Tuple/関数/固定配列、generic pair/slot、宣言Origin・input/static/intersection、代入/variance・保持借用の表現 | bound証明、一般Origin/Loan solver、SemanticsTargetの一般適用、定数参照・length推論は未完成。未解決義務を保持 |
+| Constraint・Contract | Proven/Refuted/Unknown/Error、宣言前提、associated Type、refinement、検証済みwitness、conditional conformance/member、継承receiverの選択 | Unknownは成功にしない。完全な候補同値性・generic body/効果証明・ObjectCompatibleのbody/callee検証は未完成 |
+| Property | stored/computed/requirement、accessor型・権限・Copy・Origin対応、operation別witness | 一般式のread/get/set/init・receiver/cleanup・生成は未完成 |
+| enum・Pattern | Case identity、expected Type付き構築、payload取得、Tuple/Case/全体Pattern、網羅性・包含警告、guard candidateとbody bindingの分離 | 借用Subject・一般分解/guard・genericの証明/生成は未完成。警告対象armも検査 |
+| runtime `is` / `is not` | concrete struct Core上のobject SemanticsをboolへBindingし、元operand/target・shared要求を保持 | Flow Type refinement・object Loan・実行は未対応 |
+| Core | Copy・Owned・Callable・writeLine・Option・Resultの6宣言を検証。Copy/Owned導出とCore同名偽装拒否 | catalog全18枠中12枠Missing。Option/Resultの宣言・解析はgeneric runtime完成を意味しない |
 
-### C.12. First executable milestone
+根拠: [Binding](Kimi/Compiler/Binding)、[CoreIntrinsics](Kimi/Compiler/Binding/CoreIntrinsics.cs)、[CoreCatalogTest](xUnitTest/Tests/CoreCatalogTest.cs)、TypeBinding / ConstraintBinding / ContractBinding / PropertyBinding / ConditionalConformanceBinding / InheritedReceiverBinding / EnumBinding / PatternBinding / RuntimeTypeTest。
 
-**実装計画。未達成。** 最初のアプリはMain.kimiの `::Core.writeLine("Hello, world!")` とする。1つのtarget／entry SourceDocument、string literal、通常の非generic関数・呼び出し、Unit、単純なlocal binding、必要なCopy／Move／cleanup、Core出力に限定して端から端まで実装する。FFIの整数呼び出しは別の結合テストとして検証する。配列・Dictionary・継承・closure・static Properties・汎用generic共有・複数Kotonohaはこの実行milestoneの必須機能にしない。未対応のselected構文を成功扱いで黙って省略しない。
+<a id="c7-control-flow-and-failure-handling"></a>
+<a id="c24-whole-place-ownership-cfg-and-cleanup-plans-2026-09-11"></a>
+<a id="c27-enum-construction-ownership-and-ordered-cleanup-2026-09-11"></a>
+<a id="c29-owned-match-acquisition-decomposition-and-cleanup-2026-09-11"></a>
+<a id="c30-current-control-flow-syntax-results-and-cleanup-2026-09-12"></a>
+<a id="c31-transfer-seeded-unreachable-ownership-checking-2026-09-12"></a>
 
-| 領域 | 確認できた現実装 | 採用する実装方針／残作業 |
+## 3. 制御フロー・所有権
+
+[Analysis](Kimi/Compiler/Analysis) はBindingの取得計画を使い、whole Placeの初期化・Move・代入履歴をCFG固定点で検査する。条件付き置換/破棄、局所値・一時値・引数・結果、concrete enum構築/分解、Tuple/固定配列の全体責任を扱う。一般のfield/index・部分Move・user deinitは未完成。
+
+- `if`・短絡・`while`・`do`・`loop`・label・`require`・`match`・return/yield/exit/continue・deferを解析。構造上の完了と実行到達を区別し、結果を確保してからcleanup、正常完了後だけ届ける。Abortはcleanupしない。
+- 破棄は論理的な逆順。途中構築や引数取得が通常transferで中断した場合、取得済み責任を処理する。非終了cleanup後の結果/後続破棄を作らない。
+- 明示transfer後のsource検査は実行CFGと別の継続で行う。Never Subject/非終了guardも対象。一般Never呼出・exitless loop・cleanup阻害後など、検査開始状態を作れない未到達操作にはUnsupportedが残る。
+- whole Subjectのguardはsource順の保守的な検証経路を持ち、false側の副作用も後続armへ渡す。実行時に省略するcovered armも診断する。
+- Loanはstring比較、shared引数、一時string、string guard candidateの限定範囲。後続引数/guard/cleanup中もownerを保護し、正常結果確保後または通常transfer時に終了する。一般の参照保存/返却、uniq/reborrow、効果要約、借用Subjectは未完成。
+
+根拠: OwnershipAnalysis / EnumOwnership / MatchOwnership / UnreachableOwnership / CurrentControlFlow / ControlFlowConformance / ReferenceEmission / StringGuardEmission各テスト。解析成功後も生成側の対応範囲を別途検査する。
+
+<a id="c6-expressions-and-operators"></a>
+<a id="c12-first-executable-milestone"></a>
+<a id="c23-startup-selection-and-corewriteline-binding-2026-09-11"></a>
+<a id="c34-minimal-literal-output-executable-2026-09-13"></a>
+<a id="c38-compiler-pipeline-and-emission-preparation-2026-09-13"></a>
+<a id="c39-compiler-review-dead-code-removal-and-emission-restructuring-2026-09-13"></a>
+<a id="c40-scalar-control-flow-emission-and-nativeaot-2026-09-13"></a>
+<a id="c41-scalar-selection-and-loop-results-2026-09-13"></a>
+<a id="c42-deferred-cleanup-execution-2026-09-13"></a>
+<a id="c43-checked-i32-division-and-remainder-2026-09-13"></a>
+<a id="c44-scalar-functions-return-and-explicit-main-2026-09-13"></a>
+<a id="c45-i32-bitwise-operations-and-checked-shifts-2026-09-13"></a>
+<a id="c46-integer-execution-through-64-bits-2026-09-13"></a>
+<a id="c47-explicit-integer-conversions-2026-09-13"></a>
+<a id="c48-owned-string-locals-and-conditional-cleanup-2026-09-13"></a>
+<a id="c49-owned-string-control-flow-results-2026-09-13"></a>
+<a id="c50-owned-string-function-parameters-and-results-2026-09-13"></a>
+<a id="c51-string-comparisons-and-backend-memcmp-2026-09-13"></a>
+<a id="c52-unguarded-whole-subject-match-execution-2026-09-13"></a>
+<a id="c53-copy-subject-match-guards-2026-09-13"></a>
+<a id="c54-shared-string-arguments-and-referent-comparison-2026-09-13"></a>
+<a id="c55-string-guard-candidates-and-temporary-shared-arguments-2026-09-13"></a>
+<a id="c56-whole-tuple-and-fixed-array-execution-2026-09-13"></a>
+
+## 4. LLVM生成の対応範囲
+
+[LlvmEmitter](Kimi/Compiler/Emission/LlvmEmitter.cs) はwindows-x64-v1のApplicationに限定し、final Binding・startup・所有権を再検査する。暗黙のtop-level実行または適格な`public func main() -> ()`を選ぶ。外部module、宣言container、Library生成、未対応の未使用bodyも公開前に拒否する。
+
+| 分野 | 現在の生成範囲 | 制限・根拠 |
 | --- | --- | --- |
-| Target | Project.DefaultProjectFile.Targetsはx86_64-pc-windows-msvc。IrTargetがDataLayoutとpointer widthを提供する。 | 最初の実行targetもこれに固定する。DataLayoutの存在だけではlink／実行可能とはしない。 |
-| Project形式 | TinyhandのProjectFileにTargets、KotonohaArray、Alias、LangVersion、CompileTimeSettingsがある。Project.TryCreateはその形式を読む。 | 既存の設定名を維持する。下の出力／entry／native-library設定は追加予定で、現在のProjectFileにはまだない。 |
-| CLI | CommandUnitにbuild／runが登録され、KimiOptionsにはTarget／Debugがある。BuildCommandはLoadForBuildとPrepareProjectのみ、RunCommandはLoadForRunとPrepareProject後にSolution.Buildを呼ぶ。 | 既存のコマンド名を維持し、buildを生成・link完了まで、runを生成成功後の起動まで接続する。現runは生成物を起動せず、終了code伝播・実行引数の分離も未完成。 |
-| Core | 現在の既定AliasはKimi.Baseで、必須CoreのBindingはない。 | reserved Core identityと既定公開宣言をcompiler側で準備する。既存AliasはCore実装の代用にしない。prototypeが限定的なCoreだけを持つ間は部分実装と表示し、完全適合を主張しない。 |
-| string | literalの構文木とdecodeはあるが実行時表現はない。 | 初期案はUTF-8 pointer／byte length／release方針を持つowned handle。literal backingは読み取り専用で共有可能、Moveはhandleの責任移動、literal backingは解放しない。後の動的stringはowned allocationを解放する。Non-Copy規則を変えず、この内部案を公開ABIにしない。 |
-| Emit | Project.Build／Compilationはfront-endと部分control-flow分析まで。 | Binding、Usage Legality、cleanupを確定してLowering、backend IR、linkへ進む。出力関数はtrusted runtimeで実装し、source FFIへのstring marshallingと混同しない。 |
+| scalar | bool、12整数型（i8/u8～i128/u128・isize/usize）、char、f32/f64、Unit。local・取得/置換・比較・直接引数/結果・既存制御フロー/aggregate payload | [ScalarTypes](Kimi/Compiler/ScalarTypes.cs)、Scalar / Integer / WideInteger / Char / FloatEmission |
+| 整数演算 | checked add/sub/mul・符号付きneg・inc/dec、比較、bit演算、型独立のshift count検査、compound更新。64bitまでの除算/剰余は0・signed min/−1を検査 | i128/u128除算/剰余は初期profileの禁止。charはUnicode scalar順の比較のみで数値演算不可。Integer / Division / Bitwise / WideIntegerEmission |
+| float | f32/f64算術・比較、対象精度のliteral、NaN・±0・subnormalを扱う値計画 | 数値変換全体とは別。float literal Patternは未対応。FloatEmission / NumberLiteralParse |
+| 数値変換 | 整数12×12方向の型適応・範囲検査、direct integer literal fitting、float literalの対象精度へのfitting、f32→f64、float同型取得 | 実行時f64→f32、整数↔float、整数literal→float、一般同型取得、明示Semantics/略記は未対応。typed128bit↔float・char/bool数値変換は禁止。[Binding.Conversions](Kimi/Compiler/Binding/Binding.Conversions.cs)、Conversion / FloatConversionEmission |
+| 関数・結果・cleanup | root/captureなしlocal関数、named引数、再帰、scalar/Unit/owned stringの引数/結果、Never結果、選択・loop・match結果、defer | default・generic・明示Origin・capture・間接call・集約ABIは未対応。[FunctionAbi](Kimi/Compiler/Emission/FunctionAbi.cs)、Function / Result / DeferredEmission |
+| owned string | literal、local Move・self代入/置換、条件付き破棄、一時/選択/関数結果、writeLine、全6比較 | stringはStatic backingでもNon-Copy。UTF-8 byte列で比較。Heap構築のsource操作・補間/連結・明示所有権適応は未対応。String*Emission |
+| shared string | 暗黙input Originの必須ref/string引数・転送、referent比較、一時owned stringのshared引数、string guard candidate | 参照はhandleへの1 pointer。結果は独立値だけ。local保存/返却・明示@ref・uniq・nested borrowは未対応。[ReferenceTypes](Kimi/Compiler/ReferenceTypes.cs)、Reference / StringGuardEmission |
+| match/guard | bool・整数・char・Unit・owned stringの網羅的match、literal/wildcard/全体let/var/括弧Pattern、Copy候補・ref/string候補のguard | float Subjectは全体Pattern/guardの既存範囲。借用Subject・Tuple/enum分解実行は未対応。candidateはread-onlyでbody bindingと別。Match / Guard / Char / Float / StringGuardEmission |
+| Tuple・固定配列 | 対応scalar・Unit・owned string・nested aggregateの構築、local全体Copy/Move/置換/条件付き破棄 | ownerのみ、深さ64、size/countはint.MaxValueまで。要素射影/index・部分Move・集約選択結果/関数ABI・struct/enum生成は未対応。[AggregateLayout](Kimi/Compiler/Emission/AggregateLayout.cs)、AggregateEmission |
 
-新しいProject設定の推奨スキーマ（仕様案として採用、未実装）は次のとおり。これらを含むファイルを現Buildが正しく扱うとは保証しない。
+生成は検証済みの型付き値/CFG/ABI/cleanup計画から行う。WriterはASTを再解釈しない。型identity・定数・入力・支配・結果到着・生存flag・Loan・破棄計画の不整合を拒否する。同じLLVM幅でも別の言語型を混同しない。
 
-| 予定する設定名 | 値と規則 |
+stringは24-byte handleの各fieldを転送し、条件付き責任にのみflagを使う。Tupleは物理alignment順と論理順を分離、固定配列はstride配置。構築は最終subslotへ行い、全体転送は検査済みの別領域へmemcpy、破棄は逆論理順（配列はloop）。これらは現在の内部表現であり、一般公開ABIではない。
+
+<a id="c2-builds-modules-and-source-artifacts"></a>
+<a id="c11-executable-preparation-and-sequence-review-2026-09-09"></a>
+<a id="c13-remaining-implementation-selections"></a>
+<a id="c22-lowering-and-windows-profile-specification-integration-2026-09-11"></a>
+<a id="c25-core-declaration-catalog-and-native-backend-candidate-2026-09-11"></a>
+<a id="c35-shared-llvm-version-policy-2026-09-13"></a>
+<a id="c36-native-build-execution-and-shared-package-release-2026-09-13"></a>
+<a id="c37-generated-kernel32-import-library-2026-09-13"></a>
+
+## 5. CLI・成果物・Windows runtime
+
+- [Project](Kimi/SolutionAndProject/Project.cs) のCheckは意味検査、Generate/`emit-llvm`は整合した`.ll`＋`.link.json`、Build/`build`はnative exe生成。`run`は既存Applicationを実行し、source変更で自動再buildしない。
+- [EmissionArtifacts](Kimi/Compiler/Emission/EmissionArtifacts.cs) / [NativeToolchain](Kimi/Compiler/Emission/NativeToolchain.cs) はschema 3、IR/exe/供給hash・ABI・LLVM同一性、失敗時の旧成功無効化、stagingからの公開を扱う。toolの出力を回収し、取消し・時間上限・child tree終了を実装。Applicationの出力/exitは転送する。
+- [ToolchainResolver](Kimi/Compiler/Emission/ToolchainResolver.cs) はCLIのToolchainRoot、環境変数KIMI_TOOLCHAIN_ROOT、既定配置の順でrootを選ぶ。既定は実行file隣接toolchain、source buildではcheckoutのtoolchainを探索。LlvmBin・明示backend pathの上書きも別途扱う。emit-llvm単独にはLLVM導入不要。通常の.NET buildはbackendを再生成しない。
+- [WindowsProfile](Kimi/Compiler/Emission/WindowsProfile.cs) と [profile.json](backend/windows-x64/profile.json) はLLVM 22.1.8、backend ABI 2、__chkstk/memcmp/memcpy/memmove/memsetを定義。版はDirectory.Build.propsと共有し、実archive hashも照合する。明示的な未固定toolchain試行でもintegrity検査は省略しない。
+- [WindowsRuntime.ll.in](Kimi/Compiler/Emission/WindowsRuntime.ll.in) はstartup、UTF-8出力、確保/解放、string破棄、Abortを実装。通常exit 0、Abort 1、LFを別出力、NULはデータとして扱う。Staticは解放せず、Heap責任を解放する。一般object/Weak/metadata runtimeは未完成。
+- [Kernel32Imports](Kimi/Compiler/Emission/Kernel32Imports.cs) はproject-owned定義とllvm-dlltoolからimport libraryを生成・検査する。runtimeの7 Windows APIとnativeテスト用3 APIを供給し、SDKのkernel32.lib設定を不要にする。
+
+根拠: EmissionArtifacts / NativeToolchain / ToolchainResolver / Kernel32Imports / MinimalEmission各テスト、[backend検証script](backend/windows-x64)。通常nativeの今回の実行結果は§7参照。
+
+## 6. 未接続の製品機能・性能基盤
+
+| 分野 | コードで確認できる状態 |
 | --- | --- |
-| OutputKind | ApplicationまたはLibrary。省略時Application。entry許可はSPEC §22.2に従う。 |
-| EntrySource | 任意のproject-relative logical path。省略時は唯一のtop-level実行SourceDocumentから推論。Libraryでは指定不可。 |
-| OutputPath | 任意のproject-relative生成物path。省略時bin/<target>/<ProjectName>.exe（初期Windows target）。標準出力やソースファイルのpathとは独立。 |
-| NativeLibraries | LibraryImportのlibrary文字列から、順序付きlink-input path列へのmap。pathはproject基準で解決し、実際の解決先・内容identity・順序をbuild metadataへ保存。初期版では明示的なlink入力を使い、曖昧な自動library探索を避ける。 |
+| module・Mod | [Compilation](Kimi/Compiler/Core/Compilation.cs) は設定の外部Kotonoha識別子を保持するが、source読込への接続はない。BindにMod実行はなく、外部module/Libraryは生成側で拒否。portable交換・意味計画の永続再利用・Composition接続は未完成 |
+| generic・object・Core | generic共有/特殊化生成、Closure/間接call、struct/enum/Property/user constructor/static実行、rc/arc/Weak・runtime refinement、Array/Slice/Dictionary・反復、言語test runnerは未完成。前段の宣言・解析は§2–3参照 |
+| LSP | [LspServer](Kimi/Lsp/LspServer.cs) にinitialize・document管理・shutdown等の通信処理がある。open/changeの診断送信はコメント化、closeの空診断だけ接続。dumpの要求/出力も未接続 |
+| KimiCode | [extension.js](KimiCode/extension.js) は隣接Debug DLLとDebugWait=trueを固定使用。一般利用のserver設定とhost統合テストは未整備 |
+| CI・配布 | [test.yml](.github/workflows/test.yml) / [publish.yml](.github/workflows/publish.yml) はLinux Release build後に構成/対象未指定のtest。PR・Windows native・0件検知・ログ保存が未整備。NuGet pack/pushの定義はあるが今回未実行 |
+| 性能 | Binding/型/CFG/ABI/定数/layoutの表・scratch・容量を再利用。対応テストにwarm allocation 0 byteと再parse後の保持参照検査、[Benchmark](Benchmark) に字句/Binding/所有権等のworkloadがある。全経路の無割り当てやthroughput改善は保証しない |
 
-予定する入力例は `Targets = { "x86_64-pc-windows-msvc" }`、`OutputKind = "Application"`、`EntrySource = "Main.kimi"`、`OutputPath = "bin/Hello.exe"`。これは追加後のTinyhand設定例であり、現在動作するbuild／実行コマンドではない。Core runtimeはtoolchainに同梱し、このHello worldにuser-defined NativeLibraries設定を要求しない方針とする。
+## 7. 今回の確認
 
-milestoneの完了条件は、生成した実行ファイル自身のstdoutがUTF-8の `Hello, world!`＋LFと一致し、stderrが空、終了codeが0になること。ホストC#のPlayground出力では代用しない。Debug／Releaseで同じ結果を確認し、unknown Name・型不一致・Move後の使用・未対応機能を成功扱いしないこと、出力失敗がAbortすることも検証する。全言語のconformance suite完了とは区別する。
+主要入口・型/変換/ABI/aggregate・所有権の拒否条件、Core catalog、LSP/拡張/CIを現コード・対応テストと照合した。製品コードは変更していない。
 
-### C.13. Remaining implementation selections
+| 検証 | 2026-09-14の結果 |
+| --- | --- |
+| Solution build（Debug / Release） | 各成功、警告0・エラー0 |
+| managed test（Debug / Release） | 各4,123成功、失敗0・skip0。fixture生成を含む |
+| LLVM verifier・通常native O0/O2・runtime/backend・CLI/LSP統合script | 今回未実行。managed成功をnative実行成功へ読み替えない |
+| NativeAOT・VS Code host・CI実workflow・配布・新規benchmark測定 | 今回未実行 |
 
-添付の26項目について、言語上の判断はC.11のとおり反映した。充填構築・可変Slice・Type aliasを今回導入しない判断は、対応漏れではなく明示した設計境界である。
+再現コマンド（構成ごとにbuild→testを直列実行）:
 
-実装から確定できないため、次の具体的な情報は推測で既存仕様として記載していない。
+```powershell
+dotnet build Kimigayo.slnx -c Debug --no-restore -v:minimal
+dotnet test --project xUnitTest/xUnitTest.csproj -c Debug --no-build --no-restore
+dotnet build Kimigayo.slnx -c Release --no-restore -v:minimal
+dotnet test --project xUnitTest/xUnitTest.csproj -c Release --no-build --no-restore
+```
 
-- 既存build／runをEmit・link・生成物の起動へ接続したときの正式な追加引数、実行引数との分離、終了code伝播の詳細。コマンド名と現状の処理はC.12のとおり確認できたが、実行ファイルを生成・起動する完全な利用手順はまだ裏付けられない。
-- 採用するLLVM／linkerの配布物・version・実行path、Core runtimeのbinary名と実際のlink invocation。初期targetと明示的入力mappingの方針は決めたが、導入済みtoolchainとしての裏付けはない。
-- Runtime内の最終的なstring handle ABI、allocator／release helper、OS出力adapterの具体的実装。C.12の推奨表現はあるが、SPECのimplementation-definedな内部表現を架空の実装済みABIで置き換えない。
+buildの警告数は現設定下の結果。テストは対応・拒否境界を検証するもので、SPEC全体への適合証明ではない。
+
+## 8. autoframe実行基盤
+
+[autoframe.md](autoframe.md) 1.0に基づくWindows版を[autoimpl/](autoimpl/README.md)に実装。6段階のプロンプト、Schema、状態・証拠管理、再開、疑似Worker試験を含む。基盤の試験結果と実CLI未確認の理由は[検証記録](autoimpl/VERIFICATION.md)を参照。今回の基盤作業ではNativeAOT、製品用PLAN.mdの作成、本番の自動実行を行っていない。
+
+追加精査で、部分受理、回復対象の欠落、証拠の破損・失効、監査と停滞の判定、停止確認、指示ファイルの保護・署名を修正。疑似試験は追加17件を含む計56件を確認した。実CLIは今回再試験していない。

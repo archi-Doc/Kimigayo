@@ -8,8 +8,6 @@ public static class Constants
     public const string KimiExtension = ".kimi";
     public const string KimiSolutionExtension = ".kimisln";
     public const string KimiProjectExtension = ".kimiproj";
-    public const string TokenExtension = ".token";
-    public const string DefaultNamespace = "Playground";
     public const string RootKotoName = "Root";
     public const string GeneratedFunctionName = "<Generated>";
 
@@ -51,6 +49,7 @@ public static class Constants
     public const string WhileKeyword = "while";
     public const string LoopKeyword = "loop";
     public const string MatchKeyword = "match";
+    public const string SwitchKeyword = "switch";
     public const string ReturnKeyword = "return";
     public const string ExitKeyword = "exit";
     public const string ContinueKeyword = "continue";
@@ -68,20 +67,19 @@ public static class Constants
     public const string GetKeyword = "get";
     public const string SetKeyword = "set";
     public const string HasKeyword = "has";
+    public const string ComputedKeyword = "computed";
+    public const string PropertyKeyword = "property";
     public const string StaticKeyword = "static";
     public const string PublicKeyword = "public";
     public const string ProtectedKeyword = "protected";
     public const string PrivateKeyword = "private";
     public const string InternalKeyword = "internal";
-    public const string ProtectedOrInternalKeyword = "protected_or_internal";
-    public const string ProtectedAndInternalKeyword = "protected_and_internal";
     public const string OpenKeyword = "open";
 
     // Contextual names used by type semantics and constraints
     public const string SemanticsKeyword = "semantics";
     public const string OriginKeyword = "origin";
     public const string FromKeyword = "from";
-    public const string SelfKeyword = "Self";
     public const string OwnerKeyword = "owner";
     public const string RefKeyword = "ref";
     public const string UniqKeyword = "uniq";
@@ -99,7 +97,6 @@ public static class Constants
     public const string OwningKeyword = "owning";
     public const string ReferenceKeyword = "reference";
 
-    public const int ExclusiveUpperBound = 126; // '}' + 1
     public const char LfChar = '\n';
     public const char CrChar = '\r';
 
@@ -134,8 +131,6 @@ public static class Constants
     public static ReadOnlySpan<char> Move => "<=";
 
     public static ReadOnlySpan<char> Map => "=>";
-
-    public static ReadOnlySpan<char> NamespaceKeyword => "namespace";
 
     public static ReadOnlySpan<char> CommaAndSpace => ", ";
 }

@@ -1,0 +1,19 @@
+// SPEC の言語機能を読むためのサンプル。現在のコンパイラーでの実行は対象外。
+// alias はこの文書だけで有効。型の別名ではなく Container を開く。
+alias SpecTour
+
+public func main() -> ()
+    ::Core.writeLine("Kimigayo specification tour")
+    defer => ::Core.writeLine("tour finished")
+
+    Basics.run()
+    Sequences.run()
+    Generics.run()
+    Lifetimes.run()
+    Callables.run()
+    ControlFlow.run()
+    Objects.runValues()
+    NativeDemo.runValues()
+
+    // Objects の obj/rc/arc 入力関数と NativeDemo のポインター入力関数は
+    // 定義を読む例。生成・取得 API を仮定しないため、ここからは呼ばない。

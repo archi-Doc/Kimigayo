@@ -1,0 +1,9 @@
+var count: i32 = 0
+while count < 3
+    ::Core.writeLine("tick")
+    count = count + 1
+
+if count == 3
+    ::Core.writeLine("done")
+else
+    ::Core.writeLine("unexpected")

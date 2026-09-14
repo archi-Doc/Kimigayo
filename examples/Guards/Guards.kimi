@@ -1,0 +1,10 @@
+func classify(value: i32) -> string
+    return match value
+        let n if n < 0 => "negative"
+        let n if n == 0 => "zero"
+        _ => "positive"
+
+public func main()
+    writeLine(classify(-3))
+    writeLine(classify(0))
+    writeLine(classify(7))

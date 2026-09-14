@@ -1,0 +1,5 @@
+// rootgroup で既存の SpecTour に合流する。
+public rootgroup SpecTour
+    // struct の別 fragment。アクセスを一致させ、C layout の Storage は追加しない。
+    public struct NativeRecord
+        public func read(self: ref/Self) -> u64 => self.value

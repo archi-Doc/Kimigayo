@@ -5,6 +5,13 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Parsing;
 
+/// <summary>A capture spelling and acquisition operation.</summary>
+/// <param name="Name">The captured name.</param>
+/// <param name="IsMutable">Whether the environment binding is mutable.</param>
+/// <param name="Operation">The explicit operation, or null.</param>
+/// <param name="Span">The source span.</param>
+public readonly record struct CaptureKoto(string Name, bool IsMutable, string? Operation, SourceSpan Span);
+
 /// <summary>
 /// Describes a parsed function parameter.
 /// </summary>
@@ -55,7 +62,7 @@ public sealed record class FunctionParameterKoto
 /// <summary>
 /// Represents a function declaration.
 /// </summary>
-public sealed class FunctionKoto : IdentifiableKoto
+public sealed class FunctionKoto : DeclarationKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Function;
@@ -91,6 +98,32 @@ public sealed class FunctionKoto : IdentifiableKoto
 
     /// <summary>Gets a value indicating whether this function is a destructor body.</summary>
     public bool IsDestructor { get; internal set; }
+
+    /// <summary>Gets a value indicating whether this is an anonymous function.</summary>
+    public bool IsAnonymous { get; internal set; }
+
+    /// <summary>Gets a value indicating whether this is a constructor declaration.</summary>
+    public bool IsConstructor { get; internal set; }
+
+    /// <summary>Gets a value indicating whether this is a contract function requirement.</summary>
+    public bool IsRequirement { get; internal set; }
+
+    /// <summary>Gets a value indicating whether this is an explicit specialization.</summary>
+    public bool IsSpecialization { get; internal set; }
+
+    /// <summary>Gets the capture list; null distinguishes an omitted list.</summary>
+    public CaptureKoto[]? Captures { get; private set; }
+
+    /// <summary>Gets the base constructor initializer.</summary>
+    public InvocationKoto? BaseInitializer { get; private set; }
+
+    internal void SetCaptures(CaptureKoto[]? captures) => this.Captures = captures;
+
+    internal void SetBaseInitializer(InvocationKoto initializer)
+    {
+        this.BaseInitializer = initializer;
+        this.Adopt(initializer);
+    }
 
     /// <summary>Gets the abstract Origin parameters.</summary>
     public IReadOnlyList<string> Origins => (IReadOnlyList<string>?)this.origins ?? [];
@@ -173,17 +206,13 @@ public sealed class FunctionKoto : IdentifiableKoto
         this.Body.Parent = this;
     }
 
-    /// <inheritdoc/>
-    public override ReadOnlySpan<char> GetIdentifier()
-        => this.Name;
-
     /// <summary>Consumes the function body.</summary>
     /// <param name="reader">The token reader.</param>
     public void Parse(ref TokenReader reader)
     {
-        if (reader.TryConsume(TokenKind.EqualsGreaterThan))
+        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
         {
-            this.ExpressionBody = Parser.ParseRequiredExpression(ref reader);
+            this.ExpressionBody = Parser.ParseSingleBodyItem(ref reader);
             this.Adopt(this.ExpressionBody);
             this.Span = SourceSpan.FromBounds(this.Span.Start, this.ExpressionBody.Span.End);
             return;
@@ -212,13 +241,44 @@ public sealed class FunctionKoto : IdentifiableKoto
 
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendLineFeed);
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
-        if (!this.IsDestructor)
+        if (this.IsSpecialization)
+        {
+            builder.Append("specialize ");
+        }
+
+        if (!this.IsDestructor && !this.IsConstructor)
         {
             builder.Append(Constants.FuncKeyword);
             builder.AppendSpace();
         }
 
         builder.Append(this.Name);
+
+        if (this.Captures is { } captures)
+        {
+            builder.Append('[');
+            for (var i = 0; i < captures.Length; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                if (captures[i].IsMutable)
+                {
+                    builder.Append("var ");
+                }
+
+                builder.Append(captures[i].Name);
+                if (captures[i].Operation is { } operation)
+                {
+                    builder.Append('@');
+                    builder.Append(operation);
+                }
+            }
+
+            builder.Append(']');
+        }
 
         if (this.IsDestructor)
         {
@@ -251,20 +311,7 @@ public sealed class FunctionKoto : IdentifiableKoto
             builder.Append('>');
         }
 
-        if (this.origins is { Count: > 0 })
-        {
-            builder.Append(" origin ");
-            for (var i = 0; i < this.origins.Count; i++)
-            {
-                if (i > 0)
-                {
-                    builder.AppendCommaAndSpace();
-                }
-
-                builder.Append(this.origins[i]);
-            }
-        }
-
+        OriginNameList.WriteTo(this.Origins, ref builder);
         builder.Append('(');
         if (this.parameters is { } parameters)
         {
@@ -293,8 +340,12 @@ public sealed class FunctionKoto : IdentifiableKoto
                     builder.Append(parameter.InternalName);
                 }
 
-                builder.Append(": ");
-                parameter.Type.WriteTo(ref builder);
+                if (parameter.Type.Akind != KotoKind.InferredType)
+                {
+                    builder.Append(": ");
+                    parameter.Type.WriteTo(ref builder);
+                }
+
                 if (parameter.DefaultValue is not null)
                 {
                     builder.Append(" = ");
@@ -304,6 +355,12 @@ public sealed class FunctionKoto : IdentifiableKoto
         }
 
         builder.Append(')');
+        if (this.BaseInitializer is not null)
+        {
+            builder.Append(" : ");
+            this.BaseInitializer.WriteTo(ref builder);
+        }
+
         if (this.ReturnType is not null)
         {
             builder.Append(" -> ");
@@ -346,8 +403,72 @@ public sealed class FunctionKoto : IdentifiableKoto
         this.Body.AddLast(item);
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        if (this.BaseInitializer is not null)
+        {
+            visitor.Visit(this.BaseInitializer);
+        }
+
+        if (this.typeConstraints is not null)
+        {
+            for (var constraintIndex = 0; constraintIndex < this.typeConstraints.Count; constraintIndex++)
+            {
+                var constraint = this.typeConstraints[constraintIndex];
+                visitor.Visit(constraint);
+            }
+        }
+
+        if (this.genericArguments is not null)
+        {
+            for (var argumentIndex = 0; argumentIndex < this.genericArguments.Count; argumentIndex++)
+            {
+                var argument = this.genericArguments[argumentIndex];
+                visitor.Visit(argument);
+            }
+        }
+
+        if (this.parameters is not null)
+        {
+            for (var parameterIndex = 0; parameterIndex < this.parameters.Count; parameterIndex++)
+            {
+                var parameter = this.parameters[parameterIndex];
+                if (parameter.AttributeChain is not null)
+                {
+                    visitor.Visit(parameter.AttributeChain);
+                }
+
+                visitor.Visit(parameter.Type);
+                if (parameter.DefaultValue is not null)
+                {
+                    visitor.Visit(parameter.DefaultValue);
+                }
+            }
+        }
+
+        if (this.ReturnType is not null)
+        {
+            visitor.Visit(this.ReturnType);
+        }
+
+        if (this.Body is not null)
+        {
+            visitor.Visit(this.Body);
+        }
+
+        if (this.ExpressionBody is not null)
+        {
+            visitor.Visit(this.ExpressionBody);
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
+        if (this.BaseInitializer is not null)
+        {
+            yield return this.BaseInitializer;
+        }
+
         if (this.typeConstraints is not null)
         {
             foreach (var constraint in this.typeConstraints)
@@ -399,6 +520,12 @@ public sealed class FunctionKoto : IdentifiableKoto
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
+        if (this.BaseInitializer == oldKoto && newKoto is InvocationKoto initializer)
+        {
+            this.BaseInitializer = initializer;
+            return true;
+        }
+
         if (this.ExpressionBody == oldKoto)
         {
             this.ExpressionBody = newKoto;

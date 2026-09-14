@@ -45,7 +45,7 @@ public class SpecConformanceParseTest
     public void ParsesFunctionOriginsAndSeparatesConstraintsFromExecutableBody()
     {
         var parsed = Parse("""
-            func View.unwrap<s/T> origin source, owner(value: s/T from source)
+            func unwrap<s/T> origin source, owner(value: s/T from source)
                 -> ref/T from value and owner
                 s is ref or obj
                 T is Comparable and (Equatable or Hashable)
@@ -54,7 +54,7 @@ public class SpecConformanceParseTest
             """);
         AssertValid(parsed);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(parsed.GeneratedFunction!.Body!.Items));
-        Assert.Equal("View.unwrap", function.Name);
+        Assert.Equal("unwrap", function.Name);
         Assert.Equal(["source", "owner"], function.Origins);
         Assert.Equal(2, function.TypeConstraints.Count);
         Assert.IsType<ReturnKoto>(Assert.Single(function.Body!.Items));
@@ -74,8 +74,8 @@ public class SpecConformanceParseTest
         var parsed = Parse("""
             contract Sequence
                 associate Element is Comparable
-                var count: i32 has get
-                var item: Element has get, set
+                property count: i32 has get
+                property item: Element has get, set
 
             struct Logger origin sink
                 let output: uniq/Writer from sink
@@ -190,33 +190,25 @@ public class SpecConformanceParseTest
     }
 
     [Theory]
-    [InlineData(false, "unknown")]
-    [InlineData(false, "true")]
-    [InlineData(true, "unknown")]
-    [InlineData(true, "true")]
-    public void DirectivesRetainDeclarationContext(bool match, string condition)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DirectivesRetainDeclarationContext(bool useSwitch)
     {
-        var directive = match ? $"#match\n        #case {condition}" : $"#if {condition}";
-        var indent = match ? "            " : "        ";
+        var directive = useSwitch ? "#switch\n        #case true" : "#if true";
+        var indent = useSwitch ? "            " : "        ";
         var parsed = Parse(
-            $"struct Sample<T>\n    {directive}\n{indent}var value: T has get, set\n{indent}func getValue() -> T => value\n" +
-            $"contract Sequence\n    {directive}\n{indent}associate Element is Comparable\n{indent}var count: i32 has get");
+            $"struct Sample<T>\n    {directive}\n{indent}var value: T\n{indent}func getValue() -> T => value\n" +
+            $"contract Sequence\n    {directive}\n{indent}associate Element is Comparable\n{indent}property count: i32 has get");
         AssertValid(parsed);
         RoundTrip(parsed);
         var sample = Assert.Single(parsed.RootKoto.NestedDeclarationContainers.OfType<StructKoto>());
-        var body = Assert.Single(sample.Members) switch
-        {
-            CompileTimeIfKoto conditional => Assert.IsType<CodeBlockKoto>(conditional.Target),
-            CompileTimeMatchKoto cases => cases.Arms[0].Body,
-            CodeBlockKoto block => block,
-            _ => throw new InvalidOperationException(),
-        };
+        var body = Assert.IsType<CodeBlockKoto>(Assert.Single(sample.Members));
         Assert.IsType<PropertyKoto>(body.Items[0]);
         Assert.IsType<FunctionKoto>(body.Items[1]);
     }
 
     [Fact]
-    public void DeferredDirectiveDoesNotBecomeAnUnconditionalFunctionConstraint()
+    public void UnknownDirectiveDoesNotBecomeAnUnconditionalFunctionConstraint()
     {
         var parsed = Parse("""
             func inspect<T>(value: T)
@@ -224,10 +216,9 @@ public class SpecConformanceParseTest
                 T is Comparable
                 return
             """);
-        AssertValid(parsed);
+        Assert.Equal(nameof(DiagnosticCode.UnknownCompileTimeName_Kd), Assert.Single(parsed.DiagnosticCollection.GetArray()).Entry.Name);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(parsed.GeneratedFunction!.Body!.Items));
-        Assert.IsType<CompileTimeIfKoto>(Assert.Single(function.TypeConstraints));
-        RoundTrip(parsed);
+        Assert.Empty(function.TypeConstraints);
     }
 
     [Fact]
@@ -311,12 +302,24 @@ public class SpecConformanceParseTest
     }
 
     [Fact]
-    public void PreservesExpressionBodiedDestructor()
+    public void PreservesBlockBodiedDestructor()
     {
-        var parsed = Parse("struct Resource\n    deinit => release()");
+        var parsed = Parse("struct Resource\n    deinit\n        release()");
         AssertValid(parsed);
-        Assert.Contains("deinit => release()", Write(parsed));
+        Assert.Contains("deinit", Write(parsed));
         RoundTrip(parsed);
+    }
+
+    [Theory]
+    [InlineData("struct Resource\n    deinit => release()")]
+    [InlineData("struct Resource\n    public deinit\n        release()")]
+    [InlineData("struct Resource\n    #Marker\n    deinit\n        release()")]
+    [InlineData("struct Resource\n    unsafe init()\n        ()")]
+    [InlineData("struct Resource\n    #Marker\n    init()\n        ()")]
+    public void RejectsDestructorAndConstructorFormsOutsideTheirGrammar(string source)
+    {
+        // deinit accepts only its Block, and init only an access modifier (SPEC 16.3, 6.2.3, F.3).
+        Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
     }
 
     [Fact]
@@ -324,9 +327,9 @@ public class SpecConformanceParseTest
     {
         var parsed = Parse("""
             contract Sequence
-                #if unknown
+                #if true
                 associate Element is Comparable
-                var count: i32 has get
+                property count: i32 has get
             """);
         AssertValid(parsed);
         Assert.Contains("associate Element", Write(parsed));

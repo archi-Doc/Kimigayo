@@ -57,6 +57,14 @@ public enum TokenKind : byte
     Continue, // loop,for,while/continue
     Yield, // if/yield
     Null, // contextually typed raw-pointer literal
+    Require,
+    Defer,
+    Self,
+    Init,
+    Deinit,
+    Base,
+    Do,
+    Switch, // compile-time #switch only
 
     // Contextual keyword
     Alias = 96,
@@ -71,14 +79,14 @@ public enum TokenKind : byte
     Protected,
     Private,
     Internal,
-    ProtectedOrInternal,
-    ProtectedAndInternal,
     Open,
     In, // in; contextual delimiter in a for expression
     Associate,
     Get,
     Set,
     Has,
+    Computed,
+    Property,
 
     // Not keyword
     Identifier = 128,
@@ -146,4 +154,5 @@ public enum TokenKind : byte
 
     // An escaped string containing embedded expressions.
     InterpolatedStringLiteral,
+    ColonColon, // ::
 }

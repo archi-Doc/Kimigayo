@@ -26,7 +26,7 @@ public class Compilation
 
     /// <summary>Gets the version and deterministic module identity of this compiler build.</summary>
     public static string CompilerVersion { get; } =
-        $"{typeof(Compilation).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion} ({typeof(Compilation).Module.ModuleVersionId:D})";
+        $"{CompilerRelease.Version} ({typeof(Compilation).Module.ModuleVersionId:D})";
 
     #region FieldAndProperty
 
@@ -66,10 +66,10 @@ public class Compilation
     public Kotonoha Kotonoha { get; }
 
     /// <summary>
-    /// Gets the variables available to conditional compilation.
+    /// Gets the variables available to conditional compilation, with ordinal case-sensitive name lookup.
     /// </summary>
     public IReadOnlyDictionary<string, BasicValue> Variables { get; private set; } =
-        new ReadOnlyDictionary<string, BasicValue>(new Dictionary<string, BasicValue>());
+        ReadOnlyDictionary<string, BasicValue>.Empty;
 
     /// <summary>Gets the inputs recorded on successful preparation, or null when preparation failed.</summary>
     public CompilationBuildMetadata? BuildMetadata { get; private set; }
@@ -81,6 +81,20 @@ public class Compilation
     private readonly IdentifierTable identifiers = new();
 
     private bool hasParsedSource;
+
+    /// <summary>Gets reusable semantic analysis storage for this compilation.</summary>
+    public Binding Binding => field ??= new(this);
+
+    /// <summary>Gets this compilation's compiler-owned Core requirement identities.</summary>
+    public CoreIntrinsics Core => this.Binding.Core;
+
+    private OwnershipAnalysis? ownership;
+
+    /// <summary>Gets reusable ownership CFG analysis. Verification is separate from executable emission.</summary>
+    public OwnershipAnalysis Ownership => this.ownership ??= new(this);
+
+    /// <summary>Gets the reusable, checked LLVM emitter for the implemented execution subset.</summary>
+    public LlvmEmitter Emission => field ??= new(this);
 
     #endregion
 
@@ -149,7 +163,7 @@ public class Compilation
             throw new InvalidOperationException("Create a new Compilation to change inputs after parsing source.");
         }
 
-        this.Variables = new ReadOnlyDictionary<string, BasicValue>(new Dictionary<string, BasicValue>());
+        this.Variables = ReadOnlyDictionary<string, BasicValue>.Empty;
         this.TargetTriple = TargetTriple.Invalid;
         this.IrTarget = IrTarget.Invalid;
         this.BuildMetadata = null;
@@ -225,30 +239,24 @@ public class Compilation
         return this.kotonohaIdToKotonoha.TryGetValue(kotonohaId, out kotonoha);
     }
 
-    /// <summary>
-    /// Attempts to find a Koto node within a source unit.
-    /// </summary>
-    /// <param name="kotonohaId">The source unit identifier.</param>
-    /// <param name="kotoId">The Koto identifier.</param>
-    /// <param name="koto">The matching node, if found.</param>
-    /// <returns><see langword="true"/> when a matching node is found.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryGetKoto(uint kotonohaId, ulong kotoId, [MaybeNullWhen(false)] out Koto koto)
-    {
-        if (this.kotonohaIdToKotonoha.TryGetValue(kotonohaId, out var kotonoha))
-        {
-            return kotonoha.TryGetKoto(kotoId, out koto);
-        }
-
-        koto = default;
-        return false;
-    }
-
     /// <summary>Analyzes control flow after parsing and compile-time directive selection.</summary>
     /// <param name="types">Type facts supplied by Binding, or syntax-only facts when omitted.</param>
     /// <returns>Definite errors, inferred contracts, and obligations pending further Binding.</returns>
     public ControlFlowAnalysis AnalyzeControlFlow(ControlFlowTypeSystem? types = null)
         => ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto, types);
+
+    /// <summary>Runs final Binding and Bound checking for the complete selected source.</summary>
+    /// <returns>The final Binding summary; incomplete semantics never certify success.</returns>
+    public BindingResult Bind()
+    {
+        // No Mod execution exists yet, so there is no reader or mutation between provisional
+        // and final Binding. The final pass resets every semantic field; do not run it twice.
+        // When Mods are implemented, bind provisionally before their queries and after append,
+        // then run this final pass over the complete selected declaration set (SPEC 20.7.2).
+        return this.Binding.Bind(BindingMode.Final);
+    }
+
+    internal void InvalidateOwnership() => this.ownership?.Invalidate();
 
     internal bool TryGetIdentifier(ReadOnlySpan<char> text, [NotNullWhen(true)] out string? identifier)
         => this.identifiers.TryGetIdentifier(text, out identifier);

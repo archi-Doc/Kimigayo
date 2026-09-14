@@ -66,7 +66,7 @@ public abstract class BinaryKoto : ExpressionKoto
     public Koto Right { get; private set; }
 
     /// <summary>Gets the infix operator spelling, including surrounding spaces.</summary>
-    public string InfixText => InfixTexts[(int)this.Akind] ?? string.Empty;
+    public string InfixText => this is IsKoto { IsNegated: true } ? " is not " : InfixTexts[(int)this.Akind] ?? string.Empty;
 
     /// <summary>Initializes a new instance of the <see cref="BinaryKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
@@ -89,6 +89,12 @@ public abstract class BinaryKoto : ExpressionKoto
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.None);
         builder.Append(this.InfixText);
         this.Right.WriteTo(ref builder);
+    }
+
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Left);
+        visitor.Visit(this.Right);
     }
 
     protected override IEnumerable<Koto> GetChildNodes()
@@ -198,6 +204,8 @@ public sealed class ConversionKoto : BinaryKoto
 {
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Conversion;
+
+    internal ConversionBinding ConversionBinding { get; set; }
 
     /// <summary>Initializes a new instance of the <see cref="ConversionKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
@@ -405,6 +413,18 @@ public sealed class IsKoto : BinaryKoto
 
     /// <summary>Gets a value indicating whether this is an associated-type constraint.</summary>
     public bool IsAssociatedConstraint { get; internal set; }
+
+    /// <summary>Gets the bound compile-time proposition; ordinary runtime tests leave this null.</summary>
+    public BoundConstraint? BoundConstraint { get; internal set; }
+
+    /// <summary>Gets a value indicating whether syntax selected a runtime test rather than a Requirement Test.</summary>
+    public bool IsRuntimeTest { get; internal set; }
+
+    /// <summary>Gets a value indicating whether the runtime test uses <c>is not</c>. Its right child remains Type syntax.</summary>
+    public bool IsNegated { get; internal set; }
+
+    /// <summary>Gets this binding pass's runtime test, mutually exclusive with BoundConstraint.</summary>
+    public BoundRuntimeTypeTest? BoundRuntimeTest { get; internal set; }
 
     /// <summary>Initializes a new instance of the <see cref="IsKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

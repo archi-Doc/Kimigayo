@@ -58,6 +58,19 @@ public sealed class RangeKoto : ExpressionKoto
         this.End?.WriteTo(ref builder);
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        if (this.Start is not null)
+        {
+            visitor.Visit(this.Start);
+        }
+
+        if (this.End is not null)
+        {
+            visitor.Visit(this.End);
+        }
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
     {
         if (this.Start is not null)

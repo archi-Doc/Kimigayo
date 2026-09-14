@@ -1,0 +1,10 @@
+var value: i32 = 1
+let saved = work: do
+    defer => value = 2
+    defer
+        defer => writeLine("cleanup")
+        exit
+    exit to work: value
+
+if saved == 1 and value == 2
+    writeLine("ok")

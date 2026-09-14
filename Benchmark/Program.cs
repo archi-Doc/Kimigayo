@@ -8,9 +8,19 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        var b = new ParseBenchmark();
+        b.Test1();
+
         var switcher = new BenchmarkSwitcher(new[]
         {
             typeof(ParseBenchmark),
+            typeof(BindingBenchmark),
+            typeof(PatternBindingBenchmark),
+            typeof(StartupBindingBenchmark),
+            typeof(OwnershipAnalysisBenchmark),
+            typeof(MatchOwnershipBenchmark),
+            typeof(FrontEndBenchmark),
+            typeof(DirectiveBenchmark),
             typeof(TokenReaderBenchmark),
             typeof(SourceDocumentBenchmark),
             typeof(HashedStringBenchmark),

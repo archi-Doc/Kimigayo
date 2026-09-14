@@ -1,0 +1,330 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using System.Globalization;
+using System.Text;
+
+namespace Kimi.Compiler;
+
+/// <summary>
+/// Serializes a closed <see cref="EmissionModule"/> directly into the destination writer. It never reads Binding,
+/// AST or ownership state, and formats numbers on the stack so warm writes allocate nothing.
+/// </summary>
+internal static partial class LlvmModuleWriter
+{
+    // Every generated definition carries the same profile attributes (SPEC 21.5.1).
+    private const string Footer =
+        "attributes #0 = { uwtable(" + WindowsProfile.UnwindTables + ") \"target-cpu\"=\"" + WindowsProfile.Cpu + "\" \"target-features\"=\"" + WindowsProfile.Features +
+        "\" \"denormal-fp-math\"=\"ieee,ieee\" }\n!llvm.module.flags = !{!0}\n!0 = !{i32 8, !\"PIC Level\", i32 2}\n";
+
+    // Fixed profile vocabulary: no per-module tracking or warm declaration construction.
+    private const string OverflowDeclarations = """
+        declare { i8, i1 } @llvm.sadd.with.overflow.i8(i8, i8)
+        declare { i8, i1 } @llvm.ssub.with.overflow.i8(i8, i8)
+        declare { i8, i1 } @llvm.smul.with.overflow.i8(i8, i8)
+        declare { i8, i1 } @llvm.uadd.with.overflow.i8(i8, i8)
+        declare { i8, i1 } @llvm.usub.with.overflow.i8(i8, i8)
+        declare { i8, i1 } @llvm.umul.with.overflow.i8(i8, i8)
+        declare { i16, i1 } @llvm.sadd.with.overflow.i16(i16, i16)
+        declare { i16, i1 } @llvm.ssub.with.overflow.i16(i16, i16)
+        declare { i16, i1 } @llvm.smul.with.overflow.i16(i16, i16)
+        declare { i16, i1 } @llvm.uadd.with.overflow.i16(i16, i16)
+        declare { i16, i1 } @llvm.usub.with.overflow.i16(i16, i16)
+        declare { i16, i1 } @llvm.umul.with.overflow.i16(i16, i16)
+        declare { i32, i1 } @llvm.sadd.with.overflow.i32(i32, i32)
+        declare { i32, i1 } @llvm.ssub.with.overflow.i32(i32, i32)
+        declare { i32, i1 } @llvm.smul.with.overflow.i32(i32, i32)
+        declare { i32, i1 } @llvm.uadd.with.overflow.i32(i32, i32)
+        declare { i32, i1 } @llvm.usub.with.overflow.i32(i32, i32)
+        declare { i32, i1 } @llvm.umul.with.overflow.i32(i32, i32)
+        declare { i64, i1 } @llvm.sadd.with.overflow.i64(i64, i64)
+        declare { i64, i1 } @llvm.ssub.with.overflow.i64(i64, i64)
+        declare { i64, i1 } @llvm.smul.with.overflow.i64(i64, i64)
+        declare { i64, i1 } @llvm.uadd.with.overflow.i64(i64, i64)
+        declare { i64, i1 } @llvm.usub.with.overflow.i64(i64, i64)
+        declare { i64, i1 } @llvm.umul.with.overflow.i64(i64, i64)
+        """ + "\n";
+
+    // Target information, shared Types, and exactly one strong _fltused definition (SPEC 21.5.7).
+    private static readonly string Header =
+        "; Kimigayo checked pre-optimization IR (" + WindowsProfile.Name + ")\ntarget triple = \"" + WindowsProfile.Target + "\"\ntarget datalayout = \"" + WindowsProfile.DataLayout + "\"\n" +
+        WindowsLowering.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + WindowsProfile.FloatMarker + " = global i32 0, align 4\n";
+
+    private static readonly string Runtime = ReadRuntime();
+
+    internal static void Write(EmissionModule module, TextWriter output)
+    {
+        output.Write(Header);
+        var constants = module.Constants;
+        for (var i = 0; i < constants.Count; i++)
+        {
+            output.Write(constants[i].Definition);
+        }
+
+        output.Write(Runtime);
+        output.Write(OverflowDeclarations);
+        WriteWideOverflowDeclarations(module, output);
+        if (module.Aggregates.Count != 0)
+        {
+            output.Write("declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)\n");
+            foreach (var aggregate in module.Aggregates)
+            {
+                WriteAggregateDestructor(output, aggregate);
+            }
+        }
+
+        if (module.NeedsStringComparison)
+        {
+            output.Write(StringComparisons);
+        }
+
+        for (var i = 0; i < module.FunctionCount; i++)
+        {
+            WriteFunction(output, constants, module.GetFunction(i));
+        }
+
+        output.Write(Footer);
+    }
+
+    private static void WriteFunction(TextWriter output, LlvmConstantPool constants, EmissionFunction function)
+    {
+        output.Write(function.Abi.GetDefinition(function.Exported));
+        output.Write("entry:\n");
+        // Fixed-size allocas precede calls in the entry block (SPEC 21.5.5).
+        foreach (var slot in function.Slots)
+        {
+            output.Write("  %p");
+            WriteNumber(output, slot.Place);
+            output.Write(" = alloca ");
+            output.Write(slot.Value.Layout.StorageType);
+            output.Write(", align ");
+            WriteNumber(output, slot.Value.Layout.Alignment);
+            output.Write('\n');
+        }
+
+        foreach (var place in function.LiveFlags)
+        {
+            Name(output, "  %liveSlot", place);
+            output.Write(" = alloca i8, align 1\n");
+        }
+
+        foreach (var slot in function.Subslots)
+        {
+            Name(output, "  %p", slot.Place);
+            output.Write(" = getelementptr i8, ptr ");
+            WriteSlot(output, function, slot.Parent);
+            output.Write(", i64 ");
+            WriteNumber(output, slot.Offset);
+            output.Write('\n');
+        }
+
+        foreach (var instruction in function.Instructions)
+        {
+            switch (instruction.Opcode)
+            {
+                case EmissionOpcode.TransferAggregate:
+                case EmissionOpcode.DestroyAggregate:
+                    WriteAggregate(output, constants, function, instruction);
+                    break;
+                case EmissionOpcode.StringPattern:
+                    WriteStringPattern(output, constants, function, instruction);
+                    continue;
+                case EmissionOpcode.MoveString:
+                case EmissionOpcode.DestroyStringIfLive:
+                case EmissionOpcode.StoreLiveFlag:
+                case EmissionOpcode.InitializeLiveFlag:
+                    WriteString(output, constants, function, instruction, function.GetOperands(instruction));
+                    break;
+                case EmissionOpcode.StringEquals:
+                case EmissionOpcode.StringCompare:
+                    WriteStringComparison(output, function, instruction);
+                    break;
+                case EmissionOpcode.StoreStaticString:
+                    output.Write("  store %kimi.string { ptr ");
+                    if (instruction.Constant < 0)
+                    {
+                        output.Write("null, i64 0");
+                    }
+                    else
+                    {
+                        var constant = constants[instruction.Constant];
+                        output.Write('@');
+                        output.Write(constant.Name);
+                        output.Write(", i64 ");
+                        WriteNumber(output, constant.ByteLength);
+                    }
+
+                    output.Write(", i8 ");
+                    WriteNumber(output, WindowsLowering.StaticReleaseKind);
+                    output.Write(" }, ptr ");
+                    WriteSlot(output, function, instruction.Place);
+                    output.Write(", align ");
+                    WriteNumber(output, WindowsLowering.String.Layout.Alignment);
+                    output.Write('\n');
+                    break;
+
+                case EmissionOpcode.Call:
+                    WriteCall(output, constants, instruction.Callee!, function.GetOperands(instruction), instruction.Operation, function);
+                    break;
+
+                case EmissionOpcode.ReturnVoid:
+                    output.Write("  ret void\n");
+                    break;
+
+                case EmissionOpcode.Unreachable:
+                    output.Write("  unreachable\n");
+                    break;
+
+                default:
+                    WriteScalar(output, constants, instruction, function.GetOperands(instruction));
+                    break;
+            }
+        }
+
+        output.Write("}\n");
+    }
+
+    private static void WriteSlot(TextWriter output, EmissionFunction function, int place)
+    {
+        var address = function.SlotAddresses[place];
+        switch (address.Kind)
+        {
+            case EmissionOperandKind.SlotAddress:
+            case EmissionOperandKind.ProjectedSlot:
+                Name(output, "%p", (int)address.Value);
+                break;
+            case EmissionOperandKind.Argument:
+                WriteOperand(output, address);
+                break;
+            case EmissionOperandKind.ReturnAddress:
+                output.Write("%ret");
+                break;
+            default:
+                throw new InvalidOperationException("Unprepared slot address.");
+        }
+    }
+
+    private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1, EmissionFunction? function = null)
+    {
+        if (callee.Result != WindowsLowering.Unit.ComputationType)
+        {
+            if (result < 0)
+            {
+                throw new InvalidOperationException("Call results need prepared result values.");
+            }
+
+            Name(output, "  %v", result);
+            output.Write(" = ");
+        }
+
+        output.Write(callee.Result == WindowsLowering.Unit.ComputationType ? "  call " : "call ");
+        output.Write(callee.Result);
+        output.Write(" @");
+        output.Write(callee.Name);
+        output.Write('(');
+        for (var i = 0; i < operands.Length; i++)
+        {
+            if (i != 0)
+            {
+                output.Write(", ");
+            }
+
+            output.Write(callee.Parameters[i].Type);
+            output.Write(callee.Parameters[i].Attributes);
+            output.Write(' ');
+            var operand = operands[i];
+            switch (operand.Kind)
+            {
+                case EmissionOperandKind.Value:
+                case EmissionOperandKind.Argument:
+                case EmissionOperandKind.Float32:
+                case EmissionOperandKind.Float64:
+                    WriteOperand(output, operand);
+                    break;
+                case EmissionOperandKind.SlotAddress:
+                    WriteSlot(output, function ?? throw new InvalidOperationException("Slot argument without a function."), (int)operand.Value);
+                    break;
+                case EmissionOperandKind.ConstantAddress:
+                    output.Write('@');
+                    output.Write(constants[(int)operand.Value].Name);
+                    break;
+                case EmissionOperandKind.ConstantLength:
+                    WriteNumber(output, constants[(int)operand.Value].ByteLength);
+                    break;
+                default:
+                    WriteNumber(output, operand.Value);
+                    break;
+            }
+        }
+
+        output.Write(")\n");
+    }
+
+    private static void WriteWideOverflowDeclarations(EmissionModule module, TextWriter output)
+    {
+        for (var i = 0; i < module.FunctionCount; i++)
+        {
+            foreach (var instruction in module.GetFunction(i).Instructions)
+            {
+                if (instruction.Check != ArithmeticCheckKind.Overflow || instruction.ScalarType != "i128")
+                {
+                    continue;
+                }
+
+                output.Write("declare { i128, i1 } @llvm.sadd.with.overflow.i128(i128, i128)\n" +
+                    "declare { i128, i1 } @llvm.ssub.with.overflow.i128(i128, i128)\n" +
+                    "declare { i128, i1 } @llvm.smul.with.overflow.i128(i128, i128)\n" +
+                    "declare { i128, i1 } @llvm.uadd.with.overflow.i128(i128, i128)\n" +
+                    "declare { i128, i1 } @llvm.usub.with.overflow.i128(i128, i128)\n" +
+                    "declare { i128, i1 } @llvm.umul.with.overflow.i128(i128, i128)\n");
+                return;
+            }
+        }
+    }
+
+    // TextWriter.Write(long) formats through a temporary string; format on the stack instead.
+    private static void WriteNumber(TextWriter output, long value)
+    {
+        Span<char> digits = stackalloc char[20];
+        value.TryFormat(digits, out var length, default, CultureInfo.InvariantCulture);
+        output.Write(digits[..length]);
+    }
+
+    private static void WriteNumber(TextWriter output, Int128 value)
+    {
+        if (value >= long.MinValue && value <= long.MaxValue)
+        {
+            WriteNumber(output, (long)value);
+            return;
+        }
+
+        Span<char> digits = stackalloc char[40];
+        value.TryFormat(digits, out var length, default, CultureInfo.InvariantCulture);
+        output.Write(digits[..length]);
+    }
+
+    private static string ReadRuntime()
+    {
+        using var stream = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.WindowsRuntime.ll.in")!;
+        using var reader = new StreamReader(stream);
+        var runtime = WindowsLowering.ExpandAbortReasons(reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal));
+        foreach (var abi in WindowsLowering.RuntimeDefinitions)
+        {
+            // Compiler-facing runtime signatures come from the same FunctionAbi records as calls; each is defined once.
+            var marker = "{{" + abi.Name + "}}\n";
+            var index = runtime.IndexOf(marker, StringComparison.Ordinal);
+            if (index < 0 || runtime.IndexOf(marker, index + marker.Length, StringComparison.Ordinal) >= 0)
+            {
+                throw new InvalidDataException("The runtime template must contain each shared ABI definition marker exactly once.");
+            }
+
+            runtime = runtime.Replace(marker, abi.GetDefinition(exported: false), StringComparison.Ordinal);
+        }
+
+        if (runtime.Contains("{{", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("The runtime template has an unexpanded ABI definition.");
+        }
+
+        return runtime + "\n";
+    }
+}

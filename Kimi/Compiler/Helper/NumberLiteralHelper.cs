@@ -44,6 +44,28 @@ public static partial class NumberLiteralHelper
     public static bool IsInt64(Int128 value)
         => value >= long.MinValue && value <= long.MaxValue;
 
+    /// <summary>Determines whether decimal text contains a fraction or exponent marker.</summary>
+    /// <remarks>Literals are usually a few characters, where a scalar scan beats the vectorized search setup.</remarks>
+    /// <param name="text">The literal text.</param>
+    /// <returns><see langword="true"/> when the text contains <c>.</c>, <c>e</c>, or <c>E</c>.</returns>
+    public static bool HasFloatMarker(ReadOnlySpan<char> text)
+    {
+        if (text.Length > 16)
+        {
+            return text.IndexOfAny('.', 'e', 'E') >= 0;
+        }
+
+        foreach (var c in text)
+        {
+            if (c == '.' || (c | 0x20) == 'e')
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>
     /// Scans a numeric literal at the start of <paramref name="text"/>.
     /// </summary>
@@ -79,13 +101,13 @@ public static partial class NumberLiteralHelper
             switch ((char)(text[1] | 0x20))
             {
                 case 'b':
-                    return FinishNumberLiteral(text, ScanBinaryDigitsAndSeparators(text, 2), out length);
+                    return FinishPrefixedLiteral(text, ScanBinaryDigitsAndSeparators(text, 2), out length);
 
                 case 'o':
-                    return FinishNumberLiteral(text, ScanOctalDigitsAndSeparators(text, 2), out length);
+                    return FinishPrefixedLiteral(text, ScanOctalDigitsAndSeparators(text, 2), out length);
 
                 case 'x':
-                    return FinishNumberLiteral(text, ScanHexadecimalDigitsAndSeparators(text, 2), out length);
+                    return FinishPrefixedLiteral(text, ScanHexadecimalDigitsAndSeparators(text, 2), out length);
             }
         }
 
@@ -398,6 +420,19 @@ GeneralLiteral:
             value = unchecked((Int128)accumulator);
             return NumberLiteralParseResult.I128;
         }
+    }
+
+    // A base prefix requires at least one digit of that base; separators alone are malformed (SPEC 2.6).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool FinishPrefixedLiteral(ReadOnlySpan<char> text, int i, out int length)
+    {
+        if (!text[2..i].ContainsAnyExcept('_'))
+        {
+            length = ExtendWithIdentifierContinue(text, i);
+            return false;
+        }
+
+        return FinishNumberLiteral(text, i, out length);
     }
 
     // Include identifier continuations in a malformed token.

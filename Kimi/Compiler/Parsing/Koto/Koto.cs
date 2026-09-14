@@ -237,11 +237,8 @@ public enum KotoKind : byte
     /// <summary>An <c>if</c> expression.</summary>
     If,
 
-    /// <summary>A deferred compile-time <c>#if</c> directive.</summary>
-    CompileTimeIf,
-
-    /// <summary>A deferred compile-time <c>#match</c> group.</summary>
-    CompileTimeMatch,
+    /// <summary>An invalid compile-time <c>#switch</c> group retained for recovery.</summary>
+    CompileTimeSwitch,
 
     /// <summary>A <c>match</c> expression.</summary>
     Match,
@@ -305,6 +302,49 @@ public enum KotoKind : byte
     /// <summary>A parenthesized type, distinct from a one-element tuple.</summary>
     ParenthesizedType,
 
+    /// <summary>A fixed-array type.</summary>
+    FixedArrayType,
+
+    /// <summary>A function length parameter.</summary>
+    LengthParameter,
+
+    /// <summary>A root-qualified name.</summary>
+    RootName,
+
+    /// <summary>An inferred enum Case expression.</summary>
+    InferredCase,
+
+    /// <summary>An enum Case declaration.</summary>
+    EnumCase,
+    ConditionalConformance,
+
+    /// <summary>A binding Pattern.</summary>
+    BindingPattern,
+
+    /// <summary>A Case Pattern.</summary>
+    CasePattern,
+
+    /// <summary>A Tuple Pattern.</summary>
+    TuplePattern,
+
+    /// <summary>A requirement statement.</summary>
+    Require,
+
+    /// <summary>An associated-Type declaration.</summary>
+    AssociatedType,
+
+    /// <summary>A dedicated constructor suffix.</summary>
+    ConstructorReference,
+
+    /// <summary>An omitted anonymous parameter type.</summary>
+    InferredType,
+
+    /// <summary>A generic Type parameter or pair.</summary>
+    GenericParameter,
+
+    /// <summary>A do expression.</summary>
+    Do,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }
@@ -337,13 +377,6 @@ public abstract class Koto
 
     /// <summary>Gets the parent node, or <see langword="null"/> for the root.</summary>
     public Koto? Parent { get; internal set; }
-
-    private List<PendingDirectiveCondition>? pendingDirectiveConditions;
-
-    /// <summary>Gets conditions awaiting Directive Binding in this scope, independently of branch selection.</summary>
-    /// <remarks>These validation obligations are separate from <see cref="ChildNodes"/> and ordinary Binding.</remarks>
-    public IReadOnlyList<PendingDirectiveCondition> PendingDirectiveConditions
-        => (IReadOnlyList<PendingDirectiveCondition>?)this.pendingDirectiveConditions ?? [];
 
     /// <summary>Gets the direct syntax-tree children of this node.</summary>
     public IEnumerable<Koto> ChildNodes
@@ -384,7 +417,10 @@ public abstract class Koto
     {
         this.CodeContext = reader.CodeContext;
         this.Span = range;
-        this.SetAttributeChain(reader.PopAttribute());
+        if (reader.AttributeKoto is not null)
+        {
+            this.SetAttributeChain(reader.PopAttribute());
+        }
     }
 
     internal Koto(CodeContext codeContext, SourceSpan range)
@@ -417,20 +453,48 @@ public abstract class Koto
         builder.Append("Koto");
     }
 
-    /// <summary>Resolves an identifier relative to this node.</summary>
-    /// <param name="identifier">The identifier to resolve.</param>
-    /// <returns>The resolved node, or <see langword="null"/>.</returns>
-    public virtual Koto? ResolveIdentifier(ReadOnlySpan<char> identifier)
-        => default;
+    /// <summary>Gets the current semantic binding state; this does not certify descendants.</summary>
+    public BindingState BindingState { get; internal set; }
 
-    /// <summary>Binds this node and its children to a compilation.</summary>
-    /// <param name="compilation">The active compilation.</param>
-    public virtual void Bind(Compilation compilation)
+    /// <summary>Gets the resolved complete type, or null while unavailable.</summary>
+    public BoundType? BoundType
     {
-        foreach (var child in this.GetChildNodes())
+        get => this.boundMeaning as BoundType;
+        internal set => this.boundMeaning = value;
+    }
+
+    /// <summary>Gets the resolved Origin when this syntax occurs in the Origin namespace.</summary>
+    public BoundOrigin? BoundOrigin
+    {
+        get => this.boundMeaning as BoundOrigin;
+        internal set => this.boundMeaning = value;
+    }
+
+    /// <summary>Gets the selected symbol, or null before selection.</summary>
+    public BindingSymbol? BoundSymbol { get; internal set; }
+
+    internal BindingFailure BindingFailure { get; set; }
+
+    /// <summary>Gets or sets the shared Type/Origin slot as a whole, so snapshots never clear one meaning through the other.</summary>
+    internal object? BoundMeaning
+    {
+        get => this.boundMeaning;
+        set => this.boundMeaning = value;
+    }
+
+    // Type and Origin syntax occupy different namespaces; they share one semantic reference slot.
+    private object? boundMeaning;
+
+    /// <summary>Visits attributes and concrete child storage without creating iterators.</summary>
+    /// <param name="visitor">The reusable visitor.</param>
+    public void VisitChildren(KotoVisitor visitor)
+    {
+        if (this.AttributeChain is { } attribute)
         {
-            child.Bind(compilation);
+            visitor.Visit(attribute);
         }
+
+        this.VisitChildrenCore(visitor);
     }
 
     /// <summary>Adds a diagnostic for this node.</summary>
@@ -439,26 +503,6 @@ public abstract class Koto
     /// <param name="obj2">The second optional diagnostic argument.</param>
     public void AddDiagnostic(DiagnosticCode code, object? obj = null, object? obj2 = null)
         => this.DiagnosticCollection?.Add(this.Span, code, obj, obj2, this.CodeContext.SourceDocument);
-
-    /// <summary>Adds an attribute to this node.</summary>
-    /// <param name="attributeKoto">The attribute to add.</param>
-    public void AddAttribute(AttributeKoto attributeKoto)
-    {
-        if (attributeKoto.Parent is not null)
-        {
-            throw new InvalidOperationException();
-        }
-
-        var previous = this.AttributeChain;
-        attributeKoto.Parent = this;
-        attributeKoto.AttributeChain = previous;
-        if (previous is not null)
-        {
-            previous.Parent = attributeKoto;
-        }
-
-        this.AttributeChain = attributeKoto;
-    }
 
     /// <summary>Removes an attribute from this node.</summary>
     /// <param name="attributeKoto">The attribute to remove.</param>
@@ -512,23 +556,18 @@ public abstract class Koto
         }
     }
 
-    internal void AddPendingDirectiveConditions(IEnumerable<Koto>? conditions)
-    {
-        if (conditions is null)
-        {
-            return;
-        }
-
-        foreach (var condition in conditions)
-        {
-            (this.pendingDirectiveConditions ??= []).Add(new(condition, this));
-        }
-    }
-
     internal bool ReplaceChild(Koto oldKoto, Koto newKoto)
     {
         if (this.AttributeChain == oldKoto && newKoto is AttributeKoto attribute)
         {
+            // Only the head is replaced; the remaining attributes stay attached behind it.
+            if (attribute.AttributeChain is null && oldKoto.AttributeChain is { } rest)
+            {
+                oldKoto.AttributeChain = null;
+                attribute.AttributeChain = rest;
+                rest.Parent = attribute;
+            }
+
             this.AttributeChain = attribute;
         }
         else if (!this.ReplaceChildCore(oldKoto, newKoto))
@@ -567,6 +606,54 @@ public abstract class Koto
         }
 
         return false;
+    }
+
+    /// <summary>Replaces a known child slot in constant time, retaining source and attribute provenance.</summary>
+    /// <typeparam name="T">The child slot type.</typeparam>
+    /// <param name="list">The owned mutable array or list.</param>
+    /// <param name="index">The already known child index.</param>
+    /// <param name="replacement">The detached replacement node.</param>
+    protected void ReplaceAt<T>(IReadOnlyList<T> list, int index, T replacement)
+        where T : Koto
+    {
+        ArgumentNullException.ThrowIfNull(replacement);
+        var current = list[index];
+        if (ReferenceEquals(current, replacement))
+        {
+            return;
+        }
+
+        if (list is not IList<T> mutable || (mutable.IsReadOnly && list is not T[]))
+        {
+            throw new InvalidOperationException("The child storage is not mutable.");
+        }
+
+        if (replacement.Parent is not null)
+        {
+            throw new InvalidOperationException("A replacement must be detached.");
+        }
+
+        if (replacement.AttributeChain is not null && current.AttributeChain is not null)
+        {
+            throw new InvalidOperationException("A replacement cannot overwrite an existing attribute chain.");
+        }
+
+        replacement.CodeContext = current.CodeContext;
+        replacement.Span = current.Span;
+        if (current.AttributeChain is { } attributes)
+        {
+            current.AttributeChain = null;
+            replacement.SetAttributeChain(attributes);
+        }
+
+        mutable[index] = replacement;
+        current.Parent = null;
+        replacement.Parent = this;
+        // A rewrite invalidates facts of the owner; a later Bind rebuilds dependent facts.
+        this.BindingState = BindingState.Unvisited;
+        this.BoundMeaning = null;
+        this.BoundSymbol = null;
+        this.BindingFailure = BindingFailure.None;
     }
 
     /// <summary>Writes the attribute chain, if any, followed by the requested trailing text.</summary>
@@ -637,6 +724,12 @@ public abstract class Koto
     /// <returns>The direct child nodes, excluding the attribute chain handled by <see cref="ChildNodes"/>.</returns>
     protected virtual IEnumerable<Koto> GetChildNodes()
         => [];
+
+    /// <summary>Visits direct child storage, excluding the attribute chain.</summary>
+    /// <param name="visitor">The reusable visitor.</param>
+    protected virtual void VisitChildrenCore(KotoVisitor visitor)
+    {
+    }
 
     /// <summary>Replaces a child reference owned by the concrete node.</summary>
     /// <param name="oldKoto">The current child.</param>

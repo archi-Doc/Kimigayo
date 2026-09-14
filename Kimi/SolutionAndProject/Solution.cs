@@ -2,6 +2,7 @@
 
 using System.Text;
 using Kimi.Command;
+using Kimi.Diagnostics;
 
 namespace Kimi;
 
@@ -18,9 +19,6 @@ public class Solution
 
     /// <summary>Gets the command-line options shared by projects in this solution.</summary>
     public KimiOptions KimiOptions { get; private set; } = new();
-
-    /// <summary>Gets the standalone Kimi source selected for an implicit project.</summary>
-    public string SingleFile { get; private set; } = string.Empty;
 
     /// <summary>Gets the loaded projects keyed by project-file path.</summary>
     public Dictionary<string, Project> Projects { get; private set; } = new();
@@ -74,19 +72,58 @@ public class Solution
         return true;
     }
 
-    /// <summary>Builds every loaded project using the solution options.</summary>
-    /// <returns>A task whose result indicates whether build dispatch completed.</returns>
-    public async Task<bool> Build()
+    /// <summary>Checks every loaded project's front end without emitting artifacts.</summary>
+    /// <returns>Whether the loaded projects pass front-end checks.</returns>
+    public async Task<bool> Check()
+        => await this.BuildCore(false).ConfigureAwait(false);
+
+    /// <summary>Builds native binaries for all selected projects.</summary>
+    /// <param name="cancellationToken">Cancels generation and tool execution.</param>
+    /// <returns>Whether all selected projects built successfully.</returns>
+    public async Task<bool> Build(CancellationToken cancellationToken = default)
     {
-        var success = true;
-        foreach (var x in this.Projects.Values)
+        if (!this.AllProjectsLoaded())
         {
-            x.KimiOptions = this.KimiOptions;
-            x.SolutionLanguageVersion = this.SolutionFile.Configuration.LangVersion;
-            success &= await x.Build();
+            return false;
+        }
+
+        var success = true;
+        foreach (var project in this.Projects.Values)
+        {
+            project.KimiOptions = this.KimiOptions;
+            project.SolutionLanguageVersion = this.SolutionFile.Configuration.LangVersion;
+            success &= await project.Build(cancellationToken).ConfigureAwait(false);
         }
 
         return success;
+    }
+
+    /// <summary>Runs exactly one selected Application without building it.</summary>
+    /// <param name="cancellationToken">Cancels the child process.</param>
+    /// <returns>The application's exit code.</returns>
+    public Task<int> Run(CancellationToken cancellationToken = default)
+    {
+        if (!this.AllProjectsLoaded() || this.Projects.Count != 1)
+        {
+            throw new InvalidDataException("Run requires exactly one loaded project or an explicit .exe path.");
+        }
+
+        var project = this.Projects.Values.Single();
+        if ((this.KimiOptions.Target.Length != 0 && this.KimiOptions.Target != Compiler.WindowsProfile.Target) ||
+            !project.ProjectFile.Targets.Contains(Compiler.WindowsProfile.Target, StringComparer.Ordinal))
+        {
+            throw new InvalidDataException("Run requires the Windows x64 target.");
+        }
+
+        return project.Run(cancellationToken);
+    }
+
+    /// <summary>Generates checked LLVM/manifest pairs for the loaded projects.</summary>
+    /// <param name="cancellationToken">Cancels between compilation targets.</param>
+    /// <returns>Whether every project published its artifacts.</returns>
+    public async Task<bool> Generate(CancellationToken cancellationToken = default)
+    {
+        return this.AllProjectsLoaded() && await this.BuildCore(true, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Discovers solution and project files for a build command.</summary>
@@ -96,6 +133,8 @@ public class Solution
     public void LoadForBuild(ILogger logger, KimiOptions options, string[] args)
     {
         var projectList = new List<string>();
+        this.SolutionFile = new();
+        this.Projects.Clear();
         this.KimiOptions = options;
 
         var currentDirectory = Directory.GetCurrentDirectory();
@@ -109,10 +148,13 @@ public class Solution
         {
             if (x.EndsWith(Constants.KimiSolutionExtension, StringComparison.InvariantCultureIgnoreCase))
             {// *.kimisln
-                if (this.TryReadFile(x, logger))
+                if (this.TryReadFile(Path.GetFullPath(x), logger))
                 {
                     goto SolutionLoaed;
                 }
+
+                this.SolutionFile.Projects.Add(Path.GetFullPath(x));
+                goto SolutionLoaed;
             }
         }
 
@@ -123,7 +165,7 @@ public class Solution
             {
                 foreach (var y in Directory.EnumerateFiles(x, $"*{Constants.KimiSolutionExtension}", SearchOption.TopDirectoryOnly))
                 {
-                    if (this.TryReadFile(y, logger))
+                    if (this.TryReadFile(Path.GetFullPath(y), logger))
                     {
                         goto SolutionLoaed;
                     }
@@ -132,7 +174,7 @@ public class Solution
                 // Load project file in directory
                 foreach (var y in Directory.EnumerateFiles(x, $"*{Constants.KimiProjectExtension}", SearchOption.TopDirectoryOnly))
                 {
-                    projectList.Add(y);
+                    projectList.Add(Path.GetFullPath(y));
                 }
             }
         }
@@ -182,116 +224,40 @@ SolutionLoaed:
         return;
     }
 
-    /// <summary>Discovers a project or standalone Kimi source for a run command.</summary>
-    /// <param name="logger">The command logger.</param>
-    /// <param name="options">The shared compiler options.</param>
-    /// <param name="args">Command-line paths.</param>
-    public void LoadForRun(ILogger logger, KimiOptions options, string[] args)
-    {
-        string kimiFile = string.Empty;
-        this.KimiOptions = options;
-
-        var currentDirectory = Directory.GetCurrentDirectory();
-        if (args.Length == 0)
-        {// If not specified, the current directory is used.
-            args = [currentDirectory,];
-        }
-
-        // Load project or kimi file
-        foreach (var x in args)
-        {
-            if (x.EndsWith(Constants.KimiProjectExtension, StringComparison.InvariantCultureIgnoreCase))
-            {// *.kimiproj
-                if (Path.IsPathFullyQualified(x))
-                {
-                    this.SolutionFile.Projects.Add(x);
-                }
-                else
-                {
-                    this.SolutionFile.Projects.Add(Path.GetFullPath(x, currentDirectory));
-                }
-
-                break;
-            }
-            else if (string.IsNullOrEmpty(kimiFile) &&
-                x.EndsWith(Constants.KimiExtension, StringComparison.InvariantCultureIgnoreCase))
-            {// *.kimi
-                if (Path.IsPathFullyQualified(x))
-                {
-                    kimiFile = x;
-                }
-                else
-                {
-                    kimiFile = Path.GetFullPath(x, currentDirectory);
-                }
-            }
-        }
-
-        if (this.SolutionFile.Projects.Count == 0)
-        {
-            // Tries to load project file in directory
-            foreach (var x in args)
-            {
-                if (Directory.Exists(x))
-                {
-                    // Load project file in directory
-                    foreach (var y in Directory.EnumerateFiles(x, $"*{Constants.KimiProjectExtension}", SearchOption.TopDirectoryOnly))
-                    {
-                        this.SolutionFile.Projects.Add(y);
-                        break;
-                    }
-
-                    if (string.IsNullOrEmpty(kimiFile))
-                    {
-                        foreach (var y in Directory.EnumerateFiles(x, $"*{Constants.KimiExtension}", SearchOption.TopDirectoryOnly))
-                        {
-                            kimiFile = y;
-                        }
-                    }
-                }
-            }
-        }
-
-        this.SingleFile = kimiFile;
-        if (this.SolutionFile.Projects.Count == 0 &&
-            string.IsNullOrEmpty(this.SingleFile))
-        {
-            logger.GetWriter(LogLevel.Warning)?.Write(Hashed.Solution.NoRunTarget);
-        }
-
-        return;
-    }
-
-    /// <summary>Loads discovered projects and creates an implicit project for a standalone source.</summary>
+    /// <summary>Loads the discovered project files.</summary>
     /// <param name="logger">The project-load logger.</param>
     public void PrepareProject(ILogger logger)
     {
         foreach (var x in this.SolutionFile.Projects)
         {
-            if (!this.Projects.ContainsKey(x))
+            if (!this.Projects.ContainsKey(x) && Project.TryCreate(this.kimigayo, logger, x, out var project))
             {
-                if (Project.TryCreate(this.kimigayo, logger, x, out var project))
-                {
-                    this.Projects[x] = project;
-                }
+                this.Projects[x] = project;
             }
+        }
+    }
+
+    private bool AllProjectsLoaded()
+    {
+        var loaded = this.Projects.Count != 0 && this.SolutionFile.Projects.All(this.Projects.ContainsKey);
+        if (!loaded)
+        {
+            this.kimigayo.WriteLine(DiagnosticSeverity.Error, "No projects loaded, or a selected project could not be loaded.");
         }
 
-        if (this.Projects.Count == 0 &&
-            !string.IsNullOrEmpty(this.SingleFile))
+        return loaded;
+    }
+
+    private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default)
+    {
+        var success = true;
+        foreach (var x in this.Projects.Values)
         {
-            if (File.Exists(this.SingleFile))
-            {
-                var project = new Project(this.kimigayo);
-                project.Name = Path.GetFileNameWithoutExtension(this.SingleFile);
-                project.Directory = Path.GetDirectoryName(this.SingleFile) ?? string.Empty;
-                project.AddKimiFile(this.SingleFile);
-                this.Projects[this.SingleFile] = project;
-            }
-            else
-            {
-                logger.GetWriter(LogLevel.Error)?.Write(Hashed.Project.NoKimiFile, this.SingleFile);
-            }
+            x.KimiOptions = this.KimiOptions;
+            x.SolutionLanguageVersion = this.SolutionFile.Configuration.LangVersion;
+            success &= emit ? await x.Generate(cancellationToken) : await x.Check();
         }
+
+        return success;
     }
 }

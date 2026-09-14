@@ -60,7 +60,7 @@ public class ParseBenchmark
                     return 1
 
                 func Method2() -> ()
-                    #Condition(Os=="Windows")
+                    #if(Os=="windows")
                     var i = if (x == true) => 1 else => 0
                     var i2 = if (x == true)
                         1
@@ -81,11 +81,15 @@ public class ParseBenchmark
     public ParseBenchmark()
     {
         this.compilation = Compilation.CreateForTest(true);
+        if (!this.compilation.Prepare("x86_64-pc-windows-msvc"))
+        {
+            throw new InvalidOperationException("Benchmark environment must be prepared.");
+        }
     }
 
     [Benchmark]
     public Koto Test1()
-    {// 7.7 us
+    {// 7.8 us
         var kotonoha = this.compilation.Kotonoha;
         var codeContext = kotonoha.CreateCodeContext();
         codeContext.Parse(kotonoha.RootKoto, this.sourceText);

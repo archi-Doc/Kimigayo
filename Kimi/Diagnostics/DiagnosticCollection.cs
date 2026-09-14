@@ -13,6 +13,10 @@ public record class DiagnosticCollection
     public string Name { get; init; } = string.Empty;
 
     private SourceDocument? sourceDocument;
+    private int errorCount;
+
+    /// <summary>Gets a value indicating whether this collection contains errors without allocating a diagnostic snapshot.</summary>
+    public bool HasErrors => Volatile.Read(ref this.errorCount) != 0;
 
     public SourceDocument? SourceDocument => Volatile.Read(ref this.sourceDocument);
 
@@ -53,6 +57,10 @@ public record class DiagnosticCollection
 
             var diagnostic = new Diagnostic(range, entry, sourceDocument ?? this.SourceDocument) { Message = message };
             diagnostic.Goshujin = this.diagnostics;
+            if (entry.Severity == DiagnosticSeverity.Error)
+            {
+                this.errorCount++;
+            }
 
             this.kimigayo.ReportDiagnostic(this.Name, diagnostic);
         }
@@ -65,6 +73,11 @@ public record class DiagnosticCollection
             if (this.diagnostics.StartPositionChain.TryGetValue(startPosition, out var diagnostic))
             {
                 diagnostic.Goshujin = default;
+                if (diagnostic.Entry.Severity == DiagnosticSeverity.Error)
+                {
+                    this.errorCount--;
+                }
+
                 return true;
             }
             else
@@ -93,6 +106,7 @@ public record class DiagnosticCollection
         using (this.diagnostics.LockObject.EnterScope())
         {
             this.diagnostics.ClearAll();
+            this.errorCount = 0;
         }
     }
 

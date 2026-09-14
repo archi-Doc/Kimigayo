@@ -86,9 +86,9 @@ public class ExpressionPrecedenceTest
     [InlineData("a <<= b | c", "a <<= (b | c)")]
     [InlineData("a < b = c", "(a < b) = c")]
     [InlineData("return a + b * c", "return (a + (b * c))")]
-    [InlineData("T is A and B", "T is (A and B)")]
-    [InlineData("T is not A or B", "T is not (A or B)")]
-    [InlineData("P or T is A and not B", "P or (T is (A and (not B)))")]
+    [InlineData("T is A and B", "(T is A) and B")]
+    [InlineData("T is not A or B", "(T is not A) or B")]
+    [InlineData("P or T is A and not B", "P or ((T is A) and (not B))")]
     [InlineData("(T is A) and flags & mask == 0", "(T is A) and ((flags & mask) == 0)")]
     [InlineData("if flags & mask == 0 => -value@i64\nelse => 0", "if (flags & mask) == 0 => (-value)@i64\nelse => 0")]
     public void GroupsExpressionsLikeExplicitParentheses(string expression, string grouped)
@@ -117,6 +117,47 @@ public class ExpressionPrecedenceTest
     }
 
     [Theory]
+    [InlineData("value is Dog == flag", "==")]
+    [InlineData("value is not Dog != flag", "!=")]
+    [InlineData("a == value is Dog", "is")]
+    [InlineData("value is Dog is Cat", "is")]
+    [InlineData("value is Dog < limit", "<")]
+    public void RuntimeIsTestsAreNonAssociativeComparisons(string expression, string second)
+    {
+        var source = $"let result = {expression}\nlet next = 42";
+        var (body, diagnostics) = Parse(source);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ChainedComparison_Kd), diagnostic.Entry.Name);
+        Assert.Equal(source.LastIndexOf(second, StringComparison.Ordinal), diagnostic.Span.Start);
+        Assert.Equal("next", Assert.IsType<FieldKoto>(body.Items[1]).NameKoto.IdentifierName);
+    }
+
+    [Fact]
+    public void RequirementOperatorsSpanTheirOperands()
+    {
+        const string source = "func f<T>(x: T)\n    T is not Copy and Owned or Copy\n    ()";
+        var compilation = Compilation.CreateForTest();
+        compilation.Kotonoha.CreateCodeContext().Parse(compilation.Kotonoha.RootKoto, source);
+        Assert.Empty(compilation.Kotonoha.DiagnosticCollection.GetArray());
+        var function = compilation.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single();
+        var requirement = Assert.IsType<NotKoto>(Assert.IsType<IsKoto>(Assert.Single(function.TypeConstraints)).Right);
+        var disjunction = Assert.IsType<OrKoto>(requirement.Operand);
+        var conjunction = Assert.IsType<AndKoto>(disjunction.Left);
+        Assert.Equal("not Copy and Owned or Copy", source.Substring(requirement.Span.Start, requirement.Span.Length));
+        Assert.Equal("Copy and Owned or Copy", source.Substring(disjunction.Span.Start, disjunction.Span.Length));
+        Assert.Equal("Copy and Owned", source.Substring(conjunction.Span.Start, conjunction.Span.Length));
+    }
+
+    [Fact]
+    public void RuntimeIsTestKeepsAdjacentTypeArguments()
+    {
+        var test = Assert.IsType<IsKoto>(ParseExpression("value is Box<i32>"));
+        Assert.IsType<GenericsKoto>(test.Right);
+        Assert.Empty(Parse("let result = (value is Dog) == flag").Diagnostics);
+    }
+
+    [Theory]
     [MemberData(nameof(ComparisonPairs))]
     public void AllowsExplicitlyGroupedOrSeparateComparisons(string first, string second)
     {
@@ -136,16 +177,13 @@ public class ExpressionPrecedenceTest
     public void AppliesPrecedenceInsideCompileTimeConditionsAndInterpolation()
     {
         var (body, diagnostics) = Parse("""
-            #if enabled or flags == 0 and ready
+            #if true or 64 == 0 and false
             let selected = 1
             let message = "clear = \(flags & mask == 0)"
             """);
 
         Assert.Empty(diagnostics);
-        var directive = Assert.IsType<CompileTimeIfKoto>(body.Items[0]);
-        var disjunction = Assert.IsType<OrKoto>(directive.Condition);
-        var conjunction = Assert.IsType<AndKoto>(disjunction.Right);
-        Assert.IsType<EqualsEqualsKoto>(conjunction.Left);
+        Assert.Equal("selected", Assert.IsType<FieldKoto>(body.Items[0]).NameKoto.IdentifierName);
 
         var field = Assert.IsType<FieldKoto>(body.Items[1]);
         var text = Assert.IsType<InterpolatedStringKoto>(field.InitializerKoto);

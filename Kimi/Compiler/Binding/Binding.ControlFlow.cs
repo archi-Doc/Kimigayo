@@ -1,0 +1,334 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Kimi.Compiler.Parsing;
+
+namespace Kimi.Compiler;
+
+public sealed partial class Binding
+{
+    private readonly Dictionary<Koto, ResultContext> resultContexts = new(ReferenceEqualityComparer.Instance);
+
+    private readonly List<ResultContext> resultPool = new();
+    private readonly List<Koto> resultChildren = new();
+    private readonly List<BoundType> resultTypes = new();
+    private ResultCollector? resultCollector;
+    private StructuralCompletion? resultStructure;
+    private int resultCursor;
+
+    /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.1).</summary>
+    /// <param name="types">The non-Never source Types.</param>
+    /// <param name="conflict">Whether no single supplied Type accepts all sources.</param>
+    /// <returns>The common Type, or null when none is supplied or the sources conflict.</returns>
+    internal static BoundType? SelectCommonType(List<BoundType> types, out bool conflict)
+    {
+        conflict = false;
+        for (var i = 0; i < types.Count; i++)
+        {
+            var candidate = types[i];
+            var fitsAll = true;
+            for (var j = 0; j < types.Count && fitsAll; j++)
+            {
+                fitsAll = FitsType(types[j], candidate);
+            }
+
+            if (fitsAll)
+            {
+                return candidate;
+            }
+        }
+
+        // No common base is searched; unrelated sources require an annotation.
+        conflict = types.Count > 0;
+        return null;
+    }
+
+    private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected, bool deferEvidence = false)
+    {
+        if (!KotoHelper.IsValueContext(target) || target is WhileKoto or ForKoto)
+        {
+            expected = BoundType.Unit;
+        }
+
+        // Rent by a pass-local cursor, not by the map size: rebinding a target that is already mapped
+        // must not hand the next target a context that is still in use.
+        if (this.resultCursor == this.resultPool.Count)
+        {
+            this.resultPool.Add(new());
+        }
+
+        var context = this.resultPool[this.resultCursor++];
+        context.Expected = expected;
+        context.Invalid = context.Pending = false;
+        context.Sources.Clear();
+        context.Evidence.Clear();
+        this.resultContexts[target] = context;
+        if (expected is null && !deferEvidence)
+        {
+            this.InferResultExpected(target, scope, context);
+        }
+
+        return context;
+    }
+
+    private void InferResultExpected(Koto target, BindingScope scope, ResultContext context)
+    {
+        this.FindResultEvidence(target, scope, context);
+        context.Expected = SelectCommonType(context.Evidence, out var conflict);
+        context.Invalid |= conflict;
+        context.Evidence.Clear();
+    }
+
+    private BoundType? ResultEvidence(Koto source, BindingScope scope)
+    {
+        source = KotoHelper.UnwrapParentheses(source);
+        if (source.BoundType is { } known)
+        {
+            return known;
+        }
+
+        switch (source)
+        {
+            case BoolLiteralKoto or IsKoto { IsRuntimeTest: true }:
+                return BoundType.Boolean;
+            case StringLiteralKoto:
+                return BoundType.String;
+            case CharLiteralKoto:
+                return BoundType.Char;
+            case UnitLiteralKoto:
+                return BoundType.Unit;
+            case NotKoto or AndKoto or OrKoto or EqualsEqualsKoto or ExclamationEqualsKoto or LessThanKoto or LessThanEqualsKoto or GreaterThanKoto or GreaterThanEqualsKoto:
+                return BoundType.Boolean;
+            case PrefixMinusKoto or PrefixPlusKoto:
+                return this.ResultEvidence(((UnaryKoto)source).Operand, scope);
+            case BinaryKoto binary when binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals:
+                return BoundType.Unit;
+            case BinaryKoto binary when binary.Akind is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan:
+                return this.ResultEvidence(binary.Left, scope);
+            case BinaryKoto binary when binary.Akind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret:
+                return this.ResultEvidence(binary.Left, scope) ?? this.ResultEvidence(binary.Right, scope);
+            case ConversionKoto conversion:
+                if (!this.ConversionCanComplete(conversion.Left, scope))
+                {
+                    return BoundType.Never;
+                }
+
+                return this.BindType(conversion.Right, this.NodeScope(source, scope));
+            case IdentifierNameKoto name:
+                var symbol = this.Lookup(name.IdentifierName, this.NodeScope(name, scope), name, false);
+                if (symbol?.Type is { } type)
+                {
+                    return type;
+                }
+
+                return symbol?.Declaration is VariableKoto { TypeKoto: { } declared }
+                    ? this.BindType(declared, symbol.Scope) : null;
+            case InvocationKoto { Method: IdentifierNameKoto callee }:
+                var function = this.Lookup(callee.IdentifierName, this.NodeScope(callee, scope), callee, false);
+                return function is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 } } ? function.Type : null;
+            default:
+                return null;
+        }
+    }
+
+    private void FindResultEvidence(Koto target, BindingScope scope, ResultContext context)
+    {
+        switch (target)
+        {
+            case IfKoto conditional:
+                for (var i = 0; i < conditional.Branches.Count; i++)
+                {
+                    this.BodyEvidence(conditional.Branches[i].Body, scope, context);
+                }
+
+                if (conditional.ElseBody is { } other)
+                {
+                    this.BodyEvidence(other, scope, context);
+                }
+
+                break;
+            case MatchKoto match:
+                for (var i = 0; i < match.Arms.Count; i++)
+                {
+                    var arm = match.Arms[i];
+                    this.BodyEvidence(arm.Body, this.NodeScope(arm.Pattern, scope), context);
+                }
+
+                break;
+            case DoKoto scoped:
+                this.BodyEvidence(scoped.Body, scope, context);
+                break;
+        }
+
+        this.TransferEvidence(target, target, scope, context);
+    }
+
+    private void BodyEvidence(Koto body, BindingScope scope, ResultContext context)
+    {
+        var expression = body is CodeBlockKoto { IsExpressionBody: true } block ? block.Items[0] : body;
+        if (expression is not CodeBlockKoto && KotoHelper.IsValueContext(expression))
+        {
+            this.SourceEvidence(expression, scope, context);
+        }
+    }
+
+    private void SourceEvidence(Koto expression, BindingScope scope, ResultContext context)
+    {
+        expression = KotoHelper.UnwrapParentheses(expression);
+        if (expression is LabeledKoto label)
+        {
+            expression = label.Target;
+        }
+
+        if (expression is IfKoto or MatchKoto or LoopKoto or DoKoto)
+        {
+            this.FindResultEvidence(expression, scope, context);
+            return;
+        }
+
+        var evidence = this.ResultEvidence(expression, scope);
+        if (evidence is not null && !ReferenceEquals(evidence, BoundType.Never))
+        {
+            context.Evidence.Add(evidence);
+        }
+    }
+
+    private void TransferEvidence(Koto node, Koto target, BindingScope scope, ResultContext context)
+    {
+        if (node is JumpKoto { Expression: { } expression } jump && jump is not ContinueKoto && KotoHelper.ResolveTransferTarget(jump) == target)
+        {
+            this.SourceEvidence(expression, scope, context);
+        }
+
+        if (node is FunctionKoto or PropertyAccessorKoto or DeferredBlockKoto or CompileTimeSwitchKoto)
+        {
+            return;
+        }
+
+        if (node is IsKoto { IsRuntimeTest: true } test)
+        {
+            this.TransferEvidence(test.Left, target, scope, context);
+            return;
+        }
+
+        var start = this.resultChildren.Count;
+        node.VisitChildren(this.resultCollector ??= new(this.resultChildren));
+        var end = this.resultChildren.Count;
+        for (var i = start; i < end; i++)
+        {
+            this.TransferEvidence(this.resultChildren[i], target, scope, context);
+        }
+
+        this.resultChildren.RemoveRange(start, end - start);
+    }
+
+    private void AddBodyResult(Koto body, ResultContext context, StructuralCompletion structural)
+    {
+        var item = body is CodeBlockKoto { IsExpressionBody: true } block ? block.Items[0] : body;
+        if (KotoHelper.IsBodyExpression(item) && KotoHelper.IsValueContext(item))
+        {
+            context.Sources.Add(item.BoundType);
+        }
+        else if (structural.CanComplete(body))
+        {
+            context.Sources.Add(BoundType.Unit);
+        }
+    }
+
+    private BoundType? FinishResult(Koto node, ResultContext context)
+    {
+        var structural = this.resultStructure ??= new(this.ResultNeverEvidence);
+        structural.Clear();
+        switch (node)
+        {
+            case IfKoto conditional:
+                for (var i = 0; i < conditional.Branches.Count; i++)
+                {
+                    this.AddBodyResult(conditional.Branches[i].Body, context, structural);
+                }
+
+                if (conditional.ElseBody is { } other)
+                {
+                    this.AddBodyResult(other, context, structural);
+                }
+
+                break;
+            case MatchKoto match:
+                for (var i = 0; i < match.Arms.Count; i++)
+                {
+                    this.AddBodyResult(match.Arms[i].Body, context, structural);
+                }
+
+                break;
+            case DoKoto scoped:
+                this.AddBodyResult(scoped.Body, context, structural);
+                break;
+        }
+
+        if (node is IfKoto { ElseBody: null } ||
+            (node is WhileKoto loop && structural.CanComplete(loop.Condition)) ||
+            (node is ForKoto iteration && structural.CanComplete(iteration.Iterable)))
+        {
+            context.Sources.Add(BoundType.Unit);
+        }
+
+        var types = this.resultTypes;
+        types.Clear();
+        foreach (var source in context.Sources)
+        {
+            if (source is null)
+            {
+                context.Pending = true;
+            }
+            else if (!ReferenceEquals(source, BoundType.Never))
+            {
+                types.Add(source);
+            }
+        }
+
+        var suppliedValue = types.Count > 0;
+        var common = context.Expected;
+        if (common is null)
+        {
+            common = SelectCommonType(types, out var conflict);
+            context.Invalid |= conflict;
+        }
+        else
+        {
+            for (var i = 0; i < types.Count; i++)
+            {
+                context.Invalid |= !FitsType(types[i], common);
+            }
+        }
+
+        types.Clear();
+        if (context.Invalid)
+        {
+            return Fail(node, BindingFailure.TypeMismatch);
+        }
+
+        if (context.Pending)
+        {
+            return Complete(node, null);
+        }
+
+        return Complete(node, !suppliedValue && !structural.CanComplete(node) ? BoundType.Never : common);
+    }
+
+    private sealed class ResultCollector(List<Koto> children) : KotoVisitor
+    {
+        public override void Visit(Koto node) => children.Add(node);
+    }
+
+    private sealed class ResultContext
+    {
+        internal BoundType? Expected { get; set; }
+
+        internal List<BoundType?> Sources { get; } = new();
+
+        internal List<BoundType> Evidence { get; } = new();
+
+        internal bool Pending { get; set; }
+
+        internal bool Invalid { get; set; }
+    }
+}

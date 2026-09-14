@@ -22,8 +22,16 @@ public class RunCommand : ISimpleCommand<KimiOptions>
 
     public async Task Execute(KimiOptions options, string[] args, CancellationToken cancellationToken)
     {
-        this.solution.LoadForRun(this.logger, options, args);
-        this.solution.PrepareProject(this.logger);
-        await this.solution.Build();
+        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, async () =>
+        {
+            if (args.Length == 1 && Path.GetExtension(args[0]).Equals(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                return await Compiler.NativeToolchain.RunExecutable(Path.GetFullPath(args[0]), Directory.GetCurrentDirectory(), cancellationToken);
+            }
+
+            this.solution.LoadForBuild(this.logger, options, args);
+            this.solution.PrepareProject(this.logger);
+            return await this.solution.Run(cancellationToken);
+        });
     }
 }

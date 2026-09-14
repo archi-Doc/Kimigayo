@@ -37,7 +37,6 @@ public ref struct TokenReader
     private readonly ReadOnlySpan<Token> tokens;
     private readonly Token endToken;
     private Token currentToken;
-    private List<CompileTimeIfPrefix>? compileTimeIfPrefixes;
 
     /// <summary>
     /// Gets the current token position.
@@ -104,6 +103,22 @@ public ref struct TokenReader
     /// </summary>
     public readonly int CurrentTokenLength => this.currentToken.Length;
 
+    // Region-local parsing restrictions; grouping and arm/item boundaries reset these.
+    internal bool SingleBodyRegion { get; set; }
+
+    internal bool IfBodyRegion { get; set; }
+
+    internal bool HeaderRegion { get; set; }
+
+    internal readonly bool SameLine(int end, int start)
+        => start >= end && !this.sourceText[end..start].ContainsAny('\r', '\n');
+
+    internal readonly int PreviousEnd => this.Position > 0 ? this.tokens[this.Position - 1].Span.End : 0;
+
+    internal bool AllowArrayElementInference { get; set; }
+
+    internal bool HasInferredArrayElement { get; set; }
+
     #endregion
 
     /// <summary>
@@ -140,7 +155,6 @@ public ref struct TokenReader
         this.AttributeKoto = default;
         this.ModifierKind = default;
         this.IsExcluded = false;
-        this.compileTimeIfPrefixes = default;
         this.HasCompileTimeIfPrefix = false;
     }
 
@@ -590,9 +604,7 @@ public ref struct TokenReader
             return true;
         }
 
-        this.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
-        identifier = null;
-        return false;
+        return this.ReportInvalidIdentifier(token, out identifier);
     }
 
     /// <summary>
@@ -606,35 +618,6 @@ public ref struct TokenReader
 
     /// <summary>Gets or sets a value indicating whether primitive type names are accepted in a directive condition.</summary>
     internal bool IsParsingCompileTimeCondition { get; set; }
-
-    /// <summary>Gets or sets validation obligations for the scope currently being parsed.</summary>
-    internal List<Koto>? PendingDirectiveConditions { get; set; }
-
-    internal void RetainDirectiveCondition(Koto condition)
-        => (this.PendingDirectiveConditions ??= []).Add(condition);
-
-    /// <summary>Creates a bounded reader that cannot consume a following physical line or Block.</summary>
-    /// <param name="tokenCount">The number of tokens owned by the inline body.</param>
-    /// <returns>An independent reader over the same source and diagnostic destination.</returns>
-    internal readonly TokenReader CreateInlineReader(out int tokenCount)
-    {
-        var start = this.CurrentTokenRange.Start;
-        var newline = this.sourceText[start..].IndexOfAny('\r', '\n');
-        var end = newline < 0 ? this.sourceText.Length : start + newline;
-        tokenCount = 0;
-        while (this.Position + tokenCount < this.tokens.Length)
-        {
-            var token = this.tokens[this.Position + tokenCount];
-            if (token.Kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock || token.Span.End > end)
-            {
-                break;
-            }
-
-            tokenCount++;
-        }
-
-        return new TokenReader(this.CodeContext, this.sourceText, this.tokens.Slice(this.Position, tokenCount), Math.Min(end, this.endToken.Start));
-    }
 
     // Split compound operators only in type context; shift/comparison expressions keep
     // their original tokens. The shared token buffer remains immutable.
@@ -656,24 +639,6 @@ public ref struct TokenReader
         this.currentToken = new Token(remainingKind, SourceSpan.FromBounds(range.End, this.currentToken.Span.End));
         return true;
     }
-
-    /// <summary>Adds a deferred compile-time directive to the current syntax prefix.</summary>
-    /// <param name="prefix">The directive and its parsed condition.</param>
-    internal void AddCompileTimeIfPrefix(CompileTimeIfPrefix prefix)
-        => (this.compileTimeIfPrefixes ??= []).Add(prefix);
-
-    /// <summary>Detaches the deferred compile-time directives for the current syntax node.</summary>
-    /// <returns>The detached directives, or <see langword="null"/> when none were deferred.</returns>
-    internal List<CompileTimeIfPrefix>? TakeCompileTimeIfPrefixes()
-    {
-        var prefixes = this.compileTimeIfPrefixes;
-        this.compileTimeIfPrefixes = default;
-        return prefixes;
-    }
-
-    /// <summary>Discards deferred directives when an outer condition excludes the syntax.</summary>
-    internal void ClearCompileTimeIfPrefixes()
-        => this.compileTimeIfPrefixes = default;
 
     private bool TryConsumeWithRecovery(TokenKind targetKind, out SourceSpan range, bool addDiagnostic)
     {
@@ -719,5 +684,13 @@ Loop:
     {
         this.Position = position;
         this.currentToken = (uint)position < (uint)this.tokens.Length ? this.tokens[position] : this.endToken;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly bool ReportInvalidIdentifier(Token token, out string? identifier)
+    {
+        this.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, this.GetSpan(token).ToString());
+        identifier = null;
+        return false;
     }
 }

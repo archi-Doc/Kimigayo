@@ -1,0 +1,13 @@
+func same(left: ref/string, right: ref/string) -> bool
+    return left == right
+
+func forwarded(left: ref/string, right: ref/string) -> bool
+    return same(left, right)
+
+public func main() -> ()
+    let first = "hello"
+    let second = "hello"
+    if forwarded(first, second)
+        writeLine("equal")
+    writeLine(first)
+    writeLine(second)

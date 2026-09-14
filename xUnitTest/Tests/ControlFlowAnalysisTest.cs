@@ -10,15 +10,43 @@ namespace XunitTest;
 public class ControlFlowAnalysisTest
 {
     [Theory]
+    [InlineData("<<", "u8")]
+    [InlineData(">>", "u8")]
+    [InlineData("&", "i64")]
+    [InlineData("|", "i64")]
+    [InlineData("^", "i64")]
+    public void IntegerResultsComeFromLeftWithoutConstrainingShiftCounts(string op, string countType)
+    {
+        var analysis = Analyze($"func f(x: i64, n: {countType}) -> i64 => x {op} n");
+        Assert.Empty(analysis.Issues);
+        var expression = Assert.Single(analysis.Nodes, x => x.Key is BinaryKoto);
+        Assert.Equal("i64", expression.Value.ExpressionType?.Name);
+        var right = ((BinaryKoto)expression.Key).Right;
+        Assert.Equal(countType, analysis.Nodes[right].ExpressionType?.Name);
+    }
+
+    [Theory]
+    [InlineData("<<=")]
+    [InlineData(">>=")]
+    public void CompoundShiftsKeepIndependentCountAndUnitResult(string op)
+    {
+        var analysis = Analyze($"func f(n: u8) -> ()\n    var x: i64 = 1\n    x {op} n");
+        Assert.Empty(analysis.Issues);
+        var expression = Assert.Single(analysis.Nodes, x => x.Key is BinaryKoto);
+        Assert.Equal(ControlFlowType.Unit, expression.Value.ExpressionType);
+        Assert.Equal("u8", analysis.Nodes[((BinaryKoto)expression.Key).Right].ExpressionType?.Name);
+    }
+
+    [Theory]
     [InlineData("bool", false)]
     [InlineData("i32", true)]
     [InlineData("Never", false)]
     [InlineData(null, false)]
-    public void TestsBoundValueOfParenthesizedConditionDeclaration(string? returnType, bool hasError)
+    public void TestsBoundValueOfGroupedCondition(string? returnType, bool hasError)
     {
         var compilation = Compilation.CreateForTest();
         var tree = compilation.Kotonoha;
-        tree.CreateCodeContext().Parse(tree.RootKoto, "var i3 = if (\n    var z = Func()\n    ) => 1 else => 0");
+        tree.CreateCodeContext().Parse(tree.RootKoto, "var i3 = if (Func()) => 1 else => 0");
         Assert.Empty(tree.DiagnosticCollection.GetArray());
         var analysis = compilation.AnalyzeControlFlow(new ConditionCallTypes(returnType));
         Assert.Equal(hasError, analysis.Issues.Count > 0);
@@ -36,31 +64,34 @@ public class ControlFlowAnalysisTest
     [InlineData("while (var z = true)\n    exit", false)]
     [InlineData("if (var z: bool = 1) => 1 else => 0", true)]
     [InlineData("var ordinary = (var z = true)", false)]
-    public void ChecksConditionBindingTypes(string source, bool hasError)
+    public void RejectsConditionBindingSyntax(string source, bool hasError)
     {
-        var analysis = Analyze(source);
-        Assert.Equal(hasError, analysis.Issues.Count > 0);
-        if (source.StartsWith("var ordinary", StringComparison.Ordinal))
-        {
-            Assert.Equal(ControlFlowType.Unit, analysis.Nodes.Single(x => x.Key is ParenthesizedKoto).Value.ExpressionType);
-        }
+        _ = hasError;
+        var tree = Compilation.CreateForTest().Kotonoha;
+        tree.CreateCodeContext().Parse(tree.RootKoto, source);
+        Assert.NotEmpty(tree.DiagnosticCollection.GetArray());
     }
 
     [Theory]
-    [InlineData("loop\n    if false\n        exit 1")]
-    [InlineData("func f()\n    if false\n        return 1\n    loop\n        continue")]
+    [InlineData("let result = loop\n    if false\n        exit 1")]
+    [InlineData("func f()\n    if false\n        return\n    loop\n        continue")]
     [InlineData("func f() -> i32\n    if false\n        return 1\n    loop\n        continue")]
-    [InlineData("loop\n    exit 10")]
+    [InlineData("let result = loop\n    exit 10")]
     [InlineData("if true => 1\nelse => 2")]
-    [InlineData("if true\n    yield 1\nelse\n    yield 2")]
+    [InlineData("let result = if true\n    yield 1\nelse\n    yield 2")]
     [InlineData("func f(flag: bool) -> i32\n    let x = if flag\n        return 1\n    else\n        return 2")]
-    [InlineData("let x = if true => 1\nelse\n    2")]
+    [InlineData("let x = if true => 1\nelse\n    yield 2")]
     [InlineData("let x = loop\n    exit loop\n        continue")]
     [InlineData("let x = match true\n    true => 1\n    false => 2")]
-    [InlineData("outer: loop\n    loop\n        exit from outer")]
+    [InlineData("outer: loop\n    loop\n        exit to outer")]
     [InlineData("func f(flag: bool) => match flag\n    true => 1\n    false => 2")]
     [InlineData("func f() -> i32\n    if false\n        return -1\n    return 1")]
-    [InlineData("func f() -> i32\n    work:\n        exit from work\n    return 1")]
+    [InlineData("func f() -> i32\n    work: do\n        exit to work\n    return 1")]
+    [InlineData("func f(ready: bool) -> i32\n    require ready else => return 0\n    return 1")]
+    [InlineData("func f(ready: bool) -> i32\n    require ready\n    else\n        return 0\n    return 1")]
+    [InlineData("let answer = if true\n    require false else => yield 0\n    yield 1\nelse => 2")]
+    [InlineData("defer\n    require true else => exit\n    ()")]
+    [InlineData("func f()\n    require false else => return\n    ()")]
     public void AcceptsValidControlFlow(string source)
     {
         var analysis = Analyze(source);
@@ -68,29 +99,32 @@ public class ControlFlowAnalysisTest
     }
 
     [Theory]
-    [InlineData("if true => 1", "final else")]
-    [InlineData("if true => ()", "final else")]
-    [InlineData("let x = if true\n    1", "final else")]
-    [InlineData("let x = if true\n    1\nelse => 2", "must yield")]
-    [InlineData("if true\n    yield 1", "final else")]
+    [InlineData("let x = if true => 1", "incompatible")]
+    [InlineData("let x: i32 = if true => ()", "incompatible")]
+    [InlineData("let x: i32 = if true\n    1", "incompatible")]
+    [InlineData("let x = if true\n    1\nelse => 2", "incompatible")]
+    [InlineData("if true\n    yield 1", "discarded selection")]
     [InlineData("func f() -> i32\n    if false\n        return \"text\"\n    return 1", "incompatible")]
     [InlineData("func f()\n    if false\n        return \"text\"\n    return 1", "incompatible")]
     [InlineData("loop\n    if false\n        exit\n    exit 1", "incompatible")]
     [InlineData("let x: i32 = loop\n    if false\n        exit \"text\"", "incompatible")]
     [InlineData("let x = if false => \"text\"\nelse => 1", "incompatible")]
-    [InlineData("for x in values\n    if false\n        exit 1", "Only loop")]
+    [InlineData("for x in values\n    if false\n        exit 1", "incompatible")]
     [InlineData("loop\n    yield 1", "No valid target")]
     [InlineData("let x = match true\n    true => 1", "exhaustive")]
     [InlineData("func f() -> i32\n    return loop\n        if false\n            exit \"text\"", "incompatible")]
     [InlineData("func f() -> i32\n    return 1\n    1 + \"text\"", "incompatible")]
     [InlineData("outer: loop\n    outer: loop\n        continue", "overlaps")]
     [InlineData("loop\n    func f()\n        exit", "No valid target")]
-    [InlineData("outer: while (exit from outer)\n    ()", "No valid target")]
+    [InlineData("outer: while (exit to outer)\n    ()", "No valid target")]
     [InlineData("func f() -> i32\n    return 1\n    -\"text\"", "numeric")]
     [InlineData("func f() -> i32\n    return 1\n    true + false", "numeric")]
     [InlineData("let x: Never = loop\n    if false\n        exit 1", "incompatible")]
     [InlineData("func f() -> i8\n    if false\n        return 128\n    return 1", "incompatible")]
     [InlineData("func f() -> i32\n    1", "cannot fall through")]
+    [InlineData("func f()\n    require true else => ()\n    ()", "require")]
+    [InlineData("func f(ready: bool)\n    require ready else\n        loop\n            exit\n    ()", "require")]
+    [InlineData("func f(ready: bool) -> i32\n    require ready else => return 0\n    ()", "cannot fall through")]
     public void RejectsInvalidControlFlow(string source, string diagnostic)
     {
         Assert.Contains(Analyze(source).Issues, x => x.Message.Contains(diagnostic, StringComparison.Ordinal));
@@ -99,7 +133,7 @@ public class ControlFlowAnalysisTest
     [Fact]
     public void SeparatesNeverFromAnAbsentOrExpectedTargetResultType()
     {
-        var analysis = Analyze("loop\n    if false\n        exit 1\nlet x: i32 = loop\n    if false\n        exit 1");
+        var analysis = Analyze("let a = loop\n    continue\nlet x: i32 = loop\n    continue");
         Assert.Empty(analysis.Issues);
         var loops = analysis.Nodes.Where(x => x.Key is LoopKoto).Select(x => x.Value).ToArray();
         Assert.Equal(2, loops.Length);
@@ -109,21 +143,21 @@ public class ControlFlowAnalysisTest
     }
 
     [Fact]
-    public void InfersNeverForFunctionSignatureWithoutInventingATransferContract()
+    public void NamedFunctionRetainsDefaultUnitDespiteDivergence()
     {
-        var analysis = Analyze("func f()\n    if false\n        return 1\n    loop\n        continue");
+        var analysis = Analyze("func f()\n    if false\n        return\n    loop\n        continue");
         var info = analysis.Nodes.Single(x => x.Key is FunctionKoto { Name: "f" }).Value;
         Assert.Empty(analysis.Issues);
-        Assert.Equal(ControlFlowType.Never, info.FunctionResultType);
-        Assert.Null(info.TargetResultType);
+        Assert.Equal(ControlFlowType.Unit, info.FunctionResultType);
+        Assert.Equal(ControlFlowType.Unit, info.TargetResultType);
     }
 
     [Fact]
     public void DoesNotInferNeverFromAMissingRequiredResult()
     {
         var analysis = Analyze("let x = if true\n    1\nelse\n    yield 2");
-        Assert.Contains(analysis.Issues, x => x.Message.Contains("must yield", StringComparison.Ordinal));
-        Assert.Null(analysis.Nodes.Single(x => x.Key is IfKoto).Value.ExpressionType);
+        Assert.Contains(analysis.Issues, x => x.Message.Contains("incompatible", StringComparison.Ordinal));
+        Assert.NotEqual(ControlFlowType.Never, analysis.Nodes.Single(x => x.Key is IfKoto).Value.ExpressionType);
     }
 
     [Fact]
@@ -139,25 +173,25 @@ public class ControlFlowAnalysisTest
         var analysis = Analyze("if true\n    if false\n        yield 1\n    else\n        yield 2\nelse\n    ()");
         var selections = analysis.Nodes.Where(x => x.Key is IfKoto).ToArray();
         Assert.False(selections[0].Value.IsResultRequiring);
-        Assert.True(selections[1].Value.IsResultRequiring);
+        Assert.False(selections[1].Value.IsResultRequiring);
         Assert.All(analysis.Targets.Where(x => x.Key is YieldKoto), x => Assert.Same(selections[1].Key, x.Value));
-        Assert.Empty(analysis.Issues);
+        Assert.Contains(analysis.Issues, x => x.Message.Contains("discarded selection", StringComparison.Ordinal));
     }
 
     [Fact]
     public void KeepsUnresolvedExhaustivenessPendingInsteadOfRejectingEnumPatterns()
     {
-        var analysis = Analyze("let x = match value\n    A => 1\n    B => 2");
+        var analysis = Analyze("let x = match value\n    .A => 1\n    .B => 2");
         Assert.Empty(analysis.Issues);
         Assert.Contains(analysis.PendingBinding, x => x is MatchKoto);
     }
 
     [Fact]
-    public void DefersBodiesWithUnselectedCompileTimeDirectives()
+    public void EnvironmentDirectivesAreSelectedBeforeControlFlowAnalysis()
     {
-        var analysis = Analyze("func f() -> i32\n    #if later\n    return \"text\"\n    return 1");
+        var analysis = Analyze("func f() -> i32\n    #if false\n    return \"text\"\n    return 1");
         Assert.Empty(analysis.Issues);
-        Assert.Contains(analysis.PendingBinding, x => x is FunctionKoto { Name: "f" });
+        Assert.Empty(analysis.PendingBinding);
     }
 
     [Fact]
@@ -177,7 +211,7 @@ public class ControlFlowAnalysisTest
         var compilation = Compilation.CreateForTest();
         compilation.Kotonoha.CreateCodeContext().Parse(
             compilation.Kotonoha.RootKoto,
-            "func f()\n    if false\n        return \"text\"\n    abort()");
+            "func f() -> i32\n    if false\n        return \"text\"\n    abort()");
         var analysis = compilation.AnalyzeControlFlow(new BoundTestTypes());
         Assert.Contains(analysis.Issues, x => x.Node is StringLiteralKoto && x.Message.Contains("i32", StringComparison.Ordinal));
         Assert.DoesNotContain(analysis.Issues, x => x.Message.Contains("type ()", StringComparison.Ordinal));
@@ -186,7 +220,7 @@ public class ControlFlowAnalysisTest
     [Fact]
     public void ResolvesHeadersOutsideTheirOwnBoundary()
     {
-        var analysis = Analyze("outer: loop\n    while (exit 1 from outer)\n        continue");
+        var analysis = Analyze("let result = outer: loop\n    while (exit to outer: 1)\n        continue");
         Assert.Empty(analysis.Issues);
         var exitTarget = analysis.Targets.Single(x => x.Key is ExitKoto).Value;
         Assert.IsType<LoopKoto>(exitTarget);
@@ -199,7 +233,7 @@ public class ControlFlowAnalysisTest
         var compilation = Compilation.CreateForTest();
         compilation.Kotonoha.CreateCodeContext().Parse(
             compilation.Kotonoha.RootKoto,
-            "if true => 1\nelse\n    yield 2\nloop\n    if false\n        exit 1");
+            "let a = if true => 1\nelse\n    yield 2\nlet b = loop\n    if false\n        exit 1");
         var restored = new Kotonoha(compilation);
         TinyhandSerializer.DeserializeObject(TinyhandSerializer.Serialize(compilation.Kotonoha), ref restored);
         restored!.OnDeserialized(compilation);
@@ -219,8 +253,8 @@ public class ControlFlowAnalysisTest
         {
             var compilation = Compilation.CreateForTest();
             compilation.Project.Directory = directory.FullName;
-            compilation.Project.AddSource("invalid.kimi", "if true => 1");
-            Assert.False(await compilation.Project.Build());
+            compilation.Project.AddSource("invalid.kimi", "let result = if true => 1");
+            Assert.False(await compilation.Project.Check());
         }
         finally
         {

@@ -1,0 +1,91 @@
+public group SpecTour
+    public group Basics
+        // group の Property は静的ストレージ。static 修飾子は付けない。
+        public let width: isize = 4
+        private let banner: string = "仕様ツアー"
+        private var visits: i32 = 0
+
+        public func title() -> ref/string from static => banner@ref
+
+        public func scale(value: i32, by => factor: i32) -> i32
+            return value * factor
+
+        public func offset(value: i32, by?: i32 = 1) -> i32 => value + by
+
+        // 戻り値の期待型もオーバーロード選択に参加する。
+        public func select(value: i32) -> string => "i32 overload"
+        public func select(value: i64) -> i64 => value
+
+        public func platform() -> string
+            #switch
+                #case windows
+                    return "Windows"
+                #case linux
+                    return "Linux"
+                #case _
+                    return "Other"
+
+        public func run()
+            visits += 1
+            let raw = """C:\samples\Kimigayo\literal-\(text)"""
+            let letter: char = '君'
+            let minimum: i8 = -128
+            let wide: i64 = 10
+            let mixed = wide + 20
+            let truncated = 3.9@i32
+            let bits: u32 = 0b1010
+            let masked = (bits & 0b0110) << 1
+            let pair = (scale(by: 3, value: 4), offset(9))
+            let singleton = (42,)
+            let selected: string = select(1)
+            let exact = select(1@i64)
+
+            ::Core.writeLine("\(title()): \(platform()), visit=\(visits)")
+            ::Core.writeLine("\(raw), \(letter), min=\(minimum), wide=\(mixed)")
+            ::Core.writeLine("truncated=\(truncated), bits=\(masked)")
+            ::Core.writeLine("pair=\(pair.0),\(pair.1), one=\(singleton.0)")
+            ::Core.writeLine("\(selected), exact=\(exact)")
+
+            #if debug
+                ::Core.writeLine("debug configuration")
+            #switch
+                #case pointerWidth == 64
+                    ::Core.writeLine("64-bit target")
+                #case _
+                    ::Core.writeLine("non-64-bit target")
+
+    // Copy は明示宣言。独自比較は Core の Contract に適合させる。
+    public struct Reading
+        Self is Copy
+        Self is Comparable
+        Self is Stringify
+
+        public let value: i32
+
+        public init(value: i32)
+            self.value = value
+
+        public func equals(self: ref/Self, other: ref/Self) -> bool
+            return self.value == other.value
+
+        public func compare(self: ref/Self, other: ref/Self) -> i32
+            // 差を返す実装による整数オーバーフローを避ける。
+            return if self.value < other.value => -1 else => (if self.value > other.value => 1 else => 0)
+
+        public func stringify(self: ref/Self) -> string
+            return "Reading(\(self.value))"
+
+    public struct Gauge
+        private var measured: i32 = 0
+
+        public var limit: i32 = 100
+            get
+            set(self: uniq/Self, value: i32) -> ()
+                storage = if value < 0 => 0 else => value
+
+        public computed value: i32
+            get(self: ref/Self) -> i32 => self.measured
+            set(self: uniq/Self, value: i32) -> ()
+                self.measured = if value < 0 => 0 else => (if value > self.limit => self.limit else => value)
+
+        // 全 Field に初期値があり、明示 init がないので public init() が合成される。

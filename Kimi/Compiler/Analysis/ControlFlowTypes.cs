@@ -20,11 +20,14 @@ public record ControlFlowType(string Name)
     public static readonly ControlFlowType Boolean = new("bool");
 }
 
-/// <summary>A result source, including sources excluded from inference by reachability.</summary>
+/// <summary>A structural result source; reachability never removes its type constraint.</summary>
 /// <param name="Node">The operand or implicit result expression.</param>
 /// <param name="Type">Its known type, or null while Binding is pending.</param>
-/// <param name="IsReachable">Whether this source contributes to result inference.</param>
-public sealed record ControlFlowResultSource(Koto Node, ControlFlowType? Type, bool IsReachable);
+/// <param name="IsReachable">Whether execution can reach this source (informational only).</param>
+public readonly record struct ControlFlowResultSource(Koto Node, ControlFlowType? Type, bool IsReachable)
+{
+    internal JumpKoto? Transfer { get; init; }
+}
 
 /// <summary>Supplies type-dependent facts without coupling control flow to a particular binder.</summary>
 /// <remarks>Null answers are deferred obligations, never successful type or exhaustiveness checks.</remarks>
@@ -60,13 +63,38 @@ public abstract class ControlFlowTypeSystem
     /// <returns>The selected declaration, or null when unresolved.</returns>
     public virtual FunctionKoto? GetReferencedFunction(Koto expression) => null;
 
+    /// <summary>Identifies a committed value construction whose designator is not evaluated.</summary>
+    /// <param name="expression">The construction expression.</param>
+    /// <returns>True for a resolved construction.</returns>
+    public virtual bool IsBoundConstruction(Koto expression) => false;
+
+    /// <summary>Determines whether Binding validated a runtime Type test and retained its shared access.</summary>
+    /// <param name="expression">The expression to inspect.</param>
+    /// <returns>True only for a resolved runtime test; syntax alone is not proof.</returns>
+    public virtual bool IsBoundRuntimeTypeTest(Koto expression) => false;
+
+    /// <summary>Determines whether an expression's complete Type is proven Copy, so discarding it has no destruction effect.</summary>
+    /// <param name="expression">The bound expression.</param>
+    /// <returns>True only for a proven Copy Type; unknown or unresolved Types return false.</returns>
+    public virtual bool IsProvenCopy(Koto expression) => false;
+
+    /// <summary>Identifies a selected direct call and its receiver, without treating its callee as a runtime value.</summary>
+    /// <param name="call">The call to inspect.</param>
+    /// <param name="receiver">The receiver evaluated before explicit arguments, or null for an unbound call.</param>
+    /// <returns>True when Binding has committed the direct call; false when its evaluation remains unknown.</returns>
+    public virtual bool TryGetCallReceiver(InvocationKoto call, out Koto? receiver)
+    {
+        receiver = null;
+        return false;
+    }
+
     /// <summary>Determines whether a bound operation requires lexical unsafe permission.</summary>
     /// <param name="expression">The operation to check.</param>
     /// <returns>The requirement, or null when operand Types or overloads remain unresolved.</returns>
     public virtual bool? RequiresUnsafeContext(Koto expression) => null;
 
-    /// <summary>Infers a common result type from reachable candidates only.</summary>
-    /// <param name="sources">The reachable result sources.</param>
+    /// <summary>Infers a common result type from all structural sources.</summary>
+    /// <param name="sources">All structural result sources.</param>
     /// <returns>The inferred type, or null if inference requires further Binding.</returns>
     public virtual ControlFlowType? InferResultType(IReadOnlyList<ControlFlowResultSource> sources)
     {
@@ -78,7 +106,10 @@ public abstract class ControlFlowTypeSystem
                 return null;
             }
 
-            result ??= source.Type;
+            if (source.Type != ControlFlowType.Never)
+            {
+                result ??= source.Type;
+            }
         }
 
         return result;
@@ -94,11 +125,28 @@ public abstract class ControlFlowTypeSystem
     /// <param name="match">The selection.</param>
     /// <returns>Exhaustiveness, or null when subject/pattern Binding is required.</returns>
     public abstract bool? IsExhaustive(MatchKoto match);
+
+    /// <summary>Gets Pattern validity, exhaustiveness, and a reason for a missing proof.</summary>
+    /// <param name="match">The selection.</param>
+    /// <param name="subject">The known subject type.</param>
+    /// <returns>A four-state coverage result; Invalid suppresses cascading coverage errors.</returns>
+    public virtual MatchCoverage GetMatchCoverage(MatchKoto match, ControlFlowType? subject)
+        => this.IsExhaustive(match) is { } known ? new(known ? MatchCoverageState.Exhaustive : MatchCoverageState.NonExhaustive) : MatchCoverage.FromSyntax(match, subject);
 }
 
 /// <summary>Provides facts available before general name, overload, and Origin Binding.</summary>
 public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
 {
+    private const string PointerPrefix = "unsafe/";
+    private static readonly ControlFlowType CharType = new("char");
+    private static readonly ControlFlowType StringType = new("string");
+    private static readonly ControlFlowType IntegerLiteralType = new("integer literal");
+    private static readonly ControlFlowType FloatLiteralType = new("float literal");
+    private static readonly Dictionary<string, ControlFlowType> PrimitiveTypes = CreatePrimitiveTypes();
+
+    // Pointer Types are value-equal records; one instance per pointee keeps repeated queries allocation-free.
+    private readonly Dictionary<string, ControlFlowType> pointerTypes = new(StringComparer.Ordinal);
+
     /// <inheritdoc/>
     public override bool? RequiresUnsafeContext(Koto expression) => expression switch
     {
@@ -119,10 +167,10 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
     public override ControlFlowType? GetExpressionType(Koto expression) => expression switch
     {
         UnitLiteralKoto => ControlFlowType.Unit,
-        BoolLiteralKoto => ControlFlowType.Boolean,
-        CharLiteralKoto { Value: not null } => new("char"),
-        StringLiteralKoto or InterpolatedStringKoto => new("string"),
-        NumberLiteralKoto number => new(number.IsInteger ? "integer literal" : "float literal"),
+        BoolLiteralKoto or IsKoto { IsRuntimeTest: true } => ControlFlowType.Boolean,
+        CharLiteralKoto { Value: not null } => CharType,
+        StringLiteralKoto or InterpolatedStringKoto => StringType,
+        NumberLiteralKoto number => number.IsInteger ? IntegerLiteralType : FloatLiteralType,
         ParenthesizedKoto p => this.GetExpressionType(p.Operand),
         ConversionKoto c => this.GetDeclaredType(c.Right),
         _ => null,
@@ -132,14 +180,12 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
     public override ControlFlowType? GetDeclaredType(Koto? syntax) => syntax switch
     {
         ParenthesizedTypeKoto t => this.GetDeclaredType(t.Type),
-        TupleTypeKoto t when t.Elements.Count == 0 => ControlFlowType.Unit,
+        TupleTypeKoto t when t.ElementNodes.Count == 0 => ControlFlowType.Unit,
         TypeSemanticsKoto { Type: not null, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } t
             when t.SemanticsKind is SemanticsKind.Unsafe or SemanticsKind.Owner && this.GetDeclaredType(t.Type) is { } core
-            => t.SemanticsKind == SemanticsKind.Unsafe ? new("unsafe/" + core.Name) : core,
-        TypeSemanticsKoto t when t.SemanticsKind == SemanticsKind.Owner && t.SemanticsParameter is null &&
-            t.Type is null && t.OriginName is null && t.OriginExpression is null && t.OriginArguments is null &&
-            t.Identifier is "bool" or "char" or "string" or "Never" or "i8" or "i16" or "i32" or "i64" or "i128" or
-                "u8" or "u16" or "u32" or "u64" or "u128" or "isize" or "usize" or "f32" or "f64" => new(t.Identifier),
+            => t.SemanticsKind == SemanticsKind.Unsafe ? this.PointerType(core) : core,
+        TypeSemanticsKoto { SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, Type: null, OriginName: null, OriginExpression: null, OriginArguments: null } t
+            => PrimitiveTypes.GetValueOrDefault(t.Identifier),
         _ => null,
     };
 
@@ -148,7 +194,7 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
     {
         if (KotoHelper.UnwrapParentheses(source.Node) is NullLiteralKoto)
         {
-            return target.Name.StartsWith("unsafe/", StringComparison.Ordinal);
+            return target.Name.StartsWith(PointerPrefix, StringComparison.Ordinal);
         }
 
         if (source.Type is null)
@@ -161,22 +207,17 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
             return true;
         }
 
-        if (source.Type.Name.StartsWith("unsafe/", StringComparison.Ordinal) || target.Name.StartsWith("unsafe/", StringComparison.Ordinal))
+        if (source.Type.Name.StartsWith(PointerPrefix, StringComparison.Ordinal) || target.Name.StartsWith(PointerPrefix, StringComparison.Ordinal))
         {
             return false; // Pointer Type changes require an explicit conversion.
         }
 
-        if (source.Type.Name == "integer literal" && target.Name.Length > 1 && target.Name[0] is 'i' or 'u' &&
-            int.TryParse(target.Name.AsSpan(1), out var bits))
+        if (source.Type.Name == IntegerLiteralType.Name && target.Name.Length > 1 && target.Name[0] is 'i' or 'u' &&
+            int.TryParse(target.Name.AsSpan(1), out var bits) && bits > 0)
         {
-            if (!TryGetIntegerValue(source.Node, out var value))
-            {
-                return null;
-            }
-
-            var signed = target.Name[0] == 'i';
-            var limit = System.Numerics.BigInteger.One << (signed ? bits - 1 : bits);
-            return value >= (signed ? -limit : System.Numerics.BigInteger.Zero) && value < limit;
+            return TryGetIntegerValue(source.Node, out var magnitude, out var negative)
+                ? FitsInteger(magnitude, negative, target.Name[0] == 'i', bits)
+                : null;
         }
 
         if (source.Type.Name == "float literal" && target.Name is "f32" or "f64")
@@ -195,19 +236,45 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
 
     /// <inheritdoc/>
     public override bool? IsExhaustive(MatchKoto match)
+        => MatchCoverage.FromSyntax(match, this.GetExpressionType(match.Expression)).IsExhaustive;
+
+    /// <inheritdoc/>
+    public override MatchCoverage GetMatchCoverage(MatchKoto match, ControlFlowType? subject)
+        => MatchCoverage.FromSyntax(match, subject);
+
+    private static Dictionary<string, ControlFlowType> CreatePrimitiveTypes()
     {
-        if (match.Arms.Any(x => x.Pattern is IdentifierNameKoto { IdentifierName: "_" }))
+        var result = new Dictionary<string, ControlFlowType>(StringComparer.Ordinal)
         {
-            return true;
+            [ControlFlowType.Boolean.Name] = ControlFlowType.Boolean,
+            [ControlFlowType.Never.Name] = ControlFlowType.Never,
+            [CharType.Name] = CharType,
+            [StringType.Name] = StringType,
+        };
+
+        foreach (var name in (ReadOnlySpan<string>)["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "isize", "usize", "f32", "f64"])
+        {
+            result.Add(name, new(name));
         }
 
-        if (this.GetExpressionType(match.Expression) == ControlFlowType.Boolean)
+        return result;
+    }
+
+    private static bool FitsInteger(UInt128 magnitude, bool negative, bool signed, int bits)
+    {
+        if (bits > 128)
         {
-            return match.Arms.Any(x => x.Pattern is BoolLiteralKoto { Value: true }) &&
-                match.Arms.Any(x => x.Pattern is BoolLiteralKoto { Value: false });
+            return !negative || signed;
         }
 
-        return null;
+        if (!signed)
+        {
+            return negative ? magnitude == 0 : bits == 128 || magnitude < (UInt128.One << bits);
+        }
+
+        // Signed range is [-2^(bits-1), 2^(bits-1)).
+        var limit = UInt128.One << (bits - 1);
+        return negative ? magnitude <= limit : magnitude < limit;
     }
 
     private static SemanticsKind? GetOuterSemantics(Koto syntax)
@@ -228,27 +295,34 @@ public sealed class SyntaxControlFlowTypes : ControlFlowTypeSystem
         }
     }
 
-    private static bool TryGetIntegerValue(Koto node, out System.Numerics.BigInteger value)
+    private static bool TryGetIntegerValue(Koto node, out UInt128 magnitude, out bool negative)
     {
-        var negative = false;
+        negative = false;
         while (node is ParenthesizedKoto or PrefixPlusKoto or PrefixMinusKoto)
         {
             negative ^= node is PrefixMinusKoto;
             node = ((UnaryKoto)node).Operand;
         }
 
-        if (node is NumberLiteralKoto literal && literal.TryGetIntegerMagnitude(out var magnitude))
+        if (node is NumberLiteralKoto literal && literal.TryGetIntegerMagnitude(out magnitude))
         {
-            value = (System.Numerics.BigInteger)magnitude;
-            if (negative)
-            {
-                value = -value;
-            }
-
+            // -0 is not negative for range checks.
+            negative &= magnitude != 0;
             return true;
         }
 
-        value = default;
+        magnitude = default;
         return false;
+    }
+
+    private ControlFlowType PointerType(ControlFlowType pointee)
+    {
+        if (!this.pointerTypes.TryGetValue(pointee.Name, out var pointer))
+        {
+            pointer = new(PointerPrefix + pointee.Name);
+            this.pointerTypes.Add(pointee.Name, pointer);
+        }
+
+        return pointer;
     }
 }

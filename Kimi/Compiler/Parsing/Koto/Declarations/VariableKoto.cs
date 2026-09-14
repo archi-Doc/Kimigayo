@@ -38,7 +38,7 @@ public abstract class VariableKoto : DeclarationKoto
     public Koto? InitializerKoto { get; private set; }
 
     /// <summary>Gets the source keyword for the binding kind.</summary>
-    public string VariableText => this.VariableKind == VariableKind.Var ? Constants.VarKeyword : Constants.LetKeyword;
+    public virtual string VariableText => this.VariableKind == VariableKind.Var ? Constants.VarKeyword : Constants.LetKeyword;
 
     /// <summary>Initializes a new instance of the <see cref="VariableKoto"/> class.</summary>
     /// <remarks>The modifiers and attribute chain are taken from the reader's current context.</remarks>
@@ -84,6 +84,20 @@ public abstract class VariableKoto : DeclarationKoto
         {
             builder.Append(" = ");
             this.InitializerKoto.WriteTo(ref builder);
+        }
+    }
+
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.NameKoto);
+        if (this.TypeKoto is not null)
+        {
+            visitor.Visit(this.TypeKoto);
+        }
+
+        if (this.InitializerKoto is not null)
+        {
+            visitor.Visit(this.InitializerKoto);
         }
     }
 

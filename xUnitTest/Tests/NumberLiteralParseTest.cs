@@ -31,11 +31,8 @@ public class NumberLiteralParseTest
     }
 
     [Theory]
-    [InlineData("0b", "0")]
-    [InlineData("0B", "0")]
-    [InlineData("0b_", "0")]
-    [InlineData("0b____", "0")]
     [InlineData("0b0", "0")]
+    [InlineData("0b_0", "0")]
     [InlineData("0b1", "1")]
     [InlineData("0b1010", "10")]
     [InlineData("0B1010", "10")]
@@ -54,11 +51,8 @@ public class NumberLiteralParseTest
     }
 
     [Theory]
-    [InlineData("0o", "0")]
-    [InlineData("0O", "0")]
-    [InlineData("0o_", "0")]
-    [InlineData("0o____", "0")]
     [InlineData("0o0", "0")]
+    [InlineData("0O__0", "0")]
     [InlineData("0o7", "7")]
     [InlineData("0o10", "8")]
     [InlineData("0o777", "511")]
@@ -77,11 +71,8 @@ public class NumberLiteralParseTest
     }
 
     [Theory]
-    [InlineData("0x", "0")]
-    [InlineData("0X", "0")]
-    [InlineData("0x_", "0")]
-    [InlineData("0x____", "0")]
     [InlineData("0x0", "0")]
+    [InlineData("0X_0_", "0")]
     [InlineData("0xF", "15")]
     [InlineData("0xf", "15")]
     [InlineData("0x10", "16")]

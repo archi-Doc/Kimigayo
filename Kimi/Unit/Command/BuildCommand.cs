@@ -22,7 +22,11 @@ public class BuildCommand : ISimpleCommand<KimiOptions>
 
     public async Task Execute(KimiOptions options, string[] args, CancellationToken cancellationToken)
     {
-        this.solution.LoadForBuild(this.logger, options, args);
-        this.solution.PrepareProject(this.logger);
+        Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, async () =>
+        {
+            this.solution.LoadForBuild(this.logger, options, args);
+            this.solution.PrepareProject(this.logger);
+            return await this.solution.Build(cancellationToken) ? 0 : 1;
+        });
     }
 }

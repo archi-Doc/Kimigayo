@@ -68,6 +68,11 @@ public abstract class UnaryKoto : ExpressionKoto
         }
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.Visit(this.Operand);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
         => [this.Operand];
 
@@ -296,7 +301,7 @@ public sealed class ParenthesizedKoto : UnaryKoto
         => WriteGroupedTo(this.Operand, ref builder);
 
     internal static bool NeedsMultilineGrouping(Koto operand)
-        => operand is IfKoto or MatchKoto or ForKoto or WhileKoto or LoopKoto or LabeledKoto or FunctionKoto;
+        => operand is DoKoto or IfKoto or MatchKoto or ForKoto or WhileKoto or LoopKoto or LabeledKoto or FunctionKoto;
 
     internal static void WriteGroupedTo(Koto operand, ref IndentedStringBuilder builder)
     {

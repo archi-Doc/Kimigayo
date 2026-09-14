@@ -38,7 +38,7 @@ public partial class Project
         try
         {
             var utf8 = System.IO.File.ReadAllBytes(path);
-            var file = TinyhandSerializer.DeserializeFromUtf8<ProjectFile>(utf8);
+            var file = ProjectFile.Load(utf8);
             if (file is null)
             {
                 logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);
@@ -46,9 +46,13 @@ public partial class Project
             }
 
             project = new(kimigayo);
-            project.Directory = Path.GetDirectoryName(path) ?? string.Empty;
+            project.Directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
             project.Name = Path.GetFileNameWithoutExtension(path);
             project.ProjectFile = file;
+            foreach (var source in System.IO.Directory.EnumerateFiles(project.Directory, "*.kimi", SearchOption.TopDirectoryOnly))
+            {
+                project.AddKimiFile(source);
+            }
         }
         catch
         {
@@ -119,25 +123,87 @@ public partial class Project
         this.kimiFiles.Add(path);
     }
 
-    /// <summary>Builds this project once for each configured target triple.</summary>
-    /// <returns>A task that completes after all configured targets have been attempted.</returns>
-    public async Task<bool> Build()
+    /// <summary>Checks source semantics without emitting artifacts or invoking native tools.</summary>
+    /// <returns>Whether every configured target passes front-end checks.</returns>
+    public Task<bool> Check()
+        => this.BuildCore(false);
+
+    /// <summary>Generates LLVM inputs, verifies them and links a native Application.</summary>
+    /// <param name="cancellationToken">Cancels generation and native tool processes.</param>
+    /// <returns>Whether a new native executable was built successfully.</returns>
+    public async Task<bool> Build(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var paths = ArtifactPaths.Create(this);
+            NativeToolchain.Invalidate(paths);
+            if (!await this.BuildCore(true, cancellationToken, paths).ConfigureAwait(false))
+            {
+                return false;
+            }
+
+            await NativeToolchain.Build(this, paths, (severity, message) => this.kimigayo.WriteLine(severity, message), cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex) when (NativeToolchain.IsToolchainFailure(ex))
+        {
+            this.kimigayo.WriteLine(DiagnosticSeverity.Error, ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>Executes the last successfully built Application without rebuilding.</summary>
+    /// <param name="cancellationToken">Cancels the child process.</param>
+    /// <returns>The application's exit code.</returns>
+    public Task<int> Run(CancellationToken cancellationToken = default)
+        => NativeToolchain.RunProject(this, cancellationToken);
+
+    /// <summary>Runs front-end checks and publishes checked LLVM/manifest inputs. Does not invoke LLVM, link, or run.</summary>
+    /// <param name="cancellationToken">Cancels between compilation targets.</param>
+    /// <returns>Whether every configured target published both artifacts.</returns>
+    public Task<bool> Generate(CancellationToken cancellationToken = default)
+        => this.BuildCore(true, cancellationToken);
+
+    // Retain the Task exception/cancellation contract at the public boundary. Each target
+    // is synchronous; do not build another async state machine around every compilation.
+    private async Task<bool> BuildCore(bool emit, CancellationToken cancellationToken = default, ArtifactPaths? paths = null)
     {
         this.buildMetadata.Clear();
-        var targets = this.ProjectFile.Targets.ToArray();
+        var targets = this.ProjectFile.Targets;
+        if (!string.IsNullOrEmpty(this.KimiOptions.Target))
+        {
+            if (!targets.Contains(this.KimiOptions.Target, StringComparer.Ordinal))
+            {
+                this.kimigayo.WriteLine(DiagnosticSeverity.Error, "The selected target is not configured in this project.");
+                return false;
+            }
+
+            targets = [this.KimiOptions.Target];
+        }
+
+        if (emit && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
+        {
+            this.kimigayo.WriteLine(DiagnosticSeverity.Error, "Emission currently requires exactly one configured Windows x64 target.");
+            return false;
+        }
+
         var success = true;
         foreach (var x in targets)
         {
-            success &= await this.BuildTarget(x).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            success &= this.BuildTarget(x, emit, paths);
         }
 
         return success;
     }
 
-    private async Task<bool> BuildTarget(string target)
+    private bool BuildTarget(string target, bool emit, ArtifactPaths? paths)
     {
         // Create & Prepare Compilation
         var compilation = new Compilation(this.kimigayo, this);
+        // The service retains named diagnostic collections across attempts, but the new compilation
+        // must not inherit an earlier target's preparation/publication errors.
+        compilation.Kotonoha.DiagnosticCollection.ClearDiagnostic();
         if (!compilation.Prepare(target))
         {
             return false;
@@ -159,8 +225,10 @@ public partial class Project
                 this.kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.InvalidSourceEncoding_Kd);
                 return false;
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                this.kimigayo.GetOrAddDiagnosticCollection(path).Add(default, DiagnosticCode.GenerationFailed_Kd, ex.Message);
+                return false;
             }
         }
 
@@ -169,18 +237,29 @@ public partial class Project
             projectKotonoha.AddSource(y);
         }
 
-        // Planned: establish scope environments through Directive Binding; bind declarations,
-        // names, types and overloads; specialize generics and select remaining directives.
-
-        // Validate control flow using facts available before general Binding.
-        // Pending obligations are retained by the analysis API for later Binding passes.
-        var controlFlow = compilation.AnalyzeControlFlow();
+        var binding = compilation.Bind();
+        compilation.Binding.ReportDiagnostics();
+        var startup = compilation.Binding.CheckStartup(this.ProjectFile.OutputKind);
+        compilation.Binding.ReportStartupDiagnostics();
+        var ownership = compilation.Ownership.Analyze();
+        var controlFlow = compilation.Ownership.ControlFlow!;
         controlFlow.ReportDiagnostics();
+        compilation.Ownership.ReportDiagnostics();
 
-        // Planned: ownership/lifetime/Origin analysis, lowering, backend IR, emission and linking.
-        // This result certifies only the implemented front-end checks, not finalization or a binary.
+        var accepted = binding.IsComplete && startup.IsComplete && ownership.IsVerified && !projectKotonoha.HasSourceErrors &&
+            !projectKotonoha.DiagnosticCollection.HasErrors;
+        if (!accepted || !emit)
+        {
+            return accepted;
+        }
 
-        return controlFlow.Issues.Count == 0 && !projectKotonoha.HasSourceErrors &&
-            !projectKotonoha.DiagnosticCollection.GetArray().Any(x => x.Entry.Severity == DiagnosticSeverity.Error);
+        if (!EmissionArtifacts.Publish(compilation, paths, out var pathIr, out var failure))
+        {
+            projectKotonoha.DiagnosticCollection.Add(default, DiagnosticCode.GenerationFailed_Kd, failure);
+            return false;
+        }
+
+        this.kimigayo.WriteLine(DiagnosticSeverity.Information, $"Generated LLVM inputs: {pathIr} and {Path.ChangeExtension(pathIr, ".link.json")}; native build has not yet been performed.");
+        return true;
     }
 }

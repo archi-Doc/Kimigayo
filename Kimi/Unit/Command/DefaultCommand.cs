@@ -17,6 +17,6 @@ public class DefaultCommand : ISimpleCommand
 
     public async Task Execute(string[] args, CancellationToken cancellationToken)
     {
-        Console.WriteLine($"Kimi ({Arc.VersionHelper.VersionString}) by archi-Doc");
+        Console.WriteLine($"Kimi ({Compiler.CompilerRelease.Version}) by archi-Doc");
     }
 }

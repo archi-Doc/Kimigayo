@@ -20,45 +20,31 @@ public static partial class KotoHelper
                 return jump is ExitKoto { Label: null } ? deferred : null;
             }
 
-            if ((parent is FunctionKoto function && (child == function.Body || child == function.ExpressionBody)) ||
-                (parent is PropertyAccessorKoto accessor && child == accessor.Body))
+            if (IsFunctionBody(parent, child))
             {
-                return jump is ReturnKoto ? parent : null;
+                return jump is ReturnKoto && parent is not FunctionKoto { IsGenerated: true } ? parent : null;
             }
 
             if (parent is LabeledKoto labeled && child == labeled.Target && jump.Label == labeled.Label && IsInsideLabeledBody(jump, labeled))
             {
                 return jump switch
                 {
-                    ExitKoto => labeled.Target,
+                    ExitKoto when labeled.Target is ForKoto or WhileKoto or LoopKoto or DoKoto => labeled.Target,
+                    YieldKoto when labeled.Target is IfKoto or MatchKoto => labeled.Target,
                     ContinueKoto when labeled.Target is ForKoto or WhileKoto or LoopKoto => labeled.Target,
                     _ => null,
                 };
             }
 
-            var iterationBody = parent switch
+            if (IsIterationBody(parent, child))
             {
-                ForKoto f => f.Body,
-                WhileKoto w => w.Body,
-                LoopKoto l => l.Body,
-                _ => null,
-            };
-            if (child == iterationBody)
-            {
-                if (jump is YieldKoto)
-                {
-                    return null;
-                }
-
                 if (jump.Label is null && jump is ExitKoto or ContinueKoto)
                 {
                     return parent;
                 }
             }
 
-            if (jump is YieldKoto &&
-                ((parent is IfKoto conditional && (conditional.ElseBody == child || conditional.Branches.Any(x => x.Body == child))) ||
-                 (parent is MatchKoto match && match.Arms.Any(x => x.Body == child))))
+            if (jump is YieldKoto { Label: null } && IsSelectionBody(parent, child))
             {
                 return parent;
             }
@@ -66,13 +52,6 @@ public static partial class KotoHelper
 
         return null;
     }
-
-    /// <summary>Classifies a Labeled Block before reachability is considered.</summary>
-    /// <param name="labeled">The attached label and its Block.</param>
-    /// <returns>Whether explicit self-targeted results are required.</returns>
-    public static bool IsResultRequiringLabeledBlock(LabeledKoto labeled)
-        => labeled.Target is CodeBlockKoto &&
-            (IsValueContext(labeled) || ContainsResult(labeled.Target));
 
     /// <summary>Tests lexical unsafe permission without inheriting it across function bodies.</summary>
     /// <param name="node">The operation to inspect.</param>
@@ -82,8 +61,7 @@ public static partial class KotoHelper
         Koto child = node;
         for (var parent = child.Parent; parent is not null; child = parent, parent = parent.Parent)
         {
-            if ((parent is FunctionKoto function && (child == function.Body || child == function.ExpressionBody)) ||
-                (parent is PropertyAccessorKoto accessor && child == accessor.Body))
+            if (IsFunctionBody(parent, child))
             {
                 return false;
             }
@@ -97,45 +75,28 @@ public static partial class KotoHelper
         return false;
     }
 
-    /// <summary>Classifies selections using context, explicit body forms, and lexically targeted yields.</summary>
-    /// <param name="selection">An attached if or match node.</param>
-    /// <returns>Whether the selection requires a result.</returns>
+    /// <summary>Determines whether a selection's result is used, without consulting its bodies.</summary>
+    /// <param name="selection">The attached selection.</param>
+    /// <returns>Whether the selection is in Value Context.</returns>
     public static bool IsResultRequiringSelection(Koto selection)
+        => selection is IfKoto or MatchKoto && IsValueContext(selection);
+
+    /// <summary>Determines whether a function's fixed return type discards a single-item value.</summary>
+    /// <param name="boundary">The function or accessor.</param>
+    /// <returns>Whether the return type is already Unit.</returns>
+    public static bool DiscardsFunctionBody(Koto boundary) => boundary switch
     {
-        if (selection is not (IfKoto or MatchKoto))
-        {
-            return false;
-        }
+        FunctionKoto f => f.IsGenerated || f.IsConstructor || f.IsDestructor ||
+            (f.ReturnType is null && !f.IsAnonymous) || IsUnitType(f.ReturnType) ||
+            ReferenceEquals(f.BoundSymbol?.Type, BoundType.Unit),
+        PropertyAccessorKoto a => a.AccessorKind == PropertyAccessorKind.Set || IsUnitType(a.ReturnType) ||
+            (a.ReturnType is null && a.Parent is PropertyKoto property && IsUnitType(property.TypeKoto)),
+        _ => false,
+    };
 
-        if (IsValueContext(selection) ||
-            (selection is IfKoto conditional && (conditional.Branches.Any(x => x.Body.IsExpressionBody) || conditional.ElseBody?.IsExpressionBody == true)) ||
-            (selection is MatchKoto match && match.Arms.Any(x => x.Body is not CodeBlockKoto)))
-        {
-            return true;
-        }
-
-        return ContainsYield(selection);
-
-        bool ContainsYield(Koto node)
-        {
-            if (node is YieldKoto jump && ResolveTransferTarget(jump) == selection)
-            {
-                return true;
-            }
-
-            // Deferred directives must be selected before their syntax participates.
-            if (node is CompileTimeIfKoto or CompileTimeMatchKoto or DeferredBlockKoto)
-            {
-                return false;
-            }
-
-            return node.ChildNodes.Any(ContainsYield);
-        }
-    }
-
-    /// <summary>Determines whether an expression occupies a position that uses its value.</summary>
-    /// <param name="expression">The expression in an attached syntax tree.</param>
-    /// <returns>Whether the expression is in value context.</returns>
+    /// <summary>Determines whether a position uses its value; expected Unit alone does not discard it.</summary>
+    /// <param name="expression">The expression in its attached syntax tree.</param>
+    /// <returns>Whether the expression is in Value Context.</returns>
     public static bool IsValueContext(Koto expression)
     {
         switch (expression.Parent)
@@ -143,33 +104,23 @@ public static partial class KotoHelper
             case null:
                 return false;
             case CodeBlockKoto block:
-                return block.TrailingExpression == expression;
+                return block.TrailingExpression == expression && IsValueContext(block);
             case FunctionKoto function:
-                return function.ExpressionBody == expression;
+                return function.ExpressionBody == expression && !DiscardsFunctionBody(function);
             case PropertyAccessorKoto accessor:
-                return accessor.Body == expression && expression is not CodeBlockKoto;
+                return accessor.Body == expression && expression is not CodeBlockKoto && !DiscardsFunctionBody(accessor);
             case LabeledKoto labeled:
-                return expression is not CodeBlockKoto && IsValueContext(labeled);
+                return IsValueContext(labeled);
             case ParenthesizedKoto parentheses:
                 return IsValueContext(parentheses);
             case IfKoto conditional:
-                return expression is not CodeBlockKoto blockBody || blockBody.IsExpressionBody ||
-                    conditional.Branches.Any(x => x.Condition == expression);
+                return !IsSelectionBody(conditional, expression) || IsValueContext(conditional);
             case MatchKoto match:
-                if (match.Expression == expression)
-                {
-                    return true;
-                }
-
-                foreach (var arm in match.Arms)
-                {
-                    if (arm.Body == expression)
-                    {
-                        return expression is not CodeBlockKoto;
-                    }
-                }
-
-                return false;
+                return !IsSelectionBody(match, expression) || IsValueContext(match);
+            case DoKoto scoped:
+                return IsValueContext(scoped);
+            case RequireKoto require:
+                return require.Condition == expression;
             case ForKoto loop:
                 return loop.Iterable == expression;
             case WhileKoto loop:
@@ -178,25 +129,19 @@ public static partial class KotoHelper
             case BlockStatementKoto:
                 return false;
             default:
-                return true; // Initializers, arguments, and ordinary operands.
+                return true;
         }
     }
 
     internal static bool IsInsideLabeledBody(Koto node, LabeledKoto labeled)
     {
-        var body = labeled.Target switch
+        Koto child = node;
+        for (var parent = child.Parent; parent is not null && parent != labeled; child = parent, parent = parent.Parent)
         {
-            ForKoto f => f.Body,
-            WhileKoto w => w.Body,
-            LoopKoto l => l.Body,
-            CodeBlockKoto block => block,
-            _ => null,
-        };
-        for (var parent = node.Parent; parent is not null && parent != labeled; parent = parent.Parent)
-        {
-            if (parent == body)
+            if (parent == labeled.Target)
             {
-                return true;
+                return IsIterationBody(parent, child) || IsSelectionBody(parent, child) ||
+                    (parent is DoKoto scoped && child == scoped.Body);
             }
         }
 
@@ -213,23 +158,54 @@ public static partial class KotoHelper
         return node;
     }
 
-    private static bool ContainsResult(Koto node)
-    {
-        return Contains(node, node);
+    internal static bool IsBodyExpression(Koto body) => body is ExpressionKoto and not CodeBlockKoto or FunctionKoto { IsAnonymous: true };
 
-        static bool Contains(Koto current, Koto target)
+    private static bool IsUnitType(Koto? type)
+        => type is TupleTypeKoto { ElementNodes.Count: 0 } || ReferenceEquals(type?.BoundType, BoundType.Unit) ||
+            (type is ParenthesizedTypeKoto p && IsUnitType(p.Type));
+
+    private static bool IsFunctionBody(Koto parent, Koto child)
+        => (parent is FunctionKoto function && (child == function.Body || child == function.ExpressionBody)) ||
+            (parent is PropertyAccessorKoto accessor && child == accessor.Body);
+
+    private static bool IsIterationBody(Koto parent, Koto child) => parent switch
+    {
+        ForKoto f => child == f.Body,
+        WhileKoto w => child == w.Body,
+        LoopKoto l => child == l.Body,
+        _ => false,
+    };
+
+    private static bool IsSelectionBody(Koto parent, Koto child)
+    {
+        if (parent is IfKoto conditional)
         {
-            if (current is ExitKoto { Expression: not null } exit && ResolveTransferTarget(exit) == target)
+            if (conditional.ElseBody == child)
             {
                 return true;
             }
 
-            if (current is CompileTimeIfKoto or CompileTimeMatchKoto or DeferredBlockKoto or FunctionKoto or PropertyAccessorKoto)
+            for (var index = 0; index < conditional.Branches.Count; index++)
             {
-                return false;
+                var branch = conditional.Branches[index];
+                if (branch.Body == child)
+                {
+                    return true;
+                }
             }
-
-            return current.ChildNodes.Any(child => Contains(child, target));
         }
+        else if (parent is MatchKoto match)
+        {
+            for (var index = 0; index < match.Arms.Count; index++)
+            {
+                var arm = match.Arms[index];
+                if (arm.Body == child)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

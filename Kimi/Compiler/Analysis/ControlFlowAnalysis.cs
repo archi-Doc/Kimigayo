@@ -36,25 +36,50 @@ public sealed class ControlFlowNodeInfo
 
 /// <summary>Analyzes lexical transfers, reachability, result coverage, and known result types.</summary>
 /// <remarks>
-/// Run after compile-time directive selection. Bodies with deferred directives are reported as pending,
-/// rather than treating conditional compilation as runtime branching. Supply bound type facts to discharge
+/// Run after compile-time directive selection. Bodies containing invalid directive groups are skipped.
+/// Supply bound type facts to discharge
 /// obligations which the default syntax-only type provider cannot decide.
 /// </remarks>
 public sealed class ControlFlowAnalysis
 {
-    private readonly ControlFlowTypeSystem types;
-    private readonly Dictionary<Koto, ControlFlowNodeInfo> nodes = new();
-    private readonly Dictionary<JumpKoto, Koto?> targets = new();
-    private readonly Dictionary<Koto, Boundary> boundaries = new();
-    private readonly List<ControlFlowIssue> issues = new();
-    private readonly HashSet<Koto> pending = new();
-    private readonly HashSet<(Koto Node, string Message)> reported = new();
-    private readonly Dictionary<IdentifierNameKoto, ControlFlowType?> names = new();
-    private readonly Dictionary<DeferredBlockKoto, Flow> cleanups = new();
-    private readonly Dictionary<ControlFlowResultSource, JumpKoto> resultTransfers = new();
-    private readonly HashSet<JumpKoto> blockedDeliveries = new();
+    private const string PointerPrefix = "unsafe/";
+    private static readonly ControlFlowType IsizeType = new("isize");
 
-    private ControlFlowAnalysis(ControlFlowTypeSystem types) => this.types = types;
+    private readonly ControlFlowTypeSystem types;
+    private readonly StructuralCompletion structural;
+    private readonly Dictionary<Koto, ControlFlowNodeInfo> nodes = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<JumpKoto, Koto?> targets = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Koto, Boundary> boundaries = new(ReferenceEqualityComparer.Instance);
+    private readonly List<ControlFlowIssue> issues = new();
+    private readonly List<ControlFlowIssue> warnings = new();
+    private readonly HashSet<Koto> warningNodes = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<Koto> pending = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<(Koto Node, string Message)> reported = new();
+    private readonly Dictionary<IdentifierNameKoto, ControlFlowType?> names = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<DeferredBlockKoto, Flow> cleanups = new(ReferenceEqualityComparer.Instance);
+
+    // Direct children are collected into one shared stack-like buffer instead of iterator objects.
+    // A traversal appends its children, visits them by index, and truncates the buffer afterwards.
+    private readonly List<Koto> childBuffer = new();
+    private readonly ChildCollector childCollector;
+    private readonly List<JumpKoto> arrivedTransfers = new();
+    private readonly Stack<List<ControlFlowResultSource>> candidateLists = new();
+    private readonly Dictionary<string, ControlFlowType> pointeeTypes = new(StringComparer.Ordinal);
+    private readonly List<ControlFlowNodeInfo> infoPool = new();
+    private readonly List<Boundary> boundaryPool = new();
+    private readonly List<HashSet<JumpKoto>> transferPool = new();
+    private readonly List<List<DeferredBlockKoto>> registrationPool = new();
+    private int infoCursor;
+    private int boundaryCursor;
+    private int transferCursor;
+    private int registrationCursor;
+
+    private ControlFlowAnalysis(ControlFlowTypeSystem types)
+    {
+        this.types = types;
+        this.structural = new(node => this.types.GetExpressionType(node) == ControlFlowType.Never || this.nodes.GetValueOrDefault(node)?.ExpressionType == ControlFlowType.Never);
+        this.childCollector = new(this.childBuffer);
+    }
 
     /// <summary>Gets information for each analyzed expression or boundary.</summary>
     public IReadOnlyDictionary<Koto, ControlFlowNodeInfo> Nodes => this.nodes;
@@ -64,6 +89,9 @@ public sealed class ControlFlowAnalysis
 
     /// <summary>Gets definite errors.</summary>
     public IReadOnlyList<ControlFlowIssue> Issues => this.issues;
+
+    /// <summary>Gets warnings that do not affect type fitting or acceptance.</summary>
+    public IReadOnlyList<ControlFlowIssue> Warnings => this.warnings;
 
     /// <summary>Gets obligations requiring directive selection or further type Binding.</summary>
     public IReadOnlyCollection<Koto> PendingBinding => this.pending;
@@ -79,6 +107,27 @@ public sealed class ControlFlowAnalysis
         return analysis;
     }
 
+    /// <summary>Replaces these results using retained storage and the same type provider.</summary>
+    /// <param name="root">The current bound tree.</param>
+    public void Reanalyze(Koto root)
+    {
+        this.structural.Clear();
+        this.nodes.Clear();
+        this.targets.Clear();
+        this.boundaries.Clear();
+        this.issues.Clear();
+        this.warnings.Clear();
+        this.warningNodes.Clear();
+        this.pending.Clear();
+        this.reported.Clear();
+        this.names.Clear();
+        this.cleanups.Clear();
+        this.childBuffer.Clear();
+        this.arrivedTransfers.Clear();
+        this.infoCursor = this.boundaryCursor = this.transferCursor = this.registrationCursor = 0;
+        this.Visit(root, true);
+    }
+
     /// <summary>Copies definite errors into their source diagnostic collections.</summary>
     public void ReportDiagnostics()
     {
@@ -86,54 +135,150 @@ public sealed class ControlFlowAnalysis
         {
             issue.Node.AddDiagnostic(DiagnosticCode.ControlFlow_Kd, issue.Message);
         }
+
+        foreach (var warning in this.warnings)
+        {
+            warning.Node.AddDiagnostic(DiagnosticCode.ControlFlowWarning_Kd, warning.Message);
+        }
     }
 
-    private static bool? LiteralCondition(Koto node)
-    {
-        while (node is ParenthesizedKoto p)
-        {
-            node = p.Operand;
-        }
+    private static bool IsPointer(ControlFlowType? type)
+        => type?.Name.StartsWith(PointerPrefix, StringComparison.Ordinal) == true;
 
-        return node is BoolLiteralKoto b ? b.Value : null;
-    }
+    private static bool IsNullLiteral(Koto node)
+        => KotoHelper.UnwrapParentheses(node) is NullLiteralKoto;
 
-    private static bool HasDeferredDirective(Koto node)
-        => node is CompileTimeIfKoto or CompileTimeMatchKoto ||
-            node.ChildNodes.Any(child => child is not (FunctionKoto or PropertyAccessorKoto) && HasDeferredDirective(child));
-
-    private static FieldKoto? GetConditionBinding(ParenthesizedKoto node)
-    {
-        if (node.Operand is not CodeBlockKoto { Items.Count: 1 } block ||
-            block.Items[0] is not FieldKoto { InitializerKoto: not null } field)
-        {
-            return null;
-        }
-
-        Koto condition = node;
-        while (condition.Parent is ParenthesizedKoto outer)
-        {
-            condition = outer;
-        }
-
-        return condition.Parent switch
-        {
-            IfKoto selection when selection.Branches.Any(x => x.Condition == condition) => field,
-            WhileKoto iteration when iteration.Condition == condition => field,
-            _ => null,
-        };
-    }
-
+    /// <summary>Merges transfer sets. A child's set is consumed exactly once, so it can be reused as the result.</summary>
     private static HashSet<JumpKoto>? Union(HashSet<JumpKoto>? left, HashSet<JumpKoto>? right)
     {
-        if (right is null)
+        if (right is null || right.Count == 0)
         {
             return left;
         }
 
-        left ??= new();
-        left.UnionWith(right);
+        if (left is null)
+        {
+            return right;
+        }
+
+        StructuralCompletion.UnionTransfers(left, right);
         return left;
+    }
+
+    private void Warn(Koto node, string message)
+    {
+        if (this.warningNodes.Add(node))
+        {
+            this.warnings.Add(new(node, message));
+        }
+    }
+
+    private bool IsEffectFree(Koto node)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+
+        if (node is IsKoto { IsRuntimeTest: true } test)
+        {
+            // A stable name needs no acquisition/destruction. Calls and Properties
+            // retain their effects; the target Type is never a value expression.
+            return this.types.IsBoundRuntimeTypeTest(test) && KotoHelper.UnwrapParentheses(test.Left) is
+                IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter };
+        }
+
+        // Tuples and Case constructions are effect-free when every nested operand is (SPEC 17.4.2).
+        // A Case construction must also have a proven Copy Type, so its destruction is not observable.
+        if (node is TupleLiteralKoto tuple)
+        {
+            return this.AreEffectFree(tuple.Elements);
+        }
+
+        if (this.types.IsBoundConstruction(node))
+        {
+            return this.types.IsProvenCopy(node) && (node is not InvocationKoto call || this.AreEffectFree(call.ArgumentNodes));
+        }
+
+        var type = this.types.GetExpressionType(node) ?? this.nodes.GetValueOrDefault(node)?.ExpressionType;
+        var primitive = type?.Name is "bool" or "char" or "integer literal" or "float literal" or
+            "i8" or "i16" or "i32" or "i64" or "i128" or "u8" or "u16" or "u32" or "u64" or "u128" or "isize" or "usize" or "f32" or "f64";
+        if (!primitive)
+        {
+            return false;
+        }
+
+        return node switch
+        {
+            NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto => true,
+            IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter } => true,
+            NotKoto unary => this.IsEffectFree(unary.Operand),
+            EqualsEqualsKoto or ExclamationEqualsKoto or LessThanKoto or LessThanEqualsKoto or GreaterThanKoto or GreaterThanEqualsKoto =>
+                this.IsEffectFree(((BinaryKoto)node).Left) && this.IsEffectFree(((BinaryKoto)node).Right),
+            _ => false,
+        };
+    }
+
+    private bool AreEffectFree(IReadOnlyList<Koto> operands)
+    {
+        for (var i = 0; i < operands.Count; i++)
+        {
+            if (!this.IsEffectFree(operands[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void WarnUnitTail(Koto body)
+    {
+        if (!this.structural.CanComplete(body))
+        {
+            return;
+        }
+
+        if (body is CodeBlockKoto block)
+        {
+            if (block.Items.Count > 0)
+            {
+                this.WarnUnitTail(block.Items[^1]);
+            }
+
+            return;
+        }
+
+        body = KotoHelper.UnwrapParentheses(body);
+        if (body is LabeledKoto label)
+        {
+            this.WarnUnitTail(label.Target);
+        }
+        else if (body is DoKoto scoped)
+        {
+            this.WarnUnitTail(scoped.Body);
+        }
+        else if (body is IfKoto conditional)
+        {
+            for (var i = 0; i < conditional.Branches.Count; i++)
+            {
+                this.WarnUnitTail(conditional.Branches[i].Body);
+            }
+
+            if (conditional.ElseBody is { } other)
+            {
+                this.WarnUnitTail(other);
+            }
+        }
+        else if (body is MatchKoto match)
+        {
+            for (var i = 0; i < match.Arms.Count; i++)
+            {
+                this.WarnUnitTail(match.Arms[i].Body);
+            }
+        }
+        else if (body is ExpressionKoto and not (UnitLiteralKoto or JumpKoto or LoopKoto or ForKoto or WhileKoto) &&
+            this.nodes.GetValueOrDefault(body)?.ExpressionType is { } type && type != ControlFlowType.Unit && type != ControlFlowType.Never)
+        {
+            this.Warn(body, "Unit was inferred from this discarded tail; use yield, return, a named exit, or a single-item body to supply the value.");
+        }
     }
 
     private void Error(Koto node, string message)
@@ -144,18 +289,51 @@ public sealed class ControlFlowAnalysis
         }
     }
 
-    private void RecordPendingDirectiveConditions(Koto scope)
+    private ControlFlowNodeInfo RentInfo()
     {
-        foreach (var condition in scope.PendingDirectiveConditions)
+        if (this.infoCursor == this.infoPool.Count)
         {
-            this.pending.Add(condition.Condition);
+            this.infoPool.Add(new());
         }
+
+        var info = this.infoPool[this.infoCursor++];
+        info.ExpressionType = info.TargetResultType = info.FunctionResultType = null;
+        info.IsResultRequiring = info.CanCompleteNormally = info.IsCompletionPending = false;
+        return info;
+    }
+
+    private HashSet<JumpKoto> RentTransfers()
+    {
+        if (this.transferCursor == this.transferPool.Count)
+        {
+            this.transferPool.Add(new(ReferenceEqualityComparer.Instance));
+        }
+
+        var set = this.transferPool[this.transferCursor++];
+        set.Clear();
+        return set;
+    }
+
+    private List<DeferredBlockKoto> RentRegistrations()
+    {
+        if (this.registrationCursor == this.registrationPool.Count)
+        {
+            this.registrationPool.Add(new());
+        }
+
+        var list = this.registrationPool[this.registrationCursor++];
+        list.Clear();
+        return list;
     }
 
     private Flow Visit(Koto node, bool reachable, ControlFlowType? expected = null)
     {
-        this.RecordPendingDirectiveConditions(node);
         expected ??= this.types.GetExpectedType(node);
+        if (node is ExpressionKoto && !KotoHelper.IsValueContext(node) && this.IsEffectFree(node) && node.Parent is not ParenthesizedKoto)
+        {
+            this.Warn(node, "This effect-free value is discarded; use its value or add the intended return type.");
+        }
+
         var referencedFunction = this.types.GetReferencedFunction(node);
         if (referencedFunction?.Modifier.HasFlag(ModifierKind.Unsafe) == true)
         {
@@ -185,12 +363,15 @@ public sealed class ControlFlowAnalysis
         Flow flow;
         switch (node)
         {
+            case not InvocationKoto when this.types.IsBoundConstruction(node):
+                flow = new(true, this.types.GetExpressionType(node));
+                break;
             case FunctionKoto function:
                 this.VisitFunction(
                     function,
                     function.Body ?? function.ExpressionBody,
                     function.ReturnType,
-                    function.IsDestructor ? ControlFlowType.Unit : this.types.GetExpectedResultType(function));
+                    KotoHelper.DiscardsFunctionBody(function) ? ControlFlowType.Unit : this.types.GetExpectedResultType(function));
                 return new(true, null); // A function value is not its body or its return type.
             case PropertyAccessorKoto accessor:
                 var getterResult = accessor.Parent is PropertyKoto property
@@ -204,14 +385,10 @@ public sealed class ControlFlowAnalysis
                     accessor.AccessorKind == PropertyAccessorKind.Get && accessor.ReturnType is null && getterResult is null);
                 return new(true, null);
             case DeclarationContainerKoto:
-                foreach (var child in node.ChildNodes)
-                {
-                    this.Visit(child, true);
-                }
-
+                this.VisitDeclarations(node);
                 return new(true, ControlFlowType.Unit);
-            case CompileTimeIfKoto or CompileTimeMatchKoto:
-                this.pending.Add(node);
+            case CompileTimeSwitchKoto:
+                // Invalid groups already have parser diagnostics; their arms are not executable.
                 return new(true, null);
             case FieldKoto field:
                 var declared = this.types.GetDeclaredType(field.TypeKoto);
@@ -226,9 +403,7 @@ public sealed class ControlFlowAnalysis
                 break;
             case LabeledKoto labeled:
                 this.CheckLabel(labeled);
-                flow = labeled.Target is CodeBlockKoto labeledBlock
-                    ? this.VisitLabeledBlock(labeled, labeledBlock, reachable, expected)
-                    : this.Visit(labeled.Target, reachable, expected);
+                flow = this.Visit(labeled.Target, reachable, expected);
                 this.nodes[labeled] = this.nodes[labeled.Target];
                 break;
             case DeferredBlockKoto deferred:
@@ -236,11 +411,17 @@ public sealed class ControlFlowAnalysis
                 this.cleanups[deferred] = this.Finish(deferred, this.Visit(deferred.Body, reachable), cleanupBoundary);
                 this.nodes[deferred].ExpressionType = null;
                 // Registration never evaluates its body. Its completion matters at scope exit only.
-                return new(true, null);
+                return new(true, ControlFlowType.Unit);
             case UnsafeBlockKoto unsafeBlock:
                 flow = this.Visit(unsafeBlock.Body, reachable);
-                this.nodes[unsafeBlock] = new() { CanCompleteNormally = flow.Normal, IsCompletionPending = flow.Pending };
-                return flow with { Type = null };
+                var unsafeInfo = this.RentInfo();
+                unsafeInfo.CanCompleteNormally = flow.Normal;
+                unsafeInfo.IsCompletionPending = flow.Pending;
+                this.nodes[unsafeBlock] = unsafeInfo;
+                return flow with { Type = ControlFlowType.Unit };
+            case DoKoto scoped:
+                flow = this.VisitDo(scoped, reachable, expected);
+                break;
             case IfKoto conditional:
                 flow = this.VisitIf(conditional, reachable, expected);
                 break;
@@ -253,21 +434,31 @@ public sealed class ControlFlowAnalysis
             case JumpKoto jump:
                 flow = this.VisitJump(jump, reachable);
                 break;
-            case CodeBlockKoto block:
-                flow = this.VisitSequence(block.Items, reachable);
+            case RequireKoto require:
+                flow = this.VisitRequire(require, reachable);
                 break;
-            case ParenthesizedKoto p:
-                if (GetConditionBinding(p) is { } binding)
+            case CodeBlockKoto block:
+                flow = this.VisitSequence(block.Items, 0, block.Items.Count, reachable);
+                break;
+            case InvocationKoto call when this.types.TryGetCallReceiver(call, out var receiver):
+                // A committed direct callee is a designator, not a function-value acquisition.
+                // Bound receiver syntax precedes the explicit arguments exactly once.
+                var receiverFlow = receiver is null ? new Flow(true, ControlFlowType.Unit) : this.Visit(receiver, reachable);
+                var argumentsFlow = this.VisitSequence(call.ArgumentNodes, 0, call.ArgumentNodes.Count, reachable && receiverFlow.Normal);
+                var callType = this.types.GetExpressionType(call);
+                flow = new(
+                    receiverFlow.Normal && argumentsFlow.Normal && callType != ControlFlowType.Never,
+                    callType,
+                    Union(receiverFlow.Transfers, receiverFlow.Normal ? argumentsFlow.Transfers : null),
+                    receiverFlow.Pending || (receiverFlow.Normal && argumentsFlow.Pending) || callType is null);
+                if (callType is null)
                 {
-                    // The declaration still produces Unit; the condition tests its bound value.
-                    flow = this.Visit(p.Operand, reachable);
-                    flow = flow with { Type = this.names.GetValueOrDefault(binding.NameKoto) };
-                }
-                else
-                {
-                    flow = this.Visit(p.Operand, reachable, expected);
+                    this.pending.Add(call);
                 }
 
+                break;
+            case ParenthesizedKoto p:
+                flow = this.Visit(p.Operand, reachable, expected);
                 break;
             case IdentifierNameKoto name:
                 var nameType = this.types.GetExpressionType(name) ?? this.ResolveNameType(name);
@@ -290,21 +481,20 @@ public sealed class ControlFlowAnalysis
                         this.Error(node, "A null literal requires an expected raw-pointer Type.");
                     }
                 }
-                else if (!expected.Name.StartsWith("unsafe/", StringComparison.Ordinal))
+                else if (!IsPointer(expected))
                 {
                     this.Error(node, "A null literal requires an expected raw-pointer Type.");
                 }
 
                 break;
-            case EqualsEqualsKoto or ExclamationEqualsKoto when
-                KotoHelper.UnwrapParentheses(((BinaryKoto)node).Left) is NullLiteralKoto || KotoHelper.UnwrapParentheses(((BinaryKoto)node).Right) is NullLiteralKoto:
+            case EqualsEqualsKoto or ExclamationEqualsKoto when IsNullLiteral(((BinaryKoto)node).Left) || IsNullLiteral(((BinaryKoto)node).Right):
                 var comparison = (BinaryKoto)node;
-                var nullOnLeft = KotoHelper.UnwrapParentheses(comparison.Left) is NullLiteralKoto;
+                var nullOnLeft = IsNullLiteral(comparison.Left);
                 var other = nullOnLeft ? comparison.Right : comparison.Left;
                 var nullOperand = nullOnLeft ? comparison.Left : comparison.Right;
                 var otherFlow = this.Visit(other, reachable);
                 var nullFlow = this.Visit(nullOperand, reachable, otherFlow.Type);
-                if (KotoHelper.UnwrapParentheses(other) is NullLiteralKoto)
+                if (IsNullLiteral(other))
                 {
                     this.Error(node, "A null comparison requires a pointer operand to determine its Type.");
                 }
@@ -318,12 +508,22 @@ public sealed class ControlFlowAnalysis
                 // Runtime short-circuiting may skip the right operand. Do not constant-fold it for reachability.
                 flow = new(left.Normal, ControlFlowType.Boolean, Union(left.Transfers, left.Normal ? right.Transfers : null), left.Pending || right.Pending);
                 break;
+            case IsKoto { IsRuntimeTest: true } test:
+                flow = this.Visit(test.Left, reachable) with { Type = ControlFlowType.Boolean };
+                if (!this.types.IsBoundRuntimeTypeTest(test))
+                {
+                    // bool is known from syntax; target validity still requires Binding.
+                    this.pending.Add(test);
+                    flow = flow with { Pending = true };
+                }
+
+                break;
             case ConversionKoto conversion:
-                flow = this.VisitSequence(conversion.ChildNodes, reachable);
+                flow = this.VisitChildSequence(conversion, reachable);
                 var sourceType = this.nodes[conversion.Left].ExpressionType;
                 var destinationType = this.types.GetDeclaredType(conversion.Right);
-                var sourcePointer = sourceType?.Name.StartsWith("unsafe/", StringComparison.Ordinal) == true;
-                var destinationPointer = destinationType?.Name.StartsWith("unsafe/", StringComparison.Ordinal) == true;
+                var sourcePointer = IsPointer(sourceType);
+                var destinationPointer = IsPointer(destinationType);
                 if (sourcePointer || destinationPointer)
                 {
                     this.CheckUnsafePermission(conversion);
@@ -334,7 +534,7 @@ public sealed class ControlFlowAnalysis
                     }
                 }
 
-                flow = flow with { Type = destinationType, Pending = flow.Pending || destinationType is null };
+                flow = flow with { Type = flow.Normal ? destinationType : ControlFlowType.Never, Pending = flow.Pending || destinationType is null };
                 if (destinationType is null)
                 {
                     this.pending.Add(conversion);
@@ -342,7 +542,7 @@ public sealed class ControlFlowAnalysis
 
                 break;
             default:
-                flow = this.VisitSequence(node.ChildNodes, reachable);
+                flow = this.VisitChildSequence(node, reachable);
                 flow = flow with { Type = this.types.GetExpressionType(node) ?? this.InferLocalType(node) };
                 if (flow.Type is null && node is ExpressionKoto && node is not (TypeKoto or ErrorKoto))
                 {
@@ -360,11 +560,11 @@ public sealed class ControlFlowAnalysis
 
         if (!this.nodes.TryGetValue(node, out var info))
         {
-            this.nodes[node] = info = new();
+            this.nodes[node] = info = this.RentInfo();
         }
 
         info.ExpressionType = this.boundaries.TryGetValue(node, out var resultBoundary) && resultBoundary.InvalidResult
-            ? null : flow.Normal ? flow.Type : ControlFlowType.Never;
+            ? null : flow.Type;
         info.CanCompleteNormally = flow.Normal;
         info.IsCompletionPending = flow.Pending;
         if (expected is not null)
@@ -383,20 +583,44 @@ public sealed class ControlFlowAnalysis
         }
     }
 
-    private Flow VisitSequence(IEnumerable<Koto> items, bool reachable)
+    private void VisitDeclarations(Koto container)
+    {
+        var start = this.childBuffer.Count;
+        container.VisitChildren(this.childCollector);
+        var end = this.childBuffer.Count;
+        for (var i = start; i < end; i++)
+        {
+            this.Visit(this.childBuffer[i], true);
+        }
+
+        this.childBuffer.RemoveRange(start, end - start);
+    }
+
+    private Flow VisitChildSequence(Koto node, bool reachable)
+    {
+        var start = this.childBuffer.Count;
+        node.VisitChildren(this.childCollector);
+        var count = this.childBuffer.Count - start;
+        var flow = this.VisitSequence(this.childBuffer, start, count, reachable);
+        this.childBuffer.RemoveRange(start, count);
+        return flow;
+    }
+
+    private Flow VisitSequence(IReadOnlyList<Koto> items, int start, int count, bool reachable)
     {
         var normal = true;
         var pendingCompletion = false;
         HashSet<JumpKoto>? transfers = null;
         List<DeferredBlockKoto>? registrations = null;
-        foreach (var item in items)
+        for (var i = start; i < start + count; i++)
         {
+            var item = items[i];
             var flow = this.Visit(item, reachable && normal);
             if (normal)
             {
                 if (item is DeferredBlockKoto deferred)
                 {
-                    (registrations ??= []).Add(deferred);
+                    (registrations ??= this.RentRegistrations()).Add(deferred);
                 }
 
                 var departing = flow.Transfers;
@@ -406,7 +630,6 @@ public sealed class ControlFlowAnalysis
                     pendingCompletion |= cleanup.Pending;
                     if (!cleanup.Normal)
                     {
-                        this.blockedDeliveries.UnionWith(departing);
                         departing = null;
                     }
                 }
@@ -446,16 +669,21 @@ public sealed class ControlFlowAnalysis
         return new(true, null, Pending: pendingCompletion);
     }
 
-    private void VisitFunction(Koto node, Koto? body, Koto? declaration, ControlFlowType? expected, bool unresolvedContract = false)
+    private Flow VisitBodyItem(Koto item, bool reachable, ControlFlowType? expected = null)
     {
-        if (body is null)
+        var flow = this.Visit(item, reachable, expected);
+        if (item is DeferredBlockKoto deferred)
         {
-            return;
+            flow = this.cleanups[deferred] with { Type = ControlFlowType.Unit };
         }
 
-        if (HasDeferredDirective(body))
+        return flow;
+    }
+
+    private void VisitFunction(Koto node, Koto? body, Koto? declaration, ControlFlowType? expected, bool unresolvedContract = false)
+    {
+        if (body is null || this.HasInvalidDirective(body))
         {
-            this.pending.Add(node);
             return;
         }
 
@@ -466,29 +694,68 @@ public sealed class ControlFlowAnalysis
             this.pending.Add(node);
         }
 
-        var flow = this.Visit(body, true, body is CodeBlockKoto ? null : boundary.Expected);
-        if (flow.Normal && !(body is CodeBlockKoto && flow.Pending))
+        var discards = !KotoHelper.IsBodyExpression(body) || boundary.Expected == ControlFlowType.Unit;
+        var flow = this.VisitBodyItem(body, true, discards ? null : boundary.Expected);
+        if (!discards || (!flow.Pending && this.structural.CanComplete(body)))
         {
-            boundary.Sources.Add(new(body, body is CodeBlockKoto ? ControlFlowType.Unit : flow.Type, true));
+            boundary.Sources.Add(new(body, discards ? ControlFlowType.Unit : flow.Type, true));
+        }
+
+        if (discards && flow.Pending)
+        {
+            boundary.InferenceBlocked = true;
         }
 
         var finished = this.Finish(node, flow, boundary);
-        if (body is CodeBlockKoto && flow.Normal && !flow.Pending &&
-            this.nodes[node].TargetResultType is { } resultType && resultType != ControlFlowType.Unit)
+        var info = this.nodes[node];
+        if (body is CodeBlockKoto && this.structural.CanComplete(body) && !flow.Pending &&
+            info.TargetResultType is { } resultType && resultType != ControlFlowType.Unit)
         {
             this.Error(body, "A non-Unit Block-bodied function cannot fall through.");
         }
 
         // The function's callable return type falls back to Never, while its target contract remains absent.
-        this.nodes[node].FunctionResultType = boundary.Expected ?? this.nodes[node].TargetResultType ?? finished.Type;
-        this.nodes[node].ExpressionType = this.types.GetExpressionType(node);
+        info.FunctionResultType = boundary.Expected ?? info.TargetResultType ?? finished.Type;
+        info.ExpressionType = this.types.GetExpressionType(node);
+    }
+
+    /// <summary>Determines whether a body contains an unselected directive group, excluding nested function bodies.</summary>
+    private bool HasInvalidDirective(Koto node)
+    {
+        if (node is CompileTimeSwitchKoto)
+        {
+            return true;
+        }
+
+        var start = this.childBuffer.Count;
+        node.VisitChildren(this.childCollector);
+        var end = this.childBuffer.Count;
+        var found = false;
+        for (var i = start; i < end && !found; i++)
+        {
+            var child = this.childBuffer[i];
+            found = child is not (FunctionKoto or PropertyAccessorKoto) && this.HasInvalidDirective(child);
+        }
+
+        this.childBuffer.RemoveRange(start, end - start);
+        return found;
     }
 
     private Boundary Begin(Koto node, ControlFlowType? expected)
     {
-        var boundary = new Boundary(expected);
+        if (this.boundaryCursor == this.boundaryPool.Count)
+        {
+            this.boundaryPool.Add(new(null));
+        }
+
+        var boundary = this.boundaryPool[this.boundaryCursor++];
+        boundary.Expected = expected;
+        boundary.InferenceBlocked = boundary.InvalidResult = false;
+        boundary.Sources.Clear();
         this.boundaries[node] = boundary;
-        this.nodes[node] = new() { IsResultRequiring = KotoHelper.IsResultRequiringSelection(node) };
+        var info = this.RentInfo();
+        info.IsResultRequiring = KotoHelper.IsResultRequiringSelection(node);
+        this.nodes[node] = info;
         return boundary;
     }
 
@@ -501,51 +768,64 @@ public sealed class ControlFlowAnalysis
             this.Error(jump, $"No valid target for {jump.Keyword}.");
         }
 
-        if (jump is ExitKoto && jump.Expression is not null && target is not (null or LoopKoto or CodeBlockKoto { Parent: LabeledKoto }))
+        if (jump is YieldKoto { Label: null } && target is IfKoto or MatchKoto && !KotoHelper.IsValueContext(target))
         {
-            this.Error(jump, "Only loop or an explicitly named Labeled Block accepts an exit result operand.");
-        }
-
-        if (jump is ExitKoto { Expression: null } && target is CodeBlockKoto { Parent: LabeledKoto } &&
-            this.nodes.TryGetValue(target, out var targetInfo) && targetInfo.IsResultRequiring)
-        {
-            this.Error(jump, "A Result-requiring Labeled Block requires an explicit exit result operand.");
+            this.Error(jump, "An unlabeled yield cannot target a discarded selection; name the intended target.");
         }
 
         this.boundaries.TryGetValue(target ?? jump, out var boundary);
         var operand = jump.Expression is { } expression ? this.Visit(expression, reachable, boundary?.Expected) : new Flow(true, ControlFlowType.Unit);
-        if (operand.Normal && jump is not ContinueKoto && boundary is not null)
+        if (jump is not ContinueKoto && boundary is not null)
         {
-            var source = new ControlFlowResultSource(jump.Expression ?? jump, operand.Type, reachable);
+            var source = new ControlFlowResultSource(jump.Expression ?? jump, operand.Type, reachable) { Transfer = jump };
             boundary.Sources.Add(source);
-            this.resultTransfers[source] = jump;
         }
 
         var transfers = operand.Transfers;
         if (operand.Normal)
         {
-            transfers = Union(transfers, new HashSet<JumpKoto> { jump });
+            (transfers ??= this.RentTransfers()).Add(jump);
         }
 
         return new(false, ControlFlowType.Never, transfers, operand.Pending);
     }
 
-    private Flow VisitIf(IfKoto node, bool reachable, ControlFlowType? expected)
+    /// <summary>Analyzes a require statement, which is transparent to transfer lookup and is not a selection.</summary>
+    private Flow VisitRequire(RequireKoto node, bool reachable)
     {
-        var boundary = this.Begin(node, expected);
-        var required = this.nodes[node].IsResultRequiring;
-        if (required && node.ElseBody is null)
+        var condition = this.Visit(node.Condition, reachable, ControlFlowType.Boolean);
+
+        // Entry to the failure body is assumed independently of the condition, even for literal true (SPEC 14.11.2).
+        var failure = this.VisitBodyItem(node.ElseBody, reachable && condition.Normal);
+        if (failure.Normal)
         {
-            boundary.InvalidResult = true;
-            this.Error(node, "A Result-requiring if requires a final else.");
+            if (failure.Pending)
+            {
+                this.pending.Add(node);
+            }
+            else
+            {
+                this.Error(node.ElseBody, "A require failure body must not continue normally to the statement after require.");
+            }
         }
 
+        // Both condition outcomes remain static paths, including Boolean literals.
+        var transfers = Union(condition.Transfers, condition.Normal ? failure.Transfers : null);
+        var normal = condition.Normal;
+        return new(normal, ControlFlowType.Unit, transfers, condition.Pending || (condition.Normal && failure.Pending));
+    }
+
+    private Flow VisitIf(IfKoto node, bool reachable, ControlFlowType? expected)
+    {
+        var required = KotoHelper.IsValueContext(node);
+        var boundary = this.Begin(node, required ? expected : ControlFlowType.Unit);
         var next = true;
         var normal = false;
         var pendingCompletion = false;
         HashSet<JumpKoto>? transfers = null;
-        foreach (var branch in node.Branches)
+        for (var index = 0; index < node.Branches.Count; index++)
         {
+            var branch = node.Branches[index];
             var condition = this.Visit(branch.Condition, reachable && next, ControlFlowType.Boolean);
             if (next)
             {
@@ -553,8 +833,7 @@ public sealed class ControlFlowAnalysis
                 pendingCompletion |= condition.Pending;
             }
 
-            var literal = LiteralCondition(branch.Condition);
-            var chosen = next && condition.Normal && literal != false;
+            var chosen = next && condition.Normal;
             var body = this.VisitBranch(branch.Body, branch.Body.IsExpressionBody, reachable && chosen, required, boundary);
             if (chosen)
             {
@@ -563,7 +842,7 @@ public sealed class ControlFlowAnalysis
                 transfers = Union(transfers, body.Transfers);
             }
 
-            next &= condition.Normal && literal != true;
+            next &= condition.Normal;
         }
 
         if (node.ElseBody is { } otherwise)
@@ -576,13 +855,10 @@ public sealed class ControlFlowAnalysis
                 transfers = Union(transfers, body.Transfers);
             }
         }
-        else if (next)
+        else
         {
-            normal = true;
-            if (!required)
-            {
-                boundary.Sources.Add(new(node, ControlFlowType.Unit, reachable));
-            }
+            normal |= next;
+            boundary.Sources.Add(new(node, ControlFlowType.Unit, reachable));
         }
 
         return this.Finish(node, new(normal, null, transfers, pendingCompletion), boundary);
@@ -591,39 +867,47 @@ public sealed class ControlFlowAnalysis
     private Flow VisitMatch(MatchKoto node, bool reachable, ControlFlowType? expected)
     {
         var subject = this.Visit(node.Expression, reachable);
-        var boundary = this.Begin(node, expected);
-        var required = this.nodes[node].IsResultRequiring;
-        var exhaustive = this.types.IsExhaustive(node);
-        if (exhaustive is null && subject.Type == ControlFlowType.Boolean)
-        {
-            exhaustive = node.Arms.Any(x => LiteralCondition(x.Pattern) == true) &&
-                node.Arms.Any(x => LiteralCondition(x.Pattern) == false);
-        }
+        var required = KotoHelper.IsValueContext(node);
+        var boundary = this.Begin(node, required ? expected : ControlFlowType.Unit);
+        var coverage = this.types.GetMatchCoverage(node, subject.Type);
+        var exhaustive = coverage.IsExhaustive;
 
         if (exhaustive is null)
         {
             this.pending.Add(node);
         }
-        else if (required && exhaustive == false)
+        else if (exhaustive == false)
         {
             boundary.InvalidResult = true;
-            this.Error(node, "A Result-requiring match must be exhaustive.");
+            this.Error(node, coverage.Describe());
         }
 
         var normal = exhaustive != true;
         var pendingCompletion = subject.Pending || exhaustive is null;
         var transfers = subject.Transfers;
-        foreach (var arm in node.Arms)
+        for (var index = 0; index < node.Arms.Count; index++)
         {
-            if (arm.Pattern is not IdentifierNameKoto { IdentifierName: "_" } && subject.Type is { } subjectType)
+            var arm = node.Arms[index];
+            var guardNormal = true;
+            if (arm.Guard is { } guard)
             {
-                this.CheckCompatibility(new(arm.Pattern, this.types.GetExpressionType(arm.Pattern), true), subjectType);
+                // Visit even checked-only guards, but propagate transfers only after
+                // normally completing Subject evaluation.
+                var guardFlow = this.Visit(guard, reachable && subject.Normal, ControlFlowType.Boolean);
+                this.CheckCompatibility(new(guard, guardFlow.Type, reachable && subject.Normal), ControlFlowType.Boolean);
+                guardNormal = guardFlow.Normal;
+                if (subject.Normal)
+                {
+                    transfers = Union(transfers, guardFlow.Transfers);
+                }
+
+                pendingCompletion |= subject.Normal && guardFlow.Pending;
             }
 
-            var body = this.VisitBranch(arm.Body, arm.Body is not CodeBlockKoto, reachable && subject.Normal, required, boundary);
-            normal |= body.Normal;
-            pendingCompletion |= subject.Normal && body.Pending;
-            if (subject.Normal)
+            var body = this.VisitBranch(arm.Body, arm.Body is not CodeBlockKoto, reachable && subject.Normal && guardNormal, required, boundary);
+            normal |= guardNormal && body.Normal;
+            pendingCompletion |= subject.Normal && guardNormal && body.Pending;
+            if (subject.Normal && guardNormal)
             {
                 transfers = Union(transfers, body.Transfers);
             }
@@ -640,25 +924,22 @@ public sealed class ControlFlowAnalysis
     private Flow VisitBranch(Koto body, bool expressionBody, bool reachable, bool required, Boundary boundary)
     {
         var expression = body is CodeBlockKoto { IsExpressionBody: true } block ? block.Items[0] : body;
-        var flow = this.Visit(expression, reachable, expressionBody ? boundary.Expected : null);
-        if (flow.Normal)
+        var usesValue = expressionBody && required && KotoHelper.IsBodyExpression(expression);
+        var flow = this.VisitBodyItem(expression, reachable, usesValue ? boundary.Expected : null);
+        if (usesValue || (!flow.Pending && this.structural.CanComplete(expression)))
         {
-            if (expressionBody || !required)
-            {
-                boundary.Sources.Add(new(expression, expressionBody ? flow.Type : ControlFlowType.Unit, reachable));
-            }
-            else if (reachable)
-            {
-                if (flow.Pending)
-                {
-                    this.pending.Add(body);
-                }
-                else
-                {
-                    boundary.InvalidResult = true;
-                    this.Error(body, "A result-requiring Block branch must yield a result on every normally completing path.");
-                }
-            }
+            boundary.Sources.Add(new(expression, usesValue ? flow.Type : ControlFlowType.Unit, reachable));
+        }
+
+        if (!usesValue && flow.Pending)
+        {
+            boundary.InferenceBlocked = true;
+            this.pending.Add(body);
+        }
+
+        if (body != expression)
+        {
+            this.nodes[body] = this.nodes[expression];
         }
 
         return flow;
@@ -669,7 +950,6 @@ public sealed class ControlFlowAnalysis
         Flow header;
         CodeBlockKoto body;
         var mayFinish = false;
-        var enterBody = true;
         switch (node)
         {
             case ForKoto f:
@@ -678,10 +958,14 @@ public sealed class ControlFlowAnalysis
                 mayFinish = true;
                 break;
             case WhileKoto w:
+                if (KotoHelper.UnwrapParentheses(w.Condition) is BoolLiteralKoto { Value: true })
+                {
+                    this.Warn(w, "Use loop for unconditional iteration; while true retains a static false path.");
+                }
+
                 header = this.Visit(w.Condition, reachable, ControlFlowType.Boolean);
                 body = w.Body;
-                mayFinish = LiteralCondition(w.Condition) != true;
-                enterBody = LiteralCondition(w.Condition) != false;
+                mayFinish = true;
                 break;
             default:
                 header = new(true, ControlFlowType.Unit);
@@ -689,77 +973,84 @@ public sealed class ControlFlowAnalysis
                 break;
         }
 
-        var boundary = this.Begin(node, node is LoopKoto ? expected : ControlFlowType.Unit);
-        var bodyFlow = this.Visit(body, reachable && header.Normal && enterBody);
-        if (mayFinish)
+        var boundary = this.Begin(node, node is LoopKoto && KotoHelper.IsValueContext(node) ? expected : ControlFlowType.Unit);
+        var bodyFlow = this.Visit(body, reachable && header.Normal);
+        if (mayFinish && (node is ForKoto iteration ? this.structural.CanComplete(iteration.Iterable) : this.structural.CanComplete(((WhileKoto)node).Condition)))
         {
             boundary.Sources.Add(new(node, ControlFlowType.Unit, reachable && header.Normal));
         }
 
-        var transfers = Union(header.Transfers, header.Normal && enterBody ? bodyFlow.Transfers : null);
-        return this.Finish(node, new(header.Normal && mayFinish, null, transfers, header.Pending || (enterBody && bodyFlow.Pending)), boundary);
+        var transfers = Union(header.Transfers, header.Normal ? bodyFlow.Transfers : null);
+        return this.Finish(node, new(header.Normal && mayFinish, null, transfers, header.Pending || bodyFlow.Pending), boundary);
     }
 
-    private Flow VisitLabeledBlock(LabeledKoto labeled, CodeBlockKoto block, bool reachable, ControlFlowType? expected)
+    private Flow VisitDo(DoKoto node, bool reachable, ControlFlowType? expected)
     {
-        this.RecordPendingDirectiveConditions(block);
-        var required = KotoHelper.IsResultRequiringLabeledBlock(labeled);
-        var boundary = this.Begin(block, required ? expected : ControlFlowType.Unit);
-        this.nodes[block].IsResultRequiring = required;
-        var flow = this.VisitSequence(block.Items, reachable);
-        if (flow.Normal)
-        {
-            if (!required)
-            {
-                boundary.Sources.Add(new(block, ControlFlowType.Unit, reachable));
-            }
-            else if (reachable && !flow.Pending)
-            {
-                boundary.InvalidResult = true;
-                this.Error(block, "A Result-requiring Labeled Block cannot fall through without an explicit exit result.");
-            }
-            else if (reachable)
-            {
-                this.pending.Add(block);
-            }
-        }
-
-        return this.Finish(block, flow, boundary);
+        var required = KotoHelper.IsValueContext(node);
+        var boundary = this.Begin(node, required ? expected : ControlFlowType.Unit);
+        this.nodes[node].IsResultRequiring = required;
+        var flow = this.VisitBranch(node.Body, node.Body.IsExpressionBody, reachable, required, boundary);
+        return this.Finish(node, flow, boundary);
     }
 
     private Flow Finish(Koto node, Flow flow, Boundary boundary)
     {
         if (flow.Pending)
         {
-            boundary.InferenceBlocked = true;
             this.pending.Add(node);
         }
 
-        if (flow.Transfers is { } transfers)
+        if (flow.Transfers is { Count: > 0 } transfers)
         {
-            foreach (var jump in transfers.ToArray())
+            // Collect first: a HashSet cannot be modified while it is enumerated.
+            var arrived = this.arrivedTransfers;
+            foreach (var jump in transfers)
             {
                 if (this.targets.GetValueOrDefault(jump) == node)
                 {
-                    flow = flow with { Normal = flow.Normal || jump is not ContinueKoto };
-                    transfers.Remove(jump);
+                    arrived.Add(jump);
                 }
             }
+
+            foreach (var jump in arrived)
+            {
+                flow = flow with { Normal = flow.Normal || jump is not ContinueKoto };
+                transfers.Remove(jump);
+            }
+
+            arrived.Clear();
         }
 
-        var candidates = boundary.Sources.Where(x => x.IsReachable &&
-            (!this.resultTransfers.TryGetValue(x, out var jump) || !this.blockedDeliveries.Contains(jump))).ToArray();
+        var candidates = this.candidateLists.TryPop(out var list) ? list : new();
+        var allNull = true;
+        foreach (var source in boundary.Sources)
+        {
+            candidates.Add(source);
+            allNull &= IsNullLiteral(source.Node);
+        }
+
         var targetType = boundary.Expected ?? (boundary.InferenceBlocked ? null : this.types.InferResultType(candidates));
+        var candidateCount = candidates.Count;
+        candidates.Clear();
+        this.candidateLists.Push(candidates);
+
         var info = this.nodes[node];
         info.TargetResultType = targetType;
         info.CanCompleteNormally = flow.Normal;
         info.IsCompletionPending = flow.Pending;
-        info.ExpressionType = boundary.InvalidResult ? null : !flow.Normal ? ControlFlowType.Never :
-            flow.Pending ? null : candidates.Length == 0 ? ControlFlowType.Never : targetType;
-        if (candidates.Length > 0 && targetType is null)
+        var neverSources = true;
+        foreach (var source in boundary.Sources)
+        {
+            neverSources &= source.Type == ControlFlowType.Never;
+        }
+
+        var structuralNormal = node is FunctionKoto function ? this.structural.CanComplete(function.Body ?? function.ExpressionBody!) :
+            node is PropertyAccessorKoto accessor ? this.structural.CanComplete(accessor.Body!) : this.structural.CanComplete(node);
+        info.ExpressionType = boundary.InvalidResult ? null : neverSources && !structuralNormal ? ControlFlowType.Never : targetType;
+        if (candidateCount > 0 && targetType is null && !neverSources)
         {
             this.pending.Add(node);
-            if (!boundary.InferenceBlocked && candidates.All(x => KotoHelper.UnwrapParentheses(x.Node) is NullLiteralKoto))
+            if (!boundary.InferenceBlocked && allNull)
             {
                 this.Error(node, "Null results require an expected raw-pointer Type.");
             }
@@ -770,6 +1061,22 @@ public sealed class ControlFlowAnalysis
             this.CheckSources(node, boundary, targetType);
         }
 
+        if (boundary.Expected is null && targetType == ControlFlowType.Unit)
+        {
+            if (node is DoKoto scoped)
+            {
+                this.WarnUnitTail(scoped.Body);
+            }
+            else if (node is IfKoto or MatchKoto)
+            {
+                this.WarnUnitTail(node);
+            }
+            else if (node is FunctionKoto { IsAnonymous: true, Body: { } body })
+            {
+                this.WarnUnitTail(body);
+            }
+        }
+
         return flow with { Type = info.ExpressionType };
     }
 
@@ -778,7 +1085,7 @@ public sealed class ControlFlowAnalysis
         foreach (var source in boundary.Sources)
         {
             // Propagate a later inferred contract into nested Never expressions as well.
-            if (source.Node != target && source.Node is not JumpKoto)
+            if (source.Node != target && source.Node is not JumpKoto && source.Type != ControlFlowType.Unit)
             {
                 this.Constrain(source.Node, type);
             }
@@ -789,17 +1096,17 @@ public sealed class ControlFlowAnalysis
 
     private void Constrain(Koto node, ControlFlowType type)
     {
-        if (node is NullLiteralKoto && type.Name.StartsWith("unsafe/", StringComparison.Ordinal))
+        if (node is NullLiteralKoto && IsPointer(type))
         {
             this.pending.Remove(node);
             this.nodes[node].ExpressionType = type;
             this.nodes[node].IsCompletionPending = false;
         }
 
-        if (node is ParenthesizedKoto p && GetConditionBinding(p) is null)
+        if (node is ParenthesizedKoto p)
         {
             this.Constrain(p.Operand, type);
-            if (KotoHelper.UnwrapParentheses(p) is NullLiteralKoto)
+            if (IsNullLiteral(p))
             {
                 this.nodes[p].ExpressionType = this.nodes[p.Operand].ExpressionType;
             }
@@ -842,8 +1149,9 @@ public sealed class ControlFlowAnalysis
         {
             if (parent is CodeBlockKoto block)
             {
-                foreach (var item in block.Items)
+                for (var index = 0; index < block.Items.Count; index++)
                 {
+                    var item = block.Items[index];
                     if (item == child)
                     {
                         break;
@@ -858,10 +1166,13 @@ public sealed class ControlFlowAnalysis
 
             if (parent is FunctionKoto function)
             {
-                var parameter = function.Parameters.FirstOrDefault(x => x.InternalName == name.IdentifierName);
-                if (parameter is not null)
+                for (var index = 0; index < function.Parameters.Count; index++)
                 {
-                    return this.types.GetDeclaredType(parameter.Type);
+                    var parameter = function.Parameters[index];
+                    if (parameter.InternalName == name.IdentifierName)
+                    {
+                        return this.types.GetDeclaredType(parameter.Type);
+                    }
                 }
             }
         }
@@ -870,20 +1181,31 @@ public sealed class ControlFlowAnalysis
         return null;
     }
 
+    private ControlFlowType PointeeType(ControlFlowType pointer)
+    {
+        if (!this.pointeeTypes.TryGetValue(pointer.Name, out var pointee))
+        {
+            pointee = new(pointer.Name[PointerPrefix.Length..]);
+            this.pointeeTypes.Add(pointer.Name, pointee);
+        }
+
+        return pointee;
+    }
+
     private ControlFlowType? InferLocalType(Koto node)
     {
         if (node is UnaryKoto unary && this.nodes.TryGetValue(unary.Operand, out var operand))
         {
-            var pointer = operand.ExpressionType?.Name;
-            var rawPointer = pointer?.StartsWith("unsafe/", StringComparison.Ordinal) == true;
+            var operandType = operand.ExpressionType;
+            var rawPointer = IsPointer(operandType);
             if (node is DereferenceKoto)
             {
                 if (rawPointer)
                 {
-                    return new(pointer![7..]);
+                    return this.PointeeType(operandType!);
                 }
 
-                if (operand.ExpressionType is not null && operand.ExpressionType != ControlFlowType.Never)
+                if (operandType is not null && operandType != ControlFlowType.Never)
                 {
                     this.Error(node, "Dereference requires a raw-pointer operand.");
                 }
@@ -905,21 +1227,26 @@ public sealed class ControlFlowAnalysis
 
             if (node is PrefixMinusKoto or PrefixPlusKoto)
             {
-                if (operand.ExpressionType?.Name is "()" or "bool" or "string")
+                if (operandType?.Name is "()" or "bool" or "string")
                 {
                     this.Error(node, "A numeric unary operator requires a numeric operand.");
                 }
 
-                return operand.ExpressionType;
+                return operandType;
             }
 
             return null;
         }
 
+        if (node is IsKoto { IsRuntimeTest: true })
+        {
+            return ControlFlowType.Boolean;
+        }
+
         if (node is BinaryKoto binary && this.nodes.TryGetValue(binary.Left, out var left) && this.nodes.TryGetValue(binary.Right, out var right))
         {
-            var leftPointer = left.ExpressionType?.Name.StartsWith("unsafe/", StringComparison.Ordinal) == true;
-            var rightPointer = right.ExpressionType?.Name.StartsWith("unsafe/", StringComparison.Ordinal) == true;
+            var leftPointer = IsPointer(left.ExpressionType);
+            var rightPointer = IsPointer(right.ExpressionType);
             if (leftPointer || rightPointer)
             {
                 if (node is EqualsEqualsKoto or ExclamationEqualsKoto)
@@ -944,10 +1271,10 @@ public sealed class ControlFlowAnalysis
                     }
                     else
                     {
-                        this.Constrain(binary.Right, new("isize"));
+                        this.Constrain(binary.Right, IsizeType);
                     }
 
-                    return node is IndexKoto && leftPointer ? new(left.ExpressionType!.Name[7..]) : left.ExpressionType;
+                    return node is IndexKoto && leftPointer ? this.PointeeType(left.ExpressionType!) : left.ExpressionType;
                 }
 
                 if (node is LessThanKoto or LessThanEqualsKoto or GreaterThanKoto or GreaterThanEqualsKoto)
@@ -970,6 +1297,12 @@ public sealed class ControlFlowAnalysis
                 return null;
             }
 
+            // Shift results come only from the left. Count Types are independent (SPEC 13.3).
+            if (node is LessThanLessThanKoto or GreaterThanGreaterThanKoto or LessThanLessThanEqualsKoto or GreaterThanGreaterThanEqualsKoto)
+            {
+                return node is LessThanLessThanEqualsKoto or GreaterThanGreaterThanEqualsKoto ? ControlFlowType.Unit : left.ExpressionType;
+            }
+
             if (left.ExpressionType is { } type)
             {
                 this.Constrain(binary.Right, type);
@@ -983,6 +1316,11 @@ public sealed class ControlFlowAnalysis
             if (node is EqualsEqualsKoto or ExclamationEqualsKoto or LessThanKoto or LessThanEqualsKoto or GreaterThanKoto or GreaterThanEqualsKoto)
             {
                 return ControlFlowType.Boolean;
+            }
+
+            if (node is AmpersandKoto or BarKoto or CaretKoto)
+            {
+                return left.ExpressionType;
             }
 
             if (node is PlusKoto or MinusKoto or AsteriskKoto or SlashKoto or PercentKoto)
@@ -1030,5 +1368,11 @@ public sealed class ControlFlowAnalysis
         public List<ControlFlowResultSource> Sources { get; } = new();
     }
 
-    private sealed record Flow(bool Normal, ControlFlowType? Type, HashSet<JumpKoto>? Transfers = null, bool Pending = false);
+    /// <summary>Appends direct children without descending, so traversal needs no iterator allocations.</summary>
+    private sealed class ChildCollector(List<Koto> children) : KotoVisitor
+    {
+        public override void Visit(Koto node) => children.Add(node);
+    }
+
+    private readonly record struct Flow(bool Normal, ControlFlowType? Type, HashSet<JumpKoto>? Transfers = null, bool Pending = false);
 }

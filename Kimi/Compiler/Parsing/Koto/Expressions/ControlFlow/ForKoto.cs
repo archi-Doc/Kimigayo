@@ -80,7 +80,19 @@ public sealed class ForKoto : ExpressionKoto
         builder.Append(Constants.InKeyword);
         builder.AppendSpace();
         this.Iterable.WriteTo(ref builder);
-        this.Body.WriteIndentedTo(ref builder);
+        this.Body.WriteBranchTo(ref builder);
+    }
+
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        for (var bindingIndex = 0; bindingIndex < this.bindings.Count; bindingIndex++)
+        {
+            var binding = this.bindings[bindingIndex];
+            visitor.Visit(binding);
+        }
+
+        visitor.Visit(this.Iterable);
+        visitor.Visit(this.Body);
     }
 
     protected override IEnumerable<Koto> GetChildNodes()

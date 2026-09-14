@@ -1,0 +1,19 @@
+func keep(value: u64) -> u64
+    var result = value
+    defer => result = 0
+    return result
+
+func narrow(signed: i8, unsigned: u8) -> bool
+    return signed == -128 and unsigned == 200
+
+public func main() -> ()
+    defer => writeLine("done")
+    var largest: u64 = 18446744073709551615
+    var byte: u8 = 128
+    let count: i64 = 7
+    byte >>= count
+    if byte == 1 and narrow(-128, 200) and keep(largest) == largest
+        if largest / 2 == 9223372036854775807
+            writeLine("ok")
+            return
+    writeLine("unexpected")

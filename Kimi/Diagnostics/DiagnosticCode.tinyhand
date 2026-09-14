@@ -10,11 +10,75 @@
   + Name="ConditionMustBeBool_Kd"
     Message="The condition expression must be of type Bool"
 
+  + Name="UnresolvedBinding_Kd"
+    Message="Required Name or Type information remains unresolved after final Binding"
+
+  + Name="AmbiguousBinding_Kd"
+    Message="More than one declaration or operation remains applicable"
+
+  + Name="DuplicateBinding_Kd"
+    Message="A declaration with the same Name or normalized Signature already exists in this scope"
+
+  + Name="NotCallable_Kd"
+    Message="The selected value is not callable; lookup does not fall back to an outer function"
+
+  + Name="NoApplicableOverload_Kd"
+    Message="No unique applicable overload can be established from the supplied arguments"
+
+  + Name="CyclicBinding_Kd"
+    Message="A cyclic dependency prevents Type inference"
+
+  + Name="InvalidAssignment_Kd"
+    Message="The selected target does not permit assignment"
+
+  + Name="InaccessibleBinding_Kd"
+    Message="The selected declaration is inaccessible in this context"
+
+  + Name="InvalidCaptureBinding_Kd"
+    Message="A runtime binding cannot cross this function boundary without a permitted capture"
+
+  + Name="UnsupportedBinding_Kd"
+    Message="The semantic obligations of this syntax are not yet implemented and cannot pass final Binding"
+
+  + Name="InvalidOriginBinding_Kd"
+    Message="The Origin name, mapping, or annotation is invalid in this type position"
+
+  + Name="MissingOriginBinding_Kd"
+    Message="This Origin must be explicitly bound or resolved by the position's omission rules"
+
+  + Name="InvalidTypeFormation_Kd"
+    Message="The resolved declaration or Semantics target cannot form this type"
+
+  + Name="InvalidConstraint_Kd"
+    Message="The Constraint contains an invalid subject, requirement, or contradictory evidence"
+
+  + Name="UnprovenConstraint_Kd"
+    Message="The required Constraint cannot be proven by its semantic deadline"
+
+  + Name="UnsatisfiedConstraint_Kd"
+    Message="The supplied Type arguments do not satisfy the declaration's Constraints"
+
+  + Name="InvalidCoreIntrinsics_Kd"
+    Message="The compiler-owned Core requirement declarations are missing, duplicated, or incompatible"
+
+  + Name="MissingContractImplementation_Kd"
+    Message="No implementation matches the Contract requirement after Type substitution"
+
+  + Name="IncompatibleContractImplementation_Kd"
+    Message="The identified implementation does not satisfy the Contract's constraints, Origins, result, or access contract"
+
+  + Name="InvalidAssociatedType_Kd"
+    Message="The associated Type has an ambiguous, missing, contradictory, or invalid Core-Type binding"
+
   + Name="InvalidCompileTimeCondition_Kd"
     Message="This expression is outside the compile-time Condition grammar (integer literals must fit i64)"
 
   + Name="InvalidCompileTimeSetting_Kd"
     Message="Invalid compile-time setting '{0}': use a non-reserved Name and exactly one Bool, Integer, or String value"
+
+  + Name="UnknownCompileTimeName_Kd"
+    Message="Unknown compile-time environment Name '{0}'"
+    Fix="Use a built-in Compilation value or configure a Project setting before parsing"
 
   + Name="UnsupportedLanguageVersion_Kd"
     Message="Unsupported language version '{0}'; this compiler supports '{1}'"
@@ -41,14 +105,14 @@
   + Name="CompileTimeCaseFallbackMustBeLast_Kd"
     Message="#case _ must be the final arm in a Case Group"
 
-  + Name="CompileTimeCaseOutsideMatch_Kd"
-    Message="#case must be a direct arm of a #match body"
+  + Name="CompileTimeCaseOutsideSwitch_Kd"
+    Message="#case must be a direct arm of a #switch body"
 
-  + Name="EmptyCompileTimeMatch_Kd"
-    Message="#match requires an indented body containing at least one #case arm"
+  + Name="EmptyCompileTimeSwitch_Kd"
+    Message="#switch requires an indented body containing at least one #case arm"
 
-  + Name="InvalidCompileTimeMatchItem_Kd"
-    Message="A #match body may contain only #case arms, blank lines, and comments"
+  + Name="InvalidCompileTimeSwitchItem_Kd"
+    Message="A #switch body may contain only #case arms, blank lines, and comments"
 
   + Name="DuplicateCompileTimeCaseFallback_Kd"
     Message="A Case Group may contain at most one #case _ arm"
@@ -57,6 +121,7 @@
     Severity="Warning"
     Message="Declarations should appear in this order: type constraints, Properties, functions"
 
+  // Reserved for required constant evaluation, not runtime arithmetic Abort.
   + Name="DivisionByZero_Kd"
     Message="Cannot divide by zero"
 
@@ -202,3 +267,60 @@
 
   + Name="UnsupportedEscape_Kd"
     Message="The escape sequence '{0}' is not supported"
+
+  + Name="MissingStartupBody_Kd"
+    Message="An Application requires one top-level runtime body or one source-root public main"
+
+  + Name="MixedStartupBodies_Kd"
+    Message="Top-level runtime items and source-root public main cannot coexist in an Application"
+
+  + Name="MultipleStartupSources_Kd"
+    Message="Top-level runtime items must belong to one SourceDocument"
+
+  + Name="MultipleStartupMains_Kd"
+    Message="An Application cannot declare more than one source-root public main"
+
+  + Name="InvalidStartupMain_Kd"
+    Message="Startup main must be a safe, bodyful, non-imported public function with no parameters, generics, Origins or constraints, returning Unit"
+
+  + Name="LibraryRuntimeBody_Kd"
+    Message="A Library cannot contain top-level runtime items"
+
+  + Name="UninitializedPlace_Kd"
+    Message="This use requires an initialized value on every incoming path"
+
+  + Name="MovedPlace_Kd"
+    Message="This value may have been moved on an incoming path"
+
+  + Name="ReassignedLet_Kd"
+    Message="This let binding may already have completed its first initialization"
+
+  + Name="UnsupportedOwnership_Kd"
+    Message="This operation requires ownership or cleanup analysis outside the implemented subset"
+
+  + Name="ComparisonLoanConflict_Kd"
+    Message="This operation conflicts with an active shared inspection or argument loan"
+
+  + Name="DeferredExpansionLimit_Kd"
+    Message="Deferred cleanup expansion exceeds the implementation limit of 8192 ownership operations per function"
+
+  + Name="InvalidPattern_Kd"
+    Message="The Pattern is not valid for this matched Type, Case, or payload arity"
+
+  + Name="NonExhaustiveMatch_Kd"
+    Message="{0}"
+
+  + Name="UnreachablePattern_Kd"
+    Severity="Warning"
+    Message="This Pattern is covered by earlier unguarded arm {0}"
+
+  + Name="ControlFlowWarning_Kd"
+    Severity="Warning"
+    Message="{0}"
+
+  + Name="OuterCloserInBody_Kd"
+    Message="An outer closing delimiter cannot close an indented body on the same line"
+    Fix="Dedent on the next effective line before writing the closing delimiter"
+
+  + Name="GenerationFailed_Kd"
+    Message="LLVM artifact generation failed: {0}"

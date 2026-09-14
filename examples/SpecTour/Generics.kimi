@@ -1,0 +1,81 @@
+public group SpecTour
+    public contract Source
+        associate Element
+        func read(self: ref/Self) -> Element
+
+    public contract Counted
+        property count: i32 has get
+
+    public contract ResettableSource: Source, Counted
+        func reset(self: uniq/Self) -> ()
+
+    public struct NumberSource
+        Self is ResettableSource
+        associate Source.Element is i32
+
+        private var current: i32 = 42
+        public let count: i32 = 1
+
+        public func read(self: ref/Self) -> i32 => self.current
+        public func reset(self: uniq/Self) -> () => self.current = 0
+
+    public struct Box<T>
+        Self is Copy when T is Copy
+        public let value: T
+
+        public init(value: T)
+            self.value = value
+
+        // この実装の内部だけで T is Stringify を仮定できる。
+        Self is Stringify when T is Stringify
+            public func stringify(self: ref/Self) -> string
+                return "Box(\(self.value))"
+
+    public group Generics
+        public func readOne<T>(source: ref/T) -> T.Source.Element
+            T is Source
+            return source.read()
+
+        public func readInt<T>(source: ref/T) -> i32
+            T is Source
+            T.Source.Element is i32
+            return source.read()
+
+        public func larger<T>(left: T, right: T) -> T
+            T is Copy and Comparable
+            return if left >= right => left else => right
+
+        // 完全 Type の受け渡し。参照を T に束縛しても依存する Origin は保持される。
+        public func identity<T>(value: T) -> T => value
+
+        // Semantics と Core を別々に束縛する関数。値を再解釈せず、そのまま返す。
+        public func keepBorrow<s/T>(value: s/T) -> s/T
+            s is ref or uniq
+            return value
+
+        public func classify<T>(value: ref/T) -> i32 => 0
+        specialize func classify<i32>(value: ref/i32) -> i32 => 1
+
+        public func forward<T>(value: ref/T) -> i32 => classify<T>(value)
+
+        public func run()
+            var source = NumberSource.init()
+            let first = readOne(source@ref)
+            source.reset()
+            ::Core.writeLine("source=\(first), reset=\(readInt(source@ref)), count=\(source.count)")
+
+            let small = Reading.init(10)
+            let large = Reading.init(20)
+            let selected = larger(small, large)
+            let box = Box<Reading>.init(selected)
+            let copied = box
+            ::Core.writeLine("original=\(box), copy=\(copied)")
+
+            let text = Box<string>.init("non-Copy contents")
+            let moved = text
+            ::Core.writeLine("\(moved)")
+
+            let number: i32 = 7
+            let same = identity(number@ref)
+            let borrowed = keepBorrow(number@ref)
+            ::Core.writeLine("\(same), \(borrowed), specialized=\(forward(number@ref))")

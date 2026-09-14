@@ -1,0 +1,13 @@
+func narrow(x: i32) -> u8
+    var value = x
+    defer => value = -1
+    return value@u8
+
+public func main()
+    let low = ((-128))@i8
+    let high = 255@u8
+    let wide = high@i64
+    let count = 7@u8
+    let bit = (1@u64 << count)@u8
+    if low@i64 == -128 and wide == 255 and bit == 128 and narrow(200) == 200
+        writeLine("ok")

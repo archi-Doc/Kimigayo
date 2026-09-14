@@ -114,6 +114,21 @@ public class CharLiteralParseTest
     }
 
     [Theory]
+    [InlineData(0x2028)]
+    [InlineData(0x2029)]
+    [InlineData(0x0085)]
+    public void SeparatorScalarsAreInvalidContentNotLineBreaks(int scalar)
+    {
+        // Only LF, CRLF, and CR are physical line endings (SPEC 2.2); other excluded scalars are content errors (SPEC 2.8.1).
+        var parsed = Parse("let value = '" + (char)scalar + "'\nlet next = '😀'");
+        var diagnostics = parsed.DiagnosticCollection.GetArray();
+        Assert.Contains(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.InvalidCharLiteral_Kd));
+        Assert.DoesNotContain(diagnostics, x => x.Entry.Name == nameof(DiagnosticCode.MissingCharLiteralEnd_Kd));
+        var last = Assert.IsType<FieldKoto>(parsed.GeneratedFunction!.Body!.Items.Last());
+        Assert.Equal(0x1F600, Assert.IsType<CharLiteralKoto>(last.InitializerKoto).Value!.Value.Value);
+    }
+
+    [Theory]
     [InlineData("'abc\n")]
     [InlineData("'abc\r\n")]
     [InlineData("'abc\r")]

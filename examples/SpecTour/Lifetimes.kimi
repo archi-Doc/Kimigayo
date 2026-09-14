@@ -1,0 +1,91 @@
+public group SpecTour
+    public struct View<T> origin source
+        public let value: ref/T from source
+
+        public init(value: ref/T from source)
+            self.value = value
+
+        public func get(self: ref/Self) -> ref/T from self.source
+            return self.value
+
+    public struct MutView<T> origin source
+        private let value: uniq/T from source
+
+        public init(value: uniq/T from source)
+            self.value = value
+
+        // 借用している View 自体より長い排他的参照を返してはならない。
+        public func get(self: uniq/Self) -> uniq/T from self
+            return self.value@uniq
+
+        // View を消費する場合は、保存した排他的参照を移譲できる。
+        public func take(self: Self) -> uniq/T from self.source
+            return self.value
+
+    public struct BorrowPair<A, B> origin left, right
+        public let first: ref/A from left
+        public let second: ref/B from right
+
+        public init(first: ref/A from left, second: ref/B from right)
+            self.first = first
+            self.second = second
+
+    public struct Audit
+        private let id: i32
+
+        public init(id: i32)
+            self.id = id
+
+        deinit
+            // deinit は自動呼び出し専用。Field はこの本体の後に自動破棄される。
+            ::Core.writeLine("destroy audit \(self.id)")
+
+    public group Lifetimes
+        public func choose<T>(left: ref/T, right: ref/T, useLeft: bool) -> ref/T from left and right
+            return if useLeft => left else => right
+
+        public func pair<A, B>(first: ref/A, second: ref/B) -> BorrowPair<A, B> from (left => first, right => second)
+            return BorrowPair<A, B>.init(first, second)
+
+        public func run()
+            let first: i32 = 10
+            let second: i32 = 20
+            let selected = choose(first@ref, second@ref, true)
+            let view: View<i32> = View<i32>.init(selected)
+            ::Core.writeLine("view=\(view.get())")
+            let paired = pair(first@ref, second@ref)
+            ::Core.writeLine("pair=\(paired.first), \(paired.second)")
+
+            // 所有しているコンテナーでも、内部に格納した借用は消えない。
+            let references: [2 of ref/i32] = [first@ref, second@ref]
+            let ownedContainer = Box<ref/i32>.init(first@ref)
+            let dynamicReferences = [first@ref, second@ref]
+            ::Core.writeLine("stored=\(ownedContainer.value), refs=\(references.length)")
+            for reference in dynamicReferences => ::Core.writeLine("\(reference)")
+
+            var gauge = Gauge.init()
+            do
+                var exclusive: MutView<Gauge> = MutView<Gauge>.init(gauge@uniq)
+                let child = exclusive.get()
+                child.value = 37
+                // child の最後の使用後、View を消費して元の借用を取り出す。
+                let transferred = exclusive.take()
+                transferred.limit = 50
+                transferred.value = 70
+            ::Core.writeLine("gauge=\(gauge.value), limit=\(gauge.limit)")
+
+            var tuple: (string, i32) = ("before", 30)
+            let old = tuple.0
+            let age = tuple.1
+            tuple.0 = "after"
+            let complete = tuple
+            ::Core.writeLine("\(old) -> \(complete.0), age=\(age)")
+
+            do
+                let firstAudit = Audit.init(1)
+                defer => ::Core.writeLine("defer A")
+                let secondAudit = Audit.init(2)
+                defer
+                    defer => ::Core.writeLine("nested defer")
+                    ::Core.writeLine("defer B")
+                // B, nested, audit 2, A, audit 1 の順で片付ける。

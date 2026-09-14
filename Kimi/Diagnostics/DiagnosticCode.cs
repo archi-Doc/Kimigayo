@@ -10,16 +10,39 @@ public enum DiagnosticCode
 {
     Template_Kd, // First sentinel
 
+    UnresolvedBinding_Kd,
+    AmbiguousBinding_Kd,
+    DuplicateBinding_Kd,
+    NotCallable_Kd,
+    NoApplicableOverload_Kd,
+    CyclicBinding_Kd,
+    InvalidAssignment_Kd,
+    InaccessibleBinding_Kd,
+    InvalidCaptureBinding_Kd,
+    UnsupportedBinding_Kd,
+    InvalidOriginBinding_Kd,
+    MissingOriginBinding_Kd,
+    InvalidTypeFormation_Kd,
+    InvalidConstraint_Kd,
+    UnprovenConstraint_Kd,
+    UnsatisfiedConstraint_Kd,
+    InvalidCoreIntrinsics_Kd,
+    MissingContractImplementation_Kd,
+    IncompatibleContractImplementation_Kd,
+    InvalidAssociatedType_Kd,
+
     ConditionMustBeBool_Kd,
     InvalidCompileTimeCondition_Kd,
+    UnknownCompileTimeName_Kd,
     InvalidCompileTimeSetting_Kd,
     UnsupportedLanguageVersion_Kd,
-    CompileTimeCaseOutsideMatch_Kd,
-    EmptyCompileTimeMatch_Kd,
-    InvalidCompileTimeMatchItem_Kd,
+    CompileTimeCaseOutsideSwitch_Kd,
+    EmptyCompileTimeSwitch_Kd,
+    InvalidCompileTimeSwitchItem_Kd,
     CompileTimeCaseFallbackMustBeLast_Kd,
     DuplicateCompileTimeCaseFallback_Kd,
     DeclarationOrderWarning_Kd,
+    // Reserved for required constant evaluation; runtime arithmetic uses Abort reason codes.
     DivisionByZero_Kd,
     DuplicateModifier_Kd,
     DuplicatePropertyAccessor_Kd,
@@ -76,6 +99,29 @@ public enum DiagnosticCode
     InvalidInlineStatement_Kd,
 
     ChainedComparison_Kd,
+
+    MissingStartupBody_Kd,
+    MixedStartupBodies_Kd,
+    MultipleStartupSources_Kd,
+    MultipleStartupMains_Kd,
+    InvalidStartupMain_Kd,
+    LibraryRuntimeBody_Kd,
+
+    UninitializedPlace_Kd,
+    MovedPlace_Kd,
+    ReassignedLet_Kd,
+    UnsupportedOwnership_Kd,
+
+    InvalidPattern_Kd,
+    NonExhaustiveMatch_Kd,
+    UnreachablePattern_Kd,
+    ControlFlowWarning_Kd,
+    OuterCloserInBody_Kd,
+
+    GenerationFailed_Kd,
+
+    DeferredExpansionLimit_Kd,
+    ComparisonLoanConflict_Kd,
 
     Count, // Last sentinel
 }

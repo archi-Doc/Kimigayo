@@ -1,0 +1,53 @@
+public group SpecTour
+    public open struct Device
+        protected var revision: i32 = 1
+
+        protected init(revision: i32)
+            self.revision = revision
+
+        public func version(self: ref/Self) -> i32 => self.revision
+
+    public struct Sensor : Device
+        private var measured: i32
+
+        public init(measured: i32) : base(1)
+            self.measured = measured
+
+        public func read(self: ref/Self) -> i32 => self.measured
+        public func calibrate(self: uniq/Self, value: i32) => self.measured = value
+
+    public group Objects
+        public func runValues()
+            var sensor = Sensor.init(23)
+            sensor.calibrate(24)
+            ::Core.writeLine("ordinary value: v\(sensor.version()), reading=\(sensor.read())")
+
+        // 以下は外部から取得済みの具象 Core オブジェクトを受け取る境界の例。
+        // Sensor.init(...) は値を作る。obj/Sensor の生成 API 名はまだ未確定。
+        public func inspect(device: objref/Device)
+            require device is Sensor else => return
+            // require が正常継続する経路では device は objref/Sensor に絞り込まれる。
+            ::Core.writeLine("object sensor=\(device.read())")
+
+        public func edit(device: objuniq/Device)
+            require device is Sensor else => return
+            device.calibrate(30)
+
+        public func upcast(sensor: obj/Sensor) -> obj/Device
+            return sensor@obj/Device // Move。所有対象は元の Sensor 全体。
+
+        public func shareView(sensor: objref/Sensor) -> objref/Device from sensor
+            return sensor@objref/Device
+
+        public func inspectOwner(device: obj/Device)
+            inspect(device@objref)
+            // 関数終了時、Dynamic Type 全体を破棄して所有ストレージを解放する。
+
+        public func inspectRc(device: rc/Device)
+            let moved = device // 参照カウント増加ではなく所有 handle の Move。
+            inspect(moved@objref)
+            if moved is not Sensor => ::Core.writeLine("another device")
+
+        public func inspectArc(device: arc/Device)
+            inspect(device@objref)
+            // arc は原子的参照カウント。スレッド起動や並行共有を意味しない。

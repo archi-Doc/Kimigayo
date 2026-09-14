@@ -47,6 +47,11 @@ public sealed class TupleLiteralKoto : ExpressionKoto
         builder.Append(')');
     }
 
+    protected override void VisitChildrenCore(KotoVisitor visitor)
+    {
+        visitor.VisitMany(this.Elements);
+    }
+
     protected override IEnumerable<Koto> GetChildNodes()
         => this.Elements;
 

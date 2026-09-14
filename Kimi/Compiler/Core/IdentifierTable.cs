@@ -3,6 +3,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Helper;
 
 namespace Kimi.Compiler;
@@ -73,28 +74,62 @@ internal sealed class IdentifierTable
     /// <returns>Whether the spelling is a valid identifier.</returns>
     public bool TryGetIdentifier(ReadOnlySpan<char> text, [NotNullWhen(true)] out string? identifier)
     {
-        if (text.IsEmpty || text.Length > MaxCachedLength)
-        {
+        if ((uint)(text.Length - 1) >= MaxCachedLength)
+        {// Empty or too long to cache.
             identifier = IdentifierHelper.IsValidIdentifier(text) ? text.ToString() : null;
             return identifier is not null;
         }
 
-        var spelling = this.Intern(text);
-        identifier = Volatile.Read(ref this.invalidIdentifiers)?.ContainsKey(spelling) == true ? null : spelling;
+        // The probe is repeated here rather than calling Intern so the hot path is one frame.
+        var hash = Hash(text);
+        var slots = Volatile.Read(ref this.slots);
+        var mask = slots.Length - 1;
+        string? spelling;
+        for (var index = hash & mask; ; index = (index + 1) & mask)
+        {
+            var candidate = Volatile.Read(ref slots[index]);
+            if (candidate is null)
+            {
+                spelling = this.Add(text, hash);
+                break;
+            }
+
+            if (candidate.Length == text.Length && text.SequenceEqual(candidate))
+            {
+                spelling = candidate;
+                break;
+            }
+        }
+
+        var invalid = Volatile.Read(ref this.invalidIdentifiers);
+        identifier = invalid is not null && invalid.ContainsKey(spelling) ? null : spelling;
         return identifier is not null;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int Hash(ReadOnlySpan<char> text)
     {
-        // FNV-1a over UTF-16 code units; identifiers are short, so this beats a randomized hash.
-        var hash = 2166136261u;
-        foreach (var c in text)
+        // Multiplicative mixing over four UTF-16 code units per step; identifiers are short,
+        // so this beats both a per-character hash and a randomized hash.
+        const ulong Multiplier = 0x9E3779B97F4A7C15ul;
+        ref var start = ref Unsafe.As<char, byte>(ref MemoryMarshal.GetReference(text));
+        var length = text.Length;
+        var hash = Multiplier ^ (uint)length;
+        var index = 0;
+        for (; index + 4 <= length; index += 4)
         {
-            hash = (hash ^ c) * 16777619u;
+            hash = (hash ^ Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref start, index * 2))) * Multiplier;
+            hash ^= hash >> 29;
         }
 
-        return (int)(hash ^ (hash >> 15));
+        for (; index < length; index++)
+        {
+            hash = (hash ^ Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref start, index * 2))) * Multiplier;
+        }
+
+        hash ^= hash >> 32;
+        hash *= Multiplier;
+        return (int)(hash >> 32);
     }
 
     private string Add(ReadOnlySpan<char> text, int hash)

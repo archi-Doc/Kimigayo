@@ -1,0 +1,74 @@
+public group SpecTour
+    public group Sequences
+        // 固定長配列を値渡しせず、ストレージを共有借用する。
+        public func sum<length N>(values: ref/[N of i32]) -> i64
+            var total: i64 = 0
+            for i in values.indices
+                total += values[i]@i64
+            return total
+
+        public func increment<length N>(values: uniq/[N of i32])
+            let positions = values.indices
+            for i in positions
+                values[i] += 1
+
+        public func firstRef<T> origin source(values: Slice<T> from source) -> Option<ref/T from source>
+            return values.tryGet(0)
+
+        public func tail<T> origin source(values: Slice<T> from source) -> Option<Slice<T> from source>
+            return values.trySlice(1..)
+
+        public func run()
+            var values: [Basics.width of i32] = [10, 20, 30, 40]
+            let matrix: [2 of [2 of f64]] = [[1.0, 2.0], [3.0, 4.0]]
+            let inferred: [3 of _] = [2, 4, 6]
+            let empty: [0 of i32] = []
+            increment(values@uniq)
+            ::Core.writeLine("sum=\(sum(values@ref)), explicit=\(sum<3>(inferred@ref))")
+            ::Core.writeLine("cell=\(matrix[1][0]), empty=\(empty.length)")
+
+            // 内側のブロックで Slice と派生する借用の使用を完結させる。
+            do
+                let middle: Slice<i32> = values[1..^1]
+                let parts = middle.splitAt(1)
+                let left = parts.0
+                let right = parts.1
+                ::Core.writeLine("middle=\(middle.length), left=\(left[0]), right=\(right[^1])")
+                for element in middle
+                    // Slice の for は Copy 要素でも ref/i32 を返す。
+                    ::Core.writeLine("borrowed element=\(element)")
+                match firstRef(middle)
+                    .Some(let value) => ::Core.writeLine("first=\(value)")
+                    .None => ::Core.writeLine("empty slice")
+                match tail(middle)
+                    .Some(let rest) => ::Core.writeLine("tail length=\(rest.length)")
+                    .None => ::Core.writeLine("no tail")
+                match middle.tryGet(100)
+                    .Some(let value) => ::Core.writeLine("\(value)")
+                    .None => ::Core.writeLine("out of range handled as a value")
+
+            values[0] = 99
+            let last: Index = ^1
+            let inner: Range = 1..^1
+            for i in inner.resolve(values.length)
+                ::Core.writeLine("index=\(i), value=\(values[i])")
+            ::Core.writeLine("last=\(values[last])")
+
+            // 期待型のない配列リテラルは Array。借用で保持してから所有反復する。
+            let dynamic = [3, 6, 9]
+            ::Core.writeLine("dynamic length=\(dynamic.length)")
+            for element in dynamic[..] => ::Core.writeLine("shared=\(element)")
+            for element in dynamic => ::Core.writeLine("owned=\(element)")
+
+            // Dictionary の同一キーは値を置換。反復順は最初の挿入順。
+            let names = [1: "one", 2: "two", 1: "ONE"]
+            ::Core.writeLine("dictionary length=\(names.length)")
+            for (key, value) in names
+                ::Core.writeLine("\(key): \(value)")
+
+            // 非 Copy 要素の固定配列では静的な添字から部分 Move できる。
+            var words: [2 of string] = ["first", "second"]
+            let taken = words[0]
+            words[0] = "replacement"
+            ::Core.writeLine(taken)
+            for word in words => ::Core.writeLine(word)

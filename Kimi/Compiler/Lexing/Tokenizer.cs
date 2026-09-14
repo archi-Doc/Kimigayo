@@ -2,7 +2,10 @@
 
 using System.Buffers;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using Kimi.Compiler.Helper;
 using Kimi.Diagnostics;
 
@@ -18,319 +21,45 @@ internal ref struct Tokenizer
         Block,
         Parenthesis, // ()
         Bracket, // []
-        AngleBracket, // <>: Not supported yet because distinguishing generics from comparison operators is difficult.
+        AngleBracket, // Recognized adjacent generic delimiters.
         Brace, // {}
         LineContinuation, // Implicit continuation, such as a method chain line starting with ".".
     }
 
-    private delegate bool CharacterHandler(ref Tokenizer tokenizer);
+    // HeaderLevel is the absolute indentation of a leading "->" header continuation line, otherwise -1.
+    private readonly record struct IndentEntry(IndentSource Source, int Position, bool SharesBodyIndent = false, int HeaderLevel = -1);
 
     private const int InitialIndentStackCapacity = 32;
     private const int MinimumTokenCapacity = 256;
 
+    /// <summary>Gets the ASCII characters that may continue an identifier: letters, digits, and underscore.</summary>
+    private static ReadOnlySpan<byte> AsciiIdentifierPart =>
+    [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x00
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x10
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x20
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, // 0x30 0-9
+        0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0x40 A-O
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, // 0x50 P-Z _
+        0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0x60 a-o
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, // 0x70 p-z
+    ];
+
     /// <summary>
-    /// Dispatches common leading characters without a large branch chain in the read loop.
-    /// A handler returns <see langword="true"/> when the logical line ends.
-    /// Characters without a handler fall back to the single-char, literal, and identifier path.
+    /// Gets the class of each ASCII lead character: 1 starts an identifier, keyword, or number literal;
+    /// 2 is a single-character token; 0 needs the operator, literal, or line-break dispatch.
     /// </summary>
-    private static readonly CharacterHandler?[] CharacterHandlerTable;
-
-    static Tokenizer()
-    {
-        CharacterHandlerTable = new CharacterHandler?[Constants.ExclusiveUpperBound];
-
-        CharacterHandlerTable[Constants.CrChar] = (ref tokenizer) =>
-        {// \r \r\n
-            tokenizer.Slice(tokenizer.NextChar == Constants.LfChar ? 2 : 1);
-            return true;
-        };
-
-        CharacterHandlerTable[Constants.LfChar] = (ref tokenizer) =>
-        {// \n
-            tokenizer.Slice(1);
-            return true;
-        };
-
-        CharacterHandlerTable[Constants.SemicolonChar] = (ref tokenizer) =>
-        {
-            tokenizer.diagnostics.Add(tokenizer.NewRange(1), DiagnosticCode.SemicolonNotAllowed_Kd);
-            // Recover as a separator so the parser can still inspect following syntax.
-            // This does not end the physical line or alter indentation.
-            tokenizer.AddTokenAndSlice(TokenKind.Separator, 1);
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.AmpersandChar] = (ref tokenizer) =>
-        {// & && &=
-            var next = tokenizer.NextChar;
-            if (next == Constants.AmpersandChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.AmpersandAmpersand, 2);
-            }
-            else if (next == Constants.EqualsChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.AmpersandEquals, 2);
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.Ampersand, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.AsteriskChar] = (ref tokenizer) =>
-        {// * *=
-            if (tokenizer.NextChar == Constants.EqualsChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.AsteriskEquals, 2);
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.Asterisk, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.BarChar] = (ref tokenizer) =>
-        {// | || |=
-            var next = tokenizer.NextChar;
-            if (next == Constants.BarChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.BarBar, 2);
-            }
-            else if (next == Constants.EqualsChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.BarEquals, 2);
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.Bar, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.CaretChar] = (ref tokenizer) =>
-        {// ^ ^=
-            if (tokenizer.NextChar == Constants.EqualsChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.CaretEquals, 2);
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.Caret, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.DotChar] = (ref tokenizer) =>
-        {// . .. ..=
-            if (tokenizer.NextChar == Constants.DotChar)
-            {
-                if (tokenizer.span.Length >= 3 && tokenizer.span[2] == Constants.EqualsChar)
-                {
-                    tokenizer.AddTokenAndSlice(TokenKind.DotDotEquals, 3);
-                }
-                else
-                {
-                    tokenizer.AddTokenAndSlice(TokenKind.DotDot, 2);
-                }
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.Dot, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.EqualsChar] = (ref tokenizer) =>
-        {// = == =>
-            var next = tokenizer.NextChar;
-            if (next == Constants.EqualsChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.EqualsEquals, 2);
-            }
-            else if (next == Constants.GreaterThanChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.EqualsGreaterThan, 2);
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.Equals, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.ExclamationChar] = (ref tokenizer) =>
-        {// ! !=
-            if (tokenizer.NextChar == Constants.EqualsChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.ExclamationEquals, 2);
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.Exclamation, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.GreaterThanChar] = (ref tokenizer) =>
-        {// > >= >> >>=
-            var next = tokenizer.NextChar;
-            if (next == Constants.EqualsChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.GreaterThanEquals, 2);
-            }
-            else if (next == Constants.GreaterThanChar)
-            {
-                if (tokenizer.span.Length >= 3 && tokenizer.span[2] == Constants.EqualsChar)
-                {
-                    tokenizer.AddTokenAndSlice(TokenKind.GreaterThanGreaterThanEquals, 3);
-                }
-                else
-                {
-                    tokenizer.AddTokenAndSlice(TokenKind.GreaterThanGreaterThan, 2);
-                }
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.GreaterThan, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.LessThanChar] = (ref tokenizer) =>
-        {// < <= << <<=
-            var next = tokenizer.NextChar;
-            if (next == Constants.EqualsChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.LessThanEquals, 2);
-            }
-            else if (next == Constants.LessThanChar)
-            {
-                if (tokenizer.span.Length >= 3 && tokenizer.span[2] == Constants.EqualsChar)
-                {
-                    tokenizer.AddTokenAndSlice(TokenKind.LessThanLessThanEquals, 3);
-                }
-                else
-                {
-                    tokenizer.AddTokenAndSlice(TokenKind.LessThanLessThan, 2);
-                }
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.LessThan, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.MinusChar] = (ref tokenizer) =>
-        {// - -- -= ->
-            var next = tokenizer.NextChar;
-            if (next == Constants.MinusChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.MinusMinus, 2);
-            }
-            else if (next == Constants.EqualsChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.MinusEquals, 2);
-            }
-            else if (next == Constants.GreaterThanChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.MinusGreaterThan, 2);
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.Minus, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.PercentChar] = (ref tokenizer) =>
-        {// % %=
-            if (tokenizer.NextChar == Constants.EqualsChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.PercentEquals, 2);
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.Percent, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.PlusChar] = (ref tokenizer) =>
-        {// + ++ +=
-            var next = tokenizer.NextChar;
-            if (next == Constants.PlusChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.PlusPlus, 2);
-            }
-            else if (next == Constants.EqualsChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.PlusEquals, 2);
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.Plus, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.SlashChar] = (ref tokenizer) =>
-        {// / // /* /=
-            var next = tokenizer.NextChar;
-            if (next == Constants.SlashChar)
-            {// Single line comment
-                tokenizer.ReadSingleLineComment();
-                return true;
-            }
-
-            if (next == Constants.AsteriskChar)
-            {// Multi line comment
-                return tokenizer.ReadMultiLineComment();
-            }
-            else if (next == Constants.EqualsChar)
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.SlashEquals, 2);
-            }
-            else
-            {
-                tokenizer.AddTokenAndSlice(TokenKind.Slash, 1);
-            }
-
-            return false;
-        };
-
-        CharacterHandlerTable[Constants.AtChar] = (ref tokenizer) =>
-        {// @
-            tokenizer.AddTokenAndSlice(TokenKind.At, 1);
-            return false;
-        };
-
-        CharacterHandlerTable['"'] = (ref tokenizer) =>
-        {// "Text" or """Text"""
-            tokenizer.ReadStringLiteral();
-            return false;
-        };
-
-        CharacterHandlerTable['\''] = (ref tokenizer) =>
-        {
-            tokenizer.ReadCharLiteral();
-            return false;
-        };
-    }
+    private static ReadOnlySpan<byte> LeadClass =>
+    [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x00
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0x10
+        0, 0, 0, 2, 2, 0, 0, 0, 2, 2, 0, 0, 2, 0, 0, 0, // 0x20
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 2, // 0x30
+        0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0x40
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 2, 0, 1, // 0x50
+        0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0x60
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 2, 0, 0, // 0x70
+    ];
 
     #region FieldAndProperty
 
@@ -340,14 +69,16 @@ internal ref struct Tokenizer
     private readonly int indentationOffset;
     private Token[] tokens;
     private int tokenCount;
-    private IndentSource[] indentStack;
+    private IndentEntry[] indentStack;
     private int indentCount;
     private ReadOnlySpan<char> span;
     private int position;
     private int currentIndentLevel;
     private int blockDepth;
     private int nonBlockDepth;
+    private int sharedBodyIndentDepth;
     private int tokenAdded;
+    private int genericLookaheadEnd;
 
     /// <summary>
     /// Gets the source document being tokenized.
@@ -401,7 +132,7 @@ internal ref struct Tokenizer
             this.indentationOffset = BaseHelper.CountLeadingSpaces(sourceDocument.GetLineSpan(line)) / Constants.IndentationSpaces;
         }
 
-        this.indentStack = ArrayPool<IndentSource>.Shared.Rent(InitialIndentStackCapacity);
+        this.indentStack = ArrayPool<IndentEntry>.Shared.Rent(InitialIndentStackCapacity);
 
         // Typical source yields roughly one token per four characters; the array grows on demand.
         this.tokens = ArrayPool<Token>.Shared.Rent(Math.Max(MinimumTokenCapacity, (range.Length >> 2) + 64));
@@ -423,17 +154,10 @@ internal ref struct Tokenizer
 
         if (this.indentStack.Length > 0)
         {
-            ArrayPool<IndentSource>.Shared.Return(this.indentStack);
+            ArrayPool<IndentEntry>.Shared.Return(this.indentStack);
             this.indentStack = [];
         }
     }
-
-    /// <summary>
-    /// Returns the generated tokens as a sequence. The sequence is valid until <see cref="Dispose"/> is called.
-    /// </summary>
-    /// <returns>The generated tokens.</returns>
-    public ReadOnlySequence<Token> ToReadOnlySequence()
-        => new(this.tokens.AsMemory(0, this.tokenCount));
 
     /// <summary>
     /// Tokenizes the complete source document.
@@ -480,6 +204,67 @@ internal ref struct Tokenizer
             _ => throw new UnreachableException(),
         };
 
+    /// <summary>Measures the ASCII identifier prefix: letters, digits, and underscores.</summary>
+    /// <remarks>
+    /// Eight characters are classified per step, which covers most identifiers in a single step.
+    /// Kept out of line so that the caller does not preserve vector registers on every token.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int ScanAsciiIdentifierLength(ReadOnlySpan<char> span)
+    {
+        ref var start = ref MemoryMarshal.GetReference(span);
+        var spanLength = span.Length;
+        var length = 0;
+        if (Vector128.IsHardwareAccelerated && spanLength >= Vector128<ushort>.Count)
+        {
+            var lastStart = spanLength - Vector128<ushort>.Count;
+            while (true)
+            {
+                var chars = Vector128.LoadUnsafe(ref Unsafe.As<char, ushort>(ref start), (nuint)length);
+                var letters = Vector128.LessThanOrEqual((chars | Vector128.Create((ushort)0x20)) - Vector128.Create((ushort)'a'), Vector128.Create((ushort)('z' - 'a')));
+                var digits = Vector128.LessThanOrEqual(chars - Vector128.Create((ushort)'0'), Vector128.Create((ushort)9));
+                var underscores = Vector128.Equals(chars, Vector128.Create((ushort)'_'));
+                var mask = (letters | digits | underscores).ExtractMostSignificantBits();
+                if (mask != 0xFF)
+                {
+                    return length + BitOperations.TrailingZeroCount(~mask);
+                }
+
+                length += Vector128<ushort>.Count;
+                if (length > lastStart)
+                {
+                    break;
+                }
+            }
+        }
+
+        while (length < spanLength)
+        {
+            var c = Unsafe.Add(ref start, length);
+            if (c >= 128 || AsciiIdentifierPart[c] == 0)
+            {
+                break;
+            }
+
+            length++;
+        }
+
+        return length;
+    }
+
+    /// <summary>Counts leading spaces. Runs of spaces are short, so a scalar loop beats a vectorized search.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int CountSpaces(ReadOnlySpan<char> span)
+    {
+        var count = 0;
+        while (count < span.Length && span[count] == Constants.SpaceChar)
+        {
+            count++;
+        }
+
+        return count;
+    }
+
     private int Read()
     {
         this.tokenAdded = 0;
@@ -499,43 +284,386 @@ Loop:
             goto MeasureIndentation;
         }
 
-        while (this.span.Length > 0)
+        while (true)
         {
-            while (this.span[0] == Constants.SpaceChar)
-            {// Skip spaces
-                this.Slice(1);
-                if (this.span.Length == 0)
-                {// End-of-file
-                    goto EndOfFile;
-                }
+            // Skip spaces; indentation was measured at the physical line start.
+            var spaces = CountSpaces(this.span);
+            if (spaces > 0)
+            {
+                this.Slice(spaces);
+            }
+
+            if (this.span.Length == 0)
+            {// End-of-file
+                goto EndOfFile;
             }
 
             // span.Length >= 1
             var c = this.span[0];
-            if (c < Constants.ExclusiveUpperBound &&
-                CharacterHandlerTable[c] is { } handler)
-            {
-                if (handler(ref this))
-                {// The logical line ended.
-                    goto NextLine;
-                }
-            }
-            else if (TokenHelper.TryGetSingleCharTokenKind(c, out var tokenKind, out var groupingDepth))
-            {// Single char token
-                if (groupingDepth > 0)
+            if (c < 128)
+            {// Identifiers dominate ordinary source; dispatch them before the operator switch.
+                var leadClass = LeadClass[c];
+                if (leadClass == 1)
                 {
-                    this.PushIndentSource(tokenKind);
+                    this.ReadLiteralKeywordOrIdentifier();
+                    continue;
                 }
-                else if (groupingDepth < 0)
+                else if (leadClass == 2)
                 {
-                    this.PopIndentSource(tokenKind);
-                }
+                    TokenHelper.TryGetSingleCharTokenKind(c, out var singleKind, out var singleDepth);
+                    if (singleDepth > 0)
+                    {
+                        this.PushIndentSource(singleKind);
+                    }
+                    else if (singleDepth < 0)
+                    {
+                        this.PopIndentSource(singleKind);
+                    }
 
-                this.AddTokenAndSlice(tokenKind, 1);
+                    this.AddTokenAndSlice(singleKind, 1);
+                    continue;
+                }
             }
-            else
-            {// Number literal, keyword, or identifier
-                this.ReadLiteralKeywordOrIdentifier();
+
+            switch (c)
+            {
+                case Constants.ColonChar:
+                    if (this.NextChar == Constants.ColonChar)
+                    {
+                        this.AddTokenAndSlice(TokenKind.ColonColon, 2);
+                    }
+                    else
+                    {
+                        this.AddTokenAndSlice(TokenKind.Colon, 1);
+                    }
+
+                    continue;
+
+                case Constants.CrChar:
+                    {// \r \r\n
+                        this.Slice(this.NextChar == Constants.LfChar ? 2 : 1);
+                        goto NextLine;
+                    }
+
+                case Constants.LfChar:
+                    {// \n
+                        this.Slice(1);
+                        goto NextLine;
+                    }
+
+                case Constants.SemicolonChar:
+                    this.diagnostics.Add(this.NewRange(1), DiagnosticCode.SemicolonNotAllowed_Kd);
+                    // Recover as a separator so the parser can still inspect following syntax.
+                    // This does not end the physical line or alter indentation.
+                    this.AddTokenAndSlice(TokenKind.Separator, 1);
+                    continue;
+
+                case Constants.AmpersandChar:
+                    {// & && &=
+                        var next = this.NextChar;
+                        if (next == Constants.AmpersandChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.AmpersandAmpersand, 2);
+                        }
+                        else if (next == Constants.EqualsChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.AmpersandEquals, 2);
+                        }
+                        else
+                        {
+                            this.AddTokenAndSlice(TokenKind.Ampersand, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.AsteriskChar:
+                    {// * *=
+                        if (this.NextChar == Constants.EqualsChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.AsteriskEquals, 2);
+                        }
+                        else
+                        {
+                            this.AddTokenAndSlice(TokenKind.Asterisk, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.BarChar:
+                    {// | || |=
+                        var next = this.NextChar;
+                        if (next == Constants.BarChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.BarBar, 2);
+                        }
+                        else if (next == Constants.EqualsChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.BarEquals, 2);
+                        }
+                        else
+                        {
+                            this.AddTokenAndSlice(TokenKind.Bar, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.CaretChar:
+                    {// ^ ^=
+                        if (this.NextChar == Constants.EqualsChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.CaretEquals, 2);
+                        }
+                        else
+                        {
+                            this.AddTokenAndSlice(TokenKind.Caret, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.DotChar:
+                    {// . .. ..=
+                        if (this.NextChar == Constants.DotChar)
+                        {
+                            if (this.span.Length >= 3 && this.span[2] == Constants.EqualsChar)
+                            {
+                                this.AddTokenAndSlice(TokenKind.DotDotEquals, 3);
+                            }
+                            else
+                            {
+                                this.AddTokenAndSlice(TokenKind.DotDot, 2);
+                            }
+                        }
+                        else
+                        {
+                            this.AddTokenAndSlice(TokenKind.Dot, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.EqualsChar:
+                    {// = == =>
+                        var next = this.NextChar;
+                        if (next == Constants.EqualsChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.EqualsEquals, 2);
+                        }
+                        else if (next == Constants.GreaterThanChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.EqualsGreaterThan, 2);
+                        }
+                        else
+                        {
+                            this.AddTokenAndSlice(TokenKind.Equals, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.ExclamationChar:
+                    {// ! !=
+                        if (this.NextChar == Constants.EqualsChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.ExclamationEquals, 2);
+                        }
+                        else
+                        {
+                            this.AddTokenAndSlice(TokenKind.Exclamation, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.GreaterThanChar:
+                    {// > >= >> >>=
+                        if (this.indentCount > 0 && this.indentStack[this.indentCount - 1].Source == IndentSource.AngleBracket)
+                        {
+                            this.PopIndentSource(TokenKind.GreaterThan);
+                            this.AddTokenAndSlice(TokenKind.GreaterThan, 1);
+                            continue;
+                        }
+
+                        var next = this.NextChar;
+                        if (next == Constants.EqualsChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.GreaterThanEquals, 2);
+                        }
+                        else if (next == Constants.GreaterThanChar)
+                        {
+                            if (this.span.Length >= 3 && this.span[2] == Constants.EqualsChar)
+                            {
+                                this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThanEquals, 3);
+                            }
+                            else
+                            {
+                                this.AddTokenAndSlice(TokenKind.GreaterThanGreaterThan, 2);
+                            }
+                        }
+                        else
+                        {
+                            this.AddTokenAndSlice(TokenKind.GreaterThan, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.LessThanChar:
+                    {// < <= << <<=
+                        var next = this.NextChar;
+                        if (next == Constants.EqualsChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.LessThanEquals, 2);
+                        }
+                        else if (next == Constants.LessThanChar)
+                        {
+                            if (this.span.Length >= 3 && this.span[2] == Constants.EqualsChar)
+                            {
+                                this.AddTokenAndSlice(TokenKind.LessThanLessThanEquals, 3);
+                            }
+                            else
+                            {
+                                this.AddTokenAndSlice(TokenKind.LessThanLessThan, 2);
+                            }
+                        }
+                        else
+                        {
+                            if (this.IsGenericOpen())
+                            {
+                                this.PushIndentSource(IndentSource.AngleBracket);
+                            }
+
+                            this.AddTokenAndSlice(TokenKind.LessThan, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.MinusChar:
+                    {// - -- -= ->
+                        var next = this.NextChar;
+                        if (next == Constants.MinusChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.MinusMinus, 2);
+                        }
+                        else if (next == Constants.EqualsChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.MinusEquals, 2);
+                        }
+                        else if (next == Constants.GreaterThanChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.MinusGreaterThan, 2);
+                        }
+                        else
+                        {
+                            this.AddTokenAndSlice(TokenKind.Minus, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.PercentChar:
+                    {// % %=
+                        if (this.NextChar == Constants.EqualsChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.PercentEquals, 2);
+                        }
+                        else
+                        {
+                            this.AddTokenAndSlice(TokenKind.Percent, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.PlusChar:
+                    {// + ++ +=
+                        var next = this.NextChar;
+                        if (next == Constants.PlusChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.PlusPlus, 2);
+                        }
+                        else if (next == Constants.EqualsChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.PlusEquals, 2);
+                        }
+                        else
+                        {
+                            this.AddTokenAndSlice(TokenKind.Plus, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.SlashChar:
+                    {// / // /* /=
+                        var next = this.NextChar;
+                        if (next == Constants.SlashChar)
+                        {// Single line comment
+                            this.ReadSingleLineComment();
+                            goto NextLine;
+                        }
+
+                        if (next == Constants.AsteriskChar)
+                        {// Multi line comment
+                            if (this.ReadMultiLineComment())
+                            {
+                                goto NextLine;
+                            }
+                        }
+                        else if (next == Constants.EqualsChar)
+                        {
+                            this.AddTokenAndSlice(TokenKind.SlashEquals, 2);
+                        }
+                        else
+                        {
+                            this.AddTokenAndSlice(TokenKind.Slash, 1);
+                        }
+
+                        continue;
+                    }
+
+                case Constants.AtChar:
+                    {// @
+                        this.AddTokenAndSlice(TokenKind.At, 1);
+                        continue;
+                    }
+
+                case '"':
+                    {// "Text" or """Text"""
+                        this.ReadStringLiteral();
+                        continue;
+                    }
+
+                case '\'':
+                    {
+                        this.ReadCharLiteral();
+                        continue;
+                    }
+
+                default:
+                    if (TokenHelper.TryGetSingleCharTokenKind(c, out var tokenKind, out var groupingDepth))
+                    {// Single char token
+                        if (groupingDepth > 0)
+                        {
+                            this.PushIndentSource(tokenKind);
+                        }
+                        else if (groupingDepth < 0)
+                        {
+                            this.PopIndentSource(tokenKind);
+                        }
+
+                        this.AddTokenAndSlice(tokenKind, 1);
+                    }
+                    else
+                    {// Number literal, keyword, or identifier
+                        this.ReadLiteralKeywordOrIdentifier();
+                    }
+
+                    continue;
             }
         }
 
@@ -553,7 +681,7 @@ MeasureIndentation:
 // Indentation is measured once, at the physical line start.
 // Comments that follow do not change it.
         var indentationStart = this.position;
-        var numberOfSpaces = BaseHelper.CountLeadingSpaces(this.span);
+        var numberOfSpaces = CountSpaces(this.span);
         var indentationLength = numberOfSpaces;
         this.Slice(numberOfSpaces);
 
@@ -590,7 +718,7 @@ LineContent:
                 // Skip spaces after the comment WITHOUT counting them as indentation;
                 // the indentation of this line was already measured at the line start
                 // (this prevents a bogus InvalidIndentation diagnostic for "/* c */ foo").
-                this.Slice(BaseHelper.CountLeadingSpaces(this.span));
+                this.Slice(CountSpaces(this.span));
                 goto LineContent;
             }
         }
@@ -603,30 +731,48 @@ LineContent:
         }
 
         var indentLevel = (numberOfSpaces / Constants.IndentationSpaces) - this.indentationOffset;
+        if (this.tokenCount == 0 && indentLevel > 0)
+        {
+            this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+            indentLevel = 0;
+        }
+
         if (this.currentIndentLevel < 0)
         {
             this.currentIndentLevel = indentLevel;
         }
 
+        // A "->" continuation ends before the next line at or above its own level; that line
+        // starts the body or the next item rather than continuing the header.
+        while (this.indentCount > 0 && this.indentStack[this.indentCount - 1] is { HeaderLevel: >= 0 } header && indentLevel <= header.HeaderLevel)
+        {
+            this.indentCount--;
+            this.nonBlockDepth--;
+        }
+
         // Indentation remains significant even inside grouping constructs.
         // Therefore, both block depth and non-block depth are subtracted when
         // calculating the indentation difference.
-        var indentDelta = indentLevel - this.currentIndentLevel - this.blockDepth - this.nonBlockDepth;
+        this.ShareHeaderDelimiterIndent(indentLevel);
+        var indentDelta = indentLevel - this.currentIndentLevel - this.blockDepth - this.nonBlockDepth + this.sharedBodyIndentDepth;
 
         if (indentDelta == 1)
         {
             // A line that starts with "." is treated as a continuation of the previous
             // expression. It contributes one required indentation level, like grouping
             // constructs, but does not require an explicit closing token.
-            if (this.span[0] == Constants.DotChar)
+            if (this.span[0] == Constants.DotChar && this.NextChar != Constants.DotChar && !this.PreviousLineStartsBody())
             {// Method chain
                 this.PushIndentSource(IndentSource.LineContinuation);
                 goto Loop;
             }
-            else if (this.span.Length > 1 &&
-                (this.span[0] == Constants.EqualsChar || this.span[0] == Constants.MinusChar) &&
-                this.span[1] == Constants.GreaterThanChar)
-            {// => or ->
+            else if (this.span.Length > 1 && this.span[0] == Constants.MinusChar && this.span[1] == Constants.GreaterThanChar)
+            {// A header "->" line is one level deeper; delimiters opened on it nest from that line (SPEC 2.2.1).
+                this.PushIndentSource(IndentSource.LineContinuation, indentLevel);
+                goto Loop;
+            }
+            else if (this.span.Length > 1 && this.span[0] == Constants.EqualsChar && this.span[1] == Constants.GreaterThanChar)
+            {// =>
                 goto Loop;
             }
         }
@@ -638,7 +784,13 @@ LineContent:
             this.AddToken(new(TokenKind.Separator, this.CurrentRange));
             separatorInserted = true;
 
-            // TODO: Consider reporting KimiDiagnostic.UnexpectedIndent_Kd when dif > 1.
+            if (indentDelta > 1)
+            {
+                this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                indentDelta = 1;
+            }
+
+            // Recover at the written level after reporting a skipped body level.
             for (var i = 0; i < indentDelta; i++)
             {
                 this.AddToken(new(TokenKind.StartBlock, this.CurrentRange));
@@ -660,7 +812,14 @@ LineContent:
             {
                 if (this.indentCount > 0)
                 {
-                    var indentSource = this.indentStack[--this.indentCount];
+                    var entry = this.indentStack[--this.indentCount];
+                    var indentSource = entry.Source;
+                    if (entry.SharesBodyIndent)
+                    {
+                        this.sharedBodyIndentDepth--;
+                        i--;
+                    }
+
                     if (indentSource == IndentSource.Block)
                     {
                         this.AddToken(new(TokenKind.EndBlock, this.CurrentRange));
@@ -684,7 +843,7 @@ LineContent:
                         // A newline or single-line comment still ends the logical line. Finish
                         // processing the remaining indentation sources before continuing so that
                         // enclosing blocks are closed correctly.
-                        this.Slice(BaseHelper.CountLeadingSpaces(this.span));
+                        this.Slice(CountSpaces(this.span));
 
                         hasTrailingContentOnCurrentLine =
                             !this.span.IsEmpty &&
@@ -699,6 +858,8 @@ LineContent:
                     else
                     {
                         this.nonBlockDepth--;
+                        // Close the malformed delimiter before the next source item.
+                        this.AddToken(new(GetClosingTokenKind(indentSource), this.CurrentRange, true));
 
                         this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
                         indentationMismatch = true;
@@ -720,8 +881,6 @@ LineContent:
 
             if (hasTrailingContentOnCurrentLine && !indentationMismatch)
             {
-                this.diagnostics.Add(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatchWarning_Kd);
-
                 goto Loop;
             }
 
@@ -731,12 +890,26 @@ LineContent:
 
         if (this.nonBlockDepth > 0)
         {
+            // A nested executable body has statement boundaries even while its
+            // enclosing argument/element delimiter suppresses continuation separators.
+            if (!separatorInserted && this.tokenAdded > 0 && this.indentCount > 0 && this.indentStack[this.indentCount - 1].Source == IndentSource.Block)
+            {
+                this.AddToken(new(TokenKind.Separator, this.CurrentRange));
+            }
+
             goto Loop;
         }
         else
         {
             this.currentIndentLevel += this.blockDepth;
             this.blockDepth = 0;
+
+            if (this.span.IsEmpty)
+            {
+                // An outer-aligned closer can consume the last character above.
+                // ReadAll will not call Read again to close the enclosing bodies.
+                goto EndOfFile;
+            }
 
             if (this.tokenAdded > 0 && !separatorInserted)
             {
@@ -760,12 +933,275 @@ EndOfFile:
         return this.tokenAdded;
     }
 
+    private bool IsGenericOpen()
+    {
+        if (this.tokenCount == 0)
+        {
+            return false;
+        }
+
+        var previous = this.tokens[this.tokenCount - 1];
+        if (!(previous.Kind.IsIdentifierOrContextualKeyword() || previous.Kind.IsPrimitiveType() || previous.Kind == TokenKind.Self) ||
+            (previous.Span.End != this.position && !this.IsDeclarationGenericContext()))
+        {
+            return false;
+        }
+
+        if (this.position < this.genericLookaheadEnd)
+        {
+            return true;
+        }
+
+        // Cache balanced lookahead so nested arguments do not rescan the same suffix.
+        var depth = 1;
+        for (var i = 1; i < this.span.Length; i++)
+        {
+            var c = this.span[i];
+            if (c == '/' && i + 1 < this.span.Length && this.span[i + 1] == '/')
+            {
+                var end = this.span[(i + 2)..].IndexOfAny('\r', '\n');
+                if (end < 0)
+                {
+                    return false;
+                }
+
+                i += end + 1;
+            }
+            else if (c == '/' && i + 1 < this.span.Length && this.span[i + 1] == '*')
+            {
+                var end = this.span[(i + 2)..].IndexOf("*/");
+                if (end < 0)
+                {
+                    return false;
+                }
+
+                i += end + 3;
+            }
+            else if (c == '<')
+            {
+                depth++;
+            }
+            else if (c == '=' && i + 1 < this.span.Length && this.span[i + 1] == '>')
+            {
+                i++;
+            }
+            else if (c == '>' && this.span[i - 1] != '-')
+            {
+                if (--depth == 0)
+                {
+                    this.genericLookaheadEnd = this.position + i;
+                    return true;
+                }
+            }
+            else if (c is ';' or '=' or '"' or '\'' or '{' or '}')
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsDeclarationGenericContext()
+    {
+        if (this.indentCount > 0 && this.indentStack[this.indentCount - 1].Source == IndentSource.AngleBracket)
+        {
+            return true;
+        }
+
+        for (var i = this.tokenCount - 2; i >= 0; i--)
+        {
+            var kind = this.tokens[i].Kind;
+            if (kind is TokenKind.Colon or TokenKind.MinusGreaterThan or TokenKind.Func or TokenKind.Struct or TokenKind.Enum)
+            {
+                return true;
+            }
+
+            if (!(kind.IsIdentifierOrContextualKeyword() || kind.IsPrimitiveType() ||
+                kind is TokenKind.Dot or TokenKind.ColonColon or TokenKind.Slash or TokenKind.OpenParenthesis or TokenKind.Comma))
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    // Delimiters opened on a body header share its baseline. Their content does
+    // not add a second indentation level to the executable body.
+    private void ShareHeaderDelimiterIndent(int indentLevel)
+    {
+        if (this.indentCount == 0 || this.tokenCount == 0 || this.indentStack[this.indentCount - 1].Source == IndentSource.AngleBracket)
+        {
+            return;
+        }
+
+        var last = this.tokens[this.tokenCount - 1].Span.Start;
+        var lineStart = this.sourceText[..last].LastIndexOfAny('\r', '\n') + 1;
+        var headerIndent = (CountSpaces(this.sourceText[lineStart..]) / Constants.IndentationSpaces) - this.indentationOffset;
+        if (indentLevel != headerIndent + 1)
+        {
+            return;
+        }
+
+        var nesting = 0;
+        var body = false;
+        for (var i = this.tokenCount - 1; i >= 0 && this.tokens[i].Span.Start >= lineStart; i--)
+        {
+            var kind = this.tokens[i].Kind;
+            if (kind is TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace)
+            {
+                nesting++;
+            }
+            else if (kind is TokenKind.OpenParenthesis or TokenKind.OpenBracket or TokenKind.OpenBrace)
+            {
+                if (nesting-- == 0)
+                {
+                    break;
+                }
+            }
+            else if (nesting == 0)
+            {
+                if (kind == TokenKind.EqualsGreaterThan)
+                {
+                    break;
+                }
+
+                if (kind is TokenKind.If or TokenKind.Else or TokenKind.Match or TokenKind.Switch or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Do or TokenKind.Func or TokenKind.Defer ||
+                    (kind == TokenKind.Identifier && this.sourceText.Slice(this.tokens[i].Span.Start, this.tokens[i].Span.Length).SequenceEqual("unsafe")))
+                {
+                    body = true;
+                    break;
+                }
+            }
+        }
+
+        if (!body)
+        {
+            return;
+        }
+
+        for (var i = this.indentCount - 1; i >= 0; i--)
+        {
+            var entry = this.indentStack[i];
+            if (entry.Position < lineStart || entry.Source is IndentSource.Block or IndentSource.LineContinuation)
+            {
+                break;
+            }
+
+            if (!entry.SharesBodyIndent)
+            {
+                this.indentStack[i] = entry with { SharesBodyIndent = true };
+                this.sharedBodyIndentDepth++;
+            }
+        }
+    }
+
+    private bool PreviousLineStartsBody()
+    {
+        if (this.tokenCount > 0 && this.tokens[this.tokenCount - 1].Kind is TokenKind.Colon or TokenKind.EqualsGreaterThan)
+        {
+            return true;
+        }
+
+        // Inspect only the preceding logical header; no source strings are created.
+        // Keywords inside delimiters belong to nested expressions, and an outer "=>" has already
+        // supplied a single-item body, whose expression may continue with a leading dot (SPEC 2.2.2).
+        var nesting = 0;
+        for (var i = this.tokenCount - 1; i >= 0; i--)
+        {
+            var kind = this.tokens[i].Kind;
+            if (kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock)
+            {
+                break;
+            }
+
+            if (kind is TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace)
+            {
+                nesting++;
+                continue;
+            }
+
+            if (kind is TokenKind.OpenParenthesis or TokenKind.OpenBracket or TokenKind.OpenBrace)
+            {
+                if (nesting-- == 0)
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            if (nesting > 0)
+            {
+                continue;
+            }
+
+            if (kind == TokenKind.EqualsGreaterThan)
+            {
+                return false;
+            }
+
+            if (kind == TokenKind.Identifier && this.sourceText.Slice(this.tokens[i].Span.Start, this.tokens[i].Span.Length).SequenceEqual("unsafe"))
+            {
+                return true;
+            }
+
+            if (kind is TokenKind.Match or TokenKind.Switch or TokenKind.If or TokenKind.Else or TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.Func or TokenKind.Do or TokenKind.Defer or TokenKind.Require)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void ReadLiteralKeywordOrIdentifier()
     {
-        if (NumberLiteralHelper.ScanNumberLiteral(this.span, out var numberLiteralLength))
+        var span = this.span;
+        if ((uint)(span[0] - '0') <= 9 && this.TryReadNumberLiteral(span))
+        {
+            return;
+        }
+
+        // Scan and validate ordinary names together; Unicode takes the shared slow path.
+        var length = ScanAsciiIdentifierLength(span);
+        if (length < span.Length && !TokenHelper.IsSeparator(span[length]))
+        {
+            this.ReadNonAsciiIdentifier(span);
+            return;
+        }
+
+        if (length == 0)
+        {
+            this.ReadInvalidCharacter(span);
+            return;
+        }
+
+        this.AddTokenAndSlice(TokenHelper.GetKeywordOrIdentifierKind(span.Slice(0, length)), length);
+    }
+
+    /// <summary>Reads a literal that starts with a digit.</summary>
+    /// <returns><see langword="false"/> when no literal text was consumed and the identifier path applies.</returns>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool TryReadNumberLiteral(ReadOnlySpan<char> span)
+    {
+        if (this.tokenCount > 0 && this.tokens[this.tokenCount - 1].Kind == TokenKind.Dot)
+        {
+            var digits = 1;
+            while (digits < span.Length && span[digits] is >= '0' and <= '9')
+            {
+                digits++;
+            }
+
+            this.AddTokenAndSlice(TokenKind.NumericLiteral, digits);
+            return true;
+        }
+
+        if (NumberLiteralHelper.ScanNumberLiteral(span, out var numberLiteralLength))
         {// Numeric literal
             this.AddTokenAndSlice(TokenKind.NumericLiteral, numberLiteralLength);
-            return;
+            return true;
         }
         else if (numberLiteralLength > 0)
         {// Starts with a digit but is not a valid numeric literal.
@@ -773,23 +1209,38 @@ EndOfFile:
          // to the identifier path, which would produce bogus Identifier tokens.
             this.diagnostics.Add(this.NewRange(numberLiteralLength), DiagnosticCode.InvalidNumericLiteral_Kd);
             this.AddTokenAndSlice(TokenKind.Invalid, numberLiteralLength);
-            return;
+            return true;
         }
 
-        // Keyword or Identifier
-        var length = TokenHelper.IndexOfSeparator(this.span);
+        return false;
+    }
+
+    /// <summary>Reads a name containing non-ASCII characters, validating it as a Unicode identifier.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ReadNonAsciiIdentifier(ReadOnlySpan<char> span)
+    {
+        var length = TokenHelper.IndexOfSeparator(span);
         if (length < 0)
         {
-            length = this.span.Length;
-        }
-        else if (length == 0)
-        {
-            this.diagnostics.Add(this.NewRange(1), DiagnosticCode.InvalidCharacter_Kd, this.span[0]);
-            this.AddTokenAndSlice(TokenKind.Invalid, 1);
-            return;
+            length = span.Length;
         }
 
-        this.AddTokenAndSlice(TokenHelper.GetKeywordOrIdentifierKind(this.span.Slice(0, length)), length);
+        var spelling = span[..length];
+        var kind = TokenHelper.GetKeywordOrIdentifierKind(spelling);
+        if (!IdentifierHelper.IsValidIdentifier(spelling))
+        {
+            this.diagnostics.Add(this.NewRange(length), DiagnosticCode.InvalidIdentifier_Kd, spelling.ToString());
+            kind = TokenKind.Invalid;
+        }
+
+        this.AddTokenAndSlice(kind, length);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ReadInvalidCharacter(ReadOnlySpan<char> span)
+    {
+        this.diagnostics.Add(this.NewRange(1), DiagnosticCode.InvalidCharacter_Kd, span[0]);
+        this.AddTokenAndSlice(TokenKind.Invalid, 1);
     }
 
     private void ReadCharLiteral()
@@ -855,7 +1306,7 @@ EndOfFile:
             }
 
             // Only spaces and comments may follow a multiline comment's terminator.
-            this.Slice(BaseHelper.CountLeadingSpaces(this.span));
+            this.Slice(CountSpaces(this.span));
             if (this.span.StartsWith("/*"))
             {
                 continue;
@@ -950,17 +1401,17 @@ EndOfFile:
             _ => throw new UnreachableException(),
         });
 
-    private void PushIndentSource(IndentSource indentSource)
+    private void PushIndentSource(IndentSource indentSource, int headerLevel = -1)
     {
         if (this.indentCount == this.indentStack.Length)
         {
-            var larger = ArrayPool<IndentSource>.Shared.Rent(this.indentStack.Length * 2);
+            var larger = ArrayPool<IndentEntry>.Shared.Rent(this.indentStack.Length * 2);
             this.indentStack.AsSpan().CopyTo(larger);
-            ArrayPool<IndentSource>.Shared.Return(this.indentStack);
+            ArrayPool<IndentEntry>.Shared.Return(this.indentStack);
             this.indentStack = larger;
         }
 
-        this.indentStack[this.indentCount++] = indentSource;
+        this.indentStack[this.indentCount++] = new(indentSource, this.position, false, headerLevel);
         if (indentSource == IndentSource.Block)
         {
             this.blockDepth++;
@@ -973,11 +1424,21 @@ EndOfFile:
 
     private void PopIndentSource(TokenKind expected)
     {
+        var closesBody = false;
         while (this.indentCount > 0)
         {
-            var indentSource = this.indentStack[this.indentCount - 1];
+            var entry = this.indentStack[this.indentCount - 1];
+            var indentSource = entry.Source;
             if (indentSource == IndentSource.Block)
             {
+                // A body opens only at a line start, so this closer shares a line with body content.
+                // Close it for recovery, but a dedent must precede the outer closer (SPEC 2.2.1).
+                if (!closesBody)
+                {
+                    closesBody = true;
+                    this.diagnostics.Add(this.NewRange(1), DiagnosticCode.OuterCloserInBody_Kd);
+                }
+
                 this.indentCount--;
                 this.AddToken(new(TokenKind.EndBlock, this.CurrentRange));
                 this.blockDepth--;
@@ -992,6 +1453,11 @@ EndOfFile:
 
             if (GetClosingTokenKind(indentSource) == expected)
             {
+                if (entry.SharesBodyIndent)
+                {
+                    this.sharedBodyIndentDepth--;
+                }
+
                 this.indentCount--;
                 this.nonBlockDepth--;
                 return;
@@ -1019,7 +1485,13 @@ EndOfFile:
         var missingRange = this.CurrentRange;
         while (this.indentCount > 0)
         {
-            var indentSource = this.indentStack[--this.indentCount];
+            var entry = this.indentStack[--this.indentCount];
+            var indentSource = entry.Source;
+            if (entry.SharesBodyIndent)
+            {
+                this.sharedBodyIndentDepth--;
+            }
+
             if (indentSource == IndentSource.Block)
             {
                 this.AddToken(new(TokenKind.EndBlock, missingRange, true));

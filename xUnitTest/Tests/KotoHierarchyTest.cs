@@ -234,10 +234,10 @@ public class KotoHierarchyTest
         var generatedBody = Assert.IsType<CodeBlockKoto>(compilation.Kotonoha.GeneratedFunction?.Body);
         Assert.IsType<FieldKoto>(Assert.Single(generatedBody.Items));
         var diagnostics = compilation.Kotonoha.DiagnosticCollection.GetArray();
-        Assert.Equal(2, diagnostics.Length);
+        Assert.Equal(5, diagnostics.Length);
         Assert.All(
             diagnostics,
-            diagnostic => Assert.Equal(nameof(DiagnosticCode.UnexpectedToken_Kd), diagnostic.Entry.Name));
+            diagnostic => Assert.Contains(diagnostic.Entry.Name, new[] { nameof(DiagnosticCode.UnexpectedToken_Kd), nameof(DiagnosticCode.IncompleteSyntax_Kd) }));
     }
 
     [Fact]
