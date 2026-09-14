@@ -81,6 +81,7 @@ public sealed partial class Binding
             this.issues.Clear();
             this.ResetMatches();
             this.resultContexts.Clear();
+            this.resultCursor = 0;
             this.ResetStartup();
             this.compilation.InvalidateOwnership();
             this.receiverOperations.Clear();

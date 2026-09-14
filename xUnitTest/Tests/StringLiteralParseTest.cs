@@ -56,10 +56,30 @@ public class StringLiteralHelperTest
     }
 
     [Theory]
+    [InlineData("\"abc\n")]
+    [InlineData("\"abc\r\n")]
+    [InlineData("\"abc\r")]
+    [InlineData("\"\"\"abc\n")]
+    public void UnterminatedLiteralDoesNotJoinNextLine(string broken)
+    {
+        // The unterminated literal ends before its line break, so the next line keeps its own item boundary.
+        var parsed = XunitTest.ParseTestHelper.Parse("let bad = " + broken + "let next = 1");
+        var diagnostics = parsed.DiagnosticCollection.GetArray();
+        Assert.Contains(diagnostics, x => x.Entry.Name == nameof(Kimi.DiagnosticCode.MissingStringLiteralEnd_Kd));
+        Assert.DoesNotContain(diagnostics, x => x.Entry.Name == nameof(Kimi.DiagnosticCode.UnexpectedTrailingToken_Kd));
+        var last = Assert.IsType<Kimi.Compiler.Parsing.FieldKoto>(parsed.GeneratedFunction!.Body!.Items[^1]);
+        Assert.Equal("next", last.NameKoto.IdentifierName);
+    }
+
+    [Theory]
     [InlineData("\"", 1, 1)]
-    [InlineData("\"Text", 1, 1)]
+    [InlineData("\"Text", 1, 5)]
     [InlineData("\"\"\"", 3, 3)]
-    [InlineData("\"\"\"Text", 3, 3)]
+    [InlineData("\"\"\"Text", 3, 7)]
+    [InlineData("\"Text\nNext", 1, 5)]
+    [InlineData("\"Text\r\nNext", 1, 5)]
+    [InlineData("\"Text\rNext", 1, 5)]
+    [InlineData("\"\"\"Te\nxt", 3, 5)]
     public void ScanStringLiteral_UnterminatedLiteral_ReturnsInvalid(
         string text,
         int expectedQuoteCount,

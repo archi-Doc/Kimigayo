@@ -950,7 +950,6 @@ public sealed class ControlFlowAnalysis
         Flow header;
         CodeBlockKoto body;
         var mayFinish = false;
-        var enterBody = true;
         switch (node)
         {
             case ForKoto f:
@@ -975,14 +974,14 @@ public sealed class ControlFlowAnalysis
         }
 
         var boundary = this.Begin(node, node is LoopKoto && KotoHelper.IsValueContext(node) ? expected : ControlFlowType.Unit);
-        var bodyFlow = this.Visit(body, reachable && header.Normal && enterBody);
+        var bodyFlow = this.Visit(body, reachable && header.Normal);
         if (mayFinish && (node is ForKoto iteration ? this.structural.CanComplete(iteration.Iterable) : this.structural.CanComplete(((WhileKoto)node).Condition)))
         {
             boundary.Sources.Add(new(node, ControlFlowType.Unit, reachable && header.Normal));
         }
 
-        var transfers = Union(header.Transfers, header.Normal && enterBody ? bodyFlow.Transfers : null);
-        return this.Finish(node, new(header.Normal && mayFinish, null, transfers, header.Pending || (enterBody && bodyFlow.Pending)), boundary);
+        var transfers = Union(header.Transfers, header.Normal ? bodyFlow.Transfers : null);
+        return this.Finish(node, new(header.Normal && mayFinish, null, transfers, header.Pending || bodyFlow.Pending), boundary);
     }
 
     private Flow VisitDo(DoKoto node, bool reachable, ControlFlowType? expected)

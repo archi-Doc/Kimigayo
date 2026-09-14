@@ -101,13 +101,13 @@ public static partial class NumberLiteralHelper
             switch ((char)(text[1] | 0x20))
             {
                 case 'b':
-                    return FinishNumberLiteral(text, ScanBinaryDigitsAndSeparators(text, 2), out length);
+                    return FinishPrefixedLiteral(text, ScanBinaryDigitsAndSeparators(text, 2), out length);
 
                 case 'o':
-                    return FinishNumberLiteral(text, ScanOctalDigitsAndSeparators(text, 2), out length);
+                    return FinishPrefixedLiteral(text, ScanOctalDigitsAndSeparators(text, 2), out length);
 
                 case 'x':
-                    return FinishNumberLiteral(text, ScanHexadecimalDigitsAndSeparators(text, 2), out length);
+                    return FinishPrefixedLiteral(text, ScanHexadecimalDigitsAndSeparators(text, 2), out length);
             }
         }
 
@@ -420,6 +420,19 @@ GeneralLiteral:
             value = unchecked((Int128)accumulator);
             return NumberLiteralParseResult.I128;
         }
+    }
+
+    // A base prefix requires at least one digit of that base; separators alone are malformed (SPEC 2.6).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool FinishPrefixedLiteral(ReadOnlySpan<char> text, int i, out int length)
+    {
+        if (!text[2..i].ContainsAnyExcept('_'))
+        {
+            length = ExtendWithIdentifierContinue(text, i);
+            return false;
+        }
+
+        return FinishNumberLiteral(text, i, out length);
     }
 
     // Include identifier continuations in a malformed token.

@@ -13,6 +13,7 @@ public sealed partial class Binding
     private readonly List<BoundType> resultTypes = new();
     private ResultCollector? resultCollector;
     private StructuralCompletion? resultStructure;
+    private int resultCursor;
 
     /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.1).</summary>
     /// <param name="types">The non-Never source Types.</param>
@@ -48,12 +49,14 @@ public sealed partial class Binding
             expected = BoundType.Unit;
         }
 
-        if (this.resultContexts.Count == this.resultPool.Count)
+        // Rent by a pass-local cursor, not by the map size: rebinding a target that is already mapped
+        // must not hand the next target a context that is still in use.
+        if (this.resultCursor == this.resultPool.Count)
         {
             this.resultPool.Add(new());
         }
 
-        var context = this.resultPool[this.resultContexts.Count];
+        var context = this.resultPool[this.resultCursor++];
         context.Expected = expected;
         context.Invalid = context.Pending = false;
         context.Sources.Clear();

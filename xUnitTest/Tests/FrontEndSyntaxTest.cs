@@ -129,6 +129,10 @@ public class FrontEndSyntaxTest
     [InlineData("func f<List<T>>() => ()")]
     [InlineData("let a = value as Type")]
     [InlineData("let a: List<\nT\n> = values")]
+    [InlineData("let a = 0x")]
+    [InlineData("let a = 0B")]
+    [InlineData("let a = 0o___")]
+    [InlineData("let a = 0x_ + 1")]
     public void RejectsInvalidSyntax(string source)
         => Assert.NotEmpty(Parse(source).DiagnosticCollection.GetArray());
 

@@ -167,3 +167,9 @@ dotnet test --project xUnitTest/xUnitTest.csproj -c Release --no-build --no-rest
 ```
 
 buildの警告数は現設定下の結果。テストは対応・拒否境界を検証するもので、SPEC全体への適合証明ではない。
+
+## 8. autoframe実行基盤
+
+[autoframe.md](autoframe.md) 1.0に基づくWindows版を[autoimpl/](autoimpl/README.md)に実装。6段階のプロンプト、Schema、状態・証拠管理、再開、疑似Worker試験を含む。基盤の試験結果と実CLI未確認の理由は[検証記録](autoimpl/VERIFICATION.md)を参照。今回の基盤作業ではNativeAOT、製品用PLAN.mdの作成、本番の自動実行を行っていない。
+
+追加精査で、部分受理、回復対象の欠落、証拠の破損・失効、監査と停滞の判定、停止確認、指示ファイルの保護・署名を修正。疑似試験は追加17件を含む計56件を確認した。実CLIは今回再試験していない。

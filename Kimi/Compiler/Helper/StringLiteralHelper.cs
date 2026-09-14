@@ -384,17 +384,10 @@ public static class StringLiteralHelper
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ScanStringLiteralResult ScanInvalidStringLiteral(ReadOnlySpan<char> span, int quoteCount, out int stringLiteralLength)
     {
-        // Include the first line break when one is available.
-        var linebreakIndex = span.IndexOf(BaseHelper.LfChar);
-        if (linebreakIndex >= 0)
-        {
-            stringLiteralLength = quoteCount + linebreakIndex + 1;
-        }
-        else
-        {
-            stringLiteralLength = quoteCount;
-        }
-
+        // Recover through the rest of the physical line, but never consume its line break (LF, CRLF, or CR):
+        // the tokenizer must still see the next line's indentation and separate the following item.
+        var linebreakIndex = span.IndexOfAny('\r', '\n');
+        stringLiteralLength = quoteCount + (linebreakIndex >= 0 ? linebreakIndex : span.Length);
         return ScanStringLiteralResult.Invalid;
     }
 

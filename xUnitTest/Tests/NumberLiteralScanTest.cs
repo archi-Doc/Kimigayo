@@ -48,10 +48,6 @@ public class NumberLiteralScanTest
     }
 
     [Theory]
-    [InlineData("0b", 2)]
-    [InlineData("0B", 2)]
-    [InlineData("0b_", 3)]
-    [InlineData("0b____", 6)]
     [InlineData("0b0", 3)]
     [InlineData("0b1", 3)]
     [InlineData("0b1010", 6)]
@@ -70,10 +66,6 @@ public class NumberLiteralScanTest
     }
 
     [Theory]
-    [InlineData("0o", 2)]
-    [InlineData("0O", 2)]
-    [InlineData("0o_", 3)]
-    [InlineData("0o____", 6)]
     [InlineData("0o0", 3)]
     [InlineData("0o7", 3)]
     [InlineData("0o755", 5)]
@@ -92,10 +84,6 @@ public class NumberLiteralScanTest
     }
 
     [Theory]
-    [InlineData("0x", 2)]
-    [InlineData("0X", 2)]
-    [InlineData("0x_", 3)]
-    [InlineData("0x____", 6)]
     [InlineData("0x0", 3)]
     [InlineData("0x9", 3)]
     [InlineData("0xa", 3)]
@@ -223,6 +211,33 @@ public class NumberLiteralScanTest
         string text,
         int expectedLength)
     {
+        var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
+
+        Assert.False(result);
+        Assert.Equal(expectedLength, length);
+    }
+
+    [Theory]
+    [InlineData("0b", 2)]
+    [InlineData("0B", 2)]
+    [InlineData("0b_", 3)]
+    [InlineData("0b____", 6)]
+    [InlineData("0o", 2)]
+    [InlineData("0O", 2)]
+    [InlineData("0o_", 3)]
+    [InlineData("0o____", 6)]
+    [InlineData("0x", 2)]
+    [InlineData("0X", 2)]
+    [InlineData("0x_", 3)]
+    [InlineData("0x____", 6)]
+    [InlineData("0x+1", 2)]
+    [InlineData("0x_g", 4)]
+    [InlineData("0b__)", 4)]
+    public void PrefixWithoutDigits_ReturnsFalse(
+        string text,
+        int expectedLength)
+    {
+        // Every base prefix requires at least one digit of that base (SPEC 2.6).
         var result = NumberLiteralHelper.ScanNumberLiteral(text, out var length);
 
         Assert.False(result);
