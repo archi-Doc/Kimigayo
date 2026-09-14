@@ -1,321 +1,71 @@
 # autoframe 仕様案
 
-状態: 設計案。スクリプト・プロンプトは未実装。
+状態: 設計案。runnerは未実装。本書をps1・プロンプトの作成元とする。
 
 ## 1. 基本方針
 
-autoframeは、大きな処理を分割し、計画・監査・実行・検証を繰り返す自動実行フレームワークである。
+autoframeは、大きな処理を計画・監査・実行・検証に分割する自動実行フレームワークである。
 
-**プロジェクト固有の制御入力は、プロジェクトルートのPLAN.mdだけとする。** PLAN.mdを変更すれば、実装、コード検証、改善、文書整備などに用途を変えられる。別プロジェクトでも、スクリプトや共通プロンプトの変更は不要とする。
-
-### 1.1. 責務の分担
+**PLAN.mdを、ユーザーが定義するプロジェクト固有の唯一の制御入力とする。** runnerもWorkerもPLAN.mdを書き換えない。実装・レビュー・文書整備への用途変更や別プロジェクトへの適用は、PLAN.mdで指定する。
 
 | 要素 | 責務 |
 | --- | --- |
-| PLAN.md | 目的、完成条件、作業範囲、項目、依存関係、完了状態を定義する |
-| runner | PowerShellでWorkerの起動、結果の受理、状態更新、遷移、停止を管理する |
-| Worker | 各段階で起動するCodex。計画、作業、監査、検証を担当する |
-| 作業対象 | ソース、仕様書、成果物など。WorkerがPLAN.mdに従って参照・変更する |
-| 内部記録 | runnerが生成する実行位置、入力の写し、結果、ログ、証拠 |
+| PLAN.md | ユーザーの目的、完成条件、作業範囲、制約、任意の初期計画 |
+| runner | Workerの逐次起動、機械検査、状態更新、遷移、停止 |
+| Worker | 各段階で起動するCodex。計画、作業、監査、検証 |
+| 内部状態 | 自動生成した計画、進捗、指摘、証拠、実行位置 |
+| 成果物 | WorkerがPLAN.mdに従って参照・変更するファイル |
 
-runnerはSPEC.mdやSTATUS.mdなど、特定のプロジェクト文書を要求しない。必要な参照先や更新対象はPLAN.mdに記載する。内部記録は自動生成し、別プロジェクトへの適用時に手動編集を必要としない。
+SPEC.mdやSTATUS.mdなど、特定の文書を必須にしない。内部状態を人が編集しないと運用できない設計にもならないようにする。
 
-PowerShell、Codex CLI、認証、開発ツールは実行環境の前提である。ユーザー指示、適用されるAGENTS.md、環境の権限制約も有効であり、PLAN.mdでこれらを緩和しない。
+初版は単一プロジェクト・逐次実行とする。並列編集、定期起動、プロジェクト外への書き込み、外部サービスの更新・公開は対象外。PowerShell、Codex CLI、認証、開発ツールは環境の前提とし、ユーザー指示・適用されるAGENTS.md・環境の権限制約を守る。
 
-### 1.2. 初版の範囲
+### 1.1. 本番での利用手順
 
-単一プロジェクトを逐次処理する。各段階は新しいWorkerセッションで実行し、ファイルで引き継ぐ。並列編集、定期起動、プロジェクト外への書き込み、外部サービスへの更新・公開は初版の対象外とする。
+1. **実行基盤を作成する。** 本書からautoframe/配下のps1、共通・段階別プロンプト、Schema、PLANテンプレートを作成し、§8.2の検証を行う。
+2. **PLAN.mdを作成する。** ユーザーの依頼プロンプトと対象プロジェクトを基に、§2の定義を作成する。
+3. **実行する。** run.ps1を起動し、PLAN.mdに従って処理する。停止後は必要に応じてResumeする。
 
-本書は既存のautomation/やautoimpl2/を置換・起動するものではない。
+共通の実行基盤は別プロジェクトでも再利用する。生成するプロンプトの規則は本書を正本とし、既存のプロンプトファイルを仕様の補完に必要としない。基盤の作成依頼だけで、製品作業用のPLAN.md作成や本番実行まで自動的に開始しない。
 
-## 2. ファイル構成
+## 2. ユーザーが定義する内容
 
-```text
-project/
-  PLAN.md                       # プロジェクト固有の定義
-  autoframe/                    # 共通配布物
-    run.ps1
-    invoke-worker.ps1
-    lib/                        # 計画・状態・遷移の処理
-    prompts/
-      common.md
-      plan.md
-      prepare.md
-      audit.md
-      work.md
-      verify.md
-      completion-audit.md
-    schemas/
-      plan.schema.json
-      phase-result.schema.json
-    templates/PLAN.template.md
-    README.md
-  .autoframe/                    # 自動生成
-    lock
-    state.json
-    runs/<run-id>/<attempt-id>/
-      input-plan.md
-      input.json
-      execution-plan.json
-      result.json
-      events.jsonl
-      stderr.log
-      evidence/
-      receipt.json
-```
+### 2.1. PLAN.mdの記述項目
 
-PLAN.mdと内部記録はProjectRoot基準、共通配布物はスクリプト自身の場所を基準に解決する。autoframe/をプロジェクト外に置くこともできる。プロジェクト専用のconfig.jsonは不要とする。
+PLAN.mdには、次の定義だけを記載する。進捗、指摘、実行報告、証拠、runner用のrevisionは記載しない。
 
-state.jsonは実行位置・回数・受理記録だけを管理し、項目の状態を独立した台帳として持たない。履歴に保存したPLAN.mdは写しであり、現行計画の正本ではない。
-
-内部記録は通常Git追跡対象外とする。証拠として参照されている記録は自動削除しない。
-
-## 3. PLAN.mdの構造
-
-### 3.1. 記述形式
-
-PLAN.mdは、説明文と機械処理用のJSONを含むMarkdownとする。JSONは次のマーカーに囲まれたコードブロックを1つだけ置く。具体例は§7.1に示す。
-
-```text
-<!-- autoframe:begin -->
-JSONコードブロック
-<!-- autoframe:end -->
-```
-
-制御上の正本はJSONとする。通常の表やチェックボックスから状態を推測しない。説明文とJSONの意味が矛盾していれば、Planで確認事項として報告する。
-
-### 3.2. 定義と更新者
-
-| 区分 | 主なフィールド | 更新方法 |
+| 項目 | 必須 | 内容 |
 | --- | --- | --- |
-| 識別情報 | schema_version、project_id、revision | project_idの変更は新規実行。revisionはrunnerが更新 |
-| ユーザーの要件 | objective、scope、non_goals、constraints、references、work_scope | ユーザーが定義・変更 |
-| 全体の完成条件 | completion_criteriaのid、condition、verification | ユーザーが定義・変更 |
-| 作業計画 | milestones、tasksの内容・依存・条件 | Planが変更案を提出 |
-| 検証記録 | tasksのstatus・evidence、完成条件のevidence、findings | 段階結果に基づいてrunnerが更新 |
+| schema_version / project_id | 必須 | 形式の版、プロジェクト識別子 |
+| objective / scope | 必須 | 目的、処理対象 |
+| non_goals / constraints | 必須 | 対象外、守る条件。指定がなければ空配列 |
+| completion_criteria | 必須 | 完成条件のid、condition、verification。1件以上 |
+| work_scope | 必須 | ソースなどを変更できる範囲。読取専用作業なら空配列 |
+| input_scope | 任意 | 検証入力の範囲。省略時はプロジェクト全体を基準にする |
+| generated_scope | 任意 | ビルド出力など、検証に伴う生成物の書込範囲。既定は空配列 |
+| environment_checks | 任意 | 環境識別用の読取コマンド。既定は空配列 |
+| references | 任意 | 参照資料のpathとpurpose。既定は空配列 |
+| milestones / tasks | 任意 | ユーザーが指定したい節目・初期項目。既定は空配列 |
 
-WorkerはPLAN.mdを直接編集せず、結果JSONで変更案を返す。runnerが更新権限・形式・入力との整合を検査して反映する。
+completion_criteriaには、有限の対象範囲と確認可能な期待結果を書く。「問題がなくなるまで」のような終わりを判定できない条件は避ける。verificationはコマンドだけでなく、文書照合やレビュー手順でもよい。
 
-目的や完成条件の本文はWorkerが変更できないが、完成条件のevidenceはCompletion Auditの結果から更新できる。これにより、要件の保護と検証記録の更新を両立する。
+パスはProjectRoot基準とする。input_scopeを指定してもwork_scopeとreferencesのファイルは検証入力に含める。generated_scopeを使ってソース、設定、参照資料を入力から除外してはならない。範囲の詳細は§5.1に従う。
 
-### 3.3. 項目・マイルストーン・指摘
+environment_checksには、必要なツールの版や外部依存を識別できるコマンドを指定する。runnerは宣言されたコマンドと終了状態・出力を記録し、自然文からコマンドを生成しない。比較可能な環境情報が得られない検証は、過去の証拠を再利用せず実行し直す。
 
-**項目（tasks）**には、次を記載する。
+### 2.2. 任意の初期計画
 
-| フィールド | 内容 |
-| --- | --- |
-| id / description / required | 安定したID、処理内容、必須かどうか |
-| status / depends_on | 状態、依存する項目ID |
-| completion_criteria_ids | 関連する全体完成条件のID |
-| deliverables / acceptance / verification | 成果物、項目の完了条件、検証方法 |
-| evidence | 証拠記録への参照 |
-| blocker | 阻害理由と解除条件。通常はnull |
-| replaced_by | 置換先ID。通常は空配列 |
+tasksの各項目は、id、description、required、depends_on、criterion_ids、acceptance、verificationを持つ。milestonesはid、description、task_ids、acceptanceを持つ。IDは安定させ、並べ替えで変更しない。
 
-**マイルストーン（milestones）**には、id、description、task_ids、acceptanceを記載する。所属項目がverifiedになり、固有の到達条件をCompletion Auditが確認した時点で到達とする。
+初期項目はユーザーの指定として保持する。Planは内部計画で詳細化・分割できるが、元IDとの対応、必須性、条件を維持する。ユーザー指定の目的・条件を変更する必要があれば、具体案を保存してNeedsInputで停止する。通常の項目追加・分割・順序変更は自動で行う。
 
-マイルストーンは進捗の節目を表す。プロジェクト完成に必須の条件はcompletion_criteriaにも記載し、マイルストーンだけに隠れた完成条件を持たせない。
+マイルストーンは進捗の節目である。完成に必須の条件はcompletion_criteriaにも記載する。
 
-**指摘（findings）**には、id、required、description、resolution、task_ids、status、evidenceを記載する。statusはopenまたはresolvedとする。各段階の指摘をrunnerがPLAN.mdに追加し、解消はVerifyまたはCompletion Auditで確認する。Planは対応項目を割り当てるが、指摘を解消扱いにはしない。
+### 2.3. PLAN.mdの例
 
-別の指摘台帳は必須にしない。必須指摘の省略・削除・任意化は受理しない。監査で誤指摘と判明した場合も、理由を記録してresolvedにする。
+JSONを、指定マーカーに囲まれたコードブロックとして1つ置く。制御上の正本はJSONとし、周囲の説明には背景だけを書く。
 
-### 3.4. 計画の整合性
-
-起動時と更新時に、Schema、ID重複、未定義参照、依存の循環を検査する。依存は「着手前に満たす条件」とし、1回のWorkに選ぶ項目は、開始時点ですべての依存先がverifiedでなければならない。
-
-初期のtasksとmilestonesは空でもよい。目的・範囲・全体の完成条件は開始前に必要とする。Plan後には全体の完成条件ごとに必須項目が対応し、Auditが作業の網羅性を確認する。
-
-既存項目は削除せず、分割・統合時はsupersededとreplaced_byを使う。置換先へ必須性・範囲・条件を引き継ぎ、依存元の参照も更新する。任意項目でも必須項目の依存先なら完了が必要となる。
-
-### 3.5. 項目の状態
-
-```text
-pending → in_progress → implemented → verified
-              └────────────┴──────────→ pending（修正・再検証）
-```
-
-| 状態 | 意味 |
-| --- | --- |
-| pending | 未着手、修正待ち、再検証待ち |
-| in_progress | Workに着手中。中断時は未確定のまま保持 |
-| implemented | 作業実施済み。Verifyによる受理待ち |
-| verified | 完了条件と証拠をVerifyで受理済み |
-| blocked | 外部条件待ち。blockerに理由と解除条件を記録 |
-| superseded | 他の項目へ置換済み。完了としては数えない |
-
-in_progressへの変更はWork開始時にrunnerが行う。Workはimplementedまで提案でき、verifiedへの変更はVerifyだけが提案できる。調査・文書作業でも同じ状態を使う。
-
-部分作業は実施範囲を記録し、Verifyが未完了と判定すればpendingへ戻す。検証自体が外部条件待ちならblockedとする。解除後はPlanが状態をpendingに戻し、修正が必要か、Verifyへ直接進めるかを判断する。
-
-Plan、Verify、Completion Auditは証拠の失効を指摘できる。runnerは影響項目をpendingへ戻す。ユーザーがverifiedと記入しても、有効な検証記録がなければ再検証する。
-
-## 4. 実行手順
-
-### 4.1. 基本フロー
-
-```text
-Plan → Prepare → Audit → Work → Verify
-          ↑        │                │
-          └─ 修正 ─┘                │
-          └──── 次の作業・修正 ──────┘
-
-Verify後、節目または一定回数ごとにCompletion Audit
-  ├─ 全体の完成条件を満たす → Complete
-  └─ 未完了 → Plan
-```
-
-Prepareは前回の検証結果を使って次の作業を計画する。修正はWorkで行い、検証はVerifyで行う。最後のWorkも検証を省略しない。
-
-### 4.2. 段階ごとの役割
-
-| 段階 | 処理 | 主な結果 |
-| --- | --- | --- |
-| Plan | 全体計画を差分更新し、必須指摘の対応項目を決める | 更新案、次の処理 |
-| Prepare | 実行可能項目を選び、今回の範囲・手順・検証を具体化する | 実行計画 |
-| Audit | 計画の抜け、依存、作業量、検証方法を確認・修正する | 精査済み実行計画 |
-| Work | 実行計画に従って作業し、自己検証と引継ぎを行う | 成果物、実行報告 |
-| Verify | 現物と証拠を確認し、必要な追加検証を行う | 項目の受理・差し戻し |
-| Completion Audit | 全体の完成条件、統合・回帰、必須指摘を確認する | 全体判定、不足事項 |
-
-実行計画には、対象ID、関連資料、変更範囲、手順、完了条件、検証方法、時間配分、中断時の引継ぎを含める。Workに渡すのはAuditで修正・受理した計画そのものとする。
-
-Plan・Prepare・Auditは製品の修正をしない。Verify・Completion Auditは検証を行うが、不具合修正は次のWorkへ回す。各段階は自分の証拠保存先へ記録できる。検証によるビルド出力なども、PLAN.mdのwork_scopeに含める。
-
-### 4.3. 結果と遷移
-
-| 段階 | decision | 次の処理 |
-| --- | --- | --- |
-| Plan | ready | Prepare |
-| Plan | recover | 保存済みの部分成果をVerifyで確認 |
-| Prepare | ready | Audit |
-| Prepare | completion_candidate | Completion Audit |
-| Audit | approved | Work |
-| Audit | revise | Prepare。大幅な全体変更が必要ならreplan |
-| Work | reported | 必ずVerify。その後の希望経路はroute_hintで報告 |
-| Verify | accepted / revise | 続行、修正、全体監査の条件をrunnerが判定 |
-| Completion Audit | complete / incomplete | Completeの受理検査、またはPlan |
-
-Plan以外はreplanでPlanへ戻せる。ただし、Workはreplanをdecisionとして返さず、reportedとroute_hintで報告してVerifyを通す。
-
-各段階はblockersで項目単位の外部待ちを報告できる。独立した実行可能項目があればPlanまたはPrepareへ進み、なければBlockedで停止する。要件変更などユーザー判断が必要ならneeds_inputを返し、NeedsInputで停止する。Workではneeds_inputの場合も部分成果と未検証状態を保存し、再開時にVerifyを必要とする。
-
-Verify後は、停滞停止、再計画の必要性、全体監査の実行条件、次の作業の順に判定する。同時に成立した全体監査の実行条件は1回にまとめる。
-
-### 4.4. 検証と完成判定
-
-証拠には、対象、検証方法、結果、日時、ログ参照、対象ファイルのハッシュ、必要なツール・環境情報を記録する。PLAN.mdのevidenceは、その記録への参照を保持する。
-
-有効な証拠は再利用できる。入力や環境が変わった場合、または有効性を判断できない場合は再検証する。未実行・skip・ログ欠落を成功として扱わない。レビューは対象・観点・結果の記録で検証でき、コード変更やテスト実行を一律には要求しない。
-
-Completion Auditは、次のいずれかで実行する。
-
-- 必須項目と必要な依存先がすべてverifiedになった。
-- 新しいマイルストーン到達候補がある。
-- 前回の全体監査から所定回数のWorkが終わり、Verifyまで受理された。
-
-マイルストーンの監査済み記録は内部状態に保存する。比較にはマイルストーンの定義と関連証拠のハッシュを使い、無関係なPLAN.md更新で再監査しない。
-
-Completeの受理には、現行入力に対する全体監査の合格、必須項目・必要依存のverified、全体完成条件ごとの証拠、必須指摘の解消をすべて必要とする。未確定Workが1つでもあれば完成にしない。未着手の任意項目は残せる。
-
-監査から受理までに、証拠が対象とするソースや参照資料が変わっていないことも確認する。検証中に生成したログ・ビルド出力は、検証入力とは分けて扱う。
-
-runnerは構造と整合性を検査し、証拠の意味的な妥当性は監査Workerが判断する。正常終了や正しいJSONだけでは完成を認めない。
-
-## 5. 結果の受理と再開
-
-### 5.1. Workerとの入出力
-
-入力は、共通・段階別プロンプト、PLAN.mdの写し、実行ID・試行ID、必要な受理済み結果、締切とする。Workには精査済み実行計画も渡す。履歴全体を毎回展開せず、必要な記録を参照する。
-
-結果JSONは以下を共通フィールドとし、段階別Schemaでdecisionと変更内容を制限する。
-
-```text
-schema_version, run_id, attempt_id, phase
-input_plan_revision, input_plan_hash, execution_plan_hash
-decision, route_hint, summary
-task_results, plan_proposal, findings, evidence, blockers, progress
-```
-
-該当しない値はnullまたは空配列とする。runnerは終了状態、Schema、ID、入力ハッシュ、変更権限、遷移を検査して受理する。自然文から次の段階を推測しない。Worker自身は次のWorkerを起動しない。
-
-Audit後のin_progress化は、runnerによる許可済みの状態更新として記録し、新しい入力ハッシュをWorkへ渡す。それ以外に計画や関連入力が変われば、監査の有効性を確認し直す。
-
-### 5.2. 保存と競合
-
-PLAN.mdとstate.jsonを同時に更新できるとは仮定しない。runnerは旧ハッシュ、新しい計画、次の状態を更新記録へ保存した後、各ファイルを一時ファイルから置換し、最後に受理記録を確定する。
-
-更新途中で止まった場合は、旧版・新版のハッシュと更新記録を照合して復旧する。どちらにも一致しない場合は競合として停止し、上書きしない。更新時は排他アクセス中に再照合し、外部編集との競合を防ぐ。排他アクセスを確保できなければ更新しない。
-
-この保存手順は、Workが行った成果物の変更全体を巻き戻す仕組みではない。
-
-### 5.3. 中断・再開
-
-同じProjectRootの二重起動を排他ロックで防ぎ、Work開始前と各段階の受理後に状態を保存する。
-
-結果欠落、不正JSON、CLI失敗、タイムアウトでは状態を先に進めず、部分成果を保持する。対象のWorkerと子プロセスが停止したことを確認してから再開する。初版では実行エラーを自動再試行しない。
-
-Resumeは同じ実行IDを使い、更新記録の復旧後にPlanへ進む。Planは未確定の成果を確認し、必要ならrecoverで直接Verifyへ渡す。この場合に限り、Verifyはin_progressやpendingの成果も受理対象にできる。未確定Workを確認する前に、新しいWorkを始めない。
-
-内部記録がなければ新規実行としてPlanから開始できるが、過去のverifiedを無条件には引き継がない。完成済みのResumeもPlanで証拠を再評価し、Completion Auditを経て完成を確認する。
-
-### 5.4. PLAN.mdの変更
-
-ユーザーはPLAN.mdを編集して処理内容を変更できる。停止中の編集を基本とし、実行中の編集は段階の開始・受理時にファイル全体のハッシュで検出する。
-
-変更を検出した場合は古い結果を適用せず、Planへ戻す。作業中に生じた成果物は保持し、未確定として再評価する。外部編集によってproject_idが変わった場合は現在の実行を停止し、新規実行を必要とする。
-
-要件や参照資料の変更で証拠が失効した場合は、影響項目とその利用側を再評価する。影響範囲が不明なら再検証する。自動処理は目的・完成条件を緩めず、変更が必要なら具体案を保存してNeedsInputで停止する。
-
-## 6. 運用上の制御
-
-### 6.1. 上限と停滞
-
-| 起動引数 | 既定値 | 意味 |
-| --- | --- | --- |
-| ProjectRoot / Resume | 現在のフォルダー / false | 対象と再開指定 |
-| CompletionAuditInterval | 3 | 全体監査の間隔。Verifyまで受理されたWork回数 |
-| MaxPhaseAttempts | 100 | 全段階を含む起動回数の上限 |
-| MaxRunMinutes | 480 | 再開前も含む累計稼働時間の上限 |
-| PhaseTimeoutMinutes | 60 | 1段階の時間上限 |
-| SaveReserveMinutes | 5 | 時間上限の内側に確保する保存余裕 |
-| MaxAuditRevisions | 2 | 同じ実行対象への連続差し戻し上限。到達時はPlanへ |
-| NoProgressReplanThreshold | 2 | 進捗なしの連続回数。到達時はPlanへ |
-| NoProgressStopThreshold | 4 | 再計画後も進捗がない場合の停止回数 |
-
-保存余裕は段階上限より短くし、停滞停止回数は再計画回数より大きくする。時間・回数は正の値とし、不正な組合せは起動時に拒否する。
-
-進捗は、実装・検証・原因特定などの具体的な前進をVerifyが受理した場合に認める。Verifyまで受理されたWorkごとに停滞を数え、PlanやAuditの通過、Resumeだけではリセットしない。計画だけの反復もMaxPhaseAttemptsで止める。
-
-全体残時間と段階上限の短い方を締切にする。保存余裕が取れなければ次の段階を起動しない。上限のためVerifyを起動できなければ未検証として停止し、再開後に検証する。
-
-### 6.2. 実行状態と終了コード
-
-| 状態 | コード | 意味 |
-| --- | --- | --- |
-| Running | — | 実行中 |
-| Complete | 0 | 全体の完成を受理 |
-| Paused | 2 | 回数・時間上限、ユーザー中断 |
-| Blocked | 3 | 独立した実行可能項目がなく外部待ち |
-| NeedsInput | 4 | 要件変更などの判断待ち |
-| Stalled | 5 | 再計画しても進捗なし |
-| Error | 6 | 起動、CLI、結果形式、保存、整合性などのエラー |
-
-段階のタイムアウトはPausedとし、理由を別途記録する。プロセス終了を確認できない場合や強制終了で終了コードを返せない場合も、完成扱いにはしない。
-
-### 6.3. 編集範囲
-
-作業対象の書き込みはwork_scope内に限定する。PLAN.md、共通配布物、内部状態、他試行の記録は保護対象とし、自分の試行の証拠保存先だけを別途許可する。
-
-パスはProjectRoot基準で正規化し、親フォルダーやリンクを経由した範囲外への書き込みも拒否する。開始時の未コミット変更を保持し、自動reset・clean・stash・commit・pushは行わない。
-
-差分・ハッシュによる事後確認は、OSによる書き込み制限とは異なる。実行権限は環境に従い、runnerが認証・権限設定を自動変更しない。
-
-## 7. 例
-
-### 7.1. PLAN.md
-
-Pythonの小規模なプロジェクトで、既存テストを確認して不具合を修正する例。コマンドや範囲は対象に合わせて変更する。
+次はPythonプロジェクトの例である。調査段階のテスト失敗を許容し、修正段階では全件成功を求めている。
 
 ~~~~markdown
 # 既存テストの確認と不具合修正
@@ -324,116 +74,422 @@ Pythonの小規模なプロジェクトで、既存テストを確認して不�
 ```json
 {
   "schema_version": 1,
-  "revision": 1,
   "project_id": "sample-test-repair",
-  "objective": "既存テストの失敗原因を調べ、製品コードの不具合を修正する",
+  "objective": "既存テストの失敗原因を調べ、不具合を修正する",
   "scope": ["srcとtests"],
   "non_goals": ["公開APIの変更", "テストの削除・無効化"],
   "constraints": ["既存の未コミット変更を保持する"],
-  "references": [{"path": "README.md", "purpose": "実行環境と利用方法"}],
   "work_scope": ["src/**", "tests/**"],
+  "input_scope": ["src/**", "tests/**", "pyproject.toml"],
+  "generated_scope": [],
+  "environment_checks": ["python --version", "python -m pip freeze"],
+  "references": [{"path": "README.md", "purpose": "利用方法"}],
   "completion_criteria": [
     {
       "id": "C1",
-      "condition": "既存テストがすべて成功し、再現した不具合の修正を確認できる",
-      "verification": "python -B -m unittest discover -s tests -v を実行し、失敗・エラー・skipが0件で、1件以上のテストが実行されることを確認する。修正があれば差分と再現結果も確認する",
-      "evidence": []
-    }
-  ],
-  "milestones": [
-    {
-      "id": "M1",
-      "description": "テストの確認と修正を完了",
-      "task_ids": ["T001", "T002"],
-      "acceptance": "調査結果と修正結果の対応が確認できる"
+      "condition": "既存テストがすべて成功し、必要な修正の妥当性を確認できる",
+      "verification": "python -B -m unittest discover -s tests -v を実行。1件以上実行し、失敗・エラー・skipは0件。修正した場合は差分と再現結果も確認する"
     }
   ],
   "tasks": [
     {
-      "id": "T001",
-      "description": "既存テストを実行し、失敗原因と修正対象を記録する",
-      "required": true,
-      "status": "pending",
-      "depends_on": [],
-      "completion_criteria_ids": ["C1"],
-      "deliverables": ["実行記録内のテストログと原因調査"],
-      "acceptance": ["全テストの結果と、失敗原因または失敗なしの根拠がある"],
-      "verification": ["実行ログと原因調査を照合する。ここではテスト失敗を許容する"],
-      "evidence": [],
-      "blocker": null,
-      "replaced_by": []
+      "id": "T1", "description": "テストを実行し、失敗原因を調べる",
+      "required": true, "depends_on": [], "criterion_ids": ["C1"],
+      "acceptance": "実行結果と失敗原因、または失敗なしの根拠がある",
+      "verification": "ログと原因調査を照合する。この項目ではテスト失敗を許容する"
     },
     {
-      "id": "T002",
-      "description": "不具合を修正し、既存テストと必要な再現テストを確認する",
-      "required": true,
-      "status": "pending",
-      "depends_on": ["T001"],
-      "completion_criteria_ids": ["C1"],
-      "deliverables": ["必要なコード修正", "実行記録内の最終検証ログ"],
-      "acceptance": ["C1を満たす。修正不要なら理由と検証結果を残す"],
-      "verification": ["C1の検証手順を実行し、修正差分と結果を確認する"],
-      "evidence": [],
-      "blocker": null,
-      "replaced_by": []
+      "id": "T2", "description": "必要な修正と最終検証を行う",
+      "required": true, "depends_on": ["T1"], "criterion_ids": ["C1"],
+      "acceptance": "C1を満たす。修正不要なら理由を残す",
+      "verification": "C1の検証手順を実行する"
     }
   ],
-  "findings": []
+  "milestones": [
+    {
+      "id": "M1", "description": "調査・修正完了",
+      "task_ids": ["T1", "T2"], "acceptance": "原因と修正結果の対応が確認できる"
+    }
+  ]
 }
 ```
 <!-- autoframe:end -->
 ~~~~
 
-T001の完了条件は「調査の完了」であり、テスト成功ではない。T001をVerifyで受理してから、T002に着手する。環境不備や未決定の仕様が原因なら、無理に修正せず阻害要因として扱う。
+大まかな目的と完成条件から分割を任せる場合は、tasksとmilestonesを省略できる。コマンド、環境識別、対象範囲は適用先に合わせて定義する。
 
-### 7.2. 起動方法
+### 2.4. プロンプトからの作成
 
-以下は実装後に提供する予定のインターフェースであり、現時点では実行できない。
+ユーザーはCodexへの依頼でPLAN.mdを作成・更新できる。この作業は自動実行前に行い、読取専用のWorkerとは区別する。[create-plan.md](autoframe/prompts/create-plan.md)は補助的な依頼例であり、本節だけでも作成できる。runnerが実行する段階には含めない。
 
-```powershell
-# 通常実行
-pwsh -NoProfile -File ./autoframe/run.ps1 -ProjectRoot .
+次をコピーし、山括弧の部分を置き換えて依頼する。詳細な分割や検証方法は、対象プロジェクトの確認後にCodexが具体化する。
 
-# 上限を引き上げて同じ実行を再開
-pwsh -NoProfile -File ./autoframe/run.ps1 -ProjectRoot . -Resume -MaxPhaseAttempts 150 -MaxRunMinutes 720
+```text
+autoframe.mdの§2に従い、
+<プロジェクトのパス>/PLAN.mdを作成してください。
+
+目的: <実装・検証・改善など、達成したいこと>
+対象: <機能、フォルダー、参照する仕様書など>
+完成条件: <どの状態になれば終了できるか>
+対象外・制約: <変更しないもの、互換性、禁止する操作など>
+
+既存の構成・検証手順を確認し、判断できる詳細は具体化してください。
+目的や必須条件を左右する不足だけ質問してください。
+PLAN.mdだけを作成し、製品の修正や自動実行は始めないでください。
 ```
 
-### 7.3. 遷移の擬似コード
+例えば、上の目的・条件は次のように記載できる。
 
-次はWork後の分岐だけを示すPowerShellの擬似コードである。保存、結果検査、停止処理は§5・§6に従って別途実装する。
-
-```powershell
-# Workの有効な実行報告を受理した後
-$nextPhase = 'Verify'
-
-# Verifyで状態と進捗を受理した後
-if ($stopForStagnation) {
-    $runStatus = 'Stalled'
-}
-elseif ($requiresReplan) {
-    $nextPhase = 'Plan'
-}
-elseif ($completionAuditDue) {
-    $nextPhase = 'CompletionAudit'
-}
-else {
-    $nextPhase = 'Prepare'
-}
+```text
+目的: src配下の入力検証と境界条件をレビューし、再現した不具合を修正する。
+対象: src、関連するtests、README.mdに記載された利用方法とテスト手順。
+完成条件: 対象と観点の確認記録があり、再現した不具合が解消され、
+          既存テストと必要な再現テストがすべて成功する。
+対象外・制約: 公開APIの変更、全面改修、テストの削除・無効化は行わない。
+              既存の未コミット変更を保持し、NativeAOTは実行しない。
 ```
 
-## 8. 初版の完成条件
+生成後はJSON構文、必須フィールド、一意ID、参照先、依存関係、完成条件との対応を確認する。未確認の資料・コマンドを確定事項として書かず、必須の判断が残る場合は質問する。既存PLAN.mdの更新では、依頼外の要件や安定したIDを保持する。
 
-| 観点 | 必要な確認 |
+作成・更新の対象はPLAN.mdだけとし、製品修正・テスト・本番実行を開始しない。保存先、目的・条件の要点、形式検査結果を短く報告する。利用者は目的・条件・編集範囲を確認してからrun.ps1を起動する。PLAN.mdに進捗や生成過程の長い説明を含めない。
+
+## 3. 内部計画と記録
+
+### 3.1. 配置と保存
+
+```text
+project/
+  PLAN.md
+  autoframe/
+    run.ps1 / invoke-worker.ps1
+    lib/
+    prompts/                    # 本書から生成する共通・6段階のプロンプト
+    schemas/                    # PLAN・段階結果のSchema
+    templates/PLAN.template.md
+  .autoframe/
+    lock
+    state.json                  # 現行記録への参照、実行位置、カウンタ
+    records/                    # 計画・結果・証拠の変更しない記録
+    manifests/                  # 内容ハッシュで共有するマニフェスト
+    runs/<run-id>/<attempt-id>/  # 入力参照、ログ、前後差分
+```
+
+ProjectRootを指定すれば共通配布物は外部配置できる。プロジェクト専用config.jsonは不要。
+
+状態の正本は、state.jsonから参照される内部計画・進捗・指摘・証拠とする。runnerは新しい記録を先に保存し、その後state.jsonを一時ファイルから原子的に置換する。未参照の記録は未受理であり、再開時に勝手に採用しない。PLAN.mdとの同時更新は不要となる。
+
+実行中はProjectRootを排他ロックする。記録は通常Git追跡対象外とし、参照中の証拠は削除しない。
+
+### 3.2. 内部項目と状態
+
+Planは初期項目を基に内部項目を生成する。項目は§2.2の定義に、成果物、状態、証拠参照、阻害理由・解除条件、置換先IDを加える。
+
+```text
+pending → implemented → verified
+    ↑          │           │
+    └──────────┴───────────┘ 修正・再検証待ち
+```
+
+blockedは外部待ち、supersededは置換済みを表す。置換時は元条件を継承し、依存元を置換先へ付け替える。必須項目の削除・任意化は受理しない。
+
+**in_progressは項目の状態ではなく、state.jsonの実行中試行と対象IDで表す。** Work開始時にはそれだけを保存し、PLAN.mdや項目定義を変更しない。Workはimplementedまで、Verifyだけがverifiedを提案できる。
+
+依存先は、着手時に有効な証拠を持つverifiedであることを要する。Plan後には全体完成条件ごとに必須項目が対応していなければならない。ID重複、未定義参照、循環を機械検査する。
+
+### 3.3. 指摘と履歴
+
+指摘はid、重要度、内容、解消条件、対応項目ID、open/resolved、証拠参照を持つ。Planは対応を割り当て、VerifyまたはCompletion Auditが解消を確認する。誤指摘と分かった場合も理由を記録してresolvedにする。
+
+resolved指摘、superseded項目、古い証拠の本文は履歴へ移し、現行状態には必要なID・置換先・参照だけを残す。省略は解消を意味しない。必須指摘や必要な依存先を、履歴化によって判定対象から落とさない。
+
+## 4. 実行手順
+
+### 4.1. 役割と遷移
+
+```text
+Plan → Prepare → Audit → Work → Verify
+          ↑        │                │
+          └─ 修正 ─┘                │
+          └──── 次の作業・修正 ──────┘
+
+節目・一定回数・完成候補 → Completion Audit
+  完成: Complete / 未完了: Plan
+```
+
+| 段階 | 処理 | 主なdecisionと行き先 |
+| --- | --- | --- |
+| Plan | 内部計画を差分更新。必須指摘と完成条件を項目へ対応付ける | ready→Prepare、recover→Verify |
+| Prepare | 今回の対象・範囲・手順・検証・時間配分を決める | ready→Audit、completion_candidate→全体監査 |
+| Audit | 計画を精査・修正し、修正後の計画を受理する | approved→Work、revise→Prepare |
+| Work | 作業、自己検証、残作業の記録 | reported→必ずVerify |
+| Verify | 現物と証拠を確認し、必要な検証を行う | accepted/revise→続行・修正・全体監査 |
+| Completion Audit | 全体条件、回帰、未解決の必須指摘を確認する | complete→完成検査、incomplete→Plan |
+
+Work以外はreplanでPlanへ戻せる。Workはreportedのroute_hintで再計画を提案し、部分成果もVerifyを通す。判断待ちはneeds_inputで停止できるが、未検証成果を残し、再開時に確認する。
+
+外部待ちは項目単位で記録する。独立した実行可能項目があれば続行し、なければBlockedとする。未確定Workがある間は新たなWorkを開始しない。
+
+Plan・Prepare・Auditは製品を修正しない。Verify・Completion Auditは検証のみ行い、修正はWorkへ戻す。各段階は自分の証拠保存先を使える。検証による書き込みはgenerated_scope内に限る。
+
+### 4.2. 一括実行とAudit
+
+1回のWorkに独立項目を最大3件まとめられる。開始時点で全依存が満たされ、項目間の依存・変更範囲・共有出力に競合がなく、時間内に検証と記録まで行えることをPrepareで確認する。項目ごとに結果を返し、一部失敗を全件成功にしない。上限は目標件数ではない。
+
+Auditは原則毎回行う。例外は、同じPLANハッシュ・対象項目の定義・実行計画・入力署名に対する受理済みAuditの再利用だけとする。「軽微そう」という自己申告では省略しない。初回と内部計画変更後は、全体の網羅性も監査する。
+
+モデルは既存の実行設定を既定とし、段階別指定を起動引数で可能にする。監査・検証モデルを一律に軽量化せず、代表的な作業で品質・時間・使用量を比較して選ぶ。
+
+### 4.3. 検証と完成
+
+Verifyは自己申告だけで完了を認めない。未実行、skip、証拠欠落を成功として扱わない。文書やレビューでは照合記録が証拠となり、コード変更やテストを一律には要求しない。
+
+Completion Auditは、必須項目と必要依存がすべてverified、新たなマイルストーン到達候補、または所定回数のWorkをVerifyまで受理した場合に行う。同一入力の監査を重複起動しない。incomplete後に同じ完成候補が出た場合はPlanへ戻し、§6.1の停滞回数に含める。
+
+Completeには、現行入力に対する全体監査の合格、全必須項目・必要依存の有効なverified、全完成条件の証拠、必須指摘の解消、未確定Workがないことを必要とする。未着手の任意項目は残せる。
+
+runnerは構造と整合性、監査Workerは証拠の意味を確認する。正常終了やSchema合格だけでは完成にならない。
+
+## 5. 差分・証拠・再開
+
+### 5.1. マニフェスト
+
+マニフェストは、対象範囲の定義と、正規化・ソートした相対パス、存在・種別、ファイル内容のSHA-256を記録した一覧とする。ファイルの追加・削除も比較する。mtimeやサイズだけで一致と判定しない。
+
+| 用途 | 対象・保存時点 |
 | --- | --- |
-| 可搬性 | PLAN.mdだけを変え、実装・レビューなど異なる用途を処理できる |
-| 遷移 | 最終Work、差し戻し、全体監査、部分成果の回復経路が正しく動く |
-| 整合性 | 不正な依存、古い結果、権限外更新、必須指摘の脱落を拒否する |
-| 再開 | 更新途中の中断、結果欠落、PLAN.md競合でも部分成果を保持する |
-| 完成判定 | 証拠不足、未確定Work、要件の緩和で完成にならない |
-| 停止 | 上限、外部待ち、判断待ち、停滞、実行エラーを区別する |
+| 編集記録 | work_scopeとgenerated_scope。Work直前と終了後に保存 |
+| 検証入力 | input_scopeとwork_scopeとreferences。生成物を除き、検証前後に保存 |
+| 成果物 | 完了条件が要求する出力ファイル。検証時に記録し、再利用時にも照合 |
+| 保護対象 | PLAN.md・共通配布物など。各段階の前後で変更を確認 |
 
-疑似Workerを使う一時プロジェクトで上記を検証する。二重起動、証拠失効、独立項目への切替、監査の重複防止、計画だけの反復上限も含める。
+範囲はファイルパスとglobで指定する。省略時のinput_scopeは、Git内部・autoframe内部記録・generated_scopeを除くプロジェクト全体。共通配布物は別途その版・ハッシュを記録する。input_scope/work_scopeの広いglobとgenerated_scopeの重複は、生成物部分のみを除外する。明示した入力ファイルやreferencesを除外する指定は拒否する。
 
-実Codex CLIとの短い疎通試験は別途行い、引数・入出力・作業ディレクトリ・停止処理を確認する。既定の試験でNativeAOTは実行しない。
+同じ範囲定義で再列挙し、空の一致集合も記録する。参照資料の欠落、読取失敗、列挙・ハッシュ中の変更を検出した場合は、完全な記録として扱わない。範囲外へ到達するリンクは拒否する。
 
-CLI接続実装時の参照: [公式の非対話実行ドキュメント](https://learn.chatgpt.com/docs/non-interactive-mode)。具体的なCLIフラグは実装時に利用版で確認する。
+**前後比較で分かるのは、対象範囲の保存時点間の差分である。** 途中で変更して元に戻した操作、変更者、範囲外の操作までは確定できない。差分検査はOSの書き込み制限を代替しない。
+
+### 5.2. 証拠の再利用
+
+検証記録に、手順、期待結果、実結果、ログ参照と次の署名を結び付ける。
+
+```text
+入力署名 = SHA-256(
+  PLAN.md全体のハッシュ
+  + 対象の条件・検証手順のハッシュ
+  + 検証入力マニフェストのハッシュ
+  + 環境識別結果・共通配布物のハッシュ
+)
+```
+
+結合には版付きの正規化JSONなど一意な形式を使う。署名一致、ログ・必要な成果物のハッシュ一致、前回のVerify受理をすべて満たす場合だけ再利用する。generated_scope内でも、完成条件が要求する出力は成果物として照合する。環境識別の失敗・比較不能、未記録の依存に気付いた場合は再利用しない。
+
+検証前後で入力が一致しなければ、その証拠を受理しない。Workが変更した場合はWork後の入力に対して検証する。全体監査から完成受理までにも署名を再確認する。
+
+初版は広い範囲を比較するため、無関係な変更でも再検証が起き得る。署名は宣言された範囲の一致を示すもので、入力定義の完全性を証明しない。Plan・Auditで範囲を点検する。
+
+署名が失効した項目は再検証待ちとし、修正が不要ならPlanからVerifyへ直接渡す。過去の調査など履歴を証明する記録は保持するが、それだけで現在のverifiedを維持しない。複数項目は同じ現行入力でまとめて再検証できる。
+
+### 5.3. 異常終了と状態保存
+
+Work開始前に編集マニフェストを確定保存し、試行ID・対象ID・開始記録をstate.jsonへ反映してからWorkerを起動する。前記録が保存できなければ起動しない。
+
+result.jsonの有無にかかわらず、Workerと子プロセスの停止確認後に後マニフェストを採取する。runnerも停止した場合は再開時に採取する。結果欠落や不正結果は未確定とし、差分だけで成功を推定しない。
+
+Resumeは同じ実行IDとカウンタを維持する。Planで未確定の差分を照合し、recoverでVerifyへ渡す。検証で受理するか残作業として差し戻すまで、新たなWorkを始めない。プロセス停止や前後記録を確認できなければ、理由を保存して停止する。
+
+内部記録なしでも新規実行を開始できるが、以前の完了状態は引き継がない。既存成果物と未コミット変更を保持し、自動reset・clean・stash・commit・pushは行わない。
+
+### 5.4. PLAN.mdの変更
+
+PLAN.mdは停止中の編集を基本とする。ただし、読み取り専用でも実行中の外部編集は起こるため、各段階の開始・受理時に全体ハッシュを比較する。変更されたら古い結果を現行計画へ適用せずPlanへ戻す。変更済み成果物は未確定として確認する。
+
+ユーザーの変更を新しい要件として取り込み、内部計画との対応・証拠を再評価する。project_idが変わった場合は新規実行を必要とする。PLAN.mdへの書き戻し、revision更新、2ファイルの同時更新は行わない。
+
+## 6. 停止と文書量の制御
+
+### 6.1. 停滞・上限
+
+進捗は実装・検証・原因特定など、Verifyが受理した具体的な前進である。次のカウンタを別々に保持し、再開時に同じ受理結果を二重加算しない。
+
+| カウンタ | 加算・リセット | 動作 |
+| --- | --- | --- |
+| NoProgressWorks | WorkとVerifyを受理して前進なしなら加算。前進ありで0 | 2回でPlan、4回でStalled |
+| WorklessPlanReturns | 前回のPlan入場以降にWork開始がないまま、自動遷移でPlanへ戻るたび加算。Work開始で0 | 3回でStalled |
+| AuditRevisions | Work開始までのAudit差し戻しを加算。Work開始で0 | 2回でPlan |
+
+初回・ResumeによるPlan入場自体はWorklessPlanReturnsに加算しないが、保存済み値は維持する。項目IDや実行計画を変えても回数をリセットしない。Work開始だけではNoProgressWorksはリセットされない。
+
+停滞判定を回数上限より先に行う。Stalledは上限を引き上げてResumeしても解除しない。原因を修正したうえで明示的にResetStallCountersを指定し、理由を記録する。通常のResumeやPLAN.mdの編集だけではカウンタを消さない。
+
+ResetStallCountersはResumeと空でないResetReasonを必要とする。停滞用の3カウンタだけを解除し、累計時間・総試行数は維持する。
+
+起動引数と時間制限は§7に定める。保存余裕を確保できなければ次を起動せず、検証前に止まった場合は再開後にVerifyを行う。
+
+### 6.2. 実行状態
+
+| 状態 | 終了コード | 意味 |
+| --- | --- | --- |
+| Complete | 0 | 全体の完成を受理 |
+| Paused | 2 | 時間・回数上限、ユーザー中断、段階タイムアウト |
+| Blocked | 3 | 独立した実行可能項目がなく外部待ち |
+| NeedsInput | 4 | 要件変更などの判断待ち |
+| Stalled | 5 | 作業または計画の反復が停滞 |
+| Error | 6 | 起動、CLI、形式、保存、整合性などの異常 |
+
+実行中はRunningとする。Pausedは再開可能な保存状態を示し、再開すれば必ず進むという意味ではない。エラーは自動再試行しない。強制終了などでコードを返せなくても完成扱いしない。
+
+### 6.3. 簡潔な文書とプロンプト
+
+**PLAN.md、内部計画、実行計画、報告、更新案は、判定に必要な正確性を保ち、最小限の内容にする。** 共通プロンプトと全段階のプロンプトに、この規則を適用する。
+
+| 文書 | 記載する内容 |
+| --- | --- |
+| PLAN.md | ユーザーの定義だけ。進捗・履歴・他文書の全文を含めない |
+| 実行計画 | 対象ID、差分、範囲、手順、検証、時間配分 |
+| 実行報告 | 項目別の結果、証拠参照、未実行、阻害要因、次の操作 |
+| 更新案 | 基準の状態版と、変更するID・フィールドだけ |
+| 監査結果 | 判定、未解決の指摘、解消条件。問題なしの長い説明は不要 |
+
+定義済み条件はIDで参照し、意味を変更しない。要約は原則5箇条以内とし、ログ・コード・過去説明を転載しない。正確性に必要なら長さの目安を超えてよい。未解決条件や失敗を削って短くしてはならない。
+
+runnerはPLAN.mdの同じ写しを参照で共有し、本文を複数の引継ぎ文書へ複製しない。Workerには対象項目、必要な依存・未解決指摘、最新差分、証拠への参照を渡す。履歴本文は必要時だけ読む。共通マニフェストもハッシュで共有する。
+
+### 6.4. 生成するプロンプトの共通規則
+
+以下を、すべてのWorkerに渡す共通指示として生成する。段階別プロンプトには§4の目的・許可操作と、その段階の出力Schemaを追加する。
+
+| 観点 | 必ず含める指示 |
+| --- | --- |
+| 役割・権限 | 指定された段階だけを担当し、次のWorkerを起動しない。上位の指示と権限制約を守る |
+| 入力 | PLAN.mdは読取専用。現行の内部計画・依存・未解決指摘・受理済み証拠を使い、履歴を現行計画と混同しない。不足は必要な記録を参照し、推測で補わない |
+| 編集 | 段階ごとの許可範囲と自分の証拠保存先だけに書き込み、既存の無関係な変更を保持する |
+| 条件・指摘 | 必須条件・指摘を削除、任意化、緩和して完了にしない。要件変更が必要なら具体案とneeds_inputを返す |
+| 作業・検証 | Workは項目別に実施範囲と結果を報告し、verifiedを付けない。一部成功、未実行、skip、証拠欠落を全件成功にしない。文書・レビューでは適切な照合記録を使う |
+| 証拠・進捗 | 再利用は§5.2の署名確認に従う。未記録の依存や環境不明に気付けば再利用不可と報告する。進捗には具体的な前進と根拠を示し、計画の言い換えを進捗としない |
+| 引継ぎ | 締切前に部分成果、未検証事項、阻害要因、次の操作を保存する。記述は§6.3に従って簡潔にする |
+| 出力 | 指定Schemaに従い、入力の識別子・ハッシュ・状態版に対応する結果を返す。段階で許可されたdecision・更新だけを用い、遷移の希望を自然文だけで伝えない |
+
+共通指示は生成時に独立ファイルへまとめても、各段階へ組み込んでもよい。どちらの場合も、runnerが各Workerへ必要な指示を渡すことを検証する。本書全体を毎回プロンプトへ転載せず、上記の共通指示と段階に必要な定義を抽出する。
+
+## 7. run.ps1の仕様
+
+### 7.1. 起動引数
+
+PowerShell 7.4以降のpwshで実行する。引数名・型・以下の動作を初版の公開仕様とする。未実装のため、起動例は現時点では実行できない。
+
+| 引数 | 型 | 新規実行の既定値 | 動作・制約 |
+| --- | --- | --- | --- |
+| ProjectRoot | string | 呼出元の現在のフォルダー | 既存のプロジェクトルート。PLAN.mdをここから読む |
+| MaxRunMinutes | int | 480 | 再開前を含む累計稼働時間の上限。分単位 |
+| Resume | switch | false | 保存済みの実行を再開 |
+| NewRun | switch | false | 保存済み状態があっても、明示的に別の実行を開始 |
+| MaxPhaseAttempts | int | 100 | Worker起動試行の累計上限。起動失敗も1回に数える |
+| PhaseTimeoutMinutes | int | 60 | 各Workerの起動から終了までの上限 |
+| SaveReserveMinutes | int | 5 | 各Workerの締切前に確保する引継ぎ時間 |
+| StopTimeoutSeconds | int | 60 | 上限・中断時のプロセス停止と記録保存の猶予 |
+| MaxTasksPerWork | int | 3 | 1回のWorkの項目数上限。1〜3 |
+| CompletionAuditInterval | int | 3 | 全体監査の間隔。Verifyまで受理したWork回数 |
+| CodexCommand | string | codex | コマンド名またはCLIランチャーのパス。追加引数を含めない |
+| PhaseModels | hashtable | 空 | 段階名とモデルIDの対応。未指定の段階はCLI設定を使用 |
+| ResetStallCounters | switch | false | Resume時に停滞カウンタだけを解除 |
+| ResetReason | string | 未指定 | カウンタ解除の理由。解除時は空文字不可 |
+
+数値は正、SaveReserveMinutesはPhaseTimeoutMinutes未満とする。0や負数による無制限実行は設けない。ResumeとNewRunは併用不可。ResetStallCountersはResumeとResetReasonを必要とし、ResetReasonだけの指定も拒否する。
+
+PhaseModelsのキーはPlan、Prepare、Audit、Work、Verify、CompletionAuditだけを許容し、値は空でないモデルIDとする。明示指定した表は保存済みの表を置き換える。hashtableを渡す場合はPowerShell内からスクリプトを直接呼ぶ。JSON文字列への暗黙変換は行わない。
+
+### 7.2. ProjectRootと起動前検査
+
+ProjectRootの相対パスは呼出元の現在のフォルダーから解決し、正規化した絶対パスを記録する。PLAN.mdを上位フォルダーから探索したり、存在しないルートを作成したりしない。
+
+Worker、検証コマンド、environment_checksの作業ディレクトリはProjectRootとする。共通配布物はrun.ps1の所在から解決する。CodexCommandのコマンド名はPATHから、相対パスは呼出元のフォルダーから解決する。空白を含むパスを1つの引数として扱い、CLIの起動を文字列連結やInvoke-Expressionで組み立てない。
+
+起動前に引数、PLAN.mdの形式・参照関係、必要な共通ファイル、CLIランチャー、Resume対象の内部状態の互換性、二重起動を検査する。失敗時はWorkerを起動せず、既存状態を変更せずErrorで終了する。認証や権限を自動変更せず、モデルやCLI機能が利用できなければ、そのエラーを記録して停止する。
+
+### 7.3. 新規実行とResume
+
+| 指定・保存状態 | 動作 |
+| --- | --- |
+| 指定なし、保存状態なし | 新しいrun_idでPlanから開始 |
+| 指定なし、前回Complete | 履歴を保持し、新しいrun_idでPlanから開始 |
+| 指定なし、未完了状態あり | 誤上書きを避けError。ResumeまたはNewRunを案内 |
+| Resume、保存状態あり | 同じrun_id・累計値で再開。保存状態を復旧後、Planで未確定成果を確認 |
+| Resume、状態なし・破損・非対応版 | Error。黙って新規実行に切り替えない |
+| NewRun | 旧状態と履歴を保持して、新しいrun_idと累計値で開始 |
+
+Resumeで省略した数値設定・CodexCommand・PhaseModelsは保存値を使う。明示した引数だけを上書きし、変更を記録する。ProjectRootと操作用switchは引き継がない。実装ではPSBoundParametersで「省略」と「明示」を区別する。
+
+同じ実行のProjectRootとproject_idは変更できない。NewRunでも旧Workerの停止確認を省略せず、未確定成果があれば前後記録を引き継いでPlan・Verifyで確認する。旧状態が破損している場合も保存し、部分成果を無条件に完了扱いしない。
+
+CompleteのResumeは、現在の入力と必要な証拠を再確認する。同じ完成結果を有効に再利用できれば0で終了し、変更があればPlanへ戻る。Stalledの解除は§6.1に従う。
+
+### 7.4. MaxRunMinutesと停止
+
+MaxRunMinutesは「今回追加する時間」ではなく、そのrun_idに対する累計上限である。例えば480分を使用した実行を720で再開すると、残りは約240分となる。
+
+稼働時間は、ロック取得後から終了処理までの実経過時間とする。Worker、runnerの検査・マニフェスト採取、環境確認、保存の時間を含み、停止してユーザーの再開を待つ期間は含めない。動作中は単調増加時計を使い、各段階境界と遅くとも30秒ごとに累計値・UTCの稼働時刻を保存する。
+
+強制終了で終了時刻が不明な区間は、保存済みの時刻から再開時の停止確認までを保守的に加算し、その旨を記録する。実際より長く計上する可能性があるが、不明区間を0として扱わない。
+
+Workerの締切は、全体残時間とPhaseTimeoutMinutesの短い方とする。その内側のSaveReserveMinutesを引継ぎに充てる。残時間が保存余裕以下、または起動回数が上限に達していれば新しいWorkerを起動しない。上限を使い切ったResumeも値を増やさなければPausedで終了する。
+
+締切やCtrl+Cでは新規起動を止め、対象の子プロセスを含めて停止させ、StopTimeoutSeconds以内で後マニフェストと状態の保存を試みる。正常に保存できればPaused、停止・保存を確認できなければErrorまたは未確定の実行として残す。後処理があるためMaxRunMinutesは厳密なプロセス終了時刻の保証ではない。終了コードは§6.2に従う。
+
+### 7.5. 起動例
+
+```powershell
+# 呼出元のフォルダーを対象に、新規実行（累計上限480分）
+pwsh -NoProfile -File ./autoframe/run.ps1
+
+# 別プロジェクトを2時間以内で処理
+pwsh -NoProfile -File ./autoframe/run.ps1 -ProjectRoot 'C:/Projects/Sample App' -MaxRunMinutes 120
+
+# 設定を引き継いで再開。時間を使い切っていればPausedのまま
+pwsh -NoProfile -File ./autoframe/run.ps1 -ProjectRoot . -Resume
+
+# 同じ実行の累計時間上限を720分に変更して再開
+pwsh -NoProfile -File ./autoframe/run.ps1 -ProjectRoot . -Resume -MaxRunMinutes 720
+
+# 未完了の旧実行を履歴へ残し、明示的に別の実行を開始
+pwsh -NoProfile -File ./autoframe/run.ps1 -ProjectRoot . -NewRun
+
+# 停滞原因を修正した後、停滞カウンタだけを解除
+pwsh -NoProfile -File ./autoframe/run.ps1 -ProjectRoot . -Resume -ResetStallCounters -ResetReason '完成条件の曖昧さを修正'
+```
+
+## 8. 出力と検証
+
+### 8.1. 更新案の例
+
+結果はrun_id、attempt_id、phase、PLANハッシュ、基準状態版、実行計画ハッシュを含む共通Schemaで照合する。decisionの許容値と更新可能フィールドは段階別に制限する。次はWork結果の一部である。
+
+```json
+{
+  "decision": "reported",
+  "route_hint": "continue",
+  "summary": "T2の修正と自己検証を実施。Verify待ち。",
+  "changes": [
+    {"id": "T2", "set": {"status": "implemented", "evidence": ["E12"]}}
+  ],
+  "remaining": []
+}
+```
+
+省略したIDは変更しない。全文置換や自然文からの状態推測を行わず、Worker自身に次のWorkerを起動させない。
+
+### 8.2. 初版の完成条件
+
+疑似Workerを使う一時プロジェクトで、次を確認する。
+
+- PLAN.mdだけで用途を切り替えられ、runnerからの書き戻しがない。
+- 最終Work、独立3項目、一部失敗、未確定成果の検証が正しく遷移する。
+- Workなしの再計画ループがStalledになり、通常のResumeで回避できない。
+- 強制終了、ファイルの追加・削除、読取失敗、PLAN.md競合を復旧時に扱える。
+- 署名変更・環境不明・証拠欠落で再利用せず、必要な再検証へ進む。
+- 指摘・項目の履歴化後も、必須条件・依存・証拠を失わない。
+- 重複監査を防ぎ、共通プロンプトと必要最小限の引継ぎを各段階へ渡せる。
+- 引数の既定値・Resume時の継承・明示上書き、累計時間、上限到達、NewRun、空白を含むProjectRootを扱える。
+
+実Codex CLIの引数・入出力・停止処理は短い疎通試験で別途確認する。既定の試験でNativeAOTは実行しない。性能はWorker起動回数だけでなく、実作業時間、総時間、使用量、差し戻し・検証漏れを測定する。
+
+CLI接続時の参照: [公式の非対話実行ドキュメント](https://learn.chatgpt.com/docs/non-interactive-mode)。具体的なフラグは利用版で確認する。
