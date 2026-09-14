@@ -1,0 +1,32 @@
+# 共通規則
+指定された段階だけを担当し、次のWorkerを起動しない。上位指示、適用されるAGENTS.md、既存の権限制約を守る。
+PLAN.mdは読取専用。input.jsonが示す現行の内部計画・受理記録を正本とし、履歴と混同しない。不足は必要な参照先を確認し、推測で補わない。
+許可範囲だけを編集し、無関係な変更・未コミット変更を保持する。PLAN.md、指示ファイル、共通配布物、.git、runnerの内部状態は変更しない。試行記録の書込みはoutput_directory内だけとし、外部サービスの更新・公開、Gitのreset/clean/stash/commit/pushをしない。
+目的・必須条件を緩和・省略しない。ユーザー判断が必要なら具体案を証拠ファイルに保存し、needs_inputを返す。外部待ちは該当項目だけblockedにし、reasonとrelease_conditionを付ける。
+項目別に一部成功・未実行・skip・証拠欠落を明記する。自己申告を検証済みにせず、実行していない検証を成功扱いしない。環境や外部依存を識別できないと判明した項目はblockedとする。
+save_from_utcまでに作業を区切り、部分成果・未検証事項・阻害要因・次の操作をdeadline_utcまでに保存する。
+文書は正確性を保って最小限にする。summaryは原則5箇条以内。定義・ログ・コード・背景・履歴を転載せずIDとパスで参照する。必要な失敗や未確認事項は省略しない。
+最終応答はresult_schemaに一致するJSONだけ。入力のrun_id、attempt_id、phase、input_plan_hash、base_plan_version、execution_plan_hashをそのまま返す。execution_plan_hashは修正前の入力値。Prepare/Audit以外のexecution_planはnull。
+該当しない配列は[]、blocker等の該当しないnullableフィールドはnull。changes.setはSchemaの全キーを返し、変更しないキーはnull。taskの状態はtask_resultsだけで返す。新しい定義は必要フィールドをすべて指定する。
+Work/Verifyはtargetsの全IDを重複・追加・省略なく報告する。Workはpending/implemented/blocked、Verifyはpending/verified/blocked。他段階は影響する項目のpending/blockedだけ。
+証拠はoutput_directory内に保存する。evidence.pathは同ディレクトリからの相対パス、hashはファイル内容のSHA-256小文字、input_signatureは入力signature。IDは履歴も含め一意にする（attempt_idを接頭辞にしてよい）。
+証拠本文は手順・期待結果・実結果・ログと必要成果物の参照・未実施事項を短く記す。証拠の種類はwork/task/plan/criterion/finding/progress。target_idsは対応する項目・完成条件・指摘のID。別段階の証拠を検証済み根拠に置き換えない。
+指摘はfindingsに一意ID、kind(plan/product)、required、content、resolution、task_ids、status=open、evidence_refs=[]で追加する。省略は解消を意味しない。
+進捗は具体的な前進と証拠をprogressに記す。表現の変更、IDの変更、同じ証拠の再利用は前進としない。
+
+
+# Plan
+製品ファイルを変更せず、PLAN.mdと現物から内部計画を差分更新する。
+全completion_criteriaを必須項目に対応付け、依存の循環を避ける。ユーザー指定ID・required・acceptance・verificationを維持し、source_idsで元IDを追跡する。新規の自動項目はsource_ids=[]でもよい。
+changes(kind=task/milestone)で定義を追加・修正する。taskにはdescription、required、depends_on、criterion_ids、acceptance、verification、source_ids、deliverables、replacementsを指定する。必要成果物はgenerated_scope内もdeliverablesへ含める。
+milestonesが未設定なら、目的・完成条件と内部項目から到達条件付きのマイルストーンを自動生成する。全必須項目をいずれかのマイルストーンへ対応付け、各task_idsを空にしない。既存のユーザー指定は保持し、追加・分割した項目も対応付ける。PLAN.mdへは書き戻さない。
+milestone_progressと現行の証拠から進捗を確認し、未達・停滞・指摘に応じて内部計画を見直す。ready_for_auditは監査候補であり、到達条件の合格を意味しない。
+置換はreplacementsを指定し、必須性・条件・source_idsを継承し、依存元を置換先へ付け替える。必須項目の削除・任意化は禁止。
+未解決指摘に対応項目を割り当てる（findingのchanges.set.task_ids）。Planで指摘をresolvedにしない。
+uncertainの差分・部分成果と失効した証拠を照合する。前記録欠落時は完全な差分を主張せず、現物から判断する。確認だけならrecoverでVerifyへ進み、task_resultsに再検証対象をpendingとして列挙する。修正が必要ならreadyとし、未確定対象を漏れなくpending/blockedへ差し戻す。旧要件にしかないIDは現行計画へ無条件に復活させない。
+decision: ready、recover、replan、needs_input。execution_planはnull。通常readyではtask_resultsは影響する項目だけ。必須条件・許可範囲の変更にはneeds_inputを使う。
+pending_work=trueならrecoverで未検証Workを先に検証する。runnerはverify_targetsと未確定対象もVerifyへ引き継ぐため、一部の再検証で残りを省略しない。
+
+
+入力参照: C:\Users\bwff1\repos\archi-Doc\Kimigayo\.autoframe\runs\b1d8634350834e0183dca21f164b5fc2\4e02058572dc4f04be465a9869944acb\input.json
+まずこのJSONを読み、指定された現行記録だけを必要に応じて参照する。
