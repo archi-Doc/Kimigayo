@@ -19,7 +19,7 @@ internal sealed partial class BodyLowering
 
     private static bool IsScalar(BoundType? type) => ScalarTypes.Supports(type);
 
-    private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => value.Kind switch
+    private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => FloatingTypes.Supports(type) ? ArithmeticCheckKind.None : value.Kind switch
     {
         OwnershipValueKind.Convert when conversion.Checked => ArithmeticCheckKind.Conversion,
         OwnershipValueKind.Binary when value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan => ArithmeticCheckKind.Shift,
@@ -55,7 +55,7 @@ internal sealed partial class BodyLowering
         id = Definition(body, id);
         return body.Values[id].Kind switch
         {
-            OwnershipValueKind.Constant => new(EmissionOperandKind.Integer, body.Values[id].Constant),
+            OwnershipValueKind.Constant => new(ReferenceEquals(ValueType(body, id), BoundType.F32) ? EmissionOperandKind.Float32 : ReferenceEquals(ValueType(body, id), BoundType.F64) ? EmissionOperandKind.Float64 : EmissionOperandKind.Integer, body.Values[id].Constant),
             OwnershipValueKind.Parameter => new(EmissionOperandKind.Argument, body.Values[id].Constant),
             _ => new(EmissionOperandKind.Value, id),
         };
@@ -500,7 +500,17 @@ internal sealed partial class BodyLowering
 
         var first = Input(body, id, 0);
         var operandType = ValueType(body, first)!;
+        if (FloatingTypes.Supports(operandType))
+        {
+            return this.LowerFloating(body, function, id, type!, operandType, out failure);
+        }
+
         var integer = ScalarTypes.Width(operandType) != 0;
+        if (ScalarTypes.Width(operandType) == 128 && value.Operator is KotoKind.Slash or KotoKind.Percent)
+        {
+            return Fail("The initial profile does not supply 128-bit division or remainder.", out failure);
+        }
+
         var signed = integer && ScalarTypes.Signed(operandType);
         var op = value.Operator switch
         {
@@ -518,12 +528,14 @@ internal sealed partial class BodyLowering
             return Fail("Unsupported scalar operator.", out failure);
         }
 
-        if (!IsScalar(operandType) || (!integer && value.Operator is not (KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.Not)))
+        var comparison = op is "eq" or "ne" or "slt" or "sle" or "sgt" or "sge" or "ult" or "ule" or "ugt" or "uge";
+        var character = ReferenceEquals(operandType, BoundType.Char);
+        if (!IsScalar(operandType) ||
+            (character ? !comparison : !integer && value.Operator is not (KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.Not)))
         {
             return Fail("Unsupported scalar operand Type.", out failure);
         }
 
-        var comparison = op is "eq" or "ne" or "slt" or "sle" or "sgt" or "sge" or "ult" or "ule" or "ugt" or "uge";
         var shift = value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan;
         if (!ReferenceEquals(type, comparison ? BoundType.Boolean : operandType) ||
             (value.Kind == OwnershipValueKind.Binary && (shift

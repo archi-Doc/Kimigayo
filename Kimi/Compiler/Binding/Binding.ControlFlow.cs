@@ -41,7 +41,7 @@ public sealed partial class Binding
         return null;
     }
 
-    private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected)
+    private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected, bool deferEvidence = false)
     {
         if (!KotoHelper.IsValueContext(target) || target is WhileKoto or ForKoto)
         {
@@ -59,15 +59,20 @@ public sealed partial class Binding
         context.Sources.Clear();
         context.Evidence.Clear();
         this.resultContexts[target] = context;
-        if (expected is null)
+        if (expected is null && !deferEvidence)
         {
-            this.FindResultEvidence(target, scope, context);
-            context.Expected = SelectCommonType(context.Evidence, out var conflict);
-            context.Invalid |= conflict;
-            context.Evidence.Clear();
+            this.InferResultExpected(target, scope, context);
         }
 
         return context;
+    }
+
+    private void InferResultExpected(Koto target, BindingScope scope, ResultContext context)
+    {
+        this.FindResultEvidence(target, scope, context);
+        context.Expected = SelectCommonType(context.Evidence, out var conflict);
+        context.Invalid |= conflict;
+        context.Evidence.Clear();
     }
 
     private BoundType? ResultEvidence(Koto source, BindingScope scope)
@@ -141,7 +146,8 @@ public sealed partial class Binding
             case MatchKoto match:
                 for (var i = 0; i < match.Arms.Count; i++)
                 {
-                    this.BodyEvidence(match.Arms[i].Body, scope, context);
+                    var arm = match.Arms[i];
+                    this.BodyEvidence(arm.Body, this.NodeScope(arm.Pattern, scope), context);
                 }
 
                 break;

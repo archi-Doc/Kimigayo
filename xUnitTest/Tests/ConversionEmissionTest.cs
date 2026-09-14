@@ -15,7 +15,7 @@ public class ConversionEmissionTest
 
     public static IEnumerable<object[]> Pairs()
     {
-        string[] types = ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "isize", "usize"];
+        string[] types = ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "isize", "usize", "i128", "u128"];
         foreach (var source in types)
         {
             foreach (var target in types)
@@ -106,7 +106,6 @@ public class ConversionEmissionTest
     [InlineData("let x = 1\nx@ref", "Unsupported")]
     [InlineData("let x = 1\nx@owner", "Unsupported")]
     [InlineData("3.9@i32", "Unsupported")]
-    [InlineData("let x = 1\nx@i128", "Unsupported")]
     [InlineData("let flag = true\nflag@bool", "Unsupported")]
     [InlineData("let s = \"x\"\ns@string", "Unsupported")]
     [InlineData("let x = 1\nx@owner/u8", "Unsupported")]

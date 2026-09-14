@@ -60,9 +60,16 @@ internal enum EmissionOperandKind : byte
 
     /// <summary>An integer of the parameter's ABI Type.</summary>
     Integer,
+
+    /// <summary>Exact IEEE 754 bits in the selected format.</summary>
+    Float32,
+    Float64,
 }
 
-internal readonly record struct EmissionOperand(EmissionOperandKind Kind, long Value);
+// Internal managed storage only: 8-byte packing avoids 16-byte tail padding for the tag.
+// This does not change the language TypeLayout or the emitted native ABI.
+[StructLayout(LayoutKind.Sequential, Pack = 8)]
+internal readonly record struct EmissionOperand(EmissionOperandKind Kind, Int128 Value);
 
 internal readonly record struct EmissionSlot(int Place, ValueLowering Value);
 

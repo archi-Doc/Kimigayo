@@ -87,42 +87,7 @@ public sealed partial class Binding
     }
 
     private static bool FitsFloat(ReadOnlySpan<char> source, BoundType type)
-    {
-        char[]? rented = null;
-        try
-        {
-            if (source.Contains('_'))
-            {
-                rented = System.Buffers.ArrayPool<char>.Shared.Rent(source.Length);
-                var length = 0;
-                for (var i = 0; i < source.Length; i++)
-                {
-                    if (source[i] != '_')
-                    {
-                        rented[length++] = source[i];
-                    }
-                }
-
-                source = rented.AsSpan(0, length);
-            }
-
-            const System.Globalization.NumberStyles style = System.Globalization.NumberStyles.Float;
-            var culture = System.Globalization.CultureInfo.InvariantCulture;
-            return type.Name switch
-            {
-                "f32" => float.TryParse(source, style, culture, out var value) && float.IsFinite(value),
-                "f64" => double.TryParse(source, style, culture, out var value) && double.IsFinite(value),
-                _ => false,
-            };
-        }
-        finally
-        {
-            if (rented is not null)
-            {
-                System.Buffers.ArrayPool<char>.Shared.Return(rented);
-            }
-        }
-    }
+        => FloatingTypes.TryLiteral(source, type, false, out _);
 
     private bool FitsInputLiteral(Koto node, BoundType type)
     {
@@ -743,6 +708,12 @@ public sealed partial class Binding
 
         if (left.IsNumeric)
         {
+            // The initial native profile excludes wide division, including unreachable bodies.
+            if (ScalarTypes.Width(left, this.compilation.PointerWidth) == 128 && operation is KotoKind.Slash or KotoKind.Percent)
+            {
+                return Fail(binary, BindingFailure.Unsupported, true);
+            }
+
             // % and bitwise operators accept integers only, including their compound forms (SPEC 13.3).
             return operation is KotoKind.Percent or KotoKind.Ampersand or KotoKind.Caret or KotoKind.Bar && !left.IsInteger
                 ? Fail(binary, BindingFailure.TypeMismatch)

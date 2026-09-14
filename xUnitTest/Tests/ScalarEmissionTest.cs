@@ -37,19 +37,17 @@ public class ScalarEmissionTest
         => EmitFixture(name, source, stdout, exit);
 
     [Theory]
-    [InlineData("let x = " + MinimalEmissionTest.UnsupportedExpression)]
-    [InlineData("let x = if true => " + MinimalEmissionTest.UnsupportedExpression + " else => 2.0")]
-    [InlineData(MinimalEmissionTest.UnsupportedExpression)]
-    [InlineData("if false\n    " + MinimalEmissionTest.UnsupportedExpression)]
-    [InlineData("while true\n    exit\n    " + MinimalEmissionTest.UnsupportedExpression)]
-    [InlineData("while true\n    continue\n    " + MinimalEmissionTest.UnsupportedExpression)]
-    [InlineData("if true and ((" + MinimalEmissionTest.UnsupportedExpression + ") == 0.0) => writeLine(\"bad\")")]
-    public void UnsupportedOperationsNeverWriteIr(string source)
+    [InlineData("let x = " + MinimalEmissionTest.FloatExpression)]
+    [InlineData("let x = if true => " + MinimalEmissionTest.FloatExpression + " else => 2.0")]
+    [InlineData(MinimalEmissionTest.FloatExpression)]
+    [InlineData("if false\n    " + MinimalEmissionTest.FloatExpression)]
+    [InlineData("while true\n    exit\n    " + MinimalEmissionTest.FloatExpression)]
+    [InlineData("while true\n    continue\n    " + MinimalEmissionTest.FloatExpression)]
+    [InlineData("if true and ((" + MinimalEmissionTest.FloatExpression + ") == 0.0) => writeLine(\"bad\")")]
+    public void FloatingOperationsProduceCheckedIr(string source, bool emitted = true)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Equal(string.Empty, writer.ToString());
+        FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
     [Fact]

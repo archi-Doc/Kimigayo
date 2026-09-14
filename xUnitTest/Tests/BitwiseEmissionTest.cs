@@ -109,20 +109,18 @@ public class BitwiseEmissionTest
     }
 
     [Theory]
-    [InlineData(MinimalEmissionTest.UnsupportedExpression, true)]
-    [InlineData("if false => " + MinimalEmissionTest.UnsupportedExpression, true)]
+    [InlineData(MinimalEmissionTest.FloatExpression, true, true)]
+    [InlineData("if false => " + MinimalEmissionTest.FloatExpression, true, true)]
     [InlineData("if false => true & false", false)]
     [InlineData("true | false", false)]
     [InlineData("true ^ false", false)]
     [InlineData("1 << true", false)]
     [InlineData("1.0 >> 1", false)]
-    public void UnsupportedTypesNeverProduceIr(string source, bool bound)
+    public void FloatingArithmeticAndInvalidBitwiseUsesStayDistinct(string source, bool bound, bool emitted = false)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(bound, c.Binding.Result.IsComplete);
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
     [Theory]

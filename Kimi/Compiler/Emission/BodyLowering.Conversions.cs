@@ -10,20 +10,25 @@ internal sealed partial class BodyLowering
 
     private static ConversionPlan PlanConversion(BoundType source, BoundType target, int pointerWidth)
     {
+        if (FloatingTypes.Supports(source))
+        {
+            return new(ReferenceEquals(source, target) ? null : "fpext", null, null, 0, 0);
+        }
+
         var sourceWidth = ScalarTypes.Width(source, pointerWidth);
         var targetWidth = ScalarTypes.Width(target, pointerWidth);
         var sourceSigned = ScalarTypes.Signed(source);
         var targetSigned = ScalarTypes.Signed(target);
         var sourceMin = sourceSigned ? -((Int128)1 << (sourceWidth - 1)) : 0;
         var targetMin = targetSigned ? -((Int128)1 << (targetWidth - 1)) : 0;
-        var sourceMax = ((Int128)1 << (sourceWidth - (sourceSigned ? 1 : 0))) - 1;
-        var targetMax = ((Int128)1 << (targetWidth - (targetSigned ? 1 : 0))) - 1;
+        var sourceMax = UInt128.MaxValue >> (128 - sourceWidth + (sourceSigned ? 1 : 0));
+        var targetMax = UInt128.MaxValue >> (128 - targetWidth + (targetSigned ? 1 : 0));
         return new(
             sourceWidth == targetWidth ? null : sourceWidth > targetWidth ? "trunc" : sourceSigned ? "sext" : "zext",
             sourceMin < targetMin ? "slt" : null,
             sourceMax > targetMax ? sourceSigned ? "sgt" : "ugt" : null,
-            ScalarTypes.Normalize(unchecked((long)targetMin), sourceWidth),
-            ScalarTypes.Normalize(unchecked((long)targetMax), sourceWidth));
+            ScalarTypes.Normalize(targetMin, sourceWidth),
+            ScalarTypes.Normalize(unchecked((Int128)targetMax), sourceWidth));
     }
 
     // Semantic aliases remain separate: a conversion's Type and dominance identity
@@ -80,7 +85,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private readonly record struct ConversionPlan(string? Operator, string? LowerPredicate, string? UpperPredicate, long Lower, long Upper)
+    private readonly record struct ConversionPlan(string? Operator, string? LowerPredicate, string? UpperPredicate, Int128 Lower, Int128 Upper)
     {
         internal bool Checked => this.LowerPredicate is not null || this.UpperPredicate is not null;
     }

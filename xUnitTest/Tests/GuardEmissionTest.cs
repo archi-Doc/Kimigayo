@@ -42,19 +42,17 @@ public class GuardEmissionTest
 
     [Theory]
     [InlineData("match 1\n    var n if (check: do\n        n = 2\n        exit to check: true\n    ) => ()\n    _ => ()")]
-    [InlineData("match 1.0\n    _ if true => ()\n    _ => ()")]
+    [InlineData("match 1.0\n    _ if true => ()\n    _ => ()", true)]
     [InlineData("match 1\n    _ if true => ()")]
-    [InlineData("match 1\n    _ => ()\n    _ if 1.0 + 2.0 > 0.0 => ()")]
+    [InlineData("match 1\n    _ => ()\n    _ if 1.0 + 2.0 > 0.0 => ()", true)]
     [InlineData("let result = work: match 1\n    _ if (yield to work: true) => true\n    _ => false")]
     [InlineData("match 1\n    var n if ++n == 2 => ()\n    _ => ()")]
     [InlineData("let text = \"a\"\nmatch 1\n    _ if (check: do\n        writeLine(text)\n        exit to check: false\n    ) => ()\n    _ => writeLine(text)")]
     [InlineData("let text = \"a\"\nmatch 1\n    _ if (check: do\n        writeLine(text)\n        exit to check: false\n    ) => ()\n    _ => ()\n    _ => writeLine(text)")]
-    public void RejectInvalidOrUnsupported(string source)
+    public void GuardSupportPreservesInvalidUseRejection(string source, bool emitted = false)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
     [Fact]

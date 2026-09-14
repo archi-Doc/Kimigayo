@@ -94,7 +94,10 @@ public sealed partial class Binding
             return Fail(conversion, BindingFailure.Unsupported, true);
         }
 
-        var fit = plain && target is { IsInteger: true } && literal;
+        var floatingLiteral = operand is NumberLiteralKoto { IsInteger: false } or
+            PrefixMinusKoto { Operand: NumberLiteralKoto { IsInteger: false } } or
+            PrefixPlusKoto { Operand: NumberLiteralKoto { IsInteger: false } };
+        var fit = plain && ((target is { IsInteger: true } && literal) || (target is { IsFloatingPoint: true } && floatingLiteral));
         var source = this.BindNode(conversion.Left, scope, fit ? target : null);
         if (source is null || target is null)
         {
@@ -114,6 +117,13 @@ public sealed partial class Binding
 
         if (source.IsNumeric && target.IsNumeric)
         {
+            if (source.IsFloatingPoint && target.IsFloatingPoint &&
+                (ReferenceEquals(source, target) || ReferenceEquals(source, BoundType.F32)))
+            {
+                conversion.ConversionBinding = fit ? ConversionBinding.Literal : ConversionBinding.Floating;
+                return Complete(conversion, target);
+            }
+
             if (ScalarTypes.Width(source, this.compilation.PointerWidth) == 0 || ScalarTypes.Width(target, this.compilation.PointerWidth) == 0)
             {
                 return Fail(conversion, BindingFailure.Unsupported, true);

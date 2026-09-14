@@ -202,6 +202,7 @@ public sealed record BoundType : ControlFlowType
     // Frequently requested primitives; they are the same instances as the Primitives entries.
     internal static readonly BoundType I32 = Primitives["i32"];
 
+    internal static readonly BoundType F32 = Primitives["f32"];
     internal static readonly BoundType F64 = Primitives["f64"];
 
     internal static readonly BoundType ISize = Primitives["isize"];

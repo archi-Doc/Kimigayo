@@ -106,15 +106,13 @@ public class DeferredEmissionTest
     }
 
     [Theory]
-    [InlineData("defer => " + MinimalEmissionTest.UnsupportedExpression + "\ndefer => loop => ()")]
-    [InlineData("defer => loop => ()\n" + MinimalEmissionTest.UnsupportedExpression)]
-    [InlineData("if false => defer => " + MinimalEmissionTest.UnsupportedExpression)]
-    public void UnsupportedCleanupNeverWritesIr(string source)
+    [InlineData("defer => " + MinimalEmissionTest.FloatExpression + "\ndefer => loop => ()")]
+    [InlineData("defer => loop => ()\n" + MinimalEmissionTest.FloatExpression)]
+    [InlineData("if false => defer => " + MinimalEmissionTest.FloatExpression)]
+    public void FloatingCleanupIsCheckedEvenWhenUnreachable(string source, bool emitted = true)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
     [Fact]

@@ -2,6 +2,24 @@
 
 ## 現在の自動実装引継ぎ（2026-09-14）
 
+- **段階/結果:** Plan cycle 2再開（0007-plan）、Plan Auditへ提出するready。106 ID、[x]12、必須未完了93、任意未実行1。計画承認・製品完成の認定は行わない。
+- **対象/今回の差分:** BASE-07の過去検証と、NUM-04 / NUM-04-FLOAT / NUM-04-INTEGERの範囲・依存を再照合。0006の分割と全チェック状態を維持し、計画§2.7と台帳へ再開時の差分・証拠の限界・再生成手順を保存した。新規製品完了/指摘解消なし。次2枠の正負/境界/完了条件は§14.6–14.8。
+- **保存された部分作業と外部差分:** 0006はrunnerがautoimpl/Design.mdの保護対象変更で拒否した未受理試行。原因/実行主体は確定していない。U/initial-comparison.jsonで、指定3文書は0006最終保存内容と一致、同pathとroot bin/の既知fixture5,731入力は開始時から欠落し、追加はautoimpl2/の14入力だけと確認した。保護対象を復元/移動/編集せず、追加物もpath/hashだけ照合して保持する。
+- **今回の検証:** 開始時U/capture.ps1・U/review.ps1はexit 0。前Implementationのsource/config等466入力とRelease compiler/test DLL2件のSHA-256差異0。U/validate-plan.ps1はexit 0で106一意ID、必須105 IDのACCEPT-03到達、循環/未定義/完了依存不整合0、台帳全件、git diff --check成功。03:29:25ZのU/capture.ps1 -Finalはexit 1で、本実行では編集していないautoimpl2/lib/stages.ps1の変更とcodex-loop.ps1/test-codex-loop.ps1の追加を検出した（U/first-final-observed-changes.json）。製品source/configとDLLは不変だが、作業ツリー全体の差分ゼロは主張しない。今回build/test/nativeとfixture再生成は未実行であり、5,731入力の欠落を成功扱いしない。
+- **再利用する過去検証:** S/float-convert-checks.jsonと実logはDebug/Release build各exit 0・警告0/エラー0、managed各4,123成功・失敗0・skip0。S/final-native-coverage.jsonには当時のscalar1,145/2,290 O0/O2等への5,731入力対応が保存され、Matches不一致0。過去runtime68、CLI8 scenario群、LSP基本通信は限定した証拠。今回の元コマンド・log/hash照合はU/review-summary.json。現fixtureや現toolchainでnativeを再実行した証拠ではない。
+- **次の操作/第1枠:** Plan Auditで分割の範囲・必須依存・SPEC本文との対応と編集範囲を監査する。その後、現sourceのDebug/Release managed build/testを直列実行して欠落fixtureを再生成し、S/float-convert-fixtures.jsonとhash照合してからNUM-04-FLOATへ着手。既に出力が欠落していれば退避/削除は不要。Binding.ConversionsとFloatConversionEmissionTestのf64→f32拒否期待からtyped変換/チェック/CFG/Writer/Abort理由・元source位置を接続。有限値→infinityだけAbortしNaN/±infinity/符号0/subnormal/各段roundingを保持。両構成managed、LLVM O0/O2、失敗順・破損計画・割り当てまで検証する（§14.6）。
+- **第2枠:** 第1枠の回帰/残検証を先に閉じ、NUM-04-INTEGERへ進む。整数literal→floatの先行拒否と型行列を起点に、64bitまでの10整数型↔f32/f64全40方向とexact整数literal直接roundingを実装。全20 float→整数pairのordered境界/隣接floatを検証し、成功分岐だけでfptosi/fptouiを実行する。typed128bit↔floatの8方向は禁止。一般同型取得・明示Semantics/略記・TYPE-01依存はNUM-04へ残す（§14.7）。
+- **残作業/阻害:** 必須未解消はAF-0002/0005/0006/0007/0008/0011の6件。AF-0005/0006/0008はplanned、AF-0002/0007/0011は§13.3の契約別質問/影響/解除条件でblockedを維持。数値2枠に外部待ちはない。数値検証だけ環境待ちならDEP-01内部snapshotまたはMAINT-01のLSP整理へ切替可能。LSP診断/拡張host/CI・配布全体は未完了。
+- **時間/保護:** 今回の90分上限・deadlineは04:48:25.1781003Z、04:43:25Z以後は保存用。全scalar nativeは40分程度以上を見込み、次枠は自身のdeadlineと実測件数で開始を判断する。共通runtime IRが変われば全nativeを再検証し、収まらなければ未実行として引き継ぐ。HEAD ff053be41aa4ea70ec34a0d43df63a1988bf9da7。編集は指定3文書とU配下の証拠だけ。doc/を検索/読込/参照せず、旧Design例も規範にしない。NativeAOT・CI実workflow・VS Code host・pack/公開・runner再起動は未実行。段階を跨ぐ処理は起動していない。
+
+証拠 **U**: `.codex-loop/runs/09c17562dc0a4deea6af1a09c467e069/0007-plan/`。過去の**T**は同runの`0006-plan/`（未受理）、再利用する**S**は`0005-implementation/`、その前の**E**は`0004-implementation/`。
+
+## 過去の作業記録
+
+以下は過去のautomation・仕様・製品作業の記録。旧「次の操作」やdoc採用主張を現在の根拠/権限へ引き継がない。
+
+**今回開始前に保存されていたautomation修正:** 通常のMarkdownリンクをタスク行と誤認する`Invalid plan task row`への修正と、全段階のdoc除外指示が未コミットで存在した。保存された検証記録は`automation/test-codex-loop.ps1`の42ケース成功（exit 0）、ログ`C:/Users/bwff1/AppData/Local/Temp/kimi-loop-tests-09d449f4d93147358d6dedc1248b26bf`。これは現在のPlanで実行/再検証した結果ではない。runner再起動の過去の指示は失効し、今回は起動していない。
+
 **起動引数の修正:** `--approve-for-me`と`--sandbox workspace-write`の併用で実CLIがexit 2になる不具合を修正。前者だけでworkspace-writeと自動承認レビューを選択するため、後者を削除した。以前の疑似CLIは誤って両方を要求しており、この互換性不具合を検出できていなかった。疑似CLIも併用を拒否するよう変更し、短時間の`-Smoke`検証を追加した。保存済みversion 3のエラー状態は`-Resume`で再開できる。
 
 今回の検証: `pwsh -NoProfile -File automation/test-codex-loop.ps1 -Smoke`は2シナリオ成功（exit 0）。競合引数の拒否と、エラー後に同じ実行IDでPlan / Plan Audit / Implementation / Completion Auditを通る再開を確認した。ログ: `C:\Users\bwff1\AppData\Local\Temp\kimi-loop-tests-d98833f8f5a04a3198f4991ceaf10041`。実CLIでも旧引数の競合を再現し、修正形では引数解析後のhome解決へ進むことを確認した。この検証環境ではhome解決で停止するため、実モデル実行の成功は主張しない。以下の41ケースは前回の全体検証記録であり、今回の起動互換性を保証していたものではない。

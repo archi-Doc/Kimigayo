@@ -62,6 +62,7 @@ internal static partial class LlvmModuleWriter
 
         output.Write(Runtime);
         output.Write(OverflowDeclarations);
+        WriteWideOverflowDeclarations(module, output);
         if (module.Aggregates.Count != 0)
         {
             output.Write("declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)\n");
@@ -235,6 +236,8 @@ internal static partial class LlvmModuleWriter
             {
                 case EmissionOperandKind.Value:
                 case EmissionOperandKind.Argument:
+                case EmissionOperandKind.Float32:
+                case EmissionOperandKind.Float64:
                     WriteOperand(output, operand);
                     break;
                 case EmissionOperandKind.SlotAddress:
@@ -256,10 +259,45 @@ internal static partial class LlvmModuleWriter
         output.Write(")\n");
     }
 
+    private static void WriteWideOverflowDeclarations(EmissionModule module, TextWriter output)
+    {
+        for (var i = 0; i < module.FunctionCount; i++)
+        {
+            foreach (var instruction in module.GetFunction(i).Instructions)
+            {
+                if (instruction.Check != ArithmeticCheckKind.Overflow || instruction.ScalarType != "i128")
+                {
+                    continue;
+                }
+
+                output.Write("declare { i128, i1 } @llvm.sadd.with.overflow.i128(i128, i128)\n" +
+                    "declare { i128, i1 } @llvm.ssub.with.overflow.i128(i128, i128)\n" +
+                    "declare { i128, i1 } @llvm.smul.with.overflow.i128(i128, i128)\n" +
+                    "declare { i128, i1 } @llvm.uadd.with.overflow.i128(i128, i128)\n" +
+                    "declare { i128, i1 } @llvm.usub.with.overflow.i128(i128, i128)\n" +
+                    "declare { i128, i1 } @llvm.umul.with.overflow.i128(i128, i128)\n");
+                return;
+            }
+        }
+    }
+
     // TextWriter.Write(long) formats through a temporary string; format on the stack instead.
     private static void WriteNumber(TextWriter output, long value)
     {
         Span<char> digits = stackalloc char[20];
+        value.TryFormat(digits, out var length, default, CultureInfo.InvariantCulture);
+        output.Write(digits[..length]);
+    }
+
+    private static void WriteNumber(TextWriter output, Int128 value)
+    {
+        if (value >= long.MinValue && value <= long.MaxValue)
+        {
+            WriteNumber(output, (long)value);
+            return;
+        }
+
+        Span<char> digits = stackalloc char[40];
         value.TryFormat(digits, out var length, default, CultureInfo.InvariantCulture);
         output.Write(digits[..length]);
     }

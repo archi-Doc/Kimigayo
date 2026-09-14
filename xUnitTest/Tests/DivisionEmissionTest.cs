@@ -105,16 +105,14 @@ public class DivisionEmissionTest
     }
 
     [Theory]
-    [InlineData("let x = " + MinimalEmissionTest.UnsupportedExpression)]
-    [InlineData("var x = " + MinimalEmissionTest.UnsupportedExpression)]
+    [InlineData("let x = " + MinimalEmissionTest.FloatExpression)]
+    [InlineData("var x = " + MinimalEmissionTest.FloatExpression)]
     [InlineData("if false => 1.0 / 0.0")]
-    [InlineData(MinimalEmissionTest.UnsupportedExpression)]
-    public void OtherTypesAndOperatorsStillFailBeforeWriting(string source)
+    [InlineData(MinimalEmissionTest.FloatExpression)]
+    public void FloatingArithmeticUsesItsOwnExecutionRules(string source, bool emitted = true)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
     [Theory]

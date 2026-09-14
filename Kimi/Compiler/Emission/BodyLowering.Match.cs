@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 internal sealed partial class BodyLowering
 {
     private readonly List<OwnershipEdge> executionEdges = new();
-    private readonly HashSet<long> matchNumbers = new();
+    private readonly HashSet<Int128> matchNumbers = new();
     private readonly HashSet<string> matchTexts = new(StringComparer.Ordinal);
     private int[] executionHeads = [];
     private int[] matchTests = [];
@@ -243,7 +243,7 @@ internal sealed partial class BodyLowering
                             booleanMask |= bit;
                         }
                     }
-                    else if (pattern.Literal.Kind == PatternLiteralKind.Integer && ScalarTypes.TryLiteral(pattern.MatchedType, pattern.Literal.Magnitude, pattern.Literal.Negative, this.pointerWidth, out var bits))
+                    else if (this.TryMatchNumber(pattern, out var bits))
                     {
                         duplicate = guarded ? this.matchNumbers.Contains(bits) : !this.matchNumbers.Add(bits);
                     }
@@ -521,11 +521,30 @@ internal sealed partial class BodyLowering
         }
         else if (!ReferenceEquals(type, BoundType.Boolean))
         {
-            ScalarTypes.TryLiteral(type, pattern.Literal.Magnitude, pattern.Literal.Negative, this.pointerWidth, out var bits);
+            if (!this.TryMatchNumber(pattern, out var bits))
+            {
+                return Fail("Invalid scalar pattern literal.", out failure);
+            }
+
             function.AddScalar(EmissionOpcode.Scalar, id, [this.PhysicalOperand(body, Input(body, this.subjectInitializers[operation.Place], 0)), new(EmissionOperandKind.Integer, bits)], WindowsLowering.GetValue(type)!.ComputationType, "eq", comparison: true);
         }
 
         return true;
+    }
+
+    private bool TryMatchNumber(BoundPattern pattern, out Int128 bits)
+    {
+        if (pattern.Literal.Kind == PatternLiteralKind.Character && ReferenceEquals(pattern.MatchedType, BoundType.Char) &&
+            !pattern.Literal.Negative && pattern.Literal.Magnitude <= 0x10FFFF &&
+            pattern.Source is CharLiteralKoto { Value: { } scalar } && (UInt128)scalar.Value == pattern.Literal.Magnitude)
+        {
+            bits = scalar.Value;
+            return ScalarTypes.IsCharacterValue(bits);
+        }
+
+        bits = 0;
+        return pattern.Literal.Kind == PatternLiteralKind.Integer &&
+            ScalarTypes.TryLiteral(pattern.MatchedType, pattern.Literal.Magnitude, pattern.Literal.Negative, this.pointerWidth, out bits);
     }
 
     private bool ValidateCandidateRead(OwnershipBody body, int id, out string? failure)

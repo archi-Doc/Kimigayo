@@ -21,7 +21,9 @@ $rootPath = $args[[Array]::IndexOf($args, '-C') + 1]
 $outputPath = $args[[Array]::IndexOf($args, '-o') + 1]
 $config = Get-Content (Join-Path $rootPath '.codex-loop/mock.json') -Raw | ConvertFrom-Json
 $stage = [regex]::Match($promptText, '(?m)^Stage: (.+)\r?$').Groups[1].Value.Trim()
-if (-not $promptText.Contains('doc/ 以下') -or -not $promptText.Contains('未コミット')) { exit 21 }
+if (-not $promptText.Contains('doc/ 以下は正式な仕様ではなく、検索・読込・参照・仕様統合・実装/監査の根拠から除外する。') -or
+    -not $promptText.Contains('その記述をdoc/参照の例外にしない。') -or
+    -not $promptText.Contains('未コミット')) { exit 21 }
 foreach ($flag in @('exec', '--ephemeral', '--approve-for-me', '--output-schema', '-')) {
     if ($flag -notin $args) { throw "Missing invocation flag: $flag" }
 }
@@ -100,6 +102,7 @@ if ($mode -eq 'duplicate-finding') {
 }
 if ($mode -eq 'advisory') { Set-Content $ledgerPath '| AF-0001 | advisory | open | A-01 | Optional advice |' }
 if ($mode -eq 'duplicate-task') { Add-Content (Join-Path $rootPath 'IMPLEMENTATION_PLAN.md') '| [x] A-01 | duplicate |' }
+if ($mode -eq 'invalid-task') { Add-Content (Join-Path $rootPath 'IMPLEMENTATION_PLAN.md') '| [?] A-02 | Invalid checkbox |' }
 if ($mode -eq 'empty-plan') { Set-Content (Join-Path $rootPath 'IMPLEMENTATION_PLAN.md') '# No tasks' }
 $result = @{
     status = $status; summary = '疑似応答による遷移テスト'
@@ -145,6 +148,7 @@ function New-Case([string]$Name, [string]$Mode) {
         Set-Content (Join-Path $caseRoot $name) 'initial'
     }
     Set-Content (Join-Path $caseRoot 'IMPLEMENTATION_PLAN.md') '| [ ] A-01 | Implement | Verified | none | fake |'
+    Add-Content (Join-Path $caseRoot 'IMPLEMENTATION_PLAN.md') '| [Composition Root](doc/old%20design.md) | Historical reference, excluded from specification |'
     [IO.Directory]::CreateDirectory((Join-Path $caseRoot 'doc')) | Out-Null
     Set-Content (Join-Path $caseRoot 'doc/adopted.md') 'adopted design'
     [IO.Directory]::CreateDirectory((Join-Path $caseRoot 'automation')) | Out-Null
@@ -277,7 +281,7 @@ try {
     foreach ($mode in @('malformed', 'bad-status', 'missing-result', 'process-error', 'forbidden',
         'audit-plan-edit', 'no-evidence', 'extra-key', 'bad-type', 'missing-finding', 'bad-next',
         'pending-complete', 'pending-verified', 'doc-edit', 'automation-edit', 'agents-edit',
-        'omitted-finding', 'legacy-finding', 'duplicate-finding', 'duplicate-task', 'empty-plan',
+        'omitted-finding', 'legacy-finding', 'duplicate-finding', 'duplicate-task', 'invalid-task', 'empty-plan',
         'unknown-task', 'resolved-finding')) {
         $bad = New-Case $mode $mode
         $badState = Run-Case $bad 5

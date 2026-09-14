@@ -1,6 +1,7 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Tinyhand.IO;
 
 namespace Kimi;
 
@@ -37,8 +38,63 @@ public partial record class ProjectFile
     public Dictionary<string, Dictionary<string, NativeLibraryInput>> NativeLibraries { get; set; } = new(StringComparer.Ordinal);
 
     /// <summary>Gets or sets explicitly typed compile-time scalar settings.</summary>
-    /// <remarks>Preserves written names so preparation can diagnose case-insensitive collisions instead of overwriting entries.</remarks>
+    /// <remarks>Preserves case-sensitive names; the file loader rejects duplicate names before dictionary deserialization.</remarks>
     public Dictionary<string, CompileTimeSetting> CompileTimeSettings { get; set; } = new(StringComparer.Ordinal);
+
+    // Convert once using Tinyhand's text grammar. Inspect the original map entries before
+    // its dictionary formatter can overwrite duplicates, then deserialize the same bytes.
+    internal static ProjectFile? Load(ReadOnlySpan<byte> utf8)
+    {
+        var writer = TinyhandWriter.CreateFromThreadStaticBuffer();
+        try
+        {
+            TinyhandTreeConverter.FromUtf8ToBinary(utf8, ref writer, true);
+            var reader = new TinyhandReader(writer);
+            ValidateSettingNames(reader);
+            return TinyhandSerializer.Deserialize<ProjectFile>(ref reader, TinyhandSerializerOptions.ConvertToString);
+        }
+        finally
+        {
+            writer.Dispose();
+        }
+    }
+
+    private static void ValidateSettingNames(TinyhandReader reader)
+    {
+        if (reader.TryReadNil())
+        {
+            return;
+        }
+
+        HashSet<string>? names = null;
+        var count = reader.ReadMapHeader2();
+        for (var i = 0; i < count; i++)
+        {
+            if (!reader.ReadStringSpan().SequenceEqual("CompileTimeSettings"u8))
+            {
+                reader.Skip();
+                continue;
+            }
+
+            if (reader.TryReadNil())
+            {
+                continue;
+            }
+
+            var settingCount = reader.ReadMapHeader2();
+            for (var j = 0; j < settingCount; j++)
+            {
+                var name = reader.ReadString();
+                names ??= new(StringComparer.Ordinal);
+                if (name is null || !names.Add(name))
+                {
+                    throw new TinyhandException($"Duplicate or null compile-time setting name: {name}");
+                }
+
+                reader.Skip();
+            }
+        }
+    }
 
     // Preserve the specified text format and reject unknown names instead of enum defaulting.
     [Key("OutputKind")]

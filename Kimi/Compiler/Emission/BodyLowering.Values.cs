@@ -93,17 +93,17 @@ internal sealed partial class BodyLowering
 
             if (value.Kind == OwnershipValueKind.Convert &&
                 (operation.Kind != OwnershipOperationKind.Produce ||
-                operation.Source is not Parsing.ConversionKoto { ConversionBinding: ConversionBinding.Integer } conversion ||
+                operation.Source is not Parsing.ConversionKoto conversion ||
                 !ReferenceEquals(ValueType(body, id), conversion.BoundType) ||
                 !ReferenceEquals(ValueType(body, Input(body, id, 0)), conversion.Left.BoundType) ||
-                ScalarTypes.Width(ValueType(body, id)) == 0 || ScalarTypes.Width(ValueType(body, Input(body, id, 0))) == 0))
+                !ValidScalarConversion(conversion.ConversionBinding, ValueType(body, Input(body, id, 0)), ValueType(body, id))))
             {
                 return false;
             }
 
             if (value.Kind == OwnershipValueKind.Parameter &&
                 (operation.Kind != OwnershipOperationKind.Produce || body.Places[operation.Place].Kind != OwnershipPlaceKind.Parameter ||
-                (ulong)value.Constant >= (ulong)body.Function.Parameters.Count ||
+                value.Constant < 0 || value.Constant >= body.Function.Parameters.Count ||
                 !ReferenceEquals(operation.Source, body.Function.Parameters[(int)value.Constant].Type) ||
                 !ReferenceEquals(ValueType(body, id), body.Function.Parameters[(int)value.Constant].Type.BoundType)))
             {
@@ -113,14 +113,61 @@ internal sealed partial class BodyLowering
             if (value.Kind == OwnershipValueKind.Constant)
             {
                 var type = ValueType(body, id);
+                if (FloatingTypes.Supports(type) || FloatingTypes.Supports(operation.Source.BoundType))
+                {
+                    if (!ReferenceEquals(type, operation.Source.BoundType) ||
+                        !FloatingTypes.TryLiteral(operation.Source, out var bits) || bits != value.Constant)
+                    {
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                if (ReferenceEquals(type, BoundType.Char) || operation.Source is Parsing.CharLiteralKoto)
+                {
+                    if (!ReferenceEquals(type, BoundType.Char) || !ReferenceEquals(operation.Source.BoundType, BoundType.Char) ||
+                        operation.Source is not Parsing.CharLiteralKoto { Value: { } character } ||
+                        !ScalarTypes.IsCharacterValue(value.Constant) || value.Constant != character.Value)
+                    {
+                        return false;
+                    }
+
+                    continue;
+                }
+
                 var width = ScalarTypes.Width(type);
-                if (ReferenceEquals(type, BoundType.Boolean) ? value.Constant is < 0 or > 1 : width == 0 || ScalarTypes.Normalize(value.Constant, width) != value.Constant)
+                if (ReferenceEquals(type, BoundType.Boolean) ? value.Constant < 0 || value.Constant > 1 : width == 0 || ScalarTypes.Normalize(value.Constant, width) != value.Constant)
                 {
                     return false;
+                }
+
+                if (width == 128)
+                {
+                    var source = operation.Source;
+                    var number = source is Parsing.PrefixMinusKoto or Parsing.PrefixPlusKoto
+                        ? ((Parsing.UnaryKoto)source).Operand as Parsing.NumberLiteralKoto : source as Parsing.NumberLiteralKoto;
+                    if (number is not null)
+                    {
+                        if (!ReferenceEquals(type, source.BoundType) || !number.TryGetIntegerMagnitude(out var magnitude) ||
+                            !ScalarTypes.TryLiteral(type, magnitude, source is Parsing.PrefixMinusKoto, 64, out var bits) || bits != value.Constant)
+                        {
+                            return false;
+                        }
+                    }
+                    else if (value.Constant != 1 || source.Akind is not (Parsing.KotoKind.PrefixPlusPlus or Parsing.KotoKind.PrefixMinusMinus or Parsing.KotoKind.PostfixIncrement or Parsing.KotoKind.PostfixDecrement))
+                    {
+                        return false;
+                    }
                 }
             }
         }
 
         return true;
     }
+
+    private static bool ValidScalarConversion(ConversionBinding binding, BoundType? source, BoundType? target)
+        => binding == ConversionBinding.Integer ? ScalarTypes.Width(source) != 0 && ScalarTypes.Width(target) != 0 :
+            binding == ConversionBinding.Floating && FloatingTypes.Supports(source) && FloatingTypes.Supports(target) &&
+            (ReferenceEquals(source, target) || ReferenceEquals(source, BoundType.F32));
 }

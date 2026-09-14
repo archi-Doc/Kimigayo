@@ -66,17 +66,15 @@ public class FunctionEmissionTest
     [InlineData("func f(x?: i32 = 1) => ()\n()")]
     [InlineData("func f<T>() => ()\n()")]
     [InlineData("func f(x: uniq/string) => ()\n()")]
-    [InlineData("func unused() -> ()\n    " + MinimalEmissionTest.UnsupportedExpression + "\n()")]
+    [InlineData("func unused() -> ()\n    " + MinimalEmissionTest.FloatExpression + "\n()", true)]
     [InlineData("public func main() -> i32 => 0")]
     [InlineData("public func main() => ()\n()")]
     [InlineData("func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => ()\nvar x = 1\nf(spin(), x++)")]
     [InlineData("func f(a: i32, b: i32) -> i32 => a + b\nvar x = 1\nlet y = outer: do\n    f((inner: do => exit to outer: 7), x++)")]
-    public void UnsupportedSelectedBodiesAndInvalidStartupProduceNoIr(string source)
+    public void SelectedBodiesAndStartupRespectSupportedFeatures(string source, bool emitted = false)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
     [Fact]

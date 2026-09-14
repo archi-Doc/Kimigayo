@@ -38,7 +38,7 @@ public partial class Project
         try
         {
             var utf8 = System.IO.File.ReadAllBytes(path);
-            var file = TinyhandSerializer.DeserializeFromUtf8<ProjectFile>(utf8);
+            var file = ProjectFile.Load(utf8);
             if (file is null)
             {
                 logger?.GetWriter()?.Write(Hashed.Project.NotLoaded, path);

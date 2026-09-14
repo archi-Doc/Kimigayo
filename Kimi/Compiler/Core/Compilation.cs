@@ -66,10 +66,10 @@ public class Compilation
     public Kotonoha Kotonoha { get; }
 
     /// <summary>
-    /// Gets the variables available to conditional compilation, with ordinal case-insensitive name lookup.
+    /// Gets the variables available to conditional compilation, with ordinal case-sensitive name lookup.
     /// </summary>
     public IReadOnlyDictionary<string, BasicValue> Variables { get; private set; } =
-        new ReadOnlyDictionary<string, BasicValue>(new Dictionary<string, BasicValue>(StringComparer.OrdinalIgnoreCase));
+        ReadOnlyDictionary<string, BasicValue>.Empty;
 
     /// <summary>Gets the inputs recorded on successful preparation, or null when preparation failed.</summary>
     public CompilationBuildMetadata? BuildMetadata { get; private set; }
@@ -163,7 +163,7 @@ public class Compilation
             throw new InvalidOperationException("Create a new Compilation to change inputs after parsing source.");
         }
 
-        this.Variables = new ReadOnlyDictionary<string, BasicValue>(new Dictionary<string, BasicValue>(StringComparer.OrdinalIgnoreCase));
+        this.Variables = ReadOnlyDictionary<string, BasicValue>.Empty;
         this.TargetTriple = TargetTriple.Invalid;
         this.IrTarget = IrTarget.Invalid;
         this.BuildMetadata = null;
@@ -196,7 +196,7 @@ public class Compilation
             _ => targetTriple.Os.ToString().ToLowerInvariant(),
         };
         var debug = this.Project.KimiOptions.Debug;
-        var variables = new Dictionary<string, BasicValue>(StringComparer.OrdinalIgnoreCase)
+        var variables = new Dictionary<string, BasicValue>(StringComparer.Ordinal)
         {
             ["os"] = new(os),
             ["arch"] = new(targetTriple.Arch.ToString().ToLowerInvariant()),

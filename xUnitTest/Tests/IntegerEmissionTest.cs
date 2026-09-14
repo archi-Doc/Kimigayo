@@ -95,18 +95,25 @@ public class IntegerEmissionTest
     [InlineData("var x: i8 = 1\nx << 200", false)]
     [InlineData("let x: u64 = 18446744073709551616", false)]
     [InlineData("let x: i64 = -9223372036854775809", false)]
-    [InlineData("let x: i128 = 1", true)]
-    [InlineData("if false\n    let x: u128 = 1", true)]
-    [InlineData("func unused(x: i128) -> i128 => x\n()", true)]
-    [InlineData("func unused() -> ()\n    let x: i128 = 1\n()", true)]
-    [InlineData("let x = 'a'", true)]
-    public void StaticErrorsAndUnsupportedWidthsNeverWriteIr(string source, bool bound)
+    public void StaticErrorsNeverWriteIr(string source, bool bound)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(bound, c.Binding.Result.IsComplete);
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
+    }
+
+    [Fact]
+    public void CharacterLiteralUsesScalarStorageWithoutIntegerOperations()
+    {
+        var c = MinimalEmissionTest.Analyze("let x = 'a'");
+        Assert.True(c.Binding.Result.IsComplete);
+        Assert.True(ScalarTypes.Supports(BoundType.Char));
+        Assert.Equal(0, ScalarTypes.Width(BoundType.Char));
+        using var writer = new StringWriter();
+        Assert.True(c.Emission.WriteIr(writer, out var error), error);
+        Assert.Contains("store i32 97", writer.ToString());
     }
 
     [Theory]

@@ -11,8 +11,8 @@ namespace XunitTest;
 
 public class MinimalEmissionTest
 {
-    // Keep selected-body checking tests independent of the next integer/string increments.
-    internal const string UnsupportedExpression = "1.0 + 2.0";
+    // Supported floating arithmetic retained in the original execution-boundary inputs.
+    internal const string FloatExpression = "1.0 + 2.0";
 
     [Theory]
     [InlineData("::Core.writeLine(\"Hello, world!\")")]
@@ -36,24 +36,21 @@ public class MinimalEmissionTest
     }
 
     [Theory]
-    [InlineData("func unused() -> ()\n    " + UnsupportedExpression + "\nwriteLine(\"a\")")]
+    [InlineData("func unused() -> ()\n    " + FloatExpression + "\nwriteLine(\"a\")", true)]
     [InlineData("func unused<T>() => ()\nwriteLine(\"a\")")]
     [InlineData("struct Empty\n    func unused() => ()\nwriteLine(\"a\")")]
     [InlineData("public func main(x: i32) => writeLine(\"a\")")]
-    [InlineData("if false => " + UnsupportedExpression)]
+    [InlineData("if false => " + FloatExpression, true)]
     [InlineData("let x: string\nwriteLine(x)")]
     [InlineData("let x = \"a\"\nwriteLine(x)\nwriteLine(x)")]
-    [InlineData("func writeLine(x: string) => " + UnsupportedExpression + "\nwriteLine(\"a\")")]
-    [InlineData("let x = " + UnsupportedExpression + "\nwriteLine(\"a\")")]
-    [InlineData("writeLine(\"a\")\nlet flag = " + UnsupportedExpression)]
+    [InlineData("func writeLine(x: string) => " + FloatExpression + "\nwriteLine(\"a\")", true)]
+    [InlineData("let x = " + FloatExpression + "\nwriteLine(\"a\")", true)]
+    [InlineData("writeLine(\"a\")\nlet flag = " + FloatExpression, true)]
     [InlineData("")]
-    public void UnsupportedOrInvalidInputNeverWritesIr(string source)
+    public void SelectedBodyEmissionMatchesImplementedFeatures(string source, bool emitted = false)
     {
-        var c = Analyze(source);
-        using var writer = new StringWriter(CultureInfo.InvariantCulture);
-        Assert.False(c.Emission.WriteIr(writer, out var error));
-        Assert.NotNull(error);
-        Assert.Equal(string.Empty, writer.ToString());
+        var c = MinimalEmissionTest.Analyze(source);
+        FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
     [Fact]

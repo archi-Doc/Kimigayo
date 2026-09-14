@@ -7,5 +7,6 @@ internal enum ConversionBinding : byte
     None,
     Literal,
     Integer,
+    Floating,
     Abrupt,
 }

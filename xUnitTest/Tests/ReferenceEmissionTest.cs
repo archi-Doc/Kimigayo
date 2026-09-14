@@ -82,13 +82,11 @@ public class ReferenceEmissionTest
     [InlineData("func bad(a: ref/string, b: string) -> bool => a == b\n()")]
     [InlineData("func bad(a: ref/string)\n    writeLine(a)\n()")]
     [InlineData("let a = \"a\"\na@ref")]
-    [InlineData("func unused(a: ref/string) => 1.0 + 2.0\n()")]
-    public void RejectUnsupportedOrInvalidReferenceUses(string source)
+    [InlineData("func unused(a: ref/string) => 1.0 + 2.0\n()", true)]
+    public void ReferenceUsesAndIndependentFloatResultsRespectSupport(string source, bool emitted = false)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
     [Theory]

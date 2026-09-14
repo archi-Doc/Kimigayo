@@ -72,16 +72,14 @@ public class MatchEmissionTest
     }
 
     [Theory]
-    [InlineData("match 0\n    _ => ()\n    0 => 1.0 + 2.0")]
+    [InlineData("match 0\n    _ => ()\n    0 => 1.0 + 2.0", true)]
     [InlineData("let text = \"a\"\ntext == (match text\n    _ => \"a\"\n)")]
     [InlineData("match \"a\"\n    let text\n        writeLine(text)\n        writeLine(text)")]
-    [InlineData("match 1.0\n    _ if true => ()\n    _ => ()")]
-    public void RejectsUnsupportedAndConflictingArms(string source)
+    [InlineData("match 1.0\n    _ if true => ()\n    _ => ()", true)]
+    public void ArmSupportPreservesConflictRejection(string source, bool emitted = false)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        using var writer = new StringWriter();
-        Assert.False(c.Emission.WriteIr(writer, out _));
-        Assert.Empty(writer.ToString());
+        FloatEmissionTest.AssertEmissionSupport(c, emitted);
     }
 
     [Theory]
@@ -194,10 +192,10 @@ public class MatchEmissionTest
 
     [Theory]
     [InlineData("func f()\n    match (return)\n        _ => 1.0 + 2.0\nf()")]
-    public void NoncompletingSubjectsStillCheckArms(string source)
+    public void NoncompletingSubjectsStillCheckFloatingArms(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        FloatEmissionTest.AssertEmissionSupport(c, true);
     }
 
     [Theory]

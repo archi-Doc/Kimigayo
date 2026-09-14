@@ -8,8 +8,15 @@ public sealed partial class OwnershipAnalysis
 {
     private readonly List<int> placeValues = new();
 
-    private bool TryScalarLiteral(Koto source, out long value)
+    private bool TryScalarLiteral(Koto source, out Int128 value)
     {
+        if (FloatingTypes.Supports(source.BoundType))
+        {
+            var success = FloatingTypes.TryLiteral(source, out var bits);
+            value = bits;
+            return success;
+        }
+
         var negative = source is PrefixMinusKoto;
         var number = source is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)source).Operand as NumberLiteralKoto : source as NumberLiteralKoto;
         if (number is { IsInteger: true } && number.TryGetIntegerMagnitude(out var magnitude))
@@ -23,11 +30,11 @@ public sealed partial class OwnershipAnalysis
 
     private int Value(int place) => place < 0 ? -1 : this.placeValues[place];
 
-    private void SetValue(int operation, OwnershipValueKind kind, ReadOnlySpan<int> inputs, KotoKind op = default, long constant = 0)
+    private void SetValue(int operation, OwnershipValueKind kind, ReadOnlySpan<int> inputs, KotoKind op = default, Int128 constant = default)
     {
         var start = this.body.ValueOperands.Count;
         this.body.ValueOperands.AddRange(inputs);
-        this.body.Values[operation] = new(kind, start, inputs.Length, constant, op);
+        this.body.Values[operation] = new(kind, start, inputs.Length, op, constant);
     }
 
     private void RecordValue(int id, OwnershipOperationKind kind, Koto source, int place, int input)
@@ -92,6 +99,10 @@ public sealed partial class OwnershipAnalysis
             {
                 this.SetValue(id, OwnershipValueKind.Constant, [], constant: boolean.Value ? 1 : 0);
             }
+            else if (source is CharLiteralKoto { Value: { } scalar } && ReferenceEquals(source.BoundType, BoundType.Char))
+            {
+                this.SetValue(id, OwnershipValueKind.Constant, [], constant: scalar.Value);
+            }
             else if (this.TryScalarLiteral(source, out var value))
             {
                 this.SetValue(id, OwnershipValueKind.Constant, [], constant: value);
@@ -121,6 +132,12 @@ public sealed partial class OwnershipAnalysis
         }
 
         var output = this.Temporary(unary);
+        if (unary.Akind == KotoKind.PrefixPlus && FloatingTypes.Supports(unary.BoundType))
+        {
+            this.SetValue(this.Value(output), OwnershipValueKind.Alias, [input]);
+            return output;
+        }
+
         this.SetValue(this.Value(output), OwnershipValueKind.Unary, [input], unary.Akind);
         return output;
     }

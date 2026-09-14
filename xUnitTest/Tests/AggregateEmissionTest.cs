@@ -120,7 +120,6 @@ public class AggregateEmissionTest
 
     [Theory]
     [InlineData("var value: [2147483647 of string]")]
-    [InlineData("let value: [0 of i128] = []")]
     [InlineData("func echo(value: (i32, i32)) -> (i32, i32) => value")]
     [InlineData("let value = if true => (1, 2) else => (3, 4)")]
     public void UnsupportedAggregateShapesRemainExplicit(string source)

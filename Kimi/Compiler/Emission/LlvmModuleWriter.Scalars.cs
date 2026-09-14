@@ -12,6 +12,18 @@ internal static partial class LlvmModuleWriter
 
     private static void WriteOperand(TextWriter output, EmissionOperand operand)
     {
+        if (operand.Kind is EmissionOperandKind.Float32 or EmissionOperandKind.Float64)
+        {
+            // LLVM's hexadecimal float spelling uses the exactly extended double bits.
+            var bits = operand.Kind == EmissionOperandKind.Float32
+                ? BitConverter.DoubleToUInt64Bits(BitConverter.UInt32BitsToSingle((uint)operand.Value)) : unchecked((ulong)operand.Value);
+            Span<char> digits = stackalloc char[16];
+            bits.TryFormat(digits, out var length, "X16", System.Globalization.CultureInfo.InvariantCulture);
+            output.Write("0x");
+            output.Write(digits[..length]);
+            return;
+        }
+
         if (operand.Kind == EmissionOperandKind.Argument)
         {
             output.Write("%a");
@@ -202,7 +214,7 @@ internal static partial class LlvmModuleWriter
         output.Write(" = ");
         if (instruction.IsComparison)
         {
-            output.Write("icmp ");
+            output.Write(type is "float" or "double" ? "fcmp " : "icmp ");
         }
 
         output.Write(op);
@@ -210,6 +222,12 @@ internal static partial class LlvmModuleWriter
         output.Write(type);
         output.Write(' ');
         WriteOperand(output, operands[0]);
+        if (op == "fneg")
+        {
+            output.Write('\n');
+            return;
+        }
+
         output.Write(", ");
         if (instruction.Check == ArithmeticCheckKind.Shift && instruction.CountRepresentation!.Layout.Size != instruction.Representation!.Layout.Size)
         {

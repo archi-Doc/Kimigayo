@@ -116,8 +116,7 @@ public sealed partial class Binding
     private BoundType? BindMatch(MatchKoto match, BindingScope scope, BoundType? expected)
     {
         var plan = this.matches[match];
-        var resultContext = this.BeginResult(match, scope, expected);
-        plan.ExpectedType = resultContext.Expected;
+        var resultContext = this.BeginResult(match, scope, expected, deferEvidence: true);
         var subject = this.BindNode(match.Expression, scope);
         if (subject is null)
         {
@@ -133,6 +132,14 @@ public sealed partial class Binding
             this.MarkPatternTree(arm.Pattern);
         }
 
+        // Pattern bindings must have their Subject Types before collecting result evidence.
+        // Otherwise an unfitted literal arm could default to f64 before seeing an f32 binding.
+        if (resultContext.Expected is null)
+        {
+            this.InferResultExpected(match, scope, resultContext);
+        }
+
+        plan.ExpectedType = resultContext.Expected;
         this.CalculateMatchCoverage(plan, subject);
         if (plan.Coverage.State is MatchCoverageState.Exhaustive or MatchCoverageState.NonExhaustive)
         {

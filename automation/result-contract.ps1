@@ -5,6 +5,8 @@ function Get-PlanTasks {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'IMPLEMENTATION_PLAN.md is missing.' }
     $tasks = @{}
     foreach ($line in [IO.File]::ReadLines($path)) {
+        # A normal Markdown link in the first column is not a task checkbox.
+        if ($line -match '^\|\s*\[[^\]]+\]\(') { continue }
         if ($line -notmatch '^\|\s*\[') { continue }
         if ($line -notmatch '^\|\s*\[([ xX])\]\s+([A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+)\s*\|') {
             throw "Invalid plan task row: $line"
