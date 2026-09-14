@@ -92,7 +92,7 @@ public func main() -> ()
 
 Adding a top-level `::Core.writeLine("Top level")` to this project is an error because it mixes startup forms. Integer-returning main and a safe Core.exit API are not initial features; normal termination is 0 and Abort is 1. Runtime.Exit remains internal.
 
-A Library requires no startup candidate, never automatically calls main, and emits no OS entry. Treat main as an ordinary function without the Application signature restriction. Reject top-level runtime body items, including uninitialized let/var. Initial Library .ll is for inspection, LLVM verification, and object-generation experiments, not an externally callable library/DLL or dependency artifact; all language functions remain internal, even public ones. Optimization may remove all such functions, so inspect pre-optimization IR.
+A Library requires no startup candidate, never automatically calls main, and emits no OS entry. Treat main as an ordinary function without the Application signature restriction. Reject top-level runtime body items, including uninitialized let/var. A Library may be consumed as a Project or distributed as a source package (§18.4–18.6), then participate in common final generation. Its inspection `.ll` is not that distribution format or an external library/DLL ABI; language functions remain internal even when public. Optimization may remove all functions from standalone inspection output, so inspect pre-optimization IR.
 
 ### 22.2.3. OS entry, static initialization, and shutdown
 
@@ -134,7 +134,7 @@ This revision admits one execution thread, with no source thread creation or con
 
 ### 22.3.1. Declaration and call contract
 
-`#LibraryImport("library", "symbol")` on a bodyless unsafe func selects the target C calling convention. Both arguments are required nonempty, non-interpolated, NUL-free string literals. The first is an Ordinal logical library key in NativeLibraries (§20.8.2), not a DLL filename/path; the second is the exact external symbol, independently of the source function name.
+`#LibraryImport("library", "symbol")` on a bodyless unsafe func selects the target C calling convention. Both arguments are required nonempty, non-interpolated, NUL-free string literals. The first is a case-sensitive logical native requirement name belonging to the defining Kotonoha (§20.8.2), not a consumer alias or DLL path. Requirements may come from NativeRequirements or a self-targeted combined NativeLibraries record. The second argument is the exact external symbol, independently of the source function name. Actual supply/kind and member-closure validation occur under §20.8.2 without replacing the following source/ABI obligations.
 
 Allow imports only directly in group/rootgroup or as receiverless struct type functions. Reject receivers, generic/Origin parameters, default/optional arguments, varargs, specializations, and executable bodies. Calls are direct only; unsafe functions cannot be acquired as values. Ordinary access and unsafe-call rules apply.
 

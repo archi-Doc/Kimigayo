@@ -4,6 +4,8 @@
 
 文書構成（2026-09-14）: [SPEC.md](SPEC.md) を総合目次とし、本文22章と付録A・B・D・E・Fを `spec/` に分割した。付録Cは目次内の実装状況案内に集約。設計・決定・変更記録の `doc/` は `draft/` に改名した。章番号・仕様本文・既存の優先規則を維持し、コンパイラーの実装範囲は変更していない。
 
+依存・成果物仕様の統合（2026-09-15）: 指定された draft を優先し、[第18章](spec/18-modules-and-dependencies.md)へ設定・解決・lock・入力記録・ソースパッケージ・pack/publish・意味検証の再利用・テスト所属を統合した。[第20章](spec/20-compilation-configuration.md)の native 要求/供給・member閉包・directive・CLI、[第21章](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation)の共通生成と製品/テスト予算、関連付録・目次も整合させた。英語の規則と例を整理し、旧「形式・設定は未定義」の記述やdraftへの本文委譲を置換した。全28仕様ファイルの681件のローカル参照とコードブロック・差分形式を確認した。文書のみの変更で、外部依存解決・pack/publish・永続意味キャッシュの実装完了を示さない。draftとcompilerは変更せず、compiler/native/NativeAOTテスト・性能測定は行っていない。
+
 現ソースと対応テストで確認した範囲を記す。字句/構文、Binding、所有権、LLVM生成、native実行は別段階であり、前段の対応だけで実行可能とはしない。仕様は [SPEC.md](SPEC.md)、全体計画は [PLAN.md](PLAN.md)。旧C.*リンクは対応分野へ接続する。
 
 <a id="c1-coverage-summary"></a>

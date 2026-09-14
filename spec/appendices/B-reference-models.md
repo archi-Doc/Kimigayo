@@ -160,7 +160,7 @@ Estimate benefit as context-dependent operations removed from the lightly simpli
 
 Before optional choices, fix baseline instruction quantities Bf for each original generic function and B for the generation unit. Aggregate all of a function's classes into Bf; B also includes internal nongeneric code. Use B.7.2's estimates before cross-class deduplication. Count bodies generated from external source dependencies, but not separately linked existing native code.
 
-The generation unit is the planning/budget unit and need not be one final LLVM module. Follow the [dependency/artifact design §6.2](../../draft/Design/2026-09-13%20Dependencies%20and%20Artifacts.md#62-生成要求と予算): keep product and test generation requests, sharing classes and budgets separate. Fix the product first under current Composition. Test-only substitutions do not rebuild product entries, schemas, frames or budget choices. Reused product code contributes neither B nor Bf to tests; candidates and unused budgets never transfer between them. Later omission of code unnecessary to tests preserves the generation dependency closure without redistributing product budgets.
+Use the separate product/test planning regions in [§21.3.7](../21-layout-runtime-and-code-generation.md#2137-product-and-test-generation) as generation units for B and Bf, not the final LLVM module. Fix the product under current Composition before adding test requests; reused product code is not charged again. Code omission preserves the generation closure and does not redistribute these budgets.
 
 | Growth limit | Formula |
 | --- | --- |

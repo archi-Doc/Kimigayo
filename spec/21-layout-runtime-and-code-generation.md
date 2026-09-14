@@ -535,19 +535,13 @@ The defining Kotonoha closes its explicit-specialization set under §8.8.3. Arti
 
 Check every environment-selected specialization's target, arguments, Constraints, inherited contract and body before finalizing its artifact, even if unused. Excluded syntax follows §19.5. Unused verified bodies need no machine code; every use still checks its own contract, initialization and Loans. Shared calls and function references reach the statically selected implementation, never one selected from a value's Dynamic Type or registration/load order.
 
-Record all declaration content actually read by a judgment: selected bodies, closed selection sets, inherited-Name and conformance checks, effect/public ObjectCompatible summaries, environment selection and verification-rule identity. Include completed Containers when absence matters; referenced-member lists alone miss additions.
-
-Before reuse, compare actual identity, content and verification conditions, not only package versions or declaration correspondence across versions. Additions, removals, access changes, Signature edits, Proven withdrawal and specialization edits may invalidate previous judgments. Revalidate the affected stage; update still-valid results and diagnose lost requirements at the dependent use. If necessary information is unavailable, require a rebuild. Never reuse stale proofs, mix selection sets or choose an incorrect shared fallback.
+Preserve and validate the complete declaration, body, selection, premise, and absence dependencies under [§18.7](18-modules-and-dependencies.md#187-verified-information-and-reuse). Revalidate changed selections before generation; never mix old proofs and new mappings or choose an incorrect shared fallback.
 
 #### 21.3.4.2. Persistence and composition
 
-The initial persistent cache for semantic/generation processing stops at **verified semantic plans**, following the adopted [dependency/artifact design §5](../draft/Design/2026-09-13%20Dependencies%20and%20Artifacts.md#5-検証と再利用). Preserve proofs, ownership, effects, cleanup, token-relative source references and legitimate unresolved representation obligations. Rebind diagnostic/generated locations and displayed expressions to current source; source text observed by a Mod is a separate dependency. Validate use-site Loans and initialization in that use's environment.
+Persistent semantic plans, invalidation, and observable source information follow §18.7. Regenerate ABI plans, schemas, contexts, frames, budget choices, IR, and machine code; native input summaries are separate. Persistent product generation choices remain deferred until measured search cost and a complete validation contract justify them. Such a contract must cover baseline plans, candidate sets/order, estimates, budgets, compiler/profile, actual Composition connections, and generation dependencies; a small saved choice is not proof of validity. Object-code caches and persistent runtime context graphs are not introduced.
 
-Rebuild ABI plans, schemas, contexts, frames, budget choices, IR and machine code under the current generation scheme. A generation-only multiplier change need not invalidate semantic plans; target-dependent proofs and settings that change meaning remain validation inputs. Native content-analysis summaries may be stored separately as input indexes.
-
-Persisting product generation choices requires measured search cost and a defined validation contract for baseline plans, candidate sets, budgets and all generation dependencies. Object-code caches and persistent context graphs are not introduced here; see Appendix D.1.
-
-Separate Provider-independent Library semantic plans from final [Composition Root](../draft/Decisions/2026-09-13%20Composition%20Root%20Review.md) connections. Record operations, implementations, schemas and constants actually used by generated artifacts. Do not add the whole CompositionId to every body key. Provider changes must revalidate/regenerate affected witnesses, inlined bodies and entry/context pairs; conservative invalidation is allowed until precise dependencies exist. Source/binary interchange remains governed by §18.3 and the artifact design.
+Separate Provider-independent Library semantic plans from final [Composition Root](../draft/Decisions/2026-09-13%20Composition%20Root%20Review.md) connections. Record operations, implementations, schemas and constants actually used by generated artifacts. Do not add the whole CompositionId to every body key. Provider changes must revalidate/regenerate affected witnesses, inlined bodies and entry/context pairs; conservative invalidation is allowed until precise dependencies exist. Source distribution and deferred binary interfaces follow §18.3–18.7.
 
 ### 21.3.5. Generation limits and code merging
 
@@ -559,7 +553,7 @@ Failed or exhausted optional exploration keeps the verified baseline and cannot 
 
 Equivalent code and entries may merge only while preserving identity, results, effects, failures, ownership and cleanup. Emit needed immutable metadata/operation/context records as private unnamed_addr constants when their addresses are unobservable. Constant folding and direct calls retain the typed plan and consumer contract. Reuse TypeLayout, ValueLowering, FunctionAbi and CleanupPlan rather than cloning syntax.
 
-[Appendix B.7](appendices/B-reference-models.md#b7-generic-generation-and-specialization-strategy) gives the initial bounded selection and accounting method. Budget numbers and estimates are not fixed language constants or exact limits on final binary size or compilation time. Local specialization hints, dynamic storage for unknown substitutions and object caches remain deferred under Appendix D.1; no new require/forbid-specialization syntax is added.
+[Appendix B.7](appendices/B-reference-models.md#b7-generic-generation-and-specialization-strategy) gives the initial bounded selection and accounting method. Budget numbers and estimates are not fixed language constants or exact limits on final binary size or compilation time. Local specialization hints, dynamic storage for unknown substitutions and object caches remain deferred under Appendix D; no new require/forbid-specialization syntax is added.
 
 ### 21.3.6. Entry ABI and call responsibility
 
@@ -602,6 +596,25 @@ Apply §21.4.3's responsibility transitions at the **logical callee entry**, reg
 
 The same normal-return and caller-storage rules apply to generic scratch reserved by an entry (§21.4.6).
 
+### 21.3.7. Product and test generation
+
+For code generation, first fix product substitutions, sharing classes, call entries, frames, and budget choices from product inputs and normal-output roots. Semantic-only test checking and `--list` need not construct this plan. Source membership and dependency partitions follow §18.8.
+
+Additional test requests, including new substitutions of product generics, belong to the test region. Reuse existing product entries for identical substitutions. A new test entry may connect to an existing product body only after validating the existing contract; do not enlarge product sharing classes, context schemas, or frames. Put required additions in the test region.
+
+Account for product and tests separately, with all test cases sharing one test budget. Never transfer candidates, savings, or unused budgets between regions. Reused product code does not count again in test B/Bf. External source bodies count in the region requesting generation; separately linked existing native code does not. Break ties using product declarations/semantic information, not SourceIds or whole-input hashes that include test source.
+
+```text
+fixed product plan and budget
+  -> tests reuse existing product entries
+  -> test-only substitutions, bodies, and budget
+  -> emit the required test generation closure
+```
+
+After fixing the plans, emit only the closure needed from all test execution roots, including selected Providers, initialization/destruction, cleanup, runtime helpers, entries/contexts, and metadata. Omitting product code does not redistribute product budgets or omit required verification. Case filters do not change the compiled all-case artifact under the testing specification.
+
+Fix one Composition for the test executable. With the same connection, reuse product plans under these conditions. For a changed connection, preserve Provider-independent meaning and first revalidate/fix affected product generation plans under that connection, before adding test requests. Never reuse different-connection code unconditionally. This need not perform two full compilations or emit two files: one final LLVM module may hold both regions. Different roots/reachability and later optimization need not produce byte-identical whole binaries.
+
 ## 21.4. Checked lowering and internal ABI
 
 ### 21.4.1. Input and generation set
@@ -619,13 +632,13 @@ Share stable Identities without cloning the syntax tree. Compute and reuse these
 
 Unresolved Types/obligations, missing cleanup, or unsupported selected operations fail generation. Zero, undef, poison, unreachable, and freeze are not substitutes for unresolved language semantics.
 
-Before optimization, include all selected project implementation bodies without remaining outer/function generic arguments, the startup body, and their required concrete generic implementations, Core, cleanup, and runtime helpers. Foreign imports have no emitted body. Use a worklist keyed by declaration Identity, concrete arguments, and selected implementation. Ordinary recursion reuses a declaration; unbounded distinct instantiations receive a diagnostic at a documented compilation-resource limit.
+Plan selected product implementations, startup, required concrete generic implementations, dependencies, Core, cleanup, and runtime helpers under normal-output roots. Foreign imports have no emitted body. Use a worklist keyed by declaration Identity, concrete arguments, and selected implementation. Ordinary recursion reuses a declaration; unbounded distinct instantiations receive a resource diagnostic. After required verification and planning, omit unneeded machine code/metadata; test emission follows §21.3.7 without reallocating product budgets.
 
-Unused nongeneric bodies and unexecuted branches within generated bodies still receive unsupported-feature diagnostics; optimization cannot hide them. Excluded syntax is outside this set. Existing semantic verification of uninstantiated generic bodies is unchanged. Unsupported generic sharing/metadata must not silently become a different semantic implementation. LLVM may remove definitions/paths only after these checks.
+Unused nongeneric bodies and unexecuted branches within generated bodies still receive required semantic and unsupported-feature diagnostics; code omission cannot hide them. Excluded syntax is outside this set. Verification of uninstantiated generic bodies is unchanged. Unsupported sharing/metadata must not silently select another implementation. Code may be omitted or removed only after required checks.
 
 ### 21.4.2. Physical function signatures
 
-The internal function ABI is compiler-controlled, module-local, and deliberately unfixed. It applies to user functions, Core, and private runtime helpers in Application and inspection-only Library output. No physical calling convention, parameter/result representation or ordering, hidden-context position, symbol spelling, or stable ABI version is a language guarantee. The compiler may choose different physical signatures across builds, targets and generated functions without a language-version change, subject to all language and external contracts. Within a generation scheme, generic callers use §21.3.6's entry contracts: changing the optional specialization budget changes internal implementations, not their caller-facing entry ABI. No binary compatibility between independently generated modules or compiler builds is promised.
+The internal function ABI is compiler-controlled within a final generation and deliberately unfixed. Source dependencies may participate in that common generation; no external ABI is needed between their separately verified semantic plans. The ABI applies to user functions, Core, and private runtime helpers in Application and Library inspection output. No physical calling convention, parameter/result representation or ordering, hidden-context position, symbol spelling, or stable ABI version is a language guarantee. The compiler may choose different physical signatures across builds, targets and generated functions without a language-version change, subject to language and external contracts. Within a scheme, generic callers use §21.3.6's entry contracts: optional budgets change implementations, not caller-facing entry ABI. Independently generated modules or compiler builds have no promised binary compatibility.
 
 Within the entry rules of §21.3.6, direct or indirect passing, aggregate splitting/coercion, result storage, omitted slots, calling conventions such as LLVM ccc or fastcc, and ABI attributes such as byval or sret are compiler choices. Storage layouts defined elsewhere do not fix function passing: this includes scalars, string, object handles, and Core.Weak<S>. Unit still has its logical value/effects, and Never still has no normal result or return edge. Every emitted representation requires an implemented ValueLowering and its complete validity, ownership, and cleanup operations; implementation freedom does not permit guessing an unsupported representation.
 
@@ -800,7 +813,7 @@ One project/target emits one .ll with target information, private constants, req
 
 Emit one definition for each generated function, without a same-name declare. Explanatory signature-only fragments are not complete modules. Mangle source names with Kotonoha/declaration Identity, arguments, and implementation selection.
 
-Use one module symbol table. Same-named external declarations share only if physical Type, calling convention, ABI attributes, dllimport, and resolved library all agree; otherwise diagnose. Function/data and declaration/generated-definition collisions are errors. Reserve __kimi_ for compiler internals, llvm. for LLVM, and _fltused, __chkstk, memcmp, memcpy, memmove, memset for profile supplies; reject these external names in user LibraryImport. Match exact ABI symbol names. Quote/escape LLVM identifiers and UTF-8 bytes; never insert raw source strings into IR. Shared ptr signatures do not merge source unsafe contracts; attach only guarantees true for every use.
+Use one final-module symbol table. Same-named external declarations share only if physical Type, calling convention, ABI attributes, dllimport, and actual provider all agree under §20.8.2, regardless of consumer aliases. Function/data and declaration/generated-definition collisions are errors. Reserve __kimi_ for compiler internals, llvm. for LLVM, and _fltused, __chkstk, memcmp, memcpy, memmove, memset for profile supplies; reject these external names in user LibraryImport. Match exact ABI symbol names. Quote/escape LLVM identifiers and UTF-8 bytes; never insert raw source strings into IR. Shared ptr signatures do not merge source unsafe contracts; attach only guarantees true for every use.
 
 Deterministic generation records retain compiler/layout and generation-scheme identities, entry/body ABI contracts, target/DataLayout/codegen settings, backend package version/hash, selected fragments/generated sources, complete arguments and selected implementations, cleanup, callees and helper dependencies. Validate content identities without requiring a public internal ABI version. Under §21.3.4, persistent semantic plans validate their own dependencies; generation records and code are rebuilt under the current scheme, not restored from an object cache. Size/alignment alone is never a sufficient key. Do not depend on absolute working directories, host locale, enumeration order, or host CPU.
 

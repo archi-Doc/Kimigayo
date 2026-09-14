@@ -16,11 +16,11 @@ The build model separates workspace orchestration, project configuration, source
 | SourceDocument | An immutable source snapshot, including its path and text. Replacing its text creates a new snapshot. |
 | Compilation | Compiles one Project under one fixed set of source, dependency, target, and build inputs. |
 
-A Solution discovers and loads Projects. A Project stores target triples, aliases, and external Kotonoha descriptors, and creates one Compilation for each target.
+A Solution discovers and loads Projects. A Project stores target triples, aliases, and [dependency declarations](18-modules-and-dependencies.md#184-dependency-configuration-and-resolution), and creates target-specific Compilations. Referenced modules retain their own definition environments.
 
 ## 20.2. Build inputs
 
-Compilation inputs comprise the full target triple (including ABI/environment), backend/layout, build mode and code-affecting options, Project settings, language/compiler version, source snapshots, resolved dependency versions/interfaces, and [Mod registrations, implementations, and additional inputs](#2075-inputs-and-regeneration). Reuse requires all inputs relevant to the reused judgment to agree; OS/architecture alone is insufficient. Invalidate the affected stages when inputs change. A generation-only multiplier change can reuse still-valid semantic plans, while target-dependent proofs and semantic settings remain validation inputs (§21.3.4). Artifact cache formats are separately specified.
+Compilation inputs comprise the full target triple (including ABI/environment), backend/layout, build mode and code-affecting options, effective Project settings, language/compiler version, source snapshots, resolved dependency content, and [Mod registrations, implementations, and additional inputs](#2075-inputs-and-regeneration). Fix actual inputs and processing records under §18.5.2. Reuse requires agreement of all facts read by that judgment (§18.7); OS/architecture, version labels, and lock equality alone are insufficient. Generation-only multiplier changes may preserve semantic plans, while target-dependent proofs remain validation inputs.
 
 ## 20.3. Target preparation
 
@@ -44,7 +44,7 @@ Project settings provide explicit bool, i64, or string values. Validate configur
 
 ## 20.5. Language-version selection
 
-An optional `.kimiproj` `LangVersion` requests an exact supported language version. If omitted, use the solution's version when supplied, otherwise the compiler's current version. Unsupported requests are errors, never silent fallback. Record the effective language version and compiler build identity in build metadata. This setting does not promise compatibility with older compilers bearing the same pre-alpha version label.
+An optional `.kimiproj` `LangVersion` requests an exact supported language version. If omitted, ordinary builds use the root solution's version when supplied, otherwise the compiler's current version; dependencies do not discover another solution for defaults. Packing requires each converted Project to declare LangVersion and Targets explicitly and obey §18.4.3's portable-default rules. The initial graph has one effective language version. Unsupported requests are errors, never fallback. Record effective language and compiler build identity in processing metadata; equal pre-alpha language labels do not promise compiler compatibility.
 
 ## 20.6. Compilation invariants
 
@@ -171,7 +171,7 @@ In addition to [general build inputs](#202-build-inputs), record ModIds, both de
 
 Generation must be deterministic for identical inputs. Do not implicitly depend on current time, randomness, undeclared environment variables, file enumeration order, or other external state. Supply external data as fixed declared input. This is a Mod contract, not a promise of OS-level isolation for C# code.
 
-Rebuild from original inputs rather than treating previous generated Koto as original source. Replace each Mod's output collection, removing outputs no longer produced, including after a Mod or input is removed. Do not carry old Koto or Binding objects into a new Compilation. Output caches are optional; reuse must validate all relevant inputs, including earlier Mod outputs, and restore equivalent source, target associations, addition order, diagnostics, and provenance.
+Rebuild from original inputs rather than treating previous generated Koto as original source. Replace each Mod's output collection, removing outputs no longer produced, including after a Mod or input is removed. Do not carry old Koto or Binding objects into a new Compilation. Output caches are optional; reuse must validate all relevant inputs, including earlier Mod outputs, and restore equivalent source, target associations, addition order, diagnostics, and provenance. If queries can observe comments or locations, their raw source bytes are dependencies under §18.7.4. Initial source packing excludes Mod-dependent input (§18.6.1); this does not remove ordinary local Mod processing.
 
 ### 20.7.6. Failures and diagnostics
 
@@ -253,20 +253,85 @@ The windows-x64-v1 compiler produces one pre-optimization textual .ll and one .l
 | Setting | Initial rule |
 | --- | --- |
 | Targets | x86_64-pc-windows-msvc |
-| OutputKind | Application (default) or inspection-only Library (§22.2.2) |
+| OutputKind | Application (default) or Library. Library source distribution follows §18.6; its `.ll` output remains for inspection (§22.2.2) |
 | OutputPath | .ll destination; default bin/<target>/<ProjectName>.ll |
-| NativeLibraries | Optional per-target logical name to kind/input mapping (§20.8.2); kimi_backend is resolved automatically when omitted |
+| PackageId / PackageVersion, Dependencies / PackageSources | Module identity and dependency selection (§18.4) |
+| TestSources / TestDependencies | Root test inputs and dependency extension (§18.8) |
+| NativeRequirements / NativeLibraries | Definition-side contracts and per-target supplies (§20.8.2); reserved runtime supplies are automatic |
 | Optimization | O0 or O2 (default); applied during native build |
 | LlvmBin | Optional legacy LLVM-only override; omitted by normal projects using §20.8.8. A relative project value is project-relative; CLI --LlvmBin overrides it and is invocation-relative. emit-llvm records a project value without executing tools. Neither changes the target/version contract or the default backend location. |
 | EntrySource | Not an initial selection setting; use §22.2's unique-candidate rules |
 
 The first execution subset is ordinary functions, simple local bindings, Unit, string literals, required ownership/cleanup, and Core.writeLine. Arrays, Dictionary, inheritance, closures, static Property execution, general generic sharing, and multiple-Kotonoha linking need not be included in this first execution test. Their language rules are not weakened; unsupported required operations fail. Layout computability, physical ABI support, and runtime availability are separate checks.
 
-Generation success certifies the matched IR/manifest pair, not LLVM acceptance, a linked executable, or successful execution. LLVM verification/object generation, manual linking, and running the produced executable are separately reported stages. Library output supports inspection/verification/object generation only.
+Generation success certifies the matched IR/manifest pair, not LLVM acceptance, a linked executable, or successful execution. LLVM verification/object generation, linking, and execution are separately reported stages. Library `.ll` supports inspection/verification/object-generation experiments; source packages are separate rebuildable inputs, not a stable external machine ABI.
 
 ### 20.8.2. NativeLibraries
 
-Each Ordinal logical key maps to `kind` (import or static) and one .lib `input`, never a DLL file. Import produces dllimport declarations; static does not. A simple filename is a linker search name, a relative path with separators is project-relative, and an absolute path is unchanged. Diagnose empty/NUL values or embedded linker options; never execute these strings as commands.
+#### 20.8.2.1. Requirements and supplies
+
+A native logical name belongs to its defining Kotonoha and compares by case-sensitive Ordinal equality. `NativeRequirements` maps target to logical-name requirements. Each requires `Kind` (`static` or `import`), with optional `ContractId` and `Sha256`; package JSON uses lowerCamelCase. Contract IDs are nonempty exact-match strings. Hash assertions add acceptance conditions. Check targets separately. Import controls dllimport generation; static does not.
+
+Each selected nonreserved `#LibraryImport` must have a matching requirement. An author may declare it in NativeRequirements or combine it with a self-targeted NativeLibraries record. Self-targeted Kind/ContractId/Sha256 expand into both requirements and supplies; overlapping explicit fields must agree. Require Kind after expansion. Supplies targeting another module cannot fill in or change that module's requirements. Explicit auxiliary requirements may satisfy native-internal references without a direct source import. Packing retains requirements, never host Input paths.
+
+```text
+// Standalone application: declare the requirement and supply once.
+NativeLibraries=
+  x86_64-pc-windows-msvc=
+    observer={ Kind="static" Input="native/observer.lib" }
+```
+
+```text
+// In the defining Library; no native file is needed for semantic checking.
+NativeRequirements=
+  x86_64-pc-windows-msvc=
+    codec={ Kind="static" ContractId="example.codec.v1" }
+```
+
+NativeLibraries maps each target to an array of Name/Input records, optionally with `Package={PackageId, PackageVersion}`; omission targets the declaring Project itself. Name is the target module's native name, not its consumer reference alias. ContractId and Sha256 are optional. Kind is allowed only in self-targeted combined declarations, not another module's supply. The existing logical-name-to-Kind/Input map is shorthand for self-targeted records with Name equal to the key. Diagnose the superseded NativeBindings setting with migration guidance.
+
+```text
+// In the consuming Application.
+NativeLibraries=
+  x86_64-pc-windows-msvc=
+    {
+      Package={ PackageId="example.codec" PackageVersion="1.0.0" }
+      Name="codec"
+      ContractId="example.codec.v1"
+      Input="native/codec.lib"
+    }
+```
+
+Input names one `.lib`, not a DLL. Paths with separators are relative to the declaring Project; absolute paths remain absolute. Resolve a simple linker search name to an actual file before use. Reject empty/NUL values or embedded linker options; never execute these strings as commands. When ContractId is required, the supply must assert the matching contract. Merge several supplies for one target only when content and contract agree. Registering another module's unused supply does not create a requirement.
+
+Check actual Kind at native-use time from each connected symbol's static definition or import route, including short/long import objects and support records. Do not classify a whole archive from a short header or reject it merely for mixing member kinds. Diagnose unsupported formats or required connections inconsistent with the declared Kind. Semantic checking and pack use definition requirements without reading native files. A contract/hash assertion is not proof of initialization, FP, unwind, ownership, or other foreign-code behavior.
+
+#### 20.8.2.2. Immutable native inputs
+
+Record actual SHA-256 for each native input and check both requirement and supply hash assertions. Reuse a verified immutable content copy or copy the fixed snapshot into staging; never hard-link it to the mutable original. Pass these same bytes to the linker, not the original path. Moving unchanged input does not change meaning; changed bytes change link inputs even at the same path. Kind/contracts/call conditions belong to affected semantic/generation inputs, and actual file content belongs at least to link inputs. Pinning an import library does not pin the runtime DLL or OS.
+
+#### 20.8.2.3. Symbol resolution and directives
+
+Native symbol sharing requires matching function/data kind, physical Type, calling convention, attributes, and provider. Never merge different modules' native logical names by spelling alone. Deduplicate required supplies by content hash, and index all members' definitions, references, imports, relocations, and directives. Starting from generated objects, the entry, and mandatory profile inputs, follow undefined references and effective directives to a fixed point of included members.
+
+Unused symbols duplicated only in unextracted members are not errors. For each required symbol, inspect candidate providers in the full index: non-equivalent candidates in different supplies are ambiguous even if the linker would take the first. Check other definitions in extracted members against already included definitions, and verify that every Kimigayo import binds its declared supply. Include generated objects and reserved supplies. Diagnose any profile rule the resolver cannot reproduce rather than guessing.
+
+Apply the same rules to public import symbols and `__imp_` symbols. Merge weak/COMDAT/import support records only when their format rules establish the same supply or equivalent definitions, including destinations and relocations. A weak flag or equal size alone is insufficient. Content sharing never removes the caller's ABI/unsafe obligations.
+
+Process `.drectve` only in generated objects and included archive members, using the adopted linker profile:
+
+| Directive | Initial rule |
+| --- | --- |
+| `/INCLUDE` | Add the symbol as a required reference |
+| `/ALTERNATENAME` | Resolve as a weak/alias reference; check candidates, cycles, and conflicts |
+| `/FAILIFMISMATCH` | Require identical values for each key |
+| `/DEFAULTLIB` | No extra input when disabled by profile `/NODEFAULTLIB`; otherwise implicit acquisition is unsupported and requires explicit supply |
+| `/EXPORT` | Diagnose as outside the initial export scope |
+| Other directives/encodings | Accept only meanings defined by the profile; otherwise diagnose the unsupported feature |
+
+Fix final linker inputs/options to the same profile and closure; options and implicit libraries cannot bypass these checks.
+
+#### 20.8.2.4. Reserved supplies and input summaries
 
 Reserve kernel32 as an automatically generated import library and kimi_backend as the compiler-managed static library at `<toolchain root>/windows_x64/kimi_backend_windows_x64_v1.lib` (§20.8.8). Neither requires a NativeLibraries entry. A kernel32 entry in NativeLibraries is an error with a diagnostic instructing removal; no SDK kernel32.lib or user-provided replacement is used. Other keys require configuration; do not guess .lib names from DLL names. An explicit kimi_backend path remains a compatibility override and must select the adopted supply.
 
@@ -274,9 +339,13 @@ The compiler embeds the project-owned backend/windows-x64/kernel32.def. It conta
 
 Static libraries must not depend on CRT startup, automatic C/C++ dynamic initialization, custom TLS initialization/termination, or automatic atexit handlers. Zero-initialized and constant data are allowed. Code needing such startup/termination needs a supported adapter first. DLL initialization follows §22.2.3. These are supplier/user connection contracts: a .lib filename and /NODEFAULTLIB do not establish or perform initialization.
 
+Core/backend/kernel32 supplies occur once for the entire graph and cannot be replaced by arbitrary packages. Module loading order is not initialization order (§22.2.3).
+
+Persist native member summaries/indexes by content hash, summary format, parser/interpretation-rule version, and COFF profile. Retain definitions, references, imports, weak/COMDAT records, relocations, and directives, including unused members. Recompute closure/conflicts for the current root objects, supply set, contracts, and linker options; never reuse another graph's resolution success. Changed content, incompatible formats, or corruption require reparsing. Unknown information is not an empty set. Share indexes and integer references instead of re-reading/reallocating every archive for each link.
+
 ### 20.8.3. Link manifest and publication
 
-Replace OutputPath's extension with .link.json in the same directory and write UTF-8 JSON for both output kinds. The schema is:
+Replace OutputPath's extension with .link.json in the same directory and write UTF-8 JSON for both output kinds. This generation/link record is distinct from the source manifest, dependency lock, and semantic cache. The existing single-module profile schema is:
 
 ```json
 {
@@ -329,7 +398,9 @@ Hashes must be actual SHA-256 values. packageVersion is supplied by Directory.Bu
 - Generated kernel32 entries have no input path. Validate the generator, DLL and definition hash against the embedded profile; reject substitutions and extra input paths. emit-llvm still requires no native tools and publishes no import library.
 - Build records retain actual library hashes, generator/tool identities, normalized definition hashes and tool settings. Each project/optimization writes its own .kernel32.def/.kernel32.lib. Generate into a fresh staging directory, publish only after validation, and fail without linking stale libraries if generation fails. Never embed absolute build paths in the generated library; redact local report paths.
 
-Complete both temporary outputs before publication, publish the manifest last, and report success only after both are published. A partial publication is failure; old files are not evidence of current success. Consumers check irSha256 because interruption can leave a mixed pair. Success reports both paths, purpose (Application input or Library inspection), entry, and required link inputs.
+Combined-module processing records must connect each module input, native owner/logical-name requirement and actual supply, toolchain, IR, and link result (§18.5.2). A logical native name alone cannot distinguish different modules' requirements. Preserve those scoped identities through final content deduplication. If required fields are added to the single-module encoding above, revise its schema and reject records missing those fields; schema 3 alone is not evidence of complete multi-module input validation.
+
+Complete both temporary outputs before publication, publish the manifest last, and report success only after both are published. Here publication means making generated files available, not updating a package release table with `publish`. A partial publication is failure; old files are not evidence of current success. Consumers check irSha256 because interruption can leave a mixed pair. Success reports both paths, purpose (Application input or Library inspection), entry, and required link inputs.
 
 When the legacy LlvmBin setting is configured, the manifest may additionally contain `"toolchain": { "llvmBin": "<manifest-relative directory>" }`. Resolve a relative setting from the project directory. This is a local build-tool location, not part of the code-generation profile or evidence of a tool's version. A build command or separately invoked builder may override the location, but must still check the actual tool versions under §20.8.5; a directory name or configured path cannot certify version compatibility. Default projects record no local toolchain path. External user library files remain configured through NativeLibraries; kimi_backend resolves from the toolchain and kernel32 is generated from the embedded definition.
 
@@ -364,16 +435,22 @@ After successful version probing, native build records retain the expected versi
 
 | Command | Required behavior |
 | --- | --- |
+| `kimi restore <project>` | Resolve current product/test partitions and atomically update their lock (§18.5.1); no source execution, Mods, or network access. |
+| `kimi check <project>` | Validate the required lock and current source/semantic inputs without native generation or execution. |
 | `kimi emit-llvm <project-or-solution>` | Perform the required source/ownership/generation checks and publish the matched pre-optimization .ll/.link.json pair. Never execute LLVM, validate an installed LLVM version, link or run. Successful output reports both paths; LLVM acceptance is a separate stage. |
 | `kimi build <project-or-solution>` | Generate fresh LLVM inputs, validate the actual tool versions and native inputs, run opt verification (and default<O2> only at O2), llc and lld-link, and publish the executable and a successful build record. Never execute the Application. |
+| `kimi test <project>` | Require valid product/test resolution and record current test inputs. `--list` requires semantic verification, not code generation. Test execution follows the adopted testing specification; §18.8 and §21.3.7 define input/generation boundaries. |
+| `kimi pack <project>` | Verify the fixed source-package graph and save its closure (§18.6.1), without reserving a release. |
+| `kimi publish <package> --store <directory>` | Validate the fixed Package closure and atomically update only the named local publication store (§18.6.4). No Project lock update or repacking. |
+| `kimi store verify` | Recheck all user-cache content/formats/references and invalidate corrupt results (§18.6.4). |
 | `kimi run <project>` | Resolve the configured existing executable, require a successful latest build record and matching executable hash, and execute without source analysis, IR generation, LLVM version checks or rebuilding. Source changes do not trigger compilation; users explicitly build when needed. |
 | `kimi run <path.exe>` | Execute the explicitly selected existing binary directly without a project or build record. |
 
-Build and emit-llvm accept configured projects/solutions or discover them in the specified directory (current directory when omitted). Loading any selected project unsuccessfully is failure; empty discovery is not a successful build. Run through project/directory/solution discovery requires exactly one loaded Application. Do not silently choose the first of several projects. Standalone source compilation is not part of run. The current native profile supports Windows x64 Applications; unsupported targets or Library emission must receive diagnostics rather than placeholder binaries. The existing limited emitter remains limited (§21.4); command automation does not add language-feature support.
+Source-processing commands validate their required lock partitions and use immutable current input records (§18.5); only restore changes locks. Build and emit-llvm accept configured projects/solutions or discover them in the specified directory (current directory when omitted). Loading any selected project unsuccessfully is failure; empty discovery is not success. Run through project/directory/solution discovery requires exactly one loaded Application. Do not silently choose the first of several projects. Standalone source compilation is not part of run. The initial native executable profile is Windows x64 Application; Library inspection output and source packing remain distinct. Diagnose unsupported target/operation/output requests rather than emitting placeholder binaries (§21.4).
 
-OutputPath continues to name the pre-optimization .ll. For `Name.ll`, optimization O0/O2 selects `Name.O0.obj` / `Name.O2.obj` and `Name.O0.exe` / `Name.O2.exe`; O2 also retains `Name.O2.ll`. The build record is `Name.link.build.json`. A configured --Target selects one of the project's configured targets; the current emission implementation requires exactly one Windows x64 target. The CLI Boolean option requires an explicit value, e.g. `--AllowUnpinnedToolchain true`.
+OutputPath continues to name the pre-optimization .ll. For `Name.ll`, optimization O0/O2 selects `Name.O0.obj` / `Name.O2.obj` and `Name.O0.exe` / `Name.O2.exe`; O2 also retains `Name.O2.ll`. `Name.link.build.json` is the latest build-record view; retain immutable content-addressed processing records behind it (§18.5.2). For single-environment build/emit/pack, --Target selects a configured target; without it use the sole target or diagnose multiple targets. Release is the default semantic mode, with --Debug selecting debug; mode is separate from O0/O2. The existing Boolean-value CLI spelling is, for example, `--Debug true` or `--AllowUnpinnedToolchain true`. Pack's --verify-all follows §18.6.1.
 
-At the beginning of a native build attempt, invalidate the previous success record before semantic analysis. Link into a fresh temporary executable and publish it only after success. A failed build may retain a prior executable for inspection, but the project run command must not treat it as a successful result of that attempt. An emit-llvm command does not rewrite the native build record. Build records retain version, input/tool identity, optimization and executable hash information; descriptive machine paths are remapped and are not execution inputs. Launch through a project derives the executable path from its current output settings and verifies the recorded hash; changing those settings requires the corresponding built artifact. An explicitly selected .exe path remains independently runnable.
+At the beginning of a native build attempt, invalidate the latest-success pointer before semantic analysis; preserve immutable historical records and active pins (§18.5.2). Link into a fresh temporary executable and publish it only after success. A failed build may retain a prior executable for inspection, but project run must not treat it as successful for that attempt. Emit-llvm does not rewrite the native success record. Record version, actual input/tool identities, optimization, and executable hash; remapped descriptive paths do not identify content. Project launch derives the executable path from current output settings and verifies the recorded hash; changing those settings requires the corresponding built artifact. An explicitly selected .exe path remains independently runnable.
 
 External processes are launched directly with separately supplied arguments, without constructing shell commands. Drain native-tool stdout/stderr concurrently, report failures, propagate cancellation to child process trees, and bound individual native-tool invocations (currently five minutes). Run forwards stdin and the child's stdout/stderr, preserves output bytes, and returns the child exit code. Project runs use the project directory as working directory; direct binary runs use the caller's current directory. Build/emit failures and launch errors return 1, successful build/emit return 0, and command cancellation returns 130. No fixed Application runtime timeout is imposed.
 

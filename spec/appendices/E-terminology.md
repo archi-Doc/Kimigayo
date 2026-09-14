@@ -56,7 +56,11 @@ This index is a reading aid. The linked sections contain the authoritative defin
 | Getter result Type | The declared result of custom/computed/required get; matches its Property header Type. | [Accessor contracts](../11-properties.md#112-accessor-functions) |
 | Instantiation / explicit full specialization / automatic specialization | Argument binding / mandatory user implementation selection / meaning-preserving Type-specific code generation. | [Generic code generation](../21-layout-runtime-and-code-generation.md#213-generic-code-generation) |
 | Koto | A compiler syntax-tree node. | [Compiler terminology](A-compiler-requirements.md#appendix-a-compiler-implementation-requirements) |
-| Kotonoha | One named source or binary module. | [Modules](../18-modules-and-dependencies.md#18-modules-and-dependencies) |
+| Kotonoha | One named module; initial external distribution uses source packages. | [Modules](../18-modules-and-dependencies.md#18-modules-and-dependencies) |
+| PackageId / PackageVersion / ReferenceName | Defining module/release identities / a consumer's direct source name. | [Dependency identities](../18-modules-and-dependencies.md#1841-identities-and-graph) |
+| SourceId / ProjectSnapshotId | Source-package content identity / live Project product snapshot identity. | [Package identity](../18-modules-and-dependencies.md#1863-content-identity-and-integrity), [input records](../18-modules-and-dependencies.md#1852-immutable-processing-records) |
+| ModuleInputId / DeclarationKey | Whole-module verification fast-path key / revision correspondence key, neither a replacement for actual Type identity. | [Verified information](../18-modules-and-dependencies.md#187-verified-information-and-reuse) |
+| Dependency lock / publication store | Project resolution state updated by restore / local release mappings updated by publish. | [Locks](../18-modules-and-dependencies.md#1851-resolution-state), [stores](../18-modules-and-dependencies.md#1864-user-cache-and-publication-stores) |
 | Mod / ModId | One registered source-generation step / its stable identity within a Compilation. | [Mods](../20-compilation-configuration.md#207-mods-source-generation) |
 | Loan | A borrowed place, access mode, and validity region. | [Borrow checking](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
 | Lookup environment | Declarations and aliases available for lookup in a scope; extensions are a future design. | [Name resolution](../09-names-signatures-and-access.md#9-names-signatures-and-access) |

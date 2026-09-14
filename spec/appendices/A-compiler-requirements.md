@@ -15,7 +15,7 @@
 
 ## A.1. Source identity and incremental analysis
 
-A CodeContext belongs to one Kotonoha and immutable SourceDocument snapshot (§18). A new snapshot requires fresh context and alias/Binding results even at the same path. Source-less parsing contexts cannot replace parsed nodes’ source identity, and nodes cannot move into another Kotonoha’s Container.
+A CodeContext belongs to one Kotonoha and immutable SourceDocument snapshot (§18). A new snapshot requires a fresh source context and current validation of aliases/Binding even at the same path. Verified semantic records may be reused only after the correspondence, dependency, and source-mapping checks in §18.7; this does not reuse stale Koto/CodeContext objects. Source-less contexts cannot replace parsed nodes' source identity, and nodes cannot move into another Kotonoha's Container.
 
 Retain each node/fragment’s original CodeContext and diagnostic/header locations after merging. Resolve its bodies, headers, Types, and Constraints in that context, not the merged Container’s. Generated documents have their own contexts; source-less roots/wrappers supply no alias environment and must preserve wrapped syntax’s original context.
 
@@ -284,3 +284,25 @@ Preserve Body form, evaluation context, transfer target, result sources, and the
 | Diagnostics and tools | Unexpected inferred Unit through nested discarded selections/do expressions; one warning per discard under §17.4's priority, including Copy/Non-Copy Result and separate arm occurrences; effect-free discard without assuming call purity; no warning solely for a final defer; formatter preserves Body form; refactorings preserve results, targets, and destruction order |
 
 Coordinate with the cleanup, refinement, and Pattern checks in A.7, A.9, and A.10.
+
+## A.16. Dependencies, artifacts, and bounded reuse
+
+Implement [§18](../18-modules-and-dependencies.md), native connection rules (§20.8.2), and product/test planning (§21.3.7) without changing acceptance or selection based on processing order or cache presence.
+
+Stream hashes from fixed input bytes instead of constructing large concatenation buffers. Intern/share each dependency's declarations, strings, Types, Origins, and verification facts; use range-checked integer references and reconstruct diagnostic paths on demand instead of copying paths per node. Share immutable lexical data only when its language conditions agree; never share mutable Binding/Koto state across definition environments or target/mode checks.
+
+Use reverse dependencies and bounded worklists for invalidation. Bound graph size, work, concurrent verification, and total memory; do not make module depth depend on host-stack recursion. Valid semantic caches may load bodies lazily and avoid source decompression from integrity-checked managed input, but only after checking mandatory verification completion, including unused definitions. Reuse native copies/indexes by content. Compare alternatives with identical input and independent environment-specific state.
+
+Common generation may deduplicate equal plan keys, direct-call statically selected implementations, propagate constants, and omit unnecessary code/metadata after verification. Do not demand full specialization for every Type or unconditional forced inlining. Introduce fine-grained reuse, laziness, and parallel checks incrementally; preserve the same no-cache semantics.
+
+| Area | Required verification cases |
+| --- | --- |
+| Identity/resolution | Multiple paths/aliases, same-release conflicting content, distinct versions/Types, cycles, hidden transitive names, unique source selection and corrupt indexes |
+| Locks | Source edits and relocations without rewrites, changed dependencies, missing empty locks versus stale existing locks, test-only failure, both-partition validation, concurrent restore |
+| Pack/publication | Repeated same-version trials, destination-scoped conflicts, whole-closure diagnostics, explicit settings, existing Package closure, all-environment failure, atomic table update/interruption |
+| Storage | Unicode collisions, differing valid compression, whole-archive fast checks and full-validation fallback, corrupt entries/caches, store verify, pin/collection races |
+| Semantic reuse | Cross-version correspondence without Type merging, same/changed private effects, changed absence facts, Proven withdrawal, recursive components, observed versus unobserved source edits |
+| Tests/generation | Unrelated tests, new generic substitutions, same-release conflicts, changed Providers, initialization/cleanup closure, unchanged product sharing/frame/budget choices |
+| Native | Self-targeted combined configuration, short/long import objects, mixed archives, unused duplicate members versus ambiguous required symbols, directives, stale summaries |
+
+Measure retrieval, lexing, semantic verification, generation, and linking separately; record bytes read, hash passes, revalidated judgments, bodies loaded, allocations, peak memory, code size, and runtime. Include many-path graphs, a large Library with sparse use, generation-only setting changes, and repeated small external/generic calls. No measured speedup or numeric resource guarantee is implied by these rules.
