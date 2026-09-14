@@ -1,43 +1,77 @@
-# autoframe 実行基盤 0.1
+# autoframe 0.1
 
-Windows、PowerShell 7.4以降、対応するCodex CLIと既存の認証・権限を使用する。目的・完成条件・作業範囲はプロジェクト直下のPLAN.mdで定義する。[English](README.en.md)
+Codexの作業を計画・監査・実装・検証に分けて進める、Windows向けの自動実行フレームワークです。[English](README.en.md)
 
-## 配置と実行
+目的と完成条件を`PLAN.md`に定義し、`Plan → Prepare → Audit → Work → Verify`を繰り返します。全体監査で完成条件を確認すると`Complete`になります。
 
-このフォルダー一式を対象プロジェクトへ配置するか、共通配置してProjectRootを指定する。更新はRunner停止中に行い、対象プロジェクトのPLAN.mdと`.autoframe/`を保持する。
+## はじめに
 
-PLAN作成、実行・再開の例、既定値、停止条件、状況表示は[SPECのQuickStart](SPEC.md#quickstart)を参照する。[テンプレート](templates/PLAN.template.md)と[作成用プロンプト](prompts/create-plan.md)も利用できる。
+### 1. 配置する
 
-通常のPlanは内部計画を更新し、既定でPlanの3回目・6回目・9回目…にRunnerがPLAN.mdのtasksとmilestonesを再作成する。原文・要件を保持し、更新後の証拠を再検証する。Resumeは設定・回数・稼働時間を引き継ぎ、NewRunは新しい実行を始める。どちらも未検証成果の確認を省略しない。
+Windows、PowerShell 7.4以降、Codex CLIと必要な開発ツールを用意し、`autoframe/`一式を対象プロジェクトへコピーします。認証・権限は既存の設定を使います。
 
-## 記録と結果
+Gitを使う場合は`.gitignore`へ`.autoframe/`を追加してください。実行状態・証拠を保存するフォルダーなので、再開時に削除しないでください。
 
-`.autoframe/state.json`と参照先が現行状態。内部状態は手で編集しない。
+### 2. PLAN.mdを作る
 
-| 保存先 | 内容 |
-| --- | --- |
-| records/ | 受理結果、内部計画、証拠、履歴 |
-| manifests/ | 内容ハッシュで共有するファイル記録 |
-| runs/<run_id>/<attempt_id>/ | 試行ごとのinput.json、prompt.md、before.json、after.json、metrics.json |
-| 同上のworker/ | events.jsonl、stderr.log、プロセス停止記録 |
-| 同上のoutput/ | Workerのresult.json、証拠、定期再作成時の候補JSON |
+Codexへ次のように依頼します。[テンプレート][template]も利用できます。
 
-before.jsonの参照は受理後も残し、NewRunの回復でも利用する。状態の確定前に記録を保存し、未参照記録から受理を推測しない。ハートビートは内部計画の版を変更しない。
-
-[result Schema](schemas/result.schema.json)がWorkerの出力契約。証拠のpathはoutput_directory基準、hashはSHA-256、input_signatureは入力signatureを使う。changes.setの変更しない値と不要なblockerはnullとする。必要成果物は内部taskのdeliverablesに列挙する。Planの計画メモと項目証拠の使い分けは[SPEC §8.1](SPEC.md#81-結果の受理)に従う。
-
-Workerは既存のモデル・認証・権限を継承する。少なくともoutput_directoryへ証拠を書ける権限が必要で、Runnerは権限拡張フラグを付けない。CLI疎通成功だけでは、この書込権限や6段階の完了を保証しない。
-
-Windows Job Objectで子プロセスを管理し、他OSは起動前にErrorとする。ファイル差分による事後検査はOSの書込制限や全操作の記録を代替しない。パス・証拠・回復の規則は[SPEC §5](SPEC.md#5-差分証拠再開)、公開引数は[SPEC §7](SPEC.md#7-runps1の仕様)を参照する。
-
-## 検証
-
-```powershell
-# 一時プロジェクトと疑似Workerによる基盤試験
-pwsh -NoProfile -File ./autoframe/tests/test.ps1
-
-# ツール不使用・読取専用の実CLI疎通試験
-pwsh -NoProfile -File ./autoframe/tests/smoke-real-cli.ps1 -RunRealCli
+```text
+autoframe/prompts/create-plan.mdに従い、プロジェクト直下にPLAN.mdを作成してください。
+目的: <達成したいこと>
+対象: <機能・フォルダー>
+完成条件: <終了を判断できる条件>
+対象外・制約: <変更しないもの・禁止する操作>
+PLAN.mdだけを作成し、自動実行は開始しないでください。
 ```
 
-疑似試験の失敗時は一時フォルダーを保持する。`-KeepFixtures`は成功時も保持し、`-Filter '*対象名*'`は個別試験を選ぶ。実CLI疎通は別試験であり、製品用PLANや本番の自動実行は不要。結果と未確認事項は[VERIFICATION.md](VERIFICATION.md)に記録する。
+### 3. 実行・再開する
+
+PLAN.mdを確認し、対象プロジェクトのルートで実行します。
+
+```powershell
+# 開始
+pwsh -NoProfile -File ./autoframe/run.ps1 -ProjectRoot .
+
+# 再開
+pwsh -NoProfile -File ./autoframe/run.ps1 -ProjectRoot . -Resume
+
+# 累計時間の上限を720分に増やして再開
+pwsh -NoProfile -File ./autoframe/run.ps1 -ProjectRoot . -Resume -MaxRunMinutes 720
+```
+
+既定値は累計480分・Worker起動100回、1回のWorkerは最大60分です。Resumeは時間・回数・設定を引き継ぎます。新しい実行には`-NewRun`を使い、`-Resume`と併用しません。
+
+Planの起動3回ごとに、保存したユーザープロンプトの原文から作業項目を再作成します。間隔は`-PlanRegenerationInterval`で変更できます。
+
+## ファイルの扱い
+
+次の5種類は、全プロジェクト・全階層で既定の生成物として扱います。PLANで未指定でも有効です。
+
+`.vs/`、`bin/`、`obj/`、`TestResults/`、`BenchmarkDotNet.Artifacts/`
+
+追加の生成先はPLANの`generated_scope`へ記載します。指示ファイルとautoframe本体の保護、必要成果物の検証は維持します。PLANや配布物の更新はRunner停止中に行い、`.autoframe/`の内部状態は手で編集しないでください。
+
+## 状況と停止
+
+約1分ごとに、`elapsed`（現在のWorkerの経過時間）、`total_elapsed`（累計稼働時間）、`remaining`（全体予算の残り時間）を表示します。記録先はログの`Trial`で確認できます。
+
+時間上限・Ctrl+CではWorkerと子プロセスを停止し、通常は`Paused`になります。`Blocked`は外部待ち、`NeedsInput`は判断待ち、`Stalled`は停滞、`Error`は異常です。`Stalled`の解除やエラー対応は[SPEC][spec]を参照してください。
+
+保護対象の変更はパス付きで診断します。.NETではWorker環境で依存設定を確認し、失敗した項目の原因・解除条件を記録します。
+
+## モデルと推論量の設定
+
+モデルはCodex CLIの設定を使います。段階別のモデルIDは`-PhaseModels`で指定できます。Resume時の省略は保存済み設定を継承し、明示した表は全体を置き換えます。
+
+推論量はCLIの`model_reasoning_effort`を使用します。autoframeには段階別の推論量を指定する引数はありません。
+
+## 詳細
+
+[利用ガイド][usage] · [仕様・全引数][spec] · [PLAN作成用プロンプト][create-plan] · [検証記録][verification]
+
+[template]: templates/PLAN.template.md
+[usage]: USAGE.md
+[spec]: SPEC.md
+[create-plan]: prompts/create-plan.md
+[verification]: VERIFICATION.md

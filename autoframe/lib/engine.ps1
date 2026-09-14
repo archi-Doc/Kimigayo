@@ -1,4 +1,5 @@
 . (Join-Path $PSScriptRoot 'regeneration.ps1')
+$script:WorkerClock=$null
 function Assert-Settings($Settings) {
     if(-not $Settings.Contains('PlanRegenerationInterval')) { $Settings.PlanRegenerationInterval=3 }
     if($Settings.PlanRegenerationInterval -le 0) { throw 'PlanRegenerationInterval must be positive.' }
@@ -45,9 +46,10 @@ function Format-RunDuration([double]$Seconds) {
 }
 function Write-RunEvent([string]$Message) { [Console]::WriteLine("[$([datetime]::Now.ToString('HH:mm:ss'))] $Message") }
 function Write-RunStatus {
-    $elapsed=Format-RunDuration ($script:BaseElapsed+$script:RunClock.Elapsed.TotalSeconds)
+    $elapsed=if($null -ne $script:WorkerClock) { Format-RunDuration $script:WorkerClock.Elapsed.TotalSeconds } else { '-' }
+    $totalElapsed=Format-RunDuration ($script:BaseElapsed+$script:RunClock.Elapsed.TotalSeconds)
     $remaining=Format-RunDuration (Get-Remaining)
-    Write-RunEvent "$($script:Activity) | phase=$($script:State.phase) | attempts=$($script:State.attempts)/$($script:State.settings.MaxPhaseAttempts) | Plan=$($script:State.plan_attempts) | elapsed=$elapsed | remaining=$remaining"
+    Write-RunEvent "$($script:Activity) | phase=$($script:State.phase) | attempts=$($script:State.attempts)/$($script:State.settings.MaxPhaseAttempts) | Plan=$($script:State.plan_attempts) | elapsed=$elapsed | total_elapsed=$totalElapsed | remaining=$remaining"
     $script:LastStatus=$script:RunClock.Elapsed.TotalSeconds
 }
 function Get-AncestorInstructions([string]$Root) {
@@ -84,6 +86,15 @@ function Get-Environment($Plan,[string]$Root,[string]$Directory,[double]$Seconds
     @{os=[Runtime.InteropServices.RuntimeInformation]::OSDescription;powershell=$PSVersionTable.PSVersion.ToString();cli=$CliVersion;settings=$script:State.settings;permissions='inherited';config=$configHashes;instructions=(Get-AncestorInstructions $Root);checks=$checks}
 }
 function Get-FrameworkHash { Get-ObjectHash (Get-Snapshot $script:FrameRoot -Distribution) }
+function Assert-ProtectedChanges($Before,$After,[string]$Directory,[string]$Phase,$FrameworkBefore=@(),$FrameworkAfter=@()) {
+    $changes=@(Get-ManifestChanges $Before.entries $After.entries | ForEach-Object { $_.area='project'; $_ })
+    $changes+=@(Get-ManifestChanges $FrameworkBefore $FrameworkAfter | ForEach-Object { $_.area='framework'; $_ })
+    if(-not $changes.Count) { return }
+    $report=Join-Path $Directory 'protected-changes.json'
+    Save-Json $report @{phase=$Phase;changes=$changes}
+    $details=@($changes | Select-Object -First 20 | ForEach-Object { "$($_.area): $($_.change) $($_.path)" }) -join '; '
+    throw "Protected files changed during $Phase ($($changes.Count)). $details. Change origin is unknown. See $report"
+}
 function Save-Manifest($Manifest) {
     $ref=Save-Record $script:HomePath $Manifest 'manifests'
     [IO.Path]::GetFileNameWithoutExtension($ref)
@@ -112,6 +123,10 @@ function New-WorkerInput($Plan,$Logical,$Environment,[string]$FrameworkHash,$Sna
         max_tasks=$state.settings.MaxTasksPerWork;deadline_utc=[datetime]::UtcNow.AddSeconds($Seconds).ToString('O')
         save_from_utc=[datetime]::UtcNow.AddSeconds([Math]::Max(0,$Seconds-$state.settings.SaveReserveMinutes*60)).ToString('O')
         environment=$Environment;framework_hash=$FrameworkHash
+        default_generated_scope=@(Get-DefaultGeneratedScope);effective_generated_scope=@(Get-GeneratedScope $Plan.data)
+        dependency_preflight=$(if(@($inputManifest.entries | Where-Object { $_.kind -ceq 'file' -and $_.path -match '\.(slnx?|[cf]sproj|vbproj)$' -and -not (Test-Protected $state.project_root $_.path) }).Count) {
+            @{script=(Join-Path $script:FrameRoot 'check-dependencies.ps1');report=(Join-Path $output 'dependency-preflight.json')}
+        } else { $null })
         milestone_progress=@(Get-MilestoneProgress $Logical)
         plan_attempt_number=($state.plan_attempts+1);regenerate_plan=(Test-PlanRegenerationDue $state)
         original_prompt=$(if(Test-PlanRegenerationDue $state) { Get-OriginalPrompt ([IO.File]::ReadAllText((Join-Path $state.project_root 'PLAN.md'))) } else { $null })
@@ -146,6 +161,16 @@ function Assert-ApprovalProofs($State,$Logical,$Context,[string]$HomePath) {
         if(-not $proof.ContainsKey($id)) { throw 'Audit proof missing.' }
         $e=$proof[$id]
         if($e.phase -cne 'Audit' -or $e.input_signature -cne $Context.signature -or [Autoframe.Json]::FileHash((Join-Path $HomePath $e.record_path),[Action]{ Invoke-Tick }) -cne $e.hash) { throw 'Audit proof invalid.' }
+    }
+}
+function Assert-DependencyPreflight($Context) {
+    if($null -eq $Context.dependency_preflight) { return }
+    $report=Read-Json $Context.dependency_preflight.report
+    if(-not $report.Contains('status') -or $report.status -cnotin @('ready','blocked') -or -not $report.Contains('exit_code')) { throw 'Invalid Worker dependency preflight report.' }
+    if($report.status -ceq 'ready' -and $report.exit_code -ne 0) { throw 'Successful dependency preflight requires exit code 0.' }
+    if($report.status -ceq 'blocked') {
+        if(-not $report.Contains('error') -or [string]::IsNullOrWhiteSpace($report.error) -or -not $report.Contains('release_condition') -or [string]::IsNullOrWhiteSpace($report.release_condition)) { throw 'Blocked dependency preflight requires a cause and release condition.' }
+        Write-RunEvent "Worker dependency preflight blocked. See $($Context.dependency_preflight.report)"
     }
 }
 function Test-CompletionProofs($State,$Logical,$Plan,$Context,$Snapshot,[string]$HomePath) {
@@ -200,6 +225,7 @@ function Start-Frame([string]$Root,$Settings,$Explicit,[switch]$Resume,[switch]$
         [Autoframe.Cancellation]::Register()
         $script:SessionStarted=[datetimeoffset]::Now
         $script:RunClock=[Diagnostics.Stopwatch]::StartNew(); $script:LastHeartbeat=0.0
+        $script:WorkerClock=$null
         $previous=$null; $badState=$false
         if(Test-Path -LiteralPath $script:StatePath) {
             try { $previous=Read-Json $script:StatePath 'state'; $null=Read-Record $script:HomePath $previous.logical_ref 'logical'; $null=Read-Record $script:HomePath $previous.plan_ref }
@@ -310,6 +336,7 @@ function Start-Frame([string]$Root,$Settings,$Explicit,[switch]$Resume,[switch]$
             }
         }
         while($script:State.status -ceq 'Running') {
+            $script:WorkerClock=$null
             $script:Activity='Preparing phase'
             $stop=Get-StopStatus $script:State ($script:BaseElapsed+$script:RunClock.Elapsed.TotalSeconds)
             if($wasComplete -and (Get-Remaining) -gt 0) { $stop='Running' }
@@ -330,7 +357,8 @@ function Start-Frame([string]$Root,$Settings,$Explicit,[switch]$Resume,[switch]$
             $plan=$current
             $directory=Join-Path $script:HomePath "runs/$($script:State.run_id)/$([guid]::NewGuid().ToString('N'))"
             $null=[IO.Directory]::CreateDirectory($directory)
-            $frameworkHash=Get-FrameworkHash
+            $frameworkSnapshot=Get-Snapshot $script:FrameRoot -Distribution
+            $frameworkHash=Get-ObjectHash $frameworkSnapshot
             $before=Get-Snapshot $Root
             $beforeProbe=Get-ProtectedManifest $Root $plan.data $before 'Probe'
             if($plan.data.environment_checks.Count) {
@@ -340,7 +368,7 @@ function Start-Frame([string]$Root,$Settings,$Explicit,[switch]$Resume,[switch]$
             $seconds=[Math]::Min((Get-Remaining),$Settings.PhaseTimeoutMinutes*60)
             $environment=Get-Environment $plan.data $Root $directory $seconds $cliVersion
             $snapshot=Get-Snapshot $Root
-            if((Get-ObjectHash $beforeProbe) -cne (Get-ObjectHash (Get-ProtectedManifest $Root $plan.data $snapshot 'Probe'))) { throw 'Environment check modified protected files.' }
+            Assert-ProtectedChanges $beforeProbe (Get-ProtectedManifest $Root $plan.data $snapshot 'Probe') $directory 'Probe'
             if($script:State.active) { $script:State.active=$null; Save-State }
             $Context=New-WorkerInput $plan $logical $environment $frameworkHash $snapshot $directory ([Math]::Min((Get-Remaining),$Settings.PhaseTimeoutMinutes*60))
             if(Update-StaleEvidence $logical $Context.signature $script:HomePath $snapshot) {
@@ -388,6 +416,7 @@ function Start-Frame([string]$Root,$Settings,$Explicit,[switch]$Resume,[switch]$
             }
             Save-State
             $script:Activity='Worker running'
+            $script:WorkerClock=[Diagnostics.Stopwatch]::StartNew()
             Write-RunEvent "$($script:State.attempts): $($Context.phase) | targets=$(if($Context.targets.Count) { $Context.targets -join ',' } else { '-' }) | deadline=$([datetimeoffset]::Parse($Context.deadline_utc).ToLocalTime().ToString('HH:mm:ss zzz'))"
             Write-RunStatus
             Write-RunEvent "Trial: $directory"
@@ -397,6 +426,7 @@ function Start-Frame([string]$Root,$Settings,$Explicit,[switch]$Resume,[switch]$
                 Write-RunEvent "Worker exited | phase=$($Context.phase) | duration=$(Format-RunDuration $childResult.seconds) | exit=$($childResult.exit_code) | timed_out=$($childResult.timed_out)"
                 Save-Json (Join-Path $directory 'metrics.json') @{phase=$Context.phase;exit_code=$childResult.exit_code;timed_out=$childResult.timed_out;seconds=$childResult.seconds}
             } finally {
+                $script:WorkerClock.Stop()
                 $script:Activity='Checking result'
                 # Even a missing/invalid result leaves a durable before/after record when time allows.
                 if((Get-Remaining) -gt 0) {
@@ -423,7 +453,7 @@ function Start-Frame([string]$Root,$Settings,$Explicit,[switch]$Resume,[switch]$
                 $after=Get-Snapshot $Root
             }
             $latest=Read-Plan $Root
-            if((Get-FrameworkHash) -cne $frameworkHash -or (Get-ObjectHash (Get-ProtectedManifest $Root $plan.data $snapshot $Context.phase)) -cne (Get-ObjectHash (Get-ProtectedManifest $Root $plan.data $after $Context.phase))) { throw 'Worker changed protected files.' }
+            Assert-ProtectedChanges (Get-ProtectedManifest $Root $plan.data $snapshot $Context.phase) (Get-ProtectedManifest $Root $plan.data $after $Context.phase) $directory $Context.phase $frameworkSnapshot (Get-Snapshot $script:FrameRoot -Distribution)
             if($latest.hash -cne $Context.input_plan_hash) {
                 $script:State.uncertain+=@($script:State.active); $script:State.active=$null; Set-PlanReturn $script:State; Save-State; continue
             }
@@ -431,8 +461,9 @@ function Start-Frame([string]$Root,$Settings,$Explicit,[switch]$Resume,[switch]$
             if($Context.phase -cne 'Work' -and (Get-ObjectHash $afterInput) -cne $Context.input_manifest) { throw 'Verification/planning input changed during the phase.' }
             $result=Read-Json (Join-Path $Context.output_directory 'result.json') 'result'
             Assert-ResultEnvelope $result $script:State $Context
+            Assert-DependencyPreflight $Context
             if($Context.phase -ceq 'Work') {
-                $allowed=@($logical.execution_plan.tasks | ForEach-Object { $_.edit_scope })+@($plan.data.generated_scope)
+                $allowed=@($logical.execution_plan.tasks | ForEach-Object { $_.edit_scope })+@(Get-GeneratedScope $plan.data)
                 $oldMap=@{}; foreach($e in $snapshot) { $oldMap[$e.path]=$e }
                 $newMap=@{}; foreach($e in $after) { $newMap[$e.path]=$e }
                 foreach($p in @(@($oldMap.Keys)+@($newMap.Keys) | Sort-Object -Unique)) {

@@ -10,6 +10,16 @@ try {
     $logical=Get-Content -LiteralPath $context.logical_path -Raw | ConvertFrom-Json -AsHashtable
     $plan=Get-Content -LiteralPath $context.plan_record -Raw | ConvertFrom-Json -AsHashtable
     $scenario=Get-Content -LiteralPath (Join-Path $context.project_root 'scenario.json') -Raw | ConvertFrom-Json -AsHashtable
+    if($scenario.mode -ceq 'default-outputs-all-phases') {
+        foreach($name in @('.vs','bin','obj','TestResults','BenchmarkDotNet.Artifacts')) {
+            if("**/$name/**" -cnotin $context.default_generated_scope -or "**/$name/**" -cnotin $context.effective_generated_scope) { throw "Default scope missing from Worker input: $name" }
+            foreach($relative in @($name,"nested/$name")) {
+                $dir=Join-Path $context.project_root $relative
+                $null=[IO.Directory]::CreateDirectory($dir)
+                [IO.File]::WriteAllText((Join-Path $dir 'cache.json'),$context.phase)
+            }
+        }
+    }
     $result=@{
         schema_version=1;run_id=$context.run_id;attempt_id=$context.attempt_id;phase=$context.phase
         input_plan_hash=$context.input_plan_hash;base_plan_version=$context.base_plan_version;execution_plan_hash=$context.execution_plan_hash
@@ -23,11 +33,21 @@ try {
         return $id
     }
     function Task-Result([string]$Id,[string]$Status,$Evidence=@()) { @{id=$Id;status=$Status;evidence_ids=@($Evidence);remaining=@();blocker=$null} }
+    if($null -ne $context.dependency_preflight -and $scenario.mode -cne 'dependency-missing') {
+        $dependency=@{status='ready';exit_code=0;error=$null;release_condition=$null}
+        if($scenario.mode -ceq 'dependency-blocked') { $dependency=@{status='blocked';exit_code=1;error='Access denied: C:/Users/fixture/NuGet.Config';release_condition='Restore read access in the Worker environment and rerun restore.'} }
+        $dependency | ConvertTo-Json | Set-Content -LiteralPath $context.dependency_preflight.report -Encoding utf8
+    }
     if($scenario.mode -eq 'invalid-result') { [IO.File]::WriteAllText((Join-Path $context.output_directory 'result.json'),'{}'); exit 0 }
     if($scenario.mode -eq 'error') { [Console]::Error.WriteLine('intentional failure'); exit 19 }
     if($scenario.mode -eq 'large-log') { for($i=0;$i -lt 5000;$i++) { [Console]::WriteLine(('x'*1024)); [Console]::Error.WriteLine(('y'*1024)) } }
     switch -CaseSensitive ($context.phase) {
         'Plan' {
+            if($scenario.mode -ceq 'dependency-blocked') {
+                $blocked=Task-Result 'T1' 'blocked'
+                $blocked.blocker=@{reason=$dependency.error;release_condition=$dependency.release_condition}
+                $result.task_results+=@($blocked)
+            }
             if($scenario.mode -like 'plan-proof-*') {
                 $ids=switch($scenario.mode) {
                     'plan-proof-missing' { 'unknown-evidence' }
@@ -119,6 +139,7 @@ try {
                 if(-not [IO.File]::ReadAllText($path).Contains('external fixture edit')) { [IO.File]::AppendAllText($path,"`nexternal fixture edit`n") }
             }
             if($scenario.mode -eq 'protected-write') { [IO.File]::WriteAllText((Join-Path $context.project_root 'protected.txt'),'changed') }
+            if($scenario.mode -eq 'ide-cache-write') { [IO.File]::WriteAllText((Join-Path $context.project_root '.vs/DocumentLayout.json'),'changed') }
         }
         'Verify' {
             $result.decision='accepted'

@@ -1,6 +1,8 @@
 # autoframe Specification 0.1
 
-This document defines the PowerShell and prompt requirements. See the [run instructions](README.md) and [verification results and limitations](VERIFICATION.md). The [Japanese specification](SPEC.md) is authoritative.
+This document defines the PowerShell and prompt requirements. See the [run instructions](USAGE.en.md) and [verification results and limitations](VERIFICATION.md). The [Japanese specification](SPEC.md) is authoritative.
+
+Keep the [README](README.en.md) focused on setup and basic operations; document arguments, diagnostics, and recovery details here. When updating the root README.md and README.en.md, synchronize their bodies into autoframe/, adjusting only relative links for the destination. The Japanese text is authoritative; reflect the same content in English.
 
 ## QuickStart
 
@@ -93,7 +95,7 @@ A successful run ends with `Complete`. Time or attempt limits can result in `Pau
 
 `-NewRun` also checks unverified artifacts before continuing work. Resuming a completed run triggers a fresh audit if completion evidence is missing or corrupt. Internal plan updates preserve user-defined dependencies, completion-criterion mappings, and milestone task membership.
 
-Edit PLAN.md manually only while the runner is stopped, and do not edit internal state files manually. See [SPEC.en.md][qs-spec] for the full specification and [autoframe/README.md][qs-runner] for runner details.
+Edit PLAN.md manually only while the runner is stopped, and do not edit internal state files manually. See [SPEC.en.md][qs-spec] for the full specification and [autoframe/USAGE.en.md][qs-runner] for runner details.
 
 ### 4. Worker interruption and file changes
 
@@ -125,12 +127,25 @@ During long operations, status lines appear approximately once a minute. Start, 
 ```text
 [10:00:00] Start | session_started=2026-09-14 10:00:00 +09:00 | run=...
 [10:00:03] 1: Plan | targets=- | deadline=11:00:03 +09:00
-[10:01:03] Worker running | phase=Plan | attempts=1/100 | Plan=1 | elapsed=00:01:03 | remaining=01:58:57
+[10:01:03] Worker running | phase=Plan | attempts=1/100 | Plan=1 | elapsed=00:01:00 | total_elapsed=00:01:03 | remaining=01:58:57
 ```
 
-`attempts` is the cumulative launch attempt count across all phases / limit, including failed launches. `Plan` counts Plan launch attempts only. `elapsed` and `remaining` show cumulative runtime and remaining total budget; Resume preserves them. `session_started` and the final `session_duration` describe this invocation only. `verified` counts verified tasks among all non-superseded tasks; it is not a percentage of total work completed.
+`attempts` is the cumulative launch attempt count across all phases / limit, including failed launches. `Plan` counts Plan launch attempts only. `elapsed` measures time since the current Worker started, resets for each Worker, and freezes while its result is checked. It is `-` when no Worker has started. `total_elapsed` includes runtime before Resume, and `remaining` is the remaining total budget. Time limits still use cumulative runtime. `session_started` and the final `session_duration` describe this invocation only. `verified` counts verified tasks among all non-superseded tasks; it is not a percentage of total work completed.
 
 Status lines indicate runner activity, not confirmed progress inside the Worker. Synchronous operations may delay updates. For details, inspect the trial directory shown by `Trial` at Worker launch.
+### IDE cache and dependency diagnostics
+
+The fixed defaults are `**/.vs/**`, `**/bin/**`, `**/obj/**`, `**/TestResults/**`, and `**/BenchmarkDotNet.Artifacts/**`. They apply to every project and phase regardless of language, IDE, or existing folders. They remain active when PLAN omits `generated_scope` or sets it to an empty array; new templates list them explicitly. The effective generated scope combines these defaults with PLAN's declarations. Workers receive `default_generated_scope` and `effective_generated_scope`; existing PLAN files remain unchanged.
+
+Declare other outputs in PLAN's `generated_scope`. Do not exclude all of `.vscode` or `.idea`, which can contain shared settings.
+
+The fixed default affects verification input and allowed-scope checks. Before/after snapshots and required artifact hashing continue, with instruction and distribution protection taking precedence. Explicitly listing a required input or reference inside generated scope remains an error.
+
+Protected changes stop execution with `Protected files changed during ...`, without attributing them to the Worker. The log lists the first 20 paths with added, modified, or deleted status. The trial directory's `protected-changes.json` contains every change, labeled `framework` for distribution files or `project` for project files. Instruction files remain protected even inside generated directories.
+
+When verification inputs include a .NET solution or project, each Worker first runs `check-dependencies.ps1` in its own command execution environment. It saves the outcome of `dotnet nuget list source --format short`, any failure cause, and release conditions to its own `output/dependency-preflight.json`. The runner rejects missing or invalid reports. Successful source listings are not saved. Runner-side `environment_checks` do not prove Worker-side read access.
+
+On dependency failure, the Worker reports only affected tasks as `blocked` and continues independent work. If the check cannot run, it records the cause and release conditions in the same report. A successful read check does not prove restore succeeds. Work and Verify run the planned restore before lengthy dependent work; they must not substitute old assets or `--no-restore` for a failed restore. They do not automatically change ACLs, permissions, NuGet configuration, or sources, and provide recovery steps that preserve existing sources and authentication.
 
 ## 1. Principles
 
@@ -168,7 +183,7 @@ Before the JSON, add a "User prompt (original)" heading and a text code block co
 | completion_criteria | Yes | One or more entries with id, condition, and verification |
 | work_scope | Yes | Allowed source and other edit paths; empty for read-only work |
 | input_scope | No | Verification input paths; defaults to the whole project as the baseline |
-| generated_scope | No | Allowed paths for verification outputs, such as build files; defaults to [] |
+| generated_scope | No | Additional allowed paths for verification outputs; defaults to []. The five fixed defaults above always apply separately |
 | environment_checks | No | Read-only commands to identify the environment; defaults to [] |
 | references | No | Reference path and purpose; defaults to [] |
 | milestones / tasks | Optional in the format | Automatically generated when creating a plan; omitted fields in existing plans default to [] |
@@ -226,7 +241,7 @@ Non-goals and constraints: Do not change public APIs or delete or disable tests.
   "constraints": ["Preserve existing uncommitted changes"],
   "work_scope": ["src/**", "tests/**"],
   "input_scope": ["src/**", "tests/**", "pyproject.toml"],
-  "generated_scope": [],
+  "generated_scope": ["**/.vs/**", "**/bin/**", "**/obj/**", "**/TestResults/**", "**/BenchmarkDotNet.Artifacts/**"],
   "environment_checks": ["python --version", "python -m pip freeze"],
   "references": [{"path": "README.md", "purpose": "Usage instructions"}],
   "completion_criteria": [
@@ -276,7 +291,7 @@ project/
     prompts/                    # Shared rules and six phases
     schemas/                    # PLAN, internal records, phase results
     templates/PLAN.template.md
-    tests/ / README.md
+    tests/ / README.md / README.en.md / USAGE.md / USAGE.en.md
   .autoframe/
     lock
     state.json                  # Current record references and execution control
@@ -383,7 +398,7 @@ A manifest records scope definitions and normalized, sorted relative paths, exis
 
 Use paths relative to ProjectRoot with `/` separators. In globs, `*` and `?` do not cross separators; a standalone `**` matches zero or more directory levels. `docs/**` includes all descendants. Negation and brace expansion are unsupported. The initial release targets case-insensitive Windows paths and rejects links, reparse points, reserved names, and trailing spaces or dots. Limit edit_scope to a declared work_scope glob or a concrete path within it; assess batch overlap conservatively.
 
-If input_scope is omitted, use the whole project as the baseline. Exclude Git metadata, runner records, and generated_scope from verification inputs; hash shared framework files separately. Required artifacts must still be checked even if generated.
+If input_scope is omitted, use the whole project as the baseline. Exclude Git metadata, runner records, and the effective generated scope (fixed defaults plus generated_scope) from verification inputs; hash shared framework files separately. Required artifacts must still be checked even if generated.
 
 Protect PLAN.md, applicable instruction files, Git metadata, shared framework files, and runner state regardless of work_scope or generated_scope. Workers must not modify Git metadata or runner records excluded from comparison. Worker outputs are limited to their attempt-specific area.
 
@@ -510,7 +525,7 @@ Shared instructions may be a separate file or embedded in phase prompts. Expand 
 
 ### 7.1. Arguments
 
-Run with PowerShell 7.4 or later (`pwsh`). The names, types, and behaviors below define the initial public interface. See the [implementation README](README.md) for supported environments and verification status.
+Run with PowerShell 7.4 or later (`pwsh`). The names, types, and behaviors below define the initial public interface. See the [usage guide](USAGE.en.md) for supported environments and verification status.
 
 | Argument | Type | New-run default | Behavior and constraints |
 | --- | --- | --- | --- |
@@ -533,6 +548,10 @@ Run with PowerShell 7.4 or later (`pwsh`). The names, types, and behaviors below
 Numbers must be positive integers. MaxTasksPerWork must be 1–3, and SaveReserveMinutes must be less than PhaseTimeoutMinutes. Zero and negative values do not enable unlimited runs. Resume and NewRun are mutually exclusive. ResetStallCounters requires Resume and ResetReason; reject ResetReason by itself.
 
 PhaseModels accepts only Plan, Prepare, Audit, Work, Verify, and CompletionAudit as keys, with nonempty model IDs. An explicitly supplied table replaces the saved table. Pass hashtables by calling the script directly within PowerShell; do not implicitly convert JSON strings.
+
+For a listed phase, pass `--model <model ID>` to the Worker's codex exec invocation. For phases absent from the table, omit the model override and use effective CLI settings. Do not automatically select models by phase. If the CLI has no model setting, use its recommended model; the runner has no hard-coded default model. See §7.5 for an invocation example.
+
+Reasoning effort is separate from model IDs and uses the CLI's `model_reasoning_effort` setting. The runner does not override reasoning effort, and PhaseModels does not change it. Public arguments for per-phase reasoning effort are not implemented. Supported values such as `low`, `medium`, and `high`, and defaults when unset, follow the CLI and model.
 
 ### 7.2. Paths, launch, and I/O
 
@@ -655,7 +674,7 @@ or start a production run.
 
 The runner must be reusable across projects. This specification must be sufficient without existing prompt files.
 
-[qs-runner]: README.md
+[qs-runner]: USAGE.en.md
 [qs-verification]: VERIFICATION.md
 [qs-template]: templates/PLAN.template.md
 [qs-create-plan]: prompts/create-plan.md

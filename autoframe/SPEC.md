@@ -1,6 +1,8 @@
 # autoframe 仕様 0.1
 
-ps1・プロンプトの実装基準は本書とする。[実行方法](README.md)と[検証結果・未確認事項](VERIFICATION.md)は別文書に記録する。
+ps1・プロンプトの実装基準は本書とする。[実行方法](USAGE.md)と[検証結果・未確認事項](VERIFICATION.md)は別文書に記録する。
+
+[README](README.md)は導入・基本操作の簡潔な案内とし、引数・診断・回復の詳細は本書にまとめる。ルートのREADME.md・README.en.mdを更新したら、autoframe/内にも本文を同期し、相対リンクだけ配置先に合わせる。日本語を正本とし、英語版にも同じ内容を反映する。
 
 ## QuickStart
 
@@ -91,7 +93,7 @@ pwsh -NoProfile -File ./autoframe/run.ps1 -ProjectRoot . -NewRun
 
 `-NewRun` でも未検証の成果は確認してから作業を進めます。完成後の `-Resume` で証拠の欠落・破損が見つかった場合は再監査します。ユーザーが指定した依存関係・完成条件への対応・マイルストーンの対象は、内部計画の更新でも保持します。
 
-PLAN.mdを手動で変更する場合は停止中に行い、内部状態は手で編集しないでください。詳細な引数・停止条件は [SPEC.md][qs-spec]、実装の利用方法は [autoframe/README.md][qs-runner] を参照してください。
+PLAN.mdを手動で変更する場合は停止中に行い、内部状態は手で編集しないでください。詳細な引数・停止条件は [SPEC.md][qs-spec]、実装の利用方法は [autoframe/USAGE.md][qs-runner] を参照してください。
 
 ### 4. Workerの中断とファイル更新
 
@@ -123,12 +125,25 @@ PLAN.mdを手動で変更する場合は停止中に行い、内部状態は手�
 ```text
 [10:00:00] Start | session_started=2026-09-14 10:00:00 +09:00 | run=...
 [10:00:03] 1: Plan | targets=- | deadline=11:00:03 +09:00
-[10:01:03] Worker running | phase=Plan | attempts=1/100 | Plan=1 | elapsed=00:01:03 | remaining=01:58:57
+[10:01:03] Worker running | phase=Plan | attempts=1/100 | Plan=1 | elapsed=00:01:00 | total_elapsed=00:01:03 | remaining=01:58:57
 ```
 
-`attempts`は全段階の累計起動試行数／上限（起動失敗も含む）、`Plan`はPlanだけの累計起動試行数です。`elapsed`と`remaining`は全体の時間予算に対する累計稼働時間と残り時間で、Resumeでも引き継ぎます。`session_started`と終了時の`session_duration`は今回の起動だけを表します。`verified`は置換済みを除く全項目のうち検証済みの件数で、作業量に対する完成率ではありません。
+`attempts`は全段階の累計起動試行数／上限（起動失敗も含む）、`Plan`はPlanだけの累計起動試行数です。`elapsed`は現在のWorkerを起動してからの経過時間で、Workerごとに0へ戻り、終了後の結果確認中は停止した値を表示します。Workerがまだ開始していない処理では`-`です。`total_elapsed`はResume前を含む累計稼働時間、`remaining`は全体予算の残り時間です。時間上限の判定には従来どおり累計値を使います。`session_started`と終了時の`session_duration`は今回の起動だけを表します。`verified`は置換済みを除く全項目のうち検証済みの件数で、作業量に対する完成率ではありません。
 
 状況行はRunnerの稼働表示です。Worker内部の作業の進展を保証するものではなく、同期処理中などは表示間隔が延びることがあります。詳細は起動時の`Trial`に表示される試行フォルダーで確認してください。
+### IDEキャッシュと依存環境の診断
+
+Runnerの固定既定値は`**/.vs/**`、`**/bin/**`、`**/obj/**`、`**/TestResults/**`、`**/BenchmarkDotNet.Artifacts/**`です。言語・IDE・フォルダーの有無に関係なく、全プロジェクト・全段階に適用します。PLANの`generated_scope`が省略・空配列でも有効で、新規テンプレートにも明記します。実効生成範囲は既定値とPLAN指定の和集合です。Worker入力の`default_generated_scope`と`effective_generated_scope`に渡し、既存PLANは書き換えません。
+
+その他の生成先はPLANの`generated_scope`へ追加します。`.vscode`・`.idea`は共有設定を含むため一括除外しません。
+
+固定既定値は検証入力と許可範囲の判定に使います。前後スナップショットと必要成果物のハッシュ採取は継続し、指示ファイル・共通配布物の保護を優先します。必要な入力・参照を生成範囲へ明示指定した場合は従来どおり拒否します。
+
+保護対象の変更は、変更元を断定せず`Protected files changed during ...`として停止します。ログには先頭20件のパス・追加／更新／削除の別を表示し、全件を試行フォルダーの`protected-changes.json`に保存します。共通配布物の差分は`framework`、プロジェクト内の差分は`project`として区別します。生成物内でも指示ファイルは保護します。
+
+.NETのソリューション／プロジェクトが検証入力にある場合、各Workerは最初に`check-dependencies.ps1`を自分のコマンド実行環境で実行します。`dotnet nuget list source --format short`の成否・失敗原因・解除条件を自身の`output/dependency-preflight.json`へ保存し、Runnerは報告の欠落・不正を拒否します。成功時の取得元一覧は保存しません。Runner側の`environment_checks`成功はWorker側の読み取り権限を保証しません。
+
+依存確認の失敗は、Workerが影響する項目だけを`blocked`として報告し、独立した作業は続けます。実行不能の場合も原因と解除条件を同じ報告先へ保存します。読み取り確認の成功はrestoreの成功ではありません。Work／Verifyでは依存する長時間作業の前に計画のrestoreを行い、失敗を古いassetsや`--no-restore`で代用しません。ACL・権限・NuGet設定・取得元を自動変更せず、既存の取得元と認証を維持する復旧案を示します。
 
 ## 1. 基本方針
 
@@ -166,7 +181,7 @@ JSONの前に「ユーザープロンプト（原文）」見出しとtextコー
 | completion_criteria | 必須 | 完成条件のid、condition、verification。1件以上 |
 | work_scope | 必須 | ソースなどを変更できる範囲。読取専用作業なら空配列 |
 | input_scope | 任意 | 検証入力の範囲。省略時はプロジェクト全体を基準にする |
-| generated_scope | 任意 | ビルド出力など、検証に伴う生成物の書込範囲。既定は空配列 |
+| generated_scope | 任意 | 検証に伴う生成物の追加書込範囲。省略時は空配列。上記5種類の固定既定値は別途常に適用 |
 | environment_checks | 任意 | 環境識別用の読取コマンド。既定は空配列 |
 | references | 任意 | 参照資料のpathとpurpose。既定は空配列 |
 | milestones / tasks | 形式上は任意 | 新規作成時は自動生成する節目・初期項目。既存PLANの省略は空配列として扱う |
@@ -224,7 +239,7 @@ JSONを、指定マーカーに囲まれたコードブロックとして1つ置
   "constraints": ["既存の未コミット変更を保持する"],
   "work_scope": ["src/**", "tests/**"],
   "input_scope": ["src/**", "tests/**", "pyproject.toml"],
-  "generated_scope": [],
+  "generated_scope": ["**/.vs/**", "**/bin/**", "**/obj/**", "**/TestResults/**", "**/BenchmarkDotNet.Artifacts/**"],
   "environment_checks": ["python --version", "python -m pip freeze"],
   "references": [{"path": "README.md", "purpose": "利用方法"}],
   "completion_criteria": [
@@ -274,7 +289,7 @@ project/
     prompts/                    # 共通規則と6段階
     schemas/                    # PLAN・内部記録・段階結果
     templates/PLAN.template.md
-    tests/ / README.md
+    tests/ / README.md / README.en.md / USAGE.md / USAGE.en.md
   .autoframe/
     lock
     state.json                  # 現行記録への参照と実行制御
@@ -381,7 +396,7 @@ Completeの条件は以下のすべてとする。
 
 パスはProjectRoot内の相対パスとし、区切りに`/`を使う。globの`*`と`?`は区切りを越えず、単独の`**`は0階層以上に一致する。`docs/**`は配下全体を表す。否定・brace展開は扱わない。初版は大文字小文字を区別しないWindowsパスを対象とし、リンク・再解析ポイント、予約名、末尾の空白・点を拒否する。edit_scopeは宣言済みwork_scopeのglobまたは範囲内の具体的パスに限定し、一括実行の範囲競合は保守的に判定する。
 
-input_scopeの省略時はプロジェクト全体を基準とする。Git管理領域・runner内部記録・generated_scopeを検証入力から除外し、共通配布物は別途ハッシュ化する。生成物であっても必要な成果物は照合対象とする。
+input_scopeの省略時はプロジェクト全体を基準とする。Git管理領域・runner内部記録・実効生成範囲（固定既定値とgenerated_scopeの和集合）を検証入力から除外し、共通配布物は別途ハッシュ化する。生成物であっても必要な成果物は照合対象とする。
 
 PLAN.md、適用される指示ファイル、Git管理領域、共通配布物、runner内部状態はwork_scope・generated_scopeより優先して保護する。比較から除外するGit管理領域・runner内部記録の操作は禁止し、Worker出力は試行専用領域に限定する。
 
@@ -508,7 +523,7 @@ Workerには必要な対象・依存・指摘・差分・証拠参照を渡す�
 
 ### 7.1. 起動引数
 
-PowerShell 7.4以降のpwshで実行する。引数名・型・以下の動作を初版の公開仕様とする。実装の対応環境・検証状況は[README](README.md)を参照する。
+PowerShell 7.4以降のpwshで実行する。引数名・型・以下の動作を初版の公開仕様とする。実装の対応環境・検証状況は[利用ガイド](USAGE.md)を参照する。
 
 | 引数 | 型 | 新規実行の既定値 | 動作・制約 |
 | --- | --- | --- | --- |
@@ -531,6 +546,10 @@ PowerShell 7.4以降のpwshで実行する。引数名・型・以下の動作�
 数値は正の整数、MaxTasksPerWorkは1〜3、SaveReserveMinutesはPhaseTimeoutMinutes未満とする。0や負数による無制限実行は設けない。ResumeとNewRunは併用不可。ResetStallCountersはResumeとResetReasonを必要とし、ResetReasonだけの指定も拒否する。
 
 PhaseModelsのキーはPlan、Prepare、Audit、Work、Verify、CompletionAuditだけを許容し、値は空でないモデルIDとする。明示指定した表は保存済みの表を置き換える。hashtableを渡す場合はPowerShell内からスクリプトを直接呼ぶ。JSON文字列への暗黙変換は行わない。
+
+指定した段階ではWorkerのcodex execに`--model <モデルID>`を渡す。表にない段階はモデル指定を渡さず、有効なCLI設定を使用する。段階に応じたモデルの自動選択は行わない。CLIにもモデル設定がなければCLIの推奨モデルに従い、Runnerに固定の既定モデルは設けない。指定例は§7.5を参照する。
+
+推論量はモデルIDと別であり、CLIの`model_reasoning_effort`設定を使用する。Runnerは推論量を上書きせず、PhaseModelsも推論量を変更しない。段階別の推論量を渡す公開引数は未実装。`low`・`medium`・`high`などの対応値と未設定時の既定値はCLI・モデルに従う。
 
 ### 7.2. パス・起動・入出力
 
@@ -652,7 +671,7 @@ NativeAOT、製品作業用PLAN.mdの作成、本番の自動実行は開始し�
 
 作成した実行基盤は別プロジェクトでも再利用できる。既存のプロンプトファイルを仕様の補完に必要としない。
 
-[qs-runner]: README.md
+[qs-runner]: USAGE.md
 [qs-verification]: VERIFICATION.md
 [qs-template]: templates/PLAN.template.md
 [qs-create-plan]: prompts/create-plan.md

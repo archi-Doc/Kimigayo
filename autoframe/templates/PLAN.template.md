@@ -1,6 +1,7 @@
 # 実行目的（ユーザーが編集）
 未確認のコマンドや条件を確定事項として書かず、実行前に対象に合わせて記入する。進捗・証拠・指摘は記載しない。
 作成時は目的と完成条件からtasksとmilestonesを自動生成する。小規模な作業は1マイルストーンでもよい。各マイルストーンに対象項目と確認可能な到達条件を記し、全必須項目をいずれかのマイルストーンに含める。
+generated_scopeの下記5パターンは全プロジェクト共通の固定既定値。省略・空配列でもRunnerが適用する。その他の生成先は必要に応じて追加し、設定ファイルを除外しない。依存する長時間作業の前にWorker環境で依存確認・restoreを行い、失敗した項目の原因と解除条件を記録する。
 
 ## ユーザープロンプト（原文）
 
@@ -27,7 +28,7 @@
   "non_goals": ["対象外を記入"],
   "constraints": ["既存の無関係な変更を保持する"],
   "work_scope": [],
-  "generated_scope": [],
+  "generated_scope": ["**/.vs/**", "**/bin/**", "**/obj/**", "**/TestResults/**", "**/BenchmarkDotNet.Artifacts/**"],
   "environment_checks": [],
   "references": [],
   "completion_criteria": [

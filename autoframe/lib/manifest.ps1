@@ -42,17 +42,22 @@ function Test-InScope([string]$Path,$Patterns) {
     foreach($p in $Patterns) { if((Convert-Glob $p).IsMatch($Path)) { return $true } }
     return $false
 }
+function Get-DefaultGeneratedScope { '**/.vs/**'; '**/bin/**'; '**/obj/**'; '**/TestResults/**'; '**/BenchmarkDotNet.Artifacts/**' }
+function Get-GeneratedScope($Plan) {
+    @(@(Get-DefaultGeneratedScope)+@($Plan.generated_scope) | Sort-Object -CaseSensitive -Unique)
+}
 function Test-Protected([string]$Root,[string]$Path) {
     if($Path -match '(^|/)(\.git|\.autoframe|\.codex|\.agents)(/|$)' -or [IO.Path]::GetFileName($Path) -iin @('AGENTS.md','AGENTS.override.md') -or $Path -ieq 'PLAN.md') { return $true }
     $full=Join-Path $Root $Path
     return $full.StartsWith($script:FrameRoot.TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar,$script:PathComparison) -or $full.Equals($script:FrameRoot,$script:PathComparison)
 }
 function Assert-PlanScopes([string]$Root,$Plan) {
+    $generated=Get-GeneratedScope $Plan
     $inputPatterns=if($Plan.Contains('input_scope')) { @($Plan.input_scope) } else { @('**') }
     foreach($p in @($inputPatterns)+@($Plan.work_scope)+@($Plan.generated_scope)) { Assert-Relative $p }
     foreach($r in $Plan.references) { $null=Resolve-Safe $Root $r.path }
     foreach($p in @($inputPatterns)+@($Plan.work_scope)+@($Plan.references | ForEach-Object { $_.path })) {
-        if($p -and $p -notmatch '[*?]' -and (Test-InScope $p $Plan.generated_scope)) { throw "Explicit input excluded as generated: $p" }
+        if($p -and $p -notmatch '[*?]' -and (Test-InScope $p $generated)) { throw "Explicit input excluded as generated: $p" }
     }
     foreach($p in @($Plan.work_scope)+@($Plan.generated_scope)) {
         if($p -notmatch '[*?]' -and (Test-Protected $Root $p)) { throw "Protected write target: $p" }
@@ -111,19 +116,36 @@ function New-Manifest($Snapshot,$Scope,$Exclude=@(),[switch]$FilesOnly) {
     @{schema_version=1;scope=@($Scope | Sort-Object -CaseSensitive -Unique);entries=@($array)}
 }
 function Get-InputManifest([string]$Root,$Plan,$Snapshot) {
+    $generated=Get-GeneratedScope $Plan
     foreach($r in $Plan.references) { if(-not (Test-Path -LiteralPath (Resolve-Safe $Root $r.path) -PathType Leaf)) { throw "Missing reference: $($r.path)" } }
     $patterns=@(if($Plan.Contains('input_scope')) { $Plan.input_scope } else { '**' })
     $patterns+=@($Plan.work_scope)+@($Plan.references | ForEach-Object { $_.path })
     $filtered=@($Snapshot | Where-Object { -not (Join-Path $Root $_.path).StartsWith($script:FrameRoot.TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar,$script:PathComparison) })
     $instructions=@('**/AGENTS.md','**/AGENTS.override.md','**/.codex/**','**/.agents/**')
-    $filtered=@($filtered | Where-Object { (Test-InScope $_.path $instructions) -or -not (Test-InScope $_.path $Plan.generated_scope) })
+    $filtered=@($filtered | Where-Object { (Test-InScope $_.path $instructions) -or -not (Test-InScope $_.path $generated) })
     New-Manifest $filtered (@($patterns)+$instructions) -FilesOnly
 }
 function Get-ProtectedManifest([string]$Root,$Plan,$Snapshot,[string]$Phase) {
     $allowed=if($Phase -ceq 'Work') { @($Plan.work_scope)+@($Plan.generated_scope) } elseif($Phase -cin @('Verify','CompletionAudit','Probe')) { @($Plan.generated_scope) } else { @() }
+    # Default output directories allow background updates in every phase; protected files still win.
+    $allowed=@($allowed)+@(Get-DefaultGeneratedScope)
     $entries=@($Snapshot | Where-Object { (Test-Protected $Root $_.path) -or ($_.kind -ceq 'file' -and -not (Test-InScope $_.path $allowed)) })
     # PLAN edits are handled separately by the stale-input path, never silently accepted.
     @{schema_version=1;scope=@('protected', $Phase);entries=@($entries | Where-Object { $_.path -ine 'PLAN.md' -and $_.kind -ceq 'file' })}
+}
+function Get-ManifestChanges($Before,$After) {
+    $old=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+    $current=[Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
+    $paths=[Collections.Generic.SortedSet[string]]::new([StringComparer]::Ordinal)
+    foreach($e in $Before) { $old[$e.path]=$e; $null=$paths.Add($e.path) }
+    foreach($e in $After) { $current[$e.path]=$e; $null=$paths.Add($e.path) }
+    foreach($p in $paths) {
+        $a=if($old.ContainsKey($p)) { $old[$p] } else { $null }
+        $b=if($current.ContainsKey($p)) { $current[$p] } else { $null }
+        if($null -eq $a -or $null -eq $b -or $a.kind -cne $b.kind -or $a.hash -cne $b.hash) {
+            @{path=$p;change=$(if($null -eq $a) { 'added' } elseif($null -eq $b) { 'deleted' } else { 'modified' })}
+        }
+    }
 }
 function Assert-ExecutionPlan($Execution,$Logical,$Plan,[string]$Root,[int]$Maximum) {
     if($null -eq $Execution -or $Execution.tasks.Count -lt 1 -or $Execution.tasks.Count -gt $Maximum) { throw 'Invalid Work batch size.' }

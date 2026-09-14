@@ -73,6 +73,7 @@ try {
         }
         Assert ((Format-RunDuration 90061) -ceq '25:01:01' -and (Format-RunDuration -1) -ceq '00:00:00') 'durations do not wrap after 24 hours or become negative'
         Assert ([regex]::Matches($script:LastRunLog,'Worker exited \|').Count -eq 6) 'one exit event per Worker'
+        Assert ([regex]::Matches($script:LastRunLog,'Worker running \|[^\r\n]*\| elapsed=00:00:00 \| total_elapsed=').Count -eq 6) 'every new Worker clock starts at zero'
     }
     Test 'read-only task project completes' { $r=Fixture 'document review' -ReadOnly; $s=Run $r; Assert ($s.status -ceq 'Complete') 'review complete' }
     Test 'three independent targets in one Work' { $r=Fixture 'batch' 'success' 3; $s=Run $r; Assert ($s.attempts -eq 6) 'one batch' }
@@ -85,6 +86,101 @@ try {
     Test 'protected writes are rejected and recoverable' {
         $r=Fixture 'protected' 'protected-write'; $s=Run $r @() 6; Assert ($s.uncertain.Count -eq 1) 'uncertain retained'
         Assert (Test-Path -LiteralPath (Join-Path $s.uncertain[0].directory 'after.json')) 'after manifest exists'
+        $report=Read-Json (Join-Path $s.uncertain[0].directory 'protected-changes.json')
+        Assert ($report.changes[0].path -ceq 'protected.txt' -and $report.changes[0].change -ceq 'modified') 'exact changed path saved'
+        Assert ($s.message.Contains('Change origin is unknown') -and $s.message.Contains('protected.txt')) 'origin is not attributed to Worker'
+    }
+    Test 'defaults: all five outputs are allowed in every phase without a PLAN declaration' {
+        foreach($explicitEmpty in @($false,$true)) {
+            $r=Fixture "output-default-$explicitEmpty" 'default-outputs-all-phases'
+            if($explicitEmpty) { $p=(Read-Plan $r).data; $p.generated_scope=@(); Write-Plan $r $p }
+            $hash=[Autoframe.Json]::FileHash((Join-Path $r 'PLAN.md'))
+            $s=Run $r
+            Assert ($s.attempts -eq 6 -and $s.status -ceq 'Complete') 'cache may appear after launch and change in every phase'
+            Assert ([Autoframe.Json]::FileHash((Join-Path $r 'PLAN.md')) -ceq $hash) 'existing PLAN bytes preserved'
+            Assert (-not $script:LastRunLog.Contains('IDE cache outside generated_scope')) 'no obsolete declaration warning'
+            foreach($name in @('.vs','bin','obj','TestResults','BenchmarkDotNet.Artifacts')) {
+                [IO.File]::WriteAllText((Join-Path $r "$name/cache.json"),'external output update')
+                [IO.File]::WriteAllText((Join-Path $r "nested/$name/cache.json"),'external nested output update')
+            }
+            $resumed=Run $r @('-Resume')
+            Assert ($resumed.attempts -eq $s.attempts) 'output-only changes do not invalidate completed evidence'
+        }
+    }
+    Test 'defaults: instructions framework shared settings and artifacts retain protection' {
+        $r=Fixture 'default-protection'; $p=(Read-Plan $r).data
+        $names=@('.vs','bin','obj','TestResults','BenchmarkDotNet.Artifacts')
+        $outputs=@(foreach($name in $names) { "$name/cache.json"; "nested/$name/cache.json" })
+        $guarded=@(foreach($name in $names) { "$name/AGENTS.md"; "$name/.codex/config.toml"; ".agents/$name/cache.json"; "autoframe/$name/cache.json" })+@('.vscode/settings.json','.idea/workspace.xml','tools/tool.ps1')
+        $snapshot=@(foreach($path in $outputs+$guarded) { @{path=$path;kind='file';hash='original'} })
+        $originalFrame=$script:FrameRoot
+        try {
+            $script:FrameRoot=Join-Path $r 'autoframe'
+            foreach($phase in @('Plan','Prepare','Audit','Work','Verify','CompletionAudit','Probe')) {
+                $protected=Get-ProtectedManifest $r $p $snapshot $phase
+                Assert ($protected.entries.Count -eq $guarded.Count) "protected paths retained in $phase"
+                foreach($path in $outputs) { Assert ($path -cnotin $protected.entries.path) "default output: $path" }
+            }
+            $inputManifest=Get-InputManifest $r $p $snapshot
+            foreach($name in $names) { Assert ("$name/cache.json" -cnotin $inputManifest.entries.path -and "$name/AGENTS.md" -cin $inputManifest.entries.path -and "$name/.codex/config.toml" -cin $inputManifest.entries.path) 'instructions retain input identity' }
+            $artifact=New-Manifest $snapshot $outputs -FilesOnly
+            Assert ($artifact.entries.Count -eq $outputs.Count -and @($artifact.entries | Where-Object { $_.hash -cne 'original' }).Count -eq 0) 'declared artifacts are still hashed'
+            foreach($path in $outputs) { $p.input_scope=@($path); Reject { Assert-PlanScopes $r $p } }
+            $p.generated_scope=@('custom-output/**','**/bin/**')
+            Assert (@(Get-GeneratedScope $p).Count -eq 6 -and 'custom-output/**' -cin @(Get-GeneratedScope $p)) 'custom output scopes merge without duplicate defaults'
+        } finally { $script:FrameRoot=$originalFrame }
+    }
+    Test 'diagnostics: manifest changes include added deleted modified and framework paths' {
+        $before=@(@{path='deleted.txt';kind='file';hash='a'},@{path='modified.txt';kind='file';hash='b'})
+        $after=@(@{path='added.txt';kind='file';hash='c'},@{path='modified.txt';kind='file';hash='d'})
+        $dir=Join-Path $fixtureRoot 'diagnostics'; $null=[IO.Directory]::CreateDirectory($dir)
+        Reject { Assert-ProtectedChanges @{entries=$before} @{entries=$after} $dir 'Work' @(@{path='lib/core.ps1';kind='file';hash='a'}) @(@{path='lib/core.ps1';kind='file';hash='b'}) }
+        $report=Read-Json (Join-Path $dir 'protected-changes.json')
+        Assert ($report.changes.Count -eq 4) 'all changes saved'
+        Assert (($report.changes.change -join ',') -ceq 'added,deleted,modified,modified') 'change classifications'
+        Assert ($report.changes[3].area -ceq 'framework') 'framework identity distinct'
+    }
+    Test 'diagnostics: Worker elapsed resets independently of cumulative budget' {
+        $script:RunClock=[Diagnostics.Stopwatch]::StartNew(); $script:BaseElapsed=3600
+        $script:State=@{phase='Work';attempts=4;plan_attempts=1;settings=@{MaxPhaseAttempts=30;MaxRunMinutes=120}}
+        $script:Activity='Worker running'; $script:WorkerClock=[Diagnostics.Stopwatch]::StartNew()
+        $writer=[IO.StringWriter]::new(); $original=[Console]::Out
+        try {
+            [Console]::SetOut($writer); Write-RunStatus
+            $script:WorkerClock=$null; Write-RunStatus
+        } finally { [Console]::SetOut($original) }
+        $lines=$writer.ToString()
+        Assert ($lines.Contains('elapsed=00:00:00 | total_elapsed=01:00:00')) 'Worker starts from zero despite previous hour'
+        Assert ($lines.Contains('elapsed=- | total_elapsed=01:00:00')) 'no Worker has no elapsed clock'
+        Assert ((Get-Remaining) -gt 3590 -and (Get-Remaining) -le 3600) 'remaining still uses total budget'
+    }
+    Test 'diagnostics: Worker dependency check records configuration denial without changing configuration' {
+        $dir=Join-Path $fixtureRoot 'dependency-helper'; $null=[IO.Directory]::CreateDirectory($dir)
+        $stub=Join-Path $dir 'dotnet-stub.cmd'; $reportPath=Join-Path $dir 'report.json'
+        $checker=Join-Path $script:FrameRoot 'check-dependencies.ps1'
+        [IO.File]::WriteAllText($stub,"@echo off`r`necho Access denied: C:/Users/fixture/NuGet.Config 1>&2`r`nexit /b 1`r`n")
+        & $pwsh -NoProfile -File $checker -ProjectRoot $dir -OutputPath $reportPath -DotnetCommand $stub | Out-Null
+        $report=Read-Json $reportPath
+        Assert ($report.status -ceq 'blocked' -and $report.exit_code -eq 1 -and $report.error.Contains('NuGet.Config')) 'exact denied setting identified'
+        Assert ($report.release_condition.Contains('preserving NuGet sources and authentication')) 'safe recovery instructions'
+        [IO.File]::WriteAllText($stub,"@echo off`r`nif not `"%*`"==`"nuget list source --format short`" exit /b 9`r`necho private-source-list`r`nexit /b 0`r`n")
+        & $pwsh -NoProfile -File $checker -ProjectRoot $dir -OutputPath $reportPath -DotnetCommand $stub | Out-Null
+        $report=Read-Json $reportPath
+        Assert ($report.status -ceq 'ready' -and $report.exit_code -eq 0) 'read-only source check succeeds'
+        Assert (-not [IO.File]::ReadAllText($reportPath).Contains('private-source-list')) 'successful source listing not persisted'
+        & $pwsh -NoProfile -File $checker -ProjectRoot $dir -OutputPath $reportPath -DotnetCommand (Join-Path $dir 'missing.exe') | Out-Null
+        Assert ((Read-Json $reportPath).status -ceq 'blocked') 'missing SDK also diagnosed'
+    }
+    Test 'diagnostics: required Worker dependency report cannot be omitted' {
+        $r=Fixture 'dependency-missing' 'dependency-missing'; [IO.File]::WriteAllText((Join-Path $r 'test.csproj'),'<Project/>')
+        $s=Run $r @() 6
+        Assert ($s.attempts -eq 1 -and $s.message.Contains('dependency-preflight.json')) 'Plan result rejected without report'
+    }
+    Test 'diagnostics: dependency denial blocks affected item while independent work proceeds' {
+        $r=Fixture 'dependency-blocked' 'dependency-blocked' 2; [IO.File]::WriteAllText((Join-Path $r 'test.csproj'),'<Project/>')
+        $s=Run $r @() 3; $logical=Read-Record (Join-Path $r '.autoframe') $s.logical_ref 'logical'
+        Assert ($logical.tasks[0].status -ceq 'blocked' -and $logical.tasks[1].status -ceq 'verified') 'only affected item blocked'
+        Assert ($script:LastRunLog.Contains('Worker dependency preflight blocked')) 'diagnostic visible in runner log'
     }
     Test 'missing result on Work crash keeps manifest and recovery targets' {
         $r=Fixture 'crash' 'work-crash'; $s=Run $r @() 6; Assert ($s.uncertain[0].targets[0] -ceq 'T1') 'recovery target'
@@ -131,7 +227,7 @@ try {
     Test 'all delivered prompts contain common rules' {
         $files=Get-ChildItem -LiteralPath $fixtureRoot -Filter prompt.md -Recurse
         Assert ($files.Count -gt 0) 'prompts were actually delivered'
-        foreach($f in $files) { $t=[IO.File]::ReadAllText($f.FullName); foreach($rule in @('PLAN.mdは読取専用','次のWorkerを起動しない','未実行','save_from_utc','最小限','base_plan_version')) { Assert ($t.Contains($rule)) "common rule: $rule" } }
+        foreach($f in $files) { $t=[IO.File]::ReadAllText($f.FullName); foreach($rule in @('PLAN.mdは読取専用','次のWorkerを起動しない','未実行','save_from_utc','最小限','base_plan_version','dependency_preflight','自分の通常のコマンド実行環境','長時間作業の前に計画のrestore','影響する項目だけ')) { Assert ($t.Contains($rule)) "common rule: $rule" } }
     }
     Test 'completion audit semantic deduplication prevents loops' {
         $r=Fixture 'completion-loop' 'completion-loop'; $s=Run $r @() 5
@@ -168,6 +264,8 @@ try {
         Assert ($s.accepted_attempts.Count -eq 1 -and $s.elapsed_seconds -ge 60) 'heartbeat result accepted'
         $updates=[regex]::Matches($script:LastRunLog,'\[(\d{2}:\d{2}:\d{2})\] Worker running \| phase=Plan \| attempts=1/1 \| Plan=1')
         Assert ($updates.Count -ge 2) 'periodic output during active Worker'
+        $workerTimes=[regex]::Matches($script:LastRunLog,'Worker running \|[^\r\n]*\| elapsed=(\d{2}:\d{2}:\d{2}) \| total_elapsed=')
+        Assert ($workerTimes[0].Groups[1].Value -ceq '00:00:00' -and [timespan]::Parse($workerTimes[1].Groups[1].Value).TotalSeconds -ge 60) 'elapsed measures this Worker during minute updates'
         for($i=1;$i -lt $updates.Count;$i++) {
             $seconds=([timespan]::Parse($updates[$i].Groups[1].Value)-[timespan]::Parse($updates[$i-1].Groups[1].Value)).TotalSeconds
             if($seconds -lt 0) { $seconds+=86400 }
