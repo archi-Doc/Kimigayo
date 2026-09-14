@@ -1,37 +1,48 @@
-# Kimigayoコンパイラー完成計画
+# Kimigayo コンパイラー実装計画
+
+## ユーザープロンプト（原文）
+
+```text
+目的: Kimigayoコンパイラーを全て実装すること
+対象: SPEC.md, STATUS.md
+完成条件: SPEC.mdに記載されている決定事項（docフォルダー内への参照を除く）を全て実装すること
+対象外・制約: docフォルダー内の仕様は、未確定のため参照しない
+```
+
+## 実行計画
 
 <!-- autoframe:begin -->
 ```json
 {
   "schema_version": 1,
-  "project_id": "kimigayo-compiler-completion",
-  "objective": "Kimigayoコンパイラーについて、PLAN作成時（2026-09-14）のSPEC.md内で具体的に確定している決定事項をすべて実装し、規定された静的検査・コード生成・実行動作・検証義務まで完成させる。",
+  "project_id": "kimigayo-compiler-spec-completion",
+  "objective": "SPEC.md 本文内で決定済みの言語規則・コンパイラー要件をすべて実装し、STATUS.md と実装・検証結果を一致させ、Kimigayo コンパイラーを完成させる。doc フォルダー内の参照先を仕様根拠にしない。",
   "scope": [
-    "仕様対象はSPEC.mdの第1〜22章、規範的なAppendix A.1〜A.15、本文に対応するAppendix Fの構文。禁止・拒否・必須警告・資源制限・性能契約も含む。Appendix Dと各節の設計境界で未導入部分を区別し、Appendix Bの参考アルゴリズムを必須の実装方式とはしない。",
-    "STATUS.mdを既存実装と残る制限の案内に使い、現ソース・テストと照合する。字句/構文、Binding、制御フロー/所有権、LLVM、通常native実行の各段階を区別し、STATUSの実装済み表示も再確認する。",
-    "SPEC.md内で具体的に確定している規則だけを必須とし、docにしかない詳細は対象外とする。Composition Root・言語テスト機能の冒頭要約だけから、Entry/Providerの構文や#Test・$expect・$require・kimi testの未統合の契約を補作しない。$abortなど本文で具体化済みの規則、具体化済みの依存再検証規則は対象に残す。",
-    "部分仕様の機能は機能全体を除外しない。module/source artifact、Mod、Exchange等は確定した意味・不変条件を内部APIを含めて実装・検証し、未確定の公開API/交換形式/構文の策定は含めない。",
-    "Kimi/のコンパイラー・Core・実行時処理・Project/Solution・CLIと、backend/windows-x64/、対応するmanaged/nativeテスト・サンプル・性能検証。native生成の必須対象はSPECのwindows-x64-v1。Libraryは規定どおりIR/オブジェクト生成まで検証する。"
+    "仕様の正本はプロジェクト直下の SPEC.md（§1–22、規範的な付録A、本文の規則を要約する付録F）。STATUS.md は現実装の出発点と差分確認に使い、完成範囲をその残作業一覧に限定しない。",
+    "Kimi/Compiler の Core・Lexing・Parsing・Binding・Analysis・Emission、型・定数・診断・永続化、Kimi/SolutionAndProject と CLI、必要な Core 定義と Windows runtime/backend を実装対象とする。",
+    "既存 xUnitTest、backend/windows-x64 の通常 native 検証、examples、Benchmark を拡張・再利用する。SPEC.md と STATUS.md の更新は確定事項の維持、実装選択の明記、正確な対応状況・検証手順の整理に限る。",
+    "doc へのリンクがある節も、SPEC.md 自体に記述された独立に判定可能な決定事項（§21.3 の generic 共有、§21.4.6 の固定 frame、§21.3.4 の再利用要件など）は対象。リンク先でのみ定義された機能・契約・優先規則は取り込まない。",
+    "実装段階は字句/構文、意味解析、所有権/効果、layout/ABI、LLVM、native 実行を区別する。初期実行 subset や現在の Unsupported を完成範囲の上限にしない。仕様自身の初期 profile 制限は維持する。"
   ],
   "non_goals": [
-    "doc/**の読取・検索・リンク追跡・変更、およびdocだけに記載された仕様の実装。Design/**、旧実装計画や監査記録を追加の仕様正本として扱うこと。",
-    "SPECが未導入・延期と明記した言語拡張の設計。例: runtime Contract Viewの未確定構文、virtual/override、再export、言語並行実行、追加OS/CPU profile、string連結/+=の未確定所有権規則、未確定の公開Mod/Exchange API。",
-    "NativeAOTのpublish・テスト、ツールの自動ダウンロード/システムインストール、外部サービスへの公開・配布。",
-    "SPECの決定事項に必要のないKimiCode/VS Code機能拡張、CI/配布基盤の刷新、汎用標準ライブラリ追加。",
-    "autoframe/・automation/の実装や変更、runner起動、定期実行の設定。このPLANの作成依頼ではPLAN.mdだけを保存し、製品修正・ビルド・テスト・自動実行を開始しない。"
+    "doc/** の読取り・参照・変更、および他文書を経由した doc 仕様の補完。冒頭のリンク先による Composition Root の Entry/Provider/最終 composition 拡張、#Test・$expect・$require・kimi test は本計画の実装要件にしない。本文にある $abort と Core.writeLine は対象。",
+    "付録Dおよび各担当節が未導入・Deferred design とする追加言語機能の制定。runtime Contract View の新構文、virtual/override、追加 Pattern、string +/+= の未確定な取得規則、並行言語機能、追加 OS/CPU profile、外部公開 Library/DLL ABI などを独自に導入しない。",
+    "NativeAOT の publish・テスト、VS Code 拡張の一般整備、汎用 LSP 機能の完成、CI 運用・外部配布・公開。SPEC.md が要求する診断、source 表示/保存、構文往復と意味保存は除外しない。",
+    "autoimpl/** の修正、runner/Worker の起動、自動実行の設定、PLAN.md 以外の作成作業を今回の依頼で開始すること。"
   ],
   "constraints": [
-    "実装工程と検証コマンドは、ユーザーが別途実装を開始する際の定義である。PLAN作成時の確認は資料・コード・手順の読取とPLANの形式検査に限る。",
-    "適用されるAGENTS.mdと既存の未コミット変更を保持する。プロジェクト外（隣接Tinyhandを含む）を変更せず、reset/clean/stash/commit/pushを自動実行しない。",
-    "SPECの確定事項を削除・緩和して完成扱いにしない。仕様本文の整理・実装上の選択の説明は可能だが、Design Noteの変更禁止文を保持する。仕様矛盾や目的・必須条件・変更範囲を左右する不足だけ、具体的な判断案を示してNeedsInputとする。",
-    "doc参照禁止はSPEC等にあるdoc優先指定より優先する。本文内の具体的規則と明示的な設計境界を照合する。未確定部分の除外理由は節単位で記録し、単なる未実装・実装困難を対象外にしない。",
-    "既存のKoto、Binding/型・候補計画、CFG/Loan/cleanup計画、Emission/ABI表の構成を起点に詳細化する。汎用化が必要なら変更できるが、Emitterの拒否検査を消すだけで機能対応としない。Unknown・未解決義務・古い解析結果を成功として公開しない。",
-    "メモリ割り当てを可能な範囲で最小化し、表・scratch・容量を再利用する。SPECに規定された計算量・無割り当て条件と意味を優先し、測定のない全経路0 allocationや速度改善を主張しない。",
-    "テストの削除/無効化/期待値の弱体化で通さない。既存の未対応拒否テストは、その機能が確定仕様どおりに実装された時に対応する成功・不正入力の回帰テストへ改訂する。危険なunsafe違反に規定外の実行結果を要求しない。",
-    "DebugとReleaseのmanaged suite、fixture生成、LLVM/native検証は共有出力を使うため直列実行する。--no-buildは同じ構成の現行ソースのbuild成功後、--no-restoreは必要な依存の復元後だけ使う。起動失敗、0件、skip、未実行、古いfixtureを成功に数えない。",
-    "通常nativeとNativeAOTを区別する。LLVM/backend検証はprofile.jsonの固定版・ABI・実hashを使う。AllowUnpinnedToolchainでの探索結果は完成証拠にしない。供給物を変更する場合は規定の採用検証と整合したcatalog更新を行う。",
-    "生成物の退避/再生成では絶対パスがこのrepoの生成領域内に収まることを事前確認する。ソース、設定、テスト入力、参照資料をgenerated_scopeで隠さない。検証入力が変われば必要な証拠を無効化する。",
-    "PLANにはユーザー定義だけを保持する。内部計画・要件対応表・進捗・指摘・証拠はautoframeの試行/内部記録へ保存し、製品の実装状況と再現手順はSTATUS.mdへ反映する。WorkerはPLANを書き換えない。"
+    "今回の操作は PLAN.md の作成と形式・参照・依存・網羅性の静的検査のみ。ここに記載する製品変更、ビルド、テスト、benchmark は後続の実装開始指示に対する計画であり、今回実行しない。",
+    "SPEC.md §1.3 の規範性と担当節の境界を適用する。Specified, not implemented は必須。推奨・例・付録Bの任意アルゴリズムは新たな必須機能にしない。付録Cは STATUS.md への案内、付録Eは用語索引として扱う。",
+    "未確定の公開構文/API/交換形式を創作しない。決定済みの意味・保持情報は内部 API、検証用入口、source 再構築等で実装・検証し、公開形式の未確定を理由に一括除外しない。内部表現、具体的 Mod host API、有限 resource limit など許された実装選択は合理的に決め、SPEC.md に記す。",
+    "本文と要約の食い違いは担当節の明示的規則で整理する（例: §13.5.8–9 の公開 object/Weak API と F.9 の古い境界記述、§13.3 の string 連結の実行禁止）。この原則でも解消しない目的・必須条件・変更範囲の不足だけ、対象箇所と具体案を示して質問し、未決項目を完成扱いしない。",
+    "既存の未コミット変更・削除を保持する。IMPLEMENTATION_PLAN.md の復元を前提にせず、別の計画文書を作らない。自動 reset/clean/stash/commit/push は行わない。PLAN.md、AGENTS.md、autoimpl/** は後続 Worker も変更しない。",
+    "作業・入力範囲は下記の正のパス指定に限定し、doc/** と Design/** は仕様資料として参照しない。入力中の doc リンクは追跡しない。環境不足は記録し、成功・未実行・skip を混同しない。",
+    "メモリ割り当てを実用上可能な範囲で抑え、既存の型/記号/CFG/ABI/layout 表・scratch 再利用を維持する。全経路 zero-allocation や未指定の速度向上率を完成条件に追加しない。意味検査・安全性・必須診断を性能のために省略しない。",
+    "検証は同一構成で build → managed test → その構成由来の fixture の native 検証を直列実行する。bin/scalar-fixtures は構成共有なので Debug/Release の生成・消費を混在させない。古い生成物、0件、フィルターで除かれた必須例を合格に数えない。",
+    "通常コンパイラーは .NET 10 managed DLL を用いる。global.json は Microsoft.Testing.Platform を選択しているため dotnet test --project を採用する。復元が必要なら後続作業で dotnet restore Kimigayo.slnx を先に行い、NativeAOT は明示の追加指示なしに実行しない。",
+    "native 受入は既存 toolchain/ の実体と backend/windows-x64/profile.json の LLVM 22.1.8・ABI・hash を照合して行う。自動ダウンロード、PATH/認証/外部設定の変更をしない。未固定 toolchain の探索実行を受入証拠に使わない。",
+    "generated_scope は生成物だけに使う。toolchain/windows_x64/** の検証済み backend 再生成物も成果物 hash として照合し、除外されたから未検証でよいとはしない。backend 変更時の catalog 更新は実際の native/generated-module 検証と共通 release/version 規則を満たす。",
+    "各 task の verification は担当段階の到達条件を検証する。最終完了には全規範項目の対応表、未使用/未到達の不正例の拒否、必要な実行の証拠を含め、構文対応や内部モデルだけで source 実行可能な機能の完成を主張しない。証拠・進捗は STATUS.md または後続実行の記録へ置き、PLAN.md に追記しない。"
   ],
   "work_scope": [
     "Kimi/**",
@@ -39,13 +50,13 @@
     "backend/windows-x64/**",
     "examples/**",
     "Benchmark/**",
-    "Playground/**",
-    "Kimigayo.slnx",
-    "Directory.Build.props",
-    "global.json",
     "SPEC.md",
     "STATUS.md",
-    "README.md"
+    "README.md",
+    "Directory.Build.props",
+    "global.json",
+    "Kimigayo.slnx",
+    ".gitignore"
   ],
   "input_scope": [
     "Kimi/**",
@@ -54,385 +65,703 @@
     "examples/**",
     "Benchmark/**",
     "Playground/**",
-    "Kimigayo.slnx",
-    "Directory.Build.props",
-    "global.json",
-    ".editorconfig",
-    "stylecop.json",
-    ".gitignore",
-    "AGENTS.md",
     "SPEC.md",
     "STATUS.md",
     "README.md",
-    "toolchain/*.exe",
-    "toolchain/*.dll"
+    "AGENTS.md",
+    "Directory.Build.props",
+    "global.json",
+    "Kimigayo.slnx",
+    ".editorconfig",
+    ".gitattributes",
+    ".gitignore",
+    "stylecop.json",
+    "toolchain/**"
   ],
   "generated_scope": [
+    "bin/**",
     "Kimi/bin/**",
     "Kimi/obj/**",
     "Kimi/Generated/**",
     "xUnitTest/bin/**",
     "xUnitTest/obj/**",
-    "xUnitTest/TestResults/**",
     "Benchmark/bin/**",
     "Benchmark/obj/**",
     "Playground/bin/**",
     "Playground/obj/**",
-    "bin/**",
-    "TestResults/**",
-    "BenchmarkDotNet.Artifacts/**",
     "backend/windows-x64/bin/**",
     "examples/**/bin/**",
     "examples/**/obj/**",
+    "TestResults/**",
+    "xUnitTest/TestResults/**",
+    "BenchmarkDotNet.Artifacts/**",
     "toolchain/windows_x64/**"
   ],
   "environment_checks": [
     "dotnet --info",
-    "dotnet --list-sdks",
-    "Get-Content -LiteralPath global.json -Raw",
+    "$PSVersionTable | ConvertTo-Json -Depth 4",
     "Get-Content -LiteralPath backend/windows-x64/profile.json -Raw",
-    "$ErrorActionPreference = 'Stop'; foreach ($name in @('clang','opt','llc','lld-link','llvm-nm','llvm-readobj','llvm-objdump','llvm-lib','llvm-dlltool')) { Get-FileHash -LiteralPath (Join-Path 'toolchain' ($name + '.exe')) -Algorithm SHA256 }",
-    "$ErrorActionPreference = 'Stop'; & ./toolchain/clang.exe --version; if ($LASTEXITCODE -ne 0) { throw 'LLVM version identification failed' }",
-    "$ErrorActionPreference = 'Stop'; Get-FileHash -LiteralPath toolchain/windows_x64/kimi_backend_windows_x64_v1.lib -Algorithm SHA256"
+    "foreach ($name in @('clang','opt','llc','lld-link','llvm-nm','llvm-readobj','llvm-objdump')) { $path = Join-Path 'toolchain' ($name + '.exe'); & $path --version; if ($LASTEXITCODE -ne 0) { throw ('Version probe failed: ' + $path) } }",
+    "foreach ($name in @('clang','opt','llc','lld-link','llvm-nm','llvm-readobj','llvm-objdump','llvm-lib','llvm-dlltool')) { Get-FileHash -LiteralPath (Join-Path 'toolchain' ($name + '.exe')) -Algorithm SHA256 }",
+    "Get-FileHash -LiteralPath toolchain/windows_x64/kimi_backend_windows_x64_v1.lib -Algorithm SHA256"
   ],
   "references": [
     {
       "path": "SPEC.md",
-      "purpose": "唯一の言語仕様正本。本文の具体的な決定事項・Appendix Aの検証義務・設計境界を使い、docリンク先は読まない。"
+      "purpose": "doc 参照先を除いた確定規則・付録A/F・仕様境界の正本"
     },
     {
       "path": "STATUS.md",
-      "purpose": "段階別の実装範囲・制限・managed検証の再現手順。履歴の成功を現在の完成証拠に置き換えない。"
+      "purpose": "現実装の段階別制限、既存テスト名、構成別検証コマンド"
     },
     {
       "path": "AGENTS.md",
-      "purpose": "性能・文書更新・NativeAOT禁止の作業規則。"
+      "purpose": "性能、文書更新、NativeAOT 禁止の適用指示"
     },
     {
-      "path": "autoframe.md",
-      "purpose": "§2のPLAN形式と、範囲・検証・完成・停止の制御規則。"
+      "path": "autoimpl/SPEC.md",
+      "purpose": "§2 の PLAN 制御入力契約および §5.1 の範囲記法"
     },
     {
-      "path": "automation/verification-guide.md",
-      "purpose": "Microsoft.Testing.Platformの起動形、fixture共有、通常nativeとNativeAOTの区別に限る既存手順。旧計画へのリンクやautomation独自の進捗保存指示は採用しない。"
+      "path": "autoimpl/schemas/plan.schema.json",
+      "purpose": "schema_version 1 の形式検査"
+    },
+    {
+      "path": "README.md",
+      "purpose": "通常 build、toolchain、CLI の既存入口。NativeAOT 手順は実行対象外"
+    },
+    {
+      "path": "global.json",
+      "purpose": "Microsoft.Testing.Platform の runner 選択"
+    },
+    {
+      "path": "xUnitTest/xUnitTest.csproj",
+      "purpose": ".NET 10 / xUnit v3 の検証プロジェクト"
     },
     {
       "path": "backend/windows-x64/README.md",
-      "purpose": "固定LLVM、backendの再生成/検証、native fixture、CLI統合の既存手順。"
+      "purpose": "既存 native helper、fixture、toolchain 検証手順"
     },
     {
-      "path": "examples/Hello/README.md",
-      "purpose": "build/run/emit-llvmとmanual-buildの実在する起動方法・成果物の場所。"
+      "path": "backend/windows-x64/profile.json",
+      "purpose": "LLVM、backend ABI/version/hash、供給 symbol の正本"
+    },
+    {
+      "path": "backend/windows-x64/test-scalars.ps1",
+      "purpose": "bin/scalar-fixtures の通常 native O0/O2 検証"
+    },
+    {
+      "path": "backend/windows-x64/test-emission.ps1",
+      "purpose": "構成別 emission fixture と runtime 故障注入"
+    },
+    {
+      "path": "backend/windows-x64/test-cli.ps1",
+      "purpose": "managed DLL を使う CLI 統合検証"
     }
   ],
   "completion_criteria": [
     {
       "id": "C01",
-      "condition": "対象SPECの具体的な決定事項とAppendix Aの全検証義務について、有限の要件一覧と実装/検証の対応があり、対象内の未実装・未検証・未解決の必須指摘が0件である。",
-      "verification": "第1〜22章とAppendix A/Fを節・規則単位で棚卸しし、要件ID、正確な節、期待動作/診断、関連段階、実装、テストまたは照合手順を内部記録で対応付ける。Appendix D等の除外根拠とdocだけの詳細を別に照合する。全体監査で一覧からコード/証拠へ、残るUnsupported/Missing/TODOからSPECへ逆方向にも確認し、対象規則の抜けや未実装を除外へ付け替えた箇所がないことを確認する。"
+      "condition": "SPEC.md §1–22、A.1–A.15、F.1–F.9 の全必須規則・禁止・実装上の不変条件・要求検証を有限の一覧にし、全項目を task・検証へ対応付ける。doc 参照先のみの要件、未確定部分、非規範部分の除外根拠を区別する。",
+      "verification": "各見出しとその下の本文・表・箇条書きを順に照合し、安定した節/項目識別子、必須性、担当 task、検証段階・期待結果を STATUS.md の対応表または実行記録で確認する。必須の未対応・未実装・未検証を0件にする。"
     },
     {
       "id": "C02",
-      "condition": "確定した字句・構文、型/Origin、宣言/名前/アクセス、推論/overload、Contract/Property/generic body、式/演算/制御フローの静的意味と診断が実装される。正当な入力を受理し、規定の不正入力・必須警告を正しい位置で報告する。",
-      "verification": "各規則に正常・不正・境界・相互作用ケースを割り当て、xUnitTestの構文/Binding/解析テストで確認する。parse/write/parseと保存/再読込、source-local context、候補/入力順、定義時の普遍的証明、未到達コード検査、キャッシュ失効を含め、Debug/Releaseで受理と必須診断が一致する。"
+      "condition": "§2・§19・A.1–2/A.6・F の確定構文、source identity、Unicode/字句、literal、条件選択、構文往復・診断を実装する。",
+      "verification": "既存 Lexing/Parsing/Source/Directive/Serialization テストを再利用し、正負例、位置、source isolation、parse/write/parse・保存/再読込、literal の exact 値、選択/非選択境界を照合する。"
     },
     {
       "id": "C03",
-      "condition": "全対象操作で初期化・Copy/Move/部分Move・Origin/Loan/reborrow・効果要約・refinement・capture・通常transfer/defer/deinitとAbortの所有権/cleanup規則が実装され、必要な義務を解決してから生成する。",
-      "verification": "Appendix A.3〜A.4/A.7〜A.13/A.15を対応表と照合し、分岐/loop固定点、返却/格納借用、引数/default/間接call/static/cleanup効果、構築中断、逆順破棄、結果確保後の非終了を検証する。managedの受理/拒否とnativeの観測可能な取得/副作用/破棄順を別々に確認する。"
+      "condition": "§3・§6・§8–10 の Type/Symbol/access/Contract/推論/特殊化規則と A.3/A.11/A.12 の保持・証明要件を満たす。",
+      "verification": "Binding の正負例と順序入替、generic 定義時/使用時の検査、再Bind/依存変更時の失効を確認する。Unknown や未解決義務を成功扱いせず、選択後の所有権失敗による候補 fallback がない。"
     },
     {
       "id": "C04",
-      "condition": "確定したwindows-x64-v1のApplicationとLibraryに必要な型・値・関数・Core操作・generic・object/Weak・collection・layout・ABI・FFI・runtimeが実装され、ApplicationはLLVM検証とO0/O2実行で仕様どおりに動作する。Libraryは規定の未最適化IR/署名/linkageとオブジェクト生成を満たす。",
-      "verification": "Appendix A.14と§21〜22の型/ABI/数値変換/定数/メタデータ/rc・arc・Weak/FFI/故障注入/backend供給の表を網羅する。LLVM verifierと実nativeを実行し、stdout/stderrのbytes、exit、副作用/cleanup順をO0/O2で比較する。arcのメモリ順序はIR/native成功に加えて規定のprotocolをレビューする。Hello自身が14 UTF-8 bytesのHello, world!＋LF、空stderr、exit 0を出し、Abortは規定どおり終了する。"
+      "condition": "§7・§11・§12.4 の関数・default・receiver・Property・constructor・callable・効果規則を実装する。",
+      "verification": "引数評価/取得順、getter/setter/初回配置、capture/call の分離、receiver ごとの公開保証、直接/間接/generic call と正常 cleanup の意味・実行結果を確認する。"
     },
     {
       "id": "C05",
-      "condition": "module/source context、確定したMod実行規則、依存・意味計画の再検証、Core同一性、Project設定、startup/static初期化、emit-llvm/build/runおよび成果物の整合性が接続される。部分仕様の確定済み意味を未実装のまま残さない。",
-      "verification": "§18〜20、§21.3.4、§22、Appendix A.1〜A.3に対応するmulti-source/module・Mod・再Bind/再生成・cache破損/依存変更・Core偽装・初期化順/循環・取消/失敗のテストを行う。未確定の公開形式を要する部分は内部APIで確定規則を検証する。CLIでIR/manifest/exeのhash対応、失敗時の旧成功無効化、runの非自動build、出力/exit転送を確認する。"
+      "condition": "§3.1・§12–13 の実行可能な scalar/literal/文字列/変換/演算/代入を実装し、担当節が禁止する操作は拒否する。",
+      "verification": "型の全対象方向、数値境界・NaN/±0/subnormal・UTF-8/NUL・評価順・範囲外 Abort を managed と O0/O2 で検証する。初期 profile 禁止の i128 除算等と未確定の string 連結は拒否を確認する。"
     },
     {
       "id": "C06",
-      "condition": "現行入力に対するDebug/Release build、全managed suite、LLVM/通常nativeと関連統合検証が成功し、実行漏れ・0件・skip・古いfixtureの混入がない。",
-      "verification": "依存未復元時のみdotnet restore Kimigayo.slnxを先行する。dotnet build Kimigayo.slnx -c Debug --no-restore -v:minimal → dotnet test --project xUnitTest/xUnitTest.csproj -c Debug --no-build --no-restore → Debug用LLVM/native検証、その後Releaseも同じ順で直列実行する。LLVM/nativeはpwsh -NoProfile -File ./backend/windows-x64/build.ps1 -ToolchainRoot ./toolchain、test-emission.ps1 -Configuration DebugまたはRelease -ToolchainRoot ./toolchain、test-scalars.ps1 -ToolchainRoot ./toolchainを使用する。test-cli.ps1 -Configuration Release -ToolchainRoot ./toolchain、test-lsp.ps1 -CompilerPath Kimi/bin/Release/net10.0/Kimi.dll、test-artifact-paths.ps1、test-toolchain.ps1、test-kernel32.ps1 -ToolchainRoot ./toolchainも同ディレクトリーからpwsh -NoProfile -Fileで実行する。test-manual-build.ps1 -Manifest examples/Hello/bin/x86_64-pc-windows-msvc/Hello.link.json -ToolchainRoot ./toolchainは現行Helloのemit後に行う。実装で追加した対象機能の検証も全件含める。各コマンドの終了コード、実件数、警告、入力hash、期待/実際の出力を保存する。全体監査は生成先を安全に空にして構成ごとにfixtureを再生成し、生成された全入力とnativeで検証した一覧/hashを突き合わせる。"
+      "condition": "§3.4–3.7・§15–16 の初期化/部分Move/Origin/Loan/cleanup/deinit を満たす。",
+      "verification": "Place overlap、戻り参照・保存・reborrow・capture/消去依存、CFG join/loop、途中構築/置換、逆論理順の破棄と非終了 cleanup を正負例および実行時の取得/破棄観測で確認する。"
     },
     {
       "id": "C07",
-      "condition": "SPECが規定する計算量・無割り当て・配置・generic生成上限を満たし、代表的なコンパイル経路に避けられる重大な割り当て/保持参照/コード膨張の回帰がない。",
-      "verification": "既存のAllocationMeasurement系テスト、再parse後の保持参照検査、collection容量内操作のallocation/操作回数、SliceのO(1)操作、generic上限/固定frameを検証する。必要な比較はBenchmark/の該当workloadで同じ条件の前後を測る。O2の代表的IR/コードをレビューして不要なslot/transfer/flagを確認する。全経路ゼロ割り当てや新たな数値目標を完成条件に追加しない。"
+      "condition": "§14・§17・A.9/A.10/A.15 の制御フロー、Pattern/guard、refinement、require、Option/Result、Abort、必須警告を実装する。",
+      "verification": "構造上の完了と実行到達の分離、全 Pattern 境界、結果確保→cleanup→配送、Never/未到達も含む検査、診断位置・必須警告と抑制優先順位を確認し、O0/O2 の観測結果を比較する。"
     },
     {
       "id": "C08",
-      "condition": "SPEC.mdとSTATUS.mdが完成した製品と一致し、確定事項の未実装を隠さず、残る対象外の設計境界と実際の検証範囲を明記している。",
-      "verification": "STATUSの各分野・制限を要件一覧と現物へ照合し、文書リンクと再現コマンドを確認する。SPEC更新が規則の削除/緩和やdoc由来の要件追加でないことを差分レビューする。必須条件C01〜C07の有効な証拠と全必須taskの対応を最終監査し、NativeAOT・未確定機能・追加profileを実施済みと書いていないことを確認する。"
+      "condition": "§4・§12.3.4・§14.6・§22.1 の固定配列・Array・Dictionary・Index・Range・ResolvedRange・Slice・反復の確定契約を実装する。",
+      "verification": "A.12/A.13 の length/stride/境界/部分Move/共有読取、動的更新の取得・commit・容量・失敗・破棄順・保持Loan、永久枯渇 iterator と element Type を検証し、実行できる source 操作は native まで確認する。"
+    },
+    {
+      "id": "C09",
+      "condition": "§3.2.2/3.3・§12.4.4・§13.5.7–9/13.6.1・§15.8・§21.2 の確定 object/Weak/metadata/動的型規則を実装する。",
+      "verification": "makeObj/makeRc/makeArc/clone/downgrade/upgrade/cyclic、同一性・count・Borrow・破棄、static upcast/runtime is、Building/Alive/Destroying/Freed を検証する。arc の順序証明を IR/native 試験と分けて記録し、未導入の Contract View/cast 構文を追加しない。"
+    },
+    {
+      "id": "C10",
+      "condition": "§18・§20.1–7・§21.3.4 と A.1/A.3 の module/source/構成/Mod/意味情報保持・再利用契約を、SPEC.md 本文で定義された範囲で実装する。",
+      "verification": "source 再構築、直接依存と非公開環境の保持、再利用/失効、Mod graph・一回実行・append 境界・順序/取消/失敗・出力除去を検証する。未確定の外部 binary 交換形式や doc 由来の composition/test 接続を前提にしない。"
+    },
+    {
+      "id": "C11",
+      "condition": "§21.3・§21.4.6 の generic 共有/特殊化、context/schema、resource limit、固定 scratch frame と A.12/A.14 の規範要件を満たす。",
+      "verification": "予算0を含む選択、必須特殊化、有限再帰/増大key、全Type/length/Originに依存するキー、entry/adaptor/cleanup の一致、入力順序・cache有無・予算変更での意味不変を確認する。未知置換の動的 scratch への fallback は導入しない。"
+    },
+    {
+      "id": "C12",
+      "condition": "§21.1–5 の layout・metadata・内部ABI・checked lowering・Windows x64 profile を満たす。",
+      "verification": "A.14 の layout/ABI/CFG/定数/FP/frame/unwind/symbol の各検証領域を対応付け、Clang の C layout 比較、最適化前後 verifier、COFF/逆アセンブル/依存・O0/O2 実行を確認する。LLVM Writer が未検証 AST を再解釈しない。"
+    },
+    {
+      "id": "C13",
+      "condition": "§5・§22 の全必須 Core 宣言、startup/static、FFI、console/runtime と raw pointer の確定操作を実装する。",
+      "verification": "Core の不足/偽装/互換性を検査し、startup 候補・static cycle/shutdown、C ABI 全許可型・5引数以上、pointer の合法境界、runtime 故障注入を検証する。Hello はアプリ自身の14 UTF-8 byte、空stderr、exit 0、Abort は exit 1 を確認する。"
+    },
+    {
+      "id": "C14",
+      "condition": "§20.8 の emit-llvm/build/run、Library inspection、manifest/公開・toolchain/backend の規定を満たす。",
+      "verification": "emit の LLVM 不要性、.ll/.link.json hash、Library の pre-opt body と object 生成、通常 Application build/run、失敗後の旧成功無効化、実 tool/library identity、未固定版/ABI/hash不一致の拒否を確認する。Library の外部リンク/公開ABIは要求しない。"
+    },
+    {
+      "id": "C15",
+      "condition": "全必須項目に対する変更後の managed Debug/Release 検証と、必要な LLVM/通常 native O0/O2 検証が成功し、性能・割り当ての規範条件と既存保証を維持する。",
+      "verification": "C01 の一覧から試験と件数を照合し、0件・必須skip・未実行・予期しない失敗を0件にする。構成ごとの build/test/fixture/native ログ、期待stdout/stderr/exit/cleanup、allocation 検査と代表 workload の比較を保存する。NativeAOT は実行しない。"
+    },
+    {
+      "id": "C16",
+      "condition": "SPEC.md と STATUS.md が完成した実装と検証に一致し、既知の必須未実装/未検証が残らず、未確定・対象外との区別と再現手順が明確である。",
+      "verification": "C01 の全項目をコード・テスト・証拠へ逆照合し、仕様削除/条件緩和による完了がないこと、文書のリンクと検証手順、全 milestone の到達条件を最終監査する。"
     }
   ],
   "tasks": [
     {
       "id": "T01",
-      "description": "SPEC全対象の要件一覧と、STATUS/現ソース/既存テストの段階別対応を内部計画に作る。",
+      "description": "§1–22・付録A/Fの全規範項目を棚卸しし、STATUS.md と現コードの段階別差分、担当 task、期待結果を対応付ける。付録B/C/D/Eと doc 参照境界も分類する。",
       "required": true,
       "depends_on": [],
       "criterion_ids": [
         "C01",
-        "C08"
+        "C16"
       ],
-      "acceptance": "すべての具体的規則・Appendix Aの義務に対応先があり、未確定部分の除外理由が節単位で限定されている。後続taskを必要に応じ分割し、元ID/必須性/条件を保持する。",
-      "verification": "SPEC第1〜22章・Appendix A/D/Fと双方向に照合する。docを参照せず、既存の未対応拒否が言語仕様か実装制限かを分類する。"
+      "acceptance": "全見出し配下の必須規則・禁止・検証表に担当があり、未確定/非規範/対象外は担当節による根拠がある。実装済みも検証対象に残す。",
+      "verification": "文書とコード/既存テストの静的照合。対応表は STATUS.md または実行記録に保存し、以後の分割でも元 task と必須性を維持する。C01 の漏れ検査を行う。"
     },
     {
       "id": "T02",
-      "description": "実装開始時の環境・依存・生成物の範囲を確認し、既存managed/native検証の基準を採取する。",
+      "description": "§2・A.1/A.6・F.1–F.9の字句/構文、source snapshot、診断位置、writer/serialization を仕上げる。",
       "required": true,
       "depends_on": [
         "T01"
       ],
       "criterion_ids": [
-        "C06",
-        "C07"
+        "C02"
       ],
-      "acceptance": "現ソースに対する開始時の結果と失敗原因、native供給物の固定版/hash、fixture経路が識別できる。このtaskは不具合発見を許容するが、未実行を成功としない。",
-      "verification": "STATUS §7とC06の手順を必要な前提順で用いる。net10.0とMicrosoft.Testing.Platformを確認する。toolchainが不足すれば既存backend READMEの準備条件を示し、環境依存の検証だけを保留する。NativeAOTは実行しない。"
+      "acceptance": "Unicode 15.0/NFC、UTF-8、不正文字/escape、indent/継続、完全Type/Origin/宣言/式の確定構文と回復を実装し、元sourceとexact literalを保持する。",
+      "verification": "UnicodeIdentifier/SourceEncoding/SourceDocumentAndDiagnostic、NumberLiteral/CharLiteral/StringLiteral、FrontEndSyntax/ParserRegression/PropertyRevision/NestedType/KotonohaSerialization を基に正負例と往復検証を補完する。"
     },
     {
       "id": "T03",
-      "description": "字句/構文・source context・directive・Koto保存/再読込と必須診断の不足を補完する。",
+      "description": "§19・§20.3–6・A.2 の target 準備、環境条件と即時 #if/#switch 選択を完成する。",
       "required": true,
       "depends_on": [
-        "T01",
         "T02"
       ],
       "criterion_ids": [
-        "C02"
+        "C02",
+        "C10"
       ],
-      "acceptance": "§2/19、Appendix A.1/A.2/A.6/A.15とFに適合し、元位置・literal精度・body形式・非選択構文の検査境界が保持される。",
-      "verification": "Unicode/encoding/literal、front-end/parse/write/serialization、directive条件・回復・source-local環境の既存および不足回帰テストを実行する。"
+      "acceptance": "case-sensitive の設定/組込み名、型・重複・NFC、全 reached 条件の診断、false #if と非選択 case の異なる検査境界、選択項目の同一scopeを満たす。",
+      "verification": "CompilationSpecification/DirectiveConditionValidation/CompileTimeSwitch を拡張し、短絡・非選択・入れ子・診断位置・alias/defer/transfer の境界と eager/cache 結果一致を確認する。"
     },
     {
       "id": "T04",
-      "description": "完全Type/Origin/length、宣言断片、名前/アクセス・overload/推論・候補確定を完成する。",
+      "description": "§3・§4.1–4.4・§8.1・§15.2–4・A.12 の完全 Type、generic pair/length/Origin schema、定数参照・length 推論を完成する。",
       "required": true,
       "depends_on": [
+        "T02",
         "T03"
       ],
       "criterion_ids": [
-        "C02",
-        "C05"
+        "C03",
+        "C08"
       ],
-      "acceptance": "§3/6〜10の型表現・宣言/可視性・候補選択と未解決義務の保持が成立する。Origin bound/length定数、generic slot、defaultの宣言環境、継承receiverを失わない。",
-      "verification": "TypeBinding/Constraint/Contract/Access/Call系を拡充し、前方参照、fragment、候補順、曖昧性、generic/length推論、cache失効、usage失敗後のfallback禁止を確認する。"
+      "acceptance": "nested Semantics、Core/完全Type slot、Origin bound/variance、関数/配列/Weak を表現し、length の正規化・負数/overflow・recursive layout 義務を保持する。",
+      "verification": "TypeBinding/ConstraintBinding/NumberLiteral と新しい length/schema テストで slot種別、全Type identity、occurs-check、bound/宣言fragment一致、0長・0size・依存式・推論順序不変を確認する。"
     },
     {
       "id": "T05",
-      "description": "一般Place・Origin/Loan solver、部分Move/reborrow、refinement、制御フローとcleanup計画を完成する。",
+      "description": "§6・§9・§18.1・A.3 の container/fragment、Type/Value/Origin/Label、lookup/access/inheritance を完成する。",
       "required": true,
       "depends_on": [
         "T04"
       ],
       "criterion_ids": [
-        "C02",
         "C03"
       ],
-      "acceptance": "§14〜17の静的規則がfield/index・返却/格納借用・未到達検査まで成立する。CFG到達性と型検査継続、構造的完了、結果確保とcleanupを区別する。",
-      "verification": "Ownership/ControlFlow/Unreachable/Pattern系を拡充し、分岐/loop固定点、uniq再借用、借用escape、再初期化、guard失敗側、defer非終了、通常transferとAbortを確認する。"
+      "acceptance": "定義元source/aliasを保持し、前方宣言、重複、role/arity、可視性・公開API到達性、open/base・継承Name禁止、protected receiver を全祖先で検証する。",
+      "verification": "Binding/IdentifierIdentity/InheritedReceiverBinding を拡張し、source/fragment/読み込み順を変えた結果、private generic依存、APIの入れ子Type、追加member/access変更による再検査を比較する。"
     },
     {
       "id": "T06",
-      "description": "struct/enum/Property、constructor/base/deinit、static storageの意味解析と責任計画を完成する。",
+      "description": "§8.2–8.7/8.9–10・§11.4・A.11 の proof、associated Type、static Contract、conditional conformance、witness を完成する。",
       "required": true,
       "depends_on": [
         "T04",
-        "T05"
-      ],
-      "criterion_ids": [
-        "C02",
-        "C03"
-      ],
-      "acceptance": "§6/11/16の構築・accessor・部分初期化・継承・破棄の契約を表現し、storageとcomputed結果、論理順と物理順を混同しない。",
-      "verification": "Property/Enum/Startup/Ownershipテストでfirst placement、自分への代入、custom setter、祖先deinit、構築中断・base責任・逆論理順を確認する。"
-    },
-    {
-      "id": "T07",
-      "description": "generic body/静的Contract/associated Type/conditional conformance、特殊化、効果familyとObjectCompatibleの証明を完成する。",
-      "required": true,
-      "depends_on": [
-        "T04",
-        "T05",
-        "T06"
-      ],
-      "criterion_ids": [
-        "C02",
-        "C03",
-        "C05"
-      ],
-      "acceptance": "§7〜12/15/21.3とAppendix A.3/A.8/A.11/A.12の定義時保証が成立する。再帰効果/default/cleanupを含め、Unknownや未確定familyから公開保証を作らない。",
-      "verification": "候補と使用合法性の分離、条件付きCopy/Move、Originの普遍性、特殊化closed set、再帰/間接/別module向け要約と失効を検証する。"
-    },
-    {
-      "id": "T08",
-      "description": "scalar・数値変換・直接関数/default引数・全制御フローのLLVM/実行を一般化する。",
-      "required": true,
-      "depends_on": [
         "T05"
       ],
       "criterion_ids": [
         "C03",
         "C04"
       ],
-      "acceptance": "規定の数値変換・評価順・checked算術・Unit/Never/選択/loop結果と引数/結果責任をloweringする。i128除算等profileの明示禁止は維持する。",
-      "verification": "Scalar/Integer/WideInteger/Float/Conversion/Function/Result/Deferred系の不足を埋め、精度境界・NaN/±0・範囲外・短絡・非終了・default副作用をLLVM/O0/O2で検証する。"
+      "acceptance": "Proven/Refuted/Unknown/Errorを区別し、明示identity、継承conformance、条件付きmember/Copy、共有候補の全置換保証、property operation別mappingを保持する。",
+      "verification": "Constraint/Contract/ConditionalConformance/ConditionalMember/PropertyBinding を補完し、diamond・cycle・曖昧性・アクセス・非強化・receiver/Origin・parent経路一致、Unknownでの拒否と失効を確認する。"
+    },
+    {
+      "id": "T07",
+      "description": "§8.8–10・§10・A.3/A.12 の候補局所推論、generic定義検査、明示完全特殊化の登録・閉包・選択を完成する。",
+      "required": true,
+      "depends_on": [
+        "T06"
+      ],
+      "criterion_ids": [
+        "C03",
+        "C11"
+      ],
+      "acceptance": "expected Type/literal/argument label に基づく候補比較と完全Type/length推論を行い、定義元のclosed setから必須特殊化を選ぶ。効果・所有権義務は期限まで保持し、最終化前に解消する。",
+      "verification": "既存 TypeBinding/Constraint/Contract と追加特殊化テストで candidate rollback、曖昧性、Origin-only重複、unused選択body、defaults/safety継承、再帰・順序独立・使用違法時fallback禁止を確認する。"
+    },
+    {
+      "id": "T08",
+      "description": "§7.1–7.5・§12.1–2/12.4・§10.3/10.7 の通常関数、receiver、named/default/optional 引数と結果規則を完成する。",
+      "required": true,
+      "depends_on": [
+        "T07"
+      ],
+      "criterion_ids": [
+        "C04"
+      ],
+      "acceptance": "call plan が論理引数順・parameter対応・defaultの定義環境/評価・取得責任を保持し、Unit/Never/unsafe と明示receiverの制約を検証する。",
+      "verification": "FunctionBody/FunctionEmission/Binding/ControlFlowConformance の段階別テストで名前付き順序、default副作用/途中transfer、未指定戻りUnit、optional単独構文、unsafe呼出/関数値禁止を確認する。"
     },
     {
       "id": "T09",
-      "description": "aggregate ABI、struct/enum/Property/constructor/deinit、要素射影/index、分解matchと集約結果の生成を完成する。",
+      "description": "§6.2.3・§11・A.4 の stored/computed/requirement Property、accessor、constructor/base initializer の意味計画を完成する。",
       "required": true,
       "depends_on": [
         "T06",
         "T08"
       ],
       "criterion_ids": [
-        "C03",
-        "C04"
+        "C04",
+        "C06"
       ],
-      "acceptance": "Tuple/固定配列/struct/enumをlocal全体転送に限定せず、引数/結果・部分操作・cleanupまで規定のlayout/ABIで扱う。",
-      "verification": "Aggregate/Enum/Match/Propertyの実行fixtureを拡充し、zero-size、padding、重なり、深さ/size限界、部分構築/Move、借用subject/guard、逆順破棄を検証する。"
+      "acceptance": "read/get/set/初回配置/Moveを区別し、receiver・Copy/Origin・アクセス・witness制約と全construction layerの初期化/選択を保持する。static storageはT30の実行計画へ接続できる。",
+      "verification": "PropertyBinding/PropertyRevisionParse/InheritedReceiverBinding とconstructorテストで private-set Move禁止、custom-get temporary、非Copy setter/self代入、branch初回配置、base access・暗黙constructor抑制を確認する。"
     },
     {
       "id": "T10",
-      "description": "Function Item・Closure・共通Function Type・Callableのcapture/間接call/結果借用と実行表現を完成する。",
+      "description": "§3.1・§12.3・§13.1–5/13.7 の scalar、exact literal fitting、数値変換、比較、型/Semantics適応、代入の意味計画を完成する。",
       "required": true,
       "depends_on": [
-        "T07",
+        "T08",
         "T09"
       ],
       "criterion_ids": [
-        "C02",
-        "C03",
-        "C04"
+        "C05"
       ],
-      "acceptance": "§7.6/8.6/15.8/21.2〜3のcapture順、receiver別取得、Owned環境、隠れた依存、erasure/ABIを満たす。",
-      "verification": "明示/暗黙・未使用/nested capture、Copy/Move/ref/uniq、Shared/Exclusive/Consuming、返却Loan、間接call効果とcleanupをmanagedおよびO0/O2で検証する。"
+      "acceptance": "全数値型・char/bool/Unit/stringの定義済み操作を選択し、右辺先行代入/対象先行compound更新、チェック失敗、未導入操作の拒否を表す。string補間のStringify接続はT18で完成する。",
+      "verification": "NumberLiteral/Integer/WideInteger/Float/Conversion/FloatConversion/Char/StringComparison のテストを基に全許可変換・literal境界・型identity・評価回数を検証する。string +/+= は実行禁止を維持する。"
     },
     {
       "id": "T11",
-      "description": "object Semantics・view/refinement・obj/rc/arc/Weak、循環構築とruntime metadataを完成する。",
+      "description": "§3.4–3.6・§11.1・§15.1・A.4/A.7/A.10 の Place 初期化・Consume・部分Move・構築責任を完成する。",
       "required": true,
       "depends_on": [
-        "T07",
         "T09",
         "T10"
       ],
       "criterion_ids": [
-        "C02",
-        "C03",
-        "C04"
+        "C06"
       ],
-      "acceptance": "確定した生成/複製/降格/upgrade・strong/weak count・初期化/最終解放・dynamic cleanup・静的member呼出を満たす。未導入のruntime Contract View構文は追加しない。",
-      "verification": "§13.5〜13.6/21.2.3、Appendix A.8/A.9/A.14を網羅し、失敗注入、count上限、循環生成中の公開、resurrection拒否、view別release、arc protocolのorderingを検証する。"
+      "acceptance": "field/base/tuple/固定配列literal pathとwhole Placeを区別し、Copy/Move/初回配置/再初期化/置換をCFG固定点で検査する。動的indexを勝手にMove Pathにしない。",
+      "verification": "OwnershipAnalysis/EnumOwnership/MatchOwnership を拡張し、branch/loop join、途中構築・部分置換・base slicing禁止、0size責任、symbolic Copy/Move と診断sourceを確認する。"
     },
     {
       "id": "T12",
-      "description": "Coreの全確定宣言/操作、Array/Index/Range/ResolvedRange/Slice/Dictionary、反復、比較/Stringify/補間を接続する。",
+      "description": "§15.2–6/15.8–9・§3.7・A.8/A.12 の一般 Origin/Loan solver、ref/uniq/object borrow、保存/返却/効果伝播を完成する。",
       "required": true,
       "depends_on": [
         "T07",
-        "T09",
-        "T10"
+        "T11"
       ],
       "criterion_ids": [
-        "C02",
-        "C03",
-        "C04",
-        "C07"
+        "C06",
+        "C09"
       ],
-      "acceptance": "Core catalogの現在の18枠を上限にせず、§22.1と参照先が要求するWeak等も含めて完成する。§4.6〜4.7の容量/順序/Loan/複雑度、§12〜14の構築・補間・forを満たす。未確定のstring連結所有権は導入しない。",
-      "verification": "Core identity/shape/偽装拒否とcollection/iterator/string実行を検証する。空/最大境界、^0/^1、重複key、削除再追加順、None/Err、返却依存、capacity内無割り当て、O(1)/償却上限、失敗時cleanupを含める。"
+      "acceptance": "bound/meet/variance/principal推論とLoan provenanceを保持し、overlap・reborrow・親権限停止・呼出全期間保護・retention/escape/Ownedを検証する。Origin簡約で別Loanを消さない。",
+      "verification": "ReferenceEmission/StringGuard と新規solverテストで複数入力の返却、nested reference、static/mutable static、alias/capture/callee効果、破棄時生存、入力順序・再Bind独立を確認する。"
     },
     {
       "id": "T13",
-      "description": "raw pointer・unsafe・C/Kimigayo layout・LibraryImportとWindows ABI/供給物を完成する。",
+      "description": "§16・§15.7・A.7 の defer・deinit・通常transfer時cleanup・初期化維持exchangeの確定意味を完成する。",
       "required": true,
       "depends_on": [
-        "T06",
-        "T09"
+        "T11",
+        "T12"
       ],
       "criterion_ids": [
-        "C02",
-        "C04"
+        "C06",
+        "C07"
       ],
-      "acceptance": "§5/21.1/21.5/22.3の許可操作・拒否境界・layoutとABIを満たす。LLVM inbounds/poison、言語UB、checked算術を混同しない。",
-      "verification": "Clang C対照、small整数拡張、FP混在/5引数以上、pointer往復/正当なone-past/zero displacement、FFI衝突、unwind/ASLR/_fltused/未解決symbol/backend依存を検証する。"
+      "acceptance": "結果確保後の逆論理順破棄、base最後・完成済み層、Moved要素除外、defer境界/再入/非終了、Abortでunwindしない規則を解析計画に統合する。exchange未確定source APIは追加しない。",
+      "verification": "DeferredEmission/EnumOwnership/UnreachableOwnership と追加cleanup計画テストで途中構築/呼出、deinit禁止操作・receiver escape、重複破棄、non-overlap exchangeの意味、cleanup阻害後の非配送を確認する。"
     },
     {
       "id": "T14",
-      "description": "外部Kotonoha/ソース依存、Mod実行、意味計画の保存/再検証をコンパイル入口へ接続する。",
+      "description": "§7.6・§8.6/8.9–10・§12.4.4・§15.8・A.8 の capture/callable と効果族固定点を完成する。",
       "required": true,
       "depends_on": [
-        "T07"
+        "T08",
+        "T12",
+        "T13"
       ],
       "criterion_ids": [
-        "C01",
-        "C05"
+        "C03",
+        "C04",
+        "C06"
       ],
-      "acceptance": "§18/20.7/21.3.4の確定したsource identity・Mod順序/一回実行/生成統合/finalization・依存失効が成立する。公開パッケージ/API形式の未確定を理由にこれらの意味を省かない。",
-      "verification": "multi-source/moduleのdefinition-site scope、依存順/循環、Mod追加/失敗/取消・provisional Binding、署名/アクセス/特殊化追加や保証撤回、互換再検証とrebuild情報不足を内部APIとartifactテストで確認する。"
+      "acceptance": "capture取得順・環境identity・receiver別call・per-call Origin・erasure/Ownedを保持し、default/cleanup/間接/generic calleeを含めたObjectCompatibleの公開保証と使用義務を最終化する。",
+      "verification": "captureとcallの取得/Copy/Move、Shared/Exclusive/Consuming、保持依存・結果Loan・未使用capture、再帰効果族・NotProven原因・循環conformance拒否を意味テストで確認する。"
     },
     {
       "id": "T15",
-      "description": "generic共有/完全特殊化/自動特殊化、schema/entry ABI、生成上限・固定frameとLibrary生成を完成する。",
+      "description": "§14・§17・A.9/A.10/A.15 の全制御構文、結果・refinement・Pattern/guard・必須診断を完成する。",
       "required": true,
       "depends_on": [
         "T10",
-        "T11",
         "T12",
         "T13",
         "T14"
       ],
       "criterion_ids": [
-        "C04",
-        "C05",
         "C07"
       ],
-      "acceptance": "§21.3〜21.4の生成方式・予算・依存closure・静的storage前提を満たす。検証済み意味計画の再利用と未導入の永続object-code cacheを区別する。",
-      "verification": "generic型/length/Origin、再帰/共有entry、選択済み特殊化、上限/コード共有、source/module順、Library IR/署名/オブジェクトを検証し、最適化や予算で意味/cleanupが変わらないことを確認する。"
+      "acceptance": "全体/tuple/enum/共有subjectの分解、guard候補とbodyの別identity、網羅性/単一先行Pattern包含、require失敗非継続、未到達検査continuationを統合する。",
+      "verification": "CurrentControlFlow/ControlFlowConformance/PatternBinding/MatchOwnership/UnreachableOwnership/RuntimeTypeTest を補完し、付録A.10/A.15全行、loop/label/transfer、Moveによるrefinement失効、Unit/効果なし値/Result破棄警告を確認する。"
     },
     {
       "id": "T16",
-      "description": "Application startup/static初期化・Core統合・runtime・CLI/成果物を全対象機能へ接続する。",
+      "description": "§4.1–4.6・A.12/A.13 の固定配列構築/射影、Index/Range/ResolvedRange/Slice と一般 sequence access を完成する。",
       "required": true,
       "depends_on": [
-        "T11",
+        "T04",
+        "T12",
+        "T15"
+      ],
+      "criterion_ids": [
+        "C08"
+      ],
+      "acceptance": "receiver/indexの単回評価、bounds後のexclusive activation、shared readと明示borrow、nested Place、Slice source Origin、0length/0stride/境界失敗を意味計画へ接続する。",
+      "verification": "RangeIndexParse/AggregateEmissionを拡張し、^0/^1・最大isize・inclusive/reversed・saved range再利用、Copy/NonCopy要素、短い再slice・Loan/部分Move、共有読み取りfamilyを検証する。"
+    },
+    {
+      "id": "T17",
+      "description": "§4.7・§12.3.4・§22.1 の Array/Dictionary の構築・lookup/更新・容量/失敗契約を実装する。",
+      "required": true,
+      "depends_on": [
+        "T06",
         "T12",
         "T13",
+        "T16"
+      ],
+      "criterion_ids": [
+        "C08"
+      ],
+      "acceptance": "規定のpublic API、重複key/equality、副作用・取得順、commit前後の責任、保持依存、容量の上限/複雑度、逆破棄順を満たす。未確定の追加API/公開storage ABIを固定しない。",
+      "verification": "collectionの成功/失敗/0容量/overflow・同一/等値key・更新/削除・RHS/receiver順・active Loan競合・途中取得cleanupを意味/実装テストで確認し、内部storage選択を記す。"
+    },
+    {
+      "id": "T18",
+      "description": "§12.3.3・§13.4.1・§14.6・§22.1 の Stringify/比較・Iterator/Iterable と文字列補間を接続する。",
+      "required": true,
+      "depends_on": [
+        "T06",
+        "T14",
+        "T16",
+        "T17"
+      ],
+      "criterion_ids": [
+        "C05",
+        "C08",
+        "C13"
+      ],
+      "acceptance": "associated Element の完全Type例外、所有iteratorの残要素破棄、range/Sliceの永久枯渇・外部Loan、独立owned stringの補間結果、比較witnessを実装する。",
+      "verification": "forの単回iterate/next・early exit/continue・iterator cleanup、Copy/参照element、NaNとEquatableの差、補間評価順・UTF-8/escape/失敗時責任を検証する。"
+    },
+    {
+      "id": "T19",
+      "description": "§3.2.2/3.3・§13.5.7–9/13.6.1・§15.8 の object/Weak public操作と動的型・共有/排他取得を実装する。",
+      "required": true,
+      "depends_on": [
+        "T06",
+        "T12",
         "T14",
         "T15"
       ],
       "criterion_ids": [
-        "C04",
-        "C05"
+        "C09"
       ],
-      "acceptance": "全対象入力について意味解析から実行まで到達でき、一般container/外部module/未使用bodyの一律Unsupported制限を必要な検査へ置換する。設定・toolchain・原子的公開・取消の保証を満たす。",
-      "verification": "§20.8/22のApplication/Library区別、main選択/static順序/循環/破棄、失敗時旧成果無効化、hash/版不整合、emit/build/run/manual-build、Hello/既存examplesの期待出力を確認する。LSPは既存通信の回帰確認に留める。"
+      "acceptance": "makeObj/makeRc/makeArc/strong・Weak clone/downgrade/upgrade/cyclic のType/Origin/取得契約、concrete structのupcast/is、count不変のMove/borrowを意味/操作計画に表す。",
+      "verification": "Core偽装/不正payload、Owned cyclic制約、view/identity保持、外部Loan、builderの単回callとcleanup後publication、無効変換・runtime Contract View拒否を意味テストで確認する。"
     },
     {
-      "id": "T17",
-      "description": "規定の性能契約と割り当て/保持参照/コード生成の回帰を検証し、必要な修正を行う。",
+      "id": "T20",
+      "description": "§22.1 の必須 Core 宣言catalogをすべて揃え、§3/4/7/8/13/14/17 と接続する。",
       "required": true,
       "depends_on": [
-        "T16"
+        "T18",
+        "T19"
       ],
       "criterion_ids": [
-        "C07"
+        "C03",
+        "C08",
+        "C09",
+        "C13"
       ],
-      "acceptance": "C07の必須性能契約と既存の妥当なallocation/再利用条件を満たし、代表経路で見つかった重大な不要割り当て・保持参照・code膨張を解消する。",
-      "verification": "C07を実行する。測定対象と環境、前後値を記録し、意味を保つ修正後に影響範囲を再検証する。"
+      "acceptance": "現catalogの枠数を上限にせず、Weakと全object intrinsicsを含む本文表の全identity/shape/contractを実装する。合成/読み込みの同等性、Core唯一性とdefault aliasを保証する。",
+      "verification": "CoreCatalog/CoreModel/IntrinsicCapability/EnumBinding/ContractBinding で全必須項目、missing/duplicate/incompatible/shadowing、Option/Result条件atom集合、Array/Dictionary/WeakのCopy/Owned依存を確認する。"
     },
     {
-      "id": "T18",
-      "description": "全対象のmanaged/LLVM/通常native/CLI/backend回帰と仕様適合監査を行い、残る欠落を修正する。",
+      "id": "T21",
+      "description": "§18・§20.1–6・§21.3.4・A.1/A.3 の module参照、source再構築、意味情報保持とcache失効を実装する。",
       "required": true,
       "depends_on": [
-        "T17"
+        "T05",
+        "T07",
+        "T14",
+        "T20"
+      ],
+      "criterion_ids": [
+        "C10"
+      ],
+      "acceptance": "直接依存だけの名前公開、private定義環境、source/config identity、LangVersion/target入力、closed specialization/effect/Originを保持する。意味plan再利用とgeneration再構築を分ける。",
+      "verification": "複数source/module、transitive非公開、alias/アクセス/定義追加削除、constant/body/Mod/設定変更での再検証を確認する。内部保存/再読込またはsource再構築で本文情報を検証し、Koto直列化をportable ABIと呼ばない。"
+    },
+    {
+      "id": "T22",
+      "description": "§6.5・§20.7全節・A.1/A.3 の逐次Mod host、provisional/final Binding、source追加と再生成を実装する。",
+      "required": true,
+      "depends_on": [
+        "T03",
+        "T05",
+        "T21"
+      ],
+      "criterion_ids": [
+        "C10"
+      ],
+      "acceptance": "Requires/RequiresAfter graph、Ordinal ready選択、一回実行、query snapshot、初回append後のBinding失効、合法containerへの追加のみ、生成source/provenanceを実装する。",
+      "verification": "偽Modを使いgraphのduplicate/missing/cycle・後続生成解決・古いSymbol使用拒否・失敗descendant skip・取消/時間制限・古い出力除去・列挙順再現性を検証する。source保存/表示、graph/順序/時間/失敗理由を確認する。"
+    },
+    {
+      "id": "T23",
+      "description": "§21.1/21.2.1–4・A.5/A.14 の全確定layout・value metadata・borrow storageを実装する。",
+      "required": true,
+      "depends_on": [
+        "T04",
+        "T09",
+        "T13",
+        "T20"
+      ],
+      "criterion_ids": [
+        "C09",
+        "C12"
+      ],
+      "acceptance": "Kimigayo/C layout、fragment・base/tag位置、alignment安定順/論理順、tuple/enum/固定配列・0size、full Type key/CoreId、descriptor/context・borrow substitute addressを保持する。",
+      "verification": "AggregateLayout/EmissionPlan を拡張し、packing16のC sizeof/alignof/offsetof比較、recursive/overflow、同size異alignment/破棄、token collision/retokenize、0size addressの属性前提を検証する。"
+    },
+    {
+      "id": "T24",
+      "description": "§21.4全節・§21.2.4・A.7/A.14 の一般checked lowering、slot ABI、CFG/cleanup、固定frame基盤を完成する。",
+      "required": true,
+      "depends_on": [
+        "T13",
+        "T14",
+        "T15",
+        "T23"
+      ],
+      "criterion_ids": [
+        "C04",
+        "C06",
+        "C07",
+        "C12"
+      ],
+      "acceptance": "scalar/aggregate/borrow/Unit/Neverの引数/結果、Copy元分離、normal returnだけの配送、部分責任、phi predecessor、source単回評価をtyped planから生成できる。",
+      "verification": "EmissionPlan/Function/Result/Deferred/Aggregate/Reference の計画改変拒否とIR構造テストで結果storageの分離、支配・生存flag・途中call/cleanup、loop frame再利用・tailcall制限を確認する。"
+    },
+    {
+      "id": "T25",
+      "description": "§21.3・§21.4.6・A.12/A.14 のgeneric共有/特殊化generation、context/entry/adaptorと予算制御を実装する。",
+      "required": true,
+      "depends_on": [
+        "T07",
+        "T14",
+        "T21",
+        "T23",
+        "T24"
+      ],
+      "criterion_ids": [
+        "C11",
+        "C12"
+      ],
+      "acceptance": "型/length/operation-context pair、正確な置換別scratch容量、必須generation limit、意味を変えない任意予算探索、選択の決定性を実装する。本文にある意味plan永続化境界を守る。",
+      "verification": "予算0/既定/増加、mandatory specialization/関数参照、recursive finite/growing key、共有read family、capacity0/alignment16、同幅異型/異破棄を正負例・IR/nativeで確認する。B.7は採用した任意手法と規範要件を分ける。"
+    },
+    {
+      "id": "T26",
+      "description": "§21.2.3/21.2.5 と callable/object/Weak の実行・metadata・cleanup を LLVM/runtimeへ接続する。",
+      "required": true,
+      "depends_on": [
+        "T19",
+        "T23",
+        "T24",
+        "T25"
+      ],
+      "criterion_ids": [
+        "C04",
+        "C09",
+        "C12"
+      ],
+      "acceptance": "concrete/erased closureのinline/heap/empty環境と間接call、obj/rc/arcのpayload+16/count/side table、動的型・最終release・Weak/循環構築の公開順を実装する。",
+      "verification": "capture/呼出/最終破棄のnative観測、allocation/count overflow故障注入、Building upgrade None→Alive Some→expired None、view経由の一回cleanup、arc順序・race証明をA.8/A.14に対応付ける。"
+    },
+    {
+      "id": "T27",
+      "description": "aggregate/collection/Coreの全確定source操作を一般loweringへ接続する（§4・§6・§11・§14.6/14.8・§22.1）。",
+      "required": true,
+      "depends_on": [
+        "T16",
+        "T17",
+        "T18",
+        "T20",
+        "T24",
+        "T25"
+      ],
+      "criterion_ids": [
+        "C04",
+        "C06",
+        "C07",
+        "C08",
+        "C12",
+        "C13"
+      ],
+      "acceptance": "struct/enum/tuple/固定配列、field/index/Pattern分解、集約の選択結果・関数ABI、Property/constructor、Array/Dictionary/Slice/forを意味計画どおり実行する。",
+      "verification": "native fixtureでCopy/NonCopy/nested/zero-size、partial construction/Move/置換、guard/早期transfer・残要素破棄、range/容量境界、順序・一回評価をO0/O2比較する。"
+    },
+    {
+      "id": "T28",
+      "description": "§3.1・§12–14・§17 の残るscalar/変換/string補間/制御フロー・Abort loweringを完成する。",
+      "required": true,
+      "depends_on": [
+        "T10",
+        "T15",
+        "T18",
+        "T24",
+        "T27"
+      ],
+      "criterion_ids": [
+        "C05",
+        "C07",
+        "C12"
+      ],
+      "acceptance": "runtime f64→f32、許可された整数↔float/literal fitting、一般同型・明示Semantics取得、heap string補間、全結果/guard/未到達の対応を完成し、禁止操作は最適化前に診断する。",
+      "verification": "全整数方向とfloat境界の隣接値、NaN/∞/fraction/±0/subnormal、UTF-8/NUL、heap責任、短絡/非終了・hidden Unsupported をmanaged/IR/nativeで検証する。既存scalar fixtureを全件再利用する。"
+    },
+    {
+      "id": "T29",
+      "description": "§5・§21.1.6/21.5.3–4・§22.3 のunsafe raw pointer と LibraryImport C ABIを完成する。",
+      "required": true,
+      "depends_on": [
+        "T10",
+        "T12",
+        "T23",
+        "T24"
+      ],
+      "criterion_ids": [
+        "C12",
+        "C13"
+      ],
+      "acceptance": "null/比較/算術/index/変換の確定操作、unsafe境界、許可するC引数/結果、NativeLibraries/import/static・symbol衝突を一つの物理signatureで扱う。未確定pointer取得APIは創作しない。",
+      "verification": "Clang生成のC fixtureと小整数/最大unsigned/FP混在/5引数以上を比較し、合法pointer境界・0変位・one-past、FP環境の保存変更復元、禁止signature/不正設定を検証する。Unsafe契約違反の結果を規定しない。"
+    },
+    {
+      "id": "T30",
+      "description": "§22.2/22.4–5・§11.3.2・§17.3 のstartup、static初回初期化/終了、console/確保/解放/Abortを仕上げる。",
+      "required": true,
+      "depends_on": [
+        "T13",
+        "T20",
+        "T26",
+        "T27",
+        "T28",
+        "T29"
+      ],
+      "criterion_ids": [
+        "C06",
+        "C13"
+      ],
+      "acceptance": "unique implicit/explicit main、static slotのInitializing cycle、逆成功初期化順shutdown、非終了/Abort、UTF-8出力と6 runtime操作・7 production APIの境界を満たす。",
+      "verification": "Hello/StartupBinding/MinimalEmission、static side effect/再入/破棄後アクセス、空/日本語/NUL、partial/zero write・stdout欠落・stderr失敗・alloc/free failureのfault adapterを通常nativeで確認する。"
+    },
+    {
+      "id": "T31",
+      "description": "§20.8・§22.2.2 のLibrary inspectionとCLI/成果物/target/toolchainライフサイクルを完成する。",
+      "required": true,
+      "depends_on": [
+        "T21",
+        "T22",
+        "T25",
+        "T30"
+      ],
+      "criterion_ids": [
+        "C10",
+        "C14"
+      ],
+      "acceptance": "Applicationの新規生成/検証/buildと既存exe run、Libraryのentryなしpre-opt IR/object、schema3 pair公開・hash・旧成功無効化・子process取消/timeout・依存symbol検証を統合する。",
+      "verification": "EmissionArtifacts/NativeToolchain/ToolchainResolver と test-cli.ps1 をmanaged DLLで実施する。LLVMなしemit、Library未使用body、空/複数project、失敗/混在公開、toolchain mismatch、run非再buildを確認する。"
+    },
+    {
+      "id": "T32",
+      "description": "§21.5.7・§20.8.5/20.8.7–8・A.14 のnative backend供給と検証harnessを完成する。",
+      "required": true,
+      "depends_on": [
+        "T23",
+        "T24",
+        "T29",
+        "T30"
+      ],
+      "criterion_ids": [
+        "C12",
+        "C13",
+        "C14"
+      ],
+      "acceptance": "__chkstk/memcmp/memcpy/memmove/memset・kernel32 import・_fltused/unwind・/NODEFAULTLIB依存境界、実hashとcandidate/adoption、必要な新runtime/ABI fixtureを検証できる。",
+      "verification": "pwsh -NoProfile -File backend/windows-x64/test-toolchain.ps1、test-artifact-paths.ps1、test-kernel32.ps1 -ToolchainRoot toolchain、build.ps1 -ToolchainRoot toolchain を順に実施する。各exit/報告・COFF/guard page/重なり/stack probe・O0/O2を確認する。"
+    },
+    {
+      "id": "T33",
+      "description": "全機能を統合し、Debug/Releaseのmanaged回帰と全必須native fixture/CLI/Library検証を完成する。",
+      "required": true,
+      "depends_on": [
+        "T31",
+        "T32"
       ],
       "criterion_ids": [
         "C01",
@@ -441,73 +770,163 @@
         "C04",
         "C05",
         "C06",
-        "C07"
+        "C07",
+        "C08",
+        "C09",
+        "C10",
+        "C11",
+        "C12",
+        "C13",
+        "C14",
+        "C15"
       ],
-      "acceptance": "全必須規則の成功証拠が現行入力に対応し、未実装/未検証/必須指摘が残らない。既存件数だけに依存しない。",
-      "verification": "C01〜C07の手順を実行する。Debug生成物の検証完了後にReleaseへ進み、空の生成先から得たfixture一覧/hashと実行全件を照合する。不足箇所は対応taskを再計画/修正して再検証する。"
+      "acceptance": "全必須の正負例・A.1–A.15の検証表に有効な証拠があり、現在の入力に対してbuild/managed/IR/object/nativeを区別して全件合格する。未実行・0件・必須skipは完了にしない。",
+      "verification": "後続作業で必要なら dotnet restore Kimigayo.slnx。Debug、Releaseそれぞれ直列に dotnet build Kimigayo.slnx -c <構成> --no-restore -v:minimal → dotnet test --project xUnitTest/xUnitTest.csproj -c <構成> --no-build --no-restore → pwsh -NoProfile -File backend/windows-x64/test-emission.ps1 -ToolchainRoot toolchain -Configuration <構成> → test-scalars.ps1 -ToolchainRoot toolchain → test-cli.ps1 -ToolchainRoot toolchain -Configuration <構成> を実施（後2本も同じpwsh起動形式）。dotnet Kimi/bin/<構成>/net10.0/Kimi.dll emit-llvm examples/Hello/Hello.kimiproj でIR/manifestの組を生成し、そのコマンドが報告した Hello.link.json のパスを -Manifest に渡して pwsh -NoProfile -File backend/windows-x64/test-manual-build.ps1 -Manifest <生成したmanifest> -ToolchainRoot toolchain を実施する。emission-fixtures の既存Hello fixtureは .ll のみなのでmanifest入力に流用しない。新規分野のnative harnessも同じ構成内で実行する。"
     },
     {
-      "id": "T19",
-      "description": "SPEC/STATUSと関連利用文書を製品に整合させ、完成条件を最終監査する。",
+      "id": "T34",
+      "description": "割り当て・再利用・generic resource/予算・生成コードの性能を規範要件と既存保証に照らして検証・改善する。",
       "required": true,
       "depends_on": [
-        "T18"
+        "T25",
+        "T33"
+      ],
+      "criterion_ids": [
+        "C11",
+        "C12",
+        "C15"
+      ],
+      "acceptance": "既存warm allocationと保持参照の保証、有限generation/固定frame/必須複雑度を維持し、不要なslot/転送/flag/割り当てを実用的に削減する。改善率や全経路無割り当てを捏造しない。",
+      "verification": "AllocationMeasurement/ParserOptimization/Binding/Ownership系のallocationテストと、dotnet run --project Benchmark/Benchmark.csproj -c Release -- --filter '*BindingBenchmark*' '*OwnershipAnalysisBenchmark*' '*FrontEndBenchmark*' の通常managed workloadを基準と変更後で比較する。必要なgeneric/collection workloadとO2構造・code size/build timeも測定し、変更時は影響するC15検証を再実施する。"
+    },
+    {
+      "id": "T35",
+      "description": "SPEC.md/STATUS.md/必要なREADME・examplesを実装結果に合わせ、全規範項目とmilestoneを最終監査する。",
+      "required": true,
+      "depends_on": [
+        "T33",
+        "T34"
       ],
       "criterion_ids": [
         "C01",
-        "C08"
+        "C16"
       ],
-      "acceptance": "確定仕様の意味を保持した文書と有効な全体証拠が一致する。対象外の詳細・禁止された検証を完了扱いにしていない。",
-      "verification": "C08を実行し、文書更新後の入力署名/証拠の有効性を再確認する。必要な照合/再検証を経た場合だけCompleteとする。"
+      "acceptance": "仕様の決定事項を削除・緩和せず、許容された内部選択と実装/検証状況を記載する。全必須項目が実装と現在有効な証拠に結び付き、未確定/対象外との混同がない。",
+      "verification": "T01の項目一覧を最終SPEC本文・コード・試験件数・成果物hashへ双方向照合する。未実装/Unsupportedの残りは仕様上の禁止/未確定範囲のみであること、STATUSの段階別記述と再現手順・リンクの整合を確認する。"
     }
   ],
   "milestones": [
     {
       "id": "M01",
-      "description": "要件と既存検証の基準を確定",
+      "description": "仕様網羅表とsource/構文・条件選択の基盤",
       "task_ids": [
         "T01",
-        "T02"
+        "T02",
+        "T03"
       ],
-      "acceptance": "対象規則/除外境界と実装段階の対応、実装開始時の検証条件が識別できる。"
+      "acceptance": "C01 の全規範項目に担当taskと検証段階が付き、字句/構文・source identity・条件選択の正負例と往復検証が成功する。doc参照先の除外と本文決定事項の保持を確認できる。"
     },
     {
       "id": "M02",
-      "description": "構文・静的意味・所有権の一般機能を完成",
+      "description": "完全Type・名前解決・Contract・generic選択",
       "task_ids": [
-        "T03",
         "T04",
         "T05",
         "T06",
         "T07"
       ],
-      "acceptance": "対象機能の静的判断と証明義務を実装し、未解決を成功にしない。"
+      "acceptance": "Type/length/Origin schema、アクセス・fragment、証明/witness、候補選択とclosed specialization setの意味テストが成功する。未解決義務の保存/期限とcache失効を確認できる。"
     },
     {
       "id": "M03",
-      "description": "全対象機能の生成・実行とProject統合を完成",
+      "description": "関数・Property・constructor・演算の意味計画",
       "task_ids": [
         "T08",
         "T09",
-        "T10",
+        "T10"
+      ],
+      "acceptance": "関数/default/receiver、Property/constructor、scalar/型適応/代入の選択結果に型・評価順・取得・診断の根拠があり、正負例が期待どおりになる。"
+    },
+    {
+      "id": "M04",
+      "description": "一般所有権・Loan・効果・制御フロー",
+      "task_ids": [
         "T11",
         "T12",
         "T13",
         "T14",
-        "T15",
-        "T16"
+        "T15"
       ],
-      "acceptance": "対象SPECのCore/ABI/runtime/module機能が接続され、機能別のmanaged/native検証を満たす。"
+      "acceptance": "部分Move、保存/返却/reborrow、deinit/defer、callable効果、Pattern/refinement/requireの必須検証が成功し、義務を解消した計画だけをloweringへ渡せる。"
     },
     {
-      "id": "M04",
-      "description": "性能・回帰・仕様適合・文書の完成監査",
+      "id": "M05",
+      "description": "sequence・collection・object・Coreの契約",
       "task_ids": [
+        "T16",
         "T17",
         "T18",
-        "T19"
+        "T19",
+        "T20"
       ],
-      "acceptance": "C01〜C08の全完成条件を現行入力の有効な証拠で満たす。"
+      "acceptance": "全必須Coreのidentity/shapeが揃い、配列/Slice/Dictionary/反復/補間、object/Weakの操作計画と寿命/失敗契約の正負例が成功する。本文のpublic APIに未対応枠がない。"
+    },
+    {
+      "id": "M06",
+      "description": "module/source再利用とModパイプライン",
+      "task_ids": [
+        "T21",
+        "T22"
+      ],
+      "acceptance": "直接依存の名前境界と意味情報保持/失効を再構築試験で確認できる。Mod graph、一回実行、query/append/Binding境界、再生成/失敗/取消/診断・表示保存の統合検証が成功する。"
+    },
+    {
+      "id": "M07",
+      "description": "layout・一般ABI・generic generation",
+      "task_ids": [
+        "T23",
+        "T24",
+        "T25"
+      ],
+      "acceptance": "全対象layoutと責任付きABI/CFG、共有generic/entry/context/固定frameを検査済み計画から生成できる。C比較、IR検査、必須特殊化・予算/順序不変・limit拒否の検証が成功する。"
+    },
+    {
+      "id": "M08",
+      "description": "callable/object・aggregate/collection・scalar実行",
+      "task_ids": [
+        "T26",
+        "T27",
+        "T28"
+      ],
+      "acceptance": "各分野のsource操作が通常nativeで実行でき、O0/O2の結果・副作用/破棄順が一致する。Weak/arcの規定順序の根拠と、禁止・未到達/未使用操作の最適化前診断を確認できる。"
+    },
+    {
+      "id": "M09",
+      "description": "FFI・startup・static・runtime",
+      "task_ids": [
+        "T29",
+        "T30"
+      ],
+      "acceptance": "許可C ABIとpointer境界、static初期化/終了・故障注入が成功する。Helloの14 byte出力・空stderr・exit 0、Abort exit 1とcleanupしない挙動を実アプリで確認できる。"
+    },
+    {
+      "id": "M10",
+      "description": "Library/CLI成果物とnative供給",
+      "task_ids": [
+        "T31",
+        "T32"
+      ],
+      "acceptance": "Libraryのpre-opt IR/object検証とApplication emit/build/run、公開失敗/旧成功無効化、backend/kernel32の実hash/版・COFF/unwind/依存検証が成功する。NativeAOTは用いない。"
+    },
+    {
+      "id": "M11",
+      "description": "全必須検証・性能確認・文書整合",
+      "task_ids": [
+        "T33",
+        "T34",
+        "T35"
+      ],
+      "acceptance": "C01–C16をすべて満たす。Debug/Release managedと必要なO0/O2 native検証が有効な現入力に対応し、必須の未実装/未検証/skip・漏れが0件。SPEC/STATUSと全対応表がコード・証拠と一致する。"
     }
   ]
 }
