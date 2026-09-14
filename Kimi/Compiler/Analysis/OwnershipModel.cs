@@ -67,6 +67,7 @@ public enum OwnershipOperationKind : byte
     MatchDispatch,
     PatternTest,
     EndComparisonLoans,
+    ProjectElement,
 }
 
 public enum PlacementKind : byte
@@ -185,6 +186,7 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipMatchPlan> MatchStorage = new();
     internal readonly List<OwnershipMatchArmPlan> MatchArmStorage = new();
     internal readonly List<OwnershipIssue> IssueStorage = new();
+    internal readonly List<OwnershipProjection> Projections = new();
     internal readonly List<OwnershipStringComparison> StringComparisons = new();
     internal readonly List<OwnershipComparisonLoan> ComparisonLoans = new();
     internal readonly List<OwnershipCallLoans> CallLoans = new();
@@ -262,6 +264,7 @@ public sealed partial class OwnershipBody
         this.MatchStorage.Clear();
         this.MatchArmStorage.Clear();
         this.IssueStorage.Clear();
+        this.Projections.Clear();
         this.StringComparisons.Clear();
         this.ComparisonLoans.Clear();
         this.CallLoans.Clear();
@@ -301,6 +304,7 @@ internal enum OwnershipValueKind : byte
     Unary,
     Binary,
     StringComparison,
+    Element,
     Borrow,
     Phi,
 }
@@ -325,9 +329,12 @@ internal readonly record struct OwnershipResultArrival(int Edge, int Write);
 internal readonly record struct OwnershipResultWrite(int Operation, int Declare);
 
 // Persistent stack links preserve independent branch and checking-region environments.
-// One shared lexical chain; a null Call identifies a comparison-only inspection.
-internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1);
+// Calls, comparisons, guard inspection and element access share the same lexical chain.
+internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1, bool Access = false);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
 
 internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);
+
+// Parent is another projection index; Output is the final Copy's Produce operation, if any.
+internal readonly record struct OwnershipProjection(int Operation, int Root, int Parent, int Index, int Element, int Loan, int Output = -1);

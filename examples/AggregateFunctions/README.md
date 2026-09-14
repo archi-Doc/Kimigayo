@@ -17,4 +17,4 @@ leaving echo
 aggregate functions complete
 ```
 
-Array arguments use explicitly typed locals because contextual array-literal inference in calls remains incomplete. Aggregate borrows, element access, and partial Move are not implemented.
+Array arguments use explicitly typed locals because contextual array-literal inference in calls remains incomplete. Copy element reads are demonstrated in [ElementReads](../ElementReads/README.md). Aggregate borrows, element writes, and partial Move are not implemented.

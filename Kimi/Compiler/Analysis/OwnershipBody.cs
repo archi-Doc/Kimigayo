@@ -256,7 +256,7 @@ public sealed partial class OwnershipBody
                 }
 
                 break;
-            case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.DecomposeCase or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.PatternTest:
+            case OwnershipOperationKind.ProjectElement or OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.DecomposeCase or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.PatternTest:
                 this.CheckInitialized(operation, operation.Place, state);
                 break;
             case OwnershipOperationKind.Write:

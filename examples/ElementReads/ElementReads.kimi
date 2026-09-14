@@ -1,0 +1,15 @@
+func sum(values: [3 of i32]) -> i32
+    var i: isize = 0
+    var total = 0
+    while i < 3
+        total += values[i]
+        i += 1
+    return total
+
+func make() -> (string, (i32, bool))
+    return ("temporary owner", (42, true))
+
+let values: [3 of i32] = [10, 20, 12]
+let selected = make().1
+if sum(values) == selected.0 and selected.1
+    writeLine("element reads complete")

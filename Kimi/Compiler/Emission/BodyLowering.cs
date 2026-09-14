@@ -225,6 +225,17 @@ internal sealed partial class BodyLowering
             return true;
         }
 
+        if (operation.Kind == OwnershipOperationKind.ProjectElement || body.Values[index].Kind == OwnershipValueKind.Element)
+        {
+            return this.LowerElement(body, function, constants, projectDirectory, index, out failure);
+        }
+
+        if (operation.Kind == OwnershipOperationKind.Read && this.IsElementReceiverRead(body, index))
+        {
+            failure = null;
+            return true; // The access Loan protects storage until the final Copy.
+        }
+
         if (operation.Place >= 0 && operation.Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver) &&
             (this.aggregatePlaces[operation.Place] is not null || operation.Kind == OwnershipOperationKind.PayloadPlacement))
         {

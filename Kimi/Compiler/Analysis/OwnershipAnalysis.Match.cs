@@ -154,7 +154,7 @@ public sealed partial class OwnershipAnalysis
                     // Pure tests inspect private owned Subject storage. Once guard
                     // code can observe it, retain shared protection through cleanup.
                     this.Emit(OwnershipOperationKind.Read, guard, subject);
-                    guardLoan = this.BeginStringLoan(subject, guard: armStart + i);
+                    guardLoan = this.BeginSharedLoan(subject, guard: armStart + i);
                 }
 
                 var candidateMark = this.candidates.Count;
@@ -401,7 +401,7 @@ public sealed partial class OwnershipAnalysis
                         // its checking continuation forms a fresh Loan, not a restore.
                         var depth = this.comparisonDepth;
                         this.comparisonDepth = this.body.ComparisonLoans[candidate.Loan].Depth;
-                        this.BeginStringLoan(candidate.Subject, guard: candidate.Arm);
+                        this.BeginSharedLoan(candidate.Subject, guard: candidate.Arm);
                         this.comparisonDepth = depth;
                     }
 

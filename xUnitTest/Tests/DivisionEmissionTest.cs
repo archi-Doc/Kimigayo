@@ -146,7 +146,7 @@ public class DivisionEmissionTest
         using var writer = new StringWriter();
         Assert.True(c.Emission.WriteIr(writer, out var error), error);
         var ir = writer.ToString();
-        Assert.Equal(10, WindowsLowering.AbortReasons.Length);
+        Assert.Equal(11, WindowsLowering.AbortReasons.Length);
         var count = WindowsLowering.AbortReasons.Length;
         Assert.Equal(2, Regex.Matches(ir, $@"\[{count} x \{{ ptr, i64 \}}\]").Count);
         foreach (var reason in WindowsLowering.AbortReasons)

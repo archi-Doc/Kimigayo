@@ -452,6 +452,8 @@ public sealed partial class OwnershipAnalysis
                 return this.Temporary(test);
             case ConversionKoto conversion:
                 return this.ConversionValue(conversion);
+            case BinaryKoto element when ElementAccess.IsSyntax(element):
+                return this.ElementValue(element);
             case BinaryKoto binary:
                 return this.Binary(binary);
             case IfKoto conditional:

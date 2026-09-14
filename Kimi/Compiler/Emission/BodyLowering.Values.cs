@@ -25,7 +25,7 @@ internal sealed partial class BodyLowering
             var value = body.Values[id];
             var expected = value.Kind switch
             {
-                OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow => 0,
+                OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow or OwnershipValueKind.Element => 0,
                 OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert => 1,
                 OwnershipValueKind.Binary => 2,
                 OwnershipValueKind.Phi => value.Count,

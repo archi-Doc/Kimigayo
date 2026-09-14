@@ -241,6 +241,10 @@ public sealed partial class Binding
             case SyntaxFormKoto { Akind: KotoKind.InferredCase } inferred:
                 var inferredSymbol = this.InferredCase(inferred, scope, expected);
                 return inferredSymbol is null ? null : this.BindEnumConstruction(inferred, inferred, inferredSymbol, null, scope, expected);
+            case IndexKoto index:
+                return this.BindElement(index, scope);
+            case MemberAccessKoto { Right: NumberLiteralKoto } tupleElement:
+                return this.BindElement(tupleElement, scope);
             case MemberAccessKoto member:
                 var memberSymbol = this.Member(member, scope, expected);
                 if (memberSymbol is null)

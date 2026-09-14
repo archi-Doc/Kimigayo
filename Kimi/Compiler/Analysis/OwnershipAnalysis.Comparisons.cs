@@ -31,11 +31,11 @@ public sealed partial class OwnershipAnalysis
             return place;
         }
 
-        loan = this.BeginStringLoan(place);
+        loan = this.BeginSharedLoan(place);
         return place;
     }
 
-    private int BeginStringLoan(int place, InvocationKoto? call = null, int guard = -1)
+    private int BeginSharedLoan(int place, InvocationKoto? call = null, int guard = -1, bool access = false)
     {
         var parent = this.CurrentLoanHead;
         while (this.body.LoanStates.Count < this.body.Operations.Count)
@@ -45,7 +45,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var loan = this.body.ComparisonLoans.Count;
-        this.body.ComparisonLoans.Add(new(this.current, place, parent, this.comparisonDepth, Call: call, Guard: guard));
+        this.body.ComparisonLoans.Add(new(this.current, place, parent, this.comparisonDepth, Call: call, Guard: guard, Access: access));
         this.body.LoanStates[this.current] = loan;
         return loan;
     }
@@ -71,7 +71,7 @@ public sealed partial class OwnershipAnalysis
 
         var result = this.Place(source, argument.ParameterType, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
         this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: LoanRequirement.Ref);
-        this.BeginStringLoan(place, call);
+        this.BeginSharedLoan(place, call);
         return this.RegisterTemporary(result);
     }
 

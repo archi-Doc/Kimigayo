@@ -16,7 +16,15 @@ internal static partial class LlvmModuleWriter
             output.Write(", ptr align ");
             WriteNumber(output, layout.Value.Layout.Alignment);
             output.Write(' ');
-            WriteSlot(output, function, instruction.Constant);
+            if (instruction.OperandCount == 1)
+            {
+                WriteOperand(output, function.GetOperands(instruction)[0]);
+            }
+            else
+            {
+                WriteSlot(output, function, instruction.Constant);
+            }
+
             output.Write(", i64 ");
             WriteNumber(output, layout.Value.Layout.Size);
             output.Write(", i1 false)\n");

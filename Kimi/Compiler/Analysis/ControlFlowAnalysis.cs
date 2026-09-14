@@ -1292,6 +1292,12 @@ public sealed class ControlFlowAnalysis
                 }
             }
 
+            if (node is IndexKoto)
+            {
+                this.Constrain(binary.Right, IsizeType);
+                return null; // Complete element Types come from Binding, never from the receiver Type.
+            }
+
             if (node is MemberAccessKoto or AsKoto or IsKoto)
             {
                 return null;

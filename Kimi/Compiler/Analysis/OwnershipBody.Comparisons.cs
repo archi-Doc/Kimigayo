@@ -51,8 +51,9 @@ public sealed partial class OwnershipBody
                 this.Operations[loan.Read].Kind != (loan.Call is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Borrow) ||
                 loan.Mode != LoanRequirement.Ref || this.Operations[loan.Read].Place != loan.Place ||
                 (loan.Guard < 0 && this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) &&
-                    (loan.Call is null || this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result))) ||
-                !ReferenceEquals(this.Places[loan.Place].Type, BoundType.String) ||
+                    ((!loan.Access && loan.Call is null) || this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result))) ||
+                (loan.Access ? loan.Call is not null || loan.Guard != -1 || this.Places[loan.Place].Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
+                    : !ReferenceEquals(this.Places[loan.Place].Type, BoundType.String)) ||
                 this.LoanStates[loan.Read] != i || this.LoanInputs[loan.Read] != loan.Parent)
             {
                 return false;

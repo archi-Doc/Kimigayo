@@ -13,6 +13,8 @@ internal enum EmissionOpcode : byte
     Branch,
     ConditionalBranch,
     LoadScalar,
+    LoadElement,
+    ElementAddress,
     StoreScalar,
     Scalar,
     Convert,
@@ -51,6 +53,8 @@ internal enum EmissionOperandKind : byte
     /// <summary>The address of the slot prepared for a Place ID.</summary>
     SlotAddress,
     ProjectedSlot,
+    ElementAddress,
+    NullAddress,
 
     /// <summary>The address of a pooled constant.</summary>
     ConstantAddress,
@@ -83,6 +87,7 @@ internal enum ArithmeticCheckKind : byte
     UnsignedDivision,
     Shift,
     Conversion,
+    Bounds,
 }
 
 /// <summary>One instruction; <c>Operation</c> is the source ownership operation ID, or -1 for synthesized startup control.</summary>

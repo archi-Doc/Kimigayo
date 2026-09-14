@@ -17,6 +17,7 @@ internal static partial class WindowsLowering
     internal const int IntegerDivisionZeroReason = 7;
     internal const int IntegerShiftCountReason = 8;
     internal const int IntegerConversionReason = 9;
+    internal const int IndexBoundsReason = 10;
 
     // Indices are stable internal ABI values. The template's table, lengths and call sites
     // are expanded once from these records; the warm writer only copies the resulting text.
@@ -34,6 +35,7 @@ internal static partial class WindowsLowering
         new(IntegerDivisionZeroReason, "division_zero", "KIMI_E_INT_DIV_ZERO: Integer division or remainder by zero"),
         new(IntegerShiftCountReason, "shift_count", "KIMI_E_INT_SHIFT_COUNT: Shift count out of range"),
         new(IntegerConversionReason, "conversion", "KIMI_E_INT_CONVERSION: Integer conversion out of range"),
+        new(IndexBoundsReason, "index_bounds", "KIMI_E_INDEX_BOUNDS: Index out of bounds"),
     ];
 
     internal static string ExpandAbortReasons(string runtime)

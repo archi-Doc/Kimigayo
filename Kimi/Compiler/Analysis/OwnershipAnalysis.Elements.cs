@@ -1,0 +1,75 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Kimi.Compiler.Parsing;
+
+namespace Kimi.Compiler;
+
+public sealed partial class OwnershipAnalysis
+{
+    private int ElementValue(BinaryKoto source)
+    {
+        var depth = this.comparisonDepth++;
+        var projection = this.LocateElement(source);
+        var result = -1;
+        if (projection >= 0 && this.flow!.Nodes[source].CanCompleteNormally)
+        {
+            result = this.Temporary(source);
+            if (this.body.Places[result].Acquisition != AcquisitionKind.Copy)
+            {
+                this.Unsupported(source); // Non-Copy elements need static Move Paths or shared-result plans.
+            }
+
+            var output = this.Value(result);
+            this.SetValue(output, OwnershipValueKind.Element, []);
+            this.body.Projections[projection] = this.body.Projections[projection] with { Output = output };
+        }
+
+        this.EndComparisonLoans(depth, source);
+        this.comparisonDepth = depth;
+        return result;
+    }
+
+    private int LocateElement(BinaryKoto source)
+    {
+        var parent = -1;
+        var root = -1;
+        var loan = -1;
+        var receiver = KotoHelper.UnwrapParentheses(source.Left);
+        if (receiver is BinaryKoto nested && ElementAccess.IsSyntax(nested))
+        {
+            parent = this.LocateElement(nested);
+            if (parent >= 0)
+            {
+                root = this.body.Projections[parent].Root;
+                loan = this.body.Projections[parent].Loan;
+            }
+        }
+        else
+        {
+            root = receiver is IdentifierNameKoto && receiver.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter
+                ? this.Local(receiver) : this.Expression(receiver, PlaceUseKind.Read);
+            if (root >= 0)
+            {
+                this.Emit(OwnershipOperationKind.Read, receiver, root);
+                loan = this.BeginSharedLoan(root, access: true);
+            }
+        }
+
+        var index = source is IndexKoto ? this.Value(this.Expression(source.Right, PlaceUseKind.Read)) : -1;
+        if (root < 0 || (source is IndexKoto && index < 0) || !this.flow!.Nodes[source].CanCompleteNormally)
+        {
+            return -1;
+        }
+
+        if (!ElementAccess.TryType(source, out _, out var element))
+        {
+            this.Unsupported(source);
+            return -1;
+        }
+
+        var operation = this.Emit(OwnershipOperationKind.ProjectElement, source, root);
+        var id = this.body.Projections.Count;
+        this.body.Projections.Add(new(operation, root, parent, index, element, loan));
+        return id;
+    }
+}

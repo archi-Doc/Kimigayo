@@ -83,7 +83,7 @@ internal sealed partial class BodyLowering
             return false;
         }
 
-        if (!this.PrepareSlotFunctions(body, function, out failure) || !this.PrepareSlotResults(body, out failure) || !this.PrepareAggregates(body, function, out failure) || !this.PrepareMatches(body, function, out failure) || !this.PrepareStrings(body, function, out failure))
+        if (!this.PrepareSlotFunctions(body, function, out failure) || !this.PrepareSlotResults(body, out failure) || !this.PrepareAggregates(body, function, out failure) || !this.PrepareMatches(body, function, out failure) || !this.PrepareStrings(body, function, out failure) || !this.PrepareElements(body, out failure))
         {
             return false;
         }
