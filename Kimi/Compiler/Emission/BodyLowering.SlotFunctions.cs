@@ -6,20 +6,20 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private int[] stringFunctionPlaces = [];
-    private int[] stringFunctionProduces = [];
-    private int[] stringCallProduces = [];
+    private int[] slotFunctionPlaces = [];
+    private int[] slotFunctionProduces = [];
+    private int[] slotCallProduces = [];
 
     // Roles belong to verified parameter, return and call plans, never to Place Kind alone.
-    private bool PrepareStringFunctions(OwnershipBody body, EmissionFunction function, out string? failure)
+    private bool PrepareSlotFunctions(OwnershipBody body, EmissionFunction function, out string? failure)
     {
         failure = null;
-        Grow(ref this.stringFunctionPlaces, body.Places.Count);
-        Grow(ref this.stringFunctionProduces, body.Operations.Count);
-        Grow(ref this.stringCallProduces, body.Operations.Count);
-        this.stringFunctionPlaces.AsSpan(0, body.Places.Count).Clear();
-        this.stringFunctionProduces.AsSpan(0, body.Operations.Count).Clear();
-        this.stringCallProduces.AsSpan(0, body.Operations.Count).Fill(-1);
+        Grow(ref this.slotFunctionPlaces, body.Places.Count);
+        Grow(ref this.slotFunctionProduces, body.Operations.Count);
+        Grow(ref this.slotCallProduces, body.Operations.Count);
+        this.slotFunctionPlaces.AsSpan(0, body.Places.Count).Clear();
+        this.slotFunctionProduces.AsSpan(0, body.Operations.Count).Clear();
+        this.slotCallProduces.AsSpan(0, body.Operations.Count).Fill(-1);
         for (var p = 0; p < body.Places.Count; p++)
         {
             function.SlotAddresses.Add(new(EmissionOperandKind.SlotAddress, p));
@@ -48,15 +48,15 @@ internal sealed partial class BodyLowering
                 return Fail("Parameter storage does not match its logical signature.", out failure);
             }
 
-            if (!ReferenceEquals(place.Type, BoundType.Unit) && !ReferenceTypes.IsString(place.Type))
+            if (FunctionAbi.GetValue(place.Type, this.aggregateLayouts)?.Layout.Size > 0 && !ReferenceTypes.IsString(place.Type))
             {
                 function.SlotAddresses[place.Id] = new(EmissionOperandKind.Argument, i);
             }
 
-            if (ReferenceEquals(place.Type, BoundType.String))
+            if (SlotTypes.IsResult(place.Type))
             {
-                this.stringFunctionPlaces[place.Id] = 1;
-                this.stringFunctionProduces[producer] = 1;
+                this.slotFunctionPlaces[place.Id] = 1;
+                this.slotFunctionProduces[producer] = 1;
             }
         }
 
@@ -64,60 +64,68 @@ internal sealed partial class BodyLowering
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
-            if (place.Kind == OwnershipPlaceKind.Result && ReferenceEquals(place.Source, body.Function) && ReferenceEquals(place.Type, BoundType.String))
+            if (place.Kind == OwnershipPlaceKind.Result && ReferenceEquals(place.Source, body.Function) && SlotTypes.IsResult(place.Type))
             {
-                if (!function.Abi.ResultSlot || ++returns != 1)
+                if (function.Abi.ResultSlot != FunctionAbi.HasResultSlot(place.Type, this.aggregateLayouts) || ++returns != 1)
                 {
-                    return Fail("String return storage has no unique ABI result slot.", out failure);
+                    return Fail("Stored return storage has no unique ABI result slot.", out failure);
                 }
 
-                this.stringFunctionPlaces[p] = 2;
-                function.SlotAddresses[p] = new(EmissionOperandKind.ReturnAddress, 0);
+                this.slotFunctionPlaces[p] = 2;
+                if (function.Abi.ResultSlot)
+                {
+                    function.SlotAddresses[p] = new(EmissionOperandKind.ReturnAddress, 0);
+                }
             }
         }
 
-        if (function.Abi.ResultSlot != (returns == 1))
+        if (SlotTypes.IsResult(body.Function.BoundSymbol?.Type) != (returns == 1))
         {
-            return Fail("Missing string return storage.", out failure);
+            return Fail("Missing stored return value.", out failure);
         }
 
         for (var id = 0; id < body.Operations.Count; id++)
         {
             var call = body.Operations[id];
-            if (call.Kind != OwnershipOperationKind.Call || !ReferenceEquals(call.Source.BoundType, BoundType.String))
+            if (call.Kind != OwnershipOperationKind.Call || !SlotTypes.IsResult(call.Source.BoundType))
             {
                 continue;
             }
 
             if (call.Source is not InvocationKoto || (uint)call.Place >= (uint)body.Places.Count || id + 1 >= body.Operations.Count ||
                 body.Operations[id + 1] is not { Kind: OwnershipOperationKind.Produce } produce || produce.Place != call.Place ||
-                !ReferenceEquals(produce.Source, call.Source) || this.stringFunctionPlaces[call.Place] != 0)
+                !ReferenceEquals(produce.Source, call.Source) || this.slotFunctionPlaces[call.Place] != 0)
             {
-                return Fail("String call has no unique normal result initialization.", out failure);
+                return Fail("Stored call has no unique normal result initialization.", out failure);
             }
 
             var place = body.Places[call.Place];
-            if (place.Kind != OwnershipPlaceKind.Temporary || !ReferenceEquals(place.Source, call.Source) || !ReferenceEquals(place.Type, BoundType.String))
+            if (place.Kind != OwnershipPlaceKind.Temporary || !ReferenceEquals(place.Source, call.Source) || !ReferenceEquals(place.Type, call.Source.BoundType))
             {
-                return Fail("String call result must have its own temporary storage.", out failure);
+                return Fail("Stored call result must have its own temporary storage.", out failure);
             }
 
-            this.stringFunctionPlaces[call.Place] = 3;
-            this.stringFunctionProduces[id + 1] = 3;
-            this.stringCallProduces[id] = id + 1;
+            this.slotFunctionPlaces[call.Place] = 3;
+            this.slotFunctionProduces[id + 1] = 3;
+            this.slotCallProduces[id] = id + 1;
         }
 
         return true;
     }
 
-    private bool ValidateStringCallResult(OwnershipBody body, int id, out string? failure)
+    private bool IsSlotValue(OwnershipPlace place) => ReferenceEquals(place.Type, BoundType.String)
+        ? this.IsStringValue(place)
+        : this.aggregatePlaces[place.Id] is not null &&
+            (place.Kind == OwnershipPlaceKind.Temporary || (place.Kind == OwnershipPlaceKind.Result && this.slotResultPlaces[place.Id] != 0));
+
+    private bool ValidateSlotCallResult(OwnershipBody body, int id, out string? failure)
     {
         failure = null;
         var call = body.Operations[id];
-        var produce = this.stringCallProduces[id];
+        var produce = this.slotCallProduces[id];
         if (produce < 0 || (body.GetInputState(id, call.Place) & PlaceState.MayInit) != 0)
         {
-            return Fail("String call result storage is already live or lacks initialization.", out failure);
+            return Fail("Stored call result storage is already live or lacks initialization.", out failure);
         }
 
         // Only normal return enters Produce. Neither Abort nor any other predecessor may initialize it.
@@ -129,14 +137,14 @@ internal sealed partial class BodyLowering
             {
                 if (edge.To != produce || ++normal != 1)
                 {
-                    return Fail("String result initialization is not the call's normal continuation.", out failure);
+                    return Fail("Stored result initialization is not the call's normal continuation.", out failure);
                 }
             }
         }
 
         if (body.IsReachable(id) && (normal != 1 || !this.Dominates(id, produce) || this.LogicalIncoming(produce) != 1))
         {
-            return Fail("String result initialization has an invalid predecessor.", out failure);
+            return Fail("Stored result initialization has an invalid predecessor.", out failure);
         }
 
         return true;

@@ -8257,6 +8257,7 @@ An ABI change must update every affected definition, caller, adapter, and compil
 group Samples
     func isPositive(value: i32) -> bool => value > 0
     func echo(text: string) -> string => text
+    func echoPair(value: (string, i32)) -> (string, i32) => value
 ```
 
 ```llvm
@@ -8267,6 +8268,7 @@ entry:
   ret i1 %result
 }
 ; Physical echo signature: void(ptr %result_storage, ptr %text_storage).
+; echoPair can also use two pointers: an independent result slot and an acquired tuple slot.
 ```
 
 ##### 21.4.3. Slot responsibility and normal return
@@ -8285,7 +8287,7 @@ Acquire arguments once in source order. Copy preserves its source; Move transfer
 
 Transfers during argument acquisition use the caller's cleanup plan for already acquired temporaries. A callee that was never entered cannot perform their cleanup. The callee never frees caller-owned stack storage. Securing a result before cleanup does not make it available to the caller: cleanup must finish before return. If it Aborts or diverges, later cleanup and result delivery do not occur.
 
-If a zero-sized value needs an address, the implementation must satisfy its alignment and lifetime without changing its language size or stride. One possible implementation uses a one-byte substitute slot, such as `alloca i8, align 8`. Shared substitute slots meet maximum alignment and remain alive through the last use; Place Identities retain separate state and responsibility. Their existence grants no positive dereferenceable guarantee for the semantic zero-byte value.
+Omitting physical storage for a zero-sized argument or result preserves evaluation, acquisition, parameter responsibility, and initialization on normal return. If a zero-sized value needs an address, the implementation must satisfy its alignment and lifetime without changing its language size or stride. One possible implementation uses a one-byte substitute slot, such as `alloca i8, align 8`. Shared substitute slots meet maximum alignment and remain alive through the last use; Place Identities retain separate state and responsibility. Their existence grants no positive dereferenceable guarantee for the semantic zero-byte value.
 
 ##### 21.4.4. Values, Places, and control flow
 
@@ -8309,6 +8311,19 @@ Keep match verification reachability distinct from ordered runtime dispatch. Arm
 Verification must carry earlier false-guard effects, after guard cleanup, into later arm checking. A source-ordered verification chain may conservatively retain mismatch edges even for irrefutable or covered Patterns, joining those states with guard-false states at the next test. It must not add an unmatched normal completion. Runtime pruning removes only proved-impossible paths; it must not reset earlier guard effects or initialize body bindings before successful guard cleanup.
 
 Direct construction into an uninitialized final slot may remove intermediate transfers only if evaluation order, aliasing, Loans, storage identity/lifetime, intermediate observations, partial initialization, and cleanup remain unchanged. Otherwise keep an independent temporary; never overwrite a live replacement target early.
+
+```kimi
+var useOriginal = true
+var pair = ("old", 1)
+pair = if useOriginal => pair else => ("new", 2)
+
+let saved = work: do
+    defer => pair = ("later", 3)
+    exit to work: pair
+// saved receives the pair secured before defer. pair holds ("later", 3).
+```
+
+The result slot may contain secured bytes while cleanup runs, but consumers of the enclosing expression must wait for normal arrival. Reusing a slot for another evaluation starts a new logical lifetime; a previous evaluation's arrival does not authorize consumption in the new lifetime.
 
 ##### 21.4.5. Cleanup and physical transfer
 

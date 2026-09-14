@@ -21,7 +21,7 @@ public sealed partial class OwnershipAnalysis
             this.body.OperationStorage[join] = this.body.Operations[join] with { Place = place };
         }
 
-        if (place >= 0 && (ScalarResult(this.body.Places[place].Type) || ReferenceEquals(this.body.Places[place].Type, BoundType.String)))
+        if (place >= 0 && (ScalarResult(this.body.Places[place].Type) || SlotTypes.IsResult(this.body.Places[place].Type)))
         {
             this.resultHeads[join] = -1;
             this.resultJoins.Add((join, place, this.resultDeclarations[place]));
@@ -32,14 +32,14 @@ public sealed partial class OwnershipAnalysis
 
     private int ResultPlace(Koto source)
     {
-        var owned = ReferenceEquals(source.BoundType, BoundType.String);
-        var place = owned && this.body.StringResultPlaces.TryGetValue(source, out var shared) ? shared : this.Temporary(source, false);
-        if (owned)
+        var stored = SlotTypes.IsResult(source.BoundType);
+        var place = stored && this.body.SlotResultPlaces.TryGetValue(source, out var shared) ? shared : this.Temporary(source, false);
+        if (stored)
         {
-            this.body.StringResultPlaces[source] = place;
+            this.body.SlotResultPlaces[source] = place;
         }
 
-        if (ScalarResult(this.body.Places[place].Type) || owned)
+        if (ScalarResult(this.body.Places[place].Type) || stored)
         {
             this.body.PlaceStorage[place] = this.body.Places[place] with { Kind = OwnershipPlaceKind.Result };
             // A fresh result lifetime on every evaluation, including evaluations inside a loop.
@@ -52,7 +52,7 @@ public sealed partial class OwnershipAnalysis
     private int WriteResult(Koto source, int place, int input)
     {
         var write = input >= 0 || ReferenceEquals(this.body.Places[place].Type, BoundType.Unit) ? this.Emit(OwnershipOperationKind.Write, source, place, input) : -1;
-        if (write >= 0 && ReferenceEquals(this.body.Places[place].Type, BoundType.String) && this.resultDeclarations[place] >= 0)
+        if (write >= 0 && SlotTypes.IsResult(this.body.Places[place].Type) && this.resultDeclarations[place] >= 0)
         {
             this.body.ResultWrites.Add(new(write, this.resultDeclarations[place]));
         }
@@ -128,7 +128,7 @@ public sealed partial class OwnershipAnalysis
             }
             else
             {
-                this.body.StringResults.Add(new(result.Place, result.Declare, join, start, this.body.ResultArrivals.Count - start));
+                this.body.SlotResults.Add(new(result.Place, result.Declare, join, start, this.body.ResultArrivals.Count - start));
             }
         }
     }

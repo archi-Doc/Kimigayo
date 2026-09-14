@@ -83,7 +83,7 @@ internal sealed partial class BodyLowering
             return false;
         }
 
-        if (!this.PrepareStringFunctions(body, function, out failure) || !this.PrepareAggregates(body, function, out failure) || !this.PrepareStringResults(body, out failure) || !this.PrepareMatches(body, function, out failure) || !this.PrepareStrings(body, function, out failure))
+        if (!this.PrepareSlotFunctions(body, function, out failure) || !this.PrepareSlotResults(body, out failure) || !this.PrepareAggregates(body, function, out failure) || !this.PrepareMatches(body, function, out failure) || !this.PrepareStrings(body, function, out failure))
         {
             return false;
         }
@@ -230,7 +230,7 @@ internal sealed partial class BodyLowering
             this.BuildDominators(body);
         }
 
-        if (!this.ValidateStringResults(body, out failure) || !this.ValidateAggregateDominance(body, out failure))
+        if (!this.ValidateSlotResults(body, out failure) || !this.ValidateAggregateDominance(body, out failure))
         {
             return false;
         }

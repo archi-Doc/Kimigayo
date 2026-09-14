@@ -1,8 +1,8 @@
 # Kimigayo Implementation Status
 
-更新: 2026-09-14。確認対象: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42` の製品コード。
+更新: 2026-09-14。基礎調査対象: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42`。集成型の選択結果・関数ABIの追加実装と検証を§4.1–4.2・§7に反映。
 
-現ソースと対応テストで確認した範囲を記す。字句/構文、Binding、所有権、LLVM生成、native実行は別段階であり、前段の対応だけで実行可能とはしない。仕様は [SPEC.md](SPEC.md)、残作業は [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)。旧C.*リンクは対応分野へ接続する。
+現ソースと対応テストで確認した範囲を記す。字句/構文、Binding、所有権、LLVM生成、native実行は別段階であり、前段の対応だけで実行可能とはしない。仕様は [SPEC.md](SPEC.md)、全体計画は [PLAN.md](PLAN.md)。旧C.*リンクは対応分野へ接続する。
 
 <a id="c1-coverage-summary"></a>
 <a id="c3-lexical-forms-and-types"></a>
@@ -105,15 +105,39 @@
 | 整数演算 | checked add/sub/mul・符号付きneg・inc/dec、比較、bit演算、型独立のshift count検査、compound更新。64bitまでの除算/剰余は0・signed min/−1を検査 | i128/u128除算/剰余は初期profileの禁止。charはUnicode scalar順の比較のみで数値演算不可。Integer / Division / Bitwise / WideIntegerEmission |
 | float | f32/f64算術・比較、対象精度のliteral、NaN・±0・subnormalを扱う値計画 | 数値変換全体とは別。float literal Patternは未対応。FloatEmission / NumberLiteralParse |
 | 数値変換 | 整数12×12方向の型適応・範囲検査、direct integer literal fitting、float literalの対象精度へのfitting、f32→f64、float同型取得 | 実行時f64→f32、整数↔float、整数literal→float、一般同型取得、明示Semantics/略記は未対応。typed128bit↔float・char/bool数値変換は禁止。[Binding.Conversions](Kimi/Compiler/Binding/Binding.Conversions.cs)、Conversion / FloatConversionEmission |
-| 関数・結果・cleanup | root/captureなしlocal関数、named引数、再帰、scalar/Unit/owned stringの引数/結果、Never結果、選択・loop・match結果、defer | default・generic・明示Origin・capture・間接call・集約ABIは未対応。[FunctionAbi](Kimi/Compiler/Emission/FunctionAbi.cs)、Function / Result / DeferredEmission |
+| 関数・結果・cleanup | root/captureなしlocal関数、named引数、再帰、scalar/Unit/owned string/Tuple/固定配列の引数/結果、Never結果、選択・loop・match結果、defer | default・generic・明示Origin・capture・間接call・一般の集約ABIは未対応。[FunctionAbi](Kimi/Compiler/Emission/FunctionAbi.cs)、Function / Result / DeferredEmission |
 | owned string | literal、local Move・self代入/置換、条件付き破棄、一時/選択/関数結果、writeLine、全6比較 | stringはStatic backingでもNon-Copy。UTF-8 byte列で比較。Heap構築のsource操作・補間/連結・明示所有権適応は未対応。String*Emission |
 | shared string | 暗黙input Originの必須ref/string引数・転送、referent比較、一時owned stringのshared引数、string guard candidate | 参照はhandleへの1 pointer。結果は独立値だけ。local保存/返却・明示@ref・uniq・nested borrowは未対応。[ReferenceTypes](Kimi/Compiler/ReferenceTypes.cs)、Reference / StringGuardEmission |
 | match/guard | bool・整数・char・Unit・owned stringの網羅的match、literal/wildcard/全体let/var/括弧Pattern、Copy候補・ref/string候補のguard | float Subjectは全体Pattern/guardの既存範囲。借用Subject・Tuple/enum分解実行は未対応。candidateはread-onlyでbody bindingと別。Match / Guard / Char / Float / StringGuardEmission |
-| Tuple・固定配列 | 対応scalar・Unit・owned string・nested aggregateの構築、local全体Copy/Move/置換/条件付き破棄 | ownerのみ、深さ64、size/countはint.MaxValueまで。要素射影/index・部分Move・集約選択結果/関数ABI・struct/enum生成は未対応。[AggregateLayout](Kimi/Compiler/Emission/AggregateLayout.cs)、AggregateEmission |
+| Tuple・固定配列 | 対応scalar・Unit・owned string・nested aggregateの構築、local全体Copy/Move/置換/条件付き破棄、if/do/loop/matchの結果配送・通常関数の値引数/結果 | ownerのみ、深さ64、size/countはint.MaxValueまで。要素射影/index・部分Move・借用引数/結果・集成型Subject・struct/enum生成は未対応。[AggregateLayout](Kimi/Compiler/Emission/AggregateLayout.cs)、AggregateEmission / AggregateResultEmission / AggregateFunctionEmission |
 
 生成は検証済みの型付き値/CFG/ABI/cleanup計画から行う。WriterはASTを再解釈しない。型identity・定数・入力・支配・結果到着・生存flag・Loan・破棄計画の不整合を拒否する。同じLLVM幅でも別の言語型を混同しない。
 
 stringは24-byte handleの各fieldを転送し、条件付き責任にのみflagを使う。Tupleは物理alignment順と論理順を分離、固定配列はstride配置。構築は最終subslotへ行い、全体転送は検査済みの別領域へmemcpy、破棄は逆論理順（配列はloop）。これらは現在の内部表現であり、一般公開ABIではない。
+
+### 4.1. 集成型の選択結果（2026-09-14）
+
+Tuple・固定配列はif/else、do/yield/exit、値付きloop、既存の対応Subjectを使うmatchの結果として配送できる。Copy集成型、所有stringを含む値、入れ子、ゼロサイズを同じ結果計画で扱い、local初期化/置換、構築payload、外側の結果への転送、未消費結果の破棄へ接続した。[AggregateResults](examples/AggregateResults/README.md) に実行例を示す。
+
+従来のStringResultsをSlotResultsへ一般化し、Declare・結果Write・Join・到着edgeの検証を共有する。型分類はCopy性と独立し、具体的なlayoutの許可はLoweringで確認する。結果計画をlayout検査より先に登録し、検証済みの式結果だけを許可する。関数の戻り値PlaceやSubjectまでKindだけで許可しない。Binder・ABI・LLVM Writer・runtimeへの機能追加は不要だった。
+
+結果確保はcleanup前、配送は正常到着時。未初期化への配置、全到着時のMustInit、Writeの支配、論理/物理それぞれの到着数を検証する。さらに結果の消費が現在の生存期間のJoin後にあることを確認し、cleanup中の早すぎる取得や過去の到着による誤承認を拒否する。defer複製はソース式ごとに結果スロットを共有し、Declare/Joinは展開別に保持。loopの結果Declareはhead前に一度置く。結果専用の生存flagやaggregate phiは追加しない。
+
+転送・逆順破棄・条件付き置換は既存処理を再利用する。右辺の独立した結果を確保してcleanupを終え、必要な旧値破棄、新値転送、flag設定の順を守る。Abort/非停止cleanupでは後続配送・破棄を作らない。結果スロットへの直接構築、要素アクセス/部分Move、集成型関数ABIは今回に含めない。
+
+[AggregateResultEmissionTest](xUnitTest/Tests/AggregateResultEmissionTest.cs) はネスト、配列の期待型、covered arm/guard、結果の破棄、defer、戻り辺、O0 snapshot、Abort/非停止、不正計画と再解析による回復を検証する。deferを含むwarm BindとOwnership解析＋IR出力はそれぞれ0 B。既存のstring結果の検証も共通計画へ移行し、早期消費拒否を両型で固定した。throughputの改善率は未測定。
+
+### 4.2. Tuple・固定配列の関数ABI（2026-09-14）
+
+対応済みの所有Tuple・固定配列を、通常の直接呼び出しの値引数・戻り値へ接続した。入れ子、Copy/Move、ゼロサイズ、名前付き引数、Unit/scalar/string/ref-stringとの混在、浅い再帰、defer・選択結果からの返却を扱う。[AggregateFunctions](examples/AggregateFunctions/README.md) に実行例を示す。
+
+サイズがある集成型は取得済み引数スロットとcallerの独立した結果スロットをptrで渡す。Copyは元の責任を残し、Moveは移す。引数名は論理番号の`%a<i>`、結果は`%ret`。ゼロサイズは物理引数・結果領域を省略するが、CallEntry・取得・parameter責任・通常復帰時のProduceは残す。同じcallの引数と結果の共有は拒否し、内側callの結果を外側callの取得済み引数として使う経路では追加転送しない。`return f(x)`の結果領域の直接転送は行わない。
+
+stringの関数スロット検証をSlotFunctionsへ一般化し、選択結果のSlotResultsとは別の役割を維持した。call地点の未初期化、通常復帰だけによる結果初期化、return Writeの支配、cleanup後のDeliver、parameter Produceでの条件付き破棄flag初期化を検査する。既存の転送・逆論理順の破棄を再利用し、LLVM Writer/runtime/backendには追加を要しない。
+
+署名と本体は同じAggregateLayoutPoolを使用する。ABIキャッシュは物理的な渡し方・省略・型の形だけを保持し、現在のBoundTypeは意味検証で照合する。成功・失敗の両方で一時的な型参照を解放する。共有引数のLoanは、参照を含まない所有集成型結果を確保した後に終了する。warm Bind、共有借用とdeferを含むOwnership＋IR出力は各0 B、再parse相当のABI再利用と構文木の非保持をテストした。throughputは未測定。
+
+今回のABI対応はBinderの文脈推論を広げない。配列リテラルをcallの引数型から当てはめる処理や、一部の入れ子Tupleの引数推論は未完成であり、明示型のlocal経由で渡す。戻り値の期待型で配列リテラルを構築する既存経路は利用できる。集成型借用、要素アクセス・部分Move、struct/enum、generic・間接callは未対応。
 
 <a id="c2-builds-modules-and-source-artifacts"></a>
 <a id="c11-executable-preparation-and-sequence-review-2026-09-09"></a>
@@ -148,13 +172,19 @@ stringは24-byte handleの各fieldを転送し、条件付き責任にのみflag
 
 ## 7. 今回の確認
 
-主要入口・型/変換/ABI/aggregate・所有権の拒否条件、Core catalog、LSP/拡張/CIを現コード・対応テストと照合した。製品コードは変更していない。
+基礎調査では主要入口・型/変換/ABI/aggregate・所有権の拒否条件、Core catalog、LSP/拡張/CIを現コード・対応テストと照合した。その後、§4.1の結果配送と§4.2の関数ABIを実装し、以下のbuild・managed検証を再実行した。
 
 | 検証 | 2026-09-14の結果 |
 | --- | --- |
 | Solution build（Debug / Release） | 各成功、警告0・エラー0 |
-| managed test（Debug / Release） | 各4,123成功、失敗0・skip0。fixture生成を含む |
-| LLVM verifier・通常native O0/O2・runtime/backend・CLI/LSP統合script | 今回未実行。managed成功をnative実行成功へ読み替えない |
+| managed test（Debug / Release） | 各4,218成功、失敗0・skip0。fixture生成を含む |
+| 集成型選択結果のLLVM verifier・通常native O0/O2（§4.1実装時） | 52 fixture、104実行成功。破棄回数/順序、依存symbol、タイムアウト付き非停止を含む |
+| 既存string結果のnative回帰（§4.1実装時） | 47 fixture、94回のO0/O2実行成功。集成型結果と合わせて99 fixture・198実行 |
+| 集成型関数ABIのLLVM verifier・通常native O0/O2 | 59 fixture、118実行成功。破棄順・回数、Abort、タイムアウト付き非停止、依存symbolを検証 |
+| 既存string関数のnative回帰 | 63 fixture、126実行成功。集成型関数と合わせて122 fixture・244実行 |
+| AggregateFunctionsのCLI build/run | Release/O2成功。`leaving echo`を2回、`aggregate functions complete`を出力してexit 0 |
+| AggregateResultsのCLI build/run | Release/O2で成功。`cleanup`、`aggregate results complete`の順に出力しexit 0 |
+| runtime/backend単独・LSP統合script | 今回未実行 |
 | NativeAOT・VS Code host・CI実workflow・配布・新規benchmark測定 | 今回未実行 |
 
 再現コマンド（構成ごとにbuild→testを直列実行）:

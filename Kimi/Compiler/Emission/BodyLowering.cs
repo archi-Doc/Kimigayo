@@ -225,7 +225,8 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (operation.Place >= 0 && (this.aggregatePlaces[operation.Place] is not null || operation.Kind == OwnershipOperationKind.PayloadPlacement))
+        if (operation.Place >= 0 && operation.Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver) &&
+            (this.aggregatePlaces[operation.Place] is not null || operation.Kind == OwnershipOperationKind.PayloadPlacement))
         {
             return this.LowerAggregate(body, function, constants, projectDirectory, index, marks, out failure);
         }

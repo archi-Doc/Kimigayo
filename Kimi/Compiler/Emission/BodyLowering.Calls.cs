@@ -85,10 +85,10 @@ internal sealed partial class BodyLowering
                 return Fail("Call argument value is unavailable at acquisition.", out failure);
             }
 
-            if (ReferenceEquals(type, BoundType.String) && (!this.IsStringValue(body.Places[place]) ||
+            if (SlotTypes.IsResult(type) && (!this.IsSlotValue(body.Places[place]) ||
                 (body.IsReachable(entry) && (body.GetInputState(entry, place) & PlaceState.MustInit) == 0)))
             {
-                return Fail("Owned string argument is not an initialized acquired value.", out failure);
+                return Fail("Owned argument is not an initialized acquired value.", out failure);
             }
 
             if (ReferenceTypes.IsString(type))
@@ -110,6 +110,16 @@ internal sealed partial class BodyLowering
                 }
             }
 
+            if (body.IsReachable(id) && !this.Dominates(entry, id))
+            {
+                return Fail("Logical call argument does not dominate the call.", out failure);
+            }
+
+            if (SlotTypes.IsResult(type) && place == operation.Place)
+            {
+                return Fail("A call cannot share its argument and result storage.", out failure);
+            }
+
             this.parameterArguments[parameter] = entry;
         }
 
@@ -124,6 +134,11 @@ internal sealed partial class BodyLowering
             return true;
         }
 
+        if (SlotTypes.IsResult(plan.ReturnType) && !this.ValidateSlotCallResult(body, id, out failure))
+        {
+            return false;
+        }
+
         this.callOperands.Clear();
         var location = -1;
         for (var i = 0; i < callee.Parameters.Length; i++)
@@ -131,9 +146,9 @@ internal sealed partial class BodyLowering
             var physical = callee.Parameters[i];
             if (physical.Kind == AbiParameterKind.ResultSlot)
             {
-                if (!ReferenceEquals(plan.ReturnType, BoundType.String) || !this.ValidateStringCallResult(body, id, out failure))
+                if (!FunctionAbi.HasResultSlot(plan.ReturnType, this.aggregateLayouts))
                 {
-                    return false;
+                    return Fail("Physical result slot has no stored result representation.", out failure);
                 }
 
                 this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
@@ -158,11 +173,6 @@ internal sealed partial class BodyLowering
 
             var entry = this.parameterArguments[physical.LogicalIndex];
             var type = target.Parameters[physical.LogicalIndex].Type.BoundType!;
-            if (body.IsReachable(id) && !this.Dominates(entry, id))
-            {
-                return Fail("Call argument does not dominate the call.", out failure);
-            }
-
             if (physical.Kind == AbiParameterKind.Value && IsScalar(type))
             {
                 var value = Input(body, entry, 0);
@@ -177,13 +187,8 @@ internal sealed partial class BodyLowering
             {
                 this.callOperands.Add(this.ReferenceOperand(body, entry));
             }
-            else if (physical.Kind == AbiParameterKind.OwnedSlot && ReferenceEquals(type, BoundType.String))
+            else if (physical.Kind == AbiParameterKind.OwnedSlot && SlotTypes.IsResult(type))
             {
-                if (callee.ResultSlot && body.Operations[entry].Place == operation.Place)
-                {
-                    return Fail("A call cannot share its argument and result storage.", out failure);
-                }
-
                 this.callOperands.Add(new(EmissionOperandKind.SlotAddress, body.Operations[entry].Place));
             }
             else
@@ -192,9 +197,9 @@ internal sealed partial class BodyLowering
             }
         }
 
-        var expectedResult = FunctionAbi.ResultType(plan.ReturnType);
+        var expectedResult = FunctionAbi.ResultType(plan.ReturnType, this.aggregateLayouts);
         if (expectedResult != callee.Result || callee.NoReturn != ReferenceEquals(plan.ReturnType, BoundType.Never) ||
-            callee.ResultSlot != ReferenceEquals(plan.ReturnType, BoundType.String) ||
+            callee.ResultSlot != FunctionAbi.HasResultSlot(plan.ReturnType, this.aggregateLayouts) ||
             this.callOperands.Count != callee.Parameters.Length ||
             (IsScalar(plan.ReturnType) && (body.Values[id].Kind != OwnershipValueKind.Call || !ReferenceEquals(ValueType(body, id), plan.ReturnType))))
         {

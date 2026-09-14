@@ -194,11 +194,11 @@ internal sealed partial class BodyLowering
         }
     }
 
-    private bool IsStringStorage(OwnershipPlace place) => this.payloadOwners[place.Id] >= 0 || this.stringFunctionPlaces[place.Id] != 0 || (this.hasMatches && this.matchPlaces[place.Id] != 0) || place.Kind switch
+    private bool IsStringStorage(OwnershipPlace place) => this.payloadOwners[place.Id] >= 0 || this.slotFunctionPlaces[place.Id] != 0 || (this.hasMatches && this.matchPlaces[place.Id] != 0) || place.Kind switch
     {
         OwnershipPlaceKind.Local => place.Source is FieldKoto,
         OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or IdentifierNameKoto,
-        OwnershipPlaceKind.Result => this.stringResultPlaces[place.Id] != 0,
+        OwnershipPlaceKind.Result => this.slotResultPlaces[place.Id] != 0,
         _ => false,
     };
 
@@ -300,14 +300,14 @@ internal sealed partial class BodyLowering
         switch (operation.Kind)
         {
             case OwnershipOperationKind.Declare:
-                if (place.Kind != OwnershipPlaceKind.Local && this.payloadOwners[place.Id] < 0 && this.stringResultDeclarations[id] == 0 && (!this.hasMatches || this.matchPlaces[place.Id] != 1))
+                if (place.Kind != OwnershipPlaceKind.Local && this.payloadOwners[place.Id] < 0 && this.slotResultDeclarations[id] == 0 && (!this.hasMatches || this.matchPlaces[place.Id] != 1))
                 {
                     return Fail("String Declare requires a local.", out failure);
                 }
 
                 break;
             case OwnershipOperationKind.Produce:
-                if (this.stringFunctionProduces[id] != 0)
+                if (this.slotFunctionProduces[id] != 0)
                 {
                     break; // Parameter receipt or a call's normal result: the storage is already populated.
                 }
@@ -326,7 +326,7 @@ internal sealed partial class BodyLowering
                     !ReferenceEquals(body.Places[operation.Input].Type, BoundType.String) ||
                     !this.IsStringValue(body.Places[operation.Input]) ||
                     (operation.Kind == OwnershipOperationKind.Consume && (place.Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) || body.Places[operation.Input].Kind != OwnershipPlaceKind.Temporary || operation.Acquisition != AcquisitionKind.Move)) ||
-                    (operation.Kind == OwnershipOperationKind.Write && place.Kind != OwnershipPlaceKind.Local && this.stringResultWrites[id] == 0 && this.stringFunctionPlaces[place.Id] != 2))
+                    (operation.Kind == OwnershipOperationKind.Write && place.Kind != OwnershipPlaceKind.Local && this.slotResultWrites[id] == 0 && this.slotFunctionPlaces[place.Id] != 2))
                 {
                     return Fail("String transfer requires distinct verified source and destination storage.", out failure);
                 }
@@ -338,7 +338,7 @@ internal sealed partial class BodyLowering
                     return Fail("String transfer source is not initialized.", out failure);
                 }
 
-                if (operation.Kind == OwnershipOperationKind.Write && this.stringFunctionPlaces[place.Id] == 2 && body.IsReachable(id) &&
+                if (operation.Kind == OwnershipOperationKind.Write && this.slotFunctionPlaces[place.Id] == 2 && body.IsReachable(id) &&
                     (operation.Placement != PlacementKind.Initialization || (body.GetInputState(id, destination) & PlaceState.MayInit) != 0))
                 {
                     return Fail("Return storage must be uninitialized before securing its result.", out failure);
