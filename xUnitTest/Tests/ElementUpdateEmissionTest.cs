@@ -12,13 +12,13 @@ public class ElementUpdateEmissionTest
     {
         { "Compound", "var a: [1 of i32] = [10]\nlet done: () = (a[0] += 32)\nif a[0] == 42 => writeLine(\"ok\")" },
         { "Increment", "var a = (42, true)\nlet before = a.0++\nlet after = --a.0\nlet next = ++a.0\nlet last = a.0--\nif before == 42 and after == 42 and next == 43 and last == 43 and a.0 == 42 => writeLine(\"ok\")" },
-        { "Mixed", "var a: (string, [2 of i32]) = (\"held\", [40, 2])\na.1[0] += a.1[1]\nif a.1[0] == 42 => writeLine(\"ok\")" },
+        { "Mixed", "var a: (string, [2 of i32]) = (\"held\", [40, 2])\nlet amount = a.1[1]\na.1[0] += amount\nif a.1[0] == 42 => writeLine(\"ok\")" },
         { "Nested", "var a: [1 of [1 of i32]] = [[40]]\na[0][0] += 2\nif a[0][0] == 42 => writeLine(\"ok\")" },
-        { "SelfRead", "var a: [1 of i32] = [21]\na[0] += a[0]\nif a[0] == 42 => writeLine(\"ok\")" },
+        { "SelfReadSnapshot", "var a: [1 of i32] = [21]\nlet amount = a[0]\na[0] += amount\nif a[0] == 42 => writeLine(\"ok\")" },
         { "RhsUpdate", "var a = (40, true)\nvar b = (2, false)\na.0 += b.0++\nif a.0 == 42 and b.0 == 3 => writeLine(\"ok\")" },
         { "IndexUpdate", "var a: [2 of i32] = [40, 0]\nvar i: [1 of isize] = [0]\na[i[0]++] += 2\nif a[0] == 42 and i[0] == 1 => writeLine(\"ok\")" },
         { "IndexSnapshot", "var a: [2 of i32] = [40, 0]\nvar i: isize = 0\na[i++] += 2\nif a[0] == 42 and a[1] == 0 and i == 1 => writeLine(\"ok\")" },
-        { "RhsSelection", "var a = (40, true)\na.0 += if a.1 => 2 else => 0\nif a.0 == 42 => writeLine(\"ok\")" },
+        { "RhsSelection", "var a = (40, true)\nlet flag = a.1\na.0 += if flag => 2 else => 0\nif a.0 == 42 => writeLine(\"ok\")" },
         { "RhsDo", "var a = (40, true)\na.0 += work: do\n    exit to work: 2\nif a.0 == 42 => writeLine(\"ok\")" },
         { "Deferred", "var a = (0, \"held\")\nvar i = 0\nloop\n    defer => a.0 += 14\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => writeLine(\"ok\")" },
         { "DeferredIncrement", "var a = (39, \"held\")\nvar i = 0\nloop\n    defer => ++a.0\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => writeLine(\"ok\")" },
@@ -164,6 +164,34 @@ public class ElementUpdateEmissionTest
     }
 
     [Theory]
+    [InlineData("var a: [1 of i32] = [21]\na[0] += a[0]")]
+    [InlineData("var a: [1 of i32] = [21]\na[0] += (a[0])")]
+    [InlineData("var a: [1 of i32] = [21]\nvar i: isize = 0\na[i] += a[0]")]
+    [InlineData("var a = (21, true)\na.0 += a.0")]
+    [InlineData("var a: [1 of [1 of i32]] = [[21]]\na[0][0] += a[0][0]")]
+    [InlineData("var a: [2 of i32] = [21, 21]\na[0] += a[1]")]
+    [InlineData("func count(a: [1 of i32]) -> i32 => a[0]\nvar a: [1 of i32] = [21]\na[0] += count(a)")]
+    [InlineData("var a: [1 of i32] = [21]\na[0] += (work: do\n    defer => a[0]\n    exit to work: 21\n)")]
+    [InlineData("var a: [1 of i32] = [21]\nlet x = a[(work: do\n    a[0]++\n    exit to work: 0\n)]")]
+    [InlineData("func f()\n    return\n    var a: [1 of i32] = [21]\n    a[0] += a[0]")]
+    public void ExclusiveUpdateRejectsAliasedReads(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        using var writer = new StringWriter();
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Empty(writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("IndexRead", "var a: [2 of isize] = [1, 41]\na[a[0]] += 1\nif a[1] == 42 => writeLine(\"ok\")")]
+    [InlineData("TransferReadCleanup", "func f() -> i32\n    var a: [1 of i32] = [42]\n    defer\n        if a[0] == 42 => writeLine(\"ok\")\n    a[0] += (return 0)\n    return 1\nf()")]
+    [InlineData("SimpleSelfRead", "var a: [1 of i32] = [21]\na[0] = a[0] + 21\nif a[0] == 42 => writeLine(\"ok\")")]
+    public void ProtectionStartsAfterIndicesAndEndsOnTransfer(string name, string source)
+        => ScalarEmissionTest.EmitFixture("ElementUpdateLoan" + name, source, "ok\n");
+
+    [Theory]
     [InlineData("update")]
     [InlineData("output")]
     [InlineData("write")]
@@ -176,6 +204,10 @@ public class ElementUpdateEmissionTest
     [InlineData("constant")]
     [InlineData("postfix")]
     [InlineData("release")]
+    [InlineData("exclusive")]
+    [InlineData("mode")]
+    [InlineData("anchor")]
+    [InlineData("parentLoan")]
     public void InvalidUpdatePlansFailBeforeWritingAndRecover(string defect)
     {
         var c = MinimalEmissionTest.Analyze("var a: [1 of i32] = [40]\nlet old = a[0]++");
@@ -197,6 +229,10 @@ public class ElementUpdateEmissionTest
             case "constant": body.Values[update.Right] = body.Values[update.Right] with { Constant = 2 }; break;
             case "postfix": body.ValueOperands[body.Values[update.Result].Start] = update.Computation; break;
             case "release": body.LoanStates[plan.Write - 1] = plan.Loan; break;
+            case "exclusive": body.Projections[update.Projection] = plan with { Exclusive = -1 }; break;
+            case "mode": body.ComparisonLoans[plan.Exclusive] = body.ComparisonLoans[plan.Exclusive] with { Mode = LoanRequirement.Ref }; break;
+            case "anchor": body.ComparisonLoans[plan.Exclusive] = body.ComparisonLoans[plan.Exclusive] with { Projection = int.MaxValue }; break;
+            case "parentLoan": body.ComparisonLoans[plan.Exclusive] = body.ComparisonLoans[plan.Exclusive] with { Parent = plan.Loan }; break;
         }
 
         using var writer = new StringWriter();
@@ -209,7 +245,7 @@ public class ElementUpdateEmissionTest
     [Fact]
     public void WarmElementUpdatesAllocateNothing()
     {
-        const string Source = "var a: (string, [2 of i32]) = (\"held\", [0, 2])\nvar b: [1 of isize] = [0]\nvar i = 0\nloop\n    defer => a.1[0]++\n    a.1[b[0]++] += if true => a.1[1] else => 0\n    --b[0]\n    i += 1\n    if i < 3 => continue\n    exit";
+        const string Source = "var a: (string, [2 of i32]) = (\"held\", [0, 2])\nvar b: [1 of isize] = [0]\nvar i = 0\nloop\n    defer => a.1[0]++\n    let amount = a.1[1]\n    a.1[b[0]++] += if true => amount else => 0\n    --b[0]\n    i += 1\n    if i < 3 => continue\n    exit";
         var c = MinimalEmissionTest.Analyze(Source);
         for (var i = 0; i < 100; i++)
         {
@@ -276,6 +312,15 @@ public class ElementUpdateEmissionTest
         var update = Assert.Single(body.ElementUpdates);
         var plan = body.Projections[update.Projection];
         Assert.True(plan.Operation < plan.Output && plan.Output < update.Right && update.Right < update.Computation && update.Computation < plan.Write);
+        Assert.Equal(LoanRequirement.Ref, body.ComparisonLoans[plan.Loan].Mode);
+        Assert.Equal(LoanRequirement.Uniq, body.ComparisonLoans[plan.Exclusive].Mode);
+        Assert.Equal(plan.Loan, body.LoanInputs[plan.Operation]);
+        Assert.Equal(plan.Exclusive, body.LoanStates[plan.Operation]);
+        Assert.True(body.HasComparisonLoan(plan.Output, plan.Exclusive));
+        Assert.True(body.HasComparisonLoan(update.Right, plan.Exclusive));
+        Assert.True(body.HasComparisonLoan(update.Computation, plan.Exclusive));
+        Assert.True(body.HasComparisonLoan(plan.Write, plan.Exclusive));
+        Assert.False(body.HasComparisonLoan(update.Result, plan.Exclusive));
         var instructions = module.GetFunction(0).Instructions;
         Assert.Single(instructions, x => x.Opcode == EmissionOpcode.LoadElement && x.Operation == plan.Output);
         Assert.Single(instructions, x => x.Opcode == EmissionOpcode.StoreElement && x.Operation == plan.Write);

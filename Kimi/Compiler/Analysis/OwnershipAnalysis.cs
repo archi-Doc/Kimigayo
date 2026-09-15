@@ -984,7 +984,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.body.OperationStorage.Add(new(kind, source, place, input, acquisition, LoanMode: loanMode));
-        this.RecordComparisonState(kind, source, place, input, acquisition);
+        this.RecordComparisonState(source);
         this.resultHeads.Add(-2);
         this.RecordValue(id, kind, source, place, input);
         this.body.EdgeHeads.Add(-1);

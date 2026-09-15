@@ -8,7 +8,8 @@ let after = --pair.1
 ++pair.1
 
 var matrix: [1 of [2 of i32]] = [[21, 2]]
-matrix[0][0] *= matrix[0][1]
+let factor = matrix[0][1]
+matrix[0][0] *= factor
 
 var fraction: [1 of f64] = [84.0]
 fraction[0] /= 2.0

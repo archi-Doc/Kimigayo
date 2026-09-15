@@ -46,5 +46,54 @@ $env:Path = "$(Join-Path $PWD 'toolchain');$env:Path"
 For a permanent setting, open Windows **Environment Variables**, edit your user
 **Path**, add the full path to `toolchain`, and open a new terminal.
 
-Kimigayo resolves tools directly from its toolchain folder, without searching PATH.
-For a custom location, set `KIMI_TOOLCHAIN_ROOT` or pass `--ToolchainRoot <path>`.
+### Toolchain path resolution
+
+Kimigayo selects the toolchain root in this order:
+
+1. `--ToolchainRoot <path>`.
+2. The `KIMI_TOOLCHAIN_ROOT` environment variable.
+3. An existing `toolchain/` beside `Kimi.exe` / `Kimi.dll`.
+4. For source builds, the repository's `toolchain/`, found by walking up from the
+   compiler directory.
+5. Otherwise, `toolchain/` beside the compiler (the expected installation location).
+
+Relative CLI/environment paths use the current working directory. Explicit roots
+do not fall back if missing. Automatic discovery does not search the user's project,
+working directory, or `PATH`; adding LLVM to `PATH` is only for direct tool use.
+
+LLVM executables come directly from the selected root. `--LlvmBin <path>` overrides
+their location, followed by the project's `LlvmBin` setting (relative to the project).
+These overrides do not change the backend root: the default library is
+`<root>/windows_x64/kimi_backend_windows_x64_v1.lib`. Explicit backend inputs override
+that default and resolve relative to the link manifest.
+
+### Using kimi
+
+Use `kimi <command> [project.kimiproj | solution.kimisln | directory] [options]`.
+Omitting the path searches the current directory for a solution or projects.
+
+- `build`: compile and link; requires the LLVM toolchain above.
+- `run`: run the existing executable and forward its output and exit code. Run
+  `build` first, and again after source changes; `run` does not rebuild or require LLVM.
+- `emit-llvm`: write LLVM IR (`.ll`) and a link manifest (`.link.json`) without
+  invoking LLVM or linking.
+
+Examples from the repository root, with `kimi` available on `PATH`:
+
+```powershell
+kimi build examples/Hello/Hello.kimiproj
+kimi run examples/Hello/Hello.kimiproj
+kimi emit-llvm examples/Hello/Hello.kimiproj
+kimi build examples/Hello --ToolchainRoot 'C:/tools/kimi/toolchain'
+kimi run examples/Hello/bin/x86_64-pc-windows-msvc/Hello.O2.exe
+```
+
+The direct `.exe` form of `run` needs no project or build record.
+For a source checkout, build the compiler with .NET 10 and replace `kimi` in the
+examples with `dotnet Kimi/bin/Release/net10.0/Kimi.dll`:
+
+```powershell
+dotnet build Kimi/Kimi.csproj -c Release
+dotnet Kimi/bin/Release/net10.0/Kimi.dll build examples/Hello/Hello.kimiproj
+dotnet Kimi/bin/Release/net10.0/Kimi.dll run examples/Hello/Hello.kimiproj
+```

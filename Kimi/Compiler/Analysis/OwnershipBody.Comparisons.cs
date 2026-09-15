@@ -6,13 +6,41 @@ public sealed partial class OwnershipBody
 {
     internal static bool ConflictsWithComparison(OwnershipOperationKind kind, int place, int input, AcquisitionKind acquisition, int borrowed, LoanRequirement mode = LoanRequirement.Ref, LoanRequirement access = LoanRequirement.None) => kind switch
     {
-        OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => place == borrowed && acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove,
+        OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => place == borrowed && (mode == LoanRequirement.Uniq || acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove),
         OwnershipOperationKind.Write or OwnershipOperationKind.WriteElement or OwnershipOperationKind.InitializeSubject => place == borrowed || input == borrowed,
         OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.Declare or OwnershipOperationKind.Produce => place == borrowed,
         OwnershipOperationKind.Borrow => place == borrowed && (mode != LoanRequirement.Ref || access != LoanRequirement.Ref),
         OwnershipOperationKind.Read => place == borrowed && mode == LoanRequirement.Uniq,
         _ => false,
     };
+
+    internal bool ConflictsWithLoan(int id, int loanId)
+    {
+        var operation = this.Operations[id];
+        var loan = this.ComparisonLoans[loanId];
+        if (loan.Mode == LoanRequirement.Uniq && (uint)loan.Projection < (uint)this.Projections.Count &&
+            this.Projections[loan.Projection] is var plan && plan.Exclusive == loanId && plan.Write == id &&
+            operation.Kind == OwnershipOperationKind.WriteElement && operation.Place == plan.Root)
+        {
+            return false; // Write through this exclusive access, not a conflicting alias.
+        }
+
+        return ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, loan.Place, loan.Mode, operation.LoanMode);
+    }
+
+    internal bool ElementUpdateLoanConflicts(int loanId)
+    {
+        var loan = this.ComparisonLoans[loanId];
+        for (var head = loan.Parent; head >= 0; head = this.ComparisonLoans[head].Parent)
+        {
+            if (this.ComparisonLoans[head].Place == loan.Place)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     internal bool HasComparisonLoan(int operation, int loan)
     {
@@ -47,9 +75,19 @@ public sealed partial class OwnershipBody
         for (var i = 0; i < this.ComparisonLoans.Count; i++)
         {
             var loan = this.ComparisonLoans[i];
+            if (loan.Mode == LoanRequirement.Uniq)
+            {
+                if ((uint)loan.Read >= (uint)this.Operations.Count || !this.ValidElementUpdateLoan(i))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
             if ((uint)loan.Read >= (uint)this.Operations.Count || (uint)loan.Place >= (uint)this.Places.Count || loan.Parent < -1 || loan.Parent >= i || loan.Depth <= 0 || loan.Guard < -1 ||
                 this.Operations[loan.Read].Kind != (loan.Call is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Borrow) ||
-                loan.Mode != LoanRequirement.Ref || this.Operations[loan.Read].Place != loan.Place ||
+                loan.Mode != LoanRequirement.Ref || loan.Projection != -1 || this.Operations[loan.Read].Place != loan.Place ||
                 (loan.Guard < 0 && this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) &&
                     ((!loan.Access && loan.Call is null) || this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result))) ||
                 (loan.Access ? loan.Call is not null || loan.Guard != -1 || this.Places[loan.Place].Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray)
@@ -99,7 +137,8 @@ public sealed partial class OwnershipBody
                         return false;
                     }
                 }
-                else if (output < 0 || this.ComparisonLoans[output].Read != id || this.ComparisonLoans[output].Parent != input)
+                else if (output < 0 || this.ComparisonLoans[output].Read != id ||
+                    (this.ComparisonLoans[output].Mode == LoanRequirement.Uniq ? !this.ValidElementUpdateLoan(output) : this.ComparisonLoans[output].Parent != input))
                 {
                     return false;
                 }
@@ -107,7 +146,7 @@ public sealed partial class OwnershipBody
 
             for (var head = input; head >= 0; head = this.ComparisonLoans[head].Parent)
             {
-                if (ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, this.ComparisonLoans[head].Place, this.ComparisonLoans[head].Mode, operation.LoanMode))
+                if (this.ConflictsWithLoan(id, head))
                 {
                     return false;
                 }
@@ -133,6 +172,33 @@ public sealed partial class OwnershipBody
         }
 
         return true;
+    }
+
+    private bool ValidElementUpdateLoan(int id)
+    {
+        var loan = this.ComparisonLoans[id];
+        if (loan.Mode != LoanRequirement.Uniq || !loan.Access || loan.Call is not null || loan.Guard != -1 ||
+            (uint)loan.Projection >= (uint)this.Projections.Count)
+        {
+            return false;
+        }
+
+        var plan = this.Projections[loan.Projection];
+        if ((uint)plan.Loan >= (uint)id)
+        {
+            return false;
+        }
+
+        var access = this.ComparisonLoans[plan.Loan];
+        if (plan.Exclusive != id || plan.Operation != loan.Read || plan.Root != loan.Place ||
+            access.Mode != LoanRequirement.Ref || !access.Access || access.Place != loan.Place ||
+            access.Parent != loan.Parent || access.Depth != loan.Depth || this.LoanInputs[loan.Read] != plan.Loan ||
+            this.LoanStates[loan.Read] != id || this.Operations[loan.Read].Kind != OwnershipOperationKind.ProjectElement)
+        {
+            return false;
+        }
+
+        return !this.ElementUpdateLoanConflicts(id);
     }
 
     private bool ValidGuardLoan(int index)

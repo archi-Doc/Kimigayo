@@ -82,7 +82,9 @@ internal sealed partial class BodyLowering
             var plan = body.Projections[i];
             if ((uint)plan.Operation >= (uint)body.Operations.Count || (uint)plan.Root >= (uint)body.Places.Count ||
                 (uint)plan.Loan >= (uint)body.ComparisonLoans.Count || plan.Parent < -1 || plan.Parent >= i || plan.Output < -1 || plan.Write < -1 ||
-                plan.Update < -1 || (plan.Update >= 0 && (plan.Update >= body.ElementUpdates.Count || plan.Output < 0 || plan.Write < 0)) ||
+                plan.Exclusive < -1 || (plan.Exclusive >= 0 && ((uint)plan.Exclusive >= (uint)body.ComparisonLoans.Count ||
+                    body.ComparisonLoans[plan.Exclusive].Mode != LoanRequirement.Uniq || body.ComparisonLoans[plan.Exclusive].Projection != i || plan.Output < 0)) ||
+                plan.Update < -1 || (plan.Update >= 0 && (plan.Update >= body.ElementUpdates.Count || plan.Output < 0 || plan.Write < 0 || plan.Exclusive < 0)) ||
                 (plan.Output >= 0 && plan.Write >= 0 && plan.Update < 0) ||
                 this.elementOperations[plan.Operation] >= 0 ||
                 body.Operations[plan.Operation] is not { Kind: OwnershipOperationKind.ProjectElement, Source: BinaryKoto source, Input: -1 } operation ||
@@ -195,7 +197,18 @@ internal sealed partial class BodyLowering
                 return false;
             }
 
-            last = value;
+            var release = plan.Write + 1;
+            if (plan.Exclusive < 0 || release >= body.Operations.Count || plan.Write != value + 1 ||
+                body.Operations[release] is not { Kind: OwnershipOperationKind.EndComparisonLoans, Place: -1, Input: -1 } ||
+                !ReferenceEquals(body.Operations[release].Source, source) || body.LoanInputs[release] != plan.Exclusive ||
+                body.LoanStates[release] != body.ComparisonLoans[plan.Loan].Parent ||
+                !body.HasComparisonLoan(plan.Write, plan.Exclusive) ||
+                !ConsecutiveElementEdge(body, value, plan.Write) || !ConsecutiveElementEdge(body, plan.Write, release))
+            {
+                return Fail("Element update must retain its exclusive Loan through the store and release it afterward.", out failure);
+            }
+
+            return true;
         }
         else if (source is not BinaryKoto { Akind: KotoKind.Equals } assignment ||
             !ReferenceEquals(KotoHelper.UnwrapParentheses(assignment.Left), target) || !ReferenceEquals(source.BoundType, BoundType.Unit) ||
@@ -254,11 +267,11 @@ internal sealed partial class BodyLowering
             return Fail("Element update has no matching RHS or increment constant.", out failure);
         }
 
-        if ((uint)update.Result >= (uint)body.Operations.Count || update.Result != plan.Write + 1 ||
+        if ((uint)update.Result >= (uint)body.Operations.Count || update.Result != plan.Write + 2 ||
             body.Operations[update.Result] is not { Kind: OwnershipOperationKind.Produce, Input: -1 } result ||
             (uint)result.Place >= (uint)body.Places.Count || body.Places[result.Place].Kind != OwnershipPlaceKind.Temporary ||
             !ReferenceEquals(result.Source, source) || !ReferenceEquals(ValueType(body, update.Result), source.BoundType) ||
-            !ConsecutiveElementEdge(body, plan.Write, update.Result) ||
+            !ConsecutiveElementEdge(body, plan.Write + 1, update.Result) ||
             (unary ? body.Values[update.Result] is not { Kind: OwnershipValueKind.Alias, Count: 1 } ||
                 Input(body, update.Result, 0) != (source.Akind is KotoKind.PostfixIncrement or KotoKind.PostfixDecrement ? plan.Output : value)
                 : body.Values[update.Result].Kind != OwnershipValueKind.None))
@@ -283,7 +296,7 @@ internal sealed partial class BodyLowering
         var plan = body.Projections[index];
         var loan = body.ComparisonLoans[plan.Loan];
         var write = operation.Kind == OwnershipOperationKind.WriteElement;
-        if ((!write && !body.HasComparisonLoan(id, plan.Loan)) ||
+        if ((!write && !body.HasComparisonLoan(id, !address && plan.Exclusive >= 0 ? plan.Exclusive : plan.Loan)) ||
             (body.IsReachable(id) && ((body.GetInputState(id, plan.Root) & PlaceState.MustInit) == 0 ||
                 !this.Dominates(loan.Read, id) ||
                 (address ? (plan.Parent >= 0 && !this.Dominates(body.Projections[plan.Parent].Operation, id)) ||
@@ -302,7 +315,7 @@ internal sealed partial class BodyLowering
             if (plan.Update >= 0)
             {
                 var update = body.ElementUpdates[plan.Update];
-                if (!body.HasComparisonLoan(update.Right, plan.Loan) || !body.HasComparisonLoan(input, plan.Loan) ||
+                if (!body.HasComparisonLoan(update.Right, plan.Exclusive) || !body.HasComparisonLoan(input, plan.Exclusive) ||
                     (body.IsReachable(id) && (!this.Dominates(plan.Output, update.Right) || !this.Dominates(update.Right, input) || !this.Dominates(input, id))))
                 {
                     return Fail("Element update requires ordered old/RHS/computed values under its access Loan.", out failure);

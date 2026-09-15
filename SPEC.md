@@ -70,3 +70,5 @@ For the first executable program, start with [minimal console output](spec/22-co
 Implementation coverage is maintained in [STATUS.md](STATUS.md), separately from language conformance. Parser support alone establishes neither Binding, constant evaluation, ownership checking, nor execution.
 
 Executable aggregate examples include [Copy element reads](examples/ElementReads/README.md), [Copy element assignments](examples/ElementAssignments/README.md), and [numeric element updates](examples/ElementUpdates/README.md). Their documented implementation limits do not narrow the language rules in Chapters 4, 13 and 15.
+
+Numeric element updates retain the [exclusive Loan required by indexing](spec/04-arrays-indexing-and-slices.md#464-bounds-evaluation-and-failure) through writeback. Aliased RHS access is subject to [Loan conflicts](spec/15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts); current implementation coverage and conservative root-level restrictions are recorded in [STATUS.md](STATUS.md).

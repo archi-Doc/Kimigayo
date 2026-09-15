@@ -55,7 +55,8 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                             return;
                         }
 
-                        x.SetOutput<ConsoleAndFileLogger>();
+                        // x.SetOutput<ConsoleAndFileLogger>();
+                        x.SetOutput<ConsoleLogger>();
                     });
                 }
             });

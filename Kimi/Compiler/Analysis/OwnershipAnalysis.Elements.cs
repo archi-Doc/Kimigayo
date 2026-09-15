@@ -18,12 +18,22 @@ public sealed partial class OwnershipAnalysis
 
         var depth = this.comparisonDepth++;
         var projection = this.LocateElement(target);
+        if (projection >= 0)
+        {
+            this.BeginElementUpdate(projection);
+        }
+
         var previous = this.Value(this.CopyElement(target, projection));
         // A transfer can leave a checking continuation; still check the written RHS there.
         var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right))
             : previous >= 0 ? this.IncrementOne(source) : -1;
         var updated = previous >= 0 && right >= 0 && this.flow!.Nodes[source].CanCompleteNormally
             ? this.ComputeUpdate(source, type, previous, right, operation) : -1;
+        if (updated >= 0)
+        {
+            this.StoreElement(source, projection, updated);
+        }
+
         this.EndComparisonLoans(depth, source);
         this.comparisonDepth = depth;
         if (updated < 0)
@@ -31,7 +41,6 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        this.StoreElement(source, projection, updated);
         var result = this.UpdateResult(source, previous, updated);
         var index = this.body.ElementUpdates.Count;
         this.body.ElementUpdates.Add(new(projection, right, this.Value(updated), this.Value(result)));
@@ -74,6 +83,8 @@ public sealed partial class OwnershipAnalysis
     private void StoreElement(Koto source, int projection, int input)
     {
         var plan = this.body.Projections[projection];
+        // Register the only authorized write before conflict checking the emitted operation.
+        this.body.Projections[projection] = plan with { Write = this.body.Operations.Count };
         var write = this.Emit(OwnershipOperationKind.WriteElement, source, plan.Root, input);
         if (ScalarResult(this.body.Places[input].Type))
         {
@@ -81,6 +92,22 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.body.Projections[projection] = plan with { Write = write };
+    }
+
+    private void BeginElementUpdate(int projection)
+    {
+        var plan = this.body.Projections[projection];
+        var access = this.body.ComparisonLoans[plan.Loan];
+        // Bounds resolution finishes at ProjectElement. Replace only this access's
+        // shared protection; all enclosing Loans retain their independent lifetimes.
+        var loan = this.body.ComparisonLoans.Count;
+        this.body.ComparisonLoans.Add(new(plan.Operation, plan.Root, access.Parent, access.Depth, LoanRequirement.Uniq, Access: true, Projection: projection));
+        this.body.Projections[projection] = plan with { Exclusive = loan };
+        this.body.LoanStates[plan.Operation] = loan;
+        if (this.body.ElementUpdateLoanConflicts(loan))
+        {
+            this.body.ReportIssue(new(this.body.Operations[plan.Operation].Source, OwnershipFailure.ComparisonLoanConflict));
+        }
     }
 
     private int ElementValue(BinaryKoto source)

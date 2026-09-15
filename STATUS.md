@@ -179,11 +179,15 @@ SPEC §13.7.2に従い、位置取得・境界検査・旧値Copy・RHS評価・
 
 LocateElement・CopyElement・StoreElementを読み取り/単純代入/更新で共有し、数値計算と増減結果生成も通常local更新と共通化した。射影計画に更新の参照を追加し、再利用するElementUpdates表がRHS・計算・結果を結ぶ。中間集成型のCopy、要素別生存flag、更新専用のLLVM演算は追加しない。親の初期化・所有責任を維持する。
 
-Loweringは更新元source、演算子、旧値とRHS、型、唯一の射影所有者、Loanと支配関係、計算→自身のLoan解放→store→結果の連続edge、前置/後置の結果選択を照合する。単純代入のRHS確保順序の検証も維持する。不正計画はIR出力前に拒否し、再解析で回復する。
+Loweringは更新元source、演算子、旧値とRHS、型、唯一の射影所有者、Loanと支配関係、計算→store→自身のLoan解放→結果の連続edge、前置/後置の結果選択を照合する。単純代入のRHS確保順序の検証も維持する。不正計画はIR出力前に拒否し、再解析で回復する。
 
-アクセス保護はRHSと計算が終わるまで継続する。同じ親の共有読み取りと別rootの更新は許可し、同じ親のMove・書き込みは兄弟要素でも保守的に拒否する。通常transferは放棄したアクセスのLoanをcleanup前に終了する。境界/演算Abort、RHS/添字のtransfer、非停止cleanupでは後続storeを行わない。添字がNeverになっても代入先の静的型を保持し、shiftのNever RHSも通常transferとして扱う。
+添字評価中は共有保護とし、最終射影の境界検査成功後に自身の保護を排他的Loanへ切り替える。排他的Loanは旧値取得・RHS・計算・storeまで保持し、そのアクセス自身のstoreだけを許可する。既存の外側Loanは解除せず、同じ親の別アクセスが生存していれば排他取得を拒否する。新しいLLVM命令や値スロットは不要で、既存Loan表と射影の整数IDを再利用する。
 
-[ElementUpdateEmissionTest](xUnitTest/Tests/ElementUpdateEmissionTest.cs) は97件。全整数幅、floatのNaN/無限大/符号付き0、評価回数/順序、shift幅、演算/境界Abort、親の破棄監査、Loan競合、defer・到達不能・transfer・非停止、不正計画を検証する。入れ子更新とdeferを含むwarm Bind、所有権解析＋IR生成は各128回で0 B。throughputの改善率は未測定。Non-Copy要素操作、部分Move/再初期化、借用・一時receiver、Property、動的collectionは未対応。
+`a[0] += a[0]` は仕様の排他的Loanと競合するため拒否する。RHSの関数引数への親Copyやdefer内の読み取りにも適用する。今回もroot単位の保守的な判定であり、同じ親の兄弟要素への読み取り/Copy/Move/書き込みを拒否する。仕様の静的非重複経路による許可は未実装。別rootの更新と添字評価中の共有読み取りは許可する。通常transferは放棄したアクセスのLoanをcleanup前に終了する。境界/演算Abort、RHS/添字のtransfer、非停止cleanupでは後続storeを行わない。添字がNeverになっても代入先の静的型を保持し、shiftのNever RHSも通常transferとして扱う。
+
+初回実装ではRHS中も共有保護を用いて自己読み取りを許可していたが、§4.6.4/§15.6.2の排他的Loan規則との不整合を修正した。単純代入は現行仕様のRHS先行を維持する。要素更新前に必要な値をlocalへCopyする実行例に修正した。
+
+[ElementUpdateEmissionTest](xUnitTest/Tests/ElementUpdateEmissionTest.cs) は114件。全整数幅、floatのNaN/無限大/符号付き0、評価回数/順序、shift幅、演算/境界Abort、親の破棄監査、Loan競合、defer・到達不能・transfer・非停止、不正計画を検証する。排他取得前後とstore後のLoan状態、自己読み取り/親Copyの拒否、通常transferでの解除、改変計画の拒否も含む。入れ子更新とdeferを含むwarm Bind、所有権解析＋IR生成は各128回で0 B。throughputの改善率は未測定。Non-Copy要素操作、部分Move/再初期化、借用・一時receiver、Property、動的collectionは未対応。
 
 <a id="c2-builds-modules-and-source-artifacts"></a>
 <a id="c11-executable-preparation-and-sequence-review-2026-09-09"></a>
@@ -220,19 +224,20 @@ Loweringは更新元source、演算子、旧値とRHS、型、唯一の射影所
 
 ### 7.1. 数値要素更新の確認（2026-09-15）
 
-§4.5の実装、通常local更新との共通化、および§4.3–4.4の要素読み取り/単純代入を検証した。
+§4.5の排他的Loan修正と、§4.3–4.4の要素読み取り/単純代入の回帰を検証した。自己読み取りを成功扱いした旧fixtureは生成物から除外し、事前Copyの正常例とコンパイル拒否テストへ置き換えた。
 
 | 検証 | 結果 |
 | --- | --- |
 | Solution build（Debug / Release） | 各成功、警告0・エラー0 |
-| managed test（Debug / Release） | 各4,451成功、失敗0・skip0。新規ElementUpdateEmissionTestは97件 |
-| 要素更新＋既存要素読み取り/単純代入のLLVM verifier・通常native O0/O2 | 160 fixture、320実行成功。更新65 fixture・130実行、単純代入54 fixture・108実行、読み取り41 fixture・82実行。破棄監査・境界/演算Abort・タイムアウト付き非停止を含む |
-| 共通化した通常local更新のnative回帰 | IntegerValues 10 fixture、WideOperations 2 fixture、FloatArithmetic 2 fixture、計28回のO0/O2実行成功。要素アクセスと合わせて174 fixture・348実行 |
+| managed test（Debug / Release） | 各4,468成功、失敗0・skip0。ElementUpdateEmissionTestは17件追加して114件 |
+| 要素更新＋既存要素読み取り/単純代入のLLVM verifier・通常native O0/O2 | 163 fixture、326実行成功。更新68 fixture・136実行、単純代入54 fixture・108実行、読み取り41 fixture・82実行。破棄監査・境界/演算Abort・タイムアウト付き非停止を含む |
 | warm allocation | 入れ子要素更新・選択RHS・deferを含むBind、およびOwnership＋IR生成を各128回測定し0 B |
 | ElementUpdatesのCLI build/run | Release/O2成功。`element updates complete`を出力してexit 0 |
 | NativeAOT・新規throughput benchmark | 未実行 |
 
-再現は下記§7.2の構成ごとのbuild→testに加え、生成済みfixtureへ `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'` を適用する。回帰対象には同scriptのpatternを `IntegerValues*.ll`、`WideOperations*.ll`、`FloatArithmetic*.ll` に替えて順に適用する。CLI例は [ElementUpdates](examples/ElementUpdates/README.md) を参照。
+再現は下記§7.2の構成ごとのbuild→testに加え、生成済みfixtureへ `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'` を適用する。旧実装で生成済みの `ElementUpdateSelfRead.*` は削除してから再生成する。CLI例は [ElementUpdates](examples/ElementUpdates/README.md) を参照。
+
+§4.5の初回実装時はmanaged各4,451件、Element系160 fixture/320実行、通常local更新（IntegerValues/WideOperations/FloatArithmetic）14 fixture/28実行が成功した。ただし、この時点の自己読み取り許可は上記のLoan修正前であり、仕様適合の根拠にはしない。
 
 直前の§4.4実装時はmanaged各4,354件、Element系95 fixture/190実行、AggregateFunction系59 fixture/118実行が成功。ElementAssignments例もRelease/O2で期待出力・exit 0を確認した。
 

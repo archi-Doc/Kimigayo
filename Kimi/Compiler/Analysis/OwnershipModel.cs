@@ -333,7 +333,8 @@ internal readonly record struct OwnershipResultWrite(int Operation, int Declare)
 
 // Persistent stack links preserve independent branch and checking-region environments.
 // Calls, comparisons, guard inspection and element access share the same lexical chain.
-internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1, bool Access = false);
+// Read anchors acquisition: Read/Borrow for shared Loans, final ProjectElement for an update.
+internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1, bool Access = false, int Projection = -1);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
 
@@ -341,7 +342,8 @@ internal readonly record struct OwnershipStringComparison(int Operation, int Lef
 
 // Parent is another projection index. Output is the final Copy read, Write the replacement.
 // An update has both and links its numeric calculation/result through ElementUpdates.
-internal readonly record struct OwnershipProjection(int Operation, int Root, int Parent, int Index, int Element, int Loan, int Output = -1, int Write = -1, int Update = -1);
+// Loan protects location; Exclusive replaces that protection after final bounds resolution.
+internal readonly record struct OwnershipProjection(int Operation, int Root, int Parent, int Index, int Element, int Loan, int Output = -1, int Write = -1, int Update = -1, int Exclusive = -1);
 
 // A completed numeric update links one projection's Copy and store to its calculation/result.
 internal readonly record struct OwnershipElementUpdate(int Projection, int Right, int Computation, int Result);

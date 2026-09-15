@@ -115,7 +115,7 @@ public sealed partial class OwnershipAnalysis
         return -1;
     }
 
-    private void RecordComparisonState(OwnershipOperationKind kind, Koto source, int place, int input, AcquisitionKind acquisition)
+    private void RecordComparisonState(Koto source)
     {
         if (this.body.LoanStates.Count == 0)
         {
@@ -127,7 +127,7 @@ public sealed partial class OwnershipAnalysis
         this.body.LoanStates.Add(head);
         for (var loan = head; loan >= 0; loan = this.body.ComparisonLoans[loan].Parent)
         {
-            if (OwnershipBody.ConflictsWithComparison(kind, place, input, acquisition, this.body.ComparisonLoans[loan].Place, this.body.ComparisonLoans[loan].Mode, this.body.Operations[^1].LoanMode))
+            if (this.body.ConflictsWithLoan(this.body.Operations.Count - 1, loan))
             {
                 // The diagnostic is deliberately Place-independent, matching ReportIssue's key.
                 this.body.ReportIssue(new(source, OwnershipFailure.ComparisonLoanConflict));
