@@ -140,15 +140,17 @@ func test<T>(box: Box<T>) -> ()
 
 ## 11.2. Accessor functions
 
-Custom and computed accessors explicitly declare receiver, input, and result Types; bodies infer none of them. Both accessors use the common Body (§14.2). A single-item getter follows its fixed declared return Type; a setter discards its single-item expression and completes with Unit. Explicit returns still fit the declared result. Default/optional parameters are forbidden. Static accessors have no receiver. A setter's value parameter is an initialized immutable binding with ordinary argument acquisition and cleanup.
+Custom and computed accessors declare input and result Types explicitly; the receiver may use the fixed shorthand below. Bodies infer none of these Types. Both accessors use the common Body (§14.2). A single-item getter follows its fixed declared return Type; a setter discards its single-item expression and completes with Unit. Explicit returns still fit the declared result. Default/optional parameters are forbidden. Static accessors have no receiver. A setter's value parameter is an initialized immutable binding with ordinary argument acquisition and cleanup.
+
+In an instance Property, an accessor signature without a written receiver inserts `self: ref/Self` for `get`, or `self: uniq/Self` before `value` for `set`. This applies to stored custom accessors, computed accessors, and explicit Contract requirement signatures. Thus `get() -> T` and `set(value: U) -> ()` retain an instance receiver and bind contextual `self` in their bodies and Origin annotations. The containing Property determines instance/static kind; group/rootgroup accessors remain receiverless. An explicit receiver Type remains available and must satisfy the existing accessor restrictions. Parameter lists, setter input Types, and result Types are still required for custom/explicit requirement signatures; bare `get`/`set` retain their standard-accessor rules. No receiver Type is inferred from the body, and operations requiring a stronger receiver do not change this default. Origin completion, signature matching, and call/borrow behavior are identical to the expanded signature, with receiver input slot zero.
 
 Stored instance custom get uses `self: ref/Self` and returns storage Type T, which must be Copy. Custom set uses `self: uniq/Self, value: T` and returns Unit. Static forms are `get() -> T` and `set(value: T) -> ()`.
 
 ```kimi
 public var level: i32 = 0
-    get(self: ref/Self) -> i32
+    get() -> i32
         return storage
-    set(self: uniq/Self, value: i32) -> ()
+    set(value: i32) -> ()
         storage = clamp(value, 0, 100)
 ```
 
@@ -177,9 +179,9 @@ Computed has no storage, initializer, bodyless standard accessor, or inline has 
 struct Temperature
     private var celsius: f64 = 0.0
     public computed fahrenheit: f64
-        get(self: ref/Self) -> f64
+        get() -> f64
             return self.celsius * 1.8 + 32.0
-        set(self: uniq/Self, value: f64) -> ()
+        set(value: f64) -> ()
             self.celsius = (value - 32.0) / 1.8
 
 struct Holder

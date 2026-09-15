@@ -220,6 +220,11 @@ public sealed partial class Binding
     {
         switch (syntax)
         {
+            case SyntaxFormKoto { Akind: KotoKind.InferredType } when
+                scope.Owner is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol: { ReceiverIndex: >= 0 } functionSymbol } function &&
+                ReferenceEquals(function.Parameters[functionSymbol.ReceiverIndex].Type, syntax):
+                // Bare self has a fixed shared receiver Type; the body supplies no inference.
+                return this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [this.SelfType(functionSymbol.Scope.Owner.BoundSymbol!)]);
             case SyntaxFormKoto { Akind: KotoKind.RootName } root when root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto rootedGeneric:
                 var rootDefinition = this.RootTypeName(rootedGeneric.Identifier!, true);
                 var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);

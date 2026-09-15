@@ -817,10 +817,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
                 foreach (var accessor in propertyKoto.Accessors)
                 {
-                    if (accessor.HasExplicitSignature &&
-                        (accessor.ReceiverType is not null) != (this is StructKoto or ContractKoto))
+                    if (accessor.ReceiverType is not null && this is not (StructKoto or ContractKoto))
                     {
-                        accessor.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "instance accessors require self; static accessors omit self");
+                        accessor.AddDiagnostic(DiagnosticCode.UnexpectedToken_Kd, "static accessors omit self");
                     }
                 }
 

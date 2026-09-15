@@ -58,6 +58,16 @@ A normal transfer that abandons argument evaluation destroys still-owned prepare
 
 A function directly in a struct/enum, or a Contract function requirement, is an instance function exactly when a parameter’s **internal Name** is self; otherwise it is a type function. Allow at most one self, at any written position, with no rename, default, or optional marker. Its normalized Type must be Self, ref/Self, uniq/Self, or a permitted object-Semantics Self form. Reject unrelated targets, extra reference layers, raw pointers, and unconstrained generic receiver Semantics. Origin annotations follow normal parameter rules. In groups/rootgroups or local functions without active contextual self, the parameter name self has no instance-member meaning.
 
+A receiver written as bare `self` is shorthand for `self: ref/Self`. This fixes a shared-borrow receiver before checking the body; no body-based Type or ownership inference occurs. It is allowed only at an instance function's receiver position, including Contract requirements and full specializations, and retains that written parameter position. All other named function parameters require explicit Types. Group/rootgroup functions, local functions, and constructors cannot use this shorthand; anonymous functions retain their separate parameter-inference rules. An explicit receiver Type overrides the default, including `uniq/Self` or owning `Self`; explicit Origin annotations require the typed form. The shorthand has the same Signature, input Origin, callable Type, and invocation rules as its expansion. Omitting the entire receiver parameter from an ordinary function still declares a type function.
+
+```kimi
+struct Meter
+    var measured: i32
+    func read(self) -> i32 => self.measured
+    func update(self: uniq/Self, value: i32) => self.measured = value
+    func constant() -> i32 => 0 // Type function: no receiver.
+```
+
 For `receiver.method(arguments)`, evaluate and adapt the receiver first, recording it at the self parameter's declared position. Match the explicit positional/named arguments against the remaining parameters in their written order; self cannot also be supplied by an argument label. Defaults then follow ordinary order. The source receiver is evaluated first regardless of its parameter position. Cleanup inside the callee still uses the full written parameter order.
 
 A Type-qualified instance function reference is unbound: a call through `Type.method` supplies all parameters explicitly in their written positions, including self at its declared position, with ordinary argument order and receiver compatibility checks. An unbound function value likewise retains self as an ordinary position in its callable signature; it implicitly captures no receiver and remains subject to unsafe-function restrictions. `value.method` without invocation does not form a bound-method value in this revision. This does not introduce extension functions, implicit self lookup, or a conversion for an otherwise incompatible object receiver.

@@ -243,8 +243,9 @@ public static partial class Parser
                 }
             }
 
-            var hasType = reader.TryConsume(TokenKind.Colon, out _, !anonymous);
-            if (!hasType && !anonymous)
+            var allowsReceiverShorthand = !anonymous && !constructor && externalName == "self" && internalName == "self" && !isOptional;
+            var hasType = reader.TryConsume(TokenKind.Colon, out _, !anonymous && !allowsReceiverShorthand);
+            if (!hasType && !anonymous && !allowsReceiverShorthand)
             {
                 goto Exit;
             }

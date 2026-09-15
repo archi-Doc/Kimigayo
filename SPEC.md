@@ -36,6 +36,8 @@ For the first executable program, start with [minimal console output](spec/22-co
 - [10. Overload resolution and inference](spec/10-overload-resolution-and-inference.md)
 - [11. Properties](spec/11-properties.md)
 
+Receiver shorthand is defined in [§7.3](spec/07-functions-and-callable-values.md#73-explicit-receivers) for bare `self` in instance functions and [§11.2](spec/11-properties.md#112-accessor-functions) for omitted accessor receivers.
+
 ## Part IV. Expressions and control flow
 
 - [12. Expressions](spec/12-expressions.md)

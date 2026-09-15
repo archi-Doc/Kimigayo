@@ -8,6 +8,8 @@
 
 現ソースと対応テストで確認した範囲を記す。字句/構文、Binding、所有権、LLVM生成、native実行は別段階であり、前段の対応だけで実行可能とはしない。仕様は [SPEC.md](SPEC.md)、全体計画は [PLAN.md](PLAN.md)。旧C.*リンクは対応分野へ接続する。
 
+receiver省略記法（2026-09-15）: instance関数・Contract関数requirementの `self` を `self: ref/Self` としてBindingし、instance Propertyの `get()` / `set(value: T)` はそれぞれ `ref/Self` / `uniq/Self` のreceiverを補完する。stored custom・computed・明示Contract accessorに対応し、group/rootgroupのaccessorはreceiverなしのまま。明示receiver、引数位置、Origin補完、通常関数のreceiver省略によるtype function判定を維持する。§7.3・§11.2・構文付録を更新。ReceiverShorthand / PropertyRevisionParse / PropertyBinding / FuncDeclarationParse / InheritedReceiverBinding / ContractBinding / TypeBinding / KotonohaSerializationの関連390件が成功し、省略形のparse/write/parse・保存/再読込・再Bindを確認。省略形を含むwarm Bindingの追加割り当ては0 bytes。一般accessor呼出の式検査・所有権・生成やspecialization全体の既存制限は継続し、この変更はそれらの実行対応を拡張しない。NativeAOTテストは実行していない。
+
 <a id="c1-coverage-summary"></a>
 <a id="c3-lexical-forms-and-types"></a>
 <a id="c8-specification-review-integration-2026-09-08"></a>

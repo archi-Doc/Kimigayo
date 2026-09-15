@@ -151,7 +151,7 @@ ContractRequirement  := FunctionRequirement | PropertyRequirement
 FunctionRequirement  := "unsafe"? "func" Name GenericParameters? OriginParameters?
                         "(" TrailingList<RequirementParameter>? ")" ("->" Type)?
                         RequirementConstraints?
-RequirementParameter := Name ("=>" Name)? ":" Type
+RequirementParameter := Name ("=>" Name)? ":" Type | ReceiverShorthand
 RequirementConstraints := IndentedList<ConstraintClause>
 PropertyRequirement  := "property" Name ":" Type
                         ("has" RequiredAccessor ("," RequiredAccessor)*
@@ -189,12 +189,14 @@ ForeignFunctionDeclaration := FunctionHeader
 SpecializationDeclaration := "specialize" "func" Name TypeArguments
                             "(" TrailingList<SpecializationParameter>? ")"
                             ("->" Type)? SpecializationBody
-SpecializationParameter := Name ("=>" Name)? ":" Type
+SpecializationParameter := Name ("=>" Name)? ":" Type | ReceiverShorthand
 SpecializationBody   := ExecutableBody
 FunctionBody         := Body<FunctionItem>
 Parameter            := Attribute* ParameterCore
 ParameterCore        := Name ("=>" Name)? ":" Type ("=" Expression)?
                       | Name "?" ":" Type "=" Expression
+                      | ReceiverShorthand
+ReceiverShorthand    := "self"
 ConstraintClause     := ConstraintSubject "is" IsRequirement
 ConstraintSubject    := Name | "Self" | AssociatedTypeReference
 IsRequirement        := "not" Requirement | PositiveRequirement
@@ -229,6 +231,8 @@ UnattributedDeclaration := GroupDeclaration | RootGroupDeclaration
 ```
 
 Modifier placement and compound-access combinations are constrained by [accessibility](../09-names-signatures-and-access.md#93-accessibility-and-reachability), even where the shared grammar uses `Access`.
+
+`ReceiverShorthand` is permitted only for an instance function receiver under [§7.3](../07-functions-and-callable-values.md#73-explicit-receivers), including Contract requirements and full specializations. It expands to `self: ref/Self` at its written position. The shared Parameter grammar does not permit it on constructors, local functions, or group/rootgroup functions.
 
 AttributePrefix is allowed only on the declarations and parameters enumerated in §6.5; the shared Declaration wrapper does not authorize Attributes on constructors, deinit, or explicit specializations. Attribute-bearing functions in executable/enum lists use AttributedFunctionDefinition. ForeignFunctionDeclaration requires exactly the LibraryImport form of §22.3 and cannot appear in those lists. `open` applies only to structures. `BaseClause` has the semantic restrictions in [inheritance](../06-declarations-and-containers.md#622-inheritance-and-open-structures); unavailable declaration modifiers use §2.5.1's diagnostic recognition, not grammar productions.
 
@@ -387,7 +391,7 @@ AccessorReceiver     := "self" ":" Type
 AccessorBody         := ExecutableBody
 ```
 
-Each concrete accessor occurs at most once, in either order. Let forbids set; var supplies omitted standard get/set. A bodyless standard accessor has no explicit signature. Custom accessors require full signatures; stored receiver/Copy/Type restrictions follow §11.2. Static accessors omit self. Computed requires a custom get and optional custom set, with no initializer or inline has. Stored Type omission requires an initializer; static storage always requires one. Attributes/containers follow §6.5 and §11; unavailable modifiers follow §2.5.1.
+Each concrete accessor occurs at most once, in either order. Let forbids set; var supplies omitted standard get/set. A bodyless standard accessor has no explicit signature. Custom accessors require parameter lists and explicit input/result Types; stored receiver/Copy/Type restrictions follow §11.2. An omitted instance receiver expands to `self: ref/Self` for get or `self: uniq/Self` for set, including explicit requirement signatures. Static accessors omit self without inserting a receiver. Computed requires a custom get and optional custom set, with no initializer or inline has. Stored Type omission requires an initializer; static storage always requires one. Attributes/containers follow §6.5 and §11; unavailable modifiers follow §2.5.1.
 
 ## F.7. Origin grammar
 
