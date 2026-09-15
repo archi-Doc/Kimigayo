@@ -14,7 +14,7 @@ internal static partial class LlvmModuleWriter
             output.Write(' ');
             if (instruction.OperandCount == 2)
             {
-                WriteOperand(output, function.GetOperands(instruction)[1]);
+                WriteStorageAddress(output, function, function.GetOperands(instruction)[1]);
             }
             else
             {
@@ -26,15 +26,7 @@ internal static partial class LlvmModuleWriter
             output.Write(' ');
             if (instruction.OperandCount >= 1)
             {
-                var source = function.GetOperands(instruction)[0];
-                if (source.Kind == EmissionOperandKind.SlotAddress)
-                {
-                    WriteSlot(output, function, (int)source.Value);
-                }
-                else
-                {
-                    WriteOperand(output, source);
-                }
+                WriteStorageAddress(output, function, function.GetOperands(instruction)[0]);
             }
             else
             {
@@ -66,7 +58,15 @@ internal static partial class LlvmModuleWriter
 
         Name(output, "  call void @__kimi_drop_aggregate", layout.Id);
         output.Write("(ptr ");
-        WriteSlot(output, function, instruction.Place);
+        if (instruction.OperandCount == 1)
+        {
+            WriteStorageAddress(output, function, function.GetOperands(instruction)[0]);
+        }
+        else
+        {
+            WriteSlot(output, function, instruction.Place);
+        }
+
         output.Write(", ptr @");
         output.Write(constants[instruction.Constant].Name);
         output.Write(", i64 ");

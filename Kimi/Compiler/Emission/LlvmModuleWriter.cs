@@ -206,6 +206,18 @@ internal static partial class LlvmModuleWriter
         }
     }
 
+    private static void WriteStorageAddress(TextWriter output, EmissionFunction function, EmissionOperand address)
+    {
+        if (address.Kind == EmissionOperandKind.SlotAddress)
+        {
+            WriteSlot(output, function, (int)address.Value);
+        }
+        else
+        {
+            WriteOperand(output, address);
+        }
+    }
+
     private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1, EmissionFunction? function = null)
     {
         if (callee.Result != WindowsLowering.Unit.ComputationType)
@@ -238,6 +250,7 @@ internal static partial class LlvmModuleWriter
             switch (operand.Kind)
             {
                 case EmissionOperandKind.Value:
+                case EmissionOperandKind.ElementAddress:
                 case EmissionOperandKind.Argument:
                 case EmissionOperandKind.Float32:
                 case EmissionOperandKind.Float64:

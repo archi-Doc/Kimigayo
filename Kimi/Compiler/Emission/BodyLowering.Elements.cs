@@ -83,7 +83,7 @@ internal sealed partial class BodyLowering
             if ((uint)plan.Operation >= (uint)body.Operations.Count || (uint)plan.Root >= (uint)body.Places.Count ||
                 (uint)plan.Loan >= (uint)body.ComparisonLoans.Count || plan.Parent < -1 || plan.Parent >= i || plan.Output < -1 || plan.Write < -1 ||
                 plan.Exclusive < -1 || (plan.Exclusive >= 0 && ((uint)plan.Exclusive >= (uint)body.ComparisonLoans.Count ||
-                    body.ComparisonLoans[plan.Exclusive].Mode != LoanRequirement.Uniq || body.ComparisonLoans[plan.Exclusive].Projection != i || plan.Output < 0)) ||
+                    body.ComparisonLoans[plan.Exclusive].Mode != LoanRequirement.Uniq || body.ComparisonLoans[plan.Exclusive].Projection != i)) ||
                 plan.Update < -1 || (plan.Update >= 0 && (plan.Update >= body.ElementUpdates.Count || plan.Output < 0 || plan.Write < 0 || plan.Exclusive < 0)) ||
                 (plan.Output >= 0 && plan.Write >= 0 && plan.Update < 0) ||
                 this.elementOperations[plan.Operation] >= 0 ||
@@ -173,12 +173,13 @@ internal sealed partial class BodyLowering
             write.Source.AttributeChain is not null || ElementAccess.WritableRoot(target) is not { } root ||
             !ReferenceEquals(root.BoundSymbol, body.Operations[body.ComparisonLoans[plan.Loan].Read].Source.BoundSymbol) ||
             body.Places[plan.Root] is not { Kind: OwnershipPlaceKind.Local, Mutable: true } ||
-            body.Places[write.Input] is not { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result, Acquisition: AcquisitionKind.Copy } input ||
-            !ReferenceEquals(input.Type, element) || !IsCopyElement(element) ||
+            body.Places[write.Input] is not { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result, Acquisition: AcquisitionKind.Copy or AcquisitionKind.Move } input ||
+            !ReferenceEquals(input.Type, element) ||
+            !(ScalarTypes.Supports(element) || ReferenceEquals(element, BoundType.Unit) || ReferenceEquals(element, BoundType.String) || this.aggregateLayouts.Get(element) is not null) ||
             (IsScalar(element) ? body.Values[plan.Write] is not { Kind: OwnershipValueKind.Alias, Count: 1 }
                 : body.Values[plan.Write].Kind != OwnershipValueKind.None))
         {
-            return Fail("Element replacement requires writable local storage and a secured Copy input of its exact Type.", out failure);
+            return Fail("Element replacement requires writable local storage and a secured supported input of its exact Type.", out failure);
         }
 
         var source = write.Source;
@@ -197,18 +198,7 @@ internal sealed partial class BodyLowering
                 return false;
             }
 
-            var release = plan.Write + 1;
-            if (plan.Exclusive < 0 || release >= body.Operations.Count || plan.Write != value + 1 ||
-                body.Operations[release] is not { Kind: OwnershipOperationKind.EndComparisonLoans, Place: -1, Input: -1 } ||
-                !ReferenceEquals(body.Operations[release].Source, source) || body.LoanInputs[release] != plan.Exclusive ||
-                body.LoanStates[release] != body.ComparisonLoans[plan.Loan].Parent ||
-                !body.HasComparisonLoan(plan.Write, plan.Exclusive) ||
-                !ConsecutiveElementEdge(body, value, plan.Write) || !ConsecutiveElementEdge(body, plan.Write, release))
-            {
-                return Fail("Element update must retain its exclusive Loan through the store and release it afterward.", out failure);
-            }
-
-            return true;
+            last = value;
         }
         else if (source is not BinaryKoto { Akind: KotoKind.Equals } assignment ||
             !ReferenceEquals(KotoHelper.UnwrapParentheses(assignment.Left), target) || !ReferenceEquals(source.BoundType, BoundType.Unit) ||
@@ -218,16 +208,16 @@ internal sealed partial class BodyLowering
             return Fail("Simple element assignment must secure its RHS before locating the destination.", out failure);
         }
 
-        // End only this access Loan, immediately before the store, with no intervening
-        // user operation or alternate edge. Other active Loans keep their conflict checks.
-        var end = plan.Write - 1;
-        if (end <= 0 || last != end - 1 ||
+        // One write operation destroys the complete old element and installs the secured
+        // input. Retain exclusive authority throughout, releasing only after placement.
+        var end = plan.Write + 1;
+        if (plan.Exclusive < 0 || end >= body.Operations.Count || plan.Write != last + 1 ||
             body.Operations[end] is not { Kind: OwnershipOperationKind.EndComparisonLoans, Place: -1, Input: -1 } ||
-            !ReferenceEquals(body.Operations[end].Source, source) || body.LoanInputs[end] != plan.Loan ||
-            body.LoanStates[end] != body.ComparisonLoans[plan.Loan].Parent || body.LoanInputs[plan.Write] != body.LoanStates[end] ||
-            !ConsecutiveElementEdge(body, last, end) || !ConsecutiveElementEdge(body, end, plan.Write))
+            !ReferenceEquals(body.Operations[end].Source, source) || body.LoanInputs[end] != plan.Exclusive ||
+            body.LoanStates[end] != body.ComparisonLoans[plan.Loan].Parent || body.LoanInputs[plan.Write] != plan.Exclusive ||
+            !ConsecutiveElementEdge(body, last, plan.Write) || !ConsecutiveElementEdge(body, plan.Write, end))
         {
-            return Fail("Element replacement must immediately follow its own access Loan release.", out failure);
+            return Fail("Element write must retain its exclusive Loan through placement and release it afterward.", out failure);
         }
 
         return true;
@@ -332,14 +322,31 @@ internal sealed partial class BodyLowering
                 return Fail("Element store input is no longer initialized.", out failure);
             }
 
+            var child = layout.Children[field];
+            var isString = ReferenceEquals(representation, WindowsLowering.String);
+            var destination = new EmissionOperand(EmissionOperandKind.ElementAddress, plan.Operation);
+            if (isString || child is { NeedsDestruction: true })
+            {
+                if (!this.TryGetLocation(operation.Source, directory, constants, out var location))
+                {
+                    return Fail("Element destruction requires a source location.", out failure);
+                }
+
+                AddOwnedDestruction(function, id, destination, location, child);
+            }
+
             if (representation.Layout.Size != 0)
             {
-                if (layout.Children[field] is { } aggregate)
+                if (child is { } aggregate)
                 {
                     var start = function.Operands.Count;
                     function.Operands.Add(new(EmissionOperandKind.SlotAddress, operation.Input));
-                    function.Operands.Add(new(EmissionOperandKind.ElementAddress, plan.Operation));
+                    function.Operands.Add(destination);
                     function.Instructions.Add(new(EmissionOpcode.TransferAggregate, id, OperandStart: start, OperandCount: 2, Aggregate: aggregate));
+                }
+                else if (isString)
+                {
+                    function.AddScalar(EmissionOpcode.MoveString, id, [new(EmissionOperandKind.SlotAddress, operation.Input), destination]);
                 }
                 else
                 {
@@ -347,6 +354,7 @@ internal sealed partial class BodyLowering
                 }
             }
 
+            this.AddStringFlags(function, operation, id);
             return true;
         }
 

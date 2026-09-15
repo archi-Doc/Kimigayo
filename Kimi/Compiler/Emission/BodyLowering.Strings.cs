@@ -191,6 +191,23 @@ internal sealed partial class BodyLowering
                 clear = operation.Input;
                 initialize = operation.Place;
                 break;
+            case OwnershipOperationKind.WriteElement:
+                clear = operation.Input;
+                break;
+        }
+    }
+
+    private static void AddOwnedDestruction(EmissionFunction function, int id, EmissionOperand address, int location, AggregateLayout? aggregate)
+    {
+        if (aggregate is not null)
+        {
+            var start = function.Operands.Count;
+            function.Operands.Add(address);
+            function.Instructions.Add(new(EmissionOpcode.DestroyAggregate, id, Constant: location, OperandStart: start, OperandCount: 1, Aggregate: aggregate));
+        }
+        else
+        {
+            function.AddCall(id, WindowsLowering.DestroyString, [address, new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
         }
     }
 
@@ -408,17 +425,17 @@ internal sealed partial class BodyLowering
             return Fail("String destruction has no source location.", out failure);
         }
 
-        if (aggregate is not null)
+        if (expected != CleanupAction.Conditional)
         {
-            function.Instructions.Add(new(EmissionOpcode.DestroyAggregate, id, operation.Place, location, Aggregate: aggregate, Continuation: expected == CleanupAction.Conditional ? this.continuations[id] : -1));
+            AddOwnedDestruction(function, id, new(EmissionOperandKind.SlotAddress, operation.Place), location, aggregate);
         }
-        else if (expected == CleanupAction.Conditional)
+        else if (aggregate is not null)
         {
-            function.AddScalar(EmissionOpcode.DestroyStringIfLive, id, [new(EmissionOperandKind.Block, this.continuations[id])], place: operation.Place, location: location);
+            function.Instructions.Add(new(EmissionOpcode.DestroyAggregate, id, operation.Place, location, Aggregate: aggregate, Continuation: this.continuations[id]));
         }
         else
         {
-            function.AddCall(id, WindowsLowering.DestroyString, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
+            function.AddScalar(EmissionOpcode.DestroyStringIfLive, id, [new(EmissionOperandKind.Block, this.continuations[id])], place: operation.Place, location: location);
         }
 
         return true;

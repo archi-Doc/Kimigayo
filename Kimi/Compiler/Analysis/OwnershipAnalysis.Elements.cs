@@ -20,7 +20,7 @@ public sealed partial class OwnershipAnalysis
         var projection = this.LocateElement(target);
         if (projection >= 0)
         {
-            this.BeginElementUpdate(projection);
+            this.BeginElementWrite(projection);
         }
 
         var previous = this.Value(this.CopyElement(target, projection));
@@ -62,21 +62,22 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (this.body.Places[input].Acquisition != AcquisitionKind.Copy)
-        {
-            this.Unsupported(assignment);
-        }
-
         var depth = this.comparisonDepth++;
         var projection = this.LocateElement(target);
+        var complete = projection >= 0 && this.flow!.Nodes[assignment].CanCompleteNormally;
+        if (complete)
+        {
+            this.BeginElementWrite(projection);
+            this.StoreElement(assignment, projection, input);
+        }
+
         this.EndComparisonLoans(depth, assignment);
         this.comparisonDepth = depth;
-        if (projection < 0 || !this.flow!.Nodes[assignment].CanCompleteNormally)
+        if (!complete)
         {
             return -1;
         }
 
-        this.StoreElement(assignment, projection, input);
         return this.Temporary(assignment);
     }
 
@@ -92,7 +93,7 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    private void BeginElementUpdate(int projection)
+    private void BeginElementWrite(int projection)
     {
         var plan = this.body.Projections[projection];
         var access = this.body.ComparisonLoans[plan.Loan];
@@ -102,7 +103,7 @@ public sealed partial class OwnershipAnalysis
         this.body.ComparisonLoans.Add(new(plan.Operation, plan.Root, access.Parent, access.Depth, LoanRequirement.Uniq, Access: true, Projection: projection));
         this.body.Projections[projection] = plan with { Exclusive = loan };
         this.body.LoanStates[plan.Operation] = loan;
-        if (this.body.ElementUpdateLoanConflicts(loan))
+        if (this.body.ElementWriteLoanConflicts(loan))
         {
             this.body.ReportIssue(new(this.body.Operations[plan.Operation].Source, OwnershipFailure.ComparisonLoanConflict));
         }

@@ -23,6 +23,8 @@ internal enum EmissionOpcode : byte
 
     /// <summary>First placement of a Static string literal into <c>Place</c>'s slot; <c>Constant</c> is -1 for the empty literal.</summary>
     StoreStaticString,
+
+    /// <summary>Transfer the string handle from the first operand's slot to Place, or to the second operand's element address.</summary>
     MoveString,
     DestroyStringIfLive,
     StoreLiveFlag,
@@ -33,6 +35,8 @@ internal enum EmissionOpcode : byte
 
     /// <summary>Memcpy: zero operands use Place/Constant slots; one supplies the source address; two supply source and destination addresses.</summary>
     TransferAggregate,
+
+    /// <summary>Destroy the exact aggregate Type at Place, or at the sole address operand; only Place supports conditional cleanup.</summary>
     DestroyAggregate,
 
     /// <summary>A direct call of <c>Callee</c> with prepared operands.</summary>

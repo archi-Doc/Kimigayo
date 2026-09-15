@@ -4,7 +4,7 @@ Initialized owned tuples and fixed arrays rooted in a local `var` support simple
 
 Simple assignment secures the right side first, then evaluates the destination path once from left to right. For `values[index()] = make()`, `make()` runs before `index()`. Each array access checks bounds before forming its element address; Unit and zero-size elements retain these checks and all source effects. Assignment returns Unit.
 
-Destination access protects the parent during index evaluation. Moving, replacing or writing that protected parent or its elements is currently rejected, including from an index's deferred cleanup. This conservative root protection does not implement general disjoint-path borrowing. The assignment releases only its own access protection immediately before storing; unrelated Loans remain active.
+Destination access protects the parent during index evaluation. Moving, replacing or writing that protected parent or its elements is rejected, including from an index's deferred cleanup. After bounds resolution, assignment establishes an exclusive Loan for the selected element and retains it through placement. Unrelated Loans remain active; [static disjoint paths](../ElementPaths/README.md) permit independent sibling operations after location.
 
 From the repository root, with the backend prepared:
 
@@ -15,4 +15,4 @@ dotnet run --project Kimi/Kimi.csproj -c Release --no-build -- run examples/Elem
 
 Expected stdout is `element assignments complete` followed by a newline, with exit code 0 and empty stderr.
 
-Numeric compound updates and integer increment/decrement are covered in [ElementUpdates](../ElementUpdates/README.md). Non-Copy element replacement/acquisition, partial Move, incomplete parents, borrowed/temporary receivers, and dynamic collections remain outside this implementation unit. These are implementation limits; the language rules are in [assignment](../../spec/13-operators-and-assignment.md#137-assignment) and [element Places](../../spec/04-arrays-indexing-and-slices.md#461-access-and-length-metadata).
+Numeric compound updates and integer increment/decrement are covered in [ElementUpdates](../ElementUpdates/README.md), and owned Non-Copy element replacement in [ElementReplacements](../ElementReplacements/README.md). Non-Copy element acquisition, partial Move, incomplete parents, borrowed/temporary receivers, and dynamic collections remain unsupported. These are implementation limits; the language rules are in [assignment](../../spec/13-operators-and-assignment.md#137-assignment) and [element Places](../../spec/04-arrays-indexing-and-slices.md#461-access-and-length-metadata).

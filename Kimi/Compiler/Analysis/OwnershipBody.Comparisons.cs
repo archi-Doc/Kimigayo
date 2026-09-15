@@ -38,7 +38,7 @@ public sealed partial class OwnershipBody
         return ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, loan.Place, loan.Mode, operation.LoanMode);
     }
 
-    internal bool ElementUpdateLoanConflicts(int loanId)
+    internal bool ElementWriteLoanConflicts(int loanId)
     {
         var loan = this.ComparisonLoans[loanId];
         for (var head = loan.Parent; head >= 0; head = this.ComparisonLoans[head].Parent)
@@ -94,7 +94,7 @@ public sealed partial class OwnershipBody
             var loan = this.ComparisonLoans[i];
             if (loan.Mode == LoanRequirement.Uniq)
             {
-                if ((uint)loan.Read >= (uint)this.Operations.Count || !this.ValidElementUpdateLoan(i))
+                if ((uint)loan.Read >= (uint)this.Operations.Count || !this.ValidElementWriteLoan(i))
                 {
                     return false;
                 }
@@ -155,7 +155,7 @@ public sealed partial class OwnershipBody
                     }
                 }
                 else if (output < 0 || this.ComparisonLoans[output].Read != id ||
-                    (this.ComparisonLoans[output].Mode == LoanRequirement.Uniq ? !this.ValidElementUpdateLoan(output) : this.ComparisonLoans[output].Parent != input))
+                    (this.ComparisonLoans[output].Mode == LoanRequirement.Uniq ? !this.ValidElementWriteLoan(output) : this.ComparisonLoans[output].Parent != input))
                 {
                     return false;
                 }
@@ -191,7 +191,7 @@ public sealed partial class OwnershipBody
         return true;
     }
 
-    private bool ValidElementUpdateLoan(int id)
+    private bool ValidElementWriteLoan(int id)
     {
         var loan = this.ComparisonLoans[id];
         if (loan.Mode != LoanRequirement.Uniq || !loan.Access || loan.Call is not null || loan.Guard != -1 ||
@@ -215,7 +215,7 @@ public sealed partial class OwnershipBody
             return false;
         }
 
-        return !this.ElementUpdateLoanConflicts(id);
+        return !this.ElementWriteLoanConflicts(id);
     }
 
     private bool ValidGuardLoan(int index)
