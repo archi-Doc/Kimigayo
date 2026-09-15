@@ -24,8 +24,36 @@ public sealed partial class Binding
         _ => null,
     };
 
+    private bool ParameterVisible(BindingSymbol candidate, Koto use)
+    {
+        if (this.defaultBindingDepth == 0 || candidate.Kind != BindingSymbolKind.Parameter || candidate.Scope.Owner is not FunctionKoto function)
+        {
+            return true;
+        }
+
+        var root = use;
+        while (root.Parent is { } parent && !ReferenceEquals(parent, function))
+        {
+            root = parent;
+        }
+
+        if (!ReferenceEquals(root, function.Body) && !ReferenceEquals(root, function.ExpressionBody))
+        {
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (ReferenceEquals(root, function.Parameters[i].DefaultValue))
+                {
+                    return candidate.Slot < i;
+                }
+            }
+        }
+
+        return true;
+    }
+
     private BindingSymbol? Lookup(string name, BindingScope scope, Koto use, bool type, bool core = false)
     {
+        this.importCandidates?.GetValueOrDefault(use)?.Clear();
         for (var current = scope; current is not null; current = current.Parent)
         {
             if ((type ? current.Types : current.Values).TryGetValue(name, out var symbol))
@@ -42,6 +70,11 @@ public sealed partial class Binding
                         continue;
                     }
 
+                    if (!this.ParameterVisible(candidate, use))
+                    {
+                        continue;
+                    }
+
                     if (!this.Accessible(candidate, scope))
                     {
                         continue;
@@ -50,6 +83,11 @@ public sealed partial class Binding
                     return candidate;
                 }
             }
+        }
+
+        if (type && !core && this.ModuleReference(use, name) is { } reference)
+        {
+            return reference;
         }
 
         BindingSymbol? imported = null;
@@ -61,24 +99,37 @@ public sealed partial class Binding
                 continue;
             }
 
-            var target = this.AliasTarget(alias, scope);
+            var target = this.AliasTarget(alias);
             if (target is null || !(type ? target.Types : target.Values).TryGetValue(name, out var candidate))
             {
                 continue;
             }
 
-            if ((core && candidate.Kind == BindingSymbolKind.Container) || !this.Accessible(candidate, scope))
+            candidate = this.AccessibleImport(candidate, scope);
+            if (candidate is null || (core && candidate.Kind == BindingSymbolKind.Container))
             {
                 continue;
             }
 
-            if (imported is not null && imported != candidate)
+            if (!this.MergeImport(use, candidate, ref imported))
             {
-                Fail(use, BindingFailure.Ambiguous, true);
                 return null;
             }
+        }
 
-            imported = candidate;
+        if (imported is not null)
+        {
+            return imported;
+        }
+
+        foreach (var path in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
+        {
+            var target = this.DefaultAliasTarget(use, path);
+            if (target is not null && (type ? target.Types : target.Values).TryGetValue(name, out var candidate) &&
+                this.AccessibleImport(candidate, scope) is { } accessible && (!core || accessible.Kind != BindingSymbolKind.Container) && !this.MergeImport(use, accessible, ref imported))
+            {
+                return null;
+            }
         }
 
         if (imported is not null)
@@ -89,13 +140,15 @@ public sealed partial class Binding
         return type ? name == "Core" ? this.Core.Module : this.Core.Scope.Types.GetValueOrDefault(name) : this.Core.Scope.Values.GetValueOrDefault(name);
     }
 
-    private BindingScope? AliasTarget(AliasKoto alias, BindingScope useScope)
+    private BindingScope? AliasTarget(AliasKoto alias)
     {
-        var scope = this.rootScope;
+        var scope = this.ModuleScope(alias);
+        var declarationScope = scope;
         for (var i = 0; i < alias.QualifiedName.Count; i++)
         {
-            var symbol = i == 0 && alias.QualifiedName[i] == "Core" ? this.Core.Module : scope.Types.GetValueOrDefault(alias.QualifiedName[i]);
-            if (symbol is null || !this.Accessible(symbol, useScope) || !this.scopes.TryGetValue(symbol.Declaration, out var next))
+            var name = alias.QualifiedName[i];
+            var symbol = i == 0 && name == "Core" ? this.Core.Module : scope.Types.GetValueOrDefault(name) ?? (i == 0 ? this.ModuleReference(alias, name) : null);
+            if (symbol is null || !this.Accessible(symbol, declarationScope) || !this.scopes.TryGetValue(symbol.Declaration, out var next))
             {
                 Fail(alias, BindingFailure.MissingName, true);
                 return null;
@@ -170,9 +223,15 @@ public sealed partial class Binding
             return this.Core.Module;
         }
 
-        if (syntax is MemberAccessKoto member && this.RootTypeName(member.Left, false) is { } qualifier && ReferenceEquals(qualifier, this.Core.Module) && TypeSpelling(member.Right) is { } rightName)
+        var scope = this.ModuleScope(syntax);
+        if (syntax is MemberAccessKoto member && this.RootTypeName(member.Left, false) is { } qualifier && this.scopes.TryGetValue(qualifier.Declaration, out var members) && TypeSpelling(member.Right) is { } rightName)
         {
-            var target = this.Core.Scope.Types.GetValueOrDefault(rightName);
+            var target = members.Types.GetValueOrDefault(rightName);
+            if (target is not null && (!this.Accessible(target, scope) || (core && target.Kind == BindingSymbolKind.Container)))
+            {
+                return null;
+            }
+
             member.Left.BoundSymbol = qualifier;
             member.Left.BindingState = BindingState.Resolved;
             member.Right.BoundSymbol = target;
@@ -180,7 +239,13 @@ public sealed partial class Binding
             return target;
         }
 
-        return this.TypeName(syntax, this.rootScope, core);
+        if (TypeSpelling(syntax) is { } name)
+        {
+            var target = scope.Types.GetValueOrDefault(name) ?? this.ModuleReference(syntax, name) ?? this.Core.Scope.Types.GetValueOrDefault(name);
+            return target is not null && (!core || target.Kind != BindingSymbolKind.Container) && this.Accessible(target, scope) ? target : null;
+        }
+
+        return null;
     }
 
     private BoundType? BindType(Koto syntax, BindingScope scope)
@@ -329,7 +394,7 @@ public sealed partial class Binding
                 var length = this.BindLength(array.Length, scope);
                 if (length is null)
                 {
-                    return null;
+                    return Fail(array, BindingFailure.InvalidTypeFormation);
                 }
 
                 return element is null ? null : this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);

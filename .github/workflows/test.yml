@@ -8,6 +8,7 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
     - uses: actions/checkout@v6
@@ -20,4 +21,4 @@ jobs:
     - name: Build
       run: dotnet build --configuration Release --no-restore
     - name: Test
-      run: dotnet test --no-restore --verbosity normal
+      run: dotnet test --project xUnitTest/xUnitTest.csproj --configuration Release --no-build --no-restore --minimum-expected-tests 1 --parallel none

@@ -15,7 +15,27 @@ internal static class FloatingTypes
     {
         var number = source is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)source).Operand as NumberLiteralKoto : source as NumberLiteralKoto;
         bits = 0;
-        return number is { IsInteger: false } && TryLiteral(number.SourceSpelling, source.BoundType, source is PrefixMinusKoto, out bits);
+        return number is not null && TryLiteral(number, source.BoundType, source is PrefixMinusKoto, out bits);
+    }
+
+    internal static bool TryLiteral(NumberLiteralKoto number, BoundType? type, bool negative, out long bits)
+    {
+        if (!number.IsInteger)
+        {
+            return TryLiteral(number.SourceSpelling, type, negative, out bits);
+        }
+
+        bits = 0;
+        if (!Supports(type) || !number.TryGetIntegerMagnitude(out var magnitude))
+        {
+            return false;
+        }
+
+        // Format the exact magnitude into stack storage and parse at the destination
+        // precision. UInt128 -> double -> float would round twice for some integers.
+        Span<char> digits = stackalloc char[39];
+        return magnitude.TryFormat(digits, out var written, provider: CultureInfo.InvariantCulture) &&
+            TryLiteral(digits[..written], type, negative && magnitude != 0, out bits);
     }
 
     internal static bool TryLiteral(ReadOnlySpan<char> source, BoundType? type, bool negative, out long bits)

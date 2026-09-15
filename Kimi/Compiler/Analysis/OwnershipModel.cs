@@ -238,6 +238,8 @@ public sealed partial class OwnershipBody
 
     public bool IsConcrete { get; internal set; }
 
+    internal List<OwnershipIdentity>? Identities { get; set; }
+
     public bool IsReachable(int operation) => this.Reachable[operation];
 
     internal void Reset(FunctionKoto function)
@@ -252,6 +254,7 @@ public sealed partial class OwnershipBody
         this.IncomingEdges.Clear();
         this.OperationSteps.Clear();
         this.Values.Clear();
+        this.Identities?.Clear();
         this.ValueOperands.Clear();
         this.PhiInputs.Clear();
         this.SlotResults.Clear();
@@ -326,6 +329,8 @@ internal readonly record struct OwnershipPhiInput(int Value, int Edge, int Write
 
 // The value is captured before cleanup; Write is the operation that secured it.
 internal readonly record struct OwnershipDelivery(int Operation, int Value, int Write);
+
+internal readonly record struct OwnershipIdentity(ConversionKoto Source, int Place);
 
 // A dynamic expression result lifetime; deferred replicas can share Place but not Declare/Join.
 internal readonly record struct OwnershipSlotResult(int Place, int Declare, int Join, int Start, int Count);

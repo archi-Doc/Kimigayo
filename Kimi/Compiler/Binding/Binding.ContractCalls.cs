@@ -146,11 +146,11 @@ public sealed partial class Binding
         internal bool TypeAccess { get; set; }
     }
 
-    private readonly struct CallCandidates(BindingSymbol first, RequirementGroup? requirements)
+    private readonly struct CallCandidates(BindingSymbol first, RequirementGroup? requirements, List<BindingSymbol>? imports)
     {
-        public Enumerator GetEnumerator() => new(first, requirements);
+        public Enumerator GetEnumerator() => new(first, requirements, imports);
 
-        internal struct Enumerator(BindingSymbol first, RequirementGroup? requirements)
+        internal struct Enumerator(BindingSymbol first, RequirementGroup? requirements, List<BindingSymbol>? imports)
         {
             private BindingSymbol? next = first;
             private int index;
@@ -159,14 +159,15 @@ public sealed partial class Binding
 
             public bool MoveNext()
             {
-                if (requirements is not null)
+                var members = requirements?.Members ?? (imports is { Count: > 0 } ? imports : null);
+                if (members is not null)
                 {
-                    if (this.index == requirements.Members.Count)
+                    if (this.index == members.Count)
                     {
                         return false;
                     }
 
-                    this.Current = requirements.Members[this.index++];
+                    this.Current = members[this.index++];
                     return true;
                 }
 

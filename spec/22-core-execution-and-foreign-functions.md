@@ -249,6 +249,8 @@ Use unique catalog codes, including KIMI_E_ALLOC_SIZE (allocation size exceeds l
 
 Output diagnostics from constants, valid input strings, and small fixed work areas without requiring heap allocation or one concatenated dynamic string. Explicit `$abort(expression)` retains ordinary one-time argument evaluation and outputs the resulting UTF-8 string after KIMI_E_ABORT without translation or escaping its contents. Once Abort starts, do not normally destroy that string.
 
+The Windows implementation's numeric conversion catalog uses `KIMI_E_FLOAT_CONVERSION: Floating conversion out of range` for a finite source that rounds to floating infinity. Float-to-integer failure, including NaN and infinities, uses `KIMI_E_INT_CONVERSION`. These codes identify the failures required by §13.5.4; direct literal fitting failures remain compile-time errors.
+
 TryWriteStderr failure truncates diagnostics and proceeds to Exit(1), with no recursive diagnostic path. Runtime.Exit forwards u32 to ExitProcess and ends its caller block with unreachable. It runs no cleanup; successful shutdown and Abort reach it through their distinct §22.2 paths.
 
 ### 22.5.5. String handle and writeLine

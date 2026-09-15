@@ -19,7 +19,7 @@ namespace Kimi.Compiler;
 /// external Kotonoha dependencies, exposes conditional-compilation variables, and carries
 /// the target information used by later LLVM IR and binary-emission stages.
 /// </remarks>
-public class Compilation
+public partial class Compilation
 {
     /// <summary>The only language version currently implemented by this compiler.</summary>
     public const string CurrentLanguageVersion = "0.0.1";
@@ -130,6 +130,7 @@ public class Compilation
         this.Project = project;
         this.KotonohaArray = project.ProjectFile.KotonohaArray?.ToArray() ?? [];
         this.Kotonoha = new(this, this.Project.Name, string.Empty);
+        this.SourceModules = [this.Kotonoha];
         this.kotonohaIdToKotonoha.AddOrUpdate(this.Kotonoha.Id, this.Kotonoha);
     }
 
@@ -167,6 +168,18 @@ public class Compilation
         this.TargetTriple = TargetTriple.Invalid;
         this.IrTarget = IrTarget.Invalid;
         this.BuildMetadata = null;
+        if (DependencyConfiguration.Validate(this.Project.ProjectFile) is { } dependencyFailure)
+        {
+            this.Kotonoha.DiagnosticCollection.Add(default, DiagnosticCode.InvalidDependencyConfiguration_Kd, dependencyFailure);
+            return false;
+        }
+
+        if (this.Project.ProjectFile.Dependencies.Count != 0 && this.dependencyGraph is null)
+        {
+            this.Kotonoha.DiagnosticCollection.Add(default, DiagnosticCode.UnresolvedDependencyGraph_Kd);
+            return false;
+        }
+
         var languageVersion = this.Project.ProjectFile.LangVersion ?? this.Project.SolutionLanguageVersion ?? CurrentLanguageVersion;
         if (languageVersion != CurrentLanguageVersion)
         {
@@ -185,8 +198,6 @@ public class Compilation
             this.IrTarget = IrTarget.Invalid;
             return false;
         }
-
-        // External Kotonoha dependencies will be loaded here.
 
         // Rebuild target-dependent conditional compilation variables.
         var os = targetTriple.Os switch
@@ -224,7 +235,7 @@ public class Compilation
         this.Variables = new ReadOnlyDictionary<string, BasicValue>(variables);
         this.BuildMetadata = new(target, debug, languageVersion, CompilerVersion, this.Variables);
 
-        return true;
+        return this.PrepareModules();
     }
 
     /// <summary>
@@ -243,7 +254,15 @@ public class Compilation
     /// <param name="types">Type facts supplied by Binding, or syntax-only facts when omitted.</param>
     /// <returns>Definite errors, inferred contracts, and obligations pending further Binding.</returns>
     public ControlFlowAnalysis AnalyzeControlFlow(ControlFlowTypeSystem? types = null)
-        => ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto, types);
+    {
+        var flow = ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto, types);
+        for (var i = 1; i < this.SourceModules.Length; i++)
+        {
+            flow.Append(this.SourceModules[i].RootKoto);
+        }
+
+        return flow;
+    }
 
     /// <summary>Runs final Binding and Bound checking for the complete selected source.</summary>
     /// <returns>The final Binding summary; incomplete semantics never certify success.</returns>
@@ -265,6 +284,7 @@ public class Compilation
 
     internal bool TryResolveValue(IdentifierNameKoto koto, out BasicValue basicValue)
     {
-        return this.Variables.TryGetValue(koto.IdentifierName, out basicValue);
+        var variables = this.moduleVariables?.GetValueOrDefault(koto.CodeContext.Kotonoha) ?? this.Variables;
+        return variables.TryGetValue(koto.IdentifierName, out basicValue);
     }
 }

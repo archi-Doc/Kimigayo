@@ -123,6 +123,10 @@ public enum DiagnosticCode
     DeferredExpansionLimit_Kd,
     ComparisonLoanConflict_Kd,
 
+    InvalidDependencyConfiguration_Kd,
+    UnresolvedDependencyGraph_Kd,
+    InvalidTestDefinition_Kd,
+
     Count, // Last sentinel
 }
 

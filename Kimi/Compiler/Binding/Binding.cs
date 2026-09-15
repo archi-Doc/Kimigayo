@@ -22,7 +22,8 @@ public sealed partial class Binding
     private readonly HashSet<BindingObligation> obligationSet = new();
     private readonly HashSet<Koto> resolvingTypes = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BindingSymbol> borrowVisiting = new(ReferenceEqualityComparer.Instance);
-    private BindingScope rootScope = null!;
+    private Dictionary<Kotonoha, BindingSymbol>? moduleSymbols;
+    private TestSyntaxVisitor? testSyntaxVisitor;
     private bool running;
     private bool coreValid;
 
@@ -121,9 +122,13 @@ public sealed partial class Binding
             }
 
             // The indexer resets every semantic field before any header or expression is evaluated.
-            this.rootScope = this.GetScope(this.compilation.Kotonoha.RootKoto, null);
-            this.indexer.Scope = this.rootScope;
-            this.indexer.Visit(this.compilation.Kotonoha.RootKoto);
+            foreach (var module in this.compilation.SourceModules)
+            {
+                this.indexer.Scope = this.GetScope(module.RootKoto, null);
+                this.indexer.Visit(module.RootKoto);
+            }
+
+            this.IndexModuleReferences();
             this.PrunePatternScopes();
             this.Core.Restore();
             this.coreValid = this.Core.IsValid;
@@ -140,6 +145,7 @@ public sealed partial class Binding
             this.indexer.Visit(this.Core.Option.Declaration);
             this.indexer.Visit(this.Core.Result.Declaration);
             this.indexer.Visit(this.Core.WriteLine.Declaration);
+            this.ValidateDefaultAliases();
             this.BindSchemas();
             this.PrepareContracts();
             this.BindConstraints();
@@ -159,7 +165,11 @@ public sealed partial class Binding
             this.capabilitiesReady = true;
             this.ValidateConformances(mode, false);
             this.ValidateConstraintEnvironments();
-            this.BindNode(this.compilation.Kotonoha.RootKoto, this.rootScope);
+            foreach (var module in this.compilation.SourceModules)
+            {
+                this.BindNode(module.RootKoto, this.scopes[module.RootKoto]);
+            }
+
             this.BindNode(this.Core.WriteLine.Declaration, this.scopes[this.Core.WriteLine.Declaration]);
             this.BindNode(this.Core.Option.Declaration, this.Core.Scope);
             this.BindNode(this.Core.Result.Declaration, this.Core.Scope);
@@ -173,6 +183,7 @@ public sealed partial class Binding
             this.ClearCapabilityResults();
             this.CompleteEnumAcquisitions();
             this.CompletePatternAcquisitions();
+            this.ValidateApiAccess();
             this.Result = this.Check(mode);
             return this.Result;
         }
@@ -315,6 +326,7 @@ public sealed partial class Binding
             {
                 var code = node.BindingFailure switch
                 {
+                    BindingFailure.InvalidTestDefinition => DiagnosticCode.InvalidTestDefinition_Kd,
                     BindingFailure.MissingName or BindingFailure.MissingType => DiagnosticCode.UnresolvedBinding_Kd,
                     BindingFailure.Ambiguous => DiagnosticCode.AmbiguousBinding_Kd,
                     BindingFailure.Duplicate => DiagnosticCode.DuplicateBinding_Kd,
@@ -493,6 +505,28 @@ public sealed partial class Binding
         }
     }
 
+    private sealed class TestSyntaxVisitor(Binding binding) : KotoVisitor
+    {
+        public override void Visit(Koto node)
+        {
+            var marker = node is FunctionKoto function && !TestDefinition.IsValidSyntax(function) ? TestDefinition.Marker(function) : null;
+            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Test" } } attribute &&
+                (attribute.Parent is not FunctionKoto owner || TestDefinition.Marker(owner) is null))
+            {
+                marker = attribute;
+            }
+
+            if (marker is not null)
+            {
+                marker.BindingFailure = BindingFailure.None;
+                Fail(marker, BindingFailure.InvalidTestDefinition);
+                binding.nodes.Add(marker);
+            }
+
+            node.VisitChildren(this);
+        }
+    }
+
     private sealed class IndexVisitor(Binding binding) : KotoVisitor
     {
         private int patternDepth;
@@ -505,6 +539,43 @@ public sealed partial class Binding
             node.BindingFailure = BindingFailure.None;
             node.BoundMeaning = null;
             node.BoundSymbol = null;
+            if (node is FunctionKoto test && TestDefinition.Marker(test) is { } marker)
+            {
+                // Product lookup and analysis never visit the test's signature names or body.
+                test.BoundType = BoundType.Unit;
+                test.BindingState = BindingState.Resolved;
+                if (!TestDefinition.IsValidSyntax(test))
+                {
+                    marker.BindingFailure = BindingFailure.None;
+                    Fail(marker, BindingFailure.InvalidTestDefinition);
+                    binding.nodes.Add(marker);
+                    Fail(test, BindingFailure.InvalidTestDefinition);
+                }
+                else
+                {
+                    for (var attribute = test.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+                    {
+                        if (!ReferenceEquals(attribute, marker))
+                        {
+                            // No Mod marker registry exists yet; selection does not recognize an unknown marker.
+                            attribute.BindingFailure = BindingFailure.None;
+                            Fail(attribute, BindingFailure.Unsupported, true);
+                            binding.nodes.Add(attribute);
+                        }
+                    }
+                }
+
+                test.VisitChildren(binding.testSyntaxVisitor ??= new(binding));
+                return;
+            }
+
+            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Test" } })
+            {
+                Fail(node, BindingFailure.InvalidTestDefinition);
+                binding.nodes.Add(node);
+                return;
+            }
+
             if (node is ConversionKoto conversion)
             {
                 conversion.ConversionBinding = ConversionBinding.None;
@@ -537,7 +608,7 @@ public sealed partial class Binding
             var previous = this.Scope;
             if (node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } && node.CodeContext.SourceDocument is { } source)
             {
-                this.Scope = binding.GetScope(source, binding.rootScope, node.Parent);
+                this.Scope = binding.GetScope(source, binding.ModuleScope(node), node.Parent);
             }
 
             switch (node)
@@ -604,7 +675,7 @@ public sealed partial class Binding
                         }
                     }
 
-                    this.Scope = container.IsRoot ? binding.rootScope : binding.GetScope(node, this.Scope);
+                    this.Scope = container.IsRoot ? binding.ModuleScope(node) : binding.GetScope(node, this.Scope);
                     break;
                 case FunctionKoto function:
                     if (!function.IsGenerated && !function.IsAnonymous)
@@ -613,7 +684,7 @@ public sealed partial class Binding
                         var conditional = this.Scope.Owner as SyntaxFormKoto;
                         if (IsRootMain(function))
                         {
-                            memberScope = binding.rootScope;
+                            memberScope = binding.ModuleScope(node);
                         }
 
                         var symbol = binding.Declare(node, function.Name, BindingSymbolKind.Function, node, memberScope);

@@ -9,4 +9,6 @@ internal enum ConversionBinding : byte
     Integer,
     Floating,
     Abrupt,
+    Numeric,
+    Identity,
 }

@@ -33,6 +33,8 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 context.AddCommand<DefaultCommand>();
                 context.AddCommand<LspCommand, LspCommand.Options>();
                 context.AddCommand<BuildCommand, KimiOptions>();
+                context.AddCommand<CheckCommand, KimiOptions>();
+                context.AddCommand<RestoreCommand, KimiOptions>();
                 context.AddCommand<EmitCommand, KimiOptions>();
                 context.AddCommand<RunCommand, KimiOptions>();
 
@@ -101,7 +103,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
 
             // Main
             var parser = this.Context.CreateSimpleParser(parserOptions);
-            if (!parser.Parse(param.Args))
+            if (!parser.Parse(KimiOptions.ExpandFlags(param.Args)))
             {
                 Environment.ExitCode = 1;
             }

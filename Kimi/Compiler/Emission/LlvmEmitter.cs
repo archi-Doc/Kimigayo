@@ -130,7 +130,7 @@ public sealed class LlvmEmitter
             return "Emission requires current final Binding, startup, control-flow and ownership verification without errors.";
         }
 
-        if (c.KotonohaArray.Length != 0 || startup.OutputKind != OutputKind.Application || startup.Kind is not (StartupKind.Implicit or StartupKind.Explicit) ||
+        if (c.KotonohaArray.Length != 0 || c.SourceModules.Length != 1 || startup.OutputKind != OutputKind.Application || startup.Kind is not (StartupKind.Implicit or StartupKind.Explicit) ||
             c.Kotonoha.RootKoto.NestedContainers.Count != 0)
         {
             return "This partial emitter supports Applications without external modules or declaration containers.";

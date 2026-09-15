@@ -1,0 +1,2 @@
+public group Arithmetic
+    public func twice(value: i32) -> i32 => value + value

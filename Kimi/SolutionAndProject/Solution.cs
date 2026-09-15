@@ -73,8 +73,13 @@ public class Solution
 
     /// <summary>Checks every loaded project's front end without emitting artifacts.</summary>
     /// <returns>Whether the loaded projects pass front-end checks.</returns>
-    public async Task<bool> Check()
-        => await this.BuildCore(false).ConfigureAwait(false);
+    public Task<bool> Check() => this.Check(default);
+
+    /// <summary>Checks every loaded project's front end without emitting artifacts.</summary>
+    /// <param name="cancellationToken">Cancels between compilation targets.</param>
+    /// <returns>Whether the loaded projects pass front-end checks.</returns>
+    public async Task<bool> Check(CancellationToken cancellationToken)
+        => this.AllProjectsLoaded() && await this.BuildCore(false, cancellationToken).ConfigureAwait(false);
 
     /// <summary>Builds native binaries for all selected projects.</summary>
     /// <param name="cancellationToken">Cancels generation and tool execution.</param>
@@ -319,7 +324,7 @@ SolutionLoaed:
         {
             x.KimiOptions = this.KimiOptions;
             x.SolutionLanguageVersion = this.SolutionFile.Configuration.LangVersion;
-            success &= emit ? await x.Generate(cancellationToken) : await x.Check();
+            success &= emit ? await x.Generate(cancellationToken) : await x.Check(cancellationToken);
         }
 
         return success;

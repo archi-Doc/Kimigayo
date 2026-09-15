@@ -19,9 +19,10 @@ internal sealed partial class BodyLowering
 
     private static bool IsScalar(BoundType? type) => ScalarTypes.Supports(type);
 
-    private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => FloatingTypes.Supports(type) ? ArithmeticCheckKind.None : value.Kind switch
+    private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => value.Kind == OwnershipValueKind.Convert
+        ? conversion.Checked ? conversion.Operator == "fptrunc" ? ArithmeticCheckKind.FloatingConversion : ArithmeticCheckKind.Conversion : ArithmeticCheckKind.None
+        : FloatingTypes.Supports(type) ? ArithmeticCheckKind.None : value.Kind switch
     {
-        OwnershipValueKind.Convert when conversion.Checked => ArithmeticCheckKind.Conversion,
         OwnershipValueKind.Binary when value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan => ArithmeticCheckKind.Shift,
         OwnershipValueKind.Binary when value.Operator is KotoKind.Slash or KotoKind.Percent => type is not null && ScalarTypes.Signed(type) ? ArithmeticCheckKind.Division : ArithmeticCheckKind.UnsignedDivision,
         OwnershipValueKind.Binary when value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk => ArithmeticCheckKind.Overflow,

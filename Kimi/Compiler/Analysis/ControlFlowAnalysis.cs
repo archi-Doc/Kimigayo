@@ -142,6 +142,8 @@ public sealed class ControlFlowAnalysis
         }
     }
 
+    internal void Append(Koto root) => this.Visit(root, true);
+
     private static bool IsPointer(ControlFlowType? type)
         => type?.Name.StartsWith(PointerPrefix, StringComparison.Ordinal) == true;
 
@@ -328,6 +330,11 @@ public sealed class ControlFlowAnalysis
 
     private Flow Visit(Koto node, bool reachable, ControlFlowType? expected = null)
     {
+        if (node is FunctionKoto && TestDefinition.Marker(node) is not null)
+        {
+            return new(true, ControlFlowType.Unit);
+        }
+
         expected ??= this.types.GetExpectedType(node);
         if (node is ExpressionKoto && !KotoHelper.IsValueContext(node) && this.IsEffectFree(node) && node.Parent is not ParenthesizedKoto)
         {

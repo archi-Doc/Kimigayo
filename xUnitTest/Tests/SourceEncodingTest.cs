@@ -62,7 +62,7 @@ public class SourceEncodingTest
         {
             File.WriteAllBytes(path, [0x2F, 0x2F, 0x20, 0xED, 0xA0, 0x80]);
             compilation.Project.AddKimiFile(path);
-            Assert.False(await compilation.Project.Check());
+            Assert.False(await compilation.Project.Check(TestContext.Current.CancellationToken));
             var diagnostic = Assert.Single(compilation.Kimigayo.GetOrAddDiagnosticCollection(path).GetArray());
             Assert.Equal(nameof(DiagnosticCode.InvalidSourceEncoding_Kd), diagnostic.Entry.Name);
         }
@@ -80,7 +80,7 @@ public class SourceEncodingTest
     {
         var compilation = Compilation.CreateForTest();
         compilation.Project.AddSource("test.kimi", source);
-        Assert.Equal(expected, await compilation.Project.Check());
+        Assert.Equal(expected, await compilation.Project.Check(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -92,9 +92,9 @@ public class SourceEncodingTest
         {
             File.WriteAllText(path, "let value = 'ab'");
             compilation.Project.AddKimiFile(path);
-            Assert.False(await compilation.Project.Check());
+            Assert.False(await compilation.Project.Check(TestContext.Current.CancellationToken));
             File.WriteAllText(path, "let value = '😀'");
-            Assert.True(await compilation.Project.Check());
+            Assert.True(await compilation.Project.Check(TestContext.Current.CancellationToken));
             Assert.Empty(compilation.Kimigayo.GetOrAddDiagnosticCollection(path).GetArray());
         }
         finally

@@ -83,6 +83,17 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
     internal void SetBases(Koto[]? bases)
     {
+        if (bases is not { Length: > 0 })
+        {
+            return;
+        }
+
+        if (this.bases is { Length: > 0 })
+        {
+            this.HasIncompatibleBindingHeader = true;
+            return;
+        }
+
         this.bases = bases;
         this.Adopt(bases);
     }
@@ -159,14 +170,20 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     }
 
     /// <summary>Applies a parsed declaration header when the corresponding member kind is still empty.</summary>
+    /// <param name="kind">The written declaration kind.</param>
+    /// <param name="modifier">The written modifiers.</param>
     /// <param name="genericArguments">The generic parameters, if declared.</param>
     /// <param name="origins">The origin names, if declared.</param>
-    internal void AddHeader(List<TypeKoto>? genericArguments, List<string>? origins)
+    internal void AddHeader(TokenKind kind, ModifierKind modifier, List<TypeKoto>? genericArguments, List<string>? origins)
     {
+        this.HasIncompatibleBindingHeader |= this.TokenKind != kind;
         if (this.hasBindingHeader)
         {
-            // An enum is a closed declaration, even when repeated headers agree.
-            this.HasIncompatibleBindingHeader |= this is EnumKoto;
+            // Enums and contracts are closed declarations, even when repeated headers agree.
+            this.HasIncompatibleBindingHeader |= this is EnumKoto or ContractKoto;
+            var previous = this.Modifier.ExtractAccessibilityModifiers() == ModifierKind.NoModifier ? this.Modifier | ModifierKind.Private : this.Modifier;
+            var current = modifier.ExtractAccessibilityModifiers() == ModifierKind.NoModifier ? modifier | ModifierKind.Private : modifier;
+            this.HasIncompatibleBindingHeader |= previous != current;
             var count = genericArguments?.Count ?? 0;
             var same = count == this.GenericParameterNodes.Count &&
                 OriginNameList.SameParameters((IReadOnlyList<string>?)origins ?? [], this.OriginNames);
@@ -180,6 +197,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         this.hasBindingHeader = true;
+        // Synthesized path groups have no header and acquire their first explicit modifiers.
+        this.Modifier = modifier;
         if (this.SupportsGenerics && genericArguments is not null && this.genericArguments is not { Count: > 0 })
         {
             if (this.genericArguments is null)
@@ -698,12 +717,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             tokenKind);
         var state = reader.TakeContext();
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span);
-        if ((tokenKind == TokenKind.Enum || container is EnumKoto) && container.TokenKind != tokenKind)
-        {
-            container.HasIncompatibleBindingHeader = true;
-        }
-
-        container.AddHeader(declaration.GenericArguments, declaration.Origins);
+        container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins);
         container.SetBases(declaration.Bases);
 
         if (reader.CurrentTokenKind == TokenKind.StartBlock)
@@ -1061,7 +1075,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         var nested = this.NestedContainerTable ??= new();
         if (nested.TryGetValue(text, out var existing))
         {
-            return (DeclarationContainerKoto)existing;
+            var declaration = (DeclarationContainerKoto)existing;
+            declaration.HasIncompatibleBindingHeader |= declaration.TokenKind != kind;
+            return declaration;
         }
 
         name ??= this.CodeContext.Compilation.Intern(text);

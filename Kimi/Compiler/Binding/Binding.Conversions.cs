@@ -7,6 +7,30 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private BindingScope? conversionEvidenceScope;
+    private NumberLiteralKoto? floatingIntegerLiteral;
+
+    internal static bool SupportsIdentityAcquisition(BoundType type)
+        => type.Semantics == SemanticsKind.Owner && type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Tuple or BoundTypeKind.FixedArray;
+
+    private static Koto ConversionTargetSyntax(ConversionKoto conversion)
+    {
+        var syntax = conversion.Right;
+        while (true)
+        {
+            if (syntax is ParenthesizedTypeKoto parentheses)
+            {
+                syntax = parentheses.Type;
+            }
+            else if (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
+            {
+                syntax = inner;
+            }
+            else
+            {
+                return syntax;
+            }
+        }
+    }
 
     private bool ConversionCanComplete(Koto source, BindingScope scope)
     {
@@ -53,52 +77,64 @@ public sealed partial class Binding
 
     private BoundType? BindConversion(ConversionKoto conversion, BindingScope scope)
     {
-        var syntax = conversion.Right;
-        while (true)
+        var syntax = ConversionTargetSyntax(conversion);
+        if (syntax is TypeSemanticsKoto { Type: null } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out var semantics))
         {
-            if (syntax is ParenthesizedTypeKoto parentheses)
+            var operandType = this.BindNode(conversion.Left, scope);
+            if (operandType is null)
             {
-                syntax = parentheses.Type;
+                return Complete(conversion, null);
             }
-            else if (syntax is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner })
-            {
-                syntax = inner;
-            }
-            else
-            {
-                break;
-            }
-        }
 
-        if (syntax is TypeSemanticsKoto { Type: null } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out _))
-        {
-            this.BindNode(conversion.Left, scope);
+            if (semantics == SemanticsKind.Owner && SupportsIdentityAcquisition(operandType) &&
+                shorthand.OriginName is null && shorthand.OriginExpression is null && shorthand.OriginArguments is null)
+            {
+                for (var targetNode = conversion.Right; ;)
+                {
+                    Complete(targetNode, operandType);
+                    if (ReferenceEquals(targetNode, syntax))
+                    {
+                        break;
+                    }
+
+                    targetNode = targetNode is ParenthesizedTypeKoto parentheses ? parentheses.Type : ((TypeSemanticsKoto)targetNode).Type!;
+                }
+
+                conversion.ConversionBinding = ReferenceEquals(operandType, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
+                return Complete(conversion, operandType);
+            }
+
             Fail(conversion.Right, BindingFailure.Unsupported, true);
             return Fail(conversion, BindingFailure.Unsupported, true);
         }
 
         var target = this.BindType(conversion.Right, scope);
 
-        // Explicit Semantics adaptations have separate acquisition rules, even when
-        // owner normalization happens to produce the same primitive Type.
-        var plain = syntax is not TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false };
+        // Explicit owner targets use the same normalized numeric/identity operation.
+        // Borrow and other ownership adaptations retain their separate rules.
+        var plain = syntax is not TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false } explicitSemantics ||
+            (explicitSemantics.SemanticsKind == SemanticsKind.Owner && explicitSemantics.SemanticsParameter is null);
         var operand = KotoHelper.UnwrapParentheses(conversion.Left);
         var literal = operand is NumberLiteralKoto { IsInteger: true } or
             PrefixMinusKoto { Operand: NumberLiteralKoto { IsInteger: true } } or
             PrefixPlusKoto { Operand: NumberLiteralKoto { IsInteger: true } };
-        if (plain && target is { IsFloatingPoint: true } && literal)
-        {
-            // Exact integer-to-float literal fitting must not first impose i32's
-            // range. Leave it pending until floating conversion is implemented.
-            Fail(conversion.Left, BindingFailure.Unsupported, true);
-            return Fail(conversion, BindingFailure.Unsupported, true);
-        }
-
         var floatingLiteral = operand is NumberLiteralKoto { IsInteger: false } or
             PrefixMinusKoto { Operand: NumberLiteralKoto { IsInteger: false } } or
             PrefixPlusKoto { Operand: NumberLiteralKoto { IsInteger: false } };
-        var fit = plain && ((target is { IsInteger: true } && literal) || (target is { IsFloatingPoint: true } && floatingLiteral));
-        var source = this.BindNode(conversion.Left, scope, fit ? target : null);
+        var fit = plain && ((target is { IsInteger: true } && literal) || (target is { IsFloatingPoint: true } && (literal || floatingLiteral)));
+        var previousLiteral = this.floatingIntegerLiteral;
+        BoundType? source;
+        try
+        {
+            this.floatingIntegerLiteral = fit && literal && target is { IsFloatingPoint: true }
+                ? operand as NumberLiteralKoto ?? ((UnaryKoto)operand).Operand as NumberLiteralKoto : null;
+            source = this.BindNode(conversion.Left, scope, fit ? target : null);
+        }
+        finally
+        {
+            this.floatingIntegerLiteral = previousLiteral;
+        }
+
         if (source is null || target is null)
         {
             return Complete(conversion, null);
@@ -117,8 +153,7 @@ public sealed partial class Binding
 
         if (source.IsNumeric && target.IsNumeric)
         {
-            if (source.IsFloatingPoint && target.IsFloatingPoint &&
-                (ReferenceEquals(source, target) || ReferenceEquals(source, BoundType.F32)))
+            if (source.IsFloatingPoint && target.IsFloatingPoint)
             {
                 conversion.ConversionBinding = fit ? ConversionBinding.Literal : ConversionBinding.Floating;
                 return Complete(conversion, target);
@@ -126,6 +161,13 @@ public sealed partial class Binding
 
             if (ScalarTypes.Width(source, this.compilation.PointerWidth) == 0 || ScalarTypes.Width(target, this.compilation.PointerWidth) == 0)
             {
+                var integer = source.IsInteger ? source : target;
+                if (ScalarTypes.Width(integer, this.compilation.PointerWidth) is > 0 and <= 64)
+                {
+                    conversion.ConversionBinding = ConversionBinding.Numeric;
+                    return Complete(conversion, target);
+                }
+
                 return Fail(conversion, BindingFailure.Unsupported, true);
             }
 
@@ -133,10 +175,14 @@ public sealed partial class Binding
             return Complete(conversion, target);
         }
 
-        // Identity acquisition and nonnumeric ownership adaptations are legitimate
-        // language operations, but are outside this integer execution slice.
-        var unsupported = ReferenceEquals(source, target) || (!source.IsNumeric && !target.IsNumeric) ||
-            source.Kind == BoundTypeKind.Semantics || target.Kind == BoundTypeKind.Semantics;
+        if (ReferenceEquals(source, target) && SupportsIdentityAcquisition(source))
+        {
+            conversion.ConversionBinding = ConversionBinding.Identity;
+            return Complete(conversion, target);
+        }
+
+        // Other ownership/borrow adaptations require their own verified paths.
+        var unsupported = !SupportsIdentityAcquisition(source) || !SupportsIdentityAcquisition(target);
         return Fail(conversion, unsupported ? BindingFailure.Unsupported : BindingFailure.TypeMismatch, unsupported);
     }
 }

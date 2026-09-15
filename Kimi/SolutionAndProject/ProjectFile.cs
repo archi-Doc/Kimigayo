@@ -16,8 +16,26 @@ public partial record class ProjectFile
     /// <summary>Gets or sets the LLVM-style target triples built by the project.</summary>
     public string[] Targets { get; set; } = [];
 
-    /// <summary>Gets or sets the external Kotonoha library references.</summary>
+    /// <summary>Gets or sets legacy references, retained only for migration diagnostics.</summary>
     public KotonohaIdentifier[] KotonohaArray { get; set; } = [];
+
+    /// <summary>Gets or sets this module's optional package ID.</summary>
+    public string? PackageId { get; set; }
+
+    /// <summary>Gets or sets this module's exact package version.</summary>
+    public string? PackageVersion { get; set; }
+
+    /// <summary>Gets or sets direct product dependencies keyed by source reference name.</summary>
+    public Dictionary<string, DependencyReference> Dependencies { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>Gets or sets local package candidates and publication stores.</summary>
+    public PackageSource[] PackageSources { get; set; } = [];
+
+    /// <summary>Gets or sets dependencies used only by the root's tests.</summary>
+    public Dictionary<string, DependencyReference> TestDependencies { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>Gets or sets explicit project-relative test-only source paths.</summary>
+    public string[] TestSources { get; set; } = [];
 
     /// <summary>Gets or sets the project-wide alias imports.</summary>
     public string[] Alias { get; set; } = [];
@@ -50,8 +68,14 @@ public partial record class ProjectFile
         {
             TinyhandTreeConverter.FromUtf8ToBinary(utf8, ref writer, true);
             var reader = new TinyhandReader(writer);
-            ValidateSettingNames(reader);
-            return TinyhandSerializer.Deserialize<ProjectFile>(ref reader, TinyhandSerializerOptions.ConvertToString);
+            ValidateMapNames(reader);
+            var file = TinyhandSerializer.Deserialize<ProjectFile>(ref reader, TinyhandSerializerOptions.ConvertToString);
+            if (file is not null && DependencyConfiguration.Validate(file) is { } failure)
+            {
+                throw new TinyhandException(failure);
+            }
+
+            return file;
         }
         finally
         {
@@ -59,7 +83,7 @@ public partial record class ProjectFile
         }
     }
 
-    private static void ValidateSettingNames(TinyhandReader reader)
+    private static void ValidateMapNames(TinyhandReader reader)
     {
         if (reader.TryReadNil())
         {
@@ -67,10 +91,14 @@ public partial record class ProjectFile
         }
 
         HashSet<string>? names = null;
+        HashSet<string>? dependencies = null;
+        HashSet<string>? tests = null;
         var count = reader.ReadMapHeaderOrEmptyArray();
         for (var i = 0; i < count; i++)
         {
-            if (!reader.ReadStringSpan().SequenceEqual("CompileTimeSettings"u8))
+            var key = reader.ReadStringSpan();
+            var map = key.SequenceEqual("CompileTimeSettings"u8) ? 1 : key.SequenceEqual("Dependencies"u8) ? 2 : key.SequenceEqual("TestDependencies"u8) ? 3 : 0;
+            if (map == 0)
             {
                 reader.Skip();
                 continue;
@@ -82,13 +110,14 @@ public partial record class ProjectFile
             }
 
             var settingCount = reader.ReadMapHeaderOrEmptyArray();
+            ref var seen = ref (map == 1 ? ref names : ref (map == 2 ? ref dependencies : ref tests));
             for (var j = 0; j < settingCount; j++)
             {
                 var name = reader.ReadString();
-                names ??= new(StringComparer.Ordinal);
-                if (name is null || !names.Add(name))
+                seen ??= new(StringComparer.Ordinal);
+                if (name is null || !seen.Add(name))
                 {
-                    throw new TinyhandException($"Duplicate or null compile-time setting name: {name}");
+                    throw new TinyhandException($"Duplicate or null {(map == 1 ? "compile-time setting" : "dependency reference")} name: {name}");
                 }
 
                 reader.Skip();

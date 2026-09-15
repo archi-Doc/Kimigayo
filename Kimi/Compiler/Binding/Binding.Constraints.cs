@@ -147,7 +147,7 @@ public sealed partial class Binding
             }
         }
 
-        return this.rootScope;
+        return this.ModuleScope(node);
     }
 
     private void BindConstraints()

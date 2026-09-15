@@ -20,6 +20,21 @@ internal sealed partial class BodyLowering
             return false;
         }
 
+        if (body.Identities is { } identities)
+        {
+            foreach (var identity in identities)
+            {
+                var source = identity.Source;
+                if ((uint)identity.Place >= (uint)body.Places.Count || source.ConversionBinding != ConversionBinding.Identity ||
+                    source.BoundType is not { } type || !Binding.SupportsIdentityAcquisition(type) ||
+                    !ReferenceEquals(type, source.Left.BoundType) || !ReferenceEquals(type, source.Right.BoundType) ||
+                    !ReferenceEquals(type, body.Places[identity.Place].Type))
+                {
+                    return false;
+                }
+            }
+        }
+
         for (var id = 0; id < body.Values.Count; id++)
         {
             var value = body.Values[id];
@@ -174,6 +189,8 @@ internal sealed partial class BodyLowering
 
     private static bool ValidScalarConversion(ConversionBinding binding, BoundType? source, BoundType? target)
         => binding == ConversionBinding.Integer ? ScalarTypes.Width(source) != 0 && ScalarTypes.Width(target) != 0 :
-            binding == ConversionBinding.Floating && FloatingTypes.Supports(source) && FloatingTypes.Supports(target) &&
-            (ReferenceEquals(source, target) || ReferenceEquals(source, BoundType.F32));
+            binding == ConversionBinding.Floating ? FloatingTypes.Supports(source) && FloatingTypes.Supports(target) :
+            binding == ConversionBinding.Numeric &&
+            ((FloatingTypes.Supports(source) && ScalarTypes.Width(target, 64) is > 0 and <= 64) ||
+            (FloatingTypes.Supports(target) && ScalarTypes.Width(source, 64) is > 0 and <= 64));
 }

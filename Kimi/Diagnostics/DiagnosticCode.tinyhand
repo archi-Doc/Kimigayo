@@ -76,6 +76,12 @@
   + Name="InvalidCompileTimeSetting_Kd"
     Message="Invalid compile-time setting '{0}': use a non-reserved Name and exactly one Bool, Integer, or String value"
 
+  + Name="InvalidDependencyConfiguration_Kd"
+    Message="Invalid dependency configuration: {0}"
+
+  + Name="UnresolvedDependencyGraph_Kd"
+    Message="The requested dependency graph has not been resolved and verified for this compilation"
+
   + Name="UnknownCompileTimeName_Kd"
     Message="Unknown compile-time environment Name '{0}'"
     Fix="Use a built-in Compilation value or configure a Project setting before parsing"
@@ -234,6 +240,9 @@
 
   + Name="ControlFlow_Kd"
     Message="{0}"
+
+  + Name="InvalidTestDefinition_Kd"
+    Message="Test requires one argument-free Attribute on a safe ordinary named function with a body, no parameters, captures or generic/Origin parameters, and an omitted or Unit return Type"
 
   + Name="UnexpectedIndent_Kd"
     Message="Unexpected indentation"

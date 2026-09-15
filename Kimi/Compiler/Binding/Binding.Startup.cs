@@ -52,6 +52,26 @@ public sealed partial class Binding
         }
 
         this.ResetStartup();
+        for (var i = 1; i < this.compilation.SourceModules.Length; i++)
+        {
+            var dependency = this.compilation.SourceModules[i];
+            FunctionKoto? ignoredMain = null;
+            var ignoredCount = 0;
+            SourceDocument? ignoredSource = null;
+            var ignoredMultiple = false;
+            this.CollectStartup(dependency.RootKoto.Members, OutputKind.Library, ref ignoredMain, ref ignoredCount, ref ignoredSource, ref ignoredMultiple);
+            if (dependency.GeneratedFunction?.Body is { } dependencyBody)
+            {
+                this.CollectStartup(dependencyBody.Items, OutputKind.Library, ref ignoredMain, ref ignoredCount, ref ignoredSource, ref ignoredMultiple);
+            }
+
+            if (this.startupItems.Count != 0)
+            {
+                this.startupIssues.Add(new(this.startupItems[0], DiagnosticCode.LibraryRuntimeBody_Kd));
+                this.startupItems.Clear();
+            }
+        }
+
         var root = this.compilation.Kotonoha.RootKoto;
         FunctionKoto? main = null;
         var mainCount = 0;
@@ -137,6 +157,11 @@ public sealed partial class Binding
             var item = items[i];
             if (item is FunctionKoto candidate)
             {
+                if (TestDefinition.Marker(candidate) is not null)
+                {
+                    continue;
+                }
+
                 if (outputKind == OutputKind.Application && IsRootMain(candidate))
                 {
                     main = candidate;

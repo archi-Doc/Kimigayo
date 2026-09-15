@@ -61,13 +61,13 @@ public class FloatConversionEmissionTest
         Assert.False(c.Emission.Validate(out _));
     }
 
-    // Remaining NUM-04 operations stay explicit; these are not the completion conditions for that ID.
+    // The Windows profile explicitly excludes typed 128-bit floating conversions.
     [Theory]
-    [InlineData("let x: f64 = 1.25\nx@f32")]
-    [InlineData("let x = 1\nx@f32")]
-    [InlineData("1@f64")]
-    [InlineData("let x: f32 = 1.0\nx@i32")]
-    [InlineData("1.25@owner/f64")]
+    [InlineData("let x: i128 = 1\nx@f32")]
+    [InlineData("let x: u128 = 1\nx@f64")]
+    [InlineData("let x: f64 = 1.0\nx@u128")]
+    [InlineData("let x: f32 = 1.0\nx@i128")]
+    [InlineData("1.25@ref")]
     public void RemainingConversionsAreNotMistakenForWidening(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

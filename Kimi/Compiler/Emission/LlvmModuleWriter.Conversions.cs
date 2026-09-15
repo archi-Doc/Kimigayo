@@ -18,7 +18,7 @@ internal static partial class LlvmModuleWriter
             WriteConversionBound(output, "%upper", id, upper, sourceType, operands[0], operands[2]);
         }
 
-        if (instruction.Check == ArithmeticCheckKind.Conversion)
+        if (instruction.Check is ArithmeticCheckKind.Conversion or ArithmeticCheckKind.FloatingConversion)
         {
             var condition = instruction.LowerPredicate is null ? "%upper" : "%lower";
             if (instruction.LowerPredicate is not null && instruction.UpperPredicate is not null)
@@ -28,6 +28,23 @@ internal static partial class LlvmModuleWriter
                 Name(output, ", %upper", id);
                 output.Write('\n');
                 condition = "%invalid";
+            }
+
+            if (instruction.Check == ArithmeticCheckKind.FloatingConversion)
+            {
+                // Preserve source infinities and NaNs. Only finite source values
+                // that round outside the finite destination range must Abort.
+                WriteConversionBound(output, "%notPositiveInfinity", id, "one", sourceType, operands[0], new(EmissionOperandKind.Float64, BitConverter.DoubleToInt64Bits(double.PositiveInfinity)));
+                WriteConversionBound(output, "%notNegativeInfinity", id, "one", sourceType, operands[0], new(EmissionOperandKind.Float64, BitConverter.DoubleToInt64Bits(double.NegativeInfinity)));
+                Name(output, "  %finite", id);
+                Name(output, " = and i1 %notPositiveInfinity", id);
+                Name(output, ", %notNegativeInfinity", id);
+                output.Write('\n');
+                Name(output, "  %overflow", id);
+                Name(output, " = and i1 %finite", id);
+                Name(output, ", %invalid", id);
+                output.Write('\n');
+                condition = "%overflow";
             }
 
             WriteArithmeticFailure(output, constants, instruction, condition);
@@ -52,7 +69,7 @@ internal static partial class LlvmModuleWriter
     {
         output.Write("  ");
         Name(output, name, id);
-        output.Write(" = icmp ");
+        output.Write(bound.Kind is EmissionOperandKind.Float32 or EmissionOperandKind.Float64 ? " = fcmp " : " = icmp ");
         output.Write(predicate);
         output.Write(' ');
         output.Write(type);

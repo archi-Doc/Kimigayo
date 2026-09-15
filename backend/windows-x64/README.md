@@ -4,6 +4,14 @@ This directory supplies the native helpers for SPEC §21.5.7. The reviewed packa
 
 ## Build and test
 
+For bounded local verification with separate stdout/stderr logs and a JSON result, run commands through `invoke-verification.ps1` from the repository root:
+
+```powershell
+./backend/windows-x64/invoke-verification.ps1 -FilePath dotnet -ArgumentList @('test', '--project', 'xUnitTest/xUnitTest.csproj', '-c', 'Debug', '--no-build', '--no-restore', '--minimum-expected-tests', '1', '--parallel', 'none')
+```
+
+Build the selected configuration first. The default command deadline is 900 seconds and output draining is bounded to five seconds. Optional `-InputPath` records SHA-256 hashes of exact input files and verifies that they remain unchanged. Records use unique directories under ignored `TestResults/verification`. On Windows, a waiting worker is assigned to a [job with kill-on-close](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) before receiving the target command. Closing the job removes descendants even after the target exits; no target process starts before containment. Other hosts use process-tree termination while the root remains alive.
+
 Set up the checkout's `toolchain/` once from an existing matching LLVM directory. This copies the required tools and adjacent DLLs, builds/tests the backend and installs the adopted archive into `toolchain/windows_x64/`:
 
 ```powershell

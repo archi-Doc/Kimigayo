@@ -254,7 +254,7 @@ public class ControlFlowAnalysisTest
             var compilation = Compilation.CreateForTest();
             compilation.Project.Directory = directory.FullName;
             compilation.Project.AddSource("invalid.kimi", "let result = if true => 1");
-            Assert.False(await compilation.Project.Check());
+            Assert.False(await compilation.Project.Check(TestContext.Current.CancellationToken));
         }
         finally
         {

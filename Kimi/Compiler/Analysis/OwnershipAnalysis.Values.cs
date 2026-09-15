@@ -173,7 +173,8 @@ public sealed partial class OwnershipAnalysis
 
     private int ConversionValue(ConversionKoto conversion)
     {
-        var input = this.Expression(conversion.Left, PlaceUseKind.Read);
+        var identity = conversion.ConversionBinding == ConversionBinding.Identity;
+        var input = this.Expression(conversion.Left, identity ? PlaceUseKind.Consume : PlaceUseKind.Read);
         if (conversion.ConversionBinding == ConversionBinding.None)
         {
             this.Unsupported(conversion);
@@ -187,6 +188,14 @@ public sealed partial class OwnershipAnalysis
 
         if (conversion.ConversionBinding == ConversionBinding.Literal)
         {
+            return input;
+        }
+
+        if (identity)
+        {
+            // The ordinary acquisition above already secured the value. Retain its
+            // semantic designation for validation without a second runtime transfer.
+            (this.body.Identities ??= new()).Add(new(conversion, input));
             return input;
         }
 

@@ -258,6 +258,12 @@ public sealed partial class Binding
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = call.ArgumentNodes[i];
+            if (IsArrayArgument(argument))
+            {
+                unknownArgument |= !this.PrepareArrayArgument(argument, scope);
+                continue;
+            }
+
             if (NeedsEnumContext(argument))
             {
                 unknownArgument |= !this.PrepareContextualEnumInputs(argument, scope);
@@ -298,7 +304,7 @@ public sealed partial class Binding
         }
 
         var requirementGroup = callee is MemberAccessKoto requirementMember && this.requirementGroups.TryGetValue(requirementMember, out var foundGroup) && foundGroup.Active ? foundGroup : null;
-        var candidates = new CallCandidates(group, requirementGroup);
+        var candidates = new CallCandidates(group, requirementGroup, this.importCandidates?.GetValueOrDefault(callee));
         var self = requirementGroup?.Self;
         var candidateCount = 0;
         var maxParameters = 0;
@@ -598,7 +604,7 @@ public sealed partial class Binding
 
             used[slot] = true;
             mapping[i] = slot;
-            contextualInputs |= NeedsEnumContext(call.ArgumentNodes[i]);
+            contextualInputs |= NeedsEnumContext(call.ArgumentNodes[i]) || IsArrayArgument(call.ArgumentNodes[i]);
             var type = function.Parameters[slot].Type.BoundType;
             if (type is null)
             {
@@ -651,7 +657,7 @@ public sealed partial class Binding
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var argument = KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]);
-                if (contextualInputs && NeedsEnumContext(argument) != (pass == 1))
+                if (contextualInputs && (NeedsEnumContext(argument) || IsArrayArgument(argument)) != (pass == 1))
                 {
                     continue;
                 }
@@ -676,6 +682,18 @@ public sealed partial class Binding
                     {
                         return CandidateApplicability.Pending;
                     }
+                }
+
+                if (IsArrayArgument(argument))
+                {
+                    var applicability = this.ProbeArrayArgument(argument, type, scope);
+                    if (applicability != CandidateApplicability.Applicable)
+                    {
+                        return applicability;
+                    }
+
+                    operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                    continue;
                 }
 
                 if (!this.FitsInputLiteral(argument, type))

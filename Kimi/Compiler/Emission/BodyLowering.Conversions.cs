@@ -12,7 +12,35 @@ internal sealed partial class BodyLowering
     {
         if (FloatingTypes.Supports(source))
         {
-            return new(ReferenceEquals(source, target) ? null : "fpext", null, null, 0, 0);
+            if (FloatingTypes.Supports(target))
+            {
+                // Halfway between the largest f32 and 2^128 rounds to infinity.
+                const double Overflow = 3.40282356779733661637539395458142568448e38;
+                return ReferenceEquals(source, target) ? default : ReferenceEquals(source, BoundType.F32)
+                    ? new("fpext", null, null, 0, 0)
+                    : new("fptrunc", "ole", "oge", BitConverter.DoubleToInt64Bits(-Overflow), BitConverter.DoubleToInt64Bits(Overflow));
+            }
+
+            var width = ScalarTypes.Width(target, pointerWidth);
+            var signed = ScalarTypes.Signed(target);
+            var exponent = width - (signed ? 1 : 0);
+            var upper = Math.ScaleB(1.0, exponent);
+            var lower = signed ? -upper : 0.0;
+            var exactPredecessor = !signed || exponent < (ReferenceEquals(source, BoundType.F32) ? 24 : 53);
+            // Check the mathematical truncated value before fptosi/fptoui. For
+            // small targets (min-1, min) is legal; for large targets no source
+            // float lies in that interval. Unordered predicates also reject NaN.
+            if (exactPredecessor)
+            {
+                lower -= 1.0;
+            }
+
+            return new(signed ? "fptosi" : "fptoui", exactPredecessor ? "ule" : "ult", "uge", FloatingBits(source, lower), FloatingBits(source, upper));
+        }
+
+        if (FloatingTypes.Supports(target))
+        {
+            return new(ScalarTypes.Signed(source) ? "sitofp" : "uitofp", null, null, 0, 0);
         }
 
         var sourceWidth = ScalarTypes.Width(source, pointerWidth);
@@ -30,6 +58,9 @@ internal sealed partial class BodyLowering
             ScalarTypes.Normalize(targetMin, sourceWidth),
             ScalarTypes.Normalize(unchecked((Int128)targetMax), sourceWidth));
     }
+
+    private static long FloatingBits(BoundType type, double value)
+        => ReferenceEquals(type, BoundType.F32) ? BitConverter.SingleToUInt32Bits((float)value) : BitConverter.DoubleToInt64Bits(value);
 
     // Semantic aliases remain separate: a conversion's Type and dominance identity
     // are checked before resolving the physical bits used by every IR consumer.
@@ -73,14 +104,17 @@ internal sealed partial class BodyLowering
         var location = -1;
         if (check != ArithmeticCheckKind.None && !this.TryGetLocation(body.Operations[id].Source, directory, constants, out location))
         {
-            return Fail("Integer conversion check has no source location.", out failure);
+            return Fail("Numeric conversion check has no source location.", out failure);
         }
 
         var input = Input(body, id, 0);
+        var source = ValueType(body, input)!;
+        var boundKind = ReferenceEquals(source, BoundType.F32) ? EmissionOperandKind.Float32 :
+            ReferenceEquals(source, BoundType.F64) ? EmissionOperandKind.Float64 : EmissionOperandKind.Integer;
         var start = function.Operands.Count;
         function.Operands.Add(this.PhysicalOperand(body, input));
-        function.Operands.Add(new(EmissionOperandKind.Integer, plan.Lower));
-        function.Operands.Add(new(EmissionOperandKind.Integer, plan.Upper));
+        function.Operands.Add(new(boundKind, plan.Lower));
+        function.Operands.Add(new(boundKind, plan.Upper));
         function.Instructions.Add(new(EmissionOpcode.Convert, id, Place: body.Operations.Count + id, Constant: location, OperandStart: start, OperandCount: 3, ScalarType: WindowsLowering.GetValue(ValueType(body, id)!)!.ComputationType, ScalarOperator: plan.Operator, Check: check, Representation: WindowsLowering.GetValue(ValueType(body, input)!), LowerPredicate: plan.LowerPredicate, UpperPredicate: plan.UpperPredicate));
         return true;
     }

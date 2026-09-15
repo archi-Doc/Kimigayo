@@ -2262,7 +2262,7 @@ CloseParameters:
                     state,
                     token.Span,
                     declaration.Name);
-                container.AddHeader(declaration.GenericArguments, declaration.Origins);
+                container.AddHeader(token.Kind, state.ModifierKind, declaration.GenericArguments, declaration.Origins);
                 container.SetBases(declaration.Bases);
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)

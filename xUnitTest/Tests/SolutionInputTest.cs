@@ -70,6 +70,7 @@ public sealed class SolutionInputTest : IDisposable
         var solution = this.Load(Path.Combine(this.directory, "A"));
         Assert.Empty(solution.Projects);
         Assert.False(await solution.Generate(TestContext.Current.CancellationToken));
+        Assert.False(await solution.Check(TestContext.Current.CancellationToken));
         Assert.False(await solution.Build(TestContext.Current.CancellationToken));
         await Assert.ThrowsAsync<InvalidDataException>(() => solution.Run(TestContext.Current.CancellationToken));
         Assert.False(Directory.Exists(Path.Combine(this.directory, "bin")));
@@ -163,6 +164,91 @@ public sealed class SolutionInputTest : IDisposable
         Assert.Equal("O2", projects[1].ProjectFile.Optimization);
         await Assert.ThrowsAsync<InvalidDataException>(() => solution.Run(TestContext.Current.CancellationToken));
         Assert.Throws<FileNotFoundException>(() => this.Load(first, Path.Combine(this.directory, "missing")));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CheckDoesNotReadTestOnlyFilesOrPublishArtifacts(bool testExists)
+    {
+        var path = this.Write("Check.kimiproj", "Targets={\"x86_64-pc-windows-msvc\"} TestSources={\"Broken.kimi\"} TestDependencies={Missing={PackageId=\"example.missing\" PackageVersion=\"1\" Project=\"missing.kimiproj\"}}");
+        this.Write("Main.kimi", "writeLine(\"checked without running\")");
+        if (testExists)
+        {
+            File.WriteAllBytes(Path.Combine(this.directory, "Broken.kimi"), [0xff]);
+        }
+
+        var solution = this.Load(path);
+        solution.KimiOptions.ToolchainRoot = Path.Combine(this.directory, "missing-toolchain");
+        Assert.True(await solution.Check(TestContext.Current.CancellationToken));
+        Assert.False(Directory.Exists(Path.Combine(this.directory, "bin")));
+        Assert.False(File.Exists(Path.ChangeExtension(path, "kimi.lock.json")));
+    }
+
+    [Fact]
+    public async Task CheckRejectsDuplicateResolvedTestPaths()
+    {
+        var path = this.Write("Check.kimiproj", "Targets={\"x86_64-pc-windows-msvc\"} TestSources={\"tests/../Test.kimi\" \"Test.kimi\"}");
+        this.Write("Main.kimi", "()");
+        var solution = this.Load(path);
+        Assert.False(await solution.Check(TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EmptyDependencyProjectsStillValidateExistingLocks(bool locked)
+    {
+        var path = this.Write("Check.kimiproj", "Targets={\"x86_64-pc-windows-msvc\"}");
+        this.Write("Main.kimi", "()");
+        var lockPath = DependencyLock.PathForProject(path);
+        File.WriteAllText(lockPath, "corrupt lock");
+        var solution = this.Load(path);
+        solution.KimiOptions.Locked = locked;
+        Assert.False(await solution.Check(TestContext.Current.CancellationToken));
+        Assert.False(await solution.Generate(TestContext.Current.CancellationToken));
+        Assert.Equal("corrupt lock", File.ReadAllText(lockPath));
+        var resolution = DependencyResolver.Resolve(path, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        DependencyLock.Update(lockPath, resolution, TestContext.Current.CancellationToken);
+        Assert.True(await solution.Check(TestContext.Current.CancellationToken));
+        var bytes = File.ReadAllBytes(lockPath);
+        this.Write("Main.kimi", "writeLine(\"source edit\")");
+        Assert.True(await solution.Check(TestContext.Current.CancellationToken));
+        Assert.Equal(bytes, File.ReadAllBytes(lockPath));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProductGraphRequiresCurrentLockAndChecksLiveSources(bool locked)
+    {
+        Directory.CreateDirectory(Path.Combine(this.directory, "Library"));
+        var path = this.Write("Root.kimiproj", "Targets={\"x86_64-pc-windows-msvc\"} Dependencies={Lib={PackageId=\"example.library\" PackageVersion=\"1\" Project=\"Library/Library.kimiproj\"}} TestDependencies={Missing={PackageId=\"missing\" PackageVersion=\"1\" Project=\"missing.kimiproj\"}}");
+        this.Write("Main.kimi", "public func main() => Lib.Api.value()");
+        this.Write("Library/Library.kimiproj", "OutputKind=\"Library\" PackageId=\"example.library\" PackageVersion=\"1\" Targets={\"x86_64-pc-windows-msvc\"}");
+        var librarySource = this.Write("Library/Library.kimi", "public group Api\n    public func value() => ()");
+        var solution = this.Load(path);
+        solution.KimiOptions.Locked = locked;
+        solution.KimiOptions.ToolchainRoot = Path.Combine(this.directory, "missing-toolchain");
+        Assert.False(await solution.Check(TestContext.Current.CancellationToken));
+        var lockPath = DependencyLock.PathForProject(path);
+        Assert.False(File.Exists(lockPath));
+        var resolution = DependencyResolver.Resolve(path, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
+        Assert.True(resolution.Product.IsResolved);
+        Assert.False(resolution.Test.IsResolved);
+        DependencyLock.Update(lockPath, resolution, TestContext.Current.CancellationToken);
+        var lockBytes = File.ReadAllBytes(lockPath);
+        Assert.True(await solution.Check(TestContext.Current.CancellationToken));
+        Assert.False(Directory.Exists(Path.Combine(this.directory, "bin")));
+        Assert.False(await solution.Generate(TestContext.Current.CancellationToken));
+        File.AppendAllText(librarySource, "\npublic func unused() => missing()");
+        Assert.False(await solution.Check(TestContext.Current.CancellationToken));
+        Assert.Equal(lockBytes, File.ReadAllBytes(lockPath));
+        File.WriteAllText(librarySource, "public group Api\n    public func value() => ()");
+        Assert.True(await solution.Check(TestContext.Current.CancellationToken));
+        File.WriteAllBytes(librarySource, [0xff]);
+        Assert.False(await solution.Check(TestContext.Current.CancellationToken));
+        Assert.Equal(lockBytes, File.ReadAllBytes(lockPath));
     }
 
     private string Write(string name, string contents)

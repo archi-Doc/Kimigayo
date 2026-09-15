@@ -25,6 +25,7 @@ public sealed class BoundLength(KotoKind operation, long value, BindingSymbol? p
 public sealed partial class Binding
 {
     private readonly Dictionary<(KotoKind Operation, long Value, BindingSymbol? Parameter, BoundLength? Left, BoundLength? Right), BoundLength> lengths = new();
+    private readonly List<BindingSymbol> activeLengthConstants = new();
 
     private static bool SameLengthSignature(BoundLength? a, BoundLength? b, Koto aBinder, Koto bBinder)
     {
@@ -39,6 +40,61 @@ public sealed partial class Binding
         }
 
         return SameLengthSignature(a.Left, b.Left, aBinder, bBinder) && SameLengthSignature(a.Right, b.Right, aBinder, bBinder);
+    }
+
+    private static bool TryLengthArithmetic(KotoKind operation, BoundType type, int width, UInt128 left, UInt128 right, out UInt128 value)
+    {
+        value = 0;
+        var signed = ScalarTypes.Signed(type);
+        var minimum = unchecked(-(Int128)((UInt128)1 << (width - 1)));
+        if (operation is KotoKind.Slash or KotoKind.Percent && (right == 0 || (signed && (Int128)left == minimum && (Int128)right == -1)))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (signed)
+            {
+                var a = (Int128)left;
+                var b = (Int128)right;
+                var result = operation switch
+                {
+                    KotoKind.Plus => checked(a + b),
+                    KotoKind.Minus => checked(a - b),
+                    KotoKind.Asterisk => checked(a * b),
+                    KotoKind.Slash => a / b,
+                    _ => a % b,
+                };
+                if (result < minimum || result > ~minimum)
+                {
+                    return false;
+                }
+
+                value = unchecked((UInt128)result);
+            }
+            else
+            {
+                value = operation switch
+                {
+                    KotoKind.Plus => checked(left + right),
+                    KotoKind.Minus => checked(left - right),
+                    KotoKind.Asterisk => checked(left * right),
+                    KotoKind.Slash => left / right,
+                    _ => left % right,
+                };
+                if (width < 128 && value >= ((UInt128)1 << width))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        catch (OverflowException)
+        {
+            return false;
+        }
     }
 
     private BoundLength InternLength(KotoKind operation, long value = 0, BindingSymbol? parameter = null, BoundLength? left = null, BoundLength? right = null)
@@ -68,100 +124,195 @@ public sealed partial class Binding
         return this.InternLength(length.Operation, length.Value, parameter, this.CorrespondingLength(length.Left, from, to), this.CorrespondingLength(length.Right, from, to));
     }
 
-    private BoundLength? BindLength(Koto syntax, BindingScope scope, bool final = true)
+    private BoundLength? BindLength(Koto syntax, BindingScope scope)
     {
-        var bits = this.compilation.PointerWidth;
-        var maximum = bits == 16 ? short.MaxValue : bits == 32 ? int.MaxValue : long.MaxValue;
-        var minimum = bits == 16 ? short.MinValue : bits == 32 ? int.MinValue : long.MinValue;
-        BoundLength? result = null;
-        if (syntax is ParenthesizedKoto parent)
-        {
-            result = this.BindLength(parent.Operand, scope, false);
-        }
-        else if (syntax is NumberLiteralKoto number && number.TryGetIntegerMagnitude(out var magnitude) && magnitude <= long.MaxValue)
-        {
-            result = this.InternLength(KotoKind.NumberLiteral, (long)magnitude);
-        }
-        else if (syntax is IdentifierNameKoto name)
-        {
-            var symbol = this.Lookup(name.IdentifierName, scope, syntax, false);
-            if (symbol?.Kind == BindingSymbolKind.LengthParameter)
-            {
-                syntax.BoundSymbol = symbol;
-                result = this.InternLength(KotoKind.IdentifierName, parameter: symbol);
-            }
-        }
-        else if (syntax is UnaryKoto unary && unary.Akind is KotoKind.PrefixPlus or KotoKind.PrefixMinus)
-        {
-            var operand = this.BindLength(unary.Operand, scope, false);
-            if (operand is not null)
-            {
-                if (unary.Akind == KotoKind.PrefixPlus)
-                {
-                    result = operand;
-                }
-                else if (operand.IsConstant && operand.Value != long.MinValue)
-                {
-                    result = this.InternLength(KotoKind.NumberLiteral, -operand.Value);
-                }
-                else if (!operand.IsConstant)
-                {
-                    result = this.InternLength(unary.Akind, left: operand);
-                }
-            }
-        }
-        else if (syntax is BinaryKoto binary && binary.Akind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent)
-        {
-            var left = this.BindLength(binary.Left, scope, false);
-            var right = this.BindLength(binary.Right, scope, false);
-            if (left is not null && right is not null)
-            {
-                if (left.IsConstant && right.IsConstant)
-                {
-                    // Required constant evaluation rejects the same exceptional inputs for
-                    // both division and remainder, before executing host arithmetic.
-                    if (binary.Akind is KotoKind.Slash or KotoKind.Percent &&
-                        (right.Value == 0 || (left.Value == minimum && right.Value == -1)))
-                    {
-                        Fail(syntax, BindingFailure.InvalidTypeFormation);
-                        return null;
-                    }
-
-                    try
-                    {
-                        var value = binary.Akind switch
-                        {
-                            KotoKind.Plus => checked(left.Value + right.Value),
-                            KotoKind.Minus => checked(left.Value - right.Value),
-                            KotoKind.Asterisk => checked(left.Value * right.Value),
-                            KotoKind.Slash => left.Value / right.Value,
-                            _ => left.Value % right.Value,
-                        };
-                        result = this.InternLength(KotoKind.NumberLiteral, value);
-                    }
-                    catch (OverflowException)
-                    {
-                    }
-                }
-                else
-                {
-                    result = this.InternLength(binary.Akind, left: left, right: right);
-                }
-            }
-        }
-
-        if (result is null || (result.IsConstant && (result.Value < (final ? 0 : minimum) || result.Value > maximum)))
+        BoundType? type = null;
+        if (!this.LengthTypeEvidence(syntax, scope, ref type) ||
+            !this.EvaluateLength(syntax, scope, type ?? BoundType.ISize, out var value, out var symbolic))
         {
             Fail(syntax, BindingFailure.InvalidTypeFormation);
             return null;
         }
 
-        Complete(syntax, BoundType.ISize);
-        if (final && !result.IsConstant)
+        if (symbolic is not null)
         {
             this.AddObligation(new(BindingObligationKind.TypeFormation, syntax, BindingDeadline.Instantiation));
+            return symbolic;
         }
 
-        return result;
+        var maximum = ((UInt128)1 << (this.compilation.PointerWidth - 1)) - 1;
+        if (value > maximum)
+        {
+            Fail(syntax, BindingFailure.InvalidTypeFormation);
+            return null;
+        }
+
+        return this.InternLength(KotoKind.NumberLiteral, (long)value);
+    }
+
+    // Probe established integer Types before fitting any literal-only subtree.
+    // Normal name/member binding supplies lookup, accessibility and capture checks.
+    private bool LengthTypeEvidence(Koto syntax, BindingScope scope, ref BoundType? type)
+    {
+        if (syntax is ParenthesizedKoto parent)
+        {
+            return this.LengthTypeEvidence(parent.Operand, scope, ref type);
+        }
+
+        if (syntax is NumberLiteralKoto { IsInteger: true })
+        {
+            return true;
+        }
+
+        if (syntax is UnaryKoto unary && unary.Akind is KotoKind.PrefixPlus or KotoKind.PrefixMinus)
+        {
+            return this.LengthTypeEvidence(unary.Operand, scope, ref type);
+        }
+
+        if (syntax is BinaryKoto binary && binary.Akind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent)
+        {
+            return this.LengthTypeEvidence(binary.Left, scope, ref type) && this.LengthTypeEvidence(binary.Right, scope, ref type);
+        }
+
+        if (syntax is not (IdentifierNameKoto or MemberAccessKoto))
+        {
+            return false;
+        }
+
+        var established = this.BindNode(syntax, scope);
+        if (established is not { IsInteger: true, Semantics: SemanticsKind.Owner } || syntax.BindingFailure != BindingFailure.None ||
+            (type is not null && !ReferenceEquals(type, established)))
+        {
+            return false;
+        }
+
+        type = established;
+        return true;
+    }
+
+    private bool EvaluateLength(Koto syntax, BindingScope scope, BoundType type, out UInt128 value, out BoundLength? symbolic)
+    {
+        value = 0;
+        symbolic = null;
+        var width = ScalarTypes.Width(type, this.compilation.PointerWidth);
+        var signed = ScalarTypes.Signed(type);
+        if (syntax is ParenthesizedKoto parent)
+        {
+            if (!this.EvaluateLength(parent.Operand, scope, type, out value, out symbolic))
+            {
+                return false;
+            }
+        }
+        else if (syntax is NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto })
+        {
+            var literal = syntax as NumberLiteralKoto ?? (NumberLiteralKoto)((UnaryKoto)syntax).Operand;
+            var negative = syntax is PrefixMinusKoto;
+            if (!literal.IsInteger || !literal.TryGetIntegerMagnitude(out var magnitude) ||
+                !ScalarTypes.TryLiteral(type, magnitude, negative, this.compilation.PointerWidth, out _))
+            {
+                return false;
+            }
+
+            value = negative ? unchecked((UInt128)0 - magnitude) : magnitude;
+            Complete(literal, type);
+        }
+        else if (syntax is IdentifierNameKoto or MemberAccessKoto)
+        {
+            if (!ReferenceEquals(this.BindNode(syntax, scope), type) || syntax.BoundSymbol is not { } symbol || syntax.BindingFailure != BindingFailure.None)
+            {
+                return false;
+            }
+
+            if (symbol.Kind == BindingSymbolKind.LengthParameter)
+            {
+                symbolic = this.InternLength(KotoKind.IdentifierName, parameter: symbol);
+            }
+            else
+            {
+                if (symbol.Declaration is not VariableKoto { VariableKind: VariableKind.Let, InitializerKoto: { } initializer } variable ||
+                    !(symbol.Kind == BindingSymbolKind.Local ||
+                    (symbol.Property is { IsStored: true, Getter.IsStandard: true } && symbol.Scope.Owner is GroupKoto)) ||
+                    this.activeLengthConstants.Contains(symbol))
+                {
+                    return false;
+                }
+
+                this.activeLengthConstants.Add(symbol);
+                try
+                {
+                    // Bind a forward static initializer with its declared Type first.
+                    // Its ordinary arithmetic Types must remain fixed during evaluation.
+                    if (variable.BindingState != BindingState.Resolved)
+                    {
+                        this.BindNode(variable, symbol.Scope);
+                    }
+
+                    if (variable.BindingFailure != BindingFailure.None ||
+                        !this.EvaluateLength(initializer, symbol.Scope, type, out value, out symbolic))
+                    {
+                        return false;
+                    }
+                }
+                finally
+                {
+                    this.activeLengthConstants.RemoveAt(this.activeLengthConstants.Count - 1);
+                }
+            }
+        }
+        else if (syntax is UnaryKoto unary && unary.Akind is KotoKind.PrefixPlus or KotoKind.PrefixMinus)
+        {
+            if (!this.EvaluateLength(unary.Operand, scope, type, out value, out symbolic))
+            {
+                return false;
+            }
+
+            if (unary.Akind == KotoKind.PrefixMinus)
+            {
+                if (!signed)
+                {
+                    return false;
+                }
+
+                if (symbolic is not null)
+                {
+                    symbolic = this.InternLength(unary.Akind, left: symbolic);
+                }
+                else if ((Int128)value == -(Int128)((UInt128)1 << (width - 1)))
+                {
+                    return false;
+                }
+                else
+                {
+                    value = unchecked((UInt128)0 - value);
+                }
+            }
+        }
+        else if (syntax is BinaryKoto binary && binary.Akind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent)
+        {
+            if (!this.EvaluateLength(binary.Left, scope, type, out var left, out var leftSymbolic) ||
+                !this.EvaluateLength(binary.Right, scope, type, out var right, out var rightSymbolic))
+            {
+                return false;
+            }
+
+            if (leftSymbolic is not null || rightSymbolic is not null)
+            {
+                symbolic = this.InternLength(
+                    binary.Akind,
+                    left: leftSymbolic ?? this.InternLength(KotoKind.NumberLiteral, unchecked((long)left)),
+                    right: rightSymbolic ?? this.InternLength(KotoKind.NumberLiteral, unchecked((long)right)));
+            }
+            else if (!TryLengthArithmetic(binary.Akind, type, width, left, right, out value))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            return false;
+        }
+
+        Complete(syntax, type);
+        return true;
     }
 }

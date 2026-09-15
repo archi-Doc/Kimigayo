@@ -6,6 +6,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private int defaultBindingDepth;
+
     private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);
 
     private static bool Writable(Koto node)
@@ -55,9 +57,9 @@ public sealed partial class Binding
 
     private static bool FitsLiteral(NumberLiteralKoto literal, BoundType type, bool negative, int pointerWidth)
     {
-        if (!literal.IsInteger)
+        if (type.IsFloatingPoint)
         {
-            return FitsFloat(literal.SourceSpelling, type);
+            return FloatingTypes.TryLiteral(literal, type, negative, out _);
         }
 
         return literal.TryGetIntegerMagnitude(out var magnitude) && FitsIntegerMagnitude(magnitude, type, negative, pointerWidth);
@@ -85,9 +87,6 @@ public sealed partial class Binding
         var max = signed ? ((UInt128)1 << (bits - 1)) - (negative ? (UInt128)0 : 1) : bits == 128 ? UInt128.MaxValue : ((UInt128)1 << bits) - 1;
         return magnitude <= max;
     }
-
-    private static bool FitsFloat(ReadOnlySpan<char> source, BoundType type)
-        => FloatingTypes.TryLiteral(source, type, false, out _);
 
     private bool FitsInputLiteral(Koto node, BoundType type)
     {
@@ -140,6 +139,11 @@ public sealed partial class Binding
         if (node.BindingState == BindingState.Invalid && node is not DeclarationKoto)
         {
             return node.BoundType;
+        }
+
+        if (node is FunctionKoto testDefinition && TestDefinition.Marker(testDefinition) is not null)
+        {
+            return testDefinition.BoundType;
         }
 
         if (node.AttributeChain is { } attribute)
@@ -198,7 +202,7 @@ public sealed partial class Binding
             case VariableKoto variable:
                 return this.BindVariable(variable, scope);
             case AliasKoto alias:
-                this.AliasTarget(alias, scope);
+                this.AliasTarget(alias);
                 return null;
             case CodeBlockKoto block:
                 BoundType? blockType = BoundType.Unit;
@@ -226,7 +230,7 @@ public sealed partial class Binding
                 return Complete(node, BoundType.String);
             case NumberLiteralKoto number:
                 var numberType = DefaultLiteralType(number, expected);
-                if (!LiteralCategoryMatches(number, numberType))
+                if (!LiteralCategoryMatches(number, numberType) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && numberType.IsFloatingPoint))
                 {
                     return Fail(node, BindingFailure.TypeMismatch);
                 }
@@ -372,7 +376,15 @@ public sealed partial class Binding
             this.BindType(parameter.Type, scope);
             if (parameter.DefaultValue is { } value)
             {
-                this.RequireType(value, scope.Parent ?? scope, parameter.Type.BoundType);
+                this.defaultBindingDepth++;
+                try
+                {
+                    this.RequireType(value, scope, parameter.Type.BoundType);
+                }
+                finally
+                {
+                    this.defaultBindingDepth--;
+                }
             }
         }
 
@@ -429,6 +441,11 @@ public sealed partial class Binding
         }
 
         symbol.Resolving = true;
+        if (symbol.Kind == BindingSymbolKind.Local && variable.TypeKoto is { } annotation && variable.InitializerKoto is { } arrayInitializer)
+        {
+            this.InferArrayAnnotation(annotation, arrayInitializer, scope);
+        }
+
         var declared = symbol.Property is not null ? symbol.Type : variable.TypeKoto is { } type ? this.BindType(type, scope) : null;
         var inferred = variable.InitializerKoto is { } initializer ? this.BindNode(initializer, scope, declared) : null;
         symbol.Resolving = false;
@@ -581,7 +598,7 @@ public sealed partial class Binding
         {
             // A directly signed literal is fitted as a signed value (SPEC 12.3.1).
             var type = DefaultLiteralType(number, expected);
-            if (!LiteralCategoryMatches(number, type))
+            if (!LiteralCategoryMatches(number, type) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && type.IsFloatingPoint))
             {
                 return Fail(unary, BindingFailure.TypeMismatch);
             }

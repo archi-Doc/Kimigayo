@@ -98,6 +98,7 @@ internal enum ArithmeticCheckKind : byte
     Shift,
     Conversion,
     Bounds,
+    FloatingConversion,
 }
 
 /// <summary>One instruction; <c>Operation</c> is the source ownership operation ID, or -1 for synthesized startup control.</summary>

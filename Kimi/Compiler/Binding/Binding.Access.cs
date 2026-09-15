@@ -9,6 +9,56 @@ public sealed partial class Binding
     private static BoundType EffectiveCore(BoundType type)
         => type.Kind == BoundTypeKind.Semantics && type.Components.Count == 1 ? type.Components[0] : type;
 
+    private void ValidateApiAccess()
+    {
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i] is DeclarationContainerKoto { BoundSymbol: { } domain } container && container is StructKoto or EnumKoto)
+            {
+                for (var c = 0; c < container.ConstraintNodes.Count; c++)
+                {
+                    var clause = container.ConstraintNodes[c];
+                    // Self conformances have the intersection of the Type and
+                    // Contract domains; their separate witness checks own this case.
+                    if (clause.Left is not IdentifierNameKoto { IdentifierName: "Self" } && !clause.IsAssociatedConstraint &&
+                        clause.BoundConstraint is { } constraint && !ConstraintAccessCovers(constraint, domain))
+                    {
+                        Fail(clause, BindingFailure.Access);
+                        Fail(container, BindingFailure.Access);
+                    }
+                }
+            }
+
+            if (this.nodes[i] is not FunctionKoto { IsGenerated: false, IsAnonymous: false, BoundSymbol: { Scope.Owner: DeclarationContainerKoto } symbol } function)
+            {
+                continue;
+            }
+
+            // Run after body constraints have been bound, even for unused APIs.
+            // Named functions retain their declared result (or the Unit default).
+            if (symbol.Type is { } result && !TypeAccessCovers(result, symbol, symbol))
+            {
+                Fail(function, BindingFailure.Access);
+            }
+
+            for (var p = 0; p < function.Parameters.Count; p++)
+            {
+                if (function.Parameters[p].Type.BoundType is { } parameter && !TypeAccessCovers(parameter, symbol, symbol))
+                {
+                    Fail(function, BindingFailure.Access);
+                }
+            }
+
+            for (var c = 0; c < function.TypeConstraints.Count; c++)
+            {
+                if (function.TypeConstraints[c] is IsKoto { BoundConstraint: { } constraint } && !ConstraintAccessCovers(constraint, symbol))
+                {
+                    Fail(function, BindingFailure.Access);
+                }
+            }
+        }
+    }
+
     private bool DerivesFrom(BindingSymbol? type, BindingSymbol target)
     {
         // The current language has one inline base. The bound limits invalid cycles too.

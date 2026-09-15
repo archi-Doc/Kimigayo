@@ -67,12 +67,21 @@ public sealed partial class OwnershipAnalysis
             this.flow.Reanalyze(root);
         }
 
+        for (var i = 1; i < this.compilation.SourceModules.Length; i++)
+        {
+            this.flow.Append(this.compilation.SourceModules[i].RootKoto);
+        }
+
         if (!binding.Result.IsComplete || binding.Obligations.Count != 0)
         {
             return this.Result;
         }
 
-        this.collector.Visit(root);
+        foreach (var module in this.compilation.SourceModules)
+        {
+            this.collector.Visit(module.RootKoto);
+        }
+
         var errors = 0;
         var unsupported = 0;
         for (var i = 0; i < this.issues.Count; i++)
@@ -1042,6 +1051,11 @@ public sealed partial class OwnershipAnalysis
 
         public override void Visit(Koto node)
         {
+            if (node is FunctionKoto && TestDefinition.Marker(node) is not null)
+            {
+                return;
+            }
+
             if (node is FunctionKoto function)
             {
                 // Requirement declarations and foreign imports have no body to verify.

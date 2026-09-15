@@ -18,7 +18,7 @@ The [test verification rules in §17.5](spec/17-failure-handling.md#175-test-ver
 
 For the first executable program, start with [minimal console output](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output), [program startup](spec/22-core-execution-and-foreign-functions.md#222-program-startup-and-static-initialization), and [LLVM output/native build](spec/20-compilation-configuration.md#208-llvm-output-native-build-and-execution). The language rules below remain distinct from the implementation milestone in [STATUS.md](STATUS.md#c12-first-executable-milestone).
 
-The `build`, `emit`, and `run` commands share [input resolution and implicit single-source projects](spec/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects), including extensionless project/source lookup, Application/O2 defaults, and a concise project-settings summary before execution.
+The source commands share [input resolution and implicit single-source projects](spec/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects), including extensionless project/source lookup and Application/O2 defaults. See [dependency resolution and lock lifecycle](spec/18-modules-and-dependencies.md#185-lock-files-and-input-records) for `restore` and `check --locked`; implementation coverage remains in [STATUS.md](STATUS.md).
 
 ## Part I. Introduction and source text
 
@@ -74,6 +74,12 @@ Receiver shorthand is defined in [§7.3](spec/07-functions-and-callable-values.m
 ### Appendix C. Implementation status
 
 Implementation coverage is maintained in [STATUS.md](STATUS.md), separately from language conformance. Parser support alone establishes neither Binding, constant evaluation, ownership checking, nor execution.
+
+Numeric adaptation rules are owned by [§13.5.4](spec/13-operators-and-assignment.md#1354-numeric-conversions-and-literals), the Windows 128-bit boundary by [§21.5.3](spec/21-layout-runtime-and-code-generation.md#2153-checked-instructions-and-raw-pointers), and runtime failure codes by [§22.5.4](spec/22-core-execution-and-foreign-functions.md#2254-abort-diagnostics-and-exit).
+
+Same-Type acquisition follows [§13.5.3](spec/13-operators-and-assignment.md#1353-defined-adaptations). Fixed-array Constant-readable Bindings and typed checked length evaluation are defined in [§4.2](spec/04-arrays-indexing-and-slices.md#42-length-constants); they do not extend ordinary constant evaluation or static index disjointness.
+
+Declaration-fragment identity, matching headers, accessibility defaults, and shared base clauses follow [§6.1.2](spec/06-declarations-and-containers.md#612-container-fragments). A synthesized path group is not an independent header fragment.
 
 Executable aggregate examples include [Copy element reads](examples/ElementReads/README.md), [Copy element assignments](examples/ElementAssignments/README.md), [numeric element updates](examples/ElementUpdates/README.md), [disjoint element paths](examples/ElementPaths/README.md), [owned Non-Copy element replacements](examples/ElementReplacements/README.md), [static element partial Move and repair](examples/ElementMoves/README.md), [shared string element inspection and arguments](examples/ElementBorrows/README.md), [element borrowing from owned parameters and temporaries](examples/ElementBorrowOwners/README.md), and [partial Move from owned parameters](examples/ElementParameterMoves/README.md). Their documented implementation limits do not narrow the language rules in Chapters 4, 13 and 15.
 

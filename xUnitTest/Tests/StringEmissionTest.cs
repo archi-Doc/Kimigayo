@@ -63,7 +63,7 @@ public class StringEmissionTest
     [Theory]
     [InlineData("func unused() -> string => " + MinimalEmissionTest.FloatExpression + "\nwriteLine(\"ok\")")]
     [InlineData("func unused(text: uniq/string) => ()\nwriteLine(\"ok\")")]
-    [InlineData("let text = \"a\"\ntext@string")]
+    [InlineData("let text = \"a\"\ntext@string\nwriteLine(text)")]
     [InlineData("let text = \"a\"\nwriteLine(text)\nwriteLine(text)")]
     [InlineData("var text: string\nvar c = true\nif c => text = \"a\"\nwriteLine(text)")]
     public void UnsupportedResultsAndInvalidMovesPublishNoIr(string source)
