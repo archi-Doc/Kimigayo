@@ -202,9 +202,10 @@ Loweringは更新元source、演算子、旧値とRHS、型、唯一の射影所
 
 ## 5. CLI・成果物・Windows runtime
 
-- [Project](Kimi/SolutionAndProject/Project.cs) のCheckは意味検査、Generate/`emit-llvm`は整合した`.ll`＋`.link.json`、Build/`build`はnative exe生成。`run`は既存Applicationを実行し、source変更で自動再buildしない。
+- [Project](Kimi/SolutionAndProject/Project.cs) のCheckは意味検査、Generate/`emit`は整合した`.ll`＋`.link.json`、Build/`build`はnative exe生成。`run`は既存Applicationを実行し、source変更で自動再buildしない。
+- [Solution](Kimi/SolutionAndProject/Solution.cs) はbuild/run/emit共通で指定パス→拡張子なしの場合`.kimiproj`→`.kimi`を探索する。選択済み対象の失敗では次候補へ進まない。単一`.kimi`はそのファイルのみの暗黙Application/O2プロジェクトとし、OS/OS architectureからターゲットを選ぶ（現対応はWindows x64、`--Target`で明示可能）。隣接source・project設定を取り込まず、`.kimiproj`も生成しない。runはsource内容を読まず既存成果物を検証・実行する。CLI名は`emit`へ統一し、旧`emit-llvm`を含む未知コマンドはexit 1。
 - [EmissionArtifacts](Kimi/Compiler/Emission/EmissionArtifacts.cs) / [NativeToolchain](Kimi/Compiler/Emission/NativeToolchain.cs) はschema 3、IR/exe/供給hash・ABI・LLVM同一性、失敗時の旧成功無効化、stagingからの公開を扱う。toolの出力を回収し、取消し・時間上限・child tree終了を実装。Applicationの出力/exitは転送する。
-- [ToolchainResolver](Kimi/Compiler/Emission/ToolchainResolver.cs) はCLIのToolchainRoot、環境変数KIMI_TOOLCHAIN_ROOT、既定配置の順でrootを選ぶ。既定は実行file隣接toolchain、source buildではcheckoutのtoolchainを探索。LlvmBin・明示backend pathの上書きも別途扱う。emit-llvm単独にはLLVM導入不要。通常の.NET buildはbackendを再生成しない。
+- [ToolchainResolver](Kimi/Compiler/Emission/ToolchainResolver.cs) はCLIのToolchainRoot、環境変数KIMI_TOOLCHAIN_ROOT、既定配置の順でrootを選ぶ。既定は実行file隣接toolchain、source buildではcheckoutのtoolchainを探索。LlvmBin・明示backend pathの上書きも別途扱う。emit単独にはLLVM導入不要。通常の.NET buildはbackendを再生成しない。
 - [WindowsProfile](Kimi/Compiler/Emission/WindowsProfile.cs) と [profile.json](backend/windows-x64/profile.json) はLLVM 22.1.8、backend ABI 2、__chkstk/memcmp/memcpy/memmove/memsetを定義。版はDirectory.Build.propsと共有し、実archive hashも照合する。明示的な未固定toolchain試行でもintegrity検査は省略しない。
 - [WindowsRuntime.ll.in](Kimi/Compiler/Emission/WindowsRuntime.ll.in) はstartup、UTF-8出力、確保/解放、string破棄、Abortを実装。通常exit 0、Abort 1、LFを別出力、NULはデータとして扱う。Staticは解放せず、Heap責任を解放する。一般object/Weak/metadata runtimeは未完成。
 - [Kernel32Imports](Kimi/Compiler/Emission/Kernel32Imports.cs) はproject-owned定義とllvm-dlltoolからimport libraryを生成・検査する。runtimeの7 Windows APIとnativeテスト用3 APIを供給し、SDKのkernel32.lib設定を不要にする。
@@ -273,6 +274,17 @@ dotnet test --project xUnitTest/xUnitTest.csproj -c Release --no-build --no-rest
 ```
 
 buildの警告数は現設定下の結果。テストは対応・拒否境界を検証するもので、SPEC全体への適合証明ではない。
+
+### 7.3. CLI入力解決・暗黙プロジェクトの確認（2026-09-15）
+
+build/run/emitは読み込んだprojectごとに名前・project/sourceファイル名・暗黙projectの識別・Targets・OutputKind・Optimizationを1行表示する。`--Target`指定も別項目で表示する。従来のファイル名のみのTarget Projects一覧を置き換え、直接`.exe`実行にはProjectFile表示を追加しない。
+
+表示追加後のDebug compiler buildは警告0・エラー0。既存fixtureで暗黙projectのemit/build/runと明示projectのemit（`--Target`付き）を実行し、要約の表示と各exit 0を確認した。
+
+- Debug compiler build成功（警告0・エラー0）。SolutionInput / NativeToolchain / EmissionArtifactsの関連managedテスト52件が成功。
+- `./backend/windows-x64/test-cli.ps1 -Configuration Debug` が成功。管理対象の.NET版CLIと実LLVMで、既存O0/O2ビルド、拡張子なしproject、単一sourceのO2ビルド・emit、source変更後のrun、指定パス優先、壊れたprojectからのfallback拒否、旧コマンド名の拒否を検証。
+- 同ディレクトリの壊れた別sourceを除外すること、暗黙`.kimiproj`を生成しないこと、emit/runがnative成功記録を変更しないこと、runのstdout・exit code転送を確認。
+- NativeAOTテスト、全managedテストの再実行、性能benchmarkは実施していない。
 
 ## 8. autoframe実行基盤
 

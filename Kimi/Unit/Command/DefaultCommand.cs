@@ -17,6 +17,13 @@ public class DefaultCommand : ISimpleCommand
 
     public async Task Execute(string[] args, CancellationToken cancellationToken)
     {
+        if (args.Length != 0)
+        {
+            Console.Error.WriteLine($"Unknown command '{args[0]}'. Use build, run, emit, or lsp.");
+            Environment.ExitCode = 1;
+            return;
+        }
+
         Console.WriteLine($"Kimi ({Compiler.CompilerRelease.Version}) by archi-Doc");
     }
 }

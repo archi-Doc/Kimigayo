@@ -1,6 +1,5 @@
 ﻿// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Text;
 using Kimi.Command;
 using Kimi.Diagnostics;
 
@@ -20,7 +19,7 @@ public class Solution
     /// <summary>Gets the command-line options shared by projects in this solution.</summary>
     public KimiOptions KimiOptions { get; private set; } = new();
 
-    /// <summary>Gets the loaded projects keyed by project-file path.</summary>
+    /// <summary>Gets the loaded projects keyed by project-file or implicit source-file path.</summary>
     public Dictionary<string, Project> Projects { get; private set; } = new();
 
     /// <summary>Initializes a new instance of the <see cref="Solution"/> class.</summary>
@@ -126,72 +125,73 @@ public class Solution
         return this.AllProjectsLoaded() && await this.BuildCore(true, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Discovers solution and project files for a build command.</summary>
+    /// <summary>Resolves shared build, emit and run inputs, including implicit single-source projects.</summary>
     /// <param name="logger">The command logger.</param>
     /// <param name="options">The shared compiler options.</param>
     /// <param name="args">Command-line paths.</param>
-    public void LoadForBuild(ILogger logger, KimiOptions options, string[] args)
+    public void LoadForBuild(ILogger? logger, KimiOptions options, string[] args)
     {
         var projectList = new List<string>();
         this.SolutionFile = new();
         this.Projects.Clear();
         this.KimiOptions = options;
 
-        var currentDirectory = Directory.GetCurrentDirectory();
-        if (args.Length == 0)
-        {// If not specified, the current directory is used.
-            args = [currentDirectory,];
+        var inputs = new string[Math.Max(1, args.Length)];
+        for (var i = 0; i < inputs.Length; i++)
+        {
+            inputs[i] = ResolveInputPath(args.Length == 0 ? Directory.GetCurrentDirectory() : args[i]);
         }
 
         // Tries to load solution file
-        foreach (var x in args)
+        foreach (var x in inputs)
         {
-            if (x.EndsWith(Constants.KimiSolutionExtension, StringComparison.InvariantCultureIgnoreCase))
+            if (!Directory.Exists(x) && x.EndsWith(Constants.KimiSolutionExtension, StringComparison.OrdinalIgnoreCase))
             {// *.kimisln
-                if (this.TryReadFile(Path.GetFullPath(x), logger))
+                if (!this.TryReadFile(x, logger))
                 {
-                    goto SolutionLoaed;
+                    throw new InvalidDataException("Cannot load solution: " + x);
                 }
 
-                this.SolutionFile.Projects.Add(Path.GetFullPath(x));
                 goto SolutionLoaed;
             }
         }
 
         // Tries to load solution file in directory
-        foreach (var x in args)
+        foreach (var x in inputs)
         {
             if (Directory.Exists(x))
             {
                 foreach (var y in Directory.EnumerateFiles(x, $"*{Constants.KimiSolutionExtension}", SearchOption.TopDirectoryOnly))
                 {
-                    if (this.TryReadFile(Path.GetFullPath(y), logger))
+                    if (!this.TryReadFile(Path.GetFullPath(y), logger))
                     {
-                        goto SolutionLoaed;
+                        throw new InvalidDataException("Cannot load solution: " + y);
                     }
+
+                    goto SolutionLoaed;
                 }
 
                 // Load project file in directory
+                var previousCount = projectList.Count;
                 foreach (var y in Directory.EnumerateFiles(x, $"*{Constants.KimiProjectExtension}", SearchOption.TopDirectoryOnly))
                 {
                     projectList.Add(Path.GetFullPath(y));
+                }
+
+                if (projectList.Count == previousCount)
+                {
+                    throw new InvalidDataException("No solution or project files found in directory: " + x);
                 }
             }
         }
 
         // Load project file
-        foreach (var x in args)
+        foreach (var x in inputs)
         {
-            if (x.EndsWith(Constants.KimiProjectExtension, StringComparison.InvariantCultureIgnoreCase))
-            {// *.kimiproj
-                if (Path.IsPathFullyQualified(x))
-                {
-                    projectList.Add(x);
-                }
-                else
-                {
-                    projectList.Add(Path.GetFullPath(x, currentDirectory));
-                }
+            if (!Directory.Exists(x) &&
+                (x.EndsWith(Constants.KimiProjectExtension, StringComparison.OrdinalIgnoreCase) || x.EndsWith(Constants.KimiExtension, StringComparison.OrdinalIgnoreCase)))
+            {
+                projectList.Add(x);
             }
         }
 
@@ -207,33 +207,97 @@ SolutionLoaed:
 
         if (this.SolutionFile.Projects.Count == 0)
         {
-            logger.GetWriter(LogLevel.Warning)?.Write(Hashed.Solution.NoProject);
+            logger?.GetWriter(LogLevel.Warning)?.Write(Hashed.Solution.NoProject);
             // this.kimigayo.GlobalDiagnostic.Add(default, Hashed.Solution.NoProject);
         }
-
-        var sb = new StringBuilder();
-        sb.Append(HashedString.Get(Hashed.Solution.TargetProjects));
-        foreach (var x in this.SolutionFile.Projects)
-        {
-            sb.Append(Path.GetFileName(x));
-            sb.Append(", ");
-        }
-
-        logger.GetWriter()?.Write(sb.ToString());
 
         return;
     }
 
-    /// <summary>Loads the discovered project files.</summary>
+    /// <summary>Loads discovered project files or creates implicit single-source projects.</summary>
     /// <param name="logger">The project-load logger.</param>
-    public void PrepareProject(ILogger logger)
+    public void PrepareProject(ILogger? logger)
     {
         foreach (var x in this.SolutionFile.Projects)
         {
-            if (!this.Projects.ContainsKey(x) && Project.TryCreate(this.kimigayo, logger, x, out var project))
+            if (this.Projects.ContainsKey(x))
+            {
+                continue;
+            }
+
+            if (x.EndsWith(Constants.KimiExtension, StringComparison.OrdinalIgnoreCase))
+            {
+                if (!File.Exists(x))
+                {
+                    throw new FileNotFoundException("Source file not found: " + x, x);
+                }
+
+                this.Projects[x] = Project.CreateFromSource(this.kimigayo, x, this.KimiOptions);
+            }
+            else if (Project.TryCreate(this.kimigayo, logger, x, out var project))
             {
                 this.Projects[x] = project;
             }
+
+            if (this.Projects.TryGetValue(x, out var loaded))
+            {
+                var implicitLabel = x.EndsWith(Constants.KimiExtension, StringComparison.OrdinalIgnoreCase) ? ", implicit" : string.Empty;
+                var selectedTarget = string.IsNullOrEmpty(this.KimiOptions.Target) ? string.Empty : " | Target: " + this.KimiOptions.Target;
+                var settings = loaded.ProjectFile;
+                this.kimigayo.WriteLine(
+                    DiagnosticSeverity.Information,
+                    $"Project: {loaded.Name} ({Path.GetFileName(x)}{implicitLabel}) | Targets: {string.Join(", ", settings.Targets)} | OutputKind: {settings.OutputKind} | Optimization: {settings.Optimization}{selectedTarget}");
+            }
+        }
+    }
+
+    internal static string ResolveInputPath(string input)
+    {
+        var path = Path.GetFullPath(input);
+        if (!TryGetAttributes(path, out var attributes))
+        {
+            if (!Path.HasExtension(path))
+            {
+                var project = path + Constants.KimiProjectExtension;
+                if (TryGetAttributes(project, out var projectAttributes) && (projectAttributes & FileAttributes.Directory) == 0)
+                {
+                    return project;
+                }
+
+                var source = path + Constants.KimiExtension;
+                if (TryGetAttributes(source, out var sourceAttributes) && (sourceAttributes & FileAttributes.Directory) == 0)
+                {
+                    return source;
+                }
+
+                throw new FileNotFoundException($"Input not found. Tried '{path}', '{project}', and '{source}'.", path);
+            }
+
+            throw new FileNotFoundException("Input not found: " + path, path);
+        }
+
+        if ((attributes & FileAttributes.Directory) == 0 &&
+            !path.EndsWith(Constants.KimiProjectExtension, StringComparison.OrdinalIgnoreCase) &&
+            !path.EndsWith(Constants.KimiSolutionExtension, StringComparison.OrdinalIgnoreCase) &&
+            !path.EndsWith(Constants.KimiExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("Unsupported input file: " + path + ". Expected .kimiproj, .kimisln, or .kimi.");
+        }
+
+        return path;
+    }
+
+    private static bool TryGetAttributes(string path, out FileAttributes attributes)
+    {
+        try
+        {
+            attributes = File.GetAttributes(path);
+            return true;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            attributes = default;
+            return false;
         }
     }
 

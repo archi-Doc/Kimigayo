@@ -3,18 +3,19 @@
 namespace Kimi;
 
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Command;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
 
 /// <summary>
-/// Represents one application or library build unit described by a <c>.kimiproj</c> file.
+/// Represents an application or library build unit, configured by a project file or a single-source input.
 /// </summary>
 /// <remarks>A project is the Kimigayo equivalent of a C# project.</remarks>
 public partial class Project
 {
-    /// <summary>Gets the default project-file settings used by implicit projects.</summary>
+    /// <summary>Gets the default settings for programmatically constructed projects.</summary>
     public static readonly ProjectFile DefaultProjectFile;
 
     static Project()
@@ -32,7 +33,7 @@ public partial class Project
     /// <param name="path">The project-file path.</param>
     /// <param name="project">The loaded project.</param>
     /// <returns><see langword="true"/> when the project was loaded.</returns>
-    public static bool TryCreate(Kimigayo kimigayo, ILogger logger, string path, [MaybeNullWhen(false)] out Project project)
+    public static bool TryCreate(Kimigayo kimigayo, ILogger? logger, string path, [MaybeNullWhen(false)] out Project project)
     {
         project = default;
         try
@@ -45,10 +46,9 @@ public partial class Project
                 return false;
             }
 
-            project = new(kimigayo);
+            project = new(kimigayo, file);
             project.Directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
             project.Name = Path.GetFileNameWithoutExtension(path);
-            project.ProjectFile = file;
             foreach (var source in System.IO.Directory.EnumerateFiles(project.Directory, "*.kimi", SearchOption.TopDirectoryOnly))
             {
                 project.AddKimiFile(source);
@@ -61,6 +61,40 @@ public partial class Project
         }
 
         return true;
+    }
+
+    /// <summary>Creates an in-memory Application for exactly one source file without reading its contents.</summary>
+    /// <param name="kimigayo">The owning compiler service.</param>
+    /// <param name="path">The selected source-file path.</param>
+    /// <param name="options">The explicit command-line settings.</param>
+    /// <returns>The implicit project.</returns>
+    internal static Project CreateFromSource(Kimigayo kimigayo, string path, KimiOptions options)
+    {
+        var target = options.Target;
+        if (string.IsNullOrEmpty(target))
+        {
+            if (!OperatingSystem.IsWindows() || RuntimeInformation.OSArchitecture != Architecture.X64)
+            {
+                throw new PlatformNotSupportedException("Implicit projects currently support only the Windows x64 host target. Specify --Target explicitly for emission to a supported target.");
+            }
+
+            target = WindowsProfile.Target;
+        }
+
+        var fullPath = Path.GetFullPath(path);
+        var project = new Project(kimigayo, new()
+        {
+            Targets = [target],
+            OutputKind = OutputKind.Application,
+            Optimization = "O2",
+        })
+        {
+            Directory = Path.GetDirectoryName(fullPath)!,
+            Name = Path.GetFileNameWithoutExtension(fullPath),
+            KimiOptions = options,
+        };
+        project.AddKimiFile(fullPath);
+        return project;
     }
 
     #region FieldAndProperty
@@ -83,7 +117,7 @@ public partial class Project
     public string Name { get; set; } = string.Empty;
 
     /// <summary>Gets the project-file settings, including targets and Kotonoha references.</summary>
-    public ProjectFile ProjectFile { get; private set; } = new();
+    public ProjectFile ProjectFile { get; private set; }
 
     internal string? SolutionLanguageVersion { get; set; }
 
@@ -92,14 +126,19 @@ public partial class Project
     /// <summary>Initializes a new instance of the <see cref="Project"/> class.</summary>
     /// <param name="kimigayo">The owning compiler service.</param>
     public Project(Kimigayo kimigayo)
-    {
-        this.kimigayo = kimigayo;
-        this.ProjectFile = new()
+        : this(kimigayo, new()
         {
             Targets = DefaultProjectFile.Targets.ToArray(),
             Alias = DefaultProjectFile.Alias.ToArray(),
             KotonohaArray = DefaultProjectFile.KotonohaArray.ToArray(),
-        };
+        })
+    {
+    }
+
+    private Project(Kimigayo kimigayo, ProjectFile projectFile)
+    {
+        this.kimigayo = kimigayo;
+        this.ProjectFile = projectFile;
     }
 
     /// <summary>Adds generated or in-memory Kimi source text.</summary>

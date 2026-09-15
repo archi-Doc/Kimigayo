@@ -16,6 +16,8 @@ The adopted [testing specification](draft/Design/2026-09-13%20Testing.md) takes 
 
 For the first executable program, start with [minimal console output](spec/22-core-execution-and-foreign-functions.md#224-minimal-console-output), [program startup](spec/22-core-execution-and-foreign-functions.md#222-program-startup-and-static-initialization), and [LLVM output/native build](spec/20-compilation-configuration.md#208-llvm-output-native-build-and-execution). The language rules below remain distinct from the implementation milestone in [STATUS.md](STATUS.md#c12-first-executable-milestone).
 
+The `build`, `emit`, and `run` commands share [input resolution and implicit single-source projects](spec/20-compilation-configuration.md#20861-input-resolution-and-implicit-projects), including extensionless project/source lookup, Application/O2 defaults, and a concise project-settings summary before execution.
+
 ## Part I. Introduction and source text
 
 - [1. Overview](spec/01-overview.md)

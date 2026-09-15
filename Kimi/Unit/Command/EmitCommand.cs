@@ -4,14 +4,14 @@ using SimpleCommandLine;
 
 namespace Kimi.Command;
 
-[SimpleCommand("emit-llvm")]
-public sealed class EmitLlvmCommand : ISimpleCommand<KimiOptions>
+[SimpleCommand("emit")]
+public sealed class EmitCommand : ISimpleCommand<KimiOptions>
 {
     private readonly ILogger logger;
     private readonly Kimigayo kimigayo;
     private readonly Solution solution;
 
-    public EmitLlvmCommand(ILogger<EmitLlvmCommand> logger, Kimigayo kimigayo, Solution solution)
+    public EmitCommand(ILogger<EmitCommand> logger, Kimigayo kimigayo, Solution solution)
     {
         this.logger = logger;
         this.kimigayo = kimigayo;

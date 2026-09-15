@@ -72,8 +72,8 @@ Write-Project 'O2' 'missing LLVM directory'
 $ir = Join-Path $work 'bin/x86_64-pc-windows-msvc/Hello.ll'
 $recordPath = [IO.Path]::ChangeExtension($ir, '.link.build.json')
 $previousRecord = [IO.File]::ReadAllText($recordPath)
-$output = Invoke-Kimi @('emit-llvm', $project)
-if (-not (Test-Path $ir) -or [IO.File]::ReadAllText($recordPath) -cne $previousRecord) { throw 'emit-llvm must only publish LLVM inputs' }
+$output = Invoke-Kimi @('emit', $project)
+if (-not (Test-Path $ir) -or [IO.File]::ReadAllText($recordPath) -cne $previousRecord) { throw 'emit must only publish LLVM inputs' }
 $output = Invoke-Kimi @('build', $project) 1
 $output = Invoke-Kimi @('run', $project) 1
 foreach ($level in @('O0', 'O2')) {
@@ -141,7 +141,55 @@ if ($LASTEXITCODE -ne 0) { throw 'Exit fixture link failed' }
 $output = Invoke-Kimi @('run', "$exitIr.exe") 37
 $output = Invoke-Kimi @('run', (Join-Path $work 'missing.exe')) 1
 $output = Invoke-Kimi @('build', (Join-Path $work 'missing.kimiproj')) 1
-$output = Invoke-Kimi @('emit-llvm', (Join-Path $work 'missing.kimisln')) 1
+$output = Invoke-Kimi @('emit', (Join-Path $work 'missing.kimisln')) 1
 $output = Invoke-Kimi @('build', $project, '--LlvmBin') 1
-@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'run without compilation', 'failure invalidates old success', 'toolchain policy', 'spaces in paths', 'exit code forwarding', 'missing inputs') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
+
+# Shared input resolution and an implicit Application must work through the real CLI.
+$output = Invoke-Kimi @('emit-llvm', $project) 1
+$projectStem = [IO.Path]::ChangeExtension($project, $null)
+$output = Invoke-Kimi @('emit', $projectStem)
+$output = Invoke-Kimi @('build', $projectStem, '--LlvmBin', $LlvmBin)
+$output = Invoke-Kimi @('run', $projectStem)
+if (-not $output.Contains('Hello, world!')) { throw 'Extensionless project lookup failed' }
+$singleDirectory = Join-Path $work 'single source'
+New-Item -ItemType Directory -Path $singleDirectory | Out-Null
+$singleStem = Join-Path $singleDirectory 'Single'
+$singleSource = "$singleStem.kimi"
+$singleProject = "$singleStem.kimiproj"
+$singleText = '::Core.writeLine("Single source")'
+$singleText | Set-Content -LiteralPath $singleSource -Encoding utf8
+'let broken =' | Set-Content -LiteralPath (Join-Path $singleDirectory 'BrokenSibling.kimi') -Encoding utf8
+$singleIr = Join-Path $singleDirectory 'bin/x86_64-pc-windows-msvc/Single.ll'
+$singleRecordPath = [IO.Path]::ChangeExtension($singleIr, '.link.build.json')
+$output = Invoke-Kimi @('run', $singleStem) 1
+if (Test-Path $singleIr) { throw 'Implicit run generated LLVM inputs' }
+$output = Invoke-Kimi @('emit', $singleStem, '--ToolchainRoot', (Join-Path $work 'missing toolchain'))
+if (-not (Test-Path $singleIr) -or (Test-Path $singleRecordPath) -or (Test-Path $singleProject)) { throw 'Implicit emit must only publish LLVM inputs' }
+$output = Invoke-Kimi @('build', $singleStem)
+$singleRecord = Get-Content -LiteralPath $singleRecordPath -Raw | ConvertFrom-Json
+if ($singleRecord.optimization -cne 'O2' -or $singleRecord.status -cne 'linked') { throw 'Implicit project did not use O2' }
+$output = Invoke-Kimi @('run', $singleStem)
+if (-not $output.Contains('Single source')) { throw 'Implicit source build/run failed' }
+$singleBefore = [IO.File]::ReadAllText($singleRecordPath)
+'let broken =' | Set-Content -LiteralPath $singleSource -Encoding utf8
+$output = Invoke-Kimi @('run', $singleSource)
+if (-not $output.Contains('Single source') -or [IO.File]::ReadAllText($singleRecordPath) -cne $singleBefore) { throw 'Source run must not read or rebuild changed source' }
+$singleText | Set-Content -LiteralPath $singleSource -Encoding utf8
+'OutputKind="Invalid"' | Set-Content -LiteralPath $singleProject -Encoding utf8
+foreach ($command in @('build', 'run', 'emit')) {
+    $output = Invoke-Kimi @($command, $singleStem) 1
+}
+# Explicit .kimi bypasses the invalid same-stem project and excludes its sibling source.
+$output = Invoke-Kimi @('emit', $singleSource)
+$output = Invoke-Kimi @('build', $singleSource)
+$output = Invoke-Kimi @('run', $singleSource)
+if (-not $output.Contains('Single source')) { throw 'Explicit source input was not honored' }
+Remove-Item -LiteralPath $singleProject
+New-Item -ItemType Directory -Path $singleStem | Out-Null
+foreach ($command in @('build', 'run', 'emit')) {
+    $output = Invoke-Kimi @($command, $singleStem) 1
+}
+Remove-Item -LiteralPath $singleStem
+
+@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'run without compilation', 'failure invalidates old success', 'toolchain policy', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'source run without compilation', 'exact path precedence', 'invalid selection never falls back') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
 Write-Output "CLI integration tests passed: $report"

@@ -39,7 +39,7 @@ dotnet Kimi/bin/Release/net10.0/Kimi.dll run examples/Hello/Hello.kimiproj
 For debugging the compiler's pre-optimization IR, use:
 
 ```powershell
-dotnet Kimi/bin/Release/net10.0/Kimi.dll emit-llvm examples/Hello/Hello.kimiproj
+dotnet Kimi/bin/Release/net10.0/Kimi.dll emit examples/Hello/Hello.kimiproj
 ```
 
 This performs required semantic/ownership checks and writes only the matched `.ll`/`.link.json` pair. It neither executes LLVM nor links/runs a program. The existing manual builder remains available for separately building this pair:
