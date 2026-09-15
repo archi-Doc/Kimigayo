@@ -9,8 +9,102 @@ public sealed partial class Binding
     private static BoundType EffectiveCore(BoundType type)
         => type.Kind == BoundTypeKind.Semantics && type.Components.Count == 1 ? type.Components[0] : type;
 
+    private static bool ProjectionAccessCovers(Koto use, BoundType qualifier, BindingSymbol contract, BindingSymbol domain)
+        => TypeAccessCovers(qualifier, domain, domain) && AccessCovers(contract, domain, domain) &&
+            (use.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } requirement || AccessCovers(requirement, domain, domain));
+
+    private static FunctionKoto? FunctionSignatureOwner(Koto use)
+    {
+        for (var node = use; node.Parent is { } parent; node = parent)
+        {
+            if (parent is not FunctionKoto function)
+            {
+                continue;
+            }
+
+            if (function.IsGenerated || function.IsAnonymous || function.BoundSymbol?.Scope.Owner is not DeclarationContainerKoto)
+            {
+                return null;
+            }
+
+            if (ReferenceEquals(node, function.ReturnType))
+            {
+                return function;
+            }
+
+            for (var p = 0; p < function.Parameters.Count; p++)
+            {
+                if (ReferenceEquals(node, function.Parameters[p].Type))
+                {
+                    return function;
+                }
+            }
+
+            // Body and default expressions use definition-site access, not API access.
+            return null;
+        }
+
+        return null;
+    }
+
     private bool IsReceiverType(BoundType? type, BindingSymbol owner)
         => type is not null && SameType(EffectiveCore(type), this.SelfType(owner)) && type.Semantics is not (SemanticsKind.Unsafe or SemanticsKind.Parameter);
+
+    private void ValidateConstraintProjectionAccess()
+    {
+        for (var i = 0; i < this.projectionUses.Count; i++)
+        {
+            var use = this.projectionUses[i];
+            var node = use.Use;
+            while (node is not (IsKoto or FunctionKoto or DeclarationContainerKoto) && node.Parent is { } parent)
+            {
+                node = parent;
+            }
+
+            if (node is not IsKoto clause)
+            {
+                continue;
+            }
+
+            var owner = this.ConstraintScope(clause).Owner;
+            IReadOnlyList<Koto> clauses;
+            BindingSymbol domain;
+            switch (owner)
+            {
+                case FunctionKoto { IsGenerated: false, IsAnonymous: false, BoundSymbol: { Scope.Owner: DeclarationContainerKoto } symbol } function:
+                    clauses = function.TypeConstraints;
+                    domain = function.IsRequirement ? symbol.Scope.Owner.BoundSymbol! : symbol;
+                    break;
+                case DeclarationContainerKoto container when container is StructKoto or EnumKoto or ContractKoto:
+                    // Implementation specifications and Self conformances have their
+                    // separate Type/Contract intersection domain, not the Type API domain.
+                    if (container is not ContractKoto && (clause.IsAssociatedConstraint || clause.Left is IdentifierNameKoto { IdentifierName: "Self" }))
+                    {
+                        continue;
+                    }
+
+                    clauses = container.ConstraintNodes;
+                    domain = container.BoundSymbol!;
+                    break;
+                default:
+                    continue;
+            }
+
+            for (var c = 0; c < clauses.Count; c++)
+            {
+                if (ReferenceEquals(clauses[c], clause))
+                {
+                    if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
+                    {
+                        Fail(clause, BindingFailure.Access);
+                        Fail(owner, BindingFailure.Access);
+                    }
+
+                    break;
+                }
+            }
+        }
+    }
 
     private void ValidateApiAccess()
     {
@@ -58,6 +152,23 @@ public sealed partial class Binding
                 {
                     Fail(function, BindingFailure.Access);
                 }
+            }
+        }
+
+        // Normalization can replace S.C.Element with its concrete binding. The
+        // retained projection use still owns the qualifier and requirement domains.
+        for (var i = 0; i < this.projectionUses.Count; i++)
+        {
+            var use = this.projectionUses[i];
+            if (FunctionSignatureOwner(use.Use) is not { BoundSymbol: { } symbol } function)
+            {
+                continue;
+            }
+
+            var domain = function.IsRequirement ? symbol.Scope.Owner.BoundSymbol! : symbol;
+            if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
+            {
+                Fail(function, BindingFailure.Access);
             }
         }
     }

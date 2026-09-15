@@ -215,6 +215,7 @@ public sealed partial class Binding
         this.ExpandContractPremises();
         this.PrepareAssociatedBindings();
         this.bindingConstraintTypes = false;
+        this.ValidateConstraintProjectionAccess();
     }
 
     private bool DeferredConstraint(IsKoto clause, BindingScope scope)

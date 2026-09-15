@@ -23,6 +23,29 @@ public sealed partial class Binding
         return syntax.AccessorKind == PropertyAccessorKind.Get ? property.Getter : property.Setter;
     }
 
+    private static Koto? PropertySignatureOwner(Koto use)
+    {
+        for (var node = use; node.Parent is { } parent; node = parent)
+        {
+            if (parent is PropertyAccessorKoto accessor)
+            {
+                return ReferenceEquals(node, accessor.ReceiverType) || ReferenceEquals(node, accessor.ValueType) || ReferenceEquals(node, accessor.ReturnType) ? accessor : null;
+            }
+
+            if (parent is PropertyKoto property)
+            {
+                return ReferenceEquals(node, property.TypeKoto) ? property : null;
+            }
+
+            if (parent is FunctionKoto)
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
     private void IndexAccessor(PropertyAccessorKoto syntax, BindingScope scope)
     {
         var accessor = Accessor(syntax);
@@ -189,6 +212,25 @@ public sealed partial class Binding
 
     private void ValidateProperties(BindingMode mode)
     {
+        // Projection normalization must not erase signature access obligations.
+        // Check before publishing Property verification or building conformance witnesses.
+        for (var i = 0; i < this.projectionUses.Count; i++)
+        {
+            var use = this.projectionUses[i];
+            var declaration = PropertySignatureOwner(use.Use);
+            var syntax = declaration as PropertyKoto ?? declaration?.Parent as PropertyKoto;
+            if (syntax?.BoundSymbol?.Property is not { } property)
+            {
+                continue;
+            }
+
+            var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : declaration!.BoundSymbol!;
+            if (!ProjectionAccessCovers(use.Use, use.Type, use.Contract, domain))
+            {
+                Fail(declaration!, BindingFailure.Access);
+            }
+        }
+
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is not PropertyKoto syntax || syntax.BoundSymbol?.Property is not { } property)
