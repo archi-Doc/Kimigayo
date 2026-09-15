@@ -599,7 +599,7 @@ public sealed class ControlFlowAnalysis
     private Flow VisitChildSequence(Koto node, bool reachable)
     {
         var start = this.childBuffer.Count;
-        node.VisitChildren(this.childCollector);
+        StructuralCompletion.CollectEvaluationChildren(node, this.childBuffer, this.childCollector);
         var count = this.childBuffer.Count - start;
         var flow = this.VisitSequence(this.childBuffer, start, count, reachable);
         this.childBuffer.RemoveRange(start, count);

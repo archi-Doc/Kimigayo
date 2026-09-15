@@ -611,13 +611,14 @@ public sealed partial class Binding
                 // Negation is defined for signed integers and floating-point values only (SPEC 13.2).
                 return operand.IsNumeric && !operand.IsUnsignedInteger ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
-                if (!Writable(unary.Operand))
+                if (!Writable(unary.Operand) && ElementAccess.WritableRoot(unary.Operand) is null)
                 {
                     return Fail(unary, BindingFailure.InvalidAssignment);
                 }
 
                 // Increment and decrement do not apply to floats (SPEC 13.2).
-                return operand.IsInteger ? Complete(unary, operand) : Fail(unary, BindingFailure.TypeMismatch);
+                var destination = ElementAccess.DestinationType(unary.Operand, operand);
+                return destination?.IsInteger == true ? Complete(unary, destination) : Fail(unary, BindingFailure.TypeMismatch);
             default:
                 return Fail(unary, BindingFailure.Unsupported, true);
         }
@@ -644,6 +645,11 @@ public sealed partial class Binding
         {
             // The count may have any integer Type; only an untyped count adopts the shifted Type (SPEC 13.3).
             left = this.BindNode(binary.Left, scope, assignment ? null : expected);
+            if (assignment)
+            {
+                left = ElementAccess.DestinationType(binary.Left, left);
+            }
+
             right = this.BindNode(binary.Right, scope, left is { IsInteger: true } ? left : null);
         }
         else if (IsUnfittedLiteral(binary.Left) && !IsUnfittedLiteral(binary.Right) && !assignment)
@@ -654,6 +660,11 @@ public sealed partial class Binding
         else
         {
             left = this.BindNode(binary.Left, scope, logical ? BoundType.Boolean : comparison || assignment ? null : expected);
+            if (assignment)
+            {
+                left = ElementAccess.DestinationType(binary.Left, left);
+            }
+
             right = this.BindNode(binary.Right, scope, left);
         }
 
@@ -662,7 +673,8 @@ public sealed partial class Binding
             return Complete(binary, null);
         }
 
-        if (assignment && !Writable(binary.Left) && !(kind == KotoKind.Equals && CanInitializeLocal(binary.Left, scope)))
+        if (assignment && !Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null &&
+            !(kind == KotoKind.Equals && CanInitializeLocal(binary.Left, scope)))
         {
             return Fail(binary, BindingFailure.InvalidAssignment);
         }
@@ -670,7 +682,7 @@ public sealed partial class Binding
         var result = assignment ? BoundType.Unit : left;
         if (shift)
         {
-            return left.IsInteger && right.IsInteger ? Complete(binary, result) : Fail(binary, BindingFailure.TypeMismatch);
+            return left.IsInteger && (right.IsInteger || ReferenceEquals(right, BoundType.Never)) ? Complete(binary, result) : Fail(binary, BindingFailure.TypeMismatch);
         }
 
         // Shared references compare their immediate referents, independently of the two input Origins.

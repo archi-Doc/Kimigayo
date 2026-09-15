@@ -68,3 +68,5 @@ For the first executable program, start with [minimal console output](spec/22-co
 ### Appendix C. Implementation status
 
 Implementation coverage is maintained in [STATUS.md](STATUS.md), separately from language conformance. Parser support alone establishes neither Binding, constant evaluation, ownership checking, nor execution.
+
+Executable aggregate examples include [Copy element reads](examples/ElementReads/README.md), [Copy element assignments](examples/ElementAssignments/README.md), and [numeric element updates](examples/ElementUpdates/README.md). Their documented implementation limits do not narrow the language rules in Chapters 4, 13 and 15.

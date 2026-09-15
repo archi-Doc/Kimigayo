@@ -110,6 +110,34 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
+    private int ComputeUpdate(Koto source, BoundType? type, int previous, int right, KotoKind operation)
+    {
+        var updated = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
+        this.Emit(OwnershipOperationKind.Produce, source, updated);
+        this.RegisterTemporary(updated);
+        this.SetValue(this.Value(updated), OwnershipValueKind.Binary, [previous, right], operation);
+        return updated;
+    }
+
+    private int IncrementOne(Koto source)
+    {
+        var one = this.Temporary(source);
+        var value = this.Value(one);
+        this.SetValue(value, OwnershipValueKind.Constant, [], constant: 1);
+        return value;
+    }
+
+    private int UpdateResult(Koto source, int previous, int updated)
+    {
+        var result = this.Temporary(source);
+        if (source is UnaryKoto)
+        {
+            this.SetValue(this.Value(result), OwnershipValueKind.Alias, [source.Akind is KotoKind.PostfixIncrement or KotoKind.PostfixDecrement ? previous : this.Value(updated)]);
+        }
+
+        return result;
+    }
+
     private int UnaryValue(UnaryKoto unary)
     {
         // Binding fits a directly signed literal once, including each signed minimum.
@@ -118,17 +146,18 @@ public sealed partial class OwnershipAnalysis
             return this.Temporary(unary);
         }
 
+        if (ElementAccess.UpdateOperator(unary.Akind) != KotoKind.Invalid &&
+            KotoHelper.UnwrapParentheses(unary.Operand) is BinaryKoto element && ElementAccess.IsSyntax(element))
+        {
+            return this.UpdateElement(unary, element);
+        }
+
         var input = this.Value(this.Expression(unary.Operand, PlaceUseKind.Read));
         if (unary.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement)
         {
-            var one = this.Temporary(unary);
-            this.SetValue(this.Value(one), OwnershipValueKind.Constant, [], constant: 1);
-            var updated = this.Temporary(unary);
-            this.SetValue(this.Value(updated), OwnershipValueKind.Binary, [input, this.Value(one)], unary.Akind is KotoKind.PrefixPlusPlus or KotoKind.PostfixIncrement ? KotoKind.Plus : KotoKind.Minus);
+            var updated = this.ComputeUpdate(unary, unary.BoundType, input, this.IncrementOne(unary), ElementAccess.UpdateOperator(unary.Akind));
             this.Emit(OwnershipOperationKind.Write, unary, this.Local(KotoHelper.UnwrapParentheses(unary.Operand)), updated);
-            var result = this.Temporary(unary);
-            this.SetValue(this.Value(result), OwnershipValueKind.Alias, [unary.Akind is KotoKind.PostfixIncrement or KotoKind.PostfixDecrement ? input : this.Value(updated)]);
-            return result;
+            return this.UpdateResult(unary, input, updated);
         }
 
         var output = this.Temporary(unary);

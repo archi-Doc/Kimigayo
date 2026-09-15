@@ -13,4 +13,4 @@ dotnet run --project Kimi/Kimi.csproj -c Release -- run examples/ElementReads/El
 
 Expected stdout is `element reads complete` followed by a newline, with exit code 0 and empty stderr.
 
-This example reads a Copy tuple from a temporary containing a string and iterates over a fixed array. Element writes, Non-Copy element acquisition, partial Move, and dynamic collection indexing remain unsupported.
+This example reads a Copy tuple from a temporary containing a string and iterates over a fixed array. [ElementAssignments](../ElementAssignments/README.md) demonstrates simple Copy element writes to local `var` roots. Non-Copy element acquisition, partial Move, and dynamic collection indexing remain unsupported.

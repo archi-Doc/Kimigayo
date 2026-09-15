@@ -1,6 +1,6 @@
 # Kimigayo Implementation Status
 
-更新: 2026-09-14。基礎調査対象: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42`。集成型の選択結果・関数ABI・Copy要素読み取りの追加実装と検証を§4.1–4.3・§7に反映。
+更新: 2026-09-15。基礎調査対象: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42`。集成型の選択結果・関数ABI・Copy要素読み取りに続き、Copy要素への単純代入と評価順序の修正を§4.4・§7に反映。
 
 文書構成（2026-09-14）: [SPEC.md](SPEC.md) を総合目次とし、本文22章と付録A・B・D・E・Fを `spec/` に分割した。付録Cは目次内の実装状況案内に集約。設計・決定・変更記録の `doc/` は `draft/` に改名した。章番号・仕様本文・既存の優先規則を維持し、コンパイラーの実装範囲は変更していない。
 
@@ -71,7 +71,7 @@
 - 破棄は論理的な逆順。途中構築や引数取得が通常transferで中断した場合、取得済み責任を処理する。非終了cleanup後の結果/後続破棄を作らない。
 - 明示transfer後のsource検査は実行CFGと別の継続で行う。Never Subject/非終了guardも対象。一般Never呼出・exitless loop・cleanup阻害後など、検査開始状態を作れない未到達操作にはUnsupportedが残る。
 - whole Subjectのguardはsource順の保守的な検証経路を持ち、false側の副作用も後続armへ渡す。実行時に省略するcovered armも診断する。
-- Loanはstring比較、shared引数、一時string、string guard candidate、Tuple/固定配列の要素読み取り時の親ストレージ保護の限定範囲。後続引数/guard/cleanup中もownerを保護し、正常結果確保後または通常transfer時に終了する。一般の参照保存/返却、uniq/reborrow、効果要約、借用Subjectは未完成。
+- Loanはstring比較、shared引数、一時string、string guard candidate、Tuple/固定配列の要素アクセス時の親ストレージ保護の限定範囲。後続引数/guard/cleanup中もownerを保護し、正常結果確保後または通常transfer時に終了する。Copy要素代入は位置取得用のLoanだけをstore直前に終了する。一般の参照保存/返却、uniq/reborrow、効果要約、借用Subjectは未完成。
 
 根拠: OwnershipAnalysis / EnumOwnership / MatchOwnership / UnreachableOwnership / CurrentControlFlow / ControlFlowConformance / ReferenceEmission / StringGuardEmission各テスト。解析成功後も生成側の対応範囲を別途検査する。
 
@@ -113,7 +113,7 @@
 | owned string | literal、local Move・self代入/置換、条件付き破棄、一時/選択/関数結果、writeLine、全6比較 | stringはStatic backingでもNon-Copy。UTF-8 byte列で比較。Heap構築のsource操作・補間/連結・明示所有権適応は未対応。String*Emission |
 | shared string | 暗黙input Originの必須ref/string引数・転送、referent比較、一時owned stringのshared引数、string guard candidate | 参照はhandleへの1 pointer。結果は独立値だけ。local保存/返却・明示@ref・uniq・nested borrowは未対応。[ReferenceTypes](Kimi/Compiler/ReferenceTypes.cs)、Reference / StringGuardEmission |
 | match/guard | bool・整数・char・Unit・owned stringの網羅的match、literal/wildcard/全体let/var/括弧Pattern、Copy候補・ref/string候補のguard | float Subjectは全体Pattern/guardの既存範囲。借用Subject・Tuple/enum分解実行は未対応。candidateはread-onlyでbody bindingと別。Match / Guard / Char / Float / StringGuardEmission |
-| Tuple・固定配列 | 対応scalar・Unit・owned string・nested aggregateの構築、local全体Copy/Move/置換/条件付き破棄、if/do/loop/matchの結果配送・通常関数の値引数/結果、Tupleの数値selector・固定配列のisize添字によるCopy要素読み取り | ownerのみ、深さ64、size/countはint.MaxValueまで。要素書込み・Non-Copy要素取得・部分Move・借用引数/結果・集成型Subject・struct/enum生成は未対応。[AggregateLayout](Kimi/Compiler/Emission/AggregateLayout.cs)、AggregateEmission / AggregateResultEmission / AggregateFunctionEmission / ElementEmission |
+| Tuple・固定配列 | 対応scalar・Unit・owned string・nested aggregateの構築、local全体Copy/Move/置換/条件付き破棄、if/do/loop/matchの結果配送・通常関数の値引数/結果、Tupleの数値selector・固定配列のisize添字によるCopy要素読み取り、初期化済みlocal varのCopy要素への単純代入・数値要素への複合代入・整数要素の前置/後置増減 | ownerのみ、深さ64、size/countはint.MaxValueまで。Non-Copy要素置換/取得・部分Move・借用引数/結果・集成型Subject・struct/enum生成は未対応。[AggregateLayout](Kimi/Compiler/Emission/AggregateLayout.cs)、AggregateEmission / AggregateResultEmission / AggregateFunctionEmission / ElementEmission / ElementAssignmentEmission / ElementUpdateEmission |
 
 生成は検証済みの型付き値/CFG/ABI/cleanup計画から行う。WriterはASTを再解釈しない。型identity・定数・入力・支配・結果到着・生存flag・Loan・破棄計画の不整合を拒否する。同じLLVM幅でも別の言語型を混同しない。
 
@@ -153,9 +153,37 @@ rootを添字評価前にReadし、既存の共有Loanのスタックで最終Co
 
 各配列射影は負数も含めた `icmp uge i64 index, length` を検査し、成功ブロックでのみstride計算とアドレス形成を行う。不正添字は `KIMI_E_INDEX_BOUNDS` でAbortし、後続添字・defer・破棄を実行しない。空配列への定数添字も実行時Abort。ゼロサイズ要素でも検査を残し、不要なアドレス/load/転送は省く。専用アドレス名を使い、既存の演算検査と同じ後続ラベル方式に接続する。
 
-要素書込み・複合更新、Non-Copy要素のMove/共有結果、部分Move、集成型借用、Array/Slice/Index/^/Rangeは未対応。今回のroot保護は一般のLoan/Origin/Move Path solverではない。
+Copy要素への単純代入は§4.4、数値要素の複合更新は§4.5で追加。Non-Copy要素のMove/共有結果、部分Move、集成型借用、Array/Slice/Index/^/Rangeは未対応。今回のroot保護は一般のLoan/Origin/Move Path solverではない。
 
 [ElementEmissionTest](xUnitTest/Tests/ElementEmissionTest.cs) は57件。入れ子・各scalar幅・Copy結果・bool/Unit・0長/0サイズ・値のsnapshot・短絡/phi・parameter・ループ/defer・転送/到達不能/covered arm・Loan競合・不正計画と回復を検証する。warm Bindと所有権解析＋IR生成は各128回で0 Bを確認した。
+
+### 4.4. Tuple・固定配列のCopy要素への単純代入（2026-09-15）
+
+初期化済みで完全な所有Tuple・固定配列を保持するlocal varに対し、数値selector・isize添字・入れ子経路でCopy要素を `=` 置換できる。対応scalar・Unit・再帰的なCopy集成型が対象で、親にはowned stringを含められる。右辺の構築・Copy・関数結果・選択結果を独立した値として確保し、その後で左辺経路を一度ずつ評価する。例は [ElementAssignments](examples/ElementAssignments/README.md)。
+
+位置取得は既存のLocateElement/ProjectElement・境界検査を共有し、最終操作だけをWriteElementとして区別する。親の全体Write・再初期化・破棄計画は作らず、親の初期化状態と責任を維持する。scalar storeは既存の格納表現、Copy集成型は既存のmemcpy生成を共有する。中間集成型のCopyや要素別の生存flagは追加しない。ゼロサイズでも評価・境界検査を残す。
+
+位置取得中はrootを保護する。自身のアクセスLoan終了とstoreが通常edgeで直結し、間にユーザー操作も別の到着edgeもないことをLoweringで確認する。他のLoanの競合検査は維持する。型・入力source・Copy性・mutable root・右辺の初期化と支配・結果のJoin・親/添字の対応を照合し、不正計画はIR公開前に拒否する。添字内で同じrootの別要素へ書くケースも現在は保守的に拒否し、一般の非重複経路証明は導入していない。
+
+構造的完了と制御フロー解析の単純代入をRHS先行に揃え、構文順のvisitorは維持した。添字の途中transfer後も静的な代入先型を保持し、ラベル付きdo式の値sourceを正規化する。右辺・添字の通常transfer、Abort、非停止cleanupは後続の位置取得/書き込みを実行せず、既存の結果確保・cleanup規則を維持する。
+
+[ElementAssignmentEmissionTest](xUnitTest/Tests/ElementAssignmentEmissionTest.cs) は79件。入れ子・各scalar表現・snapshot・自己代入・Copy集成型・関数/選択結果・defer複製・transferの優先順位・未到達/covered arm・0長/0サイズ・境界Abort・非停止・親の破棄順/回数・Loan競合・不正計画と再解析回復を検証する。warm Bindと所有権解析＋IR生成は各128回で0 B。throughputの改善率は測定していない。
+
+数値要素の複合代入/増減は§4.5で追加。Non-Copy要素の置換/取得、部分Move/再初期化、借用・一時receiver、Property、動的collectionはこの実装単位に含めない。SPEC本文の許可範囲を縮小する変更ではない。
+
+### 4.5. Tuple・固定配列の数値要素更新（2026-09-15）
+
+§4.4と同じ初期化済みの所有local varをrootとして、整数要素に `+= -= *= /= %= &= |= ^= <<= >>=` と前置/後置の `++ --`、f32/f64要素に `+= -= *= /=` を接続した。入れ子・Non-Copy親・defer展開・関数内でも利用できる。i128/u128除算/剰余は既存profileの禁止を維持する。例は [ElementUpdates](examples/ElementUpdates/README.md)。
+
+SPEC §13.7.2に従い、位置取得・境界検査・旧値Copy・RHS評価・数値計算・storeの順で一度ずつ実行する。単純代入のRHS先行とは区別する。複合代入はUnit、前置増減は新値、後置増減は旧値をstore後に返し、再loadしない。整数のoverflow・除算/剰余・shift検査とfloatのIEEE演算は既存scalar処理を共有する。shift RHSは独立した整数型のまま検査する。
+
+LocateElement・CopyElement・StoreElementを読み取り/単純代入/更新で共有し、数値計算と増減結果生成も通常local更新と共通化した。射影計画に更新の参照を追加し、再利用するElementUpdates表がRHS・計算・結果を結ぶ。中間集成型のCopy、要素別生存flag、更新専用のLLVM演算は追加しない。親の初期化・所有責任を維持する。
+
+Loweringは更新元source、演算子、旧値とRHS、型、唯一の射影所有者、Loanと支配関係、計算→自身のLoan解放→store→結果の連続edge、前置/後置の結果選択を照合する。単純代入のRHS確保順序の検証も維持する。不正計画はIR出力前に拒否し、再解析で回復する。
+
+アクセス保護はRHSと計算が終わるまで継続する。同じ親の共有読み取りと別rootの更新は許可し、同じ親のMove・書き込みは兄弟要素でも保守的に拒否する。通常transferは放棄したアクセスのLoanをcleanup前に終了する。境界/演算Abort、RHS/添字のtransfer、非停止cleanupでは後続storeを行わない。添字がNeverになっても代入先の静的型を保持し、shiftのNever RHSも通常transferとして扱う。
+
+[ElementUpdateEmissionTest](xUnitTest/Tests/ElementUpdateEmissionTest.cs) は97件。全整数幅、floatのNaN/無限大/符号付き0、評価回数/順序、shift幅、演算/境界Abort、親の破棄監査、Loan競合、defer・到達不能・transfer・非停止、不正計画を検証する。入れ子更新とdeferを含むwarm Bind、所有権解析＋IR生成は各128回で0 B。throughputの改善率は未測定。Non-Copy要素操作、部分Move/再初期化、借用・一時receiver、Property、動的collectionは未対応。
 
 <a id="c2-builds-modules-and-source-artifacts"></a>
 <a id="c11-executable-preparation-and-sequence-review-2026-09-09"></a>
@@ -189,6 +217,26 @@ rootを添字評価前にReadし、既存の共有Loanのスタックで最終Co
 | 性能 | Binding/型/CFG/ABI/定数/layoutの表・scratch・容量を再利用。対応テストにwarm allocation 0 byteと再parse後の保持参照検査、[Benchmark](Benchmark) に字句/Binding/所有権等のworkloadがある。全経路の無割り当てやthroughput改善は保証しない |
 
 ## 7. 今回の確認
+
+### 7.1. 数値要素更新の確認（2026-09-15）
+
+§4.5の実装、通常local更新との共通化、および§4.3–4.4の要素読み取り/単純代入を検証した。
+
+| 検証 | 結果 |
+| --- | --- |
+| Solution build（Debug / Release） | 各成功、警告0・エラー0 |
+| managed test（Debug / Release） | 各4,451成功、失敗0・skip0。新規ElementUpdateEmissionTestは97件 |
+| 要素更新＋既存要素読み取り/単純代入のLLVM verifier・通常native O0/O2 | 160 fixture、320実行成功。更新65 fixture・130実行、単純代入54 fixture・108実行、読み取り41 fixture・82実行。破棄監査・境界/演算Abort・タイムアウト付き非停止を含む |
+| 共通化した通常local更新のnative回帰 | IntegerValues 10 fixture、WideOperations 2 fixture、FloatArithmetic 2 fixture、計28回のO0/O2実行成功。要素アクセスと合わせて174 fixture・348実行 |
+| warm allocation | 入れ子要素更新・選択RHS・deferを含むBind、およびOwnership＋IR生成を各128回測定し0 B |
+| ElementUpdatesのCLI build/run | Release/O2成功。`element updates complete`を出力してexit 0 |
+| NativeAOT・新規throughput benchmark | 未実行 |
+
+再現は下記§7.2の構成ごとのbuild→testに加え、生成済みfixtureへ `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'` を適用する。回帰対象には同scriptのpatternを `IntegerValues*.ll`、`WideOperations*.ll`、`FloatArithmetic*.ll` に替えて順に適用する。CLI例は [ElementUpdates](examples/ElementUpdates/README.md) を参照。
+
+直前の§4.4実装時はmanaged各4,354件、Element系95 fixture/190実行、AggregateFunction系59 fixture/118実行が成功。ElementAssignments例もRelease/O2で期待出力・exit 0を確認した。
+
+### 7.2. 直前の実装時の確認（2026-09-14）
 
 基礎調査では主要入口・型/変換/ABI/aggregate・所有権の拒否条件、Core catalog、LSP/拡張/CIを現コード・対応テストと照合した。その後、§4.1の結果配送、§4.2の関数ABI、§4.3のCopy要素読み取りを実装し、以下のbuild・managed検証を再実行した。
 

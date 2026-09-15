@@ -260,7 +260,13 @@ public sealed partial class OwnershipBody
                 this.CheckInitialized(operation, operation.Place, state);
                 break;
             case OwnershipOperationKind.Write:
+            case OwnershipOperationKind.WriteElement:
                 var place = this.PlaceStorage[operation.Place];
+                if (operation.Kind == OwnershipOperationKind.WriteElement)
+                {
+                    this.CheckInitialized(operation, operation.Place, state);
+                }
+
                 if (place.Kind == OwnershipPlaceKind.Local && !place.Mutable && (state & PlaceState.MayAssigned) != 0)
                 {
                     this.ReportIssue(new(operation.Source, OwnershipFailure.ReassignedLet, operation.Place));
@@ -359,6 +365,9 @@ public sealed partial class OwnershipBody
             case OwnershipOperationKind.CallEntry:
             case OwnershipOperationKind.Deliver:
                 this.Move(place);
+                break;
+            case OwnershipOperationKind.WriteElement:
+                this.Move(operation.Input); // The parent stays complete and retains its responsibility.
                 break;
             case OwnershipOperationKind.Cleanup:
                 this.Clear(place, MustLane);

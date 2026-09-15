@@ -1,0 +1,23 @@
+var values: [2 of i32] = [40, 0]
+var index: isize = 0
+values[index++] += 2
+
+var pair = ("retained owner", 41)
+let before = pair.1++
+let after = --pair.1
+++pair.1
+
+var matrix: [1 of [2 of i32]] = [[21, 2]]
+matrix[0][0] *= matrix[0][1]
+
+var fraction: [1 of f64] = [84.0]
+fraction[0] /= 2.0
+
+var bits: [1 of u8] = [21]
+let shift: u128 = 1
+bits[0] <<= shift
+
+if values[0] == 42 and values[1] == 0 and index == 1
+    if before == 41 and after == 41 and pair.1 == 42
+        if matrix[0][0] == 42 and fraction[0] == 42.0 and bits[0] == 42
+            writeLine("element updates complete")

@@ -68,6 +68,7 @@ public enum OwnershipOperationKind : byte
     PatternTest,
     EndComparisonLoans,
     ProjectElement,
+    WriteElement,
 }
 
 public enum PlacementKind : byte
@@ -129,7 +130,7 @@ public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Ko
     {
         OwnershipOperationKind.Read or OwnershipOperationKind.PatternTest => PlaceUseKind.Read,
         OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => PlaceUseKind.Consume,
-        OwnershipOperationKind.Write or OwnershipOperationKind.PayloadPlacement => PlaceUseKind.Write,
+        OwnershipOperationKind.Write or OwnershipOperationKind.WriteElement or OwnershipOperationKind.PayloadPlacement => PlaceUseKind.Write,
         OwnershipOperationKind.Borrow => PlaceUseKind.Borrow,
         _ => PlaceUseKind.None,
     };
@@ -187,6 +188,7 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipMatchArmPlan> MatchArmStorage = new();
     internal readonly List<OwnershipIssue> IssueStorage = new();
     internal readonly List<OwnershipProjection> Projections = new();
+    internal readonly List<OwnershipElementUpdate> ElementUpdates = new();
     internal readonly List<OwnershipStringComparison> StringComparisons = new();
     internal readonly List<OwnershipComparisonLoan> ComparisonLoans = new();
     internal readonly List<OwnershipCallLoans> CallLoans = new();
@@ -265,6 +267,7 @@ public sealed partial class OwnershipBody
         this.MatchArmStorage.Clear();
         this.IssueStorage.Clear();
         this.Projections.Clear();
+        this.ElementUpdates.Clear();
         this.StringComparisons.Clear();
         this.ComparisonLoans.Clear();
         this.CallLoans.Clear();
@@ -336,5 +339,9 @@ internal readonly record struct OwnershipCallLoans(int Call, int Result, int End
 
 internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);
 
-// Parent is another projection index; Output is the final Copy's Produce operation, if any.
-internal readonly record struct OwnershipProjection(int Operation, int Root, int Parent, int Index, int Element, int Loan, int Output = -1);
+// Parent is another projection index. Output is the final Copy read, Write the replacement.
+// An update has both and links its numeric calculation/result through ElementUpdates.
+internal readonly record struct OwnershipProjection(int Operation, int Root, int Parent, int Index, int Element, int Loan, int Output = -1, int Write = -1, int Update = -1);
+
+// A completed numeric update links one projection's Copy and store to its calculation/result.
+internal readonly record struct OwnershipElementUpdate(int Projection, int Right, int Computation, int Result);

@@ -16,6 +16,7 @@ internal enum EmissionOpcode : byte
     LoadElement,
     ElementAddress,
     StoreScalar,
+    StoreElement,
     Scalar,
     Convert,
     Phi,
@@ -29,6 +30,8 @@ internal enum EmissionOpcode : byte
     StringEquals,
     StringCompare,
     StringPattern,
+
+    /// <summary>Memcpy: zero operands use Place/Constant slots; one supplies the source address; two supply source and destination addresses.</summary>
     TransferAggregate,
     DestroyAggregate,
 

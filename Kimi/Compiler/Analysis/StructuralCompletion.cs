@@ -14,6 +14,17 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
     private Collector? collector;
     private int cursor;
 
+    internal static void CollectEvaluationChildren(Koto node, List<Koto> children, KotoVisitor collector)
+    {
+        node.VisitChildren(collector);
+        if (node is EqualsKoto)
+        {
+            // Keep lexical visitors unchanged; simple assignment alone evaluates RHS first.
+            var last = children.Count - 1;
+            (children[last - 1], children[last]) = (children[last], children[last - 1]);
+        }
+    }
+
     // HashSet.UnionWith accepts IEnumerable and boxes its source enumerator.
     // Both flow analyses already retain concrete sets; enumerate those directly.
     internal static void UnionTransfers(HashSet<JumpKoto> destination, HashSet<JumpKoto> source)
@@ -192,7 +203,7 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever)
                 break;
             default:
                 var start = this.children.Count;
-                node.VisitChildren(this.collector ??= new(this.children));
+                CollectEvaluationChildren(node, this.children, this.collector ??= new(this.children));
                 var count = this.children.Count - start;
                 result = this.Sequence(this.children, start, count);
                 this.children.RemoveRange(start, count);

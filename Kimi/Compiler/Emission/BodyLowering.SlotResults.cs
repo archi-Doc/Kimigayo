@@ -169,7 +169,7 @@ internal sealed partial class BodyLowering
             var operation = body.Operations[id];
             var source = operation.Kind switch
             {
-                OwnershipOperationKind.Write or OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.InitializeSubject => operation.Input,
+                OwnershipOperationKind.Write or OwnershipOperationKind.WriteElement or OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.InitializeSubject => operation.Input,
                 OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Cleanup => operation.Place,
                 _ => -1,
             };

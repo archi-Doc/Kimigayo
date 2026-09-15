@@ -12,13 +12,29 @@ internal static partial class LlvmModuleWriter
             output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr align ");
             WriteNumber(output, layout.Value.Layout.Alignment);
             output.Write(' ');
-            WriteSlot(output, function, instruction.Place);
+            if (instruction.OperandCount == 2)
+            {
+                WriteOperand(output, function.GetOperands(instruction)[1]);
+            }
+            else
+            {
+                WriteSlot(output, function, instruction.Place);
+            }
+
             output.Write(", ptr align ");
             WriteNumber(output, layout.Value.Layout.Alignment);
             output.Write(' ');
-            if (instruction.OperandCount == 1)
+            if (instruction.OperandCount >= 1)
             {
-                WriteOperand(output, function.GetOperands(instruction)[0]);
+                var source = function.GetOperands(instruction)[0];
+                if (source.Kind == EmissionOperandKind.SlotAddress)
+                {
+                    WriteSlot(output, function, (int)source.Value);
+                }
+                else
+                {
+                    WriteOperand(output, source);
+                }
             }
             else
             {

@@ -1,0 +1,21 @@
+func make() -> (i32, bool) => (42, true)
+
+var values: [3 of i32] = [0, 0, 0]
+var i: isize = 0
+while i < 3
+    values[i] = 14
+    i += 1
+
+var pair = ("retained owner", (0, false))
+pair.1 = make()
+
+var matrix: [2 of [2 of i32]] = [[1, 2], [3, 4]]
+matrix[1] = matrix[0]
+matrix[0][1] = 42
+
+var unit: [1 of ()] = [()]
+let done: () = (unit[0] = ())
+
+if values[0] + values[1] + values[2] == pair.1.0 and pair.1.1
+    if matrix[1][1] == 2 and matrix[0][1] == 42
+        writeLine("element assignments complete")

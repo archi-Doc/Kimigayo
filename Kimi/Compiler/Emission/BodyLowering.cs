@@ -225,7 +225,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (operation.Kind == OwnershipOperationKind.ProjectElement || body.Values[index].Kind == OwnershipValueKind.Element)
+        if (operation.Kind is OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement || body.Values[index].Kind == OwnershipValueKind.Element)
         {
             return this.LowerElement(body, function, constants, projectDirectory, index, out failure);
         }

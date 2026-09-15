@@ -101,6 +101,7 @@ internal static partial class LlvmModuleWriter
 
                 return;
             case EmissionOpcode.StoreScalar:
+            case EmissionOpcode.StoreElement:
                 if (type == "i1")
                 {
                     Name(output, "  %storage", id);
@@ -117,7 +118,7 @@ internal static partial class LlvmModuleWriter
                     WriteOperand(output, operands[0]);
                 }
 
-                Name(output, ", ptr %p", instruction.Place);
+                Name(output, instruction.Opcode == EmissionOpcode.StoreElement ? ", ptr %element" : ", ptr %p", instruction.Place);
                 WriteAlignment(output, instruction.Representation!.Layout.Alignment);
                 return;
             case EmissionOpcode.Phi:

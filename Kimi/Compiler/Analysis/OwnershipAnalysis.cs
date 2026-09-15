@@ -507,6 +507,11 @@ public sealed partial class OwnershipAnalysis
         if (assignment)
         {
             var target = KotoHelper.UnwrapParentheses(binary.Left);
+            if (target is BinaryKoto element && ElementAccess.IsSyntax(element))
+            {
+                return binary.Akind == KotoKind.Equals ? this.AssignElement(binary, element) : this.UpdateElement(binary, element);
+            }
+
             var previous = -1;
             var op = KotoHelper.CompoundOperation(binary.Akind);
             if (binary.Akind != KotoKind.Equals)
@@ -527,11 +532,7 @@ public sealed partial class OwnershipAnalysis
 
             if (binary.Akind != KotoKind.Equals)
             {
-                var rhs = this.Value(input);
-                input = this.Place(binary, binary.Left.BoundType, OwnershipPlaceKind.Temporary, true);
-                this.Emit(OwnershipOperationKind.Produce, binary, input);
-                this.RegisterTemporary(input);
-                this.SetValue(this.Value(input), OwnershipValueKind.Binary, [previous, rhs], op);
+                input = this.ComputeUpdate(binary, binary.Left.BoundType, previous, this.Value(input), op);
             }
 
             this.Emit(OwnershipOperationKind.Write, binary, this.Local(target), input);

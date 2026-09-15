@@ -6,10 +6,95 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    private int UpdateElement(Koto source, BinaryKoto target)
+    {
+        var operation = ElementAccess.UpdateOperator(source.Akind);
+        var type = ElementAccess.DestinationType(target, target.BoundType);
+        if (operation == KotoKind.Invalid || type?.IsNumeric != true || ElementAccess.WritableRoot(target) is null)
+        {
+            this.Unsupported(source);
+            return -1;
+        }
+
+        var depth = this.comparisonDepth++;
+        var projection = this.LocateElement(target);
+        var previous = this.Value(this.CopyElement(target, projection));
+        // A transfer can leave a checking continuation; still check the written RHS there.
+        var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right))
+            : previous >= 0 ? this.IncrementOne(source) : -1;
+        var updated = previous >= 0 && right >= 0 && this.flow!.Nodes[source].CanCompleteNormally
+            ? this.ComputeUpdate(source, type, previous, right, operation) : -1;
+        this.EndComparisonLoans(depth, source);
+        this.comparisonDepth = depth;
+        if (updated < 0)
+        {
+            return -1;
+        }
+
+        this.StoreElement(source, projection, updated);
+        var result = this.UpdateResult(source, previous, updated);
+        var index = this.body.ElementUpdates.Count;
+        this.body.ElementUpdates.Add(new(projection, right, this.Value(updated), this.Value(result)));
+        this.body.Projections[projection] = this.body.Projections[projection] with { Update = index };
+        return result;
+    }
+
+    private int AssignElement(BinaryKoto assignment, BinaryKoto target)
+    {
+        if (assignment.Akind != KotoKind.Equals || ElementAccess.WritableRoot(target) is null)
+        {
+            this.Unsupported(assignment);
+            return -1;
+        }
+
+        var input = this.Expression(assignment.Right);
+        if (input < 0)
+        {
+            return -1;
+        }
+
+        if (this.body.Places[input].Acquisition != AcquisitionKind.Copy)
+        {
+            this.Unsupported(assignment);
+        }
+
+        var depth = this.comparisonDepth++;
+        var projection = this.LocateElement(target);
+        this.EndComparisonLoans(depth, assignment);
+        this.comparisonDepth = depth;
+        if (projection < 0 || !this.flow!.Nodes[assignment].CanCompleteNormally)
+        {
+            return -1;
+        }
+
+        this.StoreElement(assignment, projection, input);
+        return this.Temporary(assignment);
+    }
+
+    private void StoreElement(Koto source, int projection, int input)
+    {
+        var plan = this.body.Projections[projection];
+        var write = this.Emit(OwnershipOperationKind.WriteElement, source, plan.Root, input);
+        if (ScalarResult(this.body.Places[input].Type))
+        {
+            this.SetValue(write, OwnershipValueKind.Alias, [this.Value(input)]);
+        }
+
+        this.body.Projections[projection] = plan with { Write = write };
+    }
+
     private int ElementValue(BinaryKoto source)
     {
         var depth = this.comparisonDepth++;
         var projection = this.LocateElement(source);
+        var result = this.CopyElement(source, projection);
+        this.EndComparisonLoans(depth, source);
+        this.comparisonDepth = depth;
+        return result;
+    }
+
+    private int CopyElement(BinaryKoto source, int projection)
+    {
         var result = -1;
         if (projection >= 0 && this.flow!.Nodes[source].CanCompleteNormally)
         {
@@ -24,8 +109,6 @@ public sealed partial class OwnershipAnalysis
             this.body.Projections[projection] = this.body.Projections[projection] with { Output = output };
         }
 
-        this.EndComparisonLoans(depth, source);
-        this.comparisonDepth = depth;
         return result;
     }
 

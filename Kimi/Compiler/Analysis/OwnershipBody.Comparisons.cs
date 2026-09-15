@@ -7,7 +7,7 @@ public sealed partial class OwnershipBody
     internal static bool ConflictsWithComparison(OwnershipOperationKind kind, int place, int input, AcquisitionKind acquisition, int borrowed, LoanRequirement mode = LoanRequirement.Ref, LoanRequirement access = LoanRequirement.None) => kind switch
     {
         OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => place == borrowed && acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove,
-        OwnershipOperationKind.Write or OwnershipOperationKind.InitializeSubject => place == borrowed || input == borrowed,
+        OwnershipOperationKind.Write or OwnershipOperationKind.WriteElement or OwnershipOperationKind.InitializeSubject => place == borrowed || input == borrowed,
         OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.Declare or OwnershipOperationKind.Produce => place == borrowed,
         OwnershipOperationKind.Borrow => place == borrowed && (mode != LoanRequirement.Ref || access != LoanRequirement.Ref),
         OwnershipOperationKind.Read => place == borrowed && mode == LoanRequirement.Uniq,
