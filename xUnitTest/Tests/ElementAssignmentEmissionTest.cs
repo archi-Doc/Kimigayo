@@ -46,7 +46,6 @@ public class ElementAssignmentEmissionTest
     [InlineData("let a = (1, 2)\na.0 = 42")]
     [InlineData("var a: [1 of i32]\na[0] = 42")]
     [InlineData("var a = (\"held\", 0)\nlet b = a\na.1 = 42")]
-    [InlineData("var a = (\"held\", 0)\na.0 = a.0")]
     [InlineData("var a: [1 of i32] = [0]\na[0] += true")]
     [InlineData("let a: [1 of i32] = [0]\na[0]++")]
     [InlineData("func f(a: [1 of i32])\n    a[0] = 42")]

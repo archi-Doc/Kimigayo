@@ -39,7 +39,7 @@ public sealed partial class OwnershipBody
         }
 
         this.LoadInput(operation, true);
-        return this.State(place);
+        return this.CompleteState(place);
     }
 
     internal void InvalidateChecking() => this.checkingSolved = false;

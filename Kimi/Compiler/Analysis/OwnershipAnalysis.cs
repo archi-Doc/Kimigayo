@@ -284,7 +284,7 @@ public sealed partial class OwnershipAnalysis
         var id = this.Place(source, source.BoundType, kind, true);
         if (produce)
         {
-            this.Emit(OwnershipOperationKind.Produce, source, id, projection: projection);
+            this.Emit(OwnershipOperationKind.Produce, source, id, acquisition: projection >= 0 && this.body.Places[id].Acquisition == AcquisitionKind.Move ? AcquisitionKind.Move : AcquisitionKind.None, projection: projection);
             this.RegisterTemporary(id);
         }
 
@@ -453,7 +453,7 @@ public sealed partial class OwnershipAnalysis
             case ConversionKoto conversion:
                 return this.ConversionValue(conversion);
             case BinaryKoto element when ElementAccess.IsSyntax(element):
-                return this.ElementValue(element);
+                return this.ElementValue(element, use);
             case BinaryKoto binary:
                 return this.Binary(binary);
             case IfKoto conditional:

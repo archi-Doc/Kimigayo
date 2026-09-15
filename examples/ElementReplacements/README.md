@@ -16,7 +16,7 @@ Receiver storage remains protected throughout index evaluation. After location, 
 
 An ordinary transfer during index evaluation cleans the secured input under the normal temporary-lifetime rules without replacing the old element. Bounds Abort performs no cleanup. A nonterminating RHS/index cleanup prevents later location, destruction, or placement as applicable. Replacement never rolls back prior side effects or Moves.
 
-This unit does not add Non-Copy element extraction, partial Move/repair, borrowing results, borrowed/temporary receivers, struct/Property operations, user-defined destructors, or dynamic collections. In particular, `values[0] = values[0]` for Non-Copy elements still requires unimplemented partial Move support. Supported owned values have no retained borrow dependencies. General Loan/Origin-dependent replacement remains outside this executable subset.
+This unit does not add Non-Copy element extraction, partial Move/repair, borrowing results, borrowed/temporary receivers, struct/Property operations, user-defined destructors, or dynamic collections. Static Non-Copy extraction, repair, and `values[0] = values[0]` are now supported by the subsequent [partial Move unit](../ElementMoves/README.md). Supported owned values have no retained borrow dependencies. General Loan/Origin-dependent replacement remains outside this executable subset.
 
 With the Windows backend prepared, run from the repository root:
 

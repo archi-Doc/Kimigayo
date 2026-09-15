@@ -336,12 +336,15 @@ On a normal path, report completion after shutdown and exit the child with code 
 | --- | --- |
 | All success conditions met | Success |
 | Normal completion with verification failures | Verification failure |
-| Abort or crash | Abnormal termination |
+| Failed `$require` reaching its Abort, reliably identified | Verification failure with Abort termination |
+| Other Abort or crash | Abnormal termination, retaining known verification failures |
 | Execution deadline exceeded | Timeout |
 | User cancellation | Cancelled, including unstarted selected cases; not success or executed skips |
 | Startup, communication or recovery failure | Execution error, retaining known termination reason and verification failures |
 
 Keep failure records, termination reason and management errors separately; recovery failure cannot overwrite an earlier Abort/timeout. Infer Abort reasons only from reliable received information, never exit code 1 alone. Missing diagnostics may yield unknown abnormal termination; never resume user code/cleanup after Abort. Cases excluded by a filter are not executed skips.
+
+A `$require` failure does not produce normal completion or resume the test function; the parent recovers that case's process and continues managing other cases. Identify a `$require`-initiated Abort from reliable termination information associated with its verification site. A recorded false condition alone does not establish that reason: condition cleanup, message evaluation or message cleanup may Abort or diverge before the operation reaches its own Abort. Retain both the already recorded failure and the actual termination reason in those cases.
 
 Provide human-readable and versioned machine-readable results. Include project/target/settings, IDs, source locations and expressions, retained values/messages, phases, durations, termination state, management errors, log paths and omission information. Terminal formatting is not the machine-readable interface. Concrete schemas/encodings remain §D.4.
 

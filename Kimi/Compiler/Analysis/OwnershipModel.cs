@@ -268,6 +268,9 @@ public sealed partial class OwnershipBody
         this.MatchArmStorage.Clear();
         this.IssueStorage.Clear();
         this.Projections.Clear();
+        this.movePaths.Clear();
+        this.movePathIndex.Clear();
+        this.movePathOrder.Clear();
         this.ElementUpdates.Clear();
         this.StringComparisons.Clear();
         this.ComparisonLoans.Clear();
@@ -342,7 +345,7 @@ internal readonly record struct OwnershipCallLoans(int Call, int Result, int End
 
 internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);
 
-// Parent is another projection index. Output is the final Copy read, Write the replacement.
+// Parent is another projection index. Output is the final Copy/Move acquisition, Write the replacement.
 // An update has both and links its numeric calculation/result through ElementUpdates.
 // Loan protects location; Exclusive replaces that protection for a write after final bounds resolution.
 // Path/PathDepth identify the longest static prefix in this same projection table;

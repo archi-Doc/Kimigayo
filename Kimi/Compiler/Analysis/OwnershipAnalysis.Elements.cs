@@ -23,7 +23,7 @@ public sealed partial class OwnershipAnalysis
             this.BeginElementWrite(projection);
         }
 
-        var previous = this.Value(this.CopyElement(target, projection));
+        var previous = this.Value(this.AcquireElement(target, projection));
         // A transfer can leave a checking continuation; still check the written RHS there.
         var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right))
             : previous >= 0 ? this.IncrementOne(source) : -1;
@@ -109,25 +109,29 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    private int ElementValue(BinaryKoto source)
+    private int ElementValue(BinaryKoto source, PlaceUseKind use)
     {
         var depth = this.comparisonDepth++;
         var projection = this.LocateElement(source);
-        var result = this.CopyElement(source, projection);
+        var result = this.AcquireElement(source, projection, use == PlaceUseKind.Consume);
         this.EndComparisonLoans(depth, source);
         this.comparisonDepth = depth;
         return result;
     }
 
-    private int CopyElement(BinaryKoto source, int projection)
+    private int AcquireElement(BinaryKoto source, int projection, bool allowMove = false)
     {
         var result = -1;
         if (projection >= 0 && this.flow!.Nodes[source].CanCompleteNormally)
         {
             result = this.Temporary(source, projection: projection);
-            if (this.body.Places[result].Acquisition != AcquisitionKind.Copy)
+            if (this.body.Places[result].Acquisition != AcquisitionKind.Copy &&
+                (!allowMove || this.body.Places[result].Acquisition != AcquisitionKind.Move || this.body.Projections[projection].Path != projection ||
+                    this.body.Places[this.body.Projections[projection].Root].Kind != OwnershipPlaceKind.Local))
             {
-                this.Unsupported(source); // Non-Copy elements need static Move Paths or shared-result plans.
+                // Inspection and shared arguments must borrow the element Place;
+                // they may not silently Move it into a temporary to obtain a borrow.
+                this.Unsupported(source);
             }
 
             var output = this.Value(result);

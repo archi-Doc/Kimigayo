@@ -108,8 +108,6 @@ public class ElementReplacementEmissionTest
     [InlineData("var a: [1 of string]\na[0] = \"new\"")]
     [InlineData("let a = (\"old\", 0)\na.0 = \"new\"")]
     [InlineData("var a = (\"old\", 0)\nlet moved = a\na.0 = \"new\"")]
-    [InlineData("var a = (\"old\", 0)\na.0 = a.0")]
-    [InlineData("var a: [2 of string] = [\"old\", \"other\"]\na[0] = a[1]")]
     [InlineData("var a = (40, \"old\")\na.0 += work: do\n    a = (0, \"new\")\n    exit to work: 2")]
     [InlineData("func f(a: [1 of string])\n    a[0] = \"new\"")]
     [InlineData("func make() -> [1 of string] => [\"old\"]\nmake()[0] = \"new\"")]

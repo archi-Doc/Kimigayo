@@ -33,7 +33,7 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < body.CleanupSteps.Count; i++)
         {
             var step = body.CleanupSteps[i];
-            if ((execution.IsEmpty || (execution[step.Operation] & NormalMark) != 0) && step.Action == CleanupAction.Conditional && HasOwnedStorage(body.Places[step.Place].Type) && flags[step.Place] == 0)
+            if ((execution.IsEmpty || (execution[step.Operation] & NormalMark) != 0) && step.Action == CleanupAction.Conditional && body.MoveRoot(step.Place) < 0 && HasOwnedStorage(body.Places[step.Place].Type) && flags[step.Place] == 0)
             {
                 return false;
             }
@@ -214,7 +214,7 @@ internal sealed partial class BodyLowering
     private bool IsStringStorage(OwnershipPlace place) => this.payloadOwners[place.Id] >= 0 || this.slotFunctionPlaces[place.Id] != 0 || (this.hasMatches && this.matchPlaces[place.Id] != 0) || place.Kind switch
     {
         OwnershipPlaceKind.Local => place.Source is FieldKoto,
-        OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or IdentifierNameKoto,
+        OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or IdentifierNameKoto || (place.Source is BinaryKoto element && ElementAccess.IsSyntax(element)),
         OwnershipPlaceKind.Result => this.slotResultPlaces[place.Id] != 0,
         _ => false,
     };
@@ -243,7 +243,7 @@ internal sealed partial class BodyLowering
                 return Fail("Invalid cleanup destination.", out failure);
             }
 
-            if (step.Action != CleanupAction.Conditional || !HasOwnedStorage(body.Places[step.Place].Type))
+            if (body.MoveRoot(step.Place) >= 0 || step.Action != CleanupAction.Conditional || !HasOwnedStorage(body.Places[step.Place].Type))
             {
                 continue;
             }
@@ -401,7 +401,7 @@ internal sealed partial class BodyLowering
         }
 
         var step = body.CleanupSteps[index];
-        var state = body.GetInputState(id, operation.Place);
+        var state = body.GetStorageState(id, operation.Place);
         var expected = (state & PlaceState.MustInit) != 0 ? CleanupAction.Destroy : (state & PlaceState.MayInit) != 0 ? CleanupAction.Conditional : CleanupAction.Skip;
         var invalidPlacement = expected switch
         {
@@ -413,6 +413,11 @@ internal sealed partial class BodyLowering
             (operation.Kind == OwnershipOperationKind.Write && invalidPlacement))
         {
             return Fail("String destruction disagrees with the verified placement state.", out failure);
+        }
+
+        if (this.DestructionPath(body, operation) >= 0)
+        {
+            return this.LowerPartDestruction(body, function, constants, directory, id, out failure);
         }
 
         if (expected == CleanupAction.Skip || aggregate is { NeedsDestruction: false })

@@ -32,7 +32,8 @@ public sealed partial class OwnershipBody
             }
 
             // Receiver stability forbids any write to its root during index evaluation.
-            return operation.Kind == OwnershipOperationKind.WriteElement;
+            return operation.Kind == OwnershipOperationKind.WriteElement ||
+                (operation.Acquisition == AcquisitionKind.Move && loanId != access.Loan);
         }
 
         return ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, loan.Place, loan.Mode, operation.LoanMode);

@@ -38,6 +38,9 @@ internal enum EmissionOpcode : byte
 
     /// <summary>Destroy the exact aggregate Type at Place, or at the sole address operand; only Place supports conditional cleanup.</summary>
     DestroyAggregate,
+    DestroyPart,
+    EndPartDestruction,
+    StorePathFlag,
 
     /// <summary>A direct call of <c>Callee</c> with prepared operands.</summary>
     Call,
@@ -118,6 +121,8 @@ internal sealed class EmissionFunction
 
     internal List<int> LiveFlags { get; } = new();
 
+    internal List<int> PathFlags { get; } = new();
+
     internal List<EmissionInstruction> Instructions { get; } = new();
 
     internal List<EmissionOperand> Operands { get; } = new();
@@ -134,6 +139,7 @@ internal sealed class EmissionFunction
         this.Subslots.Clear();
         this.SlotAddresses.Clear();
         this.LiveFlags.Clear();
+        this.PathFlags.Clear();
         this.Instructions.Clear();
         this.Operands.Clear();
     }

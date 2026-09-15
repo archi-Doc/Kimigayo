@@ -101,6 +101,14 @@ internal static partial class LlvmModuleWriter
             output.Write('\n');
         }
 
+        foreach (var path in function.PathFlags)
+        {
+            Name(output, "  %pathSlot", path);
+            output.Write(" = alloca i8, align 1\n  store i8 0, ptr ");
+            Name(output, "%pathSlot", path);
+            output.Write(", align 1\n");
+        }
+
         foreach (var place in function.LiveFlags)
         {
             Name(output, "  %liveSlot", place);
@@ -121,6 +129,11 @@ internal static partial class LlvmModuleWriter
         {
             switch (instruction.Opcode)
             {
+                case EmissionOpcode.DestroyPart:
+                case EmissionOpcode.EndPartDestruction:
+                case EmissionOpcode.StorePathFlag:
+                    WritePartDestruction(output, constants, function, instruction);
+                    break;
                 case EmissionOpcode.TransferAggregate:
                 case EmissionOpcode.DestroyAggregate:
                     WriteAggregate(output, constants, function, instruction);

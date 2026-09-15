@@ -73,9 +73,9 @@ public class ElementEmissionTest
     [Theory]
     [InlineData("let a = (1, 2)\nlet n = a.2")]
     [InlineData("let a: [1 of i32] = [1]\nlet i: i32 = 0\nlet n = a[i]")]
-    [InlineData("let a = (\"a\", 1)\nlet text = a.0")]
+    [InlineData("let a = (\"a\", 1)\nlet text = a.0\nlet twice = a.0")]
     [InlineData("var a: [1 of f64] = [1.0]\na[0] %= 2.0")]
-    [InlineData("let a: ([0 of string], i32) = ([], 1)\nlet n = a.0")]
+    [InlineData("let a: ([0 of string], i32) = ([], 1)\nlet n = a.0\nlet twice = a.0")]
     [InlineData("let a: [1 of string] = [\"a\"]\nlet i: isize = 0\nlet s = a[i]")]
     public void UnsupportedOrInvalidAccessProducesNoIr(string source)
     {

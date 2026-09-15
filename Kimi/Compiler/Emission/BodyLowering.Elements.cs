@@ -61,7 +61,7 @@ internal sealed partial class BodyLowering
             (operation.Source is IdentifierNameKoto identifier
                 ? identifier.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var root) && root == place.Id
                 : ReferenceEquals(operation.Source, place.Source)) &&
-            (!body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0);
+            (!body.IsReachable(id) || (body.GetStorageState(id, place.Id) & PlaceState.MustInit) != 0);
     }
 
     private bool PrepareElements(OwnershipBody body, out string? failure)
@@ -129,10 +129,12 @@ internal sealed partial class BodyLowering
                     (uint)output.Place >= (uint)body.Places.Count || !ReferenceEquals(output.Source, source) ||
                     body.Values[plan.Output].Kind != OwnershipValueKind.Element ||
                     body.Places[output.Place].Kind != OwnershipPlaceKind.Temporary ||
-                    body.Places[output.Place].Acquisition != AcquisitionKind.Copy ||
-                    !ReferenceEquals(body.Places[output.Place].Type, element) || !IsCopyElement(element!))
+                    (body.Places[output.Place].Acquisition == AcquisitionKind.Copy ? output.Acquisition != AcquisitionKind.None || !IsCopyElement(element!) :
+                        body.Places[output.Place].Acquisition != AcquisitionKind.Move || output.Acquisition != AcquisitionKind.Move || plan.Path != i ||
+                        body.Places[plan.Root].Kind != OwnershipPlaceKind.Local || IsCopyElement(element!)) ||
+                    !ReferenceEquals(body.Places[output.Place].Type, element))
                 {
-                    return Fail("Element acquisition requires a fresh Copy result of the selected Type.", out failure);
+                    return Fail("Element acquisition requires a fresh Copy result or an eligible static owned Move of the selected Type.", out failure);
                 }
 
                 this.elementOutputs[plan.Output] = i;
@@ -287,7 +289,7 @@ internal sealed partial class BodyLowering
         var loan = body.ComparisonLoans[plan.Loan];
         var write = operation.Kind == OwnershipOperationKind.WriteElement;
         if ((!write && !body.HasComparisonLoan(id, !address && plan.Exclusive >= 0 ? plan.Exclusive : plan.Loan)) ||
-            (body.IsReachable(id) && ((body.GetInputState(id, plan.Root) & PlaceState.MustInit) == 0 ||
+            (body.IsReachable(id) && ((body.GetElementState(id, index, address || write) & PlaceState.MustInit) == 0 ||
                 !this.Dominates(loan.Read, id) ||
                 (address ? (plan.Parent >= 0 && !this.Dominates(body.Projections[plan.Parent].Operation, id)) ||
                     (plan.Index >= 0 && !this.Dominates(plan.Index, id)) : !this.Dominates(plan.Operation, id)))))
@@ -327,12 +329,22 @@ internal sealed partial class BodyLowering
             var destination = new EmissionOperand(EmissionOperandKind.ElementAddress, plan.Operation);
             if (isString || child is { NeedsDestruction: true })
             {
-                if (!this.TryGetLocation(operation.Source, directory, constants, out var location))
+                if (this.DestructionPath(body, operation) >= 0)
                 {
-                    return Fail("Element destruction requires a source location.", out failure);
+                    if (!this.LowerPartDestruction(body, function, constants, directory, id, out failure))
+                    {
+                        return false;
+                    }
                 }
+                else
+                {
+                    if (!this.TryGetLocation(operation.Source, directory, constants, out var location))
+                    {
+                        return Fail("Element destruction requires a source location.", out failure);
+                    }
 
-                AddOwnedDestruction(function, id, destination, location, child);
+                    AddOwnedDestruction(function, id, destination, location, child);
+                }
             }
 
             if (representation.Layout.Size != 0)
@@ -385,7 +397,7 @@ internal sealed partial class BodyLowering
         {
             if (body.IsReachable(id) && (body.GetInputState(id, operation.Place) & PlaceState.MayInit) != 0)
             {
-                return Fail("Element Copy result is already initialized.", out failure);
+                return Fail("Element result is already initialized.", out failure);
             }
 
             if (representation.Layout.Size == 0)
@@ -398,6 +410,11 @@ internal sealed partial class BodyLowering
                 var start = function.Operands.Count;
                 function.Operands.Add(new(EmissionOperandKind.ElementAddress, plan.Operation));
                 function.Instructions.Add(new(EmissionOpcode.TransferAggregate, id, Place: operation.Place, OperandStart: start, OperandCount: 1, Aggregate: aggregate));
+            }
+            else if (ReferenceEquals(representation, WindowsLowering.String))
+            {
+                function.AddScalar(EmissionOpcode.MoveString, id, [new(EmissionOperandKind.ElementAddress, plan.Operation)], place: operation.Place);
+                this.AddStringFlags(function, operation, id);
             }
             else
             {
