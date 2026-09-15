@@ -147,7 +147,7 @@ public class ConditionalConformanceBindingTest
     [Fact]
     public void DirectAndUnconditionalDeclarationsAreDuplicatesAfterFragmentMerging()
     {
-        var c = Parse("contract C\nstruct S<T>\n    Self is C\nstruct S\n    Self is C when T is Copy");
+        var c = Parse("contract C\nstruct S<T>\n    Self is C\nstruct S<T>\n    Self is C when T is Copy");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.DuplicateBinding_Kd);
     }

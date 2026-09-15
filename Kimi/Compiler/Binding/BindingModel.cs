@@ -88,6 +88,9 @@ internal enum BindingFailure : byte
     InvalidPattern,
     NonExhaustiveMatch,
     InvalidTestDefinition,
+    InvalidLayoutAttribute,
+    ConflictingLayout,
+    SplitCLayoutStorage,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>

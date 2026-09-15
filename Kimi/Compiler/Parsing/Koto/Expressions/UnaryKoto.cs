@@ -102,6 +102,14 @@ public sealed class AttributeKoto : UnaryKoto
     public List<Koto> Arguments
         => this.Operand is InvocationKoto { Method: IdentifierNameKoto } invocation ? invocation.Arguments : field ??= [];
 
+    // Parser-local fragment identity; distinct from source-file or physical layout order.
+    internal int FragmentOrdinal { get; set; }
+
+    internal string? LayoutMode
+        => this.IdentifierKoto is IdentifierNameKoto { IdentifierName: "Layout" } &&
+            this.Operand is InvocationKoto { ArgumentNodes.Count: 1 } call && call.GetArgumentLabel(0) is null &&
+            call.ArgumentNodes[0] is StringLiteralKoto literal && literal.Literal is "C" or "Kimigayo" ? literal.Literal : null;
+
     /// <summary>Initializes a new instance of the <see cref="AttributeKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>

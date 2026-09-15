@@ -126,6 +126,9 @@ public enum DiagnosticCode
     InvalidDependencyConfiguration_Kd,
     UnresolvedDependencyGraph_Kd,
     InvalidTestDefinition_Kd,
+    InvalidLayoutAttribute_Kd,
+    ConflictingLayout_Kd,
+    SplitCLayoutStorage_Kd,
 
     Count, // Last sentinel
 }

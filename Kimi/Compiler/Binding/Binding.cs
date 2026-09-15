@@ -184,6 +184,7 @@ public sealed partial class Binding
             this.CompleteEnumAcquisitions();
             this.CompletePatternAcquisitions();
             this.ValidateApiAccess();
+            this.ValidateLayoutFragments();
             this.Result = this.Check(mode);
             return this.Result;
         }
@@ -327,6 +328,9 @@ public sealed partial class Binding
                 var code = node.BindingFailure switch
                 {
                     BindingFailure.InvalidTestDefinition => DiagnosticCode.InvalidTestDefinition_Kd,
+                    BindingFailure.InvalidLayoutAttribute => DiagnosticCode.InvalidLayoutAttribute_Kd,
+                    BindingFailure.ConflictingLayout => DiagnosticCode.ConflictingLayout_Kd,
+                    BindingFailure.SplitCLayoutStorage => DiagnosticCode.SplitCLayoutStorage_Kd,
                     BindingFailure.MissingName or BindingFailure.MissingType => DiagnosticCode.UnresolvedBinding_Kd,
                     BindingFailure.Ambiguous => DiagnosticCode.AmbiguousBinding_Kd,
                     BindingFailure.Duplicate => DiagnosticCode.DuplicateBinding_Kd,
@@ -407,7 +411,8 @@ public sealed partial class Binding
         if (table.TryGetValue(name, out var previous))
         {
             symbol.Next = previous;
-            if (kind != BindingSymbolKind.Function || previous.Kind != BindingSymbolKind.Function)
+            if ((kind != BindingSymbolKind.Function || previous.Kind != BindingSymbolKind.Function) &&
+                !(kind == BindingSymbolKind.Type && node is DeclarationContainerKoto declaration && DistinctTypeArities(declaration, previous)))
             {
                 Fail(node, BindingFailure.Duplicate);
                 Fail(previous.Declaration, BindingFailure.Duplicate);
@@ -441,9 +446,7 @@ public sealed partial class Binding
             if (symbol.ReceiverIndex >= 0)
             {
                 var receiver = function.Parameters[symbol.ReceiverIndex];
-                var type = receiver.Type.BoundType;
-                var valid = type is not null && SameType(EffectiveCore(type), this.SelfType(symbol.Scope.Owner.BoundSymbol!)) && type.Semantics is not (SemanticsKind.Unsafe or SemanticsKind.Parameter);
-                if (!valid || receiver.ExternalName != "self" || receiver.IsOptional || receiver.DefaultValue is not null)
+                if (!this.IsReceiverType(receiver.Type.BoundType, symbol.Scope.Owner.BoundSymbol!) || receiver.ExternalName != "self" || receiver.IsOptional || receiver.DefaultValue is not null)
                 {
                     Fail(function, BindingFailure.InvalidTypeFormation);
                 }
@@ -509,6 +512,17 @@ public sealed partial class Binding
     {
         public override void Visit(Koto node)
         {
+            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Layout" } } layout)
+            {
+                binding.IndexLayoutAttribute(layout);
+                if (layout.AttributeChain is { } precedingAttribute)
+                {
+                    this.Visit(precedingAttribute);
+                }
+
+                return;
+            }
+
             var marker = node is FunctionKoto function && !TestDefinition.IsValidSyntax(function) ? TestDefinition.Marker(function) : null;
             if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Test" } } attribute &&
                 (attribute.Parent is not FunctionKoto owner || TestDefinition.Marker(owner) is null))
@@ -557,6 +571,12 @@ public sealed partial class Binding
                     {
                         if (!ReferenceEquals(attribute, marker))
                         {
+                            if (attribute.IdentifierKoto is IdentifierNameKoto { IdentifierName: "Layout" })
+                            {
+                                // The syntax visitor reports Layout's wrong target below.
+                                continue;
+                            }
+
                             // No Mod marker registry exists yet; selection does not recognize an unknown marker.
                             attribute.BindingFailure = BindingFailure.None;
                             Fail(attribute, BindingFailure.Unsupported, true);
@@ -573,6 +593,17 @@ public sealed partial class Binding
             {
                 Fail(node, BindingFailure.InvalidTestDefinition);
                 binding.nodes.Add(node);
+                return;
+            }
+
+            if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Layout" } } layout)
+            {
+                binding.IndexLayoutAttribute(layout);
+                if (layout.AttributeChain is { } precedingAttribute)
+                {
+                    this.Visit(precedingAttribute);
+                }
+
                 return;
             }
 

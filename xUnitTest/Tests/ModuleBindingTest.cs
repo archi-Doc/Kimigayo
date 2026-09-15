@@ -230,6 +230,20 @@ public class ModuleBindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(Analyze));
     }
 
+    [Theory]
+    [InlineData("func f(x: Lib.Api.Box, y: Lib.Api.Box<i32>) => ()", false, true)]
+    [InlineData("func f(x: ::Lib.Api.Box, y: ::Lib.Api.Box<i32>) => ()", false, true)]
+    [InlineData("alias Lib.Api\nfunc f(x: Box, y: Box<i32>) => ()", false, true)]
+    [InlineData("func f(x: Box, y: Box<i32>) => ()", true, true)]
+    [InlineData("struct Box<T, U>\nfunc f(x: Box<i32>) => ()", true, false)]
+    [InlineData("alias Local\ngroup Local\n    public struct Box<T, U>\nfunc f(x: Box<i32>) => ()", true, false)]
+    public void ModuleTypeAritiesUseTheCommittedLookupStage(string source, bool defaults, bool expected)
+    {
+        var c = Create(source, "public group Api\n    public struct Box\n    public struct Box<T>", configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
+        Assert.Equal(expected, c.Bind().IsComplete);
+        Assert.Equal(expected, c.Bind().IsComplete);
+    }
+
     private static Compilation Create(string rootSource, string librarySource, string? childSource = null, Action<ProjectFile, ProjectFile>? configure = null)
     {
         var compilation = Compilation.CreateForTest();

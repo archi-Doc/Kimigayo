@@ -107,8 +107,7 @@ public sealed partial class Binding
         BindingSymbol? valueMember = null;
         MemberSelection typeSelection = default;
         MemberSelection valueSelection = default;
-        var qualifierName = member.Left is GenericsKoto constructed ? constructed.Identifier! : member.Left;
-        var qualifier = this.TypeName(qualifierName, scope, false);
+        var qualifier = this.TypeName(member.Left, scope, false);
         if (qualifier?.Type is { } type && qualifier.Declaration is not ContractKoto)
         {
             typeMember = this.RequirementMember(member, scope, type, true);
@@ -132,7 +131,7 @@ public sealed partial class Binding
             }
         }
 
-        var valuePossible = this.MayBeValueQualifier(qualifierName, scope);
+        var valuePossible = this.MayBeValueQualifier(member.Left is GenericsKoto constructed ? constructed.Identifier! : member.Left, scope);
         if (valuePossible)
         {
             var receiverType = this.BindNode(member.Left, scope);

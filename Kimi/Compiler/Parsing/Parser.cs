@@ -92,25 +92,58 @@ public static partial class Parser
     /// <param name="attribute">The first attribute in the chain.</param>
     /// <param name="builder">The destination builder.</param>
     /// <param name="options">The output options.</param>
-    public static void UnparseAttribute(AttributeKoto? attribute, ref IndentedStringBuilder builder, KotoWriteOptions options)
+    /// <param name="mergeFragmentLayouts">Whether equivalent Layout specifications from separate container fragments are written once.</param>
+    public static void UnparseAttribute(AttributeKoto? attribute, ref IndentedStringBuilder builder, KotoWriteOptions options, bool mergeFragmentLayouts = false)
     {
         if (attribute is null)
         {
             return;
         }
 
-        WriteChain(attribute, ref builder);
+        if (mergeFragmentLayouts)
+        {
+            string? mode = null;
+            var fragment = -1;
+            for (var current = attribute; current is not null; current = current.AttributeChain)
+            {
+                if (current.IdentifierKoto is not IdentifierNameKoto { IdentifierName: "Layout" })
+                {
+                    continue;
+                }
+
+                if (current.LayoutMode is not { } currentMode || (mode is not null && mode != currentMode) || fragment == current.FragmentOrdinal)
+                {
+                    mergeFragmentLayouts = false;
+                    break;
+                }
+
+                mode = currentMode;
+                fragment = current.FragmentOrdinal;
+            }
+        }
+
+        var layoutWritten = false;
+        WriteChain(attribute, ref builder, mergeFragmentLayouts, ref layoutWritten);
         builder.AppendTrailingSpaceOrLineFeed(options);
 
-        static void WriteChain(AttributeKoto attribute, ref IndentedStringBuilder builder)
+        static void WriteChain(AttributeKoto attribute, ref IndentedStringBuilder builder, bool mergeFragmentLayouts, ref bool layoutWritten)
         {
             if (attribute.AttributeChain is { } previous)
             {
-                WriteChain(previous, ref builder);
+                WriteChain(previous, ref builder, mergeFragmentLayouts, ref layoutWritten);
+                if (mergeFragmentLayouts && layoutWritten && attribute.LayoutMode is not null)
+                {
+                    return;
+                }
+
                 builder.Append(' ');
             }
 
             attribute.WriteTo(ref builder);
+            if (mergeFragmentLayouts)
+            {
+                layoutWritten |= attribute.LayoutMode is not null;
+            }
         }
     }
 
@@ -2250,19 +2283,19 @@ CloseParameters:
                     reader.Diagnostic.Add(token.Span, DiagnosticCode.UnexpectedToken_Kd, "extension");
                 }
 
+                var state = reader.TakeContext();
                 var declaration = ParseDeclarationContainerHeader(
                     ref reader,
                     supportsGenericHeader,
                     supportsGenericHeader,
                     token.Kind);
-                var state = reader.TakeContext();
                 var container = DeclarationContainerKoto.CreateStandalone(
                     reader.CodeContext,
                     token.Kind,
                     state,
                     token.Span,
                     declaration.Name);
-                container.AddHeader(token.Kind, state.ModifierKind, declaration.GenericArguments, declaration.Origins);
+                container.AddHeader(token.Kind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto);
                 container.SetBases(declaration.Bases);
 
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)

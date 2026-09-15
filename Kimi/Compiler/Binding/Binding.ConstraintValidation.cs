@@ -96,10 +96,13 @@ public sealed partial class Binding
             return this.HasValueRole(type, scope, objectTarget);
         }
 
-        if (obligation.Kind == BindingObligationKind.TypeFormation && obligation.Use is TypeSemanticsKoto { SemanticsParameter: not null } application && application.BoundSymbol?.Pair?.WholeType is { } whole)
+        if (obligation.Kind == BindingObligationKind.TypeFormation &&
+            obligation.Use is TypeSemanticsKoto { SemanticsParameter: not null, BoundType: { Kind: BoundTypeKind.SemanticsApplication, Origin: null } } application && application.BoundSymbol?.Pair?.WholeType is { } whole)
         {
             // Borrow application still needs its Origin/Loan contract. This step discharges only
             // applications proved to need no outer Origin, without choosing a concrete instance.
+            // An annotated WholeType instead remains a Parameter and needs its own proof;
+            // owner/unsafe evidence cannot certify that annotation (SPEC 8.1.2).
             return this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.Unsafe, scope) && this.HasValueRole(type, scope, false);
         }
 

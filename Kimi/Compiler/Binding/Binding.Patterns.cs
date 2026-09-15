@@ -352,7 +352,7 @@ public sealed partial class Binding
         }
 
         var qualifier = member.Left;
-        var definition = qualifier is GenericsKoto generic ? this.TypeName(generic.Identifier!, scope, true) : this.TypeName(qualifier, scope, true);
+        var definition = this.TypeName(qualifier, scope, true);
         if (definition is null || !ReferenceEquals(definition, expected.Symbol))
         {
             return null;

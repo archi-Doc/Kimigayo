@@ -196,6 +196,14 @@ public sealed partial class Binding
                 continue;
             }
 
+            // The header/storage Type belongs to the Property domain even when
+            // every accessor has narrower access. Requirements inherit the Contract domain.
+            var domain = syntax.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : property.Symbol;
+            if (property.Type is { } type && !TypeAccessCovers(type, domain, domain))
+            {
+                Fail(syntax, BindingFailure.Access);
+            }
+
             var proof = this.ValidateAccessor(property.Getter);
             proof = CombineProof(proof, this.ValidateAccessor(property.Setter), true);
             property.IsVerified = proof == ConstraintProof.Proven && syntax.BindingState != BindingState.Invalid;
@@ -233,21 +241,22 @@ public sealed partial class Binding
 
         if (accessor.IsStandard)
         {
-            var standardDomain = accessor.SignatureSymbol ?? property.Symbol;
-            if (!TypeAccessCovers(property.Type, standardDomain, standardDomain))
-            {
-                Fail(accessor.Binder, BindingFailure.Access);
-                return ConstraintProof.Error;
-            }
-
             return ConstraintProof.Proven;
         }
 
-        var scope = this.DeclarationScope(property.Symbol);
-        if (property.IsStored && scope.Owner is StructKoto)
+        var owner = property.Symbol.Scope.Owner;
+        if (owner is StructKoto or ContractKoto
+            ? !this.IsReceiverType(accessor.Receiver, owner.BoundSymbol!)
+            : accessor.Receiver is not null)
+        {
+            Fail(syntax!, BindingFailure.InvalidTypeFormation);
+            return ConstraintProof.Error;
+        }
+
+        if (property.IsStored && owner is StructKoto)
         {
             var semantics = accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq;
-            if (accessor.Receiver is not { Kind: BoundTypeKind.Semantics } receiver || receiver.Semantics != semantics || !ReferenceEquals(receiver.Components[0], this.SelfType(scope.Owner.BoundSymbol!)))
+            if (accessor.Receiver is not { Kind: BoundTypeKind.Semantics } receiver || receiver.Semantics != semantics || !ReferenceEquals(receiver.Components[0], this.SelfType(owner.BoundSymbol!)))
             {
                 Fail(syntax!, BindingFailure.TypeMismatch);
                 return ConstraintProof.Error;
@@ -267,7 +276,9 @@ public sealed partial class Binding
         }
 
         var domain = property.Declaration.IsContractRequirement ? property.Symbol.Scope.Owner.BoundSymbol! : accessor.SignatureSymbol!;
-        if (!TypeAccessCovers(accessor.Result, domain, domain) || (accessor.Input is { } input && !TypeAccessCovers(input, domain, domain)))
+        if (!TypeAccessCovers(accessor.Result, domain, domain) ||
+            (accessor.Input is { } input && !TypeAccessCovers(input, domain, domain)) ||
+            (accessor.Receiver is { } receiverType && !TypeAccessCovers(receiverType, domain, domain)))
         {
             Fail(syntax!, BindingFailure.Access);
             return ConstraintProof.Error;

@@ -115,7 +115,11 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
     internal bool HasIncompatibleBindingHeader { get; private set; }
 
+    private DeclarationContainerKoto? nextArity;
+
     private bool hasBindingHeader;
+
+    private int fragmentOrdinal;
 
     /// <summary>Gets Properties and functions in declaration order.</summary>
     public IReadOnlyList<Koto> Members => (IReadOnlyList<Koto>?)this.kotoList ?? [];
@@ -152,6 +156,11 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="koto">The child node to add.</param>
     public void AddLast(Koto koto)
     {
+        if (koto is PropertyKoto property)
+        {
+            property.FragmentOrdinal = this.fragmentOrdinal;
+        }
+
         this.KotoList.Add(koto);
         koto.Parent = this;
     }
@@ -174,8 +183,28 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="modifier">The written modifiers.</param>
     /// <param name="genericArguments">The generic parameters, if declared.</param>
     /// <param name="origins">The origin names, if declared.</param>
-    internal void AddHeader(TokenKind kind, ModifierKind modifier, List<TypeKoto>? genericArguments, List<string>? origins)
+    /// <param name="attributes">The selected fragment's Attribute chain.</param>
+    internal void AddHeader(TokenKind kind, ModifierKind modifier, List<TypeKoto>? genericArguments, List<string>? origins, AttributeKoto? attributes)
     {
+        this.fragmentOrdinal++;
+        if (attributes is not null)
+        {
+            var last = attributes;
+            for (var attribute = attributes; attribute is not null; attribute = attribute.AttributeChain)
+            {
+                attribute.FragmentOrdinal = this.fragmentOrdinal;
+                last = attribute;
+            }
+
+            var previous = this.AttributeChain;
+            this.SetAttributeChain(attributes);
+            if (previous is not null && !ReferenceEquals(previous, attributes))
+            {
+                last.AttributeChain = previous;
+                previous.Parent = last;
+            }
+        }
+
         this.HasIncompatibleBindingHeader |= this.TokenKind != kind;
         if (this.hasBindingHeader)
         {
@@ -244,7 +273,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
     {
-        this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendLineFeed);
+        Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed, mergeFragmentLayouts: true);
 
         if (this.IsRoot)
         {
@@ -296,7 +325,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     {
         if (this.AttributeChain is not null)
         {
-            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed);
+            Parser.UnparseAttribute(this.AttributeChain, ref builder, KotoWriteOptions.AppendLineFeed, mergeFragmentLayouts: true);
             builder.AppendLine();
         }
 
@@ -310,6 +339,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     public void Clear()
     {
         this.hasBindingHeader = false;
+        this.fragmentOrdinal = 0;
+        this.AttributeChain = null;
         this.HasIncompatibleBindingHeader = false;
         this.kotoList?.Clear();
         this.NestedContainerTable?.Clear();
@@ -390,12 +421,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             builder.AppendLine();
         }
 
-        if (this.NestedContainerTable is { Count: > 0 } nestedContainers)
+        if (this.nestedContainers is { Count: > 0 } nestedContainers)
         {
             builder.EnsureTrailingBlankLine();
-            foreach (var x in nestedContainers.ToArray())
+            foreach (var x in nestedContainers)
             {
-                ((DeclarationContainerKoto)x).UnparseAll(ref builder);
+                x.UnparseAll(ref builder);
             }
         }
 
@@ -410,8 +441,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="kind">The final Declaration Container's declaration kind.</param>
     /// <param name="state">The declaration context.</param>
     /// <param name="range">The declaration source span.</param>
+    /// <param name="genericArity">The number of generic header slots.</param>
     /// <returns>The final Declaration Container.</returns>
-    public DeclarationContainerKoto GetOrAddDeclarationContainer(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range)
+    public DeclarationContainerKoto GetOrAddDeclarationContainer(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range, int genericArity = 0)
     {
         var container = this;
         while (true)
@@ -419,7 +451,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             var index = qualifiedName.IndexOf(Constants.DotChar);
             if (index < 0)
             {
-                return container.GetOrAddChild(qualifiedName, null, kind, state, range);
+                return container.GetOrAddChild(qualifiedName, null, kind, state, range, genericArity);
             }
 
             container = container.GetOrAddChild(qualifiedName[..index], null, TokenKind.Group, default, default);
@@ -432,11 +464,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="kind">The declaration kind.</param>
     /// <param name="state">The declaration context.</param>
     /// <param name="range">The declaration source span.</param>
+    /// <param name="genericArity">The number of generic header slots.</param>
     /// <returns>The nested Declaration Container.</returns>
-    internal DeclarationContainerKoto GetOrAddDeclarationContainer(string name, TokenKind kind, TokenContext state, SourceSpan range)
+    internal DeclarationContainerKoto GetOrAddDeclarationContainer(string name, TokenKind kind, TokenContext state, SourceSpan range, int genericArity = 0)
         => name.Contains(Constants.DotChar)
-            ? this.GetOrAddDeclarationContainer(name.AsSpan(), kind, state, range)
-            : this.GetOrAddChild(name, name, kind, state, range);
+            ? this.GetOrAddDeclarationContainer(name.AsSpan(), kind, state, range, genericArity)
+            : this.GetOrAddChild(name, name, kind, state, range, genericArity);
 
     /// <summary>Gets or creates a Declaration Container from a qualified name.</summary>
     /// <remarks>Retained as a source-compatible alias for <c>GetOrAddDeclarationContainer</c>.</remarks>
@@ -446,7 +479,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="range">The declaration source span.</param>
     /// <returns>The final Declaration Container.</returns>
     public DeclarationContainerKoto GetOrAddGroup(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range)
-        => this.GetOrAddDeclarationContainer(qualifiedName, kind, state, range);
+        => this.GetOrAddDeclarationContainer(qualifiedName, kind, state, range, genericArity: -1);
 
     /// <summary>Parses the body supported by this Declaration Container kind.</summary>
     /// <param name="reader">The token reader.</param>
@@ -470,8 +503,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     internal void WriteAsBlockItem(ref IndentedStringBuilder builder)
     {
         this.WriteTo(ref builder);
-        var containers = this.NestedContainerTable?.ToArray() ?? [];
-        if (this.typeConstraints is not { Count: > 0 } && this.kotoList is not { Count: > 0 } && containers.Length == 0)
+        var containers = this.NestedContainers;
+        if (this.typeConstraints is not { Count: > 0 } && this.kotoList is not { Count: > 0 } && containers.Count == 0)
         {
             return;
         }
@@ -500,7 +533,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         foreach (var nested in containers)
         {
             WriteSeparator(ref builder, ref hasPrevious);
-            ((DeclarationContainerKoto)nested).WriteAsBlockItem(ref builder);
+            nested.WriteAsBlockItem(ref builder);
         }
 
         builder.DecrementIndent();
@@ -710,14 +743,14 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         reader.Advance();
         var supportsGenericHeader = tokenKind is TokenKind.Struct or TokenKind.Enum;
+        var state = reader.TakeContext();
         var declaration = Parser.ParseDeclarationContainerHeader(
             ref reader,
             supportsGenericHeader,
             supportsGenericHeader,
             tokenKind);
-        var state = reader.TakeContext();
-        var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span);
-        container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins);
+        var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span, declaration.GenericArguments?.Count ?? 0);
+        container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto);
         container.SetBases(declaration.Bases);
 
         if (reader.CurrentTokenKind == TokenKind.StartBlock)
@@ -1032,25 +1065,29 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             return true;
         }
 
-        if (this.NestedContainerTable is { } nested &&
-            oldKoto is DeclarationContainerKoto oldContainer && newKoto is DeclarationContainerKoto newContainer &&
-            nested.TryGetValue(oldContainer.Name, out var registered) &&
-            ReferenceEquals(registered, oldContainer))
+        if (this.NestedContainerTable is { } nested && this.nestedContainers is { } containers &&
+            oldKoto is DeclarationContainerKoto oldContainer && newKoto is DeclarationContainerKoto newContainer && containers.Contains(oldContainer))
         {
-            if (!oldContainer.Name.Equals(newContainer.Name, StringComparison.Ordinal) &&
-                nested.TryGetValue(newContainer.Name, out _))
+            foreach (var candidate in containers)
             {
-                return false;
+                if (!ReferenceEquals(candidate, oldContainer) && candidate.Name == newContainer.Name &&
+                    (candidate.TokenKind != newContainer.TokenKind || candidate.GenericParameterNodes.Count == newContainer.GenericParameterNodes.Count))
+                {
+                    return false;
+                }
             }
 
-            if (nested.TryRemove(oldContainer.Name) &&
-                nested.TryAdd(newContainer.Name, newContainer))
+            ReplaceInList(containers, oldContainer, newContainer);
+            oldContainer.nextArity = null;
+            nested.Clear();
+            foreach (var candidate in containers)
             {
-                ReplaceInList(this.nestedContainers, oldContainer, newContainer);
-                return true;
+                nested.TryGetValue(candidate.Name, out var previous);
+                candidate.nextArity = previous as DeclarationContainerKoto;
+                nested.AddOrUpdate(candidate.Name, candidate);
             }
 
-            nested.TryAdd(oldContainer.Name, oldContainer);
+            return true;
         }
 
         return false;
@@ -1070,18 +1107,30 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Gets or creates a directly nested container.</summary>
     /// <param name="text">The container name.</param>
     /// <param name="name">The name as a string when already materialized, to avoid a second allocation.</param>
-    private DeclarationContainerKoto GetOrAddChild(ReadOnlySpan<char> text, string? name, TokenKind kind, TokenContext state, SourceSpan range)
+    private DeclarationContainerKoto GetOrAddChild(ReadOnlySpan<char> text, string? name, TokenKind kind, TokenContext state, SourceSpan range, int genericArity = 0)
     {
         var nested = this.NestedContainerTable ??= new();
         if (nested.TryGetValue(text, out var existing))
         {
             var declaration = (DeclarationContainerKoto)existing;
-            declaration.HasIncompatibleBindingHeader |= declaration.TokenKind != kind;
-            return declaration;
+            if (declaration.TokenKind != kind)
+            {
+                declaration.HasIncompatibleBindingHeader = true;
+                return declaration;
+            }
+
+            for (var candidate = declaration; candidate is not null; candidate = candidate.nextArity)
+            {
+                if (genericArity < 0 || !candidate.hasBindingHeader || candidate.GenericParameterNodes.Count == genericArity)
+                {
+                    return candidate;
+                }
+            }
         }
 
         name ??= this.CodeContext.Compilation.Intern(text);
         var container = CreateStandalone(this.CodeContext, kind, state, range, name);
+        container.nextArity = existing as DeclarationContainerKoto;
         container.Parent = this;
         nested.AddOrUpdate(name, container);
         (this.nestedContainers ??= []).Add(container);

@@ -9,6 +9,9 @@ public sealed partial class Binding
     private static BoundType EffectiveCore(BoundType type)
         => type.Kind == BoundTypeKind.Semantics && type.Components.Count == 1 ? type.Components[0] : type;
 
+    private bool IsReceiverType(BoundType? type, BindingSymbol owner)
+        => type is not null && SameType(EffectiveCore(type), this.SelfType(owner)) && type.Semantics is not (SemanticsKind.Unsafe or SemanticsKind.Parameter);
+
     private void ValidateApiAccess()
     {
         for (var i = 0; i < this.nodes.Count; i++)
@@ -75,7 +78,7 @@ public sealed partial class Binding
             }
 
             var syntax = structure.Bases[0];
-            type = syntax.BoundType?.Symbol ?? this.TypeName(syntax is GenericsKoto generic ? generic.Identifier! : syntax, this.scopes[structure], false);
+            type = syntax.BoundType?.Symbol ?? this.TypeName(syntax, this.scopes[structure], false);
         }
 
         return false;

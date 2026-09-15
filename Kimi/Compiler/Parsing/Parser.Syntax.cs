@@ -314,8 +314,10 @@ public static partial class Parser
             {
                 return true;
             }
-            else if (kind is TokenKind.Comma or TokenKind.MinusGreaterThan or TokenKind.EndBlock or TokenKind.Invalid)
+            else if (kind is TokenKind.OpenBracket or TokenKind.Comma or TokenKind.MinusGreaterThan or TokenKind.EndBlock or TokenKind.Invalid)
             {
+                // A bracket starts a fixed-array Type, not a length expression. Its numeric
+                // length must not classify an enclosing grouped Type argument as a value.
                 return false;
             }
         }

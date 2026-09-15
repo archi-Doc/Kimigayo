@@ -244,6 +244,15 @@
   + Name="InvalidTestDefinition_Kd"
     Message="Test requires one argument-free Attribute on a safe ordinary named function with a body, no parameters, captures or generic/Origin parameters, and an omitted or Unit return Type"
 
+  + Name="InvalidLayoutAttribute_Kd"
+    Message="Layout requires exactly one unnamed, non-interpolated string literal, 'Kimigayo' or 'C', on a struct, with no repetition on one fragment"
+
+  + Name="ConflictingLayout_Kd"
+    Message="Selected struct fragments must agree on their explicit Layout mode"
+
+  + Name="SplitCLayoutStorage_Kd"
+    Message="All selected instance Fields of a C-layout struct must occur in one fragment"
+
   + Name="UnexpectedIndent_Kd"
     Message="Unexpected indentation"
 

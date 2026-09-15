@@ -426,7 +426,7 @@ public class ParserRegressionTest
                 T is FirstConstraint
                 var first: i32
 
-            struct A origin ignored, later
+            struct A<s/T> origin ignored, later
                 T is IgnoredConstraint
                 semantics is DefinitelyInvalid
                 var second: i32
