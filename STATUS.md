@@ -1,20 +1,20 @@
 # Kimigayo Implementation Status
 
-依存ライブラリーのAPI名称変更対応（2026-09-15）: 更新済みパッケージ参照に合わせ、Arc.Collections の登録API、Arc.Threading の終了待機、Arc.Unit のログ設定・空コンソール・通知とコンソール入力のインターフェイス、SimpleCommandLine の解析オプション、Tinyhand のmap header読み取り、Benchmark の Arc.Crypto/FarmHash 呼び出しを新名称に統一した。関連コメントとテスト用コンソール実装も更新。`dotnet build Kimigayo.slnx --no-restore --nologo -v:q` は警告・エラー0件、`dotnet test --project xUnitTest/xUnitTest.csproj --no-build --no-restore` は4,870件すべて成功し、CLIの `--help` 表示と正常終了も確認した。言語仕様・CLI構文・データ形式の変更はなく、SPEC本文の変更は不要。NativeAOTテスト・性能測定は実行していない。
+Dependency API renames (2026-09-15): Updated call sites to match the upgraded packages: Arc.Collections registration APIs, Arc.Threading termination waits, Arc.Unit logging configuration, empty console, notification and console input interfaces, SimpleCommandLine parser options, Tinyhand map header reads, and Benchmark's Arc.Crypto/FarmHash calls. Updated related comments and the test console implementation. `dotnet build Kimigayo.slnx --no-restore --nologo -v:q` passed with no warnings or errors; `dotnet test --project xUnitTest/xUnitTest.csproj --no-build --no-restore` passed all 4,870 tests. CLI `--help` output and normal exit were also verified. Language rules, CLI syntax, and data formats are unchanged, so the SPEC body needed no update. NativeAOT tests and performance measurements were not run.
 
-更新: 2026-09-15。基礎調査対象: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42`。静的要素の部分Moveを§4.8・§7.4、静的string要素の比較・共有引数を§4.9・§7.5、所有parameter・一時値への要素借用の拡張を§4.10・§7.6、所有parameterの部分Moveを§4.11・§7.7に反映。
+Updated: 2026-09-15. Baseline reviewed: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42`. Static element partial Moves are covered in §4.8/§7.4; static string element comparisons and shared arguments in §4.9/§7.5; element borrowing from owned parameters and temporaries in §4.10/§7.6; and partial Moves from owned parameters in §4.11/§7.7.
 
-文書構成（2026-09-14）: [SPEC.md](SPEC.md) を総合目次とし、本文22章と付録A・B・D・E・Fを `spec/` に分割した。付録Cは目次内の実装状況案内に集約。設計・決定・変更記録の `doc/` は `draft/` に改名した。章番号・仕様本文・既存の優先規則を維持し、コンパイラーの実装範囲は変更していない。
+Document structure (2026-09-14): [SPEC.md](SPEC.md) is the main index; the 22 chapters and Appendices A, B, D, E, and F are split into `spec/`. Appendix C is consolidated into the index's implementation-status guide. The `doc/` directory for designs, decisions, and change records was renamed to `draft/`. Chapter numbers, specification text, and existing precedence rules are preserved. Compiler coverage is unchanged.
 
-テスト検証の失敗動作（2026-09-15）: [§17.5](spec/17-failure-handling.md#175-test-verification-operations) の `$expect` は条件を一度評価し、偽なら失敗を記録して継続する。`$require` は通常returnを廃止し、偽なら失敗記録・条件とメッセージの一時値cleanup後に当該ケースの子プロセスをAbortする。使用位置は両操作で共通のテスト専用本体とし、helper・local function・Closure・deferを含める。Abort開始後の通常cleanupを行わず、runnerは検証失敗と実際の終了理由を保持する。SPEC目次、第14・17・22章、付録A・Fを整合。文書のみの変更で、compiler・runnerの実装対応を追加しない。
+Test verification failure behavior (2026-09-15): In [§17.5](spec/17-failure-handling.md#175-test-verification-operations), `$expect` evaluates its condition once, records failure if false, and continues. `$require` no longer returns normally on failure: it records failure, cleans up condition and message temporaries, then Aborts the case's child process. Both operations share the same permitted locations in test-only bodies, including helpers, local functions, Closures, and defer. Normal cleanup does not run after Abort begins; the runner retains both verification failures and the actual termination reason. Aligned the SPEC index, Chapters 14, 17, and 22, and Appendices A and F. These are documentation changes only; they add no compiler or runner implementation support.
 
-設計文書の整合（2026-09-15）: テストの宣言・検証操作・discovery/CLI・実行/回収/診断を [§6.5.1](spec/06-declarations-and-containers.md#651-test-definitions)、[§17.5](spec/17-failure-handling.md#175-test-verification-operations)、[§20.9](spec/20-compilation-configuration.md#209-test-command-and-discovery)、[§22.6](spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting)へ統合し、既存の入力・生成規則と付録A・D・E・Fを整合させた。具体的な形式・既定値・追加機能は付録D.4に残る。取り下げられた Composition Root 案と削除済み決定文書への採用・優先参照を解除し、Entry／Provider 選択は未確定とした。設計書の古い未反映注記、if/matchの先行案、block→do、object header・metadata、付録Fの公開API名も現行SPECに同期した。この作業は文書のみであり、テスト言語機能・runner・Composition機能の実装対応を追加しない。リンク・見出し・コードフェンス・差分形式を点検し、compiler/native/NativeAOTテストと性能測定は実行していない。
+Design document alignment (2026-09-15): Integrated test declarations, verification operations, discovery/CLI, and execution/recovery/diagnostics into [§6.5.1](spec/06-declarations-and-containers.md#651-test-definitions), [§17.5](spec/17-failure-handling.md#175-test-verification-operations), [§20.9](spec/20-compilation-configuration.md#209-test-command-and-discovery), and [§22.6](spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting). Aligned existing input/generation rules and Appendices A, D, E, and F. Concrete formats, defaults, and additional features remain in Appendix D.4. Removed adoption and precedence references to the withdrawn Composition Root proposal and deleted decision documents; Entry/Provider selection remains unsettled. Also synchronized outdated pending-integration notes, earlier if/match proposals, block→do, object headers/metadata, and Appendix F public API names with the current SPEC. This documentation-only work adds no test language, runner, or Composition implementation support. Links, headings, code fences, and diff formatting were checked; compiler/native/NativeAOT tests and performance measurements were not run.
 
-依存・成果物仕様の統合（2026-09-15）: 指定された draft を優先し、[第18章](spec/18-modules-and-dependencies.md)へ設定・解決・lock・入力記録・ソースパッケージ・pack/publish・意味検証の再利用・テスト所属を統合した。[第20章](spec/20-compilation-configuration.md)の native 要求/供給・member閉包・directive・CLI、[第21章](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation)の共通生成と製品/テスト予算、関連付録・目次も整合させた。英語の規則と例を整理し、旧「形式・設定は未定義」の記述やdraftへの本文委譲を置換した。全28仕様ファイルの681件のローカル参照とコードブロック・差分形式を確認した。文書のみの変更で、外部依存解決・pack/publish・永続意味キャッシュの実装完了を示さない。draftとcompilerは変更せず、compiler/native/NativeAOTテスト・性能測定は行っていない。
+Dependency and artifact specification integration (2026-09-15): Gave precedence to the designated draft and integrated configuration, resolution, locks, input records, source packages, pack/publish, semantic verification reuse, and test membership into [Chapter 18](spec/18-modules-and-dependencies.md). Aligned native requirements/supplies, member closure, directives, and CLI in [Chapter 20](spec/20-compilation-configuration.md), shared generation and product/test budgets in [Chapter 21](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation), and related appendices and index entries. Clarified English rules and examples, replacing outdated statements that formats/configuration were undefined and passages that delegated the specification body to drafts. Checked 681 local references across all 28 specification files, code blocks, and diff formatting. These documentation changes do not establish completion of external dependency resolution, pack/publish, or persistent semantic caching. Drafts and compiler code were unchanged; compiler/native/NativeAOT tests and performance measurements were not run.
 
-現ソースと対応テストで確認した範囲を記す。字句/構文、Binding、所有権、LLVM生成、native実行は別段階であり、前段の対応だけで実行可能とはしない。仕様は [SPEC.md](SPEC.md)、全体計画は [PLAN.md](PLAN.md)。旧C.*リンクは対応分野へ接続する。
+This document records coverage verified against current source and related tests. Lexing/parsing, Binding, ownership, LLVM generation, and native execution are separate stages; support in an earlier stage does not establish executability. See [SPEC.md](SPEC.md) for the specification and [PLAN.md](PLAN.md) for the overall plan. Legacy C.* links point to their corresponding areas.
 
-receiver省略記法（2026-09-15）: instance関数・Contract関数requirementの `self` を `self: ref/Self` としてBindingし、instance Propertyの `get()` / `set(value: T)` はそれぞれ `ref/Self` / `uniq/Self` のreceiverを補完する。stored custom・computed・明示Contract accessorに対応し、group/rootgroupのaccessorはreceiverなしのまま。明示receiver、引数位置、Origin補完、通常関数のreceiver省略によるtype function判定を維持する。§7.3・§11.2・構文付録を更新。ReceiverShorthand / PropertyRevisionParse / PropertyBinding / FuncDeclarationParse / InheritedReceiverBinding / ContractBinding / TypeBinding / KotonohaSerializationの関連390件が成功し、省略形のparse/write/parse・保存/再読込・再Bindを確認。省略形を含むwarm Bindingの追加割り当ては0 bytes。一般accessor呼出の式検査・所有権・生成やspecialization全体の既存制限は継続し、この変更はそれらの実行対応を拡張しない。NativeAOTテストは実行していない。
+Receiver shorthand (2026-09-15): Binds `self` in instance functions and Contract function requirements as `self: ref/Self`. Instance Property `get()` / `set(value: T)` accessors receive `ref/Self` / `uniq/Self` receivers, respectively. Supports stored custom, computed, and explicit Contract accessors; group/rootgroup accessors remain receiver-free. Preserves explicit receivers, argument positions, Origin completion, and classification of ordinary functions without receivers as type functions. Updated §7.3, §11.2, and the syntax appendix. All 390 related ReceiverShorthand / PropertyRevisionParse / PropertyBinding / FuncDeclarationParse / InheritedReceiverBinding / ContractBinding / TypeBinding / KotonohaSerialization tests passed, covering shorthand parse/write/parse, save/reload, and re-Bind. Warm Binding with shorthand allocated 0 additional bytes. Existing limits on general accessor call expression checking, ownership, generation, and specialization remain; this change does not extend their execution support. NativeAOT tests were not run.
 
 <a id="c1-coverage-summary"></a>
 <a id="c3-lexical-forms-and-types"></a>
@@ -25,16 +25,16 @@ receiver省略記法（2026-09-15）: instance関数・Contract関数requirement
 <a id="c15-property-and-move-syntax-update-2026-09-10"></a>
 <a id="c32-compile-time-switch-spelling-2026-09-12"></a>
 
-## 1. 字句・構文・コンパイル条件
+## 1. Lexing, Parsing, and Compilation Conditions
 
-| 確認した実装 | 制限・根拠 |
+| Verified implementation | Limits and evidence |
 | --- | --- |
-| UTF-8 source、元位置/診断、固定Unicode 15.0の識別子・NFC検査、インデント/括弧/継続行・回復 | [Lexing](Kimi/Compiler/Lexing)、[SourceDocument](Kimi/Compiler/Core/SourceDocument.cs)、UnicodeIdentifier / SourceEncoding / ParserRegression各テスト |
-| 型・generic/length/Origin、宣言/Property/accessor、capture、literal/collection、式・制御フローのKoto構築とparse/write/parse・保存/再読込 | [Parsing](Kimi/Compiler/Parsing)、FrontEndSyntax / PropertyRevisionParse / NestedTypeParse / KotonohaSerialization。構文の存在は意味解析・実行の完成を示さない。source artifactとportable交換形式も別 |
-| 数値の原文・exact magnitudeを保持し、float literalは対象精度へ直接丸める。文字/文字列escapeを検査 | [NumberLiteralHelper](Kimi/Compiler/Helper/NumberLiteralHelper.cs)、[FloatingTypes](Kimi/Compiler/FloatingTypes.cs)、NumberLiteral / CharLiteralParse / StringLiteralParse |
-| `#if`・`#switch`の選択・条件検査。条件Nameはcase-sensitive、完全一致の重複/組込み衝突を拒否 | [Compilation](Kimi/Compiler/Core/Compilation.cs)、[条件評価](Kimi/Compiler/Parsing/BasicValue/CompileTimeConditionEvaluator.cs)、CompilationSpecification / DirectiveConditionValidation。短絡/非選択Caseの検査とfalse `#if`の除外境界を区別 |
+| UTF-8 source, original positions/diagnostics, identifiers and NFC validation pinned to Unicode 15.0, indentation/brackets/continuation lines, and recovery | [Lexing](Kimi/Compiler/Lexing), [SourceDocument](Kimi/Compiler/Core/SourceDocument.cs), UnicodeIdentifier / SourceEncoding / ParserRegression tests |
+| Koto construction for types, generics/lengths/Origins, declarations/Properties/accessors, captures, literals/collections, expressions, and control flow; parse/write/parse and save/reload | [Parsing](Kimi/Compiler/Parsing), FrontEndSyntax / PropertyRevisionParse / NestedTypeParse / KotonohaSerialization. Syntax support does not establish complete semantic analysis or execution. Source artifacts and portable interchange formats are also separate concerns |
+| Preserves numeric source text and exact magnitude; rounds float literals directly to target precision; validates character/string escapes | [NumberLiteralHelper](Kimi/Compiler/Helper/NumberLiteralHelper.cs), [FloatingTypes](Kimi/Compiler/FloatingTypes.cs), NumberLiteral / CharLiteralParse / StringLiteralParse |
+| `#if` / `#switch` selection and condition validation; condition Names are case-sensitive, with exact duplicates and built-in collisions rejected | [Compilation](Kimi/Compiler/Core/Compilation.cs), [condition evaluation](Kimi/Compiler/Parsing/BasicValue/CompileTimeConditionEvaluator.cs), CompilationSpecification / DirectiveConditionValidation. Distinguishes validation of short-circuited/unselected Cases from exclusion boundaries for false `#if` branches |
 
-現構文は`#switch`、Property/accessor、通常の型適応。旧`#match`・専用`@move`は互換構文にしない。`alias`はContainerを開き、型別名は導入しない。
+Current syntax uses `#switch`, Properties/accessors, and ordinary type adaptation. Legacy `#match` and dedicated `@move` syntax are not supported as compatibility forms. `alias` opens a Container; it does not introduce a type alias.
 
 <a id="c4-declarations-and-compile-time-directives"></a>
 <a id="c5-properties"></a>
@@ -48,21 +48,21 @@ receiver省略記法（2026-09-15）: instance関数・Contract関数requirement
 <a id="c28-positional-pattern-binding-and-match-coverage-2026-09-11"></a>
 <a id="c33-runtime-type-test-binding-2026-09-12"></a>
 
-## 2. Binding・型・Core
+## 2. Binding, Types, and Core
 
-現 [Compilation.Bind](Kimi/Compiler/Core/Compilation.cs) はfinal Bindingを一回実行し、再Bind時に古い意味情報と所有権の確認結果を無効化する。Koto上の型/Symbol/呼出計画と再利用可能な表を使い、別のBound treeは作らない。
+Current [Compilation.Bind](Kimi/Compiler/Core/Compilation.cs) performs final Binding once per invocation; re-Bind invalidates old semantic information and ownership verification results. It uses types, Symbols, and call plans on Koto plus reusable tables, without creating a separate Bound tree.
 
-| 分野 | 確認した範囲 | 残る制限 |
+| Area | Verified coverage | Remaining limits |
 | --- | --- | --- |
-| 名前・呼出 | Type/Value分離、source-local scope/alias、前方関数、Core identity、可視性、positional/named/default対応、通常generic推論・候補選択 | 完全なアクセス/断片検証、default実行、general Origin推論、specialization、constructor/deinit、間接callは未完成 |
-| 完全Type・Origin | nested Semantics、owner正規化、Tuple/関数/固定配列、generic pair/slot、宣言Origin・input/static/intersection、代入/variance・保持借用の表現 | bound証明、一般Origin/Loan solver、SemanticsTargetの一般適用、定数参照・length推論は未完成。未解決義務を保持 |
-| Constraint・Contract | Proven/Refuted/Unknown/Error、宣言前提、associated Type、refinement、検証済みwitness、conditional conformance/member、継承receiverの選択 | Unknownは成功にしない。完全な候補同値性・generic body/効果証明・ObjectCompatibleのbody/callee検証は未完成 |
-| Property | stored/computed/requirement、accessor型・権限・Copy・Origin対応、operation別witness | 一般式のread/get/set/init・receiver/cleanup・生成は未完成 |
-| enum・Pattern | Case identity、expected Type付き構築、payload取得、Tuple/Case/全体Pattern、網羅性・包含警告、guard candidateとbody bindingの分離 | 借用Subject・一般分解/guard・genericの証明/生成は未完成。警告対象armも検査 |
-| runtime `is` / `is not` | concrete struct Core上のobject SemanticsをboolへBindingし、元operand/target・shared要求を保持 | Flow Type refinement・object Loan・実行は未対応 |
-| Core | Copy・Owned・Callable・writeLine・Option・Resultの6宣言を検証。Copy/Owned導出とCore同名偽装拒否 | catalog全18枠中12枠Missing。Option/Resultの宣言・解析はgeneric runtime完成を意味しない |
+| Names and calls | Separate Type/Value lookup, source-local scopes/aliases, forward functions, Core identity, visibility, positional/named/default arguments, ordinary generic inference and candidate selection | Full access/fragment validation, default argument execution, general Origin inference, specialization, constructors/deinit, and indirect calls remain incomplete |
+| Complete Type and Origin representation | Nested Semantics, owner normalization, Tuples/functions/fixed arrays, generic pairs/slots, declaration Origins and input/static/intersection Origins, assignment/variance, and retained-borrow representation | Bound proofs, a general Origin/Loan solver, general SemanticsTarget application, constant references, and length inference remain incomplete. Unresolved obligations are retained |
+| Constraints and Contracts | Proven/Refuted/Unknown/Error states, declaration assumptions, associated Types, refinement, verified witnesses, conditional conformance/members, and inherited receiver selection | Unknown is not treated as success. Full candidate equivalence, generic body/effect proofs, and ObjectCompatible body/callee validation remain incomplete |
+| Properties | Stored/computed/requirement Properties, accessor types, permissions, Copy/Origin handling, and operation-specific witnesses | General expression read/get/set/init, receiver/cleanup handling, and generation remain incomplete |
+| Enums and Patterns | Case identity, construction with an expected Type, payload acquisition, Tuple/Case/whole Patterns, exhaustiveness/subsumption warnings, and separate guard-candidate/body binding | Borrowed Subjects, general decomposition/guards, and generic proofs/generation remain incomplete. Arms that receive warnings are still checked |
+| Runtime `is` / `is not` | Binds object Semantics over concrete struct Core to bool, retaining original operands/targets and shared-access requirements | Flow Type refinement, object Loans, and execution are unsupported |
+| Core | Validates six declarations: Copy, Owned, Callable, writeLine, Option, and Result. Derives Copy/Owned and rejects same-name Core impostors | 12 of the catalog's 18 slots are Missing. Option/Result declaration and analysis support does not establish complete generic runtime support |
 
-根拠: [Binding](Kimi/Compiler/Binding)、[CoreIntrinsics](Kimi/Compiler/Binding/CoreIntrinsics.cs)、[CoreCatalogTest](xUnitTest/Tests/CoreCatalogTest.cs)、TypeBinding / ConstraintBinding / ContractBinding / PropertyBinding / ConditionalConformanceBinding / InheritedReceiverBinding / EnumBinding / PatternBinding / RuntimeTypeTest。
+Evidence: [Binding](Kimi/Compiler/Binding), [CoreIntrinsics](Kimi/Compiler/Binding/CoreIntrinsics.cs), [CoreCatalogTest](xUnitTest/Tests/CoreCatalogTest.cs), TypeBinding / ConstraintBinding / ContractBinding / PropertyBinding / ConditionalConformanceBinding / InheritedReceiverBinding / EnumBinding / PatternBinding / RuntimeTypeTest.
 
 <a id="c7-control-flow-and-failure-handling"></a>
 <a id="c24-whole-place-ownership-cfg-and-cleanup-plans-2026-09-11"></a>
@@ -71,17 +71,17 @@ receiver省略記法（2026-09-15）: instance関数・Contract関数requirement
 <a id="c30-current-control-flow-syntax-results-and-cleanup-2026-09-12"></a>
 <a id="c31-transfer-seeded-unreachable-ownership-checking-2026-09-12"></a>
 
-## 3. 制御フロー・所有権
+## 3. Control Flow and Ownership
 
-[Analysis](Kimi/Compiler/Analysis) はBindingの取得計画を使い、whole Placeの初期化・Move・代入履歴をCFG固定点で検査する。条件付き置換/破棄、局所値・一時値・引数・結果、concrete enum構築/分解、Tuple/固定配列の全体責任を扱う。構築済みlocalのTuple/固定配列の静的経路について、部分Moveと再初期化・残存部分の破棄を§4.8で接続した。一般のfield/index・user deinitは未完成。
+[Analysis](Kimi/Compiler/Analysis) uses Binding acquisition plans to check whole-Place initialization, Moves, and assignment history at a CFG fixed point. It handles conditional replacement/destruction, locals, temporaries, arguments, results, concrete enum construction/decomposition, and whole-value responsibilities for Tuples/fixed arrays. §4.8 connects partial Moves, reinitialization, and destruction of remaining parts for static paths in constructed local Tuples/fixed arrays. General field/index handling and user deinit remain incomplete.
 
-- `if`・短絡・`while`・`do`・`loop`・label・`require`・`match`・return/yield/exit/continue・deferを解析。構造上の完了と実行到達を区別し、結果を確保してからcleanup、正常完了後だけ届ける。Abortはcleanupしない。
-- 破棄は論理的な逆順。途中構築や引数取得が通常transferで中断した場合、取得済み責任を処理する。非終了cleanup後の結果/後続破棄を作らない。
-- 明示transfer後のsource検査は実行CFGと別の継続で行う。Never Subject/非終了guardも対象。一般Never呼出・exitless loop・cleanup阻害後など、検査開始状態を作れない未到達操作にはUnsupportedが残る。
-- whole Subjectのguardはsource順の保守的な検証経路を持ち、false側の副作用も後続armへ渡す。実行時に省略するcovered armも診断する。
-- Loanはstring比較、shared引数、一時string、string guard candidate、Tuple/固定配列の親ストレージ保護と要素書き込みの排他保護の限定範囲。静的に非重複な要素経路は§4.6の範囲で許可する。後続引数/guard/cleanup中もownerを保護し、正常結果確保後または通常transfer時に終了する。要素の単純代入も、最終位置解決後から旧値破棄・配置まで排他的Loanを維持する（§4.7）。一般の参照保存/返却、uniq/reborrow、効果要約、借用Subjectは未完成。
+- Analyzes `if`, short-circuiting, `while`, `do`, `loop`, labels, `require`, `match`, return/yield/exit/continue, and defer. Distinguishes structural completion from execution reachability. Results are secured before cleanup and delivered only after normal completion. Abort performs no cleanup.
+- Destruction follows reverse logical order. If normal transfer interrupts construction or argument acquisition, already-acquired responsibilities are handled. No result delivery or subsequent destruction is generated after nonterminating cleanup.
+- Source checking after an explicit transfer uses a continuation separate from the execution CFG, including Never Subjects and nonterminating guards. Unsupported remains for unreachable operations whose checking entry state cannot be constructed, such as those after general Never calls, exitless loops, or cleanup that prevents continuation.
+- Whole-Subject guards have conservative validation paths in source order; effects on false paths also pass to later arms. Covered arms omitted at runtime are still diagnosed.
+- Loans currently cover string comparisons, shared arguments, temporary strings, string guard candidates, parent-storage protection for Tuples/fixed arrays, and exclusive protection for element writes. Statically disjoint element paths are allowed within §4.6's scope. Owners remain protected through later arguments, guards, and cleanup; Loans end after securing a normal result or during normal transfer. Simple element assignment also holds an exclusive Loan from final location resolution through old-value destruction and placement (§4.7). General reference storage/return, uniq/reborrow, effect summaries, and borrowed Subjects remain incomplete.
 
-根拠: OwnershipAnalysis / EnumOwnership / MatchOwnership / UnreachableOwnership / CurrentControlFlow / ControlFlowConformance / ReferenceEmission / StringGuardEmission各テスト。解析成功後も生成側の対応範囲を別途検査する。
+Evidence: OwnershipAnalysis / EnumOwnership / MatchOwnership / UnreachableOwnership / CurrentControlFlow / ControlFlowConformance / ReferenceEmission / StringGuardEmission tests. Generation coverage is checked separately even after successful analysis.
 
 <a id="c6-expressions-and-operators"></a>
 <a id="c12-first-executable-milestone"></a>
@@ -107,175 +107,175 @@ receiver省略記法（2026-09-15）: instance関数・Contract関数requirement
 <a id="c55-string-guard-candidates-and-temporary-shared-arguments-2026-09-13"></a>
 <a id="c56-whole-tuple-and-fixed-array-execution-2026-09-13"></a>
 
-## 4. LLVM生成の対応範囲
+## 4. LLVM Generation Coverage
 
-[LlvmEmitter](Kimi/Compiler/Emission/LlvmEmitter.cs) はwindows-x64-v1のApplicationに限定し、final Binding・startup・所有権を再検査する。暗黙のtop-level実行または適格な`public func main() -> ()`を選ぶ。外部module、宣言container、Library生成、未対応の未使用bodyも公開前に拒否する。
+[LlvmEmitter](Kimi/Compiler/Emission/LlvmEmitter.cs) supports only windows-x64-v1 Applications and rechecks final Binding, startup, and ownership. It selects implicit top-level execution or an eligible `public func main() -> ()`. It rejects external modules, declaration containers, Library generation, and unsupported bodies, even unused ones, before publishing output.
 
-| 分野 | 現在の生成範囲 | 制限・根拠 |
+| Area | Current generation coverage | Limits and evidence |
 | --- | --- | --- |
-| scalar | bool、12整数型（i8/u8～i128/u128・isize/usize）、char、f32/f64、Unit。local・取得/置換・比較・直接引数/結果・既存制御フロー/aggregate payload | [ScalarTypes](Kimi/Compiler/ScalarTypes.cs)、Scalar / Integer / WideInteger / Char / FloatEmission |
-| 整数演算 | checked add/sub/mul・符号付きneg・inc/dec、比較、bit演算、型独立のshift count検査、compound更新。64bitまでの除算/剰余は0・signed min/−1を検査 | i128/u128除算/剰余は初期profileの禁止。charはUnicode scalar順の比較のみで数値演算不可。Integer / Division / Bitwise / WideIntegerEmission |
-| float | f32/f64算術・比較、対象精度のliteral、NaN・±0・subnormalを扱う値計画 | 数値変換全体とは別。float literal Patternは未対応。FloatEmission / NumberLiteralParse |
-| 数値変換 | 整数12×12方向の型適応・範囲検査、direct integer literal fitting、float literalの対象精度へのfitting、f32→f64、float同型取得 | 実行時f64→f32、整数↔float、整数literal→float、一般同型取得、明示Semantics/略記は未対応。typed128bit↔float・char/bool数値変換は禁止。[Binding.Conversions](Kimi/Compiler/Binding/Binding.Conversions.cs)、Conversion / FloatConversionEmission |
-| 関数・結果・cleanup | root/captureなしlocal関数、named引数、再帰、scalar/Unit/owned string/Tuple/固定配列の引数/結果、Never結果、選択・loop・match結果、defer | default・generic・明示Origin・capture・間接call・一般の集約ABIは未対応。[FunctionAbi](Kimi/Compiler/Emission/FunctionAbi.cs)、Function / Result / DeferredEmission |
-| owned string | literal、local Move・self代入/置換、条件付き破棄、一時/選択/関数結果、writeLine、全6比較 | stringはStatic backingでもNon-Copy。UTF-8 byte列で比較。Heap構築のsource操作・補間/連結・明示所有権適応は未対応。String*Emission |
-| shared string | 暗黙input Originの必須ref/string引数・転送、referent比較、一時owned stringのshared引数、string guard candidate、所有local・parameter・一時値の静的string要素の比較・shared引数（§4.9–4.10） | 参照はhandleへの1 pointer。結果は独立値だけ。local保存/返却・明示@ref・uniq・nested borrowは未対応。[ReferenceTypes](Kimi/Compiler/ReferenceTypes.cs)、Reference / StringGuardEmission / ElementBorrowOwnerEmission |
-| match/guard | bool・整数・char・Unit・owned stringの網羅的match、literal/wildcard/全体let/var/括弧Pattern、Copy候補・ref/string候補のguard | float Subjectは全体Pattern/guardの既存範囲。借用Subject・Tuple/enum分解実行は未対応。candidateはread-onlyでbody bindingと別。Match / Guard / Char / Float / StringGuardEmission |
-| Tuple・固定配列 | 対応scalar・Unit・owned string・nested aggregateの構築、local全体Copy/Move/置換/条件付き破棄、if/do/loop/matchの結果配送・通常関数の値引数/結果、Tupleの数値selector・固定配列のisize添字によるCopy要素読み取り、初期化済みlocal varのCopy/対応Non-Copy要素への単純代入・数値要素への複合代入・整数要素の前置/後置増減、静的非重複要素の操作、local/parameterの静的部分Move・残存部分の破棄、local varの再初期化、静的string要素の比較・共有引数 | ownerのみ、深さ64、size/countはint.MaxValueまで。動的Non-Copy要素取得・集成型全体の借用引数/結果・集成型Subject・struct/enum生成は未対応。[AggregateLayout](Kimi/Compiler/Emission/AggregateLayout.cs)、AggregateEmission / AggregateResultEmission / AggregateFunctionEmission / ElementEmission / ElementAssignmentEmission / ElementUpdateEmission / ElementPathEmission / ElementReplacementEmission |
+| Scalars | bool, 12 integer types (i8/u8 through i128/u128, plus isize/usize), char, f32/f64, and Unit; locals, acquisition/replacement, comparisons, direct arguments/results, existing control flow, and aggregate payloads | [ScalarTypes](Kimi/Compiler/ScalarTypes.cs), Scalar / Integer / WideInteger / Char / FloatEmission |
+| Integer operations | Checked add/sub/mul, signed negation, inc/dec, comparisons, bitwise operations, shift-count checks independent of the operand type, and compound updates. Division/remainder through 64 bits check zero and signed min/−1 | The initial profile prohibits i128/u128 division/remainder. char supports only Unicode scalar-order comparisons, not arithmetic. Integer / Division / Bitwise / WideIntegerEmission |
+| Floats | f32/f64 arithmetic and comparisons, literals at target precision, and value plans for NaN, ±0, and subnormals | Separate from full numeric conversion support. Float literal Patterns are unsupported. FloatEmission / NumberLiteralParse |
+| Numeric conversions | Type adaptation and range checks in all 12×12 integer directions, direct integer literal fitting, float literal fitting to target precision, f32→f64, and same-type float acquisition | Runtime f64→f32, integer↔float, integer literal→float, general same-type acquisition, and explicit Semantics/shorthand are unsupported. Typed 128-bit↔float and char/bool numeric conversions are prohibited. [Binding.Conversions](Kimi/Compiler/Binding/Binding.Conversions.cs), Conversion / FloatConversionEmission |
+| Functions, results, and cleanup | Root functions and capture-free local functions, named arguments, recursion, scalar/Unit/owned string/Tuple/fixed-array arguments/results, Never results, selection/loop/match results, and defer | Defaults, generics, explicit Origins, captures, indirect calls, and a general aggregate ABI are unsupported. [FunctionAbi](Kimi/Compiler/Emission/FunctionAbi.cs), Function / Result / DeferredEmission |
+| Owned strings | Literals, local Moves, self-assignment/replacement, conditional destruction, temporary/selection/function results, writeLine, and all six comparisons | Strings are Non-Copy even with Static backing; comparisons use UTF-8 byte sequences. Source operations for Heap construction, interpolation/concatenation, and explicit ownership adaptation are unsupported. String*Emission |
+| Shared strings | Required ref/string arguments with implicit input Origins and forwarding, referent comparisons, temporary owned strings as shared arguments, string guard candidates, and comparisons/shared arguments for static string elements of owned locals, parameters, and temporaries (§4.9–4.10) | A reference is one pointer to a handle. Results must be independent values. Local storage/return, explicit @ref, uniq, and nested borrowing are unsupported. [ReferenceTypes](Kimi/Compiler/ReferenceTypes.cs), Reference / StringGuardEmission / ElementBorrowOwnerEmission |
+| Match/guards | Exhaustive matches on bool, integers, char, Unit, and owned strings; literal/wildcard/whole let/var/parenthesized Patterns; guards over Copy or ref/string candidates | Float Subjects retain existing whole-Pattern/guard coverage. Borrowed Subjects and Tuple/enum decomposition execution are unsupported. Candidates are read-only and separate from body bindings. Match / Guard / Char / Float / StringGuardEmission |
+| Tuples and fixed arrays | Construction from supported scalars, Unit, owned strings, and nested aggregates; whole local Copy/Move/replacement/conditional destruction; if/do/loop/match result delivery and ordinary function value arguments/results; Copy element reads via numeric Tuple selectors or isize fixed-array indices; simple assignment to Copy/supported Non-Copy elements of initialized local vars, compound numeric element assignment, and prefix/postfix integer inc/dec; statically disjoint element operations; static partial Moves from locals/parameters and destruction of remaining parts; local var reinitialization; static string element comparisons and shared arguments | Owners only; maximum depth 64 and size/count int.MaxValue. Dynamic Non-Copy element acquisition, whole-aggregate borrowed arguments/results, aggregate Subjects, and struct/enum generation are unsupported. [AggregateLayout](Kimi/Compiler/Emission/AggregateLayout.cs), AggregateEmission / AggregateResultEmission / AggregateFunctionEmission / ElementEmission / ElementAssignmentEmission / ElementUpdateEmission / ElementPathEmission / ElementReplacementEmission |
 
-生成は検証済みの型付き値/CFG/ABI/cleanup計画から行う。WriterはASTを再解釈しない。型identity・定数・入力・支配・結果到着・生存flag・Loan・破棄計画の不整合を拒否する。同じLLVM幅でも別の言語型を混同しない。
+Generation uses verified typed-value, CFG, ABI, and cleanup plans. The Writer does not reinterpret the AST. It rejects inconsistencies in type identity, constants, inputs, dominance, result arrivals, live flags, Loans, and destruction plans. Distinct language types remain distinct even when their LLVM widths match.
 
-stringは24-byte handleの各fieldを転送し、条件付き責任にのみflagを使う。Tupleは物理alignment順と論理順を分離、固定配列はstride配置。構築は最終subslotへ行い、全体転送は検査済みの別領域へmemcpy、破棄は逆論理順（配列はloop）。これらは現在の内部表現であり、一般公開ABIではない。
+Strings transfer each field of a 24-byte handle and use flags only for conditional responsibilities. Tuples separate physical alignment order from logical order; fixed arrays use stride-based layout. Construction targets final subslots, whole-value transfer uses memcpy into verified separate storage, and destruction follows reverse logical order (a loop for arrays). These are current internal representations, not a general public ABI.
 
-### 4.1. 集成型の選択結果（2026-09-14）
+### 4.1. Aggregate Selection Results (2026-09-14)
 
-Tuple・固定配列はif/else、do/yield/exit、値付きloop、既存の対応Subjectを使うmatchの結果として配送できる。Copy集成型、所有stringを含む値、入れ子、ゼロサイズを同じ結果計画で扱い、local初期化/置換、構築payload、外側の結果への転送、未消費結果の破棄へ接続した。[AggregateResults](examples/AggregateResults/README.md) に実行例を示す。
+Tuples and fixed arrays can be delivered as results of if/else, do/yield/exit, value-producing loops, and matches over already-supported Subjects. One result plan handles Copy aggregates, values containing owned strings, nesting, and zero-sized values, connecting them to local initialization/replacement, construction payloads, outer-result transfer, and destruction of unconsumed results. See [AggregateResults](examples/AggregateResults/README.md) for executable examples.
 
-従来のStringResultsをSlotResultsへ一般化し、Declare・結果Write・Join・到着edgeの検証を共有する。型分類はCopy性と独立し、具体的なlayoutの許可はLoweringで確認する。結果計画をlayout検査より先に登録し、検証済みの式結果だけを許可する。関数の戻り値PlaceやSubjectまでKindだけで許可しない。Binder・ABI・LLVM Writer・runtimeへの機能追加は不要だった。
+Generalized StringResults to SlotResults, sharing validation of Declare, result Write, Join, and arrival edges. Type classification is independent of Copy status; Lowering validates concrete layout support. Result plans are registered before layout validation, and only verified expression results are accepted. Function return Places and Subjects are not accepted solely by Kind. No feature additions were needed in the Binder, ABI, LLVM Writer, or runtime.
 
-結果確保はcleanup前、配送は正常到着時。未初期化への配置、全到着時のMustInit、Writeの支配、論理/物理それぞれの到着数を検証する。さらに結果の消費が現在の生存期間のJoin後にあることを確認し、cleanup中の早すぎる取得や過去の到着による誤承認を拒否する。defer複製はソース式ごとに結果スロットを共有し、Declare/Joinは展開別に保持。loopの結果Declareはhead前に一度置く。結果専用の生存flagやaggregate phiは追加しない。
+Results are secured before cleanup and delivered on normal arrival. Validation checks placement into uninitialized storage, MustInit at every arrival, Write dominance, and both logical and physical arrival counts. Consumption must follow the current lifetime's Join, rejecting premature acquisition during cleanup and false approval based on an earlier arrival. Duplicated defer bodies share result slots per source expression but retain separate Declare/Join operations per expansion. A loop's result Declare appears once before its head. No result-specific live flags or aggregate phi nodes are added.
 
-転送・逆順破棄・条件付き置換は既存処理を再利用する。右辺の独立した結果を確保してcleanupを終え、必要な旧値破棄、新値転送、flag設定の順を守る。Abort/非停止cleanupでは後続配送・破棄を作らない。結果スロットへの直接構築、要素アクセス/部分Move、集成型関数ABIは§4.1の実装に含めず、関数ABIを§4.2、Copy要素読み取りを§4.3で追加した。
+Transfer, reverse-order destruction, and conditional replacement reuse existing handling. The RHS's independent result is secured and cleanup completes before any required old-value destruction, new-value transfer, and flag setting. Abort/nonterminating cleanup generates no subsequent delivery or destruction. Direct construction into result slots, element access/partial Moves, and aggregate function ABI support were outside §4.1; function ABI support was added in §4.2 and Copy element reads in §4.3.
 
-[AggregateResultEmissionTest](xUnitTest/Tests/AggregateResultEmissionTest.cs) はネスト、配列の期待型、covered arm/guard、結果の破棄、defer、戻り辺、O0 snapshot、Abort/非停止、不正計画と再解析による回復を検証する。deferを含むwarm BindとOwnership解析＋IR出力はそれぞれ0 B。既存のstring結果の検証も共通計画へ移行し、早期消費拒否を両型で固定した。throughputの改善率は未測定。
+[AggregateResultEmissionTest](xUnitTest/Tests/AggregateResultEmissionTest.cs) checks nesting, expected array types, covered arms/guards, result destruction, defer, back edges, O0 snapshots, Abort/nontermination, invalid plans, and recovery by reanalysis. Warm Bind and Ownership analysis plus IR output, including defer, each allocate 0 B. Existing string-result validation also uses the shared plan, with premature-consumption rejection tested for both types. Throughput improvement has not been measured.
 
-### 4.2. Tuple・固定配列の関数ABI（2026-09-14）
+### 4.2. Tuple and Fixed-Array Function ABI (2026-09-14)
 
-対応済みの所有Tuple・固定配列を、通常の直接呼び出しの値引数・戻り値へ接続した。入れ子、Copy/Move、ゼロサイズ、名前付き引数、Unit/scalar/string/ref-stringとの混在、浅い再帰、defer・選択結果からの返却を扱う。[AggregateFunctions](examples/AggregateFunctions/README.md) に実行例を示す。
+Connected supported owned Tuples/fixed arrays to value arguments and returns of ordinary direct calls. Covers nesting, Copy/Move, zero-sized values, named arguments, mixed Unit/scalar/string/ref-string signatures, shallow recursion, and returns from defer/selection results. See [AggregateFunctions](examples/AggregateFunctions/README.md) for executable examples.
 
-サイズがある集成型は取得済み引数スロットとcallerの独立した結果スロットをptrで渡す。Copyは元の責任を残し、Moveは移す。引数名は論理番号の`%a<i>`、結果は`%ret`。ゼロサイズは物理引数・結果領域を省略するが、CallEntry・取得・parameter責任・通常復帰時のProduceは残す。同じcallの引数と結果の共有は拒否し、内側callの結果を外側callの取得済み引数として使う経路では追加転送しない。`return f(x)`の結果領域の直接転送は行わない。
+Nonzero-sized aggregates pass acquired argument slots and the caller's independent result slot by ptr. Copy retains the original responsibility; Move transfers it. Argument names use logical indices `%a<i>`; the result is `%ret`. Zero-sized values omit physical arguments/result storage but retain CallEntry, acquisition, parameter responsibility, and Produce on normal return. Arguments and results of one call may not share storage. An inner call's result can serve as an outer call's acquired argument without another transfer. Direct result-storage forwarding for `return f(x)` is not implemented.
 
-stringの関数スロット検証をSlotFunctionsへ一般化し、選択結果のSlotResultsとは別の役割を維持した。call地点の未初期化、通常復帰だけによる結果初期化、return Writeの支配、cleanup後のDeliver、parameter Produceでの条件付き破棄flag初期化を検査する。既存の転送・逆論理順の破棄を再利用し、LLVM Writer/runtime/backendには追加を要しない。
+Generalized string function-slot validation to SlotFunctions, keeping its role separate from selection-result SlotResults. Checks uninitialized storage at the call site, result initialization only on normal return, return Write dominance, Deliver after cleanup, and conditional destruction-flag initialization at parameter Produce. Reuses existing transfer and reverse-logical-order destruction; no additions were needed in the LLVM Writer, runtime, or backend.
 
-署名と本体は同じAggregateLayoutPoolを使用する。ABIキャッシュは物理的な渡し方・省略・型の形だけを保持し、現在のBoundTypeは意味検証で照合する。成功・失敗の両方で一時的な型参照を解放する。共有引数のLoanは、参照を含まない所有集成型結果を確保した後に終了する。warm Bind、共有借用とdeferを含むOwnership＋IR出力は各0 B、再parse相当のABI再利用と構文木の非保持をテストした。throughputは未測定。
+Signatures and bodies use the same AggregateLayoutPool. The ABI cache retains only physical passing conventions, omissions, and type shapes; semantic validation checks the current BoundType. Temporary type references are released on both success and failure. Shared-argument Loans end after securing an owned aggregate result containing no references. Warm Bind and Ownership plus IR output with shared borrowing and defer each allocate 0 B. Tests verify ABI reuse across reparse-equivalent input and that syntax trees are not retained. Throughput has not been measured.
 
-今回のABI対応はBinderの文脈推論を広げない。配列リテラルをcallの引数型から当てはめる処理や、一部の入れ子Tupleの引数推論は未完成であり、明示型のlocal経由で渡す。戻り値の期待型で配列リテラルを構築する既存経路は利用できる。集成型借用、要素書込み・Non-Copy要素取得・部分Move、struct/enum、generic・間接callは未対応。Copy要素読み取りは§4.3参照。
+This ABI support does not extend the Binder's contextual inference. Fitting array literals to call argument types and some nested Tuple argument inference remain incomplete; pass these through explicitly typed locals. The existing path for constructing array literals with an expected return type remains available. Aggregate borrowing, element writes, Non-Copy element acquisition/partial Moves, structs/enums, generics, and indirect calls were not supported in this increment. See §4.3 for Copy element reads.
 
-### 4.3. Tuple・固定配列のCopy要素読み取り（2026-09-14）
+### 4.3. Copy Element Reads from Tuples and Fixed Arrays (2026-09-14)
 
-`pair.0` と `values[index]` を、local・parameter・一時値・選択/関数結果から読み取れる。固定配列の添字はisize、型なし整数はisizeへ当てはめる。対応scalar・Unit・Copy集成型を最終値として取得でき、親はstringを含むNon-Copy集成型でもよい。例は [ElementReads](examples/ElementReads/README.md)。
+`pair.0` and `values[index]` can read from locals, parameters, temporaries, and selection/function results. Fixed-array indices use isize; untyped integers are fitted to isize. Supported scalars, Unit, and Copy aggregates can be acquired as final values, even from Non-Copy parents containing strings. See [ElementReads](examples/ElementReads/README.md).
 
-場所の形成（ProjectElement）と最終取得（Produce/Element）を分離した。連続する `.0` / `[i]` は同じrootからアドレスを段階的に計算し、中間集成型のスロットや転送を作らない。scalarは最終地点でload、Copy集成型は一度だけ独立スロットへ転送する。型・入力値のsource対応・root初期化・Loan・親射影/添字/取得の支配を生成前に照合し、不正計画はIRを書き出す前に拒否する。
+Separated place formation (ProjectElement) from final acquisition (Produce/Element). Chained `.0` / `[i]` operations compute addresses incrementally from one root, without intermediate aggregate slots or transfers. Scalars load at the final location; Copy aggregates transfer once into an independent slot. Before generation, validation checks types, input-value/source correspondence, root initialization, Loans, and dominance of parent projections, indices, and acquisition. Invalid plans are rejected before IR is written.
 
-rootを添字評価前にReadし、既存の共有Loanのスタックで最終Copyまで保護する。添字評価中のMove・置換・破棄は禁止、共有読み取りとCopyは許可する。通常transferでは対象境界のLoanをcleanup前に終了する。Copy後の親の変更は取得済みの値に影響しない。一時receiverはCopy後も通常の式末尾cleanupまで保持する。
+The root is Read before index evaluation and protected through the final Copy by the existing shared-Loan stack. Move, replacement, and destruction during index evaluation are prohibited; shared reads and Copy are allowed. Normal transfer ends Loans at the relevant boundary before cleanup. Parent changes after Copy do not affect the acquired value. Temporary receivers remain alive after Copy until normal end-of-expression cleanup.
 
-各配列射影は負数も含めた `icmp uge i64 index, length` を検査し、成功ブロックでのみstride計算とアドレス形成を行う。不正添字は `KIMI_E_INDEX_BOUNDS` でAbortし、後続添字・defer・破棄を実行しない。空配列への定数添字も実行時Abort。ゼロサイズ要素でも検査を残し、不要なアドレス/load/転送は省く。専用アドレス名を使い、既存の演算検査と同じ後続ラベル方式に接続する。
+Each array projection checks `icmp uge i64 index, length`, covering negative indices too. Stride calculation and address formation occur only in the success block. Invalid indices Abort with `KIMI_E_INDEX_BOUNDS`, without evaluating later indices, defer, or destruction. Constant indices into empty arrays also Abort at runtime. Zero-sized elements retain checks while omitting unnecessary addresses, loads, and transfers. Dedicated address names use the same continuation-label scheme as existing arithmetic checks.
 
-Copy要素への単純代入は§4.4、数値要素の複合更新は§4.5で追加。静的Non-Copy要素のMoveと部分Moveは§4.8で追加。共有結果、集成型借用、Array/Slice/Index/^/Rangeは未対応。今回のroot保護は一般のLoan/Origin/Move Path solverではない。
+Simple Copy element assignment was added in §4.4, compound numeric updates in §4.5, and static Non-Copy element Moves/partial Moves in §4.8. Shared results, aggregate borrowing, and Array/Slice/Index/^/Range remain unsupported. This root protection is not a general Loan/Origin/Move Path solver.
 
-[ElementEmissionTest](xUnitTest/Tests/ElementEmissionTest.cs) は57件。入れ子・各scalar幅・Copy結果・bool/Unit・0長/0サイズ・値のsnapshot・短絡/phi・parameter・ループ/defer・転送/到達不能/covered arm・Loan競合・不正計画と回復を検証する。warm Bindと所有権解析＋IR生成は各128回で0 Bを確認した。
+[ElementEmissionTest](xUnitTest/Tests/ElementEmissionTest.cs) has 57 cases. They cover nesting, scalar widths, Copy results, bool/Unit, zero lengths/sizes, value snapshots, short-circuiting/phi, parameters, loops/defer, transfers, unreachable code, covered arms, Loan conflicts, invalid plans, and recovery. Warm Bind and ownership analysis plus IR generation each allocated 0 B over 128 iterations.
 
-### 4.4. Tuple・固定配列のCopy要素への単純代入（2026-09-15）
+### 4.4. Simple Assignment to Copy Elements of Tuples and Fixed Arrays (2026-09-15)
 
-初期化済みで完全な所有Tuple・固定配列を保持するlocal varに対し、数値selector・isize添字・入れ子経路でCopy要素を `=` 置換できる。対応scalar・Unit・再帰的なCopy集成型が対象で、親にはowned stringを含められる。右辺の構築・Copy・関数結果・選択結果を独立した値として確保し、その後で左辺経路を一度ずつ評価する。例は [ElementAssignments](examples/ElementAssignments/README.md)。
+Copy elements of initialized, complete owned Tuples/fixed arrays in local vars can be replaced with `=` through numeric selectors, isize indices, and nested paths. Supported elements are scalars, Unit, and recursively Copy aggregates; parents may contain owned strings. RHS construction, Copy, function results, and selection results are secured as independent values before each part of the LHS path is evaluated once. See [ElementAssignments](examples/ElementAssignments/README.md).
 
-位置取得は既存のLocateElement/ProjectElement・境界検査を共有し、最終操作だけをWriteElementとして区別する。親の全体Write・再初期化・破棄計画は作らず、親の初期化状態と責任を維持する。scalar storeは既存の格納表現、Copy集成型は既存のmemcpy生成を共有する。中間集成型のCopyや要素別の生存flagは追加しない。ゼロサイズでも評価・境界検査を残す。
+Location acquisition shares existing LocateElement/ProjectElement operations and bounds checks; only the final operation is distinguished as WriteElement. No whole-parent Write, reinitialization, or destruction plan is generated, preserving parent initialization and responsibility. Scalar stores share existing storage representations; Copy aggregates share existing memcpy generation. No intermediate aggregate Copies or per-element live flags are added. Zero-sized values retain evaluation and bounds checks.
 
-位置取得中はrootを保護する。§4.4実装時は自身のアクセスLoan終了とstoreを通常edgeで直結していたが、§4.7で位置確定→排他的Loan→配置→Loan終了へ共通化した。他のLoanの競合検査は維持する。型・入力source・mutable root・右辺の初期化と支配・結果のJoin・親/添字の対応を照合し、不正計画はIR公開前に拒否する。添字内で同じrootの別要素へ書くケースもストレージ保護のため拒否する。§4.6で追加した最終位置解決後の非重複判定とは区別する。
+The root is protected during location acquisition. In the §4.4 implementation, ending the access's own Loan was connected directly to the store by a normal edge. §4.7 generalized this to location resolution → exclusive Loan → placement → Loan end. Conflict checks against other Loans remain. Validation checks types, input sources, mutable roots, RHS initialization/dominance, result Join, and parent/index correspondence, rejecting invalid plans before IR publication. Writing another element of the same root inside an index is also rejected to protect storage. This differs from §4.6's disjointness checks after final location resolution.
 
-構造的完了と制御フロー解析の単純代入をRHS先行に揃え、構文順のvisitorは維持した。添字の途中transfer後も静的な代入先型を保持し、ラベル付きdo式の値sourceを正規化する。右辺・添字の通常transfer、Abort、非停止cleanupは後続の位置取得/書き込みを実行せず、既存の結果確保・cleanup規則を維持する。
+Aligned simple assignment in structural-completion and control-flow analysis with RHS-first evaluation, retaining syntax-order visitors. Static destination types survive transfers during index evaluation, and value sources of labeled do expressions are normalized. Normal transfer, Abort, or nonterminating cleanup in the RHS or indices prevents subsequent location acquisition/writes, preserving existing result-securing and cleanup rules.
 
-[ElementAssignmentEmissionTest](xUnitTest/Tests/ElementAssignmentEmissionTest.cs) は79件。入れ子・各scalar表現・snapshot・自己代入・Copy集成型・関数/選択結果・defer複製・transferの優先順位・未到達/covered arm・0長/0サイズ・境界Abort・非停止・親の破棄順/回数・Loan競合・不正計画と再解析回復を検証する。warm Bindと所有権解析＋IR生成は各128回で0 B。throughputの改善率は測定していない。
+[ElementAssignmentEmissionTest](xUnitTest/Tests/ElementAssignmentEmissionTest.cs) has 79 cases. They cover nesting, scalar representations, snapshots, self-assignment, Copy aggregates, function/selection results, defer duplication, transfer precedence, unreachable code/covered arms, zero lengths/sizes, bounds Abort, nontermination, parent destruction order/counts, Loan conflicts, invalid plans, and recovery by reanalysis. Warm Bind and ownership analysis plus IR generation each allocated 0 B over 128 iterations. Throughput improvement has not been measured.
 
-数値要素の複合代入/増減は§4.5、対応Non-Copy要素の置換は§4.7で追加。Non-Copy要素の取得、部分Move/再初期化、借用・一時receiver、Property、動的collectionはこの実装単位に含めない。SPEC本文の許可範囲を縮小する変更ではない。
+Compound numeric element assignment/inc/dec was added in §4.5; supported Non-Copy element replacement in §4.7. Non-Copy element acquisition, partial Moves/reinitialization, borrowed/temporary receivers, Properties, and dynamic collections are outside this increment. This does not narrow the specification's permitted behavior.
 
-### 4.5. Tuple・固定配列の数値要素更新（2026-09-15）
+### 4.5. Numeric Element Updates in Tuples and Fixed Arrays (2026-09-15)
 
-§4.4と同じ初期化済みの所有local varをrootとして、整数要素に `+= -= *= /= %= &= |= ^= <<= >>=` と前置/後置の `++ --`、f32/f64要素に `+= -= *= /=` を接続した。入れ子・Non-Copy親・defer展開・関数内でも利用できる。i128/u128除算/剰余は既存profileの禁止を維持する。例は [ElementUpdates](examples/ElementUpdates/README.md)。
+Using the same initialized owned local var roots as §4.4, connected integer elements to `+= -= *= /= %= &= |= ^= <<= >>=` and prefix/postfix `++ --`, and f32/f64 elements to `+= -= *= /=`. Supports nesting, Non-Copy parents, defer expansion, and function bodies. The existing profile still prohibits i128/u128 division/remainder. See [ElementUpdates](examples/ElementUpdates/README.md).
 
-SPEC §13.7.2に従い、位置取得・境界検査・旧値Copy・RHS評価・数値計算・storeの順で一度ずつ実行する。単純代入のRHS先行とは区別する。複合代入はUnit、前置増減は新値、後置増減は旧値をstore後に返し、再loadしない。整数のoverflow・除算/剰余・shift検査とfloatのIEEE演算は既存scalar処理を共有する。shift RHSは独立した整数型のまま検査する。
+Following SPEC §13.7.2, evaluates location acquisition, bounds checks, old-value Copy, RHS evaluation, numeric computation, and store once each, in that order. This differs from RHS-first simple assignment. After storing, compound assignment returns Unit, prefix inc/dec returns the new value, and postfix returns the old value, without reloading. Integer overflow, division/remainder and shift checks, and IEEE float operations share existing scalar handling. Shift RHS checks retain its independent integer type.
 
-LocateElement・CopyElement・StoreElementを読み取り/単純代入/更新で共有し、数値計算と増減結果生成も通常local更新と共通化した。射影計画に更新の参照を追加し、再利用するElementUpdates表がRHS・計算・結果を結ぶ。中間集成型のCopy、要素別生存flag、更新専用のLLVM演算は追加しない。親の初期化・所有責任を維持する。
+Reads, simple assignments, and updates share LocateElement, CopyElement, and StoreElement. Numeric computation and inc/dec result generation also share ordinary local-update handling. Projection plans reference updates, and a reusable ElementUpdates table connects RHS, computation, and result. No intermediate aggregate Copies, per-element live flags, or update-specific LLVM operations are added. Parent initialization and ownership responsibilities are preserved.
 
-Loweringは更新元source、演算子、旧値とRHS、型、唯一の射影所有者、Loanと支配関係、計算→store→自身のLoan解放→結果の連続edge、前置/後置の結果選択を照合する。単純代入のRHS確保順序の検証も維持する。不正計画はIR出力前に拒否し、再解析で回復する。
+Lowering checks the update source, operator, old value and RHS, types, unique projection owner, Loans and dominance, consecutive edges from computation → store → release of the access's own Loan → result, and prefix/postfix result selection. It also retains validation of RHS-securing order for simple assignment. Invalid plans are rejected before IR output; reanalysis restores valid plans.
 
-添字評価中は共有保護とし、最終射影の境界検査成功後に自身の保護を排他的Loanへ切り替える。排他的Loanは旧値取得・RHS・計算・storeまで保持し、そのアクセス自身のstoreだけを許可する。既存の外側Loanは解除せず、同じ親の別アクセスが生存していれば排他取得を拒否する。新しいLLVM命令や値スロットは不要で、既存Loan表と射影の整数IDを再利用する。
+Index evaluation uses shared protection. After the final projection's bounds check succeeds, the access's protection switches to an exclusive Loan, held through old-value acquisition, RHS evaluation, computation, and store. Only that access's own store is permitted. Existing outer Loans are retained; another live access to the same parent prevents exclusive acquisition. No new LLVM instructions or value slots are needed; existing Loan tables and integer projection IDs are reused.
 
-`a[0] += a[0]` は仕様の排他的Loanと競合するため拒否する。RHSの関数引数への親Copyやdefer内の読み取りにも適用する。§4.5実装時はroot単位の保守的な判定で兄弟要素も拒否していたが、§4.6で静的非重複経路の許可を追加した。別rootの更新と添字評価中の共有読み取りは許可する。通常transferは放棄したアクセスのLoanをcleanup前に終了する。境界/演算Abort、RHS/添字のtransfer、非停止cleanupでは後続storeを行わない。添字がNeverになっても代入先の静的型を保持し、shiftのNever RHSも通常transferとして扱う。
+`a[0] += a[0]` is rejected because it conflicts with the specification's exclusive Loan. The same rule covers copying the parent into RHS function arguments and reads inside defer. §4.5 initially used conservative root-level checks that also rejected siblings; §4.6 added support for statically disjoint paths. Updates to other roots and shared reads during index evaluation are allowed. Normal transfer ends abandoned-access Loans before cleanup. Bounds/arithmetic Abort, RHS/index transfers, and nonterminating cleanup prevent subsequent stores. Static destination types survive Never indices, and Never shift RHS values are treated as normal transfers.
 
-初回実装ではRHS中も共有保護を用いて自己読み取りを許可していたが、§4.6.4/§15.6.2の排他的Loan規則との不整合を修正した。単純代入は現行仕様のRHS先行を維持する。要素更新前に必要な値をlocalへCopyする実行例に修正した。
+The initial implementation used shared protection through the RHS and allowed self-reads. This was corrected to match the exclusive-Loan rules in §4.6.4/§15.6.2. Simple assignment retains the current specification's RHS-first order. Executable examples now Copy needed values into locals before updating elements.
 
-[ElementUpdateEmissionTest](xUnitTest/Tests/ElementUpdateEmissionTest.cs) は114件。全整数幅、floatのNaN/無限大/符号付き0、評価回数/順序、shift幅、演算/境界Abort、親の破棄監査、Loan競合、defer・到達不能・transfer・非停止、不正計画を検証する。排他取得前後とstore後のLoan状態、自己読み取り/親Copyの拒否、通常transferでの解除、改変計画の拒否も含む。入れ子更新とdeferを含むwarm Bind、所有権解析＋IR生成は各128回で0 B。throughputの改善率は未測定。Non-Copy要素置換は§4.7、静的部分Move/再初期化は§4.8で追加。借用・一時receiver、Property、動的collectionは未対応。
+[ElementUpdateEmissionTest](xUnitTest/Tests/ElementUpdateEmissionTest.cs) has 114 cases. They cover every integer width; float NaN/infinity/signed zero; evaluation counts/order; shift widths; arithmetic/bounds Abort; parent destruction audits; Loan conflicts; defer, unreachable code, transfers, nontermination, and invalid plans. They also verify Loan states around exclusive acquisition and after stores, rejection of self-reads/parent Copies, release on normal transfer, and rejection of modified plans. Warm Bind and ownership analysis plus IR generation with nested updates and defer each allocated 0 B over 128 iterations. Throughput improvement has not been measured. Non-Copy replacement was added in §4.7; static partial Moves/reinitialization in §4.8. Borrowed/temporary receivers, Properties, and dynamic collections remain unsupported.
 
-### 4.6. 静的要素経路によるLoanの非重複判定（2026-09-15）
+### 4.6. Loan Disjointness for Static Element Paths (2026-09-15)
 
-§15.6.2の非重複規則を、既存の所有Tuple・固定配列のCopy要素読み取り・単純代入・数値更新へ接続した。`a[0] += a[1]++`、`pair.0 += pair.1`、兄弟のCopy集成型やUnitへの代入を許可する。同一要素、祖先/子孫、親全体のCopy/Move/置換は排他的Loanと競合する。例は [ElementPaths](examples/ElementPaths/README.md)。
+Connected §15.6.2's disjointness rules to existing Copy element reads, simple assignments, and numeric updates on owned Tuples/fixed arrays. Allows `a[0] += a[1]++`, `pair.0 += pair.1`, and assignment to sibling Copy aggregates or Unit elements. Access to the same element, ancestors/descendants, or whole-parent Copy/Move/replacement conflicts with an exclusive Loan. See [ElementPaths](examples/ElementPaths/README.md).
 
-固定配列の静的selectorは§15.1.3に従い、範囲内の非負整数リテラルと括弧だけを認める。基数・桁区切りが異なっても数値で同一性を判定し、単項plus・算術・変換・変数・条件式を定数化して証明しない。不明な添字では、それまでに確定した親経路全体へ判定を広げる。`pair.0[i]` と `pair.1[j]` は別経路だが、`a[i].0` と `a[j].1` の非重複は証明しない。空配列や範囲外リテラルは非重複の根拠にしない。
+Under §15.1.3, static fixed-array selectors accept only in-range nonnegative integer literals and parentheses. Identity uses numeric value regardless of radix or digit separators. Unary plus, arithmetic, conversions, variables, and conditionals are not constant-folded to prove disjointness. An unknown index widens the check to the entire known parent path. `pair.0[i]` and `pair.1[j]` are disjoint, but disjointness is not proven for `a[i].0` and `a[j].1`. Empty arrays and out-of-range literals provide no disjointness evidence.
 
-receiverの位置取得をLocateReceiverとして値のReadから区別し、Copy取得・storeを射影IDへ直接関連付けた。経路は既存射影表の親ID・静的prefix・深さ・selectorで表現する。専用の経路オブジェクトや集合を作らず、比較は経路の深さに比例する走査で行う。重複判定前にsource・親・selector・prefix・操作との相互参照を再検証し、改変計画を拒否する。新しいLLVM命令、runtimeのLoan検査、値スロットは追加しない。
+Distinguished receiver location acquisition as LocateReceiver from value Read, and linked Copy acquisition/stores directly to projection IDs. Paths use parent IDs, static prefixes, depths, and selectors in the existing projection table. No dedicated path objects or sets are created; comparison takes a scan proportional to path depth. Before overlap checks, validation rechecks source, parent, selector, prefix, and operation cross-references, rejecting modified plans. No new LLVM instructions, runtime Loan checks, or value slots are added.
 
-添字評価中のrootストレージ保護と、最終位置解決後の選択要素への排他的Loanを分けた。添字評価中は同じrootへの兄弟要素の書き込みも引き続き拒否する。最終位置解決後は静的に非重複な操作を許可し、自身の旧値取得・storeだけを自身のLoanで承認する。内側の兄弟更新が完了しても外側のLoanは維持する。評価順序・通常transfer・defer・Abort・親の全体初期化状態と破棄責任は既存規則を維持する。
+Separated root-storage protection during index evaluation from the selected element's exclusive Loan after final location resolution. Writes to siblings in the same root remain prohibited during index evaluation. Once the final location is resolved, statically disjoint operations are allowed; an access's own Loan authorizes only its own old-value acquisition and store. Completing an inner sibling update retains the outer Loan. Existing evaluation order, normal transfer, defer, Abort, parent whole-initialization state, and destruction responsibilities are preserved.
 
-[ElementPathEmissionTest](xUnitTest/Tests/ElementPathEmissionTest.cs) は静的/動的経路、入れ子更新、Copy集成型/Unit、選択結果、snapshot、defer/transfer、境界Abort、親の破棄監査、到達不能コード、不正計画と再解析回復を検証する。入れ子経路・兄弟更新・deferを含むwarm Bindと所有権解析＋IR生成は各128回で0 B。throughputの改善率は未測定。Non-Copy要素操作、部分Move/要素別初期化、一般のfield・Property・ref/Slice・動的collectionへの拡張は含めない。
+[ElementPathEmissionTest](xUnitTest/Tests/ElementPathEmissionTest.cs) checks static/dynamic paths, nested updates, Copy aggregates/Unit, selection results, snapshots, defer/transfers, bounds Abort, parent destruction audits, unreachable code, invalid plans, and recovery by reanalysis. Warm Bind and ownership analysis plus IR generation with nested paths, sibling updates, and defer each allocated 0 B over 128 iterations. Throughput improvement has not been measured. This increment excludes Non-Copy element operations, partial Moves/per-element initialization, and general fields, Properties, ref/Slice, or dynamic collections.
 
-### 4.7. 完全な所有値のNon-Copy要素置換（2026-09-15）
+### 4.7. Non-Copy Element Replacement in Complete Owned Values (2026-09-15)
 
-初期化済みで完全な所有Tuple・固定配列を持つlocal varについて、string・stringを含む対応集成型の要素を単純代入で置換できる。入れ子経路・動的isize添字、リテラル・独立localからのMove・関数結果・if/do/match結果、loop/deferに対応する。Copy要素の既存操作も維持する。例は [ElementReplacements](examples/ElementReplacements/README.md)。本節の実装時点ではNon-Copy要素の取り出しを含めなかった。`a[0] = a[0]` を含む静的部分Move/再初期化は§4.8で追加した。
+Simple assignment can replace string elements and supported aggregate elements containing strings in initialized, complete owned Tuples/fixed arrays held by local vars. Supports nested paths, dynamic isize indices, literals, Moves from independent locals, function results, if/do/match results, loops, and defer. Existing Copy element operations remain supported. See [ElementReplacements](examples/ElementReplacements/README.md). This increment initially excluded Non-Copy element extraction; static partial Moves/reinitialization, including `a[0] = a[0]`, were added in §4.8.
 
-§13.7.1に従いRHSを独立した値として確保してから、receiverと添字を一度ずつ評価し境界を検査する。Copy/Non-Copyを問わず、位置取得時の自身の共有保護を最終位置解決後に排他的Loanへ切り替え、旧値破棄・配置まで保持する。読み取り・数値更新・単純代入の射影表とLoan表を共用し、旧値Copyを必要としない書き込みも同じ排他取得/終了検証で扱う。外側のLoanを維持し、非重複な兄弟要素の置換だけを許可する。添字評価中のroot保護は緩めない。
+Following §13.7.1, secures the RHS as an independent value before evaluating the receiver and each index once and checking bounds. For both Copy and Non-Copy values, the access's shared location-acquisition protection switches to an exclusive Loan after final location resolution, held through old-value destruction and placement. Reads, numeric updates, and simple assignments share projection and Loan tables. Writes requiring no old-value Copy use the same exclusive acquisition/end validation. Outer Loans remain active; only statically disjoint sibling replacements are allowed. Root protection during index evaluation is unchanged.
 
-一つのWriteElementを、正確な要素型の旧値破棄→新値転送として生成する。既存のstring破棄・handle転送と集成型の型別破棄・memcpyを使い、スロット/要素アドレスの出力を共通化した。親全体のWrite/Cleanup、旧要素の退避Copy、要素別の生存flag、新しいruntime APIは追加しない。親は完全性と兄弟の責任を保持し、入力は配置時に消費される。Copy性と実際の破棄有無を分け、ゼロサイズでも評価・境界検査・責任移転を保持する。
+One WriteElement emits old-value destruction for the exact element type, then new-value transfer. It reuses string destruction/handle transfer, aggregate type-specific destruction/memcpy, and shared slot/element-address output. No whole-parent Write/Cleanup, backup Copy of the old element, per-element live flags, or new runtime APIs are added. The parent retains completeness and sibling responsibilities; placement consumes the input. Copy status is distinct from whether destruction is actually needed. Zero-sized values retain evaluation, bounds checks, and responsibility transfer.
 
-RHSが完了しなければ左辺を評価せず、添字の通常transferでは確保済みRHSを通常の一時値規則でcleanupする。境界Abortは旧値破棄・配置・cleanupを実行しない。RHS/添字の非停止cleanupでは後続の配置を生成しない。既存のstring/集成型破棄呼出が正常に戻った経路だけが転送へ進む。一般user deinitや参照保持型のOrigin/Loan依存を持つ置換には拡張していない。
+If the RHS does not complete, the LHS is not evaluated. Normal transfer from an index cleans up the secured RHS under ordinary temporary-value rules. Bounds Abort performs no old-value destruction, placement, or cleanup. Nonterminating RHS/index cleanup generates no later placement. Only paths where existing string/aggregate destruction calls return normally proceed to transfer. This does not extend to general user deinit or replacement with Origin/Loan dependencies from retained references.
 
-Loweringはsource・正確な型・入力/親の初期化・支配関係・mutable root・Loan・位置解決/書き込み/Loan終了の連続edgeを照合する。要素の破棄対象は検証済み射影と型から決定し、独立した破棄計画表を重複して作らない。match結果を要素へ転送する際、明示アドレスoperandがあるTransferAggregateを従来のPlace/Constant形式として扱っていたスロット追跡も修正した。
+Lowering checks source, exact types, input/parent initialization, dominance, mutable roots, Loans, and consecutive location-resolution/write/Loan-end edges. Destruction targets are derived from verified projections and types rather than duplicated in a separate destruction-plan table. Also fixed slot tracking that treated TransferAggregate with an explicit address operand as the older Place/Constant form when transferring match results into elements.
 
-[ElementReplacementEmissionTest](xUnitTest/Tests/ElementReplacementEmissionTest.cs) は55件。置換・Move・動的添字・入れ子・結果配送・defer/transfer・Abort/非停止、破棄の回数/順序、Loan/初期化の拒否、改変計画と再解析回復を検証する。warm Bindと所有権解析＋IR生成は各128回で追加割り当て0 B。破棄監査はStatic-backed stringを含む論理的責任の検証であり、sourceからのHeap-string構築対応を示さない。throughput改善率は未測定。
+[ElementReplacementEmissionTest](xUnitTest/Tests/ElementReplacementEmissionTest.cs) has 55 cases. They cover replacement, Moves, dynamic indices, nesting, result delivery, defer/transfers, Abort/nontermination, destruction counts/order, Loan/initialization rejection, modified plans, and recovery by reanalysis. Warm Bind and ownership analysis plus IR generation each allocated 0 additional B over 128 iterations. Destruction audits verify logical responsibilities, including Static-backed strings; they do not establish source-level Heap-string construction support. Throughput improvement has not been measured.
 
-### 4.8. 静的要素の部分Move・再初期化・残存部分の破棄（2026-09-15）
+### 4.8. Static Element Partial Moves, Reinitialization, and Destruction of Remaining Parts (2026-09-15)
 
-構築済みの所有local let/varをrootとして、Tupleの数値selector・範囲内リテラルの固定配列添字・その組合せから、stringと対応Non-Copy集成型を取得できる。Copy要素はCopyのまま扱う。letからのMove、残存兄弟の利用、varの静的経路への再初期化、全欠損の修復後の全体取得、部分Move済みの親の置換に対応する。例は [ElementMoves](examples/ElementMoves/README.md)。
+From constructed owned local let/var roots, strings and supported Non-Copy aggregates can be acquired through numeric Tuple selectors, in-range literal fixed-array indices, or combinations of these. Copy elements remain Copies. Supports Moves from let, use of remaining siblings, reinitialization of static paths in var, whole-value acquisition after repairing all missing parts, and replacement of partially moved parents. See [ElementMoves](examples/ElementMoves/README.md).
 
-構築済みストレージと現在の完全性を分離した。子をすべて個別にMoveしても親の構築事実は残り、各子を修復できる。子全体をMoveした場合は、その子自体を再配置するまで内部へアクセスできない。未構築の配列を要素代入で初期構築すること、letの修復、欠損部分/不完全な全体の取得や借用を拒否する。分岐・loop・transfer・defer・未到達のchecking flowに共通の状態遷移を適用する。
+Separated constructed storage from current completeness. Moving all children individually leaves the parent constructed, allowing each child to be repaired. Moving a child as a whole prevents access inside it until that child itself is placed again. Rejects initial construction of an unconstructed array through element assignment, repair of let, and acquisition/borrowing of missing parts or incomplete whole values. Branches, loops, transfers, defer, and unreachable checking flow share the same state transitions.
 
-同じ経路をアクセスごとの射影IDから独立した整数IDへ正規化し、再利用する辞書・構造体リスト・bit laneへ格納する。対象rootで参照された静的経路と未追跡の残余だけを保持し、配列長に比例して展開しない。経路を一度sortして逆順の兄弟リンクを作る。破棄計画の生成ではCFG入力を一度読み出し、全要素で共有する。完全な部分は既存の型別破棄、未追跡の配列範囲は逆順loop、単一部分は直接呼出を使い、条件付きで生存する残余だけにflagを置く。
+Normalizes each path to an integer ID independent of per-access projection IDs, stored in reusable dictionaries, struct lists, and bit lanes. Tracks only referenced static paths and untracked remainders for relevant roots, without expanding in proportion to array length. Paths are sorted once to build reverse sibling links. Destruction-plan generation reads CFG input once and shares it across elements. Complete parts use existing type-specific destruction, untracked array ranges use reverse loops, and individual parts use direct calls. Only conditionally live remainders need flags.
 
-単純代入のRHS先行を維持する。`a.0 = a.0` はRHSへMoveして欠損した旧要素の破棄を省き、位置解決・排他的Loanの下で再配置する。不完全な親の置換は残存部分だけを逆論理順で破棄してから新値を配置する。数値更新の評価順序・排他的Loan、添字中のroot保護、Abort時の非巻戻しは従来どおり。動的Copy読み取り/置換は既知prefixの完全性を要求し、欠損に触れ得る操作を保守的に拒否する。
+Simple assignment remains RHS-first. `a.0 = a.0` Moves the element into the RHS, skips destruction of the now-missing old element, then replaces it under location resolution and an exclusive Loan. Replacing an incomplete parent first destroys only its remaining parts in reverse logical order. Numeric update order/exclusive Loans, root protection during index evaluation, and no unwinding on Abort remain unchanged. Dynamic Copy reads/replacements require a complete known prefix, conservatively rejecting operations that may touch missing parts.
 
-Loweringは取得種別・静的経路・source/型・初期化と完全性・Loan・支配関係を再照合する。部分破棄とflag遷移は所有権状態から生成し、flagの欠落/重複/誤った値とdispatch後の配置も検証する。既存のstring handle転送・集成型memcpy・破棄helperを共用し、runtime APIやLoan lockは追加していない。
+Lowering rechecks acquisition kinds, static paths, sources/types, initialization/completeness, Loans, and dominance. Partial destruction and flag transitions derive from ownership state. Validation also checks missing/duplicate/incorrect flag values and placement after dispatch. Existing string handle transfer, aggregate memcpy, and destruction helpers are shared; no runtime APIs or Loan locks are added.
 
-[ElementMoveEmissionTest](xUnitTest/Tests/ElementMoveEmissionTest.cs) は実装時70件（§4.11でparameterの旧拒否1件を移し、現在69件）。残存責任の回数/順序、分岐・親置換・自己代入・入れ子・動的兄弟・loop・defer・結果配送・未到達/covered arm・0サイズ・境界Abort・非停止、診断理由、改変計画と再解析、条件付きflag、疎な経路を検証する。warm BindとOwnership＋IR生成は各128回で追加割り当て0 B。throughput改善率は測定していない。
+[ElementMoveEmissionTest](xUnitTest/Tests/ElementMoveEmissionTest.cs) initially had 70 cases (now 69 after moving one former parameter-rejection case in §4.11). Covers remaining-responsibility counts/order, branches, parent replacement, self-assignment, nesting, dynamic siblings, loops, defer, result delivery, unreachable code/covered arms, zero-sized values, bounds Abort, nontermination, diagnostic reasons, modified plans/reanalysis, conditional flags, and sparse paths. Warm Bind and Ownership plus IR generation each allocated 0 additional B over 128 iterations. Throughput improvement has not been measured.
 
-§4.8実装時に拒否していた比較・共有引数のための静的string要素借用は§4.9で対応し、所有parameter・temporaryへは§4.10で拡張した。所有parameterの部分Moveは§4.11で追加した。動的Non-Copy取得、temporary要素の部分Move、borrowed receiver、一般struct/Property・user deinit・保持借用依存・動的collectionは未対応。これらは言語仕様の許可範囲を狭める変更ではなく、現在の実装境界である。
+Borrowing static string elements for comparisons/shared arguments, rejected in §4.8, was added in §4.9 and extended to owned parameters/temporaries in §4.10. Partial Moves from owned parameters were added in §4.11. Dynamic Non-Copy acquisition, partial Moves from temporary elements, borrowed receivers, general structs/Properties, user deinit, retained-borrow dependencies, and dynamic collections remain unsupported. These are current implementation boundaries, not restrictions on the language specification.
 
-### 4.9. 静的string要素の比較・共有引数（2026-09-15）
+### 4.9. Static String Element Comparisons and Shared Arguments (2026-09-15)
 
-構築済みの所有local let/varに保持したTuple・固定配列について、静的経路のstring要素を全6比較と既存の直接呼出の必須ref/string引数に接続した。括弧・基数・桁区切りを含む範囲内整数リテラルと入れ子経路を扱う。同一要素への共有借用の重複、名前付き引数、入れ子call、string guard候補との混在、独立したstring/集成型結果、loop・defer・未到達/covered armにも対応する。例は [ElementBorrows](examples/ElementBorrows/README.md)。
+Connected static string elements of Tuples/fixed arrays held in constructed owned local let/var values to all six comparisons and required ref/string arguments of existing direct calls. Supports in-range integer literals with parentheses, radices, or digit separators; nested paths; overlapping shared borrows of one element; named arguments; nested calls; mixed string guard candidates; independent string/aggregate results; loops; defer; unreachable code; and covered arms. See [ElementBorrows](examples/ElementBorrows/README.md).
 
-比較と共有引数は共通のBorrowStringElementでLocateElementの射影先を借り、AcquireElementによる所有一時値の取得を行わない。位置形成中のroot保護は最終境界検査後のRead/Borrowで選択要素の共有Loanへ切り替える。後続operand/引数とcall中のcleanupを保護し、比較終了または独立した正常call結果の確保後に自身のLoanだけを終了する。通常transferは放棄したLoanをcleanup前に解放する。外側のLoan、元の所有責任、Abortの非巻戻しを維持する。
+Comparisons and shared arguments use a common BorrowStringElement operation to borrow the LocateElement projection target, without acquiring an owned temporary through AcquireElement. After the final bounds check, Read/Borrow switches root protection during location formation to a shared Loan on the selected element. This protects through later operands/arguments and cleanup during calls. Only the access's own Loan ends, after comparison or after securing an independent normal call result. Normal transfer releases abandoned Loans before cleanup. Outer Loans, original ownership responsibilities, and no unwinding on Abort are preserved.
 
-共有要素Loanの競合判定も既存の静的経路比較を使用する。重なる要素/祖先のMove・置換・排他取得を拒否し、静的に非重複な兄弟のMove・置換・数値更新を許可する。動的な兄弟操作は既存の静的prefixで判定する。添字評価中のroot保護は継続する。部分Moveした親では位置形成に必要な構築状態と対象要素の初期化を分けて検査し、残存要素だけを借用できる。
+Shared element Loans also use existing static-path comparisons for conflicts. Moves, replacements, and exclusive acquisitions of overlapping elements/ancestors are rejected; Moves, replacements, and numeric updates of statically disjoint siblings are allowed. Dynamic sibling operations use the existing static prefix. Root protection during index evaluation remains. For partially moved parents, validation separately checks the constructed state needed for location formation and target-element initialization; only remaining elements can be borrowed.
 
-BindingのPlaceOriginSourceをLoweringと共有し、Tuple selectorと固定配列添字のどちらも所有元へOriginを対応させる。Loweringはsource・root・型・静的経路・初期化・Loan・位置形成からの連続edgeと支配を再検証する。既存ElementAddressをstring比較とref/string引数へ渡し、所有一時スロット、string転送、新しい破棄flag、LLVM命令、runtime API、backend ABIを追加しない。射影表に借用operationの整数IDを保持し、既存の表と容量を再利用する。
+Binding's PlaceOriginSource is shared with Lowering, mapping Origins to owners for both Tuple selectors and fixed-array indices. Lowering rechecks source, root, type, static path, initialization, Loans, consecutive edges from location formation, and dominance. Existing ElementAddress values serve string comparisons and ref/string arguments. No owned temporary slots, string transfers, new destruction flags, LLVM instructions, runtime APIs, or backend ABI changes are added. Projection tables store integer borrow-operation IDs and reuse existing tables and capacity.
 
-[ElementBorrowEmissionTest](xUnitTest/Tests/ElementBorrowEmissionTest.cs) は実装時78件（§4.10で旧拒否2件を成功ケースへ移し、現在76件）。正常実行、拒否理由、残存責任と破棄順序、途中return・後続添字のAbort・非停止、改変計画の拒否と再解析回復を検証する。部分Move・兄弟更新・deferを含むwarm BindとOwnership＋IR生成は各128回で追加割り当て0 B。throughput改善率は測定していない。
+[ElementBorrowEmissionTest](xUnitTest/Tests/ElementBorrowEmissionTest.cs) initially had 78 cases (now 76 after moving two former rejections to success cases in §4.10). Checks normal execution, rejection reasons, remaining responsibilities/destruction order, early returns, Abort in later indices, nontermination, rejection of modified plans, and recovery by reanalysis. Warm Bind and Ownership plus IR generation with partial Moves, sibling updates, and defer each allocated 0 additional B over 128 iterations. Throughput improvement has not been measured.
 
-所有parameter・temporaryからの借用は§4.10で追加した。動的添字のNon-Copy共有結果、borrowed receiver、明示@ref・uniq、参照のlocal保存/返却、集成型全体の借用、一般struct/Property・user deinit・保持借用依存・動的collectionは未対応。今回の対応は言語規則の変更ではなく実行範囲の追加である。
+Borrowing from owned parameters/temporaries was added in §4.10. Non-Copy shared results through dynamic indices, borrowed receivers, explicit @ref/uniq, local reference storage/return, whole-aggregate borrowing, general structs/Properties, user deinit, retained-borrow dependencies, and dynamic collections remain unsupported. This extends execution coverage without changing language rules.
 
-### 4.10. 所有parameter・一時値からの静的string要素借用（2026-09-15）
+### 4.10. Static String Element Borrowing from Owned Parameters and Temporaries (2026-09-15)
 
-§4.9の共通BorrowStringElementを、所有parameter、Tuple/固定配列の構築一時値、直接関数結果、if/do/loop/match結果へ拡張した。比較と必須ref/string引数の両方に対応する。receiverは一度だけ評価し、既存ownerスロット内のElementAddressを使用する。要素の所有一時スロットや転送・部分Moveを追加しない。例は [ElementBorrowOwners](examples/ElementBorrowOwners/README.md)。
+Extended §4.9's shared BorrowStringElement handling to owned parameters, Tuple/fixed-array construction temporaries, direct function results, and if/do/loop/match results. Supports both comparisons and required ref/string arguments. Receivers are evaluated once, using ElementAddress within existing owner slots. No owned element temporary slots, transfers, or partial Moves are added. See [ElementBorrowOwners](examples/ElementBorrowOwners/README.md).
 
-PlaceのKindだけではストレージを許可しない。既存の関数・構築・選択結果の役割表と照合し、parameter Produce、正常復帰後のcall結果Produce、CompleteConstructionが位置形成を支配することを検査する。選択結果は現在のDeclare/Joinを検査し、結果を確保するWriteからcleanup中に位置形成・利用・破棄することを拒否する。括弧とラベルのsource正規化は既存ValueSourceを共有する。
+Storage is not accepted solely by Place Kind. Validation checks existing function/construction/selection-result role tables and requires parameter Produce, call-result Produce after normal return, and CompleteConstruction to dominate location formation. Selection results must match the current Declare/Join. Location formation, use, or destruction during cleanup after a result-securing Write is rejected. Parenthesized and labeled sources share existing ValueSource normalization.
 
-一時所有元の寿命は式の規定の終了点まで維持する。Loanの終了だけでは早期破棄しない。短絡で生成されない経路にはentryで既存live flagを0に初期化し、構築完了/正常call復帰/結果Writeで1、cleanupで0にする。条件付き選択結果のcleanupは、すべての到達可能Writeから対応Joinまで既存の隣接表を辿り、未配送の値がそのcleanupへ到達しないことを追加検査する。通常の利用では従来の支配検査を維持する。ループ・deferの複製による別lifetimeを許可し、Abortでは巻き戻さない。
+Temporary owners remain alive until the expression's prescribed endpoint; ending a Loan does not cause early destruction. For paths skipped by short-circuiting, existing live flags start at 0 on entry, become 1 at construction completion, normal call return, or result Write, and return to 0 at cleanup. Conditional selection-result cleanup additionally traverses existing adjacency tables from every reachable Write to its matching Join, verifying that undelivered values cannot reach that cleanup. Ordinary uses retain existing dominance checks. Separate lifetimes from loops/defer duplication are allowed; Abort does not unwind.
 
-借用される一時所有元を比較/Loan表から再利用配列へ一度記録し、placeごとの表走査を除いた。flag検証は既存scratchのbitを共有し、結果配送の経路検査も既存queueと再利用配列を用いる。追加の構文木・BoundType参照を保持せず、runtime API・backend ABI・LLVM Writerの変更はない。
+Borrowed temporary owners are recorded once from comparison/Loan tables into reusable arrays, eliminating per-Place table scans. Flag validation shares bits in existing scratch storage; result-delivery path checks also reuse an existing queue and reusable arrays. No additional syntax-tree or BoundType references are retained, and runtime APIs, backend ABI, and LLVM Writer are unchanged.
 
-所有parameterの部分Moveは§4.11で追加した。parameterの更新・再初期化は仕様上禁止。temporary要素の部分Move・更新、動的Non-Copy添字、borrowed receiver、明示@ref・uniq、参照保存/返却は対象外。固定配列リテラルの型推論も拡張しないため、既存の明示型localや関数の戻り値型を利用する。言語仕様の変更ではなく、既存の寿命・配送・Loan規則に沿った実行範囲の追加である。
+Owned-parameter partial Moves were added in §4.11. The specification prohibits parameter updates/reinitialization. Partial Moves/updates of temporary elements, dynamic Non-Copy indices, borrowed receivers, explicit @ref/uniq, and reference storage/return are outside scope. Fixed-array literal inference is unchanged; use existing explicitly typed locals or function return types. This extends execution coverage under existing lifetime, delivery, and Loan rules without changing the language specification.
 
-### 4.11. 所有parameterの静的部分Move（2026-09-15）
+### 4.11. Static Partial Moves from Owned Parameters (2026-09-15)
 
-通常関数の所有Tuple・固定配列parameterから、静的経路のstring要素と対応済みNon-Copy集成型要素をMoveできる。入れ子・範囲内整数リテラル添字を扱い、残存部分のCopy読取り・比較・共有引数・別の静的部分のMoveを許可する。Move済み要素・祖先配下・不完全な全体の取得は拒否する。例は [ElementParameterMoves](examples/ElementParameterMoves/README.md)。
+Strings and supported Non-Copy aggregate elements can be Moved through static paths from owned Tuple/fixed-array parameters of ordinary functions. Supports nesting and in-range integer literal indices. Remaining parts can be Copied, compared, passed as shared arguments, or Moved through other static paths. Rejects acquisition of moved elements, paths under moved ancestors, and incomplete whole values. See [ElementParameterMoves](examples/ElementParameterMoves/README.md).
 
-所有元の適格性はElementAccess.SupportsMoveRootへ集約し、AnalysisとLoweringで共有する。借用可能な一時値・選択結果とは区別する。Loweringは既存SlotFunctionsのparameter受領・型・初期化と、位置形成の支配関係を引き続き検査する。parameterのlet相当の性質を維持し、更新・再初期化を許可しない。
+Owner eligibility is centralized in ElementAccess.SupportsMoveRoot and shared by Analysis and Lowering, distinct from borrowable temporaries/selection results. Lowering retains existing SlotFunctions checks for parameter receipt, types, initialization, and dominance over location formation. Parameters retain let-like behavior; updates and reinitialization are prohibited.
 
-既存Initializeがparameter受領時にも疎なMove Pathを初期化するため、専用の状態表は追加しない。生成コードのPathFlagTransitionに、parameterのsourceと対応する受領Produceでの初期化を追加した。必要なpath flagだけを受領時に1、対象部分のMove時に0とし、既存部分破棄で残存部分を逆論理順に破棄する。引数の実スロットを直接使用し、親全体の追加転送やlocal化を行わない。runtime API・LLVM Writer・backend ABIの変更はない。
+Existing Initialize handling already initializes sparse Move Paths on parameter receipt, so no dedicated state table is added. Generated-code PathFlagTransition now initializes flags at the receipt Produce matching the parameter source. Only necessary path flags are set to 1 on receipt and to 0 when the corresponding part Moves. Existing partial destruction handles remaining parts in reverse logical order. Uses actual argument slots directly, without another whole-parent transfer or conversion to a local. Runtime APIs, LLVM Writer, and backend ABI are unchanged.
 
-戻り値を先に確保し、callee cleanupが正常終了した後で配送する。途中transferでは取得済み引数・残存parameterの責任を保持する。Abortでは巻き戻さず、cleanupのAbort・非停止では後続破棄と配送を行わない。新しい配列・構文参照・型参照キャッシュは追加しない。
+Return values are secured before callee cleanup and delivered only after it completes normally. Transfers during evaluation retain responsibilities for acquired arguments and remaining parameter parts. Abort does not unwind; Abort/nontermination during cleanup prevents subsequent destruction and delivery. No new arrays or caches of syntax/type references are added.
 
-一時値・関数/選択結果からの部分Move、動的添字のNon-Copy取得、borrowed receiver、一般struct/Property・user deinitは今回の対象外。言語規則の変更ではなく、§7のparameter規則と§15.1.3のMove Path規則に沿った実行範囲の追加である。
+Partial Moves from temporaries or function/selection results, dynamic Non-Copy element acquisition, borrowed receivers, general structs/Properties, and user deinit are outside this increment. This extends execution coverage under §7's parameter rules and §15.1.3's Move Path rules without changing the language.
 
 <a id="c2-builds-modules-and-source-artifacts"></a>
 <a id="c11-executable-preparation-and-sequence-review-2026-09-09"></a>
@@ -286,78 +286,78 @@ PlaceのKindだけではストレージを許可しない。既存の関数・�
 <a id="c36-native-build-execution-and-shared-package-release-2026-09-13"></a>
 <a id="c37-generated-kernel32-import-library-2026-09-13"></a>
 
-## 5. CLI・成果物・Windows runtime
+## 5. CLI, Artifacts, and Windows Runtime
 
-- [Project](Kimi/SolutionAndProject/Project.cs) のCheckは意味検査、Generate/`emit`は整合した`.ll`＋`.link.json`、Build/`build`はnative exe生成。`run`は既存Applicationを実行し、source変更で自動再buildしない。
-- [Solution](Kimi/SolutionAndProject/Solution.cs) はbuild/run/emit共通で指定パス→拡張子なしの場合`.kimiproj`→`.kimi`を探索する。選択済み対象の失敗では次候補へ進まない。単一`.kimi`はそのファイルのみの暗黙Application/O2プロジェクトとし、OS/OS architectureからターゲットを選ぶ（現対応はWindows x64、`--Target`で明示可能）。隣接source・project設定を取り込まず、`.kimiproj`も生成しない。runはsource内容を読まず既存成果物を検証・実行する。CLI名は`emit`へ統一し、旧`emit-llvm`を含む未知コマンドはexit 1。
-- [EmissionArtifacts](Kimi/Compiler/Emission/EmissionArtifacts.cs) / [NativeToolchain](Kimi/Compiler/Emission/NativeToolchain.cs) はschema 3、IR/exe/供給hash・ABI・LLVM同一性、失敗時の旧成功無効化、stagingからの公開を扱う。toolの出力を回収し、取消し・時間上限・child tree終了を実装。Applicationの出力/exitは転送する。
-- [ToolchainResolver](Kimi/Compiler/Emission/ToolchainResolver.cs) はCLIのToolchainRoot、環境変数KIMI_TOOLCHAIN_ROOT、既定配置の順でrootを選ぶ。既定は実行file隣接toolchain、source buildではcheckoutのtoolchainを探索。LlvmBin・明示backend pathの上書きも別途扱う。emit単独にはLLVM導入不要。通常の.NET buildはbackendを再生成しない。
-- [WindowsProfile](Kimi/Compiler/Emission/WindowsProfile.cs) と [profile.json](backend/windows-x64/profile.json) はLLVM 22.1.8、backend ABI 2、__chkstk/memcmp/memcpy/memmove/memsetを定義。版はDirectory.Build.propsと共有し、実archive hashも照合する。明示的な未固定toolchain試行でもintegrity検査は省略しない。
-- [WindowsRuntime.ll.in](Kimi/Compiler/Emission/WindowsRuntime.ll.in) はstartup、UTF-8出力、確保/解放、string破棄、Abortを実装。通常exit 0、Abort 1、LFを別出力、NULはデータとして扱う。Staticは解放せず、Heap責任を解放する。一般object/Weak/metadata runtimeは未完成。
-- [Kernel32Imports](Kimi/Compiler/Emission/Kernel32Imports.cs) はproject-owned定義とllvm-dlltoolからimport libraryを生成・検査する。runtimeの7 Windows APIとnativeテスト用3 APIを供給し、SDKのkernel32.lib設定を不要にする。
+- [Project](Kimi/SolutionAndProject/Project.cs) Check performs semantic validation; Generate/`emit` produces consistent `.ll` and `.link.json` files; Build/`build` produces a native exe. `run` executes an existing Application without automatically rebuilding after source changes.
+- [Solution](Kimi/SolutionAndProject/Solution.cs) shares input resolution across build/run/emit: try the specified path, then `.kimiproj` if no extension was given, then `.kimi`. Failure of a selected target does not fall back to another candidate. A single `.kimi` becomes an implicit Application/O2 project containing only that file, with its target selected from the OS/OS architecture (currently Windows x64; `--Target` can override it). It includes no neighboring sources/project settings and creates no `.kimiproj`. run validates and executes existing artifacts without reading source contents. The CLI command is consistently `emit`; unknown commands, including legacy `emit-llvm`, exit with 1.
+- [EmissionArtifacts](Kimi/Compiler/Emission/EmissionArtifacts.cs) / [NativeToolchain](Kimi/Compiler/Emission/NativeToolchain.cs) handle schema 3, IR/exe/supply hashes, ABI and LLVM identity, invalidation of previous success on failure, and publication from staging. They collect tool output and support cancellation, time limits, and child-process-tree termination. Application output/exit status is forwarded.
+- [ToolchainResolver](Kimi/Compiler/Emission/ToolchainResolver.cs) selects the root from CLI ToolchainRoot, environment variable KIMI_TOOLCHAIN_ROOT, then the default location. The default is beside the executable; source builds search the checkout's toolchain directory. LlvmBin and explicit backend-path overrides are handled separately. emit alone needs no LLVM installation. Ordinary .NET builds do not regenerate the backend.
+- [WindowsProfile](Kimi/Compiler/Emission/WindowsProfile.cs) and [profile.json](backend/windows-x64/profile.json) define LLVM 22.1.8, backend ABI 2, and __chkstk/memcmp/memcpy/memmove/memset. Versions are shared with Directory.Build.props; actual archive hashes are checked too. Integrity checks remain mandatory even for explicit unpinned-toolchain trials.
+- [WindowsRuntime.ll.in](Kimi/Compiler/Emission/WindowsRuntime.ll.in) implements startup, UTF-8 output, allocation/freeing, string destruction, and Abort. Normal exit is 0; Abort is 1. LF is written separately and NUL is treated as data. Static backing is not freed; Heap responsibilities are released. General object/Weak/metadata runtime support remains incomplete.
+- [Kernel32Imports](Kimi/Compiler/Emission/Kernel32Imports.cs) generates and validates an import library from project-owned definitions using llvm-dlltool. It supplies seven Windows APIs for the runtime and three for native tests, removing the need to configure the SDK's kernel32.lib.
 
-根拠: EmissionArtifacts / NativeToolchain / ToolchainResolver / Kernel32Imports / MinimalEmission各テスト、[backend検証script](backend/windows-x64)。通常nativeの今回の実行結果は§7参照。
+Evidence: EmissionArtifacts / NativeToolchain / ToolchainResolver / Kernel32Imports / MinimalEmission tests and [backend verification scripts](backend/windows-x64). See §7 for recorded ordinary native execution results.
 
-## 6. 未接続の製品機能・性能基盤
+## 6. Unconnected Product Features and Performance Infrastructure
 
-| 分野 | コードで確認できる状態 |
+| Area | State verified in code |
 | --- | --- |
-| module・Mod | [Compilation](Kimi/Compiler/Core/Compilation.cs) は設定の外部Kotonoha識別子を保持するが、source読込への接続はない。BindにMod実行はなく、外部module/Libraryは生成側で拒否。portable交換・意味計画の永続再利用は未完成。Composition RootのEntry／Provider接続は設計未確定 |
-| generic・object・Core | generic共有/特殊化生成、Closure/間接call、struct/enum/Property/user constructor/static実行、rc/arc/Weak・runtime refinement、Array/Slice/Dictionary・反復、言語test runnerは未完成。前段の宣言・解析は§2–3参照 |
-| LSP | [LspServer](Kimi/Lsp/LspServer.cs) にinitialize・document管理・shutdown等の通信処理がある。open/changeの診断送信はコメント化、closeの空診断だけ接続。dumpの要求/出力も未接続 |
-| KimiCode | [extension.js](KimiCode/extension.js) は隣接Debug DLLとDebugWait=trueを固定使用。一般利用のserver設定とhost統合テストは未整備 |
-| CI・配布 | [test.yml](.github/workflows/test.yml) / [publish.yml](.github/workflows/publish.yml) はLinux Release build後に構成/対象未指定のtest。PR・Windows native・0件検知・ログ保存が未整備。NuGet pack/pushの定義はあるが今回未実行 |
-| 性能 | Binding/型/CFG/ABI/定数/layoutの表・scratch・容量を再利用。対応テストにwarm allocation 0 byteと再parse後の保持参照検査、[Benchmark](Benchmark) に字句/Binding/所有権等のworkloadがある。全経路の無割り当てやthroughput改善は保証しない |
+| Modules and Mod | [Compilation](Kimi/Compiler/Core/Compilation.cs) retains configured external Kotonoha identifiers but does not connect them to source loading. Bind does not execute Mod; generation rejects external modules/Libraries. Portable interchange and persistent semantic-plan reuse remain incomplete. Composition Root Entry/Provider integration remains unsettled |
+| Generics, objects, and Core | Generic shared/specialized generation; Closures/indirect calls; struct/enum/Property/user constructor/static execution; rc/arc/Weak and runtime refinement; Array/Slice/Dictionary and iteration; and the language test runner remain incomplete. See §2–3 for declaration/analysis coverage |
+| LSP | [LspServer](Kimi/Lsp/LspServer.cs) handles initialize, document management, shutdown, and related communication. Diagnostic publication for open/change is commented out; only empty diagnostics on close are connected. Dump requests/output are also unconnected |
+| KimiCode | [extension.js](KimiCode/extension.js) hard-codes the adjacent Debug DLL and DebugWait=true. General-purpose server configuration and host integration tests are not established |
+| CI and distribution | [test.yml](.github/workflows/test.yml) / [publish.yml](.github/workflows/publish.yml) run a Linux Release build followed by tests without a specified configuration/target. PR coverage, Windows native checks, zero-test detection, and log retention are not established. NuGet pack/push is defined but was not run in this work |
+| Performance | Reuses tables, scratch storage, and capacity for Binding, types, CFG, ABI, constants, and layouts. Related tests check 0-byte warm allocations and retained references after reparse; [Benchmark](Benchmark) provides lexing, Binding, ownership, and other workloads. This does not guarantee allocation-free execution on every path or improved throughput |
 
-## 7. 今回の確認
+## 7. Verification Records
 
-### 7.1. Non-Copy要素置換と要素操作の確認（2026-09-15）
+### 7.1. Non-Copy Element Replacement and Element Operations (2026-09-15)
 
-§4.7のNon-Copy要素置換と、§4.3–4.6の読み取り/単純代入/数値更新/静的経路の回帰を検証した。Copy制限を外すだけでなく、旧要素の破棄・責任移転・単純代入の排他的Loanを実装し、string/集成型の既存処理へ接続した。Non-Copy要素代入を一律拒否する旧テストは、部分Moveを必要とする自己代入の未対応テストへ置換した。
+Verified §4.7's Non-Copy element replacement and regressions for §4.3–4.6 reads, simple assignments, numeric updates, and static paths. Beyond removing the Copy restriction, implemented old-element destruction, responsibility transfer, and exclusive Loans for simple assignment, connecting them to existing string/aggregate handling. Replaced the old blanket rejection of Non-Copy element assignment with a rejection case for then-unsupported self-assignment requiring a partial Move.
 
-| 検証 | 結果 |
+| Check | Result |
 | --- | --- |
-| Solution build（Debug / Release） | 各成功、警告0・エラー0 |
-| managed test（Debug / Release） | 各4,614成功、失敗0・skip0。ElementReplacementEmissionTestを55件追加 |
-| Non-Copy要素置換＋既存要素操作のLLVM verifier・通常native O0/O2 | 246 fixture、492実行成功。Non-Copy置換60 fixture・120実行、既存要素操作186 fixture・372実行。破棄監査・境界/演算Abort・タイムアウト付き非停止を含む |
-| 共通破棄/転送処理の集成型native回帰 | Aggregate系157 fixture、314実行成功。構築・結果配送・関数ABI・破棄監査をO0/O2で確認。Element系と合わせて403 fixture・806実行 |
-| warm allocation | 関数/選択結果・入れ子要素置換・deferを含むBind、およびOwnership＋IR生成を各128回測定し0 B |
-| ElementReplacementsのCLI build/run | Release/O2成功。`element replacements complete`を出力してexit 0 |
-| NativeAOT・新規throughput benchmark | 未実行 |
+| Solution build (Debug / Release) | Both passed with 0 warnings and 0 errors |
+| Managed tests (Debug / Release) | 4,614 passed in each; 0 failures/skips. Added 55 ElementReplacementEmissionTest cases |
+| LLVM verifier and ordinary native O0/O2 for Non-Copy replacement and existing element operations | 246 fixtures, 492 successful runs: 60 replacement fixtures/120 runs and 186 existing element-operation fixtures/372 runs. Includes destruction audits, bounds/arithmetic Abort, and nontermination with timeouts |
+| Aggregate native regressions for shared destruction/transfer handling | 157 Aggregate fixtures, 314 successful runs. O0/O2 checks cover construction, result delivery, function ABI, and destruction audits. Combined with Element fixtures: 403 fixtures/806 runs |
+| Warm allocation | Bind and Ownership plus IR generation with function/selection results, nested element replacement, and defer each measured 0 B over 128 iterations |
+| ElementReplacements CLI build/run | Release/O2 passed; printed `element replacements complete` and exited with 0 |
+| NativeAOT and new throughput benchmarks | Not run |
 
-再現は下記§7.2の構成ごとのbuild→testに加え、生成済みfixtureへ `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'` と `-FixturePattern 'Aggregate*.ll'` を直列に適用する。fixture生成とnative実行も直列に行う。最終build/test後に再生成したElement系IRは、native検証対象と全件SHA-256一致を確認した。CLI例は [ElementReplacements](examples/ElementReplacements/README.md) を参照。
+To reproduce, run each configuration's build→test sequence in §7.2, then apply `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'` and `-FixturePattern 'Aggregate*.ll'` serially to generated fixtures. Fixture generation and native execution must also run serially. Every Element IR file regenerated after the final build/test matched the native verification inputs by SHA-256. See [ElementReplacements](examples/ElementReplacements/README.md) for the CLI example.
 
-追加テストで見つかったmatch転送時のスロット追跡と、要素アドレスを破棄関数へ渡すLLVM出力を修正した。成功結果は修正後の再検証であり、managed成功だけをnative実行や破棄責任の証拠にしていない。拒否テストのうち3件はBinding完了とLoan競合の診断理由も照合する形へ強め、Debug/Releaseで再確認した。
+Additional tests exposed and led to fixes for slot tracking during match transfers and LLVM output passing element addresses to destruction functions. Successful results are from verification after those fixes; managed success alone is not used as evidence of native execution or destruction responsibilities. Three rejection tests were strengthened to check completed Binding and the Loan-conflict diagnostic reason, then rerun in Debug/Release.
 
-直前の§4.6実装時はmanaged各4,559件、Element系186 fixture/372実行、ElementPaths例のRelease/O2実行が成功した。
+The preceding §4.6 increment passed 4,559 managed tests per configuration, 186 Element fixtures/372 native runs, and the ElementPaths Release/O2 example.
 
-直前の§4.5排他的Loan修正時はmanaged各4,468件、Element系163 fixture/326実行が成功。自己読み取りを成功扱いした旧fixtureは除外し、事前Copyの正常例とコンパイル拒否へ置き換えた。ElementUpdates例もRelease/O2で期待出力・exit 0を確認した。
+The preceding §4.5 exclusive-Loan correction passed 4,468 managed tests per configuration and 163 Element fixtures/326 runs. Old fixtures treating self-reads as successful were replaced with valid prior-Copy examples and compile-time rejections. The ElementUpdates Release/O2 example also produced expected output and exit 0.
 
-§4.5の初回実装時はmanaged各4,451件、Element系160 fixture/320実行、通常local更新（IntegerValues/WideOperations/FloatArithmetic）14 fixture/28実行が成功した。ただし、この時点の自己読み取り許可は上記のLoan修正前であり、仕様適合の根拠にはしない。
+The initial §4.5 increment passed 4,451 managed tests per configuration, 160 Element fixtures/320 runs, and 14 ordinary local-update fixtures (IntegerValues/WideOperations/FloatArithmetic)/28 runs. Its self-read allowance preceded the Loan correction above and is not evidence of specification conformance.
 
-直前の§4.4実装時はmanaged各4,354件、Element系95 fixture/190実行、AggregateFunction系59 fixture/118実行が成功。ElementAssignments例もRelease/O2で期待出力・exit 0を確認した。
+The preceding §4.4 increment passed 4,354 managed tests per configuration, 95 Element fixtures/190 runs, and 59 AggregateFunction fixtures/118 runs. The ElementAssignments Release/O2 example also produced expected output and exit 0.
 
-### 7.2. 直前の実装時の確認（2026-09-14）
+### 7.2. Verification of the Preceding Increments (2026-09-14)
 
-基礎調査では主要入口・型/変換/ABI/aggregate・所有権の拒否条件、Core catalog、LSP/拡張/CIを現コード・対応テストと照合した。その後、§4.1の結果配送、§4.2の関数ABI、§4.3のCopy要素読み取りを実装し、以下のbuild・managed検証を再実行した。
+The baseline review checked main entry points, type/conversion/ABI/aggregate and ownership rejection conditions, the Core catalog, and LSP/extension/CI against current code and related tests. After implementing §4.1 result delivery, §4.2 function ABI, and §4.3 Copy element reads, the following builds and managed checks were rerun.
 
-| 検証 | 2026-09-14の結果 |
+| Check | Result on 2026-09-14 |
 | --- | --- |
-| Solution build（Debug / Release） | 各成功、警告0・エラー0 |
-| managed test（Debug / Release） | 各4,275成功、失敗0・skip0。fixture生成を含む |
-| 集成型選択結果のLLVM verifier・通常native O0/O2（§4.1実装時） | 52 fixture、104実行成功。破棄回数/順序、依存symbol、タイムアウト付き非停止を含む |
-| 既存string結果のnative回帰（§4.1実装時） | 47 fixture、94回のO0/O2実行成功。集成型結果と合わせて99 fixture・198実行 |
-| 集成型関数ABIのLLVM verifier・通常native O0/O2（§4.2実装時） | 59 fixture、118実行成功。破棄順・回数、Abort、タイムアウト付き非停止、依存symbolを検証 |
-| 既存string関数のnative回帰（§4.2実装時） | 63 fixture、126実行成功。集成型関数と合わせて122 fixture・244実行 |
-| Copy要素読み取りのLLVM verifier・通常native O0/O2（§4.3） | 41 fixture、82実行成功。境界Abort・空配列/ゼロサイズ・添字の評価順・一時receiverの破棄順/回数・依存symbolを検証 |
-| 集成型関数ABIのnative回帰（§4.3実装後） | 59 fixture、118実行成功。要素読み取りと合わせて100 fixture・200実行 |
-| ElementReadsのCLI build/run | Release/O2成功。`element reads complete`を出力してexit 0 |
-| AggregateFunctionsのCLI build/run | Release/O2成功。`leaving echo`を2回、`aggregate functions complete`を出力してexit 0 |
-| AggregateResultsのCLI build/run | Release/O2で成功。`cleanup`、`aggregate results complete`の順に出力しexit 0 |
-| runtime/backend単独・LSP統合script | 今回未実行 |
-| NativeAOT・VS Code host・CI実workflow・配布・新規benchmark測定 | 今回未実行 |
+| Solution build (Debug / Release) | Both passed with 0 warnings and 0 errors |
+| Managed tests (Debug / Release) | 4,275 passed in each; 0 failures/skips. Includes fixture generation |
+| LLVM verifier and ordinary native O0/O2 for aggregate selection results (at §4.1 implementation) | 52 fixtures, 104 successful runs. Includes destruction counts/order, dependency symbols, and nontermination with timeouts |
+| Native regression for existing string results (at §4.1 implementation) | 47 fixtures, 94 successful O0/O2 runs. Combined with aggregate results: 99 fixtures/198 runs |
+| LLVM verifier and ordinary native O0/O2 for aggregate function ABI (at §4.2 implementation) | 59 fixtures, 118 successful runs. Checks destruction order/counts, Abort, nontermination with timeouts, and dependency symbols |
+| Native regression for existing string functions (at §4.2 implementation) | 63 fixtures, 126 successful runs. Combined with aggregate functions: 122 fixtures/244 runs |
+| LLVM verifier and ordinary native O0/O2 for Copy element reads (§4.3) | 41 fixtures, 82 successful runs. Checks bounds Abort, empty arrays/zero-sized values, index evaluation order, temporary-receiver destruction order/counts, and dependency symbols |
+| Aggregate function ABI native regression (after §4.3 implementation) | 59 fixtures, 118 successful runs. Combined with element reads: 100 fixtures/200 runs |
+| ElementReads CLI build/run | Release/O2 passed; printed `element reads complete` and exited with 0 |
+| AggregateFunctions CLI build/run | Release/O2 passed; printed `leaving echo` twice, then `aggregate functions complete`, and exited with 0 |
+| AggregateResults CLI build/run | Release/O2 passed; printed `cleanup`, then `aggregate results complete`, and exited with 0 |
+| Standalone runtime/backend and LSP integration scripts | Not run in this work |
+| NativeAOT, VS Code host, actual CI workflows, distribution, and new benchmark measurements | Not run in this work |
 
-再現コマンド（構成ごとにbuild→testを直列実行）:
+Reproduction commands (run build→test serially for each configuration):
 
 ```powershell
 dotnet build Kimigayo.slnx -c Debug --no-restore -v:minimal
@@ -366,94 +366,94 @@ dotnet build Kimigayo.slnx -c Release --no-restore -v:minimal
 dotnet test --project xUnitTest/xUnitTest.csproj -c Release --no-build --no-restore
 ```
 
-buildの警告数は現設定下の結果。テストは対応・拒否境界を検証するもので、SPEC全体への適合証明ではない。
+Build warning counts reflect the current settings. Tests verify supported and rejected boundaries; they are not proof of conformance to the entire SPEC.
 
-### 7.3. CLI入力解決・暗黙プロジェクトの確認（2026-09-15）
+### 7.3. CLI Input Resolution and Implicit Projects (2026-09-15)
 
-build/run/emitは読み込んだprojectごとに名前・project/sourceファイル名・暗黙projectの識別・Targets・OutputKind・Optimizationを1行表示する。`--Target`指定も別項目で表示する。従来のファイル名のみのTarget Projects一覧を置き換え、直接`.exe`実行にはProjectFile表示を追加しない。
+For each loaded project, build/run/emit prints a one-line summary of its name, project/source filename, implicit-project status, Targets, OutputKind, and Optimization. An explicit `--Target` is shown separately. This replaces the old filename-only Target Projects list. Direct `.exe` execution does not gain a ProjectFile display.
 
-表示追加後のDebug compiler buildは警告0・エラー0。既存fixtureで暗黙projectのemit/build/runと明示projectのemit（`--Target`付き）を実行し、要約の表示と各exit 0を確認した。
+After adding the display, the Debug compiler build passed with 0 warnings/errors. Existing fixtures verified implicit-project emit/build/run and explicit-project emit with `--Target`; all displayed the summary and exited with 0.
 
-- Debug compiler build成功（警告0・エラー0）。SolutionInput / NativeToolchain / EmissionArtifactsの関連managedテスト52件が成功。
-- `./backend/windows-x64/test-cli.ps1 -Configuration Debug` が成功。管理対象の.NET版CLIと実LLVMで、既存O0/O2ビルド、拡張子なしproject、単一sourceのO2ビルド・emit、source変更後のrun、指定パス優先、壊れたprojectからのfallback拒否、旧コマンド名の拒否を検証。
-- 同ディレクトリの壊れた別sourceを除外すること、暗黙`.kimiproj`を生成しないこと、emit/runがnative成功記録を変更しないこと、runのstdout・exit code転送を確認。
-- NativeAOTテスト、全managedテストの再実行、性能benchmarkは実施していない。
+- Debug compiler build passed with 0 warnings/errors. All 52 related SolutionInput / NativeToolchain / EmissionArtifacts managed tests passed.
+- `./backend/windows-x64/test-cli.ps1 -Configuration Debug` passed. Using the managed .NET CLI and real LLVM, it checked existing O0/O2 builds, extensionless projects, single-source O2 builds/emit, run after source changes, specified-path precedence, rejection of fallback from a broken project, and rejection of the legacy command name.
+- Confirmed exclusion of a broken neighboring source file, no implicit `.kimiproj` creation, unchanged native success records after emit/run, and forwarding of run stdout/exit codes.
+- NativeAOT tests, a full managed-suite rerun, and performance benchmarks were not run.
 
-### 7.4. 静的部分Moveと残存部分の破棄の確認（2026-09-15）
+### 7.4. Static Partial Moves and Destruction of Remaining Parts (2026-09-15)
 
-最終仕様照合で、比較・共有引数まで要素をMoveして一時値化できる問題を発見し、直接の要素借用は未対応として拒否する形へ修正した。全6比較・共有引数の拒否、および添字評価中/排他的Loan中のMove競合の診断理由を追加検証した。
+Final specification review found that comparisons/shared arguments could incorrectly Move elements into temporaries. This was corrected by rejecting direct element borrowing as then unsupported. Added checks for rejection of all six comparisons/shared arguments and for diagnostic reasons on Move conflicts during index evaluation or exclusive Loans.
 
-§4.8を実装し、静的なNon-Copy要素取得・自己代入・兄弟間代入を未対応としていた旧テストを、対応ケースまたは二重Moveの拒否へ整合させた。従来の数値更新/単純代入の評価順序と排他的Loan規則は変更していない。
+Implemented §4.8 and aligned old rejection tests for static Non-Copy element acquisition, self-assignment, and sibling assignment with supported cases or double-Move rejection. Existing numeric-update/simple-assignment evaluation order and exclusive-Loan rules are unchanged.
 
-| 検証 | 結果 |
+| Check | Result |
 | --- | --- |
-| Solution build（Debug / Release） | 各成功、警告0・エラー0 |
-| managed test（Debug / Release） | 各4,681成功、失敗0・skip0。ElementMoveEmissionTestを70件追加、旧拒否ケース3件を新しい成功ケースへ統合 |
-| warm allocation | 分岐による部分Move・不完全な親の置換を含むBind、およびOwnership＋IR生成を各128回測定し追加割り当て0 B |
-| 疎なMove Path | 100万要素の宣言に対しrootと参照要素の2経路。初期構築前の取得はUninitializedUseとして拒否 |
-| ElementMovesのCLI build/run | Release/O2成功。`taken`、`element moves complete`の順に出力してexit 0 |
-| NativeAOT・新規throughput benchmark | 未実行 |
+| Solution build (Debug / Release) | Both passed with 0 warnings and 0 errors |
+| Managed tests (Debug / Release) | 4,681 passed in each; 0 failures/skips. Added 70 ElementMoveEmissionTest cases and merged three former rejections into new success cases |
+| Warm allocation | Bind and Ownership plus IR generation with branch-dependent partial Moves and incomplete-parent replacement each measured 0 additional B over 128 iterations |
+| Sparse Move Paths | A declaration with one million elements uses two paths: the root and the referenced element. Acquisition before initial construction is rejected as UninitializedUse |
+| ElementMoves CLI build/run | Release/O2 passed; printed `taken`, then `element moves complete`, and exited with 0 |
+| NativeAOT and new throughput benchmarks | Not run |
 
-Element系311 fixtureのLLVM verifier・通常native O0/O2、計622実行が成功した。部分Moveの65 fixture・130実行と、従来の要素操作246 fixture・492実行を含む。破棄回数/順序・境界/演算Abort・タイムアウト付き非停止も確認した。最終Debug/Release再検証後のElement系IR全311件は、native検証対象とSHA-256が一致した。検証対象のfixture生成とnative実行は直列に行う。再現は§7.2のbuild→test、続いて `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'`。破棄監査はStatic-backed stringを含む論理的責任の検証であり、Heap-string構築のsource API対応を示さない。
+All 311 Element fixtures passed the LLVM verifier and ordinary native O0/O2 execution: 622 runs, comprising 65 partial-Move fixtures/130 runs and 246 existing element-operation fixtures/492 runs. Also checked destruction counts/order, bounds/arithmetic Abort, and nontermination with timeouts. All 311 Element IR files from the final Debug/Release rerun matched the native verification inputs by SHA-256. Fixture generation and native execution run serially. Reproduce with §7.2's build→test sequence, then `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'`. Destruction audits verify logical responsibilities, including Static-backed strings; they do not establish a source API for Heap-string construction.
 
-### 7.5. 静的string要素借用の確認（2026-09-15）
+### 7.5. Static String Element Borrowing (2026-09-15)
 
-§4.9を実装し、ElementMoveEmissionTestの全6比較・共有引数の旧拒否テストを成功テストへ更新した。新規ElementBorrowEmissionTestは78件。仕様本文の意味規則は変更せず、SPEC目次と実行例の案内を整合させた。
+Implemented §4.9 and converted ElementMoveEmissionTest's former rejection tests for all six comparisons/shared arguments into success tests. Added 78 ElementBorrowEmissionTest cases. Semantic rules in the specification body are unchanged; aligned the SPEC index and executable-example references.
 
-| 検証 | 結果 |
+| Check | Result |
 | --- | --- |
-| Solution build（Debug / Release） | 各成功、警告0・エラー0 |
-| managed test（Debug / Release） | 各4,759成功、失敗0・skip0 |
-| 要素借用のLLVM verifier・通常native O0/O2 | 47 fixture・94実行成功。guard候補との混在、破棄監査、後続添字の境界Abort、タイムアウト付き非停止を含む |
-| 従来の要素操作のnative回帰 | 311 fixture・622実行成功。新規借用と合わせて358 fixture・716実行を確認 |
-| warm allocation | 部分Move・兄弟更新・deferを含むBindとOwnership＋IR生成を各128回測定し追加割り当て0 B |
-| ElementBorrowsのCLI build/run | Release/O2成功。`shared element`、`beta`、`element borrows complete`の順に出力してexit 0 |
-| NativeAOT・新規throughput benchmark | 未実行 |
+| Solution build (Debug / Release) | Both passed with 0 warnings and 0 errors |
+| Managed tests (Debug / Release) | 4,759 passed in each; 0 failures/skips |
+| LLVM verifier and ordinary native O0/O2 for element borrowing | 47 fixtures, 94 successful runs. Includes mixed guard candidates, destruction audits, bounds Abort in later indices, and nontermination with timeouts |
+| Native regression for existing element operations | 311 fixtures, 622 successful runs. Combined with new borrowing: 358 fixtures/716 runs |
+| Warm allocation | Bind and Ownership plus IR generation with partial Moves, sibling updates, and defer each measured 0 additional B over 128 iterations |
+| ElementBorrows CLI build/run | Release/O2 passed; printed `shared element`, `beta`, then `element borrows complete`, and exited with 0 |
+| NativeAOT and new throughput benchmarks | Not run |
 
-新設の途中return監査で、Tuple破棄の期待順を逆論理順へ修正した。最終レビューでは、guard候補を要素借用中に共有引数として読む場合に外側Loanからアドレスを選び得る問題を構造テストで再現し、参照自身の射影の有無で選ぶよう修正した。guard実行ケース2件と構造テストを追加し、Debug/Release全件と要素借用nativeを再検証した。
+A new early-return audit corrected expected Tuple destruction order to reverse logical order. Final review used a structural test to reproduce incorrect address selection from an outer Loan when reading a guard candidate as a shared argument during element borrowing. Selection now depends on whether the reference itself has a projection. Added two guard execution cases and a structural test, then reran the full Debug/Release suites and element-borrowing native checks.
 
-従来の要素操作311件と初期借用45件の計356 fixtureを `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'` で検証後、最終Debug/Releaseの再生成IR全356件がそのnative検証入力とSHA-256一致することを確認した。最終借用47 fixtureは `-FixturePattern 'ElementBorrow*.ll'` で再検証した。成功件数は修正後の結果であり、同じfixtureの重複実行は358件の合計に重ねて数えていない。managed fixture生成とnative検証は直列に実行した。再現は§7.2のbuild→test、続いて全Element fixtureのscriptを使う。監査はStatic-backed stringの論理的破棄責任を検証し、新たなHeap構築APIを示さない。
+After verifying 356 fixtures (311 existing element-operation and 45 initial borrowing fixtures) with `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'`, confirmed that all 356 IR files regenerated by the final Debug/Release runs matched those native inputs by SHA-256. The final 47 borrowing fixtures were reverified with `-FixturePattern 'ElementBorrow*.ll'`. Counts reflect results after fixes; repeated runs of the same fixture are not counted again in the 358-fixture total. Managed fixture generation and native verification ran serially. Reproduce with §7.2's build→test sequence, then the script for all Element fixtures. Audits verify logical destruction responsibilities for Static-backed strings; they do not establish a new Heap construction API.
 
-### 7.6. 所有parameter・一時値からの要素借用の確認（2026-09-15）
+### 7.6. Element Borrowing from Owned Parameters and Temporaries (2026-09-15)
 
-§4.10を実装した。[ElementBorrowOwnerEmissionTest](xUnitTest/Tests/ElementBorrowOwnerEmissionTest.cs)は実装時61件（§4.11でparameter部分Moveの旧拒否1件を移し、現在60件）。旧local借用のparameter/リテラル拒否2件を移し、正常な比較・共有引数、所有元の計画と初期化、条件付きcleanup、所有権の保持、破棄回数/順序、通常transfer、Abort、非停止、改変計画の拒否と再解析回復を追加した。
+Implemented §4.10. [ElementBorrowOwnerEmissionTest](xUnitTest/Tests/ElementBorrowOwnerEmissionTest.cs) initially had 61 cases (now 60 after moving one former parameter partial-Move rejection in §4.11). Moved two former parameter/literal rejections from local-borrowing tests and added successful comparisons/shared arguments, owner plans/initialization, conditional cleanup, ownership retention, destruction counts/order, normal transfers, Abort, nontermination, rejection of modified plans, and recovery by reanalysis.
 
-| 確認 | 結果 |
+| Check | Result |
 | --- | --- |
-| `dotnet build Kimigayo.slnx --no-restore` | Debug / Releaseとも警告0・エラー0 |
-| managed全件 | Debug 4,818 / Release 4,818成功、失敗・skipなし |
-| 新規owner借用のLLVM verifier・通常native O0/O2 | 57 fixture・114実行成功。条件付き生成、反復、defer複製、破棄監査、Abort、タイムアウト付き非停止を含む |
-| 全Element native回帰 | 新規57件を含む415 fixture・830実行成功 |
-| 共通構築・結果配送・関数ABIのnative回帰 | Aggregate系157 fixture・314実行成功。Element系と合わせて572 fixture・1,144実行 |
-| 低アロケーション | parameter・call/選択結果・条件付き一時値・deferを含むwarm BindとOwnership＋IR生成を各128回測定し、各0 B |
-| CLI例 | ElementBorrowOwnersのRelease/O2 build/run成功、READMEの4行とexit 0を確認 |
-| NativeAOT | 指示に従い未実行 |
+| `dotnet build Kimigayo.slnx --no-restore` | Debug / Release both passed with 0 warnings and 0 errors |
+| Full managed suite | Debug 4,818 / Release 4,818 passed; no failures/skips |
+| LLVM verifier and ordinary native O0/O2 for new owner borrowing | 57 fixtures, 114 successful runs. Includes conditional production, iteration, defer duplication, destruction audits, Abort, and nontermination with timeouts |
+| Full Element native regression | 415 fixtures, 830 successful runs, including the 57 new fixtures |
+| Native regression for shared construction, result delivery, and function ABI | 157 Aggregate fixtures, 314 successful runs. Combined with Element fixtures: 572 fixtures/1,144 runs |
+| Low allocation | Warm Bind and Ownership plus IR generation with parameters, call/selection results, conditional temporaries, and defer each measured 0 B over 128 iterations |
+| CLI example | ElementBorrowOwners Release/O2 build/run passed, with the README's four output lines and exit 0 |
+| NativeAOT | Not run, as instructed |
 
-実装時に、条件付きTuple構築のCompleteConstructionでlive flagを有効化する処理の不足と、選択結果のDeclareを通らない短絡経路を含むcleanupの拒否を確認して修正した。flagの欠落・誤値・重複、結果cleanup中の位置形成/破棄の拒否も検査する。Abortの監査では期待位置を実際のsource列へ修正した。成功件数は修正後の結果であり、同一fixtureの再実行を合計へ重ねて数えない。
+During implementation, fixed missing live-flag activation at CompleteConstruction for conditional Tuple construction, and erroneous rejection of cleanup covering short-circuit paths that bypass a selection result's Declare. Tests also check missing/incorrect/duplicate flags and rejection of location formation/destruction during result cleanup. The Abort audit's expected position was corrected to the actual source column. Counts reflect results after fixes; repeated executions of the same fixture are not added to the total.
 
-再現は§7.2の構成ごとのbuild→test後に `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'`、続いて同scriptの `-FixturePattern 'Aggregate*.ll'`。managed fixture生成とnative検証は直列に実行した。最終Debug/Release再生成後のIR・期待stdout/stderr・exit・timeoutの計2,860 fileは保存したnative検証入力のSHA-256と一致する。追加配列は容量を再利用し、throughput改善率は未測定。監査はStatic-backed stringの論理的責任を対象とする。
+Reproduce with §7.2's build→test sequence for each configuration, then `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'`, followed by the same script with `-FixturePattern 'Aggregate*.ll'`. Managed fixture generation and native verification ran serially. All 2,860 files regenerated by the final Debug/Release runs—IR, expected stdout/stderr, exit, and timeout—matched the saved native verification inputs by SHA-256. Added arrays reuse capacity; throughput improvement has not been measured. Audits cover logical responsibilities for Static-backed strings.
 
-### 7.7. 所有parameterの部分Moveの確認（2026-09-15）
+### 7.7. Partial Moves from Owned Parameters (2026-09-15)
 
-§4.11を実装した。[ElementParameterMoveEmissionTest](xUnitTest/Tests/ElementParameterMoveEmissionTest.cs)は54件。旧ElementMove/ElementBorrowOwnerのparameter部分Move拒否を各1件移した。既存のparameter受領時の意味状態初期化を再利用し、生成コード側のpath flag初期化を補った。
+Implemented §4.11. [ElementParameterMoveEmissionTest](xUnitTest/Tests/ElementParameterMoveEmissionTest.cs) has 54 cases, including one former parameter partial-Move rejection moved from each of ElementMove and ElementBorrowOwner. Reused semantic-state initialization on parameter receipt and added the missing generated-code path-flag initialization.
 
-| 確認 | 結果 |
+| Check | Result |
 | --- | --- |
-| solution build | Debug / Releaseとも警告0・エラー0 |
-| managed全件 | Debug 4,870 / Release 4,870成功、失敗・skipなし |
-| 新規parameter部分Move | 51 fixture・102回のO0/O2実行成功 |
-| 部分Move関連native回帰 | `Element*Move*.ll` 122 fixture・244実行成功。新規51件を含む |
-| 集成型関数ABIのnative回帰 | `AggregateFunction*.ll` 59 fixture・118実行成功。部分Move関連と合計181 fixture・362実行 |
-| 低アロケーション | 条件付き入れ子Move・deferの残存要素借用を含むwarm BindとOwnership＋IR生成を各128回測定し、各0 B |
-| CLI例 | ElementParameterMovesのRelease/O2 build/run成功、READMEの3行とexit 0を確認 |
-| NativeAOT | 指示に従い未実行 |
+| Solution build | Debug / Release both passed with 0 warnings and 0 errors |
+| Full managed suite | Debug 4,870 / Release 4,870 passed; no failures/skips |
+| New parameter partial Moves | 51 fixtures, 102 successful O0/O2 runs |
+| Native regression for partial Moves | `Element*Move*.ll`: 122 fixtures, 244 successful runs, including the 51 new fixtures |
+| Aggregate function ABI native regression | `AggregateFunction*.ll`: 59 fixtures, 118 successful runs. Combined with partial-Move checks: 181 fixtures/362 runs |
+| Low allocation | Warm Bind and Ownership plus IR generation with conditional nested Moves and borrowing of remaining elements in defer each measured 0 B over 128 iterations |
+| CLI example | ElementParameterMoves Release/O2 build/run passed, with the README's three output lines and exit 0 |
+| NativeAOT | Not run, as instructed |
 
-破棄の逆論理順・残存責任、条件付きMoveと全体Moveの合流、入れ子集成型/配列、ゼロサイズの意味状態、借用との競合、loop/defer/未到達/covered arm、途中transfer、Abort・非停止を検証した。parameterの不変性、初期化flagの欠落・誤値・重複、改変した受領/Move計画の拒否と再解析回復も確認した。構造テストでparameterの実引数アドレスを使い、親全体の追加転送とparameter用localスロットを生成しないことを確認した。
+Verified reverse logical destruction order, remaining responsibilities, joins between conditional and whole Moves, nested aggregates/arrays, zero-sized semantic state, borrowing conflicts, loops/defer/unreachable code/covered arms, transfers during evaluation, Abort, and nontermination. Also checked parameter immutability; missing/incorrect/duplicate initialization flags; rejection of modified receipt/Move plans; and recovery by reanalysis. Structural tests confirm use of the parameter's actual argument address, with no additional whole-parent transfer or parameter-local slot.
 
-再現は§7.2の構成ごとのbuild→test後に `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*Move*.ll'`、続いて同scriptの `-FixturePattern 'AggregateFunction*.ll'`。最終Release testが生成したfixtureを使用し、同じfixtureの生成とnative実行は直列に行った。初期の部分実行は合計へ重ねて数えない。監査はStatic-backed stringの論理的責任を対象とし、throughput改善率は未測定。
+Reproduce with §7.2's build→test sequence for each configuration, then `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*Move*.ll'`, followed by the same script with `-FixturePattern 'AggregateFunction*.ll'`. Used fixtures generated by the final Release test; generation and native execution of the same fixtures ran serially. Initial partial runs are not counted again in the total. Audits cover logical responsibilities for Static-backed strings; throughput improvement has not been measured.
 
-## 8. autoframe実行基盤
+## 8. autoframe Execution Infrastructure
 
-Windows向け自動実行基盤の現行資料は [autoframe仕様](autoframe/SPEC.md)、[利用案内](autoframe/README.md)、[検証記録](autoframe/VERIFICATION.md)を参照する。旧autoframe.md／autoimplの配置と初期版の段階数・検証範囲は過去の記録であり、現行の対応はこれらの文書で管理する。今回の文書整合作業では基盤の実行・再検証は行っていない。
+For the current Windows automation infrastructure, see the [autoframe specification](autoframe/SPEC.md), [usage guide](autoframe/README.md), and [verification record](autoframe/VERIFICATION.md). The old autoframe.md/autoimpl locations and early stage counts/verification coverage are historical; those documents now track current support. This documentation-alignment work did not run or reverify the infrastructure.
 
-追加精査で、部分受理、回復対象の欠落、証拠の破損・失効、監査と停滞の判定、停止確認、指示ファイルの保護・署名を修正。疑似試験は追加17件を含む計56件を確認した。実CLIは今回再試験していない。
+Further review corrected partial acceptance, missing recovery targets, corrupted/expired evidence, audit/stall detection, stop confirmation, and instruction-file protection/signing. Verified 56 simulated tests in total, including 17 added tests. The actual CLI was not retested in this work.
