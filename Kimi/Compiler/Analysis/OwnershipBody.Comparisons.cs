@@ -18,11 +18,21 @@ public sealed partial class OwnershipBody
     {
         var operation = this.Operations[id];
         var loan = this.ComparisonLoans[loanId];
-        if (loan.Mode == LoanRequirement.Uniq && (uint)loan.Projection < (uint)this.Projections.Count &&
-            this.Projections[loan.Projection] is var plan && plan.Exclusive == loanId && plan.Write == id &&
-            operation.Kind == OwnershipOperationKind.WriteElement && operation.Place == plan.Root)
+        if (operation.Projection >= 0 && operation.Kind is OwnershipOperationKind.Produce or OwnershipOperationKind.WriteElement)
         {
-            return false; // Write through this exclusive access, not a conflicting alias.
+            var access = this.Projections[operation.Projection];
+            if (access.Root != loan.Place)
+            {
+                return false;
+            }
+
+            if (loan.Mode == LoanRequirement.Uniq)
+            {
+                return access.Exclusive != loanId && this.ElementPathsOverlap(operation.Projection, loan.Projection);
+            }
+
+            // Receiver stability forbids any write to its root during index evaluation.
+            return operation.Kind == OwnershipOperationKind.WriteElement;
         }
 
         return ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, loan.Place, loan.Mode, operation.LoanMode);
@@ -33,7 +43,9 @@ public sealed partial class OwnershipBody
         var loan = this.ComparisonLoans[loanId];
         for (var head = loan.Parent; head >= 0; head = this.ComparisonLoans[head].Parent)
         {
-            if (this.ComparisonLoans[head].Place == loan.Place)
+            var existing = this.ComparisonLoans[head];
+            if (existing.Place == loan.Place &&
+                (existing.Mode != LoanRequirement.Uniq || this.ElementPathsOverlap(loan.Projection, existing.Projection)))
             {
                 return true;
             }
@@ -62,6 +74,11 @@ public sealed partial class OwnershipBody
 
     internal bool ValidateComparisonLoans()
     {
+        if (!this.ValidateElementPaths())
+        {
+            return false;
+        }
+
         if (this.ComparisonLoans.Count == 0)
         {
             return this.LoanInputs.Count == 0 && this.LoanStates.Count == 0;
@@ -86,7 +103,7 @@ public sealed partial class OwnershipBody
             }
 
             if ((uint)loan.Read >= (uint)this.Operations.Count || (uint)loan.Place >= (uint)this.Places.Count || loan.Parent < -1 || loan.Parent >= i || loan.Depth <= 0 || loan.Guard < -1 ||
-                this.Operations[loan.Read].Kind != (loan.Call is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Borrow) ||
+                this.Operations[loan.Read].Kind != (loan.Access ? OwnershipOperationKind.LocateReceiver : loan.Call is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Borrow) ||
                 loan.Mode != LoanRequirement.Ref || loan.Projection != -1 || this.Operations[loan.Read].Place != loan.Place ||
                 (loan.Guard < 0 && this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) &&
                     ((!loan.Access && loan.Call is null) || this.Places[loan.Place].Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result))) ||

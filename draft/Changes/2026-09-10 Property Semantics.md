@@ -4,6 +4,8 @@
 
 最終仕様: [プロパティ仕様](../Design/2026-09-10%20Properties.md)
 
+2026-09-15 同期確認: 以下の Current Specification／変更前は2026-09-10の改訂前の記録であり、現行規則ではない。採用した規則は [SPEC 第11章](../../spec/11-properties.md) に反映済み。後続のreceiver省略規則も同章に従い、実装の進捗は STATUS を参照する。
+
 ## Current Specification — 現在の仕様
 
 SPEC.md 第11章は、storage を持つ Field と、操作を提供する computed Property を分けている。

@@ -1,6 +1,6 @@
 # 値の借用・Closure・関数値・metadata
 
-2026-09-13 改訂。本書の対象では本書を優先し、変更しない規則は [SPEC](../../SPEC.md) に従う。実装状況は [STATUS](../../STATUS.md)、採否と SPEC への同期先は [決定記録](../Decisions/2026-09-13%20Value%20Borrows%20Closures%20and%20Metadata%20Review.md) を参照する。例は仕様の説明であり、実装済みであることを示さない。
+2026-09-13 改訂、2026-09-15 同期確認。値の借用、Closure、共通関数値、metadata、共有生成・LLVM属性の規則は [SPEC §21.2–5](../../spec/21-layout-runtime-and-code-generation.md#212-runtime-representations-and-metadata) と関連節へ反映済み。現行の規範は SPEC 本文、実装状況は [STATUS](../../STATUS.md) に従う。採否は [決定記録](../Decisions/2026-09-13%20Value%20Borrows%20Closures%20and%20Metadata%20Review.md) を参照する。例は実装済みであることを示さない。
 
 ## 1. 全体像と共通規則
 
@@ -304,7 +304,7 @@ schema は生成側と使用側で共有し、instance の count・部分初期�
 
 ### 5.3 ObjectDescriptor
 
-object の handle・header・payload 配置は [object runtime 設計 §3.1](2026-09-13%20Weak%20References%20and%20Object%20Runtime.md#31-配置) を正本とする。そこでは全 mode の header が16 bytes、payload が header+16、allocation の alignment が16に統一されている。現行 SPEC との差分は同設計書 §6 に従う。
+object の handle・header・payload 配置は [SPEC §21.2.3](../../spec/21-layout-runtime-and-code-generation.md#2123-windows-x64-object-and-weak-profile) に従う。全 mode の header が16 bytes、payload が header+16、allocation の alignment が16に統一されている。[object runtime 設計 §3.1](2026-09-13%20Weak%20References%20and%20Object%20Runtime.md#31-配置) は設計の説明、同書 §6 は統合先を示す。
 
 descriptor は24 bytes、alignment 8 の不変 record。同じ動的完全型・配置では全 mode で共有する。
 

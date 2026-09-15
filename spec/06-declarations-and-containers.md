@@ -289,10 +289,27 @@ A local Type must be fixed at declaration, even without an initializer. An expli
 
 **Attribute syntax.** `#Name` accepts an optional parenthesized, comma-separated Argument list with a trailing comma. Name must begin with an uppercase Unicode letter; lowercase if/switch/case select directives, and other lowercase forms are errors. Attributes attach in source order to the next same-indentation declaration, on its line or preceding effective lines. Comments/blank lines may intervene; unrelated items and dedents may not. Dangling Attributes are errors.
 
-Attributes are accepted on ordinary Container, function, Field, and computed declarations, and on function parameters before the parameter Name. Explicit specializations and Contract requirements retain their prohibition on Attributes; expression statements, patterns, arguments, and accessor lists do not accept Attribute prefixes. Excluded syntax follows §19.5: argument and declaration-placement grammar is checked only where ordinary parsing is required, and excluded Attributes undergo no semantic resolution. The recognized Attributes are `#Layout` for struct storage (§21.1.2) and `#LibraryImport` for [foreign functions](22-core-execution-and-foreign-functions.md#223-foreign-function-imports). Their concrete argument and target rules are checked after selection; no ordinary Name lookup supplies their literal arguments.
+Attributes are accepted on ordinary Container, function, Field, and computed declarations, and on function parameters before the parameter Name. Explicit specializations and Contract requirements retain their prohibition on Attributes; expression statements, patterns, arguments, and accessor lists do not accept Attribute prefixes. Excluded syntax follows §19.5: argument and declaration-placement grammar is checked only where ordinary parsing is required, and excluded Attributes undergo no semantic resolution. The recognized Attributes are `#Layout` for struct storage (§21.1.2), `#LibraryImport` for [foreign functions](22-core-execution-and-foreign-functions.md#223-foreign-function-imports), and `#Test` for [test definitions](#651-test-definitions). Their concrete argument and target rules are checked after selection; no ordinary Name lookup supplies their literal arguments.
 
 **Mod markers.** A [Mod](20-compilation-configuration.md#207-mods-source-generation) may use Attributes to find targets. A marker does not request execution or consume an Attribute: several Mods may inspect the same Attribute, and a later Mod may emit markers for an already completed Mod without restarting it or causing an error merely for that reason.
 
 Expose marker names, argument syntax, and target Koto before the target Type is fully bound. Queries use environment-selected syntax, excluding discarded declarations. Syntax-name matching does not establish semantic identity between unrelated same-spelled Attributes. A Mod's registration or accompanying contract must identify its markers and argument rules. Semantic argument queries obey the [Binding access period](20-compilation-configuration.md#2072-compilation-and-binding); syntax remains readable afterward. Neither discovery nor argument inspection requires executing the target program or an Attribute constructor.
 
-Marker discovery and validation are distinct. Diagnose a selected Attribute that remains unrecognized by final validation; finding its syntax does not make every unknown Attribute valid. Concrete marker registration/recognition APIs and general Attribute semantics beyond these rules, Layout, and LibraryImport remain design boundaries.
+Marker discovery and validation are distinct. Diagnose a selected Attribute that remains unrecognized by final validation; finding its syntax does not make every unknown Attribute valid. Concrete marker registration/recognition APIs and general Attribute semantics beyond these rules, Layout, LibraryImport, and Test remain design boundaries.
+
+### 6.5.1. Test definitions
+
+`#Test` takes no arguments and marks a test definition. The initial revision assigns one case to each definition. It requires a safe ordinary named function with a body, no parameters or receiver (including defaulted parameters), and Unit return Type, written `-> ()` or omitted. Neither the function nor an ancestor Container may have unresolved generic or Origin parameters. Permit source-level functions and receiver-free functions in nongeneric group, rootgroup, struct, or enum Containers. Do not synthesize an instance for a struct test. Foreign imports, explicit specializations, local functions inside another function, and functions requiring captures are ineligible. Duplicate Test Attributes and invalid targets/signatures are errors, never silently skipped registration.
+
+```kimi
+group Arithmetic
+    func add(left: i32, right: i32) -> i32 => left + right
+
+    #Test
+    func addition()
+        $expect(add(1, 2) == 3)
+```
+
+In ordinary builds, check selected Attribute/declaration syntax and target conditions decidable from syntax, but do not resolve test function names, check their bodies, generate their code, or require test-only dependencies. Test builds perform full target and body verification. Preserve §19.5's exclusions. Source-level tests retain SourceDocument-local lookup. Product/test membership follows [§18.8](18-modules-and-dependencies.md#188-product-and-test-inputs).
+
+User code may neither call a Test function nor acquire it as a function value. Put shared work in ordinary helpers. Only generated test startup may invoke nonpublic tests; this privilege does not widen a test body's access rights. Discovery and execution follow [§20.9](20-compilation-configuration.md#209-test-command-and-discovery) and [§22.6](22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting).

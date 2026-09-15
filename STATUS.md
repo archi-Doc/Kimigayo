@@ -1,8 +1,10 @@
 # Kimigayo Implementation Status
 
-更新: 2026-09-15。基礎調査対象: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42`。集成型の選択結果・関数ABI・Copy要素読み取りに続き、Copy要素への単純代入と評価順序の修正を§4.4・§7に反映。
+更新: 2026-09-15。基礎調査対象: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42`。Copy要素への代入・数値更新と排他的Loanに続き、静的要素経路の非重複判定を§4.6・§7に反映。
 
 文書構成（2026-09-14）: [SPEC.md](SPEC.md) を総合目次とし、本文22章と付録A・B・D・E・Fを `spec/` に分割した。付録Cは目次内の実装状況案内に集約。設計・決定・変更記録の `doc/` は `draft/` に改名した。章番号・仕様本文・既存の優先規則を維持し、コンパイラーの実装範囲は変更していない。
+
+設計文書の整合（2026-09-15）: テストの宣言・検証操作・discovery/CLI・実行/回収/診断を [§6.5.1](spec/06-declarations-and-containers.md#651-test-definitions)、[§17.5](spec/17-failure-handling.md#175-test-verification-operations)、[§20.9](spec/20-compilation-configuration.md#209-test-command-and-discovery)、[§22.6](spec/22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting)へ統合し、既存の入力・生成規則と付録A・D・E・Fを整合させた。具体的な形式・既定値・追加機能は付録D.4に残る。取り下げられた Composition Root 案と削除済み決定文書への採用・優先参照を解除し、Entry／Provider 選択は未確定とした。設計書の古い未反映注記、if/matchの先行案、block→do、object header・metadata、付録Fの公開API名も現行SPECに同期した。この作業は文書のみであり、テスト言語機能・runner・Composition機能の実装対応を追加しない。リンク・見出し・コードフェンス・差分形式を点検し、compiler/native/NativeAOTテストと性能測定は実行していない。
 
 依存・成果物仕様の統合（2026-09-15）: 指定された draft を優先し、[第18章](spec/18-modules-and-dependencies.md)へ設定・解決・lock・入力記録・ソースパッケージ・pack/publish・意味検証の再利用・テスト所属を統合した。[第20章](spec/20-compilation-configuration.md)の native 要求/供給・member閉包・directive・CLI、[第21章](spec/21-layout-runtime-and-code-generation.md#2137-product-and-test-generation)の共通生成と製品/テスト予算、関連付録・目次も整合させた。英語の規則と例を整理し、旧「形式・設定は未定義」の記述やdraftへの本文委譲を置換した。全28仕様ファイルの681件のローカル参照とコードブロック・差分形式を確認した。文書のみの変更で、外部依存解決・pack/publish・永続意味キャッシュの実装完了を示さない。draftとcompilerは変更せず、compiler/native/NativeAOTテスト・性能測定は行っていない。
 
@@ -73,7 +75,7 @@ receiver省略記法（2026-09-15）: instance関数・Contract関数requirement
 - 破棄は論理的な逆順。途中構築や引数取得が通常transferで中断した場合、取得済み責任を処理する。非終了cleanup後の結果/後続破棄を作らない。
 - 明示transfer後のsource検査は実行CFGと別の継続で行う。Never Subject/非終了guardも対象。一般Never呼出・exitless loop・cleanup阻害後など、検査開始状態を作れない未到達操作にはUnsupportedが残る。
 - whole Subjectのguardはsource順の保守的な検証経路を持ち、false側の副作用も後続armへ渡す。実行時に省略するcovered armも診断する。
-- Loanはstring比較、shared引数、一時string、string guard candidate、Tuple/固定配列の要素アクセス時の親ストレージ保護の限定範囲。後続引数/guard/cleanup中もownerを保護し、正常結果確保後または通常transfer時に終了する。Copy要素代入は位置取得用のLoanだけをstore直前に終了する。一般の参照保存/返却、uniq/reborrow、効果要約、借用Subjectは未完成。
+- Loanはstring比較、shared引数、一時string、string guard candidate、Tuple/固定配列の親ストレージ保護と数値要素更新の排他保護の限定範囲。静的に非重複な要素経路は§4.6の範囲で許可する。後続引数/guard/cleanup中もownerを保護し、正常結果確保後または通常transfer時に終了する。Copy要素の単純代入は位置取得用のLoanだけをstore直前に終了する。一般の参照保存/返却、uniq/reborrow、効果要約、借用Subjectは未完成。
 
 根拠: OwnershipAnalysis / EnumOwnership / MatchOwnership / UnreachableOwnership / CurrentControlFlow / ControlFlowConformance / ReferenceEmission / StringGuardEmission各テスト。解析成功後も生成側の対応範囲を別途検査する。
 
@@ -165,7 +167,7 @@ Copy要素への単純代入は§4.4、数値要素の複合更新は§4.5で追
 
 位置取得は既存のLocateElement/ProjectElement・境界検査を共有し、最終操作だけをWriteElementとして区別する。親の全体Write・再初期化・破棄計画は作らず、親の初期化状態と責任を維持する。scalar storeは既存の格納表現、Copy集成型は既存のmemcpy生成を共有する。中間集成型のCopyや要素別の生存flagは追加しない。ゼロサイズでも評価・境界検査を残す。
 
-位置取得中はrootを保護する。自身のアクセスLoan終了とstoreが通常edgeで直結し、間にユーザー操作も別の到着edgeもないことをLoweringで確認する。他のLoanの競合検査は維持する。型・入力source・Copy性・mutable root・右辺の初期化と支配・結果のJoin・親/添字の対応を照合し、不正計画はIR公開前に拒否する。添字内で同じrootの別要素へ書くケースも現在は保守的に拒否し、一般の非重複経路証明は導入していない。
+位置取得中はrootを保護する。自身のアクセスLoan終了とstoreが通常edgeで直結し、間にユーザー操作も別の到着edgeもないことをLoweringで確認する。他のLoanの競合検査は維持する。型・入力source・Copy性・mutable root・右辺の初期化と支配・結果のJoin・親/添字の対応を照合し、不正計画はIR公開前に拒否する。添字内で同じrootの別要素へ書くケースもストレージ保護のため拒否する。§4.6で追加した最終位置解決後の非重複判定とは区別する。
 
 構造的完了と制御フロー解析の単純代入をRHS先行に揃え、構文順のvisitorは維持した。添字の途中transfer後も静的な代入先型を保持し、ラベル付きdo式の値sourceを正規化する。右辺・添字の通常transfer、Abort、非停止cleanupは後続の位置取得/書き込みを実行せず、既存の結果確保・cleanup規則を維持する。
 
@@ -185,11 +187,23 @@ Loweringは更新元source、演算子、旧値とRHS、型、唯一の射影所
 
 添字評価中は共有保護とし、最終射影の境界検査成功後に自身の保護を排他的Loanへ切り替える。排他的Loanは旧値取得・RHS・計算・storeまで保持し、そのアクセス自身のstoreだけを許可する。既存の外側Loanは解除せず、同じ親の別アクセスが生存していれば排他取得を拒否する。新しいLLVM命令や値スロットは不要で、既存Loan表と射影の整数IDを再利用する。
 
-`a[0] += a[0]` は仕様の排他的Loanと競合するため拒否する。RHSの関数引数への親Copyやdefer内の読み取りにも適用する。今回もroot単位の保守的な判定であり、同じ親の兄弟要素への読み取り/Copy/Move/書き込みを拒否する。仕様の静的非重複経路による許可は未実装。別rootの更新と添字評価中の共有読み取りは許可する。通常transferは放棄したアクセスのLoanをcleanup前に終了する。境界/演算Abort、RHS/添字のtransfer、非停止cleanupでは後続storeを行わない。添字がNeverになっても代入先の静的型を保持し、shiftのNever RHSも通常transferとして扱う。
+`a[0] += a[0]` は仕様の排他的Loanと競合するため拒否する。RHSの関数引数への親Copyやdefer内の読み取りにも適用する。§4.5実装時はroot単位の保守的な判定で兄弟要素も拒否していたが、§4.6で静的非重複経路の許可を追加した。別rootの更新と添字評価中の共有読み取りは許可する。通常transferは放棄したアクセスのLoanをcleanup前に終了する。境界/演算Abort、RHS/添字のtransfer、非停止cleanupでは後続storeを行わない。添字がNeverになっても代入先の静的型を保持し、shiftのNever RHSも通常transferとして扱う。
 
 初回実装ではRHS中も共有保護を用いて自己読み取りを許可していたが、§4.6.4/§15.6.2の排他的Loan規則との不整合を修正した。単純代入は現行仕様のRHS先行を維持する。要素更新前に必要な値をlocalへCopyする実行例に修正した。
 
 [ElementUpdateEmissionTest](xUnitTest/Tests/ElementUpdateEmissionTest.cs) は114件。全整数幅、floatのNaN/無限大/符号付き0、評価回数/順序、shift幅、演算/境界Abort、親の破棄監査、Loan競合、defer・到達不能・transfer・非停止、不正計画を検証する。排他取得前後とstore後のLoan状態、自己読み取り/親Copyの拒否、通常transferでの解除、改変計画の拒否も含む。入れ子更新とdeferを含むwarm Bind、所有権解析＋IR生成は各128回で0 B。throughputの改善率は未測定。Non-Copy要素操作、部分Move/再初期化、借用・一時receiver、Property、動的collectionは未対応。
+
+### 4.6. 静的要素経路によるLoanの非重複判定（2026-09-15）
+
+§15.6.2の非重複規則を、既存の所有Tuple・固定配列のCopy要素読み取り・単純代入・数値更新へ接続した。`a[0] += a[1]++`、`pair.0 += pair.1`、兄弟のCopy集成型やUnitへの代入を許可する。同一要素、祖先/子孫、親全体のCopy/Move/置換は排他的Loanと競合する。例は [ElementPaths](examples/ElementPaths/README.md)。
+
+固定配列の静的selectorは§15.1.3に従い、範囲内の非負整数リテラルと括弧だけを認める。基数・桁区切りが異なっても数値で同一性を判定し、単項plus・算術・変換・変数・条件式を定数化して証明しない。不明な添字では、それまでに確定した親経路全体へ判定を広げる。`pair.0[i]` と `pair.1[j]` は別経路だが、`a[i].0` と `a[j].1` の非重複は証明しない。空配列や範囲外リテラルは非重複の根拠にしない。
+
+receiverの位置取得をLocateReceiverとして値のReadから区別し、Copy取得・storeを射影IDへ直接関連付けた。経路は既存射影表の親ID・静的prefix・深さ・selectorで表現する。専用の経路オブジェクトや集合を作らず、比較は経路の深さに比例する走査で行う。重複判定前にsource・親・selector・prefix・操作との相互参照を再検証し、改変計画を拒否する。新しいLLVM命令、runtimeのLoan検査、値スロットは追加しない。
+
+添字評価中のrootストレージ保護と、最終位置解決後の選択要素への排他的Loanを分けた。添字評価中は同じrootへの兄弟要素の書き込みも引き続き拒否する。最終位置解決後は静的に非重複な操作を許可し、自身の旧値取得・storeだけを自身のLoanで承認する。内側の兄弟更新が完了しても外側のLoanは維持する。評価順序・通常transfer・defer・Abort・親の全体初期化状態と破棄責任は既存規則を維持する。
+
+[ElementPathEmissionTest](xUnitTest/Tests/ElementPathEmissionTest.cs) は静的/動的経路、入れ子更新、Copy集成型/Unit、選択結果、snapshot、defer/transfer、境界Abort、親の破棄監査、到達不能コード、不正計画と再解析回復を検証する。入れ子経路・兄弟更新・deferを含むwarm Bindと所有権解析＋IR生成は各128回で0 B。throughputの改善率は未測定。Non-Copy要素操作、部分Move/要素別初期化、一般のfield・Property・ref/Slice・動的collectionへの拡張は含めない。
 
 <a id="c2-builds-modules-and-source-artifacts"></a>
 <a id="c11-executable-preparation-and-sequence-review-2026-09-09"></a>
@@ -216,7 +230,7 @@ Loweringは更新元source、演算子、旧値とRHS、型、唯一の射影所
 
 | 分野 | コードで確認できる状態 |
 | --- | --- |
-| module・Mod | [Compilation](Kimi/Compiler/Core/Compilation.cs) は設定の外部Kotonoha識別子を保持するが、source読込への接続はない。BindにMod実行はなく、外部module/Libraryは生成側で拒否。portable交換・意味計画の永続再利用・Composition接続は未完成 |
+| module・Mod | [Compilation](Kimi/Compiler/Core/Compilation.cs) は設定の外部Kotonoha識別子を保持するが、source読込への接続はない。BindにMod実行はなく、外部module/Libraryは生成側で拒否。portable交換・意味計画の永続再利用は未完成。Composition RootのEntry／Provider接続は設計未確定 |
 | generic・object・Core | generic共有/特殊化生成、Closure/間接call、struct/enum/Property/user constructor/static実行、rc/arc/Weak・runtime refinement、Array/Slice/Dictionary・反復、言語test runnerは未完成。前段の宣言・解析は§2–3参照 |
 | LSP | [LspServer](Kimi/Lsp/LspServer.cs) にinitialize・document管理・shutdown等の通信処理がある。open/changeの診断送信はコメント化、closeの空診断だけ接続。dumpの要求/出力も未接続 |
 | KimiCode | [extension.js](KimiCode/extension.js) は隣接Debug DLLとDebugWait=trueを固定使用。一般利用のserver設定とhost統合テストは未整備 |
@@ -225,20 +239,22 @@ Loweringは更新元source、演算子、旧値とRHS、型、唯一の射影所
 
 ## 7. 今回の確認
 
-### 7.1. 数値要素更新の確認（2026-09-15）
+### 7.1. 静的要素経路と要素操作の確認（2026-09-15）
 
-§4.5の排他的Loan修正と、§4.3–4.4の要素読み取り/単純代入の回帰を検証した。自己読み取りを成功扱いした旧fixtureは生成物から除外し、事前Copyの正常例とコンパイル拒否テストへ置き換えた。
+§4.6の静的要素経路と、§4.3–4.5の読み取り/単純代入/数値更新の回帰を検証した。以前の兄弟要素の拒否テストは非重複を証明できない動的添字・算術式添字へ変更し、静的に別要素となる操作は成功例で検証した。自己読み取りと親全体の取得は引き続き拒否する。
 
 | 検証 | 結果 |
 | --- | --- |
 | Solution build（Debug / Release） | 各成功、警告0・エラー0 |
-| managed test（Debug / Release） | 各4,468成功、失敗0・skip0。ElementUpdateEmissionTestは17件追加して114件 |
-| 要素更新＋既存要素読み取り/単純代入のLLVM verifier・通常native O0/O2 | 163 fixture、326実行成功。更新68 fixture・136実行、単純代入54 fixture・108実行、読み取り41 fixture・82実行。破棄監査・境界/演算Abort・タイムアウト付き非停止を含む |
-| warm allocation | 入れ子要素更新・選択RHS・deferを含むBind、およびOwnership＋IR生成を各128回測定し0 B |
-| ElementUpdatesのCLI build/run | Release/O2成功。`element updates complete`を出力してexit 0 |
+| managed test（Debug / Release） | 各4,559成功、失敗0・skip0。ElementPathEmissionTestを50件追加。ElementUpdateEmissionTestは114件 |
+| 静的要素経路＋既存要素操作のLLVM verifier・通常native O0/O2 | 186 fixture、372実行成功。経路23 fixture・46実行、更新68 fixture・136実行、単純代入54 fixture・108実行、読み取り41 fixture・82実行。破棄監査・境界/演算Abort・タイムアウト付き非停止を含む |
+| warm allocation | 入れ子経路・兄弟更新・deferを含むBind、およびOwnership＋IR生成を各128回測定し0 B |
+| ElementPathsのCLI build/run | Release/O2成功。`element paths complete`を出力してexit 0 |
 | NativeAOT・新規throughput benchmark | 未実行 |
 
-再現は下記§7.2の構成ごとのbuild→testに加え、生成済みfixtureへ `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'` を適用する。旧実装で生成済みの `ElementUpdateSelfRead.*` は削除してから再生成する。CLI例は [ElementUpdates](examples/ElementUpdates/README.md) を参照。
+再現は下記§7.2の構成ごとのbuild→testに加え、生成済みfixtureへ `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'` を適用する。今回は184 fixture/368実行を確認後、追加したCopy集成型・Unit代入の2 fixtureへ `-FixturePattern 'ElementPathAdditional*.ll'` を適用し4実行を確認した。fixture生成とnative実行は直列に行う。CLI例は [ElementPaths](examples/ElementPaths/README.md) を参照。
+
+直前の§4.5排他的Loan修正時はmanaged各4,468件、Element系163 fixture/326実行が成功。自己読み取りを成功扱いした旧fixtureは除外し、事前Copyの正常例とコンパイル拒否へ置き換えた。ElementUpdates例もRelease/O2で期待出力・exit 0を確認した。
 
 §4.5の初回実装時はmanaged各4,451件、Element系160 fixture/320実行、通常local更新（IntegerValues/WideOperations/FloatArithmetic）14 fixture/28実行が成功した。ただし、この時点の自己読み取り許可は上記のLoan修正前であり、仕様適合の根拠にはしない。
 
@@ -288,6 +304,6 @@ build/run/emitは読み込んだprojectごとに名前・project/sourceファイ
 
 ## 8. autoframe実行基盤
 
-[autoframe.md](autoframe.md) 1.0に基づくWindows版を[autoimpl/](autoimpl/README.md)に実装。6段階のプロンプト、Schema、状態・証拠管理、再開、疑似Worker試験を含む。基盤の試験結果と実CLI未確認の理由は[検証記録](autoimpl/VERIFICATION.md)を参照。今回の基盤作業ではNativeAOT、製品用PLAN.mdの作成、本番の自動実行を行っていない。
+Windows向け自動実行基盤の現行資料は [autoframe仕様](autoframe/SPEC.md)、[利用案内](autoframe/README.md)、[検証記録](autoframe/VERIFICATION.md)を参照する。旧autoframe.md／autoimplの配置と初期版の段階数・検証範囲は過去の記録であり、現行の対応はこれらの文書で管理する。今回の文書整合作業では基盤の実行・再検証は行っていない。
 
 追加精査で、部分受理、回復対象の欠落、証拠の破損・失効、監査と停滞の判定、停止確認、指示ファイルの保護・署名を修正。疑似試験は追加17件を含む計56件を確認した。実CLIは今回再試験していない。

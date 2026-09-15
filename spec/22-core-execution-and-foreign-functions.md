@@ -286,3 +286,75 @@ declare dllimport void @ExitProcess(i32) noreturn
 ```
 
 HANDLE and data pointers use ptr, SIZE_T i64, DWORD/UINT/BOOL i32, and LPDWORD ptr to a 32-bit slot. Windows BOOL is not i1. Empty parameter parentheses mean no parameters, not omitted Types. dllimport specifies reference generation, not automatic linking; use the kernel32 input (§20.8.2).
+
+## 22.6. Test execution and reporting
+
+### 22.6.1. Test startup and active case
+
+The test build uses dedicated generated startup instead of automatically executing the product main. Verify an explicit main as an ordinary function. Reject included sources containing top-level executable statements or top-level let/var; move that work into functions or explicitly exclude startup sources. Do not silently discard or execute it before tests. Test-only and product input membership is defined in §18.8; discovery is defined in §20.9.
+
+```text
+assign case -> prepare minimal reporting runtime -> activate case
+  -> user initialization / test body / cleanup / shutdown
+  -> report completion -> deactivate case -> child exit
+  -> parent recovers processes, channels and temporary storage -> final result
+```
+
+All permitted verifications from user initialization through shutdown belong to the same case. Report initialization/body/cleanup/shutdown phases and restore the outer phase after nested initialization or cleanup. Static initialization remains demand-driven under §22.2.3; tests add no eager initialization. Runtime preparation failure is a startup/execution error. A verification without an active case is misuse regardless of its condition. Required initialization/destruction order and ordinary Abort behavior remain unchanged. Test host generation does not introduce Entry/Provider selection syntax; Composition Root extensions remain deferred (§13.8).
+
+### 22.6.2. Process isolation and recovery
+
+Pass a CaseId to the same immutable native executable and execute each selected case once in a new child process. Do not share static state, automatically retry, or replace the executable/diagnostic table while it runs. An unsupported execution target is an execution error. Fix the working directory to the target project root; give each case a unique temporary directory reclaimed by the parent after use. Capture the parent's initial environment, apply settings, and pass the same configured environment to each case. Continuously drain separate per-case stdout/stderr streams without interleaving cases' stored logs.
+
+External files, databases and ports may remain shared. Use case-specific resources or §20.9's serial mode where needed; temporary-directory recovery does not perform user defer or external rollback. Parallel cases are separate processes and add no language-level threads or memory model.
+
+Use the parent's monotonic clock for a finite execution deadline and recovery grace. The execution deadline covers child launch through exit, including runtime preparation, initialization, body, cleanup, shutdown and completion reporting; exclude build and queue time. Normal exit, abnormal exit, timeout and cancellation enter the same bounded recovery process. Stop timed-out/cancelled cases and recover remaining managed descendants even after normal child exit.
+
+Manage the process group from launch using an OS management unit or equivalent; later PID enumeration alone is insufficient. Bound process termination waits, channel draining/EOF waits and temporary cleanup by recovery grace. Report surviving processes/unrecovered resources after grace, preserving the original termination reason. Do not claim storage still used by a live process was recovered. Forced termination does not guarantee user cleanup. No guarantee extends to external processes outside OS management. An unrecoverable resource shortage fails the run. Concrete limits and management mechanisms remain §D.4 profile work, without permission for unbounded waits.
+
+### 22.6.3. Diagnostic identity
+
+| ID | Identity |
+| --- | --- |
+| ArtifactId | Executable and static diagnostic table for the compiler, target, settings and inputs |
+| TestId | A test declaration within its project |
+| CaseId | One case of a definition; initially one default case per TestId |
+| SiteId | A verification site within the artifact, with source expression, location and display Types |
+| IssueId | One recorded failure occurrence within a case, including repeat visits to one SiteId |
+
+TestId/CaseId must be stable for the same source/settings and cannot depend only on display names, line numbers, absolute paths or execution order. Distinguish TestId by project, Container, Signature and, where needed, relative source path. Combine it with within-definition case identity to make CaseId unique in the execution scope. Renaming/moving declarations need not preserve IDs. Generate SiteId display strings/locations from current source under §18.7.4, including when semantic plans are reused; changed diagnostic tables affect ArtifactId. Preserve Mod source-observation invalidation.
+
+Use unique integer IssueIds to connect basic failures, saved values and added messages; never attach details to an implicit last failure. Nested verifications during a message receive their own IDs. Preserve basic failure even if no details arrive. Omitted failures need no individual ID. Never reuse or wrap IDs; exhaustion switches to bounded detail omission (§22.6.5).
+
+### 22.6.4. Reporting and result classification
+
+Use a result channel separate from stdout/stderr. At startup match ArtifactId and CaseId; reject results for another artifact. Preserve per-case event order and validate counts, failure state, omission data and completion. Send each retained basic failure independently before subsequent user condition cleanup/message execution, not only at child exit. Parent-received data survives later child Abort. A reporting failure is an execution error, never success.
+
+On a normal path, report completion after shutdown and exit the child with code zero; completion information carries verification failures. This is distinct from the overall CLI exit status (§20.9). **Success requires valid completion, normal child exit, consistent communication, completed recovery and no verification failure.** A normal case with no verifications succeeds. Neither exit zero nor a completion message alone establishes success.
+
+| Outcome | Report |
+| --- | --- |
+| All success conditions met | Success |
+| Normal completion with verification failures | Verification failure |
+| Abort or crash | Abnormal termination |
+| Execution deadline exceeded | Timeout |
+| User cancellation | Cancelled, including unstarted selected cases; not success or executed skips |
+| Startup, communication or recovery failure | Execution error, retaining known termination reason and verification failures |
+
+Keep failure records, termination reason and management errors separately; recovery failure cannot overwrite an earlier Abort/timeout. Infer Abort reasons only from reliable received information, never exit code 1 alone. Missing diagnostics may yield unknown abnormal termination; never resume user code/cleanup after Abort. Cases excluded by a filter are not executed skips.
+
+Provide human-readable and versioned machine-readable results. Include project/target/settings, IDs, source locations and expressions, retained values/messages, phases, durations, termination state, management errors, log paths and omission information. Terminal formatting is not the machine-readable interface. Concrete schemas/encodings remain §D.4.
+
+### 22.6.5. Bounded diagnostics and storage
+
+Set per-case and whole-run budgets for diagnostic counts and bytes, covering failures, saved values/messages, stdout/stderr and disk spill. Retain an initial storable portion and omission information. Bound message retention, frames, pending queues and read buffers. Once budgets are exhausted:
+
+- Continue ordinary condition, failure-message and cleanup evaluation; omit storage only.
+- Keep failure state latched. Reserve separate finite space for first-failure notification, completion and abnormal-control information.
+- Saturate counts/omission counts and display lower bounds; never wrap. Abnormal termination reports observed lower bounds when final counts are unknown.
+- Limit detail output in the child too; do not transfer omitted events into an unbounded parent/child queue.
+- Continue draining communication, processing required information and discarding excess, within execution/recovery bounds.
+
+Intentional detail omission is not an extra execution error. Missing/corrupt required control data or failed writes of retained data are execution errors. A storage budget does not bound allocations performed by the user's own message expression.
+
+Share verification lowering and change only the failure continuation (§17.5). Use static expression/location/Type tables and compact ID/value events, formatting in the parent. Reuse parent worker slots/buffers and reset per-case state. Validate the immutable artifact snapshot once at run startup instead of copying/revalidating it per case, while retaining each child's ID handshake. Do not require reflective registration, per-verification UUIDs or heap objects. Measure empty/short, I/O-heavy and failure-heavy cases, including startup/recovery, time, parent/child memory, communication and generated code size; no unmeasured speedup is promised.

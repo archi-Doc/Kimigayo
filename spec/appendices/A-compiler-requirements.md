@@ -302,7 +302,23 @@ Common generation may deduplicate equal plan keys, direct-call statically select
 | Pack/publication | Repeated same-version trials, destination-scoped conflicts, whole-closure diagnostics, explicit settings, existing Package closure, all-environment failure, atomic table update/interruption |
 | Storage | Unicode collisions, differing valid compression, whole-archive fast checks and full-validation fallback, corrupt entries/caches, store verify, pin/collection races |
 | Semantic reuse | Cross-version correspondence without Type merging, same/changed private effects, changed absence facts, Proven withdrawal, recursive components, observed versus unobserved source edits |
-| Tests/generation | Unrelated tests, new generic substitutions, same-release conflicts, changed Providers, initialization/cleanup closure, unchanged product sharing/frame/budget choices |
+| Tests/generation | Unrelated tests, new generic substitutions, same-release conflicts, changed implementation dependencies, initialization/cleanup closure, unchanged product sharing/frame/budget choices |
 | Native | Self-targeted combined configuration, short/long import objects, mixed archives, unused duplicate members versus ambiguous required symbols, directives, stale summaries |
 
 Measure retrieval, lexing, semantic verification, generation, and linking separately; record bytes read, hash passes, revalidated judgments, bodies loaded, allocations, peak memory, code size, and runtime. Include many-path graphs, a large Library with sparse use, generation-only setting changes, and repeated small external/generic calls. No measured speedup or numeric resource guarantee is implied by these rules.
+
+## A.17. Test verification and runner requirements
+
+Implement the contracts in [Test definitions](../06-declarations-and-containers.md#651-test-definitions), [verification operations](../17-failure-handling.md#175-test-verification-operations), [discovery/CLI](../20-compilation-configuration.md#209-test-command-and-discovery) and [execution/reporting](../22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting). Unsupported operations must be diagnosed before generation, not silently accepted. Declaration parsing does not establish test execution support.
+
+| Area | Required verification |
+| --- | --- |
+| Membership/discovery | Test additions cannot change product lookup/layout/conformance/generation; check generated membership, all test bodies before filters, ordinary-build exclusion, invalid Attributes/signatures, forbidden direct calls and function values |
+| Verification | Single evaluation, short circuit, lazy message evaluation, outward message transfers, failure-branch Moves, snapshot time and no added Copy/Loan/lifetime effects |
+| Cleanup | Require's ordinary return, additional expect failure/Abort during cleanup, nested static initialization and shutdown phase attribution; no active-case misuse accepted |
+| Identity/protocol | Repeated/nested sites use distinct IssueIds, basic-only failures survive, ID exhaustion/count saturation, stale ArtifactId, corrupt/missing completion, exit zero without valid completion |
+| Bounds/recovery | Large logs and failures, limits preserving evaluation, independent control space, broken communication, retained descendant pipes, normal/abnormal/cancelled finite recovery, original reason plus recovery errors |
+| CLI/artifacts | Unknown IDs, empty selection, conflicting options, stable list/display order, all-case artifact reuse across filters, one process per case and parallel limits |
+| Performance | Debug/Release semantic agreement, successful checks without failure allocations/events, reusable buffers, one startup artifact validation with per-child ID matching; measure costs under §22.6.5 |
+
+Concrete formats/defaults are tracked in [Appendix D.4](D-deferred-features.md#d4-testing-profile-details-and-extensions) and must be settled before implementing their interfaces. Membership/discovery, serial verification/reporting, cleanup/recovery, then parallelism/external output are a possible implementation sequence, not reduced conformance requirements.

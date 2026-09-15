@@ -1,6 +1,6 @@
 # rc・arc・Weak の仕様
 
-2026-09-13 改訂。レビューで採用した設計をまとめる。**SPEC.md は未変更で、未反映の差分は §6 に示す。** 共通の型・借用・取得規則は [SPEC](../../SPEC.md)、実装状況は [STATUS](../../STATUS.md) に従う。例示コードは設計の説明であり、現在の compiler で実行できることを示さない。
+2026-09-13 改訂、2026-09-15 同期確認。採用規則は [SPEC §13.5.8–9](../../spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing)、[§21.2.3](../../spec/21-layout-runtime-and-code-generation.md#2123-windows-x64-object-and-weak-profile) と関連節へ反映済み。§6 は統合先の一覧とする。現行の規範は SPEC 本文、実装状況は [STATUS](../../STATUS.md) に従う。例示コードは現在の compiler での実行対応を示さない。
 
 ## 1. 型と操作
 
@@ -310,7 +310,7 @@ func invalidEscape() -> Weak<rc/(View from static)>
 
 ## 6. SPEC・関連設計書との同期
 
-以下は現行 SPEC への未反映事項。実装前に同期し、本書の改訂を既存の実装対応と混同しない。
+以下の改訂は現行 SPEC に反映済み。2026-09-15 に付録Fの公開API名を未確定とする記述も訂正した。仕様の統合と実装対応を区別する。
 
 | 改訂 | 本書 | SPEC の同期箇所 |
 | --- | --- | --- |

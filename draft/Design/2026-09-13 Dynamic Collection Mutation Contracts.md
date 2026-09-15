@@ -1,8 +1,8 @@
 # Array／Dictionary の更新 API と操作契約
 
-2026-09-13 改訂。採用済みの決定を統合した仕様。本書の対象では [SPEC](../../SPEC.md) より本書を優先する。§5.3 の引数適合は、採用時点からコレクション以外も含む言語全体の SPEC §10.2 に適用する。
+2026-09-13 改訂、2026-09-15 同期確認。採用済みの規則は [SPEC §4.7](../../spec/04-arrays-indexing-and-slices.md#47-dynamic-collection-mutation) と関連節へ反映済み。§5.3 の owner 一時値の共有借用は、コレクション以外も含む [SPEC §10.2](../../spec/10-overload-resolution-and-inference.md#102-argument-adaptation-and-literals) に反映した。現行の規範は SPEC 本文とする。
 
-SPEC.md／STATUS.md への反映と実装は今回の対象外。コードは仕様例であり、現在のコンパイラーでの実行を保証しない。判断の経緯は[採否記録](../Decisions/2026-09-13%20Dynamic%20Collection%20Proposal%20Review.md)、既存の借用設計は [Array の Origin 伝播と Owned](2026-09-12%20Array%20Origins%20and%20Owned.md)、実装状況は [STATUS](../../STATUS.md) を参照する。
+コードは仕様例であり、仕様統合は現在のコンパイラーでの実行を保証しない。判断の経緯は[採否記録](../Decisions/2026-09-13%20Dynamic%20Collection%20Proposal%20Review.md)、既存の借用設計は [Array の Origin 伝播と Owned](2026-09-12%20Array%20Origins%20and%20Owned.md)、実装状況は [STATUS](../../STATUS.md) を参照する。
 
 ## 1. 共通契約
 

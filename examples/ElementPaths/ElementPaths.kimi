@@ -1,0 +1,13 @@
+var values: [2 of i32] = [40, 2]
+values[0] += values[1]++
+
+var pair = (40, 2)
+pair.0 += pair.1
+
+var groups: (string, [1 of i32], [1 of i32]) = ("retained owner", [40], [2])
+var index: isize = 0
+groups.1[index] += groups.2[index]++
+
+if values[0] == 42 and values[1] == 3 and pair.0 == 42
+    if groups.1[0] == 42 and groups.2[0] == 3
+        writeLine("element paths complete")

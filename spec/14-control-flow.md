@@ -4,6 +4,8 @@
 
 Control-flow expressions are `if`, `match`, `for`, `while`, `loop`, `do`, and the transfers `return`, `exit`, `continue`, and `yield`. `unsafe`, `defer`, and `require` are statements; they cannot be initializers, arguments, or expression operands.
 
+Test-only bodies additionally admit the standalone verification items `$expect` and `$require` under [§17.5](17-failure-handling.md#175-test-verification-operations). Their placement and outward-message-transfer restrictions apply before ordinary control-flow checking; a failed `$require` uses normal function return and Scope Exit, not a new completion kind.
+
 | Concept | Role |
 | --- | --- |
 | Delimiter region | Determines syntactic nesting and body/branch joins (§2.2). |

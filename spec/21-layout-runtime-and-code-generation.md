@@ -539,9 +539,9 @@ Preserve and validate the complete declaration, body, selection, premise, and ab
 
 #### 21.3.4.2. Persistence and composition
 
-Persistent semantic plans, invalidation, and observable source information follow §18.7. Regenerate ABI plans, schemas, contexts, frames, budget choices, IR, and machine code; native input summaries are separate. Persistent product generation choices remain deferred until measured search cost and a complete validation contract justify them. Such a contract must cover baseline plans, candidate sets/order, estimates, budgets, compiler/profile, actual Composition connections, and generation dependencies; a small saved choice is not proof of validity. Object-code caches and persistent runtime context graphs are not introduced.
+Persistent semantic plans, invalidation, and observable source information follow §18.7. Regenerate ABI plans, schemas, contexts, frames, budget choices, IR, and machine code; native input summaries are separate. Persistent product generation choices remain deferred until measured search cost and a complete validation contract justify them. Such a contract must cover baseline plans, candidate sets/order, estimates, budgets, compiler/profile, selected implementations, and generation dependencies; a small saved choice is not proof of validity. Object-code caches and persistent runtime context graphs are not introduced.
 
-Separate Provider-independent Library semantic plans from final [Composition Root](../draft/Decisions/2026-09-13%20Composition%20Root%20Review.md) connections. Record operations, implementations, schemas and constants actually used by generated artifacts. Do not add the whole CompositionId to every body key. Provider changes must revalidate/regenerate affected witnesses, inlined bodies and entry/context pairs; conservative invalidation is allowed until precise dependencies exist. Source distribution and deferred binary interfaces follow §18.3–18.7.
+Record operations, selected implementations, schemas and constants actually used by generated artifacts. Changes to these dependencies must revalidate/regenerate affected witnesses, inlined bodies and entry/context pairs; conservative invalidation is allowed until precise dependencies exist. Source distribution and deferred binary interfaces follow §18.3–18.7. These rules do not define CompositionId or Entry/Provider selection; future Composition Root connections require a separate adopted contract (§13.8).
 
 ### 21.3.5. Generation limits and code merging
 
@@ -611,9 +611,9 @@ fixed product plan and budget
   -> emit the required test generation closure
 ```
 
-After fixing the plans, emit only the closure needed from all test execution roots, including selected Providers, initialization/destruction, cleanup, runtime helpers, entries/contexts, and metadata. Omitting product code does not redistribute product budgets or omit required verification. Case filters do not change the compiled all-case artifact under the testing specification.
+After fixing the plans, emit only the closure needed from all test execution roots, including selected implementations, initialization/destruction, cleanup, runtime helpers, entries/contexts, and metadata. Omitting product code does not redistribute product budgets or omit required verification. Case filters do not change the compiled all-case artifact under §20.9 and §22.6.
 
-Fix one Composition for the test executable. With the same connection, reuse product plans under these conditions. For a changed connection, preserve Provider-independent meaning and first revalidate/fix affected product generation plans under that connection, before adding test requests. Never reuse different-connection code unconditionally. This need not perform two full compilations or emit two files: one final LLVM module may hold both regions. Different roots/reachability and later optimization need not produce byte-identical whole binaries.
+Fix test artifact inputs/settings under §18.8. Reuse product plans only under the validity conditions above; changed dependencies/settings require affected product plans to be revalidated/fixed before adding test requests. This need not perform two full compilations or emit two files: one final LLVM module may hold both regions. Different execution roots/reachability and later optimization need not produce byte-identical whole binaries. Entry/Provider composition remains deferred rather than an implicit test-build input.
 
 ## 21.4. Checked lowering and internal ABI
 

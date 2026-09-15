@@ -50,7 +50,7 @@ internal sealed partial class BodyLowering
 
         var loan = body.ComparisonLoans[loanId];
         var operation = body.Operations[id];
-        if (!loan.Access || loan.Read != id || operation.Kind != OwnershipOperationKind.Read || operation.Input != -1 || operation.Place != loan.Place || operation.Source.AttributeChain is not null ||
+        if (!loan.Access || loan.Read != id || operation.Kind != OwnershipOperationKind.LocateReceiver || operation.Input != -1 || operation.Place != loan.Place || operation.Source.AttributeChain is not null ||
             (uint)operation.Place >= (uint)body.Places.Count || this.aggregatePlaces[operation.Place] is null)
         {
             return false;

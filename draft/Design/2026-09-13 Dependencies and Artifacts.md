@@ -1,6 +1,6 @@
 # Kimigayo の依存設定・配布・検証済み成果物
 
-2026-09-13 改訂。依存・成果物の規則と追加案 M1–M8、S1–S4 の採否を本書へ集約した。**本書の対象では本書が SPEC と先行設計文書に優先する。SPEC.md 本体は変更しない。**
+2026-09-13 改訂、2026-09-15 本文同期。依存・成果物の規則と追加案 M1–M8、S1–S4 の採否は [SPEC 第18章](../../spec/18-modules-and-dependencies.md)、第20・21章と付録へ反映済み。現行の規範は SPEC 本文とし、本書は設計の説明を保持する。取り下げられた Composition Root の Entry／Provider 選択は本書から導入しない。
 
 これは設計仕様であり、設定・コマンド・コード例は実装済みであることを示さない。実装状況は [STATUS](../../STATUS.md)、変更しない言語規則は [SPEC](../../SPEC.md) に従う。
 
@@ -290,7 +290,7 @@ ModuleInputId は元入力、実効言語版、compiler build、検証規則、C
 
 対応付けはノード、宣言の二段で行う。同じプロジェクトの旧新グラフで、ルートには専用キー root、依存には PackageId を使う。同じ ID の複数版などで対応が曖昧なら、その比較による再利用をせず再検証する。root は無関係な Application 間で共通の意味 identity を作る名前ではない。
 
-対応したノード内の DeclarationKey は Container、宣言種別、正規化した宣言識別情報から作り、版・内容 hash・ソース位置を含めない。これは再利用候補を探すキーであり、実際の型・symbol・Composition Entry は引き続き定義元の版を含む identity を持つ。完全な編集追跡は要求しない。
+対応したノード内の DeclarationKey は Container、宣言種別、正規化した宣言識別情報から作り、版・内容 hash・ソース位置を含めない。これは再利用候補を探すキーであり、実際の型・symbol は引き続き定義元の版を含む identity を持つ。完全な編集追跡は要求しない。Composition Entry の identity は本機構から定義しない。
 
 対応付けの後に、検証が読んだ内容・環境と、その依存の現在の identity を照合する。署名、Origin、Constraint、access、body、効果、適合、選択集合は必要な範囲で別の内容事実として持つ。hash は比較の索引に使い、必要な構造・前提の検査を省かない。版をまたぐ参照は現在の型・宣言へ対応を検証して結び直し、確認できない判断は再検証する。キーや body の一致だけで古い型情報、証明、ABI を採用しない。
 
@@ -377,9 +377,9 @@ group MeasureTests
        └─ テスト専用の追加代入・body・予算
 ```
 
-製品計画を確定した後、テスト実行入口から必要なコードだけを出力する。到達性は直接呼び出しだけでなく、選択した Provider、initializer／destructor、cleanup、runtime helper、entry/context、metadata などの生成依存を閉包まで辿る。出力を省いた製品計画の予算を再配分しない。
+製品計画を確定した後、テスト実行入口から必要なコードだけを出力する。到達性は直接呼び出しだけでなく、選択した実装、initializer／destructor、cleanup、runtime helper、entry/context、metadata などの生成依存を閉包まで辿る。出力を省いた製品計画の予算を再配分しない。
 
-[Composition Root 仕様](../Decisions/2026-09-13%20Composition%20Root%20Review.md)に従い、テスト実行対象の接続を一つに固定する。製品と同じ接続の計画は上記の条件で再利用する。接続が異なる部分では Provider 非依存の意味計画を保ち、影響する製品側の生成計画をその接続で先に検証・確定してからテストの追加要求を処理する。別接続の生成物を無条件には再利用しない。
+テスト実行対象の入力・設定を固定し、製品計画は上記の適合条件で再利用する。入力・設定が異なる部分では影響する製品側の生成計画を先に検証・確定してからテストの追加要求を処理する。異なる入力の生成物を無条件には再利用しない。Entry／Provider による Composition Root の接続は未確定であり、本書の生成規則には含めない。
 
 二度の全面コンパイルや別ファイルへの生成は要求しない。一つの最終 LLVM module に格納できる。テスト用入口・到達可能性や後段最適化は異なり得るため、最終バイナリ全体の byte 一致は要求しない。
 
@@ -501,7 +501,7 @@ member 単位の定義・参照・import・weak／COMDAT・再配置・`.drectve
 | pack／publish | 同版の試作反復、発行先ごとの競合、閉包全体の一括診断、配布設定の明示、全環境検証の失敗、対応表の同時更新 |
 | 保存形式 | Unicode 衝突、同内容の異なる圧縮、archive hash の高速確認と entry 検査への切替、破損・store verify、回収と pin の競合 |
 | 証明 | 版更新時の対応と型の分離、効果が同じ／異なる private 編集、不在依存の変化、Proven 撤回、再帰群、位置だけの変更 |
-| テスト | 無関係な追加、新しい generic 代入、同版の競合、Provider 変更、cleanup を含む出力閉包。製品の共有・frame・予算を維持 |
+| テスト | 無関係な追加、新しい generic 代入、同版の競合、実装依存の変更、cleanup を含む出力閉包。製品の共有・frame・予算を維持 |
 | native | 自身向け統合記述、short／long import、混在 archive、未使用 member の重複と必要 symbol の曖昧性、directive の閉包、要約の失効 |
 | 性能 | 多数経路からの共有、巨大 library の一部使用、生成倍率だけの変更、外部の小関数・generic の反復使用 |
 
@@ -538,4 +538,4 @@ M4 の判定では、import library に short／long 形式と補助 record が�
 
 S2 の cookie は通知の同期方法であり、すべての OS・ファイルシステムで変更通知の完全性を保証するものではない。[Watchman の説明](https://facebook.github.io/watchman/docs/cookies)にも適用条件と制限がある。導入前に監視開始時の全読込、通知順序、rename・別名経由の更新、開いた書込ハンドル、同期点と入力確定の競合を検証する。overflow・監視切断・cookie の失敗・journal 世代変更は全再読込へ戻す。[ファイル単位 USN](https://learn.microsoft.com/en-us/windows/win32/api/winioctl/ni-winioctl-fsctl_read_file_usn_data)も記録済み更新番号であり、単独で未変更の証拠にはしない。
 
-S4 は測定で効果が見込めた場合に再検討する。基準計画だけでなく、候補集合・順序・見積り方式・予算・compiler・profile・実際に読む Composition 接続と生成依存を照合する必要がある。保存する選択肢が小さくても、この検証ができなければ再利用せず再計画する。
+S4 は測定で効果が見込めた場合に再検討する。基準計画だけでなく、候補集合・順序・見積り方式・予算・compiler・profile・実際に選択した実装と生成依存を照合する必要がある。保存する選択肢が小さくても、この検証ができなければ再利用せず再計画する。

@@ -4,6 +4,8 @@
 
 状態: 最終採用仕様（初期Windows x64プロファイル）。実装状況はSTATUS.mdで別途管理する。
 
+2026-09-15 同期確認。起動・配置・LLVM・runtime の規則は [SPEC 第20–22章](../../spec/22-core-execution-and-foreign-functions.md) と関連節へ反映済み。現行の規範は SPEC 本文とし、本書の具体的ABI・LLVMコードは下記の改訂に従う実装例として読む。後続のobject／Closure／metadata設計で確定した配置も本文へ統合済みであり、実装状況とは区別する。
+
 2026-09-13 内部関数ABI方針改訂: 内部関数の物理的な受け渡しは固定せず、コンパイラー実装に委ねる。§10の具体的な署名・slot方式・LLVM例は実装例として読み、[SPEC §21.4.2](../../spec/21-layout-runtime-and-code-generation.md#2142-physical-function-signatures)を現行方針とする。引数評価・所有権・cleanup・結果の引き渡し、およびstorage配置・OS entry・外部C ABI・backend供給ABIの契約はそれぞれ維持する。
 
 対象: Kimigayoコンパイラーの初期実行サブセットと、その後の型対応に使う生成規則
@@ -1742,7 +1744,7 @@ Windowsコンソール上の非ASCII文字の見え方は、そのコンソー�
 
 ## 15. 型・機能の対応を広げるときの規則
 
-この章は、Hello worldの完了条件を増やすものではない。Tupleとenumの初期配置方針は本書で採用し、その他の未確定な物理表現は対応機能を実装する前に定める。
+この章は、Hello worldの完了条件を増やすものではない。Tuple・enum・object・値借用・Closure・共通関数値・metadataの配置は後続の採用設計も含め SPEC §21.1–3 に統合済み。動的コレクション／Sliceの具体的な格納ABIなど、残る境界は SPEC 付録Dと担当節に従う。
 
 ```text
 実装を広げる順序
@@ -1810,7 +1812,7 @@ LLVMのpayload storageは、alignmentを保持するゼロ長要素とPバイト
 
 Kimigayoレイアウトでは、初期の直接base部分をoffset 0へ配置する。これは初期実装の選択であり、言語上の永続保証ではない。baseから派生先までの所有権を切り離したり、baseだけをMoveしたりできる根拠にもならない。
 
-object の handle/header/count/Weak の初期 Windows x64 契約は [SPEC §21.2.3](../../spec/21-layout-runtime-and-code-generation.md#2123-windows-x64-object-and-weak-profile) と [rc・arc・Weak 設計](2026-09-13%20Weak%20References%20and%20Object%20Runtime.md) で決定済み。以下は表現の責務の区分であり、すべてを未決定とする一覧ではない。descriptor の具体配置と共有 generic metadata は別途具体化する。
+object の handle/header/count/Weak の初期 Windows x64 契約は [SPEC §21.2.3](../../spec/21-layout-runtime-and-code-generation.md#2123-windows-x64-object-and-weak-profile) と [rc・arc・Weak 設計](2026-09-13%20Weak%20References%20and%20Object%20Runtime.md) で決定済み。以下は表現の責務の区分である。descriptor の具体配置と共有 generic metadata も SPEC §21.2.2・§21.3 に統合済み。
 
 ```text
 objectの表現
@@ -1826,16 +1828,16 @@ objectの表現
    └─ Copy・Move・破棄の補助処理
 ```
 
-C指定が固定するのはpayload内の配置だけである。ヘッダーや参照カウントをC payloadへ混ぜない。決定済み profile では obj/rc/arc/objref/objuniq は元の header への 1 pointer、obj header は 8 bytes、rc/arc header は 16 bytes、必要時の side table は 24 bytes。count は u64 領域、上限は `2^63−1`、上限での増加は更新前に Abort。最後の strong release は strong=0、完全 payload の破棄、object 解放、side-table guard 解放の順とする。arc の CAS・公開・増減・最終解放の atomic ordering は SPEC §21.2.3 の決定に従う。仕様採用は runtime 実装完了を意味せず、arc の atomic 操作だけで言語のスレッド機能を許可しない。
+C指定が固定するのはpayload内の配置だけである。ヘッダーや参照カウントをC payloadへ混ぜない。決定済み profile では obj/rc/arc/objref/objuniq は元の header への 1 pointer、全 mode の header は 16 bytes、payload は header+16、必要時の side table は 24 bytes。obj の control 領域は0で予約する。count は u64 領域、上限は `2^63−1`、上限での増加は更新前に Abort。最後の strong release は strong=0、完全 payload の破棄、object 解放、side-table guard 解放の順とする。arc の公開・解放の先行関係は SPEC §21.2.3 の必須契約とし、具体的な atomic ordering 表はその契約を満たす実装候補として読む。仕様採用は runtime 実装完了を意味せず、arc の atomic 操作だけで言語のスレッド機能を許可しない。
 
 ### 15.4. 動的配列・Slice・closure
 
-| 機能 | 実装前に定める物理契約 |
+| 機能 | 現行の物理契約・残る境界 |
 | --- | --- |
 | 動的配列・Dictionary | data、length、capacity等の情報、再確保、要素の初期化と破棄 |
 | Slice | 参照先と長さの表現、Origin/Loanの維持、再Slice時のアドレス計算 |
-| 具体的closure | captureの格納、呼び出しentry、破棄entry、captureの初期化・破棄順 |
-| 共通Function Type | 型消去した値と環境、inline格納/確保の選択、呼び出し・破棄の方法 |
+| 具体的closure | SPEC §21.2.5.1 に環境配置・取得順・receiver・残存captureのcleanupを定義済み |
+| 共通Function Type | SPEC §21.2.5.2–3 に16-byte handle、8-byte inline環境の条件、operations表・呼び出し・破棄・型消去を定義済み |
 
 captureの論理順序と物理offsetは分ける。参照や所有値を含むからといって、これらを一律にptr一語へ変換しない。必要な確保失敗は既存規則に従ってAbortする。
 
@@ -2177,7 +2179,7 @@ LLVM verifierだけでFFI・unwind・helperの適合は証明できない。基�
 
 ## 18. 既存文書への反映箇所
 
-本書の追加だけでは、以下の既存記述の更新は完了しない。
+以下は設計採用時の反映先・実装計画の記録である。言語・生成規則は SPEC 本文へ統合済み。後続のCLI・backend供給も含む現行規則は SPEC 第20–22章、実装の完了／未完了は STATUS の現行節を参照する。旧 STATUS C.*番号や当時の手動ビルド計画を、現在の実装範囲として扱わない。
 
 | 反映先 | 変更内容 |
 | --- | --- |

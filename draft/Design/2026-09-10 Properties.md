@@ -4,7 +4,7 @@
 
 Property を `let / var / computed` に統一し、Contract の要求を `property` で表す。標準アクセスは storage の Place を扱い、カスタム accessor は明示した関数契約に従う。`@move` は廃止する。
 
-本書は設計上の最終仕様であり、SPEC.md 本体・コンパイラへの反映完了を意味しない。変更の背景と反映先は [Design Change](../Changes/2026-09-10%20Property%20Semantics.md) に記録する。
+2026-09-15 同期確認。採用した規則は [SPEC 第11章](../../spec/11-properties.md) と関連節へ反映済み。現行の規範は SPEC 本文とし、本書は設計の説明を保持する。後続の receiver 省略記法は SPEC §11.2 に従う。実装状況は [STATUS](../../STATUS.md) で別途管理し、変更の背景は [Design Change](../Changes/2026-09-10%20Property%20Semantics.md) に記録する。
 
 例は独立した断片である。`Resource` は非 Copy の所有型、`Point` は Copy 型とし、生成・検査用の関数は別途宣言済みとする。Accessor を含む宣言断片は、明記しない限り struct のメンバーとする。
 
@@ -202,7 +202,7 @@ Object receiver での accessor 呼び出しには、SPEC.md §12.4.4 の Object
 Stored のカスタム accessor は §2.1 の型・Copy 条件に加え、次の契約に従う。
 
 - Instance getter の receiver は ref/Self、setter は uniq/Self とする。
-- シグネチャを明記し、本体から型や receiver を推論しない。
+- シグネチャは宣言と定められた省略規則から確定し、本体から型や receiver を推論しない。instance accessor の `get()` / `set(value: T)` はそれぞれ `ref/Self` / `uniq/Self` の receiver を補完する（SPEC §11.2）。
 
 ```kimi
 public var level: i32 = 0
@@ -417,7 +417,7 @@ holder.item = makeResource()        // Error：let の再初期化
 
 Computed は storage を持たず、getter と任意の setter を通常の関数として実装する。Initializer、本体なしの標準 get/set、文脈上の storage は使用できない。
 
-見出し型 T は getter の戻り値型と Origin 補完後に一致させる。Getter は receiver と結果型、setter は receiver・入力型・Unit の結果を明記する。Receiver と戻り値は通常の関数の所有権規則に従う。
+見出し型 T は getter の戻り値型と Origin 補完後に一致させる。Getter の結果型とsetterの入力型を明記し、Unit戻り値とinstance receiverの省略は SPEC §11.2 に従う。省略receiverはgetterが ref/Self、setterが uniq/Selfとなり、本体から推論しない。その他のreceiverと戻り値は通常の関数の所有権規則に従う。
 
 各 accessor は高々一度宣言し、順序は任意とする。Static には receiver を設けない。Default/optional 引数と inline has は使用できず、本体の形式は §4.1 に従う。
 

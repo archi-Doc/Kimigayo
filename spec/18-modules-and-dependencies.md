@@ -261,7 +261,7 @@ ModuleInputId includes raw input identity, effective language, compiler build, v
 
 Match old/new graphs in two stages. Within the same project history, use a dedicated root correspondence key and PackageId for dependencies. Ambiguity, including several versions of one ID, disables this matching-based reuse. The root key does not identify unrelated Applications. Within matched nodes, DeclarationKey comprises Container, declaration kind, and normalized declaration identifier, excluding version, content hash, and position.
 
-These keys find candidates only. Actual Type, Symbol, and Composition Entry identities retain the defining version. Compare all content/environment facts read by the judgment and the current identities of its dependencies. Hashes index comparisons; they do not replace necessary structural/premise checks. Remap and validate cross-version references before reuse, otherwise reverify. Complete edit tracking is not required.
+These keys find candidates only. Actual Type and Symbol identities retain the defining version. Compare all content/environment facts read by the judgment and the current identities of its dependencies. Hashes index comparisons; they do not replace necessary structural/premise checks. Remap and validate cross-version references before reuse, otherwise reverify. Complete edit tracking is not required. Composition Entry identity is not introduced by this reuse mechanism (§13.8).
 
 | Record group | Preserved information |
 | --- | --- |
@@ -309,3 +309,9 @@ group MeasureTests
 ```
 
 Tests may use the fixed product declarations/dependencies but cannot modify them, reassign a reference name, or change a same-release input. Merge identical dependencies; dependencies' own tests and TestDependencies do not propagate. Test-only inputs are excluded from product meaning. Inline `#Test` edits may change raw hashes and require reparsing, but not product meaning, layout, sharing, or budget choices; update changed locations/provenance. Test generation and separate budgets follow [§21.3.7](21-layout-runtime-and-code-generation.md#2137-product-and-test-generation).
+
+Declarations in TestSources and Test functions in normal sources are test-only; internal declarations inherit their enclosing declaration's membership. Other declarations in normal sources remain product declarations, including unmarked helpers. Directory/file names such as tests have no special meaning. Fix product lookup, overloads, Types, layout, conformance, specialization, initialization and destruction from product inputs alone. A test instantiation of a product generic retains product definition-time lookup and ordinary instantiation rules.
+
+Tests may add functions to a product Container without adding product candidates; existing duplicate-declaration and accessibility rules still apply. They must not change a product Type's Fields, bases, conformance or other fixed meaning. Test-only Types use ordinary declaration rules. Generated declarations carry the same membership: product generation cannot consume test-only inputs; generated Test functions are test-only, and test generation cannot modify the fixed product result.
+
+Use one fixed set of verified inputs/settings and one all-case test artifact. Revalidate affected product plans before adding test generation requests when those inputs change; filters and execution order do not alter compilation inputs. The test host uses dedicated startup (§22.6.1). Entry/Provider selection and product/TestSources composition Bindings are not defined by test membership; those Composition Root extensions remain unsettled (§13.8).

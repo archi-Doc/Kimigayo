@@ -1,6 +1,6 @@
 # Control flow — 制御フロー
 
-本書は、[SPEC.md](../../SPEC.md) §14を中心に制御フローを再定義する。変更する規則は本書を優先し、未変更部分はSPEC.mdに従う。共通規則を§1、転送を§2、各構文を§3・§4、静的検査と後始末を§5、文法とSPEC.mdとの対応を§6にまとめる。
+2026-09-15 同期確認。本書の規則は [SPEC 第14章](../../spec/14-control-flow.md) と関連節へ反映済み。現行の規範は SPEC 本文とする。採用後に式の予約語を `block` から `do` に改名したため、本書の構文・例も `do` に統一する。旧 [If and Match](2026-09-12%20If%20and%20Match.md) 案のインデント本体の暗黙yieldは採用せず、末尾到達をUnitとする。共通規則を§1、転送を§2、各構文を§3・§4、静的検査と後始末を§5、文法とSPEC.mdとの対応を§6にまとめる。
 
 Unitの値は `()` で表す。コード例は独立した断片であり、周囲の宣言や対象ラベルは省略している。出力・後始末用の関数は、注記がなければUnitを返す。
 
@@ -13,7 +13,7 @@ Unitの値は `()` で表す。コード例は独立した断片であり、周�
 ├─ 式
 │  ├─ 選択：if / match
 │  ├─ 反復：for / while / loop
-│  ├─ ブロック：block / Label: block
+│  ├─ ブロック：do / Label: do
 │  └─ 転送：return / exit / continue / yield
 └─ 文
    ├─ unsafe：その場でunsafe操作を許可して実行する
@@ -50,7 +50,7 @@ if ready
 defer => unsafe => releaseRaw(pointer)
 ```
 
-この2形式を、選択の各句・アーム、反復、block、unsafe、defer、requireの失敗本体に適用する。関数・匿名関数・Closure・特殊化・カスタムアクセサー・init・deinitにも適用する。
+この2形式を、選択の各句・アーム、反復、do、unsafe、defer、requireの失敗本体に適用する。関数・匿名関数・Closure・特殊化・カスタムアクセサー・init・deinitにも適用する。
 
 宣言・指令はインデント本体だけに置き、各位置の既存の制限を保つ。総称関数の明示的な制約節も、SPEC.md §7.4に従いインデント本体の先頭に置く。宣言コンテナーとmatchのアーム一覧は実行本体ではなく、本体のない宣言や標準アクセサーに本体を要求する変更でもない。
 
@@ -64,7 +64,7 @@ defer => unsafe => releaseRaw(pointer)
 | --- | --- | --- |
 | 区切り範囲 | 構文の対応と入れ子を決める | 括弧、引数・要素、アームなど。§1.3.1 |
 | 本体スコープ | 本体内の名前の有効範囲と後始末を決める | 2形式の本体。§1.3.3・§5.3 |
-| 転送対象 | return・exit・continue・yieldを受け取る | 関数・選択式・反復式・block・defer。§2.2 |
+| 転送対象 | return・exit・continue・yieldを受け取る | 関数・選択式・反復式・do・defer。§2.2 |
 | 探索境界 | 転送対象を探す範囲を制限する | 関数・defer。操作ごとの制限は§2.2 |
 
 括弧は区切り範囲を作るが、本体スコープ・転送対象・探索境界を追加しない。blockは名前付きexitの対象となるが、他の転送の探索は止めない。
@@ -162,7 +162,7 @@ func run() => if ready => work() // 外側にifがないので括弧不要
 | 所属する構文 | 単一本体の式と正常完了 | 結果を供給する転送 |
 | --- | --- | --- |
 | 関数・get | 戻り型が事前にUnitと確定していればDiscard Contextで捨て、Unitで完了。それ以外はValue Contextで戻り値にする | return |
-| if / match / block | 構文自身のコンテキストを継承。Value Contextでは結果にし、Discard Contextでは捨ててUnitで完了 | 選択式はyield、blockは名前付きexit |
+| if / match / do | 構文自身のコンテキストを継承。Value Contextでは結果にし、Discard Contextでは捨ててUnitで完了 | 選択式はyield、blockは名前付きexit |
 | for / while / loop | Discard Contextで捨て、次の反復へ進む | exit |
 | unsafe / defer | Discard Contextで捨て、Unitで完了。deferの本体は終了処理として実行 | deferはexit。unsafeは対象を持たない |
 | set / init / deinit | Discard Contextで捨て、Unitで完了 | return |
@@ -170,7 +170,7 @@ func run() => if ready => work() // 外側にifがないので括弧不要
 
 **構文の結果になる値は、構造上のすべての結果源から型を決める。その場で捨てる値同士は型をそろえない。** 結果源の収集と型推論は§5.1に従う。
 
-for・while・defer・set・init・deinit、およびDiscard Contextのif・match・block・loopは、対象結果型をUnitに固定する。明示転送の値は捨てずにその型へ適合させる。関数も、戻り型がUnitなら `return 123` を許可しない。対象結果型と式のNeverの関係は§5.1.2に従う。
+for・while・defer・set・init・deinit、およびDiscard Contextのif・match・do・loopは、対象結果型をUnitに固定する。明示転送の値は捨てずにその型へ適合させる。関数も、戻り型がUnitなら `return 123` を許可しない。対象結果型と式のNeverの関係は§5.1.2に従う。
 
 Value Contextのloopは、自分宛てexitを結果源とする。反復本体の末尾は反復を続けるだけであり、反復式の結果源にはしない。対象が転送を受け取った場合も、暗黙の本体結果を重ねて供給しない。
 
@@ -230,7 +230,7 @@ yield [Expression] | yield to Label [: Expression]
 
 ```kimi
 outer: for item in items => process(item)
-let value = work: block => calculate()
+let value = work: do => calculate()
 ```
 
 ラベルは変数・型とは別の名前空間を持つ。同じ関数で有効範囲が重なる同名ラベルは禁止する。自分の本体内だけで有効であり、自分の条件・反復対象・match対象・ガードでは使えない。
@@ -243,7 +243,7 @@ let value = work: block => calculate()
 consume(value: if ready => 1 else => 0) // valueは引数名
 consume((choice: if ready => 1 else => 0)) // choiceはラベル
 yield to outer: (inner: if ready => 1 else => 0)
-return (work: block => calculate())
+return (work: do => calculate())
 ```
 
 ### 2.2. 対象の決定
@@ -251,7 +251,7 @@ return (work: block => calculate())
 | 操作 | ラベルなしの対象 | 名前付きの対象 | 探索境界 |
 | --- | --- | --- | --- |
 | return | 最も近い関数 | なし | defer |
-| exit | 最も近い反復式またはdefer | 指定した反復式・block | 関数。名前付きではdeferも越えない |
+| exit | 最も近い反復式またはdefer | 指定した反復式・do | 関数。名前付きではdeferも越えない |
 | continue | 最も近い反復式 | 指定した反復式 | 関数・defer |
 | yield | 最も近いif / match | 指定したif / match | 関数・defer |
 
@@ -426,26 +426,26 @@ let found: i32 = search: loop
 
 最後の例のscoreはi32を返す。`exit score(value)` なら内側のforを指すため、Unitとの型不一致になる。`loop => work()` は繰り返し、`let value = loop => exit 1` は1を結果にする。結果を捨てる `loop => exit 1` はUnitとの型不一致になる。
 
-### 3.4. block
+### 3.4. do
 
 blockは一度だけ本体を実行する式である。正常完了時の結果は§1.4に従う。
 
 自分宛ての名前付きexitを受け取って終了する。ラベルなしexitはblockを対象にしないため、ラベルのないインデント本体から非Unitの結果を返すことはできない。外側への転送や非終了は通常どおり認める。
 
-`block` は予約語であり、変数・関数・メンバー・ラベルなどの名前には使えない。ヘッダー内での括弧は§1.3に従う。
+`do` は予約語であり、変数・関数・メンバー・ラベルなどの名前には使えない。ヘッダー内での括弧は§1.3に従う。
 
 ```kimi
-let value = work: block
+let value = work: do
     if cached() => exit to work: cachedValue()
     exit to work: calculate()
 
-block
+do
     let resource = open()
     defer => close(resource)
     use(resource)
 // このblockの終了時にcloseと残る破棄を行う
 
-let other = block => calculate()
+let other = do => calculate()
 ```
 
 ## 4. 文
@@ -562,7 +562,7 @@ else => 0
 | for / while | 対象の取得・条件の評価後、本体を実行する場合と、反復せず終了する場合を候補とする |
 | loop | 本体末尾・自分宛てcontinueで反復し、自分宛てexitだけで正常終了する |
 | return / exit / continue / yield | オペランドがあれば先に評価してから転送する。評価元の後続には進まず、対象が受け取った後の処理へ進む |
-| block / unsafe | 本体に従う。blockは自分宛てexitを受け取る |
+| do / unsafe | 本体に従う。blockは自分宛てexitを受け取る |
 | 宣言・defer登録 | 必要な初期化・取得が正常完了すれば次へ進む。関数・deferの本体は、その宣言・登録時には実行しない |
 
 Neverを返す呼出しとAbortの後には正常に進まない。構造的完了では、スコープ終了時の後始末による配送阻止を反映しない。
@@ -701,7 +701,7 @@ consumeが非Copyのvalueを消費する場合、`if false => consume(value)` �
 if・else if・while・require・matchガードの条件はbool式とする。`if let ...` など、条件そのものにlet・var・Pattern束縛を書く形式は認めない。条件式に含まれる別の構文の本体には、通常の本体規則を適用する。
 
 ```kimi
-if (test: block
+if (test: do
     let ready = check() // checkはboolを返す。block内の宣言は許可
     exit to test: ready
 )
@@ -798,7 +798,7 @@ func answer() -> i32
 末尾の検査は、括弧とラベルを通過し、if・match・blockなら構造上正常完了する本体の末尾へ再帰的に進む。単一本体ではその式、インデント本体では最後の項目を調べる。これらの構文自身がDiscard ContextでUnitになっていても、内部で捨てる値を確認する。明示した `()`、転送、反復、文、別の関数の内部へは進まない。
 
 ```kimi
-let total = block
+let total = do
     if useCache => loadCached()
     else => compute()
 // 両関数がi32を返す場合、totalはUnitと推論されるが警告する
@@ -843,7 +843,7 @@ MatchArm           := Pattern ("if" Expression)? Body
 ForExpression      := "for" ForBinding "in" Expression Body
 WhileExpression    := "while" Expression Body
 LoopExpression     := "loop" Body
-BlockExpression    := (Name ":")? "block" Body
+DoExpression    := (Name ":")? "do" Body
 LabeledSelection   := Name ":" (IfExpression | MatchExpression)
 LabeledIteration   := Name ":" (ForExpression | WhileExpression | LoopExpression)
 UnsafeStatement    := "unsafe" Body

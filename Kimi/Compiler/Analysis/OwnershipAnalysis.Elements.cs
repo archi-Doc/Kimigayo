@@ -85,13 +85,11 @@ public sealed partial class OwnershipAnalysis
         var plan = this.body.Projections[projection];
         // Register the only authorized write before conflict checking the emitted operation.
         this.body.Projections[projection] = plan with { Write = this.body.Operations.Count };
-        var write = this.Emit(OwnershipOperationKind.WriteElement, source, plan.Root, input);
+        var write = this.Emit(OwnershipOperationKind.WriteElement, source, plan.Root, input, projection: projection);
         if (ScalarResult(this.body.Places[input].Type))
         {
             this.SetValue(write, OwnershipValueKind.Alias, [this.Value(input)]);
         }
-
-        this.body.Projections[projection] = plan with { Write = write };
     }
 
     private void BeginElementUpdate(int projection)
@@ -125,7 +123,7 @@ public sealed partial class OwnershipAnalysis
         var result = -1;
         if (projection >= 0 && this.flow!.Nodes[source].CanCompleteNormally)
         {
-            result = this.Temporary(source);
+            result = this.Temporary(source, projection: projection);
             if (this.body.Places[result].Acquisition != AcquisitionKind.Copy)
             {
                 this.Unsupported(source); // Non-Copy elements need static Move Paths or shared-result plans.
@@ -160,7 +158,7 @@ public sealed partial class OwnershipAnalysis
                 ? this.Local(receiver) : this.Expression(receiver, PlaceUseKind.Read);
             if (root >= 0)
             {
-                this.Emit(OwnershipOperationKind.Read, receiver, root);
+                this.Emit(OwnershipOperationKind.LocateReceiver, receiver, root);
                 loan = this.BeginSharedLoan(root, access: true);
             }
         }
@@ -177,9 +175,18 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var operation = this.Emit(OwnershipOperationKind.ProjectElement, source, root);
         var id = this.body.Projections.Count;
-        this.body.Projections.Add(new(operation, root, parent, index, element, loan));
+        var selector = ElementAccess.StaticSelector(source);
+        var path = parent < 0 ? -1 : this.body.Projections[parent].Path;
+        var depth = parent < 0 ? 0 : this.body.Projections[parent].PathDepth;
+        if (selector >= 0 && path == parent)
+        {
+            path = id;
+            depth++;
+        }
+
+        this.body.Projections.Add(new(this.body.Operations.Count, root, parent, index, element, loan, Path: path, PathDepth: depth, Selector: selector));
+        this.Emit(OwnershipOperationKind.ProjectElement, source, root, projection: id);
         return id;
     }
 }

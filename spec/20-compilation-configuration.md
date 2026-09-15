@@ -439,7 +439,7 @@ After successful version probing, native build records retain the expected versi
 | `kimi check <project>` | Validate the required lock and current source/semantic inputs without native generation or execution. |
 | `kimi emit <input>` | Resolve the input below, perform the required source/ownership/generation checks and publish the matched pre-optimization .ll/.link.json pair. Never execute LLVM, validate an installed LLVM version, link or run. Successful output reports both paths; LLVM acceptance is a separate stage. |
 | `kimi build <input>` | Resolve the input below, generate fresh LLVM inputs, validate the actual tool versions and native inputs, run opt verification (and default<O2> only at O2), llc and lld-link, and publish the executable and a successful build record. Never execute the Application. |
-| `kimi test <project>` | Require valid product/test resolution and record current test inputs. `--list` requires semantic verification, not code generation. Test execution follows the adopted testing specification; §18.8 and §21.3.7 define input/generation boundaries. |
+| `kimi test <project>` | Require valid product/test resolution and record current test inputs. [§20.9](#209-test-command-and-discovery) defines discovery/options; [§22.6](22-core-execution-and-foreign-functions.md#226-test-execution-and-reporting) defines execution. `--list` requires semantic verification, not code generation; §18.8 and §21.3.7 define input/generation boundaries. |
 | `kimi pack <project>` | Verify the fixed source-package graph and save its closure (§18.6.1), without reserving a release. |
 | `kimi publish <package> --store <directory>` | Validate the fixed Package closure and atomically update only the named local publication store (§18.6.4). No Project lock update or repacking. |
 | `kimi store verify` | Recheck all user-cache content/formats/references and invalidate corrupt results (§18.6.4). |
@@ -545,3 +545,24 @@ Kimigayo source -> semantic checks -> .ll + .link.json
 ```
 
 The linker receives the backend as a profile-wide static input; only needed members are extracted. Build records retain the actual resolved tool/library paths with the report's path-redaction policy, their hashes, selected settings and executable identity. The executable contains the selected helpers and does not need the .lib at execution time. run uses the existing executable and performs no LLVM/backend regeneration. Neither dotnet build, ordinary kimi build, nor the current .NET CI workflows invoke backend build.ps1 automatically; setup or explicit backend regeneration supplies the library. This toolchain packages build inputs and adds no dedicated runtime DLL, extra runtime operation or stable language-function ABI.
+
+## 20.9. Test command and discovery
+
+`kimi test <project>` uses [product/test inputs](18-modules-and-dependencies.md#188-product-and-test-inputs), [Test definitions](06-declarations-and-containers.md#651-test-definitions), and [test generation](21-layout-runtime-and-code-generation.md#2137-product-and-test-generation). Project selection follows the CLI's project rules. Fix product selection, generation and meaning before adding test inputs/generated declarations. Discover tests at compile time without running user initialization or test code. Excluded definitions and dependencies' own tests are not collected; explicitly target the project to test.
+
+Verify every selected test declaration/body with ordinary Type, ownership and control-flow checks before listing or filtering execution. A filter never hides a compile error. `--list` uses verified declarations and requires no generation plan, native code generation, link or child startup. Execution generates/reuses one immutable executable and static diagnostic table containing all cases; filtering or case selection causes no per-case recompile/relink.
+
+Product/test artifacts, manifests and caches are distinct. Product analysis may be shared when source, generated output, dependencies, target, settings and compiler agree; fixing product meaning does not require two full compilations. Report test-specific product conditions and never reuse analysis from different conditions. Validate both product/test resolution partitions under §18.4–5; no lock is required for an empty required partition, but an existing stale lock is not treated as absent. test does not update locks. Generation plans and budgets follow §21.3.7 independently of filters.
+
+| Option | Required behavior |
+| --- | --- |
+| No selection option | Run every case |
+| `--list` | List verified IDs and names, applying a supplied selection without executing the target |
+| `--filter Arithmetic` | Case-sensitive literal substring match on fully qualified test names; no implicit regex or wildcard |
+| `--case <CaseId>` | Select exactly one known case by exact ID; unknown ID is an error |
+| `--jobs N` | At most N simultaneous child processes; N must be positive |
+| `--no-parallel` | At most one child, still a new process per case |
+
+Reject `--case` with `--filter`, and `--jobs` with `--no-parallel`. Choose a finite default parallel limit considering CPU, memory, I/O and startup constraints. Execution start/completion order is unspecified, even in serial mode; tests may not depend on it. Listing and final display order must be stable for the same inputs/settings. One failed case does not stop others; unrecoverable runner failure and user cancellation stop new launches.
+
+Zero discovered/selected cases are an error unless explicitly allowed by an empty-set option; that option cannot rescue an invalid CaseId. The CLI exits zero only when all selected cases succeed, or an explicitly allowed empty set succeeds; otherwise it exits nonzero. This differs from the child process completion protocol (§22.6.4). Provide machine-readable lists/results and controls for execution deadline, recovery grace and storage budgets. Their concrete option names, defaults and formats remain [profile details to specify](appendices/D-deferred-features.md#d4-testing-profile-details-and-extensions); no unspecified spelling is implicitly accepted. Runtime/environment/reporting requirements are in §22.6.

@@ -230,10 +230,10 @@ internal sealed partial class BodyLowering
             return this.LowerElement(body, function, constants, projectDirectory, index, out failure);
         }
 
-        if (operation.Kind == OwnershipOperationKind.Read && this.IsElementReceiverRead(body, index))
+        if (operation.Kind == OwnershipOperationKind.LocateReceiver)
         {
             failure = null;
-            return true; // The access Loan protects storage until the final Copy.
+            return this.IsElementReceiverRead(body, index) || Fail("Receiver location requires an access protection plan.", out failure);
         }
 
         if (operation.Place >= 0 && operation.Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver) &&

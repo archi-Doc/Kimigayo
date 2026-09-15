@@ -68,6 +68,7 @@ public enum OwnershipOperationKind : byte
     PatternTest,
     EndComparisonLoans,
     ProjectElement,
+    LocateReceiver,
     WriteElement,
 }
 
@@ -124,7 +125,7 @@ public enum OwnershipFailure : byte
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition);
 
 /// <summary>One CFG program point; Place/Input are IDs in its body's Place table.</summary>
-public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Koto Source, int Place = -1, int Input = -1, AcquisitionKind Acquisition = AcquisitionKind.None, PlacementKind Placement = PlacementKind.None, LoanRequirement LoanMode = LoanRequirement.None)
+public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Koto Source, int Place = -1, int Input = -1, AcquisitionKind Acquisition = AcquisitionKind.None, PlacementKind Placement = PlacementKind.None, LoanRequirement LoanMode = LoanRequirement.None, int Projection = -1)
 {
     public PlaceUseKind Use => this.Kind switch
     {
@@ -333,7 +334,8 @@ internal readonly record struct OwnershipResultWrite(int Operation, int Declare)
 
 // Persistent stack links preserve independent branch and checking-region environments.
 // Calls, comparisons, guard inspection and element access share the same lexical chain.
-// Read anchors acquisition: Read/Borrow for shared Loans, final ProjectElement for an update.
+// Read anchors acquisition: Read/Borrow, LocateReceiver for storage protection,
+// and final ProjectElement for an exclusive update.
 internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1, bool Access = false, int Projection = -1);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
@@ -343,7 +345,9 @@ internal readonly record struct OwnershipStringComparison(int Operation, int Lef
 // Parent is another projection index. Output is the final Copy read, Write the replacement.
 // An update has both and links its numeric calculation/result through ElementUpdates.
 // Loan protects location; Exclusive replaces that protection after final bounds resolution.
-internal readonly record struct OwnershipProjection(int Operation, int Root, int Parent, int Index, int Element, int Loan, int Output = -1, int Write = -1, int Update = -1, int Exclusive = -1);
+// Path/PathDepth identify the longest static prefix in this same projection table;
+// Selector is the decoded literal element index, or -1 for a non-static selector.
+internal readonly record struct OwnershipProjection(int Operation, int Root, int Parent, int Index, int Element, int Loan, int Output = -1, int Write = -1, int Update = -1, int Exclusive = -1, int Path = -1, int PathDepth = 0, int Selector = -1);
 
 // A completed numeric update links one projection's Copy and store to its calculation/result.
 internal readonly record struct OwnershipElementUpdate(int Projection, int Right, int Computation, int Result);

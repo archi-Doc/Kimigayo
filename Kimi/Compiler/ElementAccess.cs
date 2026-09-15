@@ -8,6 +8,20 @@ internal static class ElementAccess
 {
     internal static bool IsSyntax(Koto source) => source is IndexKoto or MemberAccessKoto { Right: NumberLiteralKoto };
 
+    // SPEC 15.1.3: literal-only recognition; never use folded values or named constants.
+    internal static int StaticSelector(BinaryKoto source)
+    {
+        if (source is MemberAccessKoto && TryType(source, out _, out var position))
+        {
+            return position;
+        }
+
+        return source is IndexKoto && source.Left.BoundType is { Kind: BoundTypeKind.FixedArray, Length: >= 0 } array &&
+            KotoHelper.UnwrapParentheses(source.Right) is NumberLiteralKoto { IsInteger: true } number &&
+            number.TryGetIntegerMagnitude(out var magnitude) && magnitude < (ulong)array.Length && magnitude <= int.MaxValue
+            ? (int)magnitude : -1;
+    }
+
     internal static KotoKind UpdateOperator(KotoKind kind) => kind switch
     {
         KotoKind.PrefixPlusPlus or KotoKind.PostfixIncrement => KotoKind.Plus,
