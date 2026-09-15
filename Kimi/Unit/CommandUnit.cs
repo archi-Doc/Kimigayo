@@ -37,26 +37,26 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 context.AddCommand<RunCommand, KimiOptions>();
 
                 // Logger
-                context.ClearLoggerResolver();
+                context.ClearLogOutputResolvers();
                 if (Program.SuppressConsoleOutput)
                 {
-                    context.AddLoggerResolver(x =>
+                    context.AddLogOutputResolver(x =>
                     {
-                        x.SetOutput<FileLogger<FileLoggerOptions>>();
+                        x.SetOutput<FileLogOutput<FileLogOutputOptions>>();
                     });
                 }
                 else
                 {
-                    context.AddLoggerResolver(x =>
+                    context.AddLogOutputResolver(x =>
                     {// Log source/level -> Resolver() -> Output/filter
                         if (x.LogLevel <= LogLevel.Debug)
                         {
-                            x.SetOutput<ConsoleLogger>();
+                            x.SetOutput<ConsoleLogOutput>();
                             return;
                         }
 
-                        // x.SetOutput<ConsoleAndFileLogger>();
-                        x.SetOutput<ConsoleLogger>();
+                        // x.SetOutput<ConsoleAndFileLogOutput>();
+                        x.SetOutput<ConsoleLogOutput>();
                     });
                 }
             });
@@ -64,10 +64,10 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
             this.PostConfigure(context =>
             {
                 var logfile = "Logs/Log.txt";
-                context.SetOptions(context.GetOptions<FileLoggerOptions>() with
+                context.SetOptions(context.GetOrCreateOptions<FileLogOutputOptions>() with
                 {
-                    Path = Path.Combine(context.DataDirectory, logfile),
-                    MaxLogCapacity = 2,
+                    FilePath = Path.Combine(context.DataDirectory, logfile),
+                    MaxLogCapacityInMegabytes = 2,
                     ClearLogsAtStartup = false,
                 });
             });
@@ -88,14 +88,14 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
             // Create optional instances
             this.Context.CreateInstances();
 
-            await this.Context.SendPrepare();
-            await this.Context.SendStart();
+            await this.Context.SendPrepareAsync();
+            await this.Context.SendStartAsync();
 
             var parserOptions = SimpleParserOptions.Standard with
             {
                 ServiceProvider = this.Context.ServiceProvider,
-                RequireStrictCommandName = false,
-                RequireStrictOptionName = false,
+                RequireCommandName = false,
+                RejectUnknownOptionNames = false,
                 SuppressConsoleOutput = Program.SuppressConsoleOutput,
             };
 
@@ -108,8 +108,8 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
 
             await parser.Execute(this.Context.ExecutionRoot.CancellationToken);
 
-            await this.Context.SendStop();
-            await this.Context.SendTerminate();
+            await this.Context.SendStopAsync();
+            await this.Context.SendTerminateAsync();
         }
     }
 
@@ -120,24 +120,24 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
         this.options = options;
     }
 
-    async Task IUnitPreparable.Prepare(UnitContext unitContext, CancellationToken cancellationToken)
+    async Task IUnitPreparable.PrepareAsync(UnitContext unitContext, CancellationToken cancellationToken)
     {
         // this.logger.GetWriter()?.Write("Unit prepared.");
         // this.logger.GetWriter()?.Write($"Program: {this.options.ProgramDirectory}");
         // this.logger.GetWriter()?.Write($"Data: {this.options.DataDirectory}");
     }
 
-    async Task IUnitExecutable.Start(UnitContext unitContext, CancellationToken cancellationToken)
+    async Task IUnitExecutable.StartAsync(UnitContext unitContext, CancellationToken cancellationToken)
     {
         // this.logger.GetWriter()?.Write("Unit started.");
     }
 
-    async Task IUnitExecutable.Stop(UnitContext unitContext, CancellationToken cancellationToken)
+    async Task IUnitExecutable.StopAsync(UnitContext unitContext, CancellationToken cancellationToken)
     {
         // this.logger.GetWriter()?.Write("Unit stopped.");
     }
 
-    async Task IUnitExecutable.Terminate(UnitContext unitContext, CancellationToken cancellationToken)
+    async Task IUnitExecutable.TerminateAsync(UnitContext unitContext, CancellationToken cancellationToken)
     {
         // this.logger.GetWriter()?.Write("Exit");
     }

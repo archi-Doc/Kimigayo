@@ -23,10 +23,10 @@ public class Program
 
     public static async Task Main()
     {
-        AppCloseHandler.Set(() =>
+        AppCloseHandler.Register(() =>
         {// Closing the console window or terminating the process.
             root?.RequestTermination(); // Send a termination signal to the root.
-            root?.WaitForTermination(TimeSpan.FromSeconds(2)).Wait();
+            root?.WaitForTerminationAsync(TimeSpan.FromSeconds(2)).Wait();
         });
 
         Console.CancelKeyPress += (s, e) =>
@@ -44,10 +44,10 @@ public class Program
         await unit.RunAsync(new(args));
 
         root.RequestTermination();
-        await root.WaitForTermination(); // Wait for the termination infinitely.
+        await root.WaitForTerminationAsync(); // Wait for the termination infinitely.
         if (unit.Context.ServiceProvider.GetService<LogUnit>() is { } unitLogger)
         {
-            await unitLogger.FlushAndTerminate();
+            await unitLogger.FlushAndTerminateAsync();
         }
     }
 }

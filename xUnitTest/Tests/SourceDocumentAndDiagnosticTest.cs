@@ -177,7 +177,7 @@ public class SourceDocumentAndDiagnosticTest
         public void WriteLine(ReadOnlySpan<char> message, ConsoleColor color = ConsoleColor.Gray)
             => this.output.Append(message).Append('\n');
 
-        public Task<InputResult> ReadLine(CancellationToken cancellationToken)
+        public Task<InputResult> ReadLineAsync(CancellationToken cancellationToken)
             => throw new NotSupportedException();
 
         public ConsoleKeyInfo ReadKey(bool intercept)

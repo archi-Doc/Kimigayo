@@ -1067,7 +1067,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         name ??= this.CodeContext.Compilation.Intern(text);
         var container = CreateStandalone(this.CodeContext, kind, state, range, name);
         container.Parent = this;
-        nested.Add(name, container);
+        nested.AddOrUpdate(name, container);
         (this.nestedContainers ??= []).Add(container);
         return container;
     }

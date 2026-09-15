@@ -103,12 +103,12 @@ public class Compilation
     /// </summary>
     /// <param name="useConsoleService">
     /// <see langword="true"/> to use <see cref="ConsoleService"/>;
-    /// otherwise, use <see cref="EmptyConsole"/>.
+    /// otherwise, use <see cref="EmptyConsoleService"/>.
     /// </param>
     /// <returns>A compilation configured for tests.</returns>
     public static Compilation CreateForTest(bool useConsoleService = false)
     {
-        IConsoleService consoleService = useConsoleService ? new ConsoleService() : new EmptyConsole();
+        IConsoleService consoleService = useConsoleService ? new ConsoleService() : new EmptyConsoleService();
         var kimigayo = new Kimigayo(consoleService);
         var project = new Project(kimigayo);
         var compilation = new Compilation(kimigayo, project);
@@ -130,7 +130,7 @@ public class Compilation
         this.Project = project;
         this.KotonohaArray = project.ProjectFile.KotonohaArray?.ToArray() ?? [];
         this.Kotonoha = new(this, this.Project.Name, string.Empty);
-        this.kotonohaIdToKotonoha.Add(this.Kotonoha.Id, this.Kotonoha);
+        this.kotonohaIdToKotonoha.AddOrUpdate(this.Kotonoha.Id, this.Kotonoha);
     }
 
     /// <summary>

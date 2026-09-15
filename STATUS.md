@@ -1,5 +1,7 @@
 # Kimigayo Implementation Status
 
+依存ライブラリーのAPI名称変更対応（2026-09-15）: 更新済みパッケージ参照に合わせ、Arc.Collections の登録API、Arc.Threading の終了待機、Arc.Unit のログ設定・空コンソール・通知とコンソール入力のインターフェイス、SimpleCommandLine の解析オプション、Tinyhand のmap header読み取り、Benchmark の Arc.Crypto/FarmHash 呼び出しを新名称に統一した。関連コメントとテスト用コンソール実装も更新。`dotnet build Kimigayo.slnx --no-restore --nologo -v:q` は警告・エラー0件、`dotnet test --project xUnitTest/xUnitTest.csproj --no-build --no-restore` は4,870件すべて成功し、CLIの `--help` 表示と正常終了も確認した。言語仕様・CLI構文・データ形式の変更はなく、SPEC本文の変更は不要。NativeAOTテスト・性能測定は実行していない。
+
 更新: 2026-09-15。基礎調査対象: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42`。静的要素の部分Moveを§4.8・§7.4、静的string要素の比較・共有引数を§4.9・§7.5、所有parameter・一時値への要素借用の拡張を§4.10・§7.6、所有parameterの部分Moveを§4.11・§7.7に反映。
 
 文書構成（2026-09-14）: [SPEC.md](SPEC.md) を総合目次とし、本文22章と付録A・B・D・E・Fを `spec/` に分割した。付録Cは目次内の実装状況案内に集約。設計・決定・変更記録の `doc/` は `draft/` に改名した。章番号・仕様本文・既存の優先規則を維持し、コンパイラーの実装範囲は変更していない。

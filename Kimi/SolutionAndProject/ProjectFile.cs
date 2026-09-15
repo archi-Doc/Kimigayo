@@ -67,7 +67,7 @@ public partial record class ProjectFile
         }
 
         HashSet<string>? names = null;
-        var count = reader.ReadMapHeader2();
+        var count = reader.ReadMapHeaderOrEmptyArray();
         for (var i = 0; i < count; i++)
         {
             if (!reader.ReadStringSpan().SequenceEqual("CompileTimeSettings"u8))
@@ -81,7 +81,7 @@ public partial record class ProjectFile
                 continue;
             }
 
-            var settingCount = reader.ReadMapHeader2();
+            var settingCount = reader.ReadMapHeaderOrEmptyArray();
             for (var j = 0; j < settingCount; j++)
             {
                 var name = reader.ReadString();
