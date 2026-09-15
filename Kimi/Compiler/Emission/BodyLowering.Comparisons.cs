@@ -78,6 +78,14 @@ internal sealed partial class BodyLowering
             return false;
         }
 
+        if ((uint)loan < (uint)body.ComparisonLoans.Count && body.ComparisonLoans[loan].Projection >= 0)
+        {
+            var inspection = body.ComparisonLoans[loan];
+            return inspection.Place == place && inspection.Call is null &&
+                ReferenceEquals(body.Operations[inspection.Read].Source, KotoHelper.UnwrapParentheses(operand)) &&
+                this.ValidateElementBorrow(body, inspection.Read, id);
+        }
+
         if ((uint)place >= (uint)body.Places.Count || !ReferenceEquals(body.Places[place].Type, BoundType.String) || !this.IsStringStorage(body.Places[place]) ||
             (body.IsReachable(id) && (body.GetInputState(id, place) & PlaceState.MustInit) == 0))
         {
@@ -124,8 +132,8 @@ internal sealed partial class BodyLowering
             return Fail("Unsupported string comparison operator.", out failure);
         }
 
-        var left = plan.LeftValue >= 0 ? this.ReferenceOperand(body, plan.LeftValue) : new(EmissionOperandKind.SlotAddress, plan.Left);
-        var right = plan.RightValue >= 0 ? this.ReferenceOperand(body, plan.RightValue) : new(EmissionOperandKind.SlotAddress, plan.Right);
+        var left = plan.LeftValue >= 0 ? this.ReferenceOperand(body, plan.LeftValue) : StringPlaceOperand(body, plan.Left, plan.LeftLoan);
+        var right = plan.RightValue >= 0 ? this.ReferenceOperand(body, plan.RightValue) : StringPlaceOperand(body, plan.Right, plan.RightLoan);
         function.AddScalar(predicate is "eq" or "ne" ? EmissionOpcode.StringEquals : EmissionOpcode.StringCompare, id, [left, right], op: predicate);
         return true;
     }

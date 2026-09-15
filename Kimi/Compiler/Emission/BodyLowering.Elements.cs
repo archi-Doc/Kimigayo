@@ -10,6 +10,11 @@ internal sealed partial class BodyLowering
     private int[] elementOutputs = [];
     private bool hasElements;
 
+    private static EmissionOperand StringPlaceOperand(OwnershipBody body, int place, int loan)
+        => loan >= 0 && body.ComparisonLoans[loan].Projection is >= 0 and var projection
+            ? new(EmissionOperandKind.ElementAddress, body.Projections[projection].Operation)
+            : new(EmissionOperandKind.SlotAddress, place);
+
     private static bool ConsecutiveElementEdge(OwnershipBody body, int from, int to)
     {
         var edge = body.EdgeHeads[from];
@@ -60,8 +65,28 @@ internal sealed partial class BodyLowering
         return ReferenceEquals(operation.Source.BoundType, place.Type) &&
             (operation.Source is IdentifierNameKoto identifier
                 ? identifier.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var root) && root == place.Id
-                : ReferenceEquals(operation.Source, place.Source)) &&
+                : ReferenceEquals(ElementAccess.ValueSource(operation.Source), place.Source)) &&
+            this.IsElementOwnerStorage(place) &&
             (!body.IsReachable(id) || (body.GetStorageState(id, place.Id) & PlaceState.MustInit) != 0);
+    }
+
+    private bool IsElementOwnerStorage(OwnershipPlace place) => place.Kind switch
+    {
+        OwnershipPlaceKind.Local => true,
+        OwnershipPlaceKind.Parameter => this.slotFunctionPlaces[place.Id] == 1,
+        OwnershipPlaceKind.Result => this.slotResultPlaces[place.Id] != 0,
+        OwnershipPlaceKind.Temporary => this.constructionOwners[place.Id] >= 0 || this.slotFunctionPlaces[place.Id] == 3,
+        _ => false,
+    };
+
+    private bool ValidateElementOwner(OwnershipBody body, int id)
+    {
+        var place = body.Operations[id].Place;
+        var initialized = this.constructionOwners[place] >= 0 ? this.aggregateCompletions[place] : this.slotFunctionInitializations[place];
+        // Locals use their dataflow state. Selection results are checked against
+        // their current declaration/Join lifetime in ValidateSlotResults.
+        return body.Places[place].Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Result ||
+            (initialized >= 0 && (!body.IsReachable(id) || this.Dominates(initialized, id)));
     }
 
     private bool PrepareElements(OwnershipBody body, out string? failure)
@@ -85,6 +110,11 @@ internal sealed partial class BodyLowering
                 plan.Exclusive < -1 || (plan.Exclusive >= 0 && ((uint)plan.Exclusive >= (uint)body.ComparisonLoans.Count ||
                     body.ComparisonLoans[plan.Exclusive].Mode != LoanRequirement.Uniq || body.ComparisonLoans[plan.Exclusive].Projection != i)) ||
                 plan.Update < -1 || (plan.Update >= 0 && (plan.Update >= body.ElementUpdates.Count || plan.Output < 0 || plan.Write < 0 || plan.Exclusive < 0)) ||
+                plan.Borrow < -1 || (plan.Borrow >= 0 && ((uint)plan.Borrow >= (uint)body.Operations.Count ||
+                    body.Operations[plan.Borrow].Projection != i || body.LoanStates[plan.Borrow] < 0 ||
+                    body.ComparisonLoans[body.LoanStates[plan.Borrow]].Projection != i ||
+                    plan.Output != -1 || plan.Write != -1 || plan.Exclusive != -1 || plan.Update != -1 ||
+                    !ConsecutiveElementEdge(body, plan.Operation, plan.Borrow))) ||
                 (plan.Output >= 0 && plan.Write >= 0 && plan.Update < 0) ||
                 this.elementOperations[plan.Operation] >= 0 ||
                 body.Operations[plan.Operation] is not { Kind: OwnershipOperationKind.ProjectElement, Source: BinaryKoto source, Input: -1 } operation ||
@@ -100,6 +130,7 @@ internal sealed partial class BodyLowering
                 (plan.Parent >= 0
                     ? body.Projections[plan.Parent].Root != plan.Root || body.Projections[plan.Parent].Loan != plan.Loan ||
                         body.Projections[plan.Parent].Output != -1 || body.Projections[plan.Parent].Write != -1 ||
+                        body.Projections[plan.Parent].Borrow != -1 ||
                         !ReferenceEquals(body.Operations[body.Projections[plan.Parent].Operation].Source, KotoHelper.UnwrapParentheses(source.Left))
                     : !ReferenceEquals(body.Operations[loan.Read].Source, KotoHelper.UnwrapParentheses(source.Left))))
             {
@@ -131,7 +162,7 @@ internal sealed partial class BodyLowering
                     body.Places[output.Place].Kind != OwnershipPlaceKind.Temporary ||
                     (body.Places[output.Place].Acquisition == AcquisitionKind.Copy ? output.Acquisition != AcquisitionKind.None || !IsCopyElement(element!) :
                         body.Places[output.Place].Acquisition != AcquisitionKind.Move || output.Acquisition != AcquisitionKind.Move || plan.Path != i ||
-                        body.Places[plan.Root].Kind != OwnershipPlaceKind.Local || IsCopyElement(element!)) ||
+                        !ElementAccess.SupportsMoveRoot(body.Places[plan.Root]) || IsCopyElement(element!)) ||
                     !ReferenceEquals(body.Places[output.Place].Type, element))
                 {
                     return Fail("Element acquisition requires a fresh Copy result or an eligible static owned Move of the selected Type.", out failure);
@@ -163,6 +194,21 @@ internal sealed partial class BodyLowering
         }
 
         return true;
+    }
+
+    private bool ValidateElementBorrow(OwnershipBody body, int borrow, int at)
+    {
+        var operation = body.Operations[borrow];
+        if ((uint)operation.Projection >= (uint)body.Projections.Count)
+        {
+            return false;
+        }
+
+        var plan = body.Projections[operation.Projection];
+        return plan.Borrow == borrow && this.elementOperations[plan.Operation] == operation.Projection &&
+            (borrow == at ? body.HasComparisonLoan(at, plan.Loan) : body.HasComparisonLoan(at, body.LoanStates[borrow])) &&
+            (!body.IsReachable(at) || (this.Dominates(plan.Operation, borrow) && (borrow == at || this.Dominates(borrow, at)) &&
+                (body.GetElementState(at, operation.Projection) & PlaceState.MustInit) != 0));
     }
 
     private bool PrepareElementWrite(OwnershipBody body, OwnershipProjection plan, BinaryKoto target, BoundType element, out string? failure)

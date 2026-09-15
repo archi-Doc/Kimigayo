@@ -37,18 +37,30 @@ public sealed partial class Binding
     /// <returns>Whether this pass selected an operation for the use.</returns>
     public bool TryGetReceiverOperation(Koto use, out BoundArgumentOperation operation) => this.receiverOperations.TryGetValue(use, out operation);
 
+    internal static Koto PlaceOriginSource(Koto source)
+    {
+        // Inline element projections share the owner's lifetime. Their Loans
+        // retain separate place footprints for overlap checking.
+        source = KotoHelper.UnwrapParentheses(source);
+        while (source is MemberAccessKoto or IndexKoto)
+        {
+            source = KotoHelper.UnwrapParentheses(((BinaryKoto)source).Left);
+            if (source.BoundType?.Origin is not null)
+            {
+                break;
+            }
+        }
+
+        return source;
+    }
+
     private static ConstraintProof ProjectedReceiverProof(BindingSymbol implementation)
         // Until Access Effect verification supplies callee/returned-Loan summaries, no body or signature is evidence.
         => implementation.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Unknown;
 
     private BoundOrigin PlaceOrigin(Koto source)
     {
-        source = KotoHelper.UnwrapParentheses(source);
-        if (source is MemberAccessKoto member)
-        {
-            return member.Left.BoundType?.Origin ?? this.PlaceOrigin(member.Left);
-        }
-
+        source = PlaceOriginSource(source);
         return source.BoundType?.Origin ?? this.OriginAtom(source.BoundSymbol?.Declaration ?? source, OriginKind.Projection, source.BoundSymbol?.Slot ?? 0);
     }
 

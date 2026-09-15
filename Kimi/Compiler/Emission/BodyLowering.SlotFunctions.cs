@@ -8,6 +8,7 @@ internal sealed partial class BodyLowering
 {
     private int[] slotFunctionPlaces = [];
     private int[] slotFunctionProduces = [];
+    private int[] slotFunctionInitializations = [];
     private int[] slotCallProduces = [];
 
     // Roles belong to verified parameter, return and call plans, never to Place Kind alone.
@@ -16,9 +17,11 @@ internal sealed partial class BodyLowering
         failure = null;
         Grow(ref this.slotFunctionPlaces, body.Places.Count);
         Grow(ref this.slotFunctionProduces, body.Operations.Count);
+        Grow(ref this.slotFunctionInitializations, body.Places.Count);
         Grow(ref this.slotCallProduces, body.Operations.Count);
         this.slotFunctionPlaces.AsSpan(0, body.Places.Count).Clear();
         this.slotFunctionProduces.AsSpan(0, body.Operations.Count).Clear();
+        this.slotFunctionInitializations.AsSpan(0, body.Places.Count).Fill(-1);
         this.slotCallProduces.AsSpan(0, body.Operations.Count).Fill(-1);
         for (var p = 0; p < body.Places.Count; p++)
         {
@@ -57,6 +60,7 @@ internal sealed partial class BodyLowering
             {
                 this.slotFunctionPlaces[place.Id] = 1;
                 this.slotFunctionProduces[producer] = 1;
+                this.slotFunctionInitializations[place.Id] = producer;
             }
         }
 
@@ -107,6 +111,7 @@ internal sealed partial class BodyLowering
 
             this.slotFunctionPlaces[call.Place] = 3;
             this.slotFunctionProduces[id + 1] = 3;
+            this.slotFunctionInitializations[call.Place] = id + 1;
             this.slotCallProduces[id] = id + 1;
         }
 

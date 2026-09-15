@@ -24,6 +24,11 @@ public sealed partial class OwnershipAnalysis
 
     private int InspectString(Koto source, out int loan)
     {
+        if (KotoHelper.UnwrapParentheses(source) is BinaryKoto element && ElementAccess.IsSyntax(element))
+        {
+            return this.BorrowStringElement(element, null, null, out loan);
+        }
+
         var place = this.Expression(source, PlaceUseKind.Read);
         loan = -1;
         if (place < 0 || ReferenceTypes.IsString(this.body.Places[place].Type) || this.body.Places[place].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter))
@@ -53,6 +58,11 @@ public sealed partial class OwnershipAnalysis
     private int BorrowArgument(InvocationKoto call, BoundArgumentOperation argument)
     {
         var source = KotoHelper.UnwrapParentheses(argument.Source!);
+        if (source is BinaryKoto element && ElementAccess.IsSyntax(element))
+        {
+            return this.BorrowStringElement(element, call, argument.ParameterType, out _);
+        }
+
         if (!ReferenceEquals(source.BoundType, BoundType.String))
         {
             this.Expression(source, PlaceUseKind.Read);

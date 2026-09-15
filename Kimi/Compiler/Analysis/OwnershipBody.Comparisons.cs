@@ -18,7 +18,7 @@ public sealed partial class OwnershipBody
     {
         var operation = this.Operations[id];
         var loan = this.ComparisonLoans[loanId];
-        if (operation.Projection >= 0 && operation.Kind is OwnershipOperationKind.Produce or OwnershipOperationKind.WriteElement)
+        if (operation.Projection >= 0 && operation.Kind is OwnershipOperationKind.Produce or OwnershipOperationKind.WriteElement or OwnershipOperationKind.Read or OwnershipOperationKind.Borrow)
         {
             var access = this.Projections[operation.Projection];
             if (access.Root != loan.Place)
@@ -31,9 +31,10 @@ public sealed partial class OwnershipBody
                 return access.Exclusive != loanId && this.ElementPathsOverlap(operation.Projection, loan.Projection);
             }
 
-            // Receiver stability forbids any write to its root during index evaluation.
-            return operation.Kind == OwnershipOperationKind.WriteElement ||
-                (operation.Acquisition == AcquisitionKind.Move && loanId != access.Loan);
+            // Root protection during location is wider than a completed element borrow.
+            return (operation.Kind == OwnershipOperationKind.WriteElement ||
+                (operation.Acquisition == AcquisitionKind.Move && loanId != access.Loan)) &&
+                (loan.Projection < 0 || this.ElementPathsOverlap(operation.Projection, loan.Projection));
         }
 
         return ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, loan.Place, loan.Mode, operation.LoanMode);
@@ -46,7 +47,7 @@ public sealed partial class OwnershipBody
         {
             var existing = this.ComparisonLoans[head];
             if (existing.Place == loan.Place &&
-                (existing.Mode != LoanRequirement.Uniq || this.ElementPathsOverlap(loan.Projection, existing.Projection)))
+                (existing.Projection < 0 || this.ElementPathsOverlap(loan.Projection, existing.Projection)))
             {
                 return true;
             }
@@ -96,6 +97,16 @@ public sealed partial class OwnershipBody
             if (loan.Mode == LoanRequirement.Uniq)
             {
                 if ((uint)loan.Read >= (uint)this.Operations.Count || !this.ValidElementWriteLoan(i))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if (loan.Projection >= 0)
+            {
+                if (!this.ValidElementBorrowLoan(i))
                 {
                     return false;
                 }
@@ -156,7 +167,8 @@ public sealed partial class OwnershipBody
                     }
                 }
                 else if (output < 0 || this.ComparisonLoans[output].Read != id ||
-                    (this.ComparisonLoans[output].Mode == LoanRequirement.Uniq ? !this.ValidElementWriteLoan(output) : this.ComparisonLoans[output].Parent != input))
+                    (this.ComparisonLoans[output].Mode == LoanRequirement.Uniq ? !this.ValidElementWriteLoan(output) :
+                        this.ComparisonLoans[output].Projection >= 0 ? !this.ValidElementBorrowLoan(output) : this.ComparisonLoans[output].Parent != input))
                 {
                     return false;
                 }
@@ -217,6 +229,36 @@ public sealed partial class OwnershipBody
         }
 
         return !this.ElementWriteLoanConflicts(id);
+    }
+
+    private bool ValidElementBorrowLoan(int id)
+    {
+        var loan = this.ComparisonLoans[id];
+        if (loan.Mode != LoanRequirement.Ref || loan.Access || loan.Guard != -1 ||
+            (uint)loan.Projection >= (uint)this.Projections.Count || (uint)loan.Read >= (uint)this.Operations.Count)
+        {
+            return false;
+        }
+
+        var plan = this.Projections[loan.Projection];
+        if ((uint)plan.Loan >= (uint)id || (uint)plan.Root >= (uint)this.Places.Count)
+        {
+            return false;
+        }
+
+        var access = this.ComparisonLoans[plan.Loan];
+        var operation = this.Operations[loan.Read];
+        return plan.Borrow == loan.Read && plan.Borrow == plan.Operation + 1 && plan.Path == loan.Projection &&
+            plan.Output == -1 && plan.Write == -1 && plan.Exclusive == -1 && plan.Update == -1 &&
+            ElementAccess.SupportsBorrowRoot(this.Places[plan.Root]) && plan.Root == loan.Place &&
+            operation.Kind == (loan.Call is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Borrow) &&
+            operation.Place == plan.Root && operation.Projection == loan.Projection &&
+            operation.Acquisition == AcquisitionKind.None && operation.LoanMode == LoanRequirement.Ref &&
+            (loan.Call is not null || (operation.Input == -1 && this.Values[loan.Read].Kind == OwnershipValueKind.None)) &&
+            ReferenceEquals(operation.Source, this.Operations[plan.Operation].Source) && ReferenceEquals(operation.Source.BoundType, BoundType.String) &&
+            access.Mode == LoanRequirement.Ref && access.Access && access.Place == loan.Place &&
+            access.Parent == loan.Parent && access.Depth == loan.Depth && loan.Depth > 0 &&
+            this.LoanInputs[loan.Read] == plan.Loan && this.LoanStates[loan.Read] == id;
     }
 
     private bool ValidGuardLoan(int index)

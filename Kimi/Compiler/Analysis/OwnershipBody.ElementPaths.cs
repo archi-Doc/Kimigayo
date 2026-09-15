@@ -88,7 +88,8 @@ public sealed partial class OwnershipBody
         for (var id = 0; id < this.Operations.Count; id++)
         {
             var operation = this.Operations[id];
-            var element = operation.Kind is OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement || this.Values[id].Kind == OwnershipValueKind.Element;
+            var borrow = operation.Projection >= 0 && operation.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Borrow;
+            var element = borrow || operation.Kind is OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement || this.Values[id].Kind == OwnershipValueKind.Element;
             if (!element)
             {
                 if (operation.Projection != -1)
@@ -106,7 +107,7 @@ public sealed partial class OwnershipBody
 
             var plan = this.Projections[operation.Projection];
             if ((operation.Kind == OwnershipOperationKind.ProjectElement ? plan.Operation :
-                operation.Kind == OwnershipOperationKind.WriteElement ? plan.Write : plan.Output) != id)
+                operation.Kind == OwnershipOperationKind.WriteElement ? plan.Write : borrow ? plan.Borrow : plan.Output) != id)
             {
                 return false;
             }

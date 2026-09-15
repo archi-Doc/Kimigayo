@@ -233,7 +233,13 @@ internal sealed partial class BodyLowering
         if (operation.Kind == OwnershipOperationKind.LocateReceiver)
         {
             failure = null;
-            return this.IsElementReceiverRead(body, index) || Fail("Receiver location requires an access protection plan.", out failure);
+            return (this.IsElementReceiverRead(body, index) && this.ValidateElementOwner(body, index)) || Fail("Receiver location requires initialized owner storage and an access protection plan.", out failure);
+        }
+
+        if (operation.Projection >= 0 && operation.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Borrow)
+        {
+            failure = null;
+            return this.ValidateElementBorrow(body, index, index) || Fail("Element borrowing requires an initialized, protected source address.", out failure);
         }
 
         if (operation.Place >= 0 && operation.Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver) &&
@@ -274,7 +280,7 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Entry when index == 0:
                 foreach (var flagged in function.LiveFlags)
                 {
-                    if (IsBorrowedStringTemporary(body, flagged))
+                    if (this.borrowedTemporaries[flagged] != 0)
                     {
                         function.Add(EmissionOpcode.InitializeLiveFlag, 0, flagged, 0);
                     }

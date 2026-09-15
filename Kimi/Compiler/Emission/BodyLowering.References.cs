@@ -117,12 +117,12 @@ internal sealed partial class BodyLowering
                     break;
                 case OwnershipOperationKind.Borrow when value.Kind == OwnershipValueKind.Borrow:
                     var loan = id < body.LoanStates.Count ? body.LoanStates[id] : -1;
+                    var originSource = Binding.PlaceOriginSource(operation.Source);
                     if ((uint)operation.Place >= (uint)body.Places.Count || place.Kind != OwnershipPlaceKind.Temporary || operation.LoanMode != LoanRequirement.Ref ||
                         operation.Acquisition != AcquisitionKind.None || loan < 0 || body.ComparisonLoans[loan].Read != id || body.ComparisonLoans[loan].Call is null ||
-                        !ReferenceEquals(body.Places[operation.Place].Type, BoundType.String) ||
-                        !this.ValidateBorrowSource(body, operation) ||
+                        (operation.Projection < 0 && (!ReferenceEquals(body.Places[operation.Place].Type, BoundType.String) || !this.ValidateBorrowSource(body, operation))) ||
                         type!.Origin is not { Kind: OriginKind.Projection } origin ||
-                        !ReferenceEquals(origin.Binder, operation.Source.BoundSymbol?.Declaration ?? operation.Source) || origin.Slot != (operation.Source.BoundSymbol?.Slot ?? 0))
+                        !ReferenceEquals(origin.Binder, originSource.BoundSymbol?.Declaration ?? originSource) || origin.Slot != (originSource.BoundSymbol?.Slot ?? 0))
                     {
                         return Fail("Reference formation lacks its source and argument Loan.", out failure);
                     }
@@ -172,9 +172,11 @@ internal sealed partial class BodyLowering
     private EmissionOperand ReferenceOperand(OwnershipBody body, int value)
     {
         var root = this.referenceRoots[value];
+        // A guard candidate may be read under another argument's element Loan.
+        // Only a reference formed from a projection uses that projection's address.
         return body.Values[root].Kind == OwnershipValueKind.Parameter
             ? new(EmissionOperandKind.Argument, body.Values[root].Constant)
-            : new(EmissionOperandKind.SlotAddress, body.Operations[root].Place);
+            : StringPlaceOperand(body, body.Operations[root].Place, body.Operations[root].Projection >= 0 ? body.LoanStates[root] : -1);
     }
 
     private bool ValidateReferenceUse(OwnershipBody body, int value, int at)
@@ -192,6 +194,11 @@ internal sealed partial class BodyLowering
         }
 
         var loan = body.LoanStates[root];
+        if (body.Operations[root].Projection >= 0)
+        {
+            return this.ValidateElementBorrow(body, root, at);
+        }
+
         if (body.Operations[root].Kind == OwnershipOperationKind.Read)
         {
             while (loan >= 0 && body.ComparisonLoans[loan].Guard != body.OperationSteps[root])

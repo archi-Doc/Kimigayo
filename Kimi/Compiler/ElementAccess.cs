@@ -6,6 +6,14 @@ namespace Kimi.Compiler;
 
 internal static class ElementAccess
 {
+    // Eligibility only; Lowering must also verify the owner's storage role and initialization.
+    internal static bool SupportsBorrowRoot(OwnershipPlace place)
+        => place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter or OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result &&
+            place.Type.Semantics == SemanticsKind.Owner && place.Type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray;
+
+    internal static bool SupportsMoveRoot(OwnershipPlace place)
+        => place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter && SupportsBorrowRoot(place);
+
     internal static bool IsSyntax(Koto source) => source is IndexKoto or MemberAccessKoto { Right: NumberLiteralKoto };
 
     // SPEC 15.1.3: literal-only recognition; never use folded values or named constants.

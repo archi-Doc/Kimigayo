@@ -6,6 +6,35 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    private int BorrowStringElement(BinaryKoto source, InvocationKoto? call, BoundType? type, out int loan)
+    {
+        loan = -1;
+        var projection = this.LocateElement(source);
+        if (projection < 0)
+        {
+            return -1;
+        }
+
+        var plan = this.body.Projections[projection];
+        if (!ReferenceEquals(source.BoundType, BoundType.String) || plan.Path != projection ||
+            !ElementAccess.SupportsBorrowRoot(this.body.Places[plan.Root]))
+        {
+            this.Unsupported(source);
+            return -1;
+        }
+
+        var result = call is null ? -1 : this.Place(source, type, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
+        var operation = this.Emit(call is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Borrow, source, plan.Root, result, loanMode: LoanRequirement.Ref, projection: projection);
+        var access = this.body.ComparisonLoans[plan.Loan];
+        // Replace only this access's root protection after bounds resolution. The
+        // resulting element Loan retains the comparison/call's enclosing depth.
+        loan = this.body.ComparisonLoans.Count;
+        this.body.ComparisonLoans.Add(new(operation, plan.Root, access.Parent, access.Depth, Call: call, Projection: projection));
+        this.body.Projections[projection] = plan with { Borrow = operation };
+        this.body.LoanStates[operation] = loan;
+        return call is null ? plan.Root : this.RegisterTemporary(result);
+    }
+
     private int UpdateElement(Koto source, BinaryKoto target)
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
@@ -127,7 +156,7 @@ public sealed partial class OwnershipAnalysis
             result = this.Temporary(source, projection: projection);
             if (this.body.Places[result].Acquisition != AcquisitionKind.Copy &&
                 (!allowMove || this.body.Places[result].Acquisition != AcquisitionKind.Move || this.body.Projections[projection].Path != projection ||
-                    this.body.Places[this.body.Projections[projection].Root].Kind != OwnershipPlaceKind.Local))
+                    !ElementAccess.SupportsMoveRoot(this.body.Places[this.body.Projections[projection].Root])))
             {
                 // Inspection and shared arguments must borrow the element Place;
                 // they may not silently Move it into a temporary to obtain a borrow.

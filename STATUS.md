@@ -1,6 +1,6 @@
 # Kimigayo Implementation Status
 
-更新: 2026-09-15。基礎調査対象: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42`。静的要素の部分Move・再初期化・残存部分の破棄を§4.8・§7.4に反映。
+更新: 2026-09-15。基礎調査対象: `e861ce5ebf7c365f8e8416e0ed692500eb9b1f42`。静的要素の部分Moveを§4.8・§7.4、静的string要素の比較・共有引数を§4.9・§7.5、所有parameter・一時値への要素借用の拡張を§4.10・§7.6、所有parameterの部分Moveを§4.11・§7.7に反映。
 
 文書構成（2026-09-14）: [SPEC.md](SPEC.md) を総合目次とし、本文22章と付録A・B・D・E・Fを `spec/` に分割した。付録Cは目次内の実装状況案内に集約。設計・決定・変更記録の `doc/` は `draft/` に改名した。章番号・仕様本文・既存の優先規則を維持し、コンパイラーの実装範囲は変更していない。
 
@@ -117,9 +117,9 @@ receiver省略記法（2026-09-15）: instance関数・Contract関数requirement
 | 数値変換 | 整数12×12方向の型適応・範囲検査、direct integer literal fitting、float literalの対象精度へのfitting、f32→f64、float同型取得 | 実行時f64→f32、整数↔float、整数literal→float、一般同型取得、明示Semantics/略記は未対応。typed128bit↔float・char/bool数値変換は禁止。[Binding.Conversions](Kimi/Compiler/Binding/Binding.Conversions.cs)、Conversion / FloatConversionEmission |
 | 関数・結果・cleanup | root/captureなしlocal関数、named引数、再帰、scalar/Unit/owned string/Tuple/固定配列の引数/結果、Never結果、選択・loop・match結果、defer | default・generic・明示Origin・capture・間接call・一般の集約ABIは未対応。[FunctionAbi](Kimi/Compiler/Emission/FunctionAbi.cs)、Function / Result / DeferredEmission |
 | owned string | literal、local Move・self代入/置換、条件付き破棄、一時/選択/関数結果、writeLine、全6比較 | stringはStatic backingでもNon-Copy。UTF-8 byte列で比較。Heap構築のsource操作・補間/連結・明示所有権適応は未対応。String*Emission |
-| shared string | 暗黙input Originの必須ref/string引数・転送、referent比較、一時owned stringのshared引数、string guard candidate | 参照はhandleへの1 pointer。結果は独立値だけ。local保存/返却・明示@ref・uniq・nested borrowは未対応。[ReferenceTypes](Kimi/Compiler/ReferenceTypes.cs)、Reference / StringGuardEmission |
+| shared string | 暗黙input Originの必須ref/string引数・転送、referent比較、一時owned stringのshared引数、string guard candidate、所有local・parameter・一時値の静的string要素の比較・shared引数（§4.9–4.10） | 参照はhandleへの1 pointer。結果は独立値だけ。local保存/返却・明示@ref・uniq・nested borrowは未対応。[ReferenceTypes](Kimi/Compiler/ReferenceTypes.cs)、Reference / StringGuardEmission / ElementBorrowOwnerEmission |
 | match/guard | bool・整数・char・Unit・owned stringの網羅的match、literal/wildcard/全体let/var/括弧Pattern、Copy候補・ref/string候補のguard | float Subjectは全体Pattern/guardの既存範囲。借用Subject・Tuple/enum分解実行は未対応。candidateはread-onlyでbody bindingと別。Match / Guard / Char / Float / StringGuardEmission |
-| Tuple・固定配列 | 対応scalar・Unit・owned string・nested aggregateの構築、local全体Copy/Move/置換/条件付き破棄、if/do/loop/matchの結果配送・通常関数の値引数/結果、Tupleの数値selector・固定配列のisize添字によるCopy要素読み取り、初期化済みlocal varのCopy/対応Non-Copy要素への単純代入・数値要素への複合代入・整数要素の前置/後置増減、静的非重複要素の操作、local静的要素の部分Move/再初期化/残存部分の破棄 | ownerのみ、深さ64、size/countはint.MaxValueまで。動的Non-Copy要素取得・借用引数/結果・集成型Subject・struct/enum生成は未対応。[AggregateLayout](Kimi/Compiler/Emission/AggregateLayout.cs)、AggregateEmission / AggregateResultEmission / AggregateFunctionEmission / ElementEmission / ElementAssignmentEmission / ElementUpdateEmission / ElementPathEmission / ElementReplacementEmission |
+| Tuple・固定配列 | 対応scalar・Unit・owned string・nested aggregateの構築、local全体Copy/Move/置換/条件付き破棄、if/do/loop/matchの結果配送・通常関数の値引数/結果、Tupleの数値selector・固定配列のisize添字によるCopy要素読み取り、初期化済みlocal varのCopy/対応Non-Copy要素への単純代入・数値要素への複合代入・整数要素の前置/後置増減、静的非重複要素の操作、local/parameterの静的部分Move・残存部分の破棄、local varの再初期化、静的string要素の比較・共有引数 | ownerのみ、深さ64、size/countはint.MaxValueまで。動的Non-Copy要素取得・集成型全体の借用引数/結果・集成型Subject・struct/enum生成は未対応。[AggregateLayout](Kimi/Compiler/Emission/AggregateLayout.cs)、AggregateEmission / AggregateResultEmission / AggregateFunctionEmission / ElementEmission / ElementAssignmentEmission / ElementUpdateEmission / ElementPathEmission / ElementReplacementEmission |
 
 生成は検証済みの型付き値/CFG/ABI/cleanup計画から行う。WriterはASTを再解釈しない。型identity・定数・入力・支配・結果到着・生存flag・Loan・破棄計画の不整合を拒否する。同じLLVM幅でも別の言語型を混同しない。
 
@@ -233,9 +233,47 @@ Loweringはsource・正確な型・入力/親の初期化・支配関係・mutab
 
 Loweringは取得種別・静的経路・source/型・初期化と完全性・Loan・支配関係を再照合する。部分破棄とflag遷移は所有権状態から生成し、flagの欠落/重複/誤った値とdispatch後の配置も検証する。既存のstring handle転送・集成型memcpy・破棄helperを共用し、runtime APIやLoan lockは追加していない。
 
-[ElementMoveEmissionTest](xUnitTest/Tests/ElementMoveEmissionTest.cs) は70件。残存責任の回数/順序、分岐・親置換・自己代入・入れ子・動的兄弟・loop・defer・結果配送・未到達/covered arm・0サイズ・境界Abort・非停止、診断理由、改変計画と再解析、条件付きflag、疎な経路を検証する。warm BindとOwnership＋IR生成は各128回で追加割り当て0 B。throughput改善率は測定していない。
+[ElementMoveEmissionTest](xUnitTest/Tests/ElementMoveEmissionTest.cs) は実装時70件（§4.11でparameterの旧拒否1件を移し、現在69件）。残存責任の回数/順序、分岐・親置換・自己代入・入れ子・動的兄弟・loop・defer・結果配送・未到達/covered arm・0サイズ・境界Abort・非停止、診断理由、改変計画と再解析、条件付きflag、疎な経路を検証する。warm BindとOwnership＋IR生成は各128回で追加割り当て0 B。throughput改善率は測定していない。
 
-比較・共有引数のためのNon-Copy要素借用は、Moveした一時値で代用せずUnsupportedとして拒否する。動的Non-Copy取得、parameter/temporary/borrowed receiver、一般struct/Property・user deinit・保持借用依存・動的collectionは未対応。これらは言語仕様の許可範囲を狭める変更ではなく、現在の実装境界である。
+§4.8実装時に拒否していた比較・共有引数のための静的string要素借用は§4.9で対応し、所有parameter・temporaryへは§4.10で拡張した。所有parameterの部分Moveは§4.11で追加した。動的Non-Copy取得、temporary要素の部分Move、borrowed receiver、一般struct/Property・user deinit・保持借用依存・動的collectionは未対応。これらは言語仕様の許可範囲を狭める変更ではなく、現在の実装境界である。
+
+### 4.9. 静的string要素の比較・共有引数（2026-09-15）
+
+構築済みの所有local let/varに保持したTuple・固定配列について、静的経路のstring要素を全6比較と既存の直接呼出の必須ref/string引数に接続した。括弧・基数・桁区切りを含む範囲内整数リテラルと入れ子経路を扱う。同一要素への共有借用の重複、名前付き引数、入れ子call、string guard候補との混在、独立したstring/集成型結果、loop・defer・未到達/covered armにも対応する。例は [ElementBorrows](examples/ElementBorrows/README.md)。
+
+比較と共有引数は共通のBorrowStringElementでLocateElementの射影先を借り、AcquireElementによる所有一時値の取得を行わない。位置形成中のroot保護は最終境界検査後のRead/Borrowで選択要素の共有Loanへ切り替える。後続operand/引数とcall中のcleanupを保護し、比較終了または独立した正常call結果の確保後に自身のLoanだけを終了する。通常transferは放棄したLoanをcleanup前に解放する。外側のLoan、元の所有責任、Abortの非巻戻しを維持する。
+
+共有要素Loanの競合判定も既存の静的経路比較を使用する。重なる要素/祖先のMove・置換・排他取得を拒否し、静的に非重複な兄弟のMove・置換・数値更新を許可する。動的な兄弟操作は既存の静的prefixで判定する。添字評価中のroot保護は継続する。部分Moveした親では位置形成に必要な構築状態と対象要素の初期化を分けて検査し、残存要素だけを借用できる。
+
+BindingのPlaceOriginSourceをLoweringと共有し、Tuple selectorと固定配列添字のどちらも所有元へOriginを対応させる。Loweringはsource・root・型・静的経路・初期化・Loan・位置形成からの連続edgeと支配を再検証する。既存ElementAddressをstring比較とref/string引数へ渡し、所有一時スロット、string転送、新しい破棄flag、LLVM命令、runtime API、backend ABIを追加しない。射影表に借用operationの整数IDを保持し、既存の表と容量を再利用する。
+
+[ElementBorrowEmissionTest](xUnitTest/Tests/ElementBorrowEmissionTest.cs) は実装時78件（§4.10で旧拒否2件を成功ケースへ移し、現在76件）。正常実行、拒否理由、残存責任と破棄順序、途中return・後続添字のAbort・非停止、改変計画の拒否と再解析回復を検証する。部分Move・兄弟更新・deferを含むwarm BindとOwnership＋IR生成は各128回で追加割り当て0 B。throughput改善率は測定していない。
+
+所有parameter・temporaryからの借用は§4.10で追加した。動的添字のNon-Copy共有結果、borrowed receiver、明示@ref・uniq、参照のlocal保存/返却、集成型全体の借用、一般struct/Property・user deinit・保持借用依存・動的collectionは未対応。今回の対応は言語規則の変更ではなく実行範囲の追加である。
+
+### 4.10. 所有parameter・一時値からの静的string要素借用（2026-09-15）
+
+§4.9の共通BorrowStringElementを、所有parameter、Tuple/固定配列の構築一時値、直接関数結果、if/do/loop/match結果へ拡張した。比較と必須ref/string引数の両方に対応する。receiverは一度だけ評価し、既存ownerスロット内のElementAddressを使用する。要素の所有一時スロットや転送・部分Moveを追加しない。例は [ElementBorrowOwners](examples/ElementBorrowOwners/README.md)。
+
+PlaceのKindだけではストレージを許可しない。既存の関数・構築・選択結果の役割表と照合し、parameter Produce、正常復帰後のcall結果Produce、CompleteConstructionが位置形成を支配することを検査する。選択結果は現在のDeclare/Joinを検査し、結果を確保するWriteからcleanup中に位置形成・利用・破棄することを拒否する。括弧とラベルのsource正規化は既存ValueSourceを共有する。
+
+一時所有元の寿命は式の規定の終了点まで維持する。Loanの終了だけでは早期破棄しない。短絡で生成されない経路にはentryで既存live flagを0に初期化し、構築完了/正常call復帰/結果Writeで1、cleanupで0にする。条件付き選択結果のcleanupは、すべての到達可能Writeから対応Joinまで既存の隣接表を辿り、未配送の値がそのcleanupへ到達しないことを追加検査する。通常の利用では従来の支配検査を維持する。ループ・deferの複製による別lifetimeを許可し、Abortでは巻き戻さない。
+
+借用される一時所有元を比較/Loan表から再利用配列へ一度記録し、placeごとの表走査を除いた。flag検証は既存scratchのbitを共有し、結果配送の経路検査も既存queueと再利用配列を用いる。追加の構文木・BoundType参照を保持せず、runtime API・backend ABI・LLVM Writerの変更はない。
+
+所有parameterの部分Moveは§4.11で追加した。parameterの更新・再初期化は仕様上禁止。temporary要素の部分Move・更新、動的Non-Copy添字、borrowed receiver、明示@ref・uniq、参照保存/返却は対象外。固定配列リテラルの型推論も拡張しないため、既存の明示型localや関数の戻り値型を利用する。言語仕様の変更ではなく、既存の寿命・配送・Loan規則に沿った実行範囲の追加である。
+
+### 4.11. 所有parameterの静的部分Move（2026-09-15）
+
+通常関数の所有Tuple・固定配列parameterから、静的経路のstring要素と対応済みNon-Copy集成型要素をMoveできる。入れ子・範囲内整数リテラル添字を扱い、残存部分のCopy読取り・比較・共有引数・別の静的部分のMoveを許可する。Move済み要素・祖先配下・不完全な全体の取得は拒否する。例は [ElementParameterMoves](examples/ElementParameterMoves/README.md)。
+
+所有元の適格性はElementAccess.SupportsMoveRootへ集約し、AnalysisとLoweringで共有する。借用可能な一時値・選択結果とは区別する。Loweringは既存SlotFunctionsのparameter受領・型・初期化と、位置形成の支配関係を引き続き検査する。parameterのlet相当の性質を維持し、更新・再初期化を許可しない。
+
+既存Initializeがparameter受領時にも疎なMove Pathを初期化するため、専用の状態表は追加しない。生成コードのPathFlagTransitionに、parameterのsourceと対応する受領Produceでの初期化を追加した。必要なpath flagだけを受領時に1、対象部分のMove時に0とし、既存部分破棄で残存部分を逆論理順に破棄する。引数の実スロットを直接使用し、親全体の追加転送やlocal化を行わない。runtime API・LLVM Writer・backend ABIの変更はない。
+
+戻り値を先に確保し、callee cleanupが正常終了した後で配送する。途中transferでは取得済み引数・残存parameterの責任を保持する。Abortでは巻き戻さず、cleanupのAbort・非停止では後続破棄と配送を行わない。新しい配列・構文参照・型参照キャッシュは追加しない。
+
+一時値・関数/選択結果からの部分Move、動的添字のNon-Copy取得、borrowed receiver、一般struct/Property・user deinitは今回の対象外。言語規則の変更ではなく、§7のparameter規則と§15.1.3のMove Path規則に沿った実行範囲の追加である。
 
 <a id="c2-builds-modules-and-source-artifacts"></a>
 <a id="c11-executable-preparation-and-sequence-review-2026-09-09"></a>
@@ -355,6 +393,62 @@ build/run/emitは読み込んだprojectごとに名前・project/sourceファイ
 | NativeAOT・新規throughput benchmark | 未実行 |
 
 Element系311 fixtureのLLVM verifier・通常native O0/O2、計622実行が成功した。部分Moveの65 fixture・130実行と、従来の要素操作246 fixture・492実行を含む。破棄回数/順序・境界/演算Abort・タイムアウト付き非停止も確認した。最終Debug/Release再検証後のElement系IR全311件は、native検証対象とSHA-256が一致した。検証対象のfixture生成とnative実行は直列に行う。再現は§7.2のbuild→test、続いて `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'`。破棄監査はStatic-backed stringを含む論理的責任の検証であり、Heap-string構築のsource API対応を示さない。
+
+### 7.5. 静的string要素借用の確認（2026-09-15）
+
+§4.9を実装し、ElementMoveEmissionTestの全6比較・共有引数の旧拒否テストを成功テストへ更新した。新規ElementBorrowEmissionTestは78件。仕様本文の意味規則は変更せず、SPEC目次と実行例の案内を整合させた。
+
+| 検証 | 結果 |
+| --- | --- |
+| Solution build（Debug / Release） | 各成功、警告0・エラー0 |
+| managed test（Debug / Release） | 各4,759成功、失敗0・skip0 |
+| 要素借用のLLVM verifier・通常native O0/O2 | 47 fixture・94実行成功。guard候補との混在、破棄監査、後続添字の境界Abort、タイムアウト付き非停止を含む |
+| 従来の要素操作のnative回帰 | 311 fixture・622実行成功。新規借用と合わせて358 fixture・716実行を確認 |
+| warm allocation | 部分Move・兄弟更新・deferを含むBindとOwnership＋IR生成を各128回測定し追加割り当て0 B |
+| ElementBorrowsのCLI build/run | Release/O2成功。`shared element`、`beta`、`element borrows complete`の順に出力してexit 0 |
+| NativeAOT・新規throughput benchmark | 未実行 |
+
+新設の途中return監査で、Tuple破棄の期待順を逆論理順へ修正した。最終レビューでは、guard候補を要素借用中に共有引数として読む場合に外側Loanからアドレスを選び得る問題を構造テストで再現し、参照自身の射影の有無で選ぶよう修正した。guard実行ケース2件と構造テストを追加し、Debug/Release全件と要素借用nativeを再検証した。
+
+従来の要素操作311件と初期借用45件の計356 fixtureを `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'` で検証後、最終Debug/Releaseの再生成IR全356件がそのnative検証入力とSHA-256一致することを確認した。最終借用47 fixtureは `-FixturePattern 'ElementBorrow*.ll'` で再検証した。成功件数は修正後の結果であり、同じfixtureの重複実行は358件の合計に重ねて数えていない。managed fixture生成とnative検証は直列に実行した。再現は§7.2のbuild→test、続いて全Element fixtureのscriptを使う。監査はStatic-backed stringの論理的破棄責任を検証し、新たなHeap構築APIを示さない。
+
+### 7.6. 所有parameter・一時値からの要素借用の確認（2026-09-15）
+
+§4.10を実装した。[ElementBorrowOwnerEmissionTest](xUnitTest/Tests/ElementBorrowOwnerEmissionTest.cs)は実装時61件（§4.11でparameter部分Moveの旧拒否1件を移し、現在60件）。旧local借用のparameter/リテラル拒否2件を移し、正常な比較・共有引数、所有元の計画と初期化、条件付きcleanup、所有権の保持、破棄回数/順序、通常transfer、Abort、非停止、改変計画の拒否と再解析回復を追加した。
+
+| 確認 | 結果 |
+| --- | --- |
+| `dotnet build Kimigayo.slnx --no-restore` | Debug / Releaseとも警告0・エラー0 |
+| managed全件 | Debug 4,818 / Release 4,818成功、失敗・skipなし |
+| 新規owner借用のLLVM verifier・通常native O0/O2 | 57 fixture・114実行成功。条件付き生成、反復、defer複製、破棄監査、Abort、タイムアウト付き非停止を含む |
+| 全Element native回帰 | 新規57件を含む415 fixture・830実行成功 |
+| 共通構築・結果配送・関数ABIのnative回帰 | Aggregate系157 fixture・314実行成功。Element系と合わせて572 fixture・1,144実行 |
+| 低アロケーション | parameter・call/選択結果・条件付き一時値・deferを含むwarm BindとOwnership＋IR生成を各128回測定し、各0 B |
+| CLI例 | ElementBorrowOwnersのRelease/O2 build/run成功、READMEの4行とexit 0を確認 |
+| NativeAOT | 指示に従い未実行 |
+
+実装時に、条件付きTuple構築のCompleteConstructionでlive flagを有効化する処理の不足と、選択結果のDeclareを通らない短絡経路を含むcleanupの拒否を確認して修正した。flagの欠落・誤値・重複、結果cleanup中の位置形成/破棄の拒否も検査する。Abortの監査では期待位置を実際のsource列へ修正した。成功件数は修正後の結果であり、同一fixtureの再実行を合計へ重ねて数えない。
+
+再現は§7.2の構成ごとのbuild→test後に `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*.ll'`、続いて同scriptの `-FixturePattern 'Aggregate*.ll'`。managed fixture生成とnative検証は直列に実行した。最終Debug/Release再生成後のIR・期待stdout/stderr・exit・timeoutの計2,860 fileは保存したnative検証入力のSHA-256と一致する。追加配列は容量を再利用し、throughput改善率は未測定。監査はStatic-backed stringの論理的責任を対象とする。
+
+### 7.7. 所有parameterの部分Moveの確認（2026-09-15）
+
+§4.11を実装した。[ElementParameterMoveEmissionTest](xUnitTest/Tests/ElementParameterMoveEmissionTest.cs)は54件。旧ElementMove/ElementBorrowOwnerのparameter部分Move拒否を各1件移した。既存のparameter受領時の意味状態初期化を再利用し、生成コード側のpath flag初期化を補った。
+
+| 確認 | 結果 |
+| --- | --- |
+| solution build | Debug / Releaseとも警告0・エラー0 |
+| managed全件 | Debug 4,870 / Release 4,870成功、失敗・skipなし |
+| 新規parameter部分Move | 51 fixture・102回のO0/O2実行成功 |
+| 部分Move関連native回帰 | `Element*Move*.ll` 122 fixture・244実行成功。新規51件を含む |
+| 集成型関数ABIのnative回帰 | `AggregateFunction*.ll` 59 fixture・118実行成功。部分Move関連と合計181 fixture・362実行 |
+| 低アロケーション | 条件付き入れ子Move・deferの残存要素借用を含むwarm BindとOwnership＋IR生成を各128回測定し、各0 B |
+| CLI例 | ElementParameterMovesのRelease/O2 build/run成功、READMEの3行とexit 0を確認 |
+| NativeAOT | 指示に従い未実行 |
+
+破棄の逆論理順・残存責任、条件付きMoveと全体Moveの合流、入れ子集成型/配列、ゼロサイズの意味状態、借用との競合、loop/defer/未到達/covered arm、途中transfer、Abort・非停止を検証した。parameterの不変性、初期化flagの欠落・誤値・重複、改変した受領/Move計画の拒否と再解析回復も確認した。構造テストでparameterの実引数アドレスを使い、親全体の追加転送とparameter用localスロットを生成しないことを確認した。
+
+再現は§7.2の構成ごとのbuild→test後に `./backend/windows-x64/test-scalars.ps1 -FixturePattern 'Element*Move*.ll'`、続いて同scriptの `-FixturePattern 'AggregateFunction*.ll'`。最終Release testが生成したfixtureを使用し、同じfixtureの生成とnative実行は直列に行った。初期の部分実行は合計へ重ねて数えない。監査はStatic-backed stringの論理的責任を対象とし、throughput改善率は未測定。
 
 ## 8. autoframe実行基盤
 

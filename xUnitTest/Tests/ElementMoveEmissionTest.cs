@@ -64,7 +64,6 @@ public class ElementMoveEmissionTest
     [InlineData("func f(take: bool)\n    let a = (\"first\", 0)\n    if take\n        let taken = a.0\n    let whole = a")]
     [InlineData("func f()\n    return\n    let a = (\"first\", 0)\n    let taken = a.0\n    let twice = a.0")]
     [InlineData("var a = (\"first\", 0)\nloop\n    let taken = a.0\n    continue")]
-    [InlineData("func f(a: (string, i32))\n    let taken = a.0")]
     [InlineData("let taken = (\"first\", 0).0")]
     public void InvalidOrUnsupportedMovesPublishNoIr(string source)
     {
@@ -176,21 +175,21 @@ public class ElementMoveEmissionTest
     [InlineData("<=")]
     [InlineData(">")]
     [InlineData(">=")]
-    public void ComparisonCannotSubstituteAMoveForElementInspection(string op)
+    public void ComparisonBorrowsWithoutMovingTheElement(string op)
     {
         var c = MinimalEmissionTest.Analyze($"let a = (\"first\", 0)\nlet result = a.0 {op} \"first\"");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Fact]
-    public void SharedArgumentCannotSubstituteAMoveForElementBorrowing()
+    public void SharedArgumentBorrowsWithoutMovingTheElement()
     {
         var c = MinimalEmissionTest.Analyze("func inspect(text: ref/string) => ()\nlet a: [1 of string] = [\"first\"]\ninspect(a[0])");
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.True(c.Ownership.Result.IsVerified);
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
     }
 
     [Theory]

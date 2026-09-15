@@ -257,7 +257,7 @@ public sealed partial class OwnershipBody
                 }
 
                 break;
-            case OwnershipOperationKind.Produce when operation.Projection >= 0:
+            case OwnershipOperationKind.Produce or OwnershipOperationKind.Read or OwnershipOperationKind.Borrow when operation.Projection >= 0:
                 this.CheckInitialized(operation, this.Projections[operation.Projection].Root, this.ElementState(operation.Projection, false));
                 break;
             case OwnershipOperationKind.LocateReceiver:

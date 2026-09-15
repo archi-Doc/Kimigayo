@@ -12,10 +12,13 @@ internal sealed partial class BodyLowering
     private int[] slotResultJoins = [];
     private int[] slotArrivalSeen = [];
     private int[] slotResultNext = [];
+    private int[] slotPendingVisits = [];
+    private int slotPendingSource = -1;
 
     private bool PrepareSlotResults(OwnershipBody body, out string? failure)
     {
         failure = null;
+        this.slotPendingSource = -1;
         var count = body.Operations.Count;
         Grow(ref this.slotResultPlaces, body.Places.Count);
         Grow(ref this.slotResultDeclarations, count);
@@ -170,7 +173,7 @@ internal sealed partial class BodyLowering
             var source = operation.Kind switch
             {
                 OwnershipOperationKind.Write or OwnershipOperationKind.WriteElement or OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.InitializeSubject => operation.Input,
-                OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Cleanup => operation.Place,
+                OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Cleanup or OwnershipOperationKind.LocateReceiver or OwnershipOperationKind.ProjectElement => operation.Place,
                 _ => -1,
             };
             if (source < 0 || this.slotResultPlaces[source] == 0)
@@ -195,10 +198,55 @@ internal sealed partial class BodyLowering
 
             if (lifetime < 0 || !this.Dominates(body.SlotResults[lifetime].Join, id))
             {
-                return Fail("Slot result use must follow normal delivery in its current lifetime.", out failure);
+                if (operation.Kind != OwnershipOperationKind.Cleanup || this.borrowedTemporaries[source] == 0 ||
+                    (body.GetInputState(id, source) & PlaceState.MustInit) != 0 || !this.IsDeliveredSlotCleanup(body, source, id))
+                {
+                    return Fail("Slot result use must follow normal delivery in its current lifetime.", out failure);
+                }
             }
         }
 
         return true;
+    }
+
+    private bool IsDeliveredSlotCleanup(OwnershipBody body, int source, int id)
+    {
+        // A short-circuit path may skip the entire result lifetime. For conditional
+        // cleanup, prove that no secured value can reach it without passing Join.
+        // Cache the latest source traversal over existing adjacency lists and graph scratch.
+        if (this.slotPendingSource != source)
+        {
+            Grow(ref this.slotPendingVisits, body.Operations.Count);
+            this.slotPendingVisits.AsSpan(0, body.Operations.Count).Clear();
+            this.slotPendingSource = source;
+            var count = 0;
+            foreach (var write in body.ResultWrites)
+            {
+                if (body.Operations[write.Operation].Place == source && body.IsReachable(write.Operation))
+                {
+                    this.slotPendingVisits[write.Operation] = 1;
+                    this.queue[count++] = write.Operation;
+                }
+            }
+
+            for (var q = 0; q < count; q++)
+            {
+                for (var e = body.EdgeHeads[this.queue[q]]; e >= 0; e = body.Edges[e].Next)
+                {
+                    var edge = body.Edges[e];
+                    var join = this.slotResultJoins[edge.To] - 1;
+                    if (edge.Kind == OwnershipEdgeKind.Abort || !body.IsReachable(edge.To) || this.slotPendingVisits[edge.To] != 0 ||
+                        (join >= 0 && body.SlotResults[join].Place == source))
+                    {
+                        continue;
+                    }
+
+                    this.slotPendingVisits[edge.To] = 1;
+                    this.queue[count++] = edge.To;
+                }
+            }
+        }
+
+        return this.slotPendingVisits[id] == 0;
     }
 }

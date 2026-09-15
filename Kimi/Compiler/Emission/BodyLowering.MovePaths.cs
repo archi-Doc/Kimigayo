@@ -78,6 +78,9 @@ internal sealed partial class BodyLowering
         return operation.Place != body.GetMovePath(path).Root ? -1 : operation.Kind switch
         {
             OwnershipOperationKind.Write => 1,
+            // PrepareSlotFunctions separately verifies the signature's entry Produce.
+            OwnershipOperationKind.Produce when operation.Projection == -1 && body.Places[operation.Place].Kind == OwnershipPlaceKind.Parameter &&
+                ReferenceEquals(operation.Source, body.Places[operation.Place].Source) => 1,
             OwnershipOperationKind.Declare or OwnershipOperationKind.Cleanup or OwnershipOperationKind.Deliver or OwnershipOperationKind.CallEntry => 0,
             OwnershipOperationKind.Consume or OwnershipOperationKind.Read or OwnershipOperationKind.Borrow when operation.Acquisition == AcquisitionKind.Move => 0,
             _ => -1,
