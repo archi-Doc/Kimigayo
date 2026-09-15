@@ -7,12 +7,15 @@ namespace Kimi.Compiler;
 internal sealed partial class BodyLowering
 {
     private readonly AggregateLayoutPool aggregateLayouts = new();
+
     private AggregateLayout?[] aggregatePlaces = [];
     private int[] payloadOwners = [];
     private int[] constructionOwners = [];
     private int[] aggregateDeclarations = [];
     private int[] payloadPlacements = [];
     private int[] aggregateCompletions = [];
+
+    internal AggregateLayoutPool AggregateLayouts => this.aggregateLayouts;
 
     internal void RegisterAggregates(EmissionModule module)
     {
@@ -30,7 +33,7 @@ internal sealed partial class BodyLowering
     private bool PrepareAggregates(OwnershipBody body, EmissionFunction function, out string? failure)
     {
         failure = null;
-        this.aggregateLayouts.Clear();
+        // Reuse the signature/parameter resolutions; RegisterAggregates clears bound keys after this body.
         if (this.aggregatePlaces.Length < body.Places.Count)
         {
             Array.Resize(ref this.aggregatePlaces, Math.Max(body.Places.Count, this.aggregatePlaces.Length * 2));
@@ -56,9 +59,11 @@ internal sealed partial class BodyLowering
             }
 
             var layout = this.aggregateLayouts.Get(place.Type);
-            if (layout is null || place.Kind is OwnershipPlaceKind.Parameter or OwnershipPlaceKind.Result or OwnershipPlaceKind.Subject)
+            if (layout is null || place.Kind == OwnershipPlaceKind.Subject ||
+                (place.Kind == OwnershipPlaceKind.Parameter && this.slotFunctionPlaces[p] != 1) ||
+                (place.Kind == OwnershipPlaceKind.Result && this.slotResultPlaces[p] == 0 && this.slotFunctionPlaces[p] != 2))
             {
-                return Fail("Aggregate execution requires an owned tuple/fixed array of supported values, at most 64 nesting levels and 2147483647 layout bytes; aggregate signatures and selection results are not implemented.", out failure);
+                return Fail("Aggregate execution requires an owned tuple/fixed array of supported values, at most 64 nesting levels and 2147483647 layout bytes; aggregate Subjects are not implemented.", out failure);
             }
 
             this.aggregatePlaces[place.Id] = layout;
@@ -198,6 +203,18 @@ internal sealed partial class BodyLowering
         switch (operation.Kind)
         {
             case OwnershipOperationKind.Declare:
+                if (place.Kind == OwnershipPlaceKind.Result && this.slotResultDeclarations[id] == 0)
+                {
+                    return Fail("Aggregate result declaration has no expression lifetime.", out failure);
+                }
+
+                break;
+            case OwnershipOperationKind.Produce:
+                if (this.slotFunctionProduces[id] == 0)
+                {
+                    return Fail("Aggregate receipt has no verified parameter or normal call result.", out failure);
+                }
+
                 break;
             case OwnershipOperationKind.CompleteConstruction:
                 var planIndex = body.OperationSteps[id];
@@ -233,9 +250,10 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Write:
             case OwnershipOperationKind.Consume:
                 if ((uint)operation.Input >= (uint)body.Places.Count || operation.Input == place.Id || !ReferenceEquals(place.Type, body.Places[operation.Input].Type) ||
-                    (body.Places[operation.Input].Kind != OwnershipPlaceKind.Temporary && !(ReferenceEquals(place.Type, BoundType.String) && this.IsStringValue(body.Places[operation.Input]))) ||
+                    (body.Places[operation.Input].Kind != OwnershipPlaceKind.Temporary && this.slotResultPlaces[operation.Input] == 0) ||
                     (operation.Kind == OwnershipOperationKind.PayloadPlacement && this.payloadOwners[place.Id] < 0) ||
-                    (operation.Kind is OwnershipOperationKind.Write or OwnershipOperationKind.Consume && place.Kind != OwnershipPlaceKind.Local) ||
+                    (operation.Kind == OwnershipOperationKind.Write && place.Kind != OwnershipPlaceKind.Local && this.slotResultWrites[id] == 0 && this.slotFunctionPlaces[place.Id] != 2) ||
+                    (operation.Kind == OwnershipOperationKind.Consume && place.Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter)) ||
                     (operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition != place.Acquisition))
                 {
                     return Fail("Aggregate transfer requires distinct, Type-matched verified storage.", out failure);
@@ -255,7 +273,13 @@ internal sealed partial class BodyLowering
                     return Fail("Aggregate transfer requires an initialized source and fresh destination.", out failure);
                 }
 
-                if (operation.Kind == OwnershipOperationKind.Write && !this.LowerStringDestruction(body, function, constants, directory, id, marks, out failure, layout))
+                if (operation.Kind == OwnershipOperationKind.Write && this.slotFunctionPlaces[place.Id] == 2 && body.IsReachable(id) &&
+                    (operation.Placement != PlacementKind.Initialization || (body.GetInputState(id, destination) & PlaceState.MayInit) != 0))
+                {
+                    return Fail("Return storage must be uninitialized before securing its result.", out failure);
+                }
+
+                if (operation.Kind == OwnershipOperationKind.Write && place.Kind == OwnershipPlaceKind.Local && !this.LowerStringDestruction(body, function, constants, directory, id, marks, out failure, layout))
                 {
                     return false;
                 }

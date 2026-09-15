@@ -33,7 +33,7 @@ public sealed class PropertyAccessorKoto : Koto
     /// <summary>Gets the explicitly declared result Type and Origin, if present.</summary>
     public Koto? ReturnType { get; private set; }
 
-    /// <summary>Gets the explicit self parameter Type, or null for a receiverless signature.</summary>
+    /// <summary>Gets the explicit self parameter Type, or null when omitted. Instance accessors then use their default receiver.</summary>
     public Koto? ReceiverType { get; private set; }
 
     /// <summary>Gets the setter value parameter Type.</summary>

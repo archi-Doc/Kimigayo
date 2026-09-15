@@ -1,0 +1,13 @@
+func echo(value: (string, i32)) -> (string, i32)
+    defer => writeLine("leaving echo")
+    return value
+
+func echoArray(value: [2 of string]) -> [2 of string] => value
+func echoEmpty(value: [0 of string]) -> [0 of string] => value
+
+let saved = echo(echo(("hello", 42)))
+let words: [2 of string] = ["first", "second"]
+let returned = echoArray(words)
+let empty: [0 of string] = []
+echoEmpty(empty)
+writeLine("aggregate functions complete")

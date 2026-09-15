@@ -33,7 +33,7 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < body.CleanupSteps.Count; i++)
         {
             var step = body.CleanupSteps[i];
-            if ((execution.IsEmpty || (execution[step.Operation] & NormalMark) != 0) && step.Action == CleanupAction.Conditional && HasOwnedStorage(body.Places[step.Place].Type) && flags[step.Place] == 0)
+            if ((execution.IsEmpty || (execution[step.Operation] & NormalMark) != 0) && step.Action == CleanupAction.Conditional && body.MoveRoot(step.Place) < 0 && HasOwnedStorage(body.Places[step.Place].Type) && flags[step.Place] == 0)
             {
                 return false;
             }
@@ -191,14 +191,31 @@ internal sealed partial class BodyLowering
                 clear = operation.Input;
                 initialize = operation.Place;
                 break;
+            case OwnershipOperationKind.WriteElement:
+                clear = operation.Input;
+                break;
         }
     }
 
-    private bool IsStringStorage(OwnershipPlace place) => this.payloadOwners[place.Id] >= 0 || this.stringFunctionPlaces[place.Id] != 0 || (this.hasMatches && this.matchPlaces[place.Id] != 0) || place.Kind switch
+    private static void AddOwnedDestruction(EmissionFunction function, int id, EmissionOperand address, int location, AggregateLayout? aggregate)
+    {
+        if (aggregate is not null)
+        {
+            var start = function.Operands.Count;
+            function.Operands.Add(address);
+            function.Instructions.Add(new(EmissionOpcode.DestroyAggregate, id, Constant: location, OperandStart: start, OperandCount: 1, Aggregate: aggregate));
+        }
+        else
+        {
+            function.AddCall(id, WindowsLowering.DestroyString, [address, new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
+        }
+    }
+
+    private bool IsStringStorage(OwnershipPlace place) => this.payloadOwners[place.Id] >= 0 || this.slotFunctionPlaces[place.Id] != 0 || (this.hasMatches && this.matchPlaces[place.Id] != 0) || place.Kind switch
     {
         OwnershipPlaceKind.Local => place.Source is FieldKoto,
-        OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or IdentifierNameKoto,
-        OwnershipPlaceKind.Result => this.stringResultPlaces[place.Id] != 0,
+        OwnershipPlaceKind.Temporary => place.Source is StringLiteralKoto or IdentifierNameKoto || (place.Source is BinaryKoto element && ElementAccess.IsSyntax(element)),
+        OwnershipPlaceKind.Result => this.slotResultPlaces[place.Id] != 0,
         _ => false,
     };
 
@@ -226,7 +243,7 @@ internal sealed partial class BodyLowering
                 return Fail("Invalid cleanup destination.", out failure);
             }
 
-            if (step.Action != CleanupAction.Conditional || !HasOwnedStorage(body.Places[step.Place].Type))
+            if (body.MoveRoot(step.Place) >= 0 || step.Action != CleanupAction.Conditional || !HasOwnedStorage(body.Places[step.Place].Type))
             {
                 continue;
             }
@@ -300,14 +317,14 @@ internal sealed partial class BodyLowering
         switch (operation.Kind)
         {
             case OwnershipOperationKind.Declare:
-                if (place.Kind != OwnershipPlaceKind.Local && this.payloadOwners[place.Id] < 0 && this.stringResultDeclarations[id] == 0 && (!this.hasMatches || this.matchPlaces[place.Id] != 1))
+                if (place.Kind != OwnershipPlaceKind.Local && this.payloadOwners[place.Id] < 0 && this.slotResultDeclarations[id] == 0 && (!this.hasMatches || this.matchPlaces[place.Id] != 1))
                 {
                     return Fail("String Declare requires a local.", out failure);
                 }
 
                 break;
             case OwnershipOperationKind.Produce:
-                if (this.stringFunctionProduces[id] != 0)
+                if (this.slotFunctionProduces[id] != 0)
                 {
                     break; // Parameter receipt or a call's normal result: the storage is already populated.
                 }
@@ -326,7 +343,7 @@ internal sealed partial class BodyLowering
                     !ReferenceEquals(body.Places[operation.Input].Type, BoundType.String) ||
                     !this.IsStringValue(body.Places[operation.Input]) ||
                     (operation.Kind == OwnershipOperationKind.Consume && (place.Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter) || body.Places[operation.Input].Kind != OwnershipPlaceKind.Temporary || operation.Acquisition != AcquisitionKind.Move)) ||
-                    (operation.Kind == OwnershipOperationKind.Write && place.Kind != OwnershipPlaceKind.Local && this.stringResultWrites[id] == 0 && this.stringFunctionPlaces[place.Id] != 2))
+                    (operation.Kind == OwnershipOperationKind.Write && place.Kind != OwnershipPlaceKind.Local && this.slotResultWrites[id] == 0 && this.slotFunctionPlaces[place.Id] != 2))
                 {
                     return Fail("String transfer requires distinct verified source and destination storage.", out failure);
                 }
@@ -338,7 +355,7 @@ internal sealed partial class BodyLowering
                     return Fail("String transfer source is not initialized.", out failure);
                 }
 
-                if (operation.Kind == OwnershipOperationKind.Write && this.stringFunctionPlaces[place.Id] == 2 && body.IsReachable(id) &&
+                if (operation.Kind == OwnershipOperationKind.Write && this.slotFunctionPlaces[place.Id] == 2 && body.IsReachable(id) &&
                     (operation.Placement != PlacementKind.Initialization || (body.GetInputState(id, destination) & PlaceState.MayInit) != 0))
                 {
                     return Fail("Return storage must be uninitialized before securing its result.", out failure);
@@ -384,7 +401,7 @@ internal sealed partial class BodyLowering
         }
 
         var step = body.CleanupSteps[index];
-        var state = body.GetInputState(id, operation.Place);
+        var state = body.GetStorageState(id, operation.Place);
         var expected = (state & PlaceState.MustInit) != 0 ? CleanupAction.Destroy : (state & PlaceState.MayInit) != 0 ? CleanupAction.Conditional : CleanupAction.Skip;
         var invalidPlacement = expected switch
         {
@@ -398,6 +415,11 @@ internal sealed partial class BodyLowering
             return Fail("String destruction disagrees with the verified placement state.", out failure);
         }
 
+        if (this.DestructionPath(body, operation) >= 0)
+        {
+            return this.LowerPartDestruction(body, function, constants, directory, id, out failure);
+        }
+
         if (expected == CleanupAction.Skip || aggregate is { NeedsDestruction: false })
         {
             return true;
@@ -408,17 +430,17 @@ internal sealed partial class BodyLowering
             return Fail("String destruction has no source location.", out failure);
         }
 
-        if (aggregate is not null)
+        if (expected != CleanupAction.Conditional)
         {
-            function.Instructions.Add(new(EmissionOpcode.DestroyAggregate, id, operation.Place, location, Aggregate: aggregate, Continuation: expected == CleanupAction.Conditional ? this.continuations[id] : -1));
+            AddOwnedDestruction(function, id, new(EmissionOperandKind.SlotAddress, operation.Place), location, aggregate);
         }
-        else if (expected == CleanupAction.Conditional)
+        else if (aggregate is not null)
         {
-            function.AddScalar(EmissionOpcode.DestroyStringIfLive, id, [new(EmissionOperandKind.Block, this.continuations[id])], place: operation.Place, location: location);
+            function.Instructions.Add(new(EmissionOpcode.DestroyAggregate, id, operation.Place, location, Aggregate: aggregate, Continuation: this.continuations[id]));
         }
         else
         {
-            function.AddCall(id, WindowsLowering.DestroyString, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
+            function.AddScalar(EmissionOpcode.DestroyStringIfLive, id, [new(EmissionOperandKind.Block, this.continuations[id])], place: operation.Place, location: location);
         }
 
         return true;

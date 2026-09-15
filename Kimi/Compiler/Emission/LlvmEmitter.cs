@@ -46,14 +46,15 @@ public sealed class LlvmEmitter
         module = this.module;
         module.Clear();
         var c = this.compilation;
-        failure = this.CheckInputs();
-        if (failure is not null)
-        {
-            return false;
-        }
-
+        failure = null;
         try
         {
+            failure = this.CheckInputs();
+            if (failure is not null)
+            {
+                return false;
+            }
+
             // Register every selected signature first: recursion refers to the same record.
             var ordinal = 0;
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
@@ -65,7 +66,7 @@ public sealed class LlvmEmitter
                 }
 
                 var source = body.Function;
-                var abi = source.IsGenerated ? WindowsLowering.Entry : this.signatures.Get(ordinal++, source);
+                var abi = source.IsGenerated ? WindowsLowering.Entry : this.signatures.Get(ordinal++, source, this.lowering.AggregateLayouts);
                 this.functions.Add(source, abi);
             }
 
@@ -156,7 +157,7 @@ public sealed class LlvmEmitter
             var function = body.Function;
             var result = function.BoundSymbol?.Type ?? (function.IsGenerated ? BoundType.Unit : null);
             if (!body.IsConcrete || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
-                (!FunctionAbi.Supports(result) && !ReferenceEquals(result, BoundType.Never)) || function.AttributeChain is not null ||
+                (!FunctionAbi.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) || function.AttributeChain is not null ||
                 function.IsAnonymous || function.IsSpecialization || function.IsRequirement || function.Captures is { Length: > 0 } ||
                 function.GenericArguments.Count != 0 || function.Origins.Count != 0 || function.TypeConstraints.Count != 0)
             {
@@ -166,11 +167,11 @@ public sealed class LlvmEmitter
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 var parameter = function.Parameters[i];
-                if (!FunctionAbi.SupportsParameter(parameter.Type.BoundType) || parameter.IsOptional || parameter.DefaultValue is not null ||
+                if (!FunctionAbi.SupportsParameter(parameter.Type.BoundType, this.lowering.AggregateLayouts) || parameter.IsOptional || parameter.DefaultValue is not null ||
                     (ReferenceTypes.IsString(parameter.Type.BoundType) && (parameter.Type.BoundType!.Origin is not { Kind: OriginKind.Input } origin ||
                         !ReferenceEquals(origin.Binder, function) || origin.Slot != i)))
                 {
-                    return "Only required scalar, Unit, owned string and shared string parameters are implemented.";
+                    return "Only required parameters with verified value, owned-slot or shared-string representations are implemented.";
                 }
             }
         }

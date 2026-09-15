@@ -120,8 +120,8 @@ public class AggregateEmissionTest
 
     [Theory]
     [InlineData("var value: [2147483647 of string]")]
-    [InlineData("func echo(value: (i32, i32)) -> (i32, i32) => value")]
-    [InlineData("let value = if true => (1, 2) else => (3, 4)")]
+    [InlineData("func echo(value: [2147483647 of string]) -> [2147483647 of string] => value\n()")]
+    [InlineData("let value = (1, 2)\nmatch value\n    (let a, _) => ()")]
     public void UnsupportedAggregateShapesRemainExplicit(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

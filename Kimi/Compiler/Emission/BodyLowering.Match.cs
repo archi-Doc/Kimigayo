@@ -34,7 +34,7 @@ internal sealed partial class BodyLowering
                 this.UseMatchStorage(function, instruction.Place);
             }
 
-            if (instruction.Opcode == EmissionOpcode.TransferAggregate)
+            if (instruction.Opcode == EmissionOpcode.TransferAggregate && instruction.OperandCount == 0)
             {
                 this.UseMatchStorage(function, instruction.Constant);
             }

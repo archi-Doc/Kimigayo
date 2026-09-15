@@ -26,13 +26,14 @@ public sealed partial class OwnershipBody
         }
 
         this.LoadInput(operation, false);
-        return this.State(place);
+        return this.CompleteState(place);
     }
 
     internal void Solve()
     {
         var count = this.OperationStorage.Count;
-        this.words = (this.PlaceStorage.Count + 63) >> 6;
+        this.PrepareMovePaths();
+        this.words = (this.PlaceStorage.Count + (this.MovePathCount * 2) + 63) >> 6;
         var width = this.words * Lanes;
         Grow(ref this.Reachable, count);
         this.Reachable.AsSpan(0, count).Clear();
@@ -243,7 +244,7 @@ public sealed partial class OwnershipBody
             case OwnershipOperationKind.InitializeSubject:
                 if (operation.Input >= 0)
                 {
-                    this.CheckInitialized(operation, operation.Input, this.State(operation.Input));
+                    this.CheckInitialized(operation, operation.Input, this.CompleteState(operation.Input));
                 }
 
                 break;
@@ -252,15 +253,30 @@ public sealed partial class OwnershipBody
                 for (var i = 0; i < construction.PayloadCount; i++)
                 {
                     var payload = construction.PayloadStart + i;
-                    this.CheckInitialized(operation, payload, this.State(payload));
+                    this.CheckInitialized(operation, payload, this.CompleteState(payload));
                 }
 
                 break;
-            case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.DecomposeCase or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.PatternTest:
+            case OwnershipOperationKind.Produce when operation.Projection >= 0:
+                this.CheckInitialized(operation, this.Projections[operation.Projection].Root, this.ElementState(operation.Projection, false));
+                break;
+            case OwnershipOperationKind.LocateReceiver:
                 this.CheckInitialized(operation, operation.Place, state);
                 break;
+            case OwnershipOperationKind.ProjectElement:
+                this.CheckInitialized(operation, operation.Place, this.ElementState(operation.Projection, true));
+                break;
+            case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.DecomposeCase or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.PatternTest:
+                this.CheckInitialized(operation, operation.Place, this.CompleteState(operation.Place));
+                break;
             case OwnershipOperationKind.Write:
+            case OwnershipOperationKind.WriteElement:
                 var place = this.PlaceStorage[operation.Place];
+                if (operation.Kind == OwnershipOperationKind.WriteElement)
+                {
+                    this.CheckInitialized(operation, operation.Place, this.ElementState(operation.Projection, true));
+                }
+
                 if (place.Kind == OwnershipPlaceKind.Local && !place.Mutable && (state & PlaceState.MayAssigned) != 0)
                 {
                     this.ReportIssue(new(operation.Source, OwnershipFailure.ReassignedLet, operation.Place));
@@ -268,7 +284,7 @@ public sealed partial class OwnershipBody
 
                 if (operation.Input >= 0)
                 {
-                    this.CheckInitialized(operation, operation.Input, this.State(operation.Input));
+                    this.CheckInitialized(operation, operation.Input, this.CompleteState(operation.Input));
                 }
 
                 break;
@@ -321,8 +337,18 @@ public sealed partial class OwnershipBody
                 this.Clear(place, MayLane);
                 this.Clear(place, MovedLane);
                 this.Clear(place, AssignedLane);
+                if (this.moveRoots[place] >= 0)
+                {
+                    this.SetPathState(this.moveRoots[place], false, true);
+                }
+
                 break;
             case OwnershipOperationKind.Produce:
+                if (operation.Projection >= 0 && operation.Acquisition == AcquisitionKind.Move && this.projectionPaths[operation.Projection] >= 0)
+                {
+                    this.SetPathState(this.projectionPaths[operation.Projection], false);
+                }
+
                 this.Initialize(place);
                 break;
             case OwnershipOperationKind.Consume:
@@ -360,9 +386,22 @@ public sealed partial class OwnershipBody
             case OwnershipOperationKind.Deliver:
                 this.Move(place);
                 break;
+            case OwnershipOperationKind.WriteElement:
+                this.Move(operation.Input);
+                if (this.projectionPaths[operation.Projection] >= 0 && this.Projections[operation.Projection].Path == operation.Projection)
+                {
+                    this.SetPathState(this.projectionPaths[operation.Projection], true);
+                }
+
+                break;
             case OwnershipOperationKind.Cleanup:
                 this.Clear(place, MustLane);
                 this.Clear(place, MayLane);
+                if (this.moveRoots[place] >= 0)
+                {
+                    this.SetPathState(this.moveRoots[place], false, cleanup: true);
+                }
+
                 break;
         }
     }
@@ -384,6 +423,10 @@ public sealed partial class OwnershipBody
         this.Set(place, MayLane);
         this.Clear(place, MovedLane);
         this.Set(place, AssignedLane);
+        if (place < this.Places.Count && this.moveRoots[place] >= 0)
+        {
+            this.SetPathState(this.moveRoots[place], true);
+        }
     }
 
     private void Move(int place)
@@ -392,6 +435,10 @@ public sealed partial class OwnershipBody
         this.Clear(place, MustLane);
         this.Clear(place, MayLane);
         this.Set(place, MovedLane);
+        if (place < this.Places.Count && this.moveRoots[place] >= 0)
+        {
+            this.SetPathState(this.moveRoots[place], false);
+        }
     }
 
     private void Set(int place, int lane) => this.Scratch[(lane * this.words) + (place >> 6)] |= 1UL << place;

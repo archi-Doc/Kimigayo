@@ -24,6 +24,17 @@ internal static partial class LlvmModuleWriter
             return;
         }
 
+        if (operand.Kind == EmissionOperandKind.NullAddress)
+        {
+            output.Write("null");
+            return;
+        }
+
+        if (operand.Kind == EmissionOperandKind.ElementAddress)
+        {
+            output.Write("%element");
+        }
+
         if (operand.Kind == EmissionOperandKind.Argument)
         {
             output.Write("%a");
@@ -73,11 +84,12 @@ internal static partial class LlvmModuleWriter
                 WriteOperand(output, operands[2]);
                 output.Write('\n');
                 return;
+            case EmissionOpcode.LoadElement:
             case EmissionOpcode.LoadScalar:
                 Name(output, type == "i1" ? "  %storage" : "  %v", id);
                 output.Write(" = load ");
                 output.Write(instruction.Representation!.Layout.StorageType);
-                output.Write(", ptr %p");
+                output.Write(instruction.Opcode == EmissionOpcode.LoadElement ? ", ptr %element" : ", ptr %p");
                 WriteNumber(output, instruction.Place);
                 WriteAlignment(output, instruction.Representation.Layout.Alignment);
                 if (type == "i1")
@@ -89,6 +101,7 @@ internal static partial class LlvmModuleWriter
 
                 return;
             case EmissionOpcode.StoreScalar:
+            case EmissionOpcode.StoreElement:
                 if (type == "i1")
                 {
                     Name(output, "  %storage", id);
@@ -105,7 +118,7 @@ internal static partial class LlvmModuleWriter
                     WriteOperand(output, operands[0]);
                 }
 
-                Name(output, ", ptr %p", instruction.Place);
+                Name(output, instruction.Opcode == EmissionOpcode.StoreElement ? ", ptr %element" : ", ptr %p", instruction.Place);
                 WriteAlignment(output, instruction.Representation!.Layout.Alignment);
                 return;
             case EmissionOpcode.Phi:
@@ -284,6 +297,7 @@ internal static partial class LlvmModuleWriter
             ArithmeticCheckKind.UnsignedDivision => WindowsLowering.IntegerDivisionZeroReason,
             ArithmeticCheckKind.Shift => WindowsLowering.IntegerShiftCountReason,
             ArithmeticCheckKind.Conversion => WindowsLowering.IntegerConversionReason,
+            ArithmeticCheckKind.Bounds => WindowsLowering.IndexBoundsReason,
             _ => throw new InvalidOperationException("Unknown arithmetic failure reason."),
         };
         var reason = new EmissionOperand(EmissionOperandKind.Integer, reasonId);

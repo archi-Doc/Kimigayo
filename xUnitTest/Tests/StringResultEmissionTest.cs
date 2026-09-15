@@ -72,7 +72,7 @@ public class StringResultEmissionTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies[0];
-        var result = Assert.Single(body.StringResults);
+        var result = Assert.Single(body.SlotResults);
         Assert.Equal(0, result.Count);
         Assert.False(body.IsReachable(result.Join));
         Assert.Single(body.ResultWrites);
@@ -86,11 +86,11 @@ public class StringResultEmissionTest
         var c = MinimalEmissionTest.Analyze(Deferred);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[0];
-        Assert.True(body.StringResults.Count > 1);
-        var place = Assert.Single(body.StringResults.Select(x => x.Place).Distinct());
+        Assert.True(body.SlotResults.Count > 1);
+        var place = Assert.Single(body.SlotResults.Select(x => x.Place).Distinct());
         Assert.Single(module.GetFunction(0).Slots, x => x.Place == place);
-        Assert.Equal(body.StringResults.Count, body.StringResults.Select(x => x.Declare).Distinct().Count());
-        Assert.All(body.StringResults, x => Assert.Equal(-1, body.Operations[x.Join].Place));
+        Assert.Equal(body.SlotResults.Count, body.SlotResults.Select(x => x.Declare).Distinct().Count());
+        Assert.All(body.SlotResults, x => Assert.Equal(-1, body.Operations[x.Join].Place));
         Assert.DoesNotContain(place, module.GetFunction(0).LiveFlags);
     }
 
@@ -117,9 +117,9 @@ public class StringResultEmissionTest
         var c = MinimalEmissionTest.Analyze(source.ToString());
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var body = c.Ownership.Bodies[0];
-        var places = body.StringResults.Select(x => x.Place).Distinct().ToArray();
+        var places = body.SlotResults.Select(x => x.Place).Distinct().ToArray();
         Assert.Equal(depth, places.Length);
-        Assert.True(body.StringResults.Count > depth);
+        Assert.True(body.SlotResults.Count > depth);
         Assert.Equal(depth, module.GetFunction(0).Slots.Count(x => places.Contains(x.Place)));
         Assert.All(places, p => Assert.DoesNotContain(p, module.GetFunction(0).LiveFlags));
     }
@@ -130,7 +130,7 @@ public class StringResultEmissionTest
         var c = MinimalEmissionTest.Analyze("var i = 0\nlet text = loop\n    i += 1\n    if i < 3 => continue\n    exit \"a\"\nwriteLine(text)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[0];
-        var result = Assert.Single(body.StringResults);
+        var result = Assert.Single(body.SlotResults);
         var head = result.Declare + 1;
         Assert.IsType<LoopKoto>(body.Operations[head].Source);
         Assert.Equal(OwnershipOperationKind.Branch, body.Operations[head].Kind);
@@ -146,7 +146,7 @@ public class StringResultEmissionTest
         // syntax is claimed: later multi-argument calls can also need this cleanup.
         var c = MinimalEmissionTest.Analyze("let text = if true => \"a\" else => \"b\"");
         var body = c.Ownership.Bodies[0];
-        var result = Assert.Single(body.StringResults);
+        var result = Assert.Single(body.SlotResults);
         var consumer = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Write && x.Input == result.Place);
         Assert.Equal(body.CleanupStepStorage.Count - 1, body.OperationSteps[consumer]);
         body.CleanupStepStorage.RemoveAt(body.OperationSteps[consumer]);
@@ -176,7 +176,7 @@ public class StringResultEmissionTest
         var index = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.DestroyStringIfLive);
         Assert.True(index >= 0);
         Assert.Equal(EmissionOpcode.MoveString, function.Instructions[index + 1].Opcode);
-        Assert.Equal(Assert.Single(body.StringResults).Place, function.GetOperands(function.Instructions[index + 1])[0].Value);
+        Assert.Equal(Assert.Single(body.SlotResults).Place, function.GetOperands(function.Instructions[index + 1])[0].Value);
         Assert.Equal(EmissionOpcode.StoreLiveFlag, function.Instructions[index + 2].Opcode);
         Assert.Equal(1, function.Instructions[index + 2].Constant);
     }
@@ -195,14 +195,14 @@ public class StringResultEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Choice);
         var body = c.Ownership.Bodies[0];
-        var result = Assert.Single(body.StringResults);
+        var result = Assert.Single(body.SlotResults);
         switch (defect)
         {
-            case "plan": body.StringResults.Clear(); break;
+            case "plan": body.SlotResults.Clear(); break;
             case "write": body.ResultWrites.RemoveAt(0); break;
             case "arrival": body.ResultArrivals[0] = body.ResultArrivals[0] with { Write = -1 }; break;
             case "duplicate": body.ResultArrivals[1] = body.ResultArrivals[0]; break;
-            case "declaration": body.StringResults[0] = result with { Declare = result.Join }; break;
+            case "declaration": body.SlotResults[0] = result with { Declare = result.Join }; break;
             case "branch_place": body.OperationStorage[result.Join] = body.OperationStorage[result.Join] with { Place = result.Place }; break;
             case "type":
                 var scalar = body.PlaceStorage.FindIndex(x => ReferenceEquals(x.Type, BoundType.Boolean));

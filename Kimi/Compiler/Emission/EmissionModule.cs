@@ -13,13 +13,18 @@ internal enum EmissionOpcode : byte
     Branch,
     ConditionalBranch,
     LoadScalar,
+    LoadElement,
+    ElementAddress,
     StoreScalar,
+    StoreElement,
     Scalar,
     Convert,
     Phi,
 
     /// <summary>First placement of a Static string literal into <c>Place</c>'s slot; <c>Constant</c> is -1 for the empty literal.</summary>
     StoreStaticString,
+
+    /// <summary>Transfer the string handle from the first operand's slot to Place, or to the second operand's element address.</summary>
     MoveString,
     DestroyStringIfLive,
     StoreLiveFlag,
@@ -27,8 +32,15 @@ internal enum EmissionOpcode : byte
     StringEquals,
     StringCompare,
     StringPattern,
+
+    /// <summary>Memcpy: zero operands use Place/Constant slots; one supplies the source address; two supply source and destination addresses.</summary>
     TransferAggregate,
+
+    /// <summary>Destroy the exact aggregate Type at Place, or at the sole address operand; only Place supports conditional cleanup.</summary>
     DestroyAggregate,
+    DestroyPart,
+    EndPartDestruction,
+    StorePathFlag,
 
     /// <summary>A direct call of <c>Callee</c> with prepared operands.</summary>
     Call,
@@ -51,6 +63,8 @@ internal enum EmissionOperandKind : byte
     /// <summary>The address of the slot prepared for a Place ID.</summary>
     SlotAddress,
     ProjectedSlot,
+    ElementAddress,
+    NullAddress,
 
     /// <summary>The address of a pooled constant.</summary>
     ConstantAddress,
@@ -83,6 +97,7 @@ internal enum ArithmeticCheckKind : byte
     UnsignedDivision,
     Shift,
     Conversion,
+    Bounds,
 }
 
 /// <summary>One instruction; <c>Operation</c> is the source ownership operation ID, or -1 for synthesized startup control.</summary>
@@ -106,6 +121,8 @@ internal sealed class EmissionFunction
 
     internal List<int> LiveFlags { get; } = new();
 
+    internal List<int> PathFlags { get; } = new();
+
     internal List<EmissionInstruction> Instructions { get; } = new();
 
     internal List<EmissionOperand> Operands { get; } = new();
@@ -122,6 +139,7 @@ internal sealed class EmissionFunction
         this.Subslots.Clear();
         this.SlotAddresses.Clear();
         this.LiveFlags.Clear();
+        this.PathFlags.Clear();
         this.Instructions.Clear();
         this.Operands.Clear();
     }

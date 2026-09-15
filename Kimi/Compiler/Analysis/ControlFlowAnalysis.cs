@@ -599,7 +599,7 @@ public sealed class ControlFlowAnalysis
     private Flow VisitChildSequence(Koto node, bool reachable)
     {
         var start = this.childBuffer.Count;
-        node.VisitChildren(this.childCollector);
+        StructuralCompletion.CollectEvaluationChildren(node, this.childBuffer, this.childCollector);
         var count = this.childBuffer.Count - start;
         var flow = this.VisitSequence(this.childBuffer, start, count, reachable);
         this.childBuffer.RemoveRange(start, count);
@@ -1290,6 +1290,12 @@ public sealed class ControlFlowAnalysis
                     this.Error(node, "This pointer arithmetic operation is not defined.");
                     return null;
                 }
+            }
+
+            if (node is IndexKoto)
+            {
+                this.Constrain(binary.Right, IsizeType);
+                return null; // Complete element Types come from Binding, never from the receiver Type.
             }
 
             if (node is MemberAccessKoto or AsKoto or IsKoto)

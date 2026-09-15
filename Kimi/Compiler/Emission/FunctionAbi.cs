@@ -22,12 +22,18 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
 
     // Passing mode and attributes are fixed by the implemented representation in this profile.
     // The pool caches physical shapes; current call plans separately validate complete Types and Origins.
-    internal static bool Supports(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String);
+    internal static bool Supports(BoundType? type, AggregateLayoutPool? layouts = null) => type is not null && !ReferenceTypes.IsString(type) && GetValue(type, layouts) is not null;
 
-    internal static bool SupportsParameter(BoundType? type) => Supports(type) || ReferenceTypes.IsString(type);
+    internal static bool SupportsParameter(BoundType? type, AggregateLayoutPool? layouts = null) => Supports(type, layouts) || ReferenceTypes.IsString(type);
 
-    internal static string? ResultType(BoundType type) => ReferenceEquals(type, BoundType.Never) || ReferenceEquals(type, BoundType.String)
-        ? "void" : Supports(type) ? WindowsLowering.GetValue(type)!.ComputationType : null;
+    internal static ValueLowering? GetValue(BoundType type, AggregateLayoutPool? layouts) => type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray
+        ? layouts?.Get(type)?.Value : ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || ReferenceTypes.IsString(type)
+            ? WindowsLowering.GetValue(type) : null;
+
+    internal static bool HasResultSlot(BoundType type, AggregateLayoutPool? layouts) => SlotTypes.IsResult(type) && GetValue(type, layouts)?.Layout.Size > 0;
+
+    internal static string? ResultType(BoundType type, AggregateLayoutPool? layouts = null) => ReferenceEquals(type, BoundType.Never)
+        ? "void" : GetValue(type, layouts) is { } value ? SlotTypes.IsResult(type) ? "void" : value.ComputationType : null;
 
     /// <summary>Gets the cached <c>define ... {</c> line, including the profile attribute group.</summary>
     /// <param name="exported">Whether the definition has external linkage instead of internal.</param>

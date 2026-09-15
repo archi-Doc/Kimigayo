@@ -79,6 +79,16 @@ public class PropertyRevisionParseTest
     public void PreservesDeclarationsAndSignatures(string source)
         => RoundTrip(ParseSuccess(source));
 
+    [Theory]
+    [InlineData("struct S\n    var item: i32\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value")]
+    [InlineData("struct S\n    computed item: i32\n        get() -> i32 => self.measured")]
+    [InlineData("contract C\n    property item: i32\n        get() -> i32\n        set(value: i32) -> ()")]
+    [InlineData("struct S\n    func read(self) -> i32 => 1")]
+    [InlineData("enum E\n    A\n    func read(self) -> i32 => 1")]
+    [InlineData("contract C\n    func read(self) -> i32")]
+    public void PreservesReceiverShorthandThroughWritingAndSerialization(string source)
+        => RoundTrip(ParseSuccess(source));
+
     [Fact]
     public void RetainsPropertyKindsParameterTypesOriginsAndSourceSpans()
     {
@@ -124,7 +134,6 @@ public class PropertyRevisionParseTest
     [InlineData("var p: T\n    get -> T => value")]
     [InlineData("var p: T\n    get(self: ref/Self) => value")]
     [InlineData("var p: T\n    get(self: ref/Self) -> T")]
-    [InlineData("var p: T\n    get() -> T => value")]
     [InlineData("var p: T\n    get(self: ref/Self, extra: T) -> T => value")]
     [InlineData("var p: T\n    get(self: ref/Self = other) -> T => value")]
     [InlineData("var p: T\n    get(self?: ref/Self) -> T => value")]
@@ -174,7 +183,6 @@ public class PropertyRevisionParseTest
     [InlineData("property p: T has get(self: ref/Self) -> T")]
     [InlineData("property p: T has get\n    set(self: uniq/Self, value: T) -> ()")]
     [InlineData("property p: T\n    get")]
-    [InlineData("property p: T\n    get() -> T")]
     [InlineData("property p: T\n    private get(self: ref/Self) -> T")]
     [InlineData("property p: T\n    get(self: ref/Self) -> T => value")]
     [InlineData("property p: T\n    get(self: ref/Self) -> T\n        return value")]

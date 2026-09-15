@@ -60,7 +60,7 @@ public class ParseBenchmark
                     return 1
 
                 func Method2() -> ()
-                    #if(Os=="windows")
+                    #if(os=="windows")
                     var i = if (x == true) => 1 else => 0
                     var i2 = if (x == true)
                         1
@@ -71,10 +71,9 @@ public class ParseBenchmark
                         true => 1
                         false => 0
                     var k = match x
-                        true =>
-                            1
-                        false =>
-                            0
+                        true => 1
+                        false
+                            yield 0
                     return
             """;
 

@@ -20,7 +20,7 @@ It validates the existing LLVM **22.1.8** installation, copies the required exec
 
 `Hello.kimiproj` uses Tinyhand indentation syntax and needs no LLVM/backend paths. `OutputPath` defaults to `bin/<target>/Hello.ll`; `Optimization` accepts `O0` or `O2` and defaults to `O2`. Source builds find the checkout's toolchain; standalone compiler distributions use toolchain beside Kimi.exe/Kimi.dll. Use `--ToolchainRoot` or `KIMI_TOOLCHAIN_ROOT` to select another root. Legacy LlvmBin and explicit kimi_backend entries remain supported as overrides.
 
-`kernel32.lib` is generated for each project/optimization from the embedded `.def`; no Windows SDK import library is needed. Remove old kernel32 entries and re-emit schema 1/2 manifests. Tool versions, dlltool identity, backend ABI/release and archive SHA-256 are checked before linking. See [SPEC §20.8.8](../../SPEC.md#2088-toolchain-storage-and-native-library-lifecycle) for the complete lifecycle.
+`kernel32.lib` is generated for each project/optimization from the embedded `.def`; no Windows SDK import library is needed. Remove old kernel32 entries and re-emit schema 1/2 manifests. Tool versions, dlltool identity, backend ABI/release and archive SHA-256 are checked before linking. See [SPEC §20.8.8](../../spec/20-compilation-configuration.md#2088-toolchain-storage-and-native-library-lifecycle) for the complete lifecycle.
 
 ## Build and run
 
@@ -39,7 +39,7 @@ dotnet Kimi/bin/Release/net10.0/Kimi.dll run examples/Hello/Hello.kimiproj
 For debugging the compiler's pre-optimization IR, use:
 
 ```powershell
-dotnet Kimi/bin/Release/net10.0/Kimi.dll emit-llvm examples/Hello/Hello.kimiproj
+dotnet Kimi/bin/Release/net10.0/Kimi.dll emit examples/Hello/Hello.kimiproj
 ```
 
 This performs required semantic/ownership checks and writes only the matched `.ll`/`.link.json` pair. It neither executes LLVM nor links/runs a program. The existing manual builder remains available for separately building this pair:

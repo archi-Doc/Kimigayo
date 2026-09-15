@@ -101,6 +101,14 @@ internal static partial class LlvmModuleWriter
             output.Write('\n');
         }
 
+        foreach (var path in function.PathFlags)
+        {
+            Name(output, "  %pathSlot", path);
+            output.Write(" = alloca i8, align 1\n  store i8 0, ptr ");
+            Name(output, "%pathSlot", path);
+            output.Write(", align 1\n");
+        }
+
         foreach (var place in function.LiveFlags)
         {
             Name(output, "  %liveSlot", place);
@@ -121,6 +129,11 @@ internal static partial class LlvmModuleWriter
         {
             switch (instruction.Opcode)
             {
+                case EmissionOpcode.DestroyPart:
+                case EmissionOpcode.EndPartDestruction:
+                case EmissionOpcode.StorePathFlag:
+                    WritePartDestruction(output, constants, function, instruction);
+                    break;
                 case EmissionOpcode.TransferAggregate:
                 case EmissionOpcode.DestroyAggregate:
                     WriteAggregate(output, constants, function, instruction);
@@ -133,6 +146,9 @@ internal static partial class LlvmModuleWriter
                 case EmissionOpcode.StoreLiveFlag:
                 case EmissionOpcode.InitializeLiveFlag:
                     WriteString(output, constants, function, instruction, function.GetOperands(instruction));
+                    break;
+                case EmissionOpcode.ElementAddress:
+                    WriteElementAddress(output, constants, function, instruction);
                     break;
                 case EmissionOpcode.StringEquals:
                 case EmissionOpcode.StringCompare:
@@ -203,6 +219,18 @@ internal static partial class LlvmModuleWriter
         }
     }
 
+    private static void WriteStorageAddress(TextWriter output, EmissionFunction function, EmissionOperand address)
+    {
+        if (address.Kind == EmissionOperandKind.SlotAddress)
+        {
+            WriteSlot(output, function, (int)address.Value);
+        }
+        else
+        {
+            WriteOperand(output, address);
+        }
+    }
+
     private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1, EmissionFunction? function = null)
     {
         if (callee.Result != WindowsLowering.Unit.ComputationType)
@@ -235,6 +263,7 @@ internal static partial class LlvmModuleWriter
             switch (operand.Kind)
             {
                 case EmissionOperandKind.Value:
+                case EmissionOperandKind.ElementAddress:
                 case EmissionOperandKind.Argument:
                 case EmissionOperandKind.Float32:
                 case EmissionOperandKind.Float64:

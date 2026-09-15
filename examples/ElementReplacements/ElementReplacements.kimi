@@ -1,0 +1,17 @@
+func makeRow() -> (string, i32) => ("created", 42)
+
+var rows: [2 of (string, i32)] = [("first", 0), ("second", 0)]
+rows[0] = makeRow()
+
+let replacement = ("replacement", 2)
+var index: isize = 1
+rows[index] = replacement
+rows[0].0 = "renamed"
+
+var state = (40, "old")
+state.0 += work: do
+    state.1 = "new"
+    exit to work: 2
+
+if rows[0].1 == 42 and rows[1].1 == 2 and state.0 == 42
+    writeLine("element replacements complete")

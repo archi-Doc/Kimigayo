@@ -35,7 +35,7 @@ public sealed partial class Binding
         accessor.SignatureSymbol.Scope = property.Symbol.Scope;
         accessor.SignatureSymbol.Type = null;
         syntax.BoundSymbol = accessor.SignatureSymbol;
-        if (syntax.ReceiverType is not null || (property.Declaration.IsContractRequirement && !syntax.HasExplicitSignature))
+        if (syntax.ReceiverType is not null || (!accessor.IsStandard && property.Symbol.Scope.Owner is StructKoto or ContractKoto))
         {
             if (accessor.SelfSymbol is null || !ReferenceEquals(accessor.SelfSymbol.Declaration, syntax))
             {
@@ -104,7 +104,7 @@ public sealed partial class Binding
         {
             accessor.Receiver = this.BindType(receiver, scope);
         }
-        else if (property.Declaration.IsContractRequirement)
+        else if (property.Symbol.Scope.Owner is StructKoto or ContractKoto)
         {
             var self = this.SelfType(property.Symbol.Scope.Owner.BoundSymbol!);
             accessor.Receiver = this.InternType(BoundTypeKind.Semantics, null, accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq, [self], origin: this.OriginAtom(syntax, OriginKind.Input, 0));

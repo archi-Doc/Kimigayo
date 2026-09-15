@@ -12,11 +12,27 @@ internal static partial class LlvmModuleWriter
             output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr align ");
             WriteNumber(output, layout.Value.Layout.Alignment);
             output.Write(' ');
-            WriteSlot(output, function, instruction.Place);
+            if (instruction.OperandCount == 2)
+            {
+                WriteStorageAddress(output, function, function.GetOperands(instruction)[1]);
+            }
+            else
+            {
+                WriteSlot(output, function, instruction.Place);
+            }
+
             output.Write(", ptr align ");
             WriteNumber(output, layout.Value.Layout.Alignment);
             output.Write(' ');
-            WriteSlot(output, function, instruction.Constant);
+            if (instruction.OperandCount >= 1)
+            {
+                WriteStorageAddress(output, function, function.GetOperands(instruction)[0]);
+            }
+            else
+            {
+                WriteSlot(output, function, instruction.Constant);
+            }
+
             output.Write(", i64 ");
             WriteNumber(output, layout.Value.Layout.Size);
             output.Write(", i1 false)\n");
@@ -42,7 +58,15 @@ internal static partial class LlvmModuleWriter
 
         Name(output, "  call void @__kimi_drop_aggregate", layout.Id);
         output.Write("(ptr ");
-        WriteSlot(output, function, instruction.Place);
+        if (instruction.OperandCount == 1)
+        {
+            WriteStorageAddress(output, function, function.GetOperands(instruction)[0]);
+        }
+        else
+        {
+            WriteSlot(output, function, instruction.Place);
+        }
+
         output.Write(", ptr @");
         output.Write(constants[instruction.Constant].Name);
         output.Write(", i64 ");

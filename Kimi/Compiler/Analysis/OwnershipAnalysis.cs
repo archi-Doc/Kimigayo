@@ -276,7 +276,7 @@ public sealed partial class OwnershipAnalysis
         return id;
     }
 
-    private int Temporary(Koto source, bool produce = true)
+    private int Temporary(Koto source, bool produce = true, int projection = -1)
     {
         // A non-completing block/selection may reserve a result destination, but
         // Never has no produced value and no temporary cleanup registration.
@@ -284,7 +284,7 @@ public sealed partial class OwnershipAnalysis
         var id = this.Place(source, source.BoundType, kind, true);
         if (produce)
         {
-            this.Emit(OwnershipOperationKind.Produce, source, id);
+            this.Emit(OwnershipOperationKind.Produce, source, id, acquisition: projection >= 0 && this.body.Places[id].Acquisition == AcquisitionKind.Move ? AcquisitionKind.Move : AcquisitionKind.None, projection: projection);
             this.RegisterTemporary(id);
         }
 
@@ -452,6 +452,8 @@ public sealed partial class OwnershipAnalysis
                 return this.Temporary(test);
             case ConversionKoto conversion:
                 return this.ConversionValue(conversion);
+            case BinaryKoto element when ElementAccess.IsSyntax(element):
+                return this.ElementValue(element, use);
             case BinaryKoto binary:
                 return this.Binary(binary);
             case IfKoto conditional:
@@ -505,6 +507,11 @@ public sealed partial class OwnershipAnalysis
         if (assignment)
         {
             var target = KotoHelper.UnwrapParentheses(binary.Left);
+            if (target is BinaryKoto element && ElementAccess.IsSyntax(element))
+            {
+                return binary.Akind == KotoKind.Equals ? this.AssignElement(binary, element) : this.UpdateElement(binary, element);
+            }
+
             var previous = -1;
             var op = KotoHelper.CompoundOperation(binary.Akind);
             if (binary.Akind != KotoKind.Equals)
@@ -525,11 +532,7 @@ public sealed partial class OwnershipAnalysis
 
             if (binary.Akind != KotoKind.Equals)
             {
-                var rhs = this.Value(input);
-                input = this.Place(binary, binary.Left.BoundType, OwnershipPlaceKind.Temporary, true);
-                this.Emit(OwnershipOperationKind.Produce, binary, input);
-                this.RegisterTemporary(input);
-                this.SetValue(this.Value(input), OwnershipValueKind.Binary, [previous, rhs], op);
+                input = this.ComputeUpdate(binary, binary.Left.BoundType, previous, this.Value(input), op);
             }
 
             this.Emit(OwnershipOperationKind.Write, binary, this.Local(target), input);
@@ -697,9 +700,9 @@ public sealed partial class OwnershipAnalysis
 
         var result = this.Temporary(call);
         var scalar = ScalarResult(this.body.Places[result].Type);
-        if (scalar || ReferenceEquals(call.BoundType, BoundType.String))
+        if (scalar || SlotTypes.IsResult(call.BoundType))
         {
-            // A string Call names storage; only its normal successor Produce initializes it.
+            // A stored-result Call names storage; only its normal successor Produce initializes it.
             this.body.OperationStorage[invoke] = this.body.Operations[invoke] with { Place = result };
         }
 
@@ -972,7 +975,7 @@ public sealed partial class OwnershipAnalysis
         this.body.CleanupStepStorage.Add(new(operation, place, declaration, place < 0 ? CleanupAction.Unsupported : CleanupAction.Skip));
     }
 
-    private int New(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None, LoanRequirement loanMode = LoanRequirement.None)
+    private int New(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None, LoanRequirement loanMode = LoanRequirement.None, int projection = -1)
     {
         var id = this.body.OperationStorage.Count;
         if (id >= DeferredOperationLimit && this.body.DeferredPlans.Count != 0)
@@ -980,8 +983,8 @@ public sealed partial class OwnershipAnalysis
             throw new DeferredExpansionLimitException(source);
         }
 
-        this.body.OperationStorage.Add(new(kind, source, place, input, acquisition, LoanMode: loanMode));
-        this.RecordComparisonState(kind, source, place, input, acquisition);
+        this.body.OperationStorage.Add(new(kind, source, place, input, acquisition, LoanMode: loanMode, Projection: projection));
+        this.RecordComparisonState(source);
         this.resultHeads.Add(-2);
         this.RecordValue(id, kind, source, place, input);
         this.body.EdgeHeads.Add(-1);
@@ -991,9 +994,9 @@ public sealed partial class OwnershipAnalysis
         return id;
     }
 
-    private int Emit(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None, LoanRequirement loanMode = LoanRequirement.None)
+    private int Emit(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None, LoanRequirement loanMode = LoanRequirement.None, int projection = -1)
     {
-        var id = this.New(kind, source, place, input, acquisition, loanMode);
+        var id = this.New(kind, source, place, input, acquisition, loanMode, projection);
         if (this.checkingRegion > 0 && this.body.CheckingRegions[this.checkingRegion].Entry < 0)
         {
             var region = this.body.CheckingRegions[this.checkingRegion];

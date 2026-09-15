@@ -49,7 +49,8 @@ internal static partial class LlvmModuleWriter
             return;
         }
 
-        if (instruction.Opcode != EmissionOpcode.MoveString || operands.Length != 1 || operands[0].Kind != EmissionOperandKind.SlotAddress)
+        if (instruction.Opcode != EmissionOpcode.MoveString || operands.Length is not (1 or 2) || operands[0].Kind is not (EmissionOperandKind.SlotAddress or EmissionOperandKind.ElementAddress) ||
+            (operands.Length == 2 && operands[1].Kind != EmissionOperandKind.ElementAddress))
         {
             throw new InvalidOperationException("Unknown string transfer plan.");
         }
@@ -60,7 +61,7 @@ internal static partial class LlvmModuleWriter
         {
             StringFieldName(output, "  %strSource", id, field);
             output.Write(" = getelementptr %kimi.string, ptr ");
-            WriteSlot(output, function, (int)operands[0].Value);
+            WriteStorageAddress(output, function, operands[0]);
             output.Write(", i32 0, i32 ");
             WriteNumber(output, field);
             output.Write('\n');
@@ -75,7 +76,7 @@ internal static partial class LlvmModuleWriter
         {
             StringFieldName(output, "  %strDestination", id, field);
             output.Write(" = getelementptr %kimi.string, ptr ");
-            WriteSlot(output, function, instruction.Place);
+            WriteStorageAddress(output, function, operands.Length == 2 ? operands[1] : new(EmissionOperandKind.SlotAddress, instruction.Place));
             output.Write(", i32 0, i32 ");
             WriteNumber(output, field);
             output.Write("\n  store ");

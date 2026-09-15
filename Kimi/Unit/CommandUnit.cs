@@ -33,7 +33,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 context.AddCommand<DefaultCommand>();
                 context.AddCommand<LspCommand, LspCommand.Options>();
                 context.AddCommand<BuildCommand, KimiOptions>();
-                context.AddCommand<EmitLlvmCommand, KimiOptions>();
+                context.AddCommand<EmitCommand, KimiOptions>();
                 context.AddCommand<RunCommand, KimiOptions>();
 
                 // Logger
@@ -55,7 +55,8 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                             return;
                         }
 
-                        x.SetOutput<ConsoleAndFileLogger>();
+                        // x.SetOutput<ConsoleAndFileLogger>();
+                        x.SetOutput<ConsoleLogger>();
                     });
                 }
             });

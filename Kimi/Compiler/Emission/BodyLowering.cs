@@ -225,7 +225,19 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (operation.Place >= 0 && (this.aggregatePlaces[operation.Place] is not null || operation.Kind == OwnershipOperationKind.PayloadPlacement))
+        if (operation.Kind is OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement || body.Values[index].Kind == OwnershipValueKind.Element)
+        {
+            return this.LowerElement(body, function, constants, projectDirectory, index, out failure);
+        }
+
+        if (operation.Kind == OwnershipOperationKind.LocateReceiver)
+        {
+            failure = null;
+            return this.IsElementReceiverRead(body, index) || Fail("Receiver location requires an access protection plan.", out failure);
+        }
+
+        if (operation.Place >= 0 && operation.Kind is not (OwnershipOperationKind.Call or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver) &&
+            (this.aggregatePlaces[operation.Place] is not null || operation.Kind == OwnershipOperationKind.PayloadPlacement))
         {
             return this.LowerAggregate(body, function, constants, projectDirectory, index, marks, out failure);
         }

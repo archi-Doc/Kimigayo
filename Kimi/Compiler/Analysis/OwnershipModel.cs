@@ -67,6 +67,9 @@ public enum OwnershipOperationKind : byte
     MatchDispatch,
     PatternTest,
     EndComparisonLoans,
+    ProjectElement,
+    LocateReceiver,
+    WriteElement,
 }
 
 public enum PlacementKind : byte
@@ -122,13 +125,13 @@ public enum OwnershipFailure : byte
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition);
 
 /// <summary>One CFG program point; Place/Input are IDs in its body's Place table.</summary>
-public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Koto Source, int Place = -1, int Input = -1, AcquisitionKind Acquisition = AcquisitionKind.None, PlacementKind Placement = PlacementKind.None, LoanRequirement LoanMode = LoanRequirement.None)
+public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Koto Source, int Place = -1, int Input = -1, AcquisitionKind Acquisition = AcquisitionKind.None, PlacementKind Placement = PlacementKind.None, LoanRequirement LoanMode = LoanRequirement.None, int Projection = -1)
 {
     public PlaceUseKind Use => this.Kind switch
     {
         OwnershipOperationKind.Read or OwnershipOperationKind.PatternTest => PlaceUseKind.Read,
         OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => PlaceUseKind.Consume,
-        OwnershipOperationKind.Write or OwnershipOperationKind.PayloadPlacement => PlaceUseKind.Write,
+        OwnershipOperationKind.Write or OwnershipOperationKind.WriteElement or OwnershipOperationKind.PayloadPlacement => PlaceUseKind.Write,
         OwnershipOperationKind.Borrow => PlaceUseKind.Borrow,
         _ => PlaceUseKind.None,
     };
@@ -172,10 +175,10 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipValue> Values = new();
     internal readonly List<int> ValueOperands = new();
     internal readonly List<OwnershipPhiInput> PhiInputs = new();
-    internal readonly List<OwnershipStringResult> StringResults = new();
+    internal readonly List<OwnershipSlotResult> SlotResults = new();
     internal readonly List<OwnershipResultArrival> ResultArrivals = new();
     internal readonly List<OwnershipResultWrite> ResultWrites = new();
-    internal readonly Dictionary<Koto, int> StringResultPlaces = new(ReferenceEqualityComparer.Instance);
+    internal readonly Dictionary<Koto, int> SlotResultPlaces = new(ReferenceEqualityComparer.Instance);
     internal readonly List<OwnershipDelivery> Deliveries = new();
     internal readonly List<OwnershipCleanupStep> CleanupStepStorage = new();
     internal readonly List<OwnershipCleanupPlan> CleanupPlanStorage = new();
@@ -185,6 +188,8 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipMatchPlan> MatchStorage = new();
     internal readonly List<OwnershipMatchArmPlan> MatchArmStorage = new();
     internal readonly List<OwnershipIssue> IssueStorage = new();
+    internal readonly List<OwnershipProjection> Projections = new();
+    internal readonly List<OwnershipElementUpdate> ElementUpdates = new();
     internal readonly List<OwnershipStringComparison> StringComparisons = new();
     internal readonly List<OwnershipComparisonLoan> ComparisonLoans = new();
     internal readonly List<OwnershipCallLoans> CallLoans = new();
@@ -249,10 +254,10 @@ public sealed partial class OwnershipBody
         this.Values.Clear();
         this.ValueOperands.Clear();
         this.PhiInputs.Clear();
-        this.StringResults.Clear();
+        this.SlotResults.Clear();
         this.ResultArrivals.Clear();
         this.ResultWrites.Clear();
-        this.StringResultPlaces.Clear();
+        this.SlotResultPlaces.Clear();
         this.Deliveries.Clear();
         this.CleanupStepStorage.Clear();
         this.CleanupPlanStorage.Clear();
@@ -262,6 +267,11 @@ public sealed partial class OwnershipBody
         this.MatchStorage.Clear();
         this.MatchArmStorage.Clear();
         this.IssueStorage.Clear();
+        this.Projections.Clear();
+        this.movePaths.Clear();
+        this.movePathIndex.Clear();
+        this.movePathOrder.Clear();
+        this.ElementUpdates.Clear();
         this.StringComparisons.Clear();
         this.ComparisonLoans.Clear();
         this.CallLoans.Clear();
@@ -301,6 +311,7 @@ internal enum OwnershipValueKind : byte
     Unary,
     Binary,
     StringComparison,
+    Element,
     Borrow,
     Phi,
 }
@@ -317,7 +328,7 @@ internal readonly record struct OwnershipPhiInput(int Value, int Edge, int Write
 internal readonly record struct OwnershipDelivery(int Operation, int Value, int Write);
 
 // A dynamic expression result lifetime; deferred replicas can share Place but not Declare/Join.
-internal readonly record struct OwnershipStringResult(int Place, int Declare, int Join, int Start, int Count);
+internal readonly record struct OwnershipSlotResult(int Place, int Declare, int Join, int Start, int Count);
 
 internal readonly record struct OwnershipResultArrival(int Edge, int Write);
 
@@ -325,9 +336,21 @@ internal readonly record struct OwnershipResultArrival(int Edge, int Write);
 internal readonly record struct OwnershipResultWrite(int Operation, int Declare);
 
 // Persistent stack links preserve independent branch and checking-region environments.
-// One shared lexical chain; a null Call identifies a comparison-only inspection.
-internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1);
+// Calls, comparisons, guard inspection and element access share the same lexical chain.
+// Read anchors acquisition: Read/Borrow, LocateReceiver for storage protection,
+// and final ProjectElement for an exclusive write.
+internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1, bool Access = false, int Projection = -1);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
 
 internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);
+
+// Parent is another projection index. Output is the final Copy/Move acquisition, Write the replacement.
+// An update has both and links its numeric calculation/result through ElementUpdates.
+// Loan protects location; Exclusive replaces that protection for a write after final bounds resolution.
+// Path/PathDepth identify the longest static prefix in this same projection table;
+// Selector is the decoded literal element index, or -1 for a non-static selector.
+internal readonly record struct OwnershipProjection(int Operation, int Root, int Parent, int Index, int Element, int Loan, int Output = -1, int Write = -1, int Update = -1, int Exclusive = -1, int Path = -1, int PathDepth = 0, int Selector = -1);
+
+// A completed numeric update links one projection's Copy and store to its calculation/result.
+internal readonly record struct OwnershipElementUpdate(int Projection, int Right, int Computation, int Result);

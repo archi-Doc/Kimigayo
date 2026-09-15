@@ -83,10 +83,12 @@ internal sealed partial class BodyLowering
             return false;
         }
 
-        if (!this.PrepareStringFunctions(body, function, out failure) || !this.PrepareAggregates(body, function, out failure) || !this.PrepareStringResults(body, out failure) || !this.PrepareMatches(body, function, out failure) || !this.PrepareStrings(body, function, out failure))
+        if (!this.PrepareSlotFunctions(body, function, out failure) || !this.PrepareSlotResults(body, out failure) || !this.PrepareAggregates(body, function, out failure) || !this.PrepareMatches(body, function, out failure) || !this.PrepareStrings(body, function, out failure) || !this.PrepareElements(body, out failure))
         {
             return false;
         }
+
+        this.PreparePartDestruction(body, function);
 
         // Semantic dominance remains on the verification graph, including covered arms.
         if (this.hasMatches)
@@ -230,7 +232,7 @@ internal sealed partial class BodyLowering
             this.BuildDominators(body);
         }
 
-        if (!this.ValidateStringResults(body, out failure) || !this.ValidateAggregateDominance(body, out failure))
+        if (!this.ValidateSlotResults(body, out failure) || !this.ValidateAggregateDominance(body, out failure))
         {
             return false;
         }
@@ -260,6 +262,7 @@ internal sealed partial class BodyLowering
         // Validate even unexecuted operations. The retained scratch function is never serialized.
         this.validation.Reset(function.Abi, false);
         this.validation.LiveFlags.AddRange(function.LiveFlags);
+        this.validation.PathFlags.AddRange(function.PathFlags);
         this.arguments.Clear();
         for (var i = 0; i < count; i++)
         {
@@ -268,11 +271,14 @@ internal sealed partial class BodyLowering
             {
                 return false;
             }
+
+            this.AddPathFlags(body, this.validation, i);
         }
 
         this.instructionStarts[count] = this.validation.Instructions.Count;
         Grow(ref this.flagValidation, count + body.Places.Count);
-        if (!ValidateStringFlags(body, this.validation, this.flagValidation.AsSpan(0, count + body.Places.Count)))
+        if (!ValidateStringFlags(body, this.validation, this.flagValidation.AsSpan(0, count + body.Places.Count)) ||
+            !ValidatePathFlags(body, this.validation, this.flagValidation.AsSpan(0, count)))
         {
             return Fail("Missing or inconsistent string lifetime flag updates.", out failure);
         }
@@ -388,7 +394,8 @@ internal sealed partial class BodyLowering
             }
         }
 
-        return !this.hasMatches || ValidateStringFlags(body, function, this.flagValidation.AsSpan(0, count + body.Places.Count), marks) ||
+        return ((!this.hasMatches || ValidateStringFlags(body, function, this.flagValidation.AsSpan(0, count + body.Places.Count), marks)) &&
+            ValidatePathFlags(body, function, this.flagValidation.AsSpan(0, count), marks)) ||
             Fail("Physical string flags do not match dispatch reachability.", out failure);
     }
 
