@@ -124,7 +124,7 @@ public sealed class GroupKoto : DeclarationContainerKoto
                 reader.Advance();
                 var name = KotoHelper.ValidateAndGetNamespace(ref reader);
                 var state = reader.TakeContext();
-                var groupKoto = this.GetOrAddDeclarationContainer(name, TokenKind.Group, state, token.Span);
+                var groupKoto = this.GetOrAddDeclarationContainer(name, TokenKind.Group, state, token.Span, codeContext: reader.CodeContext);
                 groupKoto.AddHeader(TokenKind.Group, state.ModifierKind, null, null, state.AttributeKoto);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {

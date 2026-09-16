@@ -442,8 +442,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="state">The declaration context.</param>
     /// <param name="range">The declaration source span.</param>
     /// <param name="genericArity">The number of generic header slots.</param>
+    /// <param name="codeContext">The parsing fragment's context that a newly created container retains; <see langword="null"/> uses this container's context.</param>
     /// <returns>The final Declaration Container.</returns>
-    public DeclarationContainerKoto GetOrAddDeclarationContainer(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range, int genericArity = 0)
+    public DeclarationContainerKoto GetOrAddDeclarationContainer(ReadOnlySpan<char> qualifiedName, TokenKind kind, TokenContext state, SourceSpan range, int genericArity = 0, CodeContext? codeContext = null)
     {
         var container = this;
         while (true)
@@ -451,10 +452,10 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             var index = qualifiedName.IndexOf(Constants.DotChar);
             if (index < 0)
             {
-                return container.GetOrAddChild(qualifiedName, null, kind, state, range, genericArity);
+                return container.GetOrAddChild(qualifiedName, null, kind, state, range, genericArity, codeContext);
             }
 
-            container = container.GetOrAddChild(qualifiedName[..index], null, TokenKind.Group, default, default);
+            container = container.GetOrAddChild(qualifiedName[..index], null, TokenKind.Group, default, default, codeContext: codeContext);
             qualifiedName = qualifiedName[(index + 1)..];
         }
     }
@@ -465,11 +466,12 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <param name="state">The declaration context.</param>
     /// <param name="range">The declaration source span.</param>
     /// <param name="genericArity">The number of generic header slots.</param>
+    /// <param name="codeContext">The parsing fragment's context that a newly created container retains; <see langword="null"/> uses this container's context.</param>
     /// <returns>The nested Declaration Container.</returns>
-    internal DeclarationContainerKoto GetOrAddDeclarationContainer(string name, TokenKind kind, TokenContext state, SourceSpan range, int genericArity = 0)
+    internal DeclarationContainerKoto GetOrAddDeclarationContainer(string name, TokenKind kind, TokenContext state, SourceSpan range, int genericArity = 0, CodeContext? codeContext = null)
         => name.Contains(Constants.DotChar)
-            ? this.GetOrAddDeclarationContainer(name.AsSpan(), kind, state, range, genericArity)
-            : this.GetOrAddChild(name, name, kind, state, range, genericArity);
+            ? this.GetOrAddDeclarationContainer(name.AsSpan(), kind, state, range, genericArity, codeContext)
+            : this.GetOrAddChild(name, name, kind, state, range, genericArity, codeContext);
 
     /// <summary>Gets or creates a Declaration Container from a qualified name.</summary>
     /// <remarks>Retained as a source-compatible alias for <c>GetOrAddDeclarationContainer</c>.</remarks>
@@ -749,7 +751,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             supportsGenericHeader,
             supportsGenericHeader,
             tokenKind);
-        var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span, declaration.GenericArguments?.Count ?? 0);
+        var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span, declaration.GenericArguments?.Count ?? 0, reader.CodeContext);
         container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto);
         container.SetBases(declaration.Bases);
 
@@ -1107,7 +1109,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Gets or creates a directly nested container.</summary>
     /// <param name="text">The container name.</param>
     /// <param name="name">The name as a string when already materialized, to avoid a second allocation.</param>
-    private DeclarationContainerKoto GetOrAddChild(ReadOnlySpan<char> text, string? name, TokenKind kind, TokenContext state, SourceSpan range, int genericArity = 0)
+    private DeclarationContainerKoto GetOrAddChild(ReadOnlySpan<char> text, string? name, TokenKind kind, TokenContext state, SourceSpan range, int genericArity = 0, CodeContext? codeContext = null)
     {
         var nested = this.NestedContainerTable ??= new();
         if (nested.TryGetValue(text, out var existing))
@@ -1129,7 +1131,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         name ??= this.CodeContext.Compilation.Intern(text);
-        var container = CreateStandalone(this.CodeContext, kind, state, range, name);
+        // A merged container keeps the first declaring fragment's context so its own diagnostics stay in that document.
+        var container = CreateStandalone(codeContext ?? this.CodeContext, kind, state, range, name);
         container.nextArity = existing as DeclarationContainerKoto;
         container.Parent = this;
         nested.AddOrUpdate(name, container);

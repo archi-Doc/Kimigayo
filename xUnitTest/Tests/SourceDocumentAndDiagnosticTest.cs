@@ -183,4 +183,33 @@ public class SourceDocumentAndDiagnosticTest
         public ConsoleKeyInfo ReadKey(bool intercept)
             => throw new NotSupportedException();
     }
+
+    [Fact]
+    public void MergedContainerRetainsFirstFragmentSourceDocument()
+    {
+        var compilation = Compilation.CreateForTest();
+        var kotonoha = compilation.Kotonoha;
+        var first = new SourceDocument("first.kimi", "struct Reading\n    Self is Copy\n    Self is Missing\n    public let value: i32\n");
+        var second = new SourceDocument("second.kimi", "struct Reading\n    public let other: i32\n");
+
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, first);
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, second);
+
+        // The merged container keeps the first declaring fragment's context; each member keeps its own.
+        var container = Assert.Single(kotonoha.RootKoto.NestedContainers);
+        Assert.Same(first, container.CodeContext.SourceDocument);
+        Assert.Equal(2, container.Members.Count);
+        Assert.Same(first, container.Members[0].CodeContext.SourceDocument);
+        Assert.Same(second, container.Members[1].CodeContext.SourceDocument);
+
+        // A container-level Binding failure is reported in the first fragment's document at its header.
+        Assert.False(compilation.Bind().IsComplete);
+        Assert.Contains(compilation.Binding.Issues, x => ReferenceEquals(x.Node, container) && x.Code == DiagnosticCode.InvalidConstraint_Kd);
+        compilation.Binding.ReportDiagnostics();
+
+        var diagnostics = kotonoha.DiagnosticCollection.GetArray();
+        Assert.NotEmpty(diagnostics);
+        Assert.All(diagnostics, x => Assert.NotNull(x.SourceDocument));
+        Assert.Contains(diagnostics, x => ReferenceEquals(x.SourceDocument, first) && x.Span.Start == 0 && x.Entry.Name == nameof(DiagnosticCode.InvalidConstraint_Kd));
+    }
 }

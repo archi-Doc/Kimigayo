@@ -1,5 +1,18 @@
 # Kimigayo Implementation Status
 
+Merged-container diagnostic locations (2026-09-17): a declaration container
+created while parsing a source document now retains that first declaring
+fragment's CodeContext instead of the parent's source-less root context, so a
+container-level Binding failure (for example an invalid conformance list) is
+reported at the container header in its document (`file.kimi:1:1`) rather than
+as a document-less `Project:@0` location. Members and later fragments keep their
+own contexts as before. Verified by the new
+`SourceDocumentAndDiagnosticTest.MergedContainerRetainsFirstFragmentSourceDocument`
+and the full Debug/Release suites (6,987 tests each, zero failures); the
+regenerated scalar fixtures are byte-identical to the pre-change set. The
+remaining sibling-clause and field cascade after one unresolved conformance name
+is a recorded diagnostics-quality item in PLAN.md, not a language limitation.
+
 Program Milestone 6 complete (2026-09-17): the unchanged
 `milestones/Milestone6.kimi` passes Binding, ownership, LLVM verification, native
 linking and execution with the existing compiler implementation. Value-producing
