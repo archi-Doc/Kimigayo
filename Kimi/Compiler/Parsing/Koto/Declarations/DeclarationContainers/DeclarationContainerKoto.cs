@@ -595,7 +595,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 continue;
             }
 
-            if (parseTypeConstraints && Parser.IsTypeConstraintStart(ref reader))
+            if (parseTypeConstraints && Parser.IsTypeConstraintStart(ref reader, declarationContext: true))
             {
                 if (!acceptsTypeConstraints && reader.CurrentTokenKind != TokenKind.Self && !reader.IsCurrentIdentifier("Self"))
                 {

@@ -94,6 +94,11 @@ public sealed partial class Binding
 
     private ConstraintProof RequestCapability(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation = false)
     {
+        if (UnresolvedConstraintType(type))
+        {
+            return InvalidConstraintType(type) ? ConstraintProof.Error : ConstraintProof.Unknown;
+        }
+
         if (!this.capabilitiesReady)
         {
             if (this.running && this.coreValid && !derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
@@ -332,6 +337,11 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
+                if (!this.AvailableConstraintFact(environment, fact))
+                {
+                    continue;
+                }
+
                 var appliedSemantics = fact.Kind == ConstraintKind.Semantics && work.Type.Kind == BoundTypeKind.SemanticsApplication && ReferenceEquals(fact.Subject, work.Type.Symbol?.WholeType);
                 if (!ReferenceEquals(fact.Subject, work.Type) && !appliedSemantics)
                 {
@@ -342,6 +352,10 @@ public sealed partial class Binding
                 if (fact.Kind == ConstraintKind.TypeIdentity && fact.RequiredType is { } required)
                 {
                     evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, required, contract: work.Intrinsic)), work.Scope);
+                }
+                else if (fact.Kind == ConstraintKind.Contract && IsRefinement(fact.Contract!, work.Intrinsic) && this.AvailableContractPremise(fact.Contract!))
+                {
+                    evidence = ConstraintProof.Proven;
                 }
                 else if (fact.Kind == ConstraintKind.Semantics)
                 {

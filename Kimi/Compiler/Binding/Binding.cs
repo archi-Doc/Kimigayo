@@ -187,7 +187,7 @@ public sealed partial class Binding
             this.ValidateConstraintUses(mode);
             // Late witness failures can invalidate declarations that normalized their projections.
             // Revisit dependent certificates only while declaration states change monotonically.
-            while (this.ValidateDeclarationProjectionInputs(mode))
+            while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments())
             {
                 this.ClearCapabilityResults();
                 this.ValidateBaseDeclarations(mode);
@@ -241,6 +241,19 @@ public sealed partial class Binding
         for (Koto? node = declaration; node is not null; node = node.Parent)
         {
             if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool UnresolvedTypeDeclarationContext(Koto declaration)
+    {
+        for (Koto? node = declaration; node is not null; node = node.Parent)
+        {
+            if ((node is StructKoto or EnumKoto or ContractKoto && node.BindingState == BindingState.Unresolved) || node is ContractKoto { BoundSymbol.Contract.HasUnresolvedParents: true })
             {
                 return true;
             }

@@ -37,7 +37,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.ConstraintNodes.Count; i++)
             {
                 var clause = container.ConstraintNodes[i];
-                if (clause.Left is IdentifierNameKoto { IdentifierName: "Self" } && clause.BoundConstraint is { } bound && this.DeclaresCopy(bound))
+                if (IsSelfConstraint(clause) && clause.BoundConstraint is { } bound && this.DeclaresCopy(bound))
                 {
                     this.RegisterCopy(clause, container, this.scopes[container], null);
                 }

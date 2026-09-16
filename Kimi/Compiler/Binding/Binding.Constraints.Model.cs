@@ -23,6 +23,7 @@ public enum ConstraintKind : byte
     And,
     Or,
     Not,
+    Unresolved,
 }
 
 /// <summary>An immutable, compilation-interned proposition. Types and symbols retain their binding identities.</summary>
@@ -37,6 +38,8 @@ public sealed class BoundConstraint
         this.Mask = key.Mask;
         this.Left = key.Left;
         this.Right = key.Right;
+        this.HasAssociatedProjection = ContainsProjection(key.Subject) || ContainsProjection(key.RequiredType) || key.Left?.HasAssociatedProjection == true || key.Right?.HasAssociatedProjection == true;
+        this.HasUnresolved = key.Kind == ConstraintKind.Unresolved || key.Left?.HasUnresolved == true || key.Right?.HasUnresolved == true;
     }
 
     public ConstraintKind Kind { get; }
@@ -55,6 +58,33 @@ public sealed class BoundConstraint
 
     /// <summary>Gets or sets the interned negation, cached because every proof queries it.</summary>
     internal BoundConstraint? Negation { get; set; }
+
+    internal bool HasAssociatedProjection { get; }
+
+    internal bool HasUnresolved { get; }
+
+    private static bool ContainsProjection(BoundType? type)
+    {
+        if (type is null)
+        {
+            return false;
+        }
+
+        if (type.Kind == BoundTypeKind.AssociatedProjection)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (ContainsProjection(type.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 }
 
 // Do not recursively hash a proposition DAG; operands are compared by interned identity.
@@ -87,11 +117,20 @@ internal sealed class ConstraintEnvironment
 {
     internal HashSet<BoundConstraint> Facts { get; } = new(ReferenceEqualityComparer.Instance);
 
+    internal HashSet<BoundConstraint> DirectFacts { get; } = new(ReferenceEqualityComparer.Instance);
+
+    internal List<(BoundConstraint Fact, BindingSymbol Source)> DerivedFacts { get; } = new();
+
     internal bool Invalid { get; set; }
+
+    internal bool HasAssociatedProjection { get; set; }
 
     internal void Reset()
     {
         this.Facts.Clear();
+        this.DirectFacts.Clear();
+        this.DerivedFacts.Clear();
         this.Invalid = false;
+        this.HasAssociatedProjection = false;
     }
 }

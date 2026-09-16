@@ -12,10 +12,10 @@ namespace Kimi.Compiler;
 
 public static partial class Parser
 {
-    private static bool IsTupleRequirement(ref TokenReader reader)
+    private static bool IsParenthesizedTypeRequirement(ref TokenReader reader)
     {
-        // Only a comma at this parenthesis level distinguishes a Tuple from a
-        // grouped requirement. Nested Type arguments and arrays own their commas.
+        // A comma at this level identifies a Tuple; an arrow after the closing
+        // parenthesis identifies a Function Parameter List. Nested Types own their commas.
         if (reader.PeekKind() == TokenKind.CloseParenthesis)
         {
             return true;
@@ -38,7 +38,7 @@ public static partial class Parser
             }
             else if (kind == TokenKind.CloseParenthesis && --parentheses == 0)
             {
-                return false;
+                return reader.PeekKind(offset + 1) == TokenKind.MinusGreaterThan;
             }
             else if (kind == TokenKind.OpenBracket)
             {

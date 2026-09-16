@@ -451,6 +451,12 @@ public sealed partial class Binding
                 return this.BindTypeList(syntax, tuple.ElementNodes, scope, context.Nested, BoundTypeKind.Tuple);
             case FunctionTypeKoto function:
                 var parameters = this.BindType(function.Parameters, scope, context.Nested);
+                if (parameters is not null && function.Parameters is ParenthesizedTypeKoto)
+                {
+                    // A grouped parameter is one list element, even when its Type is Unit or a Tuple.
+                    parameters = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, [parameters]);
+                }
+
                 var result = this.BindType(function.ReturnType, scope, context.Nested);
                 return parameters is null || result is null ? null : this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]);
             case FixedArrayTypeKoto array:

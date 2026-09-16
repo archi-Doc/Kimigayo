@@ -6,6 +6,12 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private static bool InvalidConstraintRequirement(BoundConstraint constraint)
+        => (constraint.Contract is { } contract && InvalidDeclarationContext(contract.Declaration)) ||
+        (constraint.RequiredType is { } required && InvalidConstraintType(required)) ||
+        (constraint.Left is { } left && InvalidConstraintRequirement(left)) ||
+        (constraint.Right is { } right && InvalidConstraintRequirement(right));
+
     private static Koto? ProjectionDeclarationOwner(Koto use)
     {
         if (((Koto?)FunctionSignatureOwner(use) ?? PropertySignatureOwner(use)) is { } signature)
@@ -31,7 +37,7 @@ public sealed partial class Binding
                 IReadOnlyList<Koto>? constraints = parent switch
                 {
                     FunctionKoto function => function.TypeConstraints,
-                    DeclarationContainerKoto container when container is ContractKoto || clause.Left is not IdentifierNameKoto { IdentifierName: "Self" } => container.ConstraintNodes,
+                    DeclarationContainerKoto container when container is ContractKoto || !IsSelfConstraint(clause) => container.ConstraintNodes,
                     _ => null,
                 };
                 if (constraints is not null)
@@ -75,7 +81,7 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var proof = ConstraintProof.Proven;
+        var proof = type.Symbol is { } declaration && UnresolvedTypeDeclarationContext(declaration.Declaration) ? ConstraintProof.Unknown : ConstraintProof.Proven;
         for (var i = 0; i < type.Components.Count; i++)
         {
             proof = CombineProof(proof, this.CheckTypeConstraints(type.Components[i], scope), true);
@@ -155,6 +161,110 @@ public sealed partial class Binding
 
     private ConstraintProof CheckProjectionInputs(BoundType type, BindingSymbol contract, BindingScope scope)
         => CombineProof(this.CheckTypeConstraints(type, scope), this.ProveConformance(type, contract, scope), true);
+
+    private ConstraintProof CheckClosedDeclarationConstraints(DeclarationContainerKoto container)
+    {
+        var proof = ConstraintProof.Proven;
+        for (var i = 0; i < container.ConstraintNodes.Count; i++)
+        {
+            var clause = container.ConstraintNodes[i];
+            if (clause.IsAssociatedConstraint || IsSelfConstraint(clause))
+            {
+                continue;
+            }
+
+            if (clause.BoundConstraint is not { } constraint)
+            {
+                proof = CombineProof(proof, ConstraintProof.Unknown, true);
+                continue;
+            }
+
+            if (DependentConstraint(constraint, contractSelf: container is ContractKoto))
+            {
+                continue;
+            }
+
+            var scope = this.scopes[container];
+            var subject = clause.Left.BoundType;
+            var formation = subject is null ? ConstraintProof.Unknown : this.CheckTypeConstraints(subject, scope);
+            proof = CombineProof(proof, CombineProof(formation, this.ProveConstraint(constraint, scope), true), true);
+        }
+
+        return proof;
+    }
+
+    private bool ValidateClosedTypeConstraints(BindingMode mode)
+    {
+        var changed = false;
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i] is IsKoto { BoundConstraint.HasUnresolved: true, Parent: DeclarationKoto owner } pending)
+            {
+                var previous = owner.BindingState;
+                var pendingProof = this.ProveConstraint(pending.BoundConstraint!, this.ConstraintScope(pending));
+                if (pendingProof == ConstraintProof.Proven)
+                {
+                    pendingProof = ConstraintProof.Unknown;
+                }
+
+                this.RequireConstraint(pending, pendingProof, mode);
+                this.RequireConstraint(owner, pendingProof, mode);
+                changed |= previous != owner.BindingState;
+            }
+
+            if (this.nodes[i] is IsKoto { BindingState: BindingState.Invalid, BoundConstraint: { } failedConstraint, Parent: DeclarationContainerKoto implementation } failed && implementation is StructKoto or EnumKoto && IsSelfConstraint(failed) && InvalidConstraintRequirement(failedConstraint))
+            {
+                // An invalid required declaration invalidates the implementing Type.
+                // A path-local witness failure must preserve independent conformances.
+                var previous = implementation.BindingState;
+                Fail(implementation, failed.BindingFailure);
+                changed |= previous != implementation.BindingState;
+            }
+
+            if (this.nodes[i] is ContractKoto { BoundSymbol.Contract: { } shape } contract)
+            {
+                if (shape.HasUnresolvedParents)
+                {
+                    var previous = contract.BindingState;
+                    this.RequireConstraint(contract, ConstraintProof.Unknown, mode);
+                    changed |= previous != contract.BindingState;
+                }
+
+                for (var a = 0; a < shape.Ancestors.Count; a++)
+                {
+                    if (InvalidDeclarationContext(shape.Ancestors[a].Declaration))
+                    {
+                        var previous = contract.BindingState;
+                        Fail(contract, BindingFailure.UnsatisfiedConstraint);
+                        changed |= previous != contract.BindingState;
+                        break;
+                    }
+
+                    if (UnresolvedTypeDeclarationContext(shape.Ancestors[a].Declaration))
+                    {
+                        var previous = contract.BindingState;
+                        this.RequireConstraint(contract, ConstraintProof.Unknown, mode);
+                        changed |= previous != contract.BindingState;
+                    }
+                }
+            }
+
+            if (this.nodes[i] is not IsKoto { Parent: DeclarationContainerKoto container, IsAssociatedConstraint: false, BoundConstraint: { } constraint, Left.BoundType: { } subject } clause || container is not (StructKoto or EnumKoto or ContractKoto) || IsSelfConstraint(clause) || DependentConstraint(constraint, contractSelf: container is ContractKoto))
+            {
+                continue;
+            }
+
+            // Closed clauses are declaration obligations, never assumptions or new conformances.
+            var scope = this.scopes[container];
+            var proof = CombineProof(this.CheckTypeConstraints(subject, scope), this.ProveConstraint(constraint, scope), true);
+            var state = container.BindingState;
+            this.RequireConstraint(clause, proof, mode);
+            this.RequireConstraint(container, proof, mode);
+            changed |= state != container.BindingState;
+        }
+
+        return changed;
+    }
 
     private void ValidateConstraintUses(BindingMode mode)
     {

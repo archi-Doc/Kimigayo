@@ -505,6 +505,11 @@ public sealed partial class Binding
         }
 
         var proof = this.CheckTypeConstraints(call.ReturnType, scope);
+        if (UnresolvedTypeDeclarationContext(call.Target.Declaration))
+        {
+            proof = CombineProof(proof, ConstraintProof.Unknown, true);
+        }
+
         if (call.DeclaringType is { } declaringType)
         {
             proof = CombineProof(proof, this.CheckTypeConstraints(declaringType, scope), true);

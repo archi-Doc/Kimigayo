@@ -135,7 +135,7 @@ public sealed partial class Binding
                 case DeclarationContainerKoto container when container is StructKoto or EnumKoto or ContractKoto:
                     // Implementation specifications and Self conformances have their
                     // separate Type/Contract intersection domain, not the Type API domain.
-                    if (container is not ContractKoto && (clause.IsAssociatedConstraint || clause.Left is IdentifierNameKoto { IdentifierName: "Self" }))
+                    if (container is not ContractKoto && (clause.IsAssociatedConstraint || IsSelfConstraint(clause)))
                     {
                         continue;
                     }
@@ -251,8 +251,8 @@ public sealed partial class Binding
                     var clause = container.ConstraintNodes[c];
                     // Self conformances have the intersection of the Type and
                     // Contract domains; their separate witness checks own this case.
-                    if (clause.Left is not IdentifierNameKoto { IdentifierName: "Self" } && !clause.IsAssociatedConstraint &&
-                        clause.BoundConstraint is { } constraint && !ConstraintAccessCovers(constraint, domain))
+                    if (!IsSelfConstraint(clause) && !clause.IsAssociatedConstraint &&
+                        clause.BoundConstraint is { } constraint && (!ConstraintAccessCovers(constraint, domain) || (clause.Left.BoundType is { } subject && !TypeAccessCovers(subject, domain, domain))))
                     {
                         Fail(clause, BindingFailure.Access);
                         Fail(container, BindingFailure.Access);

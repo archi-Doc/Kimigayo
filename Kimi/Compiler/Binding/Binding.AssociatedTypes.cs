@@ -391,7 +391,7 @@ public sealed partial class Binding
 
                 foreach (var fact in environment.Facts)
                 {
-                    if (fact.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(fact.Subject, type) && fact.RequiredType is { Kind: not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) } required)
+                    if (fact.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(fact.Subject, type) && this.AvailableConstraintFact(environment, fact) && fact.RequiredType is { Kind: not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) } required)
                     {
                         return this.IsAssociatedCore(required, scope);
                     }
@@ -450,7 +450,7 @@ public sealed partial class Binding
 
                     foreach (var fact in environment.Facts)
                     {
-                        if (fact.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(fact.Subject, result) && fact.RequiredType is { } required)
+                        if (fact.Kind == ConstraintKind.TypeIdentity && ReferenceEquals(fact.Subject, result) && this.AvailableConstraintFact(environment, fact) && fact.RequiredType is { } required)
                         {
                             return this.ContractType(required, scope, self);
                         }

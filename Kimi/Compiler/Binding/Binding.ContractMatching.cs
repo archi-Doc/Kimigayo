@@ -138,12 +138,18 @@ public sealed partial class Binding
         return true;
     }
 
-    private ConstraintProof VerifyConformance(BoundConformancePath conformance)
+    private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
         if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid || conformance.Scope.Parent?.Constraints?.Invalid == true || InvalidDeclarationContext(conformance.Contract.Declaration) || InvalidDeclarationContext(conformance.Type.Declaration))
         {
             conformance.IsVerified = false;
             return ConstraintProof.Error;
+        }
+
+        if (UnresolvedTypeDeclarationContext(conformance.Type.Declaration) || UnresolvedTypeDeclarationContext(conformance.Contract.Declaration))
+        {
+            conformance.IsVerified = false;
+            return ConstraintProof.Unknown;
         }
 
         if (conformance.IsVerified)
@@ -166,6 +172,7 @@ public sealed partial class Binding
             var shape = conformance.Contract.Contract!;
             var scope = conformance.Scope;
             var self = this.ContractType(this.SelfType(conformance.Type), scope);
+            var declarationProof = this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)conformance.Type.Declaration);
             if (conformance.Premises is { } premises)
             {
                 for (var p = 0; p < premises.Operands.Length; p++)
@@ -181,12 +188,12 @@ public sealed partial class Binding
 
             if (conformance.Contract.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned)
             {
-                var intrinsicProof = this.RequestCapability(self, conformance.Contract, scope, derivation: conformance.Contract.Intrinsic == IntrinsicKind.Copy);
+                var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope, derivation: conformance.Contract.Intrinsic == IntrinsicKind.Copy), true);
                 conformance.IsVerified = intrinsicProof == ConstraintProof.Proven;
                 return intrinsicProof;
             }
 
-            var proof = ConstraintProof.Proven;
+            var proof = declarationProof;
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
@@ -209,9 +216,37 @@ public sealed partial class Binding
                 }
             }
 
-            for (var i = 0; i < shape.Ancestors.Count; i++)
+            if (inheritedProof is { } inheritedResult)
             {
-                proof = CombineProof(proof, this.VerifyConformance(this.conformancePaths[(conformance.Type, shape.Ancestors[i], conformance.Declaration, conformance.RootContract)]), true);
+                proof = CombineProof(proof, inheritedResult, true);
+            }
+            else if (shape.Ancestors.Count != 0)
+            {
+                var ancestorProofs = this.conformanceProofScratch.Rent(shape.Ancestors.Count);
+                try
+                {
+                    for (var i = 0; i < shape.Ancestors.Count; i++)
+                    {
+                        var ancestor = shape.Ancestors[i];
+                        var prerequisites = ConstraintProof.Proven;
+                        // These candidates are Contract identities, so membership in Seen
+                        // denotes an ancestor; member identities cannot match them.
+                        for (var p = 0; p < i; p++)
+                        {
+                            if (ancestor.Contract!.Seen.Contains(shape.Ancestors[p]))
+                            {
+                                prerequisites = CombineProof(prerequisites, ancestorProofs[p], true);
+                            }
+                        }
+
+                        ancestorProofs[i] = this.VerifyConformance(this.conformancePaths[(conformance.Type, ancestor, conformance.Declaration, conformance.RootContract)], prerequisites);
+                        proof = CombineProof(proof, ancestorProofs[i], true);
+                    }
+                }
+                finally
+                {
+                    this.conformanceProofScratch.Return(ancestorProofs, clearArray: false);
+                }
             }
 
             for (var i = 0; i < shape.ClauseStorage.Count; i++)

@@ -272,7 +272,7 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        if (property.Type is null || accessor.Result is null)
+        if (property.Type is null || accessor.Result is null || UnresolvedTypeDeclarationContext(property.Declaration))
         {
             return ConstraintProof.Unknown;
         }

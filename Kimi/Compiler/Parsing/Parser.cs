@@ -1941,7 +1941,7 @@ CloseParameters:
     public static IsKoto? ParseTypeConstraint(ref TokenReader reader, bool finishLine = true)
     {
         var parsesSemantics = reader.IsCurrentIdentifier(Constants.SemanticsKeyword);
-        var subject = ParseConstraintSubject(ref reader);
+        var subject = HasSimpleConstraintSubject(ref reader) ? ParseConstraintSubject(ref reader) : ParseDeclarationType(ref reader);
 
         if (!reader.TryConsume(TokenKind.Is, out var isRange, true))
         {
@@ -2003,7 +2003,7 @@ CloseParameters:
 
             if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
             {
-                if (!parsesSemantics && IsTupleRequirement(ref reader))
+                if (!parsesSemantics && IsParenthesizedTypeRequirement(ref reader))
                 {
                     return ParseDeclarationType(ref reader);
                 }
@@ -2073,8 +2073,94 @@ CloseParameters:
     /// Determines whether the reader is positioned at the start of a type constraint.
     /// </summary>
     /// <param name="reader">The token reader to inspect.</param>
-    /// <returns><see langword="true"/> for an identifier followed by <c>is</c>.</returns>
-    public static bool IsTypeConstraintStart(ref TokenReader reader)
+    /// <param name="declarationContext">Whether grouped Type subjects are allowed in this dedicated declaration region.</param>
+    /// <returns><see langword="true"/> for Type subject syntax followed by <c>is</c>.</returns>
+    public static bool IsTypeConstraintStart(ref TokenReader reader, bool declarationContext = false)
+    {
+        if (HasSimpleConstraintSubject(ref reader))
+        {
+            return true;
+        }
+
+        var first = reader.CurrentTokenKind;
+        // Preserve executable prefix recognition, including call results and parenthesized
+        // expressions. Complete Type subjects belong to dedicated declaration regions.
+        if (!declarationContext)
+        {
+            return first.IsPrimitiveType() && reader.PeekKind(1) == TokenKind.Is;
+        }
+
+        // An associated specification owns its following "is"; its introducer is not
+        // part of the Type subject. Preserve contextual uses such as associate<T>.
+        if (first == TokenKind.Associate && reader.PeekKind(1).IsIdentifierOrContextualKeyword())
+        {
+            return false;
+        }
+
+        if (!(first.IsIdentifierOrContextualKeyword() || first.IsPrimitiveType() || first is TokenKind.Self or TokenKind.ColonColon or TokenKind.OpenParenthesis or TokenKind.OpenBracket))
+        {
+            return false;
+        }
+
+        var parentheses = 0;
+        var brackets = 0;
+        var arguments = 0;
+        for (var offset = 0; ; offset++)
+        {
+            var kind = reader.PeekKind(offset);
+            if (kind is TokenKind.Invalid or TokenKind.StartBlock or TokenKind.EndBlock || (kind == TokenKind.Separator && parentheses == 0 && brackets == 0 && arguments == 0))
+            {
+                return false;
+            }
+
+            if (kind == TokenKind.Is)
+            {
+                return parentheses == 0 && brackets == 0 && arguments == 0;
+            }
+
+            if (kind == TokenKind.OpenParenthesis)
+            {
+                parentheses++;
+            }
+            else if (kind == TokenKind.CloseParenthesis)
+            {
+                if (--parentheses < 0)
+                {
+                    return false;
+                }
+            }
+            else if (kind == TokenKind.OpenBracket)
+            {
+                brackets++;
+            }
+            else if (kind == TokenKind.CloseBracket)
+            {
+                if (--brackets < 0)
+                {
+                    return false;
+                }
+            }
+            else if (brackets == 0 && kind == TokenKind.LessThan)
+            {
+                arguments++;
+            }
+            else if (brackets == 0 && kind is TokenKind.GreaterThan or TokenKind.GreaterThanGreaterThan)
+            {
+                arguments -= kind == TokenKind.GreaterThan ? 1 : 2;
+                if (arguments < 0)
+                {
+                    return false;
+                }
+            }
+            else if (parentheses == 0 && brackets == 0 && arguments == 0 &&
+                !(kind.IsIdentifierOrContextualKeyword() || kind.IsPrimitiveType() || kind is TokenKind.Self or TokenKind.Slash or TokenKind.Dot or TokenKind.ColonColon or TokenKind.MinusGreaterThan))
+            {
+                return false;
+            }
+        }
+    }
+
+    private static bool HasSimpleConstraintSubject(ref TokenReader reader)
     {
         var offset = reader.CurrentTokenKind == TokenKind.ColonColon ? 1 : 0;
         if (!reader.PeekKind(offset).IsIdentifierOrContextualKeyword() && reader.PeekKind(offset) != TokenKind.Self)

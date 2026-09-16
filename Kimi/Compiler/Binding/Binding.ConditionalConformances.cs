@@ -9,7 +9,7 @@ public sealed partial class Binding
     private readonly HashSet<(BoundType Type, BindingSymbol Contract, BindingScope Scope)> conformanceQueries = new();
     private readonly Dictionary<(BoundConformancePath Left, BoundConformancePath Right), BindingScope> conformanceOverlapScopes = new();
 
-    private static bool DisjointConformanceFacts(BindingScope a, BindingScope b)
+    private bool DisjointConformanceFacts(BindingScope a, BindingScope b)
     {
         for (var left = a; left is not null; left = left.Parent)
         {
@@ -29,7 +29,7 @@ public sealed partial class Binding
                 {
                     foreach (var q in y.Facts)
                     {
-                        if (p.Subject is null || !ReferenceEquals(p.Subject, q.Subject))
+                        if (p.Subject is null || !ReferenceEquals(p.Subject, q.Subject) || !this.AvailableConstraintFact(x, p) || !this.AvailableConstraintFact(y, q))
                         {
                             continue;
                         }
@@ -79,7 +79,7 @@ public sealed partial class Binding
                 var self = this.SelfType(a.Type);
                 var ab = this.ProveConformanceConditions(a, self, b.Scope);
                 var ba = this.ProveConformanceConditions(b, self, a.Scope);
-                var disjoint = DisjointConformanceFacts(a.Scope, b.Scope);
+                var disjoint = this.DisjointConformanceFacts(a.Scope, b.Scope);
                 if (ab == ConstraintProof.Error || ba == ConstraintProof.Error)
                 {
                     // Substitution can expose a directly inconsistent intersection of two
@@ -106,9 +106,15 @@ public sealed partial class Binding
                 var environment = scope.Constraints ??= new();
                 if (b.Scope.Parent?.Constraints is { } other)
                 {
-                    foreach (var fact in other.Facts)
+                    foreach (var fact in other.DirectFacts)
                     {
                         this.AddConstraintFact(environment, fact);
+                    }
+
+                    for (var f = 0; f < other.DerivedFacts.Count; f++)
+                    {
+                        var derived = other.DerivedFacts[f];
+                        this.AddConstraintFact(environment, derived.Fact, derived.Source);
                     }
                 }
 

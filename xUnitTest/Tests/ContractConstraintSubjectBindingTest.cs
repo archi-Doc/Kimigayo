@@ -11,8 +11,7 @@ namespace XunitTest;
 /// A Contract body clause may constrain an associated-Type projection rooted in the conforming
 /// Type, because that clause is a premise every implementation must discharge. A projection
 /// rooted in an unrelated concrete Type states a closed proposition that the declaration cannot
-/// assume; it is rejected like the equivalent struct, enum and function clauses instead of
-/// silently becoming an unverified premise.
+/// assume. Each declaration separately discharges its closed obligations.
 /// </summary>
 public class ContractConstraintSubjectBindingTest
 {
@@ -42,15 +41,15 @@ public class ContractConstraintSubjectBindingTest
     }
 
     [Theory]
-    [InlineData("Source.Origin.Item is i32")]
+    [InlineData("Source.Origin.Item is not i32")]
     [InlineData("Source.Origin.Item is string")]
-    [InlineData("Source.Origin.Item is Copy")]
-    public void ConcreteRootedProjectionIsNotAValidContractSubject(string clause)
+    [InlineData("Source.Origin.Item is not Copy")]
+    public void RefutedConcreteRootedProjectionInvalidatesTheContract(string clause)
     {
         var c = MinimalEmissionTest.Analyze(Head + "public contract R\n    " + clause);
         Assert.Empty(c.Kimigayo.GetOrAddDiagnosticCollection("Hello.kimi").GetArray());
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidConstraint);
+        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
         Assert.Equal(BindingState.Invalid, Contract(c).BindingState);
         var restored = Reload(c);
         Assert.False(restored.Bind().IsComplete);
@@ -60,9 +59,9 @@ public class ContractConstraintSubjectBindingTest
     [Fact]
     public void AnInvalidContractSubjectCannotCertifyConformance()
     {
-        var c = MinimalEmissionTest.Analyze(Head + "public contract R\n    Source.Origin.Item is i32\npublic struct Impl\n    Self is R");
+        var c = MinimalEmissionTest.Analyze(Head + "public contract R\n    Source.Origin.Item is string\npublic struct Impl\n    Self is R");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidConstraint);
+        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
         var implementation = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Impl");
         Assert.False(c.Binding.GetConformanceDefinition(implementation.BoundType!, Contract(c).BoundSymbol!)?.IsVerified);
     }
@@ -70,17 +69,17 @@ public class ContractConstraintSubjectBindingTest
     [Theory]
     [InlineData("struct")]
     [InlineData("enum")]
-    public void ConcreteRootedProjectionStaysInvalidInTypeDeclarations(string kind)
+    public void RefutedConcreteRootedProjectionInvalidatesTypeDeclarations(string kind)
     {
-        var c = MinimalEmissionTest.Analyze(Head + "public " + kind + " R<T>\n    Source.Origin.Item is i32" + (kind == "enum" ? "\n    A" : string.Empty));
+        var c = MinimalEmissionTest.Analyze(Head + "public " + kind + " R<T>\n    Source.Origin.Item is string" + (kind == "enum" ? "\n    A" : string.Empty));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidConstraint);
+        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
     }
 
     [Fact]
     public void ReplacingTheSubjectRestoresAndRevokesTheContract()
     {
-        var c = MinimalEmissionTest.Analyze(Head + "public contract R: Origin\n    Source.Origin.Item is Copy");
+        var c = MinimalEmissionTest.Analyze(Head + "public contract R: Origin\n    Source.Origin.Item is string");
         var clause = Contract(c).ConstraintNodes[0];
         var original = clause.Left;
         var donor = MinimalEmissionTest.Analyze(Head + "public contract R: Origin\n    Origin.Item is Copy");
